@@ -1,6 +1,6 @@
 use super::*;
 use crate::commands::LiveSessionScope;
-use crate::models::LiveSessionCleanupRequest;
+use crate::models::{LiveSessionCleanupRequest, PodExecSessionStatus};
 
 fn valid_request() -> PodExecSessionRequest {
     PodExecSessionRequest {
@@ -39,12 +39,41 @@ fn test_summary(id: &str) -> PodExecSessionSummary {
         tty: true,
         terminal_cols: 100,
         terminal_rows: 32,
-        status: "running".to_string(),
+        status: PodExecSessionStatus::Running,
         started_at: "2026-06-01T00:00:00Z".to_string(),
         finished_at: None,
         exit_code: None,
         last_error: None,
     }
+}
+
+#[test]
+fn ended_sessions_keep_their_final_state() {
+    let registry = PodExecRegistry::default();
+    registry.insert_summary_for_test(test_summary("exited"));
+    registry.insert_summary_for_test(test_summary("failed"));
+
+    registry.mark_exited("exited", Some(0));
+    registry.mark_error("exited", "stream closed".to_string());
+    registry.mark_running("exited");
+    registry.mark_error("failed", "attach failed".to_string());
+    registry.mark_exited("failed", Some(1));
+
+    let sessions = registry.list();
+    let exited = sessions
+        .iter()
+        .find(|s| s.id == "exited")
+        .expect("exited session");
+    assert_eq!(exited.status, PodExecSessionStatus::Exited);
+    assert_eq!(exited.exit_code, Some(0));
+    assert_eq!(exited.last_error, None);
+    let failed = sessions
+        .iter()
+        .find(|s| s.id == "failed")
+        .expect("failed session");
+    assert_eq!(failed.status, PodExecSessionStatus::Error);
+    assert_eq!(failed.exit_code, None);
+    assert!(failed.finished_at.is_some());
 }
 
 #[test]

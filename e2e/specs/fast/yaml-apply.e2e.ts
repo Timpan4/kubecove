@@ -39,4 +39,37 @@ describe("YAML apply review", () => {
 		await $("button=Dry run").click();
 		await expect($("button=Apply")).toBeEnabled();
 	});
+
+	it("keeps the reviewed draft locked while Apply runs and reports its result", async () => {
+		await $$("button=Resources")[0].click();
+		await $('input[aria-label="Search resources"]').setValue("payments-api");
+		await $('//tr[td[normalize-space()="Deployment"]]//button[@aria-label="Open resource payments-api"]').click();
+		await $('[role="tab"]=YAML').click();
+		await $("button=Edit YAML").click();
+		const editor = await $('.cm-content[contenteditable="true"]');
+		await editor.waitForDisplayed();
+		await $("button=Dry run").click();
+		const apply = await $("button=Apply");
+		await apply.waitForEnabled();
+
+		// The mock rejects apply from a timer, and Svelte flushes the applying phase in a microtask,
+		// so this edit runs while Apply is pending.
+		const lockedDuringApply = await browser.execute(async (content: HTMLElement) => {
+			const applyButton = [...document.querySelectorAll("button")].find((button) => button.textContent?.trim() === "Apply");
+			applyButton?.click();
+			await Promise.resolve();
+			const locked = content.closest("[inert]") !== null;
+			content.focus();
+			const selection = getSelection();
+			selection?.selectAllChildren(content);
+			selection?.collapseToEnd();
+			document.execCommand("insertText", false, "\n# mid-apply edit");
+			return locked;
+		}, editor);
+
+		expect(lockedDuringApply).toBe(true);
+		await expect($("body")).toHaveText(expect.stringContaining("YAML apply failed"));
+		await expect(editor).not.toHaveText(expect.stringContaining("mid-apply edit"));
+		await expect($("button=Apply")).toBeEnabled();
+	});
 });

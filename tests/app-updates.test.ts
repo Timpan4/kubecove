@@ -126,6 +126,66 @@ describe("app update store", () => {
 		expect(useAppUpdateStore.getState().downloadProgress).toBe(100);
 	});
 
+	test("checks and installs started during a download leave that download alone", async () => {
+		resetAppUpdateStateForTests();
+		let finishDownload = () => {};
+		let downloads = 0;
+		let checks = 0;
+		const update: AppUpdate = {
+			currentVersion: "0.2.0",
+			version: "0.3.0",
+			downloadAndInstall: (onEvent) => {
+				downloads += 1;
+				onEvent?.({ event: "Started", data: { contentLength: 100 } });
+				onEvent?.({ event: "Progress", data: { chunkLength: 40 } });
+				return new Promise((resolve) => { finishDownload = resolve; });
+			},
+		};
+		setAppUpdateApiForTests({
+			check: async () => {
+				checks += 1;
+				return checks === 1 ? update : null;
+			},
+			relaunch: async () => undefined,
+		});
+		const store = useAppUpdateStore.getState();
+		await store.checkForUpdates({ manual: false });
+		const install = store.installUpdate();
+
+		await store.checkForUpdates({ manual: false });
+		await store.installUpdate();
+		expect(useAppUpdateStore.getState().status).toBe("downloading");
+		expect(useAppUpdateStore.getState().downloadProgress).toBe(40);
+
+		finishDownload();
+		await install;
+		expect(checks).toBe(1);
+		expect(downloads).toBe(1);
+		expect(useAppUpdateStore.getState().status).toBe("installed");
+	});
+
+	test("a check started while another check runs does not overwrite its result", async () => {
+		resetAppUpdateStateForTests();
+		let checks = 0;
+		let resolveFirst: (update: AppUpdate | null) => void = () => {};
+		setAppUpdateApiForTests({
+			check: () => {
+				checks += 1;
+				if (checks === 1) return new Promise((resolve) => { resolveFirst = resolve; });
+				return Promise.resolve(null);
+			},
+			relaunch: async () => undefined,
+		});
+		const store = useAppUpdateStore.getState();
+		const first = store.checkForUpdates({ manual: false });
+		await store.checkForUpdates({ manual: true });
+		resolveFirst({ currentVersion: "0.2.0", version: "0.3.0", downloadAndInstall: async () => undefined });
+		await first;
+
+		expect(checks).toBe(1);
+		expect(useAppUpdateStore.getState().status).toBe("available");
+	});
+
 	test("dismissed version is retained while the update remains available", async () => {
 		resetAppUpdateStateForTests();
 		setAppUpdateApiForTests(

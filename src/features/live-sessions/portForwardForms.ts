@@ -26,6 +26,11 @@ export interface SavedPortForwardFormValues {
 	label: string;
 }
 
+export type SavedPortForwardFormState =
+	| { mode: "closed" }
+	| { mode: "create"; values: SavedPortForwardFormValues; error: string | null }
+	| { mode: "edit"; id: string; values: SavedPortForwardFormValues; error: string | null };
+
 type ParsedPort = number | string;
 
 function parsePort(value: string, label: string): ParsedPort {

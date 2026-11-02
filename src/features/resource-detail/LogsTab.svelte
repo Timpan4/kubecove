@@ -36,7 +36,7 @@
 	} from "@/components/ui/svelte";
 	import type { LogLayout } from "@/lib/settings";
 	import LogEntry from "./LogEntry.svelte";
-	import type { ParsedLogLine } from "./log-helpers";
+	import type { LogStreamStatus, ParsedLogLine } from "./log-helpers";
 	import type { LogLevel } from "./log-structure";
 
 	const sinceOptions = [
@@ -105,7 +105,7 @@
 		isAggregate: boolean;
 		containerOptions: string[];
 		selectedContainer: string;
-		logStatus: string;
+		logStatus: LogStreamStatus;
 		logMessage: string;
 		logError: unknown;
 		logFilter: string;

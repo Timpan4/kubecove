@@ -7,7 +7,7 @@ use tokio::{
     net::TcpStream,
 };
 
-use super::lifecycle::PortForwardRegistry;
+use super::lifecycle::{ForwardEvent, PortForwardRegistry};
 use super::target::{
     PortForwardTarget, ValidatedPortForwardRequest, resolve_port_forward_target, validate_request,
 };
@@ -110,6 +110,40 @@ async fn forward_connection(
     .await
 }
 
+/// Reports one connection's phase to its forward, including its end when the
+/// connection's future is dropped by completion, failure, panic, or abort.
+struct ConnectionReport {
+    registry: PortForwardRegistry,
+    session_id: String,
+    resolved: bool,
+}
+
+impl ConnectionReport {
+    fn resolving(registry: PortForwardRegistry, session_id: String) -> Self {
+        registry.report(&session_id, ForwardEvent::Resolving);
+        Self {
+            registry,
+            session_id,
+            resolved: false,
+        }
+    }
+
+    fn resolved(&mut self, target: &PortForwardTarget) {
+        self.registry.mark_resolved_target(&self.session_id, target);
+        self.registry
+            .report(&self.session_id, ForwardEvent::Resolved);
+        self.resolved = true;
+    }
+}
+
+impl Drop for ConnectionReport {
+    fn drop(&mut self) {
+        let resolved = self.resolved;
+        self.registry
+            .report(&self.session_id, ForwardEvent::Ended { resolved });
+    }
+}
+
 async fn resolve_and_forward_connection(
     access: ClusterAccess,
     client: Client,
@@ -118,10 +152,9 @@ async fn resolve_and_forward_connection(
     session_id: String,
     registry: PortForwardRegistry,
 ) -> Result<(), AppError> {
-    registry.mark_status(&session_id, "reconnecting", None);
+    let mut report = ConnectionReport::resolving(registry, session_id);
     let target = resolve_port_forward_target(&access, request).await?;
-    registry.mark_resolved_target(&session_id, &target);
-    registry.mark_status(&session_id, "connected", None);
+    report.resolved(&target);
     forward_connection(client, target, local_stream).await
 }
 

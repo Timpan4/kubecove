@@ -10,7 +10,7 @@
 	import { Badge, Button, Popover, PopoverContent, PopoverTrigger, buttonClass } from "@/components/ui/svelte";
 	import { isAppUpdatesEnabled } from "@/lib/release-channel";
 	import { cnfast } from "@/lib/utils";
-	import type { AppUpdateState } from "@/features/app-updates/store";
+	import { canCheckForUpdates, type AppUpdateState } from "@/features/app-updates/store";
 	import { appUpdateStore } from "./appUpdateStore";
 
 	const checkedAtFormatter = new Intl.DateTimeFormat(undefined, {
@@ -177,7 +177,7 @@
 						type="button"
 						variant="outline"
 						size="sm"
-						disabled={update.status === "checking" || update.status === "downloading"}
+						disabled={!canCheckForUpdates(update.status)}
 						onclick={() => void update.checkForUpdates({ manual: true })}
 					>
 						<RefreshCw data-icon="inline-start" />

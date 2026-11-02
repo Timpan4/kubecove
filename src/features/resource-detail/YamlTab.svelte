@@ -135,7 +135,7 @@
 								</Select>
 							</div>
 							{#if yamlEditing}
-								<Button type="button" variant="outline" onclick={resetYamlApply}>
+								<Button type="button" variant="outline" disabled={yamlApplying} onclick={resetYamlApply}>
 									<X data-icon="inline-start" />
 									Cancel
 								</Button>
@@ -179,7 +179,7 @@
 							<Button
 								type="button"
 								variant="secondary"
-								disabled={yamlPreparing || yamlDraft.trim().length === 0}
+								disabled={yamlPreparing || yamlApplying || yamlDraft.trim().length === 0}
 								onclick={() => void previewYamlApply()}
 							>
 								{#if yamlPreparing}<Spinner data-icon="inline-start" />{/if}
@@ -319,14 +319,17 @@
 							{/if}
 						</div>
 					{/if}
-					<YamlCodeEditor
-						bind:value={yamlDraft}
-						editable
-						minHeight="420px"
-						extraDiagnostics={kubernetesYamlDiagnostics}
-						showErrorLens={yamlErrorLensEnabled}
-						onChange={clearYamlDraftFeedback}
-					/>
+					<!-- Inert while applying, so the applied text stays the text on screen. -->
+					<div inert={yamlApplying} aria-busy={yamlApplying}>
+						<YamlCodeEditor
+							bind:value={yamlDraft}
+							editable
+							minHeight="420px"
+							extraDiagnostics={kubernetesYamlDiagnostics}
+							showErrorLens={yamlErrorLensEnabled}
+							onChange={clearYamlDraftFeedback}
+						/>
+					</div>
 					{#if yamlLintDiagnostics.length > 0}
 						<div class="rounded-md border bg-background/50">
 							<div class="border-b px-3 py-2 text-xs font-medium">YAML diagnostics</div>

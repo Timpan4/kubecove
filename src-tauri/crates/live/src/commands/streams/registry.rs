@@ -1,4 +1,4 @@
-use crate::models::{StreamMessage, WatchResourceKey, WatchResourceTarget};
+use crate::models::{StreamMessage, StreamStatus, WatchResourceKey, WatchResourceTarget};
 use crate::runtime::{Channel, JoinHandle};
 use std::{
     collections::HashMap,
@@ -14,10 +14,19 @@ pub(super) struct StreamBroadcaster {
     connection: Arc<Mutex<ConnectionState>>,
 }
 
+/// The last connection report, replayed to late subscribers. A status report
+/// replaces an error report and the reverse, except that a reconnecting status
+/// keeps the error that caused it.
 #[derive(Default)]
-struct ConnectionState {
-    status: Option<(String, String)>,
-    error: Option<String>,
+enum ConnectionState {
+    #[default]
+    Unreported,
+    Status {
+        status: StreamStatus,
+        message: String,
+        cause: Option<String>,
+    },
+    Failed(String),
 }
 
 impl StreamBroadcaster {
@@ -32,16 +41,24 @@ impl StreamBroadcaster {
         // Serialize replay with status changes so a late subscriber cannot receive
         // an older connection state after a newer broadcast.
         let connection = self.connection.lock().expect("stream connection lock");
-        if let Some(message) = &connection.error {
+        let error = match &*connection {
+            ConnectionState::Failed(message) => Some(message),
+            ConnectionState::Status { cause, .. } => cause.as_ref(),
+            ConnectionState::Unreported => None,
+        };
+        if let Some(message) = error {
             let _ = channel.send(StreamMessage::Error {
                 stream_id: stream_id.clone(),
                 message: message.clone(),
             });
         }
-        if let Some((status, message)) = &connection.status {
+        if let ConnectionState::Status {
+            status, message, ..
+        } = &*connection
+        {
             let _ = channel.send(StreamMessage::Status {
                 stream_id: stream_id.clone(),
-                status: status.clone(),
+                status: *status,
                 message: message.clone(),
             });
         }
@@ -93,24 +110,29 @@ impl StreamBroadcaster {
             .is_empty()
     }
 
-    pub(super) fn status(&self, status: &str, message: String) -> bool {
+    pub(super) fn status(&self, status: StreamStatus, message: String) -> bool {
         let mut connection = self.connection.lock().expect("stream connection lock");
-        connection.status = Some((status.to_string(), message.clone()));
-        if status == "connected" {
-            connection.error = None;
-        }
-        let status = status.to_string();
+        let cause = match std::mem::take(&mut *connection) {
+            _ if status == StreamStatus::Connected => None,
+            ConnectionState::Failed(error) => Some(error),
+            ConnectionState::Status { cause, .. } => cause,
+            ConnectionState::Unreported => None,
+        };
+        *connection = ConnectionState::Status {
+            status,
+            message: message.clone(),
+            cause,
+        };
         self.send(move |stream_id| StreamMessage::Status {
             stream_id: stream_id.to_string(),
-            status: status.clone(),
+            status,
             message: message.clone(),
         })
     }
 
     pub(super) fn error(&self, message: String) -> bool {
         let mut connection = self.connection.lock().expect("stream connection lock");
-        connection.status = None;
-        connection.error = Some(message.clone());
+        *connection = ConnectionState::Failed(message.clone());
         self.send(move |stream_id| StreamMessage::Error {
             stream_id: stream_id.to_string(),
             message: message.clone(),
@@ -419,11 +441,11 @@ mod tests {
             observed.lock().unwrap().push(message);
             Ok(())
         });
-        broadcaster.status("connected", "watching".into());
+        broadcaster.status(StreamStatus::Connected, "watching".into());
         broadcaster.add("first".into(), channel.clone());
         assert_eq!(messages.lock().unwrap()[0]["status"], "connected");
         broadcaster.error("offline".into());
-        broadcaster.status("reconnecting", "retrying".into());
+        broadcaster.status(StreamStatus::Reconnecting, "retrying".into());
         broadcaster.add("second".into(), channel.clone());
         let second: Vec<_> = messages
             .lock()
@@ -435,7 +457,7 @@ mod tests {
         assert_eq!(second.len(), 2);
         assert_eq!(second[0]["message"], "offline");
         assert_eq!(second[1]["status"], "reconnecting");
-        broadcaster.status("connected", "recovered".into());
+        broadcaster.status(StreamStatus::Connected, "recovered".into());
         broadcaster.add("third".into(), channel);
         let third: Vec<_> = messages
             .lock()

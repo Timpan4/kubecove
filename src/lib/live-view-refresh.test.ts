@@ -10,7 +10,7 @@ import {
 import { configureQueryCatalog, queryKeys, queryMatchers } from "./queryKeys";
 import { RESOURCE_RECOVERY_INTERVAL } from "./resource-watch";
 import { createMockChannel, createMockTauriClient } from "./tauri-runtime";
-import type { StreamMessage, WatchResourceKey } from "./types";
+import type { StreamMessage, StreamStatus, WatchResourceKey } from "./types";
 
 const cleanups: (() => void)[] = [];
 
@@ -159,7 +159,7 @@ function liveHarness() {
 		change(index: number, kind: string, streamId = "watch") {
 			channels[index]?.onmessage({ type: "resourceChanged", streamId, action: "modified", target: { cluster: "dev", kind, name: "item", namespace: "shop" } });
 		},
-		status(index: number, status: string) {
+		status(index: number, status: StreamStatus) {
 			channels[index]?.onmessage({ type: "status", streamId: "watch", status, message: status });
 		},
 	};

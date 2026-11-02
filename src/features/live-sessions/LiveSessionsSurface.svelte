@@ -17,7 +17,8 @@
 		savedPortForwardLabel,
 	} from "./helpers";
 	import { buildLiveSessionReadModel } from "./liveSessionReadModel";
-	import { type SavedPortForwardFormValues } from "./portForwardForms";
+	import type { SavedPortForwardFormState, SavedPortForwardFormValues } from "./portForwardForms";
+	import { LiveSessionRowActions, savedForwardRowId } from "./rowActions.svelte";
 	import { podExecQueryOptions, stopPodExec } from "./podExecLifecycle";
 	import {
 		parseSavedPortForwardForWorkspace,
@@ -44,17 +45,10 @@
 
 	const client = createTauriClient();
 	const queryClient = useQueryClient();
-	let stoppingSessionId = $state<string | null>(null);
-	let copyingSessionId = $state<string | null>(null);
-	let reconnectingSessionId = $state<string | null>(null);
-	let startingSavedPortForwardId = $state<string | null>(null);
+	const rows = new LiveSessionRowActions();
 	let startingSavedPortForwards = $state(false);
 	let savedPortForwardActionMessage = $state<string | null>(null);
-	let savedPortForwardFormOpen = $state(false);
-	let editingSavedPortForwardId = $state<string | null>(null);
-	let savedPortForwardFormError = $state<string | null>(null);
-	let savedPortForwardForm = $state<SavedPortForwardFormValues>(newSavedPortForwardForm());
-	let liveSessionActionError = $state<unknown>(null);
+	let savedForwardForm = $state<SavedPortForwardFormState>({ mode: "closed" });
 	const autoStartSavedPortForwards = $derived($settingsStore.autoStartSavedPortForwards);
 	trackLiveSessionUi(() => sourceReady);
 
@@ -125,57 +119,56 @@
 	}
 
 	function resetSavedPortForwardForm() {
-		savedPortForwardFormOpen = false;
-		editingSavedPortForwardId = null;
-		savedPortForwardFormError = null;
-		savedPortForwardForm = newSavedPortForwardForm();
+		savedForwardForm = { mode: "closed" };
 	}
 
 	function beginAddSavedPortForward() {
-		editingSavedPortForwardId = null;
-		savedPortForwardFormError = null;
-		savedPortForwardForm = newSavedPortForwardForm();
-		savedPortForwardFormOpen = true;
+		savedForwardForm = { mode: "create", values: newSavedPortForwardForm(), error: null };
 	}
 
 	function beginEditSavedPortForward(portForward: SavedPortForward) {
-		editingSavedPortForwardId = portForward.id;
-		savedPortForwardFormError = null;
-		savedPortForwardForm = savedPortForwardFormFromSaved(portForward);
-		savedPortForwardFormOpen = true;
+		savedForwardForm = {
+			mode: "edit",
+			id: portForward.id,
+			values: savedPortForwardFormFromSaved(portForward),
+			error: null,
+		};
 	}
 
 	function setSavedPortForwardFormValue(
 		key: keyof SavedPortForwardFormValues,
 		value: string,
 	) {
-		savedPortForwardForm = { ...savedPortForwardForm, [key]: value };
+		if (savedForwardForm.mode === "closed") return;
+		savedForwardForm = {
+			...savedForwardForm,
+			values: { ...savedForwardForm.values, [key]: value },
+		};
 	}
 
 	function submitSavedPortForwardForm() {
-		const parsed = parseSavedPortForwardForWorkspace(savedPortForwardForm, workspace);
+		const form = savedForwardForm;
+		if (form.mode === "closed") return;
+		const parsed = parseSavedPortForwardForWorkspace(form.values, workspace);
 		if (isValidationMessage(parsed)) {
-			savedPortForwardFormError = parsed;
+			savedForwardForm = { ...form, error: parsed };
 			return;
 		}
-		if (editingSavedPortForwardId) {
-			workspaceStore.updateSavedPortForward(
-				workspace.id,
-				editingSavedPortForwardId,
-				parsed,
-			);
+		if (form.mode === "edit") {
+			workspaceStore.updateSavedPortForward(workspace.id, form.id, parsed);
+			savedPortForwardActionMessage = "Saved forward updated.";
 		} else {
 			workspaceStore.saveSavedPortForward(workspace.id, parsed);
+			savedPortForwardActionMessage = "Saved forward added.";
 		}
-		savedPortForwardActionMessage = editingSavedPortForwardId
-			? "Saved forward updated."
-			: "Saved forward added.";
 		resetSavedPortForwardForm();
 	}
 
 	function deleteSavedPortForward(portForward: SavedPortForward) {
 		workspaceStore.deleteSavedPortForward(workspace.id, portForward.id);
-		if (editingSavedPortForwardId === portForward.id) resetSavedPortForwardForm();
+		if (savedForwardForm.mode === "edit" && savedForwardForm.id === portForward.id) {
+			resetSavedPortForwardForm();
+		}
 		savedPortForwardActionMessage = `Deleted ${savedPortForwardLabel(portForward)}.`;
 	}
 
@@ -183,74 +176,59 @@
 		return Object(value) !== value;
 	}
 
-	async function copyPortForwardUrl(session: PortForwardSessionSummary) {
-		copyingSessionId = session.id;
-		liveSessionActionError = null;
-		try {
-			await navigator.clipboard.writeText(portForwardLocalUrl(session));
-		} catch (error) {
-			liveSessionActionError = error;
-		} finally {
-			copyingSessionId = null;
-		}
+	function copyPortForwardUrl(session: PortForwardSessionSummary): Promise<boolean> {
+		return rows.run(session.id, "copy", () =>
+			navigator.clipboard.writeText(portForwardLocalUrl(session)),
+		);
 	}
 
-	async function reconnectPortForward(session: PortForwardSessionSummary) {
-		reconnectingSessionId = session.id;
-		liveSessionActionError = null;
+	async function reconnectPortForward(session: PortForwardSessionSummary): Promise<void> {
 		savedPortForwardActionMessage = null;
-		try {
-			await reconnectPortForwardLifecycle({
+		const reconnected = await rows.run(session.id, "reconnect", () =>
+			reconnectPortForwardLifecycle({
 				client,
 				session,
 				invalidateQueries: (options) => queryClient.invalidateQueries(options),
-			});
+			}),
+		);
+		if (reconnected) {
 			savedPortForwardActionMessage = `Reconnected ${portForwardSessionTitle(session)}.`;
-		} catch (error) {
-			liveSessionActionError = error;
-		} finally {
-			reconnectingSessionId = null;
 		}
 	}
 
-	async function startSavedPortForward(portForward: SavedPortForward) {
-		startingSavedPortForwardId = portForward.id;
-		liveSessionActionError = null;
+	async function startSavedPortForward(portForward: SavedPortForward): Promise<void> {
 		savedPortForwardActionMessage = null;
-		try {
-			const result = await startSavedPortForwardLifecycle({
-				client,
-				workspaceId: workspace.id,
-				portForward,
-				knownSessions: portForwardsQuery.data,
-				kubeconfigSource: kubeconfigSourceKey,
-				updateSavedPortForward: workspaceStore.updateSavedPortForward,
-				invalidateQueries: (options) => queryClient.invalidateQueries(options),
-			});
-			if (result.ok && result.skipped) {
-				savedPortForwardActionMessage = `${savedPortForwardLabel(portForward)} already active.`;
-				return;
+		let message: string | null = null;
+		await rows.run(savedForwardRowId(portForward.id), "start", async () => {
+			let result: Awaited<ReturnType<typeof startSavedPortForwardLifecycle>>;
+			try {
+				result = await startSavedPortForwardLifecycle({
+					client,
+					workspaceId: workspace.id,
+					portForward,
+					knownSessions: portForwardsQuery.data,
+					kubeconfigSource: kubeconfigSourceKey,
+					updateSavedPortForward: workspaceStore.updateSavedPortForward,
+					invalidateQueries: (options) => queryClient.invalidateQueries(options),
+				});
+			} catch (error) {
+				workspaceStore.updateSavedPortForward(workspace.id, portForward.id, {
+					lastStatus: "error",
+					lastError: portForwardErrorMessage(error),
+				});
+				throw error;
 			}
-			if (!result.ok) {
-				liveSessionActionError = result.error ?? "Saved port-forward failed to start.";
-				return;
-			}
-			savedPortForwardActionMessage = `Started ${savedPortForwardLabel(portForward)}.`;
-		} catch (error) {
-			const message = portForwardErrorMessage(error);
-			workspaceStore.updateSavedPortForward(workspace.id, portForward.id, {
-				lastStatus: "error",
-				lastError: message,
-			});
-			liveSessionActionError = error;
-		} finally {
-			startingSavedPortForwardId = null;
-		}
+			if (!result.ok) throw result.error ?? new Error("Saved port-forward failed to start.");
+			message = result.skipped
+				? `${savedPortForwardLabel(portForward)} already active.`
+				: `Started ${savedPortForwardLabel(portForward)}.`;
+		});
+		savedPortForwardActionMessage = message;
 	}
 
 	async function startAllSavedPortForwards() {
 		startingSavedPortForwards = true;
-		liveSessionActionError = null;
+		rows.failure = null;
 		savedPortForwardActionMessage = null;
 		try {
 			const results = await startSavedPortForwardsLifecycle({
@@ -271,57 +249,43 @@
 						: `${failures} saved ${failures === 1 ? "forward" : "forwards"} failed to start.`
 					: `Started ${results.length} saved ${results.length === 1 ? "forward" : "forwards"}.`;
 		} catch (error) {
-			liveSessionActionError = error;
+			rows.failure = { action: "start", error };
 		} finally {
 			startingSavedPortForwards = false;
 		}
 	}
 
-	async function stopPortForwardSession(sessionId: string) {
-		stoppingSessionId = sessionId;
-		liveSessionActionError = null;
-		try {
-			await stopPortForwardLifecycle({
+	function stopPortForwardSession(sessionId: string): Promise<boolean> {
+		return rows.run(sessionId, "stop", () =>
+			stopPortForwardLifecycle({
 				client,
 				sessionId,
 				invalidateQueries: (options) => queryClient.invalidateQueries(options),
-			});
-		} catch (error) {
-			liveSessionActionError = error;
-		} finally {
-			stoppingSessionId = null;
-		}
+			}),
+		);
 	}
 
-	async function stopExecSession(sessionId: string) {
-		stoppingSessionId = sessionId;
-		liveSessionActionError = null;
-		try {
-			await stopPodExec({
+	function stopExecSession(sessionId: string): Promise<boolean> {
+		return rows.run(sessionId, "stop", () =>
+			stopPodExec({
 				client,
 				sessionId,
 				invalidateQueries: (options) => queryClient.invalidateQueries(options),
-			});
-		} catch (error) {
-			liveSessionActionError = error;
-		} finally {
-			stoppingSessionId = null;
-		}
+			}),
+		);
 	}
 </script>
 
 <LiveSessionsView
 	status={{
 		query: liveSessionsQuery,
-		actionError: liveSessionActionError,
+		actionError: rows.failure?.error ?? null,
 		actionMessage: savedPortForwardActionMessage,
 		showKubeconfigSourceLabels,
 	}}
+	{rows}
 	portForwards={{
 		sessions: visiblePortForwardSessions,
-		reconnectingId: reconnectingSessionId,
-		copyingId: copyingSessionId,
-		stoppingId: stoppingSessionId,
 		title: portForwardSessionTitle,
 		resolution: portForwardSessionResolution,
 		copyUrl: copyPortForwardUrl,
@@ -334,11 +298,7 @@
 		setAutoStart: setAutoStartSavedPortForwards,
 		startingAll: startingSavedPortForwards,
 		startAll: startAllSavedPortForwards,
-		startingId: startingSavedPortForwardId,
-		formOpen: savedPortForwardFormOpen,
-		form: savedPortForwardForm,
-		formError: savedPortForwardFormError,
-		editingId: editingSavedPortForwardId,
+		form: savedForwardForm,
 		kubeconfigSourceKey,
 		beginAdd: beginAddSavedPortForward,
 		beginEdit: beginEditSavedPortForward,

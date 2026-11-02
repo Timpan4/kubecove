@@ -199,10 +199,10 @@ fn log_relay_event(event: RelayEvent) {
         RelayEvent::AcceptFailed(error) => {
             eprintln!("[kubecove:backend] Argo Service tunnel accept failed: {error}");
         }
-        RelayEvent::ConnectionFailed(error) => {
+        RelayEvent::ConnectionFailed { error, .. } => {
             eprintln!("[kubecove:backend] Argo Service tunnel forward failed: {error}");
         }
-        RelayEvent::ConnectionPanicked(error) => {
+        RelayEvent::ConnectionPanicked { error, .. } => {
             eprintln!("[kubecove:backend] Argo Service tunnel task failed: {error}");
         }
         RelayEvent::ConnectionClosed { .. } => {}

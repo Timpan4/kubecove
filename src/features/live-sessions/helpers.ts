@@ -61,6 +61,11 @@ export function sortPortForwardSessions(
 	});
 }
 
+/** A failed session and a port-forward whose listener stopped both need attention. */
+export function liveSessionBadgeVariant(status: string | undefined): "destructive" | "outline" {
+	return status === "error" || status === "stopped" ? "destructive" : "outline";
+}
+
 export function isReusablePortForwardSession(
 	session: Pick<PortForwardSessionSummary, "status">,
 ): boolean {

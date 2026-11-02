@@ -21,6 +21,7 @@
 	import {
 		appendParsedLogBatch,
 		filterOrderedParsedLogLines,
+		type LogStreamStatus,
 		MAX_RETAINED_LOG_LINES,
 		orderParsedLogLines,
 		type ParsedLogLine,
@@ -68,7 +69,7 @@
 	} = $props();
 
 	let nextLogLineIndex = 0;
-	let logStatus = $state("idle");
+	let logStatus = $state<LogStreamStatus>("idle");
 	let logMessage = $state("Log stream idle");
 	let logError = $state<unknown>(null);
 	let logViewport = $state<HTMLElement | null>(null);

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Download, RefreshCw } from "lucide-svelte";
 	import { Badge, Button, FieldGroup } from "@/components/ui/svelte";
+	import { canCheckForUpdates } from "@/features/app-updates/store";
 	import { isAppUpdatesEnabled } from "@/lib/release-channel";
 	import SettingsRow from "./SettingsRow.svelte";
 	import { appUpdateActions, appUpdateStore } from "./appUpdateStore";
@@ -12,9 +13,7 @@
 	const updatesEnabled = isAppUpdatesEnabled();
 	const update = $derived($appUpdateStore);
 
-	const updateBusy = $derived(
-		update.status === "checking" || update.status === "downloading",
-	);
+	const checkDisabled = $derived(!canCheckForUpdates(update.status));
 
 	function formatCheckedAt(value: string | null): string {
 		if (!value) return "Not checked yet";
@@ -41,7 +40,7 @@
 					type="button"
 					variant="outline"
 					size="sm"
-					disabled={updateBusy}
+					disabled={checkDisabled}
 					onclick={() => void appUpdateActions.checkForUpdates({ manual: true })}
 				>
 					<RefreshCw data-icon="inline-start" />

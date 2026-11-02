@@ -27,11 +27,36 @@ pub struct Owner {
     pub socket: Mutex<SocketState>,
 }
 
+/// The session's browser socket. Each connect bumps the generation, so a
+/// replaced socket's disconnect and a stale expiry timer are both ignored.
 #[derive(Default)]
-pub struct SocketState {
-    pub generation: u64,
-    pub connected: bool,
-    expiry: Option<tokio::task::JoinHandle<()>>,
+pub enum SocketState {
+    /// Opened, before its first grace timer starts.
+    #[default]
+    New,
+    Connected {
+        generation: u64,
+    },
+    /// No socket; the session expires when the timer fires.
+    Grace {
+        generation: u64,
+        expiry: tokio::task::JoinHandle<()>,
+    },
+}
+
+impl SocketState {
+    pub fn generation(&self) -> u64 {
+        match self {
+            Self::New => 0,
+            Self::Connected { generation } | Self::Grace { generation, .. } => *generation,
+        }
+    }
+
+    fn replace(&mut self, next: Self) {
+        if let Self::Grace { expiry, .. } = std::mem::replace(self, next) {
+            expiry.abort();
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -156,12 +181,8 @@ impl Sessions {
 
     pub async fn connect(&self, owner: &Owner) -> u64 {
         let mut socket = owner.socket.lock().await;
-        if let Some(expiry) = socket.expiry.take() {
-            expiry.abort();
-        }
-        socket.generation += 1;
-        socket.connected = true;
-        let generation = socket.generation;
+        let generation = socket.generation() + 1;
+        socket.replace(SocketState::Connected { generation });
         drop(socket);
         owner.socket_changed.notify_waiters();
         generation
@@ -169,16 +190,12 @@ impl Sessions {
 
     pub async fn disconnected(self: &Arc<Self>, owner: Arc<Owner>, generation: u64) {
         let mut socket = owner.socket.lock().await;
-        if socket.generation != generation || owner.ended.is_cancelled() {
+        if socket.generation() != generation || owner.ended.is_cancelled() {
             return;
-        }
-        socket.connected = false;
-        if let Some(expiry) = socket.expiry.take() {
-            expiry.abort();
         }
         let sessions = Arc::clone(self);
         let expired_owner = Arc::clone(&owner);
-        socket.expiry = Some(tokio::spawn(async move {
+        let expiry = tokio::spawn(async move {
             let owner = expired_owner;
             tokio::select! {
                 () = owner.ended.cancelled() => return,
@@ -187,8 +204,11 @@ impl Sessions {
             {
                 let _transition = sessions.transition.lock().await;
                 let socket = owner.socket.lock().await;
-                if socket.connected || socket.generation != generation || owner.ended.is_cancelled()
-                {
+                let still_waiting = matches!(
+                    *socket,
+                    SocketState::Grace { generation: current, .. } if current == generation
+                );
+                if !still_waiting || owner.ended.is_cancelled() {
                     return;
                 }
                 owner.ended.cancel();
@@ -198,7 +218,8 @@ impl Sessions {
             }
             observe::session_expired(owner.session_id, sessions.grace);
             let _ = sessions.end(&owner).await;
-        }));
+        });
+        socket.replace(SocketState::Grace { generation, expiry });
     }
 
     pub async fn shutdown(&self) {
