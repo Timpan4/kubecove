@@ -1,5 +1,8 @@
-import type { LogLineSource } from "@/lib/types";
+import type { LogLineSource, StreamStatus } from "@/lib/types";
 import { type LogStructure, parseLogStructure } from "./log-structure";
+
+/** Client-side log stream phases plus the statuses the backend stream reports. */
+export type LogStreamStatus = "idle" | "connecting" | "error" | "stopped" | StreamStatus;
 
 export interface LogLineEntry {
 	line: string;

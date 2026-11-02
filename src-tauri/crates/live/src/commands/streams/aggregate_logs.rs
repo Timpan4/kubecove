@@ -4,7 +4,9 @@ use super::{
 };
 use crate::commands::ClusterAccess;
 use crate::models::AppErrorKind;
-use crate::models::{AggregatedLogStreamRequest, AppError, LogLineSource, StreamMessage};
+use crate::models::{
+    AggregatedLogStreamRequest, AppError, LogLineSource, StreamMessage, StreamStatus,
+};
 use crate::runtime::{Channel, JoinHandle};
 use futures_util::StreamExt;
 use k8s_openapi::{
@@ -89,7 +91,7 @@ pub(super) async fn run_aggregated_log_stream(
                 if !send_status(
                     &channel,
                     &stream_id,
-                    "reconnecting",
+                    StreamStatus::Reconnecting,
                     format!("Log pod list failed: {err}"),
                 ) {
                     return;
@@ -116,7 +118,7 @@ pub(super) async fn run_aggregated_log_stream(
         if !send_status(
             &channel,
             &stream_id,
-            "connected",
+            StreamStatus::Connected,
             aggregate_status_message(total_sources, source_streams.handles.len()),
         ) {
             return;
@@ -145,7 +147,12 @@ pub(super) async fn run_aggregated_log_stream(
                                 } else {
                                     status.message
                                 };
-                                if !send_status(&channel, &stream_id, "reconnecting", message) {
+                                if !send_status(
+                                    &channel,
+                                    &stream_id,
+                                    StreamStatus::Reconnecting,
+                                    message,
+                                ) {
                                     return;
                                 }
                                 break;
@@ -155,7 +162,7 @@ pub(super) async fn run_aggregated_log_stream(
                             if !send_status(
                                 &channel,
                                 &stream_id,
-                                "reconnecting",
+                                StreamStatus::Reconnecting,
                                 format!("Log pod watch failed: {err}"),
                             ) {
                                 return;
@@ -169,7 +176,7 @@ pub(super) async fn run_aggregated_log_stream(
                 if !send_status(
                     &channel,
                     &stream_id,
-                    "reconnecting",
+                    StreamStatus::Reconnecting,
                     format!("Log pod watch failed: {err}"),
                 ) {
                     return;
@@ -461,14 +468,14 @@ fn send_error(channel: &Channel<StreamMessage>, stream_id: String, message: Stri
 fn send_status(
     channel: &Channel<StreamMessage>,
     stream_id: &str,
-    status: &str,
+    status: StreamStatus,
     message: String,
 ) -> bool {
     send(
         channel,
         StreamMessage::Status {
             stream_id: stream_id.to_string(),
-            status: status.to_string(),
+            status,
             message,
         },
     )

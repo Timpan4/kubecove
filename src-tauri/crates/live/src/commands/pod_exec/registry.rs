@@ -1,6 +1,6 @@
 use crate::commands::LiveSessionScope;
 use crate::models::AppErrorKind;
-use crate::models::{AppError, PodExecSessionSummary, PodExecTerminalSize};
+use crate::models::{AppError, PodExecSessionStatus, PodExecSessionSummary, PodExecTerminalSize};
 use crate::runtime::JoinHandle;
 use chrono::Utc;
 use std::{
@@ -117,19 +117,36 @@ impl PodExecRegistry {
         }
     }
 
-    pub(super) fn mark_status(&self, session_id: &str, status: &str, last_error: Option<String>) {
+    /// Moves a session to `status`. A session that exited or failed keeps its
+    /// final state, so a late report cannot revive or overwrite it.
+    fn mark_status(
+        &self,
+        session_id: &str,
+        status: PodExecSessionStatus,
+        last_error: Option<String>,
+    ) {
         self.update_summary(session_id, |summary| {
-            summary.status = status.to_string();
+            if summary.status.is_terminal() {
+                return;
+            }
+            summary.status = status;
             summary.last_error = last_error;
+            if status.is_terminal() {
+                summary.finished_at = Some(Utc::now().to_rfc3339());
+            }
         });
     }
 
+    pub(super) fn mark_connecting(&self, session_id: &str) {
+        self.mark_status(session_id, PodExecSessionStatus::Connecting, None);
+    }
+
     pub(super) fn mark_running(&self, session_id: &str) {
-        self.mark_status(session_id, "running", None);
+        self.mark_status(session_id, PodExecSessionStatus::Running, None);
     }
 
     pub(super) fn mark_error(&self, session_id: &str, message: String) {
-        self.mark_status(session_id, "error", Some(message));
+        self.mark_status(session_id, PodExecSessionStatus::Error, Some(message));
     }
 
     pub(super) fn mark_terminal_size(&self, session_id: &str, size: PodExecTerminalSize) {
@@ -141,7 +158,10 @@ impl PodExecRegistry {
 
     pub(super) fn mark_exited(&self, session_id: &str, exit_code: Option<i32>) {
         self.update_summary(session_id, |summary| {
-            summary.status = "exited".to_string();
+            if summary.status.is_terminal() {
+                return;
+            }
+            summary.status = PodExecSessionStatus::Exited;
             summary.finished_at = Some(Utc::now().to_rfc3339());
             summary.exit_code = exit_code;
         });
@@ -304,7 +324,7 @@ pub(super) fn session_summary(
         tty: request.tty,
         terminal_cols: request.terminal_size.cols,
         terminal_rows: request.terminal_size.rows,
-        status: "starting".to_string(),
+        status: PodExecSessionStatus::Starting,
         started_at: Utc::now().to_rfc3339(),
         finished_at: None,
         exit_code: None,

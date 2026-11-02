@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{
     commands::{ClusterAccess, ClusterLiveStore},
-    models::{WatchResourceKey, WatchResourceTarget},
+    models::{StreamStatus, WatchResourceKey, WatchResourceTarget},
 };
 use futures_util::StreamExt;
 use k8s_openapi::api::core::v1::Event;
@@ -31,7 +31,7 @@ fn report_forbidden_watch(
         "at cluster scope".to_string()
     };
     broadcaster.status(
-        "forbidden",
+        StreamStatus::Forbidden,
         format!(
             "{} {scope}: watch access denied. Readable resources will refresh periodically.",
             key.resource_kind.kind
@@ -176,7 +176,7 @@ pub(super) async fn run_resource_watch(
 
         match api.watch(&params, &resource_version).await {
             Ok(stream) => {
-                if !broadcaster.status("connected", format!("Watching {kind_label}")) {
+                if !broadcaster.status(StreamStatus::Connected, format!("Watching {kind_label}")) {
                     return;
                 }
                 let mut stream = stream.boxed();
@@ -250,7 +250,10 @@ pub(super) async fn run_resource_watch(
             }
         }
 
-        if !broadcaster.status("reconnecting", format!("Reconnecting {kind_label}")) {
+        if !broadcaster.status(
+            StreamStatus::Reconnecting,
+            format!("Reconnecting {kind_label}"),
+        ) {
             return;
         }
         tokio::time::sleep(Duration::from_secs(2)).await;
@@ -307,7 +310,7 @@ pub(super) async fn run_event_watch(
             .fields(&field_selector)
             .timeout(WATCH_TIMEOUT_SECS);
 
-        if !broadcaster.status("connected", "Watching events".to_string()) {
+        if !broadcaster.status(StreamStatus::Connected, "Watching events".to_string()) {
             return;
         }
 
@@ -356,7 +359,10 @@ pub(super) async fn run_event_watch(
             }
         }
 
-        if !broadcaster.status("reconnecting", "Reconnecting events".to_string()) {
+        if !broadcaster.status(
+            StreamStatus::Reconnecting,
+            "Reconnecting events".to_string(),
+        ) {
             return;
         }
         tokio::time::sleep(Duration::from_secs(2)).await;

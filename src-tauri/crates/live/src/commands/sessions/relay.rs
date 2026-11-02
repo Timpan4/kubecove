@@ -32,8 +32,14 @@ pub enum RelayEvent {
     ConnectionClosed {
         idle: bool,
     },
-    ConnectionFailed(AppError),
-    ConnectionPanicked(JoinError),
+    ConnectionFailed {
+        error: AppError,
+        idle: bool,
+    },
+    ConnectionPanicked {
+        error: JoinError,
+        idle: bool,
+    },
 }
 
 /// Binds a listener on `127.0.0.1`. `None` lets the OS pick a free port.
@@ -82,10 +88,11 @@ where
                     }
                 },
                 Some(finished) = connections.join_next(), if !connections.is_empty() => {
+                    let idle = connections.is_empty();
                     on_event(match finished {
-                        Ok(Ok(())) => RelayEvent::ConnectionClosed { idle: connections.is_empty() },
-                        Ok(Err(error)) => RelayEvent::ConnectionFailed(error),
-                        Err(error) => RelayEvent::ConnectionPanicked(error),
+                        Ok(Ok(())) => RelayEvent::ConnectionClosed { idle },
+                        Ok(Err(error)) => RelayEvent::ConnectionFailed { error, idle },
+                        Err(error) => RelayEvent::ConnectionPanicked { error, idle },
                     });
                 }
             }

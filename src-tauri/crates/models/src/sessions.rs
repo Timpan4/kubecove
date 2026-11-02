@@ -18,6 +18,18 @@ pub struct PortForwardRequest {
     pub local_port: Option<i64>,
 }
 
+/// A port-forward's listed state. `Error` keeps the listener accepting;
+/// `Stopped` means the listener gave up and accepts nothing more.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PortForwardSessionStatus {
+    Listening,
+    Reconnecting,
+    Connected,
+    Error,
+    Stopped,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PortForwardSessionSummary {
@@ -39,7 +51,7 @@ pub struct PortForwardSessionSummary {
     pub local_port: u16,
     pub local_address: String,
     pub local_url: String,
-    pub status: String,
+    pub status: PortForwardSessionStatus,
     pub started_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_error: Option<String>,
@@ -77,6 +89,22 @@ pub struct PodExecSessionRequest {
     pub confirmation: PodExecConfirmation,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PodExecSessionStatus {
+    Starting,
+    Connecting,
+    Running,
+    Exited,
+    Error,
+}
+
+impl PodExecSessionStatus {
+    pub fn is_terminal(self) -> bool {
+        matches!(self, Self::Exited | Self::Error)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PodExecSessionSummary {
@@ -97,7 +125,7 @@ pub struct PodExecSessionSummary {
     pub tty: bool,
     pub terminal_cols: u16,
     pub terminal_rows: u16,
-    pub status: String,
+    pub status: PodExecSessionStatus,
     pub started_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finished_at: Option<String>,
@@ -136,7 +164,7 @@ pub enum PodExecSessionMessage {
     },
     Status {
         session_id: String,
-        status: String,
+        status: PodExecSessionStatus,
         message: String,
     },
     Output {

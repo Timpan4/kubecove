@@ -6,6 +6,15 @@ pub const MAX_WEBSOCKET_MESSAGE_BYTES: usize = 2 * 1024 * 1024;
 pub const CHANNEL_MESSAGE_ENVELOPE_BYTES: usize =
     b"{\"channelId\":18446744073709551615,\"message\":,\"type\":\"channel\"}".len();
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StreamStatus {
+    Connected,
+    Reconnecting,
+    /// The stream cannot run with the caller's permissions; it stays stopped.
+    Forbidden,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResourceCacheRefreshResult {
@@ -103,7 +112,7 @@ pub enum StreamMessage {
     },
     Status {
         stream_id: String,
-        status: String,
+        status: StreamStatus,
         message: String,
     },
     ResourceChanged {

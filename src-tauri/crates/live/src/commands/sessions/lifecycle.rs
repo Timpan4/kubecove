@@ -6,7 +6,7 @@
 
 use crate::commands::LiveSessionScope;
 use crate::models::AppErrorKind;
-use crate::models::{AppError, PortForwardSessionSummary};
+use crate::models::{AppError, PortForwardSessionStatus, PortForwardSessionSummary};
 use crate::runtime::JoinHandle;
 use chrono::Utc;
 use std::{
@@ -178,11 +178,8 @@ impl PortForwardRegistry {
         }
     }
 
-    pub(super) fn mark_status(&self, session_id: &str, status: &str, last_error: Option<String>) {
-        self.update_summary(session_id, |summary| {
-            summary.status = status.to_string();
-            summary.last_error = last_error;
-        });
+    pub(super) fn report(&self, session_id: &str, event: ForwardEvent) {
+        self.update_summary(session_id, |summary| apply_forward_event(summary, event));
     }
 
     pub(super) fn mark_resolved_target(&self, session_id: &str, target: &PortForwardTarget) {
@@ -193,28 +190,26 @@ impl PortForwardRegistry {
         });
     }
 
-    fn mark_error(&self, session_id: &str, message: String) {
-        self.mark_status(session_id, "error", Some(message));
-    }
-
     /// Reports a forward's relay events in its listed status.
     fn relay_events(&self, session_id: String) -> impl FnMut(RelayEvent) + Send + 'static + use<> {
         let registry = self.clone();
-        move |event| match event {
-            RelayEvent::AcceptRetry { attempt, error } => registry.mark_status(
-                &session_id,
-                "listening",
-                Some(format!("accept retry {attempt}: {error}")),
-            ),
-            RelayEvent::AcceptFailed(error) => registry.mark_error(&session_id, error.to_string()),
-            RelayEvent::ConnectionClosed { idle: true } => {
-                registry.mark_status(&session_id, "listening", None);
-            }
-            RelayEvent::ConnectionClosed { idle: false } => {}
-            RelayEvent::ConnectionFailed(error) => registry.mark_error(&session_id, error.message),
-            RelayEvent::ConnectionPanicked(error) => {
-                registry.mark_error(&session_id, error.to_string());
-            }
+        move |event| {
+            let event = match event {
+                RelayEvent::AcceptRetry { attempt, error } => {
+                    ForwardEvent::AcceptRetry(format!("accept retry {attempt}: {error}"))
+                }
+                RelayEvent::AcceptFailed(error) => ForwardEvent::AcceptFailed(error.to_string()),
+                RelayEvent::ConnectionClosed { idle } => ForwardEvent::Closed { idle },
+                RelayEvent::ConnectionFailed { error, idle } => ForwardEvent::Failed {
+                    message: error.message,
+                    idle,
+                },
+                RelayEvent::ConnectionPanicked { error, idle } => ForwardEvent::Failed {
+                    message: error.to_string(),
+                    idle,
+                },
+            };
+            registry.report(&session_id, event);
         }
     }
 
@@ -249,6 +244,61 @@ impl PortForwardRegistry {
     }
 }
 
+/// What a forward's listener or one of its connections reports.
+pub(super) enum ForwardEvent {
+    /// A connection was accepted and is resolving its target Pod.
+    Resolving,
+    Resolved,
+    Closed {
+        idle: bool,
+    },
+    Failed {
+        message: String,
+        idle: bool,
+    },
+    AcceptRetry(String),
+    /// The listener gave up accepting; the forward is dead until restarted.
+    AcceptFailed(String),
+}
+
+/// Applies one report to a forward's listed state. Each connection reports on
+/// its own, so a report only changes the status when it describes every open
+/// connection: a new connection does not hide one that is already relaying,
+/// and one failure does not mark a forward with other open connections failed.
+pub(super) fn apply_forward_event(summary: &mut PortForwardSessionSummary, event: ForwardEvent) {
+    use PortForwardSessionStatus as Status;
+    if summary.status == Status::Stopped {
+        return;
+    }
+    match event {
+        ForwardEvent::Resolving if summary.status == Status::Connected => {}
+        ForwardEvent::Resolving => {
+            summary.status = Status::Reconnecting;
+            summary.last_error = None;
+        }
+        ForwardEvent::Resolved => {
+            summary.status = Status::Connected;
+            summary.last_error = None;
+        }
+        ForwardEvent::Closed { idle: true } => {
+            summary.status = Status::Listening;
+            summary.last_error = None;
+        }
+        ForwardEvent::Closed { idle: false } => {}
+        ForwardEvent::Failed { message, idle } => {
+            if idle {
+                summary.status = Status::Error;
+            }
+            summary.last_error = Some(message);
+        }
+        ForwardEvent::AcceptRetry(message) => summary.last_error = Some(message),
+        ForwardEvent::AcceptFailed(message) => {
+            summary.status = Status::Stopped;
+            summary.last_error = Some(message);
+        }
+    }
+}
+
 fn is_forwarded(state: &PortForwardState, local_port: u16) -> bool {
     state
         .sessions
@@ -278,7 +328,7 @@ pub(super) fn session_summary(
         local_port,
         local_address: LOCAL_ADDRESS.to_string(),
         local_url: format!("http://{LOCAL_ADDRESS}:{local_port}"),
-        status: "listening".to_string(),
+        status: PortForwardSessionStatus::Listening,
         started_at: Utc::now().to_rfc3339(),
         last_error: None,
     }

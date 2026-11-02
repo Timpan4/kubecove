@@ -1,5 +1,6 @@
 use crate::models::{
-    AppError, AppErrorKind, PodExecSessionMessage, PodExecSessionRequest, PodExecSessionSummary,
+    AppError, AppErrorKind, PodExecSessionMessage, PodExecSessionRequest, PodExecSessionStatus,
+    PodExecSessionSummary,
 };
 use crate::runtime::Channel;
 use futures_util::SinkExt;
@@ -134,11 +135,12 @@ async fn run_exec_session(
     registry: PodExecRegistry,
 ) {
     let session_id = summary.id.clone();
+    registry.mark_connecting(&session_id);
     send(
         &channel,
         PodExecSessionMessage::Status {
             session_id: session_id.clone(),
-            status: "connecting".to_string(),
+            status: PodExecSessionStatus::Connecting,
             message: "Opening Kubernetes exec session".to_string(),
         },
     );
@@ -194,7 +196,7 @@ async fn run_exec_session(
         &channel,
         PodExecSessionMessage::Status {
             session_id: session_id.clone(),
-            status: "running".to_string(),
+            status: PodExecSessionStatus::Running,
             message: "Exec session is running".to_string(),
         },
     );

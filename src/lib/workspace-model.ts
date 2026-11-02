@@ -4,6 +4,7 @@ import {
 	CLUSTER_SCOPED_KINDS,
 	type ClusterContext,
 	type DiscoveredResourceKind,
+	type PortForwardSessionStatus,
 	type ResourceKindSelection,
 	type ResourceSummary,
 	SUPPORTED_KINDS,
@@ -53,12 +54,11 @@ export interface WorkspaceShortcut {
 	compare?: WorkspaceCompareEntry;
 }
 
+// Saved workspaces are persisted, so older builds may have stored other strings.
 export type SavedPortForwardLastStatus =
 	| "idle"
 	| "starting"
-	| "listening"
-	| "connected"
-	| "error"
+	| PortForwardSessionStatus
 	| (string & {});
 
 export interface SavedPortForward {

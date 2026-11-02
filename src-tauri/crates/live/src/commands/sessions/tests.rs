@@ -1,6 +1,7 @@
 use super::*;
 use crate::commands::{LiveSessionScope, SessionScope};
-use crate::models::LiveSessionCleanupRequest;
+use crate::models::{LiveSessionCleanupRequest, PortForwardSessionStatus};
+use lifecycle::{ForwardEvent, apply_forward_event};
 use std::{
     future::Future,
     sync::{
@@ -118,6 +119,50 @@ fn session_snapshot(
         .list()
         .into_iter()
         .find(|session| session.id == session_id)
+}
+
+#[test]
+fn forward_status_describes_every_open_connection_and_stopped_is_final() {
+    use PortForwardSessionStatus as Status;
+    let mut summary =
+        lifecycle::session_summary("pf-1".to_string(), &test_target("kind-dev", None), 18080);
+    apply_forward_event(&mut summary, ForwardEvent::Resolving);
+    assert_eq!(summary.status, Status::Reconnecting);
+    apply_forward_event(&mut summary, ForwardEvent::Resolved);
+
+    // A second connection resolving or failing leaves the relaying one visible.
+    apply_forward_event(&mut summary, ForwardEvent::Resolving);
+    assert_eq!(summary.status, Status::Connected);
+    apply_forward_event(
+        &mut summary,
+        ForwardEvent::Failed {
+            message: "refused".to_string(),
+            idle: false,
+        },
+    );
+    assert_eq!(summary.status, Status::Connected);
+    assert_eq!(summary.last_error.as_deref(), Some("refused"));
+
+    apply_forward_event(&mut summary, ForwardEvent::Closed { idle: true });
+    assert_eq!(summary.status, Status::Listening);
+    assert_eq!(summary.last_error, None);
+    apply_forward_event(
+        &mut summary,
+        ForwardEvent::Failed {
+            message: "pod gone".to_string(),
+            idle: true,
+        },
+    );
+    assert_eq!(summary.status, Status::Error);
+
+    apply_forward_event(
+        &mut summary,
+        ForwardEvent::AcceptFailed("no fds".to_string()),
+    );
+    apply_forward_event(&mut summary, ForwardEvent::Resolved);
+    apply_forward_event(&mut summary, ForwardEvent::Closed { idle: true });
+    assert_eq!(summary.status, Status::Stopped);
+    assert_eq!(summary.last_error.as_deref(), Some("no fds"));
 }
 
 #[test]
@@ -319,7 +364,7 @@ async fn session_loop_returns_to_listening_after_connections_close() {
         let registry = PortForwardRegistry::default();
         let (session_id, local_port) =
             spawn_session_with_handler(&registry, |_stream| async { Ok(()) }).await;
-        registry.mark_status(&session_id, "connected", None);
+        registry.report(&session_id, ForwardEvent::Resolved);
 
         let _stream = TcpStream::connect((LOCAL_ADDRESS, local_port))
             .await
@@ -327,7 +372,8 @@ async fn session_loop_returns_to_listening_after_connections_close() {
 
         let returned_to_listening = wait_until(|| {
             session_snapshot(&registry, &session_id).is_some_and(|session| {
-                session.status == "listening" && session.last_error.is_none()
+                session.status == PortForwardSessionStatus::Listening
+                    && session.last_error.is_none()
             })
         })
         .await;
@@ -367,7 +413,8 @@ async fn handler_error_marks_session_error_but_keeps_accepting() {
 
         let marked_error = wait_until(|| {
             session_snapshot(&registry, &session_id).is_some_and(|session| {
-                session.status == "error" && session.last_error.as_deref() == Some("boom")
+                session.status == PortForwardSessionStatus::Error
+                    && session.last_error.as_deref() == Some("boom")
             })
         })
         .await;

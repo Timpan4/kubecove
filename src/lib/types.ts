@@ -311,12 +311,13 @@ export interface PortForwardRequest {
 	localPort?: number;
 }
 
+// "error" keeps listening; "stopped" means the listener gave up and needs a restart.
 export type PortForwardSessionStatus =
 	| "listening"
 	| "reconnecting"
 	| "connected"
 	| "error"
-	| (string & {});
+	| "stopped";
 
 export interface PortForwardSessionSummary {
 	id: string;
@@ -368,8 +369,7 @@ export type PodExecSessionStatus =
 	| "connecting"
 	| "running"
 	| "exited"
-	| "error"
-	| (string & {});
+	| "error";
 
 export interface PodExecSessionSummary {
 	id: string;
@@ -438,7 +438,7 @@ export type PodExecSessionMessage =
 	| {
 			type: "status";
 			sessionId: string;
-			status: PodExecSessionStatus | string;
+			status: PodExecSessionStatus;
 			message: string;
 	  }
 	| {
@@ -512,7 +512,8 @@ export interface ResourceMetricsSummary {
 	warnings: string[];
 }
 
-export type StreamStatus = "connected" | "reconnecting" | "stopped" | "error";
+// "forbidden" streams stay stopped; readable data refreshes by polling instead.
+export type StreamStatus = "connected" | "reconnecting" | "forbidden";
 
 // Older remote servers send one log line per message.
 export interface LegacyLogLineMessage {
@@ -528,7 +529,7 @@ export type StreamMessage =
 	| {
 			type: "status";
 			streamId: string;
-			status: StreamStatus | string;
+			status: StreamStatus;
 			message: string;
 	  }
 	| {

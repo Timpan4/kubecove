@@ -7,7 +7,7 @@ use tokio::{
     net::TcpStream,
 };
 
-use super::lifecycle::PortForwardRegistry;
+use super::lifecycle::{ForwardEvent, PortForwardRegistry};
 use super::target::{
     PortForwardTarget, ValidatedPortForwardRequest, resolve_port_forward_target, validate_request,
 };
@@ -118,10 +118,10 @@ async fn resolve_and_forward_connection(
     session_id: String,
     registry: PortForwardRegistry,
 ) -> Result<(), AppError> {
-    registry.mark_status(&session_id, "reconnecting", None);
+    registry.report(&session_id, ForwardEvent::Resolving);
     let target = resolve_port_forward_target(&access, request).await?;
     registry.mark_resolved_target(&session_id, &target);
-    registry.mark_status(&session_id, "connected", None);
+    registry.report(&session_id, ForwardEvent::Resolved);
     forward_connection(client, target, local_stream).await
 }
 

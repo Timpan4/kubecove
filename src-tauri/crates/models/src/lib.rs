@@ -89,13 +89,13 @@ pub use resource_actions::{
 };
 pub use sessions::{
     LiveSessionCleanupRequest, LiveSessionCleanupResult, PodExecConfirmation,
-    PodExecSessionMessage, PodExecSessionRequest, PodExecSessionSummary, PodExecTerminalSize,
-    PortForwardRequest, PortForwardSessionSummary,
+    PodExecSessionMessage, PodExecSessionRequest, PodExecSessionStatus, PodExecSessionSummary,
+    PodExecTerminalSize, PortForwardRequest, PortForwardSessionStatus, PortForwardSessionSummary,
 };
 pub use streams::{
     AggregatedLogStreamRequest, CHANNEL_MESSAGE_ENVELOPE_BYTES, LogLineSource,
     MAX_WEBSOCKET_MESSAGE_BYTES, PodLogStreamRequest, ResourceCacheRefreshResult, StreamMessage,
-    WatchResourceKey, WatchResourceKind, WatchResourceTarget,
+    StreamStatus, WatchResourceKey, WatchResourceKind, WatchResourceTarget,
 };
 pub use tunnel::{
     MAX_TUNNEL_FRAME_BYTES, MAX_TUNNEL_PAYLOAD_BYTES, decode_tunnel_frame, encode_tunnel_frame,

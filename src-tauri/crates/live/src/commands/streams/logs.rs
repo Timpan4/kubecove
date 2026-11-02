@@ -3,7 +3,7 @@ use super::{
     send,
 };
 use crate::commands::ClusterAccess;
-use crate::models::{LogLineSource, PodLogStreamRequest, StreamMessage};
+use crate::models::{LogLineSource, PodLogStreamRequest, StreamMessage, StreamStatus};
 use crate::runtime::Channel;
 use futures_util::{AsyncBufReadExt, io::AsyncBufRead};
 use k8s_openapi::api::core::v1::Pod;
@@ -42,7 +42,7 @@ pub(super) async fn run_pod_log_stream(
         &channel,
         StreamMessage::Status {
             stream_id: stream_id.clone(),
-            status: "connected".to_string(),
+            status: StreamStatus::Connected,
             message: "Streaming logs".to_string(),
         },
     ) {
