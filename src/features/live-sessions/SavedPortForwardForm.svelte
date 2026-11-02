@@ -7,14 +7,14 @@
 	let {
 		form,
 		error,
-		editingId,
+		editing,
 		onValue,
 		onCancel,
 		onSubmit,
 	}: {
 		form: SavedPortForwardFormValues;
 		error: string | null;
-		editingId: string | null;
+		editing: boolean;
 		onValue: (key: keyof SavedPortForwardFormValues, value: string) => void;
 		onCancel: () => void;
 		onSubmit: () => void;
@@ -81,7 +81,7 @@
 		</Button>
 		<Button type="button" size="sm" onclick={onSubmit}>
 			<Save data-icon="inline-start" />
-			{editingId ? "Save changes" : "Save forward"}
+			{editing ? "Save changes" : "Save forward"}
 		</Button>
 	</div>
 </div>

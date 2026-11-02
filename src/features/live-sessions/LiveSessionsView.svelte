@@ -26,16 +26,18 @@
 	} from "@/components/ui/svelte";
 	import {
 		findSavedPortForwardSession,
+		liveSessionBadgeVariant,
 		portForwardLocalUrl,
 		savedPortForwardLabel,
 	} from "@/features/live-sessions/helpers";
+	import { type LiveSessionRowActions, savedForwardRowId } from "./rowActions.svelte";
 	import { podExecCommandText } from "./podExecHelpers";
 	import type { PodExecSessionSummary, PortForwardSessionSummary } from "@/lib/types";
 	import type { SavedPortForward, SavedWorkspace } from "@/lib/workspace-model";
 	import StatGrid from "@/components/StatGrid.svelte";
 	import SurfaceFrame from "@/components/SurfaceFrame.svelte";
 	import SavedPortForwardForm from "./SavedPortForwardForm.svelte";
-	import type { SavedPortForwardFormValues } from "./portForwardForms";
+	import type { SavedPortForwardFormState, SavedPortForwardFormValues } from "./portForwardForms";
 
 	type LiveSessionStatus = {
 		query: { isPending: boolean; isError: boolean; error: unknown };
@@ -46,14 +48,11 @@
 
 	type PortForwardViewModel = {
 		sessions: PortForwardSessionSummary[];
-		reconnectingId: string | null;
-		copyingId: string | null;
-		stoppingId: string | null;
 		title: (session: PortForwardSessionSummary) => string;
 		resolution: (session: PortForwardSessionSummary) => string;
-		copyUrl: (session: PortForwardSessionSummary) => Promise<void>;
+		copyUrl: (session: PortForwardSessionSummary) => Promise<boolean>;
 		reconnect: (session: PortForwardSessionSummary) => Promise<void>;
-		stop: (sessionId: string) => Promise<void>;
+		stop: (sessionId: string) => Promise<boolean>;
 	};
 
 	type SavedForwardViewModel = {
@@ -62,11 +61,7 @@
 		setAutoStart: (autoStart: boolean) => void;
 		startingAll: boolean;
 		startAll: () => Promise<void>;
-		startingId: string | null;
-		formOpen: boolean;
-		form: SavedPortForwardFormValues;
-		formError: string | null;
-		editingId: string | null;
+		form: SavedPortForwardFormState;
 		kubeconfigSourceKey?: string;
 		beginAdd: () => void;
 		beginEdit: (portForward: SavedPortForward) => void;
@@ -79,16 +74,18 @@
 
 	type PodExecViewModel = {
 		sessions: PodExecSessionSummary[];
-		stop: (sessionId: string) => Promise<void>;
+		stop: (sessionId: string) => Promise<boolean>;
 	};
 
 	let {
 		status,
+		rows,
 		portForwards,
 		savedForwards,
 		podExec,
 	}: {
 		status: LiveSessionStatus;
+		rows: LiveSessionRowActions;
 		portForwards: PortForwardViewModel;
 		savedForwards: SavedForwardViewModel;
 		podExec: PodExecViewModel;
@@ -98,9 +95,6 @@
 	const savedPortForwardActionMessage = $derived(status.actionMessage);
 	const showKubeconfigSourceLabels = $derived(status.showKubeconfigSourceLabels);
 	const visiblePortForwardSessions = $derived(portForwards.sessions);
-	const reconnectingSessionId = $derived(portForwards.reconnectingId);
-	const copyingSessionId = $derived(portForwards.copyingId);
-	const stoppingSessionId = $derived(portForwards.stoppingId);
 	const portForwardSessionTitle = $derived(portForwards.title);
 	const portForwardSessionResolution = $derived(portForwards.resolution);
 	const copyPortForwardUrl = $derived(portForwards.copyUrl);
@@ -111,11 +105,7 @@
 	const setAutoStartSavedPortForwards = $derived(savedForwards.setAutoStart);
 	const startingSavedPortForwards = $derived(savedForwards.startingAll);
 	const startAllSavedPortForwards = $derived(savedForwards.startAll);
-	const startingSavedPortForwardId = $derived(savedForwards.startingId);
-	const savedPortForwardFormOpen = $derived(savedForwards.formOpen);
 	const savedPortForwardForm = $derived(savedForwards.form);
-	const savedPortForwardFormError = $derived(savedForwards.formError);
-	const editingSavedPortForwardId = $derived(savedForwards.editingId);
 	const kubeconfigSourceKey = $derived(savedForwards.kubeconfigSourceKey);
 	const beginAddSavedPortForward = $derived(savedForwards.beginAdd);
 	const beginEditSavedPortForward = $derived(savedForwards.beginEdit);
@@ -207,7 +197,7 @@
 									<TableCell class="truncate px-3 py-2">{portForwardLocalUrl(session)}</TableCell>
 									<TableCell class="truncate px-3 py-2">{portForwardSessionResolution(session)}</TableCell>
 									<TableCell class="truncate px-3 py-2">
-										<Badge variant={session.status === "error" ? "destructive" : "outline"}>{session.status}</Badge>
+										<Badge variant={liveSessionBadgeVariant(session.status)}>{session.status}</Badge>
 										{#if session.lastError}
 											<FriendlyError
 												mode="compact"
@@ -226,7 +216,7 @@
 												type="button"
 												variant="outline"
 												size="xs"
-												disabled={reconnectingSessionId === session.id}
+												disabled={rows.pending(session.id) !== undefined}
 												onclick={() => reconnectPortForward(session)}
 											>
 												<RotateCcw data-icon="inline-start" />
@@ -236,7 +226,7 @@
 												type="button"
 												variant="outline"
 												size="xs"
-												disabled={copyingSessionId === session.id}
+												disabled={rows.pending(session.id) !== undefined}
 												onclick={() => copyPortForwardUrl(session)}
 											>
 												<Copy data-icon="inline-start" />
@@ -246,7 +236,7 @@
 												type="button"
 												variant="destructive"
 												size="xs"
-												disabled={stoppingSessionId === session.id}
+												disabled={rows.pending(session.id) !== undefined}
 												onclick={() => stopPortForwardSession(session.id)}
 											>
 												<Square data-icon="inline-start" />
@@ -273,11 +263,11 @@
 				</Button>
 			</CardHeader>
 			<CardContent class="space-y-3">
-				{#if savedPortForwardFormOpen}
+				{#if savedPortForwardForm.mode !== "closed"}
 					<SavedPortForwardForm
-						form={savedPortForwardForm}
-						error={savedPortForwardFormError}
-						editingId={editingSavedPortForwardId}
+						form={savedPortForwardForm.values}
+						error={savedPortForwardForm.error}
+						editing={savedPortForwardForm.mode === "edit"}
 						onValue={setSavedPortForwardFormValue}
 						onCancel={resetSavedPortForwardForm}
 						onSubmit={submitSavedPortForwardForm}
@@ -313,7 +303,7 @@
 												{#if activeSession}
 													<Badge variant="secondary">active</Badge>
 												{/if}
-												<Badge variant={portForward.lastStatus === "error" ? "destructive" : "outline"}>
+												<Badge variant={liveSessionBadgeVariant(portForward.lastStatus)}>
 													{portForward.lastStatus ?? "idle"}
 												</Badge>
 									</div>
@@ -335,7 +325,7 @@
 													type="button"
 													variant="outline"
 													size="xs"
-													disabled={startingSavedPortForwardId === portForward.id}
+													disabled={rows.pending(savedForwardRowId(portForward.id)) !== undefined}
 													onclick={() => startSavedPortForward(portForward)}
 												>
 													<Play data-icon="inline-start" />
@@ -398,7 +388,7 @@
 											type="button"
 											variant="destructive"
 											size="xs"
-											disabled={stoppingSessionId === session.id}
+											disabled={rows.pending(session.id) !== undefined}
 											onclick={() => stopExecSession(session.id)}
 										>
 											<Square data-icon="inline-start" />

@@ -32,8 +32,10 @@
 	} from "@/features/live-sessions/portForwardForms";
 	import {
 		isPortForwardForResource,
+		liveSessionBadgeVariant,
 		portForwardLocalUrl,
 	} from "@/features/live-sessions/helpers";
+	import { LiveSessionRowActions } from "@/features/live-sessions/rowActions.svelte";
 	import {
 		portForwardQueryOptions,
 		startResourcePortForward,
@@ -71,10 +73,8 @@
 	let remotePort = $state("");
 	let localPort = $state("");
 	let starting = $state(false);
-	let stoppingId = $state<string | null>(null);
-	let copyingId = $state<string | null>(null);
+	const rows = new LiveSessionRowActions();
 	let error = $state<unknown>(null);
-	let copyError = $state<unknown>(null);
 	let saveMessage = $state("");
 	let saveError = $state<unknown>(null);
 
@@ -102,7 +102,7 @@
 
 	async function startForward() {
 		error = null;
-		copyError = null;
+		rows.failure = null;
 		saveError = null;
 		const parsed = parsePortForwardForm(
 			{ remotePort, localPort },
@@ -178,32 +178,20 @@
 		saveMessage = "Saved Service forward to this workspace.";
 	}
 
-	async function stopForward(id: string) {
-		copyError = null;
-		stoppingId = id;
-		try {
-			await stopPortForward({
+	function stopForward(id: string): Promise<boolean> {
+		return rows.run(id, "stop", () =>
+			stopPortForward({
 				client,
 				sessionId: id,
 				invalidateQueries: (options) => queryClient.invalidateQueries(options),
-			});
-		} catch (err) {
-			error = err;
-		} finally {
-			stoppingId = null;
-		}
+			}),
+		);
 	}
 
-	async function copySessionUrl(session: PortForwardSessionSummary) {
-		copyingId = session.id;
-		copyError = null;
-		try {
+	function copySessionUrl(session: PortForwardSessionSummary): Promise<boolean> {
+		return rows.run(session.id, "copy", async () => {
 			await navigator.clipboard?.writeText(portForwardLocalUrl(session));
-		} catch (err) {
-			copyError = err;
-		} finally {
-			copyingId = null;
-		}
+		});
 	}
 
 	function sessionTitle(session: PortForwardSessionSummary): string {
@@ -298,10 +286,13 @@
 				<AlertDescription>{saveMessage}</AlertDescription>
 			</Alert>
 		{/if}
-		{#if copyError}
+		{#if rows.failure}
 			<FriendlyError
-				error={copyError}
-				context={{ operation: "portForward", fallbackTitle: "Copy failed" }}
+				error={rows.failure.error}
+				context={{
+					operation: "portForward",
+					fallbackTitle: rows.failure.action === "copy" ? "Copy failed" : "Port-forward stop failed",
+				}}
 			/>
 		{/if}
 
@@ -361,16 +352,16 @@
 							{/if}
 						</div>
 						<div class="flex items-center gap-2">
-							<Badge variant={session.status === "error" ? "destructive" : "outline"}>
+							<Badge variant={liveSessionBadgeVariant(session.status)}>
 								{session.status}
 							</Badge>
 							<Button
 								variant="outline"
 								size="sm"
 								onclick={() => copySessionUrl(session)}
-								disabled={copyingId === session.id}
+								disabled={rows.pending(session.id) !== undefined}
 							>
-								{#if copyingId === session.id}
+								{#if rows.pending(session.id) === "copy"}
 									<Spinner data-icon="inline-start" />
 								{:else}
 									<Copy data-icon="inline-start" />
@@ -381,9 +372,9 @@
 								variant="outline"
 								size="sm"
 								onclick={() => stopForward(session.id)}
-								disabled={stoppingId === session.id}
+								disabled={rows.pending(session.id) !== undefined}
 							>
-								{#if stoppingId === session.id}
+								{#if rows.pending(session.id) === "stop"}
 									<Spinner data-icon="inline-start" />
 								{:else}
 									<Square data-icon="inline-start" />

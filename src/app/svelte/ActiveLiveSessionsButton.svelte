@@ -18,7 +18,8 @@
 	import { openExecSessions, showOpenExecSession } from "@/features/live-sessions/openExecSessions.svelte";
 	import { podExecCommandText } from "@/features/live-sessions/podExecHelpers";
 	import { podExecQueryOptions, stopPodExec } from "@/features/live-sessions/podExecLifecycle";
-	import { portForwardLocalUrl } from "@/features/live-sessions/helpers";
+	import { liveSessionBadgeVariant, portForwardLocalUrl } from "@/features/live-sessions/helpers";
+	import { LiveSessionRowActions } from "@/features/live-sessions/rowActions.svelte";
 	import {
 		portForwardQueryOptions,
 		reconnectPortForward as reconnectPortForwardLifecycle,
@@ -33,10 +34,7 @@
 	const client = createTauriClient();
 	const queryClient = useQueryClient();
 	let popoverOpen = $state(false);
-	let stoppingId = $state<string | null>(null);
-	let reconnectingId = $state<string | null>(null);
-	let copyingId = $state<string | null>(null);
-	let actionError = $state<unknown>(null);
+	const rows = new LiveSessionRowActions();
 	const portForwardsQuery = createQuery(() => portForwardQueryOptions(client));
 	const execSessionsQuery = createQuery(() => podExecQueryOptions(client));
 	trackLiveSessionUi(() => popoverOpen);
@@ -76,20 +74,14 @@
 		return `${session.namespace}/Pod/${session.podName}`;
 	}
 
-	async function stopPortForward(sessionId: string): Promise<void> {
-		stoppingId = sessionId;
-		actionError = null;
-		try {
-			await stopPortForwardLifecycle({
+	function stopPortForward(sessionId: string): Promise<boolean> {
+		return rows.run(sessionId, "stop", () =>
+			stopPortForwardLifecycle({
 				client,
 				sessionId,
 				invalidateQueries: (options) => queryClient.invalidateQueries(options),
-			});
-		} catch (error) {
-			actionError = error;
-		} finally {
-			stoppingId = null;
-		}
+			}),
+		);
 	}
 
 	function showExecSession(sessionId: string) {
@@ -97,48 +89,30 @@
 		showOpenExecSession(sessionId);
 	}
 
-	async function stopExecSession(sessionId: string): Promise<void> {
-		stoppingId = sessionId;
-		actionError = null;
-		try {
-			await stopPodExec({
+	function stopExecSession(sessionId: string): Promise<boolean> {
+		return rows.run(sessionId, "stop", () =>
+			stopPodExec({
 				client,
 				sessionId,
 				invalidateQueries: (options) => queryClient.invalidateQueries(options),
-			});
-		} catch (error) {
-			actionError = error;
-		} finally {
-			stoppingId = null;
-		}
+			}),
+		);
 	}
 
-	async function reconnectPortForward(session: PortForwardSessionSummary): Promise<void> {
-		reconnectingId = session.id;
-		actionError = null;
-		try {
-			await reconnectPortForwardLifecycle({
+	function reconnectPortForward(session: PortForwardSessionSummary): Promise<boolean> {
+		return rows.run(session.id, "reconnect", () =>
+			reconnectPortForwardLifecycle({
 				client,
 				session,
 				invalidateQueries: (options) => queryClient.invalidateQueries(options),
-			});
-		} catch (error) {
-			actionError = error;
-		} finally {
-			reconnectingId = null;
-		}
+			}),
+		);
 	}
 
-	async function copySessionUrl(session: PortForwardSessionSummary): Promise<void> {
-		copyingId = session.id;
-		actionError = null;
-		try {
+	function copySessionUrl(session: PortForwardSessionSummary): Promise<boolean> {
+		return rows.run(session.id, "copy", async () => {
 			await navigator.clipboard?.writeText(portForwardLocalUrl(session));
-		} catch (error) {
-			actionError = error;
-		} finally {
-			copyingId = null;
-		}
+		});
 	}
 
 	function openManager() {
@@ -182,10 +156,10 @@
 					<Cable data-icon="inline-start" />
 					Manage
 				</Button>
-				{#if actionError}
+				{#if rows.failure}
 					<FriendlyError
 						mode="compact"
-						error={actionError}
+						error={rows.failure.error}
 						context={{ operation: "liveSession", fallbackTitle: "Live-session action failed" }}
 					/>
 				{/if}
@@ -208,7 +182,7 @@
 										</div>
 									{/if}
 								</div>
-								<Badge variant={session.status === "error" ? "destructive" : "outline"}>
+								<Badge variant={liveSessionBadgeVariant(session.status)}>
 									{session.status}
 								</Badge>
 							</div>
@@ -240,10 +214,10 @@
 									type="button"
 									variant="outline"
 									size="sm"
-									disabled={stoppingId === session.id}
+									disabled={rows.pending(session.id) !== undefined}
 									onclick={() => stopExecSession(session.id)}
 								>
-									{#if stoppingId === session.id}
+									{#if rows.pending(session.id) === "stop"}
 										<Spinner data-icon="inline-start" />
 									{:else}
 										<Square data-icon="inline-start" />
@@ -271,7 +245,7 @@
 										</div>
 									{/if}
 								</div>
-								<Badge variant={session.status === "error" ? "destructive" : "outline"}>
+								<Badge variant={liveSessionBadgeVariant(session.status)}>
 									{session.status}
 								</Badge>
 							</div>
@@ -291,10 +265,10 @@
 									type="button"
 									variant="outline"
 									size="sm"
-									disabled={reconnectingId === session.id}
+									disabled={rows.pending(session.id) !== undefined}
 									onclick={() => reconnectPortForward(session)}
 								>
-									{#if reconnectingId === session.id}
+									{#if rows.pending(session.id) === "reconnect"}
 										<Spinner data-icon="inline-start" />
 									{:else}
 										<RotateCcw data-icon="inline-start" />
@@ -305,7 +279,7 @@
 									type="button"
 									variant="outline"
 									size="sm"
-									disabled={copyingId === session.id}
+									disabled={rows.pending(session.id) !== undefined}
 									onclick={() => copySessionUrl(session)}
 								>
 									<Copy data-icon="inline-start" />
@@ -315,10 +289,10 @@
 									type="button"
 									variant="outline"
 									size="sm"
-									disabled={stoppingId === session.id}
+									disabled={rows.pending(session.id) !== undefined}
 									onclick={() => stopPortForward(session.id)}
 								>
-									{#if stoppingId === session.id}
+									{#if rows.pending(session.id) === "stop"}
 										<Spinner data-icon="inline-start" />
 									{:else}
 										<Square data-icon="inline-start" />
