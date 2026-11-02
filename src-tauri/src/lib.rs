@@ -30,9 +30,9 @@ pub use kubecove_models as models;
 
 #[cfg(feature = "desktop")]
 use commands::{
-    init_kubeconfig_settings_path, AppUsageMonitor, ArgoConnectionStore,
-    BackendCancellationRegistry, ClusterLiveStore, PodExecRegistry, PortForwardRegistry,
-    RemoteConnectionStore, StreamRegistry,
+    AppUsageMonitor, ArgoConnectionStore, BackendCancellationRegistry, ClusterLiveStore,
+    PodExecRegistry, PortForwardRegistry, RemoteConnectionStore, StreamRegistry,
+    init_kubeconfig_settings_path,
 };
 #[cfg(all(feature = "desktop", not(feature = "e2e")))]
 use tauri::Manager;
@@ -94,9 +94,9 @@ pub fn run() {
             }
             #[cfg(target_os = "linux")]
             {
-                use std::ffi::{c_char, c_void, CStr};
+                use std::ffi::{CStr, c_char, c_void};
                 use tauri::Manager;
-                use webkit2gtk::{glib::translate::ToGlibPtr, WebViewExt};
+                use webkit2gtk::{WebViewExt, glib::translate::ToGlibPtr};
 
                 if let Some(window) = app.get_webview_window("main") {
                     // WebKit otherwise renders near 60 fps on high-refresh monitors.

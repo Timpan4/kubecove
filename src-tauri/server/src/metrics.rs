@@ -5,21 +5,21 @@
 
 use crate::sessions::Sessions;
 use axum::{
+    Router,
     extract::State,
     http::header,
     response::{IntoResponse, Response},
     routing::get,
-    Router,
 };
 use kubecove_lib::{commands::ClusterLiveStore, models::BackendCacheDiagnosticSnapshot};
 use prometheus_client::{
-    encoding::{text::encode, EncodeLabelSet},
+    encoding::{EncodeLabelSet, text::encode},
     metrics::{counter::Counter, family::Family, gauge::Gauge, histogram::Histogram},
     registry::Registry,
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::{atomic::AtomicU64, Arc, LazyLock, Mutex},
+    sync::{Arc, LazyLock, Mutex, atomic::AtomicU64},
     time::Duration,
 };
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
@@ -131,7 +131,8 @@ pub struct Metrics {
 
 #[derive(Default)]
 struct Scrape {
-    process: System,
+    /// Created on the first scrape; stays empty where sysinfo is unsupported.
+    process: Option<System>,
     /// Caches that have exported gauges. One missing from a scrape, such as
     /// while its only session is closing, reports zero instead of keeping
     /// its last size.
@@ -302,8 +303,14 @@ impl Metrics {
         text
     }
 
-    fn sample_process(&self, system: &mut System) {
+    fn sample_process(&self, system: &mut Option<System>) {
         let Ok(pid) = sysinfo::get_current_pid() else {
+            return;
+        };
+        if system.is_none() {
+            *system = System::new().ok();
+        }
+        let Some(system) = system.as_mut() else {
             return;
         };
         system.refresh_processes_specifics(

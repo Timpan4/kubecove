@@ -4,9 +4,9 @@
 //! discovery parser rejects that `null`, so a read that walks every group
 //! fails on such clusters.
 
-use kube::client::Body;
 use kube::Client;
-use serde_json::{json, Value};
+use kube::client::Body;
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::convert::Infallible;
 

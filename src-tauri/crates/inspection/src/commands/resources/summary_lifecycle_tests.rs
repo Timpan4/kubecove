@@ -1,7 +1,7 @@
 use super::super::builtin_summary::builtin_summary;
 use super::*;
 use chrono::Utc;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 // Failure modes: deletion is hidden by Running/Ready; list projection drops waiting
 // reasons or rollout evidence; readiness alone reports a rollout complete while

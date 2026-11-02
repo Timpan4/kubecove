@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { bench, describe } from "vitest";
+import { describe } from "vitest";
 import { buildIncidentGuidance } from "@/features/incidents/guidance";
 import {
 	buildIncidentAvailableActions,
@@ -15,6 +15,7 @@ import type {
 	ResourceTopology,
 	TopologyNode,
 } from "@/lib/types";
+import { benchmark } from "./benchmark";
 import { buildOwnershipTopology } from "./topology-benchmark-fixtures";
 import { workspaceRows } from "./workspace-benchmark-fixtures";
 
@@ -337,14 +338,14 @@ assert.equal(
 );
 
 describe("incident surface and selected enrichment F51–F53", () => {
-	bench(
+	benchmark(
 		"F51 cold incident counts, filtering, sorting, grouping, and selection",
 		() => {
 			buildIncidentSurfaceState(collisionItems, "all", selectedKey);
 		},
 	);
 
-	bench("F51 retained incident filter and selection updates", () => {
+	benchmark("F51 retained incident filter and selection updates", () => {
 		buildIncidentSurfaceState(incidentItems, "degraded", selectedKey);
 		buildIncidentSurfaceState(
 			incidentItems,
@@ -354,7 +355,7 @@ describe("incident surface and selected enrichment F51–F53", () => {
 		buildIncidentSurfaceState(disappearedItems, "all", selectedKey);
 	});
 
-	bench(
+	benchmark(
 		"F52 topology arrival, owner resolution, and guarded action projection",
 		() => {
 			const resolved = resolveIncidentOwner(selectedPod, ownershipTopology);
@@ -364,7 +365,7 @@ describe("incident surface and selected enrichment F51–F53", () => {
 		},
 	);
 
-	bench(
+	benchmark(
 		"F53 detail-ready evidence enrichment and guidance output bound",
 		() => {
 			buildIncidentGuidance(

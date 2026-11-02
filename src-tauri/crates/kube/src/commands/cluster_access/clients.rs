@@ -14,7 +14,7 @@ use crate::{
     },
     models::{AppError, AppErrorKind},
 };
-use kube::{client::ClientBuilder, Client};
+use kube::{Client, client::ClientBuilder};
 use std::{future::Future, time::Duration};
 use tokio_util::sync::CancellationToken;
 

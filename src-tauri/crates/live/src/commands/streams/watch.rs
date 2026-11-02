@@ -9,9 +9,9 @@ use crate::{
 use futures_util::StreamExt;
 use k8s_openapi::api::core::v1::Event;
 use kube::{
+    Client,
     api::{Api, DynamicObject, WatchEvent, WatchParams},
     core::Status,
-    Client,
 };
 use std::time::{Duration, Instant};
 
@@ -370,7 +370,7 @@ mod renewal_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use http::{header::CONTENT_TYPE, Request, Response};
+    use http::{Request, Response, header::CONTENT_TYPE};
     use kube::{api::ApiResource, client::Body};
     use serde_json::json;
 
@@ -456,18 +456,22 @@ mod tests {
         };
         let responder = async move {
             let (first, send) = handle.next_request().await.expect("first watch");
-            assert!(first
-                .uri()
-                .query()
-                .unwrap_or_default()
-                .contains("resourceVersion=55"));
+            assert!(
+                first
+                    .uri()
+                    .query()
+                    .unwrap_or_default()
+                    .contains("resourceVersion=55")
+            );
             send.send_response(watch_error_response());
             let (second, send) = handle.next_request().await.expect("reconnect watch");
-            assert!(second
-                .uri()
-                .query()
-                .unwrap_or_default()
-                .contains("resourceVersion=0"));
+            assert!(
+                second
+                    .uri()
+                    .query()
+                    .unwrap_or_default()
+                    .contains("resourceVersion=0")
+            );
             send.send_response(watch_error_response());
         };
 

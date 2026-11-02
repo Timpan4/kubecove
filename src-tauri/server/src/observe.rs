@@ -10,8 +10,8 @@ use crate::metrics::{
 use axum::http::{HeaderValue, Method, StatusCode};
 use kubecove_lib::models::AppErrorKind;
 use std::{fmt, time::Duration};
-use tracing::{debug, error, info, warn, Level};
-use tracing_subscriber::{fmt::MakeWriter, EnvFilter};
+use tracing::{Level, debug, error, info, warn};
+use tracing_subscriber::{EnvFilter, fmt::MakeWriter};
 
 /// Lifecycle events at info; dependency crates only report warnings.
 pub const DEFAULT_FILTER: &str = "warn,kubecove_server=info";

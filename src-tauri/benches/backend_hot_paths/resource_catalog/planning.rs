@@ -50,10 +50,12 @@ mod resource_scope_filter_enrich_dedupe {
             Some(("flux", "Kustomization", "ledger-flux"))
         );
         assert_eq!(explicit_owner.argo_app, None);
-        assert!(explicit_owner
-            .git_ops_owner
-            .as_ref()
-            .is_some_and(|owner| owner.provenance == "flux-kustomization-labels"));
+        assert!(
+            explicit_owner
+                .git_ops_owner
+                .as_ref()
+                .is_some_and(|owner| owner.provenance == "flux-kustomization-labels")
+        );
         assert_eq!(
             explicit_owner.status.as_deref(),
             Some("duplicate-last-row-marker")
@@ -74,10 +76,12 @@ mod resource_scope_filter_enrich_dedupe {
             )),
             Some(("flux", "Kustomization", "owner-Kustomization-0"))
         );
-        assert!(inventory_owner
-            .git_ops_owner
-            .as_ref()
-            .is_some_and(|owner| owner.partial));
+        assert!(
+            inventory_owner
+                .git_ops_owner
+                .as_ref()
+                .is_some_and(|owner| owner.partial)
+        );
         bencher
             .with_inputs(|| SCOPE_INPUT.clone())
             .bench_values(|fixture| {

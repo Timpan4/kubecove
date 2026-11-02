@@ -119,7 +119,7 @@ impl Config {
                             format!("unknown option: --{name}")
                         }
                         None => "unexpected argument; options start with --".into(),
-                    })
+                    });
                 }
             }
         }
@@ -139,7 +139,7 @@ impl Config {
             _ => {
                 return Err(
                     "OIDC requires --oidc-issuer, --oidc-client-id and --oidc-login-timeout".into(),
-                )
+                );
             }
         };
         if let Some(audience) = oidc_forward {

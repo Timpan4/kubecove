@@ -1,11 +1,11 @@
 use super::*;
 use crate::{
-    commands::{streams::StreamRegistry, ClientIntent, FixedClusterAccess},
+    commands::{ClientIntent, FixedClusterAccess, streams::StreamRegistry},
     test_support::stream_channel,
 };
 use http::{Request, Response};
 use kube::client::Body;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 
 #[tokio::test]
@@ -42,11 +42,7 @@ async fn normal_watch_expiry_renews_without_recovery_and_preserves_version() {
         let reconnecting = message["status"] == "reconnecting";
         observed_messages.lock().unwrap().push(message);
         // Close the consumer at the first actual disconnect, ending the watch task.
-        if reconnecting {
-            Err(())
-        } else {
-            Ok(())
-        }
+        if reconnecting { Err(()) } else { Ok(()) }
     });
     let key: WatchResourceKey =
         serde_json::from_value(json!({ "resourceKind": { "kind": "Pod" } })).unwrap();
@@ -72,15 +68,17 @@ async fn normal_watch_expiry_renews_without_recovery_and_preserves_version() {
     );
     assert!(requests[1].contains("resourceVersion=55"));
     let messages = messages.lock().unwrap();
-    assert_eq!(messages.len(), 4);
+    // The refused renewal fails before it streams, so it is never reported as connected.
+    assert_eq!(messages.len(), 3);
     assert_eq!(messages[0]["status"], "connected");
-    assert_eq!(messages[1]["status"], "connected");
-    assert_eq!(messages[2]["type"], "error");
-    assert!(messages[2]["message"]
-        .as_str()
-        .unwrap()
-        .contains("watch unavailable"));
-    assert_eq!(messages[3]["status"], "reconnecting");
+    assert_eq!(messages[1]["type"], "error");
+    assert!(
+        messages[1]["message"]
+            .as_str()
+            .unwrap()
+            .contains("watch unavailable")
+    );
+    assert_eq!(messages[2]["status"], "reconnecting");
 }
 
 #[tokio::test]
@@ -110,11 +108,7 @@ async fn forbidden_watch_stops_and_replays_permission_status_to_new_subscribers(
             let reconnecting = message["status"] == "reconnecting";
             observed_messages.lock().unwrap().push(message);
             // Old behavior exits through this callback so the regression cannot hang.
-            if reconnecting {
-                Err(())
-            } else {
-                Ok(())
-            }
+            if reconnecting { Err(()) } else { Ok(()) }
         });
         let key: WatchResourceKey = serde_json::from_value(
             json!({ "resourceKind": { "kind": "Secret" }, "namespace": "cert-manager" }),
@@ -134,10 +128,15 @@ async fn forbidden_watch_stops_and_replays_permission_status_to_new_subscribers(
         assert_eq!(*requests.lock().unwrap(), 1);
         let messages = messages.lock().unwrap();
         assert_eq!(messages.last().unwrap()["status"], "forbidden");
-        assert_eq!(messages.last().unwrap()["message"], "Secret in namespace cert-manager: watch access denied. Readable resources will refresh periodically.");
-        assert!(messages
-            .iter()
-            .all(|message| message["status"] != "reconnecting"));
+        assert_eq!(
+            messages.last().unwrap()["message"],
+            "Secret in namespace cert-manager: watch access denied. Readable resources will refresh periodically."
+        );
+        assert!(
+            messages
+                .iter()
+                .all(|message| message["status"] != "reconnecting")
+        );
         drop(messages);
         let replay = Arc::new(Mutex::new(Vec::<Value>::new()));
         let observed_replay = replay.clone();

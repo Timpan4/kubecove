@@ -1,5 +1,5 @@
 use super::*;
-use axum::http::{header, HeaderMap};
+use axum::http::{HeaderMap, header};
 use std::{path::PathBuf, time::Duration};
 
 impl Oidc {
@@ -194,7 +194,7 @@ async fn a_slow_refresh_does_not_block_another_sign_in() {
 
 #[tokio::test]
 async fn close_during_resume_cannot_restore_session_credentials() {
-    use axum::{extract::State, Extension};
+    use axum::{Extension, extract::State};
     use futures_util::FutureExt;
     let (oidc, _provider) = mock::fixture_with("http://localhost:43134", Some("kubernetes"))
         .await
@@ -285,20 +285,24 @@ fn config_rejects_http_and_issuer_credentials_or_components() {
 
 #[test]
 fn config_rejects_empty_client_and_nonpositive_timeout() {
-    assert!(OidcConfig::new(
-        "https://id.example".into(),
-        " ".into(),
-        None,
-        Duration::from_secs(30),
-    )
-    .is_err());
-    assert!(OidcConfig::new(
-        "https://id.example".into(),
-        "client".into(),
-        None,
-        Duration::ZERO,
-    )
-    .is_err());
+    assert!(
+        OidcConfig::new(
+            "https://id.example".into(),
+            " ".into(),
+            None,
+            Duration::from_secs(30),
+        )
+        .is_err()
+    );
+    assert!(
+        OidcConfig::new(
+            "https://id.example".into(),
+            "client".into(),
+            None,
+            Duration::ZERO,
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -419,12 +423,16 @@ async fn local_provider_completes_authorization_code_pkce_nonce_and_cookie_login
         .iter()
         .filter_map(|value| value.to_str().ok())
         .collect::<Vec<_>>();
-    assert!(set_cookies
-        .iter()
-        .any(|value| value.starts_with(AUTH_COOKIE)));
-    assert!(set_cookies
-        .iter()
-        .any(|value| value.starts_with(TRANSACTION_COOKIE) && value.contains("Max-Age=0")));
+    assert!(
+        set_cookies
+            .iter()
+            .any(|value| value.starts_with(AUTH_COOKIE))
+    );
+    assert!(
+        set_cookies
+            .iter()
+            .any(|value| value.starts_with(TRANSACTION_COOKIE) && value.contains("Max-Age=0"))
+    );
     let auth_cookie = set_cookies
         .iter()
         .find(|value| value.starts_with(AUTH_COOKIE))
@@ -459,13 +467,15 @@ fn discovery_metadata_requires_exact_issuer_https_endpoints_and_token_endpoint()
 
 #[test]
 fn root_issuer_with_trailing_slash_is_valid() {
-    assert!(OidcConfig::new(
-        "https://identity.example/".into(),
-        "client".into(),
-        None,
-        Duration::from_secs(1)
-    )
-    .is_ok());
+    assert!(
+        OidcConfig::new(
+            "https://identity.example/".into(),
+            "client".into(),
+            None,
+            Duration::from_secs(1)
+        )
+        .is_ok()
+    );
 }
 
 #[tokio::test]
@@ -489,11 +499,13 @@ async fn signed_mock_provider_rejects_invalid_id_token_claims() {
         let (headers, callback) = pending_callback(&oidc).await;
         let response = oidc.callback(&headers, callback).await.unwrap();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "mode: {mode:?}");
-        assert!(response
-            .headers()
-            .get_all(header::SET_COOKIE)
-            .iter()
-            .any(|value| value.to_str().unwrap().contains("Max-Age=0")));
+        assert!(
+            response
+                .headers()
+                .get_all(header::SET_COOKIE)
+                .iter()
+                .any(|value| value.to_str().unwrap().contains("Max-Age=0"))
+        );
         assert!(!response.headers().contains_key(header::LOCATION));
     }
 }
@@ -520,11 +532,13 @@ async fn state_cookie_is_browser_bound_and_authorization_code_replay_fails() {
     assert_eq!(success.status(), StatusCode::SEE_OTHER);
     let replay = oidc.callback(&headers, callback).await.unwrap();
     assert_eq!(replay.status(), StatusCode::BAD_REQUEST);
-    assert!(replay
-        .headers()
-        .get_all(header::SET_COOKIE)
-        .iter()
-        .any(|value| value.to_str().unwrap().contains("Max-Age=0")));
+    assert!(
+        replay
+            .headers()
+            .get_all(header::SET_COOKIE)
+            .iter()
+            .any(|value| value.to_str().unwrap().contains("Max-Age=0"))
+    );
 }
 
 async fn signed_in(oidc: &Oidc) -> (HeaderMap, crate::oidc::AuthSession) {
@@ -709,11 +723,13 @@ async fn provider_denial_clears_transaction_without_echoing_provider_error() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
-    assert!(response
-        .headers()
-        .get_all(header::SET_COOKIE)
-        .iter()
-        .any(|value| value.to_str().unwrap().contains("Max-Age=0")));
+    assert!(
+        response
+            .headers()
+            .get_all(header::SET_COOKIE)
+            .iter()
+            .any(|value| value.to_str().unwrap().contains("Max-Age=0"))
+    );
 }
 
 #[tokio::test]
@@ -756,13 +772,15 @@ async fn callback_errors_are_generic_and_clear_transaction_cookie() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     assert!(!response.headers().contains_key(header::LOCATION));
-    assert!(response
-        .headers()
-        .get_all(header::SET_COOKIE)
-        .iter()
-        .any(|value| {
-            value.to_str().is_ok_and(|value| {
-                value.starts_with(TRANSACTION_COOKIE) && value.contains("Max-Age=0")
+    assert!(
+        response
+            .headers()
+            .get_all(header::SET_COOKIE)
+            .iter()
+            .any(|value| {
+                value.to_str().is_ok_and(|value| {
+                    value.starts_with(TRANSACTION_COOKIE) && value.contains("Max-Age=0")
+                })
             })
-        }));
+    );
 }

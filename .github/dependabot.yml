@@ -9,12 +9,8 @@ updates:
       timezone: "Europe/Stockholm"
     commit-message:
       prefix: "chore(deps)"
-    # Re-enable after CodSpeed supports Vitest 5's rewritten benchmark API.
     ignore:
-      - dependency-name: "vitest"
-        update-types:
-          - "version-update:semver-major"
-      # Must match the vendored Rust updater's major.minor; see src-tauri/vendor/tauri-plugin-updater/PATCH.md.
+      # Must match the major.minor of the Rust tauri-plugin-updater pinned in src-tauri/Cargo.toml.
       - dependency-name: "@tauri-apps/plugin-updater"
         update-types:
           - "version-update:semver-major"

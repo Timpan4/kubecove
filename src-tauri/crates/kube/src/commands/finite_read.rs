@@ -3,8 +3,8 @@
 //! Confirmed writes and live sessions do not use it.
 
 use super::{
-    diagnostics::{record_backend_cancelled, record_backend_error, record_backend_success},
     BackendCancellationRegistry,
+    diagnostics::{record_backend_cancelled, record_backend_error, record_backend_success},
 };
 use crate::models::{AppError, AppErrorKind, BackendDiagnosticField};
 use std::{
@@ -151,7 +151,7 @@ impl<'a> FiniteRead<'a> {
 mod tests {
     use super::*;
     use crate::commands::{
-        diagnostic_field, get_backend_diagnostics, set_backend_diagnostics_enabled, SessionScope,
+        SessionScope, diagnostic_field, get_backend_diagnostics, set_backend_diagnostics_enabled,
     };
     use crate::models::BackendDiagnosticStatus;
 

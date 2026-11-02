@@ -4,13 +4,13 @@
 
 #[cfg(feature = "desktop")]
 pub use tauri::{
-    async_runtime::{spawn, JoinHandle},
-    ipc::Channel,
     State,
+    async_runtime::{JoinHandle, spawn},
+    ipc::Channel,
 };
 
 #[cfg(not(feature = "desktop"))]
-pub use headless::{spawn, Channel, ChannelClosed, JoinHandle, State};
+pub use headless::{Channel, ChannelClosed, JoinHandle, State, spawn};
 
 // Cache tests must run in the GUI-free feature configuration as well.
 #[cfg(test)]

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { bench, describe } from "vitest";
+import { describe } from "vitest";
 import {
 	argoReconciliationResources,
 	argoResourceCounts,
@@ -8,6 +8,7 @@ import {
 	preserveArgoResourceSelection,
 } from "@/features/gitops/argo-workspace-model";
 import type { ArgoManagedResource } from "@/lib/types";
+import { benchmark } from "./benchmark";
 import { workspaceRows } from "./workspace-benchmark-fixtures";
 
 const managedResources: ArgoManagedResource[] = Array.from(
@@ -79,7 +80,7 @@ assert(
 );
 
 describe("Argo managed resources F47", () => {
-	bench(
+	benchmark(
 		"F47 managed counts, reconciliation rows, workspace matching, and selection reconciliation",
 		() => {
 			argoResourceCounts(managedResources);

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { bench, describe } from "vitest";
+import { describe } from "vitest";
 import {
 	applyFlowTopologySelectionWithIndex,
 	buildFlowTopology,
@@ -13,6 +13,7 @@ import {
 	buildFlowTopologyView,
 	buildFlowTopologyViewFromLayoutState,
 } from "@/features/resources/topology-view";
+import { benchmark } from "./benchmark";
 import {
 	buildBranchingTopology,
 	buildOwnershipTopology,
@@ -217,22 +218,22 @@ assert(
 );
 
 describe("F07 graph layout and F09 retained topology selection (500 apps / 1k nodes)", () => {
-	bench("F07 layout construction per selection (50 full rebuilds)", () => {
+	benchmark("F07 layout construction per selection (50 full rebuilds)", () => {
 		for (const selectedId of selectedIds)
 			buildFlowTopology(topology, selectedId);
 	});
 
-	bench("F07 ownership layout (build once)", () => {
+	benchmark("F07 ownership layout (build once)", () => {
 		buildFlowTopologyLayout(topology, null);
 	});
 
-	bench("F09 indexed selection (50 updates)", () => {
+	benchmark("F09 indexed selection (50 updates)", () => {
 		for (const selectedId of selectedIds) {
 			applyFlowTopologySelectionWithIndex(layout, selectionIndex, selectedId);
 		}
 	});
 
-	bench("F09 selection + resize (rebuild view, 50 updates)", () => {
+	benchmark("F09 selection + resize (rebuild view, 50 updates)", () => {
 		for (const [index, selectedNodeId] of selectedIds.entries()) {
 			buildFlowTopologyView(topology, {
 				mode: "ownership",
@@ -244,7 +245,7 @@ describe("F07 graph layout and F09 retained topology selection (500 apps / 1k no
 		}
 	});
 
-	bench("F09 selection + resize (retained layout, 50 updates)", () => {
+	benchmark("F09 selection + resize (retained layout, 50 updates)", () => {
 		for (const [index, selectedNodeId] of selectedIds.entries()) {
 			buildFlowTopologyViewFromLayoutState(layoutState, {
 				mode: "ownership",
@@ -265,7 +266,7 @@ describe("F07 graph layout and F09 retained topology selection (500 apps / 1k no
 		}
 	});
 
-	bench("F10 full and focused fit plans across viewport geometry", () => {
+	benchmark("F10 full and focused fit plans across viewport geometry", () => {
 		buildFlowTopologyFitPlan(
 			selectedView.graph.nodes,
 			selectedView.graph.edges,

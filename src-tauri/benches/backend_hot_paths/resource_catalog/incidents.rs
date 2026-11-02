@@ -41,10 +41,12 @@ mod incident_cockpit_post_fetch_500_events {
             .iter()
             .find(|item| item.resource.name == "ledger-0")
             .expect("warning incident with missing time");
-        assert!(missing_timestamp
-            .signals
-            .iter()
-            .any(|signal| signal.kind == "event" && signal.last_seen_at.is_none()));
+        assert!(
+            missing_timestamp
+                .signals
+                .iter()
+                .any(|signal| signal.kind == "event" && signal.last_seen_at.is_none())
+        );
         for (namespace, expected_state) in [
             (
                 "collision-active",
@@ -63,10 +65,11 @@ mod incident_cockpit_post_fetch_500_events {
                         && item.resource.namespace.as_deref() == Some(namespace)
                 })
                 .expect("namespace-qualified incident");
-            assert!(item
-                .signals
-                .iter()
-                .any(|signal| signal.kind == "restart" && signal.state == expected_state));
+            assert!(
+                item.signals
+                    .iter()
+                    .any(|signal| signal.kind == "restart" && signal.state == expected_state)
+            );
         }
         assert_eq!(
             INCIDENT_OUTPUT
@@ -122,12 +125,16 @@ mod selected_resource_events_500 {
     #[codspeed_divan_compat::bench]
     fn selected_resource_events_500(bencher: codspeed_divan_compat::Bencher) {
         assert_eq!(EVENT_OUTPUT.len(), 375);
-        assert!(EVENT_OUTPUT
-            .iter()
-            .all(|event| event.last_seen_at.is_some()));
-        assert!(EVENT_OUTPUT
-            .iter()
-            .any(|event| event.source == "legacy-kubelet"));
+        assert!(
+            EVENT_OUTPUT
+                .iter()
+                .all(|event| event.last_seen_at.is_some())
+        );
+        assert!(
+            EVENT_OUTPUT
+                .iter()
+                .any(|event| event.source == "legacy-kubelet")
+        );
         let precedence = EVENT_OUTPUT
             .iter()
             .find(|event| {

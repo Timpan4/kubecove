@@ -3,8 +3,8 @@ use super::{
     topology_network::build_network_flow_topology,
 };
 use crate::commands::{
-    diagnostic_field, discovery::crd_resource_kinds, helpers::extract_owner_ref_summary,
-    BackendCancellationRegistry, ClusterAccess, ClusterLiveStore, FiniteRead,
+    BackendCancellationRegistry, ClusterAccess, ClusterLiveStore, FiniteRead, diagnostic_field,
+    discovery::crd_resource_kinds, helpers::extract_owner_ref_summary,
 };
 use crate::models::AppErrorKind;
 use crate::models::{

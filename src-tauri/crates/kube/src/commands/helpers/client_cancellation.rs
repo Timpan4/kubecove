@@ -69,7 +69,7 @@ mod tests {
     use super::*;
     use futures_util::future;
     use http::Response;
-    use tower::{service_fn, ServiceExt};
+    use tower::{ServiceExt, service_fn};
 
     #[tokio::test]
     async fn cancels_pending_service_request() {

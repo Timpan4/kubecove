@@ -1,9 +1,9 @@
 use super::super::models::RemoteConnectionSummary;
-use super::{api_url, normalize_server_url, RemoteConnection};
+use super::{RemoteConnection, api_url, normalize_server_url};
 use crate::remote::{models::RemoteCredentials, tunnels::RemoteTunnelRegistry};
 use reqwest::Client as HttpClient;
 use serde_json::json;
-use std::sync::{atomic::AtomicBool, Arc, Mutex};
+use std::sync::{Arc, Mutex, atomic::AtomicBool};
 use tokio::{
     io::AsyncWriteExt,
     net::TcpListener,
@@ -117,11 +117,13 @@ fn tunnel_error_removes_download_sender_and_reaches_control_waiter() {
     });
 
     assert!(!super::handle_text(&connection, &error.to_string()));
-    assert!(!connection
-        .tunnel_senders
-        .lock()
-        .expect("remote tunnel connection lock")
-        .contains_key(connection_id));
+    assert!(
+        !connection
+            .tunnel_senders
+            .lock()
+            .expect("remote tunnel connection lock")
+            .contains_key(connection_id)
+    );
     assert_eq!(
         control_receiver
             .try_recv()

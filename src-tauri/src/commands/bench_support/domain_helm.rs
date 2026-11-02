@@ -1,5 +1,5 @@
-use base64::{engine::general_purpose::STANDARD, Engine as _};
-use flate2::{write::GzEncoder, Compression};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
+use flate2::{Compression, write::GzEncoder};
 use k8s_openapi::api::core::v1::{ConfigMap, Secret};
 use kube::api::ObjectMeta;
 use std::collections::BTreeMap;
@@ -9,11 +9,11 @@ use crate::{
         bench_support::domain_catalog::encode_complete_response,
         bench_support::{build_bench_topology, sample_topology_inputs},
         helm::{
+            MAX_DECODED_RELEASE_BYTES, MAX_STORED_RELEASE_BYTES,
             benchmark_invalid_storage_record_is_retained, benchmark_reconciliation_assemble,
             benchmark_reconciliation_identity_namespace, benchmark_reconciliation_prepare,
             benchmark_storage_record_error, benchmark_storage_record_projection,
             benchmark_storage_records as build_storage_records_to_latest,
-            MAX_DECODED_RELEASE_BYTES, MAX_STORED_RELEASE_BYTES,
         },
     },
     models::{

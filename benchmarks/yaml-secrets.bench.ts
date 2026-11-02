@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { bench, describe } from "vitest";
+import { describe } from "vitest";
 import {
 	decodeSecretDataValue,
 	parseSecretData,
 } from "@/features/resource-detail/secretData";
+import { benchmark } from "./benchmark";
 
 const decodedSecretBytes = 1_048_576;
 const decodedSecretValue = "x".repeat(decodedSecretBytes);
@@ -37,11 +38,11 @@ assert.deepEqual(decodeSecretDataValue(binaryEncodedValue), {
 });
 
 describe("F18 Secret YAML parsing and selected-value decoding", () => {
-	bench("F18 parse a 1 MiB synthetic Secret and project entries", () => {
+	benchmark("F18 parse a 1 MiB synthetic Secret and project entries", () => {
 		parseSecretData(secretYaml);
 	});
 
-	bench(
+	benchmark(
 		"F18 decode the selected 1 MiB value and validate sibling failures",
 		() => {
 			decodeSecretDataValue(selectedEncodedValue);

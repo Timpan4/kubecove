@@ -1,18 +1,18 @@
 use crate::models::AppErrorKind;
 use crate::{
     commands::{
+        ClusterAccess,
         sessions::{
-            relay::{bind_loopback, spawn_relay, RelayEvent},
+            relay::{RelayEvent, bind_loopback, spawn_relay},
             runner::forward_pod_connection,
             service::resolve_service_target,
         },
-        ClusterAccess,
     },
     models::{AppError, ArgoConfirmedTarget},
     runtime::JoinHandle,
 };
 use k8s_openapi::api::core::v1::Pod;
-use kube::{api::Api, Client};
+use kube::{Client, api::Api};
 use tokio::net::TcpStream;
 
 pub(crate) struct ArgoServiceTunnel {

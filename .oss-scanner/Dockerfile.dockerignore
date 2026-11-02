@@ -64,8 +64,6 @@
 !src-tauri/icons/**
 !src-tauri/capabilities/
 !src-tauri/capabilities/**
-!src-tauri/vendor/
-!src-tauri/vendor/**
 !src-tauri/server/
 !src-tauri/server/Cargo.toml
 !src-tauri/server/Cargo.lock

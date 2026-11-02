@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { bench, describe } from "vitest";
+import { describe } from "vitest";
 import {
 	findSavedPortForwardSession,
 	sortPortForwardSessions,
@@ -11,6 +11,7 @@ import type {
 	PortForwardSessionSummary,
 } from "@/lib/types";
 import type { SavedPortForward } from "@/lib/workspace-model";
+import { benchmark } from "./benchmark";
 import { savedWorkspace } from "./workspace-benchmark-fixtures";
 
 const kubeconfigSourceKey = "kubeconfigSource=production";
@@ -163,7 +164,7 @@ assert.equal(
 );
 
 describe("live session read model F58", () => {
-	bench(
+	benchmark(
 		"F58 sort returned sessions, filter workspace contexts, combine, and split display rows",
 		() => {
 			const forwards = sortPortForwardSessions(portForwardSessions);
@@ -175,7 +176,7 @@ describe("live session read model F58", () => {
 		},
 	);
 
-	bench(
+	benchmark(
 		"F59 first-match saved Service forward lookup for each mounted preset",
 		() => {
 			for (const saved of savedForwards) {

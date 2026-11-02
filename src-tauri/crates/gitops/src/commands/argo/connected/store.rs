@@ -6,8 +6,8 @@ use reqwest::Client as HttpClient;
 use std::{
     collections::HashMap,
     sync::{
-        atomic::{AtomicU64, Ordering},
         Arc, Mutex, MutexGuard,
+        atomic::{AtomicU64, Ordering},
     },
 };
 use tokio::sync::Mutex as AsyncMutex;

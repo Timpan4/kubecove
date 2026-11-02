@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { bench, describe } from "vitest";
+import { describe } from "vitest";
 import type { RbacRiskBucket } from "@/features/rbac/cockpitModel";
 import { cockpitItems, filterCockpitItems } from "@/features/rbac/cockpitModel";
 import { observedPermissions } from "@/features/rbac/observedPermissions";
@@ -16,6 +16,7 @@ import {
 } from "@/features/rbac/reviewModel";
 import type { RbacView } from "@/features/rbac/surfaceModel";
 import type { RbacInspectionSummary } from "@/lib/types";
+import { benchmark } from "./benchmark";
 import { rbacInspection, rbacRoleBindings } from "./rbac-benchmark-fixtures";
 
 const activeCategories: RbacView[] = [
@@ -196,25 +197,25 @@ assert.equal(reviewRecords.length, 20);
 assert(firstServiceAccount);
 
 describe("RBAC surface F39–F42", () => {
-	bench("F39 cold cockpit shaping across active categories", () => {
+	benchmark("F39 cold cockpit shaping across active categories", () => {
 		for (const category of activeCategories) {
 			const items = cockpitItems(rbacInspection, category);
 			filterCockpitItems(items, "high", "");
 		}
 	});
 
-	bench("F39 retained category search and risk filtering", () => {
+	benchmark("F39 retained category search and risk filtering", () => {
 		for (const { items } of retainedItems) {
 			filterCockpitItems(items, "all", "account");
 			filterCockpitItems(items, "high", "namespace");
 		}
 	});
-	bench("F39 partial coverage and missing-reference cold cockpit", () => {
+	benchmark("F39 partial coverage and missing-reference cold cockpit", () => {
 		for (const category of activeCategories)
 			cockpitItems(partialInspection, category);
 	});
 
-	bench(
+	benchmark(
 		"F40 observed permission joins for service account, group, and user",
 		() => {
 			observedPermissions(rbacInspection, {
@@ -234,7 +235,7 @@ describe("RBAC surface F39–F42", () => {
 		},
 	);
 
-	bench(
+	benchmark(
 		"F41 reviewed-row lookup, evidence fingerprints, and absent-review fast path",
 		() => {
 			for (const entry of reviewRows) {
@@ -248,7 +249,7 @@ describe("RBAC surface F39–F42", () => {
 		},
 	);
 
-	bench(
+	benchmark(
 		"F42 visible queue rows, tags, summaries, and selected binding sources",
 		() => {
 			for (const bucket of riskBuckets)

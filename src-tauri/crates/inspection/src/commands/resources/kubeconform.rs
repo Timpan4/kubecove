@@ -283,11 +283,11 @@ fn resolve_kubeconform_path() -> Option<PathBuf> {
     }
 
     let mut candidates = Vec::new();
-    if let Ok(exe) = env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            candidates.push(dir.join(binary_name("kubeconform")));
-            candidates.push(dir.join(binary_name(&format!("kubeconform-{}", target_triple()))));
-        }
+    if let Ok(exe) = env::current_exe()
+        && let Some(dir) = exe.parent()
+    {
+        candidates.push(dir.join(binary_name("kubeconform")));
+        candidates.push(dir.join(binary_name(&format!("kubeconform-{}", target_triple()))));
     }
     candidates.push(
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))

@@ -1,12 +1,12 @@
 use crate::models::AppErrorKind;
 use crate::models::{AppError, ClusterContext};
 use kube::{
-    config::{AuthInfo, KubeConfigOptions, Kubeconfig},
     Config,
+    config::{AuthInfo, KubeConfigOptions, Kubeconfig},
 };
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{hash_map::DefaultHasher, HashSet},
+    collections::{HashSet, hash_map::DefaultHasher},
     env,
     ffi::OsString,
     fs,
@@ -21,7 +21,7 @@ use tauri_plugin_dialog::{DialogExt, FilePath};
 
 pub const DEFAULT_KUBECONFIG_ENV_VAR: &str = "KUBECONFIG";
 const SETTINGS_FILE_NAME: &str = "kubeconfig-sources.json";
-#[cfg(any(feature = "e2e", test))]
+#[cfg(any(feature = "e2e", feature = "test-support", test))]
 const E2E_KUBECONFIG_SOURCE_ENV_VAR: &str = "KUBECOVE_E2E_KUBECONFIG_SOURCE";
 
 static SETTINGS_PATH: OnceLock<PathBuf> = OnceLock::new();
@@ -124,7 +124,7 @@ impl KubeconfigSource {
         })
     }
 
-    #[cfg(any(feature = "e2e", test))]
+    #[cfg(any(feature = "e2e", feature = "test-support", test))]
     pub(crate) fn from_e2e_path(path: PathBuf) -> Self {
         Self {
             env_var: E2E_KUBECONFIG_SOURCE_ENV_VAR.to_string(),
@@ -240,12 +240,11 @@ impl KubeconfigSource {
             // read_configured_kubeconfig falls back to the default kubeconfig
             // when no configured path loads, so changes to it must invalidate
             // cached clients too.
-            if self.read_env {
-                if let Some(default) = default_kubeconfig_path() {
-                    if !paths.contains(&default) {
-                        paths.push(default);
-                    }
-                }
+            if self.read_env
+                && let Some(default) = default_kubeconfig_path()
+                && !paths.contains(&default)
+            {
+                paths.push(default);
             }
             return paths;
         }
@@ -501,11 +500,7 @@ fn split_non_empty_paths(value: OsString) -> Option<Vec<PathBuf>> {
     let paths = env::split_paths(&value)
         .filter(|path| !path.as_os_str().is_empty())
         .collect::<Vec<_>>();
-    if paths.is_empty() {
-        None
-    } else {
-        Some(paths)
-    }
+    if paths.is_empty() { None } else { Some(paths) }
 }
 
 fn standard_kubeconfig_paths() -> Vec<ConfiguredKubeconfigPath> {

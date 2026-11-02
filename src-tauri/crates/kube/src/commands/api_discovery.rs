@@ -3,9 +3,9 @@
 use crate::models::AppError;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::APIGroup;
 use kube::{
+    Client,
     core::GroupVersion,
     discovery::{self, ApiCapabilities, ApiGroup, ApiResource},
-    Client,
 };
 use std::collections::BTreeSet;
 

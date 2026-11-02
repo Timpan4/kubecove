@@ -1,15 +1,15 @@
 use super::{
-    clear_cookie_header, cookie_header, cookie_value, discover_metadata, invalid_auth,
-    oidc_unavailable, send_request, unix_now, validate_metadata, AuthSession, Binding, Credential,
-    Oidc, OidcCredential, Tokens, AUTH_COOKIE, REFRESH_INTERVAL, REFRESH_MARGIN_SECONDS,
-    TRANSACTION_COOKIE,
+    AUTH_COOKIE, AuthSession, Binding, Credential, Oidc, OidcCredential, REFRESH_INTERVAL,
+    REFRESH_MARGIN_SECONDS, TRANSACTION_COOKIE, Tokens, clear_cookie_header, cookie_header,
+    cookie_value, discover_metadata, invalid_auth, oidc_unavailable, send_request, unix_now,
+    validate_metadata,
 };
 use crate::{
-    observe::{self, RefreshOutcome},
     ApiError,
+    observe::{self, RefreshOutcome},
 };
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
-use futures_util::{stream::FuturesUnordered, StreamExt};
+use futures_util::{StreamExt, stream::FuturesUnordered};
 use kubecove_lib::{commands::SessionScope, models::AppErrorKind};
 use openidconnect::RequestTokenError;
 use openidconnect::{Nonce, OAuth2TokenResponse, RefreshToken, TokenResponse};

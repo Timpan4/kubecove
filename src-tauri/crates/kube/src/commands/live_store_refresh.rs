@@ -1,4 +1,4 @@
-use super::{context_cache_key, watch_kind_keys, CacheEntry, ClusterLiveStore, SharedCache};
+use super::{CacheEntry, ClusterLiveStore, SharedCache, context_cache_key, watch_kind_keys};
 use crate::models::WatchResourceKey;
 
 impl<T> SharedCache<T> {
@@ -77,7 +77,7 @@ impl ClusterLiveStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commands::live_store::{resource_cache_key, CacheMode, ScopeNamespace};
+    use crate::commands::live_store::{CacheMode, ScopeNamespace, resource_cache_key};
     use crate::models::{AppError, WatchResourceKind};
     use std::sync::Arc;
 

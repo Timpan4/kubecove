@@ -146,10 +146,9 @@ struct ReplicaSetSummarySpec {
 
 #[derive(Clone, Deserialize)]
 struct SummaryDeploymentCondition {
-    #[serde(default, rename = "type", deserialize_with = "null_as_default")]
-    type_: String,
-    #[serde(default, deserialize_with = "null_as_default")]
-    status: String,
+    #[serde(rename = "type")]
+    type_: Option<String>,
+    status: Option<String>,
     reason: Option<String>,
 }
 
@@ -158,11 +157,14 @@ impl DeploymentProjection {
         let value = self.0;
         Deployment {
             metadata: value.metadata,
-            spec: value.spec.map(|spec| DeploymentSpec {
-                replicas: spec.replicas,
-                paused: spec.paused,
-                ..DeploymentSpec::default()
-            }),
+            spec: value
+                .spec
+                .map(|spec| DeploymentSpec {
+                    replicas: spec.replicas,
+                    paused: spec.paused,
+                    ..DeploymentSpec::default()
+                })
+                .unwrap_or_default(),
             status: value.status.map(|status| DeploymentStatus {
                 available_replicas: status.replicas.available_replicas,
                 ready_replicas: status.replicas.ready_replicas,
@@ -191,10 +193,13 @@ impl ReplicaSetProjection {
         let value = self.0;
         ReplicaSet {
             metadata: value.metadata,
-            spec: value.spec.map(|spec| ReplicaSetSpec {
-                replicas: spec.replicas,
-                ..ReplicaSetSpec::default()
-            }),
+            spec: value
+                .spec
+                .map(|spec| ReplicaSetSpec {
+                    replicas: spec.replicas,
+                    ..ReplicaSetSpec::default()
+                })
+                .unwrap_or_default(),
             status: value.status.map(|status| ReplicaSetStatus {
                 available_replicas: status.available_replicas,
                 ready_replicas: status.ready_replicas,

@@ -1,19 +1,19 @@
 use crate::{
-    access::AccessIdentity, access_subject, authentication_ended, sessions::Owner, ApiError,
-    AppState, AuthenticationRevoked,
+    ApiError, AppState, AuthenticationRevoked, access::AccessIdentity, access_subject,
+    authentication_ended, sessions::Owner,
 };
 use axum::{
+    Extension,
     extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
         Query, State,
+        ws::{Message, WebSocket, WebSocketUpgrade},
     },
     response::Response,
-    Extension,
 };
 use futures_util::{FutureExt, SinkExt, StreamExt};
-use kubecove_lib::models::{AppError, AppErrorKind, PortForwardRequest, MAX_TUNNEL_FRAME_BYTES};
+use kubecove_lib::models::{AppError, AppErrorKind, MAX_TUNNEL_FRAME_BYTES, PortForwardRequest};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -84,10 +84,12 @@ async fn run(
                     Message::Ping(bytes) => Some(Message::Pong(bytes)),
                     Message::Pong(_) => None,
                     Message::Text(text) => {
-                        let message = owner
-                            .backend
-                            .scoped(control(&owner, &responses, text.as_str()))
-                            .await;
+                        let message = Box::pin(owner.backend.scoped(control(
+                            &owner,
+                            &responses,
+                            text.as_str(),
+                        )))
+                        .await;
                         Some(Message::Text(message.to_string().into()))
                     }
                     Message::Binary(frame) => match owner.tunnels.send_binary(&frame).await {
@@ -101,10 +103,10 @@ async fn run(
                     },
                     Message::Close(_) => return,
                 };
-                if let Some(response) = response {
-                    if responses.send(response).await.is_err() {
-                        return;
-                    }
+                if let Some(response) = response
+                    && responses.send(response).await.is_err()
+                {
+                    return;
                 }
             }
         };

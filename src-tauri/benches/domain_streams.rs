@@ -1,4 +1,4 @@
-use codspeed_divan_compat::{black_box, Bencher};
+use codspeed_divan_compat::{Bencher, black_box};
 use kubecove_lib::commands::bench_support::domain_catalog::domain_streams;
 use std::sync::LazyLock;
 
@@ -25,12 +25,14 @@ mod bounded_log_line_decode_and_drain {
         assert_eq!(oversized.len(), 2);
         assert!(oversized[0].ends_with(" [truncated at 256 KiB]"));
         assert_eq!(oversized[1], "next");
-        assert!(expected[3]
-            .as_ref()
-            .expect("truncated multibyte line is retained")
-            .first()
-            .expect("one split line")
-            .ends_with(" [truncated at 256 KiB]"));
+        assert!(
+            expected[3]
+                .as_ref()
+                .expect("truncated multibyte line is retained")
+                .first()
+                .expect("one split line")
+                .ends_with(" [truncated at 256 KiB]")
+        );
         assert_eq!(expected[4], Err(std::io::ErrorKind::InvalidData));
         assert!(expected[5].as_ref().expect("empty reader").is_empty());
 

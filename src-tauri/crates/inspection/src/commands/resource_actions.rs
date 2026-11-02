@@ -1,12 +1,12 @@
-use crate::commands::builtin_kinds::{builtin_kind, BuiltinKind};
-use crate::commands::{operations::preview_patch_params, ClusterAccess};
+use crate::commands::builtin_kinds::{BuiltinKind, builtin_kind};
+use crate::commands::{ClusterAccess, operations::preview_patch_params};
 use crate::models::{
     AppError, AppErrorKind, ClusterOperationResult, ClusterOperationTarget, ResourceActionEdits,
     ResourceActionKind, ResourceActionPreview, ResourceActionRequest, ResourceActionState,
     ResourceActionStateRequest, ResourceContainerEdit,
 };
 use kube::api::{Api, ApiResource, DeleteParams, DynamicObject, Patch, PatchParams};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 const ACTION_KINDS: &[&str] = &["Deployment", "StatefulSet", "DaemonSet", "Pod", "ConfigMap"];
 

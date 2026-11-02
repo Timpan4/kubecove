@@ -1,4 +1,4 @@
-use codspeed_divan_compat::{black_box, Bencher};
+use codspeed_divan_compat::{Bencher, black_box};
 use kubecove_lib::commands::bench_support::domain_catalog::domain_helm;
 use kubecove_lib::models::AppErrorKind;
 
@@ -115,10 +115,12 @@ mod helm_storage_record_decode_bounds {
             records[1].data.as_ref().unwrap()["release"].0.len()
                 < domain_helm::STORAGE_RECORD_MAX_BYTES
         );
-        assert!(records
-            .iter()
-            .cloned()
-            .all(domain_helm::invalid_storage_error_is_retained));
+        assert!(
+            records
+                .iter()
+                .cloned()
+                .all(domain_helm::invalid_storage_error_is_retained)
+        );
         assert_eq!(
             records
                 .iter()
@@ -139,12 +141,16 @@ mod helm_storage_record_decode_bounds {
         let summaries = domain_helm::benchmark_storage_records(records.clone(), Vec::new())
             .expect("decode failures stay attached to records");
         assert_eq!(summaries.len(), 2);
-        assert!(summaries
-            .iter()
-            .any(|summary| summary.name == "oversized-stored"));
-        assert!(summaries
-            .iter()
-            .any(|summary| summary.name == "oversized-decoded"));
+        assert!(
+            summaries
+                .iter()
+                .any(|summary| summary.name == "oversized-stored")
+        );
+        assert!(
+            summaries
+                .iter()
+                .any(|summary| summary.name == "oversized-decoded")
+        );
 
         bencher
             .with_inputs(|| records.clone())
@@ -236,12 +242,14 @@ mod helm_reconciliation_prepare {
             "manifest resource is missing name"
         );
         assert!(!expected.scan_kinds.is_empty());
-        assert!(expected
-            .scan_kinds
-            .iter()
-            .all(|scan_kind| discovered.iter().any(|kind| {
-                kind.api_version == scan_kind.api_version && kind.kind == scan_kind.kind
-            })));
+        assert!(
+            expected
+                .scan_kinds
+                .iter()
+                .all(|scan_kind| discovered.iter().any(|kind| {
+                    kind.api_version == scan_kind.api_version && kind.kind == scan_kind.kind
+                }))
+        );
 
         bencher
             .with_inputs(|| (refs.clone(), discovered.clone()))

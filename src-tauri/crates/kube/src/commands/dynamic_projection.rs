@@ -4,9 +4,9 @@ use crate::commands::helpers::{
     resource_age_at,
 };
 use crate::models::{
-    argo_health_assessment, condition_evidence, evaluate_health, AppError, AppErrorKind,
-    DiscoveredResourceKind, HealthAssessment, HealthAssessmentEvidence, HealthAssessmentInput,
-    HealthAssessmentSource, HealthAssessmentState, ResourceHealth, ResourceSummary,
+    AppError, AppErrorKind, DiscoveredResourceKind, HealthAssessment, HealthAssessmentEvidence,
+    HealthAssessmentInput, HealthAssessmentSource, HealthAssessmentState, ResourceHealth,
+    ResourceSummary, argo_health_assessment, condition_evidence, evaluate_health,
 };
 use chrono::{DateTime, Utc};
 use kube::api::{ApiResource, DynamicObject};

@@ -1,8 +1,8 @@
 use super::connected::ConnectedArgo;
 use crate::models::AppErrorKind;
 use crate::models::{
-    normalize_service_tunnel_endpoint, AppError, ArgoApplicationRef, ArgoManagedResource,
-    ArgoServerEndpoint,
+    AppError, ArgoApplicationRef, ArgoManagedResource, ArgoServerEndpoint,
+    normalize_service_tunnel_endpoint,
 };
 use futures_util::StreamExt;
 use reqwest::{Certificate, Client as HttpClient};

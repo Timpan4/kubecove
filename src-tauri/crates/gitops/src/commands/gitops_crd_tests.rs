@@ -1,4 +1,4 @@
-use crate::commands::{detect_argocd, detect_flux, FixedClusterAccess};
+use crate::commands::{FixedClusterAccess, detect_argocd, detect_flux};
 use crate::models::AppErrorKind;
 use kubecove_kube::commands::discovery_fixture::{self, FixtureKind};
 

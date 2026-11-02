@@ -1,4 +1,4 @@
-use super::super::credential_store::{active_store, ARGO_CREDENTIAL_SERVICE};
+use super::super::credential_store::{ARGO_CREDENTIAL_SERVICE, active_store};
 use crate::models::AppErrorKind;
 use crate::models::{AppError, ArgoConnectionProfile, ArgoServerEndpoint};
 use uuid::Uuid;

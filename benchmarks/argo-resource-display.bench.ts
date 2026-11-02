@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { bench, describe } from "vitest";
+import { describe } from "vitest";
 import { applicationSpecFromYaml } from "@/features/gitops/argo-application-yaml";
 import {
 	argoDocumentText,
@@ -13,6 +13,7 @@ import {
 } from "@/features/gitops/argo-workspace-model";
 import { buildArgoResourceDiff } from "@/features/resource-detail/yamlTabDiff";
 import type { ArgoManagedResource, ArgoResourceComparison } from "@/lib/types";
+import { benchmark } from "./benchmark";
 
 const managedResources: ArgoManagedResource[] = Array.from(
 	{ length: 2_500 },
@@ -106,7 +107,7 @@ assert.equal(
 );
 
 describe("Argo resource display F48–F49", () => {
-	bench(
+	benchmark(
 		"F48 reconciliation display lookup, connected override, document text, and mounted diffs",
 		() => {
 			const visibleResources = argoReconciliationResources(managedResources);
@@ -134,7 +135,7 @@ describe("Argo resource display F48–F49", () => {
 		},
 	);
 
-	bench(
+	benchmark(
 		"F49 parse each changed application YAML once and handle malformed fallback",
 		() => {
 			for (const document of yamlDocuments) applicationSpecFromYaml(document);

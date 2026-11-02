@@ -36,7 +36,7 @@ pub fn benchmark_pod_exec_session_summary() -> PodExecSessionSummary {
 }
 
 #[cfg(feature = "bench-support")]
-pub use runner::{benchmark_decode_exec_chunks, EXEC_OUTPUT_CHUNK_BYTES};
+pub use runner::{EXEC_OUTPUT_CHUNK_BYTES, benchmark_decode_exec_chunks};
 
 use registry::ExecCommand;
 pub use registry::PodExecRegistry;

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { bench, describe } from "vitest";
+import { describe } from "vitest";
 import { serializePersistedWorkspaces } from "@/features/workspaces/workspaceStore";
 import type {
 	ResourceEntryPointCoverage,
@@ -21,6 +21,7 @@ import {
 	buildWorkspaceCompareSummaries,
 	buildWorkspaceHealthSummary,
 } from "@/lib/workspace-model";
+import { benchmark } from "./benchmark";
 import {
 	savedWorkspace,
 	workspaceRows,
@@ -220,7 +221,7 @@ assert.deepEqual(
 );
 
 describe("F31 workspace health and selected comparisons; F32 entry reconciliation with folded F30 and F35", () => {
-	bench(
+	benchmark(
 		"F31 full health summary and two selected partition comparisons",
 		() => {
 			buildWorkspaceHealthSummary(workspaceRows);
@@ -228,7 +229,7 @@ describe("F31 workspace health and selected comparisons; F32 entry reconciliatio
 		},
 	);
 
-	bench("F32 live resource reconciliation and retained pin membership", () => {
+	benchmark("F32 live resource reconciliation and retained pin membership", () => {
 		const next = reconcileEntryPoints(entryPoints, workspaceRows, coverage);
 		for (const entry of next.pinned) isPinnedEntry(next, entry);
 		normalizeEntryPoints(duplicatePinEntries);
@@ -239,7 +240,7 @@ describe("F31 workspace health and selected comparisons; F32 entry reconciliatio
 		);
 	});
 
-	bench("F32 unchanged update normalization and equality short-circuit", () => {
+	benchmark("F32 unchanged update normalization and equality short-circuit", () => {
 		const next = updateWorkspaceEntryPointsInCollection(
 			workspaceCollection,
 			targetWorkspace.id,
@@ -250,7 +251,7 @@ describe("F31 workspace health and selected comparisons; F32 entry reconciliatio
 			entryPointsEqual(next[42]?.entryPoints, targetWorkspace.entryPoints);
 	});
 
-	bench(
+	benchmark(
 		"F35 changed entry update and full persisted workspace serialization",
 		() => {
 			const next = updateWorkspaceEntryPointsInCollection(

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { bench, describe } from "vitest";
+import { describe } from "vitest";
 import {
 	createWorkspaceNavigation,
 	navigateWorkspace,
@@ -23,6 +23,7 @@ import {
 	sanitizePathStateSnapshot,
 } from "@/lib/path-state";
 import { nodeIdToString } from "@/lib/tree-nav";
+import { benchmark } from "./benchmark";
 import { savedWorkspace, workspaceRows } from "./workspace-benchmark-fixtures";
 
 const workspace = savedWorkspace(0, 100);
@@ -158,7 +159,7 @@ assert.equal(decoded?.workspace?.resources?.selectedKinds.length, 106);
 assert.equal(decoded?.workspace?.expandedSections.length, 100);
 
 describe("F02 retained table state with folded F29 workspace path snapshot", () => {
-	bench(
+	benchmark(
 		"F02 table interaction plus F29 snapshot comparison and serialization",
 		() => {
 			buildResourceTableModel(tableProjection, tableState);
@@ -181,7 +182,7 @@ describe("F02 retained table state with folded F29 workspace path snapshot", () 
 		},
 	);
 
-	bench("F29 changed path-state comparison and persisted encode/decode", () => {
+	benchmark("F29 changed path-state comparison and persisted encode/decode", () => {
 		const changed = navigateWorkspace(navigation, {
 			type: "updateResourceBrowserPath",
 			pathState: {

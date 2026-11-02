@@ -1,4 +1,4 @@
-use super::target::{validate_port, PortForwardTarget, ValidatedPortForwardRequest};
+use super::target::{PortForwardTarget, ValidatedPortForwardRequest, validate_port};
 use crate::commands::ClusterAccess;
 use crate::models::AppError;
 use crate::models::AppErrorKind;
@@ -7,8 +7,8 @@ use k8s_openapi::{
     apimachinery::pkg::util::intstr::IntOrString,
 };
 use kube::{
-    api::{Api, ListParams},
     Client,
+    api::{Api, ListParams},
 };
 use std::collections::BTreeMap;
 

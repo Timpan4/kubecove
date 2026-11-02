@@ -6,12 +6,16 @@ mod typed_resource_summaries_10000 {
     #[codspeed_divan_compat::bench]
     fn typed_resource_summaries_10000(bencher: codspeed_divan_compat::Bencher) {
         assert_eq!(TYPED_OUTPUT.len(), 10_015);
-        assert!(TYPED_OUTPUT
-            .iter()
-            .any(|row| row.kind == "Job" && row.status.as_deref() == Some("Complete")));
-        assert!(TYPED_OUTPUT
-            .iter()
-            .any(|row| row.kind == "CustomResourceDefinition" && row.created_at.is_none()));
+        assert!(
+            TYPED_OUTPUT
+                .iter()
+                .any(|row| row.kind == "Job" && row.status.as_deref() == Some("Complete"))
+        );
+        assert!(
+            TYPED_OUTPUT
+                .iter()
+                .any(|row| row.kind == "CustomResourceDefinition" && row.created_at.is_none())
+        );
         let sidecar_pod = TYPED_OUTPUT
             .iter()
             .find(|row| row.name == "ledger-2")
@@ -134,12 +138,16 @@ mod dynamic_resource_identity_health_edges {
     #[codspeed_divan_compat::bench]
     fn dynamic_resource_identity_health_edges(bencher: codspeed_divan_compat::Bencher) {
         assert_eq!(DYNAMIC_EDGE_OUTPUT.len(), 2);
-        assert!(DYNAMIC_EDGE_OUTPUT
-            .iter()
-            .any(|row| row.argo_app.as_deref() == Some("checkout-app")));
-        assert!(DYNAMIC_EDGE_OUTPUT
-            .iter()
-            .any(|row| row.namespace.is_none() && row.namespaced == Some(false)));
+        assert!(
+            DYNAMIC_EDGE_OUTPUT
+                .iter()
+                .any(|row| row.argo_app.as_deref() == Some("checkout-app"))
+        );
+        assert!(
+            DYNAMIC_EDGE_OUTPUT
+                .iter()
+                .any(|row| row.namespace.is_none() && row.namespaced == Some(false))
+        );
         let application = DYNAMIC_EDGE_OUTPUT
             .iter()
             .find(|row| row.name == "checkout-app")
@@ -226,8 +234,13 @@ mod flux_owner_index_64_objects_2048_entries {
             "Kustomization".to_string(),
             "owner-Kustomization-0".to_string(),
         ));
-        let [duplicate_owner, grouped_owner, version_alias_owner, empty_name_owner, missing_version_owner] =
-            FLUX_INPUT.expected_owner_lookups();
+        let [
+            duplicate_owner,
+            grouped_owner,
+            version_alias_owner,
+            empty_name_owner,
+            missing_version_owner,
+        ] = FLUX_INPUT.expected_owner_lookups();
         assert_eq!(duplicate_owner, first_owner);
         assert_eq!(grouped_owner, first_owner);
         assert_eq!(version_alias_owner, first_owner);

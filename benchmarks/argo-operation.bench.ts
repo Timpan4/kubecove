@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { bench, describe } from "vitest";
+import { describe } from "vitest";
 import {
 	argoObservation,
 	argoOperationOutcome,
 	argoOperationProgress,
 } from "@/features/gitops/argo-operation-progress";
 import type { ArgoApplicationInspector } from "@/lib/types";
+import { benchmark } from "./benchmark";
 
 const resources = Array.from({ length: 250 }, (_, index) => ({
 	kind: index % 2 === 0 ? "Deployment" : "Job",
@@ -70,7 +71,7 @@ assert.equal(
 
 describe("Argo operation observation F50", () => {
 	// F25 redaction is exercised inside argoOperationProgress for operation and resource messages.
-	bench(
+	benchmark(
 		"F50 observation, resource/hook progress projection, outcome, and redaction",
 		() => {
 			for (const current of [

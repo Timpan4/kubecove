@@ -18,9 +18,11 @@ async fn upload_eof_preserves_connection_until_response_finishes() {
     assert!(registry.finish_upload(id));
     assert!(registry.finish_upload(id));
     assert_eq!(receiver.recv().await, None);
-    assert!(!registry.state.lock().unwrap().connections[id]
-        .task
-        .is_finished());
+    assert!(
+        !registry.state.lock().unwrap().connections[id]
+            .task
+            .is_finished()
+    );
     assert!(registry.close_connection(id));
     assert!(registry.state.lock().unwrap().connections.is_empty());
 }

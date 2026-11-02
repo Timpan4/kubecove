@@ -2,8 +2,8 @@
 name = "kubecove-inspection"
 version = "0.1.0"
 publish = false
-edition = "2021"
-rust-version = "1.91"
+edition = "2024"
+rust-version = "1.99"
 license = "AGPL-3.0-or-later"
 description = "KubeCove resource inspection, RBAC and guarded Kubernetes operations"
 

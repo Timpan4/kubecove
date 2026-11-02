@@ -8,11 +8,10 @@ mod restarts;
 pub use post_fetch::incident_cockpit_post_fetch;
 
 use super::events::{event_source, event_timestamp};
-use super::{resource_scope_from, ClusterLiveStore, MAX_LIST_CONCURRENCY};
+use super::{ClusterLiveStore, MAX_LIST_CONCURRENCY, resource_scope_from};
 use crate::commands::{
-    diagnostic_field,
+    ClusterAccess, FiniteRead, diagnostic_field,
     helpers::{list_params, resource_age_at},
-    ClusterAccess, FiniteRead,
 };
 use crate::models::{
     AppError, IncidentCockpitItem, IncidentCockpitSummary, IncidentSeverity, IncidentSignalState,
@@ -21,7 +20,7 @@ use crate::models::{
 use crate::runtime::State;
 use chrono::{DateTime, Utc};
 use k8s_openapi::api::core::v1::Event;
-use kube::{api::Api, Client};
+use kube::{Client, api::Api};
 use kubecove_kube::commands::list_projection::bounded_join_all;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -30,8 +29,8 @@ use health::{
     severity_for,
 };
 use restarts::{
-    list_restart_evidence, resource_key, restart_signal_label, restart_signal_message,
-    RestartEvidence,
+    RestartEvidence, list_restart_evidence, resource_key, restart_signal_label,
+    restart_signal_message,
 };
 
 const MAX_WARNING_EVENTS_PER_RESOURCE: usize = 3;
@@ -203,11 +202,11 @@ async fn list_warning_events(
             Ok(list) => list,
             Err(err) => {
                 let app_error = AppError::from(err);
-                if let Some(namespace) = namespace.as_ref() {
-                    if is_forbidden_app_error(&app_error) {
-                        denied_namespaces.push(namespace.clone());
-                        continue;
-                    }
+                if let Some(namespace) = namespace.as_ref()
+                    && is_forbidden_app_error(&app_error)
+                {
+                    denied_namespaces.push(namespace.clone());
+                    continue;
                 }
                 return Err(app_error);
             }

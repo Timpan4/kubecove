@@ -1,13 +1,13 @@
+use crate::commands::ClusterAccess;
 use crate::commands::gitops_crd::{
     find_api_resource, get_crd_object, list_crd_objects, object_age, resource_metadata,
     resource_status, resource_yaml,
 };
 use crate::commands::helpers::k8s_creation_timestamp_to_rfc3339;
-use crate::commands::ClusterAccess;
 use crate::models::AppErrorKind;
 use crate::models::{
-    argo_health_assessment, AppError, ArgoApplicationDetails, ArgoApplicationSourceSummary,
-    ArgoApplicationSummary, YamlEncoding, YamlViewMode,
+    AppError, ArgoApplicationDetails, ArgoApplicationSourceSummary, ArgoApplicationSummary,
+    YamlEncoding, YamlViewMode, argo_health_assessment,
 };
 use kube::core::DynamicObject;
 use std::collections::BTreeSet;
@@ -179,13 +179,12 @@ fn application_resource_namespaces(
             }
         }
     }
-    if namespaces.is_empty() {
-        if let Some(namespace) = destination_namespace
+    if namespaces.is_empty()
+        && let Some(namespace) = destination_namespace
             .map(str::trim)
             .filter(|namespace| !namespace.is_empty())
-        {
-            namespaces.insert(namespace.to_string());
-        }
+    {
+        namespaces.insert(namespace.to_string());
     }
     namespaces.into_iter().collect()
 }

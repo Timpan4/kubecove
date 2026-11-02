@@ -1,4 +1,4 @@
-use codspeed_divan_compat::{black_box, Bencher};
+use codspeed_divan_compat::{Bencher, black_box};
 use kubecove_lib::commands::bench_support::domain_catalog::domain_flux;
 
 mod flux_list_projection {
@@ -29,10 +29,12 @@ mod flux_list_projection {
             ("image.toolkit.fluxcd.io", "ImagePolicy"),
             ("image.toolkit.fluxcd.io", "ImageUpdateAutomation"),
         ] {
-            assert!(expected
-                .installed_kinds
-                .iter()
-                .any(|installed| installed.group == group && installed.kind == kind));
+            assert!(
+                expected
+                    .installed_kinds
+                    .iter()
+                    .any(|installed| installed.group == group && installed.kind == kind)
+            );
         }
         assert_eq!(expected.installed_kinds.len(), 13);
         let git_kind = expected

@@ -10,17 +10,17 @@ mod validation;
 pub use validation::{validate_api_resource, validate_namespace, validate_path_segment};
 
 pub use health::{
-    assess_kubernetes_health, kubernetes_health, legacy_resource_health, pod_restarts, Readiness,
+    Readiness, assess_kubernetes_health, kubernetes_health, legacy_resource_health, pod_restarts,
 };
 pub use metadata::{
-    argo_app_name, base_resource_summary, enrich_resource_summaries_with_flux_inventory,
-    extract_git_ops_owner, extract_helm_release, extract_owner_ref, extract_owner_ref_summary,
-    fetch_flux_ownership_index, filter_flux_ownership_index, read_flux_ownership_index,
-    FluxOwnershipIndex,
+    FluxOwnershipIndex, argo_app_name, base_resource_summary,
+    enrich_resource_summaries_with_flux_inventory, extract_git_ops_owner, extract_helm_release,
+    extract_owner_ref, extract_owner_ref_summary, fetch_flux_ownership_index,
+    filter_flux_ownership_index, read_flux_ownership_index,
 };
 #[cfg(feature = "bench-support")]
 pub use metadata::{
-    flux_ownership_index_from_fetched_objects, MAX_FLUX_INVENTORY_ENTRIES, MAX_FLUX_OWNER_OBJECTS,
+    MAX_FLUX_INVENTORY_ENTRIES, MAX_FLUX_OWNER_OBJECTS, flux_ownership_index_from_fetched_objects,
 };
 pub use serialization::{
     fetch_and_serialize, fetch_and_serialize_cluster, fetch_and_serialize_cluster_with_encoding,

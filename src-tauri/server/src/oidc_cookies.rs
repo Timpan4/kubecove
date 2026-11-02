@@ -1,6 +1,6 @@
-use super::{oidc_unavailable, AUTH_COOKIE, TRANSACTION_COOKIE};
+use super::{AUTH_COOKIE, TRANSACTION_COOKIE, oidc_unavailable};
 use crate::ApiError;
-use axum::http::{header, HeaderMap, HeaderValue};
+use axum::http::{HeaderMap, HeaderValue, header};
 
 /// The single value of cookie `name`, or `None` when it is missing or repeated.
 pub(super) fn cookie_value<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
@@ -9,13 +9,13 @@ pub(super) fn cookie_value<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a
     for header in cookies {
         let value = header.to_str().ok()?;
         for entry in value.split(';').map(str::trim) {
-            if let Some((key, value)) = entry.split_once('=') {
-                if key == name {
-                    if found.is_some() {
-                        return None;
-                    }
-                    found = Some(value);
+            if let Some((key, value)) = entry.split_once('=')
+                && key == name
+            {
+                if found.is_some() {
+                    return None;
                 }
+                found = Some(value);
             }
         }
     }

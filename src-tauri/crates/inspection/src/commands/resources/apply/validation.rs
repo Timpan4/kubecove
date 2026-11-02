@@ -1,4 +1,4 @@
-use crate::commands::builtin_kinds::{builtin_kind, BuiltinKind};
+use crate::commands::builtin_kinds::{BuiltinKind, builtin_kind};
 use crate::models::AppErrorKind;
 use crate::models::{AppError, YamlApplyRequest, YamlApplyTarget};
 use kube::api::ApiResource;

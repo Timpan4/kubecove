@@ -3,7 +3,7 @@ mod apply;
 mod builtin_kind_read_tests;
 mod builtin_summary;
 #[cfg(feature = "bench-support")]
-pub use builtin_summary::{builtin_summary, metadata_summary, BuiltinSummary, KindStatus};
+pub use builtin_summary::{BuiltinSummary, KindStatus, builtin_summary, metadata_summary};
 mod details;
 mod dynamic;
 mod ingress_status;
@@ -19,7 +19,7 @@ pub use summary_projection::{decode_pod_list_summaries, decode_summary_projectio
 mod summary_workloads;
 pub(crate) mod topology;
 #[cfg(feature = "bench-support")]
-pub use topology::{build_resource_topology, TopologyInputResource};
+pub use topology::{TopologyInputResource, build_resource_topology};
 mod topology_collection;
 mod topology_dynamic;
 mod topology_network;

@@ -1,9 +1,9 @@
 use super::logs::read_log_line;
 use crate::models::{
-    LogLineSource, StreamMessage, CHANNEL_MESSAGE_ENVELOPE_BYTES, MAX_WEBSOCKET_MESSAGE_BYTES,
+    CHANNEL_MESSAGE_ENVELOPE_BYTES, LogLineSource, MAX_WEBSOCKET_MESSAGE_BYTES, StreamMessage,
 };
 use futures_util::io::AsyncBufRead;
-use std::{future::poll_fn, future::Future, io, task::Poll};
+use std::{future::Future, future::poll_fn, io, task::Poll};
 
 // JSON string bytes expand at most sixfold (\u00XX); reserve the channel wrapper.
 const MAX_BATCH_BYTES: usize = (MAX_WEBSOCKET_MESSAGE_BYTES - CHANNEL_MESSAGE_ENVELOPE_BYTES) / 6;
@@ -100,7 +100,7 @@ pub(super) async fn read_log_batches(
 mod tests {
     use super::*;
     use crate::models::{AggregatedLogStreamRequest, PodLogStreamRequest};
-    use futures_util::{io::BufReader, stream, StreamExt, TryStreamExt};
+    use futures_util::{StreamExt, TryStreamExt, io::BufReader, stream};
     use std::{cell::RefCell, task::Context};
 
     // Failure modes: omitted/false opt-in breaks old clients, aggregate requests

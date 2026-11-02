@@ -1,21 +1,21 @@
 use crate::observe::{self, AuthMode};
 use crate::security::{equal_secret, install_tls_provider};
-use crate::{access::AccessIdentity, ApiError};
+use crate::{ApiError, access::AccessIdentity};
 use axum::{
-    http::{header, HeaderMap, HeaderValue, StatusCode},
-    response::{IntoResponse, Redirect, Response},
     Json,
+    http::{HeaderMap, HeaderValue, StatusCode, header},
+    response::{IntoResponse, Redirect, Response},
 };
-use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use kubecove_lib::{commands::SessionScope, models::AppErrorKind};
 use openidconnect::{
+    AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointMaybeSet, EndpointNotSet,
+    EndpointSet, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier,
+    RedirectUrl, TokenResponse,
     core::{
         CoreAuthenticationFlow, CoreClient, CoreErrorResponseType, CoreIdTokenClaims,
         CoreIdTokenVerifier, CoreProviderMetadata,
     },
-    AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointMaybeSet, EndpointNotSet,
-    EndpointSet, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier,
-    RedirectUrl, TokenResponse,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -424,14 +424,13 @@ impl Oidc {
         }
         // The API server rejects a forwarded token without its audience, so
         // refuse the sign-in here, where the reason is known.
-        if let Some(audience) = &self.config.kubernetes_audience {
-            if !claims
+        if let Some(audience) = &self.config.kubernetes_audience
+            && !claims
                 .audiences()
                 .iter()
                 .any(|aud| aud.as_str() == audience)
-            {
-                return None;
-            }
+        {
+            return None;
         }
         let subject = claims.subject().as_str();
         if subject.is_empty() {
@@ -654,7 +653,7 @@ async fn send_request(
 }
 
 fn id_token_has_invalid_not_before(token: &str) -> bool {
-    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
     let Some(payload) = token
         .split('.')
         .nth(1)

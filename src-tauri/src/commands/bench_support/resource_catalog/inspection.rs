@@ -6,7 +6,7 @@ use crate::{
         ResourceDetailsFull, YamlApplyRequest, YamlApplyTarget, YamlEncoding, YamlViewMode,
     },
 };
-use base64::{engine::general_purpose::STANDARD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use k8s_openapi::{
     api::{
         apps::v1::{Deployment, ReplicaSet},
@@ -16,7 +16,7 @@ use k8s_openapi::{
 };
 use kube::api::DynamicObject;
 use serde::de::DeserializeOwned;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[derive(Clone)]
 pub struct YamlDocumentFixture {

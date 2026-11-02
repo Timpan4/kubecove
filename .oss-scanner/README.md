@@ -15,7 +15,7 @@ docker run --rm --network=none kubecove:oss-scanner cargo test --locked --manife
 
 The image keeps the checkout at `/src`, with Bun, Rust, Linux desktop libraries, both Cargo dependency caches, and debug build/test artifacts. It builds the native frontend and desktop binary, then the browser frontend and headless server. The compile steps run with networking disabled. Source and compiler caches stay in the image so the scanner can change and rebuild reproducers offline. The final image retains `apt` for Anthropic's tools layer. It is an audit environment, not a deployment image.
 
-`Dockerfile.dockerignore` replaces the production image's source allowlist for this build. It includes the vendored updater patch, tests, fixtures, and documentation. It excludes host profiles, kubeconfig, `.env` files, Git configuration, caches, and local artifacts. Build from a clean checkout and never mount real credentials, the Docker socket, or a live cluster into the audit container.
+`Dockerfile.dockerignore` replaces the production image's source allowlist for this build. It includes tests, fixtures, and documentation. It excludes host profiles, kubeconfig, `.env` files, Git configuration, caches, and local artifacts. Build from a clean checkout and never mount real credentials, the Docker socket, or a live cluster into the audit container.
 
 This Linux environment does not prove macOS or Windows behavior. Desktop GUI E2E and real-cluster workflows are not part of the offline checks. See the [threat model](threat_model.md) for synthetic testing and scope.
 

@@ -1,7 +1,7 @@
 #[cfg(feature = "bench-support")]
 pub mod benchmark;
 #[cfg(feature = "bench-support")]
-pub use benchmark::{benchmark_usage_process_attribution, BenchUsagePlatform, BenchUsageProcess};
+pub use benchmark::{BenchUsagePlatform, BenchUsageProcess, benchmark_usage_process_attribution};
 
 #[cfg(target_os = "macos")]
 use super::usage_webview::{
@@ -21,24 +21,33 @@ use kubecove_models::{AppError, AppUsageMetrics, AppUsageMetricsBreakdown};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use sysinfo::{
-    get_current_pid, Pid, Process, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind,
+    Pid, Process, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind, get_current_pid,
 };
 
+/// The process table is created on the first sample: `System::new` fails on platforms
+/// sysinfo does not support, and that failure belongs to the sample that needs it.
 #[derive(Clone, Default)]
 pub struct AppUsageMonitor {
-    system: Arc<Mutex<System>>,
+    system: Arc<Mutex<Option<System>>>,
+}
+
+fn usage_error(error: &sysinfo::Error) -> AppError {
+    AppError::new(error.to_string(), AppErrorKind::UsageMetrics)
 }
 
 impl AppUsageMonitor {
     pub fn sample(&self) -> Result<AppUsageMetrics, AppError> {
-        let current_pid = get_current_pid()
-            .map_err(|message| AppError::new(message, AppErrorKind::UsageMetrics))?;
-        let mut system = self.system.lock().map_err(|_| {
+        let current_pid = get_current_pid().map_err(|error| usage_error(&error))?;
+        let mut guard = self.system.lock().map_err(|_| {
             AppError::new(
                 "usage metrics monitor is unavailable",
                 AppErrorKind::UsageMetrics,
             )
         })?;
+        let system = match &mut *guard {
+            Some(system) => system,
+            empty => empty.insert(System::new().map_err(|error| usage_error(&error))?),
+        };
 
         system.refresh_processes_specifics(
             ProcessesToUpdate::All,
@@ -50,7 +59,7 @@ impl AppUsageMonitor {
         // command lines to recover the host-exe identity before attribution.
         #[cfg(target_os = "windows")]
         {
-            let mut identity_pids = process_tree_pids(&system, current_pid);
+            let mut identity_pids = process_tree_pids(system, current_pid);
             identity_pids.extend(system.processes().iter().filter_map(|(pid, process)| {
                 process
                     .name()
@@ -69,7 +78,7 @@ impl AppUsageMonitor {
             );
         }
 
-        let pids = usage_process_pids(&system, current_pid);
+        let pids = usage_process_pids(system, current_pid);
         let pids_to_refresh: Vec<Pid> = pids.iter().copied().collect();
         if !pids_to_refresh.is_empty() {
             system.refresh_processes_specifics(
@@ -92,7 +101,7 @@ impl AppUsageMonitor {
         );
         let cpu_count = available_cpu_count();
         let cpu_percent = normalize_cpu_percent(raw_cpu_percent, cpu_count);
-        let breakdown = process_tree_breakdown(&system, &pids, current_pid, cpu_count);
+        let breakdown = process_tree_breakdown(system, &pids, current_pid, cpu_count);
 
         Ok(AppUsageMetrics {
             cpu_percent,
@@ -550,6 +559,8 @@ mod tests {
             .system
             .lock()
             .expect("monitor lock")
+            .as_ref()
+            .expect("sampled system")
             .process(task_pid)
             .is_some();
         drop(stop_tx);

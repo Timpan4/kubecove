@@ -2,8 +2,8 @@ use crate::commands::flux_catalog::FLUX_KINDS;
 use crate::models::AppErrorKind;
 use crate::models::{AppError, GitOpsOwnerSummary, ResourceSummary};
 use kube::{
-    api::{Api, ApiResource, DynamicObject, ListParams},
     Client,
+    api::{Api, ApiResource, DynamicObject, ListParams},
 };
 use std::collections::HashMap;
 
@@ -262,7 +262,7 @@ pub fn enrich_resource_summaries_with_flux_inventory(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use http::{header::CONTENT_TYPE, Request, Response};
+    use http::{Request, Response, header::CONTENT_TYPE};
     use kube::client::Body;
     use serde_json::json;
 

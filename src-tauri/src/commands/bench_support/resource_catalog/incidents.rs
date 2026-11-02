@@ -5,7 +5,7 @@ use crate::{
 };
 use k8s_openapi::api::core::v1::{Event, Pod};
 use serde::de::DeserializeOwned;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 #[derive(Clone)]

@@ -48,27 +48,31 @@ fn remote_plaintext_and_incomplete_tls_configuration_are_rejected() {
     assert!(config(&["--listen", "0.0.0.0:443"]).is_err());
     assert!(config(&["--listen", "0.0.0.0:443", "--allow-remote"]).is_err());
     assert!(config(&["--tls-cert", "certificate.pem"]).is_err());
-    assert!(config(&[
-        "--listen",
-        "0.0.0.0:443",
-        "--tls-cert",
-        "cert",
-        "--tls-key",
-        "key"
-    ])
-    .is_err());
-    assert!(config(&[
-        "--listen",
-        "0.0.0.0:443",
-        "--allow-remote",
-        "--tls-cert",
-        "cert",
-        "--tls-key",
-        "key",
-        "--public-origin",
-        "https://kubecove.example"
-    ])
-    .is_ok());
+    assert!(
+        config(&[
+            "--listen",
+            "0.0.0.0:443",
+            "--tls-cert",
+            "cert",
+            "--tls-key",
+            "key"
+        ])
+        .is_err()
+    );
+    assert!(
+        config(&[
+            "--listen",
+            "0.0.0.0:443",
+            "--allow-remote",
+            "--tls-cert",
+            "cert",
+            "--tls-key",
+            "key",
+            "--public-origin",
+            "https://kubecove.example"
+        ])
+        .is_ok()
+    );
 }
 
 #[test]

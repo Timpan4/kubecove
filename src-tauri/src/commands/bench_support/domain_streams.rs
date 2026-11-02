@@ -5,7 +5,7 @@ use kube::api::ObjectMeta;
 use crate::{
     commands::{
         pod_exec::benchmark_decode_exec_chunks,
-        streams::{benchmark_log_sources_from_pods, benchmark_read_log_line, MAX_LOG_LINE_BYTES},
+        streams::{MAX_LOG_LINE_BYTES, benchmark_log_sources_from_pods, benchmark_read_log_line},
     },
     models::{LogLineSource, PodExecSessionMessage, StreamMessage},
 };

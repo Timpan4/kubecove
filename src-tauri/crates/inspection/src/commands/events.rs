@@ -1,7 +1,6 @@
 use crate::commands::{
-    diagnostic_field,
+    BackendCancellationRegistry, ClusterAccess, FiniteRead, diagnostic_field,
     helpers::{k8s_timestamp_to_datetime, list_params, resource_age},
-    BackendCancellationRegistry, ClusterAccess, FiniteRead,
 };
 use crate::models::{AppError, ResourceEventSummary};
 use crate::runtime::State;
@@ -35,10 +34,10 @@ pub(super) fn event_timestamp(event: &k8s_openapi::api::core::v1::Event) -> Opti
 }
 
 pub(super) fn event_source(event: &k8s_openapi::api::core::v1::Event) -> String {
-    if let Some(component) = &event.reporting_component {
-        if !component.is_empty() {
-            return component.clone();
-        }
+    if let Some(component) = &event.reporting_component
+        && !component.is_empty()
+    {
+        return component.clone();
     }
     event
         .source

@@ -13,7 +13,7 @@ use k8s_openapi::api::{
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
 use kube::api::DynamicObject;
 use serde::de::DeserializeOwned;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 const CLUSTER: &str = "catalog-cluster";
 const BASE_TIME: &str = "2026-09-30T12:00:00Z";

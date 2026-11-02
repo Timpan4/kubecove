@@ -150,28 +150,27 @@ pub(super) async fn owned_revisions(
     let mut revisions = Vec::new();
     for object in list.items {
         let value = action_value(&object)?;
-        if let Ok(template) = owned_revision_template(&value, &target.name, uid) {
-            if let Some(revision) = value
+        if let Ok(template) = owned_revision_template(&value, &target.name, uid)
+            && let Some(revision) = value
                 .pointer("/metadata/annotations/deployment.kubernetes.io~1revision")
                 .and_then(Value::as_str)
                 .and_then(|v| v.parse().ok())
-            {
-                revisions.push(ResourceActionRevision {
-                    revision,
-                    images: template
-                        .pointer("/spec/containers")
-                        .and_then(Value::as_array)
-                        .into_iter()
-                        .flatten()
-                        .filter_map(|container| {
-                            container
-                                .get("image")
-                                .and_then(Value::as_str)
-                                .map(str::to_string)
-                        })
-                        .collect(),
-                });
-            }
+        {
+            revisions.push(ResourceActionRevision {
+                revision,
+                images: template
+                    .pointer("/spec/containers")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|container| {
+                        container
+                            .get("image")
+                            .and_then(Value::as_str)
+                            .map(str::to_string)
+                    })
+                    .collect(),
+            });
         }
     }
     revisions.sort_by_key(|revision| std::cmp::Reverse(revision.revision));
@@ -382,11 +381,11 @@ pub(super) fn action_yaml(value: &Value) -> Result<String, AppError> {
 
 pub(super) fn clean_action_display_metadata(value: &mut Value) {
     crate::commands::helpers::normalize_k8s_yaml_value(value, crate::models::YamlViewMode::Kubectl);
-    if value.get("kind").and_then(Value::as_str) == Some("Secret") {
-        if let Some(map) = value.as_object_mut() {
-            map.remove("data");
-            map.remove("stringData");
-        }
+    if value.get("kind").and_then(Value::as_str) == Some("Secret")
+        && let Some(map) = value.as_object_mut()
+    {
+        map.remove("data");
+        map.remove("stringData");
     }
 }
 

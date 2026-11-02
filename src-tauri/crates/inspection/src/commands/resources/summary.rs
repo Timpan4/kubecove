@@ -2,7 +2,7 @@ use super::{
     summary_cluster::cluster_resource_summaries, summary_core::core_resource_summaries,
     summary_workloads::workload_resource_summaries,
 };
-use crate::commands::{diagnostic_field, ClusterAccess, ClusterLiveStore, FiniteRead};
+use crate::commands::{ClusterAccess, ClusterLiveStore, FiniteRead, diagnostic_field};
 use crate::models::AppErrorKind;
 use crate::models::{AppError, ResourceSummary};
 use crate::runtime::State;

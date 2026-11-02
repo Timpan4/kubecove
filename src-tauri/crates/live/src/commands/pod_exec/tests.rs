@@ -99,10 +99,12 @@ async fn stdin_is_bounded_and_acknowledged_after_write() {
     let registry = PodExecRegistry::default();
     let (sender, mut receiver) = tokio::sync::mpsc::channel(COMMAND_CAPACITY);
     registry.insert(test_summary("exec-1"), sender);
-    assert!(registry
-        .write_stdin("exec-1", "x".repeat(INPUT_CHUNK_BYTES + 1))
-        .await
-        .is_err());
+    assert!(
+        registry
+            .write_stdin("exec-1", "x".repeat(INPUT_CHUNK_BYTES + 1))
+            .await
+            .is_err()
+    );
     let mut write = Box::pin(registry.write_stdin("exec-1", "input".into()));
     assert!((&mut write).now_or_never().is_none());
     match receiver.recv().await.unwrap() {
@@ -116,17 +118,21 @@ async fn stdin_is_bounded_and_acknowledged_after_write() {
     }
     assert!(write.await.is_ok());
     for _ in 0..COMMAND_CAPACITY {
-        assert!(registry
-            .write_stdin("exec-1", "x".repeat(INPUT_CHUNK_BYTES))
-            .now_or_never()
-            .is_none());
+        assert!(
+            registry
+                .write_stdin("exec-1", "x".repeat(INPUT_CHUNK_BYTES))
+                .now_or_never()
+                .is_none()
+        );
     }
     assert!(registry.write_stdin("exec-1", "x".into()).await.is_err());
     drop(receiver.recv().await.unwrap());
-    assert!(registry
-        .write_stdin("exec-1", "x".repeat(INPUT_CHUNK_BYTES))
-        .now_or_never()
-        .is_none());
+    assert!(
+        registry
+            .write_stdin("exec-1", "x".repeat(INPUT_CHUNK_BYTES))
+            .now_or_never()
+            .is_none()
+    );
 }
 
 #[tokio::test]

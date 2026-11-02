@@ -1,4 +1,4 @@
-use super::credential_store::{active_store, SecureStore as SharedSecureStore, SESSION_SERVICE};
+use super::credential_store::{SESSION_SERVICE, SecureStore as SharedSecureStore, active_store};
 use crate::models::AppErrorKind;
 use crate::models::{AppError, ArgoApplicationRef, ArgoOperationRequest};
 use serde::{Deserialize, Serialize};

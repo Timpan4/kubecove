@@ -1,7 +1,7 @@
 use crate::{api_tests::state, assets::Assets, router};
 use axum::{
-    body::{to_bytes, Body},
-    http::{header, Request, StatusCode},
+    body::{Body, to_bytes},
+    http::{Request, StatusCode, header},
 };
 use std::io::Read;
 use tower::ServiceExt;
@@ -54,9 +54,11 @@ async fn hashed_assets_negotiate_precompressed_bytes_and_preserve_guards() {
             encoding,
             "{accept}"
         );
-        assert!(response
-            .headers()
-            .contains_key(header::CONTENT_SECURITY_POLICY));
+        assert!(
+            response
+                .headers()
+                .contains_key(header::CONTENT_SECURITY_POLICY)
+        );
         let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let mut decoded = Vec::new();
         match encoding {

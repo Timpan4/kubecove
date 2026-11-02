@@ -1,15 +1,15 @@
 use crate::models::AppErrorKind;
 use crate::models::{AppError, PortForwardRequest, PortForwardSessionSummary};
 use k8s_openapi::api::core::v1::Pod;
-use kube::{api::Api, Client};
+use kube::{Client, api::Api};
 use tokio::{
-    io::{copy_bidirectional, AsyncRead, AsyncWrite},
+    io::{AsyncRead, AsyncWrite, copy_bidirectional},
     net::TcpStream,
 };
 
 use super::lifecycle::PortForwardRegistry;
 use super::target::{
-    resolve_port_forward_target, validate_request, PortForwardTarget, ValidatedPortForwardRequest,
+    PortForwardTarget, ValidatedPortForwardRequest, resolve_port_forward_target, validate_request,
 };
 use crate::commands::ClusterAccess;
 

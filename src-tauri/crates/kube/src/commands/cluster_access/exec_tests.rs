@@ -37,11 +37,13 @@ impl Plugin {
         ));
         fs::create_dir(&root).unwrap();
         fs::write(root.join("expiry"), "2099-01-01T00:00:00Z\n").unwrap();
-        assert!(Command::new("mkfifo")
-            .arg(root.join("release"))
-            .status()
-            .unwrap()
-            .success());
+        assert!(
+            Command::new("mkfifo")
+                .arg(root.join("release"))
+                .status()
+                .unwrap()
+                .success()
+        );
         fs::write(root.join("plugin.sh"), r#"set -eu
 cd "$1"
 test "$2" = fixture-argument

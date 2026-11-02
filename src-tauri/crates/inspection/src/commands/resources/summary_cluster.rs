@@ -1,12 +1,12 @@
-use super::builtin_summary::{builtin_summary, BuiltinSummary, KindStatus};
-use crate::commands::helpers::{kubernetes_health, list_params, Readiness};
+use super::builtin_summary::{BuiltinSummary, KindStatus, builtin_summary};
+use crate::commands::helpers::{Readiness, kubernetes_health, list_params};
 use crate::models::{AppError, ResourceHealth, ResourceSummary};
 use chrono::{DateTime, Utc};
+use k8s_openapi::Resource;
 use k8s_openapi::api::core::v1::{Node, PersistentVolume};
 use k8s_openapi::api::storage::v1::StorageClass;
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
-use k8s_openapi::Resource;
-use kube::{api::Api, Client};
+use kube::{Client, api::Api};
 use serde_json::Value;
 
 impl BuiltinSummary for Node {

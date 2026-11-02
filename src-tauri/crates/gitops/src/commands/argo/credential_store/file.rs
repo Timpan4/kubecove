@@ -1,13 +1,13 @@
 #[cfg(all(unix, test))]
 use super::ARGO_CREDENTIAL_SERVICE;
 #[cfg(unix)]
-use super::{credential_error, credential_io_error, SecureStore, SESSION_SERVICE};
+use super::{SESSION_SERVICE, SecureStore, credential_error, credential_io_error};
 #[cfg(unix)]
 use crate::models::AppError;
 #[cfg(unix)]
 use chacha20poly1305::{
-    aead::{Aead, KeyInit},
     XChaCha20Poly1305, XNonce,
+    aead::{Aead, KeyInit},
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -489,14 +489,18 @@ mod tests {
             .unwrap();
         store.delete(ARGO_CREDENTIAL_SERVICE, "credential").unwrap();
         let restarted = FileCredentialStore::open(&path).unwrap();
-        assert!(restarted
-            .read(SESSION_SERVICE, "other-user/review")
-            .unwrap()
-            .is_some());
-        assert!(restarted
-            .read(ARGO_CREDENTIAL_SERVICE, "credential")
-            .unwrap()
-            .is_none());
+        assert!(
+            restarted
+                .read(SESSION_SERVICE, "other-user/review")
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            restarted
+                .read(ARGO_CREDENTIAL_SERVICE, "credential")
+                .unwrap()
+                .is_none()
+        );
         restarted
             .delete(SESSION_SERVICE, "other-user/review")
             .unwrap();
@@ -528,7 +532,7 @@ mod tests {
     #[test]
     fn consumed_operation_session_cannot_be_replayed_from_file_store() {
         use crate::{
-            commands::argo::session::{consume, issue, peek, SessionStore},
+            commands::argo::session::{SessionStore, consume, issue, peek},
             models::ArgoOperationRequest,
         };
 

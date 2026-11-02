@@ -1,9 +1,9 @@
 use super::{
     details::resource_details_from, summary::resources_summary_from, yaml::resource_yaml_from,
 };
-use crate::commands::{builtin_kinds::BUILTIN_KINDS, ClusterAccess, FixedClusterAccess};
+use crate::commands::{ClusterAccess, FixedClusterAccess, builtin_kinds::BUILTIN_KINDS};
 use crate::models::{AppError, AppErrorKind};
-use http::{header::CONTENT_TYPE, Request, Response};
+use http::{Request, Response, header::CONTENT_TYPE};
 use kube::client::Body;
 use std::future::Future;
 

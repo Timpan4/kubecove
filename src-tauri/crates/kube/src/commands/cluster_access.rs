@@ -12,12 +12,12 @@ mod plugin_path;
 use super::{
     helpers::session_scope::SessionScope,
     kubeconfig::{
-        cluster_contexts_from_kubeconfig, is_source_key, normalize_env_var, KubeconfigSource,
+        KubeconfigSource, cluster_contexts_from_kubeconfig, is_source_key, normalize_env_var,
     },
 };
 use crate::models::{AppError, AppErrorKind, ClusterContext};
 #[cfg(feature = "test-support")]
-pub use fixed::{FixedClusterAccess, FIXED_SOURCE_KEY};
+pub use fixed::{FIXED_SOURCE_KEY, FixedClusterAccess};
 use kube::Client;
 use std::{fmt, sync::Arc};
 
@@ -102,6 +102,12 @@ impl ClusterAccess {
             source_label: source.show_source_labels().then(|| source.label()),
             source: Source::Kubeconfig(Arc::new(source)),
         }
+    }
+
+    /// Reads one kubeconfig file, so tests need no process environment.
+    #[cfg(any(feature = "test-support", test))]
+    pub fn from_kubeconfig_file(path: std::path::PathBuf) -> Self {
+        Self::from_kubeconfig(KubeconfigSource::from_e2e_path(path))
     }
 
     /// Identifies the resolved source in caches, live-session scope and Argo

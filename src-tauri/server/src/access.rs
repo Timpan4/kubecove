@@ -1,6 +1,6 @@
 use crate::ApiError;
-use axum::http::{header, HeaderMap, StatusCode};
-use jsonwebtoken::{decode, decode_header, jwk::JwkSet, Algorithm, DecodingKey, Validation};
+use axum::http::{HeaderMap, StatusCode, header};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header, jwk::JwkSet};
 use kubecove_lib::models::AppErrorKind;
 use serde::Deserialize;
 use std::time::{Duration, SystemTime};
@@ -174,10 +174,10 @@ fn cache_lifetime(headers: &HeaderMap) -> Duration {
         {
             return Duration::ZERO;
         }
-        if let Some((name, value)) = directive.split_once('=') {
-            if name.eq_ignore_ascii_case("max-age") {
-                max_age = value.trim_matches('"').parse::<u64>().unwrap_or(0);
-            }
+        if let Some((name, value)) = directive.split_once('=')
+            && name.eq_ignore_ascii_case("max-age")
+        {
+            max_age = value.trim_matches('"').parse::<u64>().unwrap_or(0);
         }
     }
     let age = headers

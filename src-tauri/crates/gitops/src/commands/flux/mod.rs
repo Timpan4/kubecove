@@ -1,18 +1,17 @@
+use crate::commands::ClusterAccess;
 use crate::commands::gitops_crd::{
     discover_api_resources, find_discovered_api_resource, get_crd_object, list_crd_objects,
     object_age, resource_metadata, resource_status, resource_yaml,
 };
 use crate::commands::helpers::k8s_creation_timestamp_to_rfc3339;
-use crate::commands::ClusterAccess;
 use crate::models::AppErrorKind;
 use crate::models::{
-    evaluate_health, AppError, FluxDetectionSummary, FluxInventoryResource, FluxResourceDetails,
-    FluxResourceKind, FluxResourceSummary, HealthAssessment, HealthAssessmentEvidence,
-    HealthAssessmentInput, HealthAssessmentSource, HealthAssessmentState, YamlEncoding,
-    YamlViewMode,
+    AppError, FluxDetectionSummary, FluxInventoryResource, FluxResourceDetails, FluxResourceKind,
+    FluxResourceSummary, HealthAssessment, HealthAssessmentEvidence, HealthAssessmentInput,
+    HealthAssessmentSource, HealthAssessmentState, YamlEncoding, YamlViewMode, evaluate_health,
 };
-use kube::api::{ApiResource, DynamicObject};
 use kube::Client;
+use kube::api::{ApiResource, DynamicObject};
 use serde_json::Value;
 
 pub const MAX_FLUX_INVENTORY_ENTRIES: usize = 2048;

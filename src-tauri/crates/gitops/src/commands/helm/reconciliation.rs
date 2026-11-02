@@ -1,15 +1,15 @@
 use super::storage::get_helm_storage_record;
-use crate::commands::helpers::list_params;
 use crate::commands::ClusterAccess;
+use crate::commands::helpers::list_params;
 use crate::models::{
     AppError, DiscoveredResourceKind, HelmManifestResourceSummary, HelmReconciliationResource,
     HelmReconciliationStatus, HelmReconciliationTotals, HelmReleaseReconciliation,
     HelmReleaseSummary, ResourceSummary,
 };
 use kube::{
-    api::{Api, DynamicObject},
-    discovery::{verbs, Scope},
     Client, Error as KubeError,
+    api::{Api, DynamicObject},
+    discovery::{Scope, verbs},
 };
 use kubecove_kube::commands::discover_resources;
 use kubecove_kube::commands::dynamic_projection::{
@@ -18,8 +18,7 @@ use kubecove_kube::commands::dynamic_projection::{
 use std::collections::{BTreeMap, BTreeSet};
 
 const HELM_RELEASE_LABEL: &str = "helm.sh/release";
-const CONSERVATIVE_SCAN_WARNING: &str =
-    "Label-only reconciliation scans explicit Helm release labels for manifest kinds and common built-in namespaced kinds; it does not exhaustively scan every API group or CRD.";
+const CONSERVATIVE_SCAN_WARNING: &str = "Label-only reconciliation scans explicit Helm release labels for manifest kinds and common built-in namespaced kinds; it does not exhaustively scan every API group or CRD.";
 /// Built-in kinds the label scan covers even when the manifest omits them, as
 /// `(group, kind)`. A same-named kind in another group is scanned only when the
 /// manifest references it.

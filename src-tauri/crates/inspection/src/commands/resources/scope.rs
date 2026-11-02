@@ -1,13 +1,13 @@
 use super::{dynamic_resources_summary_from, resources_summary_from};
+use crate::commands::MAX_LIST_CONCURRENCY;
 #[cfg(any(test, feature = "bench-support"))]
 use crate::commands::helpers::enrich_resource_summaries_with_flux_inventory;
 use crate::commands::helpers::{fetch_flux_ownership_index, filter_flux_ownership_index};
-use crate::commands::MAX_LIST_CONCURRENCY;
 use crate::models::AppErrorKind;
 use crate::runtime::State;
 use crate::{
     commands::{
-        diagnostic_field, BackendCancellationRegistry, ClusterAccess, ClusterLiveStore, FiniteRead,
+        BackendCancellationRegistry, ClusterAccess, ClusterLiveStore, FiniteRead, diagnostic_field,
     },
     models::{
         AppError, DiscoveredResourceKind, ResourceListRequest, ResourceScopeFailure,
@@ -378,7 +378,7 @@ pub async fn list_resource_scope(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commands::{ClientIntent, FixedClusterAccess, FIXED_SOURCE_KEY};
+    use crate::commands::{ClientIntent, FIXED_SOURCE_KEY, FixedClusterAccess};
     use http::{Request, Response};
     use kube::client::Body;
 

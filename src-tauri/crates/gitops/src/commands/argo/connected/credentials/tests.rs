@@ -7,9 +7,11 @@ struct MemoryCredentialStore(Mutex<HashMap<String, String>>);
 #[test]
 fn credential_failure_keeps_native_source_private() {
     let error = credential_error(keyring::Error::NoEntry);
-    assert!(std::error::Error::source(&error)
-        .unwrap()
-        .is::<keyring::Error>());
+    assert!(
+        std::error::Error::source(&error)
+            .unwrap()
+            .is::<keyring::Error>()
+    );
     assert_eq!(
         serde_json::to_value(&error).unwrap(),
         json!({"message":"native credential storage unavailable","kind":"credentialUnavailable"})

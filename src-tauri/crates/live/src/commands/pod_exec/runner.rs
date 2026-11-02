@@ -12,9 +12,9 @@ use tokio::{
 };
 
 use super::registry::{
-    session_summary, ExecCommand, PodExecRegistry, COMMAND_CAPACITY, INPUT_CHUNK_BYTES,
+    COMMAND_CAPACITY, ExecCommand, INPUT_CHUNK_BYTES, PodExecRegistry, session_summary,
 };
-use super::validation::{validate_request, ValidatedPodExecRequest};
+use super::validation::{ValidatedPodExecRequest, validate_request};
 use crate::commands::ClusterAccess;
 
 pub const EXEC_OUTPUT_CHUNK_BYTES: usize = 4096;
@@ -118,7 +118,7 @@ async fn read_exec_output(
                 return Err(
                     AppError::new("Could not read exec output", AppErrorKind::Io)
                         .with_source(error),
-                )
+                );
             }
         }
     }

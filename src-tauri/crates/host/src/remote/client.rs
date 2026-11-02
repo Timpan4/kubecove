@@ -3,30 +3,30 @@ use super::tunnels::RemoteTunnelRegistry;
 use futures_util::{SinkExt, StreamExt};
 use kubecove_kube::runtime::Channel;
 use kubecove_models::{
-    decode_tunnel_frame, encode_tunnel_frame, is_tunnel_connection_id, AppError, AppErrorKind,
-    MAX_TUNNEL_PAYLOAD_BYTES, MAX_WEBSOCKET_MESSAGE_BYTES,
+    AppError, AppErrorKind, MAX_TUNNEL_PAYLOAD_BYTES, MAX_WEBSOCKET_MESSAGE_BYTES,
+    decode_tunnel_frame, encode_tunnel_frame, is_tunnel_connection_id,
 };
-use reqwest::{header::HeaderValue, Client as HttpClient, Url};
+use reqwest::{Client as HttpClient, Url, header::HeaderValue};
 use serde::Deserialize;
-use serde_json::{json, value::RawValue, Value};
+use serde_json::{Value, json, value::RawValue};
 use std::{
     collections::HashMap,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
     },
     time::Duration,
 };
 use tokio::{
-    sync::{mpsc, oneshot, RwLock},
+    sync::{RwLock, mpsc, oneshot},
     task::JoinHandle,
     time::Instant,
 };
 use tokio_tungstenite::{
     connect_async_with_config,
     tungstenite::{
-        client::IntoClientRequest, http::header::AUTHORIZATION, protocol::WebSocketConfig,
-        Message as WsMessage,
+        Message as WsMessage, client::IntoClientRequest, http::header::AUTHORIZATION,
+        protocol::WebSocketConfig,
     },
 };
 
@@ -517,20 +517,19 @@ fn handle_text(connection: &RemoteConnection, text: &str) -> bool {
         connection.fail_controls();
         return true;
     }
-    if kind == "tunnel_closed" || kind == "tunnel_error" {
-        if let Some(connection_id) = value.get("connectionId").and_then(Value::as_str) {
-            connection.remove_tunnel_sender(connection_id);
-        }
+    if (kind == "tunnel_closed" || kind == "tunnel_error")
+        && let Some(connection_id) = value.get("connectionId").and_then(Value::as_str)
+    {
+        connection.remove_tunnel_sender(connection_id);
     }
-    if let Some(key) = control_key(&value) {
-        if let Some(sender) = connection
+    if let Some(key) = control_key(&value)
+        && let Some(sender) = connection
             .controls
             .lock()
             .expect("remote control registry lock")
             .remove(&key)
-        {
-            let _ = sender.send(value);
-        }
+    {
+        let _ = sender.send(value);
     }
     false
 }

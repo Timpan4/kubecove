@@ -1,6 +1,6 @@
 use super::super::transport::{application_api_path, resource_actions_path};
 use crate::models::{ArgoApplicationRef, ArgoOperationRequest};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub(super) fn application_path(
     app: &ArgoApplicationRef,
@@ -21,10 +21,10 @@ fn identity(resource: &crate::models::ArgoManagedResource) -> Value {
     json!({"group": resource.group, "kind": resource.kind, "namespace": resource.namespace, "name": resource.name})
 }
 pub(super) fn connected_payload(request: &ArgoOperationRequest) -> Value {
-    if matches!(request.action.as_str(), "sync" | "retry") {
-        if let Some(payload) = &request.sync_payload {
-            return payload.clone();
-        }
+    if matches!(request.action.as_str(), "sync" | "retry")
+        && let Some(payload) = &request.sync_payload
+    {
+        return payload.clone();
     }
     match request.action.as_str() {
         "sync" | "retry" => sync_payload(request),

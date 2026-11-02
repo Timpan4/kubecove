@@ -2,14 +2,14 @@ use crate::models::AppErrorKind;
 use crate::runtime::State;
 use crate::{
     commands::helpers::list_params,
-    commands::{diagnostic_field, ClusterAccess, ClusterLiveStore, FiniteRead},
+    commands::{ClusterAccess, ClusterLiveStore, FiniteRead, diagnostic_field},
     models::{AppError, DiscoveredResourceKind},
 };
-use futures_util::{io::AsyncReadExt, stream, StreamExt};
+use futures_util::{StreamExt, io::AsyncReadExt, stream};
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
 use kube::{
-    api::{Api, ApiResource, DynamicObject},
     Client,
+    api::{Api, ApiResource, DynamicObject},
 };
 use std::sync::Arc;
 

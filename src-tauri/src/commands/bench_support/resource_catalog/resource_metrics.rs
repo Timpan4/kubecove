@@ -2,7 +2,7 @@ use crate::{commands::metrics, models::ResourceMetricsSummary};
 use k8s_openapi::api::{apps::v1::ReplicaSet, core::v1::Pod};
 use kube::api::DynamicObject;
 use serde::de::DeserializeOwned;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[derive(Clone)]
 pub struct ResourceMetricsFixture {

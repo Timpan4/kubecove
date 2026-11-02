@@ -59,7 +59,7 @@ pub fn inventory_inputs() -> RbacInventoryInputs {
         .map(|index| RoleBinding {
             metadata: namespaced_metadata(&format!("role-binding-{index:03}"), index),
             role_ref: RoleRef {
-                api_group: "rbac.authorization.k8s.io".to_string(),
+                api_group: Some("rbac.authorization.k8s.io".to_string()),
                 kind: "Role".to_string(),
                 name: if index % 17 == 0 {
                     format!("missing-role-{index:03}")
@@ -87,7 +87,7 @@ pub fn inventory_inputs() -> RbacInventoryInputs {
                     ..Default::default()
                 },
                 role_ref: RoleRef {
-                    api_group: "rbac.authorization.k8s.io".to_string(),
+                    api_group: Some("rbac.authorization.k8s.io".to_string()),
                     kind: "ClusterRole".to_string(),
                     name: if index % 19 == 0 {
                         format!("missing-cluster-role-{index:03}")

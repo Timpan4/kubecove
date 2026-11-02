@@ -20,8 +20,8 @@ use crate::{
 use serde::Serialize;
 use serde_json::Value;
 use tauri::{
-    ipc::{Channel, Invoke, InvokeBody, JavaScriptChannelId, Request, Response},
     Manager, Runtime, State, Webview,
+    ipc::{Channel, Invoke, InvokeBody, JavaScriptChannelId, Request, Response},
 };
 
 fn request_args<'a>(request: &'a Request<'_>) -> Result<CommandArgs<'a>, AppError> {

@@ -1,7 +1,7 @@
-use crate::{index_with_policy, ApiError, AppState};
+use crate::{ApiError, AppState, index_with_policy};
 use axum::{
     extract::State,
-    http::{header, HeaderMap, StatusCode, Uri},
+    http::{HeaderMap, StatusCode, Uri, header},
     response::{IntoResponse, Response},
 };
 use kubecove_lib::models::AppErrorKind;
@@ -99,14 +99,14 @@ fn negotiate(headers: &HeaderMap, asset: &CompressedAsset) -> &'static str {
             let name = parts.next().unwrap_or("").trim();
             let mut quality = 1.0_f32;
             for parameter in parts {
-                if let Some((key, value)) = parameter.trim().split_once('=') {
-                    if key.eq_ignore_ascii_case("q") {
-                        quality = value
-                            .parse::<f32>()
-                            .ok()
-                            .filter(|q| (0.0..=1.0).contains(q))
-                            .unwrap_or(0.0);
-                    }
+                if let Some((key, value)) = parameter.trim().split_once('=')
+                    && key.eq_ignore_ascii_case("q")
+                {
+                    quality = value
+                        .parse::<f32>()
+                        .ok()
+                        .filter(|q| (0.0..=1.0).contains(q))
+                        .unwrap_or(0.0);
                 }
             }
             if name.eq_ignore_ascii_case("br") {

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { bench, describe } from "vitest";
+import { describe } from "vitest";
 import { parse } from "yaml";
 import { formatYamlDocument } from "@/lib/yamlFormat";
+import { benchmark } from "./benchmark";
 import { buildYamlManifest } from "./yaml-benchmark-fixtures";
 
 const validYaml = buildYamlManifest(40);
@@ -44,17 +45,17 @@ assert.deepEqual(parse(styledKyamlOutput), parse(styledYaml));
 assert(rejectedDuplicateKey);
 
 describe("F19 explicit YAML and KYAML formatting (40 containers)", () => {
-	bench("F19 validate and format full document as YAML", () => {
+	benchmark("F19 validate and format full document as YAML", () => {
 		formatYamlDocument(validYaml, "yaml");
 		formatYamlDocument(styledYaml, "yaml");
 	});
 
-	bench("F19 validate and format full document as KYAML", () => {
+	benchmark("F19 validate and format full document as KYAML", () => {
 		formatYamlDocument(validYaml, "kyaml");
 		formatYamlDocument(styledYaml, "kyaml");
 	});
 
-	bench("F19 reject duplicate keys through production formatter", () => {
+	benchmark("F19 reject duplicate keys through production formatter", () => {
 		try {
 			formatYamlDocument(duplicateKeyYaml, "yaml");
 		} catch {

@@ -9,8 +9,8 @@ use std::{
     collections::HashMap,
     future::Future,
     sync::{
-        atomic::{AtomicU64, Ordering},
         Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -96,18 +96,24 @@ impl<T> Drop for LoadWaiter<'_, T> {
         if *waiters != 0 {
             return;
         }
-        if let Some(CacheEntry::Loading {
+        let Some(CacheEntry::Loading {
+            future,
             cancellation,
             previous,
             ..
         }) = entries.remove(self.key)
-        {
-            cancellation.cancel();
-            if let Some(mut previous) = previous {
-                previous.dirty = true;
-                entries.insert(self.key.to_string(), CacheEntry::Ready(previous));
-            }
+        else {
+            return;
+        };
+        cancellation.cancel();
+        if let Some(mut previous) = previous {
+            previous.dirty = true;
+            entries.insert(self.key.to_string(), CacheEntry::Ready(previous));
         }
+        // The last shared handle owns the abandoned load future; drop it after
+        // unlocking so its teardown never runs under the cache lock.
+        drop(entries);
+        drop(future);
     }
 }
 

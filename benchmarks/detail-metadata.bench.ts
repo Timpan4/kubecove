@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { bench, describe } from "vitest";
+import { describe } from "vitest";
 import {
 	buildCuratedMetadata,
 	formatObjectRows,
 	visibleMetadataBadges,
 } from "@/features/resource-detail/metadata-details";
 import type { JsonObject, ResourceSummary } from "@/lib/types";
+import { benchmark } from "./benchmark";
 
 const metadata: JsonObject = {
 	name: "checkout-api-7d8d9f4b6d-x9k2p",
@@ -86,7 +87,7 @@ assert.equal(rawMetadataRows.length, Object.keys(metadata).length);
 assert.equal(rawStatusRows.length, Object.keys(status).length);
 
 describe("F12 curated and raw resource detail preparation", () => {
-	bench(
+	benchmark(
 		"F12 curated ownership, labels, annotations, and manager summary",
 		() => {
 			const next = buildCuratedMetadata(metadata, resource);
@@ -95,7 +96,7 @@ describe("F12 curated and raw resource detail preparation", () => {
 		},
 	);
 
-	bench("F12 raw metadata and status row formatting", () => {
+	benchmark("F12 raw metadata and status row formatting", () => {
 		formatObjectRows(metadata);
 		formatObjectRows(status);
 	});

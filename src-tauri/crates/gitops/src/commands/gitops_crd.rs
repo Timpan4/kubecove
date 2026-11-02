@@ -6,8 +6,8 @@ use crate::models::AppErrorKind;
 use chrono::Utc;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::{
-    api::{Api, ApiResource, DynamicObject},
     Client,
+    api::{Api, ApiResource, DynamicObject},
 };
 use kubecove_kube::commands::discover_resources;
 use serde_json::Value;

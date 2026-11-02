@@ -15,8 +15,8 @@ use k8s_openapi::{
     apimachinery::pkg::apis::meta::v1::LabelSelector,
 };
 use kube::{
-    api::{Api, ListParams, LogParams, WatchEvent, WatchParams},
     Client,
+    api::{Api, ListParams, LogParams, WatchEvent, WatchParams},
 };
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -191,10 +191,7 @@ async fn resolve_target_selector(
                 .get(&request.target_name)
                 .await
                 .map_err(AppError::from)?;
-            let spec = deployment.spec.ok_or_else(|| {
-                AppError::new("Deployment spec is unavailable", AppErrorKind::Logs)
-            })?;
-            selector_from_label_selector(&spec.selector)
+            selector_from_label_selector(&deployment.spec.selector)
         }
         "Service" => {
             let services: Api<Service> = Api::namespaced(client, &request.namespace);

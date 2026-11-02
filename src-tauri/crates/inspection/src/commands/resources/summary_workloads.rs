@@ -1,7 +1,7 @@
 use super::builtin_summary::{
-    builtin_summary, list_namespaced_summaries, namespace_or_all, BuiltinSummary, KindStatus,
+    BuiltinSummary, KindStatus, builtin_summary, list_namespaced_summaries, namespace_or_all,
 };
-use crate::commands::helpers::{kubernetes_health, list_params, Readiness};
+use crate::commands::helpers::{Readiness, kubernetes_health, list_params};
 use crate::models::{AppError, ResourceHealth, ResourceSummary};
 use chrono::{DateTime, Utc};
 use k8s_openapi::api::apps::v1::{
@@ -18,25 +18,18 @@ fn replica_health(ready: i32, desired: i32) -> ResourceHealth {
 
 impl BuiltinSummary for Deployment {
     fn kind_status(&self) -> Option<KindStatus> {
-        if self.status.is_none() && self.spec.as_ref().and_then(|spec| spec.replicas).is_none() {
+        if self.status.is_none() && self.spec.replicas.is_none() {
             return Some(KindStatus::default());
         }
         let pending_status = DeploymentStatus::default();
         let status = self.status.as_ref().unwrap_or(&pending_status);
         let available = status.available_replicas.unwrap_or(0);
         let ready = status.ready_replicas.unwrap_or(0);
-        let desired = self
-            .spec
-            .as_ref()
-            .and_then(|spec| spec.replicas)
-            .unwrap_or(status.replicas.unwrap_or(0));
-        let paused = self
-            .spec
-            .as_ref()
-            .is_some_and(|spec| spec.paused == Some(true));
+        let desired = self.spec.replicas.unwrap_or(status.replicas.unwrap_or(0));
+        let paused = self.spec.paused == Some(true);
         let failed = status.conditions.iter().flatten().any(|condition| {
-            condition.type_ == "Progressing"
-                && condition.status == "False"
+            condition.type_.as_deref() == Some("Progressing")
+                && condition.status.as_deref() == Some("False")
                 && condition.reason.as_deref() == Some("ProgressDeadlineExceeded")
         });
         let updated = status.updated_replicas.unwrap_or(0);
@@ -77,8 +70,7 @@ impl BuiltinSummary for ReplicaSet {
     fn kind_status(&self) -> Option<KindStatus> {
         let desired = self
             .spec
-            .as_ref()
-            .and_then(|spec| spec.replicas)
+            .replicas
             .or_else(|| self.status.as_ref().map(|status| status.replicas));
         let Some(desired) = desired else {
             return Some(KindStatus::default());

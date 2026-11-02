@@ -8,14 +8,14 @@ use super::super::{
     topology_network::build_network_flow_topology,
 };
 use crate::commands::{
-    builtin_kinds::{builtin_kind, BUILTIN_KINDS},
     FixedClusterAccess,
+    builtin_kinds::{BUILTIN_KINDS, builtin_kind},
 };
 use crate::models::{HealthAssessment, HealthAssessmentState, ResourceHealth, ResourceSummary};
-use http::{Request, Response};
-use kube::{client::Body, Client};
-use serde_json::{json, Value};
 use HealthAssessmentState::{Degraded, Healthy, NeedsAttention, NotEvaluated, Unknown};
+use http::{Request, Response};
+use kube::{Client, client::Body};
+use serde_json::{Value, json};
 
 const CONTEXT: &str = "parity";
 const NAMESPACE: &str = "tenant";
