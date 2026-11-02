@@ -54,7 +54,7 @@ async fn run(
         let changed = owner.socket_changed.notified();
         tokio::pin!(changed);
         changed.as_mut().enable();
-        if owner.socket.lock().await.generation != generation {
+        if owner.socket.lock().await.generation() != generation {
             return;
         }
         let writer = async {
@@ -129,7 +129,7 @@ async fn run(
     let _ = outgoing.close().now_or_never();
     {
         let socket = owner.socket.lock().await;
-        if socket.generation == generation {
+        if socket.generation() == generation {
             owner.tunnels.close_connections();
         }
     }
