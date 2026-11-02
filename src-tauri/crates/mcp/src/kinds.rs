@@ -69,14 +69,21 @@ pub fn table_kinds() -> impl Iterator<Item = &'static BuiltinKind> {
     BUILTIN_KINDS.iter().filter(|kind| kind.table)
 }
 
+/// Kubernetes' short names for one built-in kind.
+pub fn builtin_short_names(kind: &BuiltinKind) -> Vec<&'static str> {
+    BUILTIN_SHORT_NAMES
+        .iter()
+        .filter(|(_, name)| *name == kind.kind)
+        .map(|(short, _)| *short)
+        .collect()
+}
+
 fn names_builtin(kind: &BuiltinKind, query: &str) -> bool {
     let singular = kind.kind.to_ascii_lowercase();
     query.eq_ignore_ascii_case(kind.kind)
         || query.eq_ignore_ascii_case(kind.plural)
         || query == singular
-        || BUILTIN_SHORT_NAMES
-            .iter()
-            .any(|(short, name)| *name == kind.kind && query == *short)
+        || builtin_short_names(kind).contains(&query)
         || (!kind.group.is_empty()
             && query.eq_ignore_ascii_case(&format!("{}.{}", kind.plural, kind.group)))
 }

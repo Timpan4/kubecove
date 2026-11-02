@@ -4,12 +4,13 @@ use super::{access_for, args};
 use crate::{
     compact::{insert_some, page},
     handler::McpContext,
-    kinds::{custom_kinds, table_kinds},
+    kinds::{builtin_short_names, custom_kinds, table_kinds},
 };
 use kubecove_inspection::commands::{namespaces_summary_from, resource_metrics_from};
 use kubecove_kube::commands::ClusterAccess;
-use kubecove_models::{AppError, ResourceMetricSummary};
+use kubecove_models::{AppError, AppErrorKind, ResourceMetricSummary};
 use serde_json::{Map, Value, json};
+use std::sync::Arc;
 
 pub fn list_contexts() -> Result<Value, AppError> {
     let contexts = ClusterAccess::resolve(None)?.contexts()?;
@@ -50,7 +51,18 @@ pub async fn list_resource_kinds(
     arguments: args::ListResourceKindsArgs,
 ) -> Result<Value, AppError> {
     let (access, cluster) = access_for(arguments.context)?;
-    let custom = custom_kinds(&access, &context.live_store, &cluster).await?;
+    // A user who may not list CustomResourceDefinitions can still read built-in kinds.
+    let (custom, warning) = match custom_kinds(&access, &context.live_store, &cluster).await {
+        Ok(custom) => (custom, None),
+        Err(error) if error.kind == AppErrorKind::Forbidden => (
+            Arc::default(),
+            Some(format!(
+                "custom resource kinds are not listed: {}",
+                error.message
+            )),
+        ),
+        Err(error) => return Err(error),
+    };
     let query = arguments
         .query
         .map(|query| query.trim().to_ascii_lowercase())
@@ -64,11 +76,13 @@ pub async fn list_resource_kinds(
     };
     let mut rows = Vec::new();
     for kind in table_kinds() {
-        if matches(&[kind.kind, kind.plural, kind.group]) {
+        let short_names = builtin_short_names(kind);
+        if matches(&[kind.kind, kind.plural, kind.group, &short_names.join(" ")]) {
             rows.push(json!({
                 "kind": kind.kind,
                 "apiVersion": kind.api_version(),
                 "plural": kind.plural,
+                "shortNames": short_names,
                 "namespaced": kind.namespaced,
                 "builtin": true,
             }));
@@ -88,6 +102,9 @@ pub async fn list_resource_kinds(
     }
     let mut body = page(rows, arguments.limit, arguments.offset)?.into_json("kinds", |row| row);
     body.insert("context".into(), cluster.into());
+    if let Some(warning) = warning {
+        body.insert("warnings".into(), json!([warning]));
+    }
     Ok(Value::Object(body))
 }
 

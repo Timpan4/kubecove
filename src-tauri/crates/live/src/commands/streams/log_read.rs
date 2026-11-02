@@ -68,20 +68,38 @@ pub async fn read_pod_logs(
         .await
 }
 
+/// Like kubectl, the annotation may name a regular, init or ephemeral container; the
+/// fallback is the first regular container.
 fn default_container(pod: &Pod) -> Result<String, AppError> {
-    let containers = pod
-        .spec
-        .as_ref()
-        .map(|spec| spec.containers.as_slice())
-        .unwrap_or_default();
-    let annotated = pod
-        .metadata
+    let Some(spec) = pod.spec.as_ref() else {
+        return Err(no_containers());
+    };
+    let named = |name: &String| {
+        let name = name.as_str();
+        spec.containers
+            .iter()
+            .any(|container| container.name == name)
+            || spec
+                .init_containers
+                .iter()
+                .flatten()
+                .any(|container| container.name == name)
+            || spec
+                .ephemeral_containers
+                .iter()
+                .flatten()
+                .any(|container| container.name == name)
+    };
+    pod.metadata
         .annotations
         .as_ref()
         .and_then(|annotations| annotations.get(DEFAULT_CONTAINER_ANNOTATION))
-        .filter(|name| containers.iter().any(|container| &container.name == *name));
-    annotated
-        .or_else(|| containers.first().map(|container| &container.name))
+        .filter(|name| named(name))
+        .or_else(|| spec.containers.first().map(|container| &container.name))
         .cloned()
-        .ok_or_else(|| AppError::new("the Pod has no containers", AppErrorKind::Validation))
+        .ok_or_else(no_containers)
+}
+
+fn no_containers() -> AppError {
+    AppError::new("the Pod has no containers", AppErrorKind::Validation)
 }

@@ -25,20 +25,26 @@
 	const portValid = $derived(/^\d+$/.test(portText.trim()) && port >= 1 && port <= 65_535);
 
 	onMount(() => {
-		void run(getMcpStatus);
+		void run(getMcpStatus).then(syncPort);
 	});
 
-	async function run(action: () => Promise<McpStatus>) {
+	/** Applies an action's status. Only loading and saving the port reset the port draft. */
+	async function run(action: () => Promise<McpStatus>): Promise<McpStatus | null> {
 		pending = true;
 		error = null;
 		try {
 			status = await action();
-			portText = String(status.port);
+			return status;
 		} catch (reason) {
 			error = messageFromError(reason);
+			return null;
 		} finally {
 			pending = false;
 		}
+	}
+
+	function syncPort(saved: McpStatus | null) {
+		if (saved) portText = String(saved.port);
 	}
 
 	async function copyWithToken(label: string, format: (token: string) => string) {
@@ -77,7 +83,7 @@
 			class="flex items-center gap-2"
 			onsubmit={(event) => {
 				event.preventDefault();
-				if (status && portValid) void run(() => setMcpSettings(status!.enabled, port));
+				if (status && portValid) void run(() => setMcpSettings(status!.enabled, port)).then(syncPort);
 			}}
 		>
 			<Input

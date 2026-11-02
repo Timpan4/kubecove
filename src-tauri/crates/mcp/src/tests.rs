@@ -9,6 +9,8 @@
 //! - `describe_resource` or `get_resource_yaml` returns Secret values, including through
 //!   kubectl's last-applied annotation.
 //! - A tool asks for a client other than a Read client.
+//! - `list_resource_kinds` misses a kind by its short name, or fails outright when the
+//!   user may not list custom resource definitions.
 //! - Paging skips or repeats rows, or reports a next page after the last one.
 //! - The token file is readable by other users, changes across restarts, or survives
 //!   rotation.
@@ -69,6 +71,10 @@ fn cluster() -> Arc<FixedClusterAccess> {
             "/api/v1/namespaces/apps/events" => (
                 StatusCode::OK,
                 json!({"apiVersion": "v1", "kind": "EventList", "metadata": {}, "items": []}),
+            ),
+            "/apis/apiextensions.k8s.io/v1/customresourcedefinitions" => (
+                StatusCode::FORBIDDEN,
+                json!({"apiVersion": "v1", "kind": "Status", "status": "Failure", "reason": "Forbidden", "code": 403}),
             ),
             _ => (
                 StatusCode::NOT_FOUND,
@@ -208,6 +214,20 @@ async fn secret_values_never_leave_through_describe_or_yaml() {
         intents.iter().all(|intent| *intent == ClientIntent::Read),
         "{intents:?}"
     );
+}
+
+#[tokio::test]
+async fn kind_catalog_matches_short_names_and_survives_forbidden_crd_listing() {
+    let endpoint = endpoint(&cluster());
+    let (_, body) = call(
+        &endpoint,
+        "list_resource_kinds",
+        json!({"context": "fixed", "query": "svc"}),
+    )
+    .await;
+    assert_eq!(body["kinds"][0]["kind"], "Service", "{body}");
+    assert_eq!(body["kinds"][0]["shortNames"], json!(["svc"]));
+    assert_eq!(body["warnings"].as_array().map(Vec::len), Some(1), "{body}");
 }
 
 #[test]

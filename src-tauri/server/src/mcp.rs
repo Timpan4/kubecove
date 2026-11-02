@@ -27,8 +27,13 @@ pub struct McpServer {
 
 impl McpServer {
     /// Loads or creates `mcp-token` in `data_dir`. `origins` are the browser origins the
-    /// server already accepts.
-    pub fn new(data_dir: &Path, origins: Vec<String>) -> io::Result<Self> {
+    /// server already accepts. Cancelling `shutdown` cancels in-flight tool calls so a
+    /// slow Kubernetes API cannot hold graceful shutdown open.
+    pub fn new(
+        data_dir: &Path,
+        origins: Vec<String>,
+        shutdown: CancellationToken,
+    ) -> io::Result<Self> {
         let token = load_or_create_token(data_dir)?;
         let session = SessionId::random()?;
         // Tools only read: they open no streams, exec sessions, forwards or Argo CD
@@ -49,7 +54,7 @@ impl McpServer {
             allowed_origins: origins,
         };
         Ok(Self {
-            endpoint: McpEndpoint::new(Arc::new(context), token, policy, CancellationToken::new()),
+            endpoint: McpEndpoint::new(Arc::new(context), token, policy, shutdown),
         })
     }
 }

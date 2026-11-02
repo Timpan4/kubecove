@@ -28,7 +28,14 @@ fn data_dir() -> std::path::PathBuf {
 fn mcp_state() -> (Arc<AppState>, String, std::path::PathBuf) {
     let dir = data_dir();
     let mut state = Arc::into_inner(api_tests::state()).unwrap();
-    state.mcp = Some(mcp::McpServer::new(&dir, state.policy.origins.clone()).unwrap());
+    state.mcp = Some(
+        mcp::McpServer::new(
+            &dir,
+            state.policy.origins.clone(),
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .unwrap(),
+    );
     let token = kubecove_mcp::load_or_create_token(&dir).unwrap();
     (Arc::new(state), token, dir)
 }
@@ -53,15 +60,16 @@ fn mcp_request(bearer: Option<&str>, origin: Option<&str>) -> Request<Body> {
 
 #[tokio::test]
 async fn mcp_route_exists_only_with_the_flag() {
-    let app = router(api_tests::state());
-    for bearer in [None, Some("test-token")] {
-        let response = app
-            .clone()
-            .oneshot(mcp_request(bearer, None))
-            .await
-            .unwrap();
-        assert!(!response.status().is_success(), "{bearer:?}");
-    }
+    // The startup token and the served Origin pass the guard, so only routing decides.
+    let response = router(api_tests::state())
+        .oneshot(mcp_request(
+            Some("test-token"),
+            Some("http://localhost:1234"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    assert_eq!(response.headers().get(header::WWW_AUTHENTICATE), None);
 }
 
 #[tokio::test]
