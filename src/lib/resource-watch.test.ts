@@ -380,6 +380,36 @@ test("startup rejection retries and a late start is stopped after disposal", asy
 	expect(stopped).toEqual([{ streamId: "late" }]);
 });
 
+// Failure mode: a stream that ends before its start command resolves is
+// recorded as running, so recovery never starts a replacement.
+test("a watch that stops before its start resolves is restarted by recovery", async () => {
+	jest.useFakeTimers();
+	const channels: Array<ReturnType<typeof createMockChannel<StreamMessage>>> = [];
+	const starts: Array<(id: string) => void> = [];
+	const { stop } = observeResourceScope({
+		client: createMockTauriClient({
+			start_resource_watch: () => new Promise<string>((done) => starts.push(done)),
+			stop_stream: () => true,
+		}),
+		clusterContext: "dev",
+		keys: [{ resourceKind: { kind: "Pod" } }],
+		onState: () => {},
+		onChange: () => {},
+		reload: async () => {},
+		openChannel: (handler) => { const channel = createMockChannel(handler); channels.push(channel); return channel; },
+	});
+	try {
+		await Promise.resolve();
+		channels[0]?.onmessage({ type: "stopped", streamId: "first" });
+		starts[0]?.("first");
+		await Promise.resolve();
+		await Promise.resolve();
+		jest.advanceTimersByTime(RESOURCE_RECOVERY_INTERVAL);
+		await Promise.resolve();
+		expect(starts).toHaveLength(2);
+	} finally { stop(); }
+});
+
 function reconcileHarness() {
 	const started: string[] = [];
 	const stopped: string[] = [];

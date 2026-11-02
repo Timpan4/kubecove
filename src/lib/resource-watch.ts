@@ -39,15 +39,22 @@ export interface ResourceScopeObserver {
 	checkReads: () => void;
 }
 
+type WatchChannel = ReturnType<typeof createStreamChannel>;
+
+// The stream's lifecycle. Idle watches restart on the next recovery tick; closed is final.
+type WatchPhase =
+	| { kind: "idle" }
+	| { kind: "opening"; channel: WatchChannel }
+	| { kind: "running"; channel: WatchChannel; id: string }
+	| { kind: "closed" };
+
 interface WatchRegistration {
 	key: WatchResourceKey;
-	closed: boolean;
-	id: string | null;
-	opening: boolean;
+	phase: WatchPhase;
+	// What the running stream last reported.
 	connected: boolean;
 	error: string | null;
 	permissionWarning: string | null;
-	channel: ReturnType<typeof createStreamChannel> | null;
 }
 
 export function observeResourceScope({
@@ -78,13 +85,10 @@ export function observeResourceScope({
 	let scopeGeneration = 0;
 	const register = (key: WatchResourceKey): WatchRegistration => ({
 		key,
-		closed: false,
-		id: null,
-		opening: false,
+		phase: { kind: "idle" },
 		connected: false,
 		error: null,
 		permissionWarning: null,
-		channel: null,
 	});
 	let watches = keys.map(register);
 
@@ -133,10 +137,9 @@ export function observeResourceScope({
 		}
 	}
 	function start(watch: WatchRegistration) {
-		if (disposed || watch.closed || watch.opening || watch.id || watch.permissionWarning) return;
-		watch.opening = true;
+		if (disposed || watch.phase.kind !== "idle" || watch.permissionWarning) return;
 		const channel = openChannel((event) => {
-			if (disposed || watch.closed || watch.channel !== channel) return;
+			if (disposed || watch.phase.kind === "closed" || watch.phase.kind === "idle" || watch.phase.channel !== channel) return;
 			if (event.type === "status") {
 				watch.permissionWarning = event.status === "forbidden" ? event.message : null;
 				watch.connected = event.status === "connected";
@@ -147,8 +150,9 @@ export function observeResourceScope({
 				watch.error = event.message;
 				needsCatchUp = true;
 			} else if (event.type === "stopped") {
+				// Also reached while opening: the start result below then finds the watch idle.
+				watch.phase = { kind: "idle" };
 				watch.connected = false;
-				watch.id = null;
 				needsCatchUp = true;
 				closeStreamChannel(channel);
 			} else if (event.type === "resourceChanged") {
@@ -156,7 +160,8 @@ export function observeResourceScope({
 			}
 			publish();
 		}, client);
-		watch.channel = channel;
+		const opening: WatchPhase = { kind: "opening", channel };
+		watch.phase = opening;
 		void startResourceWatch(
 			client,
 			clusterContext,
@@ -165,16 +170,15 @@ export function observeResourceScope({
 			kubeconfigEnvVar,
 		)
 			.then((id) => {
-				watch.opening = false;
-				if (disposed || watch.closed) {
+				if (disposed || watch.phase !== opening) {
 					void stopStream(client, id).catch(() => {});
 					return;
 				}
-				watch.id = id;
+				watch.phase = { kind: "running", channel, id };
 			})
 			.catch((error) => {
-				watch.opening = false;
-				if (watch.closed) return;
+				if (watch.phase !== opening) return;
+				watch.phase = { kind: "idle" };
 				watch.error = messageFromError(error);
 				watch.connected = false;
 				needsCatchUp = true;
@@ -204,9 +208,10 @@ export function observeResourceScope({
 	timer = setTimeout(tick, RESOURCE_RECOVERY_INTERVAL);
 
 	function close(watch: WatchRegistration) {
-		watch.closed = true;
-		if (watch.channel) closeStreamChannel(watch.channel);
-		if (watch.id) void stopStream(client, watch.id).catch(() => {});
+		const previous = watch.phase;
+		watch.phase = { kind: "closed" };
+		if (previous.kind === "opening" || previous.kind === "running") closeStreamChannel(previous.channel);
+		if (previous.kind === "running") void stopStream(client, previous.id).catch(() => {});
 	}
 
 	return {
