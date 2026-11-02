@@ -102,7 +102,8 @@ pub struct PodLogsArgs {
     pub namespace: String,
     /// Pod name.
     pub pod: String,
-    /// Container name. Required when the Pod has more than one container.
+    /// Container name. Omit to read the container `kubectl logs` would: the
+    /// `kubectl.kubernetes.io/default-container` annotation, else the first container.
     pub container: Option<String>,
     /// Lines from the end of the log. Defaults to 200; at most 1000.
     #[schemars(range(min = 0))]
