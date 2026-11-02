@@ -1,7 +1,7 @@
 use super::*;
 use crate::commands::{LiveSessionScope, SessionScope};
 use crate::models::{LiveSessionCleanupRequest, PortForwardSessionStatus};
-use lifecycle::{ForwardEvent, apply_forward_event};
+use lifecycle::{ForwardConnections, ForwardEvent, apply_forward_event};
 use std::{
     future::Future,
     sync::{
@@ -126,14 +126,19 @@ fn forward_status_describes_every_open_connection_and_stopped_is_final() {
     use PortForwardSessionStatus as Status;
     let mut summary =
         lifecycle::session_summary("pf-1".to_string(), &test_target("kind-dev", None), 18080);
-    apply_forward_event(&mut summary, ForwardEvent::Resolving);
+    let mut connections = ForwardConnections::default();
+    let mut apply = |summary: &mut PortForwardSessionSummary, event| {
+        apply_forward_event(summary, &mut connections, event);
+    };
+    apply(&mut summary, ForwardEvent::Resolving);
     assert_eq!(summary.status, Status::Reconnecting);
-    apply_forward_event(&mut summary, ForwardEvent::Resolved);
+    apply(&mut summary, ForwardEvent::Resolved);
 
     // A second connection resolving or failing leaves the relaying one visible.
-    apply_forward_event(&mut summary, ForwardEvent::Resolving);
+    apply(&mut summary, ForwardEvent::Resolving);
     assert_eq!(summary.status, Status::Connected);
-    apply_forward_event(
+    apply(&mut summary, ForwardEvent::Ended { resolved: false });
+    apply(
         &mut summary,
         ForwardEvent::Failed {
             message: "refused".to_string(),
@@ -143,10 +148,17 @@ fn forward_status_describes_every_open_connection_and_stopped_is_final() {
     assert_eq!(summary.status, Status::Connected);
     assert_eq!(summary.last_error.as_deref(), Some("refused"));
 
-    apply_forward_event(&mut summary, ForwardEvent::Closed { idle: true });
+    // The last relaying connection ends while another is still resolving.
+    apply(&mut summary, ForwardEvent::Resolving);
+    apply(&mut summary, ForwardEvent::Ended { resolved: true });
+    apply(&mut summary, ForwardEvent::Closed { idle: false });
+    assert_eq!(summary.status, Status::Reconnecting);
+
+    apply(&mut summary, ForwardEvent::Ended { resolved: false });
+    apply(&mut summary, ForwardEvent::Closed { idle: true });
     assert_eq!(summary.status, Status::Listening);
     assert_eq!(summary.last_error, None);
-    apply_forward_event(
+    apply(
         &mut summary,
         ForwardEvent::Failed {
             message: "pod gone".to_string(),
@@ -155,12 +167,12 @@ fn forward_status_describes_every_open_connection_and_stopped_is_final() {
     );
     assert_eq!(summary.status, Status::Error);
 
-    apply_forward_event(
+    apply(
         &mut summary,
         ForwardEvent::AcceptFailed("no fds".to_string()),
     );
-    apply_forward_event(&mut summary, ForwardEvent::Resolved);
-    apply_forward_event(&mut summary, ForwardEvent::Closed { idle: true });
+    apply(&mut summary, ForwardEvent::Resolved);
+    apply(&mut summary, ForwardEvent::Closed { idle: true });
     assert_eq!(summary.status, Status::Stopped);
     assert_eq!(summary.last_error.as_deref(), Some("no fds"));
 }

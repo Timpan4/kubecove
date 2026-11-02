@@ -40,6 +40,7 @@ impl ForwardListener {
 
 struct PortForwardSession {
     summary: PortForwardSessionSummary,
+    connections: ForwardConnections,
     handle: JoinHandle<()>,
 }
 
@@ -117,6 +118,7 @@ impl PortForwardRegistry {
             summary.id.clone(),
             PortForwardSession {
                 summary: summary.clone(),
+                connections: ForwardConnections::default(),
                 handle,
             },
         );
@@ -161,12 +163,8 @@ impl PortForwardRegistry {
         self.stop_where(|_| true)
     }
 
-    /// Updates a forward's listed summary; a forward that already stopped is left alone.
-    fn update_summary(
-        &self,
-        session_id: &str,
-        update: impl FnOnce(&mut PortForwardSessionSummary),
-    ) {
+    /// Updates a listed forward; a forward that was already removed is left alone.
+    fn update_session(&self, session_id: &str, update: impl FnOnce(&mut PortForwardSession)) {
         if let Some(session) = self
             .state
             .lock()
@@ -174,16 +172,19 @@ impl PortForwardRegistry {
             .sessions
             .get_mut(session_id)
         {
-            update(&mut session.summary);
+            update(session);
         }
     }
 
     pub(super) fn report(&self, session_id: &str, event: ForwardEvent) {
-        self.update_summary(session_id, |summary| apply_forward_event(summary, event));
+        self.update_session(session_id, |session| {
+            apply_forward_event(&mut session.summary, &mut session.connections, event);
+        });
     }
 
     pub(super) fn mark_resolved_target(&self, session_id: &str, target: &PortForwardTarget) {
-        self.update_summary(session_id, |summary| {
+        self.update_session(session_id, |session| {
+            let summary = &mut session.summary;
             summary.pod_name.clone_from(&target.pod_name);
             summary.resolved_pod_name.clone_from(&target.pod_name);
             summary.resolved_pod_port = target.pod_port;
@@ -244,11 +245,25 @@ impl PortForwardRegistry {
     }
 }
 
+/// How many of a forward's open connections are resolving their target Pod
+/// and how many relay data.
+#[derive(Default)]
+pub(super) struct ForwardConnections {
+    resolving: u32,
+    relaying: u32,
+}
+
 /// What a forward's listener or one of its connections reports.
 pub(super) enum ForwardEvent {
     /// A connection was accepted and is resolving its target Pod.
     Resolving,
     Resolved,
+    /// A connection's task ended. It reports this before the relay sees the
+    /// task finish and reports `Closed` or `Failed`.
+    Ended {
+        resolved: bool,
+    },
+    /// `idle` is true when the relay has no other connection task open.
     Closed {
         idle: bool,
     },
@@ -261,41 +276,67 @@ pub(super) enum ForwardEvent {
     AcceptFailed(String),
 }
 
-/// Applies one report to a forward's listed state. Each connection reports on
-/// its own, so a report only changes the status when it describes every open
-/// connection: a new connection does not hide one that is already relaying,
-/// and one failure does not mark a forward with other open connections failed.
-pub(super) fn apply_forward_event(summary: &mut PortForwardSessionSummary, event: ForwardEvent) {
+/// Applies one report to a forward's listed state. The status describes every
+/// open connection: any relaying connection makes the forward connected, and
+/// otherwise a resolving one makes it reconnecting. The relay's `idle` flag
+/// counts every connection task, so it resets the counts when it is true.
+pub(super) fn apply_forward_event(
+    summary: &mut PortForwardSessionSummary,
+    connections: &mut ForwardConnections,
+    event: ForwardEvent,
+) {
     use PortForwardSessionStatus as Status;
     if summary.status == Status::Stopped {
         return;
     }
     match event {
-        ForwardEvent::Resolving if summary.status == Status::Connected => {}
         ForwardEvent::Resolving => {
-            summary.status = Status::Reconnecting;
-            summary.last_error = None;
+            connections.resolving += 1;
+            if connections.relaying == 0 {
+                summary.last_error = None;
+            }
         }
         ForwardEvent::Resolved => {
-            summary.status = Status::Connected;
+            connections.resolving = connections.resolving.saturating_sub(1);
+            connections.relaying += 1;
             summary.last_error = None;
         }
-        ForwardEvent::Closed { idle: true } => {
-            summary.status = Status::Listening;
-            summary.last_error = None;
+        ForwardEvent::Ended { resolved: true } => {
+            connections.relaying = connections.relaying.saturating_sub(1);
         }
-        ForwardEvent::Closed { idle: false } => {}
-        ForwardEvent::Failed { message, idle } => {
+        ForwardEvent::Ended { resolved: false } => {
+            connections.resolving = connections.resolving.saturating_sub(1);
+        }
+        ForwardEvent::Closed { idle } => {
             if idle {
-                summary.status = Status::Error;
+                *connections = ForwardConnections::default();
+                summary.status = Status::Listening;
+                summary.last_error = None;
+                return;
             }
-            summary.last_error = Some(message);
         }
-        ForwardEvent::AcceptRetry(message) => summary.last_error = Some(message),
+        ForwardEvent::Failed { message, idle } => {
+            summary.last_error = Some(message);
+            if idle {
+                *connections = ForwardConnections::default();
+                summary.status = Status::Error;
+                return;
+            }
+        }
+        ForwardEvent::AcceptRetry(message) => {
+            summary.last_error = Some(message);
+            return;
+        }
         ForwardEvent::AcceptFailed(message) => {
             summary.status = Status::Stopped;
             summary.last_error = Some(message);
+            return;
         }
+    }
+    if connections.relaying > 0 {
+        summary.status = Status::Connected;
+    } else if connections.resolving > 0 {
+        summary.status = Status::Reconnecting;
     }
 }
 
