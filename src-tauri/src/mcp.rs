@@ -188,23 +188,25 @@ pub async fn set_mcp_settings(
         ));
     }
     let settings = McpSettings { enabled, port };
-    save_settings(&host.paths()?.config_dir, settings)?;
     let mut state = host.state.lock().await;
+    save_settings(&host.paths()?.config_dir, settings)?;
     state.settings = settings;
     host.restart(&mut state).await;
     Ok(status(&state))
 }
 
 /// Returns the bearer token so the user can copy it into an agent's configuration.
-/// The frontend calls this only on an explicit reveal (ADR 0028).
+/// The frontend calls this only on an explicit reveal (ADR 0028). Token file access holds
+/// the host lock so it never overlaps a rotation.
 pub async fn reveal_mcp_token(host: State<'_, McpHost>) -> Result<String, AppError> {
+    let _state = host.state.lock().await;
     load_or_create_token(&host.paths()?.config_dir).map_err(token_error)
 }
 
 /// Replaces the token. A running listener restarts so the old token stops working.
 pub async fn rotate_mcp_token(host: State<'_, McpHost>) -> Result<McpStatus, AppError> {
-    rotate_token(&host.paths()?.config_dir).map_err(token_error)?;
     let mut state = host.state.lock().await;
+    rotate_token(&host.paths()?.config_dir).map_err(token_error)?;
     host.restart(&mut state).await;
     Ok(status(&state))
 }

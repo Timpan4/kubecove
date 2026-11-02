@@ -18,7 +18,7 @@ KubeCove can serve read-only tools to AI agents such as Claude Code, Codex and C
 | `list_argocd_applications` | Argo CD Applications with sync status and health. |
 | `list_helm_releases` | Helm releases with chart, revision and status. |
 
-Omit `context` to use the kubeconfig's current context. List tools return 500 rows per page by default; pass `limit` and `offset` to page through the rest. Logs default to the last 200 lines and allow at most 1,000.
+Omit `context` to use the kubeconfig's current context. `list_resource_kinds`, `list_resources`, `find_problems` and `get_resource_metrics` return 500 rows per page by default; pass `limit` and `offset` to page through the rest. The other list tools return every row and take no paging arguments. Logs default to the last 200 lines and allow at most 1,000.
 
 Secret values are always redacted. Anyone holding the MCP token can still read what your Kubernetes identity can read, including ConfigMaps and Pod logs, so treat the token like a kubeconfig. Cluster content such as logs, events and annotations can be written by anyone with write access to the cluster; agents are told to treat it as data, not instructions.
 

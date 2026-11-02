@@ -7,7 +7,8 @@ use crate::{
 };
 use kubecove_inspection::commands::incident_cockpit_from;
 use kubecove_models::{
-    AppError, IncidentCockpitItem, IncidentSeverity, IncidentSignalState, ResourceListRequest,
+    AppError, AppErrorKind, IncidentCockpitItem, IncidentSeverity, IncidentSignalState,
+    ResourceListRequest,
 };
 use serde_json::{Map, Value, json};
 use std::cmp::Reverse;
@@ -31,18 +32,32 @@ pub async fn find_problems(
     let namespace = arguments
         .namespace
         .filter(|namespace| !namespace.is_empty());
-    let requests = NAMESPACED_KINDS
-        .iter()
-        .map(|kind| request(kind, namespace.clone()))
-        .chain([request("Node", None)])
-        .collect();
-    let summary = incident_cockpit_from(
-        &access,
-        cluster.clone(),
-        requests,
-        context.live_store.clone(),
-    )
-    .await?;
+    let scan = |nodes: bool| {
+        let requests = NAMESPACED_KINDS
+            .iter()
+            .map(|kind| request(kind, namespace.clone()))
+            .chain(nodes.then(|| request("Node", None)))
+            .collect();
+        incident_cockpit_from(
+            &access,
+            cluster.clone(),
+            requests,
+            context.live_store.clone(),
+        )
+    };
+    let mut summary = match scan(true).await {
+        Ok(summary) => summary,
+        // Identities scoped to namespaces often may not list Nodes; scan what they can.
+        Err(error) if error.kind == AppErrorKind::Forbidden => {
+            let mut summary = scan(false).await?;
+            summary
+                .warnings
+                .push(format!("Nodes are not scanned: {}", error.message));
+            summary
+        }
+        Err(error) => return Err(error),
+    };
+    let warnings = std::mem::take(&mut summary.warnings);
     let mut items: Vec<IncidentCockpitItem> = summary
         .items
         .into_iter()
@@ -59,8 +74,8 @@ pub async fn find_problems(
     let mut body = page(items, arguments.limit, arguments.offset)?.into_json("problems", item);
     body.insert("context".into(), cluster.into());
     body.insert("generatedAt".into(), summary.generated_at.into());
-    if !summary.warnings.is_empty() {
-        body.insert("warnings".into(), json!(summary.warnings));
+    if !warnings.is_empty() {
+        body.insert("warnings".into(), json!(warnings));
     }
     Ok(Value::Object(body))
 }
