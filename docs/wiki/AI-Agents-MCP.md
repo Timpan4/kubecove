@@ -6,7 +6,7 @@ KubeCove can serve read-only tools to AI agents such as Claude Code, Codex and C
 
 | Tool | Returns |
 | --- | --- |
-| `find_problems` | Unhealthy Pods, workloads, Jobs, PersistentVolumeClaims and Nodes with their signals and latest Warning event, most severe first. Start here. |
+| `find_problems` | Unhealthy Pods, workloads, Jobs, PersistentVolumeClaims and, without a namespace, Nodes, with their signals and latest Warning event, most severe first. Start here. |
 | `list_contexts` | Kubeconfig contexts and which one is current. |
 | `list_namespaces` | Namespaces in a context. |
 | `list_resource_kinds` | Built-in and custom resource kinds. |

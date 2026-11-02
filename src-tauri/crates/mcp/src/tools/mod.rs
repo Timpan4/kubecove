@@ -58,8 +58,9 @@ tools! {
         "Compact rows for one kind: status, readiness, restarts, age, assessed health with \
          reasons, owner and GitOps ownership. Use health=unhealthy to see only problems.";
     FindProblems => "find_problems", args::FindProblemsArgs, "Find problems",
-        "Scans Pods, workloads, Jobs, PersistentVolumeClaims and Nodes for degraded health, \
-         restarts and recent Warning events, most severe first. Start troubleshooting here.";
+        "Scans Pods, workloads, Jobs and PersistentVolumeClaims, plus Nodes when no namespace \
+         is given, for degraded health, restarts and recent Warning events, most severe \
+         first. Start troubleshooting here.";
     DescribeResource => "describe_resource", args::ResourceArgs, "Describe resource",
         "One resource's summary, labels, annotations, owners, top-level fields such as spec \
          or data, status and recent events. Secret values are redacted.";

@@ -24,7 +24,7 @@ The phase 1 tools are:
 | `list_namespaces` | `list_namespaces` |
 | `list_resource_kinds` | `list_resource_kinds` |
 | `list_resources` | `list_resource_scope`, with kind resolution through discovery |
-| `find_problems` | `list_incident_cockpit` over the workload, Pod, PersistentVolumeClaim and Node kinds |
+| `find_problems` | `list_incident_cockpit` over the workload, Pod and PersistentVolumeClaim kinds, plus Nodes for a scan of all namespaces |
 | `describe_resource` | `get_resource_details` or `get_dynamic_resource_details`, plus `list_resource_events` |
 | `get_resource_yaml` | `get_resource_yaml` or `get_dynamic_resource_details` |
 | `get_pod_logs` | a finite Pod log read in `kubecove-live` |
