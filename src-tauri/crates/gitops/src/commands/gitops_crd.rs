@@ -8,8 +8,8 @@ use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::{
     Client,
     api::{Api, ApiResource, DynamicObject},
-    discovery::Discovery,
 };
+use kubecove_kube::commands::discover_resources;
 use serde_json::Value;
 
 use crate::models::{YamlEncoding, YamlViewMode};
@@ -24,18 +24,30 @@ pub(crate) fn object_age(metadata: &ObjectMeta) -> String {
     )
 }
 
-pub(crate) async fn discover_api_resources(client: &Client) -> Result<Vec<ApiResource>, AppError> {
-    let discovery = Discovery::new(client.clone())
-        .run_aggregated()
-        .await
-        .map_err(AppError::from)?;
-    let mut resources = Vec::new();
-    for group in discovery.groups() {
-        for (api_resource, _) in group.recommended_resources() {
-            resources.push(api_resource.clone());
-        }
+/// The resources of `groups`, one per kind, through `discover_resources`.
+///
+/// Argo CD and Flux kinds are CRDs that kube-apiserver serves itself, so an
+/// unavailable version means the server cannot answer, not that the provider
+/// is missing. Any unavailable version fails the call.
+pub(crate) async fn discover_api_resources(
+    client: &Client,
+    groups: &[&str],
+) -> Result<Vec<ApiResource>, AppError> {
+    let discovered = discover_resources(client, groups).await?;
+    if !discovered.unavailable_versions.is_empty() {
+        return Err(AppError::new(
+            format!(
+                "API discovery is unavailable for {}",
+                discovered.unavailable_versions.join(", ")
+            ),
+            AppErrorKind::ProviderDiscoveryUnavailable,
+        ));
     }
-    Ok(resources)
+    Ok(discovered
+        .resources
+        .into_iter()
+        .map(|(api_resource, _)| api_resource)
+        .collect())
 }
 
 pub(crate) fn find_discovered_api_resource(
@@ -54,7 +66,7 @@ pub(crate) async fn find_api_resource(
     group: &str,
     kind: &str,
 ) -> Result<Option<ApiResource>, AppError> {
-    let resources = discover_api_resources(client).await?;
+    let resources = discover_api_resources(client, &[group]).await?;
     Ok(find_discovered_api_resource(&resources, group, kind))
 }
 
@@ -116,3 +128,7 @@ pub(crate) fn resource_metadata(object: &DynamicObject) -> Result<Value, AppErro
 pub(crate) fn resource_status(object: &DynamicObject) -> Option<Value> {
     object.data.get("status").cloned()
 }
+
+#[cfg(test)]
+#[path = "gitops_crd_tests.rs"]
+mod tests;

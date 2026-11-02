@@ -438,5 +438,8 @@ async fn scrape(State(sessions): State<Arc<Sessions>>) -> Response {
 }
 
 #[cfg(test)]
+#[path = "metrics_dashboard_tests.rs"]
+mod dashboard_tests;
+#[cfg(test)]
 #[path = "metrics_tests.rs"]
 mod tests;

@@ -1,8 +1,11 @@
+mod api_discovery;
 pub mod builtin_kinds;
 pub mod cancellation;
 mod cluster_access;
 mod contexts;
 pub mod diagnostics;
+#[cfg(feature = "test-support")]
+pub mod discovery_fixture;
 pub mod dynamic_projection;
 mod finite_read;
 pub mod flux_catalog;
@@ -11,6 +14,7 @@ pub mod kubeconfig;
 pub mod list_projection;
 pub mod live_store;
 
+pub use api_discovery::{DiscoveredResources, discover_resources};
 pub use cancellation::{BackendCancellationRegistry, cancel_backend_requests};
 pub use cluster_access::{ClientIntent, ClusterAccess};
 #[cfg(feature = "test-support")]

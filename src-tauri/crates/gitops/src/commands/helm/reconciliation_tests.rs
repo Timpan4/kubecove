@@ -131,6 +131,76 @@ fn reconciliation_totals_count_each_status() {
     assert_eq!(totals.unavailable, 0);
 }
 
+// Failure modes: an unrelated API publishing `"verbs": null` fails discovery,
+// a manifest group whose aggregated API server is down fails the whole
+// reconciliation instead of leaving only its own rows unavailable, an
+// unavailable preferred version hides the group's available versions, a kind
+// served only at a non-preferred version is missed, and a skipped version
+// leaves the scan looking complete.
+#[tokio::test]
+async fn discovery_covers_manifest_and_common_kinds_beside_null_verbs_and_unavailable_apis() {
+    use kubecove_kube::commands::discovery_fixture::{self, FixtureKind};
+    let kind = |group, version, kind, plural| FixtureKind {
+        group,
+        version,
+        kind,
+        plural,
+        namespaced: true,
+    };
+    let client = discovery_fixture::client_with_unavailable_groups(
+        &[
+            kind("", "v1", "Service", "services"),
+            kind("apps", "v1", "Deployment", "deployments"),
+            kind("example.com", "v1", "Widget", "widgets"),
+            kind("example.com", "v1alpha1", "Gizmo", "gizmos"),
+            kind("example.com", "v1alpha1", "Widget", "widgets"),
+        ],
+        &[("down.example.com", "v1"), ("example.com", "v1beta1")],
+    );
+    let manifest = [
+        manifest_ref(Some("example.com/v1"), Some("Widget"), None, Some("blue")),
+        manifest_ref(
+            Some("example.com/v1alpha1"),
+            Some("Gizmo"),
+            None,
+            Some("green"),
+        ),
+        manifest_ref(
+            Some("down.example.com/v1"),
+            Some("Gadget"),
+            None,
+            Some("red"),
+        ),
+    ];
+
+    let (discovered, warnings) = discovered_resources(client, &manifest)
+        .await
+        .expect("discovery");
+
+    // `Widget` is served at v1 and v1alpha1 and is kept once, at v1.
+    let kinds: Vec<(&str, &str)> = discovered
+        .iter()
+        .map(|kind| (kind.api_version.as_str(), kind.kind.as_str()))
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            ("apps/v1", "Deployment"),
+            ("example.com/v1", "Widget"),
+            ("example.com/v1alpha1", "Gizmo"),
+            ("v1", "Service"),
+        ]
+    );
+    // Skipped versions must read as an incomplete scan, not an empty one.
+    assert_eq!(
+        warnings,
+        [
+            "API down.example.com/v1 is unavailable, so resources at that version were not checked.",
+            "API example.com/v1beta1 is unavailable, so resources at that version were not checked.",
+        ]
+    );
+}
+
 #[test]
 fn conservative_label_scan_includes_common_namespaced_and_manifest_kinds() {
     let widget = DiscoveredResourceKind {
@@ -142,8 +212,24 @@ fn conservative_label_scan_includes_common_namespaced_and_manifest_kinds() {
         short_names: Vec::new(),
         namespaced: true,
     };
+    // Shares a common kind's name but not its group, so only a manifest
+    // reference scans it.
+    let knative_service = DiscoveredResourceKind {
+        group: "serving.knative.dev".to_string(),
+        version: "v1".to_string(),
+        api_version: "serving.knative.dev/v1".to_string(),
+        kind: "Service".to_string(),
+        plural: "services".to_string(),
+        short_names: Vec::new(),
+        namespaced: true,
+    };
     let cluster_role = cluster_role_kind();
-    let discovered = vec![deployment_kind(), widget.clone(), cluster_role];
+    let discovered = vec![
+        deployment_kind(),
+        widget.clone(),
+        cluster_role,
+        knative_service,
+    ];
     let manifest = BTreeSet::from([("example.com/v1".to_string(), "Widget".to_string())]);
 
     let kinds = conservative_label_scan_kinds(&discovered, &manifest);
@@ -151,4 +237,5 @@ fn conservative_label_scan_includes_common_namespaced_and_manifest_kinds() {
     assert!(kinds.iter().any(|kind| kind.kind == "Deployment"));
     assert!(kinds.iter().any(|kind| kind.kind == "Widget"));
     assert!(!kinds.iter().any(|kind| kind.kind == "ClusterRole"));
+    assert!(!kinds.iter().any(|kind| kind.group == "serving.knative.dev"));
 }
