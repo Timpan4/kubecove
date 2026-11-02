@@ -118,11 +118,22 @@
 	let search = $state("");
 	let visible = $state(50);
 	let copied = $state(false);
-	let drillIdentity = $state<InspectorIdentity | null>(null);
-	let manualIdentity = $state(false);
+	// Which identity the verifier checks: the selected object, the manual form, or a drilled-in subject.
+	type IdentitySource =
+		| { kind: "selection" }
+		| { kind: "manual" }
+		| { kind: "subject"; identity: InspectorIdentity };
+	type SubmittedReview = { timestamp: string; identity: string; target: string };
+	type AccessReview =
+		| { kind: "none" }
+		| { kind: "checking"; submitted: SubmittedReview }
+		| { kind: "done"; submitted: SubmittedReview; result: RbacAccessReviewResult }
+		| { kind: "failed"; submitted: SubmittedReview; message: string };
+	let identitySource = $state<IdentitySource>({ kind: "selection" });
 	let handoffPromoted = $state(false);
-	let review = $state<RbacAccessReviewResult | null>(null);
-	let reviewing = $state(false);
+	// Raw state keeps object identity, which verify() compares to drop stale results.
+	let accessReview = $state.raw<AccessReview>({ kind: "none" });
+	const reviewing = $derived(accessReview.kind === "checking");
 	let verb = $state("get");
 	let resource = $state("pods");
 	let apiGroup = $state("");
@@ -136,14 +147,6 @@
 	let identityName = $state("");
 	let identityNamespace = $state("default");
 	let identityGroups = $state("system:authenticated");
-	let verifierError = $state("");
-	let submitted = $state<{
-		timestamp: string;
-		fingerprint: string;
-		identity: string;
-		target: string;
-	} | null>(null);
-	let requestVersion = 0;
 
 	$effect(() => {
 		if (!initialState) return;
@@ -158,8 +161,8 @@
 		if (handoffKey === nextKey) return;
 		handoffKey = nextKey;
 		handoffPromoted = true;
-		drillIdentity = inspectorIdentity(handoff.identity);
-		manualIdentity = drillIdentity === null;
+		const handoffIdentity = inspectorIdentity(handoff.identity);
+		identitySource = handoffIdentity ? { kind: "subject", identity: handoffIdentity } : { kind: "manual" };
 		if (handoff.target.kind === "resource") {
 			targetKind = "resource";
 			verb = handoff.target.verb;
@@ -173,7 +176,7 @@
 			verb = handoff.target.verb;
 			nonResourceUrl = handoff.target.nonResourceUrl;
 		}
-		review = null;
+		accessReview = { kind: "none" };
 		onVerifierHandoffConsumed?.();
 	});
 
@@ -214,10 +217,11 @@
 			: null,
 	);
 	const activeIdentity = $derived<InspectorIdentity>(
-		drillIdentity ??
-			(!manualIdentity && selectedIdentity
+		identitySource.kind === "subject"
+			? identitySource.identity
+			: identitySource.kind === "selection" && selectedIdentity
 				? selectedIdentity
-				: manualIdentityValue()),
+				: manualIdentityValue(),
 	);
 	const observed = $derived(
 		data && activeIdentity.name
@@ -245,11 +249,7 @@
 
 	$effect(() => {
 		void fingerprint;
-		review = null;
-		verifierError = "";
-		submitted = null;
-		requestVersion += 1;
-		reviewing = false;
+		accessReview = { kind: "none" };
 	});
 
 	function manualIdentityValue(): InspectorIdentity {
@@ -272,8 +272,7 @@
 
 	function select(key: string) {
 		selectedKey = key;
-		drillIdentity = null;
-		manualIdentity = false;
+		identitySource = { kind: "selection" };
 		handoffPromoted = false;
 		onStateChange?.({ riskBucket: bucket, selectedObjectKey: key });
 	}
@@ -283,8 +282,7 @@
 		search = "";
 		visible = 50;
 		selectedKey = undefined;
-		drillIdentity = null;
-		manualIdentity = false;
+		identitySource = { kind: "selection" };
 		onStateChange?.({ riskBucket: bucket, selectedObjectKey: undefined });
 		onViewChange?.(next);
 	}
@@ -296,8 +294,7 @@
 	}
 
 	function beginIdentity(kind: "serviceAccount" | "user" | "group" = "user") {
-		drillIdentity = null;
-		manualIdentity = true;
+		identitySource = { kind: "manual" };
 		identityKind = kind;
 		identityName = "";
 		identityNamespace = "default";
@@ -309,17 +306,19 @@
 		name: string;
 		namespace?: string;
 	}) {
-		drillIdentity = {
-			kind:
-				subject.kind === "ServiceAccount"
-					? "serviceAccount"
-					: subject.kind === "Group"
-						? "group"
-						: "user",
-			name: subject.name,
-			namespace: subject.namespace,
+		identitySource = {
+			kind: "subject",
+			identity: {
+				kind:
+					subject.kind === "ServiceAccount"
+						? "serviceAccount"
+						: subject.kind === "Group"
+							? "group"
+							: "user",
+				name: subject.name,
+				namespace: subject.namespace,
+			},
 		};
-		manualIdentity = false;
 	}
 
 	function copyEvidence() {
@@ -340,8 +339,6 @@
 		) {
 			return;
 		}
-		review = null;
-		reviewing = true;
 		const identity =
 			activeIdentity.kind === "serviceAccount"
 				? {
@@ -382,25 +379,25 @@
 			requestId: "rbac-review",
 			cancelScope: "rbac-review",
 		};
-		const requestFingerprint = fingerprint;
-		const version = requestVersion;
-		submitted = {
+		const submitted: SubmittedReview = {
 			timestamp: new Date().toISOString(),
-			fingerprint: requestFingerprint,
 			identity: JSON.stringify(identity),
 			target: JSON.stringify(target),
 		};
+		// Any input change resets accessReview, so a result for an older request is dropped here.
+		const checking: AccessReview = { kind: "checking", submitted };
+		accessReview = checking;
 		try {
 			const result = await reviewRbacAccess(client, request);
-			if (version === requestVersion && requestFingerprint === fingerprint) {
-				review = result;
-			}
+			if (accessReview === checking) accessReview = { kind: "done", submitted, result };
 		} catch (error) {
-			if (version === requestVersion && requestFingerprint === fingerprint) {
-				verifierError = error instanceof Error ? error.message : String(error);
+			if (accessReview === checking) {
+				accessReview = {
+					kind: "failed",
+					submitted,
+					message: error instanceof Error ? error.message : String(error),
+				};
 			}
-		} finally {
-			if (version === requestVersion) reviewing = false;
 		}
 	}
 
@@ -829,7 +826,7 @@
 											<p class="mt-1 text-xs text-muted-foreground">Live SubjectAccessReview. Manual only.</p>
 										</div>
 										<div class="space-y-2.5 p-3">
-											{#if !manualIdentity && activeIdentity.name}
+											{#if identitySource.kind !== "manual" && activeIdentity.name}
 												<div class="rounded-sm border bg-muted/25 p-2">
 													<p class="text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground">Identity</p>
 													<p class="mt-1 break-all text-xs font-medium">{identityLabel(activeIdentity)}</p>
@@ -877,7 +874,9 @@
 										</div>
 									</section>
 
-									{#if review || verifierError || submitted}
+									{#if accessReview.kind !== "none"}
+										{@const submitted = accessReview.submitted}
+										{@const review = accessReview.kind === "done" ? accessReview.result : null}
 										<section class="rounded-md border p-3">
 											<p class="text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground">Latest verification</p>
 											{#if review}
@@ -885,8 +884,8 @@
 												{#if review.reason}<p class="mt-1 text-xs text-muted-foreground">{review.reason}</p>{/if}
 												{#if review.evaluationError}<p class="mt-1 text-xs text-destructive">{review.evaluationError}</p>{/if}
 											{/if}
-											{#if verifierError}<p class="mt-2 text-xs text-destructive">Verifier unavailable · {verifierError}</p>{/if}
-											{#if submitted}<p class="mt-2 break-words text-[0.625rem] text-muted-foreground">{inspection.cluster} · <TimestampText value={submitted.timestamp} precision="second" /><br />{submitted.identity}<br />{submitted.target}</p>{/if}
+											{#if accessReview.kind === "failed"}<p class="mt-2 text-xs text-destructive">Verifier unavailable · {accessReview.message}</p>{/if}
+											<p class="mt-2 break-words text-[0.625rem] text-muted-foreground">{inspection.cluster} · <TimestampText value={submitted.timestamp} precision="second" /><br />{submitted.identity}<br />{submitted.target}</p>
 										</section>
 									{/if}
 
