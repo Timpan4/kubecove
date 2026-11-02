@@ -49,10 +49,14 @@ let startupToken: string | null = startupTokenGlobal.__KUBECOVE_STARTUP_TOKEN__ 
 delete startupTokenGlobal.__KUBECOVE_STARTUP_TOKEN__;
 let resumeToken: string | null = null;
 let initialization: Promise<void> | null = null;
-let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-let disconnectedAt: number | null = null;
-let reconnecting = false;
-let socket: WebSocket | null = null;
+// downSince is when the link last dropped; it survives retries until a socket opens,
+// so the session grace period counts from the first drop.
+type SocketLink =
+	| { kind: "none" }
+	| { kind: "socket"; socket: WebSocket; downSince: number | null }
+	| { kind: "down"; downSince: number }
+	| { kind: "retry"; timer: ReturnType<typeof setTimeout>; downSince: number };
+let link: SocketLink = { kind: "none" };
 const channelIdSeed = new Uint32Array(1);
 globalThis.crypto.getRandomValues(channelIdSeed);
 let nextChannelId = channelIdSeed[0] * 2 ** 20;
@@ -137,7 +141,9 @@ async function postSession(body: { token?: string; resumeToken?: string }): Prom
 		throw new Error("The server returned an invalid session response.");
 	}
 	saveResumeToken(result.resumeToken);
-	disconnectedAt = null;
+	// A new session starts a fresh grace period.
+	if (link.kind === "socket") link.downSince = null;
+	else closeLink();
 	publish({
 		status: "ready",
 		error: null,
@@ -237,7 +243,7 @@ export async function loginToBrowserServer(token: string): Promise<void> {
 		publish({ status: "login", error: "Enter the server token." });
 		return;
 	}
-	clearReconnectTimer();
+	cancelRetry();
 	try {
 		await postSession({ token: cleanToken });
 	} catch (error) {
@@ -262,7 +268,7 @@ async function resumeOrOpenSession(resume: string | null): Promise<void> {
 }
 
 export async function takeOverBrowserSession(): Promise<void> {
-	clearReconnectTimer();
+	cancelRetry();
 	try {
 		// A fresh login opens a new session using the cookie or verified Access identity.
 		await postSession({});
@@ -314,23 +320,24 @@ export async function signOutBrowserSession(): Promise<void> {
 }
 
 function returnToOidcSignIn(): void {
-	clearReconnectTimer();
-	reconnecting = false;
-	disconnectedAt = null;
-	if (socket) {
-		const current = socket;
-		socket = null;
-		current.close();
-	}
+	closeLink();
 	for (const channel of channels.values()) channel.cleanupCallback();
 	channels.clear();
 	clearResumeToken();
 	publish({ status: "login", error: null, channelGap: 0 });
 }
 
-function clearReconnectTimer(): void {
-	if (reconnectTimer !== null) clearTimeout(reconnectTimer);
-	reconnectTimer = null;
+function cancelRetry(): void {
+	if (link.kind !== "retry") return;
+	clearTimeout(link.timer);
+	link = { kind: "down", downSince: link.downSince };
+}
+
+function closeLink(): void {
+	const previous = link;
+	link = { kind: "none" };
+	if (previous.kind === "retry") clearTimeout(previous.timer);
+	if (previous.kind === "socket") previous.socket.close();
 }
 
 function socketUrl(): string {
@@ -341,19 +348,20 @@ function socketUrl(): string {
 }
 
 function connectSocket(): void {
-	if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
+	if (link.kind === "socket" && (link.socket.readyState === WebSocket.OPEN || link.socket.readyState === WebSocket.CONNECTING)) return;
 	if (sessionSnapshot.status !== "ready" || !resumeToken) return;
+	const downSince = link.kind === "none" ? null : link.downSince;
+	if (link.kind === "retry") clearTimeout(link.timer);
 	const next = new WebSocket(socketUrl());
-	socket = next;
+	const current: Extract<SocketLink, { kind: "socket" }> = { kind: "socket", socket: next, downSince };
+	link = current;
 	next.onopen = () => {
-		if (socket !== next) return;
-		reconnecting = false;
-		disconnectedAt = null;
-		clearReconnectTimer();
+		if (link !== current) return;
+		current.downSince = null;
 		publish({ status: "ready", error: null });
 	};
 	next.onmessage = (event) => {
-		if (socket !== next || !isString(event.data)) return;
+		if (link !== current || !isString(event.data)) return;
 		let message: JsonValue;
 		try {
 			message = JSON.parse(event.data);
@@ -362,9 +370,7 @@ function connectSocket(): void {
 		}
 		if (!isJsonObject(message)) return;
 		if (message.type === "session_moved") {
-			clearReconnectTimer();
-			reconnecting = false;
-			disconnectedAt = null;
+			current.downSince = null;
 			publish({ status: "moved", error: null });
 			next.close();
 			return;
@@ -379,10 +385,12 @@ function connectSocket(): void {
 		channels.get(Number(message.channelId))?.onmessage(message.message);
 	};
 	next.onclose = () => {
-		if (socket !== next) return;
-		socket = null;
-		if (sessionSnapshot.status === "moved" || sessionSnapshot.status !== "ready") return;
-		if (disconnectedAt === null) disconnectedAt = Date.now();
+		if (link !== current) return;
+		if (sessionSnapshot.status !== "ready") {
+			link = { kind: "none" };
+			return;
+		}
+		link = { kind: "down", downSince: current.downSince ?? Date.now() };
 		if (sessionSnapshot.authenticationMode === "oidc") {
 			void checkOidcAuthenticationAfterSocketClose();
 			return;
@@ -416,10 +424,12 @@ async function checkOidcAuthenticationAfterSocketClose(): Promise<void> {
 }
 
 function scheduleReconnect(): void {
-	if (reconnecting || reconnectTimer !== null || !resumeToken) return;
+	if (link.kind !== "down" || !resumeToken) return;
+	const { downSince } = link;
 	const graceMs = sessionSnapshot.sessionGraceSeconds * 1000;
-	const elapsedMs = disconnectedAt === null ? 0 : Date.now() - disconnectedAt;
+	const elapsedMs = Date.now() - downSince;
 	if (graceMs <= 0 || elapsedMs >= graceMs) {
+		link = { kind: "none" };
 		clearResumeToken();
 		publish({ status: "login", error: sessionSnapshot.authenticationMode === "cloudflareAccess"
 			? "The server session expired. Reload to reconnect through Cloudflare Access."
@@ -428,12 +438,14 @@ function scheduleReconnect(): void {
 				: "The server session expired. Reconnect with the server token." });
 		return;
 	}
-	reconnecting = true;
-	reconnectTimer = setTimeout(() => {
-		reconnectTimer = null;
-		reconnecting = false;
-		connectSocket();
-	}, Math.min(1_000, graceMs - elapsedMs));
+	link = {
+		kind: "retry",
+		timer: setTimeout(() => {
+			link = { kind: "down", downSince };
+			connectSocket();
+		}, Math.min(1_000, graceMs - elapsedMs)),
+		downSince,
+	};
 }
 
 interface BrowserChannel<T> {
