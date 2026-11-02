@@ -43,6 +43,11 @@ const CHECKABLE_STATUSES: ReadonlySet<AppUpdateStatus> = new Set([
 	"error",
 ]);
 
+/** A running check, a download, or an install waiting for restart owns the pending update. */
+export function canCheckForUpdates(status: AppUpdateStatus): boolean {
+	return CHECKABLE_STATUSES.has(status);
+}
+
 let updateApi: AppUpdateApi = tauriAppUpdateApi;
 let pendingUpdate: AppUpdate | null = null;
 
@@ -92,8 +97,7 @@ export const useAppUpdateStore = createStore<AppUpdateState>()(
 		(set, get) => ({
 			...initialState,
 			checkForUpdates: async ({ manual }) => {
-				// A running check, a download, or an install waiting for restart owns pendingUpdate.
-				if (!CHECKABLE_STATUSES.has(get().status)) {
+				if (!canCheckForUpdates(get().status)) {
 					diagnosticLog("updates.check.ignored", { manual, status: get().status });
 					return;
 				}
