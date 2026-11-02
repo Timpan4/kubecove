@@ -162,10 +162,11 @@
 	let advancedSync = $state<ArgoSyncSettings>({ ...defaultArgoSyncSettings });
 	let appliedSyncDefaults = $state<ArgoSyncSettings>({ ...defaultArgoSyncSettings });
 	let appliedSyncDefaultsKey = $state("");
-	let confirmationOpen = $state(false);
 	let argoConnectionOpen = $state(false);
 	let confirmationName = $state("");
+	// The advanced-sync confirmation is open exactly while a sync waits for it.
 	let pendingSync = $state<ArgoSyncSettings | null>(null);
+	const confirmationOpen = $derived(pendingSync !== null);
 	let appliedScopeKey = $state("");
 
 	const inspection = argoApplicationInspection(client, () => ({
@@ -369,9 +370,7 @@
 			selectedHistoryKey = null;
 			diffView = "changes";
 			expandedRemovalKeys = [];
-			pendingSync = null;
-			confirmationOpen = false;
-			confirmationName = "";
+			closeSyncConfirmation();
 			appliedSyncDefaultsKey = "";
 		}
 		appliedScopeKey = nextScopeKey;
@@ -456,20 +455,22 @@
 		syncMenuOpen = false;
 		const requested = { ...advancedSync };
 		if (argoSyncNeedsConfirmation(requested, applicationSyncDefaults)) {
-			pendingSync = requested;
 			confirmationName = "";
-			confirmationOpen = true;
+			pendingSync = requested;
 			return;
 		}
 		void executeOperation(withArgoSyncSettings(operation("sync"), requested));
 	}
 
+	function closeSyncConfirmation() {
+		pendingSync = null;
+		confirmationName = "";
+	}
+
 	function confirmAdvancedSync() {
 		if (!pendingSync || confirmationName !== resourceSummary.name) return;
 		const requested = withArgoSyncSettings(operation("sync"), pendingSync);
-		confirmationOpen = false;
-		pendingSync = null;
-		confirmationName = "";
+		closeSyncConfirmation();
 		void executeOperation(requested);
 	}
 
@@ -835,7 +836,7 @@
 	</section>
 </div>
 
-<Dialog open={confirmationOpen} onOpenChange={(open: boolean) => { confirmationOpen = open; if (!open) { pendingSync = null; confirmationName = ""; } }}>
+<Dialog open={confirmationOpen} onOpenChange={(open: boolean) => { if (!open) closeSyncConfirmation(); }}>
 	<DialogContent>
 		<DialogHeader><DialogTitle>Confirm advanced sync</DialogTitle><DialogDescription>These choices go beyond Application defaults. Type Application name to continue.</DialogDescription></DialogHeader>
 		{#if pendingSync}
@@ -847,7 +848,7 @@
 			</div>
 		{/if}
 		<Field><FieldLabel>Type {resourceSummary.name} to confirm</FieldLabel><Input bind:value={confirmationName} /></Field>
-		<div class="flex justify-end gap-2"><Button type="button" variant="outline" onclick={() => (confirmationOpen = false)}>Cancel</Button><Button type="button" disabled={confirmationName !== resourceSummary.name || !pendingSync} onclick={confirmAdvancedSync}>Confirm sync</Button></div>
+		<div class="flex justify-end gap-2"><Button type="button" variant="outline" onclick={closeSyncConfirmation}>Cancel</Button><Button type="button" disabled={confirmationName !== resourceSummary.name || !pendingSync} onclick={confirmAdvancedSync}>Confirm sync</Button></div>
 	</DialogContent>
 </Dialog>
 

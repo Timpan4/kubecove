@@ -96,10 +96,18 @@
 	let username = $state("");
 	let password = $state("");
 	let rememberCredential = $state(false);
-	let busy = $state<string | null>(null);
-	let error = $state<string | null>(null);
-	let reconfirm = $state<SavedArgoProfile | null>(null);
-	let pending = $state<{ endpoint: ArgoServerEndpoint; saved?: SavedArgoProfile; preview: ArgoTunnelTargetPreview; argoLabeled: boolean } | null>(null);
+	type ConnectStep =
+		| { kind: "idle" }
+		| { kind: "busy"; label: string }
+		| { kind: "confirmTarget"; endpoint: ArgoServerEndpoint; saved?: SavedArgoProfile; preview: ArgoTunnelTargetPreview; argoLabeled: boolean }
+		// reconfirm offers a fresh tunnel preview when a remembered tunnel profile failed to reconnect.
+		| { kind: "failed"; message: string; reconfirm?: SavedArgoProfile };
+	let step = $state<ConnectStep>({ kind: "idle" });
+	const busy = $derived(step.kind === "busy" ? step.label : null);
+
+	function fail(message: string, reconfirm?: SavedArgoProfile) {
+		step = { kind: "failed", message, reconfirm };
+	}
 
 	function draftEndpoint(): ArgoServerEndpoint | null {
 		if (source === "external") return url.trim() ? { kind: "externalHttps", url: url.trim() } : null;
@@ -139,25 +147,20 @@
 
 	// Credentials cross a private tunnel only after the user confirms its Pod and certificate.
 	async function startConnect(target: ArgoServerEndpoint, saved?: SavedArgoProfile) {
-		error = null;
-		reconfirm = null;
+		if (step.kind === "busy") return;
 		if (target.kind === "externalHttps") return connect(target, saved);
-		busy = "Checking the tunnel target…";
+		step = { kind: "busy", label: "Checking the tunnel target…" };
 		try {
 			const preview = await previewArgoTunnelTarget(client, scope.clusterContext, target, scope.kubeconfigSourceKey);
-			pending = { endpoint: target, saved, preview, argoLabeled: isArgoLabeled(target) };
+			step = { kind: "confirmTarget", endpoint: target, saved, preview, argoLabeled: isArgoLabeled(target) };
 		} catch (caught) {
-			error = messageFromError(caught);
+			fail(messageFromError(caught));
 			void queryClient.invalidateQueries({ queryKey: discoveryKey });
-		} finally {
-			busy = null;
 		}
 	}
 
 	async function connect(target: ArgoServerEndpoint, saved?: SavedArgoProfile, confirmedTarget?: ArgoConfirmedTarget) {
-		pending = null;
-		busy = "Connecting…";
-		error = null;
+		step = { kind: "busy", label: "Connecting…" };
 		const external = target.kind === "externalHttps";
 		try {
 			const result = await connectArgoServer(client, {
@@ -178,8 +181,9 @@
 			const profile = savedArgoProfile(result);
 			if (profile) settings.setArgoProfiles(upsertArgoProfileInSavedOrder(settings.argoProfiles, profile, saved?.id));
 			refreshStatuses();
+			step = { kind: "idle" };
 		} catch (caught) {
-			error = messageFromError(caught);
+			fail(messageFromError(caught));
 			// A rejected tunnel target is usually a replaced Pod; refetch so the next preview is current.
 			if (confirmedTarget) void queryClient.invalidateQueries({ queryKey: discoveryKey });
 		} finally {
@@ -188,51 +192,45 @@
 			username = "";
 			password = "";
 			customCa = "";
-			busy = null;
 		}
 	}
 
 	async function reconnect(profile: SavedArgoProfile) {
-		error = null;
-		reconfirm = null;
+		if (step.kind === "busy") return;
 		if (!profile.rememberCredential) {
 			if (!hasCredential) {
-				error = "This profile does not remember its credential. Enter a token or local login below, then reconnect.";
+				step = {
+					kind: "failed",
+					message: "This profile does not remember its credential. Enter a token or local login below, then reconnect.",
+				};
 				return;
 			}
 			return startConnect(profile.endpoint, profile);
 		}
-		busy = "Reconnecting…";
-		try {
-			await reconnectRememberedArgoProfile(client, scope, profile);
-			refreshStatuses();
-		} catch (caught) {
-			error = messageFromError(caught);
-			if (profile.endpoint.kind === "serviceTunnel") reconfirm = profile;
-		} finally {
-			busy = null;
-		}
+		await runProfileAction("Reconnecting…", () => reconnectRememberedArgoProfile(client, scope, profile), profile.endpoint.kind === "serviceTunnel" ? profile : undefined);
 	}
 
-	async function disconnect(profile: SavedArgoProfile) {
-		error = null;
-		try {
-			await disconnectArgoServer(client, profile.id);
-			refreshStatuses();
-		} catch (caught) {
-			error = messageFromError(caught);
-		}
+	function disconnect(profile: SavedArgoProfile) {
+		return runProfileAction("Disconnecting…", () => disconnectArgoServer(client, profile.id));
 	}
 
-	async function forget(profile: SavedArgoProfile) {
-		error = null;
-		try {
+	function forget(profile: SavedArgoProfile) {
+		return runProfileAction("Forgetting…", async () => {
 			await disconnectArgoServer(client, profile.id);
 			await forgetArgoCredential(client, { ...profile, url: argoEndpointUrl(profile.endpoint), transport: "connected" });
 			settings.setArgoProfiles(settings.argoProfiles.filter((item) => item.id !== profile.id));
+		});
+	}
+
+	async function runProfileAction<Result>(label: string, task: () => Promise<Result>, reconfirm?: SavedArgoProfile) {
+		if (step.kind === "busy") return;
+		step = { kind: "busy", label };
+		try {
+			await task();
 			refreshStatuses();
+			step = { kind: "idle" };
 		} catch (caught) {
-			error = messageFromError(caught);
+			fail(messageFromError(caught), reconfirm);
 		}
 	}
 </script>
@@ -259,11 +257,11 @@
 						</div>
 						<div class="flex items-center gap-1">
 							{#if status?.connected}
-								<Button size="sm" variant="ghost" type="button" onclick={() => disconnect(profile)}>Disconnect</Button>
+								<Button size="sm" variant="ghost" type="button" disabled={busy !== null} onclick={() => disconnect(profile)}>Disconnect</Button>
 							{:else}
 								<Button size="sm" type="button" disabled={busy !== null} onclick={() => reconnect(profile)}>Reconnect</Button>
 							{/if}
-							<Button size="sm" variant="ghost" type="button" onclick={() => forget(profile)}>Forget</Button>
+							<Button size="sm" variant="ghost" type="button" disabled={busy !== null} onclick={() => forget(profile)}>Forget</Button>
 						</div>
 					</div>
 				{/each}
@@ -390,8 +388,8 @@
 				<Switch checked={rememberCredential} onCheckedChange={(value) => (rememberCredential = value)} aria-label="Remember credential in native keyring" />
 			</Field>
 
-			{#if pending}
-				{@const confirmation = pending}
+			{#if step.kind === "confirmTarget"}
+				{@const confirmation = step}
 				<Alert variant="destructive">
 					<ShieldAlert />
 					<AlertTitle>Confirm tunnel target</AlertTitle>
@@ -415,7 +413,6 @@
 							<Button
 								type="button"
 								size="sm"
-								disabled={busy !== null}
 								onclick={() =>
 									connect(confirmation.endpoint, confirmation.saved, {
 										namespace: confirmation.preview.namespace,
@@ -424,19 +421,19 @@
 										certificateSha256: confirmation.preview.certificateSha256,
 									})}>Confirm and connect</Button
 							>
-							<Button type="button" size="sm" variant="outline" onclick={() => (pending = null)}>Cancel</Button>
+							<Button type="button" size="sm" variant="outline" onclick={() => (step = { kind: "idle" })}>Cancel</Button>
 						</div>
 					</AlertDescription>
 				</Alert>
 			{/if}
-			{#if error}
+			{#if step.kind === "failed"}
 				<Alert variant="destructive">
 					<AlertCircle />
 					<AlertTitle>Connection failed</AlertTitle>
 					<AlertDescription>
-						<p>{error}</p>
-						{#if reconfirm}
-							{@const profile = reconfirm}
+						<p>{step.message}</p>
+						{#if step.reconfirm}
+							{@const profile = step.reconfirm}
 							<Button class="mt-2" size="sm" variant="outline" type="button" onclick={() => startConnect(profile.endpoint, profile)}>Confirm target again</Button>
 						{/if}
 					</AlertDescription>
