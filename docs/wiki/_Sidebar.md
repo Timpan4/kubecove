@@ -17,6 +17,7 @@
 - [GitOps: Argo CD and Flux](https://github.com/Timpan4/kubecove/wiki/GitOps-Argo-CD-and-Flux)
 - [Helm reconciliation](https://github.com/Timpan4/kubecove/wiki/Helm-Reconciliation)
 - [RBAC and permissions](https://github.com/Timpan4/kubecove/wiki/RBAC-and-Permissions)
+- [AI agents (MCP)](https://github.com/Timpan4/kubecove/wiki/AI-Agents-MCP)
 
 ## Operate
 

@@ -81,6 +81,8 @@ Resource Browser and GitOps provide `Refresh (clear cache)` inside a compact liv
 
 Argo CD Refresh and Hard refresh remain separate controller operations. Both stay disabled while an operation is pending. KubeCove reads the current Application before review and tracks accepted operations until controller evidence confirms completion or failure. An observation failure remains visible and retries without resubmitting the operation. Tracking continues across views within the same workspace and cluster context while KubeCove remains open. Application lists follow watch events, with periodic reloads only during recovery, and show observed operation phases and refresh requests, including external operations; details show resource results and failure messages supplied by Argo CD.
 
+AI agents are a separate, opt-in client type. Each host can serve read-only MCP tools behind a dedicated bearer token that opens nothing else; tool results are compact, bounded and Secret-redacted, and no tool changes the cluster ([ADR 0028](decisions/0028-read-only-mcp-server.md)). Write tools for agents need their own ADR.
+
 `kubectl`, Helm CLI, Argo CD CLI, and Flux CLI are not core data paths. A new CLI-backed integration or broader filesystem boundary requires its own security review and ADR.
 
 ## Frontend shape

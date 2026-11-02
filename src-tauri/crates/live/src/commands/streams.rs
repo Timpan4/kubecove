@@ -2,9 +2,12 @@ use crate::models::AppErrorKind;
 mod aggregate_logs;
 mod kinds;
 mod log_batches;
+mod log_read;
 mod logs;
 mod registry;
 mod watch;
+
+pub use log_read::read_pod_logs;
 
 #[cfg(feature = "bench-support")]
 pub use aggregate_logs::benchmark_log_sources_from_pods;

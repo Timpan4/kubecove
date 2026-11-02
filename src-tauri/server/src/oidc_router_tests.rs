@@ -27,6 +27,7 @@ fn oidc_state() -> Arc<AppState> {
         oidc: Some(Arc::new(
             oidc::Oidc::new_for_test(config, "https://app.example").unwrap(),
         )),
+        mcp: None,
     })
 }
 fn credential(state: &AppState, subject: &str, expired: bool) -> String {
@@ -318,6 +319,7 @@ async fn oidc_browser_fixture() {
         },
         sessions: Arc::new(Sessions::new(Duration::from_mins(5), AuthMode::Oidc)),
         credential_store,
+        mcp: None,
     });
     let finished = Arc::new(tokio::sync::Notify::new());
     let signal = Arc::clone(&finished);

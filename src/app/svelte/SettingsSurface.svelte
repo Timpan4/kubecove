@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import {
+		Bot,
 		Bug,
 		Cable,
 		FileCode2,
@@ -31,6 +32,7 @@
 	} from "@/lib/browser-runtime";
 	import type { YamlEncoding, YamlViewMode } from "@/lib/types";
 	import RemoteConnectionSettings from "./RemoteConnectionSettings.svelte";
+	import McpServerSettings from "./McpServerSettings.svelte";
 	import DiagnosticsSettings from "./DiagnosticsSettings.svelte";
 	import KubeconfigSettings from "./KubeconfigSettings.svelte";
 	import SettingsRow from "./SettingsRow.svelte";
@@ -48,7 +50,8 @@
 		| "updates"
 		| "diagnostics"
 		| "advanced"
-		| "remote";
+		| "remote"
+		| "agents";
 	type SettingsRowMeta = { title: string; description: string };
 
 	const WIKI_URL = "https://github.com/Timpan4/kubecove/wiki";
@@ -178,6 +181,23 @@
 		},
 	} satisfies Record<string, SettingsRowMeta>;
 
+	const MCP_ROWS = {
+		server: {
+			title: "MCP server",
+			description:
+				"Lets AI agents such as Claude Code read cluster state through read-only tools on 127.0.0.1. Off by default.",
+		},
+		port: {
+			title: "MCP port",
+			description: "Loopback port for the MCP endpoint. Agents connect to http://127.0.0.1:<port>/mcp.",
+		},
+		access: {
+			title: "Agent access token",
+			description:
+				"Agents send this bearer token. Rotating it disconnects every agent configured with the old one.",
+		},
+	} satisfies Record<string, SettingsRowMeta>;
+
 	const ADVANCED_ROWS = {
 		skipChangeReview: {
 			title: "Skip change review",
@@ -233,6 +253,7 @@
 		remote: !isBrowserRuntime() && isTauriRuntime()
 			? [{ title: "Remote KubeCove server", description: "Connect this desktop to a headless KubeCove host." }]
 			: [],
+		agents: !isBrowserRuntime() && isTauriRuntime() ? Object.values(MCP_ROWS) : [],
 	} satisfies Record<SettingsCategoryId, SettingsRowMeta[]>;
 
 	const categories: Array<{ id: SettingsCategoryId; label: string }> = [
@@ -245,6 +266,7 @@
 		{ id: "diagnostics", label: "Diagnostics" },
 		{ id: "advanced", label: "Advanced" },
 		...(!isBrowserRuntime() && isTauriRuntime() ? [{ id: "remote" as const, label: "Remote server" }] : []),
+		...(!isBrowserRuntime() && isTauriRuntime() ? [{ id: "agents" as const, label: "AI agents" }] : []),
 	];
 
 	let activeCategory = $state<SettingsCategoryId>("general");
@@ -363,6 +385,7 @@
 					{:else if category.id === "updates"}<RefreshCw data-icon="inline-start" />
 					{:else if category.id === "diagnostics"}<Bug data-icon="inline-start" />
 					{:else if category.id === "advanced"}<Wrench data-icon="inline-start" />
+					{:else if category.id === "agents"}<Bot data-icon="inline-start" />
 					{:else}<Cable data-icon="inline-start" />{/if}
 					<span>{category.label}</span>
 				</Button>
@@ -581,6 +604,10 @@
 					<RemoteConnectionSettings />
 				</SettingsRow>
 			</FieldGroup>
+		{/if}
+
+		{#if showCategory("agents") && isTauriRuntime()}
+			<McpServerSettings rows={MCP_ROWS} />
 		{/if}
 
 	</section>

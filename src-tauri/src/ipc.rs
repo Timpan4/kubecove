@@ -5,7 +5,7 @@
 use crate::{
     commands::{
         self, AppUsageMonitor, ArgoConnectionStore, BackendCancellationRegistry, ClusterLiveStore,
-        PodExecRegistry, PortForwardRegistry, RemoteConnectionStore, StreamRegistry,
+        McpHost, PodExecRegistry, PortForwardRegistry, RemoteConnectionStore, StreamRegistry,
     },
     models::{
         AggregatedLogStreamRequest, AppError, AppErrorKind, ArgoApplicationRef,

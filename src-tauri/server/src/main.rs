@@ -2,13 +2,15 @@ use kubecove_server::{
     AppState,
     config::{Config, HELP},
     files::write_startup_token,
+    mcp::McpServer,
     metrics,
     observe::{self, AuthMode},
     router,
-    security::random_token,
+    security::{NetworkPolicy, random_token},
     sessions::Sessions,
 };
 use std::{io, net::SocketAddr, process::ExitCode, sync::Arc};
+use tokio_util::sync::CancellationToken;
 
 fn main() -> ExitCode {
     match start() {
@@ -96,6 +98,7 @@ async fn run() -> io::Result<()> {
             .kind;
     kubecove_server::security::install_tls_provider();
     let sessions = Arc::new(Sessions::new(config.grace, auth_mode));
+    let mcp_shutdown = CancellationToken::new();
     if let Some(address) = config.metrics_listen {
         let listener = tokio::net::TcpListener::bind(address).await?;
         observe::metrics_listening(listener.local_addr()?);
@@ -119,6 +122,7 @@ async fn run() -> io::Result<()> {
                     "--socket requires --public-origin for the browser's forwarded TCP origin",
                 )
             })?;
+            let mcp = mcp_server(&config, &policy, origin, mcp_shutdown.clone())?;
             if !config.quiet {
                 print_login(origin, &token, config.print_token, login_mode);
             }
@@ -129,10 +133,11 @@ async fn run() -> io::Result<()> {
                 credential_store,
                 access,
                 oidc,
+                mcp,
             });
             observe::server_started(auth_mode, "unix");
             axum::serve(listener, router(state))
-                .with_graceful_shutdown(shutdown(Arc::clone(&sessions)))
+                .with_graceful_shutdown(shutdown(Arc::clone(&sessions), mcp_shutdown))
                 .await?;
             sessions.shutdown().await;
             std::fs::remove_file(path)?;
@@ -148,6 +153,7 @@ async fn run() -> io::Result<()> {
             .public_origin
             .clone()
             .unwrap_or_else(|| policy.origins[0].clone());
+        let mcp = mcp_server(&config, &policy, &origin, mcp_shutdown.clone())?;
         if !config.quiet {
             print_login(&origin, &token, config.print_token, login_mode);
         }
@@ -158,6 +164,7 @@ async fn run() -> io::Result<()> {
             credential_store,
             access,
             oidc,
+            mcp,
         });
         if let (Some(cert), Some(key)) = (&config.tls_cert, &config.tls_key) {
             let tls = axum_server::tls_rustls::RustlsConfig::from_pem_file(cert, key).await?;
@@ -166,7 +173,7 @@ async fn run() -> io::Result<()> {
             let stopping = handle.clone();
             let stopping_sessions = Arc::clone(&sessions);
             tokio::spawn(async move {
-                shutdown(stopping_sessions).await;
+                shutdown(stopping_sessions, mcp_shutdown).await;
                 stopping.shutdown();
             });
             observe::server_started(auth_mode, "tls");
@@ -178,12 +185,36 @@ async fn run() -> io::Result<()> {
             let listener = tokio::net::TcpListener::from_std(listener)?;
             observe::server_started(auth_mode, "tcp");
             axum::serve(listener, router(state))
-                .with_graceful_shutdown(shutdown(Arc::clone(&sessions)))
+                .with_graceful_shutdown(shutdown(Arc::clone(&sessions), mcp_shutdown))
                 .await?;
         }
         sessions.shutdown().await;
     }
     Ok(())
+}
+
+/// Builds `/mcp` when `--mcp` is set and prints where agents connect. The token stays in
+/// its file; only the path is printed (ADR 0028).
+fn mcp_server(
+    config: &Config,
+    policy: &NetworkPolicy,
+    origin: &str,
+    shutdown: CancellationToken,
+) -> io::Result<Option<McpServer>> {
+    if !config.mcp {
+        return Ok(None);
+    }
+    let server = McpServer::new(&config.data_dir, policy.origins.clone(), shutdown)?;
+    if !config.quiet {
+        println!(
+            "KubeCove MCP: {origin}/mcp (bearer token in {})",
+            config
+                .data_dir
+                .join(kubecove_mcp::TOKEN_FILE_NAME)
+                .display()
+        );
+    }
+    Ok(Some(server))
 }
 
 fn print_login(origin: &str, token: &str, print_token: bool, login_mode: &str) {
@@ -197,7 +228,7 @@ fn print_login(origin: &str, token: &str, print_token: bool, login_mode: &str) {
     }
 }
 
-async fn shutdown(sessions: Arc<Sessions>) {
+async fn shutdown(sessions: Arc<Sessions>, mcp: CancellationToken) {
     #[cfg(unix)]
     {
         let terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate());
@@ -215,5 +246,6 @@ async fn shutdown(sessions: Arc<Sessions>) {
     {
         let _ = tokio::signal::ctrl_c().await;
     }
+    mcp.cancel();
     sessions.shutdown().await;
 }

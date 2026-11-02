@@ -31,7 +31,7 @@ Event names (log `event` field, metric name stem):
 | `session_cleanup_failed` | warn | session_id, error_kind | `kubecove_server_session_cleanup_failures_total{error_kind}` |
 | `sign_in` | info / warn | auth_mode, outcome, reason, subject on success | `kubecove_server_sign_ins_total{auth_mode,outcome,reason}` |
 | `authentication_refused` | info | auth_mode, reason (missing, invalid, unavailable) | `kubecove_server_authentication_refused_total{auth_mode,reason}` |
-| `request_refused` | warn | reason (host, origin), method; host and origin at debug | `kubecove_server_requests_refused_total{reason}` |
+| `request_refused` | warn | reason (host, origin, mcp_token), method; host and origin at debug | `kubecove_server_requests_refused_total{reason}` |
 | `oidc_refresh` | debug / warn | outcome (renewed, refused, unusable, failed) | `kubecove_server_oidc_refreshes_total{outcome}` |
 | `command_completed` | debug for ok and cancelled, warn otherwise | session_id, command, outcome, error_kind, duration_ms | `kubecove_server_command_duration_seconds{command,outcome}` and `kubecove_server_command_errors_total{command,error_kind}` |
 

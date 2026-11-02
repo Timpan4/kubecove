@@ -18,6 +18,6 @@ pub use sessions::{
     PortForwardRegistry, list_port_forwards, start_pod_port_forward, stop_port_forward,
 };
 pub use streams::{
-    StreamRegistry, refresh_resource_cache, start_aggregated_log_stream, start_pod_log_stream,
-    start_resource_event_watch, start_resource_watch, stop_stream,
+    StreamRegistry, read_pod_logs, refresh_resource_cache, start_aggregated_log_stream,
+    start_pod_log_stream, start_resource_event_watch, start_resource_watch, stop_stream,
 };

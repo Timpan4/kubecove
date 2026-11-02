@@ -197,7 +197,19 @@ fn oidc_requires_one_complete_https_mode_with_an_operator_login_deadline() {
         invalid[1] = issuer;
         assert!(config(&invalid).is_err());
     }
-    let mut zero = complete;
+    let mut zero = complete.clone();
     zero[5] = "0";
     assert!(config(&zero).is_err());
+    // MCP requests carry no user's identity to forward (ADR 0028).
+    let mut forwarding = complete;
+    forwarding.extend(["--oidc-kubernetes-credentials", "kubernetes"]);
+    assert!(config(&forwarding).is_ok());
+    forwarding.push("--mcp");
+    assert!(config(&forwarding).is_err());
+}
+
+#[test]
+fn mcp_is_off_by_default() {
+    assert!(!config(&[]).unwrap().mcp);
+    assert!(config(&["--mcp"]).unwrap().mcp);
 }

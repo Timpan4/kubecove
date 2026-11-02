@@ -215,6 +215,7 @@ async fn close_during_resume_cannot_restore_session_credentials() {
         credential_store: String::new(),
         access: None,
         oidc: Some(Arc::clone(&oidc)),
+        mcp: None,
     });
     let open = crate::login(
         State(Arc::clone(&state)),

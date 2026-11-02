@@ -32,6 +32,7 @@ pub(super) fn state() -> Arc<AppState> {
         credential_store: "encryptedFile".into(),
         access: None,
         oidc: None,
+        mcp: None,
     })
 }
 
