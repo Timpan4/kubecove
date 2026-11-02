@@ -2,10 +2,11 @@ use kubecove_server::{
     AppState,
     config::{Config, HELP},
     files::write_startup_token,
+    mcp::McpServer,
     metrics,
     observe::{self, AuthMode},
     router,
-    security::random_token,
+    security::{NetworkPolicy, random_token},
     sessions::Sessions,
 };
 use std::{io, net::SocketAddr, process::ExitCode, sync::Arc};
@@ -119,6 +120,7 @@ async fn run() -> io::Result<()> {
                     "--socket requires --public-origin for the browser's forwarded TCP origin",
                 )
             })?;
+            let mcp = mcp_server(&config, &policy, origin)?;
             if !config.quiet {
                 print_login(origin, &token, config.print_token, login_mode);
             }
@@ -129,6 +131,7 @@ async fn run() -> io::Result<()> {
                 credential_store,
                 access,
                 oidc,
+                mcp,
             });
             observe::server_started(auth_mode, "unix");
             axum::serve(listener, router(state))
@@ -148,6 +151,7 @@ async fn run() -> io::Result<()> {
             .public_origin
             .clone()
             .unwrap_or_else(|| policy.origins[0].clone());
+        let mcp = mcp_server(&config, &policy, &origin)?;
         if !config.quiet {
             print_login(&origin, &token, config.print_token, login_mode);
         }
@@ -158,6 +162,7 @@ async fn run() -> io::Result<()> {
             credential_store,
             access,
             oidc,
+            mcp,
         });
         if let (Some(cert), Some(key)) = (&config.tls_cert, &config.tls_key) {
             let tls = axum_server::tls_rustls::RustlsConfig::from_pem_file(cert, key).await?;
@@ -184,6 +189,29 @@ async fn run() -> io::Result<()> {
         sessions.shutdown().await;
     }
     Ok(())
+}
+
+/// Builds `/mcp` when `--mcp` is set and prints where agents connect. The token stays in
+/// its file; only the path is printed (ADR 0028).
+fn mcp_server(
+    config: &Config,
+    policy: &NetworkPolicy,
+    origin: &str,
+) -> io::Result<Option<McpServer>> {
+    if !config.mcp {
+        return Ok(None);
+    }
+    let server = McpServer::new(&config.data_dir, policy.origins.clone())?;
+    if !config.quiet {
+        println!(
+            "KubeCove MCP: {origin}/mcp (bearer token in {})",
+            config
+                .data_dir
+                .join(kubecove_mcp::TOKEN_FILE_NAME)
+                .display()
+        );
+    }
+    Ok(Some(server))
 }
 
 fn print_login(origin: &str, token: &str, print_token: bool, login_mode: &str) {

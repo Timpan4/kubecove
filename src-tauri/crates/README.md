@@ -10,6 +10,7 @@ The desktop package at `src-tauri/` is the Cargo workspace root and host composi
 | `kubecove-live` | Watches, logs, exec, the Port Forward Lifecycle with its shared accept-and-relay loop, and session cleanup | models, kube |
 | `kubecove-gitops` | Argo CD, Flux and Helm | models, kube, live |
 | `kubecove-host` | Process usage, native workspace files and desktop remote client, including desktop-tunnelled forwards | models, kube, live (desktop only) |
+| `kubecove-mcp` | Read-only MCP tools, their Streamable HTTP endpoint and bearer token file (ADR 0028); the desktop loopback listener behind the `loopback` feature | models, kube, inspection, live, gitops |
 
 `kubecove` aggregates the existing public `commands`, `models` and `runtime` APIs for the desktop and server. Workspace cancellation stays there because it coordinates client generations, live-cache loads and Argo connections. Domain crates must not depend on this composition root. The `commands` namespaces preserve existing domain paths; they are not separate implementations.
 

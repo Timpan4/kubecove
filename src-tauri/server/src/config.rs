@@ -22,10 +22,15 @@ pub const HELP: &str = "kubecove-server [OPTIONS]\n\
   --oidc-kubernetes-credentials <AUD>  Call Kubernetes with the user's ID token; AUD is the API server's OIDC client ID\n\
   --log-format <FORMAT>  text (default) or json, one object per line on stderr; RUST_LOG sets levels\n\
   --metrics-listen <IP:PORT>  Serve unauthenticated Prometheus metrics over plain HTTP at /metrics; off by default\n\
+  --mcp                  Serve read-only MCP tools at /mcp for AI agents; bearer token in <data-dir>/mcp-token\n\
   --print-token          Also print the token on startup\n\
   --quiet                Suppress the startup login URL in service logs\n\
   --help                 Show this help";
 
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "each bool is an independent command-line switch"
+)]
 pub struct Config {
     pub listen: SocketAddr,
     pub socket: Option<PathBuf>,
@@ -39,6 +44,7 @@ pub struct Config {
     pub quiet: bool,
     pub log_format: LogFormat,
     pub metrics_listen: Option<SocketAddr>,
+    pub mcp: bool,
     pub access: Option<CloudflareAccess>,
     pub oidc: Option<OidcConfig>,
 }
@@ -59,6 +65,7 @@ impl Config {
             quiet: false,
             log_format: LogFormat::Text,
             metrics_listen: None,
+            mcp: false,
             access: None,
             oidc: None,
         };
@@ -76,6 +83,7 @@ impl Config {
                 "--allow-remote" => config.allow_remote = true,
                 "--print-token" => config.print_token = true,
                 "--quiet" => config.quiet = true,
+                "--mcp" => config.mcp = true,
                 "--listen" => {
                     config.listen = text(value(&mut args, flag)?)?
                         .parse()
@@ -143,6 +151,11 @@ impl Config {
             }
         };
         if let Some(audience) = oidc_forward {
+            // MCP requests carry no user's Kubernetes identity, and forwarded-credential
+            // mode strips the operator's (ADR 0028).
+            if config.mcp {
+                return Err("--mcp cannot be combined with --oidc-kubernetes-credentials".into());
+            }
             config.oidc = Some(
                 config
                     .oidc

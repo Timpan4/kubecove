@@ -68,6 +68,7 @@ async fn sign_in_events_carry_no_credentials() {
         credential_store: String::new(),
         access: None,
         oidc: Some(Arc::clone(&oidc)),
+        mcp: None,
     });
     let open = crate::login(
         State(Arc::clone(&state)),

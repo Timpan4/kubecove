@@ -124,6 +124,10 @@ A disconnected client can resume its matching session within the grace window, w
 
 Stop the server with Ctrl+C or the host's service manager. Shutdown closes live sessions and forwards. To upgrade, stop the server, replace the executable from a reviewed release, and start it again. Keep the data directory.
 
+## Serve AI agents
+
+Add `--mcp` to serve read-only tools for AI agents at `/mcp`, authenticated by a separate token in `<data-dir>/mcp-token`. See [AI agents (MCP)](https://github.com/Timpan4/kubecove/wiki/AI-Agents-MCP).
+
 ## Logs
 
 The server logs session lifecycle, sign-in results, refused requests, OIDC token renewals and failed commands to stderr. Add `--log-format json` to write one JSON object per line for a log collector; the default is plain text. Each line has an `event` field, such as `session_opened`, `sign_in` or `request_refused`. Session lifecycle and command events also carry a random `session_id` that is unrelated to any credential. An error that stops the server is logged as `server_failed` in the same format. Invalid arguments or an invalid `RUST_LOG` value print a plain `Error: ...` line instead, because they are found before logging starts.

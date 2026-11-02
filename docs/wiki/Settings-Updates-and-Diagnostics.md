@@ -45,6 +45,10 @@ Open **Updates**, select **Check**, then select **Install** only after reviewing
 
 If a check fails, retry after confirming network access to GitHub release downloads. Do not replace application files manually while installer is running.
 
+## AI agents
+
+**AI agents** turns on a read-only MCP endpoint at `http://127.0.0.1:47615/mcp` for agents such as Claude Code. It is off by default, accepts only loopback connections and needs the bearer token that **Copy token** and **Copy Claude Code command** copy. See [AI agents (MCP)](https://github.com/Timpan4/kubecove/wiki/AI-Agents-MCP).
+
 ## Diagnostics
 
 ![KubeCove Settings diagnostics view showing local latency report controls](https://raw.githubusercontent.com/Timpan4/kubecove/main/docs/assets/wiki/settings-diagnostics-report.png)

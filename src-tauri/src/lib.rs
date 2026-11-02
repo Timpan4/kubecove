@@ -23,6 +23,8 @@ mod appimage_webkit;
 pub mod commands;
 #[cfg(feature = "desktop")]
 mod ipc;
+#[cfg(feature = "desktop")]
+mod mcp;
 #[cfg(feature = "e2e")]
 use kubecove_kube::e2e;
 pub use kubecove_kube::runtime;
@@ -30,12 +32,26 @@ pub use kubecove_models as models;
 
 #[cfg(feature = "desktop")]
 use commands::{
-    AppUsageMonitor, ArgoConnectionStore, BackendCancellationRegistry, ClusterLiveStore,
+    AppUsageMonitor, ArgoConnectionStore, BackendCancellationRegistry, ClusterLiveStore, McpHost,
     PodExecRegistry, PortForwardRegistry, RemoteConnectionStore, StreamRegistry,
     init_kubeconfig_settings_path,
 };
-#[cfg(all(feature = "desktop", not(feature = "e2e")))]
+#[cfg(feature = "desktop")]
 use tauri::Manager;
+
+/// Starts the MCP listener if the user left it enabled. It reads through the app's own
+/// live store, so agents see the same caches as the views.
+#[cfg(feature = "desktop")]
+fn start_mcp(app: &tauri::App, config_dir: std::path::PathBuf) {
+    let handle = app.handle().clone();
+    tauri::async_runtime::spawn(async move {
+        let live_store = handle.state::<ClusterLiveStore>().inner().clone();
+        handle
+            .state::<McpHost>()
+            .start(config_dir, live_store)
+            .await;
+    });
+}
 
 #[cfg(feature = "desktop")]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -69,8 +85,8 @@ pub fn run() {
         .setup(move |app| {
             #[cfg(feature = "e2e")]
             {
-                let _ = app;
-                init_kubeconfig_settings_path(e2e_config.data_dir);
+                init_kubeconfig_settings_path(e2e_config.data_dir.clone());
+                start_mcp(app, e2e_config.data_dir);
             }
             #[cfg(not(feature = "e2e"))]
             {
@@ -90,7 +106,8 @@ pub fn run() {
                 };
                 #[cfg(not(debug_assertions))]
                 let app_config_dir = app.path().app_config_dir()?;
-                init_kubeconfig_settings_path(app_config_dir);
+                init_kubeconfig_settings_path(app_config_dir.clone());
+                start_mcp(app, app_config_dir);
             }
             #[cfg(target_os = "linux")]
             {
@@ -216,6 +233,7 @@ pub fn run() {
         .manage(AppUsageMonitor::default())
         .manage(ArgoConnectionStore::default())
         .manage(RemoteConnectionStore::default())
+        .manage(McpHost::default())
         .invoke_handler(ipc::invoke_handler())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

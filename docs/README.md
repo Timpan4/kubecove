@@ -38,6 +38,7 @@ User-facing procedures start in the [public Wiki](https://github.com/Timpan4/kub
 - [Single command contract](decisions/0025-single-command-contract.md) — single declaration for Tauri IPC and server HTTP commands, and removal of the legacy name-only operation commands.
 - [Cluster access by intent](decisions/0026-cluster-access-by-intent.md) — single module for Kubernetes clients named by intent, and the server's restriction to operator-configured kubeconfig sources.
 - [Server observability](decisions/0027-server-observability.md): structured server logs, redaction rules and the opt-in Prometheus metrics listener.
+- [Read-only MCP server](decisions/0028-read-only-mcp-server.md): opt-in read-only tools for AI agents on the desktop loopback listener and `kubecove-server --mcp`, with a dedicated bearer token.
 - [Security Policy](../SECURITY.md) — vulnerability reporting and support.
 - [OSS Scanner](../.oss-scanner/README.md) — offline audit environment, threat model, and maintainer enrollment.
 - [Contributing](../CONTRIBUTING.md) — contribution and documentation reporting process.

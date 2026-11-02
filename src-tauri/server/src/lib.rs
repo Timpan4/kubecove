@@ -4,6 +4,7 @@ pub mod channels;
 pub mod config;
 pub mod dispatch;
 pub mod files;
+pub mod mcp;
 pub mod metrics;
 pub mod observe;
 pub mod oidc;
@@ -27,7 +28,7 @@ use axum::{
     http::{HeaderMap, HeaderValue, StatusCode, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{any, get, post},
 };
 use kubecove_lib::models::{AppError, AppErrorKind};
 use observe::{AuthMode, AuthRefusal, CloseReason, CommandOutcome, RequestRefusal, SignInFailure};
@@ -48,6 +49,8 @@ pub struct AppState {
     pub credential_store: String,
     pub access: Option<Arc<CloudflareAccess>>,
     pub oidc: Option<Arc<oidc::Oidc>>,
+    /// Set by `--mcp` (ADR 0028).
+    pub mcp: Option<mcp::McpServer>,
 }
 
 impl AppState {
@@ -100,6 +103,11 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/v1/invoke/{command}", post(invoke))
         .route("/api/v1/channels", get(websocket::upgrade))
         .route("/api/v1/channels/{id}/close", post(close_channel));
+    let router = if state.mcp.is_some() {
+        router.route("/mcp", any(mcp::handle))
+    } else {
+        router
+    };
     #[cfg(feature = "web-ui")]
     let router = router.fallback(get(assets::asset));
     router
@@ -125,12 +133,20 @@ async fn guard(
     }
     let path = request.uri().path();
     let asset_request = path.starts_with("/assets/");
-    let needs_origin = request.method() == axum::http::Method::POST || path == "/api/v1/channels";
+    // Agents send no Origin; a browser's Origin must still match. The MCP handler checks
+    // its own bearer token, so a missing Origin never falls back to the server token.
+    let mcp_request = path == "/mcp" && state.mcp.is_some();
+    let needs_origin = if mcp_request {
+        request.headers().contains_key(header::ORIGIN)
+    } else {
+        request.method() == axum::http::Method::POST || path == "/api/v1/channels"
+    };
     let checked = state
         .policy
         .check(request.headers(), needs_origin, &state.token)
         .and_then(|()| {
             if (state.access.is_some() || state.oidc.is_some())
+                && !mcp_request
                 && needs_origin
                 && !request.headers().contains_key(header::ORIGIN)
             {
@@ -593,3 +609,6 @@ mod api_tests;
 
 #[cfg(test)]
 mod oidc_router_tests;
+
+#[cfg(test)]
+mod mcp_tests;

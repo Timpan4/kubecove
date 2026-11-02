@@ -10,6 +10,7 @@ mod flux;
 mod health;
 mod helm;
 mod incidents;
+mod mcp;
 mod metrics;
 mod namespace;
 mod operations;
@@ -61,6 +62,7 @@ pub use incidents::{
     IncidentCockpitItem, IncidentCockpitSummary, IncidentSeverity, IncidentSignalState,
     IncidentSignalSummary,
 };
+pub use mcp::McpStatus;
 pub use metrics::{
     ResourceMetricSummary, ResourceMetricsAvailability, ResourceMetricsAvailabilityStatus,
     ResourceMetricsSummary,

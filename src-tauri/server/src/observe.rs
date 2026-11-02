@@ -165,6 +165,8 @@ impl AuthRefusal {
 pub enum RequestRefusal {
     Host,
     Origin,
+    /// An `/mcp` request without the MCP bearer token (ADR 0028).
+    McpToken,
 }
 
 impl RequestRefusal {
@@ -172,6 +174,7 @@ impl RequestRefusal {
         match self {
             Self::Host => "host",
             Self::Origin => "origin",
+            Self::McpToken => "mcp_token",
         }
     }
 }

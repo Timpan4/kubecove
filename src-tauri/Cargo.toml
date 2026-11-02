@@ -34,6 +34,14 @@ libc = "=0.2.191"
 uuid = { version = "=1.29.0", features = ["v4"] }
 proptest = "=1.12.0"
 tower-test = "=0.4.0"
+rmcp = { version = "=3.8.0", default-features = false, features = ["server", "transport-streamable-http-server"] }
+schemars = "=1.2.3"
+subtle = "=2.6.1"
+axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio"] }
+http-body = "=1.1.0"
+http-body-util = "=0.1.5"
+tower-service = "=0.3.3"
+bytes = "=1.12.1"
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
@@ -74,6 +82,7 @@ desktop = [
     "dep:tauri-plugin-process", "dep:tauri-plugin-dialog", "dep:tauri-plugin-opener",
     "kubecove-kube/desktop", "kubecove-inspection/desktop", "kubecove-live/desktop",
     "kubecove-gitops/desktop", "kubecove-host/desktop",
+    "dep:kubecove-mcp", "kubecove-mcp/desktop", "dep:tokio-util",
     "dep:webkit2gtk",
 ]
 bench-support = [
@@ -102,6 +111,8 @@ kubecove-inspection = { path = "crates/inspection" }
 kubecove-live = { path = "crates/live" }
 kubecove-gitops = { path = "crates/gitops" }
 kubecove-host = { path = "crates/host" }
+kubecove-mcp = { path = "crates/mcp", optional = true }
+tokio-util = { workspace = true, optional = true }
 tauri = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
