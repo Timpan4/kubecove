@@ -134,8 +134,9 @@ fn reconciliation_totals_count_each_status() {
 // Failure modes: an unrelated API publishing `"verbs": null` fails discovery,
 // a manifest group whose aggregated API server is down fails the whole
 // reconciliation instead of leaving only its own rows unavailable, an
-// unavailable preferred version hides the group's available versions, and a
-// kind served only at a non-preferred version is missed.
+// unavailable preferred version hides the group's available versions, a kind
+// served only at a non-preferred version is missed, and a skipped version
+// leaves the scan looking complete.
 #[tokio::test]
 async fn discovery_covers_manifest_and_common_kinds_beside_null_verbs_and_unavailable_apis() {
     use kubecove_kube::commands::discovery_fixture::{self, FixtureKind};
@@ -171,13 +172,21 @@ async fn discovery_covers_manifest_and_common_kinds_beside_null_verbs_and_unavai
         ),
     ];
 
-    let discovered = discovered_resources(client, &manifest)
+    let (discovered, warnings) = discovered_resources(client, &manifest)
         .await
         .expect("discovery");
 
     let mut kinds: Vec<&str> = discovered.iter().map(|kind| kind.kind.as_str()).collect();
     kinds.sort_unstable();
     assert_eq!(kinds, ["Deployment", "Gizmo", "Service", "Widget"]);
+    // Skipped versions must read as an incomplete scan, not an empty one.
+    assert_eq!(
+        warnings,
+        [
+            "API down.example.com/v1 is unavailable, so resources at that version were not checked.",
+            "API example.com/v1beta1 is unavailable, so resources at that version were not checked.",
+        ]
+    );
 }
 
 #[test]

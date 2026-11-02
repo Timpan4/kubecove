@@ -9,26 +9,34 @@ use kube::{
 };
 use std::collections::BTreeSet;
 
-/// The resources that the cluster serves in `groups`, one per kind, each at
-/// the highest-priority available version that serves that kind.
+#[derive(Debug, Default)]
+pub struct DiscoveredResources {
+    /// One entry per kind, at the highest-priority available version that
+    /// serves it.
+    pub resources: Vec<(ApiResource, ApiCapabilities)>,
+    /// Each `group/version` that answered 503 and was skipped, sorted.
+    pub unavailable_versions: Vec<String>,
+}
+
+/// The resources that the cluster serves in `groups`.
 ///
 /// This reads the per-group discovery endpoints because kube's aggregated
 /// discovery parser fails for the whole cluster when any API publishes
 /// `"verbs": null`, as `subresources.kubevirt.io` does. Any error from the
 /// group lists fails the call. A non-core version whose aggregated API server
-/// answers 503 is skipped, as aggregated discovery leaves out unavailable APIs,
-/// so a group with no available version contributes nothing.
+/// answers 503 is skipped and reported, as aggregated discovery leaves out
+/// unavailable APIs.
 pub async fn discover_resources(
     client: &Client,
     groups: &[&str],
-) -> Result<Vec<(ApiResource, ApiCapabilities)>, AppError> {
-    let mut resources = Vec::new();
+) -> Result<DiscoveredResources, AppError> {
+    let mut discovered = DiscoveredResources::default();
     if groups.contains(&ApiGroup::CORE_GROUP) {
         let core = discovery::group(client, ApiGroup::CORE_GROUP).await?;
-        resources.extend(core.recommended_resources());
+        discovered.resources.extend(core.recommended_resources());
     }
     if groups.iter().all(|group| group.is_empty()) {
-        return Ok(resources);
+        return Ok(discovered);
     }
     let served = client.list_api_groups().await?;
     for group in served
@@ -36,17 +44,19 @@ pub async fn discover_resources(
         .iter()
         .filter(|group| groups.contains(&group.name.as_str()))
     {
-        resources.extend(group_resources(client, group).await?);
+        add_group_resources(client, group, &mut discovered).await?;
     }
-    Ok(resources)
+    discovered.unavailable_versions.sort_unstable();
+    Ok(discovered)
 }
 
-/// Each kind in `group` once, from the first available version that serves
-/// it: the preferred version, then the others in the server's listed order.
-async fn group_resources(
+/// Adds each kind in `group` once, from the first available version that
+/// serves it: the preferred version, then the others in the server's order.
+async fn add_group_resources(
     client: &Client,
     group: &APIGroup,
-) -> Result<Vec<(ApiResource, ApiCapabilities)>, AppError> {
+    discovered: &mut DiscoveredResources,
+) -> Result<(), AppError> {
     let preferred = group
         .preferred_version
         .as_ref()
@@ -57,19 +67,23 @@ async fn group_resources(
         .map(|version| version.version.as_str())
         .filter(|version| Some(*version) != preferred);
     let mut kinds = BTreeSet::new();
-    let mut resources = Vec::new();
     for version in preferred.into_iter().chain(others) {
-        match discovery::pinned_group(client, &GroupVersion::gv(&group.name, version)).await {
+        let group_version = GroupVersion::gv(&group.name, version);
+        match discovery::pinned_group(client, &group_version).await {
             Ok(api_group) => {
                 for (resource, capabilities) in api_group.recommended_resources() {
                     if kinds.insert(resource.kind.clone()) {
-                        resources.push((resource, capabilities));
+                        discovered.resources.push((resource, capabilities));
                     }
                 }
             }
-            Err(kube::Error::Api(status)) if status.code == 503 => {}
+            Err(kube::Error::Api(status)) if status.code == 503 => {
+                discovered
+                    .unavailable_versions
+                    .push(group_version.api_version());
+            }
             Err(error) => return Err(error.into()),
         }
     }
-    Ok(resources)
+    Ok(())
 }

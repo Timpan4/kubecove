@@ -14,7 +14,7 @@ pub mod kubeconfig;
 pub mod list_projection;
 pub mod live_store;
 
-pub use api_discovery::discover_resources;
+pub use api_discovery::{discover_resources, DiscoveredResources};
 pub use cancellation::{cancel_backend_requests, BackendCancellationRegistry};
 pub use cluster_access::{ClientIntent, ClusterAccess};
 #[cfg(feature = "test-support")]

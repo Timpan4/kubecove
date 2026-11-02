@@ -69,8 +69,9 @@ pub async fn get_helm_release_reconciliation(
         &storage_name,
     )
     .await?;
-    let discovered = discovered_resources(client.clone(), &record.manifest_resources).await?;
-    let (resources, warnings, totals) = reconcile_release(
+    let (discovered, discovery_warnings) =
+        discovered_resources(client.clone(), &record.manifest_resources).await?;
+    let (resources, mut warnings, totals) = reconcile_release(
         client,
         &cluster_context,
         &record.summary,
@@ -78,6 +79,7 @@ pub async fn get_helm_release_reconciliation(
         &discovered,
     )
     .await;
+    warnings.extend(discovery_warnings);
 
     Ok(HelmReleaseReconciliation {
         summary: record.summary,
@@ -87,13 +89,14 @@ pub async fn get_helm_release_reconciliation(
     })
 }
 
-/// Discovers only the groups the manifest and the label scan use. A manifest
-/// group that is not served or is unavailable is left out, so only its own rows
-/// read as unavailable.
+/// Discovers only the groups the manifest and the label scan use, with a
+/// warning for each version that was unavailable. A manifest group that is not
+/// served or is unavailable is left out, so only its own rows read as
+/// unavailable.
 async fn discovered_resources(
     client: Client,
     manifest_refs: &[HelmManifestResourceSummary],
-) -> Result<Vec<DiscoveredResourceKind>, AppError> {
+) -> Result<(Vec<DiscoveredResourceKind>, Vec<String>), AppError> {
     let mut groups: BTreeSet<&str> = COMMON_LABEL_SCAN_KINDS
         .iter()
         .map(|(group, _)| *group)
@@ -103,8 +106,18 @@ async fn discovered_resources(
         Some(api_version.rsplit_once('/').map_or("", |(group, _)| group))
     }));
     let groups: Vec<&str> = groups.into_iter().collect();
+    let discovered = discover_resources(&client, &groups).await?;
+    let warnings = discovered
+        .unavailable_versions
+        .iter()
+        .map(|api_version| {
+            format!(
+                "API {api_version} is unavailable, so resources at that version were not checked."
+            )
+        })
+        .collect();
     let mut kinds = Vec::new();
-    for (api_resource, capabilities) in discover_resources(&client, &groups).await? {
+    for (api_resource, capabilities) in discovered.resources {
         if !capabilities.supports_operation(verbs::GET)
             && !capabilities.supports_operation(verbs::LIST)
         {
@@ -127,7 +140,7 @@ async fn discovered_resources(
             .then(a.plural.cmp(&b.plural))
     });
     kinds.dedup_by(|a, b| a.api_version == b.api_version && a.kind == b.kind);
-    Ok(kinds)
+    Ok((kinds, warnings))
 }
 
 async fn reconcile_release(

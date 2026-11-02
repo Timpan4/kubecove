@@ -31,6 +31,7 @@ pub(crate) async fn discover_api_resources(
 ) -> Result<Vec<ApiResource>, AppError> {
     Ok(discover_resources(client, groups)
         .await?
+        .resources
         .into_iter()
         .map(|(api_resource, _)| api_resource)
         .collect())
