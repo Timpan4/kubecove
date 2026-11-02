@@ -25,12 +25,25 @@ pub(crate) fn object_age(metadata: &ObjectMeta) -> String {
 }
 
 /// The resources of `groups`, one per kind, through `discover_resources`.
+///
+/// Argo CD and Flux kinds are CRDs that kube-apiserver serves itself, so an
+/// unavailable version means the server cannot answer, not that the provider
+/// is missing. Any unavailable version fails the call.
 pub(crate) async fn discover_api_resources(
     client: &Client,
     groups: &[&str],
 ) -> Result<Vec<ApiResource>, AppError> {
-    Ok(discover_resources(client, groups)
-        .await?
+    let discovered = discover_resources(client, groups).await?;
+    if !discovered.unavailable_versions.is_empty() {
+        return Err(AppError::new(
+            format!(
+                "API discovery is unavailable for {}",
+                discovered.unavailable_versions.join(", ")
+            ),
+            AppErrorKind::ProviderDiscoveryUnavailable,
+        ));
+    }
+    Ok(discovered
         .resources
         .into_iter()
         .map(|(api_resource, _)| api_resource)

@@ -1,4 +1,5 @@
 use crate::commands::{detect_argocd, detect_flux, FixedClusterAccess};
+use crate::models::AppErrorKind;
 use kubecove_kube::commands::discovery_fixture::{self, FixtureKind};
 
 const ARGO_APPLICATION: FixtureKind = FixtureKind {
@@ -119,4 +120,31 @@ async fn provider_detection_fails_when_the_group_list_is_unavailable() {
 
     assert!(argo.is_err(), "Argo CD detection: {argo:?}");
     assert!(flux.is_err(), "Flux detection: {flux:?}");
+}
+
+// Failure mode: a provider's API version answers 503, and detection reports
+// the installed provider as not installed instead of failing.
+#[tokio::test]
+async fn provider_detection_fails_when_a_provider_api_version_is_unavailable() {
+    let scope = FixedClusterAccess::new(discovery_fixture::client_with_unavailable_groups(
+        &[ARGO_APPLICATION, FLUX_GIT_REPOSITORY],
+        &[
+            (ARGO_APPLICATION.group, ARGO_APPLICATION.version),
+            (FLUX_GIT_REPOSITORY.group, FLUX_GIT_REPOSITORY.version),
+        ],
+    ))
+    .scope();
+
+    let argo = scope
+        .clone()
+        .run(detect_argocd("fixture".into(), None))
+        .await
+        .expect_err("Argo CD detection");
+    let flux = scope
+        .run(detect_flux("fixture".into(), None))
+        .await
+        .expect_err("Flux detection");
+
+    assert_eq!(argo.kind, AppErrorKind::ProviderDiscoveryUnavailable);
+    assert_eq!(flux.kind, AppErrorKind::ProviderDiscoveryUnavailable);
 }
