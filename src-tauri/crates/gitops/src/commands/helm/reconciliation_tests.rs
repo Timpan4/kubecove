@@ -153,6 +153,7 @@ async fn discovery_covers_manifest_and_common_kinds_beside_null_verbs_and_unavai
             kind("apps", "v1", "Deployment", "deployments"),
             kind("example.com", "v1", "Widget", "widgets"),
             kind("example.com", "v1alpha1", "Gizmo", "gizmos"),
+            kind("example.com", "v1alpha1", "Widget", "widgets"),
         ],
         &[("down.example.com", "v1"), ("example.com", "v1beta1")],
     );
@@ -176,9 +177,20 @@ async fn discovery_covers_manifest_and_common_kinds_beside_null_verbs_and_unavai
         .await
         .expect("discovery");
 
-    let mut kinds: Vec<&str> = discovered.iter().map(|kind| kind.kind.as_str()).collect();
-    kinds.sort_unstable();
-    assert_eq!(kinds, ["Deployment", "Gizmo", "Service", "Widget"]);
+    // `Widget` is served at v1 and v1alpha1 and is kept once, at v1.
+    let kinds: Vec<(&str, &str)> = discovered
+        .iter()
+        .map(|kind| (kind.api_version.as_str(), kind.kind.as_str()))
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            ("apps/v1", "Deployment"),
+            ("example.com/v1", "Widget"),
+            ("example.com/v1alpha1", "Gizmo"),
+            ("v1", "Service"),
+        ]
+    );
     // Skipped versions must read as an incomplete scan, not an empty one.
     assert_eq!(
         warnings,

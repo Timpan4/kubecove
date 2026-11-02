@@ -24,7 +24,9 @@ pub struct FixtureKind {
 }
 
 /// A client whose discovery requests return `kinds` plus the null-verbs
-/// aggregated API, in both aggregated and per-group form.
+/// aggregated API, in both aggregated and per-group form. A group's versions
+/// are listed in the order `kinds` first names them, and the first listed
+/// version is the preferred one.
 pub fn client(kinds: &[FixtureKind]) -> Client {
     serve(kinds, &[], true)
 }
