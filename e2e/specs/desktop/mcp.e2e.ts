@@ -55,11 +55,31 @@ async function token(): Promise<string> {
 	return browser.execute(() => window.__TAURI__.core.invoke<string>("reveal_mcp_token"));
 }
 
+const SWITCH = 'button[role="switch"][aria-label="MCP server"]';
+
 async function savePort(port: number): Promise<void> {
 	const input = await $("#mcp-port");
 	await input.setValue(String(port));
 	await $("button=Save").click();
 	await browser.waitUntil(async () => (await status()).port === port, { timeoutMsg: "MCP port was not saved." });
+}
+
+async function openAgentsSettings(): Promise<void> {
+	if (await $("#mcp-port").isExisting()) return;
+	await $('button[aria-label="Open settings"]').click();
+	await $("button*=AI agents").click();
+	await $(SWITCH).waitForClickable();
+}
+
+/** Starts MCP on a free port unless it is already running, and returns its port. */
+async function ensureRunning(): Promise<number> {
+	await openAgentsSettings();
+	if (!(await status()).running) {
+		await savePort(await freePort());
+		if (!(await status()).enabled) await $(SWITCH).click();
+		await browser.waitUntil(async () => (await status()).running, { timeoutMsg: "MCP did not start." });
+	}
+	return (await status()).port;
 }
 
 describe("desktop MCP server", () => {
@@ -80,10 +100,8 @@ describe("desktop MCP server", () => {
 	});
 
 	it("is off until enabled, then serves only read-only tools to the token holder", async () => {
-		await $('button[aria-label="Open settings"]').click();
-		await $("button*=AI agents").click();
-		const toggle = await $('button[role="switch"][aria-label="MCP server"]');
-		await toggle.waitForClickable();
+		await openAgentsSettings();
+		const toggle = await $(SWITCH);
 		await expect(toggle).toHaveAttribute("aria-checked", "false");
 		expect((await status()).running).toBe(false);
 
@@ -113,7 +131,7 @@ describe("desktop MCP server", () => {
 	});
 
 	it("reports a port conflict, rotates the token and closes the port when turned off", async () => {
-		const working = (await status()).port;
+		const working = await ensureRunning();
 		blocker = createServer();
 		const taken = await listenOnLoopback(blocker);
 		await savePort(taken);
@@ -128,7 +146,7 @@ describe("desktop MCP server", () => {
 		expect((await rpc(working, old, listTools)).status).toBe(401);
 		expect((await rpc(working, await token(), listTools)).status).toBe(200);
 
-		await $('button[role="switch"][aria-label="MCP server"]').click();
+		await $(SWITCH).click();
 		await browser.waitUntil(async () => !(await status()).running, { timeoutMsg: "MCP did not stop." });
 		await expect(rpc(working, await token(), listTools)).rejects.toThrow();
 	});

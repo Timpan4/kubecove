@@ -40,16 +40,17 @@ use commands::{
 use tauri::Manager;
 
 /// Starts the MCP listener if the user left it enabled. It reads through the app's own
-/// live store, so agents see the same caches as the views.
+/// live store, so agents see the same caches as the views. Settings load before the
+/// webview can ask for them.
 #[cfg(feature = "desktop")]
 fn start_mcp(app: &tauri::App, config_dir: std::path::PathBuf) {
+    let live_store = app.state::<ClusterLiveStore>().inner().clone();
+    let Some(startup) = app.state::<McpHost>().prepare(config_dir, live_store) else {
+        return;
+    };
     let handle = app.handle().clone();
     tauri::async_runtime::spawn(async move {
-        let live_store = handle.state::<ClusterLiveStore>().inner().clone();
-        handle
-            .state::<McpHost>()
-            .start(config_dir, live_store)
-            .await;
+        handle.state::<McpHost>().start(startup).await;
     });
 }
 

@@ -47,13 +47,17 @@
 		if (saved) portText = String(saved.port);
 	}
 
+	/** Busy while copying, so a rotation cannot revoke the token being copied. */
 	async function copyWithToken(label: string, format: (token: string) => string) {
+		pending = true;
 		announcement = "";
 		try {
 			const token = await revealMcpToken();
 			await copyTextWithAnnouncement((message) => (announcement = message), navigator.clipboard, format(token), label);
 		} catch (reason) {
 			error = messageFromError(reason);
+		} finally {
+			pending = false;
 		}
 	}
 </script>

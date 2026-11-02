@@ -14,7 +14,10 @@ use std::{
     sync::{Arc, OnceLock},
 };
 use tauri::State;
-use tokio::{sync::Mutex, task::JoinHandle};
+use tokio::{
+    sync::{Mutex, OwnedMutexGuard},
+    task::JoinHandle,
+};
 use tokio_util::sync::CancellationToken;
 
 const SETTINGS_FILE_NAME: &str = "mcp-settings.json";
@@ -59,27 +62,35 @@ struct Paths {
 #[derive(Default)]
 pub struct McpHost {
     paths: OnceLock<Paths>,
-    state: Mutex<HostState>,
+    state: Arc<Mutex<HostState>>,
 }
 
+/// The host lock, held from [`McpHost::prepare`] until [`McpHost::start`] has started the
+/// listener.
+pub struct McpStartup(OwnedMutexGuard<HostState>);
+
 impl McpHost {
-    /// Loads saved settings and starts the listener when MCP was left enabled. Tools read
-    /// through `live_store`, the same caches the app's views use.
-    pub async fn start(&self, config_dir: PathBuf, live_store: ClusterLiveStore) {
+    /// Loads saved settings and takes the host lock, so a command that arrives before the
+    /// listener has started waits for it instead of reading defaults. Tools read through
+    /// `live_store`, the same caches the app's views use. Returns `None` when already
+    /// prepared.
+    pub fn prepare(&self, config_dir: PathBuf, live_store: ClusterLiveStore) -> Option<McpStartup> {
         let settings = load_settings(&config_dir);
-        if self
-            .paths
+        // Nothing else holds the lock before the host is prepared.
+        let mut state = Arc::clone(&self.state).try_lock_owned().ok()?;
+        self.paths
             .set(Paths {
                 config_dir,
                 live_store,
             })
-            .is_err()
-        {
-            return;
-        }
-        let mut state = self.state.lock().await;
+            .ok()?;
         state.settings = settings;
-        self.restart(&mut state).await;
+        Some(McpStartup(state))
+    }
+
+    /// Starts the listener when MCP was left enabled, then releases the host lock.
+    pub async fn start(&self, mut startup: McpStartup) {
+        self.restart(&mut startup.0).await;
     }
 
     fn paths(&self) -> Result<&Paths, AppError> {
