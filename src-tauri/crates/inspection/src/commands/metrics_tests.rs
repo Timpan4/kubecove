@@ -2,6 +2,52 @@ use super::*;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
 use serde_json::json;
 
+#[tokio::test]
+async fn metrics_api_is_found_beside_an_api_with_null_verbs() {
+    use kubecove_kube::commands::discovery_fixture::{self, FixtureKind};
+    let metrics = |kind, plural, namespaced| FixtureKind {
+        group: "metrics.k8s.io",
+        version: "v1beta1",
+        kind,
+        plural,
+        namespaced,
+    };
+    let client = discovery_fixture::client(&[
+        metrics("PodMetrics", "pods", true),
+        metrics("NodeMetrics", "nodes", false),
+    ]);
+
+    assert!(has_metrics_api(client).await.expect("metrics discovery"));
+}
+
+// Failure mode: a registered metrics API whose server is down (metrics-server
+// not running) reads as a discovery failure with a raw error warning instead
+// of an absent metrics API.
+#[tokio::test]
+async fn metrics_api_with_a_stopped_server_reads_as_unavailable() {
+    use crate::commands::FixedClusterAccess;
+    use kubecove_kube::commands::discovery_fixture;
+    let access = FixedClusterAccess::new(discovery_fixture::client_with_unavailable_groups(
+        &[],
+        &[("metrics.k8s.io", "v1beta1")],
+    ))
+    .access();
+
+    let summary = resource_metrics_from(&access, "fixture".into(), Vec::new())
+        .await
+        .expect("metrics summary");
+
+    assert_eq!(
+        summary.availability.status,
+        ResourceMetricsAvailabilityStatus::Unavailable
+    );
+    assert_eq!(
+        summary.availability.message.as_deref(),
+        Some("metrics API unavailable")
+    );
+    assert!(summary.warnings.is_empty(), "{:?}", summary.warnings);
+}
+
 #[test]
 fn workload_overflow_stays_unavailable_after_later_valid_samples() {
     let mut pods = Vec::new();

@@ -14,9 +14,10 @@ use k8s_openapi::api::core::v1::Pod;
 use k8s_openapi::NamespaceResourceScope;
 use kube::{
     api::{Api, ApiResource, DynamicObject},
-    discovery::{verbs, Discovery},
+    discovery::verbs,
     Client, Error,
 };
+use kubecove_kube::commands::discover_resources;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 
@@ -42,21 +43,14 @@ fn metrics_api_resource(kind: &str, plural: &str) -> ApiResource {
     }
 }
 
+/// Whether the cluster serves listable pod or node metrics. A registered metrics
+/// API whose server is down reads as absent.
 async fn has_metrics_api(client: Client) -> Result<bool, AppError> {
-    let discovery = Discovery::new(client)
-        .run_aggregated()
-        .await
-        .map_err(AppError::from)?;
-    let available = discovery.groups().any(|group| {
-        group.name() == "metrics.k8s.io"
-            && group
-                .recommended_resources()
-                .iter()
-                .any(|(resource, capabilities)| {
-                    resource.api_version == "metrics.k8s.io/v1beta1"
-                        && matches!(resource.kind.as_str(), "PodMetrics" | "NodeMetrics")
-                        && capabilities.supports_operation(verbs::LIST)
-                })
+    let discovered = discover_resources(&client, &["metrics.k8s.io"]).await?;
+    let available = discovered.resources.iter().any(|(resource, capabilities)| {
+        resource.api_version == "metrics.k8s.io/v1beta1"
+            && matches!(resource.kind.as_str(), "PodMetrics" | "NodeMetrics")
+            && capabilities.supports_operation(verbs::LIST)
     });
     Ok(available)
 }
