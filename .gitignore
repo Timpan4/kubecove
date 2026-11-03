@@ -34,9 +34,12 @@ Thumbs.db
 .idea/
 .vscode/
 .sisyphus/
-# Local Claude Code state stays private; its skills directory holds tracked links into .agents/skills/.
+# Local Claude Code state, including personal skills, stays private. Only the listed links into .agents/skills/ are tracked.
 .claude/*
 !.claude/skills/
+.claude/skills/*
+!.claude/skills/verify-kubecove
+!.claude/skills/verify-resource-watch
 .pi-lens
 
 # Local E2E tools, kubeconfigs, diagnostics, and ownership records
