@@ -54,6 +54,12 @@ export function startIdentity(pid: number): string | undefined {
 	}
 }
 
+// True only when `pid` runs and is the process the run started, by the start identity recorded at spawn. A bare PID
+// check would accept a reused PID.
+export function ownsLeader(pid: number, startedAt: string | undefined) {
+	return startedAt !== undefined && alive(pid) && startIdentity(pid) === startedAt;
+}
+
 // Polls `check` until it returns true. Each check gets a signal that aborts at the deadline, and the deadline holds
 // even when a check ignores the signal.
 export async function waitFor(description: string, check: (signal: AbortSignal) => Promise<boolean>, timeoutMs = readinessTimeoutMs) {

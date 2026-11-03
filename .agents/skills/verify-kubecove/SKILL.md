@@ -42,7 +42,7 @@ Chrome comes from `KUBECOVE_VERIFY_CHROME`, then Playwright's pinned Chromium, t
 .agents/skills/verify-kubecove/scripts/kubecove-verify.ts doctor
 ```
 
-Read-only. Exits 0 only when all checks pass: Vite and Chrome PIDs are alive, `HEAD` matches the commit at launch, the listening socket belongs to this run's Vite process group (Linux), the index has `<title>KubeCove</title>`, CDP answers, and the page has no Tauri internals, so it runs browser mocks. Run it first whenever a step fails or anything looks wrong. A changed `HEAD` means the UI under test no longer matches the run, so launch a new one.
+Read-only. Exits 0 only when all checks pass: the Vite and Chrome PIDs still name the processes launch started, by start time, `HEAD` matches the commit at launch, the listening socket belongs to this run's Vite process group (Linux), the index has `<title>KubeCove</title>`, CDP answers, and the page has no Tauri internals, so it runs browser mocks. Run it first whenever a step fails or anything looks wrong. A changed `HEAD` means the UI under test no longer matches the run, so launch a new one.
 
 ## Drive
 
@@ -60,7 +60,7 @@ Actions:
 - `click`, `fill --value <text>`, `press --key <key>` (focused element unless a target is given), `wait [--state hidden]`.
 - `count`, `value` (input value). Both print the result as JSON.
 - `goto --path <path>`, `reload`, `reset` (clear `localStorage`, reload, wait for `mock-dev`), `viewport --width <px> --height <px>`.
-- `snapshot --path <file>` writes an ARIA snapshot of the target or the whole page. `text --path <file>` writes inner text. `screenshot --path <file> [--full]` writes a PNG.
+- `snapshot --path <file>` writes an ARIA snapshot of the target or the whole page. `text --path <file>` writes inner text. `screenshot --path <file>` writes a PNG of the target, or of the viewport without one; `--full` captures the whole page and takes no target.
 - `--timeout <ms>` overrides Playwright's default action timeout.
 
 Each command prints `{action, title, url}` and appends the action, its arguments, and the resulting URL to `actions.jsonl` in the evidence directory. Read [features/README.md](features/README.md) and the matching feature file for exact journeys.

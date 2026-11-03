@@ -5,7 +5,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 import { chromium, type Locator, type Page } from "playwright-core";
-import { alive, freePort, gitHead, readinessTimeoutMs, root, startChrome, startIdentity, stopGroup, waitFor } from "./processes";
+import { freePort, gitHead, ownsLeader, readinessTimeoutMs, root, startChrome, startIdentity, stopGroup, waitFor } from "./processes";
 
 type RunState = { runId: string; head: string; url: string; vitePid: number; viteStartedAt?: string; chromePid: number; chromeStartedAt?: string; cdpUrl: string; evidenceDir: string };
 type Role = Parameters<Page["getByRole"]>[0];
@@ -92,6 +92,9 @@ async function launch() {
 }
 
 async function withPage<T>(state: RunState, work: (page: Page) => Promise<T>) {
+	// Chrome holds its DevTools port while it runs. Once the run's Chrome has exited, another browser could hold the
+	// recorded port, so the helper connects only while the recorded Chrome still runs.
+	if (!ownsLeader(state.chromePid, state.chromeStartedAt)) throw new Error(`run ${state.runId}'s Chrome (PID ${state.chromePid}) is no longer running, or that PID now names another process; run cleanup, then launch a new run`);
 	const browser = await chromium.connectOverCDP(state.cdpUrl);
 	try {
 		const context = browser.contexts()[0];
@@ -148,7 +151,11 @@ async function browserCommand(state: RunState, action: string | undefined) {
 			if (action === "snapshot") await writeFile(path, await scoped.ariaSnapshot());
 			// biome-ignore lint/performance/useDomNodeTextContent: evidence records the rendered text a user sees.
 			else if (action === "text") await writeFile(path, await scoped.innerText());
-			else await page.screenshot({ path, fullPage: rest.includes("--full") });
+			// A target captures that element, scrolled into view; `--full` captures the whole page and takes no target.
+			else if (hasTarget()) {
+				if (rest.includes("--full")) throw new Error("screenshot takes a target or --full, not both");
+				await scoped.screenshot({ path });
+			} else await page.screenshot({ path, fullPage: rest.includes("--full") });
 			result.path = path;
 		} else throw new Error("browser actions: goto, reload, reset, click, fill, press, wait, count, value, viewport, snapshot, screenshot, text");
 		result.title = await page.title();
@@ -159,7 +166,8 @@ async function browserCommand(state: RunState, action: string | undefined) {
 }
 
 async function doctor(state: RunState) {
-	const checks: Record<string, boolean> = { vitePid: alive(state.vitePid), chromePid: alive(state.chromePid), sameHead: gitHead() === state.head };
+	// The PIDs count only when each still names the process the run started; a reused PID fails.
+	const checks: Record<string, boolean> = { vitePid: ownsLeader(state.vitePid, state.viteStartedAt), chromePid: ownsLeader(state.chromePid, state.chromeStartedAt), sameHead: gitHead() === state.head };
 	const port = new URL(state.url).port;
 	if (process.platform === "linux" && Bun.which("ss")) {
 		// `bun --bun vite` starts a child that holds the socket, so compare process groups.
@@ -168,7 +176,7 @@ async function doctor(state: RunState) {
 	}
 	// A request and its body read share one deadline, so a stalled server fails the check instead of hanging doctor.
 	checks.indexServed = await fetch(state.url, { signal: AbortSignal.timeout(readinessTimeoutMs) }).then(async (response) => (await response.text()).includes("<title>KubeCove</title>")).catch(() => false);
-	checks.cdp = await fetch(`${state.cdpUrl}/json/version`, { signal: AbortSignal.timeout(readinessTimeoutMs) }).then((response) => response.ok).catch(() => false);
+	checks.cdp = checks.chromePid && await fetch(`${state.cdpUrl}/json/version`, { signal: AbortSignal.timeout(readinessTimeoutMs) }).then((response) => response.ok).catch(() => false);
 	checks.browserMockRuntime = checks.cdp && (await withPage(state, async (page) => page.url().startsWith(state.url) && (await page.evaluate(() => !("__TAURI_INTERNALS__" in window)))).catch(() => false));
 	const healthy = Object.values(checks).every(Boolean);
 	console.log(JSON.stringify({ healthy, runId: state.runId, url: state.url, launchedAt: state.head, evidenceDir: state.evidenceDir, checks }, null, 2));
