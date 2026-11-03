@@ -34,6 +34,8 @@ The desktop `commands/` module composes domain APIs and coordinates workspace ca
 
 `.oss-scanner/` contains the offline security-audit build environment, threat model, and maintainer enrollment instructions for Anthropic OSS Scanner.
 
+`.agents/skills/` contains project-local agent skills. `.claude/skills/` contains only relative symlinks to them, so Claude Code and Codex load one copy.
+
 ## Cross-Cutting Rules
 
 - Frontend uses typed Tauri wrappers; it never calls Kubernetes or local shell directly.
