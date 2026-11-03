@@ -47,15 +47,10 @@ async function launch() {
 	const runDir = join(stateRoot, runId);
 	const evidenceDir = join(root, "e2e", "artifacts", `verify-${runId}`);
 	if (existsSync(runDir) || existsSync(evidenceDir)) throw new Error(`run ${runId} already exists; choose a new --run id`);
-	await mkdir(join(runDir, "chrome-profile"), { recursive: true });
-	await mkdir(evidenceDir, { recursive: true });
-	const url = `http://127.0.0.1:${await freePort()}/`;
-	// A log file, not a pipe, receives output so Vite survives this helper exiting.
-	const log = Bun.file(join(evidenceDir, "vite.log"));
-	// `--port` and `--strictPort` override vite.config.ts, so a server already on 1430 is never touched.
-	const vite = Bun.spawn(["bun", "--bun", "vite", "--host", "127.0.0.1", "--port", new URL(url).port, "--strictPort"], { cwd: root, detached: true, stdin: "ignore", stdout: log, stderr: log, env: { ...process.env, KUBECONFIG: undefined, TAURI_DEV_HOST: undefined } });
-	const state: RunState = { runId, head: gitHead(), url, vitePid: vite.pid, viteStartedAt: startIdentity(vite.pid), chromePid: 0, cdpUrl: "", evidenceDir };
-	// Vite and Chrome are detached, so an interrupt during startup runs the same cleanup as a failed launch.
+	// PID 0 means not started yet; cleanup skips it.
+	const state: RunState = { runId, head: gitHead(), url: "", vitePid: 0, chromePid: 0, cdpUrl: "", evidenceDir };
+	// Vite and Chrome are detached, so an interrupt during startup runs the same cleanup as a failed launch. The
+	// handlers exist before anything starts; a signal without a handler would end launch and leave Vite running.
 	let stopping: Promise<void> | undefined;
 	const abandon = () => (stopping ??= cleanup(state));
 	const interrupt = (signal: NodeJS.Signals) => {
@@ -65,8 +60,18 @@ async function launch() {
 	process.on("SIGINT", interrupt);
 	process.on("SIGTERM", interrupt);
 	try {
+		await mkdir(join(runDir, "chrome-profile"), { recursive: true });
+		await mkdir(evidenceDir, { recursive: true });
+		const url = `http://127.0.0.1:${await freePort()}/`;
+		state.url = url;
+		// A log file, not a pipe, receives output so Vite survives this helper exiting.
+		const log = Bun.file(join(evidenceDir, "vite.log"));
+		// Once cleanup has started, start nothing it would miss. Each check runs in the same tick as its spawn.
+		if (stopping) throw new Error("launch interrupted before Vite started");
+		// `--port` and `--strictPort` override vite.config.ts, so a server already on 1430 is never touched.
+		const vite = Bun.spawn(["bun", "--bun", "vite", "--host", "127.0.0.1", "--port", new URL(url).port, "--strictPort"], { cwd: root, detached: true, stdin: "ignore", stdout: log, stderr: log, env: { ...process.env, KUBECONFIG: undefined, TAURI_DEV_HOST: undefined } });
+		Object.assign(state, { vitePid: vite.pid, viteStartedAt: startIdentity(vite.pid) });
 		await saveState(state);
-		// Once cleanup has started, start nothing it would miss. The check and the spawn run in one tick.
 		if (stopping) throw new Error("launch interrupted before Chrome started");
 		const chrome = startChrome(join(runDir, "chrome-profile"));
 		Object.assign(state, { chromePid: chrome.pid, chromeStartedAt: chrome.startedAt });
@@ -86,8 +91,8 @@ async function launch() {
 		process.off("SIGINT", interrupt);
 		process.off("SIGTERM", interrupt);
 	}
-	await record(state, { action: "launch", url, head: state.head });
-	console.log(JSON.stringify({ ready: true, runId, url, evidenceDir }, null, 2));
+	await record(state, { action: "launch", url: state.url, head: state.head });
+	console.log(JSON.stringify({ ready: true, runId, url: state.url, evidenceDir }, null, 2));
 	console.log(`export KUBECOVE_VERIFY_RUN=${runId}`);
 }
 
@@ -185,7 +190,9 @@ async function doctor(state: RunState) {
 
 async function cleanup(state: RunState) {
 	// Stop first: a failed evidence write must not leave the run's processes running.
-	const stopped = { chrome: !state.chromePid || (await stopGroup(state.chromePid, state.chromeStartedAt)), vite: await stopGroup(state.vitePid, state.viteStartedAt) };
+	// PID 0 means launch was interrupted before that process started. It must never reach a signal: on POSIX,
+	// signaling 0 or -0 targets this helper's own process group.
+	const stopped = { chrome: !state.chromePid || (await stopGroup(state.chromePid, state.chromeStartedAt)), vite: !state.vitePid || (await stopGroup(state.vitePid, state.viteStartedAt)) };
 	await record(state, { action: "cleanup", stopped }).catch((error) => console.error(`could not record cleanup: ${error instanceof Error ? error.message : error}`));
 	const done = stopped.chrome && stopped.vite;
 	// A group that did not stop keeps the run's state, so cleanup can be retried. It is written again because an

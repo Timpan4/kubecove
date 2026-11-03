@@ -20,40 +20,22 @@ const evidence = join(root, "e2e", "artifacts", `verify-server-${runId}`);
 const context = "verify-fixture";
 if (!existsSync(binary)) throw new Error(`missing ${binary}; build it first (see the skill's server section)`);
 if (existsSync(scratch) || existsSync(evidence)) throw new Error(`run ${runId} already exists; choose a new --run id`);
-await mkdir(join(scratch, "data"), { recursive: true });
-await mkdir(join(scratch, "home"));
-await mkdir(evidence, { recursive: true });
-if (process.platform !== "win32") for (const dir of [scratch, join(scratch, "data")]) await chmod(dir, 0o700);
-
-// The fixture points at a closed loopback port: contexts parse, cluster reads fail without network access.
-const fixture = join(scratch, "fixture-kubeconfig");
-// One key per line so the pre-commit credential scan's exception for this file stays narrow.
-await writeFile(
-	fixture,
-	JSON.stringify({
-		apiVersion: "v1",
-		kind: "Config",
-		clusters: [{ name: context, cluster: { server: "https://127.0.0.1:9" } }],
-		contexts: [{ name: context, context: { cluster: context, user: context } }],
-		users: [{ name: context, user: {} }],
-		"current-context": context,
-	}),
-);
-// The operator selects sources; ADR 0026 lets requests name only this variable (same pattern as e2e/headless-smoke.ts).
-await writeFile(join(scratch, "data", "kubeconfig-sources.json"), JSON.stringify({ kubeconfigEnvVar: "KUBECOVE_VERIFY_CONFIG", paths: [], showSourceLabels: true }));
-
 const results: Record<string, unknown> = { runId, head: gitHead(), binary };
 const secrets: string[] = [];
 const redact = (text: string) => secrets.filter(Boolean).reduce((value, secret) => value.replaceAll(secret, "[redacted]"), text);
-const server = Bun.spawn([binary, "--data-dir", join(scratch, "data"), "--listen", "127.0.0.1:0", "--mcp"], {
-	cwd: root,
-	detached: true,
-	stdin: "ignore",
-	stdout: "pipe",
-	stderr: "pipe",
-	env: { ...process.env, HOME: join(scratch, "home"), XDG_CONFIG_HOME: join(scratch, "home"), XDG_DATA_HOME: join(scratch, "home"), KUBECONFIG: join(scratch, "missing-kubeconfig"), KUBECOVE_VERIFY_CONFIG: fixture, DBUS_SESSION_BUS_ADDRESS: undefined },
-});
-const serverStartedAt = startIdentity(server.pid);
+// The fixture points at a closed loopback port: contexts parse, cluster reads fail without network access.
+const fixture = join(scratch, "fixture-kubeconfig");
+const spawnServer = () =>
+	Bun.spawn([binary, "--data-dir", join(scratch, "data"), "--listen", "127.0.0.1:0", "--mcp"], {
+		cwd: root,
+		detached: true,
+		stdin: "ignore",
+		stdout: "pipe",
+		stderr: "pipe",
+		env: { ...process.env, HOME: join(scratch, "home"), XDG_CONFIG_HOME: join(scratch, "home"), XDG_DATA_HOME: join(scratch, "home"), KUBECONFIG: join(scratch, "missing-kubeconfig"), KUBECOVE_VERIFY_CONFIG: fixture, DBUS_SESSION_BUS_ADDRESS: undefined },
+	});
+let server: ReturnType<typeof spawnServer> | undefined;
+let serverStartedAt: string | undefined;
 let output = "";
 const outputErrors: string[] = [];
 // Each pipe gets its own decoder, so a character split across chunks of one pipe is not mixed with the other's bytes.
@@ -67,7 +49,7 @@ const drain = async (stream: ReadableStream<Uint8Array>) => {
 		outputErrors.push(error instanceof Error ? error.message : String(error));
 	}
 };
-const drained = Promise.all([drain(server.stdout), drain(server.stderr)]);
+let drained: Promise<unknown> = Promise.resolve();
 let chrome: ReturnType<typeof startChrome> | undefined;
 let passed = false;
 
@@ -79,7 +61,7 @@ const finish = (interrupted?: string) =>
 		// Its own field: stopping the processes makes the main path fail too, and that error must not hide the cause.
 		if (interrupted) results.interrupted = interrupted;
 		results.stoppedChrome = chrome ? await stopGroup(chrome.pid, chrome.startedAt) : true;
-		results.stoppedServer = await stopGroup(server.pid, serverStartedAt);
+		results.stoppedServer = server ? await stopGroup(server.pid, serverStartedAt) : true;
 		const stopped = results.stoppedChrome === true && results.stoppedServer === true;
 		// The pipes reach end of file once every process holding them has exited. A server that did not stop keeps them
 		// open, so the wait is skipped then, and otherwise bounded by the readiness timeout in case a process outside
@@ -88,22 +70,50 @@ const finish = (interrupted?: string) =>
 		if (outputErrors.length) results.outputErrors = outputErrors;
 		const ok = passed && stopped && !interrupted && results.outputComplete === true && outputErrors.length === 0;
 		results.passed = ok;
-		if (!stopped) results.scratchKept = { scratch, serverPid: server.pid, chromePid: chrome?.pid };
+		if (!stopped) results.scratchKept = { scratch, serverPid: server?.pid, chromePid: chrome?.pid };
 		// Collect the tokens again from the final output and the token file: an interrupt or a startup timeout can
 		// come before the readiness poll saw the login line, and the server can print it while shutting down.
 		for (const match of output.matchAll(/#token=(\S+)/g)) secrets.push(match[1]);
 		const mcpTokenFile = join(scratch, "data", "mcp-token");
 		if (existsSync(mcpTokenFile)) secrets.push((await readFile(mcpTokenFile, "utf8")).trim());
+		// An interrupt can arrive before setup created the evidence directory.
+		await mkdir(evidence, { recursive: true });
 		await writeFile(join(evidence, "server.log"), redact(output));
 		await writeFile(join(evidence, "result.json"), `${redact(JSON.stringify(results, null, 2))}\n`);
 		if (stopped) await rm(scratch, { recursive: true, force: true });
 		console.log(JSON.stringify({ passed: ok, evidence, stopped, scratchRemoved: !existsSync(scratch), evidenceKept: existsSync(join(evidence, "result.json")) }, null, 2));
 		process.exit(ok ? 0 : 1);
 	})());
-// The server and Chrome are detached, so an interrupt must stop them here or they outlive this check.
+// The server and Chrome are detached, so an interrupt must stop them here or they outlive this check. The handlers
+// exist before anything is created or started; a signal without a handler would end this script and leave them running.
 for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => void finish(signal));
 
 try {
+	await mkdir(join(scratch, "data"), { recursive: true });
+	await mkdir(join(scratch, "home"));
+	await mkdir(evidence, { recursive: true });
+	if (process.platform !== "win32") for (const dir of [scratch, join(scratch, "data")]) await chmod(dir, 0o700);
+	// One key per line so the pre-commit credential scan's exception for this file stays narrow.
+	await writeFile(
+		fixture,
+		JSON.stringify({
+			apiVersion: "v1",
+			kind: "Config",
+			clusters: [{ name: context, cluster: { server: "https://127.0.0.1:9" } }],
+			contexts: [{ name: context, context: { cluster: context, user: context } }],
+			users: [{ name: context, user: {} }],
+			"current-context": context,
+		}),
+	);
+	// The operator selects sources; ADR 0026 lets requests name only this variable (same pattern as e2e/headless-smoke.ts).
+	await writeFile(join(scratch, "data", "kubeconfig-sources.json"), JSON.stringify({ kubeconfigEnvVar: "KUBECOVE_VERIFY_CONFIG", paths: [], showSourceLabels: true }));
+
+	// Once teardown has started, start nothing it would miss. The check and the spawn run in one tick.
+	if (finishing) throw new Error("interrupted before the server started");
+	server = spawnServer();
+	serverStartedAt = startIdentity(server.pid);
+	drained = Promise.all([drain(server.stdout), drain(server.stderr)]);
+
 	let origin = "";
 	await waitFor("the server login line", async () => {
 		const match = /KubeCove login: (http:\/\/[^\s/]+)\/#token=(\S+)/.exec(output);
