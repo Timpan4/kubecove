@@ -47,7 +47,8 @@ function tlc(config: string, extra: string[] = []) {
 const results: Array<{ check: string; ok: boolean; detail: string; file?: string }> = [];
 
 const current = tlc("ResourceWatch.cfg", ["-dump", "dot,actionlabels", join(work, "states")]);
-const states = /^\d+ states generated, (\d+) distinct states found/m.exec(current.output)?.[1];
+const [, generated, states] = /^(\d+) states generated, (\d+) distinct states found/m.exec(current.output) ?? [];
+const initialStates = /^Finished computing initial states: (\d+) distinct states? generated/m.exec(current.output)?.[1];
 results.push({
 	check: "TLC on the current code's model: NoSilentDeadStream, LostStreamRecovers, StartBoundRoom, TypeOK, no deadlock",
 	ok: current.status === 0 && current.output.includes("No error has been found"),
@@ -80,7 +81,9 @@ function replayFailure(conformance: { crashed?: string; graphInvalid?: boolean; 
 
 if (results[0].ok) {
 	// Any other error still prints the result lines and keeps the work folder.
-	const conformance = await replay(join(work, "states.dot"), Number(states)).catch((error: unknown) => ({
+	// A count TLC did not print becomes NaN, which matches nothing, so the replay reports the graph as unreadable.
+	const expected = { states: Number(states), transitions: Number(generated) - Number(initialStates) };
+	const conformance = await replay(join(work, "states.dot"), expected).catch((error: unknown) => ({
 		ok: false as const,
 		crashed: error instanceof Error ? error.message : String(error),
 		replayed: 0,

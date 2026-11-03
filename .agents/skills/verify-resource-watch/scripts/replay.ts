@@ -69,7 +69,7 @@ export function readStateGraph(dotFile: string) {
 	// last edge. A file cut anywhere leaves a block open, so the depth must return to 0.
 	let depth = 0;
 	let opened = false;
-	for (const line of readFileSync(dotFile, "utf8").split("\n")) {
+	for (const [index, line] of readFileSync(dotFile, "utf8").split("\n").entries()) {
 		if (/\{\s*$/.test(line)) {
 			depth++;
 			opened = true;
@@ -79,13 +79,18 @@ export function readStateGraph(dotFile: string) {
 			depth--;
 			continue;
 		}
-		const edge = /^(-?\d+) -> (-?\d+) \[label="(\w+)"/.exec(line);
+		const edge = /^(-?\d+) -> (-?\d+) \[label="(\w+)",color="black",fontcolor="black"\];$/.exec(line);
 		if (edge) {
 			edges.push({ from: edge[1], to: edge[2], action: edge[3] });
 			continue;
 		}
 		const node = /^(-?\d+) \[label="(.*)"(,style = filled)?\];?$/.exec(line);
-		if (!node) continue;
+		if (!node) {
+			// Layout lines: graph attributes, each state's dashed stuttering self-loop, and one rank line per BFS level.
+			// Any other line may be a transition in a format this parser does not read, so it fails instead of dropping out.
+			if (line === "" || /^\w+=[^;]*;$/.test(line) || /^(-?\d+) -> \1 \[style="dashed"\];$/.test(line) || /^\{rank = same; (-?\d+;)*\}$/.test(line)) continue;
+			throw new Error(`${dotFile} line ${index + 1} is not a state, a transition, or a layout line: ${line.slice(0, 120)}`);
+		}
 		const fields: Record<string, ModelValue> = {};
 		for (const conjunct of unescapeDot(node[2]).split("\n")) {
 			const match = /^\/\\ (\w+) = (.*)$/.exec(conjunct);
@@ -228,9 +233,13 @@ async function startHarness() {
 const describe = (step: Step) =>
 	`${step.action}${step.n ? `(${step.n})` : ""}${step.message ? ` [${step.message}]` : ""}${step.action === "Close" ? ` via ${step.closeVia}()` : ""}`;
 
-// `expectedStates` is TLC's distinct-state count. readStateGraph rejects a file cut short; the count also catches
-// state lines the parser no longer recognizes.
-export async function replay(dotFile: string, expectedStates: number) {
+// `expected` holds TLC's own counts: distinct states, and transitions, which are the successor states TLC generated
+// (its "states generated" minus the initial states). TLC 1.7.4 writes one DOT edge per generated successor that meets
+// the config's state and action constraints (`Worker.isSeenState`); the configs have none. So the counts catch a graph
+// that lost states or edges, such as a non-tree edge whose loss leaves every state reachable. A CONSTRAINT added to
+// ResourceWatch.cfg makes the transition count differ, and the replay then fails until this check accounts for it.
+// readStateGraph separately rejects a file cut short and any line it does not recognize.
+export async function replay(dotFile: string, expected: { states: number; transitions: number }) {
 	let graph: ReturnType<typeof readStateGraph>;
 	try {
 		graph = readStateGraph(dotFile);
@@ -252,7 +261,8 @@ export async function replay(dotFile: string, expectedStates: number) {
 	}
 	// A truncated graph, or a DOT format the parser no longer reads, must fail instead of replaying nothing.
 	const problems: string[] = [];
-	if (states.size !== expectedStates) problems.push(`${dotFile} has ${states.size} states, but TLC found ${expectedStates}`);
+	if (states.size !== expected.states) problems.push(`${dotFile} has ${states.size} states, but TLC found ${expected.states}`);
+	if (edges.length !== expected.transitions) problems.push(`${dotFile} has ${edges.length} transitions, but TLC generated ${expected.transitions}`);
 	if (edges.length === 0) problems.push(`${dotFile} has no transitions`);
 	const dangling = edges.filter((edge) => !states.has(edge.from) || !states.has(edge.to)).length;
 	if (dangling) problems.push(`${dangling} of ${edges.length} edges name a state the graph does not define`);

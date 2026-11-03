@@ -60,7 +60,7 @@ Run `git diff ca62604 -- <those paths>`. If the diff changes any listed function
 - **Check 4 fails.** The code and the model disagree. The output lists the steps that led there and each observable that differs, such as `stop_stream calls: code [], model [1]`. Then decide:
   - If the code change was not meant to change behavior, the code has a bug. The listed steps reproduce it.
   - If the change was intended, update the model action that models that callback, and run the check again. If check 1 then fails, the intended behavior breaks the property. That is a real finding, so report it and leave the property as it is.
-- **Check 4 says the state graph cannot be replayed.** The state graph could not be parsed, ends before its graph is closed, has a different number of states than TLC found, has no edges, has edges to states it does not define, or has states the initial state cannot reach. A new TLC version or a `TLA2TOOLS` override may write a DOT format that `readStateGraph` in `scripts/replay.ts` does not parse. Fix the parser; this says nothing about the code or the model.
+- **Check 4 says the state graph cannot be replayed.** The state graph could not be parsed, has a line that is not a state, a transition, or a layout line, ends before its graph is closed, has a different number of states than TLC found or of transitions than TLC generated, has no edges, has edges to states it does not define, or has states the initial state cannot reach. A new TLC version or a `TLA2TOOLS` override may write a DOT format that `readStateGraph` in `scripts/replay.ts` does not parse. Fix the parser; this says nothing about the code or the model.
 
 ## Update the verification for an intended change
 
