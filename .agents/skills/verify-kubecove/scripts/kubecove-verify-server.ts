@@ -22,11 +22,12 @@ const context = "verify-fixture";
 const adr0028Tools = ["describe_resource", "find_problems", "get_pod_logs", "get_resource_metrics", "get_resource_yaml", "list_argocd_applications", "list_contexts", "list_helm_releases", "list_namespaces", "list_resource_kinds", "list_resources"];
 if (!existsSync(binary)) throw new Error(`missing ${binary}; build it first (see the skill's server section)`);
 if (existsSync(scratch) || existsSync(evidence)) throw new Error(`run ${runId} already exists; choose a new --run id`);
+// Read before the claim below, so little runs between the claim and the signal handlers.
+const results: Record<string, unknown> = { runId, head: gitHead(), binary };
 // A non-recursive mkdir claims the run. A second check with the same id fails here, before teardown could remove
 // this run's scratch directory.
 await mkdir(dirname(scratch), { recursive: true });
 await mkdir(scratch);
-const results: Record<string, unknown> = { runId, head: gitHead(), binary };
 const secrets: string[] = [];
 // Longest first, so a secret that contains another one is replaced whole.
 const redact = (text: string) =>
