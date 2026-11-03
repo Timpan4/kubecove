@@ -77,27 +77,35 @@ const finish = (interrupted?: string) =>
 		// the group still holds a pipe.
 		results.outputComplete = stopped && (await Promise.race([drained.then(() => true), Bun.sleep(readinessTimeoutMs).then(() => false)]));
 		if (outputErrors.length) results.outputErrors = outputErrors;
-		const ok = passed && stopped && !interrupted && results.outputComplete === true && outputErrors.length === 0;
-		results.passed = ok;
-		if (!stopped) results.scratchKept = { scratch, serverPid: server?.pid, chromePid: chrome?.pid };
 		// Collect the tokens again from the final output and the token file: an interrupt or a startup timeout can
 		// come before the readiness poll saw the login line, and the server can print it while shutting down.
 		for (const match of output.matchAll(/#token=(\S+)/g)) secrets.push(match[1]);
-		// A failed read or write is reported and fails the check, but never skips removing scratch or exiting.
+		const errorText = (error: unknown) => redact(error instanceof Error ? error.message : String(error));
+		// A failed read, removal, or write is reported and fails the check, but never skips the steps after it.
 		let evidenceError: string | undefined;
 		try {
 			const mcpTokenFile = join(scratch, "data", "mcp-token");
 			if (existsSync(mcpTokenFile)) secrets.push((await readFile(mcpTokenFile, "utf8")).trim());
+		} catch (error) {
+			evidenceError = errorText(error);
+		}
+		// Scratch is removed before the evidence is written, so result.json records whether its tokens and Chrome
+		// profile are gone. A kept scratch directory fails the check.
+		if (stopped) await rm(scratch, { recursive: true, force: true }).catch((error) => (results.scratchError = errorText(error)));
+		const scratchRemoved = !existsSync(scratch);
+		if (!scratchRemoved) results.scratchKept = { scratch, serverPid: server?.pid, chromePid: chrome?.pid };
+		const ok = passed && stopped && scratchRemoved && !interrupted && results.outputComplete === true && outputErrors.length === 0;
+		results.passed = ok;
+		try {
 			// An interrupt can arrive before setup created the evidence directory.
 			await mkdir(evidence, { recursive: true });
 			await writeFile(join(evidence, "server.log"), redact(output));
 			await writeFile(join(evidence, "result.json"), `${redact(JSON.stringify(results, null, 2))}\n`);
 		} catch (error) {
-			evidenceError = redact(error instanceof Error ? error.message : String(error));
+			evidenceError ??= errorText(error);
 		}
-		if (stopped) await rm(scratch, { recursive: true, force: true }).catch(() => {});
 		const exitOk = ok && evidenceError === undefined;
-		console.log(JSON.stringify({ passed: exitOk, evidence, stopped, scratchRemoved: !existsSync(scratch), evidenceKept: existsSync(join(evidence, "result.json")), evidenceError }, null, 2));
+		console.log(JSON.stringify({ passed: exitOk, evidence, stopped, scratchRemoved, evidenceKept: existsSync(join(evidence, "result.json")), evidenceError, scratchError: results.scratchError }, null, 2));
 		process.exit(exitOk ? 0 : 1);
 	})());
 // The server and Chrome are detached, so an interrupt must stop them here or they outlive this check. The handlers
