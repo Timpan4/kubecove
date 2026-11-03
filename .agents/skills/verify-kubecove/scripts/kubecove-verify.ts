@@ -5,7 +5,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 import { chromium, type Locator, type Page } from "playwright-core";
-import { alive, freePort, gitHead, root, startChrome, startIdentity, stopGroup, waitFor } from "./processes";
+import { alive, freePort, gitHead, readinessTimeoutMs, root, startChrome, startIdentity, stopGroup, waitFor } from "./processes";
 
 type RunState = { runId: string; head: string; url: string; vitePid: number; viteStartedAt?: string; chromePid: number; chromeStartedAt?: string; cdpUrl: string; evidenceDir: string };
 type Role = Parameters<Page["getByRole"]>[0];
@@ -55,8 +55,19 @@ async function launch() {
 	// `--port` and `--strictPort` override vite.config.ts, so a server already on 1430 is never touched.
 	const vite = Bun.spawn(["bun", "--bun", "vite", "--host", "127.0.0.1", "--port", new URL(url).port, "--strictPort"], { cwd: root, detached: true, stdin: "ignore", stdout: log, stderr: log, env: { ...process.env, KUBECONFIG: undefined, TAURI_DEV_HOST: undefined } });
 	const state: RunState = { runId, head: gitHead(), url, vitePid: vite.pid, viteStartedAt: startIdentity(vite.pid), chromePid: 0, cdpUrl: "", evidenceDir };
+	// Vite and Chrome are detached, so an interrupt during startup runs the same cleanup as a failed launch.
+	let stopping: Promise<void> | undefined;
+	const abandon = () => (stopping ??= cleanup(state));
+	const interrupt = (signal: NodeJS.Signals) => {
+		console.error(`launch interrupted by ${signal}; cleaning up run ${runId}`);
+		void abandon().finally(() => process.exit(1));
+	};
+	process.on("SIGINT", interrupt);
+	process.on("SIGTERM", interrupt);
 	try {
 		await saveState(state);
+		// Once cleanup has started, start nothing it would miss. The check and the spawn run in one tick.
+		if (stopping) throw new Error("launch interrupted before Chrome started");
 		const chrome = startChrome(join(runDir, "chrome-profile"));
 		Object.assign(state, { chromePid: chrome.pid, chromeStartedAt: chrome.startedAt });
 		[state.cdpUrl] = await Promise.all([chrome.cdpUrl, saveState(state)]);
@@ -69,8 +80,11 @@ async function launch() {
 		});
 	} catch (error) {
 		console.error(`launch failed; cleaning up run ${runId}. Vite log: ${join(evidenceDir, "vite.log")}`);
-		await cleanup(state);
+		await abandon();
 		throw error;
+	} finally {
+		process.off("SIGINT", interrupt);
+		process.off("SIGTERM", interrupt);
 	}
 	await record(state, { action: "launch", url, head: state.head });
 	console.log(JSON.stringify({ ready: true, runId, url, evidenceDir }, null, 2));
@@ -152,8 +166,9 @@ async function doctor(state: RunState) {
 		const listener = /pid=(\d+),/.exec(Bun.spawnSync(["ss", "-ltnpH", `sport = :${port}`]).stdout.toString())?.[1];
 		checks.portInRunGroup = listener !== undefined && Bun.spawnSync(["ps", "-o", "pgid=", "-p", listener]).stdout.toString().trim() === String(state.vitePid);
 	}
-	checks.indexServed = await fetch(state.url).then(async (response) => (await response.text()).includes("<title>KubeCove</title>")).catch(() => false);
-	checks.cdp = await fetch(`${state.cdpUrl}/json/version`).then((response) => response.ok).catch(() => false);
+	// A request and its body read share one deadline, so a stalled server fails the check instead of hanging doctor.
+	checks.indexServed = await fetch(state.url, { signal: AbortSignal.timeout(readinessTimeoutMs) }).then(async (response) => (await response.text()).includes("<title>KubeCove</title>")).catch(() => false);
+	checks.cdp = await fetch(`${state.cdpUrl}/json/version`, { signal: AbortSignal.timeout(readinessTimeoutMs) }).then((response) => response.ok).catch(() => false);
 	checks.browserMockRuntime = checks.cdp && (await withPage(state, async (page) => page.url().startsWith(state.url) && (await page.evaluate(() => !("__TAURI_INTERNALS__" in window)))).catch(() => false));
 	const healthy = Object.values(checks).every(Boolean);
 	console.log(JSON.stringify({ healthy, runId: state.runId, url: state.url, launchedAt: state.head, evidenceDir: state.evidenceDir, checks }, null, 2));
@@ -165,8 +180,10 @@ async function cleanup(state: RunState) {
 	const stopped = { chrome: !state.chromePid || (await stopGroup(state.chromePid, state.chromeStartedAt)), vite: await stopGroup(state.vitePid, state.viteStartedAt) };
 	await record(state, { action: "cleanup", stopped }).catch((error) => console.error(`could not record cleanup: ${error instanceof Error ? error.message : error}`));
 	const done = stopped.chrome && stopped.vite;
-	// A group that did not stop keeps the run's state, so cleanup can be retried.
+	// A group that did not stop keeps the run's state, so cleanup can be retried. It is written again because an
+	// interrupted launch may have stopped before its last state write.
 	if (done) await rm(join(stateRoot, state.runId), { recursive: true, force: true });
+	else await saveState(state).catch((error) => console.error(`could not save run state: ${error instanceof Error ? error.message : error}`));
 	console.log(JSON.stringify({ stopped, stateKept: !done, evidenceDir: state.evidenceDir, evidenceKept: existsSync(join(state.evidenceDir, "actions.jsonl")) }, null, 2));
 	if (!done) process.exitCode = 1;
 }

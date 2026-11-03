@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
-import { gitHead, root, startChrome, startIdentity, stopGroup, waitFor } from "./processes";
+import { gitHead, readinessTimeoutMs, root, startChrome, startIdentity, stopGroup, waitFor } from "./processes";
 
 const args = Bun.argv.slice(2);
 const flag = (name: string) => {
@@ -44,7 +44,7 @@ await writeFile(join(scratch, "data", "kubeconfig-sources.json"), JSON.stringify
 
 const results: Record<string, unknown> = { runId, head: gitHead(), binary };
 const secrets: string[] = [];
-const redact = (text: string) => secrets.reduce((value, secret) => value.replaceAll(secret, "[redacted]"), text);
+const redact = (text: string) => secrets.filter(Boolean).reduce((value, secret) => value.replaceAll(secret, "[redacted]"), text);
 const server = Bun.spawn([binary, "--data-dir", join(scratch, "data"), "--listen", "127.0.0.1:0", "--mcp"], {
 	cwd: root,
 	detached: true,
@@ -75,6 +75,11 @@ const finish = (interrupted?: string) =>
 		const ok = passed && stopped && !interrupted;
 		results.passed = ok;
 		if (!stopped) results.scratchKept = { scratch, serverPid: server.pid, chromePid: chrome?.pid };
+		// Collect the tokens again from the final output and the token file: an interrupt or a startup timeout can
+		// come before the readiness poll saw the login line, and the server can print it while shutting down.
+		for (const match of output.matchAll(/#token=(\S+)/g)) secrets.push(match[1]);
+		const mcpTokenFile = join(scratch, "data", "mcp-token");
+		if (existsSync(mcpTokenFile)) secrets.push((await readFile(mcpTokenFile, "utf8")).trim());
 		await writeFile(join(evidence, "server.log"), redact(output));
 		await writeFile(join(evidence, "result.json"), `${redact(JSON.stringify(results, null, 2))}\n`);
 		if (stopped) await rm(scratch, { recursive: true, force: true });
@@ -93,11 +98,13 @@ try {
 	});
 	const token = (/#token=(\S+)/.exec(output) ?? [])[1] ?? "";
 	results.origin = origin;
-	results.indexServed = (await (await fetch(`${origin}/`)).text()).includes("<title>KubeCove</title>");
+	// Each request and its body read share one deadline, so a server that stalls fails the check instead of hanging it.
+	const deadline = () => AbortSignal.timeout(readinessTimeoutMs);
+	results.indexServed = (await (await fetch(`${origin}/`, { signal: deadline() })).text()).includes("<title>KubeCove</title>");
 
 	const mcpToken = (await readFile(join(scratch, "data", "mcp-token"), "utf8")).trim();
 	secrets.push(mcpToken);
-	const mcp = (body: unknown, bearer?: string) => fetch(`${origin}/mcp`, { method: "POST", headers: { Accept: "application/json, text/event-stream", "Content-Type": "application/json", ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}) }, body: JSON.stringify(body) });
+	const mcp = (body: unknown, bearer?: string) => fetch(`${origin}/mcp`, { method: "POST", headers: { Accept: "application/json, text/event-stream", "Content-Type": "application/json", ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}) }, body: JSON.stringify(body), signal: deadline() });
 	const listTools = { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} };
 	results.mcpWithoutToken = (await mcp(listTools)).status;
 	results.mcpWithServerToken = (await mcp(listTools, token)).status;
@@ -107,6 +114,8 @@ try {
 	results.listContexts = JSON.parse(contexts.result.content[0].text);
 
 	// Browser server mode: sign in with the startup token in the URL fragment and reach the launcher.
+	// Once an interrupt has started teardown, start nothing it would miss. The check and the spawn run in one tick.
+	if (finishing) throw new Error("interrupted before Chrome started");
 	chrome = startChrome(join(scratch, "chrome-profile"));
 	const browser = await chromium.connectOverCDP(await chrome.cdpUrl);
 	const page = browser.contexts()[0].pages()[0];

@@ -30,7 +30,7 @@ Run every command from the repository root. `bun install` must have run in this 
 - Starts headless Chrome with a new profile in its own process group and connects over CDP. No window opens on the desktop.
 - Ready means usable: the launcher at `/#/workspaces` shows the `mock-dev` context. The command prints `"ready": true`, the URL, the evidence directory, and `export KUBECOVE_VERIFY_RUN=<id>`.
 - Pass `--run <id>` to choose the run id. Later commands find the run on their own while exactly one run exists. Otherwise pass `--run <id>` or set `KUBECOVE_VERIFY_RUN`.
-- On failure, launch stops what it started and keeps `vite.log` in the evidence directory.
+- On failure, or on Ctrl-C or SIGTERM before it is ready, launch stops what it started and keeps `vite.log` in the evidence directory.
 
 Each run gets its own port and Chrome profile, so runs can go side by side, next to a user's `bun run tauri dev` on port 1430. The configured port 1430 (`vite.config.ts`, and `kubecove-browser-dev` in the main checkout's untracked `.claude/launch.json`) is never used. Never stop a Vite server on 1430 or a KubeCove window you did not start. The helper refuses to drive a run that has no state file under `.e2e/verify/`.
 
