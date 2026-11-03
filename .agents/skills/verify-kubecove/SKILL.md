@@ -132,7 +132,7 @@ Follow these rules for the keyring:
 
 - `<tmp>` is a new 0700 directory with a short path, such as one from `mktemp -d /tmp/kr.XXXXXX`. A long path exceeds the Unix socket path limit: the daemon then logs `couldn't bind to control socket` and does not start. D-Bus activation then finds the user's real daemon, and specs that store credentials time out.
 - Pass a non-empty unlock password. An empty one creates no keyring.
-- Confirm the private daemon runs before the suite needs it: `ps -eo pid,args | grep 'control-directory=<tmp>/kr'`. Some gnome-keyring versions do not print `GNOME_KEYRING_PID`, so stop the daemon afterwards by the PID that this shows. Never stop the user's own daemon on `/run/user/<uid>/keyring`.
+- Confirm the private daemon runs before the suite needs it: `pgrep -af 'gnome-keyring-daemon.*--control-directory=<tmp>/kr'`. `pgrep` never lists itself, so no output means the daemon is not running. Some gnome-keyring versions do not print `GNOME_KEYRING_PID`, so stop the daemon afterwards by the PID that this shows. Never stop the user's own daemon on `/run/user/<uid>/keyring`.
 
 On a CI-like host, `xvfb-run -a` replaces `cage`, as `docs/development-workflow.md` shows.
 
@@ -147,9 +147,9 @@ Cilium needs eBPF. With rootless podman and `kernel.unprivileged_bpf_disabled` s
 With approval, a run on a host with passwordless sudo, ufw, and podman's `kind` network on `podman1` works like this:
 
 1. Put a `podman` shim first on `PATH` in a scratch directory outside the repo. It holds `exec sudo -n /usr/bin/podman "$@"`. `podman info --format '{{.Host.Security.Rootless}}'` then prints `false`.
-2. Allow the Kind network for this run only: `sudo ufw allow in on podman1` and `sudo ufw route allow in on podman1 out <uplink>`. Note any existing rules first, and leave them alone.
+2. Allow the Kind network for this run only. First run `sudo ufw show added` and note which of these two rules already exist. Add only the missing ones: `sudo ufw allow in on podman1` and `sudo ufw route allow in on podman1 out <uplink>`.
 3. Run `bun run e2e:real -- --provider podman --run-id <id>` inside the headless session and private keyring from [Desktop app](#desktop-app-under-wdio), with the shim on `PATH` and a lowered CPU priority. The default is Kubernetes 1.35. `--kubernetes <version>` selects another one from the support window in ADR 0011.
-4. Afterwards, remove the rules with `sudo ufw delete allow in on podman1` and `sudo ufw route delete allow in on podman1 out <uplink>`. Then check `sudo ufw status`.
+4. Afterwards, delete only the rules this run added, with `sudo ufw delete allow in on podman1` or `sudo ufw route delete allow in on podman1 out <uplink>`. A rule that existed before the run stays. Then compare `sudo ufw show added` with the list from step 2.
 5. Confirm the cluster is gone with `sudo podman ps -a`. The lifecycle deletes only `kubecove-e2e-<id>`. Leave any other cluster, such as a `kubecove-dev-*` one, and the `kind` network in place.
 
 Evidence goes to `e2e/artifacts/<id>/`: `wdio.log`, the per-spec logs, `kubeconfig-summary.json` (context names and a loopback endpoint, no credentials), `versions.txt`, and cluster diagnostics.
