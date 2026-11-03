@@ -3,6 +3,23 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.13.0 - 2026-11-03
+### Added
+
+- Read-only MCP server for desktop and kubecove-server (#633).
+- Grafana dashboard for kubecove-server metrics (#629).
+- Prometheus metrics listener for kubecove-server (#625).
+- Structured and JSON logging for kubecove-server (#624).
+
+### Improved
+
+- Replace implicit state machines with explicit unions (#635).
+
+### Fixed
+
+- Describe topology owners as unloaded rather than missing (#632).
+- Detect providers on clusters with null discovery verbs (#630).
+
 ## 0.12.13 - 2026-11-01
 ### Improved
 
