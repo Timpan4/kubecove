@@ -50,7 +50,9 @@ function parseValue(text: string): ModelValue {
 		const token = /^(TRUE|FALSE|-?\d+)/.exec(text.slice(at))?.[0];
 		if (!token) throw new Error(`cannot parse TLC value at ${JSON.stringify(text.slice(at, at + 20))}`);
 		at += token.length;
-		return token === "TRUE" ? true : token === "FALSE" ? false : Number(token);
+		if (token === "TRUE") return true;
+		if (token === "FALSE") return false;
+		return Number(token);
 	};
 	return value();
 }
@@ -120,15 +122,22 @@ async function startHarness() {
 	const calls: Array<{ resolve: (id: string) => void; reject: (error: Error) => void }> = [];
 	const stopCalls = new Set<number>();
 	let published: ResourceWatchState | undefined;
-	let timer: (() => void) | undefined;
+	let stopped = false;
+	// Fake timers: a tick fires only if it is still scheduled, firing consumes it, and clearTimeout cancels it.
+	// So a tick() that stops rescheduling, or a stop() that leaves the timer running, shows up as a failure.
+	const pending = new Map<number, () => void>();
+	let nextHandle = 1;
 	const realSetTimeout = globalThis.setTimeout;
 	const realClearTimeout = globalThis.clearTimeout;
 	// SAFETY: observeResourceScope only schedules its recovery tick; the replay fires it as RecoveryTick.
 	globalThis.setTimeout = ((callback: () => void) => {
-		timer = callback;
-		return 0;
+		const handle = nextHandle++;
+		pending.set(handle, callback);
+		return handle;
 	}) as unknown as typeof setTimeout;
-	globalThis.clearTimeout = (() => {}) as typeof clearTimeout;
+	globalThis.clearTimeout = ((handle: number) => {
+		pending.delete(handle);
+	}) as unknown as typeof clearTimeout;
 	const handlers = { onState: (state: ResourceWatchState) => (published = state), onChange: () => {}, reload: async () => [] };
 	const observer = observeResourceScope({
 		...handlers,
@@ -160,12 +169,19 @@ async function startHarness() {
 	async function run(step: Step) {
 		const n = step.n ?? 0;
 		if (step.action === "RecoveryTick" || step.action === "RecoveryTickSkips") {
-			const tick = timer;
-			if (!tick) throw new Error("the code scheduled no recovery tick");
-			tick();
+			if (pending.size > 1) throw new Error(`the code has ${pending.size} recovery ticks scheduled at once`);
+			const [scheduled] = [...pending];
+			if (scheduled) {
+				pending.delete(scheduled[0]);
+				scheduled[1]();
+			}
+			// stop() cancels the timer, so a model step that changes nothing after stop() has no tick to fire.
+			else if (!(step.action === "RecoveryTickSkips" && stopped)) throw new Error("the code has no recovery tick scheduled");
 		} else if (step.action === "Close") {
-			if (step.closeVia === "stop") observer.stop();
-			else observer.update([], handlers);
+			if (step.closeVia === "stop") {
+				observer.stop();
+				stopped = true;
+			} else observer.update([], handlers);
 		} else if (step.action === "Deliver") channels[n - 1].handler(message(n, step.message ?? ""));
 		else if (step.action === "Resolve") calls[n - 1].resolve(streamId(n));
 		else if (step.action === "Reject") calls[n - 1].reject(new Error("start refused"));
@@ -181,10 +197,13 @@ async function startHarness() {
 		expect("open channels", channels.map((channel) => !channel.closed), model.chOpen.slice(0, model.starts));
 		expect("stop_stream calls", [...stopCalls].sort(), [...model.stopCalls].sort());
 		// After close the observer publishes for the remaining keys, so only open watches are compared.
-		if (model.phase !== "closed" && !model.closed && published) {
-			expect("error shown", published.error !== null, model.error);
-			expect("permission warning shown", (published.warnings?.length ?? 0) > 0, model.warning);
-			if (!model.warning) expect("live updates connected", published.status === "connected", model.connected);
+		if (model.phase !== "closed" && !model.closed) {
+			if (!published) found.push("published state: code none, model an open watch");
+			else {
+				expect("error shown", published.error !== null, model.error);
+				expect("permission warning shown", (published.warnings?.length ?? 0) > 0, model.warning);
+				if (!model.warning) expect("live updates connected", published.status === "connected", model.connected);
+			}
 		}
 		return found;
 	}
@@ -208,10 +227,18 @@ export async function replay(dotFile: string) {
 			queue.push(edge.to);
 		}
 	}
+	// A truncated graph, or a DOT format the parser no longer reads, must fail instead of replaying nothing.
+	const problems: string[] = [];
+	if (edges.length === 0) problems.push(`${dotFile} has no transitions`);
+	const dangling = edges.filter((edge) => !states.has(edge.from) || !states.has(edge.to)).length;
+	if (dangling) problems.push(`${dangling} of ${edges.length} edges name a state the graph does not define`);
+	const unreachable = [...states.keys()].filter((state) => !path.has(state)).length;
+	if (unreachable) problems.push(`${unreachable} of ${states.size} states are unreachable from the initial state`);
+	if (problems.length) return { ok: false, graphInvalid: true, replayed: 0, steps: [], differences: problems };
 	let replayed = 0;
 	for (const edge of edges) {
-		const prefix = path.get(edge.from);
-		if (!prefix) continue;
+		// SAFETY: the checks above found every state reachable, and edge.from is a state.
+		const prefix = path.get(edge.from) as Edge[];
 		for (const closeVia of edge.action === "Close" || prefix.some((e) => e.action === "Close") ? (["update", "stop"] as const) : (["update"] as const)) {
 			const harness = await startHarness();
 			try {
@@ -221,7 +248,11 @@ export async function replay(dotFile: string) {
 				for (const e of [...prefix, edge]) {
 					const step = stepOf(e, states.get(e.from) as ModelState, states.get(e.to) as ModelState, closeVia);
 					steps.push(describe(step));
-					await harness.run(step);
+					try {
+						await harness.run(step);
+					} catch (error) {
+						return { ok: false, replayed, steps, differences: [error instanceof Error ? error.message : String(error)] };
+					}
 					const differences = harness.differences(states.get(e.to) as ModelState);
 					if (differences.length) return { ok: false, replayed, steps, differences };
 				}

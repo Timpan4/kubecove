@@ -24,7 +24,7 @@ From the repository root:
 bun .agents/skills/verify-resource-watch/scripts/check.ts
 ```
 
-It runs in a few seconds and prints one `PASS` or `FAIL` line per check, then the work folder under the OS temp directory that holds each TLC output and the state graph:
+It runs in a few seconds and prints one `PASS` or `FAIL` line per check. TLC runs in a work folder under the OS temp directory. A pass deletes it. A failure keeps it and prints its path, because it holds each TLC output and the state graph:
 
 1. TLC on the model of the current code: all rules hold, with no deadlock.
 2. TLC on the pre-#635 variant must still break `NoSilentDeadStream`.
@@ -60,6 +60,7 @@ Run `git diff ca62604 -- <those paths>`. If the diff changes any listed function
 - **Check 4 fails.** The code and the model disagree. The output lists the steps that led there and each observable that differs, such as `stop_stream calls: code [], model [1]`. Then decide:
   - If the code change was not meant to change behavior, the code has a bug. The listed steps reproduce it.
   - If the change was intended, update the model action that models that callback, and run the check again. If check 1 then fails, the intended behavior breaks the property. That is a real finding, so report it and leave the property as it is.
+- **Check 4 says the state graph cannot be replayed.** TLC's state graph has no edges, has edges to states it does not define, or has states the initial state cannot reach. A new TLC version or a `TLA2TOOLS` override may write a DOT format that `readStateGraph` in `scripts/replay.ts` does not parse. Fix the parser; this says nothing about the code or the model.
 
 ## Update the verification for an intended change
 
@@ -79,6 +80,10 @@ The model leaves out:
 - `update()` adding keys. Only dropping a key (close) is modeled.
 - One backend watch shared by several subscribers in the registry, and its replay of the last status to a new subscriber.
 - The delay between calling `stop_stream` and the backend ending the stream. The model ends it at once; the channel is already closed in each case.
+- `resourceChanged` messages. The channel handler passes them to `onChange`, and they change no lifecycle state.
+- Two guards the replay does not exercise. Deleting either one still passes the check, so a change to them needs its own test:
+  - The channel handler's stale-channel check, `watch.phase.channel !== channel`. The model never delivers on a closed channel, as the `tauri-streams.ts` row assumes.
+  - The `watch.permissionWarning` check at the top of `start`. No state the model reaches has an idle watch with a warning.
 - The Rust resource watch does not send `stopped` today. Only `logs.rs` does. The model still lets a stream end with `stopped`, because the `StreamMessage` contract and the browser mocks allow it, and the #635 bug lives on that path.
 
 An error counts as reported. After a final `error`, the watch stays recorded as running and is not restarted, while the status reads "Reconnecting; periodically reloading this view" next to the error. The property accepts that, because the error is shown.
