@@ -94,7 +94,8 @@ const finish = (interrupted?: string) =>
 		if (stopped) await rm(scratch, { recursive: true, force: true }).catch((error) => (results.scratchError = errorText(error)));
 		const scratchRemoved = !existsSync(scratch);
 		if (!scratchRemoved) results.scratchKept = { scratch, serverPid: server?.pid, chromePid: chrome?.pid };
-		const ok = passed && stopped && scratchRemoved && !interrupted && results.outputComplete === true && outputErrors.length === 0;
+		if (evidenceError !== undefined) results.evidenceError = evidenceError;
+		const ok = passed && stopped && scratchRemoved && evidenceError === undefined && !interrupted && results.outputComplete === true && outputErrors.length === 0;
 		results.passed = ok;
 		try {
 			// An interrupt can arrive before setup created the evidence directory.
@@ -169,6 +170,8 @@ try {
 	chrome = startChrome(join(scratch, "chrome-profile"));
 	const browser = await chromium.connectOverCDP(await chrome.cdpUrl);
 	const page = browser.contexts()[0].pages()[0];
+	// Explicit, so every wait has the check's own bound instead of relying on a library default.
+	page.setDefaultTimeout(readinessTimeoutMs);
 	await page.goto(`${origin}/#token=${token}`);
 	await page.getByText(context, { exact: true }).first().waitFor();
 	await writeFile(join(evidence, "browser-launcher.aria.txt"), redact(await page.locator("body").ariaSnapshot()));

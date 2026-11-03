@@ -109,7 +109,8 @@ async function withPage<T>(state: RunState, work: (page: Page) => Promise<T>) {
 	try {
 		const context = browser.contexts()[0];
 		const page = context.pages().find((candidate) => candidate.url().startsWith(state.url)) ?? context.pages()[0] ?? (await context.newPage());
-		if (flag("timeout")) page.setDefaultTimeout(Number(flag("timeout")));
+		// Explicit, so every wait, including launch's readiness wait, has a bound instead of relying on a library default.
+		page.setDefaultTimeout(flag("timeout") ? Number(flag("timeout")) : readinessTimeoutMs);
 		return await work(page);
 	} finally {
 		// Disconnects only; the run's Chrome and its page stay alive for the next command.
