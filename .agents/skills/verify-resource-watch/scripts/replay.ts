@@ -181,6 +181,7 @@ async function startHarness() {
 			if (step.closeVia === "stop") {
 				observer.stop();
 				stopped = true;
+				if (pending.size) throw new Error("stop() left the recovery timer scheduled");
 			} else observer.update([], handlers);
 		} else if (step.action === "Deliver") channels[n - 1].handler(message(n, step.message ?? ""));
 		else if (step.action === "Resolve") calls[n - 1].resolve(streamId(n));
@@ -213,8 +214,16 @@ async function startHarness() {
 const describe = (step: Step) =>
 	`${step.action}${step.n ? `(${step.n})` : ""}${step.message ? ` [${step.message}]` : ""}${step.action === "Close" ? ` via ${step.closeVia}()` : ""}`;
 
-export async function replay(dotFile: string) {
-	const { states, edges, initial } = readStateGraph(dotFile);
+// `expectedStates` is TLC's distinct-state count. TLC writes each state before the edges into it, so a graph cut
+// short still looks consistent; only the count shows that states are missing.
+export async function replay(dotFile: string, expectedStates: number) {
+	let graph: ReturnType<typeof readStateGraph>;
+	try {
+		graph = readStateGraph(dotFile);
+	} catch (error) {
+		return { ok: false, graphInvalid: true, replayed: 0, steps: [], differences: [error instanceof Error ? error.message : String(error)] };
+	}
+	const { states, edges, initial } = graph;
 	const out = new Map<string, Edge[]>();
 	for (const edge of edges) out.set(edge.from, [...(out.get(edge.from) ?? []), edge]);
 	// Shortest path to each state, so each edge replays as path(from) + edge.
@@ -229,6 +238,7 @@ export async function replay(dotFile: string) {
 	}
 	// A truncated graph, or a DOT format the parser no longer reads, must fail instead of replaying nothing.
 	const problems: string[] = [];
+	if (states.size !== expectedStates) problems.push(`${dotFile} has ${states.size} states, but TLC found ${expectedStates}`);
 	if (edges.length === 0) problems.push(`${dotFile} has no transitions`);
 	const dangling = edges.filter((edge) => !states.has(edge.from) || !states.has(edge.to)).length;
 	if (dangling) problems.push(`${dangling} of ${edges.length} edges name a state the graph does not define`);

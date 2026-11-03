@@ -27,8 +27,8 @@ function findTlc() {
 	return { jar: join(where.stdout.trim(), "tla2tools.jar"), java: javaOverride || java.stdout.trim() };
 }
 
-const work = mkdtempSync(join(tmpdir(), "verify-resource-watch-"));
 const { jar, java } = findTlc();
+const work = mkdtempSync(join(tmpdir(), "verify-resource-watch-"));
 
 function tlc(config: string, extra: string[] = []) {
 	copyFileSync(join(modelDir, "ResourceWatch.tla"), join(work, "ResourceWatch.tla"));
@@ -71,20 +71,30 @@ results.push({
 	file: liveness.file,
 });
 
-function replayFailure(conformance: { graphInvalid?: boolean; steps: string[] }) {
+function replayFailure(conformance: { crashed?: string; graphInvalid?: boolean; steps: string[] }) {
+	if (conformance.crashed) return `the replay stopped with an error: ${conformance.crashed}`;
 	if (conformance.graphInvalid) return "the state graph cannot be replayed";
 	if (conformance.steps.length === 0) return "the code and the model differ in the initial state";
 	return `the code and the model differ after: ${conformance.steps.join(" -> ")}`;
 }
 
 if (results[0].ok) {
-	const conformance = await replay(join(work, "states.dot"));
+	// Any other error still prints the result lines and keeps the work folder.
+	const conformance = await replay(join(work, "states.dot"), Number(states)).catch((error: unknown) => ({
+		ok: false as const,
+		crashed: error instanceof Error ? error.message : String(error),
+		replayed: 0,
+		steps: [] as string[],
+		differences: [] as string[],
+		states: 0,
+		edges: 0,
+	}));
 	results.push({
 		check: "Replay of every model step against src/lib/resource-watch.ts",
 		ok: conformance.ok,
 		detail: conformance.ok
 			? `${conformance.replayed} edge replays over ${conformance.states} states and ${conformance.edges} edges`
-			: `${replayFailure(conformance)}\n    ${conformance.differences.join("\n    ")}`,
+			: [replayFailure(conformance), ...conformance.differences].join("\n    "),
 	});
 } else results.push({ check: "Replay of every model step against src/lib/resource-watch.ts", ok: false, detail: "skipped: TLC did not pass on the current model" });
 
