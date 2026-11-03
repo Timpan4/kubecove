@@ -31,11 +31,12 @@ export function alive(pid: number) {
 	}
 }
 
-// A process group can outlive its leader, so a stop waits for the whole group. POSIX `fork()` never gives a new
-// process the ID of a live process group, so members left after the leader exits still belong to this run.
+// A process group can outlive its leader, so a stop waits for the whole group.
 function groupAlive(pid: number) {
 	return alive(process.platform === "win32" ? pid : -pid);
 }
+
+const bootId = () => readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
 
 // The OS reuses PIDs, so a run also records each leader's start time and checks it before signaling.
 export function startIdentity(pid: number): string | undefined {
@@ -44,7 +45,7 @@ export function startIdentity(pid: number): string | undefined {
 			// Field 22 of /proc/<pid>/stat is the start time in clock ticks since boot; the boot ID makes it unique across reboots.
 			const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
 			const ticks = stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19];
-			return ticks ? `${readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim()}:${ticks}` : undefined;
+			return ticks ? `${bootId()}:${ticks}` : undefined;
 		}
 		const command = process.platform === "win32" ? ["powershell", "-NoProfile", "-Command", `(Get-Process -Id ${pid}).StartTime.ToFileTimeUtc()`] : ["ps", "-o", "lstart=", "-p", String(pid)];
 		return Bun.spawnSync(command, { stderr: "ignore" }).stdout.toString().trim() || undefined;
@@ -67,15 +68,21 @@ export async function waitFor(description: string, check: (signal: AbortSignal) 
 
 // Signals only the detached process group this run created, as `e2e/harness/desktop-profile.ts` does. `startedAt` is
 // the leader's startIdentity at spawn. Returns true once none of the run's processes remain. Returns false when they
-// still run, or when a live leader's ownership cannot be established, so the caller keeps its record for a retry.
+// still run, or when ownership cannot be established, so the caller keeps its record for a retry.
 export async function stopGroup(pid: number, startedAt: string | undefined) {
 	if (!groupAlive(pid)) return true;
+	if (startedAt === undefined) return false;
+	// Nothing a run starts survives a reboot, so a record from an earlier boot names someone else's group.
+	if (process.platform === "linux" && !startedAt.startsWith(`${bootId()}:`)) return true;
 	if (alive(pid)) {
 		const leader = startIdentity(pid);
-		if (leader === undefined || startedAt === undefined) return false;
+		if (leader === undefined) return false;
 		// The PID now names a process this run did not start, so the run's own group is gone. Signal nothing.
 		if (leader !== startedAt) return true;
 	}
+	// When the leader is gone but its group lives: within one boot, `fork()` never gives a new process the ID of a live
+	// process group, so the members are the run's own. The exception needs the run's whole group to end and PID
+	// numbering to wrap around to this exact ID for a new group whose leader then also exits.
 	if (process.platform === "win32") await Bun.spawn(["taskkill", "/PID", String(pid), "/T", "/F"], { stdout: "ignore", stderr: "ignore" }).exited;
 	else {
 		try {

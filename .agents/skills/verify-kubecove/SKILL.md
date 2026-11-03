@@ -87,7 +87,7 @@ Proof standards:
 
 Stops this run's Chrome and Vite process groups by recorded PID, waits until no process in either group remains, and deletes `.e2e/verify/<run-id>/` and its Chrome profile. It prints `evidenceKept: true` when the evidence directory still has `actions.jsonl`. Run cleanup after every failed attempt too.
 
-Launch records each group leader's start time with its PID. When the recorded PID now belongs to a process with a different start time, for example after a reboot, cleanup signals nothing, because the run's own processes are gone. When a group does not stop, or a live leader's start time cannot be read, cleanup exits 1 with `stateKept: true` and keeps `.e2e/verify/<run-id>/` so it can be run again. Report the PID; do not kill by process name.
+Launch records each group leader's start time with its PID. When the recorded PID now belongs to a process with a different start time, or on Linux the record comes from an earlier boot, cleanup signals nothing, because the run's own processes are gone. When a group does not stop, a live leader's start time cannot be read, or the record has no start time, cleanup exits 1 with `stateKept: true` and keeps `.e2e/verify/<run-id>/` so it can be run again. Report the PID; do not kill by process name. Delete the run directory by hand only after the user confirms that the PID is gone or is not the run's.
 
 ## Helpers
 
@@ -132,7 +132,7 @@ Follow these rules for the keyring:
 
 - `<tmp>` is a new 0700 directory with a short path, such as one from `mktemp -d /tmp/kr.XXXXXX`. A long path exceeds the Unix socket path limit: the daemon then logs `couldn't bind to control socket` and does not start. D-Bus activation then finds the user's real daemon, and specs that store credentials time out.
 - Pass a non-empty unlock password. An empty one creates no keyring.
-- Confirm the private daemon runs before the suite needs it: `pgrep -af 'gnome-keyring-daemon.*--control-directory=<tmp>/kr'`. `pgrep` never lists itself, so no output means the daemon is not running. Some gnome-keyring versions do not print `GNOME_KEYRING_PID`, so stop the daemon afterwards by the PID that this shows. Never stop the user's own daemon on `/run/user/<uid>/keyring`.
+- Confirm the private daemon runs before the suite needs it: `pgrep -af '^[^ ]*gnome-keyring-daemon .*--control-directory=<tmp>/kr'`. The pattern is anchored to the executable, because an agent's shell wraps each command in `sh -c '…'`, whose own command line would also match an unanchored pattern. No output means the daemon is not running. Some gnome-keyring versions do not print `GNOME_KEYRING_PID`, so stop the daemon afterwards by the PID that this shows. Never stop the user's own daemon on `/run/user/<uid>/keyring`.
 
 On a CI-like host, `xvfb-run -a` replaces `cage`, as `docs/development-workflow.md` shows.
 
