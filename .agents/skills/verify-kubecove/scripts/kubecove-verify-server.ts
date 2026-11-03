@@ -101,6 +101,8 @@ const finish = (interrupted?: string) =>
 		// An interrupt can arrive before setup created the evidence directory.
 		await mkdir(evidence, { recursive: true }).catch((error) => (evidenceError ??= errorText(error)));
 		await writeFile(join(evidence, "server.log"), redact(output)).catch((error) => (evidenceError ??= errorText(error)));
+		// result.json reports the same outcome as the exit code, including a failed directory or server.log write.
+		if (evidenceError !== undefined) Object.assign(results, { evidenceError, passed: false });
 		await writeFile(join(evidence, "result.json"), `${redact(JSON.stringify(results, null, 2))}\n`).catch((error) => (evidenceError ??= errorText(error)));
 		const exitOk = ok && evidenceError === undefined;
 		console.log(JSON.stringify({ passed: exitOk, evidence, stopped, scratchRemoved, evidenceKept: existsSync(join(evidence, "result.json")), evidenceError, scratchError: results.scratchError }, null, 2));
