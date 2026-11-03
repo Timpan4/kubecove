@@ -84,6 +84,8 @@ Tauri webview uses real IPC and Rust Kubernetes commands. On Windows, developmen
 
 Browser mock mode never receives kubeconfig contents, calls a local Rust bridge, or accesses a real cluster. Treat all browser data as fake.
 
+To drive a feature in mock mode and keep evidence, follow the [`verify-kubecove` skill](../.agents/skills/verify-kubecove/SKILL.md). It runs Vite on a free loopback port with headless Chrome, so it never touches a server on port 1430.
+
 For an optional Playwright smoke check against Obscura, install the rendering-enabled binary from the [Obscura releases](https://github.com/h4ckf0r0day/obscura/releases) and make `obscura` available on PATH. Start Obscura and Vite in separate terminals, then run the check:
 
 ```sh

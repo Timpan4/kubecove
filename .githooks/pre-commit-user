@@ -40,7 +40,7 @@ if [ -n "$staged_files" ]; then
         # The example references projected credentials by path, never embeds them.
         scan_content=$(printf '%s\n' "$scan_content" | grep -Ev '^    (clusters:|contexts:|users:|current-context: in-cluster)$' || true)
         ;;
-      e2e/headless-smoke.ts|e2e/specs/desktop/remote.e2e.ts)
+      e2e/headless-smoke.ts|e2e/specs/desktop/remote.e2e.ts|.agents/skills/verify-kubecove/scripts/kubecove-verify-server.ts)
         # Local echo fixtures have no credential fields; keep scanning their values.
         scan_content=$(printf '%s\n' "$scan_content" | sed -E 's/^([[:space:]]*)(clusters|contexts|users):/\1/' )
         ;;
