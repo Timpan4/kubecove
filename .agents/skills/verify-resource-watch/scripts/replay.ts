@@ -222,7 +222,9 @@ async function startHarness() {
 			else {
 				expect("error shown", published.error !== null, model.error);
 				expect("permission warning shown", (published.warnings?.length ?? 0) > 0, model.warning);
-				if (!model.warning) expect("live updates connected", published.status === "connected", model.connected);
+				// The harness watches one key, so a forbidden watch leaves none available, and publish() reports polling.
+				if (model.warning) expect("status with the only watch forbidden", published.status, "polling");
+				else expect("live updates connected", published.status === "connected", model.connected);
 			}
 		}
 		return found;

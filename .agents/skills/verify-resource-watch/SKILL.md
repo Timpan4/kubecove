@@ -31,7 +31,7 @@ It runs in a few seconds and prints one `PASS` or `FAIL` line per check. TLC run
 3. TLC on the pre-#635 variant must still break `LostStreamRecovers`.
 4. The replay: every edge of TLC's state graph for the current model, replayed against the real `observeResourceScope` in `src/lib/resource-watch.ts`. Edges after a close are replayed twice, once through `update([])` and once through `stop()`.
 
-Checks 2 and 3 prove the rules can still fail. The replay proves the model describes the code. It compares the code's observable state with the model after every step: the number of `start_resource_watch` calls, which channels are open, which streams got `stop_stream`, and whether the published state shows an error, a permission warning, or connected.
+Checks 2 and 3 prove the rules can still fail. The replay proves the model describes the code. It compares the code's observable state with the model after every step: the number of `start_resource_watch` calls, which channels are open, which streams got `stop_stream`, and whether the published state shows an error, a permission warning, or connected. With a permission warning the published status must be `polling`, because the harness watches one key.
 
 Tools: TLC 1.7.4 (`tla2tools.jar`) and Temurin Java 25, pinned in `scripts/check.ts` with the same mise specs the statechart skill uses. If they are missing, the script prints the `mise install` command. Ask the user before you install them. `TLA2TOOLS` and `JAVA` override the lookup. The replay needs the repository's `node_modules` (`bun install`).
 
