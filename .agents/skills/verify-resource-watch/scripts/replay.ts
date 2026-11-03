@@ -65,7 +65,20 @@ export function readStateGraph(dotFile: string) {
 	const states = new Map<string, ModelState>();
 	const edges: Edge[] = [];
 	let initial: string | undefined;
+	// TLC opens `strict digraph DiskGraph {` and `subgraph cluster_graph {` and closes each with a `}` line after the
+	// last edge. A file cut anywhere leaves a block open, so the depth must return to 0.
+	let depth = 0;
+	let opened = false;
 	for (const line of readFileSync(dotFile, "utf8").split("\n")) {
+		if (/\{\s*$/.test(line)) {
+			depth++;
+			opened = true;
+			continue;
+		}
+		if (line.trim() === "}") {
+			depth--;
+			continue;
+		}
 		const edge = /^(-?\d+) -> (-?\d+) \[label="(\w+)"/.exec(line);
 		if (edge) {
 			edges.push({ from: edge[1], to: edge[2], action: edge[3] });
@@ -81,6 +94,7 @@ export function readStateGraph(dotFile: string) {
 		states.set(node[1], fields as unknown as ModelState);
 		if (node[3]) initial = node[1];
 	}
+	if (!opened || depth !== 0) throw new Error(`${dotFile} ends before its graph is closed, so it is incomplete`);
 	if (!initial) throw new Error(`${dotFile} has no initial state`);
 	return { states, edges, initial };
 }
@@ -214,8 +228,8 @@ async function startHarness() {
 const describe = (step: Step) =>
 	`${step.action}${step.n ? `(${step.n})` : ""}${step.message ? ` [${step.message}]` : ""}${step.action === "Close" ? ` via ${step.closeVia}()` : ""}`;
 
-// `expectedStates` is TLC's distinct-state count. TLC writes each state before the edges into it, so a graph cut
-// short still looks consistent; only the count shows that states are missing.
+// `expectedStates` is TLC's distinct-state count. readStateGraph rejects a file cut short; the count also catches
+// state lines the parser no longer recognizes.
 export async function replay(dotFile: string, expectedStates: number) {
 	let graph: ReturnType<typeof readStateGraph>;
 	try {
