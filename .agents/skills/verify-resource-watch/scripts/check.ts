@@ -38,7 +38,8 @@ function tlc(config: string, extra: string[] = []) {
 		["-XX:+UseParallelGC", `-Djava.io.tmpdir=${work}`, "-cp", jar, "tlc2.TLC", "-workers", "1", "-metadir", join(work, `meta-${config}`), "-config", config, ...extra, "ResourceWatch.tla"],
 		{ cwd: work, encoding: "utf8", env: { ...process.env, LC_ALL: "C.UTF-8" } },
 	);
-	const output = `${run.stdout}${run.stderr}`;
+	// When Java cannot start, stdout and stderr are null and the cause is in `error`; a kill shows only in `signal`.
+	const output = [run.stdout ?? "", run.stderr ?? "", run.error ? `\nCould not run ${java}: ${run.error.message}\n` : "", run.signal ? `\nTLC ended on signal ${run.signal}\n` : ""].join("");
 	writeFileSync(join(work, `${config}.out`), output);
 	return { status: run.status, output, file: join(work, `${config}.out`) };
 }
