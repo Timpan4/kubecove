@@ -16,7 +16,7 @@ Run every command from the repository root. `bun install` must have run in this 
 | Browser dev mode, `mock-dev` | UI behavior, layout, navigation, guarded-action UX | `kubecove-verify.ts` below | Primary. Proven by this skill. |
 | Headless server and MCP (ADR 0020, ADR 0028) | HTTP boundary, browser sign-in, read-only MCP tools | `kubecove-verify-server.ts` | Runs locally with a fixture kubeconfig and no cluster. |
 | Native desktop app under WDIO (ADR 0010) | Real Tauri IPC and Rust commands | `bun run e2e:desktop-smoke` | Runs locally in a headless compositor with no cluster. See [Desktop app](#desktop-app-under-wdio). |
-| Kind lab (ADR 0012) | Real Kubernetes behavior | `bun run e2e:real`, `bun run dev:kind` | Needs root podman and firewall changes. See [Kind lab](#kind-lab). |
+| Kind lab (ADR 0012) | Real Kubernetes behavior | `bun run e2e:real`, `bun run dev:kind` | `e2e:real` runs locally with rootful podman and temporary firewall rules, which need the user's approval. See [Kind lab](#kind-lab). |
 
 `bun run e2e:fast` runs the maintained WDIO specs in `e2e/specs/fast/` against the same mock frontend in Chrome. Use it as a regression gate, not as a way to show one journey.
 
@@ -123,11 +123,16 @@ On Linux it opens a native window, so never run it on the user's desktop. Run it
 dbus-run-session -- sh -c '
   eval "$(printf kubecove-e2e | XDG_DATA_HOME=<tmp>/data gnome-keyring-daemon --daemonize --unlock --components=secrets --control-directory=<tmp>/kr)"
   env -u DISPLAY GDK_BACKEND=wayland WLR_BACKENDS=headless WLR_RENDERER=gles2 WLR_RENDER_DRM_DEVICE=/dev/dri/renderD128 WLR_LIBINPUT_NO_DEVICES=1 \
-    cage -- sh -c "wlr-randr --output HEADLESS-1 --custom-mode 1024x720 && nice bun run e2e:desktop-smoke"
-  kill "$GNOME_KEYRING_PID"'
+    cage -- sh -c "wlr-randr --output HEADLESS-1 --custom-mode 1024x720 && nice bun run e2e:desktop-smoke"'
 ```
 
-`<tmp>` is a new 0700 directory. Pass a non-empty unlock password: an empty one creates no keyring. Kill the keyring daemon by PID afterwards, because it keeps the session alive. On a CI-like host, `xvfb-run -a` replaces `cage`, as `docs/development-workflow.md` shows.
+Follow these rules for the keyring:
+
+- `<tmp>` is a new 0700 directory with a short path, such as one from `mktemp -d /tmp/kr.XXXXXX`. A long path exceeds the Unix socket path limit: the daemon then logs `couldn't bind to control socket` and does not start. D-Bus activation then finds the user's real daemon, and specs that store credentials time out.
+- Pass a non-empty unlock password. An empty one creates no keyring.
+- Confirm the private daemon runs before the suite needs it: `ps -eo pid,args | grep 'control-directory=<tmp>/kr'`. Some gnome-keyring versions do not print `GNOME_KEYRING_PID`, so stop the daemon afterwards by the PID that this shows. Never stop the user's own daemon on `/run/user/<uid>/keyring`.
+
+On a CI-like host, `xvfb-run -a` replaces `cage`, as `docs/development-workflow.md` shows.
 
 ## Kind lab
 
@@ -136,6 +141,16 @@ dbus-run-session -- sh -c '
 `dev:kind` starts `bun run tauri dev`, which opens a native window, so wrap it like the desktop app. It refuses to start while anything answers on port 1430.
 
 Cilium needs eBPF. With rootless podman and `kernel.unprivileged_bpf_disabled` set, the lab does not start, and a host firewall can block the Kind network. Both fixes change the live host, so ask the user before each run that needs them. Record a skipped lab run as unverified with the missing prerequisite.
+
+With approval, a run on a host with passwordless sudo, ufw, and podman's `kind` network on `podman1` works like this:
+
+1. Put a `podman` shim first on `PATH` in a scratch directory outside the repo. It holds `exec sudo -n /usr/bin/podman "$@"`. `podman info --format '{{.Host.Security.Rootless}}'` then prints `false`.
+2. Allow the Kind network for this run only: `sudo ufw allow in on podman1` and `sudo ufw route allow in on podman1 out <uplink>`. Note any existing rules first, and leave them alone.
+3. Run `bun run e2e:real -- --provider podman --run-id <id>` inside the headless session and private keyring from [Desktop app](#desktop-app-under-wdio), with the shim on `PATH` and a lowered CPU priority. The default is Kubernetes 1.35. `--kubernetes <version>` selects another one from the support window in ADR 0011.
+4. Afterwards, remove the rules with `sudo ufw delete allow in on podman1` and `sudo ufw route delete allow in on podman1 out <uplink>`. Then check `sudo ufw status`.
+5. Confirm the cluster is gone with `sudo podman ps -a`. The lifecycle deletes only `kubecove-e2e-<id>`. Leave any other cluster, such as a `kubecove-dev-*` one, and the `kind` network in place.
+
+Evidence goes to `e2e/artifacts/<id>/`: `wdio.log`, the per-spec logs, `kubeconfig-summary.json` (context names and a loopback endpoint, no credentials), `versions.txt`, and cluster diagnostics.
 
 ## Maintaining the map
 
