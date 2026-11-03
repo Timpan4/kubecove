@@ -127,7 +127,12 @@ export function startChrome(profileDir: string) {
 	const chrome = Bun.spawn([chromeExecutable(), "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-gpu", `--user-data-dir=${profileDir}`, "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0", "--window-size=1440,900", "about:blank"], { detached: true, stdin: "ignore", stdout: "ignore", stderr: "ignore" });
 	const portFile = join(profileDir, "DevToolsActivePort");
 	// The PID is returned before Chrome is ready, so the caller can record it and stop Chrome if startup fails or is interrupted.
-	const cdpUrl = waitFor("Chrome DevTools port", async () => existsSync(portFile)).then(async () => `http://127.0.0.1:${(await readFile(portFile, "utf8")).split(/\r?\n/)[0]}`);
+	// Chrome can create the file before it has written it, so each poll reads it and needs a whole first line of digits.
+	let port = "";
+	const cdpUrl = waitFor("Chrome DevTools port", async () => {
+		port = /^(\d+)\r?\n/.exec(await readFile(portFile, "utf8"))?.[1] ?? "";
+		return port !== "";
+	}).then(() => `http://127.0.0.1:${port}`);
 	return { pid: chrome.pid, startedAt: startIdentity(chrome.pid), cdpUrl };
 }
 

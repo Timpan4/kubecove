@@ -47,6 +47,10 @@ async function launch() {
 	const runDir = join(stateRoot, runId);
 	const evidenceDir = join(root, "e2e", "artifacts", `verify-${runId}`);
 	if (existsSync(runDir) || existsSync(evidenceDir)) throw new Error(`run ${runId} already exists; choose a new --run id`);
+	// A non-recursive mkdir claims the run. A second launch with the same id fails here, before it starts anything or
+	// registers a cleanup that would remove this run's directory.
+	await mkdir(stateRoot, { recursive: true });
+	await mkdir(runDir);
 	// PID 0 means not started yet; cleanup skips it.
 	const state: RunState = { runId, head: gitHead(), url: "", vitePid: 0, chromePid: 0, cdpUrl: "", evidenceDir };
 	// Vite and Chrome are detached, so an interrupt during startup runs the same cleanup as a failed launch. The
@@ -60,7 +64,7 @@ async function launch() {
 	process.on("SIGINT", interrupt);
 	process.on("SIGTERM", interrupt);
 	try {
-		await mkdir(join(runDir, "chrome-profile"), { recursive: true });
+		await mkdir(join(runDir, "chrome-profile"));
 		await mkdir(evidenceDir, { recursive: true });
 		const url = `http://127.0.0.1:${await freePort()}/`;
 		state.url = url;

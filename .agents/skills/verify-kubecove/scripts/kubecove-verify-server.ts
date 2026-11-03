@@ -3,7 +3,7 @@
 // The server gets a private HOME, data directory, and fixture kubeconfig, so it never reads ~/.kube/config.
 import { existsSync } from "node:fs";
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { chromium } from "playwright-core";
 import { gitHead, readinessTimeoutMs, root, startChrome, startIdentity, stopGroup, waitFor } from "./processes";
 
@@ -20,9 +20,18 @@ const evidence = join(root, "e2e", "artifacts", `verify-server-${runId}`);
 const context = "verify-fixture";
 if (!existsSync(binary)) throw new Error(`missing ${binary}; build it first (see the skill's server section)`);
 if (existsSync(scratch) || existsSync(evidence)) throw new Error(`run ${runId} already exists; choose a new --run id`);
+// A non-recursive mkdir claims the run. A second check with the same id fails here, before teardown could remove
+// this run's scratch directory.
+await mkdir(dirname(scratch), { recursive: true });
+await mkdir(scratch);
 const results: Record<string, unknown> = { runId, head: gitHead(), binary };
 const secrets: string[] = [];
-const redact = (text: string) => secrets.filter(Boolean).reduce((value, secret) => value.replaceAll(secret, "[redacted]"), text);
+// Longest first, so a secret that contains another one is replaced whole.
+const redact = (text: string) =>
+	secrets
+		.filter(Boolean)
+		.sort((a, b) => b.length - a.length)
+		.reduce((value, secret) => value.replaceAll(secret, "[redacted]"), text);
 // The fixture points at a closed loopback port: contexts parse, cluster reads fail without network access.
 const fixture = join(scratch, "fixture-kubeconfig");
 const spawnServer = () =>
@@ -74,22 +83,29 @@ const finish = (interrupted?: string) =>
 		// Collect the tokens again from the final output and the token file: an interrupt or a startup timeout can
 		// come before the readiness poll saw the login line, and the server can print it while shutting down.
 		for (const match of output.matchAll(/#token=(\S+)/g)) secrets.push(match[1]);
-		const mcpTokenFile = join(scratch, "data", "mcp-token");
-		if (existsSync(mcpTokenFile)) secrets.push((await readFile(mcpTokenFile, "utf8")).trim());
-		// An interrupt can arrive before setup created the evidence directory.
-		await mkdir(evidence, { recursive: true });
-		await writeFile(join(evidence, "server.log"), redact(output));
-		await writeFile(join(evidence, "result.json"), `${redact(JSON.stringify(results, null, 2))}\n`);
-		if (stopped) await rm(scratch, { recursive: true, force: true });
-		console.log(JSON.stringify({ passed: ok, evidence, stopped, scratchRemoved: !existsSync(scratch), evidenceKept: existsSync(join(evidence, "result.json")) }, null, 2));
-		process.exit(ok ? 0 : 1);
+		// A failed read or write is reported and fails the check, but never skips removing scratch or exiting.
+		let evidenceError: string | undefined;
+		try {
+			const mcpTokenFile = join(scratch, "data", "mcp-token");
+			if (existsSync(mcpTokenFile)) secrets.push((await readFile(mcpTokenFile, "utf8")).trim());
+			// An interrupt can arrive before setup created the evidence directory.
+			await mkdir(evidence, { recursive: true });
+			await writeFile(join(evidence, "server.log"), redact(output));
+			await writeFile(join(evidence, "result.json"), `${redact(JSON.stringify(results, null, 2))}\n`);
+		} catch (error) {
+			evidenceError = redact(error instanceof Error ? error.message : String(error));
+		}
+		if (stopped) await rm(scratch, { recursive: true, force: true }).catch(() => {});
+		const exitOk = ok && evidenceError === undefined;
+		console.log(JSON.stringify({ passed: exitOk, evidence, stopped, scratchRemoved: !existsSync(scratch), evidenceKept: existsSync(join(evidence, "result.json")), evidenceError }, null, 2));
+		process.exit(exitOk ? 0 : 1);
 	})());
 // The server and Chrome are detached, so an interrupt must stop them here or they outlive this check. The handlers
 // exist before anything is created or started; a signal without a handler would end this script and leave them running.
 for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => void finish(signal));
 
 try {
-	await mkdir(join(scratch, "data"), { recursive: true });
+	await mkdir(join(scratch, "data"));
 	await mkdir(join(scratch, "home"));
 	await mkdir(evidence, { recursive: true });
 	if (process.platform !== "win32") for (const dir of [scratch, join(scratch, "data")]) await chmod(dir, 0o700);
@@ -115,12 +131,14 @@ try {
 	drained = Promise.all([drain(server.stdout), drain(server.stderr)]);
 
 	let origin = "";
+	let token = "";
+	// The login line counts only once its newline arrived: a pipe chunk can end inside the token.
 	await waitFor("the server login line", async () => {
-		const match = /KubeCove login: (http:\/\/[^\s/]+)\/#token=(\S+)/.exec(output);
-		if (match) { origin = match[1]; secrets.push(match[2]); }
+		const match = /KubeCove login: (http:\/\/[^\s/]+)\/#token=(\S+)\r?\n/.exec(output);
+		if (match) [, origin, token] = match;
 		return Boolean(match) && output.includes("KubeCove MCP:");
 	});
-	const token = (/#token=(\S+)/.exec(output) ?? [])[1] ?? "";
+	secrets.push(token);
 	results.origin = origin;
 	// Each request and its body read share one deadline, so a server that stalls fails the check instead of hanging it.
 	const deadline = () => AbortSignal.timeout(readinessTimeoutMs);
