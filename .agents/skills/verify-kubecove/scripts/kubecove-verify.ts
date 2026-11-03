@@ -87,6 +87,8 @@ async function launch() {
 			// Ready means usable: the launcher has loaded the browser mock kubeconfig context.
 			await page.getByText("mock-dev", { exact: true }).first().waitFor();
 		});
+		// Inside the try: a launch that cannot record itself fails and stops what it started.
+		await record(state, { action: "launch", url: state.url, head: state.head });
 	} catch (error) {
 		console.error(`launch failed; cleaning up run ${runId}. Vite log: ${join(evidenceDir, "vite.log")}`);
 		await abandon();
@@ -95,7 +97,6 @@ async function launch() {
 		process.off("SIGINT", interrupt);
 		process.off("SIGTERM", interrupt);
 	}
-	await record(state, { action: "launch", url: state.url, head: state.head });
 	console.log(JSON.stringify({ ready: true, runId, url: state.url, evidenceDir }, null, 2));
 	console.log(`export KUBECOVE_VERIFY_RUN=${runId}`);
 }
