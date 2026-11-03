@@ -55,10 +55,19 @@ const server = Bun.spawn([binary, "--data-dir", join(scratch, "data"), "--listen
 });
 const serverStartedAt = startIdentity(server.pid);
 let output = "";
-const decoder = new TextDecoder();
-const drain = async (stream: ReadableStream<Uint8Array>) => { for await (const chunk of stream) output += decoder.decode(chunk, { stream: true }); };
-void drain(server.stdout);
-void drain(server.stderr);
+const outputErrors: string[] = [];
+// Each pipe gets its own decoder, so a character split across chunks of one pipe is not mixed with the other's bytes.
+// A failed read is recorded and fails the check.
+const drain = async (stream: ReadableStream<Uint8Array>) => {
+	const decoder = new TextDecoder();
+	try {
+		for await (const chunk of stream) output += decoder.decode(chunk, { stream: true });
+		output += decoder.decode();
+	} catch (error) {
+		outputErrors.push(error instanceof Error ? error.message : String(error));
+	}
+};
+const drained = Promise.all([drain(server.stdout), drain(server.stderr)]);
 let chrome: ReturnType<typeof startChrome> | undefined;
 let passed = false;
 
@@ -72,7 +81,12 @@ const finish = (interrupted?: string) =>
 		results.stoppedChrome = chrome ? await stopGroup(chrome.pid, chrome.startedAt) : true;
 		results.stoppedServer = await stopGroup(server.pid, serverStartedAt);
 		const stopped = results.stoppedChrome === true && results.stoppedServer === true;
-		const ok = passed && stopped && !interrupted;
+		// The pipes reach end of file once every process holding them has exited. A server that did not stop keeps them
+		// open, so the wait is skipped then, and otherwise bounded by the readiness timeout in case a process outside
+		// the group still holds a pipe.
+		results.outputComplete = stopped && (await Promise.race([drained.then(() => true), Bun.sleep(readinessTimeoutMs).then(() => false)]));
+		if (outputErrors.length) results.outputErrors = outputErrors;
+		const ok = passed && stopped && !interrupted && results.outputComplete === true && outputErrors.length === 0;
 		results.passed = ok;
 		if (!stopped) results.scratchKept = { scratch, serverPid: server.pid, chromePid: chrome?.pid };
 		// Collect the tokens again from the final output and the token file: an interrupt or a startup timeout can

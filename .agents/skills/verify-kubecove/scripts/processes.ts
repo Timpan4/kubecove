@@ -70,15 +70,19 @@ export async function waitFor(description: string, check: (signal: AbortSignal) 
 // the leader's startIdentity at spawn. Returns true once none of the run's processes remain. Returns false when they
 // still run, or when ownership cannot be established, so the caller keeps its record for a retry.
 export async function stopGroup(pid: number, startedAt: string | undefined) {
-	if (!groupAlive(pid)) return true;
+	// On Windows a PID names one process, not a group, and `taskkill /T` finds children only through a live parent. A
+	// leader that exited before this stop may have left children running, so there its absence does not prove the
+	// run stopped.
+	const leaderGoneMeansStopped = process.platform !== "win32";
+	if (!groupAlive(pid)) return leaderGoneMeansStopped;
 	if (startedAt === undefined) return false;
 	// Nothing a run starts survives a reboot, so a record from an earlier boot names someone else's group.
 	if (process.platform === "linux" && !startedAt.startsWith(`${bootId()}:`)) return true;
 	if (alive(pid)) {
 		const leader = startIdentity(pid);
 		if (leader === undefined) return false;
-		// The PID now names a process this run did not start, so the run's own group is gone. Signal nothing.
-		if (leader !== startedAt) return true;
+		// The PID now names a process this run did not start, so the run's own leader is gone. Signal nothing.
+		if (leader !== startedAt) return leaderGoneMeansStopped;
 	}
 	// When the leader is gone but its group lives: within one boot, `fork()` never gives a new process the ID of a live
 	// process group, so the members are the run's own. The exception needs the run's whole group to end and PID
