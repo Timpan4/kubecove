@@ -62,7 +62,7 @@ pub struct BenchTopologyInput {
 }
 
 #[derive(Clone)]
-pub struct BenchCustomOverlayInputs(Vec<topology::TopologyInputResource>);
+pub struct BenchTopologyResources(Vec<topology::TopologyInputResource>);
 
 pub struct BenchOwner {
     pub api_version: &'static str,
@@ -205,7 +205,7 @@ pub fn sort_custom_resource_catalog(
     kinds
 }
 
-pub fn custom_overlay_bench_inputs(apps: usize) -> BenchCustomOverlayInputs {
+pub fn custom_overlay_bench_inputs(apps: usize) -> BenchTopologyResources {
     let mut resources = Vec::with_capacity(apps * 5);
     for index in 0..apps {
         let namespace = format!("namespace-{}", index % 100);
@@ -305,12 +305,67 @@ pub fn custom_overlay_bench_inputs(apps: usize) -> BenchCustomOverlayInputs {
             ),
         });
     }
-    BenchCustomOverlayInputs(resources)
+    BenchTopologyResources(resources)
 }
 
-pub fn build_custom_overlay_bench_topology_from_inputs(
-    resources: BenchCustomOverlayInputs,
-) -> ResourceTopology {
+/// `StatefulSet` objects whose Pods each own one claim named `data-<pod>`, the
+/// shape that links claims to their `StatefulSet` in ownership topology.
+pub fn statefulset_claim_bench_inputs(sets: usize, replicas: usize) -> BenchTopologyResources {
+    let mut resources = Vec::with_capacity(sets * (1 + 2 * replicas));
+    for set in 0..sets {
+        let namespace = format!("namespace-{}", set % 100);
+        let name = format!("ledger-{set}");
+        let set_uid = format!("statefulset-{set}");
+        resources.push(topology::TopologyInputResource {
+            uid: set_uid.clone(),
+            owner: None,
+            labels: BTreeMap::new(),
+            port_hints: Vec::new(),
+            summary: resource_summary(
+                "StatefulSet",
+                "apps/v1",
+                "statefulsets",
+                true,
+                false,
+                &name,
+                &namespace,
+            ),
+        });
+        for replica in 0..replicas {
+            let pod = format!("{name}-{replica}");
+            resources.push(topology::TopologyInputResource {
+                uid: format!("pod-{set}-{replica}"),
+                owner: Some(OwnerReferenceSummary {
+                    api_version: "apps/v1".to_string(),
+                    kind: "StatefulSet".to_string(),
+                    name: name.clone(),
+                    uid: set_uid.clone(),
+                }),
+                labels: BTreeMap::new(),
+                port_hints: Vec::new(),
+                summary: resource_summary("Pod", "v1", "pods", true, false, &pod, &namespace),
+            });
+            resources.push(topology::TopologyInputResource {
+                uid: format!("claim-{set}-{replica}"),
+                owner: None,
+                labels: BTreeMap::new(),
+                port_hints: Vec::new(),
+                summary: resource_summary(
+                    "PersistentVolumeClaim",
+                    "v1",
+                    "persistentvolumeclaims",
+                    true,
+                    false,
+                    &format!("data-{pod}"),
+                    &namespace,
+                ),
+            });
+        }
+    }
+    BenchTopologyResources(resources)
+}
+
+pub fn build_bench_topology_from_resources(resources: BenchTopologyResources) -> ResourceTopology {
     topology::build_resource_topology(resources.0)
 }
 

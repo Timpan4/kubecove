@@ -70,7 +70,7 @@ pub(crate) fn topology_node_id(
     )
 }
 
-fn topology_edge_id(source: &str, target: &str, relation: &TopologyRelation) -> String {
+fn topology_edge_id(source: &str, target: &str, relation: TopologyRelation) -> String {
     format!("{source}=>{target}:{relation:?}")
 }
 
@@ -120,35 +120,55 @@ pub(super) fn node_from_input(input: &TopologyInputResource) -> TopologyNode {
     }
 }
 
+/// Edges between resources, by their position in the deduplicated input list.
+#[derive(Default)]
+struct IndexEdges {
+    edges: Vec<(usize, usize, TopologyRelation)>,
+    seen: HashSet<(usize, usize, TopologyRelation)>,
+}
+
+impl IndexEdges {
+    fn push(&mut self, source: usize, target: usize, relation: TopologyRelation) {
+        if self.seen.insert((source, target, relation)) {
+            self.edges.push((source, target, relation));
+        }
+    }
+}
+
 pub fn build_resource_topology(inputs: Vec<TopologyInputResource>) -> ResourceTopology {
-    let mut deduped_inputs = BTreeMap::new();
-    for input in inputs
+    // Each node id is built once. Later passes refer to resources by position,
+    // and every summary moves into its node instead of being cloned.
+    let mut keyed: Vec<(String, TopologyInputResource)> = inputs
         .into_iter()
         .filter(|input| !is_ownership_noise(input))
-    {
-        deduped_inputs.insert(input_node_id(&input), input);
-    }
-    let inputs: Vec<TopologyInputResource> = deduped_inputs.into_values().collect();
-
-    let mut uid_to_node = HashMap::new();
-    let mut nodes = Vec::new();
-    for input in &inputs {
-        let node = node_from_input(input);
-        if !input.uid.is_empty() {
-            uid_to_node.insert(input.uid.clone(), node.id.clone());
+        .map(|input| (input_node_id(&input), input))
+        .collect();
+    // Ascending ids; for a repeated id the last input wins, as a map insert would.
+    keyed.sort_by(|a, b| a.0.cmp(&b.0));
+    keyed.dedup_by(|later, kept| {
+        let duplicate = later.0 == kept.0;
+        if duplicate {
+            std::mem::swap(later, kept);
         }
-        nodes.push(node);
-    }
+        duplicate
+    });
+    let (ids, inputs): (Vec<String>, Vec<TopologyInputResource>) = keyed.into_iter().unzip();
 
-    let mut edges = Vec::new();
-    let mut edge_keys = HashSet::new();
+    // The last resource carrying a uid owns it, matching map-insert order.
+    let index_by_uid: HashMap<&str, usize> = inputs
+        .iter()
+        .enumerate()
+        .filter(|(_, input)| !input.uid.is_empty())
+        .map(|(index, input)| (input.uid.as_str(), index))
+        .collect();
+
+    let mut edges = IndexEdges::default();
     let mut warnings = Vec::new();
-
-    for input in &inputs {
+    for (target, input) in inputs.iter().enumerate() {
         let Some(owner) = &input.owner else {
             continue;
         };
-        let Some(source) = uid_to_node.get(&owner.uid) else {
+        let Some(&source) = index_by_uid.get(owner.uid.as_str()) else {
             warnings.push(format!(
                 "{} {}/{} references owner {}/{} outside the loaded topology",
                 input.summary.kind,
@@ -159,30 +179,67 @@ pub fn build_resource_topology(inputs: Vec<TopologyInputResource>) -> ResourceTo
             ));
             continue;
         };
-        push_edge(
-            &mut edges,
-            &mut edge_keys,
-            source.clone(),
-            input_node_id(input),
-            TopologyRelation::Owns,
-        );
+        edges.push(source, target, TopologyRelation::Owns);
     }
+    add_statefulset_pvc_edges(&inputs, &index_by_uid, &mut edges);
 
-    add_statefulset_pvc_edges(&inputs, &uid_to_node, &mut edges, &mut edge_keys);
+    let mut edges: Vec<TopologyEdge> = edges
+        .edges
+        .into_iter()
+        .map(|(source, target, relation)| TopologyEdge {
+            id: topology_edge_id(&ids[source], &ids[target], relation),
+            source: ids[source].clone(),
+            target: ids[target].clone(),
+            relation,
+        })
+        .collect();
+    edges.sort_by(|a, b| a.id.cmp(&b.id));
+    warnings.sort();
 
-    nodes.sort_by(|a, b| {
+    // Sort positions, not nodes, so the sort never moves whole summaries.
+    let mut order: Vec<usize> = (0..inputs.len()).collect();
+    order.sort_by(|&a, &b| {
+        let (a, b) = (&inputs[a].summary, &inputs[b].summary);
         topology_kind_rank(&a.kind)
             .cmp(&topology_kind_rank(&b.kind))
             .then_with(|| a.namespace.cmp(&b.namespace))
             .then_with(|| a.name.cmp(&b.name))
     });
-    edges.sort_by(|a, b| a.id.cmp(&b.id));
-    warnings.sort();
+    let mut slots: Vec<Option<(String, TopologyInputResource)>> =
+        ids.into_iter().zip(inputs).map(Some).collect();
+    let nodes = order
+        .into_iter()
+        .filter_map(|index| slots[index].take())
+        .map(|(id, input)| node_from_owned_input(id, input))
+        .collect();
 
     ResourceTopology {
         nodes,
         edges,
         warnings,
+    }
+}
+
+fn node_from_owned_input(id: String, input: TopologyInputResource) -> TopologyNode {
+    let TopologyInputResource {
+        labels,
+        port_hints,
+        summary,
+        ..
+    } = input;
+    TopologyNode {
+        id,
+        kind: summary.kind.clone(),
+        name: summary.name.clone(),
+        namespace: summary.namespace.clone(),
+        status: summary.status.clone(),
+        health: summary.health,
+        port_hints,
+        selectable: selectable_kind(&summary.kind),
+        deployment_revision: labels
+            .get(DEPLOYMENT_REVISION_LABEL)
+            .and_then(|revision| revision.parse().ok()),
+        summary,
     }
 }
 
@@ -197,7 +254,7 @@ pub(super) fn push_edge(
     target: String,
     relation: TopologyRelation,
 ) {
-    let id = topology_edge_id(&source, &target, &relation);
+    let id = topology_edge_id(&source, &target, relation);
     if edge_keys.insert(id.clone()) {
         edges.push(TopologyEdge {
             id,
@@ -221,60 +278,56 @@ pub(super) fn topology_kind_rank(kind: &str) -> usize {
 
 fn add_statefulset_pvc_edges(
     inputs: &[TopologyInputResource],
-    uid_to_node: &HashMap<String, String>,
-    edges: &mut Vec<TopologyEdge>,
-    edge_keys: &mut HashSet<String>,
+    index_by_uid: &HashMap<&str, usize>,
+    edges: &mut IndexEdges,
 ) {
-    let statefulsets: BTreeMap<(&str, &str), &TopologyInputResource> = inputs
+    let statefulsets: HashSet<(&str, &str)> = inputs
         .iter()
         .filter(|input| input.summary.kind == "StatefulSet")
         .filter_map(|input| {
             Some((
-                (
-                    input.summary.namespace.as_deref()?,
-                    input.summary.name.as_str(),
-                ),
-                input,
+                input.summary.namespace.as_deref()?,
+                input.summary.name.as_str(),
             ))
         })
         .collect();
 
-    let pods_by_statefulset: Vec<(&TopologyInputResource, &OwnerReferenceSummary)> = inputs
-        .iter()
-        .filter(|input| input.summary.kind == "Pod")
-        .filter_map(|input| {
-            let owner = input.owner.as_ref()?;
-            (owner.kind == "StatefulSet").then_some((input, owner))
-        })
-        .collect();
+    // A claim named `<template>-<pod>` belongs to the first StatefulSet Pod, in
+    // input order, whose name follows one of the claim's dashes. Index those Pods
+    // by namespace and name, keeping the earliest input position for each key.
+    let mut pod_owners: HashMap<(&str, &str), (usize, &OwnerReferenceSummary)> = HashMap::new();
+    for (position, pod) in inputs.iter().enumerate() {
+        if pod.summary.kind != "Pod" {
+            continue;
+        }
+        let (Some(namespace), Some(owner)) = (pod.summary.namespace.as_deref(), &pod.owner) else {
+            continue;
+        };
+        if owner.kind == "StatefulSet" && statefulsets.contains(&(namespace, owner.name.as_str())) {
+            pod_owners
+                .entry((namespace, pod.summary.name.as_str()))
+                .or_insert((position, owner));
+        }
+    }
 
-    for pvc in inputs
-        .iter()
-        .filter(|input| input.summary.kind == "PersistentVolumeClaim")
-    {
+    for (target, pvc) in inputs.iter().enumerate() {
+        if pvc.summary.kind != "PersistentVolumeClaim" {
+            continue;
+        }
         let Some(namespace) = pvc.summary.namespace.as_deref() else {
             continue;
         };
-        let Some((_, owner)) = pods_by_statefulset.iter().find(|(pod, owner)| {
-            pod.summary.namespace.as_deref() == Some(namespace)
-                && pvc
-                    .summary
-                    .name
-                    .ends_with(&format!("-{}", pod.summary.name))
-                && statefulsets.contains_key(&(namespace, owner.name.as_str()))
-        }) else {
+        let claim = pvc.summary.name.as_str();
+        let Some((_, owner)) = claim
+            .match_indices('-')
+            .filter_map(|(dash, _)| pod_owners.get(&(namespace, &claim[dash + 1..])))
+            .min_by_key(|(position, _)| *position)
+        else {
             continue;
         };
-        let Some(source) = uid_to_node.get(&owner.uid) else {
-            continue;
-        };
-        push_edge(
-            edges,
-            edge_keys,
-            source.clone(),
-            input_node_id(pvc),
-            TopologyRelation::Creates,
-        );
+        if let Some(&source) = index_by_uid.get(owner.uid.as_str()) {
+            edges.push(source, target, TopologyRelation::Creates);
+        }
     }
 }
 
