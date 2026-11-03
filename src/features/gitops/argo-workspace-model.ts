@@ -130,14 +130,19 @@ export interface ArgoComparisonDocument {
 	provenance: string | null | undefined;
 }
 
-export function argoComparisonForResource(
+/**
+ * Comparisons by resource identity key, built once per comparison list so each
+ * resource lookup is one map read. The first comparison for a key wins.
+ */
+export function argoComparisonIndex(
 	comparisons: ArgoResourceComparison[],
-	resource: ArgoManagedResource,
-): ArgoResourceComparison | null {
-	const key = argoResourceIdentityKey(resource);
-	return key === null
-		? null
-		: comparisons.find((comparison) => argoResourceIdentityKey(comparison.resource) === key) ?? null;
+): ReadonlyMap<string, ArgoResourceComparison> {
+	const byKey = new Map<string, ArgoResourceComparison>();
+	for (const comparison of comparisons) {
+		const key = argoResourceIdentityKey(comparison.resource);
+		if (key !== null && !byKey.has(key)) byKey.set(key, comparison);
+	}
+	return byKey;
 }
 
 export function argoComparisonDocument(

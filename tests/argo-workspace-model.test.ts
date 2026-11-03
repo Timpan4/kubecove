@@ -3,7 +3,7 @@ import {
 	type ArgoResourceFilter,
 	applyArgoSyncDefaults,
 	argoComparisonDocument,
-	argoComparisonForResource,
+	argoComparisonIndex,
 	argoHistoryKey,
 	argoReconciliationResources,
 	argoResourceCounts,
@@ -206,18 +206,13 @@ describe("Argo briefing helpers", () => {
 			availableActions: [],
 		};
 
-		expect(
-			argoComparisonForResource(
-				[comparison],
-				{ ...deployment, group: "APPS" },
-			),
-		).toBe(comparison);
-		expect(
-			argoComparisonForResource(
-				[comparison],
-				{ ...deployment, group: "batch" },
-			),
-		).toBeNull();
+		const laterDuplicate: ArgoResourceComparison = { ...comparison, exact: false };
+		const comparisonsByKey = argoComparisonIndex([comparison, laterDuplicate]);
+		const lookup = (resource: ArgoManagedResource) =>
+			comparisonsByKey.get(argoResourceIdentityKey(resource) ?? "") ?? null;
+
+		expect(lookup({ ...deployment, group: "APPS" })).toBe(comparison);
+		expect(lookup({ ...deployment, group: "batch" })).toBeNull();
 	});
 
 	test("uses comparison data with managed-state fallbacks", () => {
