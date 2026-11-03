@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
-import { gitHead, root, startChrome, stopGroup, waitFor } from "./processes";
+import { gitHead, root, startChrome, startIdentity, stopGroup, waitFor } from "./processes";
 
 const args = Bun.argv.slice(2);
 const flag = (name: string) => {
@@ -53,13 +53,37 @@ const server = Bun.spawn([binary, "--data-dir", join(scratch, "data"), "--listen
 	stderr: "pipe",
 	env: { ...process.env, HOME: join(scratch, "home"), XDG_CONFIG_HOME: join(scratch, "home"), XDG_DATA_HOME: join(scratch, "home"), KUBECONFIG: join(scratch, "missing-kubeconfig"), KUBECOVE_VERIFY_CONFIG: fixture, DBUS_SESSION_BUS_ADDRESS: undefined },
 });
+const serverStartedAt = startIdentity(server.pid);
 let output = "";
 const decoder = new TextDecoder();
 const drain = async (stream: ReadableStream<Uint8Array>) => { for await (const chunk of stream) output += decoder.decode(chunk, { stream: true }); };
 void drain(server.stdout);
 void drain(server.stderr);
-let chrome: { pid: number; cdpUrl: string } | undefined;
+let chrome: ReturnType<typeof startChrome> | undefined;
 let passed = false;
+
+// Runs once, from the normal path or from an interrupt, and exits. Scratch holds the tokens, so it is removed only
+// after both process groups stopped; otherwise it stays for a retry and the run fails.
+let finishing: Promise<never> | undefined;
+const finish = (interrupted?: string) =>
+	(finishing ??= (async () => {
+		// Its own field: stopping the processes makes the main path fail too, and that error must not hide the cause.
+		if (interrupted) results.interrupted = interrupted;
+		results.stoppedChrome = chrome ? await stopGroup(chrome.pid, chrome.startedAt) : true;
+		results.stoppedServer = await stopGroup(server.pid, serverStartedAt);
+		const stopped = results.stoppedChrome === true && results.stoppedServer === true;
+		const ok = passed && stopped && !interrupted;
+		results.passed = ok;
+		if (!stopped) results.scratchKept = { scratch, serverPid: server.pid, chromePid: chrome?.pid };
+		await writeFile(join(evidence, "server.log"), redact(output));
+		await writeFile(join(evidence, "result.json"), `${redact(JSON.stringify(results, null, 2))}\n`);
+		if (stopped) await rm(scratch, { recursive: true, force: true });
+		console.log(JSON.stringify({ passed: ok, evidence, stopped, scratchRemoved: !existsSync(scratch), evidenceKept: existsSync(join(evidence, "result.json")) }, null, 2));
+		process.exit(ok ? 0 : 1);
+	})());
+// The server and Chrome are detached, so an interrupt must stop them here or they outlive this check.
+for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => void finish(signal));
+
 try {
 	let origin = "";
 	await waitFor("the server login line", async () => {
@@ -83,8 +107,8 @@ try {
 	results.listContexts = JSON.parse(contexts.result.content[0].text);
 
 	// Browser server mode: sign in with the startup token in the URL fragment and reach the launcher.
-	chrome = await startChrome(join(scratch, "chrome-profile"));
-	const browser = await chromium.connectOverCDP(chrome.cdpUrl);
+	chrome = startChrome(join(scratch, "chrome-profile"));
+	const browser = await chromium.connectOverCDP(await chrome.cdpUrl);
 	const page = browser.contexts()[0].pages()[0];
 	await page.goto(`${origin}/#token=${token}`);
 	await page.getByText(context, { exact: true }).first().waitFor();
@@ -97,13 +121,5 @@ try {
 	passed = results.indexServed === true && results.mcpWithoutToken === 401 && results.mcpWithServerToken === 401 && toolNames.length > 0 && toolNames.every((tool) => tool.readOnlyHint) && JSON.stringify(results.listContexts).includes(context);
 } catch (error) {
 	results.error = redact(error instanceof Error ? error.message : String(error));
-} finally {
-	results.stoppedChrome = chrome ? await stopGroup(chrome.pid) : true;
-	results.stoppedServer = await stopGroup(server.pid);
-	results.passed = passed;
-	await writeFile(join(evidence, "server.log"), redact(output));
-	await writeFile(join(evidence, "result.json"), `${redact(JSON.stringify(results, null, 2))}\n`);
-	await rm(scratch, { recursive: true, force: true });
-	console.log(JSON.stringify({ passed, evidence, scratchRemoved: !existsSync(scratch), evidenceKept: existsSync(join(evidence, "result.json")) }, null, 2));
-	process.exit(passed ? 0 : 1);
 }
+await finish();

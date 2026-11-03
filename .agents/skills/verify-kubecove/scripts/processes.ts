@@ -1,5 +1,5 @@
 // Process, port, and Chrome helpers shared by the verify-kubecove scripts.
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { join, resolve } from "node:path";
@@ -21,34 +21,71 @@ export async function freePort() {
 	});
 }
 
+// Signal 0 checks existence only; a negative PID checks a process group. EPERM means it exists but belongs to another user.
 export function alive(pid: number) {
 	try {
 		process.kill(pid, 0);
 		return true;
-	} catch {
-		return false;
+	} catch (error) {
+		return (error as NodeJS.ErrnoException).code === "EPERM";
 	}
 }
 
-export async function waitFor(description: string, check: () => Promise<boolean>, timeoutMs = readinessTimeoutMs) {
-	const deadline = Date.now() + timeoutMs;
+// A process group can outlive its leader, so a stop waits for the whole group. POSIX `fork()` never gives a new
+// process the ID of a live process group, so members left after the leader exits still belong to this run.
+function groupAlive(pid: number) {
+	return alive(process.platform === "win32" ? pid : -pid);
+}
+
+// The OS reuses PIDs, so a run also records each leader's start time and checks it before signaling.
+export function startIdentity(pid: number): string | undefined {
+	try {
+		if (process.platform === "linux") {
+			// Field 22 of /proc/<pid>/stat is the start time in clock ticks since boot; the boot ID makes it unique across reboots.
+			const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+			const ticks = stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19];
+			return ticks ? `${readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim()}:${ticks}` : undefined;
+		}
+		const command = process.platform === "win32" ? ["powershell", "-NoProfile", "-Command", `(Get-Process -Id ${pid}).StartTime.ToFileTimeUtc()`] : ["ps", "-o", "lstart=", "-p", String(pid)];
+		return Bun.spawnSync(command, { stderr: "ignore" }).stdout.toString().trim() || undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+// Polls `check` until it returns true. Each check gets a signal that aborts at the deadline, and the deadline holds
+// even when a check ignores the signal.
+export async function waitFor(description: string, check: (signal: AbortSignal) => Promise<boolean>, timeoutMs = readinessTimeoutMs) {
+	const signal = AbortSignal.timeout(timeoutMs);
+	const expired = new Promise<false>((done) => signal.addEventListener("abort", () => done(false), { once: true }));
 	do {
-		if (await check().catch(() => false)) return;
-		await Bun.sleep(pollMs);
-	} while (Date.now() < deadline);
+		if (await Promise.race([check(signal).catch(() => false), expired])) return;
+		await Promise.race([Bun.sleep(pollMs), expired]);
+	} while (!signal.aborted);
 	throw new Error(`timed out after ${timeoutMs} ms waiting for ${description}`);
 }
 
-// Signals only the detached process group this run created, as `e2e/harness/desktop-profile.ts` does.
-export async function stopGroup(pid: number) {
-	if (!alive(pid)) return true;
+// Signals only the detached process group this run created, as `e2e/harness/desktop-profile.ts` does. `startedAt` is
+// the leader's startIdentity at spawn. Returns true once none of the run's processes remain. Returns false when they
+// still run, or when a live leader's ownership cannot be established, so the caller keeps its record for a retry.
+export async function stopGroup(pid: number, startedAt: string | undefined) {
+	if (!groupAlive(pid)) return true;
+	if (alive(pid)) {
+		const leader = startIdentity(pid);
+		if (leader === undefined || startedAt === undefined) return false;
+		// The PID now names a process this run did not start, so the run's own group is gone. Signal nothing.
+		if (leader !== startedAt) return true;
+	}
 	if (process.platform === "win32") await Bun.spawn(["taskkill", "/PID", String(pid), "/T", "/F"], { stdout: "ignore", stderr: "ignore" }).exited;
 	else {
 		try {
 			process.kill(-pid, "SIGTERM");
 		} catch {}
 	}
-	return waitFor(`PID ${pid} to exit`, async () => !alive(pid)).then(() => true, () => false);
+	return waitFor(`process group ${pid} to exit`, async () => !groupAlive(pid)).then(
+		() => true,
+		() => false,
+	);
 }
 
 // Chrome comes from KUBECOVE_VERIFY_CHROME, Playwright's pinned revision, or the newest cached Playwright Chromium.
@@ -69,16 +106,12 @@ export function chromeExecutable() {
 }
 
 // Headless Chrome never opens a window on the user's desktop; the profile directory isolates storage.
-export async function startChrome(profileDir: string) {
+export function startChrome(profileDir: string) {
 	const chrome = Bun.spawn([chromeExecutable(), "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-gpu", `--user-data-dir=${profileDir}`, "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0", "--window-size=1440,900", "about:blank"], { detached: true, stdin: "ignore", stdout: "ignore", stderr: "ignore" });
 	const portFile = join(profileDir, "DevToolsActivePort");
-	try {
-		await waitFor("Chrome DevTools port", async () => existsSync(portFile));
-	} catch (error) {
-		await stopGroup(chrome.pid);
-		throw error;
-	}
-	return { pid: chrome.pid, cdpUrl: `http://127.0.0.1:${(await readFile(portFile, "utf8")).split(/\r?\n/)[0]}` };
+	// The PID is returned before Chrome is ready, so the caller can record it and stop Chrome if startup fails or is interrupted.
+	const cdpUrl = waitFor("Chrome DevTools port", async () => existsSync(portFile)).then(async () => `http://127.0.0.1:${(await readFile(portFile, "utf8")).split(/\r?\n/)[0]}`);
+	return { pid: chrome.pid, startedAt: startIdentity(chrome.pid), cdpUrl };
 }
 
 export function gitHead() {

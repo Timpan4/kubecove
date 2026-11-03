@@ -1,13 +1,13 @@
 #!/usr/bin/env bun
 // Drives KubeCove browser dev mode (typed IPC mocks, `mock-dev` context) for verification runs.
-// Every run owns one Vite process group and one headless Chrome process group, recorded by PID.
+// Every run owns one Vite process group and one headless Chrome process group, recorded by PID and leader start time.
 import { existsSync, readdirSync } from "node:fs";
 import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 import { chromium, type Locator, type Page } from "playwright-core";
-import { alive, freePort, gitHead, root, startChrome, stopGroup, waitFor } from "./processes";
+import { alive, freePort, gitHead, root, startChrome, startIdentity, stopGroup, waitFor } from "./processes";
 
-type RunState = { runId: string; head: string; url: string; vitePid: number; chromePid: number; cdpUrl: string; evidenceDir: string };
+type RunState = { runId: string; head: string; url: string; vitePid: number; viteStartedAt?: string; chromePid: number; chromeStartedAt?: string; cdpUrl: string; evidenceDir: string };
 type Role = Parameters<Page["getByRole"]>[0];
 
 const stateRoot = join(root, ".e2e", "verify");
@@ -54,13 +54,14 @@ async function launch() {
 	const log = Bun.file(join(evidenceDir, "vite.log"));
 	// `--port` and `--strictPort` override vite.config.ts, so a server already on 1430 is never touched.
 	const vite = Bun.spawn(["bun", "--bun", "vite", "--host", "127.0.0.1", "--port", new URL(url).port, "--strictPort"], { cwd: root, detached: true, stdin: "ignore", stdout: log, stderr: log, env: { ...process.env, KUBECONFIG: undefined, TAURI_DEV_HOST: undefined } });
-	const state: RunState = { runId, head: gitHead(), url, vitePid: vite.pid, chromePid: 0, cdpUrl: "", evidenceDir };
-	await saveState(state);
+	const state: RunState = { runId, head: gitHead(), url, vitePid: vite.pid, viteStartedAt: startIdentity(vite.pid), chromePid: 0, cdpUrl: "", evidenceDir };
 	try {
-		const chrome = await startChrome(join(runDir, "chrome-profile"));
-		Object.assign(state, { chromePid: chrome.pid, cdpUrl: chrome.cdpUrl });
 		await saveState(state);
-		await waitFor("Vite to serve the KubeCove index", async () => (await (await fetch(url)).text()).includes("<title>KubeCove</title>"));
+		const chrome = startChrome(join(runDir, "chrome-profile"));
+		Object.assign(state, { chromePid: chrome.pid, chromeStartedAt: chrome.startedAt });
+		[state.cdpUrl] = await Promise.all([chrome.cdpUrl, saveState(state)]);
+		await saveState(state);
+		await waitFor("Vite to serve the KubeCove index", async (signal) => (await (await fetch(url, { signal })).text()).includes("<title>KubeCove</title>"));
 		await withPage(state, async (page) => {
 			await page.goto(url);
 			// Ready means usable: the launcher has loaded the browser mock kubeconfig context.
@@ -160,11 +161,14 @@ async function doctor(state: RunState) {
 }
 
 async function cleanup(state: RunState) {
-	await record(state, { action: "cleanup" });
-	const stopped = { chrome: !state.chromePid || (await stopGroup(state.chromePid)), vite: await stopGroup(state.vitePid) };
-	await rm(join(stateRoot, state.runId), { recursive: true, force: true });
-	console.log(JSON.stringify({ stopped, evidenceDir: state.evidenceDir, evidenceKept: existsSync(join(state.evidenceDir, "actions.jsonl")) }, null, 2));
-	if (!stopped.chrome || !stopped.vite) process.exitCode = 1;
+	// Stop first: a failed evidence write must not leave the run's processes running.
+	const stopped = { chrome: !state.chromePid || (await stopGroup(state.chromePid, state.chromeStartedAt)), vite: await stopGroup(state.vitePid, state.viteStartedAt) };
+	await record(state, { action: "cleanup", stopped }).catch((error) => console.error(`could not record cleanup: ${error instanceof Error ? error.message : error}`));
+	const done = stopped.chrome && stopped.vite;
+	// A group that did not stop keeps the run's state, so cleanup can be retried.
+	if (done) await rm(join(stateRoot, state.runId), { recursive: true, force: true });
+	console.log(JSON.stringify({ stopped, stateKept: !done, evidenceDir: state.evidenceDir, evidenceKept: existsSync(join(state.evidenceDir, "actions.jsonl")) }, null, 2));
+	if (!done) process.exitCode = 1;
 }
 
 try {

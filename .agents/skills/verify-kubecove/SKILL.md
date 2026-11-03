@@ -85,7 +85,9 @@ Proof standards:
 .agents/skills/verify-kubecove/scripts/kubecove-verify.ts cleanup
 ```
 
-Stops this run's Chrome and Vite process groups by recorded PID, waits for them to exit, and deletes `.e2e/verify/<run-id>/` and its Chrome profile. It prints `evidenceKept: true` when the evidence directory still has `actions.jsonl`. Run cleanup after every failed attempt too. If it reports a group that did not stop, report the PID; do not kill by process name.
+Stops this run's Chrome and Vite process groups by recorded PID, waits until no process in either group remains, and deletes `.e2e/verify/<run-id>/` and its Chrome profile. It prints `evidenceKept: true` when the evidence directory still has `actions.jsonl`. Run cleanup after every failed attempt too.
+
+Launch records each group leader's start time with its PID. When the recorded PID now belongs to a process with a different start time, for example after a reboot, cleanup signals nothing, because the run's own processes are gone. When a group does not stop, or a live leader's start time cannot be read, cleanup exits 1 with `stateKept: true` and keeps `.e2e/verify/<run-id>/` so it can be run again. Report the PID; do not kill by process name.
 
 ## Helpers
 
@@ -111,7 +113,7 @@ The check gives `kubecove-server` a private `HOME`, data directory, and a fixtur
 - `list_contexts` returns the fixture context `verify-fixture`;
 - browser sign-in through `/#token=` reaches the launcher with `verify-fixture` selected.
 
-It stops the server and Chrome by PID, deletes its scratch directory, and writes `result.json`, `server.log`, `browser-launcher.aria.txt`, and `browser-launcher.png` to `e2e/artifacts/verify-server-<run-id>/`. Startup and MCP tokens are replaced with `[redacted]` in every artifact. The fixture cluster address is a closed port, so namespace discovery fails in the launcher by design. Cluster-backed tools need the Kind lab.
+It stops the server and Chrome by PID, deletes its scratch directory, and writes `result.json`, `server.log`, `browser-launcher.aria.txt`, and `browser-launcher.png` to `e2e/artifacts/verify-server-<run-id>/`. Ctrl-C or SIGTERM runs the same teardown and fails the check. If the server or Chrome does not stop, the check fails and keeps the scratch directory, which holds the tokens; `result.json` names it and both PIDs under `scratchKept`. Stop those PIDs, then delete the directory. Startup and MCP tokens are replaced with `[redacted]` in every artifact. The fixture cluster address is a closed port, so namespace discovery fails in the launcher by design. Cluster-backed tools need the Kind lab.
 
 ## Desktop app under WDIO
 
