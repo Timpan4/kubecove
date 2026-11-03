@@ -18,6 +18,8 @@ const binary = flag("binary") ?? join(root, "src-tauri/server/target/debug", pro
 const scratch = join(root, ".e2e", "verify", `server-${runId}`);
 const evidence = join(root, "e2e", "artifacts", `verify-server-${runId}`);
 const context = "verify-fixture";
+// The tools ADR 0028 approves, sorted. tools/list must return exactly these.
+const adr0028Tools = ["describe_resource", "find_problems", "get_pod_logs", "get_resource_metrics", "get_resource_yaml", "list_argocd_applications", "list_contexts", "list_helm_releases", "list_namespaces", "list_resource_kinds", "list_resources"];
 if (!existsSync(binary)) throw new Error(`missing ${binary}; build it first (see the skill's server section)`);
 if (existsSync(scratch) || existsSync(evidence)) throw new Error(`run ${runId} already exists; choose a new --run id`);
 // A non-recursive mkdir claims the run. A second check with the same id fails here, before teardown could remove
@@ -160,7 +162,9 @@ try {
 	results.mcpWithServerToken = (await mcp(listTools, token)).status;
 	const tools = (await (await mcp(listTools, mcpToken)).json()) as { result: { tools: Array<{ name: string; annotations?: { readOnlyHint?: boolean } }> } };
 	results.tools = tools.result.tools.map(({ name, annotations }) => ({ name, readOnlyHint: annotations?.readOnlyHint === true }));
-	const contexts = (await (await mcp({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "list_contexts", arguments: {} } }, mcpToken)).json()) as { result: { content: Array<{ text: string }> } };
+	const contexts = (await (await mcp({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "list_contexts", arguments: {} } }, mcpToken)).json()) as { result: { isError?: boolean; content: Array<{ text: string }> } };
+	// A failed call also returns JSON text, so the error flag decides, not the text.
+	results.listContextsIsError = contexts.result.isError === true;
 	results.listContexts = JSON.parse(contexts.result.content[0].text);
 
 	// Browser server mode: sign in with the startup token in the URL fragment and reach the launcher.
@@ -178,8 +182,14 @@ try {
 	results.browserUrl = redact(page.url());
 	await browser.close();
 
-	const toolNames = (results.tools as Array<{ name: string; readOnlyHint: boolean }>);
-	passed = results.indexServed === true && results.mcpWithoutToken === 401 && results.mcpWithServerToken === 401 && toolNames.length > 0 && toolNames.every((tool) => tool.readOnlyHint) && JSON.stringify(results.listContexts).includes(context);
+	const toolList = results.tools as Array<{ name: string; readOnlyHint: boolean }>;
+	// Every tool marks itself read-only, so the annotation alone would accept a new mutating tool. The list must
+	// equal the approved set in docs/decisions/0028-read-only-mcp-server.md; a new tool needs that ADR updated first.
+	const names = toolList.map((tool) => tool.name).sort();
+	results.toolsMatchAdr0028 = names.length === adr0028Tools.length && names.every((name, index) => name === adr0028Tools[index]);
+	const listed = (results.listContexts as { contexts?: Array<{ name?: unknown; current?: unknown }> }).contexts;
+	results.fixtureContextCurrent = Array.isArray(listed) && listed.some((entry) => entry.name === context && entry.current === true);
+	passed = results.indexServed === true && results.mcpWithoutToken === 401 && results.mcpWithServerToken === 401 && results.toolsMatchAdr0028 === true && toolList.every((tool) => tool.readOnlyHint) && results.listContextsIsError === false && results.fixtureContextCurrent === true;
 } catch (error) {
 	results.error = redact(error instanceof Error ? error.message : String(error));
 }

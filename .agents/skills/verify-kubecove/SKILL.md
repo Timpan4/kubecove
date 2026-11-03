@@ -109,8 +109,8 @@ The check gives `kubecove-server` a private `HOME`, data directory, and a fixtur
 
 - the server serves the embedded index;
 - `/mcp` returns 401 without a token and with the browser server token;
-- `tools/list` with the MCP token returns only tools marked `readOnlyHint: true`;
-- `list_contexts` returns the fixture context `verify-fixture`;
+- `tools/list` with the MCP token returns exactly the 11 tools ADR 0028 approves, each marked `readOnlyHint: true`. A new tool fails the check until the ADR and the list in the script are updated;
+- `list_contexts` succeeds (`isError` is not true) and returns the fixture context `verify-fixture` as current;
 - browser sign-in through `/#token=` reaches the launcher with `verify-fixture` selected.
 
 It stops the server and Chrome by PID, deletes its scratch directory, and writes `result.json`, `server.log`, `browser-launcher.aria.txt`, and `browser-launcher.png` to `e2e/artifacts/verify-server-<run-id>/`. Ctrl-C or SIGTERM runs the same teardown and fails the check. If the server or Chrome does not stop, or the scratch directory cannot be removed, the check fails and keeps the scratch directory, which holds the tokens; `result.json` names it and both PIDs under `scratchKept`, and a removal error under `scratchError`. Stop those PIDs, then delete the directory. After both stop, it waits for the server's output to end before it writes `server.log`. If the output does not end within the readiness timeout or a read fails, the check fails and `result.json` records `outputComplete: false` or `outputErrors`. Startup and MCP tokens are replaced with `[redacted]` in every artifact. The fixture cluster address is a closed port, so namespace discovery fails in the launcher by design. Cluster-backed tools need the Kind lab.
