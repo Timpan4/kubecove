@@ -97,14 +97,11 @@ const finish = (interrupted?: string) =>
 		if (evidenceError !== undefined) results.evidenceError = evidenceError;
 		const ok = passed && stopped && scratchRemoved && evidenceError === undefined && !interrupted && results.outputComplete === true && outputErrors.length === 0;
 		results.passed = ok;
-		try {
-			// An interrupt can arrive before setup created the evidence directory.
-			await mkdir(evidence, { recursive: true });
-			await writeFile(join(evidence, "server.log"), redact(output));
-			await writeFile(join(evidence, "result.json"), `${redact(JSON.stringify(results, null, 2))}\n`);
-		} catch (error) {
-			evidenceError ??= errorText(error);
-		}
+		// Each artifact is written on its own, so a failed server.log still leaves result.json.
+		// An interrupt can arrive before setup created the evidence directory.
+		await mkdir(evidence, { recursive: true }).catch((error) => (evidenceError ??= errorText(error)));
+		await writeFile(join(evidence, "server.log"), redact(output)).catch((error) => (evidenceError ??= errorText(error)));
+		await writeFile(join(evidence, "result.json"), `${redact(JSON.stringify(results, null, 2))}\n`).catch((error) => (evidenceError ??= errorText(error)));
 		const exitOk = ok && evidenceError === undefined;
 		console.log(JSON.stringify({ passed: exitOk, evidence, stopped, scratchRemoved, evidenceKept: existsSync(join(evidence, "result.json")), evidenceError, scratchError: results.scratchError }, null, 2));
 		process.exit(exitOk ? 0 : 1);

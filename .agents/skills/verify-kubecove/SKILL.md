@@ -61,7 +61,7 @@ Actions:
 - `count`, `value` (input value). Both print the result as JSON.
 - `goto --path <path>`, `reload`, `reset` (clear `localStorage`, reload, wait for `mock-dev`), `viewport --width <px> --height <px>`.
 - `snapshot --path <file>` writes an ARIA snapshot of the target or the whole page. `text --path <file>` writes inner text. `screenshot --path <file>` writes a PNG of the target, or of the viewport without one; `--full` captures the whole page and takes no target.
-- `--timeout <ms>` overrides the default action timeout, which is the helpers' 30 s readiness timeout.
+- `--timeout <ms>` overrides the default action timeout, which is the helpers' 30 s readiness timeout. It must be a positive number.
 
 Each command prints `{action, title, url}` and appends the action, its arguments, and the resulting URL to `actions.jsonl` in the evidence directory. Read [features/README.md](features/README.md) and the matching feature file for exact journeys.
 

@@ -89,6 +89,12 @@ async function launch() {
 		});
 		// Inside the try: a launch that cannot record itself fails and stops what it started.
 		await record(state, { action: "launch", url: state.url, head: state.head });
+		// An interrupt during the steps above started cleanup in the background. From here to the ready line nothing
+		// awaits, so no later signal is handled before it, and this check decides: ready only if no cleanup started.
+		if (stopping) {
+			await stopping;
+			throw new Error("launch interrupted after startup; the run was cleaned up");
+		}
 	} catch (error) {
 		console.error(`launch failed; cleaning up run ${runId}. Vite log: ${join(evidenceDir, "vite.log")}`);
 		await abandon();
@@ -105,12 +111,15 @@ async function withPage<T>(state: RunState, work: (page: Page) => Promise<T>) {
 	// Chrome holds its DevTools port while it runs. Once the run's Chrome has exited, another browser could hold the
 	// recorded port, so the helper connects only while the recorded Chrome still runs.
 	if (!ownsLeader(state.chromePid, state.chromeStartedAt)) throw new Error(`run ${state.runId}'s Chrome (PID ${state.chromePid}) is no longer running, or that PID now names another process; run cleanup, then launch a new run`);
+	// Playwright treats 0 as no timeout and waits forever on NaN, so only a positive number is accepted.
+	const timeout = flag("timeout") === undefined ? readinessTimeoutMs : Number(flag("timeout"));
+	if (!Number.isFinite(timeout) || timeout <= 0) throw new Error("--timeout must be a positive number of milliseconds");
 	const browser = await chromium.connectOverCDP(state.cdpUrl);
 	try {
 		const context = browser.contexts()[0];
 		const page = context.pages().find((candidate) => candidate.url().startsWith(state.url)) ?? context.pages()[0] ?? (await context.newPage());
 		// Explicit, so every wait, including launch's readiness wait, has a bound instead of relying on a library default.
-		page.setDefaultTimeout(flag("timeout") ? Number(flag("timeout")) : readinessTimeoutMs);
+		page.setDefaultTimeout(timeout);
 		return await work(page);
 	} finally {
 		// Disconnects only; the run's Chrome and its page stay alive for the next command.
