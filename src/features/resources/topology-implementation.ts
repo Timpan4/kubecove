@@ -262,6 +262,7 @@ export function buildFlowTopologyLayout(
 			selectable: true,
 			width,
 			height,
+			measured: { width, height },
 			style: `width: ${width}px; height: ${height}px`,
 			zIndex: group.zIndex,
 		};
@@ -271,6 +272,8 @@ export function buildFlowTopologyLayout(
 		return standaloneGroups.groupIdByNodeId.has(node.id);
 	}).map<FlowTopologyNode>((node) => {
 		const standalone = standaloneGroups.groupIdByNodeId.has(node.id);
+		const width = standalone ? SVELTE_STANDALONE_NODE_WIDTH : SVELTE_TOPOLOGY_LAYOUT.nodeWidth;
+		const height = SVELTE_TOPOLOGY_LAYOUT.nodeHeight;
 		return {
 			id: node.id,
 			type: "ownershipResource",
@@ -295,11 +298,13 @@ export function buildFlowTopologyLayout(
 			extent: standalone ? "parent" : undefined,
 			sourcePosition: Position.Right,
 			targetPosition: Position.Left,
-			width: standalone ? SVELTE_STANDALONE_NODE_WIDTH : SVELTE_TOPOLOGY_LAYOUT.nodeWidth,
-			height: SVELTE_TOPOLOGY_LAYOUT.nodeHeight,
-			style: `width: ${
-				standalone ? SVELTE_STANDALONE_NODE_WIDTH : SVELTE_TOPOLOGY_LAYOUT.nodeWidth
-			}px; height: ${SVELTE_TOPOLOGY_LAYOUT.nodeHeight}px`,
+			width,
+			height,
+			// The style fixes the node's box to this size. Svelte Flow keeps a
+			// replaced node's measured handle bounds only when the node carries
+			// `measured`; without it, every replaced node is measured again.
+			measured: { width, height },
+			style: `width: ${width}px; height: ${height}px`,
 			zIndex: standalone ? 1 : undefined,
 		};
 	});
@@ -348,50 +353,73 @@ export function applyFlowTopologySelectionWithIndex(
 	const nodes = graphTopology.nodes.map<FlowTopologyNode>((node) => {
 		if (node.type === "standaloneKindGroup") {
 			const nodeIds = node.data.nodeIds ?? [];
-			return {
+			const dimmed = !nodeIds.some((nodeId) => selectedPath.nodeIds.has(nodeId));
+			return selectionVariant(nodeVariants, node, dimmed ? "d" : "", () => ({
 				...node,
-				data: {
-					...node.data,
-					dimmed: !nodeIds.some((nodeId) => selectedPath.nodeIds.has(nodeId)),
-				},
-			};
+				data: { ...node.data, dimmed },
+			}));
 		}
 
 		const selected = selectedNodeId === node.id;
 		const connected = selectedPath.nodeIds.has(node.id) && !selected;
-		return {
+		const dimmed = !selectedPath.nodeIds.has(node.id);
+		const state = `${selected ? "s" : ""}${connected ? "c" : ""}${dimmed ? "d" : ""}`;
+		return selectionVariant(nodeVariants, node, state, () => ({
 			...node,
-			data: {
-				...node.data,
-				selected,
-				connected,
-				dimmed: !selectedPath.nodeIds.has(node.id),
-			},
+			data: { ...node.data, selected, connected, dimmed },
 			selected,
-		};
+		}));
 	});
 	const edges = graphTopology.edges.map<FlowTopologyEdge>((edge) => {
 		const active = selectedPath.edgeIds.has(edge.id);
-		const stroke = active ? "var(--primary)" : "var(--muted-foreground)";
-		return {
-			...edge,
-			animated: false,
-			markerEnd: {
-				type: MarkerType.ArrowClosed,
-				width: active ? 18 : 14,
-				height: active ? 18 : 14,
-				color: stroke,
-			},
-			style: [
-				`stroke: ${stroke}`,
-				`stroke-width: ${active ? 2.6 : 1.6}`,
-				`stroke-dasharray: ${active ? "8 8" : "none"}`,
-				`opacity: ${active ? 1 : 0.2}`,
-			].join("; "),
-		};
+		return selectionVariant(edgeVariants, edge, active ? "a" : "", () => {
+			const stroke = active ? "var(--primary)" : "var(--muted-foreground)";
+			return {
+				...edge,
+				animated: false,
+				markerEnd: {
+					type: MarkerType.ArrowClosed,
+					width: active ? 18 : 14,
+					height: active ? 18 : 14,
+					color: stroke,
+				},
+				style: [
+					`stroke: ${stroke}`,
+					`stroke-width: ${active ? 2.6 : 1.6}`,
+					`stroke-dasharray: ${active ? "8 8" : "none"}`,
+					`opacity: ${active ? 1 : 0.2}`,
+				].join("; "),
+			};
+		});
 	});
 
 	return { nodes, edges };
+}
+
+// Svelte Flow reuses its internal node only when the node object is the same
+// one it saw before. Returning one object per layout element and selection
+// state means a new selection replaces only the elements whose state changed.
+// Keys are the layout's own objects, so a new layout drops the old variants.
+const nodeVariants = new WeakMap<FlowTopologyNode, Map<string, FlowTopologyNode>>();
+const edgeVariants = new WeakMap<FlowTopologyEdge, Map<string, FlowTopologyEdge>>();
+
+function selectionVariant<T extends object>(
+	variants: WeakMap<T, Map<string, T>>,
+	base: T,
+	state: string,
+	build: () => T,
+): T {
+	let byState = variants.get(base);
+	if (!byState) {
+		byState = new Map();
+		variants.set(base, byState);
+	}
+	let variant = byState.get(state);
+	if (!variant) {
+		variant = build();
+		byState.set(state, variant);
+	}
+	return variant;
 }
 
 export function filterFlowTopologyToSelectedRoot(
