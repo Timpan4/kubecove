@@ -272,19 +272,15 @@ impl Sessions {
     }
 }
 
-/// glibc keeps the pages a session's large responses freed in its per-thread
-/// arenas for the life of the process, so an idle server stayed at its peak
-/// (1 GiB on one deployment). Returning them when the session's state is gone
-/// brings an idle server back near its startup footprint.
+/// An idle server stayed at its peak (1 GiB on one deployment) because the
+/// pages a session's caches freed were never returned. The workspace-close
+/// trim in `cleanup` runs while the caches are still alive, so this one runs
+/// after they are gone.
 struct ReleaseHeapOnDrop;
 
 impl Drop for ReleaseHeapOnDrop {
     fn drop(&mut self) {
-        #[cfg(all(target_os = "linux", target_env = "gnu"))]
-        // SAFETY: malloc_trim takes no pointers and only releases glibc's own free pages.
-        unsafe {
-            libc::malloc_trim(0);
-        }
+        kubecove_lib::commands::release_freed_heap();
     }
 }
 

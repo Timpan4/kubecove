@@ -244,9 +244,12 @@ free pages, not live data, dominate an idle server.
   only Pod and ReplicaSet metadata and skips spec and status. A test serves full
   objects through the kube fixture and compares the result with complete
   decoding, for all-namespace and named-namespace scopes.
-- The headless server calls `malloc_trim(0)` when a session's state drops.
-  A guard declared as the last field of the session owner runs after the
-  owner's caches are freed. It compiles only for Linux glibc targets.
+- `cancel_workspace_requests`, which ADR 0009 runs on every workspace
+  transition, ends with `malloc_trim(0)`. This covers the desktop host and a
+  server session that switches workspaces.
+- The headless server also trims when a session's state drops. A guard
+  declared as the last field of the session owner runs after the owner's
+  caches are freed. Both trims compile only for Linux glibc targets.
 - jemalloc with `background_thread:true` was measured as an alternative:
   111.5 MiB at the idle launcher and 139.9 MiB after the session ended,
   both worse than glibc with the trim.
@@ -264,6 +267,19 @@ two baseline runs are shown because retention varied between them.
 
 The idle footprint with a session open is still allocator retention. It stays
 until the session ends, because this change adds no timer or idle threshold.
+
+The desktop host had the same pattern. In a native WebKitGTK run of the
+repository memory spec against the large fixture, glibc held 478 to 667 MiB of
+free arena pages against 73 to 77 MiB in use. Trimming in
+`cancel_workspace_requests`, one run each:
+
+| Desktop host footprint, MiB | Before | After |
+| --- | ---: | ---: |
+| After switching to the launcher | 715 | 451 |
+| After inactive collection | 581 | 366 |
+
+The peak, about 768 MiB, is unchanged, because the trim runs only when a
+workspace closes.
 
 ## Other findings and limits
 
