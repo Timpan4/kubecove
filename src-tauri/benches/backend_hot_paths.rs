@@ -1,9 +1,10 @@
 use codspeed_divan_compat::black_box;
 use kubecove_lib::{
     commands::bench_support::{
-        build_bench_topology, build_custom_overlay_bench_topology_from_inputs,
+        BenchTopologyResources, build_bench_topology, build_bench_topology_from_resources,
         custom_overlay_bench_inputs, helm_manifest_resources, sample_custom_resource_kinds,
         sample_topology_inputs, serialize_backend_yaml, sort_custom_resource_catalog,
+        statefulset_claim_bench_inputs,
     },
     models::YamlEncoding,
 };
@@ -22,9 +23,10 @@ static TOPOLOGY_INPUTS: LazyLock<Vec<kubecove_lib::commands::bench_support::Benc
     LazyLock::new(|| sample_topology_inputs(500));
 static CUSTOM_RESOURCE_KINDS: LazyLock<Vec<kubecove_lib::models::DiscoveredResourceKind>> =
     LazyLock::new(|| sample_custom_resource_kinds(1_000));
-static CUSTOM_OVERLAY_INPUTS: LazyLock<
-    kubecove_lib::commands::bench_support::BenchCustomOverlayInputs,
-> = LazyLock::new(|| custom_overlay_bench_inputs(500));
+static CUSTOM_OVERLAY_INPUTS: LazyLock<BenchTopologyResources> =
+    LazyLock::new(|| custom_overlay_bench_inputs(500));
+static STATEFULSET_CLAIM_INPUTS: LazyLock<BenchTopologyResources> =
+    LazyLock::new(|| statefulset_claim_bench_inputs(500, 4));
 
 // Model the affected cluster's 63 CRDs and roughly 20,413 schema nodes, without
 // recording cluster data. Both decoders consume the same generated JSON.
@@ -148,10 +150,31 @@ mod build_ownership_topology_500_apps_with_crd_overlay {
 
     #[codspeed_divan_compat::bench]
     fn build_ownership_topology_500_apps_with_crd_overlay() -> usize {
-        let topology = black_box(build_custom_overlay_bench_topology_from_inputs(black_box(
+        let topology = black_box(build_bench_topology_from_resources(black_box(
             CUSTOM_OVERLAY_INPUTS.clone(),
         )));
         topology.nodes.len() + topology.edges.len()
+    }
+}
+
+// Claim-to-StatefulSet links for 2,000 Pods and 2,000 claims.
+mod build_ownership_topology_500_statefulsets_with_claims {
+    use super::*;
+
+    #[codspeed_divan_compat::bench]
+    fn build_ownership_topology_500_statefulsets_with_claims(
+        bencher: codspeed_divan_compat::Bencher,
+    ) {
+        let topology = build_bench_topology_from_resources(STATEFULSET_CLAIM_INPUTS.clone());
+        let creates = topology
+            .edges
+            .iter()
+            .filter(|edge| edge.relation == kubecove_lib::models::TopologyRelation::Creates)
+            .count();
+        assert_eq!(creates, 2_000);
+        bencher
+            .with_inputs(|| STATEFULSET_CLAIM_INPUTS.clone())
+            .bench_values(|inputs| black_box(build_bench_topology_from_resources(inputs)));
     }
 }
 
@@ -162,6 +185,7 @@ fn main() {
     LazyLock::force(&TOPOLOGY_INPUTS);
     LazyLock::force(&CUSTOM_RESOURCE_KINDS);
     LazyLock::force(&CUSTOM_OVERLAY_INPUTS);
+    LazyLock::force(&STATEFULSET_CLAIM_INPUTS);
     LazyLock::force(&LARGE_CRD_LIST);
     codspeed_divan_compat::main();
 }

@@ -38,11 +38,16 @@ export function maskedSecretValue(): string {
 	return "••••••";
 }
 
+// A non-streaming decode() starts from a fresh decoder state, so one instance is reusable.
+const UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
+
 export function decodeSecretDataValue(value: string): SecretDataDecodeResult {
 	if (!isValidBase64(value)) return { error: "invalid-base64" };
 	try {
-		const bytes = Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
-		return { value: new TextDecoder("utf-8", { fatal: true }).decode(bytes) };
+		const binary = atob(value);
+		const bytes = new Uint8Array(binary.length);
+		for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+		return { value: UTF8_DECODER.decode(bytes) };
 	} catch {
 		return { error: "binary-data" };
 	}

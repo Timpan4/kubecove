@@ -128,8 +128,6 @@ mod resource_metrics_normalization_and_rollup_10000 {
 
         assert_eq!(METRICS_OUTPUT.nodes[0].cpu_millicores, Some(2_000.0));
         assert_eq!(METRICS_OUTPUT.nodes[0].memory_bytes, Some(2_147_483_648));
-        bencher
-            .with_inputs(|| METRICS_INPUT.clone())
-            .bench_values(|fixture| black_box(project_resource_metrics(&fixture)));
+        bencher.bench(|| black_box(project_resource_metrics(black_box(&METRICS_INPUT))));
     }
 }

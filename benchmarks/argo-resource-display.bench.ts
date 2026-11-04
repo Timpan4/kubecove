@@ -8,6 +8,7 @@ import {
 } from "@/features/gitops/argo-resource-display";
 import {
 	argoComparisonDocument,
+	argoComparisonIndex,
 	argoReconciliationResources,
 	argoResourceIdentityKey,
 } from "@/features/gitops/argo-workspace-model";
@@ -111,10 +112,11 @@ describe("Argo resource display F48–F49", () => {
 		"F48 reconciliation display lookup, connected override, document text, and mounted diffs",
 		() => {
 			const visibleResources = argoReconciliationResources(managedResources);
+			const comparisonsByKey = argoComparisonIndex(comparisons);
 			for (const resource of visibleResources) {
 				const comparison = resolveArgoResourceComparison(
 					resource,
-					comparisons,
+					comparisonsByKey,
 					"connected",
 					selectedResourceKey,
 					selectedComparison,

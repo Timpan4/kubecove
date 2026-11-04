@@ -104,22 +104,32 @@ export function countIncidentItems(
 export function sortIncidentItems(
 	items: IncidentCockpitItem[],
 ): IncidentCockpitItem[] {
-	return [...items].sort((a, b) => {
-		const stateDelta = STATE_WEIGHT[incidentState(b)] - STATE_WEIGHT[incidentState(a)];
+	// Weights and signal times are computed once per item, not on every
+	// comparison; parsing the signal date dominated the sort.
+	const keyed = items.map((item) => ({
+		item,
+		state: STATE_WEIGHT[incidentState(item)],
+		severity: SEVERITY_WEIGHT[item.severity],
+		time: latestSignalTime(item),
+	}));
+	keyed.sort((a, b) => {
+		const stateDelta = b.state - a.state;
 		if (stateDelta !== 0) return stateDelta;
-		const severityDelta =
-			SEVERITY_WEIGHT[b.severity] - SEVERITY_WEIGHT[a.severity];
+		const severityDelta = b.severity - a.severity;
 		if (severityDelta !== 0) return severityDelta;
-		const recencyDelta = latestSignalTime(b) - latestSignalTime(a);
+		const recencyDelta = b.time - a.time;
 		if (recencyDelta !== 0) return recencyDelta;
-		const namespaceDelta = (a.resource.namespace ?? "").localeCompare(
-			b.resource.namespace ?? "",
+		const namespaceDelta = (a.item.resource.namespace ?? "").localeCompare(
+			b.item.resource.namespace ?? "",
 		);
 		if (namespaceDelta !== 0) return namespaceDelta;
-		const kindDelta = a.resource.kind.localeCompare(b.resource.kind);
+		const kindDelta = a.item.resource.kind.localeCompare(b.item.resource.kind);
 		if (kindDelta !== 0) return kindDelta;
-		return a.resource.name.localeCompare(b.resource.name);
+		return a.item.resource.name.localeCompare(b.item.resource.name);
 	});
+	const sorted: IncidentCockpitItem[] = [];
+	for (const entry of keyed) sorted.push(entry.item);
+	return sorted;
 }
 
 export function groupIncidentItems(

@@ -13,29 +13,29 @@ export function groupIncidentTimelineByDay(
 	items: IncidentTimelineItem[],
 	timezone: TimestampTimezone,
 ): IncidentTimelineDayGroup[] {
-	const dateOptions = { timeZone: timezone === "utc" ? "UTC" : undefined };
+	// toLocaleDateString(locales, options) builds a new Intl.DateTimeFormat per
+	// call (ECMA-402). With every date field given, the same format applies here.
+	const timeZone = timezone === "utc" ? "UTC" : undefined;
+	const keyFormat = new Intl.DateTimeFormat("en-CA", {
+		timeZone,
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+	});
+	const labelFormat = new Intl.DateTimeFormat(undefined, {
+		timeZone,
+		day: "numeric",
+		month: "short",
+		year: "numeric",
+	});
 	const groups = new Map<string, IncidentTimelineDayGroup>();
 	for (const item of items) {
 		const date = item.timestamp ? new Date(item.timestamp) : null;
 		const valid = date && !Number.isNaN(date.getTime());
-		const key = valid
-			? date.toLocaleDateString("en-CA", {
-					...dateOptions,
-					year: "numeric",
-					month: "2-digit",
-					day: "2-digit",
-				})
-			: "unknown";
+		const key = valid ? keyFormat.format(date) : "unknown";
 		const group = groups.get(key) ?? {
 			key,
-			label: valid
-				? date.toLocaleDateString(undefined, {
-						...dateOptions,
-						day: "numeric",
-						month: "short",
-						year: "numeric",
-					})
-				: "Time not reported",
+			label: valid ? labelFormat.format(date) : "Time not reported",
 			items: [],
 		};
 		group.items.push(item);
@@ -46,21 +46,22 @@ export function groupIncidentTimelineByDay(
 	return [...groups.values(), ...(unknown ? [unknown] : [])];
 }
 
-export function incidentTimelineTime(
-	item: IncidentTimelineItem,
+/** Build once per timezone setting and reuse it for every visible item. */
+export function incidentTimelineTimeFormatter(
 	timezone: TimestampTimezone,
-): string {
-	if (!item.timestamp) return "No time";
-	const date = new Date(item.timestamp);
-	return Number.isNaN(date.getTime())
-		? "No time"
-		: date.toLocaleTimeString(undefined, {
-				timeZone: timezone === "utc" ? "UTC" : undefined,
-				hour: "2-digit",
-				minute: "2-digit",
-				second: "2-digit",
-				hour12: false,
-			});
+): (item: IncidentTimelineItem) => string {
+	const format = new Intl.DateTimeFormat(undefined, {
+		timeZone: timezone === "utc" ? "UTC" : undefined,
+		hour: "2-digit",
+		minute: "2-digit",
+		second: "2-digit",
+		hour12: false,
+	});
+	return (item) => {
+		if (!item.timestamp) return "No time";
+		const date = new Date(item.timestamp);
+		return Number.isNaN(date.getTime()) ? "No time" : format.format(date);
+	};
 }
 
 export function incidentTimelineTitle(
