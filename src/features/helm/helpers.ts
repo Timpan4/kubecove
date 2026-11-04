@@ -77,21 +77,13 @@ export function helmReconciliationResourceLabel(
 export function sortHelmReconciliationResources(
 	resources: HelmReconciliationResource[],
 ) {
-	return [...resources].sort((left, right) =>
-		[
-			left.namespace ?? "",
-			left.kind ?? "",
-			left.name ?? "",
-			left.apiVersion ?? "",
-		]
-			.join(":")
-			.localeCompare(
-				[
-					right.namespace ?? "",
-					right.kind ?? "",
-					right.name ?? "",
-					right.apiVersion ?? "",
-				].join(":"),
-			),
-	);
+	// Build each sort key once instead of twice per comparison.
+	const keyed = resources.map((resource) => ({
+		resource,
+		key: `${resource.namespace ?? ""}:${resource.kind ?? ""}:${resource.name ?? ""}:${resource.apiVersion ?? ""}`,
+	}));
+	keyed.sort((left, right) => left.key.localeCompare(right.key));
+	const sorted: HelmReconciliationResource[] = [];
+	for (const { resource } of keyed) sorted.push(resource);
+	return sorted;
 }

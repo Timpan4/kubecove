@@ -8,14 +8,20 @@ function eventTimeValue(event: ResourceEventSummary): number {
 export function sortIncidentEvents(
 	events: ResourceEventSummary[],
 ): ResourceEventSummary[] {
-	return [...events].sort((a, b) => {
+	// Parse each timestamp once instead of twice per comparison.
+	const keyed = events.map((event) => ({ event, time: eventTimeValue(event) }));
+	keyed.sort((a, b) => {
 		const warningDelta =
-			Number(b.eventType === "Warning") - Number(a.eventType === "Warning");
+			Number(b.event.eventType === "Warning") -
+			Number(a.event.eventType === "Warning");
 		if (warningDelta !== 0) return warningDelta;
-		const timeDelta = eventTimeValue(b) - eventTimeValue(a);
+		const timeDelta = b.time - a.time;
 		if (timeDelta !== 0) return timeDelta;
-		const countDelta = b.count - a.count;
+		const countDelta = b.event.count - a.event.count;
 		if (countDelta !== 0) return countDelta;
-		return a.reason.localeCompare(b.reason);
+		return a.event.reason.localeCompare(b.event.reason);
 	});
+	const sorted: ResourceEventSummary[] = [];
+	for (const { event } of keyed) sorted.push(event);
+	return sorted;
 }
