@@ -4369,6 +4369,7 @@ dependencies = [
  "chrono",
  "gpui-kit",
  "kubecove",
+ "regex",
  "serde",
  "serde_json",
  "similar 3.2.1",

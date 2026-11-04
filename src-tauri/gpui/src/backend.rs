@@ -3,12 +3,14 @@ pub use crate::live_sessions::LiveSessions;
 use kubecove_lib::{
     commands::{
         self, BackendCancellationRegistry, ClusterAccess, ClusterLiveStore, PodExecRegistry,
-        PortForwardRegistry,
+        PortForwardRegistry, StreamRegistry,
     },
     models::{
-        AppError, AppErrorKind, ClusterContext, IncidentCockpitSummary, NamespaceSummary,
-        ResourceDetailsFull, ResourceEventSummary, ResourceSummary, ResourceTopology,
-        WatchResourceKey, WatchResourceKind,
+        AppError, AppErrorKind, ClusterContext, ClusterOperationResult, DeploymentRevision,
+        IncidentCockpitSummary, NamespaceSummary, ResourceActionPreview, ResourceActionRequest,
+        ResourceActionState, ResourceActionStateRequest, ResourceDetailsFull, ResourceEventSummary,
+        ResourceSummary, ResourceTopology, WatchResourceKey, WatchResourceKind, YamlApplyPreview,
+        YamlApplyRequest, YamlApplyResult, YamlViewMode,
     },
     runtime::State,
 };
@@ -50,8 +52,26 @@ pub trait Backend: Send + Sync + 'static {
     fn incidents(&self, context: String) -> Read<IncidentCockpitSummary>;
     /// The host's port forwards and exec sessions with the active kubeconfig source.
     fn live_sessions(&self) -> Read<LiveSessions>;
+    /// Starts a log stream; dropping the returned stream stops it.
+    fn log_stream(&self, target: LogTarget) -> Read<LogStream>;
+    /// `list_deployment_revisions`: ReplicaSet pod templates a Deployment owns.
+    fn deployment_revisions(&self, resource: ResourceSummary) -> Read<Vec<DeploymentRevision>>;
+    /// `get_resource_action_state`: the action baseline and its permission checks.
+    fn action_state(&self, request: ResourceActionStateRequest) -> Read<ResourceActionState>;
+    /// `preview_resource_action`: an API-server dry run that changes nothing.
+    fn preview_action(&self, request: ResourceActionRequest) -> Read<ResourceActionPreview>;
+    /// `execute_resource_action`: a confirmed action guarded by the previewed identity.
+    fn execute_action(&self, request: ResourceActionRequest) -> Read<ClusterOperationResult>;
+    /// `get_resource_yaml` in a view mode; the apply draft reads `ApplyClean`.
+    fn resource_yaml(&self, resource: ResourceSummary, mode: YamlViewMode) -> Read<String>;
+    /// `prepare_yaml_apply`: a server-side apply dry run of a draft.
+    fn prepare_yaml_apply(&self, request: YamlApplyRequest) -> Read<YamlApplyPreview>;
+    /// `apply_yaml`: applies a draft whose dry run the user reviewed.
+    fn apply_yaml(&self, request: YamlApplyRequest) -> Read<YamlApplyResult>;
 }
 
+mod detail_reads;
+pub use detail_reads::{LogStream, LogTarget};
 mod inventory;
 pub use inventory::CLUSTER_KINDS;
 
@@ -66,6 +86,7 @@ pub struct NativeBackend {
     // The native client starts no live sessions yet (ADR 0003), so these stay empty.
     port_forwards: PortForwardRegistry,
     exec_sessions: PodExecRegistry,
+    streams: Arc<StreamRegistry>,
 }
 
 impl NativeBackend {
@@ -80,6 +101,7 @@ impl NativeBackend {
             cancellations: BackendCancellationRegistry::default(),
             port_forwards: PortForwardRegistry::default(),
             exec_sessions: PodExecRegistry::default(),
+            streams: Arc::default(),
         })
     }
 
@@ -117,6 +139,7 @@ impl Drop for NativeBackend {
     fn drop(&mut self) {
         self.cancellations.cancel_all();
         self.store.cancel_loading();
+        self.streams.stop_all();
         if let Some(runtime) = self.runtime.take() {
             runtime.shutdown_background();
         }
@@ -292,5 +315,57 @@ impl Backend for NativeBackend {
                 show_source_labels: access.source_label().is_some(),
             })
         })
+    }
+
+    fn log_stream(&self, target: LogTarget) -> Read<LogStream> {
+        detail_reads::log_stream(self, target)
+    }
+
+    fn deployment_revisions(&self, resource: ResourceSummary) -> Read<Vec<DeploymentRevision>> {
+        self.read(async move {
+            let namespace = resource.namespace.unwrap_or_default();
+            commands::list_deployment_revisions(resource.cluster, resource.name, namespace, None)
+                .await
+        })
+    }
+
+    fn action_state(&self, request: ResourceActionStateRequest) -> Read<ResourceActionState> {
+        self.read(commands::get_resource_action_state(request))
+    }
+
+    fn preview_action(&self, request: ResourceActionRequest) -> Read<ResourceActionPreview> {
+        self.read(commands::preview_resource_action(request))
+    }
+
+    fn execute_action(&self, request: ResourceActionRequest) -> Read<ClusterOperationResult> {
+        self.read(commands::execute_resource_action(request))
+    }
+
+    fn resource_yaml(&self, resource: ResourceSummary, mode: YamlViewMode) -> Read<String> {
+        let cancellations = self.cancellations.clone();
+        self.read(async move {
+            supported(&resource.kind)?;
+            commands::get_resource_yaml(
+                resource.cluster,
+                resource.kind,
+                resource.name,
+                resource.namespace,
+                None,
+                Some(mode),
+                None,
+                None,
+                None,
+                State::new(&cancellations),
+            )
+            .await
+        })
+    }
+
+    fn prepare_yaml_apply(&self, request: YamlApplyRequest) -> Read<YamlApplyPreview> {
+        self.read(commands::prepare_yaml_apply(request))
+    }
+
+    fn apply_yaml(&self, request: YamlApplyRequest) -> Read<YamlApplyResult> {
+        self.read(commands::apply_yaml(request))
     }
 }

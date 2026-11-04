@@ -1,6 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { chromium, type Page } from "playwright-core";
+import { chromium, type Locator, type Page } from "playwright-core";
 import { chromeExecutable, freePort, readinessTimeoutMs, startIdentity, stopGroup, waitFor } from "../../.agents/skills/verify-kubecove/scripts/processes";
 import type { Contract, Step } from "./contract";
 
@@ -71,6 +71,50 @@ async function action(page: Page, step: Step) {
 			await page.locator("div.justify-between").filter({ has: page.getByText(step.label, { exact: true }) }).locator("strong").filter({ hasText: new RegExp(`^${step.count}$`) }).waitFor();
 			break;
 		case "expectPortForward": await page.getByRole("cell").getByText(step.title, { exact: true }).waitFor(); break;
+		case "expectLogLines":
+			// Headlines of the rendered rows, in display order.
+			await page.waitForFunction((lines) => JSON.stringify([...document.querySelectorAll("[data-log-row]")].map((row) => row.querySelector('span[class*="text-[12.5px]"]')?.textContent?.trim())) === JSON.stringify(lines), step.lines);
+			break;
+		case "filterLogs": await page.getByRole("textbox", { name: "Filter log lines" }).fill(step.value); break;
+		case "toggleLogLevel": await page.getByRole("group", { name: "Filter by level" }).getByRole("button", { name: new RegExp(`^${step.level} `) }).click(); break;
+		case "expectLogsEmpty": await page.getByText(step.title, { exact: true }).waitFor(); break;
+		case "selectRevision": await revisionButton(page, step.label).click(); break;
+		case "expectRevisionDiff": {
+			const header = page.locator("div.border-b").filter({ hasText: "compared with" });
+			await header.locator("span.font-medium", { hasText: new RegExp(`^${literal(step.selected)}$`) }).waitFor();
+			await header.getByRole("combobox", { name: "Comparison revision" }).filter({ hasText: new RegExp(`^\\s*${literal(step.comparison)}\\s*$`) }).waitFor();
+			await containsLines(page.getByRole("tabpanel").locator("pre"), step.contains);
+			break;
+		}
+		case "reviewAction": await page.getByRole("button", { name: step.label, exact: true }).click(); break;
+		case "editReplicas":
+			await page.locator('[data-resource-action="replicas"]').getByRole("button", { name: "Edit", exact: true }).click();
+			await page.getByRole("spinbutton", { name: "Desired replicas" }).fill(step.value);
+			break;
+		case "expectReview": {
+			const dialog = page.getByRole("dialog");
+			await dialog.getByRole("heading", { name: step.title, exact: true }).waitFor();
+			await dialog.getByText(step.description, { exact: true }).waitFor();
+			await containsLines(dialog.getByLabel("Server result diff"), step.contains);
+			break;
+		}
+		case "confirmDeletion": await page.getByRole("dialog").getByRole("textbox", { name: "Type resource name to confirm" }).fill(step.value); break;
+		// Forced, so a disabled control is clicked like a user would and must do nothing.
+		case "executeReview": await page.getByRole("dialog").getByRole("button", { name: /^(Apply|Delete)$/ }).click({ force: true }); break;
+		case "closeReview": await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click(); break;
+		case "expectNoReview": await page.getByRole("dialog").waitFor({ state: "detached" }); break;
+		case "expectActionResult": await page.getByRole("status").filter({ hasText: new RegExp(`^${literal(step.text)}$`) }).waitFor(); break;
+		case "expectNoActionResult": if (await page.locator('p[role="status"].text-emerald-300').count()) throw new Error("An action result is shown"); break;
+		case "editYaml": await page.getByRole("button", { name: "Edit YAML", exact: true }).click({ force: true }); break;
+		case "applyYaml": await page.getByRole("button", { name: "Apply", exact: true }).click({ force: true }); break;
+		case "dryRunYaml": await page.getByRole("button", { name: "Dry run", exact: true }).click(); break;
+		case "expectDryRun": await containsLines(page.locator("div.font-mono.text-xs.leading-relaxed"), step.contains); break;
+		case "expectYamlNotice": await page.getByText(step.title, { exact: true }).first().waitFor(); break;
+		case "expectNoYamlNotice": if (await page.getByText(step.title, { exact: true }).count()) throw new Error(`${step.title} is shown`); break;
+		case "expectYamlReadOnly":
+			await page.getByRole("button", { name: "Edit YAML", exact: true }).waitFor();
+			if (await page.getByRole("button", { name: "Dry run", exact: true }).count()) throw new Error("The YAML draft editor opened");
+			break;
 		default: { const unhandled: never = step; throw new Error(`Unhandled parity step: ${JSON.stringify(unhandled)}`); }
 	}
 }
@@ -78,6 +122,17 @@ async function action(page: Page, step: Step) {
 /** Event rows in the Events tab: each starts with its `<time>`. */
 function eventRows(page: Page) { return page.locator("div.grid:has(> time[datetime])"); }
 function literal(text: string) { return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+/** A revision in the Revisions list; its comparison picker shows the same label. */
+function revisionButton(page: Page, label: string) { return page.locator("button.w-full.p-3").filter({ has: page.locator("div.font-medium", { hasText: new RegExp(`^${literal(label)}$`) }) }); }
+/** Waits until the element's rendered lines include every expected diff line. */
+async function containsLines(locator: Locator, lines: string[]) {
+	const element = await locator.first().elementHandle();
+	await locator.page().waitForFunction(({ element, expected }) => {
+		// biome-ignore lint/performance/useDomNodeTextContent: the YAML dry-run diff renders each line as a block <div>, so only rendered text keeps one line per row.
+		const rendered = element instanceof HTMLElement ? element.innerText.split("\n") : [];
+		return expected.every((line) => rendered.includes(line));
+	}, { element, expected: lines });
+}
 
 export async function runWeb(contract: Contract, artifacts: string, signal: AbortSignal) {
 	const results: { id: string; status: "passed" | "failed"; error?: string }[] = [];

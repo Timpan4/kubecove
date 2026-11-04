@@ -167,13 +167,6 @@ pub fn outline_button() -> Div {
         .text_color(Tokens::foreground())
 }
 
-/// `Button variant="secondary"`: filled, transparent border.
-pub fn secondary_button() -> Div {
-    outline_button()
-        .border_color(gpui_kit::transparent_black())
-        .bg(Tokens::secondary())
-}
-
 /// `Button variant="ghost" size="icon"` (28px square).
 pub fn ghost_icon(name: &str, size: f32, icon_size: f32) -> Div {
     div()

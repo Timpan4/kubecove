@@ -46,7 +46,7 @@ fn compact_time(event: &ResourceEventSummary) -> String {
 }
 
 /// `Empty class="border border-dashed"` with a title and description.
-fn empty(title: &str, description: &str, height: f32) -> Div {
+pub(super) fn empty(title: &str, description: &str, height: f32) -> Div {
     div()
         .min_h(px(height))
         .flex()

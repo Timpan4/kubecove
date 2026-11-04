@@ -379,8 +379,7 @@ impl Inspector {
                 div()
                     .flex()
                     .flex_col()
-                    .flex_1()
-                    .min_h_0()
+                    .when(!stacked, |body| body.flex_1().min_h_0())
                     .gap(px(12.))
                     .child(self.top_bar(width, cx))
                     .children(self.page_warnings().enumerate().map(|(index, warning)| {
@@ -404,8 +403,10 @@ impl Inspector {
             .test_support()
             .flex()
             .flex_col()
-            .when(!stacked, |page| page.h_full())
-            .min_h_0()
+            // Stacked beside the detail panel, the page keeps its content height
+            // so the scrolling page reaches the table, as the web pane does.
+            .when(!stacked, |page| page.h_full().min_h_0())
+            .when(stacked, |page| page.flex_none())
             .p(px(16.))
             .gap(px(12.))
             .child(body)

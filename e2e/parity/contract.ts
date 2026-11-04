@@ -16,7 +16,19 @@ export type Step =
 	| { action: "filterIncidents"; filter: string }
 	| { action: "expectIncidentGuide"; title: string }
 	| { action: "expectGitOpsCount"; label: string; count: number }
-	| { action: "expectPortForward"; title: string };
+	| { action: "expectPortForward"; title: string }
+	| { action: "closeReview" | "expectNoReview" | "executeReview" | "expectNoActionResult" | "editYaml" | "applyYaml" | "dryRunYaml" | "expectYamlReadOnly" }
+	| { action: "expectLogLines"; lines: string[] }
+	| { action: "filterLogs" | "confirmDeletion" | "editReplicas"; value: string }
+	| { action: "toggleLogLevel"; level: LogLevel }
+	| { action: "expectLogsEmpty" | "expectYamlNotice" | "expectNoYamlNotice"; title: string }
+	| { action: "selectRevision" | "reviewAction"; label: string }
+	| { action: "expectRevisionDiff"; selected: string; comparison: string; contains: string[] }
+	| { action: "expectReview"; title: string; description: string; contains: string[] }
+	| { action: "expectActionResult"; text: string }
+	| { action: "expectDryRun"; contains: string[] };
+type LogLevel = "ERR" | "WRN" | "INF" | "DBG";
+const LOG_LEVELS: readonly LogLevel[] = ["ERR", "WRN", "INF", "DBG"];
 export type Scenario = { id: string; title: string; steps: Step[] };
 export type Contract = { scenarios: Scenario[] };
 
@@ -25,6 +37,9 @@ export const ACTIONS = [
 	"openResources", "showYaml", "closeDetail", "expectDetailClosed", "expectEmpty", "refresh", "search", "expectSearch",
 	"expectResource", "openResource", "expectDetail", "expectClusterResource", "expectNoClusterResource", "expectYaml", "openPage", "showTab", "filterEvents",
 	"expectEvent", "expectEventCount", "expectLiveSessionCount", "filterIncidents", "expectIncidentGuide", "expectGitOpsCount", "expectPortForward",
+	"expectLogLines", "filterLogs", "toggleLogLevel", "expectLogsEmpty", "selectRevision", "expectRevisionDiff", "reviewAction", "editReplicas",
+	"expectReview", "confirmDeletion", "executeReview", "closeReview", "expectNoReview", "expectActionResult", "expectNoActionResult",
+	"editYaml", "applyYaml", "dryRunYaml", "expectDryRun", "expectYamlNotice", "expectNoYamlNotice", "expectYamlReadOnly",
 ] as const satisfies readonly Step["action"][];
 type Missing = Exclude<Step["action"], (typeof ACTIONS)[number]>;
 const allActionsListed: Missing extends never ? true : Missing = true;
@@ -41,6 +56,10 @@ function string(value: unknown): string {
 function count(value: unknown): number {
 	if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw new Error("Expected a nonnegative integer");
 	return value;
+}
+function strings(value: unknown, allowEmpty: boolean): string[] {
+	if (!Array.isArray(value) || (!allowEmpty && !value.length)) throw new Error("Expected a list of strings");
+	return value.map(string);
 }
 function step(value: unknown): Step {
 	const item = object(value);
@@ -64,6 +83,24 @@ function step(value: unknown): Step {
 		case "expectIncidentGuide": return { action: item.action, title: string(item.title) };
 		case "expectGitOpsCount": return { action: item.action, label: string(item.label), count: count(item.count) };
 		case "expectPortForward": return { action: item.action, title: string(item.title) };
+		case "closeReview": case "expectNoReview": case "executeReview": case "expectNoActionResult": case "editYaml": case "applyYaml": case "dryRunYaml": case "expectYamlReadOnly":
+			return { action: item.action };
+		// An empty list asserts that no log row renders.
+		case "expectLogLines": return { action: item.action, lines: strings(item.lines, true) };
+		case "filterLogs": case "confirmDeletion": case "editReplicas": return { action: item.action, value: string(item.value) };
+		case "toggleLogLevel": {
+			const level = LOG_LEVELS.find((candidate) => candidate === item.level);
+			if (!level) throw new Error("Expected a log level");
+			return { action: item.action, level };
+		}
+		case "expectLogsEmpty": case "expectYamlNotice": case "expectNoYamlNotice": return { action: item.action, title: string(item.title) };
+		case "selectRevision": case "reviewAction": return { action: item.action, label: string(item.label) };
+		case "expectRevisionDiff":
+			return { action: item.action, selected: string(item.selected), comparison: string(item.comparison), contains: strings(item.contains, false) };
+		case "expectReview":
+			return { action: item.action, title: string(item.title), description: string(item.description), contains: strings(item.contains, false) };
+		case "expectActionResult": return { action: item.action, text: string(item.text) };
+		case "expectDryRun": return { action: item.action, contains: strings(item.contains, false) };
 		default: throw new Error(`Unknown action: ${String(item.action)}`);
 	}
 }

@@ -12,6 +12,8 @@ macro_rules! embedded {
 }
 
 const ICONS: &[(&str, &[u8])] = embedded![
+    "arrow-down",
+    "arrow-down-up",
     "arrow-right",
     "arrow-right-left",
     "arrow-up",
@@ -42,6 +44,7 @@ const ICONS: &[(&str, &[u8])] = embedded![
     "layers",
     "link-2",
     "loader-circle",
+    "lock-keyhole",
     "minus",
     "network",
     "package",
@@ -64,8 +67,10 @@ const ICONS: &[(&str, &[u8])] = embedded![
     "table-2",
     "trash-2",
     "triangle-alert",
+    "wand-sparkles",
     "waypoints",
     "workflow",
+    "wrap-text",
     "x",
 ];
 

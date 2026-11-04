@@ -121,7 +121,7 @@ mod visual {
                 "resources" => act(&mut cx, handle, |window, cx| {
                     window.click("open-resources", cx)
                 }),
-                "detail" | "yaml" | "events" => {
+                "detail" | "yaml" | "events" | "logs" | "revisions" | "actions" => {
                     act(&mut cx, handle, |window, cx| {
                         window.click("open-resources", cx)
                     });
@@ -133,11 +133,7 @@ mod visual {
                         window.click("resource:Deployment:payments:payments-api", cx)
                     });
                     if view != "detail" {
-                        let tab = if view == "yaml" {
-                            "show-yaml"
-                        } else {
-                            "show-events"
-                        };
+                        let tab = format!("show-{view}");
                         act(&mut cx, handle, |window, cx| window.click(tab, cx));
                     }
                 }

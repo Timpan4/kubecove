@@ -1,3 +1,4 @@
+mod actions;
 pub mod assets;
 pub mod backend;
 mod collate;
@@ -7,10 +8,13 @@ mod incident_timeline;
 mod incidents;
 pub mod inspector;
 mod live_sessions;
+mod log_buffer;
+mod logs;
 pub mod model;
 pub mod theme;
 mod topology;
 mod ui;
+mod unified_diff;
 
 pub use inspector::Inspector;
 

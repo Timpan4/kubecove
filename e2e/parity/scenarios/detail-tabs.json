@@ -1,0 +1,152 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "logs.aggregate-stream",
+      "title": "A Deployment's Logs tab streams its Pods' lines in arrival order",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showTab", "tab": "Logs" },
+        { "action": "expectLogLines", "lines": ["boot payments-api", "handled GET /healthz 200", "downstream retry budget at 82%"] }
+      ]
+    },
+    {
+      "id": "logs.filters",
+      "title": "The level chips and the text filter narrow the lines together",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showTab", "tab": "Logs" },
+        { "action": "expectLogLines", "lines": ["boot payments-api", "handled GET /healthz 200", "downstream retry budget at 82%"] },
+        { "action": "toggleLogLevel", "level": "WRN" },
+        { "action": "expectLogLines", "lines": ["boot payments-api", "handled GET /healthz 200"] },
+        { "action": "filterLogs", "value": "retry" },
+        { "action": "expectLogLines", "lines": [] },
+        { "action": "toggleLogLevel", "level": "WRN" },
+        { "action": "expectLogLines", "lines": ["downstream retry budget at 82%"] },
+        { "action": "filterLogs", "value": "healthz" },
+        { "action": "expectLogLines", "lines": ["handled GET /healthz 200"] }
+      ]
+    },
+    {
+      "id": "logs.switch-resource",
+      "title": "Opening another resource drops the previous resource's log lines",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showTab", "tab": "Logs" },
+        { "action": "expectLogLines", "lines": ["boot payments-api", "handled GET /healthz 200", "downstream retry budget at 82%"] },
+        { "action": "openResource", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-k2r9p", "namespace": "payments" },
+        { "action": "expectDetail", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-k2r9p", "namespace": "payments" },
+        { "action": "showTab", "tab": "Logs" },
+        { "action": "expectLogsEmpty", "title": "No containers found" },
+        { "action": "expectLogLines", "lines": [] }
+      ]
+    },
+    {
+      "id": "revisions.compare",
+      "title": "Selecting a revision compares it with the other one in the right direction",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showTab", "tab": "Revisions" },
+        { "action": "expectRevisionDiff", "selected": "Revision 7", "comparison": "Revision 6", "contains": ["-      image: example/web:1.3.0", "+      image: example/web:1.4.0"] },
+        { "action": "selectRevision", "label": "Revision 6" },
+        { "action": "expectRevisionDiff", "selected": "Revision 6", "comparison": "Revision 7", "contains": ["-      image: example/web:1.4.0", "+      image: example/web:1.3.0"] }
+      ]
+    },
+    {
+      "id": "actions.restart-review",
+      "title": "Restart reviews the exact Deployment, Cancel sends nothing, and Apply runs the reviewed action",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showTab", "tab": "Actions" },
+        { "action": "reviewAction", "label": "Restart" },
+        { "action": "expectReview", "title": "Review restart for payments-api", "description": "restart Deployment payments/payments-api in context mock-dev", "contains": ["+        kubecove.io/restartedAt: mock-restart-1"] },
+        { "action": "closeReview" },
+        { "action": "expectNoReview" },
+        { "action": "expectNoActionResult" },
+        { "action": "reviewAction", "label": "Restart" },
+        { "action": "executeReview" },
+        { "action": "expectNoReview" },
+        { "action": "expectActionResult", "text": "Simulated restart of Deployment payments/payments-api in context mock-dev in browser mock mode." }
+      ]
+    },
+    {
+      "id": "actions.delete-confirmation",
+      "title": "Delete stays blocked until the exact resource name is typed",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showTab", "tab": "Actions" },
+        { "action": "reviewAction", "label": "Delete" },
+        { "action": "expectReview", "title": "Review deletion of payments-api", "description": "delete Deployment payments/payments-api in context mock-dev", "contains": ["No server-side dry-run changes."] },
+        { "action": "executeReview" },
+        { "action": "expectReview", "title": "Review deletion of payments-api", "description": "delete Deployment payments/payments-api in context mock-dev", "contains": ["No server-side dry-run changes."] },
+        { "action": "confirmDeletion", "value": "payments" },
+        { "action": "executeReview" },
+        { "action": "expectReview", "title": "Review deletion of payments-api", "description": "delete Deployment payments/payments-api in context mock-dev", "contains": ["No server-side dry-run changes."] },
+        { "action": "expectNoActionResult" },
+        { "action": "confirmDeletion", "value": "payments-api" },
+        { "action": "executeReview" },
+        { "action": "expectNoReview" },
+        { "action": "expectActionResult", "text": "Simulated delete of Deployment payments/payments-api in context mock-dev in browser mock mode." }
+      ]
+    },
+    {
+      "id": "actions.scale",
+      "title": "Scaling reviews the drafted replica count before applying it",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showTab", "tab": "Actions" },
+        { "action": "editReplicas", "value": "3" },
+        { "action": "reviewAction", "label": "Check changes" },
+        { "action": "expectReview", "title": "Review edit for payments-api", "description": "edit Deployment payments/payments-api in context mock-dev", "contains": ["-  replicas: 2", "+  replicas: 3"] },
+        { "action": "executeReview" },
+        { "action": "expectNoReview" },
+        { "action": "expectActionResult", "text": "Simulated edit of Deployment payments/payments-api in context mock-dev in browser mock mode." }
+      ]
+    },
+    {
+      "id": "yaml.apply-review",
+      "title": "YAML apply waits for a server dry run of the draft and reports the apply failure",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showYaml" },
+        { "action": "editYaml" },
+        { "action": "applyYaml" },
+        { "action": "expectNoYamlNotice", "title": "YAML apply failed" },
+        { "action": "dryRunYaml" },
+        { "action": "expectDryRun", "contains": ["+# dry-run: browser mock", "  force-conflicts: false"] },
+        { "action": "applyYaml" },
+        { "action": "expectYamlNotice", "title": "YAML apply failed" }
+      ]
+    },
+    {
+      "id": "yaml.secret-apply-disabled",
+      "title": "Secret YAML cannot be edited for apply",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api-secrets" },
+        { "action": "openResource", "kind": "Secret", "name": "payments-api-secrets", "namespace": "payments" },
+        { "action": "showYaml" },
+        { "action": "expectYamlNotice", "title": "YAML apply unavailable" },
+        { "action": "editYaml" },
+        { "action": "expectYamlReadOnly" }
+      ]
+    }
+  ]
+}

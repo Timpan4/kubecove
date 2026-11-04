@@ -19,6 +19,7 @@ import type {
 	ResourceSummary,
 	ResourceTopology,
 } from "../../../src/lib/types";
+import { exportDetailTabs } from "./export-detail-tabs";
 
 // Browser mocks omit owner fields the Rust model requires; fill them with the
 // values the web frontend infers (`owner.partial ?? confidence !== "inventory"`).
@@ -75,5 +76,9 @@ const liveSessions = {
 	sourceKey: sources.sourceKey,
 	showSourceLabels: sources.showSourceLabels,
 };
-await writeFile(output, JSON.stringify({ contexts, namespaces, kinds, resources: resources.map(rustShape), details, events, topology: rustTopology, namespaceTopologies, gitops: { argo, flux }, incidents, liveSessions }, null, "\t"));
+// The detail tabs the views capture read Deployment payments/payments-api.
+const focus = resources.find((row) => row.kind === "Deployment" && row.name === "payments-api" && row.namespace === "payments");
+if (!focus) throw new Error("Browser mocks lack Deployment payments/payments-api");
+const detailTabs = await exportDetailTabs(client, resources, focus);
+await writeFile(output, JSON.stringify({ contexts, namespaces, kinds, resources: resources.map(rustShape), details, events, topology: rustTopology, namespaceTopologies, gitops: { argo, flux }, incidents, liveSessions, detailTabs }, null, "\t"));
 console.log(`fixture: ${resources.length} resources, ${details.length} details -> ${output}`);

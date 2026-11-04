@@ -2,14 +2,22 @@
 //! exports the web's `tauri-dev-mocks` responses, so the GPUI client sees the same data the
 //! Svelte client does in the visual comparison and the parity scenarios.
 
+mod detail_tabs;
+
+use detail_tabs::DetailTabs;
 use kubecove_gpui::{
-    backend::{Backend, CLUSTER_KINDS, LiveSessions, Read, Scope, ScopeResult},
+    backend::{
+        Backend, CLUSTER_KINDS, LiveSessions, LogStream, LogTarget, Read, Scope, ScopeResult,
+    },
     gitops::GitOpsInventory,
 };
 use kubecove_lib::models::{
-    AppError, AppErrorKind, ArgoApplicationSummary, ClusterContext, FluxResourceSummary,
-    IncidentCockpitSummary, NamespaceSummary, PodExecSessionSummary, PortForwardSessionSummary,
-    ResourceDetailsFull, ResourceEventSummary, ResourceSummary, ResourceTopology,
+    AppError, AppErrorKind, ArgoApplicationSummary, ClusterContext, ClusterOperationResult,
+    DeploymentRevision, FluxResourceSummary, IncidentCockpitSummary, NamespaceSummary,
+    PodExecSessionSummary, PortForwardSessionSummary, ResourceActionPreview, ResourceActionRequest,
+    ResourceActionState, ResourceActionStateRequest, ResourceDetailsFull, ResourceEventSummary,
+    ResourceSummary, ResourceTopology, YamlApplyPreview, YamlApplyRequest, YamlApplyResult,
+    YamlViewMode,
 };
 use serde::Deserialize;
 use std::{collections::HashMap, path::Path};
@@ -30,6 +38,8 @@ pub struct Fixture {
     incidents: IncidentCockpitSummary,
     #[serde(rename = "liveSessions")]
     live_sessions: FixtureSessions,
+    #[serde(rename = "detailTabs")]
+    detail_tabs: DetailTabs,
 }
 
 #[derive(Deserialize)]
@@ -162,5 +172,40 @@ impl Backend for Fixture {
             show_source_labels: sessions.show_source_labels,
         };
         Box::pin(async move { Ok(sessions) })
+    }
+    fn log_stream(&self, target: LogTarget) -> Read<LogStream> {
+        self.detail_tabs.log_stream(target)
+    }
+    fn deployment_revisions(&self, resource: ResourceSummary) -> Read<Vec<DeploymentRevision>> {
+        self.detail_tabs.deployment_revisions(resource)
+    }
+    fn action_state(&self, request: ResourceActionStateRequest) -> Read<ResourceActionState> {
+        self.detail_tabs.action_state(request)
+    }
+    fn preview_action(&self, request: ResourceActionRequest) -> Read<ResourceActionPreview> {
+        self.detail_tabs.preview_action(request)
+    }
+    fn execute_action(&self, request: ResourceActionRequest) -> Read<ClusterOperationResult> {
+        self.detail_tabs.execute_action(request)
+    }
+    /// The browser mocks serve one YAML shape for every view mode, as `details` holds it.
+    fn resource_yaml(&self, resource: ResourceSummary, _: YamlViewMode) -> Read<String> {
+        let details = self.details(resource);
+        Box::pin(async move {
+            let details = details.await?;
+            if details.summary.dynamic == Some(true) {
+                return Err(AppError::new(
+                    format!("unsupported resource kind: {}", details.summary.kind),
+                    AppErrorKind::UnsupportedOperation,
+                ));
+            }
+            Ok(details.yaml)
+        })
+    }
+    fn prepare_yaml_apply(&self, request: YamlApplyRequest) -> Read<YamlApplyPreview> {
+        self.detail_tabs.prepare_yaml_apply(request)
+    }
+    fn apply_yaml(&self, request: YamlApplyRequest) -> Read<YamlApplyResult> {
+        self.detail_tabs.apply_yaml(request)
     }
 }

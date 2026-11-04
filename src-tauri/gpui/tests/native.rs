@@ -1,13 +1,19 @@
-use gpui_kit::test::{TestQueryExt, TestWindowExt};
+#[path = "native/detail_tabs.rs"]
+mod detail_tabs;
+
+use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AppContext, Bounds, TestAppContext, WindowBounds, WindowOptions, px, size};
 use kubecove_gpui::{
     Inspector,
-    backend::{Backend, LiveSessions, Read, Scope, ScopeResult},
+    backend::{Backend, LiveSessions, LogStream, LogTarget, Read, Scope, ScopeResult},
     gitops::GitOpsInventory,
 };
 use kubecove_lib::models::{
-    AppError, AppErrorKind, ClusterContext, IncidentCockpitSummary, NamespaceSummary,
-    ResourceDetailsFull, ResourceEventSummary, ResourceSummary, ResourceTopology,
+    AppError, AppErrorKind, ClusterContext, ClusterOperationResult, DeploymentRevision,
+    IncidentCockpitSummary, NamespaceSummary, ResourceActionPreview, ResourceActionRequest,
+    ResourceActionState, ResourceActionStateRequest, ResourceDetailsFull, ResourceEventSummary,
+    ResourceSummary, ResourceTopology, YamlApplyPreview, YamlApplyRequest, YamlApplyResult,
+    YamlViewMode,
 };
 use serde_json::json;
 use std::sync::{
@@ -19,7 +25,10 @@ use std::sync::{
 struct Controlled {
     fail: AtomicBool,
     pending: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+    detail: detail_tabs::DetailControls,
 }
+
+const YAML: &str = "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: payments-api\n  namespace: payments\n";
 
 fn resource(context: &str) -> ResourceSummary {
     serde_json::from_value(json!({"kind":"Deployment","cluster":context,"name":"payments-api","namespace":"payments","age":"1d"})).unwrap()
@@ -66,7 +75,12 @@ impl Backend for Controlled {
     }
     fn details(&self, summary: ResourceSummary) -> Read<ResourceDetailsFull> {
         Box::pin(async move {
-            Ok(ResourceDetailsFull {summary, yaml:"apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: payments-api\n  namespace: payments\n".into(),metadata:json!({"name":"payments-api","namespace":"payments"}),status:None})
+            Ok(ResourceDetailsFull {
+                summary,
+                yaml: YAML.into(),
+                metadata: json!({"name":"payments-api","namespace":"payments"}),
+                status: None,
+            })
         })
     }
     fn topology(&self, scope: Scope) -> Read<ResourceTopology> {
@@ -146,6 +160,30 @@ impl Backend for Controlled {
             })
         })
     }
+    fn log_stream(&self, target: LogTarget) -> Read<LogStream> {
+        self.detail.log_stream(target)
+    }
+    fn deployment_revisions(&self, _: ResourceSummary) -> Read<Vec<DeploymentRevision>> {
+        Box::pin(async { Ok(vec![]) })
+    }
+    fn action_state(&self, request: ResourceActionStateRequest) -> Read<ResourceActionState> {
+        self.detail.action_state(request)
+    }
+    fn preview_action(&self, request: ResourceActionRequest) -> Read<ResourceActionPreview> {
+        self.detail.preview_action(request)
+    }
+    fn execute_action(&self, request: ResourceActionRequest) -> Read<ClusterOperationResult> {
+        self.detail.execute_action(request)
+    }
+    fn resource_yaml(&self, _: ResourceSummary, _: YamlViewMode) -> Read<String> {
+        Box::pin(async { Ok(YAML.into()) })
+    }
+    fn prepare_yaml_apply(&self, request: YamlApplyRequest) -> Read<YamlApplyPreview> {
+        self.detail.prepare_yaml_apply(request)
+    }
+    fn apply_yaml(&self, request: YamlApplyRequest) -> Read<YamlApplyResult> {
+        self.detail.apply_yaml(request)
+    }
 }
 
 const MAP_NODE: &str = "mock-dev:apps/v1:Deployment:payments:payments-api";
@@ -157,7 +195,8 @@ fn open(cx: &mut TestAppContext, backend: Arc<Controlled>) -> gpui_kit::AnyWindo
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds {
                     origin: Default::default(),
-                    size: size(px(1200.), px(800.)),
+                    // The web driver's viewport.
+                    size: size(px(1440.), px(900.)),
                 })),
                 focus: false,
                 show: false,
@@ -293,7 +332,7 @@ fn switching_context_cancels_the_old_read(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn a_local_draft_has_a_diff_and_requires_explicit_discard(cx: &mut TestAppContext) {
+fn a_dirty_draft_requires_explicit_discard(cx: &mut TestAppContext) {
     let handle = open(cx, Arc::new(Controlled::default()));
     cx.update_window(handle, |_, window, cx| {
         window.click("resource:Deployment:payments:payments-api", cx)
@@ -305,41 +344,12 @@ fn a_local_draft_has_a_diff_and_requires_explicit_discard(cx: &mut TestAppContex
         window.click("show-yaml", cx);
         window.render_frame(cx);
         window.click("edit-draft", cx);
-        window.render_frame(cx);
-        let editor = window
-            .find_by_label("Resource YAML")
-            .path()
-            .last()
-            .unwrap()
-            .clone();
-        window.within("detail").click(editor, cx);
-        window.press(
-            if cfg!(target_os = "macos") {
-                "cmd-a"
-            } else {
-                "ctrl-a"
-            },
-            cx,
-        );
-        window.input(
-            "kind: Deployment\nmetadata:\n  name: changed-local-draft\n",
-            cx,
-        );
-        window.click("show-diff", cx);
     })
     .unwrap();
     cx.run_until_parked();
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
-        assert!(window.find("draft-diff").visible());
-        assert!(
-            window
-                .find("draft-notice")
-                .label()
-                .unwrap()
-                .contains("local")
-        );
-        assert!(window.try_find("apply").is_none());
+        detail_tabs::edit_draft(window, cx, "kind: Deployment\nmetadata:\n  name: changed\n");
         window.click("close-detail", cx);
         window.render_frame(cx);
         assert!(

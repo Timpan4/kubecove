@@ -11,8 +11,11 @@ use std::{
 };
 
 use common::Fixture;
-use gpui_kit::test::{TestQueryExt, TestWindowExt};
-use gpui_kit::{AppContext, Bounds, TestAppContext, WindowBounds, WindowOptions, px, size};
+use gpui_kit::test::{TestEventExt, TestQueryExt, TestWindowExt};
+use gpui_kit::{
+    AppContext, Bounds, InputEvent, ScrollDelta, ScrollEvent, TestAppContext, WindowBounds,
+    WindowOptions, point, px, size,
+};
 use kubecove_gpui::Inspector;
 use serde_json::{Value, json};
 
@@ -29,6 +32,73 @@ fn row(step: &Value) -> String {
         string(step, "namespace"),
         string(step, "name")
     )
+}
+
+/// Scrolls an element into view before a click, as Playwright does. The wheel
+/// goes to the top-left corner of `anchor`, a visible element at the top of
+/// the same scroll area, so a nested scroll area such as the ownership map
+/// does not take it. The element lands mid-window.
+/// The first detail tab, at the top of the scrolling detail body.
+const DETAIL_TOP: &str = "show-details";
+
+fn reveal(window: &mut gpui_kit::Window, anchor: &str, id: &str, cx: &mut gpui_kit::App) {
+    let id = gpui_kit::ElementId::Name(id.to_owned().into());
+    window.render_frame(cx);
+    let target = window.find(id.clone());
+    if target.visible() {
+        return;
+    }
+    let anchor = window.find(gpui_kit::ElementId::Name(anchor.to_owned().into()));
+    assert!(
+        anchor.visible(),
+        "scroll anchor {:?} is not visible",
+        anchor.path()
+    );
+    let position = anchor.bounds().origin + point(px(4.), px(4.));
+    let delta = window.viewport_size().height / 2. - target.bounds().center().y;
+    window.pointer_move(position, None, cx);
+    window.dispatch_event(
+        ScrollEvent {
+            position,
+            delta: ScrollDelta::Pixels(point(px(0.), delta)),
+            ..Default::default()
+        }
+        .to_platform_input(),
+        cx,
+    );
+    window.render_frame(cx);
+}
+
+fn strings(step: &Value, key: &str) -> Vec<String> {
+    step[key]
+        .as_array()
+        .unwrap_or_else(|| panic!("missing {key}"))
+        .iter()
+        .map(|item| item.as_str().unwrap().to_owned())
+        .collect()
+}
+
+/// Every expected line appears as a whole line of the element's label.
+fn contains_lines(label: Option<&str>, expected: &[String]) {
+    let label = label.expect("diff has a label");
+    for line in expected {
+        assert!(
+            label.lines().any(|rendered| rendered == line),
+            "missing {line:?} in {label:?}"
+        );
+    }
+}
+
+/// Focuses an input and replaces its text, as Playwright's `fill` does.
+fn replace_text(
+    window: &mut gpui_kit::Window,
+    cx: &mut gpui_kit::App,
+    id: &'static str,
+    text: &str,
+) {
+    window.click(id, cx);
+    window.press("ctrl-a", cx);
+    window.input(text, cx);
 }
 
 fn cluster_row(step: &Value) -> String {
@@ -74,7 +144,11 @@ fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
         // Expectations on rows mean rendered in the table, possibly scrolled out of
         // view, as Playwright's `visible` state does.
         "expectResource" => assert!(window.try_find(row(step)).is_some()),
-        "openResource" => window.click(row(step), cx),
+        "openResource" => {
+            let row = row(step);
+            reveal(window, "resources", &row, cx);
+            window.click(row, cx);
+        }
         "expectDetail" => assert_eq!(
             window.find("detail-identity").label(),
             Some(
@@ -154,6 +228,95 @@ fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
             Some(number(step, "count").to_string().as_str())
         ),
         "expectPortForward" => assert!(window.find_by_label(string(step, "title")).visible()),
+        "expectLogLines" => {
+            // Rows are labeled with their headline, in display order.
+            let rendered: Vec<String> = (0usize..)
+                .map_while(|index| window.try_find(("log-row", index)))
+                .map(|row| row.label().unwrap_or_default().to_owned())
+                .collect();
+            assert_eq!(rendered, strings(step, "lines"));
+        }
+        "filterLogs" => replace_text(window, cx, "log-filter", string(step, "value")),
+        "toggleLogLevel" => window.click(format!("log-level-{}", string(step, "level")), cx),
+        "expectLogsEmpty" => assert_eq!(
+            window.find("logs-empty").label(),
+            Some(string(step, "title"))
+        ),
+        "selectRevision" => {
+            let id = format!("revision:{}", string(step, "label"));
+            reveal(window, DETAIL_TOP, &id, cx);
+            window.click(id, cx);
+        }
+        "expectRevisionDiff" => {
+            assert_eq!(
+                window.find("revision-header").label(),
+                Some(
+                    format!(
+                        "{} compared with {}",
+                        string(step, "selected"),
+                        string(step, "comparison")
+                    )
+                    .as_str()
+                )
+            );
+            contains_lines(
+                window.find("revision-diff").label(),
+                &strings(step, "contains"),
+            );
+        }
+        "reviewAction" => {
+            let id = match string(step, "label") {
+                "Restart" => "action-restart",
+                "Delete" => "action-delete",
+                "Pause" | "Resume" => "action-rollout",
+                "Check changes" => "action-check",
+                other => panic!("unknown resource action: {other}"),
+            };
+            reveal(window, "actions-scroll", id, cx);
+            window.click(id, cx);
+        }
+        "editReplicas" => {
+            reveal(window, "actions-scroll", "action-replicas", cx);
+            window.click("action-replicas", cx);
+            window.render_frame(cx);
+            replace_text(window, cx, "action-replicas-input", string(step, "value"));
+        }
+        "expectReview" => {
+            assert_eq!(
+                window.find("review-title").label(),
+                Some(string(step, "title"))
+            );
+            assert_eq!(
+                window.find("review-description").label(),
+                Some(string(step, "description"))
+            );
+            contains_lines(
+                window.find("review-diff").label(),
+                &strings(step, "contains"),
+            );
+        }
+        "confirmDeletion" => replace_text(window, cx, "review-confirmation", string(step, "value")),
+        "executeReview" => window.click("review-execute", cx),
+        "closeReview" => window.click("review-cancel", cx),
+        "expectNoReview" => assert!(window.try_find("review-title").is_none()),
+        "expectActionResult" => assert_eq!(
+            window.find("action-result").label(),
+            Some(string(step, "text"))
+        ),
+        "expectNoActionResult" => assert!(window.try_find("action-result").is_none()),
+        "editYaml" => window.click("edit-draft", cx),
+        "applyYaml" => window.click("yaml-apply", cx),
+        "dryRunYaml" => window.click("yaml-dry-run", cx),
+        "expectDryRun" => contains_lines(
+            window.find("yaml-dry-run-diff").label(),
+            &strings(step, "contains"),
+        ),
+        "expectYamlNotice" => assert!(window.find_by_label(string(step, "title")).visible()),
+        "expectNoYamlNotice" => assert!(window.try_find_by_label(string(step, "title")).is_none()),
+        "expectYamlReadOnly" => {
+            assert!(window.try_find("edit-draft").is_some());
+            assert!(window.try_find("yaml-dry-run").is_none());
+        }
         action => panic!("unknown parity action: {action}"),
     }
 }

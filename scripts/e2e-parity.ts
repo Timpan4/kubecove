@@ -25,7 +25,8 @@ try {
 	try { await runWeb(contract, artifacts, controller.signal); } catch (error) { failure = `Web driver: ${String(error)}`; }
 	controller.signal.throwIfAborted();
 	const workspace = resolve("src-tauri/gpui");
-	const env = { ...process.env, CARGO_TARGET_DIR: join(workspace, "target"), CARGO_BUILD_BUILD_DIR: join(workspace, "build"), KUBECOVE_E2E_ARTIFACTS: artifacts, KUBECOVE_PARITY_FIXTURE: fixture, CARGO_BUILD_JOBS: process.env.CARGO_BUILD_JOBS ?? "1" };
+	// Worktrees may share build directories through the environment, as `gpui-visual.ts` allows.
+	const env = { ...process.env, CARGO_TARGET_DIR: process.env.CARGO_TARGET_DIR ?? join(workspace, "target"), CARGO_BUILD_BUILD_DIR: process.env.CARGO_BUILD_BUILD_DIR ?? join(workspace, "build"), KUBECOVE_E2E_ARTIFACTS: artifacts, KUBECOVE_PARITY_FIXTURE: fixture, CARGO_BUILD_JOBS: process.env.CARGO_BUILD_JOBS ?? "1" };
 	delete env.ARGV0; delete env.KUBECONFIG;
 	// The GPUI test platform renders without a display.
 	const cargo = ["cargo", "test", "--manifest-path", join(workspace, "Cargo.toml"), "--test", "parity", "--", "--nocapture"];

@@ -21,7 +21,10 @@ async function show(page: Page, view: View) {
 			return;
 		case "detail":
 		case "yaml":
-		case "events": {
+		case "events":
+		case "logs":
+		case "revisions":
+		case "actions": {
 			await page.getByRole("button", { name: "Resources", exact: true }).first().click();
 			await page.getByRole("textbox", { name: "Search resources" }).fill("payments-api");
 			const row = page.locator("tr").filter({ has: page.getByRole("button", { name: "Open resource payments-api", exact: true }) }).filter({ has: page.getByText("Deployment", { exact: true }) });
@@ -37,6 +40,19 @@ async function show(page: Page, view: View) {
 			if (view === "events") {
 				await page.getByRole("tab", { name: "Events", exact: true }).click();
 				await page.getByRole("textbox", { name: "Filter resource events" }).waitFor();
+			}
+			if (view === "logs") {
+				await page.getByRole("tab", { name: "Logs", exact: true }).click();
+				await page.getByText("downstream retry budget at 82%", { exact: false }).waitFor();
+			}
+			if (view === "revisions") {
+				await page.getByRole("tab", { name: "Revisions", exact: true }).click();
+				await page.getByRole("combobox", { name: "Comparison revision" }).waitFor();
+			}
+			if (view === "actions") {
+				await page.getByRole("tab", { name: "Actions", exact: true }).click();
+				await page.locator('[data-resource-action="replicas"]').waitFor();
+				await page.getByText("Loading", { exact: false }).waitFor({ state: "hidden" });
 			}
 			return;
 		}
