@@ -7,7 +7,7 @@ import { parse } from "yaml";
 
 const workflow = parse(readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8"));
 const packaging = parse(readFileSync(new URL("../.github/workflows/server-packaging.yml", import.meta.url), "utf8"));
-const targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "aarch64-apple-darwin"];
+const targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"];
 
 function job(name, source = workflow) {
   assert.ok(source.jobs[name], `Missing job: ${name}`);
@@ -232,16 +232,16 @@ test("native shell builds both variants with a nonempty command array", () => {
   const result = spawnSync("bash", ["-euc", `
     cargo() { printf 'cargo %s\\n' "$*"; }
     bash() { printf 'package %s\\n' "$*"; }
-    TARGET=aarch64-apple-darwin
+    TARGET=aarch64-unknown-linux-gnu
     TAG_NAME=app-v1.2.3
     ${commands}
   `], { encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(result.stdout.trim().split("\n"), [
-    "cargo build --locked --release --manifest-path src-tauri/server/Cargo.toml --target aarch64-apple-darwin",
-    "package scripts/package-server.sh aarch64-apple-darwin full 1.2.3",
-    "cargo build --locked --release --manifest-path src-tauri/server/Cargo.toml --target aarch64-apple-darwin --no-default-features",
-    "package scripts/package-server.sh aarch64-apple-darwin slim 1.2.3",
+    "cargo build --locked --release --manifest-path src-tauri/server/Cargo.toml --target aarch64-unknown-linux-gnu",
+    "package scripts/package-server.sh aarch64-unknown-linux-gnu full 1.2.3",
+    "cargo build --locked --release --manifest-path src-tauri/server/Cargo.toml --target aarch64-unknown-linux-gnu --no-default-features",
+    "package scripts/package-server.sh aarch64-unknown-linux-gnu slim 1.2.3",
   ]);
   // Bash 3.2 treats empty arrays as unset under nounset; the base command must never be empty.
   assert.match(commands, /build=\(cargo build/);

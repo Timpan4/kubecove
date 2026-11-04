@@ -531,7 +531,7 @@ jobs:
             `KubeCove_${version}_amd64.AppImage.sig`,
             `KubeCove_${version}_x64-setup.exe`,
             `KubeCove_${version}_x64-setup.exe.sig`,
-            ...["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "aarch64-apple-darwin"].flatMap((target) =>
+            ...["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"].flatMap((target) =>
               ["", "-slim"].flatMap((suffix) => {
                 const archive = `kubecove-server_${version}_${target}${suffix}.tar.gz`;
                 return [archive, `${archive}.sha256`];

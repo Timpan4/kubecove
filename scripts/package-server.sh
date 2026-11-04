@@ -5,7 +5,7 @@ target="${1:?native target required}"
 variant="${2:?full or slim required}"
 version="${3:?release version required}"
 case "$target" in
-  x86_64-unknown-linux-gnu|aarch64-unknown-linux-gnu|aarch64-apple-darwin) ;;
+  x86_64-unknown-linux-gnu|aarch64-unknown-linux-gnu) ;;
   *) exit 1 ;;
 esac
 case "$variant" in full) suffix="" ;; slim) suffix="-slim" ;; *) exit 1 ;; esac
