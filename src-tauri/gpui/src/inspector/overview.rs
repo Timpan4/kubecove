@@ -316,7 +316,7 @@ impl Inspector {
                             div()
                                 .child(ui::semibold(ui::sm("GitOps")))
                                 .child(ui::muted(ui::xs("Argo CD and Flux inventory."))),
-                            ui::muted(ui::xs("Not available in the native client yet.")).p(px(12.)),
+                            self.gitops_body(),
                         )
                         .w(px(320.))
                         .flex_none(),

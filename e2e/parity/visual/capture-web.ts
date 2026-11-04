@@ -10,12 +10,18 @@ async function show(page: Page, view: View) {
 	switch (view) {
 		case "overview":
 			return;
+		case "cluster-overview":
+			// The row's accessible name also includes its "Expand" button label.
+			await page.getByRole("treeitem").filter({ hasText: /^\s*Cluster Overview\s*$/ }).click();
+			await page.getByRole("button", { name: /^Open resource / }).first().waitFor();
+			return;
 		case "resources":
 			await page.getByRole("button", { name: "Resources", exact: true }).first().click();
 			await page.getByRole("button", { name: /^Open resource / }).first().waitFor();
 			return;
 		case "detail":
-		case "yaml": {
+		case "yaml":
+		case "events": {
 			await page.getByRole("button", { name: "Resources", exact: true }).first().click();
 			await page.getByRole("textbox", { name: "Search resources" }).fill("payments-api");
 			const row = page.locator("tr").filter({ has: page.getByRole("button", { name: "Open resource payments-api", exact: true }) }).filter({ has: page.getByText("Deployment", { exact: true }) });
@@ -28,8 +34,20 @@ async function show(page: Page, view: View) {
 				await page.getByRole("tab", { name: "YAML", exact: true }).click();
 				await page.getByText("kind: Deployment", { exact: false }).first().waitFor();
 			}
+			if (view === "events") {
+				await page.getByRole("tab", { name: "Events", exact: true }).click();
+				await page.getByRole("textbox", { name: "Filter resource events" }).waitFor();
+			}
 			return;
 		}
+		case "incidents":
+			await page.getByRole("treeitem").filter({ has: page.getByText("Incidents", { exact: true }) }).click();
+			await page.getByText("Guided investigation", { exact: true }).waitFor();
+			return;
+		case "port-forwards":
+			await page.getByRole("treeitem").filter({ has: page.getByText("Port Forwards", { exact: true }) }).click();
+			await page.getByText("Active local tunnels with guarded stop controls.", { exact: true }).waitFor();
+			return;
 	}
 }
 

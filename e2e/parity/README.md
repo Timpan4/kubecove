@@ -10,6 +10,8 @@ Keep report files under `e2e/artifacts/`. Each report names the driver and scena
 
 ## Native gaps
 
-The first native slice covers resource inspection. The following product areas remain open until implemented and verified: saved workspaces and settings; live watch recovery; full dynamic-resource discovery; events and metrics; topology; logs and exec; port forwarding; guarded operations and server-produced YAML review; GitOps, Argo CD, Flux and Helm; RBAC and incidents; remote connections; native file dialogs; application updates; read-only MCP settings; and platform packaging.
+The first native slice covers resource inspection. The following product areas remain open until implemented and verified: saved workspaces and settings; live watch recovery; full dynamic-resource discovery; live event watches and metrics; the network-flow topology mode; logs and exec; starting, reconnecting and stopping port forwards; guarded operations and server-produced YAML review; the GitOps, Argo CD, Flux and Helm pages; RBAC; remote connections; native file dialogs; application updates; read-only MCP settings; and platform packaging.
+
+The native client also has read-only versions of the ownership map, resource events and timeline, the Incident Cockpit, the Port Forwards session list, the Cluster Overview and the overview's Argo CD and Flux counts. Native UI tests and `bun scripts/gpui-visual.ts` cover them. None is parity-covered until `inspection.json` has scenarios for it and both drivers pass them.
 
 This list records the initial delivery boundary. It is not an exhaustive claim that every interaction in those areas has been inventoried. Full parity requires acceptance criteria for the complete product surface.

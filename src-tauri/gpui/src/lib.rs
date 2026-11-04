@@ -1,7 +1,12 @@
 pub mod assets;
 pub mod backend;
 mod collate;
+pub mod gitops;
+mod incident;
+mod incident_timeline;
+mod incidents;
 pub mod inspector;
+mod live_sessions;
 pub mod model;
 pub mod theme;
 mod topology;

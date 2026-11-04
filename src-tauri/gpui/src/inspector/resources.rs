@@ -319,7 +319,7 @@ impl Inspector {
     ) -> impl IntoElement {
         let width = self.section_width(window);
         let stacked = !matches!(self.detail, Detail::Closed);
-        let body: AnyElement = match &self.load {
+        let body: AnyElement = match self.page_load() {
             Load::Loading => ui::muted(ui::xs("Loading resources"))
                 .flex()
                 .min_h(px(208.))
@@ -383,7 +383,7 @@ impl Inspector {
                     .min_h_0()
                     .gap(px(12.))
                     .child(self.top_bar(width, cx))
-                    .children(self.warnings.iter().enumerate().map(|(index, warning)| {
+                    .children(self.page_warnings().enumerate().map(|(index, warning)| {
                         div()
                             .id(("warning", index))
                             .role(gpui_kit::Role::Alert)

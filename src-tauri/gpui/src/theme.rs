@@ -177,6 +177,12 @@ impl Palette {
     pub fn amber300() -> Hsla {
         oklch(0.879, 0.169, 91.605, 1.0)
     }
+    pub fn amber400() -> Hsla {
+        oklch(0.828, 0.189, 84.429, 1.0)
+    }
+    pub fn sky400() -> Hsla {
+        oklch(0.746, 0.16, 232.661, 1.0)
+    }
     pub fn amber500(alpha: f32) -> Hsla {
         oklch(0.769, 0.188, 70.08, alpha)
     }
@@ -243,7 +249,11 @@ fn apply_yaml_highlight(theme: &mut Theme) {
     let mut highlight = (*theme.highlight_theme).clone();
     let editor = &mut highlight.style;
     editor.editor_background = Some(Tokens::card());
-    editor.editor_gutter_background = Some(Tokens::card());
+    // `.cm-gutters`: `color-mix(in oklch, var(--card) 88%, black)`.
+    editor.editor_gutter_background = Some(mix(Tokens::card(), oklch(0., 0., 0., 1.), 0.88));
+    // The read-only viewer has no active-line highlight (`editable ? highlightActiveLine() : []`).
+    // GPUI's theme is per app, so the draft editor loses it too.
+    editor.editor_active_line = None;
     let syntax = &mut editor.syntax;
     syntax.keyword = style(oklch(0.78, 0.12, 250., 1.));
     syntax.boolean = style(oklch(0.8, 0.12, 305., 1.));

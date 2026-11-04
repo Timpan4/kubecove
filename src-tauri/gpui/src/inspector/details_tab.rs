@@ -1,11 +1,13 @@
 //! Details tab of the resource detail panel, mirroring `DetailsTab.svelte`
 //! and `HealthAssessmentBadge.svelte`.
 
+use super::Inspector;
 use super::detail::ResourceDetail;
+use super::timeline::{incident_signals, timeline};
 use crate::model::{exact_timestamp, health_source};
 use crate::theme::Tokens;
 use crate::ui::{self, Tone};
-use gpui_kit::{Div, SharedString, div, prelude::*, px};
+use gpui_kit::{Context, Div, SharedString, div, prelude::*, px};
 use kubecove_lib::models::{HealthAssessmentState, ResourceSummary};
 
 /// `grid grid-cols-[7rem_minmax(0,1fr)] gap-2 py-1.5`; `metadata_card` adds the row borders.
@@ -43,9 +45,9 @@ fn metadata_card(title: &str, rows: Vec<Div>) -> Div {
         })
 }
 
-/// Incident summary from `DetailsTab.svelte`. The native client does not read
-/// events, so it shows the web's "event signals are unavailable" state.
-fn incident_summary(summary: &ResourceSummary) -> Div {
+/// Incident summary from `DetailsTab.svelte`; the signal cards are in `timeline`.
+fn incident_summary(detail: &ResourceDetail) -> Div {
+    let summary = &detail.data.summary;
     div()
         .p(px(12.))
         .rounded(px(8.))
@@ -88,19 +90,7 @@ fn incident_summary(summary: &ResourceSummary) -> Div {
                         }),
                 ),
         )
-        .child(
-            div()
-                .mt(px(12.))
-                .px(px(12.))
-                .py(px(8.))
-                .rounded(px(8.))
-                .border_1()
-                .border_color(Tokens::border())
-                .bg(Tokens::background())
-                .child(ui::muted(ui::xs(
-                    "Status loaded; event signals are unavailable.",
-                ))),
-        )
+        .child(incident_signals(detail))
 }
 
 fn health(summary: &ResourceSummary) -> (Tone, &'static str) {
@@ -113,7 +103,7 @@ fn health(summary: &ResourceSummary) -> (Tone, &'static str) {
     }
 }
 
-pub(super) fn details_tab(detail: &ResourceDetail) -> Div {
+pub(super) fn details_tab(detail: &ResourceDetail, cx: &mut Context<Inspector>) -> Div {
     let summary = &detail.data.summary;
     let (tone, label) = health(summary);
     let source = health_source(&summary.health_assessment.winning_sources);
@@ -180,7 +170,8 @@ pub(super) fn details_tab(detail: &ResourceDetail) -> Div {
                         .map_or("not reported".to_owned(), |count| count.to_string())
                 ))),
         )
-        .child(incident_summary(summary))
+        .child(incident_summary(detail))
+        .child(timeline(detail, cx))
         .child(
             div()
                 .p(px(12.))

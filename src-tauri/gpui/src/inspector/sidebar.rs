@@ -53,14 +53,14 @@ const WORKSPACE: &[Node] = &[
         "circle-alert",
         Tokens::cluster,
         false,
-        Target::Unavailable,
+        Target::Page(Page::Incidents),
     ),
     node(
         "Port Forwards",
         "cable",
         Tokens::network,
         false,
-        Target::Unavailable,
+        Target::Page(Page::PortForwards),
     ),
 ];
 const CLUSTER: &[Node] = &[
@@ -84,7 +84,7 @@ const CLUSTER: &[Node] = &[
         "server",
         Tokens::cluster,
         true,
-        Target::Unavailable,
+        Target::Page(Page::ClusterOverview),
     ),
 ];
 const ALL_NAMESPACES: &[Node] = &[
@@ -202,8 +202,9 @@ impl Inspector {
         nodes
             .iter()
             .map(|node| {
-                let selected = matches!(node.target, Target::Page(Page::Overview))
-                    && self.page == Page::Overview;
+                // Resources pages select their namespace or kind rows instead.
+                let selected = matches!(node.target, Target::Page(page)
+                    if page == self.page && page != Page::Resources);
                 let target = node.target;
                 self.tree_row(
                     SharedString::from(format!("nav:{}", node.label)),
@@ -223,6 +224,7 @@ impl Inspector {
                 })
                 .on_click(cx.listener(move |this, _, window, cx| match target {
                     Target::Page(Page::Resources) => this.select_namespace(None, window, cx),
+                    Target::Page(Page::ClusterOverview) => this.open_cluster_overview(window, cx),
                     Target::Page(page) => this.open_page(page, cx),
                     Target::Unavailable => {}
                 }))

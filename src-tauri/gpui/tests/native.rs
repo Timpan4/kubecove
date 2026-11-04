@@ -2,11 +2,12 @@ use gpui_kit::test::{TestQueryExt, TestWindowExt};
 use gpui_kit::{AppContext, Bounds, TestAppContext, WindowBounds, WindowOptions, px, size};
 use kubecove_gpui::{
     Inspector,
-    backend::{Backend, Read, Scope, ScopeResult},
+    backend::{Backend, LiveSessions, Read, Scope, ScopeResult},
+    gitops::GitOpsInventory,
 };
 use kubecove_lib::models::{
-    AppError, AppErrorKind, ClusterContext, NamespaceSummary, ResourceDetailsFull, ResourceSummary,
-    ResourceTopology,
+    AppError, AppErrorKind, ClusterContext, IncidentCockpitSummary, NamespaceSummary,
+    ResourceDetailsFull, ResourceEventSummary, ResourceSummary, ResourceTopology,
 };
 use serde_json::json;
 use std::sync::{
@@ -76,6 +77,73 @@ impl Backend for Controlled {
                 "warnings": [],
             }))
             .unwrap())
+        })
+    }
+    fn gitops(&self, _: String) -> Read<GitOpsInventory> {
+        Box::pin(async { Ok(GitOpsInventory::default()) })
+    }
+    fn cluster_resources(&self, context: String, _: bool) -> Read<ScopeResult> {
+        Box::pin(async move {
+            Ok(ScopeResult {
+                namespaces: vec![],
+                resources: vec![serde_json::from_value(json!({"kind":"Node","cluster":context,"name":"dev-control-plane","namespace":null,"age":"9d"})).unwrap()],
+                warnings: vec![],
+            })
+        })
+    }
+    fn events(&self, _: ResourceSummary, _: Option<String>) -> Read<Vec<ResourceEventSummary>> {
+        Box::pin(async {
+            Ok(serde_json::from_value(json!([
+                {"eventType": "Normal", "reason": "Pulled", "message": "Image present.", "count": 1, "lastSeen": "8m", "lastSeenAt": "2026-06-29T09:52:00Z", "source": "kubelet", "namespace": "payments"},
+                {"eventType": "Warning", "reason": "BackOff", "message": "Back-off restarting failed container app", "count": 4, "lastSeen": "2m", "lastSeenAt": "2026-06-29T09:58:00Z", "source": "kubelet", "namespace": "payments"},
+            ]))
+            .unwrap())
+        })
+    }
+    fn incidents(&self, cluster: String) -> Read<IncidentCockpitSummary> {
+        let item = |kind: &str, name: &str, severity: &str| {
+            let status = if kind == "Pod" {
+                "CrashLoopBackOff"
+            } else {
+                "Progressing"
+            };
+            json!({
+                "resource": {"kind": kind, "cluster": cluster, "name": name, "namespace": "payments", "age": "1d", "status": status},
+                "severity": severity, "state": "active", "warningEventCount": 0,
+                "signals": [{"kind": kind, "label": format!("{name} signal"), "message": "needs attention", "source": "test", "state": "active"}],
+            })
+        };
+        let summary = json!({
+            "cluster": cluster, "generatedAt": "", "requestedScope": [], "warnings": [],
+            "items": [item("Deployment", "payments-api", "attention"), item("Pod", "payments-api-0", "degraded")],
+        });
+        Box::pin(async move { Ok(serde_json::from_value(summary).unwrap()) })
+    }
+    fn live_sessions(&self) -> Read<LiveSessions> {
+        let session = |id: &str, context: &str, source: &str| {
+            json!({
+                "id": id, "clusterContext": context, "kubeconfigSourceKey": source,
+                "namespace": "payments", "targetKind": "Pod", "targetName": "payments-api-0",
+                "podName": "payments-api-0", "remotePort": 8080, "resolvedPodName": "payments-api-0",
+                "resolvedPodPort": 8080, "localPort": 18080, "localAddress": "127.0.0.1",
+                "localUrl": "http://127.0.0.1:18080", "status": "listening", "startedAt": "2026-06-29T10:00:00Z",
+            })
+        };
+        let forwards = [
+            session("visible", "mock-dev", "kubeconfigSource=active"),
+            session("other-source", "mock-dev", "kubeconfigSource=other"),
+            session("other-context", "mock-other", "kubeconfigSource=active"),
+        ];
+        Box::pin(async move {
+            Ok(LiveSessions {
+                port_forwards: forwards
+                    .into_iter()
+                    .map(|forward| serde_json::from_value(forward).unwrap())
+                    .collect(),
+                exec_sessions: vec![],
+                source_key: Some("kubeconfigSource=active".into()),
+                show_source_labels: false,
+            })
         })
     }
 }
@@ -282,6 +350,126 @@ fn a_local_draft_has_a_diff_and_requires_explicit_discard(cx: &mut TestAppContex
         window.render_frame(cx);
         window.click("close-detail", cx);
         assert!(window.try_find("detail-identity").is_none());
+    })
+    .unwrap();
+}
+
+#[gpui_kit::test]
+fn the_cluster_overview_swaps_the_resource_scope(cx: &mut TestAppContext) {
+    let handle = open(cx, Arc::new(Controlled::default()));
+    cx.update_window(handle, |_, window, cx| {
+        window.click("nav:Cluster Overview", cx)
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.find("resource:Node::dev-control-plane").visible());
+        assert!(
+            window
+                .try_find("resource:Deployment:payments:payments-api")
+                .is_none()
+        );
+        window.click("nav:Workloads", cx);
+        window.render_frame(cx);
+        assert!(
+            window
+                .find("resource:Deployment:payments:payments-api")
+                .visible()
+        );
+        assert!(
+            window
+                .try_find("resource:Node::dev-control-plane")
+                .is_none()
+        );
+    })
+    .unwrap();
+}
+
+#[gpui_kit::test]
+fn events_feed_the_incident_summary_timeline_and_events_tab(cx: &mut TestAppContext) {
+    let handle = open(cx, Arc::new(Controlled::default()));
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window.click("resource:Deployment:payments:payments-api", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(
+            window.find("incident-signal:Warning events").label(),
+            Some("1 warning reason · 4 repeats")
+        );
+        // Only warnings reach the timeline; BackOff gets its presentation title.
+        assert!(window.find("incident-timeline").visible());
+        window.click("show-events", cx);
+        window.render_frame(cx);
+        // Warnings sort first.
+        assert_eq!(
+            window.find("event:0").label(),
+            Some("BackOff Back-off restarting failed container app")
+        );
+        assert!(window.try_find("event:1").is_some());
+        window.click("events-filter-normal", cx);
+        window.render_frame(cx);
+        assert_eq!(
+            window.find("event:0").label(),
+            Some("Pulled Image present.")
+        );
+        assert!(window.try_find("event:1").is_none());
+    })
+    .unwrap();
+}
+
+/// Failure modes: the guide keeps a selection the filter hid, and sessions
+/// from another context or kubeconfig source leak into the page.
+#[gpui_kit::test]
+fn incidents_follow_the_filter_and_sessions_stay_in_scope(cx: &mut TestAppContext) {
+    let handle = open(cx, Arc::new(Controlled::default()));
+    cx.update_window(handle, |_, window, cx| window.click("nav:Incidents", cx))
+        .unwrap();
+    cx.run_until_parked();
+    let title = |cx: &mut TestAppContext| {
+        cx.update_window(handle, |_, window, cx| {
+            window.render_frame(cx);
+            window
+                .find("incident-guide-title")
+                .label()
+                .map(str::to_owned)
+        })
+        .unwrap()
+    };
+    // Degraded sorts first; its live status becomes the first evidence.
+    assert_eq!(title(cx).as_deref(), Some("Status: CrashLoopBackOff"));
+    cx.update_window(handle, |_, window, cx| {
+        window.click("incident-filter:Needs attention", cx)
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert_eq!(
+        title(cx).as_deref(),
+        Some("payments-api signal: needs attention")
+    );
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        // The header counts every host session; the page filters to this workspace.
+        assert_eq!(
+            window.find("live-sessions").label(),
+            Some("Open live sessions (3 active)")
+        );
+        window.click("live-sessions", cx)
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(
+            window.find("forward:visible").label(),
+            Some("Pod/payments-api-0:8080")
+        );
+        assert!(window.try_find("forward:other-source").is_none());
+        assert!(window.try_find("forward:other-context").is_none());
     })
     .unwrap();
 }

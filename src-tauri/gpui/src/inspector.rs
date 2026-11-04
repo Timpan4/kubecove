@@ -1,11 +1,22 @@
+mod cluster;
 mod detail;
 mod details_tab;
+mod events;
+mod events_tab;
+mod gitops_section;
 mod header;
+mod incident_guide;
+mod incident_queue;
+mod incidents;
 mod map;
 mod overview;
+mod port_forwards;
 mod resources;
 mod sidebar;
+mod surface;
 mod table;
+mod timeline;
+mod yaml_marks;
 
 use crate::backend::{Backend, Scope};
 use crate::model::{WORKSPACE_KINDS, ownership_group};
@@ -35,6 +46,9 @@ enum Load {
 pub(crate) enum Page {
     Overview,
     Resources,
+    ClusterOverview,
+    Incidents,
+    PortForwards,
 }
 
 /// The native workspace: sidebar navigation, header and the active page, laid
@@ -54,6 +68,10 @@ pub struct Inspector {
     warnings: Vec<String>,
     detail: Detail,
     map: map::MapState,
+    gitops: gitops_section::GitOpsState,
+    cluster: cluster::ClusterState,
+    incidents: incidents::IncidentsState,
+    sessions: port_forwards::SessionsState,
     live_menu_open: bool,
     notice: Option<String>,
     request: Rc<()>,
@@ -123,6 +141,10 @@ impl Inspector {
             warnings: vec![],
             detail: Detail::Closed,
             map: map::MapState::new(),
+            gitops: Default::default(),
+            cluster: Default::default(),
+            incidents: incidents::IncidentsState::new(),
+            sessions: port_forwards::SessionsState::new(),
             live_menu_open: false,
             notice: None,
             request: Rc::new(()),
@@ -238,6 +260,8 @@ impl Inspector {
                 cx.notify();
             });
         }));
+        self.load_inventory(refresh, cx);
+        self.load_page(cx);
         cx.notify();
     }
 
@@ -256,6 +280,7 @@ impl Inspector {
         self.visible = self
             .rows
             .iter()
+            .chain(self.cluster_rows())
             .filter(|row| kinds.contains(&row.kind))
             .filter(|row| {
                 search.is_empty()
@@ -283,9 +308,10 @@ impl Inspector {
             .filter(|row| WORKSPACE_KINDS.contains(&row.kind.as_str()))
     }
 
-    /// Kinds in the resource scope: the workspace kinds plus custom kinds present.
+    /// Kinds in the resource scope: the page's kinds plus custom kinds present.
     fn scope_kinds(&self) -> Vec<String> {
-        let mut kinds: Vec<String> = WORKSPACE_KINDS
+        let mut kinds: Vec<String> = self
+            .base_kinds()
             .iter()
             .map(|kind| (*kind).to_owned())
             .collect();
@@ -301,6 +327,7 @@ impl Inspector {
         if self.page != page && self.can_leave(cx) {
             self.close_detail(cx);
             self.page = page;
+            self.load_page(cx);
             cx.notify();
         }
     }
@@ -315,6 +342,7 @@ impl Inspector {
             return;
         }
         self.page = Page::Resources;
+        self.filter(cx);
         if self.scope.namespace != namespace {
             self.scope.namespace = namespace;
             self.load_scope(false, window, cx);
@@ -373,6 +401,7 @@ impl Inspector {
                     Ok(data) => Detail::Ready(Box::new(ResourceDetail::new(data, window, cx))),
                     Err(error) => Detail::Failed(error.message),
                 };
+                this.load_events(window, cx);
                 cx.notify();
             });
         }));
@@ -396,7 +425,11 @@ impl Inspector {
     fn page_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> gpui_kit::AnyElement {
         match self.page {
             Page::Overview => self.overview(cx).into_any_element(),
-            Page::Resources => self.resources(window, cx).into_any_element(),
+            Page::Resources | Page::ClusterOverview => {
+                self.resources(window, cx).into_any_element()
+            }
+            Page::Incidents => self.incidents_page(window, cx).into_any_element(),
+            Page::PortForwards => self.port_forwards_page(cx).into_any_element(),
         }
     }
 }

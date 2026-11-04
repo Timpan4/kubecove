@@ -1,8 +1,14 @@
+use crate::gitops::GitOpsInventory;
+pub use crate::live_sessions::LiveSessions;
 use kubecove_lib::{
-    commands::{self, BackendCancellationRegistry, ClusterAccess, ClusterLiveStore},
+    commands::{
+        self, BackendCancellationRegistry, ClusterAccess, ClusterLiveStore, PodExecRegistry,
+        PortForwardRegistry,
+    },
     models::{
-        AppError, AppErrorKind, ClusterContext, NamespaceSummary, ResourceDetailsFull,
-        ResourceSummary, ResourceTopology, WatchResourceKey, WatchResourceKind,
+        AppError, AppErrorKind, ClusterContext, IncidentCockpitSummary, NamespaceSummary,
+        ResourceDetailsFull, ResourceEventSummary, ResourceSummary, ResourceTopology,
+        WatchResourceKey, WatchResourceKind,
     },
     runtime::State,
 };
@@ -30,7 +36,24 @@ pub trait Backend: Send + Sync + 'static {
     fn details(&self, resource: ResourceSummary) -> Read<ResourceDetailsFull>;
     /// The ownership graph for the scope's namespaces (all when unscoped).
     fn topology(&self, scope: Scope) -> Read<ResourceTopology>;
+    /// Argo CD and Flux inventory from Kubernetes CRDs.
+    fn gitops(&self, context: String) -> Read<GitOpsInventory>;
+    /// The Cluster Overview's [`CLUSTER_KINDS`]; `namespaces` stays empty.
+    fn cluster_resources(&self, context: String, refresh: bool) -> Read<ScopeResult>;
+    /// Events for one resource, matched by UID when the details supplied one.
+    fn events(
+        &self,
+        resource: ResourceSummary,
+        uid: Option<String>,
+    ) -> Read<Vec<ResourceEventSummary>>;
+    /// `list_incident_cockpit` for the context's workspace kinds in every namespace.
+    fn incidents(&self, context: String) -> Read<IncidentCockpitSummary>;
+    /// The host's port forwards and exec sessions with the active kubeconfig source.
+    fn live_sessions(&self) -> Read<LiveSessions>;
 }
+
+mod inventory;
+pub use inventory::CLUSTER_KINDS;
 
 /// The native client reads the default workspace kinds; custom resource
 /// discovery is not implemented yet.
@@ -40,6 +63,9 @@ pub struct NativeBackend {
     runtime: Option<tokio::runtime::Runtime>,
     store: ClusterLiveStore,
     cancellations: BackendCancellationRegistry,
+    // The native client starts no live sessions yet (ADR 0003), so these stay empty.
+    port_forwards: PortForwardRegistry,
+    exec_sessions: PodExecRegistry,
 }
 
 impl NativeBackend {
@@ -52,6 +78,8 @@ impl NativeBackend {
             ),
             store: ClusterLiveStore::default(),
             cancellations: BackendCancellationRegistry::default(),
+            port_forwards: PortForwardRegistry::default(),
+            exec_sessions: PodExecRegistry::default(),
         })
     }
 
@@ -96,7 +124,7 @@ impl Drop for NativeBackend {
 }
 
 fn supported(kind: &str) -> Result<(), AppError> {
-    if INSPECTION_KINDS.contains(&kind) {
+    if INSPECTION_KINDS.contains(&kind) || CLUSTER_KINDS.contains(&kind) {
         Ok(())
     } else {
         Err(AppError::new(
@@ -206,6 +234,63 @@ impl Backend for NativeBackend {
             )
             .await
             .map(Arc::unwrap_or_clone)
+        })
+    }
+
+    fn gitops(&self, context: String) -> Read<GitOpsInventory> {
+        self.read(inventory::gitops(context))
+    }
+
+    fn cluster_resources(&self, context: String, refresh: bool) -> Read<ScopeResult> {
+        self.read(inventory::cluster_resources(
+            context,
+            refresh,
+            self.store.clone(),
+        ))
+    }
+
+    fn events(
+        &self,
+        resource: ResourceSummary,
+        uid: Option<String>,
+    ) -> Read<Vec<ResourceEventSummary>> {
+        let cancellations = self.cancellations.clone();
+        self.read(async move {
+            supported(&resource.kind)?;
+            commands::list_resource_events(
+                resource.cluster,
+                resource.kind,
+                resource.name,
+                resource.namespace,
+                uid,
+                None,
+                None,
+                None,
+                State::new(&cancellations),
+            )
+            .await
+        })
+    }
+
+    fn incidents(&self, context: String) -> Read<IncidentCockpitSummary> {
+        let requests = crate::incidents::workspace_requests();
+        let store = self.store.clone();
+        self.read(async move {
+            commands::list_incident_cockpit(context, requests, None, State::new(&store)).await
+        })
+    }
+
+    fn live_sessions(&self) -> Read<LiveSessions> {
+        let (port_forwards, exec_sessions) =
+            (self.port_forwards.clone(), self.exec_sessions.clone());
+        self.read(async move {
+            let access = ClusterAccess::resolve(None)?;
+            Ok(LiveSessions {
+                port_forwards: commands::list_port_forwards(State::new(&port_forwards)).await?,
+                exec_sessions: commands::list_pod_exec_sessions(State::new(&exec_sessions)).await?,
+                source_key: Some(access.source_key().to_owned()),
+                show_source_labels: access.source_label().is_some(),
+            })
         })
     }
 }

@@ -3,6 +3,9 @@
 
 use super::Inspector;
 use super::details_tab::details_tab;
+use super::events::EventsState;
+use super::events_tab::events_tab;
+use super::yaml_marks::YamlMarks;
 use crate::theme::Tokens;
 use crate::ui;
 use gpui_kit::TestSupportExt;
@@ -54,9 +57,11 @@ const TABS: &[(DetailTab, &str, &str)] = &[
 pub(super) struct ResourceDetail {
     pub data: ResourceDetailsFull,
     pub editor: Entity<EditorState>,
+    marks: YamlMarks,
     pub tab: DetailTab,
     pub editing: bool,
     pub diff: Option<Entity<DiffState>>,
+    pub events: EventsState,
 }
 
 impl ResourceDetail {
@@ -69,14 +74,19 @@ impl ResourceDetail {
             EditorState::new(window, cx)
                 .language("yaml")
                 .line_number(true)
+                // The web marks indentation with tints instead of guide lines.
+                .indent_guides(false)
                 .default_value(data.yaml.clone())
         });
+        let marks = YamlMarks::new(&editor, cx);
         Self {
             data,
             editor,
+            marks,
             tab: DetailTab::Details,
             editing: false,
             diff: None,
+            events: EventsState::new(window, cx),
         }
     }
 
@@ -223,6 +233,7 @@ impl Inspector {
                                         detail.editor.update(cx, |editor, cx| {
                                             editor.set_value(detail.data.yaml.clone(), window, cx)
                                         });
+                                        detail.marks.refresh(&detail.editor, cx);
                                         detail.editing = false;
                                         detail.diff = None;
                                         detail.tab = DetailTab::Yaml;
@@ -380,7 +391,8 @@ impl Inspector {
                     summary.name
                 );
                 let content: AnyElement = match detail.tab {
-                    DetailTab::Details => details_tab(detail).into_any_element(),
+                    DetailTab::Details => details_tab(detail, cx).into_any_element(),
+                    DetailTab::Events => events_tab(detail, cx),
                     DetailTab::Yaml | DetailTab::Diff => {
                         self.yaml_tab(detail, cx).into_any_element()
                     }
@@ -417,7 +429,8 @@ impl Inspector {
             .flex()
             .flex_col()
             .size_full()
-            .bg(Tokens::background())
+            // `ResourceInspector.svelte`: `section bg-surface-1`.
+            .bg(Tokens::card())
             .child(header)
             // Tabs scroll with the body, as inside the web's `p-4` scroller (`Tabs gap-3`).
             .child(

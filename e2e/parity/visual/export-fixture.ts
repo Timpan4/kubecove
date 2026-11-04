@@ -3,7 +3,22 @@
 // Usage: bun e2e/parity/visual/export-fixture.ts <output.json>
 import { writeFile } from "node:fs/promises";
 import { createDevMockTauriClient } from "../../../src/lib/tauri-dev-mocks";
-import type { ClusterContext, DiscoveredResourceKind, NamespaceSummary, ResourceDetailsFull, ResourceSummary, ResourceTopology } from "../../../src/lib/types";
+import type {
+	ArgoApplicationSummary,
+	ClusterContext,
+	DiscoveredResourceKind,
+	FluxDetectionSummary,
+	FluxResourceSummary,
+	IncidentCockpitSummary,
+	KubeconfigSourcesSummary,
+	NamespaceSummary,
+	PodExecSessionSummary,
+	PortForwardSessionSummary,
+	ResourceDetailsFull,
+	ResourceEventSummary,
+	ResourceSummary,
+	ResourceTopology,
+} from "../../../src/lib/types";
 
 // Browser mocks omit owner fields the Rust model requires; fill them with the
 // values the web frontend infers (`owner.partial ?? confidence !== "inventory"`).
@@ -21,12 +36,44 @@ const namespaces = await client.invoke<NamespaceSummary[]>("list_namespaces", { 
 const kinds = await client.invoke<DiscoveredResourceKind[]>("list_resource_kinds", { clusterContext });
 const resources = await client.invoke<ResourceSummary[]>("list_resources", { clusterContext });
 const details: ResourceDetailsFull[] = [];
+// Events per resource in the Rust `ResourceEventSummary` shape the mocks already use.
+const events: { kind: string; name: string; namespace: string | null; events: ResourceEventSummary[] }[] = [];
 for (const row of resources) {
 	const detail = await client.invoke<ResourceDetailsFull>("get_resource_details", { clusterContext, kind: row.kind, name: row.name, namespace: row.namespace });
 	details.push({ ...detail, summary: rustShape(detail.summary) });
+	const rows = await client.invoke<ResourceEventSummary[]>("list_resource_events", { clusterContext, kind: row.kind, name: row.name, namespace: row.namespace });
+	events.push({ kind: row.kind, name: row.name, namespace: row.namespace ?? null, events: rows });
 }
 // The web map reads every namespace (`namespaces: []`) for the All scope the views capture.
 const topology = await client.invoke<ResourceTopology>("list_resource_topology", { clusterContext, namespaces: [], mode: "ownership" });
-const rustTopology = { ...topology, nodes: topology.nodes.map((node) => ({ ...node, summary: rustShape(node.summary) })) };
-await writeFile(output, JSON.stringify({ contexts, namespaces, kinds, resources: resources.map(rustShape), details, topology: rustTopology }, null, "\t"));
+const rustGraph = (graph: ResourceTopology) => ({ ...graph, nodes: graph.nodes.map((node) => ({ ...node, summary: rustShape(node.summary) })) });
+const rustTopology = rustGraph(topology);
+// The overview's GitOps inventory: provider lists when their CRDs are detected, else null.
+const argo = (await client.invoke<boolean>("detect_argocd", { clusterContext })) ? await client.invoke<ArgoApplicationSummary[]>("list_argocd_applications", { clusterContext }) : null;
+const fluxDetection = await client.invoke<FluxDetectionSummary>("detect_flux", { clusterContext });
+const flux = fluxDetection.detected ? (await Promise.all(fluxDetection.kinds.map((resourceKind) => client.invoke<FluxResourceSummary[]>("list_flux_resources", { clusterContext, resourceKind })))).flat() : null;
+// Mock incidents omit the states the Rust model requires; fill them as `incidentState` infers.
+const cockpit = await client.invoke<IncidentCockpitSummary>("list_incident_cockpit", { clusterContext, requests: [] });
+const incidents = {
+	...cockpit,
+	items: cockpit.items.map((item) => {
+		const state = item.state ?? (item.severity === "restarted" ? "historical" : "active");
+		return { ...item, state, resource: rustShape(item.resource), signals: item.signals.map((signal) => ({ ...signal, state: signal.state ?? state })) };
+	}),
+};
+// The incident guide reads the ownership graph of a Pod's namespace.
+const namespaceTopologies: Record<string, unknown> = {};
+for (const item of incidents.items) {
+	const namespace = item.resource.namespace;
+	if (item.resource.kind !== "Pod" || !namespace || namespace in namespaceTopologies) continue;
+	namespaceTopologies[namespace] = rustGraph(await client.invoke<ResourceTopology>("list_resource_topology", { clusterContext, namespaces: [namespace], mode: "ownership" }));
+}
+const sources = await client.invoke<KubeconfigSourcesSummary>("get_kubeconfig_sources");
+const liveSessions = {
+	portForwards: await client.invoke<PortForwardSessionSummary[]>("list_port_forwards"),
+	execSessions: await client.invoke<PodExecSessionSummary[]>("list_pod_exec_sessions"),
+	sourceKey: sources.sourceKey,
+	showSourceLabels: sources.showSourceLabels,
+};
+await writeFile(output, JSON.stringify({ contexts, namespaces, kinds, resources: resources.map(rustShape), details, events, topology: rustTopology, namespaceTopologies, gitops: { argo, flux }, incidents, liveSessions }, null, "\t"));
 console.log(`fixture: ${resources.length} resources, ${details.length} details -> ${output}`);

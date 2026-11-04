@@ -4,10 +4,12 @@ use gpui_kit::test::{TestQueryExt, TestWindowExt};
 use gpui_kit::{AppContext, Bounds, TestAppContext, WindowBounds, WindowOptions, px, size};
 use kubecove_gpui::{
     Inspector,
-    backend::{Backend, Read, Scope, ScopeResult},
+    backend::{Backend, LiveSessions, Read, Scope, ScopeResult},
+    gitops::GitOpsInventory,
 };
 use kubecove_lib::models::{
-    ClusterContext, NamespaceSummary, ResourceDetailsFull, ResourceSummary, ResourceTopology,
+    ClusterContext, IncidentCockpitSummary, NamespaceSummary, ResourceDetailsFull,
+    ResourceEventSummary, ResourceSummary, ResourceTopology,
 };
 use serde_json::{Value, json};
 
@@ -69,6 +71,42 @@ impl Backend for Fixture {
                 nodes: vec![],
                 edges: vec![],
                 warnings: vec![],
+            })
+        })
+    }
+    fn gitops(&self, _: String) -> Read<GitOpsInventory> {
+        Box::pin(async { Ok(GitOpsInventory::default()) })
+    }
+    fn cluster_resources(&self, _: String, _: bool) -> Read<ScopeResult> {
+        Box::pin(async {
+            Ok(ScopeResult {
+                namespaces: vec![],
+                resources: vec![],
+                warnings: vec![],
+            })
+        })
+    }
+    fn incidents(&self, cluster: String) -> Read<IncidentCockpitSummary> {
+        Box::pin(async move {
+            Ok(IncidentCockpitSummary {
+                cluster,
+                generated_at: String::new(),
+                requested_scope: vec![],
+                items: vec![],
+                warnings: vec![],
+            })
+        })
+    }
+    fn events(&self, _: ResourceSummary, _: Option<String>) -> Read<Vec<ResourceEventSummary>> {
+        Box::pin(async { Ok(vec![]) })
+    }
+    fn live_sessions(&self) -> Read<LiveSessions> {
+        Box::pin(async {
+            Ok(LiveSessions {
+                port_forwards: vec![],
+                exec_sessions: vec![],
+                source_key: None,
+                show_source_labels: false,
             })
         })
     }
