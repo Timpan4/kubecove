@@ -1,4 +1,4 @@
-import { type EdgeMarker, getSmoothStepPath, Position } from "@xyflow/system";
+import { type EdgeMarker, getSmoothStepPath, type NodeHandle, Position } from "@xyflow/system";
 import type { FlowTopologyEdge, FlowTopologyNode } from "./topology-types";
 
 // Large maps draw edges in one SVG layer instead of one Svelte Flow edge component per edge.
@@ -6,9 +6,8 @@ import type { FlowTopologyEdge, FlowTopologyNode } from "./topology-types";
 // viewport, so a ReplicaSet fanning out to 10k Pods mounted 10k nodes and 10k edge components.
 // The layer reproduces Svelte Flow's smoothstep geometry, z-order, markers, and edge labels.
 
-// @xyflow/svelte's stylesheet centers 6px border-box handles on the node border
-// (`translate(±50%, -50%)`), so an edge starts and ends 3px outside the node box.
-const HANDLE_OVERHANG = 3;
+// @xyflow/svelte's stylesheet centers 6px border-box handles on the node border (`translate(±50%, -50%)`).
+const HANDLE_SIZE = 6;
 // @xyflow/system raises a selected node by 1000 and lifts its edges to the node's z.
 const SELECTED_NODE_Z = 1000;
 
@@ -36,17 +35,35 @@ export type FlowViewportBox = {
 	height: number;
 };
 
-function handlePoint(node: FlowTopologyNode, position: Position, width: number, height: number) {
-	const { x, y } = node.position;
-	switch (position) {
+/**
+ * A resource node's handles as Svelte Flow would measure them: target on the left border, source
+ * on the right. Declaring them lets Svelte Flow place edges and cull nodes before it measures any;
+ * without them, onlyRenderVisibleElements mounts every node once just to measure it.
+ */
+export function ownershipNodeHandles(width: number, height: number): NodeHandle[] {
+	const y = height / 2 - HANDLE_SIZE / 2;
+	const size = { width: HANDLE_SIZE, height: HANDLE_SIZE };
+	return [
+		{ type: "target", position: Position.Left, x: -HANDLE_SIZE / 2, y, ...size },
+		{ type: "source", position: Position.Right, x: width - HANDLE_SIZE / 2, y, ...size },
+	];
+}
+
+/** @xyflow/system's getHandlePosition for a declared handle. */
+function handlePoint(node: FlowTopologyNode, handle: NodeHandle) {
+	const x = node.position.x + handle.x;
+	const y = node.position.y + handle.y;
+	const width = handle.width ?? 1;
+	const height = handle.height ?? 1;
+	switch (handle.position) {
 		case Position.Left:
-			return { x: x - HANDLE_OVERHANG, y: y + height / 2 };
+			return { x, y: y + height / 2 };
 		case Position.Right:
-			return { x: x + width + HANDLE_OVERHANG, y: y + height / 2 };
+			return { x: x + width, y: y + height / 2 };
 		case Position.Top:
-			return { x: x + width / 2, y: y - HANDLE_OVERHANG };
+			return { x: x + width / 2, y };
 		case Position.Bottom:
-			return { x: x + width / 2, y: y + height + HANDLE_OVERHANG };
+			return { x: x + width / 2, y: y + height };
 	}
 }
 
@@ -66,9 +83,13 @@ export function buildFlowTopologyEdgeLayer(
 		const source = nodesById.get(edge.source);
 		const target = nodesById.get(edge.target);
 		if (!source || !target || source.hidden || target.hidden || edge.hidden) continue;
+		const sourceHandle = source.handles?.find((handle) => handle.type === "source");
+		const targetHandle = target.handles?.find((handle) => handle.type === "target");
 		if (
 			source.parentId ||
 			target.parentId ||
+			!sourceHandle ||
+			!targetHandle ||
 			source.width === undefined ||
 			source.height === undefined ||
 			target.width === undefined ||
@@ -77,18 +98,16 @@ export function buildFlowTopologyEdgeLayer(
 			native.push(edge);
 			continue;
 		}
-		const sourcePosition = source.sourcePosition ?? Position.Bottom;
-		const targetPosition = target.targetPosition ?? Position.Top;
-		const start = handlePoint(source, sourcePosition, source.width, source.height);
-		const end = handlePoint(target, targetPosition, target.width, target.height);
+		const start = handlePoint(source, sourceHandle);
+		const end = handlePoint(target, targetHandle);
 		// Svelte Flow's built-in smoothstep edge passes only the endpoints, so pathOptions do not apply.
 		const [path] = getSmoothStepPath({
 			sourceX: start.x,
 			sourceY: start.y,
-			sourcePosition,
+			sourcePosition: sourceHandle.position,
 			targetX: end.x,
 			targetY: end.y,
-			targetPosition,
+			targetPosition: targetHandle.position,
 		});
 		layered.push({
 			id: edge.id,

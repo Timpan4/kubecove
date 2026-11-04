@@ -7,6 +7,7 @@ import type {
 	ResourceTopology,
 	TopologyMode,
 } from "@/lib/types";
+import { ownershipNodeHandles } from "./topology-edge-layer";
 import {
 	buildTopologyGraph,
 	selectedTopologyPath,
@@ -22,7 +23,6 @@ import {
 	topologyColumnDepth,
 	topologyLayoutOrder,
 } from "./topology-layout";
-
 import { buildStandaloneGroups } from "./topology-standalone-groups";
 import type {
 	BuildFlowTopologyOptions,
@@ -298,6 +298,7 @@ export function buildFlowTopologyLayout(
 			extent: standalone ? "parent" : undefined,
 			sourcePosition: Position.Right,
 			targetPosition: Position.Left,
+			handles: ownershipNodeHandles(width, height),
 			width,
 			height,
 			// The style fixes the node's box to this size. Svelte Flow keeps a

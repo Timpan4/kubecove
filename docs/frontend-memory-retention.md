@@ -174,4 +174,36 @@ Native WebKitGTK, same large fixture, release-profile e2e builds in a headless c
 | Host process at map open, MiB | 889 | 606 |
 | WebKit processes, peak, MiB | 5,595 | 5,641 |
 
-The edge layer does not lower the WebKit peak. WebKit already holds 2.8 GiB at the first resource rows, before the map mounts, while Chromium's page process holds 240 MiB at that stage. A smaps snapshot of the WebKit web process attributed 2,287 MiB at 14 s and 3,200 MiB at 25 s to `WKFastMalloc`. Tauri 2.12.5 uses its custom-protocol IPC on Linux. The objects behind `WKFastMalloc` are not attributed yet; a JavaScriptCore heap snapshot through WebKit's remote inspector is the next measurement.
+The edge layer does not lower the WebKit peak. WebKit already holds 2.8 GiB at the first resource rows, before the map mounts, while Chromium's page process holds 240 MiB at that stage. A smaps snapshot of the WebKit web process attributed 2,287 MiB at 14 s and 3,200 MiB at 25 s to `WKFastMalloc`. The next section traces that peak.
+
+## Declared ownership map handles
+
+WebKit's remote inspector (`WEBKIT_INSPECTOR_HTTP_SERVER`) gave the cause of the first-rows peak. A JavaScriptCore heap snapshot after a forced GC held 172 MiB at the first resource rows, but the inspector's Memory domain reported up to 1,575 MiB of JavaScript and 1,786 MiB of other memory before it settled. That is transient allocation, not retention. Replaying the 7.1 MB `list_resource_scope` response ten times through Tauri IPC did not grow memory, so IPC was ruled out. A ScriptProfiler sample over the 9.9 s from the launcher to the first rows put 97% of samples in one Svelte flush that mounted every ownership map node. The activity icon's `getComputedStyle` per canvas took 33%, `bind:size` 16% and Svelte Flow's node renderer 18%.
+
+Svelte Flow's `getNodesInside` treats a node with no `internals.handleBounds` as needing an initial render, so `onlyRenderVisibleElements` mounted all 10,002 nodes once to measure their handles. Resource nodes now declare their handles through `ownershipNodeHandles` in `topology-edge-layer.ts`, with the same 6 px bounds Svelte Flow measures from its stylesheet. Svelte Flow derives `handleBounds` from them before any measurement, so only on-screen nodes mount. The edge layer anchors edges on the same declared handles. `topology-edge-layer.test.ts` checks that unmeasured resource nodes are culled to the viewport. Removing the handles, or moving them off the border, makes it fail.
+
+Native WebKitGTK, same large fixture and spec copy as above, release-profile e2e builds, one run each. "Before" is the edge layer plus the workspace-close heap trim.
+
+| Desktop observation | Before | After |
+| --- | ---: | ---: |
+| Launcher to first resource rows, s | 9.9 | 0.6 |
+| YAML to map open, s | 11.3 | 1.7 |
+| Workspace switch to warm return, s | 12.0 | 0.9 |
+| WebKit Memory domain peak, MiB (JavaScript peak) | 3,053 (1,581) | 1,981 (706) |
+| WebKit processes footprint peak, MiB | 5,436 | 2,412 |
+| Host process footprint peak, MiB | 768 | 576 |
+| All app processes at the end of the spec, MiB | 4,008 | 1,395 |
+
+The profiler took 2,671 samples from the launcher through map open, against 9,344 from the launcher to the first rows before, and the activity icon no longer appears among the top frames. v0.13.2 (`a0c5891`) measured 6,485 MiB peak and 5,195 MiB at the end for all app processes in the same harness.
+
+Headless Chromium against the edge layer build, same driver: all 10,001 open-map edges and 2,504 Pod-selected edges match in path, style, marker, computed paint and z-index. The map pane differs by about one anti-aliased pixel on the open map and none with a Pod selected. Metrics-ready took 1,486 ms instead of 5,233, map open 261 ms instead of 4,126 and warm return 414 ms instead of 4,205. With an 8 s settle before each measurement, two runs per build:
+
+| Chromium, MiB | Edge layer build | Declared handles |
+| --- | ---: | ---: |
+| JS heap after GC, map open | 110 / 111 | 124 / 121 |
+| JS heap after GC, resource detail | 139 / 143 | 121 / 119 |
+| JS heap after GC, idle launcher | 46 / 46 | 36 / 34 |
+| JS heap before GC, map open | 722 / 730 | 235 / 212 |
+| Page renderer footprint, map open | 870 / 916 | 758 / 740 |
+
+The open map retains 10 to 14 MiB more, consistent with the declared handle objects for 10,002 nodes; the heap was not attributed further. Without the settle, the faster build is measured while its background loads are still running, which made its after-GC heap look up to 65 MiB larger.

@@ -3,12 +3,15 @@
 // - path geometry drifts (handle anchor, smoothstep defaults, ignored pathOptions);
 // - a selected node's edges are not lifted to its z, so they draw under other nodes;
 // - culling hides an edge Svelte Flow would draw, or the reverse;
-// - edges touching nested nodes, whose position and z come from the parent, are drawn by the layer.
+// - edges touching nested nodes, whose position and z come from the parent, are drawn by the layer;
+// - declared handles disagree with the measured ones (checked by comparing against CSS bounds), or
+//   are missing, so Svelte Flow mounts every off-screen node once to measure it.
 import {
 	adoptUserNodes,
 	ConnectionMode,
 	getEdgePosition,
 	getElevatedEdgeZIndex,
+	getNodesInside,
 	getSmoothStepPath,
 	type InternalNodeBase,
 	isEdgeVisible,
@@ -141,6 +144,29 @@ describe("topology edge layer", () => {
 			}
 		});
 	}
+
+	test("lets Svelte Flow cull resource nodes before it measures them", () => {
+		const flow = graph(null);
+		const lookup = new Map<string, InternalNodeBase<FlowTopologyNode>>();
+		adoptUserNodes(flow.nodes, lookup, new Map(), { elevateNodesOnSelect: true });
+		for (const view of viewports) {
+			const { x, y, zoom } = view.viewport;
+			const rendered = getNodesInside(lookup, { x: 0, y: 0, width: view.width, height: view.height }, [x, y, zoom], true);
+			const left = -x / zoom;
+			const top = -y / zoom;
+			const resources = rendered.filter((entry) => entry.type === "ownershipResource");
+			expect(resources.length < flow.nodes.length / 2).toBe(true);
+			for (const entry of resources) {
+				const { x: nodeX, y: nodeY } = entry.internals.positionAbsolute;
+				const overlaps =
+					nodeX < left + view.width / zoom &&
+					nodeX + (entry.measured.width ?? 0) > left &&
+					nodeY < top + view.height / zoom &&
+					nodeY + (entry.measured.height ?? 0) > top;
+				expect(`${entry.id} ${overlaps}`).toBe(`${entry.id} true`);
+			}
+		}
+	});
 
 	test("leaves edges of nested nodes to Svelte Flow", () => {
 		const flow = graph(null);
