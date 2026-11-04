@@ -112,7 +112,7 @@ tar -xzf kubecove-server_<version>_<target>.tar.gz
 ./kubecove-server --listen 127.0.0.1:8080 --public-origin http://localhost:8080
 ```
 
-Startup prints a login URL containing a fresh token. Treat it as a password. The token is also stored in `server-token` in the data directory; run `./kubecove-server --help` for `--data-dir` and the other options. On macOS, Gatekeeper may block an unsigned download. Allow it in System Settings → Privacy & Security, or remove the quarantine attribute from the extracted files.
+Startup prints a login URL containing a fresh token. Treat it as a password. The token is also stored in `server-token` in the data directory; run `./kubecove-server --help` for `--data-dir` and the other options.
 
 To upgrade, stop the server, replace both executables with the new release, and start it again.
 
