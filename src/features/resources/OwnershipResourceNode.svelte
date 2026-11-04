@@ -91,7 +91,7 @@
 	/>
 	<div
 		class={cnfast(
-			"resource-topology-node relative flex h-full min-h-[90px] w-full flex-col overflow-hidden rounded-md border px-3.5 py-2.5 pl-4 text-left text-xs shadow-sm transition-opacity",
+			"resource-topology-node relative flex h-full min-h-[90px] w-full flex-col overflow-hidden rounded-md border px-3.5 py-2.5 pl-4 text-left text-xs shadow-[0_2px_0_var(--topology-node-edge-shadow)] inset-shadow-[0_1px_0_var(--topology-node-edge-highlight)] transition-opacity",
 			"svelte-ownership-resource-node bg-card text-card-foreground",
 			lifecycle?.progress && node?.health !== "degraded" ? "resource-topology-stoplight-info" : stoplightClass(railTone),
 			visual.surfaceClassName,
