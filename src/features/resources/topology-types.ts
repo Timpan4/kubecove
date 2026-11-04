@@ -1,5 +1,6 @@
 import type {
 	EdgeBase,
+	EdgeMarker,
 	NodeBase,
 	SmoothStepPathOptions,
 } from "@xyflow/system";
@@ -35,10 +36,12 @@ export type FlowTopologyNode = NodeBase<
 	focusable?: boolean;
 };
 
-export type FlowTopologyEdge = EdgeBase<
-	{ relation: TopologyRelation },
-	"smoothstep"
+export type FlowTopologyEdge = Omit<
+	EdgeBase<{ relation: TopologyRelation }, "smoothstep">,
+	"markerEnd"
 > & {
+	// Map edges always carry a marker definition, never a reference to an external marker id.
+	markerEnd?: EdgeMarker;
 	pathOptions?: SmoothStepPathOptions;
 	style?: string;
 	focusable?: boolean;

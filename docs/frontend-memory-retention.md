@@ -139,3 +139,39 @@ Fresh release-shaped native WebKitGTK runs passed all 12 stages with the five-mi
 | Rows after collection/refetch, ms | 300.46 | 18,030.83 |
 
 The polling wait starts after capturing the inactive checkpoint, so its elapsed time differs slightly from the configured timer. Both runs restore resource data after collection and record an 800 by 553 CSS-pixel viewport. Native screenshots show the resource overview and generated YAML; DOM assertions cover navigation, metrics, and topology. These are local lifecycle observations, not a measured five-minute freshness guarantee, heap attribution, or cross-platform performance result.
+
+## Large ownership map edge layer
+
+On 2026-11-04 the large fixture's ownership map mounted 10,002 Svelte Flow nodes and 10,001 edge components while 9 nodes were on screen. With `onlyRenderVisibleElements`, Svelte Flow mounts both endpoints of every edge whose endpoint bounding box crosses the viewport. Each ReplicaSet-to-Pod box in a 10,000-Pod fan-out crosses it. In an experiment build that already skipped off-screen node bodies, passing no edges to Svelte Flow cut the open map's JS heap from 693 MiB to 116 MiB, so the edge components and the endpoints they forced accounted for most of the map's memory.
+
+Maps that use `onlyRenderVisibleElements` (120 or more elements) now draw their edges in one SVG layer, `OwnershipMapEdgeLayer.svelte`, placed in Svelte Flow's back viewport layer. Svelte Flow then mounts only on-screen nodes. `topology-edge-layer.ts` reproduces Svelte Flow's smoothstep path from the handle anchors, the z-index lift for a selected node's edges, the edge culling rule, the arrowhead marker markup, and the `Edge from A to B` image labels. Edges that touch nested nodes stay with Svelte Flow. Smaller maps are unchanged. Layer edges are not hit targets: Svelte Flow edges in this map had no click handler, and their selection styling was overridden by each edge's inline stroke.
+
+`topology-edge-layer.test.ts` compares the layer with `@xyflow/system`'s own `getEdgePosition`, `getSmoothStepPath`, `getElevatedEdgeZIndex`, and `isEdgeVisible` for unselected, ReplicaSet-selected and Pod-selected fan-outs. Changing the selected-node lift, the handle anchor, or the culling boundary makes it fail.
+
+Headless Chromium against the large fixture, release builds of `a0c5891` and the change, the same driver for both:
+
+| Measurement | Before | After |
+| --- | ---: | ---: |
+| Rendered edges, open map / with a Pod selected | 10,001 / 2,504 | 10,001 / 2,504 |
+| Edge style, marker, computed stroke, opacity, width, dash and z-index differences | | 0 |
+| Largest path coordinate difference, flow units | | 0.095 |
+| Differing pixels in the map pane, 744 by 320, Pod selected / open map | | 0 / 3 |
+| DOM nodes, open map | 231,840 | 11,974 |
+| JS heap after GC, open map, MiB | 951 | 144 |
+| Page renderer process footprint, open map, MiB | 2,240 | 505 |
+| Page renderer process footprint, metrics loaded, MiB | 2,021 | 509 |
+
+Path coordinates differ because Svelte Flow measures handle bounds from the DOM, which adds float error such as `507.0002` where the layer computes `507`.
+
+Native WebKitGTK, same large fixture, release-profile e2e builds in a headless cage compositor, one run each. The repository memory spec's first-rows assertion expects the `resources` root to report at least 10,000 items, but both builds report 1, so these runs used a local copy without that assertion.
+
+| Desktop observation | Before | After |
+| --- | ---: | ---: |
+| Mounted flow nodes, map open / warm return | 4,712 / 10,002 | 14 / 19 |
+| Map open, ms | 37,431 | 9,170 |
+| Warm return, ms | 18,874 | 11,426 |
+| Rows after collection and refetch, ms | 18,967 | 9,759 |
+| Host process at map open, MiB | 889 | 606 |
+| WebKit processes, peak, MiB | 5,595 | 5,641 |
+
+The edge layer does not lower the WebKit peak. WebKit already holds 2.8 GiB at the first resource rows, before the map mounts, while Chromium's page process holds 240 MiB at that stage. A smaps snapshot of the WebKit web process attributed 2,287 MiB at 14 s and 3,200 MiB at 25 s to `WKFastMalloc`. Tauri 2.12.5 uses its custom-protocol IPC on Linux. The objects behind `WKFastMalloc` are not attributed yet; a JavaScriptCore heap snapshot through WebKit's remote inspector is the next measurement.
