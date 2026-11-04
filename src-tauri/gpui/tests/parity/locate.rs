@@ -1,0 +1,65 @@
+//! Lookups for the workspace-surface steps, whose targets are found by their
+//! accessible label inside a scope instead of a fixed element ID.
+
+use gpui_kit::test::{ElementSnapshot, TestEventExt, TestWindowExt};
+use gpui_kit::{App, ElementId, InputEvent, ScrollDelta, ScrollEvent, Window, point, px};
+
+/// The one element labeled `label` inside `scope` whose description matches,
+/// such as a palette resource described by its kind and namespace.
+pub fn described(
+    window: &mut Window,
+    scope: &'static str,
+    label: &str,
+    description: &str,
+) -> Option<ElementSnapshot> {
+    let mut found: Vec<ElementSnapshot> = window
+        .within(scope)
+        .find_all_by_label(label)
+        .into_iter()
+        .filter(|element| element.description() == Some(description))
+        .collect();
+    assert!(
+        found.len() <= 1,
+        "ambiguous {label:?} {description:?} in {scope}"
+    );
+    found.pop()
+}
+
+/// The element's own ID, the last segment of its path.
+pub fn id(element: &ElementSnapshot) -> ElementId {
+    element
+        .path()
+        .last()
+        .expect("observed element has an ID")
+        .clone()
+}
+
+/// Scrolls `area`, a nested scroll area, until `target` sits at its middle,
+/// then clicks it, as Playwright scrolls a target into view before a click.
+pub fn click_in(window: &mut Window, area: &'static str, target: ElementId, cx: &mut App) {
+    window.render_frame(cx);
+    let element = window.find(target.clone());
+    if !element.visible() {
+        let bounds = window.find(area).bounds();
+        let position = bounds.origin + point(px(4.), px(4.));
+        let delta = bounds.center().y - element.bounds().center().y;
+        window.pointer_move(position, None, cx);
+        window.dispatch_event(
+            ScrollEvent {
+                position,
+                delta: ScrollDelta::Pixels(point(px(0.), delta)),
+                ..Default::default()
+            }
+            .to_platform_input(),
+            cx,
+        );
+        window.render_frame(cx);
+    }
+    window.click(target, cx);
+}
+
+/// Clicks the one element labeled `label` inside `area`.
+pub fn click_label(window: &mut Window, area: &'static str, label: &str, cx: &mut App) {
+    let target = id(&window.within(area).find_by_label(label));
+    click_in(window, area, target, cx);
+}

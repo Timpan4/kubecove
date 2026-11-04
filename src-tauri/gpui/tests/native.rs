@@ -5,15 +5,18 @@ use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AppContext, Bounds, TestAppContext, WindowBounds, WindowOptions, px, size};
 use kubecove_gpui::{
     Inspector,
-    backend::{Backend, LiveSessions, LogStream, LogTarget, Read, Scope, ScopeResult},
+    backend::{
+        Backend, KubeconfigSourcesSummary, LiveSessions, LogStream, LogTarget, Read, Scope,
+        ScopeResult,
+    },
     gitops::GitOpsInventory,
 };
 use kubecove_lib::models::{
     AppError, AppErrorKind, ClusterContext, ClusterOperationResult, DeploymentRevision,
-    IncidentCockpitSummary, NamespaceSummary, ResourceActionPreview, ResourceActionRequest,
-    ResourceActionState, ResourceActionStateRequest, ResourceDetailsFull, ResourceEventSummary,
-    ResourceSummary, ResourceTopology, YamlApplyPreview, YamlApplyRequest, YamlApplyResult,
-    YamlViewMode,
+    IncidentCockpitSummary, NamespaceSummary, RbacAccessReviewRequest, RbacAccessReviewResult,
+    RbacInspectionSummary, ResourceActionPreview, ResourceActionRequest, ResourceActionState,
+    ResourceActionStateRequest, ResourceDetailsFull, ResourceEventSummary, ResourceSummary,
+    ResourceTopology, YamlApplyPreview, YamlApplyRequest, YamlApplyResult, YamlViewMode,
 };
 use serde_json::json;
 use std::sync::{
@@ -184,7 +187,33 @@ impl Backend for Controlled {
     fn apply_yaml(&self, request: YamlApplyRequest) -> Read<YamlApplyResult> {
         self.detail.apply_yaml(request)
     }
+    fn namespaces(&self, _: String) -> Read<Vec<NamespaceSummary>> {
+        Box::pin(async { Ok(vec![]) })
+    }
+    fn rbac(&self, _: String) -> Read<RbacInspectionSummary> {
+        Box::pin(async { Err(AppError::new("RBAC read denied", AppErrorKind::Forbidden)) })
+    }
+    fn review_rbac(&self, _: RbacAccessReviewRequest) -> Read<RbacAccessReviewResult> {
+        Box::pin(async { Err(AppError::new("Review denied", AppErrorKind::Forbidden)) })
+    }
+    fn kubeconfig_sources(&self) -> Read<KubeconfigSourcesSummary> {
+        Box::pin(async {
+            Ok(serde_json::from_value(json!({"kubeconfigEnvVar":"KUBECONFIG","paths":[],"sourceKey":"default","sourceLabel":"KUBECONFIG","showSourceLabels":true,"warnings":[]})).unwrap())
+        })
+    }
+    /// Like the production backend, which cannot persist kubeconfig settings.
+    fn kubeconfig_writes_unavailable(&self) -> Option<&'static str> {
+        Some(KUBECONFIG_WRITES)
+    }
+    fn set_kubeconfig_env_var(&self, _: String) -> Read<KubeconfigSourcesSummary> {
+        unreachable!("the settings page must not write when writes are unavailable")
+    }
+    fn set_show_kubeconfig_source_labels(&self, _: bool) -> Read<KubeconfigSourcesSummary> {
+        unreachable!("the settings page must not write when writes are unavailable")
+    }
 }
+
+const KUBECONFIG_WRITES: &str = "Kubeconfig settings cannot be saved here.";
 
 const MAP_NODE: &str = "mock-dev:apps/v1:Deployment:payments:payments-api";
 
@@ -253,6 +282,35 @@ fn a_read_failure_is_visible_and_can_be_retried(cx: &mut TestAppContext) {
                 .find("resource:Deployment:payments:payments-api")
                 .visible()
         );
+    })
+    .unwrap();
+}
+
+#[gpui_kit::test]
+fn kubeconfig_settings_the_backend_cannot_save_stay_disabled(cx: &mut TestAppContext) {
+    let handle = open(cx, Arc::new(Controlled::default()));
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window.click("open-settings", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window.click("settings-section:Kubeconfig", cx);
+        window.render_frame(cx);
+        let toggle = "setting:Show kubeconfig source labels";
+        assert_eq!(window.find(toggle).description(), Some(KUBECONFIG_WRITES));
+        window.click(toggle, cx);
+        window.click("kubeconfig-env-save", cx);
+        window.click("kubeconfig-env-reset", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        let toggle = window.find("setting:Show kubeconfig source labels");
+        assert_eq!(toggle.checked(), Some(true));
     })
     .unwrap();
 }

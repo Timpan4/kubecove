@@ -78,7 +78,13 @@ const CLUSTER: &[Node] = &[
         true,
         Target::Unavailable,
     ),
-    node("RBAC", "shield", Tokens::secret, true, Target::Unavailable),
+    node(
+        "RBAC",
+        "shield",
+        Tokens::secret,
+        true,
+        Target::Page(Page::Rbac),
+    ),
     node(
         "Cluster Overview",
         "server",
@@ -225,6 +231,7 @@ impl Inspector {
                 .on_click(cx.listener(move |this, _, window, cx| match target {
                     Target::Page(Page::Resources) => this.select_namespace(None, window, cx),
                     Target::Page(Page::ClusterOverview) => this.open_cluster_overview(window, cx),
+                    Target::Page(Page::Rbac) => this.open_rbac(None, window, cx),
                     Target::Page(page) => this.open_page(page, cx),
                     Target::Unavailable => {}
                 }))
@@ -238,6 +245,7 @@ impl Inspector {
         let namespaces: Vec<AnyElement> = self
             .namespaces
             .iter()
+            .filter(|namespace| self.launcher.shows_namespace(&namespace.name))
             .map(|namespace| {
                 let name = namespace.name.clone();
                 let selected = self.page == Page::Resources
@@ -281,7 +289,13 @@ impl Inspector {
                     .child(
                         div()
                             .min_w_0()
-                            .child(ui::semibold(ui::sm(self.workspace_name.clone())).truncate())
+                            .child(
+                                ui::semibold(ui::sm(self.workspace_name.clone()))
+                                    .id("workspace-title")
+                                    .test_support()
+                                    .aria_label(self.workspace_name.clone())
+                                    .truncate(),
+                            )
                             .child(
                                 ui::muted(ui::xs(self.scope.context.clone()))
                                     .id("scope-context")

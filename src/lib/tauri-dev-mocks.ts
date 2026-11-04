@@ -1,6 +1,11 @@
 import type { Channel, InvokeOptions } from "@tauri-apps/api/core";
 import { stringify } from "yaml";
-import { evictedWorkerName, evictedWorkerStatus } from "./tauri-dev-mock-incidents";
+import type {
+	ArgoApplicationRef,
+	ArgoConnectionProfile,
+	ArgoOperationRequest,
+	ArgoServerEndpoint,
+} from "./gitops-types";
 import {
 	argoApps,
 	argoManagedResourceRefs,
@@ -24,14 +29,9 @@ import {
 	resources,
 	source,
 } from "./tauri-dev-mock-data";
+import { evictedWorkerName, evictedWorkerStatus } from "./tauri-dev-mock-incidents";
 import { operationMockHandlers } from "./tauri-dev-mock-operations";
 import { rbacInspectionMock, rbacReviewMock } from "./tauri-dev-mock-rbac";
-import type {
-	ArgoApplicationRef,
-	ArgoConnectionProfile,
-	ArgoOperationRequest,
-	ArgoServerEndpoint,
-} from "./gitops-types";
 import { createMockChannel, type TauriClient } from "./tauri-runtime";
 import type {
 	AppUsageMetrics,
@@ -63,8 +63,8 @@ import type {
 	ResourceTopology,
 	StreamMessage,
 	TopologyMode,
-	YamlApplyRequest,
 	YamlApplyPreview,
+	YamlApplyRequest,
 } from "./types";
 
 type MockRequest = Partial<ArgoOperationRequest & YamlApplyRequest & Pick<PodLogStreamRequest, "batchLines">>;
@@ -73,6 +73,7 @@ interface MockArgs {
 	channel?: Pick<Channel<StreamMessage>, "onmessage">;
 	clusterContext?: string;
 	endpoint?: ArgoServerEndpoint;
+	envVar?: string;
 	id?: string;
 	kind?: string;
 	kubeconfigEnvVar?: string;
@@ -86,6 +87,7 @@ interface MockArgs {
 	resource?: ArgoManagedResource;
 	resourceKind?: DiscoveredResourceKind | FluxResourceKind;
 	serverUrl?: string;
+	show?: boolean;
 	storageName?: string;
 	transport?: "connected" | "kubernetes";
 	username?: string;
@@ -120,16 +122,26 @@ export function createDevMockTauriClient(): TauriClient {
 	};
 }
 
+// The page's kubeconfig settings, so saved values read back like the desktop settings file.
+const kubeconfigSource = { ...source };
+const kubeconfigSources = () => ({ ...kubeconfigSource });
+
 const handlers = {
-	get_kubeconfig_sources: () => source,
-	set_kubeconfig_env_var: () => source,
-	set_show_kubeconfig_source_labels: () => source,
-	pick_kubeconfig_paths: () => source,
+	get_kubeconfig_sources: kubeconfigSources,
+	set_kubeconfig_env_var: (args) => {
+		kubeconfigSource.kubeconfigEnvVar = args.envVar?.trim() || "KUBECONFIG";
+		return kubeconfigSources();
+	},
+	set_show_kubeconfig_source_labels: (args) => {
+		kubeconfigSource.showSourceLabels = Boolean(args.show);
+		return kubeconfigSources();
+	},
+	pick_kubeconfig_paths: kubeconfigSources,
 	save_workspace_export_json: () => true,
 	pick_workspace_import_json: () => null,
-	add_kubeconfig_paths: () => source,
-	remove_kubeconfig_path: () => source,
-	reorder_kubeconfig_paths: () => source,
+	add_kubeconfig_paths: kubeconfigSources,
+	remove_kubeconfig_path: kubeconfigSources,
+	reorder_kubeconfig_paths: kubeconfigSources,
 	list_kube_contexts: () => mockContexts,
 	list_namespaces: () => namespaces,
 	list_resource_kinds: () => customResourceKinds(),

@@ -12,14 +12,25 @@ mod header;
 mod incident_guide;
 mod incident_queue;
 mod incidents;
+mod launcher;
+mod launcher_form;
 mod log_row;
 mod logs_state;
 mod logs_tab;
 mod map;
 mod overview;
+mod palette;
 mod port_forwards;
+mod rbac_inspector;
+mod rbac_page;
+mod rbac_queue;
+mod rbac_review;
+mod rbac_verify;
 mod resources;
 mod revisions_tab;
+mod settings_kubeconfig;
+mod settings_page;
+mod settings_sections;
 mod sidebar;
 mod surface;
 mod table;
@@ -59,6 +70,8 @@ pub(crate) enum Page {
     ClusterOverview,
     Incidents,
     PortForwards,
+    Rbac,
+    Settings,
 }
 
 /// The native workspace: sidebar navigation, header and the active page, laid
@@ -82,6 +95,10 @@ pub struct Inspector {
     cluster: cluster::ClusterState,
     incidents: incidents::IncidentsState,
     sessions: port_forwards::SessionsState,
+    rbac: rbac_page::RbacState,
+    settings: settings_page::SettingsState,
+    launcher: launcher::LauncherState,
+    palette: palette::PaletteState,
     live_menu_open: bool,
     notice: Option<String>,
     request: Rc<()>,
@@ -155,6 +172,10 @@ impl Inspector {
             cluster: Default::default(),
             incidents: incidents::IncidentsState::new(),
             sessions: port_forwards::SessionsState::new(),
+            rbac: rbac_page::RbacState::new(window, cx),
+            settings: settings_page::SettingsState::new(window, cx),
+            launcher: launcher::LauncherState::new(window, cx),
+            palette: palette::PaletteState::new(window, cx),
             live_menu_open: false,
             notice: None,
             request: Rc::new(()),
@@ -292,6 +313,8 @@ impl Inspector {
             .iter()
             .chain(self.cluster_rows())
             .filter(|row| kinds.contains(&row.kind))
+            .filter(|row| self.launcher.in_scope(row))
+            .filter(|row| self.palette.kind.is_none_or(|kind| row.kind == kind))
             .filter(|row| {
                 search.is_empty()
                     || row.name.to_lowercase().contains(&search)
@@ -352,6 +375,7 @@ impl Inspector {
             return;
         }
         self.page = Page::Resources;
+        self.palette.kind = None;
         self.filter(cx);
         if self.scope.namespace != namespace {
             self.scope.namespace = namespace;
@@ -440,6 +464,8 @@ impl Inspector {
             }
             Page::Incidents => self.incidents_page(window, cx).into_any_element(),
             Page::PortForwards => self.port_forwards_page(cx).into_any_element(),
+            Page::Rbac => self.rbac_page(window, cx).into_any_element(),
+            Page::Settings => self.settings_page(cx).into_any_element(),
         }
     }
 }
@@ -448,7 +474,9 @@ impl Render for Inspector {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let detail_open = !matches!(self.detail, Detail::Closed);
         let page = self.page_view(window, cx);
+        let overlays = self.overlays(window, cx);
         div()
+            .relative()
             .size_full()
             .flex()
             .gap(px(8.))
@@ -517,5 +545,6 @@ impl Render for Inspector {
                             }),
                     ),
             )
+            .children(overlays)
     }
 }

@@ -26,7 +26,45 @@ export type Step =
 	| { action: "expectRevisionDiff"; selected: string; comparison: string; contains: string[] }
 	| { action: "expectReview"; title: string; description: string; contains: string[] }
 	| { action: "expectActionResult"; text: string }
-	| { action: "expectDryRun"; contains: string[] };
+	| { action: "expectDryRun"; contains: string[] }
+	| ({ action: "expectNoResource" | "expectPaletteResource" | "expectNoPaletteResource" | "choosePaletteResource" } & Identity)
+	| { action: "openLauncher" | "createWorkspace" | "openSettings" | "closeSettings" }
+	| { action: "nameWorkspace" | "searchSettings" | "setKubeconfigEnvVar" | "expectKubeconfigEnvVar" | "expectSettingsEmpty" | "searchPalette"; value: string }
+	| { action: "openSavedWorkspace"; name: string }
+	| { action: "expectSavedWorkspace"; name: string; summary: string }
+	| { action: "selectWorkspaceContext"; context: string }
+	| { action: "toggleWorkspaceNamespace"; namespace: string }
+	| { action: "expectOpenWorkspace"; name: string; context: string }
+	| { action: "selectRbacCategory" | "expectRbacCategory"; category: RbacCategory }
+	| { action: "filterRbacRisk"; filter: RbacRisk }
+	| { action: "expectRbacItem"; title: string; risk: string }
+	| { action: "expectNoRbacItem" | "selectRbacItem"; title: string }
+	| { action: "investigateRbacSubject"; subject: string }
+	| { action: "expectRbacIdentity"; identity: string }
+	| { action: "expectRbacGrant" | "expectNoRbacGrant"; grant: string }
+	| { action: "verifyRbacAccess"; verb: string }
+	| { action: "expectRbacVerdict"; outcome: "allowed" | "denied" | "noOpinion" }
+	| { action: "editRbacReviewNote" | "expectRbacReviewNote"; value: string }
+	| { action: "saveRbacReview"; disposition: "expected" | "anomalous" }
+	| { action: "expectRbacReview"; label: string }
+	| { action: "clearRbacReview" }
+	| { action: "showSettingsSection"; section: string }
+	| { action: "expectSettingsHeading"; heading: string }
+	| { action: "expectSettingRow" | "expectNoSettingRow"; title: string }
+	| { action: "toggleSetting"; setting: string }
+	| { action: "expectSetting"; setting: string; checked: boolean }
+	| { action: "openPalette"; via: "button" | "shortcut" }
+	| { action: "expectPaletteEntry" | "expectNoPaletteEntry" | "choosePaletteEntry"; label: string };
+const RBAC_CATEGORIES = ["Namespace Access", "Roles", "Cluster Roles", "Bindings", "Service Accounts"] as const;
+type RbacCategory = (typeof RBAC_CATEGORIES)[number];
+const RBAC_RISKS = ["All", "High", "Medium", "Low", "No flags", "Unknown"] as const;
+type RbacRisk = (typeof RBAC_RISKS)[number];
+const VERDICTS = ["allowed", "denied", "noOpinion"] as const;
+function oneOf<T extends string>(values: readonly T[], value: unknown, label: string): T {
+	const found = values.find((candidate) => candidate === value);
+	if (!found) throw new Error(`Expected ${label}`);
+	return found;
+}
 type LogLevel = "ERR" | "WRN" | "INF" | "DBG";
 const LOG_LEVELS: readonly LogLevel[] = ["ERR", "WRN", "INF", "DBG"];
 export type Scenario = { id: string; title: string; steps: Step[] };
@@ -40,6 +78,13 @@ export const ACTIONS = [
 	"expectLogLines", "filterLogs", "toggleLogLevel", "expectLogsEmpty", "selectRevision", "expectRevisionDiff", "reviewAction", "editReplicas",
 	"expectReview", "confirmDeletion", "executeReview", "closeReview", "expectNoReview", "expectActionResult", "expectNoActionResult",
 	"editYaml", "applyYaml", "dryRunYaml", "expectDryRun", "expectYamlNotice", "expectNoYamlNotice", "expectYamlReadOnly",
+	"expectNoResource", "openLauncher", "openSavedWorkspace", "expectSavedWorkspace", "nameWorkspace", "selectWorkspaceContext", "toggleWorkspaceNamespace",
+	"createWorkspace", "expectOpenWorkspace", "selectRbacCategory", "expectRbacCategory", "filterRbacRisk", "expectRbacItem", "expectNoRbacItem", "selectRbacItem",
+	"investigateRbacSubject", "expectRbacIdentity", "expectRbacGrant", "expectNoRbacGrant", "verifyRbacAccess", "expectRbacVerdict", "openSettings", "closeSettings",
+	"showSettingsSection", "searchSettings", "expectSettingsHeading", "expectSettingRow", "expectNoSettingRow", "expectSettingsEmpty", "setKubeconfigEnvVar",
+	"expectKubeconfigEnvVar", "toggleSetting", "expectSetting", "openPalette", "searchPalette", "expectPaletteResource", "expectNoPaletteResource",
+	"choosePaletteResource", "expectPaletteEntry", "expectNoPaletteEntry", "choosePaletteEntry",
+	"editRbacReviewNote", "expectRbacReviewNote", "saveRbacReview", "expectRbacReview", "clearRbacReview",
 ] as const satisfies readonly Step["action"][];
 type Missing = Exclude<Step["action"], (typeof ACTIONS)[number]>;
 const allActionsListed: Missing extends never ? true : Missing = true;
@@ -101,6 +146,46 @@ function step(value: unknown): Step {
 			return { action: item.action, title: string(item.title), description: string(item.description), contains: strings(item.contains, false) };
 		case "expectActionResult": return { action: item.action, text: string(item.text) };
 		case "expectDryRun": return { action: item.action, contains: strings(item.contains, false) };
+		case "expectNoResource":
+			return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace) };
+		case "expectPaletteResource": case "expectNoPaletteResource": case "choosePaletteResource":
+			if (typeof item.namespace !== "string") throw new Error("Expected a resource namespace, empty for cluster resources");
+			return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: item.namespace };
+		case "openLauncher": case "createWorkspace": case "openSettings": case "closeSettings": return { action: item.action };
+		case "nameWorkspace": case "searchSettings": case "setKubeconfigEnvVar": case "expectKubeconfigEnvVar": case "expectSettingsEmpty": case "searchPalette":
+			return { action: item.action, value: string(item.value) };
+		case "openSavedWorkspace": return { action: item.action, name: string(item.name) };
+		case "expectSavedWorkspace": return { action: item.action, name: string(item.name), summary: string(item.summary) };
+		case "selectWorkspaceContext": return { action: item.action, context: string(item.context) };
+		case "toggleWorkspaceNamespace": return { action: item.action, namespace: string(item.namespace) };
+		case "expectOpenWorkspace": return { action: item.action, name: string(item.name), context: string(item.context) };
+		case "selectRbacCategory": case "expectRbacCategory": return { action: item.action, category: oneOf(RBAC_CATEGORIES, item.category, "an RBAC category") };
+		case "filterRbacRisk": return { action: item.action, filter: oneOf(RBAC_RISKS, item.filter, "an RBAC risk filter") };
+		case "expectRbacItem": return { action: item.action, title: string(item.title), risk: string(item.risk) };
+		case "expectNoRbacItem": case "selectRbacItem": return { action: item.action, title: string(item.title) };
+		case "investigateRbacSubject": return { action: item.action, subject: string(item.subject) };
+		case "expectRbacIdentity": return { action: item.action, identity: string(item.identity) };
+		case "expectRbacGrant": case "expectNoRbacGrant": return { action: item.action, grant: string(item.grant) };
+		case "verifyRbacAccess": return { action: item.action, verb: string(item.verb) };
+		case "expectRbacVerdict": return { action: item.action, outcome: oneOf(VERDICTS, item.outcome, "an access review outcome") };
+		case "editRbacReviewNote": case "expectRbacReviewNote":
+			if (typeof item.value !== "string") throw new Error("Expected review note text");
+			return { action: item.action, value: item.value };
+		case "saveRbacReview":
+			return { action: item.action, disposition: oneOf(["expected", "anomalous"], item.disposition, "a review disposition") };
+		case "expectRbacReview": return { action: item.action, label: string(item.label) };
+		case "clearRbacReview": return { action: item.action };
+		case "showSettingsSection": return { action: item.action, section: string(item.section) };
+		case "expectSettingsHeading": return { action: item.action, heading: string(item.heading) };
+		case "expectSettingRow": case "expectNoSettingRow": return { action: item.action, title: string(item.title) };
+		case "toggleSetting": return { action: item.action, setting: string(item.setting) };
+		case "expectSetting":
+			if (typeof item.checked !== "boolean") throw new Error("Expected a checked state");
+			return { action: item.action, setting: string(item.setting), checked: item.checked };
+		case "openPalette":
+			if (item.via !== "button" && item.via !== "shortcut") throw new Error("Expected how the palette opens");
+			return { action: item.action, via: item.via };
+		case "expectPaletteEntry": case "expectNoPaletteEntry": case "choosePaletteEntry": return { action: item.action, label: string(item.label) };
 		default: throw new Error(`Unknown action: ${String(item.action)}`);
 	}
 }

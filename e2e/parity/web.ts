@@ -12,7 +12,7 @@ async function action(page: Page, step: Step) {
 		case "search": await search.fill(step.value); break;
 		case "expectSearch": if (await search.inputValue() !== step.value) throw new Error("Search changed after refresh"); break;
 		case "expectResource": case "openResource": {
-			const row = page.locator("tr").filter({ has: page.getByRole("button", { name: `Open resource ${step.name}`, exact: true }) }).filter({ has: page.getByText(step.kind, { exact: true }) }).filter({ has: page.getByText(step.namespace, { exact: true }) });
+			const row = resourceRow(page, step);
 			await row.waitFor({ state: "visible" });
 			if (await row.count() !== 1) throw new Error("Resource row is ambiguous");
 			if (step.action === "openResource") await row.getByRole("button", { name: `Open resource ${step.name}`, exact: true }).click();
@@ -115,8 +115,118 @@ async function action(page: Page, step: Step) {
 			await page.getByRole("button", { name: "Edit YAML", exact: true }).waitFor();
 			if (await page.getByRole("button", { name: "Dry run", exact: true }).count()) throw new Error("The YAML draft editor opened");
 			break;
+		// Absence is checked after a preceding step waited for the new scope's rows.
+		case "expectNoResource": if (await resourceRow(page, step).count()) throw new Error(`${step.kind} ${step.namespace}/${step.name} is listed`); break;
+		case "openLauncher": await page.getByRole("button", { name: "Open workspaces", exact: true }).click(); break;
+		case "openSavedWorkspace": await page.getByRole("button", { name: `Open ${step.name}`, exact: true }).click(); break;
+		case "expectSavedWorkspace":
+			await page.getByRole("group", { name: `${step.name} actions`, exact: true }).waitFor();
+			await page.getByText(step.summary, { exact: true }).waitFor();
+			break;
+		case "nameWorkspace": await page.locator("#workspace-name").fill(step.value); break;
+		case "selectWorkspaceContext":
+			await page.getByRole("combobox").click();
+			await page.getByRole("option", { name: step.context, exact: true }).click();
+			break;
+		case "toggleWorkspaceNamespace": await page.getByRole("checkbox", { name: step.namespace, exact: true }).click(); break;
+		case "createWorkspace": await page.getByRole("button", { name: "Create workspace", exact: true }).click(); break;
+		case "expectOpenWorkspace":
+			await page.locator("div.min-w-0").filter({ has: page.getByText(step.name, { exact: true }) }).filter({ has: page.getByText(step.context, { exact: true }) }).first().waitFor();
+			break;
+		case "selectRbacCategory": await rbacCategory(page, step.category).click(); break;
+		case "expectRbacCategory": await rbacCategory(page, step.category).and(page.locator('[aria-pressed="true"]')).waitFor(); break;
+		case "filterRbacRisk": await page.getByRole("button", { name: new RegExp(`^${literal(step.filter)} \\d+$`) }).click(); break;
+		case "expectRbacItem": await rbacItem(page, step.title).getByText(step.risk, { exact: true }).waitFor(); break;
+		case "expectNoRbacItem": if (await rbacItem(page, step.title).count()) throw new Error(`${step.title} is listed`); break;
+		case "selectRbacItem": await rbacItem(page, step.title).click(); break;
+		case "investigateRbacSubject":
+			await page.getByRole("button").filter({ hasText: "Investigate" }).filter({ has: page.locator("span", { hasText: new RegExp(`^${literal(step.subject)}$`) }) }).click();
+			break;
+		case "expectRbacIdentity": await rbacSection(page, "Verify exact action").getByText(step.identity, { exact: true }).waitFor(); break;
+		case "expectRbacGrant": await rbacGrant(page, step.grant).waitFor(); break;
+		case "expectNoRbacGrant": if (await rbacGrant(page, step.grant).count()) throw new Error(`${step.grant} is shown`); break;
+		case "verifyRbacAccess":
+			await page.getByRole("textbox", { name: "Verb", exact: true }).fill(step.verb);
+			await page.getByRole("button", { name: "Verify access", exact: true }).click();
+			break;
+		case "expectRbacVerdict": {
+			const label = step.outcome === "noOpinion" ? "No opinion" : step.outcome;
+			await rbacSection(page, "Latest verification").locator("p.capitalize", { hasText: new RegExp(`^${label}$`) }).waitFor();
+			break;
+		}
+		case "editRbacReviewNote": await page.getByRole("textbox", { name: "RBAC review note", exact: true }).fill(step.value); break;
+		case "expectRbacReviewNote": {
+			const input = page.getByRole("textbox", { name: "RBAC review note", exact: true });
+			if (await input.inputValue() !== step.value) throw new Error("RBAC review note belongs to another object");
+			break;
+		}
+		case "saveRbacReview": await page.getByRole("button", { name: `Mark ${step.disposition}`, exact: true }).click(); break;
+		case "expectRbacReview": await page.getByText("Reviewed context", { exact: true }).locator("xpath=ancestor::section[1]").getByText(step.label, { exact: true }).waitFor(); break;
+		case "clearRbacReview": await page.getByRole("button", { name: "Clear review", exact: true }).click(); break;
+		case "openSettings": await page.getByRole("button", { name: "Open settings", exact: true }).click(); break;
+		case "closeSettings": await page.getByRole("button", { name: "Back to app", exact: true }).click(); break;
+		case "showSettingsSection": await page.getByRole("navigation", { name: "Settings sections" }).getByRole("button", { name: step.section, exact: true }).click(); break;
+		case "searchSettings": await page.getByRole("textbox", { name: "Search settings", exact: true }).fill(step.value); break;
+		case "expectSettingsHeading": await page.getByRole("heading", { level: 2, name: step.heading, exact: true }).waitFor(); break;
+		case "expectSettingRow": await page.getByText(step.title, { exact: true }).first().waitFor(); break;
+		case "expectNoSettingRow": if (await page.getByText(step.title, { exact: true }).count()) throw new Error(`${step.title} is shown`); break;
+		case "expectSettingsEmpty": await page.getByText(`No settings match "${step.value}".`, { exact: true }).waitFor(); break;
+		case "setKubeconfigEnvVar": {
+			await page.getByRole("textbox", { name: "Kubeconfig env var", exact: true }).fill(step.value);
+			const save = page.getByRole("button", { name: "Save", exact: true });
+			await save.click();
+			await save.and(page.locator(":enabled")).waitFor();
+			break;
+		}
+		case "expectKubeconfigEnvVar": {
+			const input = await page.getByRole("textbox", { name: "Kubeconfig env var", exact: true }).elementHandle();
+			await page.waitForFunction(({ input, value }) => input instanceof HTMLInputElement && input.value === value, { input, value: step.value });
+			break;
+		}
+		case "toggleSetting": await page.getByRole("switch", { name: step.setting, exact: true }).click(); break;
+		case "expectSetting": await page.getByRole("switch", { name: step.setting, exact: true }).and(page.locator(`[aria-checked="${step.checked}"]`)).waitFor(); break;
+		case "openPalette": {
+			// The palette's window shortcut listener mounts with the header's search button.
+			const button = page.getByRole("button", { name: "Search views, namespaces, and resources", exact: true });
+			await button.waitFor();
+			if (step.via === "shortcut") await page.keyboard.press("ControlOrMeta+K");
+			else await button.click();
+			await page.getByRole("dialog").waitFor();
+			break;
+		}
+		case "searchPalette": await page.getByPlaceholder("Search views, namespaces, and resources...").fill(step.value); break;
+		case "expectPaletteResource": await paletteResource(page, step).waitFor(); break;
+		case "expectNoPaletteResource": if (await paletteResource(page, step).count()) throw new Error(`${step.name} is a palette result`); break;
+		case "choosePaletteResource": await paletteResource(page, step).click(); break;
+		case "expectPaletteEntry": await page.getByRole("option", { name: step.label, exact: true }).waitFor(); break;
+		case "expectNoPaletteEntry": if (await page.getByRole("option", { name: step.label, exact: true }).count()) throw new Error(`${step.label} is a palette result`); break;
+		case "choosePaletteEntry": await page.getByRole("option", { name: step.label, exact: true }).click(); break;
 		default: { const unhandled: never = step; throw new Error(`Unhandled parity step: ${JSON.stringify(unhandled)}`); }
 	}
+}
+
+type Identity = { kind: string; name: string; namespace: string };
+/** A Resource Table row, matched by name, kind and namespace. */
+function resourceRow(page: Page, step: Identity) {
+	return page.locator("tr").filter({ has: page.getByRole("button", { name: `Open resource ${step.name}`, exact: true }) }).filter({ has: page.getByText(step.kind, { exact: true }) }).filter({ has: page.getByText(step.namespace, { exact: true }) });
+}
+function rbacCategory(page: Page, category: string) {
+	return page.locator('[aria-label="RBAC categories"]').getByRole("button", { name: new RegExp(`^${literal(category)} \\d+$`) });
+}
+/** A review queue card; its first line is `Kind/name`. */
+function rbacItem(page: Page, title: string) {
+	return page.locator("button[aria-pressed]").filter({ has: page.locator("p", { hasText: new RegExp(`^${literal(title)}$`) }) });
+}
+function rbacSection(page: Page, heading: string) {
+	return page.locator("section").filter({ has: page.getByText(heading, { exact: true }) });
+}
+function rbacGrant(page: Page, grant: string) {
+	return rbacSection(page, "Observed RBAC grants").locator("p.font-mono", { hasText: new RegExp(`^${literal(grant)}$`) });
+}
+/** A palette resource result: its name, then cluster, namespace and kind. */
+function paletteResource(page: Page, step: Identity) {
+	const row = page.getByRole("option").filter({ has: page.locator("span.truncate", { hasText: new RegExp(`^${literal(step.name)}$`) }) }).filter({ has: page.getByText(step.kind, { exact: true }) });
+	return step.namespace ? row.filter({ has: page.getByText(step.namespace, { exact: true }) }) : row;
 }
 
 /** Event rows in the Events tab: each starts with its `<time>`. */
@@ -166,6 +276,8 @@ export async function runWeb(contract: Contract, artifacts: string, signal: Abor
 				await page.goto(`http://127.0.0.1:${port}/`);
 				await page.locator("#workspace-name").fill("Parity mock workspace");
 				await page.getByRole("button", { name: "Create workspace", exact: true }).click();
+				// Creating a workspace navigates to its overview; a dialog opened before that navigation lands is closed by it.
+				await page.waitForURL(/#\/workspace\/[^/]+\/overview$/);
 				for (const [index, step] of scenario.steps.entries()) {
 					signal.throwIfAborted();
 					await action(page, step);

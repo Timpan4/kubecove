@@ -3,6 +3,8 @@
 //! `bun scripts/e2e-parity.ts`, which exports the fixture and checks both reports.
 
 mod common;
+#[path = "parity/locate.rs"]
+mod locate;
 
 use std::{
     fs,
@@ -40,6 +42,8 @@ fn row(step: &Value) -> String {
 /// does not take it. The element lands mid-window.
 /// The first detail tab, at the top of the scrolling detail body.
 const DETAIL_TOP: &str = "show-details";
+/// The RBAC category bar, at the top of the page's scroll area.
+const RBAC_TOP: &str = "rbac-category:Roles";
 
 fn reveal(window: &mut gpui_kit::Window, anchor: &str, id: &str, cx: &mut gpui_kit::App) {
     let id = gpui_kit::ElementId::Name(id.to_owned().into());
@@ -97,8 +101,17 @@ fn replace_text(
     text: &str,
 ) {
     window.click(id, cx);
-    window.press("ctrl-a", cx);
+    window.press("secondary-a", cx);
     window.input(text, cx);
+}
+
+/// A palette result: its name, described by kind and namespace.
+fn palette_resource(
+    window: &mut gpui_kit::Window,
+    step: &Value,
+) -> Option<gpui_kit::test::ElementSnapshot> {
+    let description = format!("{} {}", string(step, "kind"), string(step, "namespace"));
+    locate::described(window, "palette-list", string(step, "name"), &description)
 }
 
 fn cluster_row(step: &Value) -> String {
@@ -138,7 +151,7 @@ fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
         }
         "search" => {
             window.click("search", cx);
-            window.press("ctrl-a", cx);
+            window.press("secondary-a", cx);
             window.input(string(step, "value"), cx);
         }
         // Expectations on rows mean rendered in the table, possibly scrolled out of
@@ -317,7 +330,203 @@ fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
             assert!(window.try_find("edit-draft").is_some());
             assert!(window.try_find("yaml-dry-run").is_none());
         }
+        "expectNoResource" => assert!(window.try_find(row(step)).is_none()),
+        "openLauncher" => window.click("header-workspaces", cx),
+        "expectSavedWorkspace" => assert_eq!(
+            window
+                .within("launcher")
+                .find_by_label(string(step, "name"))
+                .description(),
+            Some(string(step, "summary"))
+        ),
+        "openSavedWorkspace" => {
+            let label = format!("Open {}", string(step, "name"));
+            locate::click_label(window, "launcher-body", &label, cx);
+        }
+        "nameWorkspace" => replace_text(window, cx, "workspace-name", string(step, "value")),
+        "selectWorkspaceContext" => {
+            window.click("workspace-context", cx);
+            window.render_frame(cx);
+            window.click(format!("workspace-context:{}", string(step, "context")), cx);
+        }
+        "toggleWorkspaceNamespace" => {
+            let id = format!("workspace-namespace:{}", string(step, "namespace"));
+            locate::click_in(window, "workspace-namespaces", id.into(), cx);
+        }
+        "createWorkspace" => window.click("workspace-create", cx),
+        "expectOpenWorkspace" => {
+            let title = window.find("workspace-title");
+            assert_eq!(title.label(), Some(string(step, "name")));
+            let context = window.find("scope-context");
+            assert_eq!(context.label(), Some(string(step, "context")));
+        }
+        "selectRbacCategory" => locate::click_in(
+            window,
+            "page",
+            format!("rbac-category:{}", string(step, "category")).into(),
+            cx,
+        ),
+        "expectRbacCategory" => assert_eq!(
+            window
+                .find(format!("rbac-category:{}", string(step, "category")))
+                .selected(),
+            Some(true)
+        ),
+        "filterRbacRisk" => {
+            window.click(format!("rbac-risk-filter:{}", string(step, "filter")), cx)
+        }
+        "expectRbacItem" => assert_eq!(
+            window
+                .within("rbac-queue")
+                .find_by_label(string(step, "title"))
+                .description(),
+            Some(string(step, "risk"))
+        ),
+        "expectNoRbacItem" => assert!(
+            window
+                .within("rbac-queue")
+                .try_find_by_label(string(step, "title"))
+                .is_none()
+        ),
+        "selectRbacItem" => {
+            let target = locate::id(
+                &window
+                    .within("rbac-queue")
+                    .find_by_label(string(step, "title")),
+            );
+            locate::click_in(window, "page", target, cx);
+        }
+        "editRbacReviewNote" => {
+            locate::click_in(window, "page", "rbac-review-editor".into(), cx);
+            window.press("secondary-a", cx);
+            window.input(string(step, "value"), cx);
+        }
+        "expectRbacReviewNote" => assert_eq!(
+            window.find_by_label("RBAC review note").value(),
+            Some(string(step, "value"))
+        ),
+        "saveRbacReview" => locate::click_in(
+            window,
+            "page",
+            format!("rbac-mark-{}", string(step, "disposition")).into(),
+            cx,
+        ),
+        "expectRbacReview" => assert_eq!(
+            window.find("rbac-review-status").label(),
+            Some(string(step, "label"))
+        ),
+        "clearRbacReview" => locate::click_in(window, "page", "rbac-clear-review".into(), cx),
+        "investigateRbacSubject" => {
+            window.click(format!("rbac-subject:{}", string(step, "subject")), cx)
+        }
+        "expectRbacIdentity" => assert_eq!(
+            window.find("rbac-identity").label(),
+            Some(string(step, "identity"))
+        ),
+        "expectRbacGrant" => assert!(
+            !window
+                .within("rbac-grants")
+                .find_all_by_label(string(step, "grant"))
+                .is_empty()
+        ),
+        "expectNoRbacGrant" => assert!(
+            window
+                .within("rbac-grants")
+                .find_all_by_label(string(step, "grant"))
+                .is_empty()
+        ),
+        "verifyRbacAccess" => {
+            // The verifier sits below the fold of the page's scroll area. The
+            // click follows in `finish`, after the edit's change events apply.
+            reveal(window, RBAC_TOP, "rbac-verb", cx);
+            replace_text(window, cx, "rbac-verb", string(step, "verb"));
+        }
+        "expectRbacVerdict" => assert_eq!(
+            window.find("rbac-verdict").label(),
+            Some(string(step, "outcome"))
+        ),
+        "openSettings" => window.click("open-settings", cx),
+        "closeSettings" => window.click("settings-back", cx),
+        "showSettingsSection" => {
+            window.click(format!("settings-section:{}", string(step, "section")), cx)
+        }
+        "searchSettings" => replace_text(window, cx, "settings-search", string(step, "value")),
+        "expectSettingsHeading" => assert_eq!(
+            window.find("settings-heading").label(),
+            Some(string(step, "heading"))
+        ),
+        "expectSettingRow" => assert!(
+            window
+                .try_find(format!("setting-row:{}", string(step, "title")))
+                .is_some()
+        ),
+        "expectNoSettingRow" => assert!(
+            window
+                .try_find(format!("setting-row:{}", string(step, "title")))
+                .is_none()
+        ),
+        "expectSettingsEmpty" => assert_eq!(
+            window.find("settings-empty").label(),
+            Some(format!("No settings match \"{}\".", string(step, "value")).as_str())
+        ),
+        "setKubeconfigEnvVar" => {
+            replace_text(window, cx, "kubeconfig-env-var", string(step, "value"));
+            window.click("kubeconfig-env-save", cx);
+        }
+        "expectKubeconfigEnvVar" => assert_eq!(
+            window.find("kubeconfig-env-var").value(),
+            Some(string(step, "value"))
+        ),
+        "toggleSetting" => window.click(format!("setting:{}", string(step, "setting")), cx),
+        "expectSetting" => assert_eq!(
+            window
+                .find(format!("setting:{}", string(step, "setting")))
+                .checked(),
+            Some(step["checked"].as_bool().expect("missing checked"))
+        ),
+        "openPalette" => {
+            match string(step, "via") {
+                // Cmd on macOS, Ctrl elsewhere, like the web's `ControlOrMeta+K`.
+                "shortcut" => window.press("secondary-k", cx),
+                "button" => window.click("open-palette", cx),
+                other => panic!("unknown palette opener: {other}"),
+            }
+            window.render_frame(cx);
+            assert!(window.find("palette-dialog").visible());
+        }
+        "searchPalette" => replace_text(window, cx, "palette-query", string(step, "value")),
+        "expectPaletteResource" => assert!(palette_resource(window, step).is_some()),
+        "expectNoPaletteResource" => assert!(palette_resource(window, step).is_none()),
+        "choosePaletteResource" => {
+            let target = locate::id(&palette_resource(window, step).expect("palette resource"));
+            locate::click_in(window, "palette-list", target, cx);
+        }
+        "expectPaletteEntry" => assert!(
+            window
+                .within("palette-list")
+                .try_find_by_label(string(step, "label"))
+                .is_some()
+        ),
+        "expectNoPaletteEntry" => assert!(
+            window
+                .within("palette-list")
+                .try_find_by_label(string(step, "label"))
+                .is_none()
+        ),
+        "choosePaletteEntry" => {
+            locate::click_label(window, "palette-list", string(step, "label"), cx)
+        }
         action => panic!("unknown parity action: {action}"),
+    }
+}
+
+/// The second half of steps that type and then click. Input change events
+/// apply when the update that typed ends, as they do between a user's
+/// keystrokes and a later click.
+fn finish(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
+    if string(step, "action") == "verifyRbacAccess" {
+        reveal(window, RBAC_TOP, "rbac-verify", cx);
+        window.click("rbac-verify", cx);
     }
 }
 
@@ -333,14 +542,15 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => panic!("cannot remove stale parity report: {error}"),
     }
-    let backend = Arc::new(Fixture::load(Path::new(&fixture)));
     let scenarios = scenarios();
     assert!(!scenarios.is_empty());
     let mut passed = Vec::new();
     for scenario in &scenarios {
         let id = string(scenario, "id");
         cx.update(gpui_kit::init);
-        let backend = backend.clone();
+        // A fresh fixture per scenario, as the web driver reloads the page and its
+        // in-memory mock state.
+        let backend = Arc::new(Fixture::load(Path::new(&fixture)));
         let (handle, _) = cx.update(|cx| {
             gpui_kit::open_window(
                 WindowOptions {
@@ -354,7 +564,12 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
                     ..Default::default()
                 },
                 cx,
-                |window, cx| cx.new(|cx| Inspector::new(backend, window, cx)),
+                |window, cx| {
+                    cx.new(|cx| {
+                        Inspector::new(backend, window, cx)
+                            .with_workspace_name("Parity mock workspace")
+                    })
+                },
             )
             .unwrap()
         });
@@ -368,6 +583,12 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
             cx.update_window(handle, |_, window, cx| {
                 window.render_frame(cx);
                 act(window, cx, step);
+            })
+            .unwrap();
+            cx.run_until_parked();
+            cx.update_window(handle, |_, window, cx| {
+                window.render_frame(cx);
+                finish(window, cx, step);
             })
             .unwrap();
             cx.run_until_parked();

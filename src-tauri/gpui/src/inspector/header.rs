@@ -15,6 +15,8 @@ impl Inspector {
             Page::Resources | Page::ClusterOverview => "Resources".into(),
             Page::Incidents => "Incident Cockpit".into(),
             Page::PortForwards => "Port Forwards".into(),
+            Page::Rbac => self.rbac.location().into(),
+            Page::Settings => "Settings".into(),
         };
         div()
             .flex()
@@ -102,10 +104,35 @@ impl Inspector {
                             )
                         },
                     )
-                    .child(ui::ghost_icon("folder-open", 28., 14.))
-                    .child(ui::ghost_icon("settings", 28., 14.))
+                    .child(
+                        ui::ghost_icon("folder-open", 28., 14.)
+                            .id("header-workspaces")
+                            .test_support()
+                            .aria_label("Open workspaces")
+                            .cursor_pointer()
+                            .on_click(
+                                cx.listener(|this, _, window, cx| this.open_launcher(window, cx)),
+                            ),
+                    )
+                    .child(
+                        ui::ghost_icon("settings", 28., 14.)
+                            .id("open-settings")
+                            .test_support()
+                            .aria_label("Open settings")
+                            .cursor_pointer()
+                            .on_click(
+                                cx.listener(|this, _, window, cx| this.open_settings(window, cx)),
+                            ),
+                    )
                     .child(
                         ui::outline_button()
+                            .id("open-palette")
+                            .test_support()
+                            .aria_label("Search views, namespaces, and resources")
+                            .cursor_pointer()
+                            .on_click(
+                                cx.listener(|this, _, window, cx| this.toggle_palette(window, cx)),
+                            )
                             .h(px(24.))
                             .px(px(12.))
                             .gap(px(8.))
@@ -119,7 +146,9 @@ impl Inspector {
                                     .border_1()
                                     .border_color(Tokens::border())
                                     .bg(Tokens::muted())
-                                    .child(ui::muted(ui::xs("Ctrl K").font_family(MONO))),
+                                    .child(ui::muted(
+                                        ui::xs(super::palette::SHORTCUT_HINT).font_family(MONO),
+                                    )),
                             ),
                     ),
             )

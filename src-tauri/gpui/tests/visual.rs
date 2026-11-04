@@ -140,6 +140,19 @@ mod visual {
                 "cluster-overview" => act(&mut cx, handle, |window, cx| {
                     window.click("nav:Cluster Overview", cx)
                 }),
+                "rbac" => act(&mut cx, handle, |window, cx| window.click("nav:RBAC", cx)),
+                "workspaces" => act(&mut cx, handle, |window, cx| {
+                    window.click("header-workspaces", cx)
+                }),
+                "settings" => act(&mut cx, handle, |window, cx| {
+                    window.click("open-settings", cx)
+                }),
+                "palette" => {
+                    act(&mut cx, handle, |window, cx| {
+                        window.click("open-palette", cx)
+                    });
+                    act(&mut cx, handle, |window, cx| window.input("payments", cx));
+                }
                 other => panic!("unknown view: {other}"),
             }
             capture(&mut cx, handle, &out, &view);

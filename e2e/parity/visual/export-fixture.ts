@@ -14,6 +14,8 @@ import type {
 	NamespaceSummary,
 	PodExecSessionSummary,
 	PortForwardSessionSummary,
+	RbacAccessReviewResult,
+	RbacInspectionSummary,
 	ResourceDetailsFull,
 	ResourceEventSummary,
 	ResourceSummary,
@@ -80,5 +82,18 @@ const liveSessions = {
 const focus = resources.find((row) => row.kind === "Deployment" && row.name === "payments-api" && row.namespace === "payments");
 if (!focus) throw new Error("Browser mocks lack Deployment payments/payments-api");
 const detailTabs = await exportDetailTabs(client, resources, focus);
-await writeFile(output, JSON.stringify({ contexts, namespaces, kinds, resources: resources.map(rustShape), details, events, topology: rustTopology, namespaceTopologies, gitops: { argo, flux }, incidents, liveSessions, detailTabs }, null, "\t"));
+// The RBAC Cockpit per context, and the verifier's mock verdict per verb (an error for verbs it rejects).
+const rbac: Record<string, RbacInspectionSummary> = {};
+for (const context of contexts) {
+	const summary = await client.invoke<RbacInspectionSummary>("list_rbac_inspection", { clusterContext: context.name });
+	// Rust requires each coverage entry's namespace list, which the mocks omit.
+	rbac[context.name] = { ...summary, coverage: summary.coverage.map((entry) => ({ ...entry, namespaces: entry.namespaces ?? [] })) };
+}
+const rbacReviews: { verb: string; result?: RbacAccessReviewResult; error?: string }[] = [];
+for (const verb of ["get", "list", "watch", "create", "update", "patch", "delete", "impersonate"]) {
+	const request = { clusterContext, identity: { kind: "group", group: "system:authenticated" }, target: { kind: "resource", verb, resource: "pods", apiGroup: "", namespace: null, subresource: null, name: null } };
+	try { rbacReviews.push({ verb, result: await client.invoke<RbacAccessReviewResult>("review_rbac_access", { request }) }); }
+	catch (error) { rbacReviews.push({ verb, error: error instanceof Error ? error.message : String(error) }); }
+}
+await writeFile(output, JSON.stringify({ contexts, namespaces, kinds, resources: resources.map(rustShape), details, events, topology: rustTopology, namespaceTopologies, gitops: { argo, flux }, incidents, liveSessions, detailTabs, rbac, rbacReviews, kubeconfig: sources }, null, "\t"));
 console.log(`fixture: ${resources.length} resources, ${details.length} details -> ${output}`);

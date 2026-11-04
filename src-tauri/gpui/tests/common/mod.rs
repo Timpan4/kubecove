@@ -7,20 +7,22 @@ mod detail_tabs;
 use detail_tabs::DetailTabs;
 use kubecove_gpui::{
     backend::{
-        Backend, CLUSTER_KINDS, LiveSessions, LogStream, LogTarget, Read, Scope, ScopeResult,
+        Backend, CLUSTER_KINDS, KubeconfigSourcesSummary, LiveSessions, LogStream, LogTarget, Read,
+        Scope, ScopeResult,
     },
     gitops::GitOpsInventory,
 };
 use kubecove_lib::models::{
     AppError, AppErrorKind, ArgoApplicationSummary, ClusterContext, ClusterOperationResult,
     DeploymentRevision, FluxResourceSummary, IncidentCockpitSummary, NamespaceSummary,
-    PodExecSessionSummary, PortForwardSessionSummary, ResourceActionPreview, ResourceActionRequest,
-    ResourceActionState, ResourceActionStateRequest, ResourceDetailsFull, ResourceEventSummary,
-    ResourceSummary, ResourceTopology, YamlApplyPreview, YamlApplyRequest, YamlApplyResult,
-    YamlViewMode,
+    PodExecSessionSummary, PortForwardSessionSummary, RbacAccessReviewRequest,
+    RbacAccessReviewResult, RbacAccessReviewTarget, RbacInspectionSummary, ResourceActionPreview,
+    ResourceActionRequest, ResourceActionState, ResourceActionStateRequest, ResourceDetailsFull,
+    ResourceEventSummary, ResourceSummary, ResourceTopology, YamlApplyPreview, YamlApplyRequest,
+    YamlApplyResult, YamlViewMode,
 };
 use serde::Deserialize;
-use std::{collections::HashMap, path::Path};
+use std::{collections::HashMap, path::Path, sync::Mutex};
 
 #[derive(Deserialize)]
 pub struct Fixture {
@@ -40,6 +42,20 @@ pub struct Fixture {
     live_sessions: FixtureSessions,
     #[serde(rename = "detailTabs")]
     detail_tabs: DetailTabs,
+    rbac: HashMap<String, RbacInspectionSummary>,
+    #[serde(rename = "rbacReviews")]
+    rbac_reviews: Vec<RbacReview>,
+    /// The mocks keep kubeconfig settings in page memory, so writes persist
+    /// until the next scenario builds a fresh fixture.
+    kubeconfig: Mutex<KubeconfigSourcesSummary>,
+}
+
+/// `review_rbac_access` answers by verb in the browser mocks.
+#[derive(Deserialize)]
+struct RbacReview {
+    verb: String,
+    result: Option<RbacAccessReviewResult>,
+    error: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -80,6 +96,7 @@ impl Backend for Fixture {
     }
     fn resources(&self, scope: Scope, _: bool) -> Read<ScopeResult> {
         // Cluster-scoped kinds come from `cluster_resources`, as in the native backend.
+        // The mocks serve the same rows for every context, labeled with it.
         let resources = self
             .resources
             .iter()
@@ -87,7 +104,10 @@ impl Backend for Fixture {
             .filter(|row| {
                 scope.namespace.is_none() || row.namespace.as_deref() == scope.namespace.as_deref()
             })
-            .cloned()
+            .map(|row| ResourceSummary {
+                cluster: scope.context.clone(),
+                ..row.clone()
+            })
             .collect();
         let namespaces = self.namespaces.clone();
         Box::pin(async move {
@@ -207,5 +227,60 @@ impl Backend for Fixture {
     }
     fn apply_yaml(&self, request: YamlApplyRequest) -> Read<YamlApplyResult> {
         self.detail_tabs.apply_yaml(request)
+    }
+    fn namespaces(&self, _: String) -> Read<Vec<NamespaceSummary>> {
+        let namespaces = self.namespaces.clone();
+        Box::pin(async move { Ok(namespaces) })
+    }
+    fn rbac(&self, context: String) -> Read<RbacInspectionSummary> {
+        let found = self.rbac.get(&context).cloned();
+        Box::pin(async move {
+            found.ok_or_else(|| AppError::new("No fixture RBAC inspection", AppErrorKind::NotFound))
+        })
+    }
+    fn review_rbac(&self, request: RbacAccessReviewRequest) -> Read<RbacAccessReviewResult> {
+        let verb = match &request.target {
+            RbacAccessReviewTarget::Resource { verb, .. }
+            | RbacAccessReviewTarget::NonResource { verb, .. } => verb.trim().to_lowercase(),
+        };
+        let found = self
+            .rbac_reviews
+            .iter()
+            .find(|review| review.verb == verb)
+            .map(|review| (review.result.clone(), review.error.clone()));
+        Box::pin(async move {
+            match found {
+                Some((Some(result), _)) => Ok(result),
+                Some((None, Some(error))) => Err(AppError::new(error, AppErrorKind::Cluster)),
+                _ => Err(AppError::new(
+                    format!("No fixture review for {verb}"),
+                    AppErrorKind::NotFound,
+                )),
+            }
+        })
+    }
+    fn kubeconfig_sources(&self) -> Read<KubeconfigSourcesSummary> {
+        let sources = self.kubeconfig.lock().expect("kubeconfig lock").clone();
+        Box::pin(async move { Ok(sources) })
+    }
+    fn kubeconfig_writes_unavailable(&self) -> Option<&'static str> {
+        None
+    }
+    fn set_kubeconfig_env_var(&self, env_var: String) -> Read<KubeconfigSourcesSummary> {
+        let mut sources = self.kubeconfig.lock().expect("kubeconfig lock");
+        let trimmed = env_var.trim();
+        sources.kubeconfig_env_var = if trimmed.is_empty() {
+            "KUBECONFIG".to_owned()
+        } else {
+            trimmed.to_owned()
+        };
+        let sources = sources.clone();
+        Box::pin(async move { Ok(sources) })
+    }
+    fn set_show_kubeconfig_source_labels(&self, show: bool) -> Read<KubeconfigSourcesSummary> {
+        let mut sources = self.kubeconfig.lock().expect("kubeconfig lock");
+        sources.show_source_labels = show;
+        let sources = sources.clone();
+        Box::pin(async move { Ok(sources) })
     }
 }

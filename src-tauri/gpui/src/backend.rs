@@ -7,10 +7,11 @@ use kubecove_lib::{
     },
     models::{
         AppError, AppErrorKind, ClusterContext, ClusterOperationResult, DeploymentRevision,
-        IncidentCockpitSummary, NamespaceSummary, ResourceActionPreview, ResourceActionRequest,
-        ResourceActionState, ResourceActionStateRequest, ResourceDetailsFull, ResourceEventSummary,
-        ResourceSummary, ResourceTopology, WatchResourceKey, WatchResourceKind, YamlApplyPreview,
-        YamlApplyRequest, YamlApplyResult, YamlViewMode,
+        IncidentCockpitSummary, NamespaceSummary, RbacAccessReviewRequest, RbacAccessReviewResult,
+        RbacInspectionSummary, ResourceActionPreview, ResourceActionRequest, ResourceActionState,
+        ResourceActionStateRequest, ResourceDetailsFull, ResourceEventSummary, ResourceSummary,
+        ResourceTopology, WatchResourceKey, WatchResourceKind, YamlApplyPreview, YamlApplyRequest,
+        YamlApplyResult, YamlViewMode,
     },
     runtime::State,
 };
@@ -68,10 +69,26 @@ pub trait Backend: Send + Sync + 'static {
     fn prepare_yaml_apply(&self, request: YamlApplyRequest) -> Read<YamlApplyPreview>;
     /// `apply_yaml`: applies a draft whose dry run the user reviewed.
     fn apply_yaml(&self, request: YamlApplyRequest) -> Read<YamlApplyResult>;
+    /// `list_namespaces` for a context the workspace launcher scopes.
+    fn namespaces(&self, context: String) -> Read<Vec<NamespaceSummary>>;
+    /// `list_rbac_inspection` for the RBAC Cockpit.
+    fn rbac(&self, context: String) -> Read<RbacInspectionSummary>;
+    /// `review_rbac_access`: one SubjectAccessReview, run only on an explicit user action.
+    fn review_rbac(&self, request: RbacAccessReviewRequest) -> Read<RbacAccessReviewResult>;
+    /// `get_kubeconfig_sources`.
+    fn kubeconfig_sources(&self) -> Read<KubeconfigSourcesSummary>;
+    /// Why kubeconfig source writes would not persist, or `None` when they do.
+    fn kubeconfig_writes_unavailable(&self) -> Option<&'static str>;
+    /// `set_kubeconfig_env_var`.
+    fn set_kubeconfig_env_var(&self, env_var: String) -> Read<KubeconfigSourcesSummary>;
+    /// `set_show_kubeconfig_source_labels`.
+    fn set_show_kubeconfig_source_labels(&self, show: bool) -> Read<KubeconfigSourcesSummary>;
 }
 
 mod detail_reads;
+mod security;
 pub use detail_reads::{LogStream, LogTarget};
+pub use kubecove_lib::commands::kubeconfig::KubeconfigSourcesSummary;
 mod inventory;
 pub use inventory::CLUSTER_KINDS;
 
@@ -367,5 +384,38 @@ impl Backend for NativeBackend {
 
     fn apply_yaml(&self, request: YamlApplyRequest) -> Read<YamlApplyResult> {
         self.read(commands::apply_yaml(request))
+    }
+
+    fn namespaces(&self, context: String) -> Read<Vec<NamespaceSummary>> {
+        let store = self.store.clone();
+        self.read(async move {
+            commands::list_namespaces(context, None, State::new(&store))
+                .await
+                .map(Arc::unwrap_or_clone)
+        })
+    }
+
+    fn rbac(&self, context: String) -> Read<RbacInspectionSummary> {
+        self.read(security::rbac(context, self.cancellations.clone()))
+    }
+
+    fn review_rbac(&self, request: RbacAccessReviewRequest) -> Read<RbacAccessReviewResult> {
+        self.read(security::review(request, self.cancellations.clone()))
+    }
+
+    fn kubeconfig_sources(&self) -> Read<KubeconfigSourcesSummary> {
+        self.read(security::kubeconfig_sources())
+    }
+
+    fn kubeconfig_writes_unavailable(&self) -> Option<&'static str> {
+        Some(security::KUBECONFIG_WRITES)
+    }
+
+    fn set_kubeconfig_env_var(&self, _: String) -> Read<KubeconfigSourcesSummary> {
+        self.read(security::unsaved())
+    }
+
+    fn set_show_kubeconfig_source_labels(&self, _: bool) -> Read<KubeconfigSourcesSummary> {
+        self.read(security::unsaved())
     }
 }

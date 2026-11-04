@@ -18,6 +18,9 @@ impl Inspector {
         if self.page == Page::Incidents {
             self.load_incidents(cx);
         }
+        if self.page == Page::Rbac {
+            self.load_rbac(cx);
+        }
     }
 }
 

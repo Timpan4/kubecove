@@ -11,10 +11,14 @@ mod live_sessions;
 mod log_buffer;
 mod logs;
 pub mod model;
+mod palette;
+mod rbac;
+mod settings;
 pub mod theme;
 mod topology;
 mod ui;
 mod unified_diff;
+mod workspaces;
 
 pub use inspector::Inspector;
 

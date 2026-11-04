@@ -64,6 +64,23 @@ async function show(page: Page, view: View) {
 			await page.getByRole("treeitem").filter({ has: page.getByText("Port Forwards", { exact: true }) }).click();
 			await page.getByText("Active local tunnels with guarded stop controls.", { exact: true }).waitFor();
 			return;
+		case "rbac":
+			await page.getByRole("treeitem", { name: /^(?:Expand RBAC )?RBAC$/ }).click();
+			await page.getByText("Verify exact action", { exact: true }).waitFor();
+			return;
+		case "workspaces":
+			await page.getByRole("button", { name: "Open workspaces", exact: true }).click();
+			await page.getByRole("checkbox", { name: "payments", exact: true }).waitFor();
+			return;
+		case "settings":
+			await page.getByRole("button", { name: "Open settings", exact: true }).click();
+			await page.getByRole("heading", { level: 2, name: "General", exact: true }).waitFor();
+			return;
+		case "palette":
+			await page.getByRole("button", { name: "Search views, namespaces, and resources", exact: true }).click();
+			await page.getByPlaceholder("Search views, namespaces, and resources...").fill("payments");
+			await page.getByRole("option").first().waitFor();
+			return;
 	}
 }
 
