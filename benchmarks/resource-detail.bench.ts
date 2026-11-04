@@ -19,7 +19,7 @@ import { sortIncidentEvents } from "@/features/resource-detail/incident-events";
 import { buildIncidentTimeline } from "@/features/resource-detail/incident-timeline";
 import {
 	groupIncidentTimelineByDay,
-	incidentTimelineTime,
+	incidentTimelineTimeFormatter,
 	incidentTimelineTitle,
 } from "@/features/resource-detail/incident-timeline-labels";
 import {
@@ -354,7 +354,7 @@ assert.deepEqual(
 assert.equal(boundaryDayGroups[1]?.items.length, 2);
 assert.equal(boundaryDayGroups[2]?.items.length, 1);
 assert.equal(
-	invalidTimeTimelineItem && incidentTimelineTime(invalidTimeTimelineItem, "utc"),
+	invalidTimeTimelineItem && incidentTimelineTimeFormatter("utc")(invalidTimeTimelineItem),
 	"No time",
 );
 assert(
@@ -447,9 +447,10 @@ describe("F13 F14 F15 resource detail workloads with folded F11 and F24", () => 
 				logLines: parsedLogLines,
 			});
 			const groups = groupIncidentTimelineByDay(nextTimeline, "utc");
+			const formatTime = incidentTimelineTimeFormatter("utc");
 			for (const item of nextTimeline) {
 				incidentTimelineTitle(item, resource.kind);
-				incidentTimelineTime(item, "utc");
+				formatTime(item);
 			}
 		const malformedRows = getConditionRows(malformedStatus);
 		const malformedContainerRows = getContainerStatusRows(
@@ -486,7 +487,7 @@ describe("F13 F14 F15 resource detail workloads with folded F11 and F24", () => 
 		groupIncidentTimelineByDay(edgeTimeline, "utc");
 		for (const item of edgeTimeline) {
 			incidentTimelineTitle(item, resource.kind);
-			incidentTimelineTime(item, "utc");
+			formatTime(item);
 		}
 			void groups;
 		},
@@ -494,9 +495,10 @@ describe("F13 F14 F15 resource detail workloads with folded F11 and F24", () => 
 
 	benchmark("F15 retained timeline grouping, titles, and timestamps", () => {
 		groupIncidentTimelineByDay(timeline, "utc");
+		const formatTime = incidentTimelineTimeFormatter("utc");
 		for (const item of timeline) {
 			incidentTimelineTitle(item, resource.kind);
-			incidentTimelineTime(item, "utc");
+			formatTime(item);
 		}
 	});
 });
