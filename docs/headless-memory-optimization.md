@@ -210,6 +210,61 @@ and error paths directly against kube-rs source. One allocator research task
 remained blocked by a browser approval and was cancelled; the parent supplied
 authoritative-source research and Linux experiments.
 
+## 2026-11-04 follow-up: retained allocator pages and metrics decoding
+
+### Live evidence
+
+wall-e ran image `ghcr.io/timpan4/kubecove:0.13.0`. `kubectl top` reported the
+server container at 1,040 MiB and the Cloudflare Tunnel sidecar at 44 MiB. The
+server process had 1,061 MiB anonymous RSS, 19 threads, 16 allowed CPUs, no
+allocator environment variables, and twelve full 64 MiB glibc arenas. Its logs
+showed one OIDC session, from 09:32 to 09:45 UTC on 2026-11-03. It made about
+220 Argo Application inspector calls, 114 topology calls, 112 scope calls and
+14 metrics calls, then expired. The process stayed at that size through the
+next 35 idle hours. The cluster had 83 Pods and 90 ReplicaSets.
+
+### Mechanism
+
+The local profile replays `e2e/specs/profile/memory.e2e.ts` stages against the
+large loopback memory fixture (10,000 Pods) with headless Chromium. Server
+footprint is VmRSS plus VmSwap, because the profiling host swaps to zram.
+A jemalloc heap profile of the baseline put the peak live heap at 224 MB, 170 MB
+of it in `list_resource_metrics`, and 293 KB live at exit.
+
+A diagnostic preload shim (local profiling only) wrote glibc `malloc_info`, then
+called `malloc_trim(0)`. With the session still open, the 267 MiB baseline
+footprint held 56 MiB of allocations and 200 MiB of free arena pages. After the
+session ended, 1 MiB was in use. `malloc_trim(0)` took 1.5 to 2.9 ms. Retained
+free pages, not live data, dominate an idle server.
+
+### Changes
+
+- `list_resource_metrics` decodes PodMetrics and NodeMetrics into a projection
+  of name, namespace, timestamp, containers and usage. The owner rollup decodes
+  only Pod and ReplicaSet metadata and skips spec and status. A test serves full
+  objects through the kube fixture and compares the result with complete
+  decoding, for all-namespace and named-namespace scopes.
+- The headless server calls `malloc_trim(0)` when a session's state drops.
+  A guard declared as the last field of the session owner runs after the
+  owner's caches are freed. It compiles only for Linux glibc targets.
+- jemalloc with `background_thread:true` was measured as an alternative:
+  111.5 MiB at the idle launcher and 139.9 MiB after the session ended,
+  both worse than glibc with the trim.
+
+### Measurements
+
+Large fixture, release builds, same driver. Baseline is `a0c5891` (v0.13.2);
+two baseline runs are shown because retention varied between them.
+
+| Server footprint, MiB | Baseline run 1 | Baseline run 2 | After |
+| --- | ---: | ---: | ---: |
+| Peak resident (VmHWM) | 336 | 447 | 271 |
+| Idle 30 s, session open | 322 | 422 | 253 |
+| 25 s after the session expired | 322 | 422 | 80 |
+
+The idle footprint with a session open is still allocator retention. It stays
+until the session ends, because this change adds no timer or idle threshold.
+
 ## Other findings and limits
 
 Channel history is bounded by message count, not bytes. Long log lines during

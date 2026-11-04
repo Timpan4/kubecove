@@ -25,6 +25,8 @@ pub struct Owner {
     pub request_gate: RwLock<()>,
     pub socket_changed: Notify,
     pub socket: Mutex<SocketState>,
+    /// Declared last: fields drop in order, so this runs after the session's caches are freed.
+    _release_heap: ReleaseHeapOnDrop,
 }
 
 /// The session's browser socket. Each connect bumps the generation, so a
@@ -130,6 +132,7 @@ impl Sessions {
             request_gate: RwLock::new(()),
             socket_changed: Notify::new(),
             socket: Mutex::new(SocketState::default()),
+            _release_heap: ReleaseHeapOnDrop,
         });
         let info = self.info(&owner);
         owners.push(Arc::clone(&owner));
@@ -266,6 +269,22 @@ impl Sessions {
         }
         self.retired_caches.retire(&owner.backend.live_store);
         result
+    }
+}
+
+/// glibc keeps the pages a session's large responses freed in its per-thread
+/// arenas for the life of the process, so an idle server stayed at its peak
+/// (1 GiB on one deployment). Returning them when the session's state is gone
+/// brings an idle server back near its startup footprint.
+struct ReleaseHeapOnDrop;
+
+impl Drop for ReleaseHeapOnDrop {
+    fn drop(&mut self) {
+        #[cfg(all(target_os = "linux", target_env = "gnu"))]
+        // SAFETY: malloc_trim takes no pointers and only releases glibc's own free pages.
+        unsafe {
+            libc::malloc_trim(0);
+        }
     }
 }
 

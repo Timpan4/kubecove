@@ -2202,6 +2202,7 @@ dependencies = [
  "jsonwebtoken",
  "kubecove",
  "kubecove-mcp",
+ "libc",
  "mime_guess",
  "openidconnect",
  "prometheus-client",

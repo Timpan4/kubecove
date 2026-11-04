@@ -45,6 +45,10 @@ prometheus-client = "=0.25.2"
 # Matches the backend workspace's pin.
 sysinfo = { version = "=0.40.1", default-features = false, features = ["system"] }
 
+[target.'cfg(all(target_os = "linux", target_env = "gnu"))'.dependencies]
+# Matches the backend workspace's pin.
+libc = "=0.2.191"
+
 [dev-dependencies]
 tower = { version = "=0.5.3", features = ["util"] }
 tokio = { version = "=1.54.1", features = ["test-util"] }
