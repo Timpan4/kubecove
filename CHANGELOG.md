@@ -3,6 +3,11 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.13.1 - 2026-11-04
+### Improved
+
+- Index-based topology build, hoisted Intl formatters, and per-row sort keys (#641).
+
 ## 0.13.0 - 2026-11-03
 ### Added
 

@@ -67,7 +67,7 @@ unused_async = "allow"
 
 [package]
 name = "kubecove"
-version = "0.13.0"
+version = "0.13.1"
 description = "A context-first desktop workspace for Kubernetes operations"
 license = "AGPL-3.0-or-later"
 authors = ["timpan"]
