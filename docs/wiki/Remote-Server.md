@@ -1,6 +1,6 @@
 # Run KubeCove on a remote host
 
-`kubecove-server` runs KubeCove on a remote Linux or macOS host that already has kubeconfig files and network access to your clusters. You use it from a browser or from the KubeCove desktop app. The default setup is one OS user on a remote host, reached through an SSH local forward. Operators can also run the same binary as a container in Kubernetes, including k0s; see the [container build and Kubernetes example](https://github.com/Timpan4/kubecove/tree/main/deploy). KubeCove does not install an agent or deploy itself into a cluster.
+`kubecove-server` runs KubeCove on a remote Linux host that already has kubeconfig files and network access to your clusters. Releases publish Linux archives and images; on macOS, build the server from source. You use it from a browser or from the KubeCove desktop app. The default setup is one OS user on a remote host, reached through an SSH local forward. Operators can also run the same binary as a container in Kubernetes, including k0s; see the [container build and Kubernetes example](https://github.com/Timpan4/kubecove/tree/main/deploy). KubeCove does not install an agent or deploy itself into a cluster.
 
 ## Before you start
 
