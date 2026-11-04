@@ -88,6 +88,7 @@ Run through [docs/handbook/pr-checklist.md](docs/handbook/pr-checklist.md) befor
 - Prefer E2E tests (`e2e/specs/`, see `docs/development-workflow.md`) as the primary way to verify features. Each E2E run must end with a verifiable, repeatable artifact under `e2e/artifacts/` (WDIO spec report, cluster diagnostics, failure screenshots).
 - If a system must be tested in isolation (pure parsing, diff, topology, retry, or security-boundary logic), first write down every way it could fail, then write the code and tests against those failure modes.
 - Delete unit tests that would not catch a real bug the E2E suite misses.
+- Equal tests: the Svelte and GPUI clients share their UI acceptance tests in `e2e/parity/scenarios/`, so neither UI drifts from the other. A UI change in either client lands with a shared scenario that both drivers pass in `bun run e2e:parity`. Every view in `e2e/parity/visual/views.ts` needs a scenario whose ID starts with `<view>.`, and a new action needs a handler in both `e2e/parity/web.ts` and `src-tauri/gpui/tests/parity.rs`. `e2e/parity/contract.test.ts` enforces both. Native-only tests in `src-tauri/gpui/tests/native.rs` cover what the browser mocks cannot express, such as read errors, cancellation and stale reads. See `e2e/parity/README.md`.
 
 ## Performance Defaults
 

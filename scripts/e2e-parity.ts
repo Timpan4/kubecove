@@ -1,7 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { startIdentity, stopGroup } from "../.agents/skills/verify-kubecove/scripts/processes";
-import { parseContract, validateReports } from "../e2e/parity/contract";
+import { loadContract, requireViewCoverage, validateReports } from "../e2e/parity/contract";
+import { VIEWS } from "../e2e/parity/visual/views";
 import { runWeb } from "../e2e/parity/web";
 
 const artifacts = resolve("e2e/artifacts", `parity-${crypto.randomUUID()}`);
@@ -15,14 +16,20 @@ process.once("SIGINT", interrupt);
 process.once("SIGTERM", interrupt);
 let failure: string | undefined;
 try {
-	const contract = parseContract(JSON.parse(await readFile("e2e/parity/inspection.json", "utf8")));
+	const contract = await loadContract();
+	requireViewCoverage(contract, VIEWS);
+	// The GPUI driver renders the same browser-mock responses the web driver reads.
+	const fixture = join(artifacts, "fixture.json");
+	const exported = Bun.spawn(["bun", "e2e/parity/visual/export-fixture.ts", fixture], { stdout: "inherit", stderr: "inherit" });
+	if (await exported.exited !== 0) throw new Error("Fixture export failed");
 	try { await runWeb(contract, artifacts, controller.signal); } catch (error) { failure = `Web driver: ${String(error)}`; }
 	controller.signal.throwIfAborted();
 	const workspace = resolve("src-tauri/gpui");
-	const env = { ...process.env, CARGO_TARGET_DIR: join(workspace, "target"), CARGO_BUILD_BUILD_DIR: join(workspace, "build"), KUBECOVE_E2E_ARTIFACTS: artifacts, CARGO_BUILD_JOBS: process.env.CARGO_BUILD_JOBS ?? "1" };
+	const env = { ...process.env, CARGO_TARGET_DIR: join(workspace, "target"), CARGO_BUILD_BUILD_DIR: join(workspace, "build"), KUBECOVE_E2E_ARTIFACTS: artifacts, KUBECOVE_PARITY_FIXTURE: fixture, CARGO_BUILD_JOBS: process.env.CARGO_BUILD_JOBS ?? "1" };
 	delete env.ARGV0; delete env.KUBECONFIG;
+	// The GPUI test platform renders without a display.
 	const cargo = ["cargo", "test", "--manifest-path", join(workspace, "Cargo.toml"), "--test", "parity", "--", "--nocapture"];
-	const command = process.platform === "linux" ? ["xvfb-run", "-a", "nice", ...cargo] : cargo;
+	const command = process.platform === "win32" ? cargo : ["nice", ...cargo];
 	const child = Bun.spawn(command, { env, detached: true, stdout: "pipe", stderr: "pipe" });
 	const identity = startIdentity(child.pid);
 	const output = Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);

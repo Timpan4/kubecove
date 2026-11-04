@@ -1,10 +1,34 @@
+import { readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
+
 type Identity = { kind: string; name: string; namespace: string };
 export type Step =
 	| { action: "openResources" | "showYaml" | "closeDetail" | "expectDetailClosed" | "expectEmpty" | "refresh" }
 	| { action: "search" | "expectSearch"; value: string }
 	| ({ action: "expectResource" | "openResource" | "expectDetail" } & Identity)
-	| { action: "expectYaml"; contains: string[] };
-export type Contract = { scenarios: { id: string; title: string; steps: Step[] }[] };
+	| { action: "expectClusterResource" | "expectNoClusterResource"; kind: string; name: string }
+	| { action: "expectYaml"; contains: string[] }
+	| { action: "openPage"; page: string }
+	| { action: "showTab"; tab: string }
+	| { action: "filterEvents"; filter: "All" | "Warnings" | "Normal" }
+	| { action: "expectEvent"; index: number; reason: string; message: string }
+	| { action: "expectEventCount" | "expectLiveSessionCount"; count: number }
+	| { action: "filterIncidents"; filter: string }
+	| { action: "expectIncidentGuide"; title: string }
+	| { action: "expectGitOpsCount"; label: string; count: number }
+	| { action: "expectPortForward"; title: string };
+export type Scenario = { id: string; title: string; steps: Step[] };
+export type Contract = { scenarios: Scenario[] };
+
+/** Every action both drivers must implement; `contract.test.ts` checks each driver handles each one. */
+export const ACTIONS = [
+	"openResources", "showYaml", "closeDetail", "expectDetailClosed", "expectEmpty", "refresh", "search", "expectSearch",
+	"expectResource", "openResource", "expectDetail", "expectClusterResource", "expectNoClusterResource", "expectYaml", "openPage", "showTab", "filterEvents",
+	"expectEvent", "expectEventCount", "expectLiveSessionCount", "filterIncidents", "expectIncidentGuide", "expectGitOpsCount", "expectPortForward",
+] as const satisfies readonly Step["action"][];
+type Missing = Exclude<Step["action"], (typeof ACTIONS)[number]>;
+const allActionsListed: Missing extends never ? true : Missing = true;
+void allActionsListed;
 
 function object(value: unknown): Record<string, unknown> {
 	if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Expected object");
@@ -14,6 +38,10 @@ function string(value: unknown): string {
 	if (typeof value !== "string" || !value.trim()) throw new Error("Expected nonempty string");
 	return value;
 }
+function count(value: unknown): number {
+	if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw new Error("Expected a nonnegative integer");
+	return value;
+}
 function step(value: unknown): Step {
 	const item = object(value);
 	switch (item.action) {
@@ -21,9 +49,21 @@ function step(value: unknown): Step {
 			return { action: item.action };
 		case "search": case "expectSearch": return { action: item.action, value: string(item.value) };
 		case "expectResource": case "openResource": case "expectDetail": return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace) };
+		case "expectClusterResource": case "expectNoClusterResource": return { action: item.action, kind: string(item.kind), name: string(item.name) };
 		case "expectYaml":
 			if (!Array.isArray(item.contains) || !item.contains.length) throw new Error("Expected YAML fragments");
 			return { action: item.action, contains: item.contains.map(string) };
+		case "openPage": return { action: item.action, page: string(item.page) };
+		case "showTab": return { action: item.action, tab: string(item.tab) };
+		case "filterEvents":
+			if (item.filter !== "All" && item.filter !== "Warnings" && item.filter !== "Normal") throw new Error("Expected an event filter");
+			return { action: item.action, filter: item.filter };
+		case "expectEvent": return { action: item.action, index: count(item.index), reason: string(item.reason), message: string(item.message) };
+		case "expectEventCount": case "expectLiveSessionCount": return { action: item.action, count: count(item.count) };
+		case "filterIncidents": return { action: item.action, filter: string(item.filter) };
+		case "expectIncidentGuide": return { action: item.action, title: string(item.title) };
+		case "expectGitOpsCount": return { action: item.action, label: string(item.label), count: count(item.count) };
+		case "expectPortForward": return { action: item.action, title: string(item.title) };
 		default: throw new Error(`Unknown action: ${String(item.action)}`);
 	}
 }
@@ -40,6 +80,31 @@ export function parseContract(value: unknown): Contract {
 		return { id, title: string(scenario.title), steps: scenario.steps.map(step) };
 	}) };
 }
+
+export const SCENARIO_DIR = "e2e/parity/scenarios";
+
+/** Reads every `*.json` scenario file in name order, as the GPUI driver does. IDs must be unique across files. */
+export async function loadContract(directory = SCENARIO_DIR): Promise<Contract> {
+	const files = (await readdir(directory)).filter((name) => name.endsWith(".json")).sort();
+	if (!files.length) throw new Error(`No scenario files in ${directory}`);
+	const scenarios: Scenario[] = [];
+	const ids = new Set<string>();
+	for (const file of files) {
+		for (const scenario of parseContract(JSON.parse(await readFile(join(directory, file), "utf8"))).scenarios) {
+			if (ids.has(scenario.id)) throw new Error(`Duplicate scenario: ${scenario.id} in ${file}`);
+			ids.add(scenario.id);
+			scenarios.push(scenario);
+		}
+	}
+	return { scenarios };
+}
+
+/** The equal-tests rule: every view the GPUI client renders needs a scenario whose ID starts with `<view>.`. */
+export function requireViewCoverage(contract: Contract, views: readonly string[]): void {
+	const missing = views.filter((view) => !contract.scenarios.some((scenario) => scenario.id.startsWith(`${view}.`)));
+	if (missing.length) throw new Error(`Views without shared parity scenarios: ${missing.join(", ")}`);
+}
+
 export function validateReports(contract: Contract, reports: unknown[]): void {
 	const drivers = new Set<string>();
 	for (const value of reports) {

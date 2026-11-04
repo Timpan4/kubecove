@@ -499,10 +499,13 @@ export const helmReleases: HelmReleaseSummary[] = [
 	},
 ];
 
+// Sessions carry the mock kubeconfig source so the Live Sessions page, which
+// shows only sessions from the active source, lists them.
 export const mockPortForwards: PortForwardSessionSummary[] = [
 	{
 		id: "mock-pf-grafana",
 		clusterContext: "mock-dev",
+		kubeconfigEnvVar: source.sourceKey,
 		namespace: "monitoring",
 		targetKind: "Service",
 		targetName: "grafana",
@@ -519,6 +522,7 @@ export const mockPortForwards: PortForwardSessionSummary[] = [
 	{
 		id: "mock-pf-payments",
 		clusterContext: "mock-dev",
+		kubeconfigEnvVar: source.sourceKey,
 		namespace: "payments",
 		targetKind: "Pod",
 		targetName: "payments-api-7d9c9b7f8d-k2r9p",
@@ -538,6 +542,7 @@ export const mockExecSessions: PodExecSessionSummary[] = [
 	{
 		id: "mock-exec-payments",
 		clusterContext: "mock-dev",
+		kubeconfigEnvVar: source.sourceKey,
 		namespace: "payments",
 		podName: "payments-api-7d9c9b7f8d-k2r9p",
 		container: "api",

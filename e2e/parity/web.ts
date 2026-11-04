@@ -42,8 +42,42 @@ async function action(page: Page, step: Step) {
 			});
 			if (await page.getByText("Refresh failed:", { exact: false }).count()) throw new Error("Refresh failed");
 			await page.keyboard.press("Escape"); break;
+		case "expectClusterResource": case "expectNoClusterResource": {
+			const row = page.locator("tr").filter({ has: page.getByRole("button", { name: `Open resource ${step.name}`, exact: true }) }).filter({ has: page.getByText(step.kind, { exact: true }) });
+			// Absence is checked after a preceding step waited for the new scope's rows.
+			if (step.action === "expectNoClusterResource") { if (await row.count()) throw new Error(`${step.kind} ${step.name} is still listed`); }
+			else await row.first().waitFor({ state: "visible" });
+			break;
+		}
+		case "openPage": {
+			// Rows with children also name their expand toggle.
+			const label = literal(step.page);
+			await page.getByRole("treeitem", { name: new RegExp(`^(?:(?:Expand|Collapse) ${label} )?${label}$`) }).click();
+			break;
+		}
+		case "showTab": await page.getByRole("tab", { name: step.tab, exact: true }).click(); break;
+		case "filterEvents": await page.getByRole("radiogroup", { name: "Filter events by type" }).getByRole("radio", { name: step.filter, exact: true }).click(); break;
+		case "expectEventCount":
+			if (step.count) await eventRows(page).nth(step.count - 1).waitFor();
+			await eventRows(page).nth(step.count).waitFor({ state: "detached" });
+			break;
+		case "expectEvent":
+			await eventRows(page).nth(step.index).filter({ has: page.getByText(step.message, { exact: true }) }).filter({ has: page.getByText(step.reason, { exact: true }) }).waitFor();
+			break;
+		case "expectLiveSessionCount": await page.getByRole("button", { name: `Open live sessions (${step.count} active)`, exact: true }).waitFor(); break;
+		case "filterIncidents": await page.locator('[aria-label="Filter incident signals"]').getByRole("button", { name: new RegExp(`^${literal(step.filter)} \\d+$`) }).click(); break;
+		case "expectIncidentGuide": await page.getByRole("heading", { level: 3, name: step.title, exact: true }).waitFor(); break;
+		case "expectGitOpsCount":
+			await page.locator("div.justify-between").filter({ has: page.getByText(step.label, { exact: true }) }).locator("strong").filter({ hasText: new RegExp(`^${step.count}$`) }).waitFor();
+			break;
+		case "expectPortForward": await page.getByRole("cell").getByText(step.title, { exact: true }).waitFor(); break;
+		default: { const unhandled: never = step; throw new Error(`Unhandled parity step: ${JSON.stringify(unhandled)}`); }
 	}
 }
+
+/** Event rows in the Events tab: each starts with its `<time>`. */
+function eventRows(page: Page) { return page.locator("div.grid:has(> time[datetime])"); }
+function literal(text: string) { return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
 export async function runWeb(contract: Contract, artifacts: string, signal: AbortSignal) {
 	const results: { id: string; status: "passed" | "failed"; error?: string }[] = [];

@@ -1,5 +1,23 @@
 import { describe, expect, test } from "bun:test";
-import { parseContract, validateReports } from "./contract";
+import { readFile } from "node:fs/promises";
+import { ACTIONS, loadContract, parseContract, requireViewCoverage, validateReports } from "./contract";
+import { VIEWS } from "./visual/views";
+
+describe("equal GPUI and Svelte tests", () => {
+	test("every native view has a shared scenario", async () => {
+		requireViewCoverage(await loadContract(), VIEWS);
+		expect(() => requireViewCoverage({ scenarios: [] }, ["overview"])).toThrow("overview");
+	});
+	test("both drivers handle every shared action", async () => {
+		const web = await readFile("e2e/parity/web.ts", "utf8");
+		const gpui = await readFile("src-tauri/gpui/tests/parity.rs", "utf8");
+		const unhandled = ACTIONS.flatMap((action) => [
+			...(web.includes(`case "${action}"`) ? [] : [`web ${action}`]),
+			...(gpui.includes(`"${action}" =>`) ? [] : [`gpui ${action}`]),
+		]);
+		expect(unhandled).toEqual([]);
+	});
+});
 
 const contract = { fixture: "browser-mocks", context: "mock-dev", scenarios: [{ id: "one", title: "One", steps: [{ action: "openResources" }] }] };
 const report = (driver: string, scenarios: unknown[]) => ({ driver, scenarios });

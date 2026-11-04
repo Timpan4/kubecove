@@ -355,39 +355,7 @@ fn a_local_draft_has_a_diff_and_requires_explicit_discard(cx: &mut TestAppContex
 }
 
 #[gpui_kit::test]
-fn the_cluster_overview_swaps_the_resource_scope(cx: &mut TestAppContext) {
-    let handle = open(cx, Arc::new(Controlled::default()));
-    cx.update_window(handle, |_, window, cx| {
-        window.click("nav:Cluster Overview", cx)
-    })
-    .unwrap();
-    cx.run_until_parked();
-    cx.update_window(handle, |_, window, cx| {
-        window.render_frame(cx);
-        assert!(window.find("resource:Node::dev-control-plane").visible());
-        assert!(
-            window
-                .try_find("resource:Deployment:payments:payments-api")
-                .is_none()
-        );
-        window.click("nav:Workloads", cx);
-        window.render_frame(cx);
-        assert!(
-            window
-                .find("resource:Deployment:payments:payments-api")
-                .visible()
-        );
-        assert!(
-            window
-                .try_find("resource:Node::dev-control-plane")
-                .is_none()
-        );
-    })
-    .unwrap();
-}
-
-#[gpui_kit::test]
-fn events_feed_the_incident_summary_timeline_and_events_tab(cx: &mut TestAppContext) {
+fn warning_events_feed_the_incident_summary_and_timeline(cx: &mut TestAppContext) {
     let handle = open(cx, Arc::new(Controlled::default()));
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
@@ -403,54 +371,15 @@ fn events_feed_the_incident_summary_timeline_and_events_tab(cx: &mut TestAppCont
         );
         // Only warnings reach the timeline; BackOff gets its presentation title.
         assert!(window.find("incident-timeline").visible());
-        window.click("show-events", cx);
-        window.render_frame(cx);
-        // Warnings sort first.
-        assert_eq!(
-            window.find("event:0").label(),
-            Some("BackOff Back-off restarting failed container app")
-        );
-        assert!(window.try_find("event:1").is_some());
-        window.click("events-filter-normal", cx);
-        window.render_frame(cx);
-        assert_eq!(
-            window.find("event:0").label(),
-            Some("Pulled Image present.")
-        );
-        assert!(window.try_find("event:1").is_none());
     })
     .unwrap();
 }
 
-/// Failure modes: the guide keeps a selection the filter hid, and sessions
-/// from another context or kubeconfig source leak into the page.
+/// Failure mode: sessions from another context or kubeconfig source leak into
+/// the page. The browser mocks hold sessions from one source only.
 #[gpui_kit::test]
-fn incidents_follow_the_filter_and_sessions_stay_in_scope(cx: &mut TestAppContext) {
+fn port_forwards_stay_in_the_workspace_scope(cx: &mut TestAppContext) {
     let handle = open(cx, Arc::new(Controlled::default()));
-    cx.update_window(handle, |_, window, cx| window.click("nav:Incidents", cx))
-        .unwrap();
-    cx.run_until_parked();
-    let title = |cx: &mut TestAppContext| {
-        cx.update_window(handle, |_, window, cx| {
-            window.render_frame(cx);
-            window
-                .find("incident-guide-title")
-                .label()
-                .map(str::to_owned)
-        })
-        .unwrap()
-    };
-    // Degraded sorts first; its live status becomes the first evidence.
-    assert_eq!(title(cx).as_deref(), Some("Status: CrashLoopBackOff"));
-    cx.update_window(handle, |_, window, cx| {
-        window.click("incident-filter:Needs attention", cx)
-    })
-    .unwrap();
-    cx.run_until_parked();
-    assert_eq!(
-        title(cx).as_deref(),
-        Some("payments-api signal: needs attention")
-    );
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
         // The header counts every host session; the page filters to this workspace.

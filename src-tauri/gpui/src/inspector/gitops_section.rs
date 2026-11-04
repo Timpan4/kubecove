@@ -6,7 +6,9 @@ use crate::gitops::GitOpsInventory;
 use crate::theme::{Palette, Tokens};
 use crate::ui;
 use gpui_kit::TestSupportExt;
-use gpui_kit::{AnyElement, Context, Div, FontWeight, Hsla, Task, div, prelude::*, px};
+use gpui_kit::{
+    AnyElement, Context, Div, FontWeight, Hsla, SharedString, Task, div, prelude::*, px,
+};
 
 #[derive(Default)]
 pub(super) struct GitOpsState {
@@ -25,8 +27,11 @@ enum GitOpsLoad {
 }
 
 /// `flex items-center justify-between py-2 text-xs` with a `<strong>` count.
-fn count(label: &str, value: usize, tone: Option<Hsla>) -> Div {
+fn count(label: &str, value: usize, tone: Option<Hsla>) -> impl IntoElement + use<> {
     div()
+        .id(SharedString::from(format!("gitops-count:{label}")))
+        .test_support()
+        .aria_label(value.to_string())
         .flex()
         .items_center()
         .justify_between()

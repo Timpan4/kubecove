@@ -73,7 +73,7 @@ cargo clippy --locked --manifest-path src-tauri/gpui/Cargo.toml --all-targets --
 bun run e2e:parity
 ```
 
-The parity command exercises both production interfaces with controlled backend responses using the same [acceptance scenarios](../e2e/parity/inspection.json). It retains reports and screenshots when available under `e2e/artifacts/`. This is UI integration evidence, separate from packaged-window and real Kubernetes checks. Unsupported native product areas remain listed in the [parity guide](../e2e/parity/README.md).
+The parity command exercises both production interfaces with controlled backend responses using the same [acceptance scenarios](../e2e/parity/scenarios/) and the same exported browser-mock data. It retains reports and screenshots when available under `e2e/artifacts/`. This is UI integration evidence, separate from packaged-window and real Kubernetes checks. Unsupported native product areas remain listed in the [parity guide](../e2e/parity/README.md).
 
 When a user-level Cargo configuration sets a shared build directory, override both `CARGO_TARGET_DIR` and `CARGO_BUILD_BUILD_DIR` for isolated builds. The target directory alone does not override Cargo's intermediate build directory.
 
