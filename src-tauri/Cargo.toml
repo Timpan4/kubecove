@@ -2,7 +2,7 @@
 members = [".", "crates/*"]
 default-members = ["."]
 # Keep server feature resolution, lockfile and target directory independent of desktop.
-exclude = ["server"]
+exclude = ["server", "gpui"]
 resolver = "2"
 
 [workspace.dependencies]

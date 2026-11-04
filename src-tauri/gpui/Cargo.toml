@@ -1,0 +1,34 @@
+[workspace]
+resolver = "2"
+
+[package]
+name = "kubecove-gpui"
+version = "0.13.0"
+edition = "2024"
+rust-version = "1.99"
+license = "AGPL-3.0-or-later"
+publish = false
+
+[dependencies]
+gpui-kit = { version = "=0.9.0", default-features = false, features = ["component", "assets", "tree-sitter-yaml"] }
+kubecove = { path = "..", default-features = false }
+tokio = { version = "=1.54.1", features = ["rt-multi-thread", "sync", "time"] }
+similar = "=3.2.1"
+chrono = "=0.4.45"
+serde_json = "=1.0.154"
+
+[dev-dependencies]
+gpui-kit = { version = "=0.9.0", default-features = false, features = ["test-support"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+
+[[test]]
+name = "visual"
+harness = false
+
+# Dependency debug info made up 846 MB of the 1 GB visual test binary, and
+# linking it peaked at 4.7 GB RSS. KubeCove's own crates keep full debug info.
+[profile.dev.package."*"]
+debug = false
+
+[profile.dev.package.kubecove]
+debug = true

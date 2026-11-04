@@ -61,6 +61,22 @@ cargo clippy --locked --workspace --manifest-path src-tauri/Cargo.toml --all-tar
 
 For a backend-only check, add `--no-default-features`; for E2E source isolation, use the shell's `--features e2e`. The default package remains the desktop shell so existing Tauri build and packaging commands keep their output paths. See [the crate map](../src-tauri/crates/README.md) and [build measurements](rust-build-measurements.md).
 
+## GPUI native client development
+
+The opt-in native client is a separate Cargo workspace under `src-tauri/gpui/`. It uses GPUI Kit and calls the shared backend with Tauri features disabled. The Svelte and Tauri application builds keep their existing dependencies. See [ADR 0029](decisions/0029-gpui-native-client-and-feature-parity.md) and the [native client guide](../src-tauri/gpui/README.md) for scope and platform prerequisites.
+
+```sh
+cargo run --locked --manifest-path src-tauri/gpui/Cargo.toml
+cargo check --locked --manifest-path src-tauri/gpui/Cargo.toml
+cargo fmt --manifest-path src-tauri/gpui/Cargo.toml --all -- --check
+cargo clippy --locked --manifest-path src-tauri/gpui/Cargo.toml --all-targets -- -D warnings
+bun run e2e:parity
+```
+
+The parity command exercises both production interfaces with controlled backend responses using the same [acceptance scenarios](../e2e/parity/inspection.json). It retains reports and screenshots when available under `e2e/artifacts/`. This is UI integration evidence, separate from packaged-window and real Kubernetes checks. Unsupported native product areas remain listed in the [parity guide](../e2e/parity/README.md).
+
+When a user-level Cargo configuration sets a shared build directory, override both `CARGO_TARGET_DIR` and `CARGO_BUILD_BUILD_DIR` for isolated builds. The target directory alone does not override Cargo's intermediate build directory.
+
 ## Headless Server Development
 
 The server is a separate Rust binary under `src-tauri/server`; it uses the shared backend without enabling the desktop feature. Build the browser runtime before compiling the server so the binary embeds the generated `dist/` assets:
