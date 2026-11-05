@@ -113,5 +113,10 @@ for (const verb of ["get", "list", "watch", "create", "update", "patch", "delete
 }
 const sessionControls = await exportSessionControls(client, resources);
 const argoConnected = await exportArgo(client, gitops.applications);
-await writeFile(output, JSON.stringify({ argoConnected, sessionControls, liveEvents: LIVE_EVENTS, contexts, namespaces, kinds, resources: resources.map(rustShape), details, events, topology: rustTopology, networkTopology, metrics, appUsage, namespaceTopologies, gitops, helm, incidents, liveSessions, detailTabs, rbac, rbacReviews, kubeconfig: sources }, null, "\t"));
+const secretReveals = [];
+for (const row of resources.filter((row) => row.kind === "Secret")) {
+    const request = { clusterContext: row.cluster, name: row.name, namespace: row.namespace, key: "token" };
+    secretReveals.push({ request, encoded: await client.invoke<string>("reveal_secret_data_value", request) });
+}
+await writeFile(output, JSON.stringify({ argoConnected, secretReveals, sessionControls, liveEvents: LIVE_EVENTS, contexts, namespaces, kinds, resources: resources.map(rustShape), details, events, topology: rustTopology, networkTopology, metrics, appUsage, namespaceTopologies, gitops, helm, incidents, liveSessions, detailTabs, rbac, rbacReviews, kubeconfig: sources }, null, "\t"));
 console.log(`fixture: ${resources.length} resources, ${details.length} details -> ${output}`);

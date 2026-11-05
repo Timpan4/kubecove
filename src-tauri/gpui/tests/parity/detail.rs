@@ -69,7 +69,9 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             assert_eq!(actual, expected);
         }
         "openResources" => {
-            window.click("open-resources", cx);
+            if window.try_find("resources").is_none() {
+                window.click("open-resources", cx);
+            }
             window.render_frame(cx);
             assert!(window.find("resources").visible());
         }

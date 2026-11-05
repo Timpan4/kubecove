@@ -20,6 +20,7 @@ mod delivery_summary;
 mod delivery_ui;
 mod detail;
 mod details_tab;
+mod diagnostics;
 mod events;
 mod events_tab;
 mod exec_buffer;
@@ -69,6 +70,7 @@ mod resources;
 mod revisions_tab;
 mod saved_forward_form;
 mod scope;
+mod secret_data;
 mod session_actions;
 mod settings_integrations;
 mod settings_kubeconfig;
@@ -80,6 +82,7 @@ mod table;
 mod timeline;
 mod usage;
 mod yaml_apply;
+mod yaml_lens;
 mod yaml_marks;
 mod yaml_tab;
 mod yaml_view;
@@ -125,6 +128,7 @@ pub(crate) enum Page {
 /// out like the Svelte `WorkspaceShell`.
 pub struct Inspector {
     backend: Arc<dyn Backend>,
+    timings: crate::diagnostics::Timings,
     persisted: crate::preferences::Document,
     persistence_error: Option<String>,
     workspace_name: SharedString,
@@ -217,6 +221,7 @@ impl Inspector {
                 .unwrap_or(true)
         });
         let mut this = Self {
+            timings: Default::default(),
             backend,
             persisted: Default::default(),
             persistence_error: None,
@@ -362,6 +367,7 @@ impl Inspector {
         self.rebuild_map();
         let request = self.detail_request.clone();
         let read = self.backend.details(resource);
+        let read = self.timings.measure("get_resource_details", read);
         self.detail_task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {

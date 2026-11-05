@@ -12,6 +12,7 @@ impl Inspector {
         self.context_task.take();
         self.load = Load::Loading;
         let read = self.backend.contexts();
+        let read = self.timings.measure("list_kube_contexts", read);
         self.context_task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
@@ -73,6 +74,7 @@ impl Inspector {
         self.warnings.clear();
         self.filter(cx);
         let read = self.application_resources_read(refresh);
+        let read = self.timings.measure("list_resource_scope", read);
         self.scope_task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
@@ -128,6 +130,7 @@ impl Inspector {
         } else {
             self.backend.topology(self.scope.clone())
         };
+        let read = self.timings.measure("list_resource_topology", read);
         self.topology_task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
@@ -154,6 +157,7 @@ impl Inspector {
             self.live.scope_loading = true;
             self.live.refresh_error = None;
             let read = self.application_resources_read(true);
+            let read = self.timings.measure("list_resource_scope", read);
             let request = self.request.clone();
             self.scope_task = Some(cx.spawn_in(window, async move |this, cx| {
                 let result = read.await;

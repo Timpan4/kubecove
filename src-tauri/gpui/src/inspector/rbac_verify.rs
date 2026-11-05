@@ -207,6 +207,7 @@ impl Inspector {
         verifier.request = Rc::new(());
         let token = verifier.request.clone();
         let read = self.backend.review_rbac(request);
+        let read = self.timings.measure("review_rbac", read);
         self.rbac.verifier.task = Some(cx.spawn(async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {

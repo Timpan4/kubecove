@@ -1,0 +1,421 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "yaml.secret-reveal-reset",
+      "title": "Secret values require reveal and clear after closing or switching resources",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "search",
+          "value": "payments-api-secrets"
+        },
+        {
+          "action": "openResource",
+          "kind": "Secret",
+          "namespace": "payments",
+          "name": "payments-api-secrets"
+        },
+        {
+          "action": "showYaml"
+        },
+        {
+          "action": "expectSecretValue",
+          "visible": false
+        },
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "toggleSetting",
+          "setting": "Redact secrets"
+        },
+        {
+          "action": "closeSettings"
+        },
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "search",
+          "value": "payments-api-secrets"
+        },
+        {
+          "action": "openResource",
+          "kind": "Secret",
+          "namespace": "payments",
+          "name": "payments-api-secrets"
+        },
+        {
+          "action": "showYaml"
+        },
+        {
+          "action": "expectSecretValue",
+          "visible": false
+        },
+        {
+          "action": "revealSecretValue"
+        },
+        {
+          "action": "expectSecretValue",
+          "visible": true
+        },
+        {
+          "action": "hideSecretValue"
+        },
+        {
+          "action": "expectSecretValue",
+          "visible": false
+        },
+        {
+          "action": "revealSecretValue"
+        },
+        {
+          "action": "closeDetail"
+        },
+        {
+          "action": "openResource",
+          "kind": "Secret",
+          "namespace": "payments",
+          "name": "payments-api-secrets"
+        },
+        {
+          "action": "showYaml"
+        },
+        {
+          "action": "expectSecretValue",
+          "visible": false
+        },
+        {
+          "action": "revealSecretValue"
+        },
+        {
+          "action": "openPalette",
+          "via": "button"
+        },
+        {
+          "action": "searchPalette",
+          "value": "payments-api"
+        },
+        {
+          "action": "choosePaletteResource",
+          "kind": "Deployment",
+          "name": "payments-api",
+          "namespace": "payments"
+        },
+        {
+          "action": "showYaml"
+        },
+        {
+          "action": "openPalette",
+          "via": "button"
+        },
+        {
+          "action": "searchPalette",
+          "value": "payments-api-secrets"
+        },
+        {
+          "action": "choosePaletteResource",
+          "kind": "Secret",
+          "namespace": "payments",
+          "name": "payments-api-secrets"
+        },
+        {
+          "action": "showYaml"
+        },
+        {
+          "action": "expectSecretValue",
+          "visible": false
+        }
+      ]
+    },
+    {
+      "id": "yaml.secret-preference-reset",
+      "title": "Changing redaction preference hides revealed values",
+      "steps": [
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "toggleSetting",
+          "setting": "Redact secrets"
+        },
+        {
+          "action": "closeSettings"
+        },
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "search",
+          "value": "payments-api-secrets"
+        },
+        {
+          "action": "openResource",
+          "kind": "Secret",
+          "namespace": "payments",
+          "name": "payments-api-secrets"
+        },
+        {
+          "action": "showYaml"
+        },
+        {
+          "action": "revealSecretValue"
+        },
+        {
+          "action": "expectSecretValue",
+          "visible": true
+        },
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "toggleSetting",
+          "setting": "Redact secrets"
+        },
+        {
+          "action": "closeSettings"
+        },
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "search",
+          "value": "payments-api-secrets"
+        },
+        {
+          "action": "openResource",
+          "kind": "Secret",
+          "namespace": "payments",
+          "name": "payments-api-secrets"
+        },
+        {
+          "action": "showYaml"
+        },
+        {
+          "action": "expectSecretValue",
+          "visible": false
+        }
+      ]
+    },
+    {
+      "id": "yaml-edit.error-lens",
+      "title": "Invalid YAML marks its line and clears when fixed",
+      "steps": [
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "YAML"
+        },
+        {
+          "action": "toggleSetting",
+          "setting": "YAML error lens"
+        },
+        {
+          "action": "closeSettings"
+        },
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "search",
+          "value": "payments-api"
+        },
+        {
+          "action": "openResource",
+          "kind": "Deployment",
+          "name": "payments-api",
+          "namespace": "payments"
+        },
+        {
+          "action": "showYaml"
+        },
+        {
+          "action": "editYaml"
+        },
+        {
+          "action": "replaceYamlDraft",
+          "value": "apiVersion: apps/v1\nkind: Deployment\nmetadata: ]\n"
+        },
+        {
+          "action": "expectYamlLens",
+          "line": 0
+        },
+        {
+          "action": "cancelYamlEdit"
+        },
+        {
+          "action": "closeDetail"
+        },
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "YAML"
+        },
+        {
+          "action": "toggleSetting",
+          "setting": "YAML error lens"
+        },
+        {
+          "action": "closeSettings"
+        },
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "search",
+          "value": "payments-api"
+        },
+        {
+          "action": "openResource",
+          "kind": "Deployment",
+          "name": "payments-api",
+          "namespace": "payments"
+        },
+        {
+          "action": "showYaml"
+        },
+        {
+          "action": "editYaml"
+        },
+        {
+          "action": "replaceYamlDraft",
+          "value": "apiVersion: apps/v1\nkind: Deployment\nmetadata: ]\n"
+        },
+        {
+          "action": "expectYamlLens",
+          "line": 3
+        },
+        {
+          "action": "replaceYamlDraft",
+          "value": "apiVersion: apps/v1\nkind: Deployment\nmetadata: {}\n"
+        },
+        {
+          "action": "expectYamlLens",
+          "line": 0
+        }
+      ]
+    },
+    {
+      "id": "settings-diagnostics.measured-timings",
+      "title": "Diagnostics records command durations and clears the report",
+      "steps": [
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "Diagnostics"
+        },
+        {
+          "action": "toggleSetting",
+          "setting": "Enable diagnostics"
+        },
+        {
+          "action": "closeSettings"
+        },
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "search",
+          "value": "payments-api"
+        },
+        {
+          "action": "openResource",
+          "kind": "Deployment",
+          "namespace": "payments",
+          "name": "payments-api"
+        },
+        {
+          "action": "showYaml"
+        },
+        {
+          "action": "closeDetail"
+        },
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "Diagnostics"
+        },
+        {
+          "action": "refreshLatencyReport"
+        },
+        {
+          "action": "expectLatencyTiming",
+          "command": "get_resource_yaml"
+        },
+        {
+          "action": "clearLatencyReport"
+        },
+        {
+          "action": "expectLatencyEmpty"
+        },
+        {
+          "action": "toggleSetting",
+          "setting": "Enable diagnostics"
+        },
+        {
+          "action": "closeSettings"
+        },
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "search",
+          "value": "payments-api"
+        },
+        {
+          "action": "openResource",
+          "kind": "Deployment",
+          "namespace": "payments",
+          "name": "payments-api"
+        },
+        {
+          "action": "showYaml"
+        },
+        {
+          "action": "closeDetail"
+        },
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "Diagnostics"
+        },
+        {
+          "action": "refreshLatencyReport"
+        },
+        {
+          "action": "expectLatencyEmpty"
+        }
+      ]
+    },
+    {
+      "id": "settings.documentation-opener",
+      "title": "Documentation requests the KubeCove wiki without opening a browser in fixtures",
+      "steps": [
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "openDocumentation"
+        },
+        {
+          "action": "expectDocumentationRequest",
+          "url": "https://github.com/Timpan4/kubecove/wiki"
+        }
+      ]
+    }
+  ]
+}

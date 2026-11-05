@@ -83,6 +83,9 @@ impl Inspector {
         self.launcher.transfer.documents =
             document.workspace_documents.clone().into_iter().collect();
         self.persisted = document;
+        self.refresh_diagnostics(false, cx);
+        self.timings
+            .set_enabled(self.persisted.preferences.debug_mode_enabled);
         if self.usage.visible != self.persisted.preferences.show_usage_footer {
             self.toggle_usage(cx);
         }

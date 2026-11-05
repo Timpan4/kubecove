@@ -34,6 +34,10 @@ use std::{collections::HashMap, path::Path, sync::Mutex};
 pub struct Fixture {
     #[serde(rename = "argoConnected")]
     argo: argo::Argo,
+    #[serde(rename = "secretReveals")]
+    secret_reveals: Vec<serde_json::Value>,
+    #[serde(skip)]
+    documentation_requests: Mutex<Vec<String>>,
     #[serde(skip)]
     preferences: kubecove_gpui::preferences::Store,
     #[serde(skip)]
@@ -103,6 +107,10 @@ struct FixtureSessions {
 }
 
 impl Fixture {
+    #[allow(dead_code)]
+    pub fn documentation_requests(&self) -> Vec<String> {
+        self.documentation_requests.lock().unwrap().clone()
+    }
     // The visual harness shares the fixture but does not replay acceptance scripts.
     #[allow(dead_code)]
     pub fn replay_sessions(&self, script: &str) {
@@ -119,6 +127,27 @@ impl Fixture {
 }
 
 impl Backend for Fixture {
+    fn open_documentation(&self) -> Read<()> {
+        self.documentation_requests
+            .lock()
+            .unwrap()
+            .push(kubecove_gpui::backend::adapters::DOCUMENTATION_URL.into());
+        Box::pin(async { Ok(()) })
+    }
+    fn reveal_secret(&self, resource: ResourceSummary, key: String) -> Read<String> {
+        let request = serde_json::json!({"clusterContext": resource.cluster, "name": resource.name, "namespace": resource.namespace, "key": key});
+        let found = self
+            .secret_reveals
+            .iter()
+            .find(|entry| entry["request"] == request)
+            .and_then(|entry| entry["encoded"].as_str())
+            .map(str::to_owned);
+        Box::pin(async move {
+            found.ok_or_else(|| {
+                AppError::new("No matching Secret reveal fixture", AppErrorKind::NotFound)
+            })
+        })
+    }
     fn load_preferences(&self) -> Result<kubecove_gpui::preferences::Document, AppError> {
         self.preferences.load()
     }

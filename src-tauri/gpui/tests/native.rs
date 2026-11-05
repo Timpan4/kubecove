@@ -45,6 +45,7 @@ use std::sync::{
 #[derive(Default)]
 struct Controlled {
     argo: argo::ArgoControls,
+    secret: adapters::SecretControls,
     sessions: session_controls::SessionControls,
     live: live_data::LiveControls,
     fail: AtomicBool,
@@ -83,6 +84,9 @@ impl Backend for Controlled {
     ) -> Read<ArgoApplicationInspector> {
         self.argo.inspect(request)
     }
+    fn reveal_secret(&self, _: ResourceSummary, _: String) -> Read<String> {
+        self.secret.reveal()
+    }
     fn start_forward(
         &self,
         request: kubecove_lib::models::PortForwardRequest,
@@ -120,6 +124,7 @@ impl Backend for Controlled {
         let pending = self.pending.lock().unwrap().take();
         let pod = self.sessions.enabled.load(Ordering::SeqCst);
         let argo = self.argo.enabled.load(Ordering::SeqCst);
+        let secret = self.secret.enabled.load(Ordering::SeqCst);
         Box::pin(async move {
             if let Some(pending) = pending {
                 let _ = pending.await;
@@ -142,7 +147,12 @@ impl Backend for Controlled {
                         argo::resource(&scope.context, "other-app"),
                     ]
                 } else {
-                    vec![if pod {
+                    vec![if secret {
+                        ResourceSummary {
+                            kind: "Secret".into(),
+                            ..resource(&scope.context)
+                        }
+                    } else if pod {
                         ResourceSummary {
                             kind: "Pod".into(),
                             ..resource(&scope.context)
@@ -156,10 +166,15 @@ impl Backend for Controlled {
         })
     }
     fn details(&self, summary: ResourceSummary) -> Read<ResourceDetailsFull> {
+        let yaml = if summary.kind == "Secret" {
+            adapters::SECRET_YAML
+        } else {
+            YAML
+        };
         Box::pin(async move {
             Ok(ResourceDetailsFull {
                 summary,
-                yaml: YAML.into(),
+                yaml: yaml.into(),
                 metadata: json!({"name":"payments-api","namespace":"payments"}),
                 status: None,
             })
@@ -251,8 +266,15 @@ impl Backend for Controlled {
     fn execute_action(&self, request: ResourceActionRequest) -> Read<ClusterOperationResult> {
         self.detail.execute_action(request)
     }
-    fn resource_yaml(&self, _: ResourceSummary, _: YamlViewMode) -> Read<String> {
-        Box::pin(async { Ok(YAML.into()) })
+    fn resource_yaml(&self, resource: ResourceSummary, _: YamlViewMode) -> Read<String> {
+        Box::pin(async move {
+            Ok(if resource.kind == "Secret" {
+                adapters::SECRET_YAML
+            } else {
+                YAML
+            }
+            .into())
+        })
     }
     fn prepare_yaml_apply(&self, request: YamlApplyRequest) -> Read<YamlApplyPreview> {
         self.detail.prepare_yaml_apply(request)
@@ -561,3 +583,5 @@ fn port_forwards_stay_in_the_workspace_scope(cx: &mut TestAppContext) {
     })
     .unwrap();
 }
+#[path = "native/adapters.rs"]
+mod adapters;

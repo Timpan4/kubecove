@@ -9,6 +9,12 @@ export type Step =
     | { action: "expectArgoReview"; operation: string; name: string; namespace: string; transport: string }
     | { action: "expectArgoText"; text: string }
     | { action: "argoDocument"; view: "Desired" | "Live" | "Changes"; contains: string }
+    | { action: "cancelYamlEdit" }
+    | { action: "revealSecretValue" | "hideSecretValue" | "refreshLatencyReport" | "clearLatencyReport" | "expectLatencyEmpty" | "openDocumentation" }
+    | { action: "expectSecretValue"; visible: boolean }
+    | { action: "expectYamlLens"; line: number }
+    | { action: "expectLatencyTiming"; command: string }
+    | { action: "expectDocumentationRequest"; url: string }
     | { action: "configurePreset"; label: string; context: string; namespace: string; service: string; remote: string; local: string }
     | { action: "presetControl"; operation: "add" | "save" | "edit" | "start" | "remove" | "absent"; label?: string }
     | { action: "replaySessions"; script: "reconnecting" | "failed" | "foreign-output" }
@@ -137,6 +143,8 @@ export type Contract = { scenarios: Scenario[] };
 /** Every action both drivers must implement; `contract.test.ts` checks each driver handles each one. */
 export const ACTIONS = [
     "connectArgoProfile", "disconnectArgoProfile", "confirmArgoReview", "cancelArgoReview", "reviewArgoOperation", "expectArgoReview", "expectArgoText", "argoDocument",
+    "cancelYamlEdit",
+    "revealSecretValue", "hideSecretValue", "expectSecretValue", "expectYamlLens", "refreshLatencyReport", "clearLatencyReport", "expectLatencyEmpty", "expectLatencyTiming", "openDocumentation", "expectDocumentationRequest",
     "configurePreset", "presetControl",
     "replaySessions", "confirmExecLeave",
     "configureForward", "forwardControl", "expectForwardState", "execControl", "expectExecState",
@@ -194,6 +202,14 @@ function step(value: unknown): Step {
         case "expectArgoReview": return { action: item.action, operation: string(item.operation), name: string(item.name), namespace: string(item.namespace), transport: string(item.transport) };
         case "expectArgoText": return { action: item.action, text: string(item.text) };
         case "argoDocument": return { action: item.action, view: oneOf(["Desired", "Live", "Changes"], item.view, "an Argo document"), contains: string(item.contains) };
+        case "cancelYamlEdit": return { action: item.action };
+        case "revealSecretValue": case "hideSecretValue": case "refreshLatencyReport": case "clearLatencyReport": case "expectLatencyEmpty": case "openDocumentation": return { action: item.action };
+        case "expectSecretValue":
+            if (typeof item.visible !== "boolean") throw new Error("Expected Secret visibility");
+            return { action: item.action, visible: item.visible };
+        case "expectYamlLens": return { action: item.action, line: count(item.line) };
+        case "expectLatencyTiming": return { action: item.action, command: string(item.command) };
+        case "expectDocumentationRequest": return { action: item.action, url: string(item.url) };
         case "fillSettingsField": return { action: item.action, field: oneOf(["Server URL", "Server token"], item.field, "a remote field"), value: string(item.value) };
         case "clickSettingsButton": return { action: item.action, label: string(item.label) };
         case "expectSettingsText": case "expectNoSettingsText": case "expectRuntimeEndpoint": return { action: item.action, value: string(item.value) };

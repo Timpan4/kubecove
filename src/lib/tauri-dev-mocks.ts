@@ -427,6 +427,7 @@ function builtInYamlFor(args: MockArgs): string {
 
 function yamlFor(args: MockArgs): string {
 	const row = resourceFromArgs(args);
+    if (row.kind === "Secret") return stringify({ apiVersion: "v1", kind: "Secret", metadata: { name: row.name, namespace: row.namespace }, data: { token: "REDACTED" } });
     if (row.namespace === "payments" && row.kind === "Pod" && row.name.startsWith("payments-api-")) return stringify({ apiVersion: "v1", kind: "Pod", metadata: { name: row.name, namespace: row.namespace, labels: { app: "payments-api" } }, spec: { containers: [{ name: "app", image: "example/payments-api", ports: [{ containerPort: 8080 }] }, { name: "sidecar", image: "example/sidecar" }] } });
     if (row.namespace === "payments" && row.kind === "Service" && row.name === "payments-api") return stringify({ apiVersion: "v1", kind: "Service", metadata: { name: row.name, namespace: row.namespace }, spec: { selector: { app: "payments-api" }, ports: [{ name: "http", port: 80, targetPort: 8080, protocol: "TCP" }] } });
 	const app = row.kind === "Application" ? argoApps.find((candidate) => candidate.name === row.name) : undefined;

@@ -368,6 +368,10 @@ pub(super) fn yaml_tab(
         .flex_1()
         .min_h_0()
         .gap(px(12.))
+        .when(
+            summary.kind == "Secret" && !preferences.redact_secrets,
+            |pane| pane.child(super::secret_data::view(detail, cx)),
+        )
         .child(
             div()
                 .flex()
@@ -491,6 +495,7 @@ pub(super) fn yaml_tab(
         // editor needs a definite height, so longer YAML scrolls inside it.
         .child(
             div()
+                .relative()
                 .h(px(if editing { 420. } else { 520. }))
                 .flex_none()
                 .rounded(px(8.))
@@ -502,6 +507,15 @@ pub(super) fn yaml_tab(
                         .aria_label("Resource YAML")
                         .readonly(!editing || applying)
                         .size_full(),
+                )
+                .when_some(
+                    detail
+                        .lens
+                        .as_ref()
+                        .filter(|_| preferences.yaml_error_lens_enabled),
+                    |pane, lens| {
+                        pane.child(super::yaml_lens::overlay(detail.editor.read(cx), lens))
+                    },
                 ),
         )
 }

@@ -36,6 +36,15 @@ pub struct ScopeResult {
 /// Both production commands and controlled UI-test responses use this seam.
 /// Dropping a pending read must cancel its host-owned task.
 pub trait Backend: Send + Sync + 'static {
+    fn diagnostics(&self, _enabled: bool, _clear: bool) -> Read<adapters::BackendDiagnostics> {
+        Box::pin(async { Ok(Default::default()) })
+    }
+    fn open_documentation(&self) -> Read<()> {
+        settings_integrations::unavailable("Documentation opener unavailable")
+    }
+    fn reveal_secret(&self, _resource: ResourceSummary, _key: String) -> Read<String> {
+        settings_integrations::unavailable("Secret reveal unavailable")
+    }
     fn load_preferences(&self) -> Result<crate::preferences::Document, AppError> {
         Ok(Default::default())
     }
@@ -294,6 +303,7 @@ pub trait Backend: Send + Sync + 'static {
     fn argo_inspector(&self, application: ArgoApplicationRef) -> Read<ArgoApplicationInspector>;
 }
 
+pub mod adapters;
 mod argo;
 mod live_data;
 pub use argo::{ArgoConnect, ArgoInspection};
@@ -407,6 +417,15 @@ fn supported(kind: &str) -> Result<(), AppError> {
 }
 
 impl Backend for NativeBackend {
+    fn diagnostics(&self, enabled: bool, clear: bool) -> Read<adapters::BackendDiagnostics> {
+        adapters::diagnostics(self, enabled, clear)
+    }
+    fn open_documentation(&self) -> Read<()> {
+        adapters::open_documentation(self)
+    }
+    fn reveal_secret(&self, resource: ResourceSummary, key: String) -> Read<String> {
+        adapters::reveal_secret(self, resource, key)
+    }
     fn load_preferences(&self) -> Result<crate::preferences::Document, AppError> {
         self.preferences.load()
     }

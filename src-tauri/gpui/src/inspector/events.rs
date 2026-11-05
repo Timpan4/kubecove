@@ -82,6 +82,7 @@ impl Inspector {
         };
         let uid = detail.data.metadata["uid"].as_str().map(str::to_owned);
         let read = self.backend.events(detail.data.summary.clone(), uid);
+        let read = self.timings.measure("events", read);
         let request = self.detail_request.clone();
         detail.events.load = EventsLoad::Pending;
         detail.events.task = Some(cx.spawn_in(window, async move |this, cx| {

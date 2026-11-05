@@ -102,6 +102,7 @@ impl Inspector {
             .name
             .update(cx, |input, cx| input.set_value("", window, cx));
         let read = self.backend.contexts();
+        let read = self.timings.measure("list_kube_contexts", read);
         self.launcher.tasks[0] = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
@@ -129,6 +130,7 @@ impl Inspector {
         state.discovery = Discovery::Loading;
         state.discovered.clear();
         let read = self.backend.namespaces(effective);
+        let read = self.timings.measure("namespaces", read);
         state.tasks[1] = Some(cx.spawn(async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {

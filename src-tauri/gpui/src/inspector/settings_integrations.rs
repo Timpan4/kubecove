@@ -66,6 +66,7 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) {
         let read = self.backend.remote_status();
+        let read = self.timings.measure("remote_status", read);
         self.settings.integrations.remote_task =
             Some(cx.spawn_in(window, async move |this, cx| {
                 let result = read.await;
@@ -97,6 +98,7 @@ impl Inspector {
             return;
         }
         let read = self.backend.connect_remote(url, token);
+        let read = self.timings.measure("connect_remote", read);
         // Clear the credential immediately, including failed attempts.
         state
             .token
@@ -124,6 +126,7 @@ impl Inspector {
             return;
         }
         let read = self.backend.disconnect_remote();
+        let read = self.timings.measure("disconnect_remote", read);
         let state = &mut self.settings.integrations;
         state.remote_busy = true;
         state.remote_error = None;
@@ -243,6 +246,7 @@ impl Inspector {
             return;
         }
         let read = self.backend.check_updates();
+        let read = self.timings.measure("check_updates", read);
         let state = &mut self.settings.integrations;
         state.update_busy = true;
         state.update_error = None;

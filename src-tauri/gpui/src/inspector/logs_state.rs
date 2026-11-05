@@ -463,6 +463,7 @@ impl Inspector {
         logs.status = LogStatus::Connecting;
         logs.message = "Starting log stream".into();
         let read = backend.log_stream(target);
+        let read = self.timings.measure("log_stream", read);
         logs.task = Some(cx.spawn_in(window, async move |this, cx| {
             let mut stream: LogStream = match read.await {
                 Ok(stream) => stream,

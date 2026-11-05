@@ -39,7 +39,7 @@ impl Inspector {
         };
         let widget = if let Some(checked) = checked {
             switch(row.title, checked)
-                .on_click(cx.listener(move |this, _, _, cx| {
+                .on_click(cx.listener(move |this, _, window, cx| {
                     if row.title == "Skip change review"
                         && !this.persisted.preferences.skip_change_review
                     {
@@ -119,6 +119,20 @@ impl Inspector {
                     }
                     if row.title == "Show Custom Resources" {
                         this.discover_kinds(cx);
+                    }
+                    if row.title == "Enable diagnostics" {
+                        this.refresh_diagnostics(false, cx);
+                        this.timings
+                            .set_enabled(this.persisted.preferences.debug_mode_enabled);
+                    }
+                    if row.title == "Redact secrets" {
+                        if let super::detail::Detail::Ready(detail) = &mut this.detail {
+                            detail.secrets = Default::default();
+                        }
+                        this.reload_yaml_view(window, cx);
+                    }
+                    if row.title == "YAML error lens" {
+                        this.refresh_yaml_lens(cx);
                     }
                     this.filter(cx);
                     this.save_preferences(cx);

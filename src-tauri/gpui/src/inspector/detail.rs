@@ -92,9 +92,11 @@ pub(super) struct ResourceDetail {
     pub data: ResourceDetailsFull,
     pub editor: Entity<EditorState>,
     pub marks: YamlMarks,
+    pub lens: Option<super::yaml_lens::Lens>,
     pub tab: DetailTab,
     pub yaml: YamlApply,
     pub yaml_view: super::yaml_view::YamlView,
+    pub secrets: super::secret_data::SecretData,
     pub events: EventsState,
     pub logs: Option<LogsState>,
     pub revisions: Option<RevisionsState>,
@@ -105,6 +107,7 @@ pub(super) struct ResourceDetail {
     pub actions: Option<ActionsState>,
     pub forward: super::forward_tab::ForwardForm,
     _draft_changed: Subscription,
+    _editor_changed: Subscription,
 }
 
 impl ResourceDetail {
@@ -122,10 +125,12 @@ impl ResourceDetail {
                 .default_value(data.yaml.clone())
         });
         let marks = YamlMarks::new(&editor, cx);
+        let editor_changed = cx.observe(&editor, |_, _, cx| cx.notify());
         let _draft_changed = cx.subscribe_in(&editor, window, |this, _, event, _, cx| {
             if !matches!(event, InputEvent::Change) {
                 return;
             }
+            this.refresh_yaml_lens(cx);
             if let Detail::Ready(detail) = &mut this.detail
                 && detail.yaml.draft_changed()
             {
@@ -141,6 +146,8 @@ impl ResourceDetail {
             cx,
         );
         Self {
+            lens: None,
+            secrets: Default::default(),
             forward,
             opened_health: data.summary.health_assessment.clone(),
             data,
@@ -155,6 +162,7 @@ impl ResourceDetail {
             argo: None,
             actions: None,
             _draft_changed,
+            _editor_changed: editor_changed,
         }
     }
 
@@ -166,6 +174,7 @@ impl ResourceDetail {
 impl Inspector {
     fn set_tab(&mut self, tab: DetailTab, window: &mut Window, cx: &mut Context<Self>) {
         if let Detail::Ready(detail) = &mut self.detail {
+            detail.secrets = Default::default();
             detail.tab = tab;
         }
         match tab {

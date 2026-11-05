@@ -5,47 +5,21 @@ import { chromium, type Locator, type Page } from "playwright-core";
 import { parse } from "yaml";
 import { chromeExecutable, freePort, readinessTimeoutMs, startIdentity, stopGroup, waitFor } from "../../.agents/skills/verify-kubecove/scripts/processes";
 import type { Contract, Step } from "./contract";
+import { adapterAction } from "./web-adapters";
+import { argoAction } from "./web-argo";
 import { liveSessionAction } from "./web-live-sessions";
 
 export async function action(page: Page, step: Step) {
 	const search = page.getByRole("textbox", { name: "Search resources" });
 	const close = page.getByRole("button", { name: "Close resource details" });
 	switch (step.action) {
-        case "connectArgoProfile": {
-            await (step.surface === "page" ? page.getByRole("button", { name: "Argo CD connection", exact: true }) : page.getByRole("tabpanel").getByRole("button", { name: "Connect Argo CD", exact: true })).click();
-            const dialog = page.getByRole("dialog", { name: "Argo CD connection" });
-            await dialog.getByRole("radio", { name: "External URL", exact: true }).click();
-            await dialog.getByLabel("Argo CD server URL", { exact: true }).fill(step.url);
-            await dialog.getByLabel("Token", { exact: true }).fill("parity-fixture-token");
-            await dialog.getByRole("button", { name: "Connect", exact: true }).click();
-            await dialog.getByRole("button", { name: "Disconnect", exact: true }).waitFor();
-            await page.keyboard.press("Escape");
-            break;
-        }
-        case "disconnectArgoProfile": {
-            await page.getByRole("tabpanel").getByRole("button", { name: "Manage connection", exact: true }).click();
-            const dialog = page.getByRole("dialog", { name: "Argo CD connection" });
-            await dialog.getByRole("button", { name: "Disconnect", exact: true }).click();
-            await dialog.getByRole("button", { name: "Reconnect", exact: true }).waitFor();
-            await page.keyboard.press("Escape");
-            break;
-        }
-        case "reviewArgoOperation": await page.getByRole("tabpanel").getByRole("button", { name: step.operation, exact: true }).click(); break;
-        case "confirmArgoReview": await page.getByRole("button", { name: "Confirm Argo CD operation", exact: true }).click(); break;
-        case "cancelArgoReview": await page.getByRole("button", { name: "Cancel review", exact: true }).click(); break;
-        case "expectArgoReview": {
-            const review = page.getByRole("region", { name: "Review Argo CD operation" });
-            await review.getByText(`${step.operation} ${step.transport} mock-dev Application ${step.namespace} ${step.name}`, { exact: true }).waitFor();
-            break;
-        }
-        case "expectArgoText": await page.getByRole("tabpanel").getByText(step.text, { exact: false }).first().waitFor(); break;
-        case "argoDocument":
-            await page.getByRole("tabpanel").getByRole("radio", { name: step.view, exact: true }).click();
-            await page.getByRole("tabpanel").getByText(step.contains, { exact: false }).first().waitFor();
-            break;
+        case "connectArgoProfile": case "disconnectArgoProfile": case "reviewArgoOperation": case "confirmArgoReview": case "cancelArgoReview": case "expectArgoReview": case "expectArgoText": case "argoDocument":
+            await argoAction(page, step); break;
+        case "cancelYamlEdit": case "revealSecretValue": case "hideSecretValue": case "expectSecretValue": case "expectYamlLens": case "refreshLatencyReport": case "clearLatencyReport": case "expectLatencyEmpty": case "expectLatencyTiming": case "openDocumentation": case "expectDocumentationRequest":
+            await adapterAction(page, step); break;
         case "expectWorkspaceExport": {
-            await page.waitForFunction(`() => import('/src/lib/settings-integration-mocks.ts').then(m => !!m.workspaceExportMock())`);
-            const content = await page.evaluate("import('/src/lib/settings-integration-mocks.ts').then(m => m.workspaceExportMock())");
+            await loadSettingsMocks(page);
+            const content = await (await page.waitForFunction(() => (globalThis as unknown as { paritySettingsMocks: { workspaceExportMock(): string } }).paritySettingsMocks.workspaceExportMock())).jsonValue();
             if (typeof content !== "string") throw new Error("Missing workspace export content");
             const document = JSON.parse(content);
             const items = document.kind === "WorkspaceList" ? document.items : [document];
@@ -56,13 +30,15 @@ export async function action(page: Page, step: Step) {
         case "clickSettingsButton": await page.getByRole("button", { name: step.label, exact: true }).click(); break;
         case "expectSettingsText": await page.getByText(step.value, { exact: false }).first().waitFor(); break;
         case "expectNoSettingsText":
-            if ((await page.locator("body").textContent())?.includes(step.value)) throw new Error("Unexpected settings text");
+            // Waits for removal to render; text that never rendered passes on the first poll.
+            await page.waitForFunction((value) => !document.body.textContent?.includes(value), step.value);
             break;
         case "expectMaskedToken":
             if (await page.getByLabel("Server token", { exact: true }).getAttribute("type") !== "password") throw new Error("Credential is not masked");
             break;
         case "expectRuntimeEndpoint": {
-            await page.waitForFunction(`async () => ((await import('/src/lib/settings-integration-mocks.ts')).remoteMockStatus()?.serverUrl ?? 'local') === ${JSON.stringify(step.value)}`);
+            await loadSettingsMocks(page);
+            await page.waitForFunction((expected) => ((globalThis as unknown as { paritySettingsMocks: { remoteMockStatus(): { serverUrl: string } | null } }).paritySettingsMocks.remoteMockStatus()?.serverUrl ?? "local") === expected, step.value);
             break;
         }
         case "reopenStoredSettings":
@@ -448,6 +424,10 @@ function paletteResource(page: Page, step: Identity) {
 }
 
 /** Event rows in the Events tab: each starts with its `<time>`. */
+/** Waits poll synchronous predicates: Playwright treats a Promise returned by a waitForFunction predicate as truthy without awaiting it. */
+async function loadSettingsMocks(page: Page) {
+	await page.evaluate("import('/src/lib/settings-integration-mocks.ts').then(m => { globalThis.paritySettingsMocks = m; })");
+}
 function eventRows(page: Page) { return page.locator("div.grid:has(> time[datetime])"); }
 function literal(text: string) { return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 function itemCount(count: number) { return `${count} item${count === 1 ? "" : "s"}`; }

@@ -2,6 +2,8 @@
 //! with the browser-mock fixture the web driver reads. Driven by
 //! `bun scripts/e2e-parity.ts`, which exports the fixture and checks both reports.
 
+#[path = "parity/adapters.rs"]
+mod adapters;
 #[path = "parity/argo.rs"]
 mod argo;
 mod common;
@@ -152,6 +154,7 @@ fn scenarios() -> Vec<Value> {
 
 fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
     if !(argo::act(window, cx, step)
+        || adapters::act(window, cx, step)
         || live_sessions::apply(window, cx, step)
         || settings_integrations::act(window, cx, step)
         || live_data::apply(window, cx, step)
@@ -248,6 +251,9 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
         });
         cx.run_until_parked();
         for (index, step) in scenario["steps"].as_array().unwrap().iter().enumerate() {
+            if step["action"] == "expectDocumentationRequest" {
+                assert_eq!(backend.documentation_requests(), vec![string(step, "url")]);
+            }
             if step["action"] == "restartClient" {
                 cx.update_window(handle, |_, window, _| window.remove_window())
                     .unwrap();

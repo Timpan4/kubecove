@@ -129,6 +129,7 @@ impl Inspector {
             return;
         }
         let read = self.backend.start_forward(request);
+        let read = self.timings.measure("start_forward", read);
         self.run_forward_action(
             Box::pin(async move { read.await.map(|s| vec![Ok(s)]) }),
             true,
@@ -141,6 +142,7 @@ impl Inspector {
             return;
         }
         let read = self.backend.stop_forward(id);
+        let read = self.timings.measure("stop_forward", read);
         self.run_session_action(
             Box::pin(async move {
                 if read.await? {

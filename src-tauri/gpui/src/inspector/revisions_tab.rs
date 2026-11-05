@@ -156,6 +156,7 @@ impl Inspector {
             }
         });
         let read = backend.deployment_revisions(detail.data.summary.clone());
+        let read = self.timings.measure("deployment_revisions", read);
         let task = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {

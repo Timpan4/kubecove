@@ -86,6 +86,39 @@ macro_rules! route {
 }
 
 impl Backend for DesktopBackend {
+    fn diagnostics(&self, enabled: bool, clear: bool) -> Read<super::adapters::BackendDiagnostics> {
+        if !self.selected() {
+            return self.local.diagnostics(enabled, clear);
+        }
+        let remote = self.remote.clone();
+        self.local.read(async move {
+            let _: bool = invoke(
+                remote.clone(),
+                "set_backend_diagnostics_enabled",
+                json!({"enabled": enabled}),
+            )
+            .await?;
+            if clear {
+                let _: () = invoke(remote.clone(), "clear_backend_diagnostics", json!({})).await?;
+            }
+            Ok(super::adapters::BackendDiagnostics {
+                events: invoke(remote.clone(), "get_backend_diagnostics", json!({})).await?,
+                caches: invoke(remote, "get_backend_cache_diagnostics", json!({})).await?,
+            })
+        })
+    }
+    fn open_documentation(&self) -> Read<()> {
+        self.local.open_documentation()
+    }
+    fn reveal_secret(&self, resource: ResourceSummary, key: String) -> Read<String> {
+        if !self.selected() {
+            return self.local.reveal_secret(resource, key);
+        }
+        let mut args = resource_args(&resource);
+        args["key"] = json!(key);
+        args.as_object_mut().expect("resource args").remove("kind");
+        self.call("reveal_secret_data_value", args)
+    }
     fn load_preferences(&self) -> Result<crate::preferences::Document, AppError> {
         if self.selected() {
             self.preferences.load()

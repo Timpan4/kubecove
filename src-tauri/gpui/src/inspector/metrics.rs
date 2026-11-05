@@ -55,6 +55,7 @@ impl Inspector {
         self.metrics.index.clear();
         let request = self.request.clone();
         let read = self.backend.metrics(self.scope.clone());
+        let read = self.timings.measure("metrics", read);
         self.metrics.task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {

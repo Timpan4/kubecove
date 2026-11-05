@@ -54,7 +54,6 @@ const DESKTOP_HOST: &str =
     "Runs in the Tauri desktop host. The native client has no host adapter for it yet.";
 const BROWSER_TOOL: &str =
     "Measures the web frontend's DOM. It does not apply to the native client.";
-const TIMING_REPORT: &str = "The native client has no frontend timing collector yet, and this report is not connected to the backend diagnostics commands.";
 
 pub struct Row {
     pub category: Category,
@@ -91,9 +90,7 @@ pub const ROWS: &[Row] = &[
         "KubeCove documentation",
         "Opens user guides and reference documentation in your browser.",
         Button("Open Wiki"),
-        Some(
-            "Opening a browser needs the desktop opener plugin, which the native client has no host adapter for yet.",
-        ),
+        None,
     ),
     row(
         C::General,
@@ -291,7 +288,7 @@ pub const ROWS: &[Row] = &[
         "Latency report",
         "Shows frontend and backend timing summaries, with redacted copy output by default.",
         Section,
-        Some(TIMING_REPORT),
+        None,
     ),
     row(
         C::Advanced,

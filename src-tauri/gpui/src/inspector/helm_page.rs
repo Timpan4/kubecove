@@ -145,6 +145,7 @@ impl Inspector {
         page.request = Rc::new(());
         let request = page.request.clone();
         let read = self.backend.helm_releases(page.context.clone());
+        let read = self.timings.measure("helm_releases", read);
         page.task = Some(cx.spawn(async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {

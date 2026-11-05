@@ -23,6 +23,7 @@ similar = "=3.2.1"
 vt100 = "=0.18.1"
 chrono = "=0.4.45"
 serde_json = "=1.0.154"
+base64 = { version = "=0.23.1", default-features = false, features = ["std"] }
 # Both are already in the lockfile through the backend. `regex` ports the web
 # log-structure patterns; `serde` reads JSON log fields in document order.
 regex = "=1.13.1"

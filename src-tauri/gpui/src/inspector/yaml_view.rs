@@ -118,11 +118,13 @@ impl Inspector {
             return;
         }
         d.yaml_view.error = None;
+        d.secrets = Default::default();
         let read = backend.resource_yaml_encoded(
             d.data.summary.clone(),
             d.yaml_view.mode,
             d.yaml_view.format,
         );
+        let read = self.timings.measure("get_resource_yaml", read);
         self.diff_task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
@@ -136,6 +138,7 @@ impl Inspector {
                         Err(e) => d.yaml_view.error = Some(e.message),
                     }
                 }
+                this.refresh_yaml_lens(cx);
                 cx.notify();
             });
         }));
@@ -174,6 +177,7 @@ impl Inspector {
                     }
                     Err(e) => d.yaml.feedback = Feedback::FormatFailed(e.message),
                 }
+                this.refresh_yaml_lens(cx);
                 cx.notify();
             });
         }));

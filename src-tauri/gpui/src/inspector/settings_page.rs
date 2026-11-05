@@ -19,6 +19,9 @@ use gpui_kit::{
 pub(super) type Observed = gpui_kit::base::ObservedElement<Stateful<Div>>;
 
 pub(super) struct SettingsState {
+    pub(super) diagnostics: crate::backend::adapters::BackendDiagnostics,
+    pub(super) diagnostics_error: Option<String>,
+    pub(super) diagnostics_task: Option<Task<()>>,
     pub(super) confirming_skip_review: bool,
     pub(super) integrations: super::settings_integrations::Integrations,
     /// The page "Back to app" returns to.
@@ -48,6 +51,9 @@ impl SettingsState {
             }
         })];
         Self {
+            diagnostics: Default::default(),
+            diagnostics_error: None,
+            diagnostics_task: None,
             confirming_skip_review: false,
             integrations: super::settings_integrations::Integrations::new(window, cx),
             previous: Page::Overview,
@@ -73,6 +79,7 @@ impl Inspector {
             .search
             .update(cx, |input, cx| input.set_value("", window, cx));
         let read = self.backend.kubeconfig_sources();
+        let read = self.timings.measure("kubeconfig_sources", read);
         self.run_kubeconfig(read, window, cx);
         self.initialize_settings_integrations(window, cx);
         self.open_page(Page::Settings, cx);
@@ -226,7 +233,11 @@ impl Inspector {
             .flex_col()
             .gap(px(16.))
             .children(settings::rows(category).map(|row| {
-                if row.unavailable.is_none() && row.control != Control::Section {
+                if row.title == "KubeCove documentation" {
+                    self.documentation_control(row, cx)
+                } else if row.title == "Latency report" {
+                    self.latency_report(row, cx)
+                } else if row.unavailable.is_none() && row.control != Control::Section {
                     self.preference_control(row, cx)
                 } else if row.title == "Resource group order" {
                     self.resource_order_controls(row, cx)

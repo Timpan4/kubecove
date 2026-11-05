@@ -203,6 +203,7 @@ impl Inspector {
     /// `loadBaseline`; `retry` calls it again after a failure.
     pub(super) fn load_action_state(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let backend = self.backend.clone();
+        let timings = self.timings.clone();
         let Some(actions) = self.actions_state() else {
             return;
         };
@@ -215,6 +216,7 @@ impl Inspector {
             target: actions::target(&actions.resource),
             kubeconfig_env_var: None,
         });
+        let read = timings.measure("get_resource_action_state", read);
         actions.load_task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
@@ -293,6 +295,7 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) {
         let backend = self.backend.clone();
+        let timings = self.timings.clone();
         let Some(actions) = self.actions_state() else {
             return;
         };
@@ -326,6 +329,7 @@ impl Inspector {
             request.revision = Some(revision);
         }
         let read = backend.preview_action(request.clone());
+        let read = timings.measure("preview_action", read);
         let task = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
@@ -392,6 +396,7 @@ impl Inspector {
     /// `execute`: the reviewed request, guarded by the previewed identity.
     pub(super) fn execute_review(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let backend = self.backend.clone();
+        let timings = self.timings.clone();
         let Some(actions) = self.actions_state() else {
             return;
         };
@@ -413,6 +418,7 @@ impl Inspector {
         let reviewed_edits = serde_json::to_value(reviewed_edits).expect("edits serialize");
         let edit = request.action == ResourceActionKind::Edit;
         let read = backend.execute_action(request);
+        let read = timings.measure("execute_action", read);
         review._task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {

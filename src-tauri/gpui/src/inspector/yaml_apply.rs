@@ -167,6 +167,7 @@ impl Inspector {
     /// `startYamlApplyEdit`: loads the apply-clean draft from the server.
     pub(super) fn start_yaml_edit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let backend = self.backend.clone();
+        let timings = self.timings.clone();
         let Some(detail) = self.yaml_apply() else {
             return;
         };
@@ -187,6 +188,7 @@ impl Inspector {
             YamlViewMode::ApplyClean,
             detail.yaml_view.format,
         );
+        let read = timings.measure("get_resource_yaml", read);
         self.diff_task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
@@ -222,6 +224,7 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) {
         let backend = self.backend.clone();
+        let timings = self.timings.clone();
         let global_force = self.persisted.preferences.allow_yaml_force_conflicts;
         let Some(detail) = self.yaml_apply() else {
             return;
@@ -238,6 +241,7 @@ impl Inspector {
         let mut request = apply_request(&detail.data.summary, draft, force);
         request.yaml_encoding = detail.yaml_view.format;
         let read = backend.prepare_yaml_apply(request.clone());
+        let read = timings.measure("prepare_yaml_apply", read);
         self.diff_task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
@@ -263,6 +267,7 @@ impl Inspector {
     /// `applyYamlPreview`: applies only the reviewed request for an unchanged draft.
     pub(super) fn apply_yaml_review(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let backend = self.backend.clone();
+        let timings = self.timings.clone();
         let Some(detail) = self.yaml_apply() else {
             return;
         };
@@ -277,6 +282,7 @@ impl Inspector {
             return;
         }
         let read = backend.apply_yaml(review.request.clone());
+        let read = timings.measure("apply_yaml", read);
         let force = review.request.force_conflicts;
         detail.yaml.phase = Phase::Applying(review);
         detail.yaml.feedback = Feedback::None;

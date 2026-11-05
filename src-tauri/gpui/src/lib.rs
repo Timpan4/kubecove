@@ -33,3 +33,5 @@ pub fn init(cx: &mut gpui_kit::App) -> gpui_kit::Result<()> {
     theme::apply(cx);
     Ok(())
 }
+pub mod diagnostics;
+pub mod secret_values;

@@ -165,6 +165,7 @@ impl Inspector {
         self.live.selected = None;
         let context = self.scope.context.clone();
         let read = self.backend.resource_kinds(context.clone());
+        let read = self.timings.measure("resource_kinds", read);
         self.live.discovery = Some(cx.spawn(async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {

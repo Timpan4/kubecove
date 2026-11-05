@@ -178,6 +178,7 @@ impl Inspector {
         state.request = Rc::new(());
         let request = state.request.clone();
         let read = self.backend.rbac(state.context.clone());
+        let read = self.timings.measure("rbac", read);
         state.task = Some(cx.spawn(async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
