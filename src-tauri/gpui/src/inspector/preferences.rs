@@ -86,6 +86,10 @@ impl Inspector {
         self.refresh_diagnostics(false, cx);
         self.timings
             .set_enabled(self.persisted.preferences.debug_mode_enabled);
+        self.argo_connections.profiles.clear();
+        self.argo_connections.scope.clear();
+        self.argo_outcomes.clear();
+        self.restore_argo_preferences();
         if self.usage.visible != self.persisted.preferences.show_usage_footer {
             self.toggle_usage(cx);
         }

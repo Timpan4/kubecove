@@ -1,0 +1,96 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "argo-connected.saved-profile-and-preference",
+      "title": "Profile metadata and the workspace transport choice survive restart",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test", "remember": true },
+        { "action": "selectArgoPreference", "preference": "Kubernetes" },
+        { "action": "restartClient" },
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "expectArgoText", "text": "Kubernetes Application status" },
+        { "action": "expectSavedArgoProfile", "url": "https://argocd.example.test" }
+      ]
+    },
+    {
+      "id": "argo-connected.confirm-service-tunnel",
+      "title": "A discovered Service previews its exact Pod and certificate before credentials are sent",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd-server.argocd.svc", "tunnel": true },
+        { "action": "confirmArgoTunnel" },
+        { "action": "expectArgoText", "text": "Connected Argo CD API" }
+      ]
+    },
+    {
+      "id": "argo-connected.local-login-and-session-tls",
+      "title": "Local login and TLS overrides reach Rust without persisting credentials or certificates",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test", "local": true, "insecure": true, "customCa": "parity fixture CA" },
+        { "action": "expectArgoText", "text": "Connected Argo CD API" }
+      ]
+    },
+    {
+      "id": "argo-review.advanced-sync-options",
+      "title": "Advanced Sync preserves revision and flags through the named confirmation and exact-target review",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test" },
+        { "action": "configureArgoSync", "revision": "3d91a7b", "name": "tenant-ledger" },
+        { "action": "expectArgoReview", "operation": "sync", "name": "tenant-ledger", "namespace": "argocd", "transport": "connected" },
+        { "action": "expectArgoText", "text": "3d91a7b" },
+        { "action": "cancelArgoReview" }
+      ]
+    },
+    {
+      "id": "argo-review.selected-history",
+      "title": "Rollback uses the selected deployment history ID",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test" },
+        { "action": "selectArgoHistory", "revision": "8f4c2d1" },
+        { "action": "reviewArgoOperation", "operation": "Rollback" },
+        { "action": "expectArgoReview", "operation": "rollback", "name": "tenant-ledger", "namespace": "argocd", "transport": "connected" },
+        { "action": "cancelArgoReview" }
+      ]
+    },
+    {
+      "id": "argo-connected.managed-workspace",
+      "title": "Managed-resource inspection follows the chosen connected profile",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test" },
+        { "action": "closeDetail" },
+        { "action": "openGitOpsResources", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "expectArgoWorkspace", "name": "tenant-ledger" },
+        { "action": "expectArgoWorkspaceTransport", "text": "Connected Argo CD API" }
+      ]
+    },
+    {
+      "id": "argo-review.background-outcome",
+      "title": "An accepted operation is observed after the Application detail closes",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test" },
+        { "action": "reviewArgoOperation", "operation": "Sync" },
+        { "action": "confirmArgoReview" },
+        { "action": "closeDetail" },
+        { "action": "completeArgoOperation" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "expectArgoText", "text": "Argo CD confirmed completion" }
+      ]
+    }
+  ]
+}

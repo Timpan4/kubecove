@@ -33,6 +33,7 @@ pub(super) struct ArgoTab {
     evidence: bool,
     pub(super) inspector: Option<ArgoApplicationInspector>,
     pub(super) operation: super::argo_operations::Operation,
+    pub(super) options: super::argo_options::Options,
     pub(super) editors: Vec<(
         gpui_kit::Entity<gpui_kit::component::input::EditorState>,
         gpui_kit::Entity<gpui_kit::component::input::EditorState>,
@@ -53,6 +54,7 @@ impl Inspector {
     pub(super) fn open_argo(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let connection_id = self.argo_connection_id();
         let workspace_id = self.argo_workspace_id();
+        let source = self.argo_source_key().map(str::to_owned);
         let Detail::Ready(detail) = &mut self.detail else {
             return;
         };
@@ -62,6 +64,7 @@ impl Inspector {
         let summary = detail.data.summary.clone();
         let read = self.backend.inspect_argo(crate::backend::ArgoInspection {
             connection_id,
+            source,
             application: ArgoApplicationRef {
                 name: summary.name.clone(),
                 namespace: summary.namespace.clone(),
@@ -130,6 +133,44 @@ impl Inspector {
                                 })
                                 .collect();
                             state.inspector = Some(inspector);
+                            let options: Vec<super::argo_options::HistoryChoice> = state
+                                .inspector
+                                .as_ref()
+                                .unwrap()
+                                .history
+                                .iter()
+                                .enumerate()
+                                .map(|(index, h)| super::argo_options::HistoryChoice {
+                                    index,
+                                    revision: h
+                                        .revision
+                                        .clone()
+                                        .unwrap_or_else(|| "Unknown revision".into())
+                                        .into(),
+                                    id: h.id,
+                                })
+                                .collect();
+                            state.options.picker.update(cx, |picker, cx| {
+                                picker.set_items(
+                                    gpui_kit::component::select::SearchableVec::new(
+                                        options.clone(),
+                                    ),
+                                    window,
+                                    cx,
+                                );
+                                if let Some(first) = options.first() {
+                                    picker.set_selected_value(&first.index, window, cx);
+                                }
+                            });
+                            state.options.prune = Some(
+                                serde_yaml::from_str::<serde_json::Value>(&detail.data.yaml)
+                                    .ok()
+                                    .and_then(|v| {
+                                        v.pointer("/spec/syncPolicy/automated/prune")
+                                            .and_then(|v| v.as_bool())
+                                    })
+                                    .unwrap_or(false),
+                            );
                             ArgoLoad::Ready(view)
                         }
                         Err(error) => ArgoLoad::Failed(error.message),
@@ -148,6 +189,7 @@ impl Inspector {
             evidence: false,
             inspector: None,
             operation: Default::default(),
+            options: super::argo_options::Options::new(window, cx),
             editors: Vec::new(),
             request,
             _task: Some(task),
@@ -364,7 +406,7 @@ pub(super) fn argo_tab(
                         }))
                         .child(
                             ui::muted(ui::xs(
-                                "These operations target the Argo CD Application, not a selected managed Kubernetes resource.",
+                                if view.is_some_and(|v| !v.kubernetes) { "Available. Connected Argo CD authorization is checked during operation review. These operations target the Argo CD Application, not a selected managed Kubernetes resource." } else { "Available. Kubernetes permission is checked during operation review. These operations target the Argo CD Application, not a selected managed Kubernetes resource." },
                             ))
                             .font_family(crate::theme::SANS),
                         ),
@@ -375,9 +417,10 @@ pub(super) fn argo_tab(
                 .flex()
                 .flex_wrap()
                 .gap(px(6.))
-                .children(["Refresh", "Sync", "Rollback"].map(|label| controls::button(Variant::Outline, 24., loading)
+                .children(["Rollback", "Refresh", "Sync"].map(|label| controls::button(if label == "Sync" { Variant::Default } else { Variant::Outline }, 24., loading)
                     .id(SharedString::from(format!("argo-operation:{label}"))).test_support().child(label)
-                    .on_click(cx.listener(move |this, _, window, cx| this.review_argo_operation(label, window, cx))))),
+                    .on_click(cx.listener(move |this, _, window, cx| this.review_argo_operation(label, window, cx)))))
+                .child(super::argo_options::trigger(cx)),
         );
     let counts = view.map(|view| view.counts).unwrap_or_default();
     let signals = div()
@@ -418,12 +461,28 @@ pub(super) fn argo_tab(
         .gap(px(12.))
         .min_w_0()
         .child(top)
-        .child(connection)
-        .child(super::argo_operations::panel(&state.operation, cx));
+        .when(
+            !matches!(state.operation.phase, super::argo_operations::Phase::Idle),
+            |column| column.child(super::argo_operations::panel(&state.operation, cx)),
+        )
+        .child(connection);
+    if state.options.open {
+        column = column.child(super::argo_options::panel(state, &summary.name, cx));
+    }
     if let ArgoLoad::Failed(error) = &state.load {
         column = column.child(surface::failed(
             "Argo CD Application snapshot unavailable",
             error.clone(),
+        ));
+    }
+    if let Some(fallback) = state
+        .inspector
+        .as_ref()
+        .and_then(|s| s.connected_fallback.as_ref())
+    {
+        column = column.child(surface::failed(
+            "Connected Argo CD unavailable. Showing Kubernetes fallback.",
+            fallback.failure.message.clone(),
         ));
     }
     if let Some(view) = view {
@@ -447,7 +506,7 @@ pub(super) fn argo_tab(
                     )
             }))
             .child(navigator(view, state, cx))
-            .child(delivery(view, timezone));
+            .child(delivery(view, state, timezone));
     }
     let failed = matches!(state.load, ArgoLoad::Failed(_));
     column

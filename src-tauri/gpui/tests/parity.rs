@@ -171,16 +171,40 @@ fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
 /// apply when the update that typed ends, as they do between a user's
 /// keystrokes and a later click.
 fn finish(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
+    if step["action"] == "selectArgoPreference" {
+        window.press("enter", cx);
+    }
     if step["action"] == "connectArgoProfile" {
         let anchor = if step["surface"] == "page" {
             "argo-connection-dialog"
         } else {
             "detail-body"
         };
-        reveal(window, anchor, "argo-token", cx);
-        replace_text(window, cx, "argo-token", "parity-fixture-token");
+        if step["tunnel"] == true {
+            let id = "argo-server:service:argocd:argocd-server:443";
+            reveal(window, anchor, id, cx);
+            window.click(id, cx);
+            window.render_frame(cx);
+        }
+        if step["local"] == true {
+            reveal(window, anchor, "argo-username", cx);
+            replace_text(window, cx, "argo-username", "fixture-user");
+            reveal(window, anchor, "argo-password", cx);
+            replace_text(window, cx, "argo-password", "fixture-password");
+        } else {
+            reveal(window, anchor, "argo-token", cx);
+            replace_text(window, cx, "argo-token", "parity-fixture-token");
+        }
+        if let Some(ca) = step["customCa"].as_str() {
+            reveal(window, anchor, "argo-ca", cx);
+            replace_text(window, cx, "argo-ca", ca);
+        }
         reveal(window, anchor, "argo-connect-submit", cx);
         window.click("argo-connect-submit", cx);
+    }
+    if step["action"] == "configureArgoSync" {
+        reveal(window, "detail-body", "argo-sync-advanced", cx);
+        window.click("argo-sync-advanced", cx);
     }
     if step["action"] == "reopenStoredSettings" {
         window.click("open-settings", cx);
@@ -297,6 +321,12 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
             }
             if step["action"] == "replayLiveData" {
                 backend.replay_live(string(step, "script"));
+            }
+            if step["action"] == "completeArgoOperation" {
+                backend.complete_argo_operation();
+                cx.background_executor
+                    .advance_clock(std::time::Duration::from_millis(15_000));
+                cx.run_until_parked();
             }
             if step["action"] == "replaySessions" {
                 backend.replay_sessions(string(step, "script"));

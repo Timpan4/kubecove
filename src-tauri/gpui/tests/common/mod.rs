@@ -111,6 +111,13 @@ impl Fixture {
     pub fn documentation_requests(&self) -> Vec<String> {
         self.documentation_requests.lock().unwrap().clone()
     }
+    // Shared with native and visual tests, which do not advance fixture operations.
+    #[allow(dead_code)]
+    pub fn complete_argo_operation(&self) {
+        self.argo
+            .complete
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
     // The visual harness shares the fixture but does not replay acceptance scripts.
     #[allow(dead_code)]
     pub fn replay_sessions(&self, script: &str) {
@@ -147,6 +154,18 @@ impl Backend for Fixture {
                 AppError::new("No matching Secret reveal fixture", AppErrorKind::NotFound)
             })
         })
+    }
+    fn discover_argo(
+        &self,
+        request: kubecove_gpui::backend::ArgoTarget,
+    ) -> Read<Vec<kubecove_lib::models::ArgoServerCapability>> {
+        self.argo.discover(request)
+    }
+    fn preview_argo(
+        &self,
+        request: kubecove_gpui::backend::ArgoTarget,
+    ) -> Read<kubecove_lib::models::ArgoTunnelTargetPreview> {
+        self.argo.preview(request)
     }
     fn load_preferences(&self) -> Result<kubecove_gpui::preferences::Document, AppError> {
         self.preferences.load()

@@ -79,7 +79,18 @@ impl Inspector {
                 .unwrap_or_else(|| "Application CRD managed-resource state".into()),
         };
         let resource = Selection::App(app).resource();
+        let transport = if inspector.is_some_and(|s| s.transport == "connected") {
+            "Connected Argo CD API"
+        } else {
+            "Kubernetes Application status"
+        };
         let actions = div()
+            .child(
+                ui::xs(transport)
+                    .id("argo-workspace-transport")
+                    .test_support()
+                    .aria_label(transport),
+            )
             .flex()
             .flex_wrap()
             .gap(px(6.))

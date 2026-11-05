@@ -3,7 +3,13 @@ import { join } from "node:path";
 
 type Identity = { kind: string; name: string; namespace: string };
 export type Step =
-    | { action: "connectArgoProfile"; url: string; surface?: "page" }
+    | { action: "selectArgoPreference"; preference: "Automatic" | "Kubernetes" }
+    | { action: "expectSavedArgoProfile"; url: string }
+    | { action: "configureArgoSync"; revision: string; name: string }
+    | { action: "selectArgoHistory"; revision: string }
+    | { action: "expectArgoWorkspaceTransport"; text: string }
+    | { action: "completeArgoOperation" | "confirmArgoTunnel" }
+    | { action: "connectArgoProfile"; url: string; surface?: "page"; remember?: boolean; tunnel?: boolean; local?: boolean; insecure?: boolean; customCa?: string }
     | { action: "disconnectArgoProfile" | "confirmArgoReview" | "cancelArgoReview" }
     | { action: "reviewArgoOperation"; operation: "Refresh" | "Sync" | "Rollback" }
     | { action: "expectArgoReview"; operation: string; name: string; namespace: string; transport: string }
@@ -142,6 +148,7 @@ export type Contract = { scenarios: Scenario[] };
 
 /** Every action both drivers must implement; `contract.test.ts` checks each driver handles each one. */
 export const ACTIONS = [
+    "selectArgoPreference", "expectSavedArgoProfile", "configureArgoSync", "selectArgoHistory", "expectArgoWorkspaceTransport", "completeArgoOperation", "confirmArgoTunnel",
     "connectArgoProfile", "disconnectArgoProfile", "confirmArgoReview", "cancelArgoReview", "reviewArgoOperation", "expectArgoReview", "expectArgoText", "argoDocument",
     "cancelYamlEdit",
     "revealSecretValue", "hideSecretValue", "expectSecretValue", "expectYamlLens", "refreshLatencyReport", "clearLatencyReport", "expectLatencyEmpty", "expectLatencyTiming", "openDocumentation", "expectDocumentationRequest",
@@ -193,10 +200,21 @@ function strings(value: unknown, allowEmpty: boolean): string[] {
 	if (!Array.isArray(value) || (!allowEmpty && !value.length)) throw new Error("Expected a list of strings");
 	return value.map(string);
 }
+function optionalBoolean(value: unknown): boolean | undefined {
+    if (value == null) return undefined;
+    if (typeof value !== "boolean") throw new Error("Expected boolean");
+    return value;
+}
 function step(value: unknown): Step {
 	const item = object(value);
 	switch (item.action) {
-        case "connectArgoProfile": return { action: item.action, url: string(item.url), surface: item.surface == null ? undefined : oneOf<"page">(["page"], item.surface, "an Argo connection surface") };
+        case "selectArgoPreference": return { action: item.action, preference: oneOf(["Automatic", "Kubernetes"], item.preference, "an inspection preference") };
+        case "expectSavedArgoProfile": return { action: item.action, url: string(item.url) };
+        case "configureArgoSync": return { action: item.action, revision: string(item.revision), name: string(item.name) };
+        case "selectArgoHistory": return { action: item.action, revision: string(item.revision) };
+        case "expectArgoWorkspaceTransport": return { action: item.action, text: string(item.text) };
+        case "confirmArgoTunnel": case "completeArgoOperation": return { action: item.action };
+        case "connectArgoProfile": return { action: item.action, url: string(item.url), remember: optionalBoolean(item.remember), tunnel: optionalBoolean(item.tunnel), local: optionalBoolean(item.local), insecure: optionalBoolean(item.insecure), customCa: item.customCa == null ? undefined : string(item.customCa), surface: item.surface == null ? undefined : oneOf<"page">(["page"], item.surface, "an Argo connection surface") };
         case "disconnectArgoProfile": case "confirmArgoReview": case "cancelArgoReview": return { action: item.action };
         case "reviewArgoOperation": return { action: item.action, operation: oneOf(["Refresh", "Sync", "Rollback"], item.operation, "an Argo operation") };
         case "expectArgoReview": return { action: item.action, operation: string(item.operation), name: string(item.name), namespace: string(item.namespace), transport: string(item.transport) };

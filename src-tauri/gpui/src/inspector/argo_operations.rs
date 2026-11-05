@@ -18,7 +18,6 @@ pub(super) enum Phase {
     Checking,
     Review(Box<ArgoOperationPreflight>),
     Submitting,
-    Result(String),
     Failed(String),
     Unconfirmed(String),
 }
@@ -27,6 +26,7 @@ pub(super) struct Operation {
     pub phase: Phase,
     request: Rc<()>,
     task: Option<Task<()>>,
+    baseline: Option<kubecove_lib::models::ArgoApplicationInspector>,
 }
 impl Inspector {
     pub(super) fn review_argo_operation(
@@ -36,6 +36,13 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) {
         let connection_id = self.argo_connection_id();
+        let source = self.argo_source_key().map(str::to_owned);
+        if let Detail::Ready(d) = &self.detail
+            && let Some(snapshot) = d.argo.as_ref().and_then(|s| s.inspector.as_ref())
+            && self.argo_operation_busy(&snapshot.application)
+        {
+            return;
+        }
         let Detail::Ready(detail) = &mut self.detail else {
             return;
         };
@@ -44,7 +51,7 @@ impl Inspector {
         };
         if matches!(
             state.operation.phase,
-            Phase::Checking | Phase::Submitting | Phase::Result(_) | Phase::Unconfirmed(_)
+            Phase::Checking | Phase::Submitting | Phase::Unconfirmed(_)
         ) {
             return;
         }
@@ -53,11 +60,16 @@ impl Inspector {
         };
         let action = match label {
             "Refresh" => "refresh",
-            "Sync" => "sync",
+            "Sync" | "Advanced Sync" => "sync",
             "Rollback" => "rollback",
             _ => return,
         };
+        let advanced = label == "Advanced Sync";
+        if advanced && state.options.name.read(cx).value().as_str() != snapshot.application.name {
+            return;
+        }
         let request = ArgoOperationRequest {
+            kubeconfig_env_var: source,
             connection_id: if snapshot.transport == "connected" {
                 connection_id
             } else {
@@ -69,11 +81,19 @@ impl Inspector {
             resource_version: snapshot.application.resource_version.clone(),
             cluster_context: snapshot.application.context.clone(),
             history_id: if action == "rollback" {
-                snapshot.history.iter().skip(1).find_map(|h| h.id)
+                state
+                    .options
+                    .history
+                    .or_else(|| snapshot.history.iter().skip(1).find_map(|h| h.id))
             } else {
                 None
             },
-            prune: if action == "sync" {
+            revision: advanced
+                .then(|| state.options.revision.read(cx).value().trim().to_owned())
+                .filter(|s| !s.is_empty()),
+            prune: if advanced {
+                Some(state.options.prune.unwrap_or(false))
+            } else if action == "sync" {
                 Some(
                     serde_yaml::from_str::<serde_json::Value>(&detail.data.yaml)
                         .ok()
@@ -86,11 +106,30 @@ impl Inspector {
             } else {
                 None
             },
-            dry_run: (action == "sync").then_some(false),
-            force: (action == "sync").then_some(false),
+            dry_run: (action == "sync").then_some(advanced && state.options.dry_run),
+            force: (action == "sync").then_some(advanced && state.options.force),
             ..Default::default()
         };
-        let read = self.backend.preflight_argo(request);
+        let backend = self.backend.clone();
+        let read = async move {
+            let before = backend
+                .inspect_argo(crate::backend::ArgoInspection {
+                    application: request.application.clone(),
+                    connection_id: request.connection_id.clone(),
+                    source: request.kubeconfig_env_var.clone(),
+                })
+                .await?;
+            if request.application.uid.is_some()
+                && request.application.uid != before.application.uid
+            {
+                return Err(kubecove_lib::models::AppError::new(
+                    "Application was replaced. Reload before reviewing.",
+                    kubecove_lib::models::AppErrorKind::ArgoConnection,
+                ));
+            }
+            let review = backend.preflight_argo(request).await?;
+            Ok((before, review))
+        };
         state.operation.request = Rc::new(());
         let current = state.operation.request.clone();
         state.operation.phase = Phase::Checking;
@@ -104,14 +143,15 @@ impl Inspector {
                     return;
                 }
                 state.operation.phase = match result {
-                    Ok(review)
+                    Ok((before, review))
                         if review.allowed
                             && review.session_id.is_some()
                             && review.reviewed_request.is_some() =>
                     {
+                        state.operation.baseline = Some(before);
                         Phase::Review(Box::new(review))
                     }
-                    Ok(review) => Phase::Failed(
+                    Ok((_, review)) => Phase::Failed(
                         review
                             .reason
                             .unwrap_or_else(|| "Operation unavailable".into()),
@@ -142,6 +182,12 @@ impl Inspector {
         let Some(session_id) = review.session_id.clone() else {
             return;
         };
+        let observed_request = review.reviewed_request.clone().expect("canonical review");
+        let baseline = state
+            .operation
+            .baseline
+            .clone()
+            .expect("fresh review baseline");
         // Take the review before issuing a request. A failed submission cannot replay it.
         state.operation.phase = Phase::Submitting;
         let current = state.operation.request.clone();
@@ -158,17 +204,18 @@ impl Inspector {
                 if !Rc::ptr_eq(&current, &state.operation.request) {
                     return;
                 }
+                let accepted = result.as_ref().is_ok_and(|r| r.accepted);
                 state.operation.phase = match result {
-                    Ok(result) if result.accepted => Phase::Result(format!(
-                        "{} Accepted; waiting for Argo CD to complete.",
-                        result.message
-                    )),
+                    Ok(result) if result.accepted => Phase::Idle,
                     Ok(result) => Phase::Failed(result.message),
                     Err(error) => Phase::Unconfirmed(format!(
                         "Outcome unconfirmed. Reload before retrying. {}",
                         error.message
                     )),
                 };
+                if accepted {
+                    this.observe_argo_operation(observed_request, baseline, cx);
+                }
                 cx.notify();
             });
         });
@@ -195,7 +242,7 @@ pub(super) fn panel(state: &Operation, cx: &mut Context<Inspector>) -> gpui_kit:
         Phase::Submitting => body
             .child(ui::xs("Submitting reviewed operation…"))
             .into_any_element(),
-        Phase::Result(message) | Phase::Failed(message) | Phase::Unconfirmed(message) => body
+        Phase::Failed(message) | Phase::Unconfirmed(message) => body
             .child(
                 ui::xs(message.clone())
                     .id("argo-operation-result")
@@ -223,39 +270,54 @@ pub(super) fn panel(state: &Operation, cx: &mut Context<Inspector>) -> gpui_kit:
                 request.application.namespace.as_deref().unwrap_or_default(),
                 request.application.name
             );
+            let summary = format!(
+                "Revision: {}. History: {}. Prune: {}. Dry run: {}. Force: {}.",
+                request.revision.as_deref().unwrap_or("Application default"),
+                request
+                    .history_id
+                    .map_or_else(|| "none".into(), |id| id.to_string()),
+                flag(request.prune),
+                flag(request.dry_run),
+                flag(request.force)
+            );
             body.id("argo-review")
                 .test_support()
                 .aria_label(target.clone())
                 .p(px(12.))
+                .rounded(px(10.))
                 .border_1()
                 .border_color(Tokens::border())
                 .child(ui::sm("Review Argo CD operation"))
                 .child(ui::xs(target))
-                .child(ui::xs(format!(
-                    "Revision: {}. History: {}. Prune: {}. Dry run: {}. Force: {}.",
-                    request.revision.as_deref().unwrap_or("Application default"),
-                    request
-                        .history_id
-                        .map_or_else(|| "none".into(), |id| id.to_string()),
-                    flag(request.prune),
-                    flag(request.dry_run),
-                    flag(request.force)
-                )))
                 .child(
-                    button(Variant::Default, 24., false)
-                        .id("argo-review-confirm")
+                    ui::xs(summary.clone())
+                        .id("argo-review-options")
                         .test_support()
-                        .child("Confirm Argo CD operation")
-                        .on_click(
-                            cx.listener(|this, _, window, cx| this.confirm_argo_review(window, cx)),
-                        ),
+                        .aria_label(summary),
                 )
                 .child(
-                    button(Variant::Outline, 24., false)
-                        .id("argo-review-cancel")
-                        .test_support()
-                        .child("Cancel review")
-                        .on_click(cx.listener(|this, _, _, cx| this.cancel_argo_review(cx))),
+                    div()
+                        .flex()
+                        .flex_wrap()
+                        .gap(px(8.))
+                        .child(
+                            button(Variant::Default, 24., false)
+                                .id("argo-review-confirm")
+                                .test_support()
+                                .child("Confirm Argo CD operation")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.confirm_argo_review(window, cx)
+                                })),
+                        )
+                        .child(
+                            button(Variant::Outline, 24., false)
+                                .id("argo-review-cancel")
+                                .test_support()
+                                .child("Cancel review")
+                                .on_click(
+                                    cx.listener(|this, _, _, cx| this.cancel_argo_review(cx)),
+                                ),
+                        ),
                 )
                 .into_any_element()
         }

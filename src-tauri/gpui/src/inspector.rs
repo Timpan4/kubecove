@@ -7,11 +7,16 @@ mod actions_review;
 mod actions_state;
 mod actions_tab;
 mod argo_connection;
+mod argo_connection_view;
 mod argo_highlight;
 mod argo_operations;
+mod argo_options;
+mod argo_outcomes;
 mod argo_panels;
+mod argo_profiles;
 mod argo_snapshot;
 mod argo_tab;
+mod argo_tunnel;
 mod argo_workspace;
 mod cluster;
 mod controls;
@@ -149,6 +154,7 @@ pub struct Inspector {
     gitops: gitops_section::GitOpsState,
     gitops_page: gitops_page::GitOpsPage,
     argo_connections: argo_connection::Connections,
+    argo_outcomes: std::collections::HashMap<String, argo_outcomes::Outcome>,
     helm_page: helm_page::HelmPage,
     /// A tab `open_resource_on` asked the loading detail panel to show.
     detail_tab: Option<detail::DetailTab>,
@@ -243,6 +249,7 @@ impl Inspector {
             gitops: Default::default(),
             gitops_page: gitops_page::GitOpsPage::new(),
             argo_connections: argo_connection::Connections::new(window, cx),
+            argo_outcomes: Default::default(),
             helm_page: helm_page::HelmPage::new(window, cx),
             detail_tab: None,
             cluster: Default::default(),

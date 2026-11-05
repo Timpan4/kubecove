@@ -7,7 +7,10 @@ use std::sync::Mutex;
 
 #[derive(Deserialize)]
 pub struct Argo {
-    connect: Value,
+    connections: Vec<Connection>,
+    discovery: Vec<ArgoServerCapability>,
+    target: Value,
+    preview: ArgoTunnelTargetPreview,
     connected: ArgoConnectionStatus,
     inspections: Vec<Inspection>,
     operations: Vec<Operation>,
@@ -17,6 +20,13 @@ pub struct Argo {
     active: Mutex<bool>,
     #[serde(skip)]
     reviewed: Mutex<bool>,
+    #[serde(skip)]
+    pub complete: std::sync::atomic::AtomicBool,
+}
+#[derive(Deserialize)]
+struct Connection {
+    request: Value,
+    result: ArgoConnectionStatus,
 }
 #[derive(Deserialize)]
 struct Inspection {
@@ -33,13 +43,33 @@ fn ready<T: Send + 'static>(value: T) -> Read<T> {
 }
 impl Argo {
     pub fn connect(&self, request: ArgoConnect) -> Read<ArgoConnectionStatus> {
-        assert_eq!(
-            serde_json::to_value(request).unwrap(),
-            self.connect,
-            "unexpected connection"
-        );
+        let request = serde_json::to_value(request).unwrap();
+        let status = self
+            .connections
+            .iter()
+            .find(|r| r.request == request)
+            .unwrap_or_else(|| panic!("unexpected connection: {request}"));
         *self.active.lock().unwrap() = true;
-        ready(self.connected.clone())
+        ready(status.result.clone())
+    }
+    pub fn discover(
+        &self,
+        request: kubecove_gpui::backend::ArgoTarget,
+    ) -> Read<Vec<ArgoServerCapability>> {
+        assert_eq!(request.context, "mock-dev");
+        assert_eq!(
+            serde_json::to_value(request.source).unwrap(),
+            self.target["source"]
+        );
+        assert!(request.endpoint.is_none());
+        ready(self.discovery.clone())
+    }
+    pub fn preview(
+        &self,
+        request: kubecove_gpui::backend::ArgoTarget,
+    ) -> Read<ArgoTunnelTargetPreview> {
+        assert_eq!(serde_json::to_value(request).unwrap(), self.target);
+        ready(self.preview.clone())
     }
     pub fn disconnect(&self, id: String) -> Read<()> {
         assert_eq!(
@@ -54,13 +84,18 @@ impl Argo {
             assert!(*self.active.lock().unwrap());
         }
         let request = serde_json::to_value(request).unwrap();
-        let result = self
+        let mut result = self
             .inspections
             .iter()
             .find(|r| r.request == request)
             .unwrap_or_else(|| panic!("unexpected inspection: {request}"))
             .result
             .clone();
+        if self.complete.load(std::sync::atomic::Ordering::SeqCst) {
+            result.operation_state = Some(
+                serde_json::json!({"phase":"Succeeded","startedAt":"2026-11-05T00:00:01Z","message":"Fixture operation finished"}),
+            );
+        }
         ready(result)
     }
     pub fn preflight(&self, request: ArgoOperationRequest) -> Read<ArgoOperationPreflight> {

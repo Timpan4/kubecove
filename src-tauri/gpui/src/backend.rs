@@ -54,30 +54,7 @@ pub trait Backend: Send + Sync + 'static {
     ) -> Result<crate::preferences::Document, AppError> {
         Ok(document)
     }
-    fn connect_argo(&self, _: ArgoConnect) -> Read<kubecove_lib::models::ArgoConnectionStatus> {
-        settings_integrations::unavailable("Argo CD connection unavailable")
-    }
-    fn disconnect_argo(&self, _: String) -> Read<()> {
-        settings_integrations::unavailable("Argo CD connection unavailable")
-    }
-    fn inspect_argo(&self, request: ArgoInspection) -> Read<ArgoApplicationInspector> {
-        if request.connection_id.is_some() {
-            return settings_integrations::unavailable("Connected inspection unavailable");
-        }
-        self.argo_inspector(request.application)
-    }
-    fn preflight_argo(
-        &self,
-        _: kubecove_lib::models::ArgoOperationRequest,
-    ) -> Read<kubecove_lib::models::ArgoOperationPreflight> {
-        settings_integrations::unavailable("Argo CD operation unavailable")
-    }
-    fn run_argo(
-        &self,
-        _: kubecove_lib::models::ArgoOperationConfirmation,
-    ) -> Read<kubecove_lib::models::ArgoOperationResult> {
-        settings_integrations::unavailable("Argo CD operation unavailable")
-    }
+    argo::defaults!();
     fn remote_status(&self) -> Read<Option<RemoteConnectionSummary>> {
         Box::pin(async { Ok(None) })
     }
@@ -306,7 +283,7 @@ pub trait Backend: Send + Sync + 'static {
 pub mod adapters;
 mod argo;
 mod live_data;
-pub use argo::{ArgoConnect, ArgoInspection};
+pub use argo::{ArgoConnect, ArgoInspection, ArgoTarget};
 pub use live_data::WatchTarget;
 mod delivery;
 mod delivery_workspace;
@@ -435,30 +412,7 @@ impl Backend for NativeBackend {
     ) -> Result<crate::preferences::Document, AppError> {
         self.preferences.save(document)
     }
-    fn connect_argo(
-        &self,
-        request: ArgoConnect,
-    ) -> Read<kubecove_lib::models::ArgoConnectionStatus> {
-        argo::connect(self, request)
-    }
-    fn disconnect_argo(&self, id: String) -> Read<()> {
-        argo::disconnect(self, id)
-    }
-    fn inspect_argo(&self, request: ArgoInspection) -> Read<ArgoApplicationInspector> {
-        argo::inspect(self, request)
-    }
-    fn preflight_argo(
-        &self,
-        request: kubecove_lib::models::ArgoOperationRequest,
-    ) -> Read<kubecove_lib::models::ArgoOperationPreflight> {
-        argo::preflight(self, request)
-    }
-    fn run_argo(
-        &self,
-        confirmation: kubecove_lib::models::ArgoOperationConfirmation,
-    ) -> Read<kubecove_lib::models::ArgoOperationResult> {
-        argo::run(self, confirmation)
-    }
+    argo::native!();
     fn add_kubeconfig_paths(&self, paths: Vec<String>) -> Read<KubeconfigSourcesSummary> {
         if !self.settings_initialized {
             return self.read(security::unsaved());

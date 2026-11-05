@@ -1,18 +1,11 @@
-//! Session profiles are scoped by workspace, context and kubeconfig source.
-use super::{
-    Inspector,
-    controls::{Variant, button},
-    detail::Detail,
-};
-use crate::{backend::ArgoConnect, theme::Tokens, ui};
+//! Workspace-scoped connection state. Credentials live only in masked inputs until submission.
+use super::{Inspector, detail::Detail};
+use crate::backend::ArgoConnect;
 use gpui_kit::{
-    AppContext, Context, Div, Entity, Task, TestSupportExt, Window,
-    component::input::{Input, InputState},
-    div,
-    prelude::*,
-    px,
+    AppContext, Context, Entity, Task, Window,
+    component::input::{InputState, TextareaState},
 };
-use kubecove_lib::models::{ArgoConnectionProfile, ArgoConnectionStatus, ArgoServerEndpoint};
+use kubecove_lib::models::*;
 use std::rc::Rc;
 
 #[derive(Default)]
@@ -27,18 +20,80 @@ pub(super) struct Connections {
     pub dialog: bool,
     pub profiles: Vec<ArgoConnectionStatus>,
     pub selected: Preference,
-    editing: Option<ArgoConnectionProfile>,
-    scope: String,
+    pub editing: Option<ArgoConnectionProfile>,
+    pub scope: String,
     pub url: Entity<InputState>,
-    token: Entity<InputState>,
+    pub token: Entity<InputState>,
+    pub username: Entity<InputState>,
+    pub password: Entity<InputState>,
+    pub ca: Entity<TextareaState>,
+    pub root_path: Entity<InputState>,
+    pub tls_name: Entity<InputState>,
+    pub local: bool,
+    pub insecure: bool,
+    pub remember: bool,
+    pub servers: Vec<ArgoServerCapability>,
+    pub endpoint: Option<ArgoServerEndpoint>,
+    pub preview: Option<ArgoTunnelTargetPreview>,
+    pub preview_endpoint: Option<ArgoServerEndpoint>,
     pub error: Option<String>,
     pub busy: bool,
-    request: Rc<()>,
-    task: Option<Task<()>>,
+    pub request: Rc<()>,
+    pub task: Option<Task<()>>,
+    pub discovery: Option<Task<()>>,
+    pub reconnecting: bool,
+    pub pending_reconnect: std::collections::VecDeque<ArgoConnectionProfile>,
+    pub picker: Entity<
+        gpui_kit::component::select::SelectState<
+            gpui_kit::component::select::SearchableVec<gpui_kit::SharedString>,
+        >,
+    >,
+    pub _subscription: gpui_kit::Subscription,
 }
 impl Connections {
     pub fn new(window: &mut Window, cx: &mut Context<Inspector>) -> Self {
+        use gpui_kit::component::select::{SearchableVec, SelectEvent, SelectState};
+        let picker = cx.new(|cx| {
+            SelectState::new(
+                SearchableVec::new(vec![
+                    gpui_kit::SharedString::from("Automatic"),
+                    "Kubernetes".into(),
+                ]),
+                None,
+                window,
+                cx,
+            )
+        });
+        let subscription = cx.subscribe_in(&picker, window, |this, _, event, window, cx| {
+            let SelectEvent::Confirm(Some(value)) = event else {
+                return;
+            };
+            let preference = match value.as_ref() {
+                "Automatic" => Preference::Automatic,
+                "Kubernetes" => Preference::Kubernetes,
+                label => {
+                    let Some(profile) = this
+                        .argo_connections
+                        .profiles
+                        .iter()
+                        .filter_map(|s| s.profile.as_ref())
+                        .find(|p| {
+                            this.argo_profile_matches(p)
+                                && super::argo_profiles::endpoint_label(&p.endpoint) == label
+                        })
+                    else {
+                        return;
+                    };
+                    Preference::Connected(profile.id.clone())
+                }
+            };
+            this.argo_connections.selected = preference;
+            this.persist_argo_preferences(cx);
+            this.reload_argo(window, cx);
+        });
         Self {
+            picker,
+            _subscription: subscription,
             open: false,
             dialog: false,
             profiles: vec![],
@@ -48,68 +103,47 @@ impl Connections {
             url: cx
                 .new(|cx| InputState::new(window, cx).placeholder("https://argocd.example.test")),
             token: cx.new(|cx| InputState::new(window, cx).masked(true)),
+            username: cx.new(|cx| InputState::new(window, cx)),
+            password: cx.new(|cx| InputState::new(window, cx).masked(true)),
+            ca: cx.new(|cx| TextareaState::new(window, cx).rows(3)),
+            root_path: cx.new(|cx| InputState::new(window, cx)),
+            tls_name: cx.new(|cx| InputState::new(window, cx)),
+            local: false,
+            insecure: false,
+            remember: false,
+            servers: vec![],
+            endpoint: None,
+            preview: None,
+            preview_endpoint: None,
             error: None,
             busy: false,
             request: Rc::new(()),
             task: None,
+            discovery: None,
+            reconnecting: false,
+            pending_reconnect: Default::default(),
         }
     }
 }
 impl Inspector {
-    pub(super) fn sync_argo_scope(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let scope = format!(
-            "{}:{}:{:?}",
-            self.argo_workspace_id(),
-            self.preset_key(),
-            self.argo_source_key()
-        );
-        if self.argo_connections.scope != scope {
-            self.cancel_argo_connection(window, cx);
-            self.argo_connections.scope = scope;
-            self.argo_connections.error = None;
-            self.argo_connections.selected = Preference::Automatic;
-        }
-    }
-    pub(super) fn argo_workspace_id(&self) -> String {
-        self.launcher
-            .active
-            .map_or_else(|| "native-session".into(), |id| id.to_string())
-    }
-    fn argo_source_key(&self) -> Option<&str> {
-        self.sessions
-            .load
-            .as_ref()
-            .and_then(|r| r.as_ref().ok())
-            .and_then(|s| s.source_key.as_deref())
-    }
-    pub(super) fn argo_connection_id(&self) -> Option<String> {
-        if matches!(self.argo_connections.selected, Preference::Kubernetes) {
-            return None;
-        }
-        let workspace = self.argo_workspace_id();
-        self.argo_connections
-            .profiles
-            .iter()
-            .filter(|s| s.connected)
-            .filter_map(|s| s.profile.as_ref())
-            .find(|p| {
-                p.cluster_context.as_deref() == Some(&self.scope.context)
-                    && p.workspace_id.as_deref() == Some(&workspace)
-                    && p.kubeconfig_source_key.as_deref() == self.argo_source_key()
-                    && match &self.argo_connections.selected {
-                        Preference::Connected(id) => id == &p.id,
-                        Preference::Automatic => true,
-                        Preference::Kubernetes => false,
-                    }
-            })
-            .map(|p| p.id.clone())
-    }
     pub(super) fn reload_argo(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Detail::Ready(d) = &mut self.detail {
             d.argo = None;
         }
         self.open_argo(window, cx);
         self.load_application_workspace(cx);
+    }
+    pub(super) fn clear_argo_secrets(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.argo_connections
+            .ca
+            .update(cx, |input, cx| input.set_value("", window, cx));
+        for field in [
+            &self.argo_connections.token,
+            &self.argo_connections.username,
+            &self.argo_connections.password,
+        ] {
+            field.update(cx, |input, cx| input.set_value("", window, cx));
+        }
     }
     pub(super) fn cancel_argo_connection(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.argo_connections.request = Rc::new(());
@@ -118,67 +152,170 @@ impl Inspector {
         self.argo_connections.open = false;
         self.argo_connections.dialog = false;
         self.argo_connections.editing = None;
-        self.argo_connections
-            .token
-            .update(cx, |input, cx| input.set_value("", window, cx));
+        self.argo_connections.reconnecting = false;
+        self.argo_connections.preview = None;
+        self.argo_connections.preview_endpoint = None;
+        self.argo_connections.insecure = false;
+        self.clear_argo_secrets(window, cx);
         cx.notify();
     }
-    fn connect_argo_profile(
+    pub(super) fn connect_argo_profile(
         &mut self,
-        saved: Option<ArgoConnectionProfile>,
+        confirmed_target: Option<ArgoConfirmedTarget>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.argo_connections.busy {
             return;
         }
-        let url = self.argo_connections.url.read(cx).value().trim().to_owned();
-        let profile = saved.unwrap_or_else(|| ArgoConnectionProfile {
-            id: format!(
-                "argo:{}:{}:external:{url}",
-                self.argo_workspace_id(),
-                self.scope.context
+        let state = &self.argo_connections;
+        let remembered = state
+            .editing
+            .as_ref()
+            .is_some_and(|p| p.remember_credential);
+        let credential = if state.local {
+            !state.username.read(cx).value().is_empty()
+                && !state.password.read(cx).value().is_empty()
+        } else {
+            !state.token.read(cx).value().is_empty()
+        };
+        if !credential && !remembered {
+            self.argo_connections.error =
+                Some("Enter a token or local username and password before connecting.".into());
+            cx.notify();
+            return;
+        }
+        let mut endpoint = if confirmed_target.is_some() && !state.reconnecting {
+            state.preview_endpoint.clone()
+        } else {
+            None
+        }
+        .or_else(|| {
+            state
+                .editing
+                .as_ref()
+                .map(|p| p.endpoint.clone())
+                .or_else(|| state.endpoint.clone())
+        })
+        .unwrap_or_else(|| ArgoServerEndpoint::ExternalHttps {
+            url: state.url.read(cx).value().trim().to_owned(),
+        });
+        if confirmed_target.is_none()
+            && state.editing.is_none()
+            && let ArgoServerEndpoint::ServiceTunnel {
+                root_path,
+                tls_server_name,
+                ..
+            } = &mut endpoint
+        {
+            let root = state.root_path.read(cx).value().trim().to_owned();
+            let name = state.tls_name.read(cx).value().trim().to_owned();
+            if !root.is_empty() {
+                *root_path = Some(root);
+            }
+            if !name.is_empty() {
+                *tls_server_name = Some(name);
+            }
+        }
+        if matches!(endpoint, ArgoServerEndpoint::ServiceTunnel { .. })
+            && confirmed_target.is_none()
+        {
+            self.preview_argo_target(endpoint, window, cx);
+            return;
+        }
+        let url = super::argo_profiles::endpoint_url(&endpoint);
+        let external = matches!(endpoint, ArgoServerEndpoint::ExternalHttps { .. });
+        let profile = ArgoConnectionProfile {
+            id: state.editing.as_ref().map_or_else(
+                || {
+                    format!(
+                        "argo:{}:{}:{}:{}",
+                        self.argo_workspace_id(),
+                        self.scope.context,
+                        self.argo_source_key().unwrap_or("global"),
+                        super::argo_profiles::endpoint_identity(&endpoint)
+                    )
+                },
+                |p| p.id.clone(),
             ),
-            url: url.clone(),
-            endpoint: ArgoServerEndpoint::ExternalHttps { url },
+            url,
+            endpoint,
             cluster_context: Some(self.scope.context.clone()),
             workspace_id: Some(self.argo_workspace_id()),
             kubeconfig_source_key: self.argo_source_key().map(str::to_owned),
             transport: "connected".into(),
-            remember_credential: false,
-        });
-        let token = self.argo_connections.token.read(cx).value().to_string();
-        self.argo_connections
-            .token
-            .update(cx, |input, cx| input.set_value("", window, cx));
+            remember_credential: state.remember
+                || state
+                    .editing
+                    .as_ref()
+                    .is_some_and(|p| p.remember_credential),
+        };
+        let value = |field: &Entity<InputState>| {
+            let s = field.read(cx).value().to_string();
+            (!s.is_empty()).then_some(s)
+        };
         let read = self.backend.connect_argo(ArgoConnect {
             profile,
-            token: (!token.is_empty()).then_some(token),
+            token: if state.local {
+                None
+            } else {
+                value(&state.token)
+            },
+            username: if state.local {
+                value(&state.username)
+            } else {
+                None
+            },
+            password: if state.local {
+                value(&state.password)
+            } else {
+                None
+            },
+            insecure_tls: external && state.insecure,
+            custom_ca_pem: if external {
+                let ca = state.ca.read(cx).value().to_string();
+                (!ca.is_empty()).then(|| ca.into_bytes())
+            } else {
+                None
+            },
+            confirmed_target,
         });
+        self.clear_argo_secrets(window, cx);
+        self.argo_connections.preview = None;
         self.argo_connections.request = Rc::new(());
         let request = self.argo_connections.request.clone();
-        let scope = self.preset_key();
         self.argo_connections.busy = true;
         self.argo_connections.error = None;
         self.argo_connections.task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
-                if !Rc::ptr_eq(&request, &this.argo_connections.request)
-                    || this.preset_key() != scope
-                {
+                if !Rc::ptr_eq(&request, &this.argo_connections.request) {
                     return;
                 }
                 this.argo_connections.busy = false;
+                let automatic = this.argo_connections.reconnecting;
                 match result {
                     Ok(status) if status.connected && status.profile.is_some() => {
                         let id = status.profile.as_ref().unwrap().id.clone();
-                        this.argo_connections
+                        if let Some(existing) = this
+                            .argo_connections
                             .profiles
-                            .retain(|s| s.profile.as_ref().is_none_or(|p| p.id != id));
-                        this.argo_connections.selected = Preference::Connected(id);
-                        this.argo_connections.profiles.push(status);
+                            .iter_mut()
+                            .find(|s| s.profile.as_ref().is_some_and(|p| p.id == id))
+                        {
+                            *existing = status;
+                        } else {
+                            this.argo_connections.profiles.push(status);
+                        }
+                        if !this.argo_connections.reconnecting {
+                            this.argo_connections.selected = Preference::Connected(id);
+                        }
+                        this.argo_connections.reconnecting = false;
+                        this.persist_argo_preferences(cx);
+                        this.sync_argo_picker(window, cx);
                         this.argo_connections.open = false;
                         this.argo_connections.dialog = false;
+                        this.argo_connections.insecure = false;
                         this.reload_argo(window, cx);
                     }
                     Ok(status) => {
@@ -189,6 +326,9 @@ impl Inspector {
                         )
                     }
                     Err(error) => this.argo_connections.error = Some(error.message),
+                }
+                if automatic {
+                    this.reconnect_next_argo_profile(window, cx);
                 }
                 cx.notify();
             });
@@ -218,6 +358,8 @@ impl Inspector {
                             }
                         }
                         this.argo_connections.selected = Preference::Automatic;
+                        this.persist_argo_preferences(cx);
+                        this.sync_argo_picker(window, cx);
                         this.reload_argo(window, cx);
                     }
                     Err(error) => this.argo_connections.error = Some(error.message),
@@ -226,198 +368,4 @@ impl Inspector {
             });
         }));
     }
-    pub(super) fn argo_connection_panel(&self, cx: &mut Context<Self>) -> Div {
-        if self.argo_connections.dialog {
-            return div();
-        }
-        self.argo_connection_content(cx)
-    }
-    pub(super) fn argo_connection_dialog(
-        &self,
-        cx: &mut Context<Self>,
-    ) -> Option<gpui_kit::AnyElement> {
-        self.argo_connections.dialog.then(|| {
-            div()
-                .absolute()
-                .inset_0()
-                .flex()
-                .items_center()
-                .justify_center()
-                .bg(Tokens::background().opacity(0.8))
-                .on_mouse_down(gpui_kit::MouseButton::Left, |_, _, cx| {
-                    cx.stop_propagation()
-                })
-                .child(
-                    div()
-                        .id("argo-connection-dialog")
-                        .test_support()
-                        .role(gpui_kit::Role::Dialog)
-                        .aria_label("Argo CD connection")
-                        .w(px(480.))
-                        .max_h_full()
-                        .overflow_y_scroll()
-                        .child(self.argo_connection_content(cx))
-                        .child(
-                            button(Variant::Outline, 24., false)
-                                .id("argo-connection-close")
-                                .test_support()
-                                .child("Close connection")
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.cancel_argo_connection(window, cx)
-                                })),
-                        ),
-                )
-                .into_any_element()
-        })
-    }
-    fn argo_connection_content(&self, cx: &mut Context<Self>) -> Div {
-        let state = &self.argo_connections;
-        let active = self.argo_connection_id();
-        let mut panel = super::argo_panels::panel()
-            .flex()
-            .flex_col()
-            .gap(px(8.))
-            .child(
-                button(Variant::Outline, 24., false)
-                    .id("argo-connect-open")
-                    .test_support()
-                    .child("Connect Argo CD")
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.argo_connections.editing = None;
-                        this.argo_connections.open = true;
-                        cx.notify();
-                    })),
-            );
-        for status in &state.profiles {
-            let Some(p) = &status.profile else {
-                continue;
-            };
-            if p.cluster_context.as_deref() != Some(&self.scope.context)
-                || p.workspace_id.as_deref() != Some(&self.argo_workspace_id())
-                || p.kubeconfig_source_key.as_deref() != self.argo_source_key()
-            {
-                continue;
-            }
-            let (id, saved) = (p.id.clone(), p.clone());
-            let selected_id = id.clone();
-            if status.connected {
-                panel = panel.child(
-                    button(Variant::Outline, 24., false)
-                        .id(gpui_kit::SharedString::from(format!("argo-use:{id}")))
-                        .test_support()
-                        .child(format!("Inspect with {}", p.url))
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            this.argo_connections.selected =
-                                Preference::Connected(selected_id.clone());
-                            this.reload_argo(window, cx);
-                        })),
-                );
-            }
-            panel = panel.child(
-                div().flex().gap(px(8.)).child(ui::xs(p.url.clone())).child(
-                    button(Variant::Outline, 24., false)
-                        .id(gpui_kit::SharedString::from(format!(
-                            "argo-profile:{}",
-                            p.id
-                        )))
-                        .test_support()
-                        .child(if status.connected {
-                            "Disconnect"
-                        } else {
-                            "Reconnect"
-                        })
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            if status_connected(&this.argo_connections, &id) {
-                                this.disconnect_argo_profile(id.clone(), window, cx);
-                            } else {
-                                this.argo_connections.url.update(cx, |input, cx| {
-                                    input.set_value(saved.url.clone(), window, cx)
-                                });
-                                this.argo_connections.editing = Some(saved.clone());
-                                this.argo_connections.open = true;
-                                cx.notify();
-                            }
-                        })),
-                ),
-            );
-        }
-        panel = panel.child(
-            div()
-                .flex()
-                .gap(px(8.))
-                .child(
-                    button(Variant::Outline, 24., false)
-                        .id("argo-automatic")
-                        .test_support()
-                        .child("Automatic")
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.argo_connections.selected = Preference::Automatic;
-                            this.reload_argo(window, cx);
-                        })),
-                )
-                .child(
-                    button(Variant::Outline, 24., false)
-                        .id("argo-kubernetes")
-                        .test_support()
-                        .child("Kubernetes")
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.argo_connections.selected = Preference::Kubernetes;
-                            this.reload_argo(window, cx);
-                        })),
-                ),
-        );
-        panel = panel.child(ui::muted(ui::xs(if active.is_some() {
-            "Connected Argo CD authorization is evaluated during operation preflight."
-        } else {
-            "Argo RBAC is not evaluated. Exact manifests require a connected profile."
-        })));
-        if state.open {
-            panel = panel
-                .child(ui::sm("Argo CD connection"))
-                .child(
-                    Input::new(&state.url)
-                        .id("argo-url")
-                        .aria_label("Argo CD server URL"),
-                )
-                .child(
-                    Input::new(&state.token)
-                        .id("argo-token")
-                        .aria_label("Argo CD token"),
-                )
-                .child(
-                    button(Variant::Default, 24., state.busy)
-                        .id("argo-connect-submit")
-                        .test_support()
-                        .child("Connect")
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            let saved = this.argo_connections.editing.clone();
-                            this.connect_argo_profile(saved, window, cx)
-                        })),
-                )
-                .child(
-                    button(Variant::Outline, 24., false)
-                        .id("argo-connect-cancel")
-                        .test_support()
-                        .child("Cancel")
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.cancel_argo_connection(window, cx)
-                        })),
-                );
-        }
-        panel.when_some(state.error.clone(), |p, error| {
-            p.child(
-                ui::xs(error.clone())
-                    .id("argo-connection-error")
-                    .test_support()
-                    .aria_label(error)
-                    .text_color(Tokens::destructive()),
-            )
-        })
-    }
-}
-fn status_connected(state: &Connections, id: &str) -> bool {
-    state
-        .profiles
-        .iter()
-        .any(|s| s.connected && s.profile.as_ref().is_some_and(|p| p.id == id))
 }

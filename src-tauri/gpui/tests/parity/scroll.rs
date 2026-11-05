@@ -12,10 +12,28 @@ pub fn reveal(window: &mut gpui_kit::Window, anchor: &str, id: &str, cx: &mut gp
     let id = gpui_kit::ElementId::Name(id.to_owned().into());
     window.render_frame(cx);
     let target = window.find(id.clone());
-    if target.visible() {
+    let anchor = if target
+        .path()
+        .iter()
+        .any(|part| part == &gpui_kit::ElementId::Name("argo-connection-dialog".into()))
+    {
+        "argo-connection-dialog"
+    } else {
+        anchor
+    };
+    let scroll_container = matches!(
+        anchor,
+        "detail-body" | "argo-connection-dialog" | "actions-scroll"
+    );
+    let anchor = window.find(gpui_kit::ElementId::Name(anchor.to_owned().into()));
+    if target.visible()
+        && (!scroll_container
+            || (target.bounds().top() >= anchor.bounds().top()
+                && target.bounds().bottom()
+                    <= anchor.bounds().bottom().min(window.viewport_size().height)))
+    {
         return;
     }
-    let anchor = window.find(gpui_kit::ElementId::Name(anchor.to_owned().into()));
     assert!(
         anchor.visible(),
         "scroll anchor {:?} is not visible",

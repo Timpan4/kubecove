@@ -1,9 +1,9 @@
 //! The Argo CD tab's panels from `ArgoApplicationDetails.svelte`: the change
 //! navigator, and the Delivery and Recent deployment cards.
 
+use super::Inspector;
 use super::argo_tab::ArgoTab;
 use super::controls::{self, Variant};
-use super::{Inspector, surface};
 use crate::argo_app::ArgoView;
 use crate::model::exact_timestamp;
 use crate::theme::Tokens;
@@ -116,7 +116,11 @@ pub(super) fn navigator(view: &ArgoView, state: &ArgoTab, cx: &mut Context<Inspe
         )
 }
 
-pub(super) fn delivery(view: &ArgoView, timezone: crate::preferences::TimestampTimezone) -> Div {
+pub(super) fn delivery(
+    view: &ArgoView,
+    state: &ArgoTab,
+    timezone: crate::preferences::TimestampTimezone,
+) -> Div {
     let facts = [
         ("Repository", &view.repository),
         ("Path", &view.path),
@@ -124,7 +128,19 @@ pub(super) fn delivery(view: &ArgoView, timezone: crate::preferences::TimestampT
         ("Destination", &view.destination),
         ("Policy", &view.policy),
     ];
-    let deployment = view.history.first();
+    let deployment = state
+        .options
+        .history
+        .and_then(|id| {
+            state
+                .inspector
+                .as_ref()?
+                .history
+                .iter()
+                .position(|h| h.id == Some(id))
+        })
+        .and_then(|index| view.history.get(index))
+        .or_else(|| view.history.first());
     div()
         .flex()
         .flex_col()
@@ -147,6 +163,8 @@ pub(super) fn delivery(view: &ArgoView, timezone: crate::preferences::TimestampT
         )
         .child(
             panel()
+                .flex()
+                .flex_col()
                 .child(
                     div()
                         .flex()
@@ -160,25 +178,21 @@ pub(super) fn delivery(view: &ArgoView, timezone: crate::preferences::TimestampT
                         .child(caps("Recent deployment")),
                 )
                 .when(view.history.len() > 1, |card| {
-                    card.child(surface::disabled(
-                        div()
-                            .mt(px(12.))
-                            .flex()
-                            .items_center()
-                            .justify_between()
+                    card.child(
+                        gpui_kit::component::select::Select::new(&state.options.picker)
+                            .id("argo-history-picker")
                             .h(px(28.))
-                            .px(px(10.))
-                            .rounded(px(8.))
-                            .border_1()
-                            .border_color(Tokens::input())
-                            .child(ui::xs(
-                                deployment.map_or(String::new(), |entry| entry.revision.clone()),
-                            ))
-                            .child(ui::icon("chevron-down", 14., Tokens::muted_foreground())),
-                    ))
+                            .flex_none()
+                            .w_full()
+                            .mt(px(12.)),
+                    )
                 })
                 .child(match deployment {
                     Some(entry) => div()
+                        .flex_none()
+                        .id("argo-history-summary")
+                        .test_support()
+                        .aria_label(format!("{} {}", entry.revision, entry.initiated_by))
                         .child(ui::semibold(ui::sm(entry.revision.clone())).mt(px(12.)))
                         .child(
                             ui::muted(ui::text(
@@ -195,9 +209,11 @@ pub(super) fn delivery(view: &ArgoView, timezone: crate::preferences::TimestampT
                                 19.5,
                             ))
                             .mt(px(4.)),
-                        ),
+                        )
+                        .into_any_element(),
                     None => div()
-                        .child(ui::muted(ui::xs("No deployment history reported.")).mt(px(12.))),
+                        .child(ui::muted(ui::xs("No deployment history reported.")).mt(px(12.)))
+                        .into_any_element(),
                 }),
         )
 }

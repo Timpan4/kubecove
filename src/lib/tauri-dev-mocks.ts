@@ -105,6 +105,8 @@ interface MockArgs {
 
 type MockResult = boolean | number | object | string | null | undefined;
 type MockHandler = (args: MockArgs, options?: InvokeOptions) => MockResult | Promise<MockResult>;
+let argoOutcomeComplete = false;
+export function completeMockArgoOperation() { argoOutcomeComplete = true; }
 const argoConnections = new Map<string, ArgoConnectionProfile>();
 
 function readMockArgs<Args extends object>(args: Args | undefined): MockArgs {
@@ -266,7 +268,7 @@ const handlers = {
 				argoComparison({ ...args, resource }),
 			),
 			conditions: [{ type: "ComparisonError", message: "Mock drift requires review before sync.", lastTransitionTime: now }],
-			operationState: null,
+			operationState: argoOutcomeComplete ? { phase: "Succeeded", startedAt: "2026-11-05T00:00:01Z", message: "Fixture operation finished" } : null,
 			connected: args?.transport === "connected",
 			transport: args?.transport === "connected" ? "connected" : "kubernetes",
 			provenance:

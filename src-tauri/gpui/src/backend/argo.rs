@@ -8,6 +8,11 @@ use serde::{Deserialize, Serialize};
 pub struct ArgoConnect {
     pub profile: ArgoConnectionProfile,
     pub token: Option<String>,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub insecure_tls: bool,
+    pub custom_ca_pem: Option<Vec<u8>>,
+    pub confirmed_target: Option<ArgoConfirmedTarget>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -15,6 +20,7 @@ pub struct ArgoConnect {
 pub struct ArgoInspection {
     pub application: ArgoApplicationRef,
     pub connection_id: Option<String>,
+    pub source: Option<String>,
 }
 
 pub(super) fn connect(backend: &NativeBackend, request: ArgoConnect) -> Read<ArgoConnectionStatus> {
@@ -26,15 +32,15 @@ pub(super) fn connect(backend: &NativeBackend, request: ArgoConnect) -> Read<Arg
             p.url,
             Some(p.endpoint),
             request.token,
-            None,
-            None,
-            false,
-            None,
+            request.username,
+            request.password,
+            request.insecure_tls,
+            request.custom_ca_pem,
             p.remember_credential,
             p.cluster_context,
-            None,
+            p.kubeconfig_source_key,
             p.workspace_id,
-            None,
+            request.confirmed_target,
             State::new(&*store),
         )
         .await
@@ -55,7 +61,7 @@ pub(super) fn inspect(
     backend.read(async move {
         commands::get_argo_application_inspector(
             request.application.context.clone().unwrap_or_default(),
-            None,
+            request.source,
             request.connection_id.clone(),
             if request.connection_id.is_some() {
                 "connected"
@@ -90,3 +96,111 @@ pub(super) fn run(
     backend
         .read(async move { commands::run_argo_operation(confirmation, State::new(&*store)).await })
 }
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArgoTarget {
+    pub context: String,
+    pub source: Option<String>,
+    pub endpoint: Option<ArgoServerEndpoint>,
+}
+pub(super) fn discover(backend: &NativeBackend, r: ArgoTarget) -> Read<Vec<ArgoServerCapability>> {
+    let cancellations = backend.cancellations.clone();
+    backend.read(async move {
+        commands::discover_argo_servers(r.context, r.source, None, None, State::new(&cancellations))
+            .await
+    })
+}
+pub(super) fn preview(backend: &NativeBackend, r: ArgoTarget) -> Read<ArgoTunnelTargetPreview> {
+    backend.read(async move {
+        let endpoint = r.endpoint.ok_or_else(|| {
+            AppError::new(
+                "Select a Service tunnel",
+                kubecove_lib::models::AppErrorKind::ArgoConnection,
+            )
+        })?;
+        commands::preview_argo_tunnel_target(r.context, r.source, endpoint).await
+    })
+}
+macro_rules! defaults {
+    () => {
+        fn connect_argo(&self, _: ArgoConnect) -> Read<kubecove_lib::models::ArgoConnectionStatus> {
+            settings_integrations::unavailable("Argo CD connection unavailable")
+        }
+        fn disconnect_argo(&self, _: String) -> Read<()> {
+            settings_integrations::unavailable("Argo CD connection unavailable")
+        }
+        fn inspect_argo(&self, request: ArgoInspection) -> Read<ArgoApplicationInspector> {
+            if request.connection_id.is_some() {
+                return settings_integrations::unavailable("Connected inspection unavailable");
+            }
+            self.argo_inspector(request.application)
+        }
+        fn preflight_argo(
+            &self,
+            _: kubecove_lib::models::ArgoOperationRequest,
+        ) -> Read<kubecove_lib::models::ArgoOperationPreflight> {
+            settings_integrations::unavailable("Argo CD operation unavailable")
+        }
+        fn run_argo(
+            &self,
+            _: kubecove_lib::models::ArgoOperationConfirmation,
+        ) -> Read<kubecove_lib::models::ArgoOperationResult> {
+            settings_integrations::unavailable("Argo CD operation unavailable")
+        }
+        fn discover_argo(
+            &self,
+            _: ArgoTarget,
+        ) -> Read<Vec<kubecove_lib::models::ArgoServerCapability>> {
+            settings_integrations::unavailable("Argo CD discovery unavailable")
+        }
+        fn preview_argo(
+            &self,
+            _: ArgoTarget,
+        ) -> Read<kubecove_lib::models::ArgoTunnelTargetPreview> {
+            settings_integrations::unavailable("Argo CD tunnel preview unavailable")
+        }
+    };
+}
+pub(super) use defaults;
+macro_rules! native {
+    () => {
+        fn connect_argo(
+            &self,
+            request: ArgoConnect,
+        ) -> Read<kubecove_lib::models::ArgoConnectionStatus> {
+            argo::connect(self, request)
+        }
+        fn disconnect_argo(&self, id: String) -> Read<()> {
+            argo::disconnect(self, id)
+        }
+        fn inspect_argo(&self, request: ArgoInspection) -> Read<ArgoApplicationInspector> {
+            argo::inspect(self, request)
+        }
+        fn preflight_argo(
+            &self,
+            request: kubecove_lib::models::ArgoOperationRequest,
+        ) -> Read<kubecove_lib::models::ArgoOperationPreflight> {
+            argo::preflight(self, request)
+        }
+        fn run_argo(
+            &self,
+            confirmation: kubecove_lib::models::ArgoOperationConfirmation,
+        ) -> Read<kubecove_lib::models::ArgoOperationResult> {
+            argo::run(self, confirmation)
+        }
+        fn discover_argo(
+            &self,
+            request: ArgoTarget,
+        ) -> Read<Vec<kubecove_lib::models::ArgoServerCapability>> {
+            argo::discover(self, request)
+        }
+        fn preview_argo(
+            &self,
+            request: ArgoTarget,
+        ) -> Read<kubecove_lib::models::ArgoTunnelTargetPreview> {
+            argo::preview(self, request)
+        }
+    };
+}
+pub(super) use native;

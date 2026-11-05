@@ -154,14 +154,24 @@ impl Backend for DesktopBackend {
     route!(
         inspect_argo(request: ArgoInspection) -> ArgoApplicationInspector,
         "get_argo_application_inspector",
-        json!({"clusterContext":request.application.context,"application":request.application,"transport":if request.connection_id.is_some() { "connected" } else { "kubernetes" },"connectionId":request.connection_id})
+        json!({"clusterContext":request.application.context,"application":request.application,"transport":if request.connection_id.is_some() { "connected" } else { "kubernetes" },"connectionId":request.connection_id,"kubeconfigEnvVar":request.source})
     );
     route!(
         connect_argo(request: ArgoConnect) -> ArgoConnectionStatus,
         "connect_argo_server",
         json!({"id":request.profile.id,"serverUrl":request.profile.url,"endpoint":request.profile.endpoint,"token":request.token,
-            "insecureTls":false,"rememberCredential":request.profile.remember_credential,"clusterContext":request.profile.cluster_context,
+            "username":request.username,"password":request.password,"insecureTls":request.insecure_tls,"customCaPem":request.custom_ca_pem,"confirmedTarget":request.confirmed_target,"kubeconfigEnvVar":request.profile.kubeconfig_source_key,"rememberCredential":request.profile.remember_credential,"clusterContext":request.profile.cluster_context,
             "workspaceId":request.profile.workspace_id})
+    );
+    route!(
+        discover_argo(request: ArgoTarget) -> Vec<ArgoServerCapability>,
+        "discover_argo_servers",
+        json!({"clusterContext":request.context,"kubeconfigEnvVar":request.source})
+    );
+    route!(
+        preview_argo(request: ArgoTarget) -> ArgoTunnelTargetPreview,
+        "preview_argo_tunnel_target",
+        json!({"clusterContext":request.context,"kubeconfigEnvVar":request.source,"endpoint":request.endpoint})
     );
     fn add_kubeconfig_paths(&self, paths: Vec<String>) -> Read<KubeconfigSourcesSummary> {
         if self.selected() {

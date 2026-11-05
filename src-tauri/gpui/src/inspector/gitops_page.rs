@@ -155,8 +155,35 @@ impl Inspector {
         let count = self.gitops_items();
         let shape = Some((count, self.gitops_page.mode, self.gitops_page.layout));
         if self.gitops_page.shape != shape {
+            let mut position = self.gitops_page.list.logical_scroll_top();
+            if let Some((_, mode, previous)) = self.gitops_page.shape
+                && position.item_ix >= 3
+            {
+                // Keep the same resource row at the top when opening detail
+                // moves the rail or changes the number of card columns.
+                let old_columns = if mode == ViewMode::Cards {
+                    previous.columns
+                } else {
+                    1
+                };
+                let old_rows = items.div_ceil(old_columns);
+                let old_top = if previous.rail_beside {
+                    TOP_ROWS[usize::from(mode == ViewMode::List)].min(old_rows)
+                } else {
+                    0
+                };
+                let resource = (position.item_ix - 3 + old_top) * old_columns;
+                let columns = if self.gitops_page.mode == ViewMode::Cards {
+                    self.gitops_page.layout.columns
+                } else {
+                    1
+                };
+                position.item_ix =
+                    3 + (resource / columns).saturating_sub(self.gitops_page.top_rows());
+            }
             self.gitops_page.shape = shape;
             self.gitops_page.list.reset(count);
+            self.gitops_page.list.scroll_to(position);
         }
         div()
             .id("gitops-list")

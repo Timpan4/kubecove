@@ -409,7 +409,8 @@ impl Inspector {
                     DetailTab::Argo => argo_tab(
                         detail,
                         self.persisted.preferences.timestamp_timezone,
-                        self.argo_connection_panel(cx),
+                        self.argo_connection_panel(cx)
+                            .children(self.argo_outcome_panel(detail)),
                         cx,
                     ),
                     DetailTab::Actions => actions_tab(detail, cx),

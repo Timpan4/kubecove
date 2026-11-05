@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from "svelte";
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import { argoApplicationWatchKey } from "@/lib/argo-application-inspection";
 	import { liveViewRefresh } from "@/lib/live-view-refresh.svelte";
@@ -34,8 +35,9 @@
 			refreshScope: "reads",
 		};
 	});
+	const operationScope = $derived(context.sourceReady ? JSON.stringify([context.clusterContext, context.workspaceId, context.kubeconfigSourceKey]) : "");
 	$effect(() => {
-		if (!context.sourceReady) return;
-		return tracker.activate({ context: context.clusterContext, workspaceId: context.workspaceId }, context.kubeconfigSourceKey);
+		if (!operationScope) return;
+		return untrack(() => tracker.activate({ context: context.clusterContext, workspaceId: context.workspaceId }, context.kubeconfigSourceKey));
 	});
 </script>

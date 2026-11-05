@@ -155,6 +155,7 @@
 
 	let selectedResource = $state<ArgoManagedResource | null>(null);
 	let selectedHistoryKey = $state<string | null>(null);
+	let rollbackHistoryId = $state<number | null>(null);
 	let diffView = $state<DiffView>("changes");
 	let expandedRemovalKeys = $state<string[]>([]);
 	let refreshMenuOpen = $state(false);
@@ -368,6 +369,7 @@
 		if (appliedScopeKey && appliedScopeKey !== nextScopeKey) {
 			selectedResource = null;
 			selectedHistoryKey = null;
+			rollbackHistoryId = null;
 			diffView = "changes";
 			expandedRemovalKeys = [];
 			closeSyncConfirmation();
@@ -465,8 +467,13 @@
 		);
 	}
 
+	function selectHistory(value: string) {
+		selectedHistoryKey = value;
+		rollbackHistoryId = snapshot?.history.find(entry => argoHistoryKey(application, entry) === value)?.id ?? null;
+	}
+
 	function rollbackPrevious() {
-		const historyId = snapshot?.history[1]?.id;
+		const historyId = rollbackHistoryId ?? snapshot?.history[1]?.id;
 		if (historyId != null) void executeOperation({ ...operation("rollback"), historyId });
 	}
 
@@ -803,7 +810,7 @@
 			<div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><GitCommitHorizontal class="size-3.5" /> Recent deployment</div>
 			{#if snapshot?.history.length}
 				{#if snapshot.history.length > 1}
-					<Select value={selectedHistoryKey ?? ""} onValueChange={(value: string) => (selectedHistoryKey = value)}>
+					<Select value={selectedHistoryKey ?? ""} onValueChange={selectHistory}>
 						<SelectTrigger class="mt-3 w-full" ariaLabel="Recent deployment"><SelectValue>{selectedHistory ? historyRevision(selectedHistory) : "Select deployment"}</SelectValue></SelectTrigger>
 						<SelectContent><SelectGroup>{#each snapshot.history as entry}<SelectItem value={argoHistoryKey(application, entry)} label={historyRevision(entry)}>{historyRevision(entry)}</SelectItem>{/each}</SelectGroup></SelectContent>
 					</Select>

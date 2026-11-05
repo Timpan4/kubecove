@@ -38,6 +38,12 @@ export function buildGitOpsReadState(snapshots: GitOpsQuerySnapshots) {
 		argoProjects,
 		fluxResources,
 	} = snapshots;
+	// Read every pending flag before branching so query observers track each
+	// transition, including lists that settle while detection is still pending.
+	const argoPending = argoDetection.isPending;
+	const fluxPending = fluxDetection.isPending;
+	const appListsPending = [argoApps.isPending, argoAppSets.isPending, argoProjects.isPending].some(Boolean);
+	const fluxListsPending = fluxResources.map(query => query.isPending).some(Boolean);
 	const detectionReady =
 		(argoDetection.isSuccess || argoDetection.isError) &&
 		(fluxDetection.isSuccess || fluxDetection.isError);
@@ -62,12 +68,9 @@ export function buildGitOpsReadState(snapshots: GitOpsQuerySnapshots) {
 		query: {
 			data,
 			isPending:
-				argoDetection.isPending ||
-				fluxDetection.isPending ||
-				(argoDetection.data === true &&
-					(argoApps.isPending || argoAppSets.isPending || argoProjects.isPending)) ||
-				(fluxDetection.data?.detected === true &&
-					fluxResources.some((query) => query.isPending)),
+				argoPending || fluxPending ||
+				(argoDetection.data === true && appListsPending) ||
+				(fluxDetection.data?.detected === true && fluxListsPending),
 			isError: false,
 			error: null,
 		},

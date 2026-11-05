@@ -1,5 +1,7 @@
 #[path = "native/argo.rs"]
 mod argo;
+#[path = "native/argo_outcomes.rs"]
+mod argo_outcomes;
 #[path = "native/detail_tabs.rs"]
 mod detail_tabs;
 #[path = "native/live_data.rs"]
@@ -60,6 +62,18 @@ fn resource(context: &str) -> ResourceSummary {
 }
 
 impl Backend for Controlled {
+    fn discover_argo(
+        &self,
+        _: kubecove_gpui::backend::ArgoTarget,
+    ) -> Read<Vec<kubecove_lib::models::ArgoServerCapability>> {
+        self.argo.discover()
+    }
+    fn preview_argo(
+        &self,
+        _: kubecove_gpui::backend::ArgoTarget,
+    ) -> Read<kubecove_lib::models::ArgoTunnelTargetPreview> {
+        self.argo.preview()
+    }
     fn preflight_argo(
         &self,
         request: kubecove_lib::models::ArgoOperationRequest,

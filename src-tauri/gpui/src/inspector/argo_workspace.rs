@@ -130,6 +130,9 @@ impl Inspector {
     }
 
     pub(super) fn load_application_workspace(&mut self, cx: &mut Context<Self>) {
+        let connection_id = self.argo_connection_id();
+        let workspace_id = self.argo_workspace_id();
+        let source = self.argo_source_key().map(str::to_owned);
         let Some(state) = self.gitops_page.workspace.as_mut() else {
             return;
         };
@@ -141,11 +144,17 @@ impl Inspector {
             name: state.app.name.clone(),
             namespace: state.app.namespace.clone(),
             context: Some(state.app.cluster.clone()),
+            api_version: Some("argoproj.io/v1alpha1".into()),
+            workspace_id: Some(workspace_id),
             ..Default::default()
         };
         state.request = Rc::new(());
         let request = state.request.clone();
-        let read = self.backend.argo_inspector(application);
+        let read = self.backend.inspect_argo(crate::backend::ArgoInspection {
+            application,
+            connection_id,
+            source,
+        });
         state.task = Some(cx.spawn(async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
