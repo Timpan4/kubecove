@@ -1,0 +1,61 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "argo-desired.selected-application",
+      "title": "The Desired editor shows the selected Application's managed manifest",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test", "surface": "page" },
+        { "action": "argoDocument", "view": "Desired", "contains": "kind: StatefulSet" }
+      ]
+    },
+    {
+      "id": "argo-connected.profile-and-comparison",
+      "title": "A connected profile inspects the selected Application and disconnects explicitly",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test" },
+        { "action": "expectArgoText", "text": "Connected Argo CD API" },
+        { "action": "argoDocument", "view": "Desired", "contains": "kind: StatefulSet" },
+        { "action": "argoDocument", "view": "Changes", "contains": "kubecove.dev/state" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "platform-argocd", "namespace": "argocd" },
+        { "action": "expectArgoApplication", "name": "platform-argocd", "health": "Healthy", "sync": "Synced" },
+        { "action": "disconnectArgoProfile" },
+        { "action": "expectArgoText", "text": "Kubernetes Application status" }
+      ]
+    },
+    {
+      "id": "argo-review.refresh-sync-rollback",
+      "title": "Refresh, Sync and rollback review the exact Application before confirmation",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test" },
+        { "action": "reviewArgoOperation", "operation": "Refresh" },
+        { "action": "expectArgoReview", "operation": "refresh", "name": "tenant-ledger", "namespace": "argocd", "transport": "connected" },
+        { "action": "cancelArgoReview" },
+        { "action": "reviewArgoOperation", "operation": "Sync" },
+        { "action": "expectArgoReview", "operation": "sync", "name": "tenant-ledger", "namespace": "argocd", "transport": "connected" },
+        { "action": "cancelArgoReview" },
+        { "action": "reviewArgoOperation", "operation": "Rollback" },
+        { "action": "expectArgoReview", "operation": "rollback", "name": "tenant-ledger", "namespace": "argocd", "transport": "connected" },
+        { "action": "confirmArgoReview" },
+        { "action": "expectArgoText", "text": "Accepted; waiting for Argo CD to complete" }
+      ]
+    },
+    {
+      "id": "argo-review.refused-operation",
+      "title": "A refused operation preserves the failure and cannot execute",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "reviewArgoOperation", "operation": "Rollback" },
+        { "action": "expectArgoText", "text": "operation unavailable in browser mock" }
+      ]
+    }
+  ]
+}

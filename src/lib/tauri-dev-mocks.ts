@@ -278,7 +278,7 @@ const handlers = {
 	get_argo_resource_comparison: (args) => argoComparison(args),
 	preflight_argo_operation: (args) => {
 		const request = args?.request;
-		const allowed = ["refresh", "hardRefresh", "sync", "retry"].includes(String(request?.action));
+		const allowed = ["refresh", "hardRefresh", "sync", "retry"].includes(String(request?.action)) || (request?.action === "rollback" && request.transport === "connected");
 		return { allowed, transport: request?.transport, action: request?.action, reason: allowed ? null : "operation unavailable in browser mock", sessionId: allowed ? "mock-session" : null, expiresAt: allowed ? Date.now() + 300_000 : null, reviewedRequest: allowed ? request : null };
 	},
 	run_argo_operation: () => ({ accepted: true, transport: "kubernetes", message: "Mock operation accepted", operation: null }),

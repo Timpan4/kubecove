@@ -116,6 +116,56 @@ mod visual {
                 .unwrap();
             cx.run_until_parked();
             match view.as_str() {
+                "argo-connected" | "argo-review" | "argo-desired" => {
+                    act(&mut cx, handle, |w, cx| w.click("nav:GitOps", cx));
+                    act(&mut cx, handle, |w, cx| {
+                        assert!(parity_scroll::seek(
+                            w,
+                            cx,
+                            "gitops-list",
+                            "gitops-details:Application:argocd:tenant-ledger"
+                        ));
+                        w.click("gitops-details:Application:argocd:tenant-ledger", cx)
+                    });
+                    act(&mut cx, handle, |w, cx| {
+                        parity_scroll::reveal(w, "detail-body", "argo-connect-open", cx);
+                        w.click("argo-connect-open", cx);
+                        w.render_frame(cx);
+                        parity_scroll::reveal(w, "detail-body", "argo-url", cx);
+                        w.click("argo-url", cx);
+                        w.input("https://argocd.example.test", cx);
+                        parity_scroll::reveal(w, "detail-body", "argo-token", cx);
+                        w.click("argo-token", cx);
+                        w.input("parity-fixture-token", cx);
+                    });
+                    act(&mut cx, handle, |w, cx| {
+                        parity_scroll::reveal(w, "detail-body", "argo-connect-submit", cx);
+                        w.click("argo-connect-submit", cx);
+                    });
+                    if view == "argo-review" {
+                        act(&mut cx, handle, |w, cx| {
+                            parity_scroll::reveal(w, "detail-body", "argo-operation:Sync", cx);
+                            w.click("argo-operation:Sync", cx);
+                        });
+                        act(&mut cx, handle, |w, cx| {
+                            parity_scroll::reveal(w, "detail-body", "argo-review", cx)
+                        });
+                    }
+                    if view == "argo-desired" {
+                        act(&mut cx, handle, |w, cx| {
+                            parity_scroll::reveal(w, "detail-body", "argo-view:Desired", cx);
+                            w.click("argo-view:Desired", cx);
+                        });
+                    }
+                    if view == "argo-connected" {
+                        act(&mut cx, handle, |w, cx| {
+                            parity_scroll::reveal(w, "detail-body", "argo-view:Changes", cx);
+                            w.click("argo-view:Changes", cx);
+                            w.render_frame(cx);
+                            parity_scroll::reveal(w, "detail-body", "argo-diff:0", cx);
+                        });
+                    }
+                }
                 "settings-appearance"
                 | "settings-sessions"
                 | "settings-yaml"

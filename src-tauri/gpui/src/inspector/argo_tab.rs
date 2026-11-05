@@ -1,12 +1,9 @@
-//! The Argo CD tab, mirroring `ArgoApplicationDetails.svelte` over the
-//! Kubernetes transport. Refresh, Sync and the connection controls render
-//! disabled: connected Argo CD and Application operations (ADR 0013, ADR 0004)
-//! are not ported. Read-only YAML shows as plain text instead of an editor.
+//! The Argo CD inspector uses the selected transport and canonical Application.
+//! Connection credentials and operation reviews stay behind the Rust backend.
 
-use super::argo_panels::{delivery, navigator, panel};
+use super::argo_panels::{delivery, navigator};
 use super::argo_snapshot::{DiffView, snapshot};
 use super::controls::{self, Variant};
-use super::delivery_ui as dui;
 use super::detail::{Detail, ResourceDetail};
 use super::{Inspector, surface};
 use crate::argo_app::ArgoView;
@@ -15,7 +12,8 @@ use crate::theme::{MONO, Palette, Tokens};
 use crate::ui;
 use gpui_kit::TestSupportExt;
 use gpui_kit::{AnyElement, Context, Div, SharedString, Task, Window, div, prelude::*, px};
-use kubecove_lib::models::ArgoApplicationRef;
+use kubecove_lib::models::{ArgoApplicationInspector, ArgoApplicationRef};
+use std::rc::Rc;
 
 enum ArgoLoad {
     Loading,
@@ -31,7 +29,15 @@ pub(super) struct ArgoTab {
     /// Removals whose live YAML is shown, and diffs shown in full.
     pub(super) expanded: Vec<usize>,
     pub(super) full: Vec<usize>,
+    pub(super) highlights: Vec<Vec<super::argo_highlight::Highlights>>,
     evidence: bool,
+    pub(super) inspector: Option<ArgoApplicationInspector>,
+    pub(super) operation: super::argo_operations::Operation,
+    pub(super) editors: Vec<(
+        gpui_kit::Entity<gpui_kit::component::input::EditorState>,
+        gpui_kit::Entity<gpui_kit::component::input::EditorState>,
+    )>,
+    request: Rc<()>,
     _task: Option<Task<()>>,
 }
 
@@ -45,6 +51,8 @@ impl Inspector {
 
     /// Reads the inspector snapshot the first time the tab opens.
     pub(super) fn open_argo(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let connection_id = self.argo_connection_id();
+        let workspace_id = self.argo_workspace_id();
         let Detail::Ready(detail) = &mut self.detail else {
             return;
         };
@@ -52,32 +60,78 @@ impl Inspector {
             return;
         }
         let summary = detail.data.summary.clone();
-        let read = self.backend.argo_inspector(ArgoApplicationRef {
-            name: summary.name.clone(),
-            namespace: summary.namespace.clone(),
-            project: None,
-            resource_version: None,
-            uid: None,
-            api_version: summary.api_version.clone(),
-            context: Some(summary.cluster.clone()),
-            workspace_id: None,
+        let read = self.backend.inspect_argo(crate::backend::ArgoInspection {
+            connection_id,
+            application: ArgoApplicationRef {
+                name: summary.name.clone(),
+                namespace: summary.namespace.clone(),
+                project: None,
+                resource_version: None,
+                uid: None,
+                api_version: summary.api_version.clone(),
+                context: Some(summary.cluster.clone()),
+                workspace_id: Some(workspace_id),
+            },
         });
+        let request = Rc::new(());
+        let current = request.clone();
         let task = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
-            let _ = this.update(cx, |this, cx| {
+            let _ = this.update_in(cx, |this, window, cx| {
                 let Detail::Ready(detail) = &mut this.detail else {
                     return;
                 };
+                if detail
+                    .argo
+                    .as_ref()
+                    .is_none_or(|state| !Rc::ptr_eq(&current, &state.request))
+                {
+                    return;
+                }
                 let view = result.map(|inspector| {
-                    Box::new(ArgoView::new(
+                    let view = Box::new(ArgoView::new(
                         &inspector,
                         &detail.data.summary,
                         &detail.data.yaml,
-                    ))
+                    ));
+                    (view, inspector)
                 });
                 if let Some(state) = detail.argo.as_mut() {
                     state.load = match view {
-                        Ok(view) => ArgoLoad::Ready(view),
+                        Ok((view, inspector)) => {
+                            state.highlights = view
+                                .changes
+                                .iter()
+                                .map(|change| {
+                                    super::argo_highlight::lines(
+                                        change.diff.as_deref().unwrap_or_default(),
+                                        &gpui_kit::component::Theme::global(cx).highlight_theme,
+                                    )
+                                })
+                                .collect();
+                            use gpui_kit::{AppContext, component::input::EditorState};
+                            state.editors = view
+                                .changes
+                                .iter()
+                                .map(|change| {
+                                    let desired = cx.new(|cx| {
+                                        EditorState::new(window, cx)
+                                            .language("yaml")
+                                            .line_number(true)
+                                            .default_value(change.desired.clone())
+                                    });
+                                    let live = cx.new(|cx| {
+                                        EditorState::new(window, cx)
+                                            .language("yaml")
+                                            .line_number(true)
+                                            .default_value(change.live.clone())
+                                    });
+                                    (desired, live)
+                                })
+                                .collect();
+                            state.inspector = Some(inspector);
+                            ArgoLoad::Ready(view)
+                        }
                         Err(error) => ArgoLoad::Failed(error.message),
                     };
                 }
@@ -90,7 +144,12 @@ impl Inspector {
             view: DiffView::Changes,
             expanded: Vec::new(),
             full: Vec::new(),
+            highlights: Vec::new(),
             evidence: false,
+            inspector: None,
+            operation: Default::default(),
+            editors: Vec::new(),
+            request,
             _task: Some(task),
         });
     }
@@ -132,6 +191,7 @@ fn raw(value: &serde_json::Value) -> String {
 pub(super) fn argo_tab(
     detail: &ResourceDetail,
     timezone: crate::preferences::TimestampTimezone,
+    connection: Div,
     cx: &mut Context<Inspector>,
 ) -> AnyElement {
     let Some(state) = detail.argo.as_ref() else {
@@ -154,7 +214,14 @@ pub(super) fn argo_tab(
     });
     let scope_rows = [
         "Operation scope: Argo CD Application".to_owned(),
-        "Transport: Kubernetes API".to_owned(),
+        format!(
+            "Transport: {}",
+            if view.is_some_and(|v| !v.kubernetes) {
+                "Connected Argo CD API"
+            } else {
+                "Kubernetes API"
+            }
+        ),
         format!("Context: {}", summary.cluster),
         format!(
             "Namespace: {}",
@@ -297,7 +364,7 @@ pub(super) fn argo_tab(
                         }))
                         .child(
                             ui::muted(ui::xs(
-                                "Unavailable in native client. These operations target the Argo CD Application, not a selected managed Kubernetes resource.",
+                                "These operations target the Argo CD Application, not a selected managed Kubernetes resource.",
                             ))
                             .font_family(crate::theme::SANS),
                         ),
@@ -308,8 +375,9 @@ pub(super) fn argo_tab(
                 .flex()
                 .flex_wrap()
                 .gap(px(6.))
-                .child(split(Variant::Outline, "refresh-cw", "Refresh"))
-                .child(split(Variant::Default, "rotate-ccw", "Sync")),
+                .children(["Refresh", "Sync", "Rollback"].map(|label| controls::button(Variant::Outline, 24., loading)
+                    .id(SharedString::from(format!("argo-operation:{label}"))).test_support().child(label)
+                    .on_click(cx.listener(move |this, _, window, cx| this.review_argo_operation(label, window, cx))))),
         );
     let counts = view.map(|view| view.counts).unwrap_or_default();
     let signals = div()
@@ -340,47 +408,21 @@ pub(super) fn argo_tab(
         .bg(Tokens::card())
         .shadow_sm()
         .child(div().p(px(12.)).child(header).child(signals));
-    let connection = panel()
-        .flex()
-        .flex_wrap()
-        .items_center()
-        .gap(px(8.))
-        .child(surface::disabled(
-            div()
-                .flex()
-                .items_center()
-                .justify_between()
-                .w(px(288.))
-                .h(px(28.))
-                .px(px(10.))
-                .rounded(px(8.))
-                .border_1()
-                .border_color(Tokens::input())
-                .child(ui::xs("Automatic · Kubernetes"))
-                .child(ui::icon("chevron-down", 14., Tokens::muted_foreground())),
-        ))
-        .child(
-            ui::muted(ui::xs(
-                "Argo RBAC is not evaluated. Exact manifests require a connected profile.",
-            ))
-            .flex_1()
-            .min_w_0(),
-        )
-        .child(surface::disabled(dui::sm_button(
-            Variant::Outline,
-            "Connect Argo CD",
-        )));
     let mut column = div()
         .id("argo-tab")
+        .test_support()
+        .aria_label(view.map_or_else(String::new, |v| v.source.clone()))
+        .flex_none()
         .flex()
         .flex_col()
         .gap(px(12.))
         .min_w_0()
         .child(top)
-        .child(connection);
+        .child(connection)
+        .child(super::argo_operations::panel(&state.operation, cx));
     if let ArgoLoad::Failed(error) = &state.load {
         column = column.child(surface::failed(
-            "Kubernetes Application snapshot unavailable",
+            "Argo CD Application snapshot unavailable",
             error.clone(),
         ));
     }
@@ -411,31 +453,4 @@ pub(super) fn argo_tab(
     column
         .child(snapshot(view, state, failed, cx))
         .into_any_element()
-}
-
-/// The Refresh and Sync split buttons, disabled.
-fn split(variant: Variant, icon: &str, label: &str) -> Div {
-    let color = if variant == Variant::Default {
-        Tokens::primary_foreground()
-    } else {
-        Tokens::foreground()
-    };
-    surface::disabled(
-        div()
-            .flex()
-            .child(
-                controls::button(variant, 24., false)
-                    .rounded_r_none()
-                    .child(ui::icon(icon, 12., color))
-                    .child(label.to_owned()),
-            )
-            .child(
-                controls::button(variant, 24., false)
-                    .w(px(24.))
-                    .px_0()
-                    .rounded_l_none()
-                    .when(variant == Variant::Outline, |button| button.border_l_0())
-                    .child(ui::icon("chevron-down", 12., color)),
-            ),
-    )
 }

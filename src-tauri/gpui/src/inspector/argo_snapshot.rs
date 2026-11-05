@@ -1,7 +1,7 @@
 //! The "Application snapshot" section of `ArgoApplicationDetails.svelte`: one
 //! `<article>` per reconciliation resource, with `ArgoResourceDiff.svelte`
-//! for the Changes view. Read-only YAML shows as plain mono text instead of
-//! `YamlCodeEditor`, and diff lines are not syntax-highlighted.
+//! for the Changes view. Read-only YAML editors and diff lines share the
+//! native YAML syntax highlighter.
 
 use super::Inspector;
 use super::argo_panels::{caps, panel};
@@ -110,8 +110,8 @@ fn note(title: Option<&str>, text: &str) -> Div {
         )
 }
 
-/// Read-only YAML (`YamlCodeEditor minHeight="180px"`) as plain text.
-fn yaml_text(index: usize, text: &SharedString) -> AnyElement {
+/// Read-only YAML with the web editor's 180px minimum viewport.
+fn yaml_text(index: usize, text: &SharedString, state: &ArgoTab, live: bool) -> AnyElement {
     div()
         .id(SharedString::from(format!("argo-yaml:{index}")))
         .min_h(px(180.))
@@ -123,11 +123,19 @@ fn yaml_text(index: usize, text: &SharedString) -> AnyElement {
         .text_size(px(12.))
         .line_height(px(18.))
         .whitespace_nowrap()
-        .child(text.clone())
+        .test_support()
+        .aria_label(text.clone())
+        .children(state.editors.get(index).map(|(desired, actual)| {
+            gpui_kit::component::input::Editor::new(if live { actual } else { desired })
+                .readonly(true)
+                .aria_label("Argo CD resource YAML")
+                .w_full()
+                .h(px(180.))
+        }))
         .into_any_element()
 }
 
-fn diff_line(line: &DiffLine) -> Div {
+fn diff_line(line: &DiffLine, highlights: Option<&super::argo_highlight::Highlights>) -> Div {
     let (background, foreground) = controls::diff_colors(line.kind);
     div()
         .h(px(20.))
@@ -138,12 +146,21 @@ fn diff_line(line: &DiffLine) -> Div {
         .when(line.kind == DiffLineKind::Header, |line| {
             line.font_weight(FontWeight::SEMIBOLD)
         })
-        .child(line.text.clone())
+        .child(
+            gpui_kit::StyledText::new(line.text.clone())
+                .with_highlights(highlights.cloned().unwrap_or_default()),
+        )
 }
 
 /// `ArgoResourceDiff.svelte` in its `overflow-x-auto border-t font-mono
 /// text-[0.6875rem] leading-5` wrapper.
-fn resource_diff(index: usize, lines: &[DiffLine], full: bool, cx: &mut Context<Inspector>) -> Div {
+fn resource_diff(
+    index: usize,
+    lines: &[DiffLine],
+    full: bool,
+    state: &ArgoTab,
+    cx: &mut Context<Inspector>,
+) -> Div {
     let shown = if full {
         lines
     } else {
@@ -155,16 +172,30 @@ fn resource_diff(index: usize, lines: &[DiffLine], full: bool, cx: &mut Context<
         .filter(|line| matches!(line.kind, DiffLineKind::Add | DiffLineKind::Remove))
         .count();
     let body = div()
+        .id(SharedString::from(format!("argo-diff:{index}")))
+        .test_support()
+        .aria_label(
+            lines
+                .iter()
+                .map(|line| line.text.as_ref())
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )
         .border_t_1()
         .border_color(Tokens::border())
         .font_family(MONO)
         .text_size(px(11.))
         .line_height(px(20.))
-        .children(shown.iter().map(diff_line));
+        .children(shown.iter().enumerate().map(|(i, line)| {
+            diff_line(
+                line,
+                state.highlights.get(index).and_then(|lines| lines.get(i)),
+            )
+        }));
     if lines.len() <= DIFF_PREVIEW {
-        return body;
+        return div().child(body);
     }
-    body.child(
+    div().child(body).child(
         div()
             .flex()
             .flex_wrap()
@@ -217,13 +248,13 @@ fn article_body(
         )
         .into_any_element(),
         (DiffView::Changes, Some(lines)) => {
-            resource_diff(index, lines, state.full.contains(&index), cx).into_any_element()
+            resource_diff(index, lines, state.full.contains(&index), state, cx).into_any_element()
         }
         (DiffView::Changes, None) if removal && !change.live.is_empty() => {
-            yaml_text(index, &change.live)
+            yaml_text(index, &change.live, state, true)
         }
-        (DiffView::Target, _) if !change.desired.is_empty() => yaml_text(index, &change.desired),
-        (DiffView::Live, _) if !change.live.is_empty() => yaml_text(index, &change.live),
+        (DiffView::Target, _) if !change.desired.is_empty() => yaml_text(index, &change.desired, state, false),
+        (DiffView::Live, _) if !change.live.is_empty() => yaml_text(index, &change.live, state, true),
         (current, _) => note(
             None,
             &if change.inexact || view.kubernetes {
@@ -363,7 +394,7 @@ pub(super) fn snapshot(
         }
     };
     let freshness = view.map_or(
-        "Kubernetes refreshes this snapshot every 15 seconds while visible.",
+        "Kubernetes snapshot loaded when this view opened.",
         |view| view.freshness,
     );
     let heading = div()

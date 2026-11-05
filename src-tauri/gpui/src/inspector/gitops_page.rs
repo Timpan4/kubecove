@@ -1,8 +1,8 @@
 //! GitOps page, mirroring `GitOpsSurface.svelte` and `GitOpsView.svelte`
 //! inside `SurfaceFrame`. The page is one virtualized list: the frame header,
 //! the provider summary, the rail with the table header and first rows, then
-//! the remaining card or list rows. Read-only: the Argo CD connection button
-//! opens nothing, since connected Argo CD (ADR 0013) is not ported.
+//! the remaining card or list rows. Its connection control opens the shared
+//! Argo CD session profile controls.
 
 use super::delivery_summary as summary_ui;
 use super::delivery_ui::{self as dui, Layout, ViewMode};
@@ -196,14 +196,16 @@ impl Inspector {
             .is_some_and(|data| data.argo.is_some());
         let mut actions = vec![self.live_control(cx).into_any_element()];
         if argo {
-            // Connected Argo CD (ADR 0013) is not ported, so the button stays disabled.
             actions.push(
-                super::surface::disabled(super::surface::small_button(
-                    Some("link-2"),
-                    "Argo CD connection",
-                ))
-                .h(px(28.))
-                .into_any_element(),
+                super::surface::small_button(Some("link-2"), "Argo CD connection")
+                    .id("argo-connect-toolbar")
+                    .test_support()
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.argo_connections.dialog = true;
+                        cx.notify();
+                    }))
+                    .h(px(28.))
+                    .into_any_element(),
             );
         }
         dui::frame_header("git-branch", "GitOps", actions)

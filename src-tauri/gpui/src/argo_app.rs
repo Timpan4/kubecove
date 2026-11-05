@@ -351,11 +351,11 @@ impl ArgoView {
                 })
                 .collect(),
             freshness: if inspector.connected_fallback.is_some() {
-                "Connected Argo CD is unavailable; Kubernetes refreshes this fallback snapshot every 15 seconds while visible."
+                "Connected Argo CD is unavailable; Kubernetes fallback snapshot loaded when this view opened."
             } else if kubernetes {
-                "Kubernetes refreshes this snapshot every 15 seconds while visible."
+                "Kubernetes snapshot loaded when this view opened."
             } else {
-                "Connected Argo CD refreshes this snapshot every 15 seconds while visible."
+                "Connected Argo CD snapshot loaded when this view opened."
             },
         }
     }

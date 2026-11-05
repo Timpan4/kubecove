@@ -22,6 +22,7 @@ import type {
 	ResourceSummary,
 	ResourceTopology,
 } from "../../../src/lib/types";
+import { exportArgo } from "./export-argo";
 import { exportDetailTabs } from "./export-detail-tabs";
 import { exportGitOpsPage, exportHelm } from "./export-gitops-helm";
 import { exportSessionControls } from "./export-session-controls";
@@ -111,5 +112,6 @@ for (const verb of ["get", "list", "watch", "create", "update", "patch", "delete
 	catch (error) { rbacReviews.push({ verb, error: error instanceof Error ? error.message : String(error) }); }
 }
 const sessionControls = await exportSessionControls(client, resources);
-await writeFile(output, JSON.stringify({ sessionControls, liveEvents: LIVE_EVENTS, contexts, namespaces, kinds, resources: resources.map(rustShape), details, events, topology: rustTopology, networkTopology, metrics, appUsage, namespaceTopologies, gitops, helm, incidents, liveSessions, detailTabs, rbac, rbacReviews, kubeconfig: sources }, null, "\t"));
+const argoConnected = await exportArgo(client, gitops.applications);
+await writeFile(output, JSON.stringify({ argoConnected, sessionControls, liveEvents: LIVE_EVENTS, contexts, namespaces, kinds, resources: resources.map(rustShape), details, events, topology: rustTopology, networkTopology, metrics, appUsage, namespaceTopologies, gitops, helm, incidents, liveSessions, detailTabs, rbac, rbacReviews, kubeconfig: sources }, null, "\t"));
 console.log(`fixture: ${resources.length} resources, ${details.length} details -> ${output}`);

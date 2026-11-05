@@ -6,6 +6,9 @@ mod action_rollback_view;
 mod actions_review;
 mod actions_state;
 mod actions_tab;
+mod argo_connection;
+mod argo_highlight;
+mod argo_operations;
 mod argo_panels;
 mod argo_snapshot;
 mod argo_tab;
@@ -141,6 +144,7 @@ pub struct Inspector {
     usage: usage::UsageState,
     gitops: gitops_section::GitOpsState,
     gitops_page: gitops_page::GitOpsPage,
+    argo_connections: argo_connection::Connections,
     helm_page: helm_page::HelmPage,
     /// A tab `open_resource_on` asked the loading detail panel to show.
     detail_tab: Option<detail::DetailTab>,
@@ -233,6 +237,7 @@ impl Inspector {
             usage: Default::default(),
             gitops: Default::default(),
             gitops_page: gitops_page::GitOpsPage::new(),
+            argo_connections: argo_connection::Connections::new(window, cx),
             helm_page: helm_page::HelmPage::new(window, cx),
             detail_tab: None,
             cluster: Default::default(),
@@ -402,6 +407,7 @@ impl Inspector {
 
 impl Render for Inspector {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.sync_argo_scope(window, cx);
         self.sync_live(window, cx);
         self.flush_live_patches(cx);
         let detail_open = !matches!(self.detail, Detail::Closed);

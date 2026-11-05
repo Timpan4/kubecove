@@ -1,3 +1,5 @@
+#[path = "native/argo.rs"]
+mod argo;
 #[path = "native/detail_tabs.rs"]
 mod detail_tabs;
 #[path = "native/live_data.rs"]
@@ -42,6 +44,7 @@ use std::sync::{
 
 #[derive(Default)]
 struct Controlled {
+    argo: argo::ArgoControls,
     sessions: session_controls::SessionControls,
     live: live_data::LiveControls,
     fail: AtomicBool,
@@ -56,6 +59,30 @@ fn resource(context: &str) -> ResourceSummary {
 }
 
 impl Backend for Controlled {
+    fn preflight_argo(
+        &self,
+        request: kubecove_lib::models::ArgoOperationRequest,
+    ) -> Read<kubecove_lib::models::ArgoOperationPreflight> {
+        self.argo.preflight(request)
+    }
+    fn run_argo(
+        &self,
+        confirmation: kubecove_lib::models::ArgoOperationConfirmation,
+    ) -> Read<kubecove_lib::models::ArgoOperationResult> {
+        self.argo.run(confirmation)
+    }
+    fn connect_argo(
+        &self,
+        request: kubecove_gpui::backend::ArgoConnect,
+    ) -> Read<kubecove_lib::models::ArgoConnectionStatus> {
+        self.argo.connect(request)
+    }
+    fn inspect_argo(
+        &self,
+        request: kubecove_gpui::backend::ArgoInspection,
+    ) -> Read<ArgoApplicationInspector> {
+        self.argo.inspect(request)
+    }
     fn start_forward(
         &self,
         request: kubecove_lib::models::PortForwardRequest,
@@ -92,6 +119,7 @@ impl Backend for Controlled {
         let fail = self.fail.load(Ordering::SeqCst);
         let pending = self.pending.lock().unwrap().take();
         let pod = self.sessions.enabled.load(Ordering::SeqCst);
+        let argo = self.argo.enabled.load(Ordering::SeqCst);
         Box::pin(async move {
             if let Some(pending) = pending {
                 let _ = pending.await;
@@ -108,14 +136,21 @@ impl Backend for Controlled {
                     age: "1d".into(),
                     created_at: None,
                 }],
-                resources: vec![if pod {
-                    ResourceSummary {
-                        kind: "Pod".into(),
-                        ..resource(&scope.context)
-                    }
+                resources: if argo {
+                    vec![
+                        argo::resource(&scope.context, "payments-api"),
+                        argo::resource(&scope.context, "other-app"),
+                    ]
                 } else {
-                    resource(&scope.context)
-                }],
+                    vec![if pod {
+                        ResourceSummary {
+                            kind: "Pod".into(),
+                            ..resource(&scope.context)
+                        }
+                    } else {
+                        resource(&scope.context)
+                    }]
+                },
                 warnings: vec![],
             })
         })

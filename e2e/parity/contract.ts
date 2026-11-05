@@ -3,6 +3,12 @@ import { join } from "node:path";
 
 type Identity = { kind: string; name: string; namespace: string };
 export type Step =
+    | { action: "connectArgoProfile"; url: string; surface?: "page" }
+    | { action: "disconnectArgoProfile" | "confirmArgoReview" | "cancelArgoReview" }
+    | { action: "reviewArgoOperation"; operation: "Refresh" | "Sync" | "Rollback" }
+    | { action: "expectArgoReview"; operation: string; name: string; namespace: string; transport: string }
+    | { action: "expectArgoText"; text: string }
+    | { action: "argoDocument"; view: "Desired" | "Live" | "Changes"; contains: string }
     | { action: "configurePreset"; label: string; context: string; namespace: string; service: string; remote: string; local: string }
     | { action: "presetControl"; operation: "add" | "save" | "edit" | "start" | "remove" | "absent"; label?: string }
     | { action: "replaySessions"; script: "reconnecting" | "failed" | "foreign-output" }
@@ -130,6 +136,7 @@ export type Contract = { scenarios: Scenario[] };
 
 /** Every action both drivers must implement; `contract.test.ts` checks each driver handles each one. */
 export const ACTIONS = [
+    "connectArgoProfile", "disconnectArgoProfile", "confirmArgoReview", "cancelArgoReview", "reviewArgoOperation", "expectArgoReview", "expectArgoText", "argoDocument",
     "configurePreset", "presetControl",
     "replaySessions", "confirmExecLeave",
     "configureForward", "forwardControl", "expectForwardState", "execControl", "expectExecState",
@@ -181,6 +188,12 @@ function strings(value: unknown, allowEmpty: boolean): string[] {
 function step(value: unknown): Step {
 	const item = object(value);
 	switch (item.action) {
+        case "connectArgoProfile": return { action: item.action, url: string(item.url), surface: item.surface == null ? undefined : oneOf<"page">(["page"], item.surface, "an Argo connection surface") };
+        case "disconnectArgoProfile": case "confirmArgoReview": case "cancelArgoReview": return { action: item.action };
+        case "reviewArgoOperation": return { action: item.action, operation: oneOf(["Refresh", "Sync", "Rollback"], item.operation, "an Argo operation") };
+        case "expectArgoReview": return { action: item.action, operation: string(item.operation), name: string(item.name), namespace: string(item.namespace), transport: string(item.transport) };
+        case "expectArgoText": return { action: item.action, text: string(item.text) };
+        case "argoDocument": return { action: item.action, view: oneOf(["Desired", "Live", "Changes"], item.view, "an Argo document"), contains: string(item.contains) };
         case "fillSettingsField": return { action: item.action, field: oneOf(["Server URL", "Server token"], item.field, "a remote field"), value: string(item.value) };
         case "clickSettingsButton": return { action: item.action, label: string(item.label) };
         case "expectSettingsText": case "expectNoSettingsText": case "expectRuntimeEndpoint": return { action: item.action, value: string(item.value) };

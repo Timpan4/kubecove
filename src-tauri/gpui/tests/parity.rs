@@ -2,6 +2,8 @@
 //! with the browser-mock fixture the web driver reads. Driven by
 //! `bun scripts/e2e-parity.ts`, which exports the fixture and checks both reports.
 
+#[path = "parity/argo.rs"]
+mod argo;
 mod common;
 #[path = "parity/delivery.rs"]
 mod delivery;
@@ -149,7 +151,8 @@ fn scenarios() -> Vec<Value> {
 }
 
 fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
-    if !(live_sessions::apply(window, cx, step)
+    if !(argo::act(window, cx, step)
+        || live_sessions::apply(window, cx, step)
         || settings_integrations::act(window, cx, step)
         || live_data::apply(window, cx, step)
         || topology_metrics::apply(window, cx, step)
@@ -165,6 +168,17 @@ fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
 /// apply when the update that typed ends, as they do between a user's
 /// keystrokes and a later click.
 fn finish(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
+    if step["action"] == "connectArgoProfile" {
+        let anchor = if step["surface"] == "page" {
+            "argo-connection-dialog"
+        } else {
+            "detail-body"
+        };
+        reveal(window, anchor, "argo-token", cx);
+        replace_text(window, cx, "argo-token", "parity-fixture-token");
+        reveal(window, anchor, "argo-connect-submit", cx);
+        window.click("argo-connect-submit", cx);
+    }
     if step["action"] == "reopenStoredSettings" {
         window.click("open-settings", cx);
     }
@@ -195,6 +209,7 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
     let fixture = std::env::var_os("KUBECOVE_PARITY_FIXTURE")
         .expect("KUBECOVE_PARITY_FIXTURE is required; run `bun scripts/e2e-parity.ts`");
     let report = Path::new(&artifacts).join("gpui.json");
+    fs::create_dir_all(&artifacts).unwrap();
     match fs::remove_file(&report) {
         Ok(()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -285,6 +300,11 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
                 cx.run_until_parked();
             }
             println!("parity {id} step {index}: {}", string(step, "action"));
+            fs::write(
+                Path::new(&artifacts).join("gpui-progress.txt"),
+                format!("{id} step {index}: {}\n", string(step, "action")),
+            )
+            .unwrap();
             // Reads a render starts must settle before the step observes or acts.
             cx.update_window(handle, |_, window, cx| window.render_frame(cx))
                 .unwrap();

@@ -103,6 +103,33 @@ impl Backend for DesktopBackend {
             self.local.save_preferences(document)
         }
     }
+    route!(
+        preflight_argo(request: ArgoOperationRequest) -> ArgoOperationPreflight,
+        "preflight_argo_operation",
+        json!({"request":request})
+    );
+    route!(
+        run_argo(confirmation: ArgoOperationConfirmation) -> ArgoOperationResult,
+        "run_argo_operation",
+        json!({"confirmation":confirmation})
+    );
+    route!(
+        disconnect_argo(id: String) -> (),
+        "disconnect_argo_server",
+        json!({"id":id})
+    );
+    route!(
+        inspect_argo(request: ArgoInspection) -> ArgoApplicationInspector,
+        "get_argo_application_inspector",
+        json!({"clusterContext":request.application.context,"application":request.application,"transport":if request.connection_id.is_some() { "connected" } else { "kubernetes" },"connectionId":request.connection_id})
+    );
+    route!(
+        connect_argo(request: ArgoConnect) -> ArgoConnectionStatus,
+        "connect_argo_server",
+        json!({"id":request.profile.id,"serverUrl":request.profile.url,"endpoint":request.profile.endpoint,"token":request.token,
+            "insecureTls":false,"rememberCredential":request.profile.remember_credential,"clusterContext":request.profile.cluster_context,
+            "workspaceId":request.profile.workspace_id})
+    );
     fn add_kubeconfig_paths(&self, paths: Vec<String>) -> Read<KubeconfigSourcesSummary> {
         if self.selected() {
             return settings_integrations::unavailable(

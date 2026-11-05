@@ -397,9 +397,12 @@ impl Inspector {
                     DetailTab::Events => events_tab(detail, cx),
                     DetailTab::Logs => logs_tab(detail, cx),
                     DetailTab::Revisions => revisions_tab(detail, cx),
-                    DetailTab::Argo => {
-                        argo_tab(detail, self.persisted.preferences.timestamp_timezone, cx)
-                    }
+                    DetailTab::Argo => argo_tab(
+                        detail,
+                        self.persisted.preferences.timestamp_timezone,
+                        self.argo_connection_panel(cx),
+                        cx,
+                    ),
                     DetailTab::Actions => actions_tab(detail, cx),
                     DetailTab::Yaml => {
                         yaml_tab(detail, &self.persisted.preferences, cx).into_any_element()
@@ -410,6 +413,7 @@ impl Inspector {
                     .flex_col()
                     .flex_1()
                     .min_h_0()
+                    .when(detail.tab == DetailTab::Argo, |body| body.flex_none())
                     .child(
                         div()
                             .id("detail-identity")
@@ -446,6 +450,7 @@ impl Inspector {
             .child(
                 div()
                     .id("detail-body")
+                    .test_support()
                     .flex()
                     .flex_col()
                     .flex_1()

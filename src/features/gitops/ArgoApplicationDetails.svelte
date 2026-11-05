@@ -432,8 +432,22 @@
 		};
 	}
 
+	let review = $state<import("@/lib/types").ArgoOperationPreflight | null>(null);
+	let resolveReview: ((confirmed: boolean) => void) | undefined;
+	function closeOperationReview(confirmed = false) {
+		resolveReview?.(confirmed);
+		resolveReview = undefined;
+		review = null;
+	}
+	$effect(() => {
+		void scopeKey;
+		return () => closeOperationReview();
+	});
 	async function executeOperation(requested: ArgoOperationRequest) {
-		if (!busy) await tracker.run(requested);
+		if (!busy) await tracker.run(requested, (next) => new Promise<boolean>((resolve) => {
+			review = next;
+			resolveReview = resolve;
+		}));
 	}
 
 	async function retryAcceptedRefresh() {
@@ -449,6 +463,11 @@
 		void executeOperation(
 			withArgoSyncSettings(operation("sync"), applicationSyncDefaults),
 		);
+	}
+
+	function rollbackPrevious() {
+		const historyId = snapshot?.history[1]?.id;
+		if (historyId != null) void executeOperation({ ...operation("rollback"), historyId });
 	}
 
 	function requestAdvancedSync() {
@@ -617,6 +636,7 @@
 					/>
 				</div>
 				<div class="flex max-w-full shrink-0 flex-wrap gap-1.5">
+					<Button type="button" size="sm" variant="outline" disabled={busy || !snapshot?.history[1]} onclick={rollbackPrevious}>Rollback</Button>
 					<div class="inline-flex shrink-0">
 						<Button type="button" size="sm" variant="outline" class="rounded-r-none" disabled={!canOperate || busy} onclick={() => refresh(false)}>
 							{#if operationPhase === "refreshing" && lastOperationRequest?.action !== "sync"}<Spinner />{:else}<RefreshCw data-icon="inline-start" />{/if}
@@ -669,6 +689,16 @@
 				{snapshot.connectedFallback.failure.message}. Kubernetes watch keeps this snapshot fresh.
 			</AlertDescription>
 		</Alert>
+	{/if}
+
+	{#if review?.reviewedRequest}
+		<section aria-label="Review Argo CD operation" class="rounded-lg border bg-surface-1 p-3 text-xs space-y-2">
+			<h3>Review Argo CD operation</h3>
+			<p>{review.action} {review.transport} {review.reviewedRequest.application.context} Application {review.reviewedRequest.application.namespace} {review.reviewedRequest.application.name}</p>
+			<p>Revision: {review.reviewedRequest.revision ?? "Application default"}. History: {review.reviewedRequest.historyId ?? "none"}. Prune: {String(review.reviewedRequest.prune)}. Dry run: {String(review.reviewedRequest.dryRun)}. Force: {String(review.reviewedRequest.force)}.</p>
+			<Button size="sm" onclick={() => closeOperationReview(true)}>Confirm Argo CD operation</Button>
+			<Button size="sm" variant="outline" onclick={() => closeOperationReview()}>Cancel review</Button>
+		</section>
 	{/if}
 
 	<div class="flex min-w-0 flex-wrap items-center gap-2 rounded-lg border bg-surface-1 p-3">

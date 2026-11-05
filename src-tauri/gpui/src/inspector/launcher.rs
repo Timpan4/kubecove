@@ -254,6 +254,9 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
         let mut overlays = Vec::new();
+        if let Some(dialog) = self.argo_connection_dialog(cx) {
+            overlays.push(dialog);
+        }
         if let Some(dialog) = self.exec_leave_dialog(cx) {
             overlays.push(dialog);
         }

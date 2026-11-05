@@ -4,11 +4,27 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { chromium, type Page } from "playwright-core";
 import { chromeExecutable, freePort, readinessTimeoutMs, startIdentity, stopGroup, waitFor } from "../../../.agents/skills/verify-kubecove/scripts/processes";
+import { action } from "../web";
 import { liveSessionAction } from "../web-live-sessions";
 import { VIEWPORT, VIEWS, type View } from "./views";
 
 async function show(page: Page, view: View) {
 	switch (view) {
+        case "argo-connected": case "argo-review": case "argo-desired":
+            await action(page, { action: "openPage", page: "GitOps" });
+            await action(page, { action: "openGitOpsDetails", kind: "Application", name: "tenant-ledger", namespace: "argocd" });
+            await action(page, { action: "connectArgoProfile", url: "https://argocd.example.test" });
+            await action(page, { action: "expectArgoText", text: "Connected Argo CD API" });
+            if (view === "argo-review") {
+                await action(page, { action: "reviewArgoOperation", operation: "Sync" });
+                await action(page, { action: "expectArgoReview", operation: "sync", name: "tenant-ledger", namespace: "argocd", transport: "connected" });
+            }
+            if (view === "argo-desired") await action(page, { action: "argoDocument", view: "Desired", contains: "kind: StatefulSet" });
+            if (view === "argo-connected") {
+                await action(page, { action: "argoDocument", view: "Changes", contains: "kubecove.dev/state" });
+                await page.getByRole("tabpanel").getByText("kubecove.dev/state", { exact: false }).first().scrollIntoViewIfNeeded();
+            }
+            return;
         case "settings-appearance": case "settings-sessions": case "settings-yaml": case "settings-diagnostics": case "settings-advanced":
         case "settings-remote": case "settings-updates": case "settings-kubeconfig":
             await page.getByRole("button", { name: "Open settings", exact: true }).click();

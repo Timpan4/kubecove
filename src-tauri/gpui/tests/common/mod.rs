@@ -2,6 +2,7 @@
 //! exports the web's `tauri-dev-mocks` responses, so the GPUI client sees the same data the
 //! Svelte client does in the visual comparison and the parity scenarios.
 
+mod argo;
 mod delivery;
 mod detail_tabs;
 mod live_data;
@@ -31,6 +32,8 @@ use std::{collections::HashMap, path::Path, sync::Mutex};
 
 #[derive(Deserialize)]
 pub struct Fixture {
+    #[serde(rename = "argoConnected")]
+    argo: argo::Argo,
     #[serde(skip)]
     preferences: kubecove_gpui::preferences::Store,
     #[serde(skip)]
@@ -124,6 +127,33 @@ impl Backend for Fixture {
         document: kubecove_gpui::preferences::Document,
     ) -> Result<kubecove_gpui::preferences::Document, AppError> {
         self.preferences.save(document)
+    }
+    fn connect_argo(
+        &self,
+        request: kubecove_gpui::backend::ArgoConnect,
+    ) -> Read<kubecove_lib::models::ArgoConnectionStatus> {
+        self.argo.connect(request)
+    }
+    fn disconnect_argo(&self, id: String) -> Read<()> {
+        self.argo.disconnect(id)
+    }
+    fn inspect_argo(
+        &self,
+        request: kubecove_gpui::backend::ArgoInspection,
+    ) -> Read<ArgoApplicationInspector> {
+        self.argo.inspect(request)
+    }
+    fn preflight_argo(
+        &self,
+        request: kubecove_lib::models::ArgoOperationRequest,
+    ) -> Read<kubecove_lib::models::ArgoOperationPreflight> {
+        self.argo.preflight(request)
+    }
+    fn run_argo(
+        &self,
+        confirmation: kubecove_lib::models::ArgoOperationConfirmation,
+    ) -> Read<kubecove_lib::models::ArgoOperationResult> {
+        self.argo.run(confirmation)
     }
     fn remove_kubeconfig_path(&self, path: String) -> Read<KubeconfigSourcesSummary> {
         let mut sources = self.kubeconfig.lock().unwrap();
