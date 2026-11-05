@@ -116,7 +116,8 @@ pub(super) fn sample_process_memory(
             ..sysinfo_memory(process.memory())
         });
     }
-    if measure_working_set {
+    // Without a successful reset, the next sample has no WSS and no window to report.
+    if !baseline.start_times.is_empty() {
         baseline.reset_at = Some(Instant::now());
     }
     let working_set_window_ms = if measure_working_set {
