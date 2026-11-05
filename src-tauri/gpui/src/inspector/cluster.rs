@@ -14,7 +14,7 @@ pub(super) struct ClusterState {
     context: String,
     /// `None` until the page first opens for `context`.
     load: Option<Load>,
-    rows: Vec<ResourceSummary>,
+    pub(super) rows: Vec<ResourceSummary>,
     warnings: Vec<String>,
     task: Option<Task<()>>,
 }

@@ -1,0 +1,95 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "live-limited.permissions",
+      "title": "Unreadable watches retain readable rows and show polling",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "expectLiveState", "label": "Live" },
+        { "action": "replayLiveData", "script": "forbidden" },
+        { "action": "expectLiveState", "label": "Polling (limited)", "notice": "Live updates are unavailable. Readable resources refresh periodically. Activity indicators are paused." },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" }
+      ]
+    },
+    {
+      "id": "live-failed.reload",
+      "title": "A failed recovery preserves stale rows and clears after catch-up",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "expectLiveState", "label": "Live" },
+        { "action": "replayLiveData", "script": "failed" },
+        { "action": "expectLiveState", "label": "Refresh failed", "notice": "Refresh failed. Showing last observed state. Activity indicators are paused until live updates recover." },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "replayLiveData", "script": "connected" },
+        { "action": "expectLiveState", "label": "Live" }
+      ]
+    },
+    {
+      "id": "live-data.scope",
+      "title": "A departed scope cannot reinsert rows into the active namespace",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "selectNamespace", "namespace": "monitoring" },
+        { "action": "replayLiveData", "script": "update" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" }
+      ]
+    },
+    {
+      "id": "live-reconnecting.recovery",
+      "title": "A lost watch preserves rows and catches up without duplicates",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "expectLiveState", "label": "Live" },
+        { "action": "replayLiveData", "script": "reconnecting" },
+        { "action": "expectLiveState", "label": "Reconnecting", "notice": "Showing last observed state. Activity indicators are paused until live updates recover." },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "replayLiveData", "script": "connected" },
+        { "action": "expectLiveState", "label": "Live" },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" }
+      ]
+    },
+    {
+      "id": "live-data.rows",
+      "title": "Watch updates preserve identity and remove deleted rows",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "expectLiveState", "label": "Live" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "replayLiveData", "script": "update" },
+        { "action": "expectResourceStatus", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "status": "Degraded" },
+        { "action": "expectResourceStatus", "kind": "Service", "namespace": "payments", "name": "payments-api", "status": "Healthy" },
+        { "action": "replayLiveData", "script": "delete" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectResource", "kind": "Service", "namespace": "payments", "name": "payments-api" }
+      ]
+    },
+    {
+      "id": "live-data.events",
+      "title": "Event watches reload and sort newest first",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "showTab", "tab": "Events" },
+        { "action": "replayLiveData", "script": "events" },
+        { "action": "expectEvent", "index": 0, "reason": "LiveNewest", "message": "Newest scripted event" },
+        { "action": "expectEvent", "index": 1, "reason": "LiveOlder", "message": "Older scripted event" }
+      ]
+    },
+    {
+      "id": "custom-resources.discovery",
+      "title": "Discovered kinds appear in navigation and the picker and open objects",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "selectNamespace", "namespace": "monitoring" },
+        { "action": "openCustomKind", "kind": "Kustomization", "surface": "sidebar" },
+        { "action": "expectResource", "kind": "Kustomization", "namespace": "flux-system", "name": "platform" },
+        { "action": "openPage", "page": "Workloads" },
+        { "action": "openCustomKind", "kind": "HelmRelease", "surface": "picker" },
+        { "action": "expectResource", "kind": "HelmRelease", "namespace": "flux-system", "name": "metrics-gateway" }
+      ]
+    }
+  ]
+}

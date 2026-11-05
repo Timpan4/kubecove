@@ -3,6 +3,8 @@
 //! `bun scripts/e2e-parity.ts`, which exports the fixture and checks both reports.
 
 mod common;
+#[path = "parity/live_data.rs"]
+mod live_data;
 #[path = "parity/locate.rs"]
 mod locate;
 #[path = "parity/scroll.rs"]
@@ -135,6 +137,9 @@ fn scenarios() -> Vec<Value> {
 }
 
 fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
+    if live_data::apply(window, cx, step) {
+        return;
+    }
     if topology_metrics::apply(window, cx, step) {
         return;
     }
@@ -659,7 +664,7 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
                 cx,
                 |window, cx| {
                     cx.new(|cx| {
-                        Inspector::new(backend, window, cx)
+                        Inspector::new(backend.clone(), window, cx)
                             .with_workspace_name("Parity mock workspace")
                     })
                 },
@@ -668,11 +673,20 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
         });
         cx.run_until_parked();
         for (index, step) in scenario["steps"].as_array().unwrap().iter().enumerate() {
+            if step["action"] == "replayLiveData" {
+                backend.replay_live(string(step, "script"));
+            }
             println!("parity {id} step {index}: {step}");
             // Reads a render starts must settle before the step observes or acts.
             cx.update_window(handle, |_, window, cx| window.render_frame(cx))
                 .unwrap();
             cx.run_until_parked();
+            if step["action"] == "replayLiveData" {
+                // Advance the production web refresh throttle, not wall-clock sleeps.
+                cx.background_executor
+                    .advance_clock(std::time::Duration::from_millis(250));
+                cx.run_until_parked();
+            }
             cx.update_window(handle, |_, window, cx| {
                 window.render_frame(cx);
                 act(window, cx, step);
@@ -687,6 +701,9 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
             cx.run_until_parked();
         }
         passed.push(json!({"id": id, "status": "passed"}));
+        cx.update_window(handle, |_, window, _| window.remove_window())
+            .unwrap();
+        cx.run_until_parked();
     }
     fs::create_dir_all(&artifacts).unwrap();
     fs::write(

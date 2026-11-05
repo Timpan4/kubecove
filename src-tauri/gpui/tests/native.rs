@@ -1,5 +1,9 @@
 #[path = "native/detail_tabs.rs"]
 mod detail_tabs;
+#[path = "native/live_data.rs"]
+mod live_data;
+#[path = "native/watch_burst.rs"]
+mod watch_burst;
 
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AppContext, Bounds, TestAppContext, WindowBounds, WindowOptions, px, size};
@@ -28,6 +32,7 @@ use std::sync::{
 
 #[derive(Default)]
 struct Controlled {
+    live: live_data::LiveControls,
     fail: AtomicBool,
     pending: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
     detail: detail_tabs::DetailControls,
@@ -40,6 +45,9 @@ fn resource(context: &str) -> ResourceSummary {
 }
 
 impl Backend for Controlled {
+    fn watch(&self, target: kubecove_gpui::backend::WatchTarget) -> Read<LogStream> {
+        self.live.open(target)
+    }
     fn contexts(&self) -> Read<Vec<ClusterContext>> {
         Box::pin(async {
             Ok(vec![
@@ -111,13 +119,7 @@ impl Backend for Controlled {
         })
     }
     fn events(&self, _: ResourceSummary, _: Option<String>) -> Read<Vec<ResourceEventSummary>> {
-        Box::pin(async {
-            Ok(serde_json::from_value(json!([
-                {"eventType": "Normal", "reason": "Pulled", "message": "Image present.", "count": 1, "lastSeen": "8m", "lastSeenAt": "2026-06-29T09:52:00Z", "source": "kubelet", "namespace": "payments"},
-                {"eventType": "Warning", "reason": "BackOff", "message": "Back-off restarting failed container app", "count": 4, "lastSeen": "2m", "lastSeenAt": "2026-06-29T09:58:00Z", "source": "kubelet", "namespace": "payments"},
-            ]))
-            .unwrap())
-        })
+        self.live.events()
     }
     fn incidents(&self, cluster: String) -> Read<IncidentCockpitSummary> {
         let item = |kind: &str, name: &str, severity: &str| {

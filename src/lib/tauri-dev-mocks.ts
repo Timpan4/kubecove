@@ -30,6 +30,7 @@ import {
 	source,
 } from "./tauri-dev-mock-data";
 import { evictedWorkerName, evictedWorkerStatus } from "./tauri-dev-mock-incidents";
+import { liveEvents, liveResources, registerMockWatch, stopMockWatch } from "./tauri-dev-mock-live";
 import { operationMockHandlers } from "./tauri-dev-mock-operations";
 import { rbacInspectionMock, rbacReviewMock } from "./tauri-dev-mock-rbac";
 import { createMockChannel, type TauriClient } from "./tauri-runtime";
@@ -86,6 +87,7 @@ interface MockArgs {
 	requests?: ResourceListRequest[];
 	resource?: ArgoManagedResource;
 	resourceKind?: DiscoveredResourceKind | FluxResourceKind;
+    keys?: import("./types").WatchResourceKey[];
 	serverUrl?: string;
 	show?: boolean;
 	storageName?: string;
@@ -165,11 +167,11 @@ const handlers = {
 	list_resource_events: (args) => eventsFor(args),
 	list_resource_topology: (args) => topologyFor(args),
 	refresh_resource_cache: () => ({ clearedEntries: 1 }),
-	start_resource_watch: (args) => startStream(args?.channel, "mock-watch", "Resource watch connected"),
-	start_resource_event_watch: (args) => startStream(args?.channel, "mock-events", "Event watch connected"),
+	start_resource_watch: (args) => registerMockWatch({ channel: args.channel, context: args.clusterContext ?? "mock-dev", keys: args.keys }),
+	start_resource_event_watch: (args) => registerMockWatch({ channel: args.channel, context: args.clusterContext ?? "mock-dev", kind: args.kind, name: args.name, namespace: args.namespace }),
 	start_pod_log_stream: (args) => startLogStream(args?.channel, false, args?.request?.batchLines === true),
 	start_aggregated_log_stream: (args) => startLogStream(args?.channel, true, args?.request?.batchLines === true),
-	stop_stream: () => true,
+	stop_stream: (args) => stopMockWatch(args.id ?? ""),
 	start_pod_port_forward: unavailable("Port forwarding is unavailable in browser mock mode."),
 	stop_port_forward: () => true,
 	list_port_forwards: () => mockPortForwards,
@@ -311,11 +313,11 @@ function presentCustomResourceKinds(namespaces: string[] = []): DiscoveredResour
 }
 
 function filterResources(kindName?: string, namespace?: string, cluster?: string): ResourceSummary[] {
-	return resourcesForCluster(cluster).filter((row) => (!kindName || row.kind === kindName) && (!namespace || row.namespace === namespace));
+	return liveResources(resourcesForCluster(cluster)).filter((row) => (!kindName || row.kind === kindName) && (!namespace || row.namespace === namespace));
 }
 
 function listScope(requests: ResourceListRequest[] = [], cluster = "mock-dev"): ResourceSummary[] {
-	const rows = resourcesForCluster(cluster);
+	const rows = liveResources(resourcesForCluster(cluster));
 	if (requests.length === 0) return rows;
 	const seen = new Set<string>();
 	return requests.flatMap((request) => {
@@ -406,6 +408,8 @@ function applyPreview(args: MockArgs): YamlApplyPreview {
 }
 
 function eventsFor(args: MockArgs): ResourceEventSummary[] {
+    const scripted = liveEvents(args.kind, args.name);
+    if (scripted) return scripted;
 	const row = resourceFromArgs(args);
 	if (row.name === evictedWorkerName) return [];
 	return [
@@ -795,17 +799,6 @@ function incidents(cluster = "mock-dev"): IncidentCockpitSummary {
 		return { resource: { ...resource, cluster }, severity, signals: [{ kind: resource.kind, label: resource.status ?? resource.health, message: `${resource.name} needs attention in mock data.`, source: "browser mock", lastSeenAt: now }], warningEventCount: warningEvents.length, latestSignalAt: now, latestWarningEvent: warningEvents[0] };
 	});
 	return { cluster, generatedAt: now, requestedScope: [], items, warnings: [] };
-}
-
-function startStream(
-	channel: Pick<Channel<StreamMessage>, "onmessage"> | undefined,
-	idPrefix: string,
-	message: string,
-): string {
-	const streamId = `${idPrefix}-${Date.now()}`;
-	send(channel, { type: "started", streamId, label: message });
-	send(channel, { type: "status", streamId, status: "connected", message });
-	return streamId;
 }
 
 function startLogStream(

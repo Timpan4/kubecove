@@ -10,7 +10,7 @@ describe("equal GPUI and Svelte tests", () => {
 	});
 	test("both drivers handle every shared action", async () => {
 		const web = await readFile("e2e/parity/web.ts", "utf8");
-		const gpui = (await Promise.all(["src-tauri/gpui/tests/parity.rs", "src-tauri/gpui/tests/parity/topology_metrics.rs"].map((path) => readFile(path, "utf8")))).join("\n");
+		const gpui = (await Promise.all(["src-tauri/gpui/tests/parity.rs", "src-tauri/gpui/tests/parity/topology_metrics.rs", "src-tauri/gpui/tests/parity/live_data.rs"].map((path) => readFile(path, "utf8")))).join("\n");
 		const unhandled = ACTIONS.flatMap((action) => [
 			...(web.includes(`case "${action}"`) ? [] : [`web ${action}`]),
 			...(gpui.includes(`"${action}" =>`) ? [] : [`gpui ${action}`]),

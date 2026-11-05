@@ -4,6 +4,7 @@
 
 mod delivery;
 mod detail_tabs;
+mod live_data;
 
 use detail_tabs::DetailTabs;
 use kubecove_gpui::{
@@ -28,6 +29,11 @@ use std::{collections::HashMap, path::Path, sync::Mutex};
 
 #[derive(Deserialize)]
 pub struct Fixture {
+    kinds: Vec<kubecove_lib::models::DiscoveredResourceKind>,
+    #[serde(skip)]
+    live: live_data::LiveData,
+    #[serde(rename = "liveEvents")]
+    live_events: Vec<ResourceEventSummary>,
     #[serde(rename = "contexts")]
     cluster_contexts: Vec<ClusterContext>,
     namespaces: Vec<NamespaceSummary>,
@@ -92,11 +98,62 @@ impl Fixture {
 }
 
 impl Backend for Fixture {
+    fn kind_resources(
+        &self,
+        scope: Scope,
+        key: kubecove_lib::models::WatchResourceKey,
+    ) -> Read<Vec<ResourceSummary>> {
+        if self.live_failed() {
+            return Box::pin(async {
+                Err(AppError::new(
+                    "Scripted reload failure",
+                    AppErrorKind::Cluster,
+                ))
+            });
+        }
+        let rows = self
+            .resources
+            .iter()
+            .filter(|row| row.kind == key.resource_kind.kind)
+            .filter(|row| {
+                key.resource_kind
+                    .api_version
+                    .as_ref()
+                    .is_none_or(|api| row.api_version.as_ref() == Some(api))
+            })
+            .filter(|row| {
+                key.namespace
+                    .as_ref()
+                    .is_none_or(|ns| row.namespace.as_ref() == Some(ns))
+            })
+            .map(|row| ResourceSummary {
+                cluster: scope.context.clone(),
+                ..row.clone()
+            })
+            .collect();
+        let rows = self.live_rows(rows);
+        Box::pin(async move { Ok(rows) })
+    }
+    fn resource_kinds(&self, _: String) -> Read<Vec<kubecove_lib::models::DiscoveredResourceKind>> {
+        let kinds = self.kinds.clone();
+        Box::pin(async move { Ok(kinds) })
+    }
+    fn watch(&self, target: kubecove_gpui::backend::WatchTarget) -> Read<LogStream> {
+        self.live_watch(target)
+    }
     fn contexts(&self) -> Read<Vec<ClusterContext>> {
         let contexts = self.cluster_contexts.clone();
         Box::pin(async move { Ok(contexts) })
     }
     fn resources(&self, scope: Scope, _: bool) -> Read<ScopeResult> {
+        if self.live_failed() {
+            return Box::pin(async {
+                Err(AppError::new(
+                    "Scripted reload failure",
+                    AppErrorKind::Cluster,
+                ))
+            });
+        }
         // Cluster-scoped kinds come from `cluster_resources`, as in the native backend.
         // The mocks serve the same rows for every context, labeled with it.
         let resources = self
@@ -111,6 +168,7 @@ impl Backend for Fixture {
                 ..row.clone()
             })
             .collect();
+        let resources = self.live_rows(resources);
         let namespaces = self.namespaces.clone();
         Box::pin(async move {
             Ok(ScopeResult {
@@ -208,6 +266,9 @@ impl Backend for Fixture {
         resource: ResourceSummary,
         _: Option<String>,
     ) -> Read<Vec<ResourceEventSummary>> {
+        if let Some(events) = self.scripted_events(&resource) {
+            return Box::pin(async move { Ok(events) });
+        }
         let found = self
             .events
             .iter()

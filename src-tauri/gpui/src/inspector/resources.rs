@@ -4,7 +4,7 @@
 
 use super::detail::Detail;
 use super::{Inspector, Load, Page};
-use crate::model::{HealthSummary, kinds_label};
+use crate::model::HealthSummary;
 use crate::theme::{Palette, Tokens};
 use crate::ui;
 use gpui_kit::TestSupportExt;
@@ -151,9 +151,27 @@ impl Inspector {
                         div()
                             .size(px(6.))
                             .rounded_full()
-                            .bg(Palette::emerald500(1.)),
+                            .bg(match self.live.label() {
+                                "Live" => super::events::tw::emerald400(1.),
+                                "Refresh failed" => Tokens::destructive(),
+                                "Catching up" => super::events::tw::sky300(),
+                                "Connecting" | "Not connected" => Tokens::muted_foreground(),
+                                _ => super::events::tw::amber400(1.),
+                            }),
                     )
-                    .child(ui::muted(ui::xs("Live")))
+                    .child(
+                        ui::xs(self.live.label())
+                            .text_color(match self.live.label() {
+                                "Refresh failed" => Tokens::destructive(),
+                                "Reconnecting" | "Polling (limited)" | "Live (limited)" => {
+                                    Palette::amber300()
+                                }
+                                _ => Tokens::muted_foreground(),
+                            })
+                            .id("live-label")
+                            .test_support()
+                            .aria_label(self.live.label()),
+                    )
                     .child(ui::icon("chevron-down", 12., Tokens::muted_foreground()))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.live_menu_open = !this.live_menu_open;
@@ -172,6 +190,11 @@ impl Inspector {
                         .border_color(Tokens::border())
                         .bg(Tokens::card())
                         .shadow_lg()
+                        .children(
+                            self.live
+                                .messages()
+                                .map(|message| ui::muted(ui::xs(message.clone()))),
+                        )
                         .child(
                             div()
                                 .id("refresh")
@@ -201,7 +224,7 @@ impl Inspector {
             .items_center()
             .gap(px(8.))
             .child(scope_trigger("Namespace", namespace))
-            .child(scope_trigger("Kinds", kinds_label(&self.scope_kinds())));
+            .child(self.kinds_picker(cx));
         let owners = div()
             .flex()
             .flex_wrap()
@@ -341,6 +364,9 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let width = self.section_width(window);
+        if self.live.label() != "Refresh failed" {
+            self.live.error_open = false;
+        }
         let stacked = !matches!(self.detail, Detail::Closed);
         let body: AnyElement = match self.page_load() {
             Load::Loading => ui::muted(ui::xs("Loading resources"))
@@ -405,6 +431,7 @@ impl Inspector {
                     .when(!stacked, |body| body.flex_1().min_h_0())
                     .gap(px(12.))
                     .child(self.top_bar(width, cx))
+                    .children(self.live_notice(cx))
                     .children(self.page_warnings().enumerate().map(|(index, warning)| {
                         div()
                             .id(("warning", index))

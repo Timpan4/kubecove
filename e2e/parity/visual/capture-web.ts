@@ -13,6 +13,20 @@ async function show(page: Page, view: View) {
             await page.getByRole("switch", { name: "Show CPU and memory footer", exact: true }).click();
             await page.locator("footer").getByText("CPU 3.8% · Memory 370 MB · 3 processes", { exact: true }).waitFor();
             return;
+        case "live-limited":
+        case "live-failed":
+        case "live-reconnecting":
+            await page.getByRole("button", { name: "Resources", exact: true }).first().click();
+            await page.getByRole("button", { name: "Live updates and refresh options" }).first().getByText("Live", { exact: true }).waitFor();
+            await page.evaluate(`import('/src/lib/tauri-dev-mock-live.ts').then(m => m.replayLiveData(${JSON.stringify(view === "live-limited" ? "forbidden" : view === "live-failed" ? "failed" : "reconnecting")}))`);
+            await page.getByRole("button", { name: "Live updates and refresh options" }).first().getByText(view === "live-limited" ? "Polling (limited)" : view === "live-failed" ? "Refresh failed" : "Reconnecting", { exact: true }).waitFor();
+            return;
+        case "custom-resources":
+            await page.getByRole("button", { name: "Expand Custom Resources", exact: true }).click();
+            await page.getByRole("button", { name: "Expand kustomize.toolkit.fluxcd.io", exact: true }).click();
+            await page.getByRole("treeitem").filter({ has: page.getByText("Kustomization", { exact: true }) }).last().click();
+            await page.getByRole("button", { name: "Open resource platform", exact: true }).waitFor();
+            return;
         case "overview":
 			return;
 		case "cluster-overview":

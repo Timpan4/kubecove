@@ -73,7 +73,6 @@ mod visual {
             println!("visual: skipped; run `bun scripts/gpui-visual.ts`");
             return;
         };
-        let backend = Arc::new(Fixture::load(Path::new(&fixture)));
         let out = PathBuf::from(out);
         std::fs::create_dir_all(&out).unwrap();
         let views: Vec<String> = std::env::var("KUBECOVE_VISUAL_VIEWS")
@@ -82,6 +81,7 @@ mod visual {
             .map(str::to_owned)
             .collect();
         for view in views {
+            let backend = Arc::new(Fixture::load(Path::new(&fixture)));
             let mut cx = HeadlessAppContext::with_platform(
                 gpui_kit::platform::current_platform(true).text_system(),
                 Arc::new(AppAssets),
@@ -107,7 +107,7 @@ mod visual {
                         cx,
                         |window, cx| {
                             cx.new(|cx| {
-                                Inspector::new(backend, window, cx)
+                                Inspector::new(backend.clone(), window, cx)
                                     .with_workspace_name("Parity mock workspace")
                             })
                         },
@@ -117,6 +117,32 @@ mod visual {
             cx.run_until_parked();
             match view.as_str() {
                 "overview" => {}
+                "live-limited" | "live-failed" | "live-reconnecting" => {
+                    act(&mut cx, handle, |window, cx| {
+                        window.click("open-resources", cx)
+                    });
+                    backend.replay_live(if view == "live-limited" {
+                        "forbidden"
+                    } else if view == "live-failed" {
+                        "failed"
+                    } else {
+                        "reconnecting"
+                    });
+                }
+                "custom-resources" => {
+                    act(&mut cx, handle, |window, cx| {
+                        window.click("nav:Custom Resources", cx)
+                    });
+                    act(&mut cx, handle, |window, cx| {
+                        window.click("custom-group:kustomize.toolkit.fluxcd.io", cx)
+                    });
+                    act(&mut cx, handle, |window, cx| {
+                        window.click(
+                            "custom-kind:kustomize.toolkit.fluxcd.io/v1:Kustomization",
+                            cx,
+                        )
+                    });
+                }
                 "usage-footer" => {
                     act(&mut cx, handle, |window, cx| {
                         window.click("open-settings", cx)

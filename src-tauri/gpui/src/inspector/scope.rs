@@ -1,7 +1,7 @@
 //! Context and resource-scope reads, refresh, and visible resource filtering.
 
 use super::{Inspector, Load, map};
-use crate::model::{WORKSPACE_KINDS, ownership_group};
+use crate::model::WORKSPACE_KINDS;
 use gpui_kit::component::select::SearchableVec;
 use gpui_kit::{Context, SharedString, Window};
 use kubecove_lib::models::ResourceSummary;
@@ -62,6 +62,9 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) {
         self.scope_task.take();
+        self.live.reset_scope();
+        self.live.scope_loading = true;
+        self.discover_kinds(cx);
         self.close_detail(cx);
         self.request = Rc::new(());
         let request = self.request.clone();
@@ -76,6 +79,7 @@ impl Inspector {
                 if !Rc::ptr_eq(&this.request, &request) {
                     return;
                 }
+                this.live.scope_loading = false;
                 match result {
                     Ok(result) => {
                         this.namespaces = result.namespaces;
@@ -83,7 +87,10 @@ impl Inspector {
                         this.warnings = result.warnings;
                         this.load = Load::Ready;
                     }
-                    Err(error) => this.load = Load::Failed(error.message),
+                    Err(error) => {
+                        this.live.refresh_error = Some(error.message.clone());
+                        this.load = Load::Failed(error.message);
+                    }
                 }
                 this.filter(cx);
                 cx.notify();
@@ -143,8 +150,36 @@ impl Inspector {
         if self.scope.context.is_empty() {
             self.load_contexts(window, cx)
         } else {
-            self.load_scope(true, window, cx)
+            self.live.refreshing = true;
+            self.live.scope_loading = true;
+            self.live.refresh_error = None;
+            let read = self.application_resources_read(true);
+            let request = self.request.clone();
+            self.scope_task = Some(cx.spawn_in(window, async move |this, cx| {
+                let result = read.await;
+                let _ = this.update(cx, |this, cx| {
+                    if !Rc::ptr_eq(&this.request, &request) {
+                        return;
+                    }
+                    this.live.refreshing = false;
+                    this.live.scope_loading = false;
+                    match result {
+                        Ok(result) => {
+                            this.rows = result.resources;
+                            this.namespaces = result.namespaces;
+                            this.warnings = result.warnings;
+                            this.load = Load::Ready;
+                            this.filter(cx);
+                        }
+                        Err(error) => this.live.refresh_error = Some(error.message),
+                    }
+                    cx.notify();
+                });
+            }));
+            self.load_inventory(true, cx);
+            self.load_page(cx);
         }
+        cx.notify();
     }
 
     pub(super) fn filter(&mut self, cx: &mut Context<Self>) {
@@ -154,24 +189,7 @@ impl Inspector {
             .rows
             .iter()
             .chain(self.cluster_rows())
-            .filter(|row| self.argo_workspace_matches(row))
-            .filter(|row| kinds.contains(&row.kind))
-            .filter(|row| self.launcher.in_scope(row))
-            .filter(|row| self.palette.kind.is_none_or(|kind| row.kind == kind))
-            .filter(|row| {
-                search.is_empty()
-                    || row.name.to_lowercase().contains(&search)
-                    || row.kind.to_lowercase().contains(&search)
-                    || row
-                        .namespace
-                        .as_deref()
-                        .is_some_and(|ns| ns.to_lowercase().contains(&search))
-                    || ownership_group(row).0.to_lowercase().contains(&search)
-                    || row
-                        .helm_release
-                        .as_deref()
-                        .is_some_and(|release| release.to_lowercase().contains(&search))
-            })
+            .filter(|row| self.row_visible(row, &search, &kinds))
             .cloned()
             .collect();
         self.rebuild_map();
@@ -195,6 +213,11 @@ impl Inspector {
         for row in &self.rows {
             if row.dynamic == Some(true) && !kinds.contains(&row.kind) {
                 kinds.push(row.kind.clone());
+            }
+        }
+        for kind in &self.live.kinds {
+            if !kinds.contains(&kind.kind) {
+                kinds.push(kind.kind.clone());
             }
         }
         kinds

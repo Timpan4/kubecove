@@ -2,6 +2,7 @@
 // visual driver, so both frontends render the same data.
 // Usage: bun e2e/parity/visual/export-fixture.ts <output.json>
 import { writeFile } from "node:fs/promises";
+import { LIVE_EVENTS } from "../../../src/lib/tauri-dev-mock-live";
 import { createDevMockTauriClient } from "../../../src/lib/tauri-dev-mocks";
 import type {
 	ArgoApplicationSummary,
@@ -108,5 +109,5 @@ for (const verb of ["get", "list", "watch", "create", "update", "patch", "delete
 	try { rbacReviews.push({ verb, result: await client.invoke<RbacAccessReviewResult>("review_rbac_access", { request }) }); }
 	catch (error) { rbacReviews.push({ verb, error: error instanceof Error ? error.message : String(error) }); }
 }
-await writeFile(output, JSON.stringify({ contexts, namespaces, kinds, resources: resources.map(rustShape), details, events, topology: rustTopology, networkTopology, metrics, appUsage, namespaceTopologies, gitops, helm, incidents, liveSessions, detailTabs, rbac, rbacReviews, kubeconfig: sources }, null, "\t"));
+await writeFile(output, JSON.stringify({ liveEvents: LIVE_EVENTS, contexts, namespaces, kinds, resources: resources.map(rustShape), details, events, topology: rustTopology, networkTopology, metrics, appUsage, namespaceTopologies, gitops, helm, incidents, liveSessions, detailTabs, rbac, rbacReviews, kubeconfig: sources }, null, "\t"));
 console.log(`fixture: ${resources.length} resources, ${details.length} details -> ${output}`);

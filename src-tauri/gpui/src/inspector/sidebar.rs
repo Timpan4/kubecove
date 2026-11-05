@@ -173,6 +173,7 @@ impl Inspector {
                 // Resources pages select their namespace or kind rows instead.
                 let selected = node.target == self.page && node.target != Page::Resources;
                 let target = node.target;
+                let custom = node.label == "Custom Resources";
                 self.tree_row(
                     SharedString::from(format!("nav:{}", node.label)),
                     node.label.into(),
@@ -182,6 +183,10 @@ impl Inspector {
                     true,
                 )
                 .on_click(cx.listener(move |this, _, window, cx| match target {
+                    Page::Resources if custom => {
+                        this.live.custom_open = !this.live.custom_open;
+                        cx.notify();
+                    }
                     Page::Resources => this.select_namespace(None, window, cx),
                     Page::ClusterOverview => this.open_cluster_overview(window, cx),
                     Page::Rbac => this.open_rbac(None, window, cx),
@@ -282,6 +287,9 @@ impl Inspector {
                     .children(self.nodes(CLUSTER, cx))
                     .child(self.section_header("All namespaces", None))
                     .children(self.nodes(ALL_NAMESPACES, cx))
+                    .when(self.live.custom_open, |tree| {
+                        tree.children(self.custom_kind_rows(false, cx))
+                    })
                     .child(
                         self.section_header(
                             "Namespaces",

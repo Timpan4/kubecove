@@ -8,6 +8,26 @@ async function action(page: Page, step: Step) {
 	const search = page.getByRole("textbox", { name: "Search resources" });
 	const close = page.getByRole("button", { name: "Close resource details" });
 	switch (step.action) {
+        case "expectLiveState":
+            await page.getByRole("button", { name: "Live updates and refresh options" }).first().getByText(step.label, { exact: true }).waitFor();
+            if (step.notice) await page.getByText(step.notice, { exact: true }).first().waitFor();
+            break;
+        case "replayLiveData": await page.evaluate(`import('/src/lib/tauri-dev-mock-live.ts').then(m => m.replayLiveData(${JSON.stringify(step.script)}))`); break;
+        case "expectResourceStatus": await resourceRow(page, step).getByText(step.status, { exact: true }).waitFor(); break;
+        case "openCustomKind": {
+            if (step.surface === "sidebar") {
+                await page.getByRole("button", { name: "Expand Custom Resources", exact: true }).click();
+                await page.getByRole("button", { name: "Expand kustomize.toolkit.fluxcd.io", exact: true }).click();
+                await page.getByRole("treeitem").filter({ has: page.getByText(step.kind, { exact: true }) }).last().click();
+            } else {
+                await page.getByRole("button", { name: "Edit resource kinds" }).click();
+                await page.getByRole("textbox", { name: "Search resource kinds" }).fill(step.kind);
+                const checkbox = page.locator("label").filter({ hasText: step.kind }).last().getByRole("checkbox");
+                if (await checkbox.getAttribute("aria-checked") !== "true") await checkbox.click();
+                await page.keyboard.press("Escape");
+            }
+            break;
+        }
         case "expectUsageFooter": await page.locator("footer").getByText(step.text, { exact: true }).waitFor(); break;
         case "openUsageTree": await page.getByRole("button", { name: "Show app process tree", exact: true }).click(); break;
         case "expectUsageProcess": await page.getByText(step.label, { exact: true }).waitFor(); break;
@@ -59,7 +79,7 @@ async function action(page: Page, step: Step) {
 			if (await page.locator('tr:has(button[aria-label^="Open resource "])').count()) throw new Error("Rows remain in empty search");
 			break;
 		case "refresh":
-			await page.getByRole("button", { name: "Live updates and refresh options" }).click();
+			await page.getByRole("button", { name: "Live updates and refresh options" }).first().click();
 			await page.getByRole("button", { name: "Refresh (clear cache)" }).click();
 			await page.getByRole("button", { name: "Refresh (clear cache)" }).waitFor({ state: "visible" });
 			await page.waitForFunction(() => {

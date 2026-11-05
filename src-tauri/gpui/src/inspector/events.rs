@@ -32,6 +32,8 @@ pub(super) struct EventsState {
     pub default_open: bool,
     pub overrides: HashMap<String, bool>,
     task: Option<Task<()>>,
+    pub watch: Option<Task<()>>,
+    pub watch_error: Option<String>,
     _search_changed: Subscription,
 }
 
@@ -51,6 +53,8 @@ impl EventsState {
             default_open: false,
             overrides: HashMap::new(),
             task: None,
+            watch: None,
+            watch_error: None,
             _search_changed,
         }
     }
@@ -98,6 +102,7 @@ impl Inspector {
                 cx.notify();
             });
         }));
+        self.watch_events(window, cx);
     }
 
     pub(super) fn events_state(&mut self) -> Option<&mut EventsState> {

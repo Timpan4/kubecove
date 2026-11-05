@@ -19,7 +19,7 @@ pub enum LogTarget {
     Aggregate(AggregatedLogStreamRequest),
 }
 
-/// A running log stream. Dropping it stops the backend stream.
+/// A running command stream. Dropping it stops the backend stream.
 pub struct LogStream {
     pub messages: mpsc::UnboundedReceiver<StreamMessage>,
     _stop: Box<dyn Send>,
@@ -48,10 +48,10 @@ impl LogStream {
 }
 
 /// Stops a native stream by id when the frontend drops it.
-struct StopStream {
-    id: String,
-    registry: Arc<StreamRegistry>,
-    runtime: tokio::runtime::Handle,
+pub(super) struct StopStream {
+    pub(super) id: String,
+    pub(super) registry: Arc<StreamRegistry>,
+    pub(super) runtime: tokio::runtime::Handle,
 }
 
 impl Drop for StopStream {

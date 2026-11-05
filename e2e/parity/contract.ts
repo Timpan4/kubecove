@@ -3,6 +3,10 @@ import { join } from "node:path";
 
 type Identity = { kind: string; name: string; namespace: string };
 export type Step =
+    | { action: "expectLiveState"; label: string; notice?: string }
+    | { action: "replayLiveData"; script: import("../../src/lib/tauri-dev-mock-live").LiveScript }
+    | ({ action: "expectResourceStatus"; status: string } & Identity)
+    | { action: "openCustomKind"; kind: string; surface: "sidebar" | "picker" }
 	| { action: "openResources" | "showYaml" | "closeDetail" | "expectDetailClosed" | "expectEmpty" | "refresh" }
 	| { action: "search" | "expectSearch"; value: string }
 	| ({ action: "expectResource" | "openResource" | "expectDetail" } & Identity)
@@ -97,6 +101,7 @@ export type Contract = { scenarios: Scenario[] };
 
 /** Every action both drivers must implement; `contract.test.ts` checks each driver handles each one. */
 export const ACTIONS = [
+    "expectLiveState", "replayLiveData", "expectResourceStatus", "openCustomKind",
 	"selectTopologyNode", "expectTopologyEmpty", "expectUsageFooter", "openUsageTree", "expectNoUsageFooter", "expectUsageProcess", "setTopologyMode", "selectNamespace", "expectTopology", "expectTopologyEdge", "expectNoTopologyNode", "expectResourceMetrics",
     "openResources", "showYaml", "closeDetail", "expectDetailClosed", "expectEmpty", "refresh", "search", "expectSearch",
 	"expectResource", "openResource", "expectDetail", "expectClusterResource", "expectNoClusterResource", "expectYaml", "openPage", "showTab", "filterEvents",
@@ -138,6 +143,10 @@ function strings(value: unknown, allowEmpty: boolean): string[] {
 function step(value: unknown): Step {
 	const item = object(value);
 	switch (item.action) {
+        case "expectLiveState": return { action: item.action, label: string(item.label), ...(item.notice === undefined ? {} : { notice: string(item.notice) }) };
+        case "replayLiveData": return { action: item.action, script: oneOf(["update", "delete", "reconnecting", "connected", "events", "forbidden", "failed"], item.script, "a live script") };
+        case "expectResourceStatus": return { action: item.action, kind: string(item.kind), namespace: string(item.namespace), name: string(item.name), status: string(item.status) };
+        case "openCustomKind": return { action: item.action, kind: string(item.kind), surface: oneOf(["sidebar", "picker"], item.surface, "a kind surface") };
         case "expectUsageFooter": return { action: item.action, text: string(item.text) };
         case "expectUsageProcess": return { action: item.action, label: string(item.label) };
         case "openUsageTree": case "expectNoUsageFooter": return { action: item.action };

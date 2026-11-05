@@ -397,6 +397,10 @@ impl Inspector {
                             .size_0(),
                     )
                     .child(content)
+                    .when_some(detail.events.watch_error.clone(), |body, error| body.child(
+                        ui::xs(format!("Realtime watch failed: events: {error}. Showing the last loaded data."))
+                            .text_color(Tokens::destructive())
+                    ))
                     .into_any_element()
             }
         };

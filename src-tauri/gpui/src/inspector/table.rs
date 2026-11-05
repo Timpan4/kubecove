@@ -153,6 +153,7 @@ impl Inspector {
                                 .id(SharedString::from(id))
                                 .test_support()
                                 .aria_label(format!("Open resource {}", row.name))
+                                .aria_description(format!("{:?}", row.health_assessment.state))
                                 .min_w_0()
                                 .cursor_pointer()
                                 .child(

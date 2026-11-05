@@ -7,6 +7,7 @@ mod argo_tab;
 mod argo_workspace;
 mod cluster;
 mod controls;
+mod custom_resources;
 mod delivery_summary;
 mod delivery_ui;
 mod detail;
@@ -27,6 +28,10 @@ mod incident_queue;
 mod incidents;
 mod launcher;
 mod launcher_form;
+mod live_data;
+mod live_events;
+mod live_rows;
+mod live_status;
 mod log_row;
 mod logs_state;
 mod logs_tab;
@@ -123,6 +128,7 @@ pub struct Inspector {
     launcher: launcher::LauncherState,
     palette: palette::PaletteState,
     live_menu_open: bool,
+    live: live_data::LiveData,
     notice: Option<String>,
     request: Rc<()>,
     detail_request: Rc<()>,
@@ -205,6 +211,7 @@ impl Inspector {
             launcher: launcher::LauncherState::new(window, cx),
             palette: palette::PaletteState::new(window, cx),
             live_menu_open: false,
+            live: Default::default(),
             notice: None,
             request: Rc::new(()),
             detail_request: Rc::new(()),
@@ -247,6 +254,8 @@ impl Inspector {
         self.gitops_page.workspace = None;
         self.page = Page::Resources;
         self.palette.kind = None;
+        self.live.selected = None;
+        self.live.kind_locked = false;
         self.filter(cx);
         if self.scope.namespace != namespace {
             self.scope.namespace = namespace;
@@ -343,6 +352,8 @@ impl Inspector {
 
 impl Render for Inspector {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.sync_live(window, cx);
+        self.flush_live_patches(cx);
         let detail_open = !matches!(self.detail, Detail::Closed);
         let page = self.page_view(window, cx);
         let overlays = self.overlays(window, cx);

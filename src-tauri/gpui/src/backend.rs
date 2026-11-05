@@ -12,8 +12,8 @@ use kubecove_lib::{
         IncidentCockpitSummary, NamespaceSummary, RbacAccessReviewRequest, RbacAccessReviewResult,
         RbacInspectionSummary, ResourceActionPreview, ResourceActionRequest, ResourceActionState,
         ResourceActionStateRequest, ResourceDetailsFull, ResourceEventSummary, ResourceSummary,
-        ResourceTopology, WatchResourceKey, WatchResourceKind, YamlApplyPreview, YamlApplyRequest,
-        YamlApplyResult, YamlViewMode,
+        ResourceTopology, WatchResourceKey, YamlApplyPreview, YamlApplyRequest, YamlApplyResult,
+        YamlViewMode,
     },
     runtime::State,
 };
@@ -36,6 +36,38 @@ pub struct ScopeResult {
 /// Both production commands and controlled UI-test responses use this seam.
 /// Dropping a pending read must cancel its host-owned task.
 pub trait Backend: Send + Sync + 'static {
+    fn resource_kinds(
+        &self,
+        _context: String,
+    ) -> Read<Vec<kubecove_lib::models::DiscoveredResourceKind>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+    fn kind_resources(&self, scope: Scope, key: WatchResourceKey) -> Read<Vec<ResourceSummary>> {
+        let read = self.resources(scope, false);
+        Box::pin(async move {
+            Ok(read
+                .await?
+                .resources
+                .into_iter()
+                .filter(|row| {
+                    row.kind == key.resource_kind.kind
+                        && key
+                            .resource_kind
+                            .api_version
+                            .as_ref()
+                            .is_none_or(|api| row.api_version.as_ref() == Some(api))
+                })
+                .collect())
+        })
+    }
+    fn watch(&self, _target: WatchTarget) -> Read<LogStream> {
+        Box::pin(async {
+            Err(AppError::new(
+                "Live updates unavailable",
+                AppErrorKind::UnsupportedOperation,
+            ))
+        })
+    }
     fn contexts(&self) -> Read<Vec<ClusterContext>>;
     fn resources(&self, scope: Scope, refresh: bool) -> Read<ScopeResult>;
     /// The Application resource workspace uses all supported and discovered kinds.
@@ -133,6 +165,8 @@ pub trait Backend: Send + Sync + 'static {
     fn argo_inspector(&self, application: ArgoApplicationRef) -> Read<ArgoApplicationInspector>;
 }
 
+mod live_data;
+pub use live_data::WatchTarget;
 mod delivery;
 mod delivery_workspace;
 pub use delivery_workspace::APPLICATION_KINDS;
@@ -144,8 +178,7 @@ mod inventory;
 mod topology_metrics;
 pub use inventory::CLUSTER_KINDS;
 
-/// The native client reads the default workspace kinds; custom resource
-/// discovery is not implemented yet.
+/// Default built-in workspace kinds. Discovery adds custom kinds.
 pub use crate::model::WORKSPACE_KINDS as INSPECTION_KINDS;
 
 pub struct NativeBackend {
@@ -232,69 +265,25 @@ fn supported(kind: &str) -> Result<(), AppError> {
 }
 
 impl Backend for NativeBackend {
+    fn resource_kinds(
+        &self,
+        context: String,
+    ) -> Read<Vec<kubecove_lib::models::DiscoveredResourceKind>> {
+        live_data::resource_kinds(self, context)
+    }
+    fn kind_resources(&self, scope: Scope, key: WatchResourceKey) -> Read<Vec<ResourceSummary>> {
+        live_data::kind_resources(self, scope, key)
+    }
+    fn watch(&self, target: WatchTarget) -> Read<LogStream> {
+        live_data::watch(self, target)
+    }
+
     fn contexts(&self) -> Read<Vec<ClusterContext>> {
         self.read(async { commands::list_kube_contexts(None) })
     }
 
     fn resources(&self, scope: Scope, refresh: bool) -> Read<ScopeResult> {
-        let store = self.store.clone();
-        self.read(async move {
-            let kinds = INSPECTION_KINDS.to_vec();
-            if refresh {
-                let access = ClusterAccess::resolve(None)?;
-                let keys: Vec<_> = kinds
-                    .iter()
-                    .map(|kind| WatchResourceKey {
-                        resource_kind: WatchResourceKind {
-                            kind: (*kind).to_owned(),
-                            group: None,
-                            version: None,
-                            api_version: None,
-                            plural: None,
-                            namespaced: Some(true),
-                        },
-                        namespace: scope.namespace.clone(),
-                    })
-                    .collect();
-                let namespaces: Vec<_> = scope.namespace.iter().cloned().collect();
-                store.refresh_view(access.source_key(), &scope.context, &keys, &namespaces);
-            }
-            let mut warnings = Vec::new();
-            let namespaces =
-                match commands::list_namespaces(scope.context.clone(), None, State::new(&store))
-                    .await
-                {
-                    Ok(rows) => Arc::unwrap_or_clone(rows),
-                    Err(error) if error.kind == AppErrorKind::Forbidden => {
-                        warnings.push(format!("Namespaces: {}", error.message));
-                        Vec::new()
-                    }
-                    Err(error) => return Err(error),
-                };
-            let mut resources = Vec::new();
-            for kind in kinds {
-                match commands::list_resources(
-                    scope.context.clone(),
-                    kind.to_owned(),
-                    scope.namespace.clone(),
-                    None,
-                    State::new(&store),
-                )
-                .await
-                {
-                    Ok(rows) => resources.extend(Arc::unwrap_or_clone(rows)),
-                    Err(error) if error.kind == AppErrorKind::Forbidden => {
-                        warnings.push(format!("{kind}: {}", error.message))
-                    }
-                    Err(error) => return Err(error),
-                }
-            }
-            Ok(ScopeResult {
-                namespaces,
-                resources,
-                warnings,
-            })
-        })
+        live_data::resources(self, scope, refresh)
     }
 
     fn details(&self, resource: ResourceSummary) -> Read<ResourceDetailsFull> {
@@ -367,7 +356,6 @@ impl Backend for NativeBackend {
     ) -> Read<Vec<ResourceEventSummary>> {
         let cancellations = self.cancellations.clone();
         self.read(async move {
-            supported(&resource.kind)?;
             commands::list_resource_events(
                 resource.cluster,
                 resource.kind,
