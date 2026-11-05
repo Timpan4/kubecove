@@ -1,5 +1,5 @@
 //! Saved scope and comparison projections are rebuilt on reads, never per frame.
-use super::{Inspector, Load, overview::titled_card};
+use super::{Inspector, overview::titled_card};
 use crate::{
     model::{HealthSummary, WORKSPACE_KINDS},
     ui,
@@ -71,7 +71,9 @@ impl Inspector {
                 Ok(shortcuts) => projection.shortcuts = shortcuts,
                 Err(error) => projection.warnings.push(error),
             }
-            if matches!(self.load, Load::Ready) && !self.launcher.context_choices.is_empty() {
+            // Restore status comes from reads that do not wait for the resource
+            // load, so a failed resource read still shows unavailable scope.
+            if !self.launcher.context_choices.is_empty() {
                 if !self
                     .launcher
                     .context_choices
@@ -98,35 +100,40 @@ impl Inspector {
                         .warnings
                         .push(format!("Group members: {}", missing.join(", ")));
                 }
-                let missing: Vec<_> = saved
-                    .namespaces
-                    .iter()
-                    .filter(|namespace| {
-                        !self
+                // Namespaces and kinds come from the saved primary context only,
+                // as the web's restore status does.
+                let inventory = self
+                    .restore_inventory
+                    .as_ref()
+                    .filter(|inventory| inventory.context == saved.context);
+                let missing: Vec<&str> =
+                    match inventory.and_then(|inventory| inventory.namespaces.as_deref()) {
+                        Some(available) => saved
                             .namespaces
                             .iter()
-                            .any(|available| &available.name == *namespace)
-                    })
-                    .map(String::as_str)
-                    .collect();
+                            .filter(|namespace| !available.contains(*namespace))
+                            .map(String::as_str)
+                            .collect(),
+                        None => Vec::new(),
+                    };
                 if !missing.is_empty() {
                     projection
                         .warnings
                         .push(format!("Namespaces: {}", missing.join(", ")));
                 }
-                let missing: Vec<_> = saved
-                    .kinds
-                    .iter()
-                    .filter(|kind| {
-                        !self.picker_builtin_kinds().contains(&kind.as_str())
-                            && !self
-                                .live
-                                .kinds
-                                .iter()
-                                .any(|available| &available.kind == *kind)
-                    })
-                    .map(String::as_str)
-                    .collect();
+                let missing: Vec<&str> =
+                    match inventory.and_then(|inventory| inventory.kinds.as_deref()) {
+                        Some(available) => saved
+                            .kinds
+                            .iter()
+                            .filter(|kind| {
+                                !self.picker_builtin_kinds().contains(&kind.as_str())
+                                    && !available.contains(*kind)
+                            })
+                            .map(String::as_str)
+                            .collect(),
+                        None => Vec::new(),
+                    };
                 if !missing.is_empty() {
                     projection
                         .warnings

@@ -159,6 +159,25 @@ impl Inspector {
             cx,
         );
     }
+    pub(super) fn stop_exec_id(&mut self, id: String, cx: &mut Context<Self>) {
+        if self.sessions.busy {
+            return;
+        }
+        let read = self.backend.stop_exec(id);
+        self.run_session_action(
+            Box::pin(async move {
+                if read.await? {
+                    Ok(())
+                } else {
+                    Err(AppError::new(
+                        "Session was not stopped",
+                        AppErrorKind::Cluster,
+                    ))
+                }
+            }),
+            cx,
+        );
+    }
     pub(super) fn reconnect_forward(
         &mut self,
         session: PortForwardSessionSummary,

@@ -11,9 +11,13 @@ use crate::ui;
 use gpui_kit::base::ObservedElement;
 use gpui_kit::component::input::Editor;
 use gpui_kit::{
-    Context, Div, FontWeight, SharedString, Stateful, TestSupportExt, div, prelude::*, px,
+    AnyElement, Context, Div, FontWeight, SharedString, Stateful, TestSupportExt, div, prelude::*,
+    px,
 };
-use kubecove_lib::models::{AppErrorKind, ResourceSummary};
+use kubecove_lib::models::{
+    AppErrorKind, KubernetesYamlLintDiagnostic, KubernetesYamlLintSeverity,
+    KubernetesYamlLintStatusNote, ResourceSummary,
+};
 
 /// Lines the compact dry-run diff shows (`yamlDiffLines.slice(0, 24)`).
 const COMPACT_DIFF_LINES: usize = 24;
@@ -312,6 +316,90 @@ fn edit_controls(
         })
 }
 
+/// `YAML lint status`: the lint's notes, as the web alert lists them.
+fn lint_status(notes: &[KubernetesYamlLintStatusNote]) -> Option<AnyElement> {
+    (!notes.is_empty()).then(|| {
+        div()
+            .id("yaml-lint-status")
+            .test_support()
+            .aria_label("YAML lint status")
+            .flex()
+            .flex_col()
+            .gap(px(4.))
+            .p(px(12.))
+            .rounded(px(10.))
+            .border_1()
+            .border_color(Tokens::border())
+            .child(ui::medium(ui::sm("YAML lint status")))
+            .children(
+                notes
+                    .iter()
+                    .map(|note| ui::xs(format!("{}: {}", note.source, note.message))),
+            )
+            .into_any_element()
+    })
+}
+
+/// `YAML diagnostics`: each Kubernetes lint finding with its severity and field.
+fn lint_diagnostics(diagnostics: &[KubernetesYamlLintDiagnostic]) -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .rounded(px(8.))
+        .border_1()
+        .border_color(Tokens::border())
+        .bg(Tokens::card())
+        .child(
+            div()
+                .px(px(12.))
+                .py(px(8.))
+                .border_b_1()
+                .border_color(Tokens::border())
+                .child(ui::medium(ui::xs("YAML diagnostics"))),
+        )
+        .children(diagnostics.iter().enumerate().map(|(index, diagnostic)| {
+            let detail = match &diagnostic.field_path {
+                Some(path) => format!("{} - {path}", diagnostic.source),
+                None => diagnostic.source.clone(),
+            };
+            let severity = match diagnostic.severity {
+                KubernetesYamlLintSeverity::Error => "error",
+                KubernetesYamlLintSeverity::Warning => "warning",
+                KubernetesYamlLintSeverity::Info => "info",
+            };
+            div()
+                .id(SharedString::from(format!("yaml-diagnostic:{index}")))
+                .test_support()
+                .aria_label(diagnostic.message.clone())
+                .aria_description(detail.clone())
+                .flex()
+                .gap(px(12.))
+                .px(px(12.))
+                .py(px(8.))
+                .border_b_1()
+                .border_color(Tokens::border())
+                .child(
+                    div()
+                        .id(SharedString::from(format!(
+                            "yaml-diagnostic-severity:{index}"
+                        )))
+                        .test_support()
+                        .aria_label(severity)
+                        .aria_description(detail.clone())
+                        .flex_none()
+                        .w(px(72.))
+                        .child(ui::xs(severity)),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .child(ui::medium(ui::xs(diagnostic.message.clone())))
+                        .child(ui::muted(ui::xs(detail)).mt(px(4.))),
+                )
+        }))
+}
+
 pub(super) fn yaml_tab(
     detail: &ResourceDetail,
     preferences: &crate::preferences::Preferences,
@@ -450,6 +538,12 @@ pub(super) fn yaml_tab(
                     .child(ui::muted(ui::xs(reason))),
             )
         })
+        .when_some(detail.lint.error.clone(), |pane, message| {
+            pane.child(failure("yaml-lint-error", "YAML lint failed", message))
+        })
+        .when_some(lint_status(&detail.lint.notes), |pane, status| {
+            pane.child(status)
+        })
         .when_some(
             match &state.feedback {
                 Feedback::PrepareFailed(error) => Some(error),
@@ -508,14 +602,14 @@ pub(super) fn yaml_tab(
                         .readonly(!editing || applying)
                         .size_full(),
                 )
-                .when_some(
+                .children(
                     detail
-                        .lens
-                        .as_ref()
-                        .filter(|_| preferences.yaml_error_lens_enabled),
-                    |pane, lens| {
-                        pane.child(super::yaml_lens::overlay(detail.editor.read(cx), lens))
-                    },
+                        .lenses
+                        .iter()
+                        .map(|lens| super::yaml_lens::overlay(detail.editor.read(cx), lens)),
                 ),
         )
+        .when(editing && !detail.lint.diagnostics.is_empty(), |pane| {
+            pane.child(lint_diagnostics(&detail.lint.diagnostics))
+        })
 }

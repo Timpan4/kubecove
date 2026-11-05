@@ -9,7 +9,7 @@ use super::delivery_ui::{self as dui, Layout, ViewMode};
 use super::gitops_card;
 use super::{Inspector, Page};
 use crate::gitops::GitOpsInventory;
-use crate::gitops_surface::{self as model, Focus, Provider, Row, Tone};
+use crate::gitops_surface::{self as model, Focus, Provider, Row, Selection, Tone};
 use crate::theme::{Palette, Tokens};
 use crate::ui;
 use gpui_kit::TestSupportExt;
@@ -36,6 +36,10 @@ pub(super) struct GitOpsPage {
     shape: Option<(usize, ViewMode, Layout)>,
     /// Sidebar GitOps and Helm nodes expanded by their chevrons, by label.
     pub nav_open: Vec<&'static str>,
+    /// Application focused by a shortcut or entry point, until the inventory settles.
+    pub target_application: Option<String>,
+    /// The focused row's selection key, as `selectedGitOpsItem` in the web.
+    pub selected: Option<String>,
 }
 
 impl GitOpsPage {
@@ -51,11 +55,20 @@ impl GitOpsPage {
             list: ListState::new(0, ListAlignment::Top, px(400.)),
             shape: None,
             nav_open: Vec::new(),
+            target_application: None,
+            selected: None,
         }
     }
 
     pub(super) fn rows(&self) -> &[Row] {
         &self.rows
+    }
+
+    /// Focuses one Application once the inventory settles. The row cache is
+    /// rebuilt so the target resolves even when the focus did not change.
+    pub(super) fn target_application(&mut self, name: String) {
+        self.target_application = Some(name);
+        self.rows_for = None;
     }
 
     /// Card rows, or list rows, for the current layout.
@@ -113,6 +126,38 @@ impl Inspector {
             .map(|data| model::rows(data, self.gitops_page.focus))
             .unwrap_or_default();
         self.gitops_page.rows_for = Some(key);
+        self.resolve_gitops_selection();
+    }
+
+    /// Focuses the target Application once the inventory is ready, then clears the
+    /// target whether or not it was found, as `resolveTargetGitOpsSelection` does.
+    /// Also drops a selection that no longer has a row.
+    fn resolve_gitops_selection(&mut self) {
+        let Some(data) = self.gitops.inventory() else {
+            return;
+        };
+        let page = &mut self.gitops_page;
+        if let Some(name) = page.target_application.take() {
+            let found = page
+                .rows
+                .iter()
+                .filter_map(|row| row.resolve(data))
+                .find(|selection| matches!(selection, Selection::App(app) if app.name == name))
+                .map(|selection| selection.key());
+            if found.is_some() {
+                page.selected = found;
+            }
+        }
+        if let Some(key) = &page.selected {
+            let listed = page
+                .rows
+                .iter()
+                .filter_map(|row| row.resolve(data))
+                .any(|selection| selection.key() == *key);
+            if !listed {
+                page.selected = None;
+            }
+        }
     }
 
     /// The items the list shows: a header and a status line until the
@@ -455,7 +500,8 @@ impl Inspector {
                 div().flex().gap(px(dui::CARD_GAP)).children(
                     page.rows[start..end].iter().filter_map(|row| {
                         let selection = row.resolve(data)?;
-                        Some(gitops_card::card(selection, page.layout.card, cx))
+                        let selected = page.selected.as_deref() == Some(selection.key().as_str());
+                        Some(gitops_card::card(selection, page.layout.card, selected, cx))
                     }),
                 )
             }

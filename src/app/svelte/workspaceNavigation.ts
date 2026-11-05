@@ -254,6 +254,17 @@ export function workspacePathForWorkspace(
 	return snapshot?.workspaceId === workspace.id ? snapshot : null;
 }
 
+/** The latest path of each workspace opened in this app session, so reopening restores its view. */
+const sessionWorkspacePaths = new Map<string, PathStateWorkspaceSnapshot>();
+
+export function rememberWorkspacePath(snapshot: PathStateWorkspaceSnapshot): void {
+	sessionWorkspacePaths.set(snapshot.workspaceId, snapshot);
+}
+
+export function rememberedWorkspacePath(workspaceId: string): PathStateWorkspaceSnapshot | null {
+	return sessionWorkspacePaths.get(workspaceId) ?? null;
+}
+
 function clearHandoffs(state: WorkspaceNavigationState): WorkspaceNavigationState {
 	return {
 		...state,

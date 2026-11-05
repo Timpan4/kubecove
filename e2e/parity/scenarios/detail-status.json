@@ -1,0 +1,66 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "details-status.health-evidence",
+      "title": "Health evidence expands into source, raw value, reason and historical marks",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-x4m8v", "namespace": "payments" },
+        { "action": "expectDetail", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-x4m8v", "namespace": "payments" },
+        { "action": "showTab", "tab": "Details" },
+        { "action": "expectNoPageText", "text": "Kubernetes status/conditions: Running — Containers are running" },
+        { "action": "toggleDetailDisclosure", "label": "Health evidence" },
+        { "action": "expectPageText", "text": "Kubernetes status/conditions: Running — Containers are running" },
+        { "action": "expectPageText", "text": "Container restart: 3 — Restart count was 3 before the last rollout (historical)" },
+        { "action": "toggleDetailDisclosure", "label": "Health evidence" },
+        { "action": "expectNoPageText", "text": "Kubernetes status/conditions: Running — Containers are running" }
+      ]
+    },
+    {
+      "id": "details-status.conditions",
+      "title": "The Conditions table shows each reason and message",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-x4m8v", "namespace": "payments" },
+        { "action": "expectDetail", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-x4m8v", "namespace": "payments" },
+        { "action": "showTab", "tab": "Details" },
+        { "action": "expectPageText", "text": "ContainersNotReady" },
+        { "action": "expectPageText", "text": "Sidecar is still warming its cache." }
+      ]
+    },
+    {
+      "id": "details-status.metadata",
+      "title": "Identity, lifecycle and finalizers come from the object metadata, and a set deletion timestamp is not reported as not scheduled",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-x4m8v", "namespace": "payments" },
+        { "action": "expectDetail", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-x4m8v", "namespace": "payments" },
+        { "action": "showTab", "tab": "Details" },
+        { "action": "expectPageText", "text": "3f1d9c52-0b7e-4c1a-9d8e-7a2b6c4e1f10" },
+        { "action": "expectPageText", "text": "714382" },
+        { "action": "expectPageText", "text": "example.io/payment-drain" },
+        { "action": "expectNoPageText", "text": "not scheduled" }
+      ]
+    },
+    {
+      "id": "details-status.raw-status",
+      "title": "Status details lists each raw status key and its value",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-x4m8v", "namespace": "payments" },
+        { "action": "expectDetail", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-x4m8v", "namespace": "payments" },
+        { "action": "showTab", "tab": "Details" },
+        { "action": "expectPageText", "text": "hostIP" },
+        { "action": "expectPageText", "text": "10.0.4.27" },
+        { "action": "expectPageText", "text": "qosClass" },
+        { "action": "expectPageText", "text": "Burstable" }
+      ]
+    }
+  ]
+}

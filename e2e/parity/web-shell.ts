@@ -73,6 +73,15 @@ export async function shellAction(page: Page, step: Step): Promise<void> {
             if (step.action === "openWorkspaceEntry") await buttons.nth(step.index).click();
             break;
         }
+        case "expectActivePage": {
+            // The sidebar marks the active page's row with aria-selected.
+            const escaped = step.page.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            await page.getByRole("treeitem", { name: new RegExp(`^(?:(?:Expand|Collapse) )?${escaped}$`), selected: true }).waitFor();
+            break;
+        }
+        case "expectGitOpsSelection":
+            await page.locator('[data-gitops-selected="true"]').filter({ hasText: step.name }).first().waitFor();
+            break;
         case "reorderKindKey":
             await page.locator(`[data-kind-drop="${step.kind}"]`).focus();
             await page.keyboard.press(step.key);

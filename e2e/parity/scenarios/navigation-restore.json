@@ -1,0 +1,27 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "navigation.restore-workspace-detail",
+      "title": "Reopening a workspace restores its page, search, selected resource and detail tab",
+      "steps": [
+        { "action": "openPage", "page": "Workloads" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showYaml" },
+        { "action": "expectYaml", "contains": ["resourceVersion: \"7\"", "status:"] },
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Restore check" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Restore check", "context": "mock-dev" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectSearch", "value": "payments-api" },
+        { "action": "expectResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "expectDetail", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "expectYaml", "contains": ["resourceVersion: \"7\"", "status:"] }
+      ]
+    }
+  ]
+}

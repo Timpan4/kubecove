@@ -1,6 +1,8 @@
 //! Entry-point interface shared by table, detail and workspace surfaces.
-use super::{Inspector, Page};
+use super::{Inspector, Load, Page};
 use crate::{
+    gitops_surface::Focus,
+    model::WORKSPACE_KINDS,
     ui,
     workspaces::entries::{Entries, Entry, EntryKind},
 };
@@ -122,6 +124,56 @@ impl Inspector {
             }))
             .into_any_element()
     }
+    /// Opens GitOps on the Argo CD section focused on one Application, as the
+    /// web's `openArgo` with a target does.
+    pub(super) fn open_gitops_application(&mut self, name: String, cx: &mut Context<Self>) {
+        self.open_gitops(Focus::Argo(None), cx);
+        if self.page != Page::GitOps {
+            return;
+        }
+        self.gitops_page.target_application(name);
+        if !self.gitops_page.nav_open.contains(&"GitOps") {
+            self.gitops_page.nav_open.push("GitOps");
+        }
+        cx.notify();
+    }
+
+    /// Drops saved resource entries that a completed Overview read covers but no
+    /// longer returns, as the web's `reconcileEntryPoints` does.
+    pub(super) fn reconcile_workspace_entries(&mut self, cx: &mut Context<Self>) {
+        let Some(id) = self.launcher.active else {
+            return;
+        };
+        let Some(read) = self
+            .workspace_read
+            .as_ref()
+            .filter(|read| matches!(read.load, Load::Ready))
+        else {
+            return;
+        };
+        let contexts = self.workspace_contexts();
+        let Some(entries) = self.persisted.workspace_entry_points.get_mut(&id) else {
+            return;
+        };
+        // The overview read lists every namespace of its contexts for the workspace kinds.
+        let changed = entries.drop_missing(|entry| {
+            let Some(kind) = entry.resource_kind.as_deref() else {
+                return false;
+            };
+            contexts.contains(&entry.cluster_context)
+                && WORKSPACE_KINDS.contains(&kind)
+                && !read.rows.iter().any(|row| {
+                    row.cluster == entry.cluster_context
+                        && row.namespace == entry.namespace
+                        && row.name == entry.name
+                        && row.kind == kind
+                })
+        });
+        if changed {
+            self.save_preferences(cx);
+        }
+    }
+
     fn open_workspace_entry(&mut self, entry: &Entry, window: &mut Window, cx: &mut Context<Self>) {
         if !self.can_leave(cx) {
             return;
@@ -138,7 +190,7 @@ impl Inspector {
                 entry.name.clone(),
                 cx,
             );
-            self.open_page(super::Page::GitOps, cx);
+            self.open_gitops_application(entry.name.clone(), cx);
             return;
         }
         // A saved identity is resolved against current rows, never a cached object.

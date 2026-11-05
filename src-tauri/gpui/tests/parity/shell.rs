@@ -183,6 +183,20 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             );
             return true;
         }
+        "expectActivePage" => {
+            let id = format!("nav:{}", string(step, "page"));
+            assert!(seek(window, cx, "sidebar-tree", &id));
+            assert_eq!(window.find(id).selected(), Some(true));
+            return true;
+        }
+        "expectGitOpsSelection" => {
+            assert!(seek(window, cx, "gitops-list", "gitops-selected"));
+            assert_eq!(
+                window.find("gitops-selected").label(),
+                Some(string(step, "name"))
+            );
+            return true;
+        }
         "configureShellRead" => return true,
         "retryLauncher" => format!("retry-launcher:{}", string(step, "read")).replace(':', "-"),
         "expectLauncherRetry" => {

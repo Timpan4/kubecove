@@ -22,10 +22,10 @@ pub(super) struct Integrations {
     remote_error: Option<String>,
     remote_busy: bool,
     remote_task: Option<Task<()>>,
-    update: UpdateStatus,
-    checked_at: Option<String>,
-    update_error: Option<String>,
-    update_busy: bool,
+    pub(super) update: UpdateStatus,
+    pub(super) checked_at: Option<String>,
+    pub(super) update_error: Option<String>,
+    pub(super) update_busy: bool,
     update_task: Option<Task<()>>,
 }
 impl Integrations {
@@ -158,6 +158,7 @@ impl Inspector {
         self.close_detail(cx);
         self.live.reset_scope();
         self.rows.clear();
+        self.prepared.clear();
         self.visible.clear();
         self.namespaces.clear();
         self.warnings.clear();
@@ -243,7 +244,7 @@ impl Inspector {
             body.into_any_element(),
         ))
     }
-    fn check_settings_updates(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn check_settings_updates(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.settings.integrations.update_busy || !self.backend.updates_enabled() {
             return;
         }
@@ -271,6 +272,7 @@ impl Inspector {
                     }
                 }
                 this.save_preferences(cx);
+                this.offer_available_update();
                 cx.notify();
             });
         }));
@@ -297,8 +299,8 @@ impl Inspector {
         };
         let mut control = div().flex().items_center().gap(px(8.));
         if enabled {
-            if let UpdateStatus::Available(version) = &state.update {
-                control = control.child(ui::outline_badge(format!("Update {version}")));
+            if let UpdateStatus::Available(update) = &state.update {
+                control = control.child(ui::outline_badge(format!("Update {}", update.version)));
             }
             control = control.child(action("Check", state.update_busy).on_click(
                 cx.listener(|this, _, window, cx| this.check_settings_updates(window, cx)),
@@ -311,12 +313,15 @@ impl Inspector {
                 .aria_label("KubeCove version"),
         );
         if enabled {
-            if let UpdateStatus::Available(version) = &state.update {
+            if let UpdateStatus::Available(update) = &state.update {
                 section = section
                     .child(
                         settings_row(
                             "Update available",
-                            format!("KubeCove {version} can be downloaded and installed now."),
+                            format!(
+                                "KubeCove {} can be downloaded and installed now.",
+                                update.version
+                            ),
                             action("Install", true)
                                 .aria_description(INSTALL_UNAVAILABLE)
                                 .into_any_element(),

@@ -2,9 +2,8 @@
 //! launcher shell. Local saved records persist through Backend under ADR 0030.
 //! Opening a workspace sets the context and limits rows and the sidebar to its namespaces.
 
+use super::Inspector;
 use super::controls::{Variant, button};
-use super::{Inspector, Page};
-use crate::backend::Scope;
 use crate::theme::Tokens;
 use crate::ui;
 use crate::workspaces::{self, Discovery, SavedWorkspace};
@@ -210,6 +209,7 @@ impl Inspector {
         if !self.can_leave(cx) {
             return;
         }
+        self.remember_workspace(cx);
         if let Some(active) = self.launcher.active
             && let Some(workspace) = self
                 .launcher
@@ -230,11 +230,7 @@ impl Inspector {
         self.launcher.active = Some(id);
         self.launcher.open = false;
         self.close_detail(cx);
-        self.page = Page::Overview;
-        self.scope = Scope {
-            context: context.clone(),
-            namespace: None,
-        };
+        self.restore_workspace_memory(id, &context, window, cx);
         self.context_picker.update(cx, |picker, cx| {
             picker.set_selected_value(&SharedString::from(context), window, cx)
         });
@@ -256,6 +252,7 @@ impl Inspector {
         let state = &mut self.launcher;
         if state.active != Some(id) {
             state.saved.retain(|saved| saved.id != id);
+            self.navigation.forget(id);
             self.save_preferences(cx);
             cx.notify();
         }

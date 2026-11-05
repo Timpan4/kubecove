@@ -22,13 +22,18 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             }
         }
         "expectYamlLens" => {
+            // One lens per marked line, as the web shows them.
             let line = number(step, "line");
+            let lenses = window.find_all("yaml-lens");
             if line == 0 {
-                assert!(window.try_find("yaml-lens").is_none());
+                assert!(lenses.is_empty());
             } else {
-                assert_eq!(
-                    window.find("yaml-lens").label(),
-                    Some(format!("YAML error at line {line}").as_str())
+                let label = format!("YAML error at line {line}");
+                assert!(
+                    lenses
+                        .iter()
+                        .any(|lens| lens.label() == Some(label.as_str())),
+                    "no lens labelled {label:?}"
                 );
             }
         }

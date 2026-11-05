@@ -117,15 +117,20 @@ fn tinted_outline(color: Hsla, border: Hsla, content: impl Into<SharedString>) -
     super::delivery_ui::badge((border, Tokens::input().opacity(0.3), color), content)
 }
 
-/// The badge alone, with the web's tone classes.
-pub(super) fn health_state_badge(state: HealthAssessmentState) -> Div {
-    let label = match state {
+/// `healthStateLabel`.
+pub(super) fn health_state_label(state: HealthAssessmentState) -> &'static str {
+    match state {
         HealthAssessmentState::Healthy => "Healthy",
         HealthAssessmentState::NeedsAttention => "Needs attention",
         HealthAssessmentState::Degraded => "Degraded",
         HealthAssessmentState::Unknown => "Unknown",
         HealthAssessmentState::NotEvaluated => "Not evaluated",
-    };
+    }
+}
+
+/// The badge alone, with the web's tone classes.
+pub(super) fn health_state_badge(state: HealthAssessmentState) -> Div {
+    let label = health_state_label(state);
     match state {
         HealthAssessmentState::Degraded => ui::status_badge(Tone::Error, label),
         HealthAssessmentState::Healthy => {

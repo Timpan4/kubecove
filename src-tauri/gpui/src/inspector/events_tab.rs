@@ -1,10 +1,12 @@
 //! Events tab of the resource detail panel, mirroring `EventsTab.svelte` at
 //! its `xl:` layout (the capture viewport is 1440px wide).
 
-use super::Inspector;
 use super::detail::ResourceDetail;
 use super::events::{EventsLoad, badge, outline, tw};
+use super::{Inspector, timestamp_text};
 use crate::incident::{self, EventFilter};
+use crate::model::exact_timestamp;
+use crate::preferences::TimestampTimezone;
 use crate::theme::Tokens;
 use crate::ui;
 use gpui_kit::component::input::Input;
@@ -94,7 +96,17 @@ fn tile_value(text: impl Into<SharedString>) -> Div {
     ui::semibold(ui::sm(text)).truncate()
 }
 
-fn event_row(event: &ResourceEventSummary) -> Div {
+/// `formatEventExactTime`: the exact time in the saved timezone, or the raw
+/// relative label when the event has no timestamp.
+fn exact_time(event: &ResourceEventSummary, timezone: TimestampTimezone) -> String {
+    event
+        .last_seen_at
+        .as_deref()
+        .and_then(|value| exact_timestamp(value, timezone))
+        .unwrap_or_else(|| event.last_seen.clone())
+}
+
+fn event_row(event: &ResourceEventSummary, index: usize, timezone: TimestampTimezone) -> Div {
     let warning = warning(event);
     let (dot, ring) = if warning {
         (tw::amber400(1.), tw::amber400(0.12))
@@ -114,10 +126,14 @@ fn event_row(event: &ResourceEventSummary) -> Div {
         .px(px(12.))
         .py(px(8.))
         .child(
-            ui::muted(ui::xs(compact_time(event)))
+            div()
                 .w(px(92.))
                 .flex_none()
-                .whitespace_nowrap(),
+                .child(timestamp_text::with_tooltip(
+                    format!("event-time:{index}"),
+                    Some(exact_time(event, timezone)),
+                    ui::muted(ui::xs(compact_time(event))).whitespace_nowrap(),
+                )),
         )
         .child(
             // `mt-1.5 size-2 rounded-full` with a 3px `shadow` ring.
@@ -176,7 +192,11 @@ fn event_row(event: &ResourceEventSummary) -> Div {
         )
 }
 
-pub(super) fn events_tab(detail: &ResourceDetail, cx: &mut Context<Inspector>) -> AnyElement {
+pub(super) fn events_tab(
+    detail: &ResourceDetail,
+    timezone: TimestampTimezone,
+    cx: &mut Context<Inspector>,
+) -> AnyElement {
     let state = &detail.events;
     let events = match &state.load {
         EventsLoad::Pending => {
@@ -293,7 +313,7 @@ pub(super) fn events_tab(detail: &ResourceDetail, cx: &mut Context<Inspector>) -
             .border_color(Tokens::border())
             .bg(Tokens::background().opacity(0.3))
             .children(visible.iter().enumerate().map(|(index, event)| {
-                event_row(event)
+                event_row(event, index, timezone)
                     .id(SharedString::from(format!("event:{index}")))
                     .test_support()
                     .aria_label(format!("{} {}", event.reason, event.message))

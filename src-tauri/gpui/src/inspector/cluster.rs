@@ -15,6 +15,8 @@ pub(super) struct ClusterState {
     /// `None` until the page first opens for `context`.
     load: Option<Load>,
     pub(super) rows: Vec<ResourceSummary>,
+    /// `rows` with inherited GitOps owners, rebuilt by `prepare_rows`.
+    pub(super) prepared: Vec<ResourceSummary>,
     warnings: Vec<String>,
     task: Option<Task<()>>,
 }
@@ -73,6 +75,7 @@ impl Inspector {
                     }
                     Err(error) => this.cluster.load = Some(Load::Failed(error.message)),
                 }
+                this.prepare_rows();
                 this.filter(cx);
             });
         }));
@@ -93,6 +96,15 @@ impl Inspector {
     pub(super) fn cluster_rows(&self) -> &[ResourceSummary] {
         if self.wants_cluster_rows() {
             &self.cluster.rows
+        } else {
+            &[]
+        }
+    }
+
+    /// The prepared cluster rows that join the filter source.
+    pub(super) fn cluster_prepared(&self) -> &[ResourceSummary] {
+        if self.wants_cluster_rows() {
+            &self.cluster.prepared
         } else {
             &[]
         }

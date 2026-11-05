@@ -8,7 +8,7 @@ use super::{Inspector, Load, Page};
 use crate::theme::{Palette, Tokens};
 use crate::ui;
 use gpui_kit::TestSupportExt;
-use gpui_kit::{AnyElement, Context, Div, Window, div, prelude::*, px};
+use gpui_kit::{AnyElement, Context, Div, SharedString, Window, div, prelude::*, px};
 
 const SIDEBAR: f32 = 260.;
 
@@ -19,6 +19,45 @@ fn info_card(title: &str, detail: &str) -> Div {
         .py(px(8.))
         .child(ui::semibold(ui::xs(title.to_owned())))
         .child(ui::muted(ui::xs(detail.to_owned())))
+}
+
+/// The web's `Empty` block that replaces the resource table (`ResourceBrowser.svelte`).
+fn empty_state(title: &str, description: &str) -> AnyElement {
+    div()
+        .flex()
+        .flex_col()
+        .items_center()
+        .justify_center()
+        .gap(px(4.))
+        .min_h(px(208.))
+        .p(px(16.))
+        .rounded(px(10.))
+        .border_1()
+        .border_color(Tokens::border())
+        .child(
+            div()
+                .id("empty-title")
+                .test_support()
+                .aria_label(title.to_owned())
+                .child(ui::semibold(ui::sm(title.to_owned()))),
+        )
+        .child(
+            div()
+                .id("empty-description")
+                .test_support()
+                .aria_label(description.to_owned())
+                .child(ui::muted(ui::xs(description.to_owned()))),
+        )
+        .into_any_element()
+}
+
+/// A flex child that takes `share` of the leftover width beside its siblings.
+fn grow_panel(share: f32, panel: impl IntoElement) -> Div {
+    div()
+        .flex_basis(px(0.))
+        .flex_grow(share)
+        .min_w_0()
+        .child(panel)
 }
 
 /// Lays out `items` in `columns` equal columns, row by row.
@@ -50,7 +89,7 @@ pub(super) fn page_width(this: &Inspector, window: &Window) -> f32 {
     if matches!(this.detail, Detail::Closed) {
         main
     } else {
-        main * (1. - detail_share(this.page))
+        main * (1. - detail_share(this))
     }
 }
 
@@ -58,7 +97,7 @@ pub(super) fn page_width(this: &Inspector, window: &Window) -> f32 {
 /// and the pane as non-shrinking percentages of the frame, so the `w-2` resize
 /// handle between them overflows the frame and clips the pane by 8px.
 pub(super) fn detail_width(this: &Inspector, window: &Window) -> f32 {
-    main_width(window) * detail_share(this.page) - 8.
+    main_width(window) * detail_share(this) - 8.
 }
 
 /// The main panel's inner width: the window less the shell's `p-2`, the
@@ -67,10 +106,197 @@ fn main_width(window: &Window) -> f32 {
     f32::from(window.viewport_size().width) - 16. - SIDEBAR - 8. - 2.
 }
 
-/// `WorkspaceShell.svelte` opens the detail pane at 30% on the GitOps page and
-/// 40% elsewhere.
-fn detail_share(page: Page) -> f32 {
-    if page == Page::GitOps { 0.3 } else { 0.4 }
+/// `DETAIL_PANEL_DEFAULT_SIZE` (40), or 30 on GitOps, where `WorkspaceShell.svelte`
+/// passes its own default.
+fn detail_default(page: Page) -> f32 {
+    if page == Page::GitOps { 30. } else { 40. }
+}
+
+/// `DETAIL_PANEL_MIN_SIZE` (33), or 25 on GitOps (`WorkspaceShell.svelte`).
+fn detail_min(page: Page) -> f32 {
+    if page == Page::GitOps { 25. } else { 33. }
+}
+
+/// `100 - MAIN_PANEL_MIN_SIZE` from `detailPanelFrameModel.ts`.
+const DETAIL_MAX: f32 = 70.;
+
+/// `DETAIL_PANEL_RESIZE_STEP` from `detailPanelFrameModel.ts`.
+const DETAIL_RESIZE_STEP: f32 = 2.;
+
+/// The detail pane's percent of the frame. A size dragged under one key (GitOps
+/// or not) does not carry over to the other, as `DetailPanelFrame.svelte` resets
+/// its size when `sizeKey` changes.
+pub(super) fn detail_percent(this: &Inspector) -> f32 {
+    match this.detail_size {
+        Some((gitops, size)) if gitops == (this.page == Page::GitOps) => size,
+        _ => detail_default(this.page),
+    }
+}
+
+fn detail_share(this: &Inspector) -> f32 {
+    detail_percent(this) / 100.
+}
+
+/// The two collapsible panels of the resources page.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Panel {
+    Map,
+    Table,
+}
+
+impl Inspector {
+    /// The map is open unless the user collapsed it. Without a choice, it follows
+    /// "Show ownership map by default".
+    pub(super) fn map_is_open(&self) -> bool {
+        self.map_open
+            .unwrap_or(self.persisted.preferences.show_ownership_map_by_default)
+    }
+
+    pub(super) fn set_panel_open(&mut self, panel: Panel, open: bool) {
+        match panel {
+            Panel::Map => self.map_open = Some(open),
+            Panel::Table => self.table_open = open,
+        }
+    }
+
+    /// Sets the detail pane's percent, clamped as `clampDetailPanelSize` does.
+    pub(super) fn set_detail_percent(&mut self, percent: f32) {
+        let size = percent.clamp(detail_min(self.page), DETAIL_MAX);
+        self.detail_size = Some((self.page == Page::GitOps, size));
+    }
+
+    /// `detailPanelSizeFromPointer`: the frame's right edge sits at the window's
+    /// right padding and border, which `main_width` also assumes.
+    pub(super) fn detail_percent_at(&self, window: &Window, x: f32) -> f32 {
+        let width = main_width(window);
+        if width <= 0. {
+            return detail_default(self.page);
+        }
+        let right = f32::from(window.viewport_size().width) - 9.;
+        (right - x) / width * 100.
+    }
+
+    /// `handleResizeKeydown`: Left widens the pane, Right narrows it, Home and End
+    /// go to the limits. Returns whether the key resized the pane.
+    pub(super) fn resize_detail_key(&mut self, key: &str) -> bool {
+        let current = detail_percent(self);
+        let next = match key {
+            "left" => current + DETAIL_RESIZE_STEP,
+            "right" => current - DETAIL_RESIZE_STEP,
+            "home" => detail_min(self.page),
+            "end" => DETAIL_MAX,
+            _ => return false,
+        };
+        self.set_detail_percent(next);
+        true
+    }
+
+    /// A panel's collapsed state: a 3rem strip with a restore button and the
+    /// panel's name, as `ResourceBrowser.svelte` renders it.
+    fn panel_strip(&self, panel: Panel, cx: &mut Context<Self>) -> AnyElement {
+        let (label, icon, control) = match panel {
+            Panel::Map => ("Map", "git-branch", "Show ownership map"),
+            Panel::Table => ("Table", "table-2", "Show resource table"),
+        };
+        let show = move |this: &mut Self,
+                         _: &gpui_kit::ClickEvent,
+                         _: &mut Window,
+                         cx: &mut Context<Self>| {
+            this.set_panel_open(panel, true);
+            cx.notify();
+        };
+        div()
+            .flex()
+            .flex_col()
+            .items_center()
+            .flex_none()
+            .w(px(48.))
+            .h_full()
+            .min_h(px(400.))
+            .overflow_hidden()
+            .rounded(px(10.))
+            .border_1()
+            .border_color(Tokens::border())
+            .bg(Tokens::card())
+            .shadow_sm()
+            .child(
+                div()
+                    .flex()
+                    .w_full()
+                    .justify_center()
+                    .p(px(8.))
+                    .border_b_1()
+                    .border_color(Tokens::border())
+                    .child(
+                        ui::ghost_icon("panel-right-open", 28., 14.)
+                            .id(SharedString::from(format!("panel-control:{control}")))
+                            .test_support()
+                            .aria_label(control)
+                            .cursor_pointer()
+                            .on_click(cx.listener(show)),
+                    ),
+            )
+            .child(
+                div()
+                    .id(SharedString::from(format!("panel-strip:{label}")))
+                    .test_support()
+                    .aria_label(control)
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .items_center()
+                    .gap(px(8.))
+                    .py(px(12.))
+                    .cursor_pointer()
+                    .text_color(Tokens::muted_foreground())
+                    .hover(|strip| strip.bg(Tokens::muted()))
+                    .child(ui::icon(icon, 16., Tokens::muted_foreground()))
+                    .children(
+                        label
+                            .chars()
+                            .map(|letter| ui::semibold(ui::xs(letter.to_string()))),
+                    )
+                    .on_click(cx.listener(show)),
+            )
+            .into_any_element()
+    }
+
+    /// The map and table panels. Both open share the page as `0.42fr` and
+    /// `0.58fr`, or stack when the detail pane is open. A collapsed panel leaves
+    /// its strip beside the other panel.
+    fn panels(&mut self, stacked: bool, cx: &mut Context<Self>) -> AnyElement {
+        match (self.map_is_open(), self.table_open) {
+            (true, true) if stacked => div()
+                .flex()
+                .flex_col()
+                .gap(px(12.))
+                .child(div().h(px(400.)).child(self.map_panel(cx)))
+                .child(div().h(px(560.)).child(self.table_panel(cx)))
+                .into_any_element(),
+            (map_open, table_open) => {
+                let map: AnyElement = if map_open {
+                    let share = if table_open { 0.42 } else { 1. };
+                    grow_panel(share, self.map_panel(cx)).into_any_element()
+                } else {
+                    self.panel_strip(Panel::Map, cx)
+                };
+                let table: AnyElement = if table_open {
+                    let share = if map_open { 0.58 } else { 1. };
+                    grow_panel(share, self.table_panel(cx)).into_any_element()
+                } else {
+                    self.panel_strip(Panel::Table, cx)
+                };
+                div()
+                    .flex()
+                    .flex_1()
+                    .min_h(px(400.))
+                    .gap(px(12.))
+                    .child(map)
+                    .child(table)
+                    .into_any_element()
+            }
+        }
+    }
 }
 
 impl Inspector {
@@ -234,7 +460,11 @@ impl Inspector {
         ];
         let extras = vec![
             self.metrics_card().into_any_element(),
-            info_card("Custom Resources", "Custom Resources added").into_any_element(),
+            info_card(
+                "Custom Resources",
+                self.custom_status().unwrap_or("available"),
+            )
+            .into_any_element(),
             div()
                 .flex()
                 .items_center()
@@ -279,6 +509,32 @@ impl Inspector {
             .child(self.historical_toggle(cx))
     }
 
+    /// The web's empty states, checked before the load state: no cluster
+    /// context, then no selected kind. A failed read still reports its error.
+    fn empty_scope(&self) -> Option<AnyElement> {
+        if self.scope.context.is_empty()
+            && !matches!(self.page_load(), Load::Loading | Load::Failed(_))
+        {
+            return Some(empty_state(
+                "No cluster context",
+                "Select a workspace with a cluster context.",
+            ));
+        }
+        let no_kinds = self.live.selected.is_none()
+            && self
+                .kind_selection
+                .chosen
+                .as_ref()
+                .is_some_and(|chosen| chosen.is_empty());
+        if no_kinds {
+            return Some(empty_state(
+                "No resource scope",
+                "Select at least one kind.",
+            ));
+        }
+        None
+    }
+
     pub(super) fn resources(
         &mut self,
         window: &mut Window,
@@ -289,91 +545,64 @@ impl Inspector {
             self.live.error_open = false;
         }
         let stacked = !matches!(self.detail, Detail::Closed);
-        let body: AnyElement = match self.page_load() {
-            Load::Loading => ui::muted(ui::xs("Loading resources"))
-                .flex()
-                .min_h(px(208.))
-                .items_center()
-                .justify_center()
-                .into_any_element(),
-            // The top bar stays so the Live menu's refresh can retry the read.
-            Load::Failed(error) => div()
-                .flex()
-                .flex_col()
-                .gap(px(12.))
-                .child(self.top_bar(width, cx))
-                .child(self.friendly_failure(
-                    "load-error",
-                    None,
-                    error,
-                    super::friendly_error::Context {
-                        operation: Some(super::friendly_error::Operation::Resources),
-                        fallback_title: Some("Failed to load resources"),
-                        ..Default::default()
-                    },
-                    None,
-                    cx,
-                ))
-                .into_any_element(),
-            _ => {
-                let panels = if !self.persisted.preferences.show_ownership_map_by_default {
-                    div()
-                        .flex()
-                        .flex_col()
-                        .flex_1()
-                        .min_h(px(400.))
-                        .child(self.table_panel(cx))
-                } else if stacked {
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap(px(12.))
-                        .child(div().h(px(400.)).child(self.map_panel(cx)))
-                        .child(div().h(px(560.)).child(self.table_panel(cx)))
-                } else {
-                    div()
-                        .flex()
-                        .flex_1()
-                        .min_h(px(400.))
-                        .gap(px(12.))
-                        // `grid-cols-[minmax(0,0.42fr)_minmax(0,0.58fr)] gap-3`: shares apply after the gap.
-                        .child(
-                            div()
-                                .flex_basis(px(0.))
-                                .flex_grow(0.42)
-                                .min_w_0()
-                                .child(self.map_panel(cx)),
-                        )
-                        .child(
-                            div()
-                                .flex_basis(px(0.))
-                                .flex_grow(0.58)
-                                .min_w_0()
-                                .child(self.table_panel(cx)),
-                        )
-                };
-                div()
+        self.sync_map_focus(cx);
+        let body: AnyElement = match self.empty_scope() {
+            Some(empty) => empty,
+            None => match self.page_load() {
+                Load::Loading => div()
+                    .id("resources-loading")
+                    .test_support()
+                    .aria_label("Loading resources")
+                    .flex()
+                    .min_h(px(208.))
+                    .items_center()
+                    .justify_center()
+                    .child(ui::muted(ui::xs("Loading resources")))
+                    .into_any_element(),
+                // The top bar stays so the Live menu's refresh can retry the read.
+                Load::Failed(error) => div()
                     .flex()
                     .flex_col()
-                    .when(!stacked, |body| body.flex_1().min_h_0())
                     .gap(px(12.))
                     .child(self.top_bar(width, cx))
-                    .children(self.live_notice(cx))
-                    .children(self.page_warnings().enumerate().map(|(index, warning)| {
-                        div()
-                            .id(("warning", index))
-                            .role(gpui_kit::Role::Alert)
-                            .px(px(12.))
-                            .py(px(8.))
-                            .rounded(px(8.))
-                            .border_1()
-                            .border_color(Palette::amber500(0.3))
-                            .text_color(Palette::amber300())
-                            .child(ui::xs(warning.clone()))
-                    }))
-                    .child(panels)
-                    .into_any_element()
-            }
+                    .child(self.friendly_failure(
+                        "load-error",
+                        None,
+                        error,
+                        super::friendly_error::Context {
+                            operation: Some(super::friendly_error::Operation::Resources),
+                            fallback_title: Some("Failed to load resources"),
+                            ..Default::default()
+                        },
+                        None,
+                        cx,
+                    ))
+                    .into_any_element(),
+                _ => {
+                    let panels = self.panels(stacked, cx);
+                    div()
+                        .flex()
+                        .flex_col()
+                        .when(!stacked, |body| body.flex_1().min_h_0())
+                        .gap(px(12.))
+                        .child(self.top_bar(width, cx))
+                        .children(self.live_notice(cx))
+                        .children(self.page_warnings().enumerate().map(|(index, warning)| {
+                            div()
+                                .id(("warning", index))
+                                .role(gpui_kit::Role::Alert)
+                                .px(px(12.))
+                                .py(px(8.))
+                                .rounded(px(8.))
+                                .border_1()
+                                .border_color(Palette::amber500(0.3))
+                                .text_color(Palette::amber300())
+                                .child(ui::xs(warning.clone()))
+                        }))
+                        .child(panels)
+                        .into_any_element()
+                }
+            },
         };
         div()
             .id("resources")

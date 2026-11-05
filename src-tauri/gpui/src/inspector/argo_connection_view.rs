@@ -10,7 +10,7 @@ use gpui_kit::{
     component::input::{Input, Textarea},
     div,
     prelude::*,
-    px,
+    px, relative,
 };
 use kubecove_lib::models::ArgoConfirmedTarget;
 
@@ -55,8 +55,8 @@ impl Inspector {
                         .test_support()
                         .role(gpui_kit::Role::Dialog)
                         .aria_label("Argo CD connection")
-                        .w(px(640.))
-                        .max_h_full()
+                        .w(px(672.))
+                        .max_h(relative(0.9))
                         .overflow_y_scroll()
                         .child(self.argo_connection_content(cx))
                         .child(

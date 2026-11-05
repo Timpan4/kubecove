@@ -46,11 +46,11 @@ use kubecove_gpui::{
 use kubecove_lib::models::{
     AppError, AppErrorKind, ArgoApplicationInspector, ArgoApplicationRef, ClusterContext,
     ClusterOperationResult, DeploymentRevision, HelmReleaseDetails, HelmReleaseList,
-    HelmReleaseReconciliation, HelmReleaseSummary, IncidentCockpitSummary, NamespaceSummary,
-    RbacAccessReviewRequest, RbacAccessReviewResult, RbacInspectionSummary, ResourceActionPreview,
-    ResourceActionRequest, ResourceActionState, ResourceActionStateRequest, ResourceDetailsFull,
-    ResourceEventSummary, ResourceSummary, ResourceTopology, YamlApplyPreview, YamlApplyRequest,
-    YamlApplyResult, YamlViewMode,
+    HelmReleaseReconciliation, HelmReleaseSummary, IncidentCockpitSummary,
+    KubernetesYamlLintResult, NamespaceSummary, RbacAccessReviewRequest, RbacAccessReviewResult,
+    RbacInspectionSummary, ResourceActionPreview, ResourceActionRequest, ResourceActionState,
+    ResourceActionStateRequest, ResourceDetailsFull, ResourceEventSummary, ResourceSummary,
+    ResourceTopology, YamlApplyPreview, YamlApplyRequest, YamlApplyResult, YamlViewMode,
 };
 use serde_json::json;
 use std::sync::{
@@ -403,6 +403,15 @@ impl Backend for Controlled {
     fn prepare_yaml_apply(&self, request: YamlApplyRequest) -> Read<YamlApplyPreview> {
         self.detail.prepare_yaml_apply(request)
     }
+    fn lint_yaml(&self, _: YamlApplyRequest) -> Read<KubernetesYamlLintResult> {
+        // Native tests exercise editing without lint findings.
+        Box::pin(async {
+            Ok(KubernetesYamlLintResult {
+                diagnostics: Vec::new(),
+                notes: Vec::new(),
+            })
+        })
+    }
     fn apply_yaml(&self, request: YamlApplyRequest) -> Read<YamlApplyResult> {
         self.detail.apply_yaml(request)
     }
@@ -699,6 +708,12 @@ fn port_forwards_stay_in_the_workspace_scope(cx: &mut TestAppContext) {
             Some("Open live sessions (1 active)")
         );
         window.click("live-sessions", cx)
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window.click("live-sessions-manage", cx)
     })
     .unwrap();
     cx.run_until_parked();

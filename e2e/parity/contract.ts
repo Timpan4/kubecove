@@ -1,9 +1,10 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { LOG_LEVELS, RBAC_CATEGORIES, RBAC_RISKS, SORT_COLUMNS, TABLE_COLUMNS, type Step, VERDICTS } from "./contract-steps";
+import { DETAIL_RESIZE_KEYS, LOG_LEVELS, MAP_KEYS, PANEL_CONTROLS, RBAC_CATEGORIES, RBAC_RISKS, SORT_COLUMNS, type Step, TABLE_COLUMNS, VERDICTS } from "./contract-steps";
 
 export type { Step } from "./contract-steps";
+
 function oneOf<T extends string>(values: readonly T[], value: unknown, label: string): T {
 	const found = values.find((candidate) => candidate === value);
 	if (!found) throw new Error(`Expected ${label}`);
@@ -14,7 +15,7 @@ export type Contract = { scenarios: Scenario[] };
 
 /** Every action both drivers must implement; `contract.test.ts` checks each driver handles each one. */
 export const ACTIONS = [
-    "expectOverviewShortcuts", "overviewShortcut",
+    "expectOverviewShortcuts", "overviewShortcut", "expectActivePage", "expectGitOpsSelection",
     "expectOverviewScope", "expectCompareTotal",
     "retryOverview", "expectOverviewRetry",
     "dragKind",
@@ -41,6 +42,7 @@ export const ACTIONS = [
     "editSavedWorkspace", "expectNoSavedWorkspace", "saveWorkspace", "cancelWorkspaceEdit", "toggleWorkspaceContext", "expectOverviewHealth", "expectDetailContext",
     "sidebarToggle", "sidebarSelect", "expectSidebarRow", "collapseSidebar", "expectSidebarBranch", "refreshPage",
     "replayPageReads", "focusStalePage", "expectPageText",
+    "toggleDetailDisclosure", "expectNoPageText",
     "searchCustomKinds", "searchKindPicker", "expectCustomGroup", "toggleKind", "openKindPicker", "closeKindPicker", "selectAllKinds", "expectKindChecked",
     "openNamespacePicker", "closeNamespacePicker", "selectAllNamespaces", "clearResourceFilters", "searchNamespacePicker", "toggleNamespace", "expectNamespaceChecked", "expectNamespaceTrigger",
     "selectHealthFilter", "expectHealthFilter", "chooseGitOpsOwner", "setHistoricalReplicaSets",
@@ -48,7 +50,7 @@ export const ACTIONS = [
     "selectArgoPreference", "expectSavedArgoProfile", "configureArgoSync", "selectArgoHistory", "expectArgoWorkspaceTransport", "completeArgoOperation", "confirmArgoTunnel",
     "connectArgoProfile", "disconnectArgoProfile", "confirmArgoReview", "cancelArgoReview", "reviewArgoOperation", "expectArgoReview", "expectArgoText", "argoDocument",
     "cancelYamlEdit",
-    "revealSecretValue", "hideSecretValue", "expectSecretValue", "expectYamlLens", "refreshLatencyReport", "clearLatencyReport", "expectLatencyEmpty", "expectLatencyTiming", "openDocumentation", "expectDocumentationRequest",
+    "revealSecretValue", "hideSecretValue", "expectSecretValue", "expectYamlLens", "refreshLatencyReport", "clearLatencyReport", "expectLatencyEmpty", "expectLatencyTiming", "openDocumentation", "expectDocumentationRequest", "copyLatencyReport", "expectLatencyReportCopy", "updateStatusControl",
     "configurePreset", "presetControl",
     "replaySessions", "confirmExecLeave",
     "configureForward", "forwardControl", "expectForwardState", "execControl", "expectExecState",
@@ -62,7 +64,7 @@ export const ACTIONS = [
 	"openActionEditor", "fillActionField", "chooseActionRevision", "selectYamlShape", "selectYamlEncoding", "replaceYamlDraft", "expectYamlDocument", "expectYamlPicker", "formatYaml",
 	"openResources", "showYaml", "closeDetail", "expectDetailClosed", "expectEmpty", "refresh", "search", "expectSearch",
 	"expectResource", "openResource", "expectDetail", "expectClusterResource", "expectNoClusterResource", "expectYaml", "openPage", "showTab", "filterEvents",
-	"expectEvent", "expectEventCount", "expectLiveSessionCount", "filterIncidents", "expectIncidentGuide", "expectGitOpsCount", "expectPortForward",
+	"expectEvent", "expectEventCount", "expectLiveSessionCount", "filterIncidents", "expectIncidentGuide", "openIncidentResources", "expectGitOpsCount", "expectPortForward",
 	"expectLogLines", "filterLogs", "toggleLogLevel", "expectLogsEmpty", "selectRevision", "expectRevisionDiff", "reviewAction", "editReplicas",
 	"toggleLogRow", "toggleLogExpandAll", "expectLogRowOpen", "copyLogLine", "expectRestorePrompt", "restorePromptControl",
 	"expectReview", "confirmDeletion", "executeReview", "closeReview", "expectNoReview", "expectActionResult", "expectNoActionResult",
@@ -78,6 +80,10 @@ export const ACTIONS = [
 	"expectArgoSignal", "expectHelmCount", "expectHelmRelease", "expectNoHelmRelease", "openHelmRelease", "selectHelmNamespace", "searchHelm",
 	"expectHelmDetails", "openGitOpsResources", "expectArgoWorkspace", "filterArgoResources", "setDeliveryView",
     "sortResourceTable", "expectResourceOrder", "toggleResourceGroup", "expectResourceGroup", "openResourceRow", "expectResourceCell",
+	"clickDetailControl",
+	"openLiveSessionPopover", "expectLiveSessionRow", "liveSessionControl", "expectHealthTooltip", "expectTimestampTooltip", "expectEventTimeTooltip",
+    "panelControl", "expectPanelControl", "skipGraph", "mapKey", "expectMapFocus", "expectNoMapFocus", "resizeDetail", "expectDetailResize",
+	"expectYamlDiagnostic", "expectNoYamlDiagnostic", "expectActionLoadError", "expectNoActionLoadError", "retryActionPermission", "expectActionLock",
 ] as const satisfies readonly Step["action"][];
 type Missing = Exclude<Step["action"], (typeof ACTIONS)[number]>;
 const allActionsListed: Missing extends never ? true : Missing = true;
@@ -118,6 +124,8 @@ function step(value: unknown): Step {
         case "expectEmptyLauncher": return { action: item.action };
         case "expectOverviewShortcuts": return { action: item.action, labels: strings(item.labels, true) };
         case "overviewShortcut": return { action: item.action, label: string(item.label) };
+        case "expectActivePage": return { action: item.action, page: string(item.page) };
+        case "expectGitOpsSelection": return { action: item.action, name: string(item.name) };
         case "expectOverviewScope": return { action: item.action, labels: strings(item.labels, false) };
         case "expectCompareTotal": return { action: item.action, title: string(item.title), side: string(item.side), total: count(item.total) };
         case "retryOverview": case "expectOverviewRetry": return { action: item.action };
@@ -134,7 +142,7 @@ function step(value: unknown): Step {
         case "expectWorkspaceEntry": case "openWorkspaceEntry": return { action: item.action, panel: oneOf(["Pinned", "Recent"], item.panel, "an entry panel"), label: string(item.label), index: count(item.index), count: count(item.count) };
         case "reorderKindKey": return { action: item.action, kind: string(item.kind), key: oneOf(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"], item.key, "a reorder key") };
         case "expectRemoteHost": return { action: item.action, url: string(item.url) };
-        case "configureShellRead": return { action: item.action, phase: oneOf(["ready", "contexts-failed", "contexts-empty", "namespaces-failed", "namespaces-empty", "resources-failed"], item.phase, "a shell read phase") };
+        case "configureShellRead": return { action: item.action, phase: oneOf(["ready", "contexts-failed", "contexts-empty", "namespaces-failed", "namespaces-empty", "resources-failed", "primary-context-missing", "kind-missing", "payments-api-removed"], item.phase, "a shell read phase") };
         case "openNamespaceList": case "openNavigationDrawer": return { action: item.action };
         case "expectNamespaceRow": return { action: item.action, name: string(item.name), age: string(item.age) };
         case "resizeViewport": return { action: item.action, width: count(item.width), height: count(item.height) };
@@ -180,6 +188,9 @@ function step(value: unknown): Step {
         case "replayPageReads": return { action: item.action, phase: oneOf(["base", "updated", "failed"], item.phase, "a page read phase") };
         case "focusStalePage": return { action: item.action, page: oneOf(["GitOps", "Helm", "RBAC", "Incidents"], item.page, "a refreshing page") };
         case "expectPageText": return { action: item.action, text: string(item.text) };
+        case "toggleDetailDisclosure": return { action: item.action, label: string(item.label) };
+        case "expectNoPageText": return { action: item.action, text: string(item.text) };
+        case "clickDetailControl": return { action: item.action, label: string(item.label) };
         case "fillMcpPort": return { action: item.action, value: string(item.value) };
         case "mcpControl": return { action: item.action, control: oneOf(["MCP server", "Submit port", "Save", "Copy token", "Copy Claude Code command", "Rotate token"], item.control, "an MCP control") };
         case "expectMcpState":
@@ -198,7 +209,7 @@ function step(value: unknown): Step {
         case "connectArgoProfile": return { action: item.action, url: string(item.url), remember: optionalBoolean(item.remember), tunnel: optionalBoolean(item.tunnel), local: optionalBoolean(item.local), insecure: optionalBoolean(item.insecure), customCa: item.customCa == null ? undefined : string(item.customCa), surface: item.surface == null ? undefined : oneOf<"page">(["page"], item.surface, "an Argo connection surface") };
         case "disconnectArgoProfile": case "confirmArgoReview": case "cancelArgoReview": return { action: item.action };
         case "configureArgoMock": return { action: item.action, script: oneOf(["base", "discovery-error", "target-mismatch", "snapshot-error", "operation-error", "lazy", "full-diff"], item.script, "an Argo fixture script") };
-        case "argoControl": return { action: item.action, control: oneOf(["Open connection", "Close connection", "Forget", "Retry", "Confirm target again", "Retry operation", "Retry state refresh", "Retry snapshot", "Show diff", "Show fewer lines", "All changes"], item.control, "an Argo control"), url: item.url == null ? undefined : string(item.url) };
+        case "argoControl": return { action: item.action, control: oneOf(["Open connection", "Close connection", "Forget", "Retry", "Confirm target again", "Retry operation", "Retry state refresh", "Retry snapshot", "Show diff", "Show fewer lines", "All changes", "Sync options", "Sync with these options"], item.control, "an Argo control"), url: item.url == null ? undefined : string(item.url) };
         case "focusArgoResource": return { action: item.action, key: string(item.key), label: string(item.label) };
         case "expectNoSavedArgoProfile": return { action: item.action, url: string(item.url) };
         case "expandArgoDiff": return { action: item.action };
@@ -214,14 +225,26 @@ function step(value: unknown): Step {
         case "expectSecretValue":
             if (typeof item.visible !== "boolean") throw new Error("Expected Secret visibility");
             return { action: item.action, visible: item.visible };
-        case "expectYamlLens": return { action: item.action, line: count(item.line) };
+        case "expectYamlLens": return { action: item.action, line: count(item.line), ...(item.marked === undefined ? {} : { marked: string(item.marked) }) };
+        case "expectYamlDiagnostic":
+            if (item.severity !== "error" && item.severity !== "warning" && item.severity !== "info") throw new Error("Expected a diagnostic severity");
+            return { action: item.action, severity: item.severity, source: string(item.source), message: string(item.message), path: string(item.path) };
+        case "expectNoYamlDiagnostic": return { action: item.action, message: string(item.message) };
+        case "expectActionLoadError": return { action: item.action, text: string(item.text) };
+        case "expectNoActionLoadError": case "retryActionPermission": return { action: item.action };
+        case "expectActionLock":
+            if (typeof item.locked !== "boolean") throw new Error("Expected a lock state");
+            return { action: item.action, row: string(item.row), locked: item.locked, ...(item.reason === undefined ? {} : { reason: string(item.reason) }) };
         case "expectLatencyTiming": return { action: item.action, command: string(item.command) };
+        case "copyLatencyReport": return { action: item.action };
+        case "expectLatencyReportCopy": return { action: item.action, contains: string(item.contains) };
+        case "updateStatusControl": return { action: item.action, control: oneOf(["Open", "Check", "Later"], item.control, "an update control") };
         case "expectDocumentationRequest": return { action: item.action, url: string(item.url) };
         case "fillSettingsField": return { action: item.action, field: oneOf(["Server URL", "Server token"], item.field, "a remote field"), value: string(item.value) };
         case "clickSettingsButton": return { action: item.action, label: string(item.label) };
         case "expectSettingsText": case "expectNoSettingsText": case "expectRuntimeEndpoint": return { action: item.action, value: string(item.value) };
         case "expectMaskedToken": case "reopenStoredSettings": case "attemptUnverifiedUpdate": return { action: item.action };
-        case "configureSettingsMock": return { action: item.action, script: oneOf(["choose-kubeconfig", "choose-workspace", "choose-unavailable-workspace", "cancel-dialog", "no-update", "invalid-signature"], item.script, "a settings script") };
+        case "configureSettingsMock": return { action: item.action, script: oneOf(["choose-kubeconfig", "choose-workspace", "choose-unavailable-workspace", "choose-application-workspace", "cancel-dialog", "no-update", "invalid-signature", "update-available"], item.script, "a settings script") };
         case "terminalFit": return { action: item.action, width: count(item.width), height: count(item.height) };
         case "terminalOutput": return { action: item.action, data: string(item.data), container: string(item.container) };
         case "terminalSelect": return { action: item.action, row: count(item.row), col: count(item.col), endRow: count(item.endRow), endCol: count(item.endCol), word: optionalBoolean(item.word) ?? false };
@@ -300,6 +323,7 @@ function step(value: unknown): Step {
 		case "expectEventCount": case "expectLiveSessionCount": return { action: item.action, count: count(item.count) };
 		case "filterIncidents": return { action: item.action, filter: string(item.filter) };
 		case "expectIncidentGuide": return { action: item.action, title: string(item.title) };
+		case "openIncidentResources": return { action: item.action };
 		case "expectGitOpsCount": return { action: item.action, label: string(item.label), count: count(item.count) };
 		case "expectPortForward": return { action: item.action, title: string(item.title) };
 		case "closeReview": case "expectNoReview": case "executeReview": case "expectNoActionResult": case "editYaml": case "applyYaml": case "dryRunYaml": case "expectYamlReadOnly":
@@ -382,6 +406,13 @@ function step(value: unknown): Step {
 			if (item.mode !== "Cards" && item.mode !== "List") throw new Error("Expected Cards or List");
 			return { action: item.action, page: item.page, mode: item.mode };
 		}
+		case "panelControl": return { action: item.action, control: oneOf(PANEL_CONTROLS, item.control, "a panel control") };
+		case "expectPanelControl": return { action: item.action, control: oneOf(PANEL_CONTROLS, item.control, "a panel control"), present: boolean(item.present) };
+		case "skipGraph": return { action: item.action };
+		case "mapKey": return { action: item.action, key: oneOf(MAP_KEYS, item.key, "a graph key") };
+		case "expectMapFocus": case "expectNoMapFocus": return { action: item.action, id: string(item.id) };
+		case "resizeDetail": return { action: item.action, key: oneOf(DETAIL_RESIZE_KEYS, item.key, "a detail resize key") };
+		case "expectDetailResize": return { action: item.action, value: count(item.value) };
 		case "expandNav": return { action: item.action, page: string(item.page) };
 		case "expectGitOpsTable": return { action: item.action, title: string(item.title), count: count(item.count) };
 		case "expectGitOpsItem": case "expectNoGitOpsItem": case "openGitOpsDetails":
@@ -400,6 +431,12 @@ function step(value: unknown): Step {
 		case "expectResourceGroup": return { action: item.action, label: string(item.label), expanded: boolean(item.expanded) };
 		case "openResourceRow": return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), column: oneOf(TABLE_COLUMNS, item.column, "a table column") };
 		case "expectResourceCell": return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), column: oneOf(TABLE_COLUMNS, item.column, "a table column"), text: string(item.text) };
+		case "openLiveSessionPopover": return { action: item.action };
+		case "expectLiveSessionRow": return { action: item.action, target: string(item.target), status: string(item.status), controls: strings(item.controls, false) };
+		case "liveSessionControl": return { action: item.action, operation: oneOf(["Show", "Reconnect", "Copy", "Stop", "Manage"], item.operation, "a live-session control"), ...(item.target === undefined ? {} : { target: string(item.target) }) };
+		case "expectHealthTooltip": return { action: item.action, kind: string(item.kind), namespace: string(item.namespace), name: string(item.name), state: string(item.state), source: string(item.source), statuses: strings(item.statuses, true), partial: boolean(item.partial) };
+		case "expectTimestampTooltip": return { action: item.action, kind: string(item.kind), namespace: string(item.namespace), name: string(item.name), value: string(item.value) };
+		case "expectEventTimeTooltip": return { action: item.action, index: count(item.index) };
 		default: throw new Error(`Unknown action: ${String(item.action)}`);
 	}
 }

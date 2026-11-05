@@ -5,6 +5,7 @@ use super::Inspector;
 use super::actions_state::ActionsState;
 use super::actions_tab::actions_tab;
 use super::argo_tab::{ArgoTab, argo_tab};
+use super::details_metadata::MetadataDisclosure;
 use super::details_tab::details_tab;
 use super::events::EventsState;
 use super::events_tab::events_tab;
@@ -21,7 +22,8 @@ use crate::ui;
 use gpui_kit::TestSupportExt;
 use gpui_kit::component::input::{EditorState, InputEvent};
 use gpui_kit::{
-    AnyElement, App, AppContext, Context, Entity, Subscription, Window, div, prelude::*, px,
+    AnyElement, App, AppContext, Context, Entity, KeyDownEvent, MouseButton, MouseMoveEvent,
+    Subscription, Window, div, prelude::*, px,
 };
 use kubecove_lib::models::{AppError, HealthAssessment, ResourceDetailsFull, ResourceSummary};
 
@@ -102,7 +104,8 @@ pub(super) struct ResourceDetail {
     pub data: ResourceDetailsFull,
     pub editor: Entity<EditorState>,
     pub marks: YamlMarks,
-    pub lens: Option<super::yaml_lens::Lens>,
+    pub lenses: Vec<super::yaml_lens::Lens>,
+    pub lint: super::yaml_lint::Lint,
     pub tab: DetailTab,
     pub yaml: YamlApply,
     pub yaml_view: super::yaml_view::YamlView,
@@ -113,9 +116,13 @@ pub(super) struct ResourceDetail {
     /// The health assessment of the summary the panel opened for. The web's
     /// Argo CD tab reads `resource` (that summary), not the details read.
     pub opened_health: HealthAssessment,
+    /// Whether the Details tab's health evidence disclosure is open.
+    pub evidence_open: bool,
     pub argo: Option<ArgoTab>,
     pub actions: Option<ActionsState>,
     pub forward: super::forward_tab::ForwardForm,
+    /// Expansion state of the Details metadata sections.
+    pub metadata: MetadataDisclosure,
     _draft_changed: Subscription,
     _editor_changed: Subscription,
 }
@@ -136,17 +143,17 @@ impl ResourceDetail {
         });
         let marks = YamlMarks::new(&editor, cx);
         let editor_changed = cx.observe(&editor, |_, _, cx| cx.notify());
-        let _draft_changed = cx.subscribe_in(&editor, window, |this, _, event, _, cx| {
+        let _draft_changed = cx.subscribe_in(&editor, window, |this, _, event, window, cx| {
             if !matches!(event, InputEvent::Change) {
                 return;
             }
-            this.refresh_yaml_lens(cx);
             if let Detail::Ready(detail) = &mut this.detail
                 && detail.yaml.draft_changed()
             {
                 // A pending dry run reviewed the old text, so its result is dropped.
                 this.diff_task.take();
             }
+            this.schedule_yaml_lint(window, cx);
             cx.notify();
         });
         let forward = super::forward_tab::ForwardForm::new(
@@ -156,10 +163,13 @@ impl ResourceDetail {
             cx,
         );
         Self {
-            lens: None,
+            metadata: Default::default(),
+            lenses: Vec::new(),
+            lint: Default::default(),
             secrets: Default::default(),
             forward,
             opened_health: data.summary.health_assessment.clone(),
+            evidence_open: false,
             data,
             editor,
             marks,
@@ -256,11 +266,53 @@ impl Inspector {
 }
 
 impl Inspector {
-    /// `DetailPanelFrame.svelte`: the `w-2` resize handle (a centered
+    /// Moves the pane's edge with the pointer while the separator is held.
+    pub(super) fn drag_detail_pane(
+        &mut self,
+        event: &MouseMoveEvent,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.detail_dragging {
+            return;
+        }
+        if !event.dragging() {
+            self.detail_dragging = false;
+            return;
+        }
+        let percent = self.detail_percent_at(window, f32::from(event.position.x));
+        self.set_detail_percent(percent);
+        cx.notify();
+    }
+
+    /// `DetailPanelFrame.svelte`: the `w-2` resize separator (a centered
     /// `w-px bg-border/70` line under an `h-8 w-1` grip), then the `aside`.
-    /// Resizing is not ported.
+    /// Pointer drag and the arrow, Home and End keys resize it.
     pub(super) fn detail_pane(&self, window: &Window, cx: &mut Context<Self>) -> [AnyElement; 2] {
         let handle = div()
+            .id("detail-resize")
+            .test_support()
+            .track_focus(&self.detail_resize)
+            .tab_stop(true)
+            .role(gpui_kit::Role::Splitter)
+            .aria_label("Resize details panel")
+            .aria_numeric_value(f64::from(super::resources::detail_percent(self).round()))
+            // Mirrors the numeric value as text, the only value the parity driver can read.
+            .aria_value(format!(
+                "{}",
+                super::resources::detail_percent(self).round()
+            ))
+            .focus(|style| style.bg(Tokens::border().opacity(0.5)))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, _, _| this.detail_dragging = true),
+            )
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                if this.resize_detail_key(event.keystroke.key.as_str()) {
+                    cx.stop_propagation();
+                    cx.notify();
+                }
+            }))
             .relative()
             .flex()
             .flex_none()
@@ -433,7 +485,9 @@ impl Inspector {
                     }
                     DetailTab::Forward => self.forward_tab(cx).into_any_element(),
                     DetailTab::Exec => self.exec_view(cx),
-                    DetailTab::Events => events_tab(detail, cx),
+                    DetailTab::Events => {
+                        events_tab(detail, self.persisted.preferences.timestamp_timezone, cx)
+                    }
                     DetailTab::Logs => logs_tab(detail, self.persisted.preferences.log_layout, cx),
                     DetailTab::Revisions => revisions_tab(detail, cx),
                     DetailTab::Argo => argo_tab(

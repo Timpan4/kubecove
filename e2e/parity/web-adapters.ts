@@ -25,7 +25,8 @@ export async function adapterAction(page: Page, step: Step): Promise<void> {
                 const marker = page.locator(".cm-lintRange-error").first();
                 await marker.waitFor();
                 const text = await marker.evaluate((node) => node.closest(".cm-line")?.textContent);
-                if (!text?.includes("metadata:")) throw new Error("YAML diagnostic marked the wrong line");
+                const marked = step.marked ?? "metadata:";
+                if (!text?.includes(marked)) throw new Error("YAML diagnostic marked the wrong line");
             }
             break;
         }

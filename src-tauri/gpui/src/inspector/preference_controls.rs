@@ -66,7 +66,9 @@ impl Inspector {
                         }
                         "Show ownership map by default" => {
                             this.persisted.preferences.show_ownership_map_by_default =
-                                !this.persisted.preferences.show_ownership_map_by_default
+                                !this.persisted.preferences.show_ownership_map_by_default;
+                            // A new default replaces any earlier collapse choice.
+                            this.map_open = None;
                         }
                         "Expand timeline by default" => {
                             this.persisted.preferences.expand_timeline_by_default =

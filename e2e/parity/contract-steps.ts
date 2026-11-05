@@ -39,7 +39,7 @@ export type Step =
     | { action: "expectWorkspaceEntry" | "openWorkspaceEntry"; panel: "Pinned" | "Recent"; label: string; index: number; count: number }
     | { action: "reorderKindKey"; kind: string; key: "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" }
     | { action: "expectRemoteHost"; url: string }
-    | { action: "configureShellRead"; phase: "ready" | "contexts-failed" | "contexts-empty" | "namespaces-failed" | "namespaces-empty" | "resources-failed" }
+    | { action: "configureShellRead"; phase: "ready" | "contexts-failed" | "contexts-empty" | "namespaces-failed" | "namespaces-empty" | "resources-failed" | "primary-context-missing" | "kind-missing" | "payments-api-removed" }
     | { action: "openNamespaceList" }
     | { action: "expectNamespaceRow"; name: string; age: string }
     | { action: "resizeViewport"; width: number; height: number }
@@ -63,11 +63,15 @@ export type Step =
     | { action: "saveWorkspace" | "cancelWorkspaceEdit" }
     | { action: "toggleWorkspaceContext"; context: string }
     | { action: "expectOverviewHealth"; total: number }
+    | { action: "expectActivePage"; page: string }
+    | { action: "expectGitOpsSelection"; name: string }
     | { action: "expectDetailContext"; context: string }
     | { action: "refreshPage"; page: "RBAC" | "Incidents" }
     | { action: "replayPageReads"; phase: "base" | "updated" | "failed" }
     | { action: "focusStalePage"; page: "GitOps" | "Helm" | "RBAC" | "Incidents" }
     | { action: "expectPageText"; text: string }
+    | { action: "toggleDetailDisclosure"; label: string }
+    | { action: "expectNoPageText"; text: string }
     | { action: "searchCustomKinds" | "searchKindPicker"; value: string }
     | { action: "expectCustomGroup"; group: string; visible: boolean }
     | { action: "toggleKind"; kind: string; checked: boolean }
@@ -96,7 +100,7 @@ export type Step =
     | { action: "disconnectArgoProfile" | "confirmArgoReview" | "cancelArgoReview" }
     | { action: "reviewArgoOperation"; operation: "Refresh" | "Hard refresh" | "Sync" | "Rollback" }
     | { action: "configureArgoMock"; script: import("../../src/lib/tauri-dev-mock-argo").ArgoMockScript }
-    | { action: "argoControl"; control: "Open connection" | "Close connection" | "Forget" | "Retry" | "Confirm target again" | "Retry operation" | "Retry state refresh" | "Retry snapshot" | "Show diff" | "Show fewer lines" | "All changes"; url?: string }
+    | { action: "argoControl"; control: "Open connection" | "Close connection" | "Forget" | "Retry" | "Confirm target again" | "Retry operation" | "Retry state refresh" | "Retry snapshot" | "Show diff" | "Show fewer lines" | "All changes" | "Sync options" | "Sync with these options"; url?: string }
     | { action: "focusArgoResource"; key: string; label: string }
     | { action: "expectNoSavedArgoProfile"; url: string }
     | { action: "expandArgoDiff" }
@@ -109,9 +113,12 @@ export type Step =
     | { action: "cancelYamlEdit" }
     | { action: "revealSecretValue" | "hideSecretValue" | "refreshLatencyReport" | "clearLatencyReport" | "expectLatencyEmpty" | "openDocumentation" }
     | { action: "expectSecretValue"; visible: boolean }
-    | { action: "expectYamlLens"; line: number }
+    | { action: "expectYamlLens"; line: number; marked?: string }
     | { action: "expectLatencyTiming"; command: string }
     | { action: "expectDocumentationRequest"; url: string }
+    | { action: "copyLatencyReport" }
+    | { action: "expectLatencyReportCopy"; contains: string }
+    | { action: "updateStatusControl"; control: "Open" | "Check" | "Later" }
     | { action: "configurePreset"; label: string; context: string; namespace: string; service: string; remote: string; local: string }
     | { action: "presetControl"; operation: "add" | "save" | "edit" | "start" | "remove" | "absent"; label?: string }
     | { action: "replaySessions"; script: "reconnecting" | "failed" | "foreign-output" }
@@ -126,7 +133,7 @@ export type Step =
     | { action: "clickSettingsButton"; label: string }
     | { action: "expectSettingsText" | "expectNoSettingsText" | "expectRuntimeEndpoint"; value: string }
     | { action: "expectMaskedToken" | "reopenStoredSettings" | "attemptUnverifiedUpdate" }
-    | { action: "configureSettingsMock"; script: "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "cancel-dialog" | "no-update" | "invalid-signature" }
+    | { action: "configureSettingsMock"; script: "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "choose-application-workspace" | "cancel-dialog" | "no-update" | "invalid-signature" | "update-available" }
     | { action: "expectLiveState"; label: string; notice?: string }
     | { action: "replayLiveData"; script: import("../../src/lib/tauri-dev-mock-live").LiveScript }
     | ({ action: "expectResourceStatus"; status: string } & Identity)
@@ -152,6 +159,7 @@ export type Step =
     | { action: "expectEventCount" | "expectLiveSessionCount"; count: number }
     | { action: "filterIncidents"; filter: string }
     | { action: "expectIncidentGuide"; title: string }
+    | { action: "openIncidentResources" }
     | { action: "expectGitOpsCount"; label: string; count: number }
     | { action: "expectPortForward"; title: string }
     | { action: "closeReview" | "expectNoReview" | "executeReview" | "expectNoActionResult" | "editYaml" | "applyYaml" | "dryRunYaml" | "expectYamlReadOnly" }
@@ -233,7 +241,34 @@ export type Step =
     | { action: "expectResourceGroup"; label: string; expanded: boolean }
     | ({ action: "openResourceRow"; column: TableColumn } & Identity)
     | ({ action: "expectResourceCell"; column: TableColumn; text: string } & Identity)
-    | { action: "setDeliveryView"; page: "GitOps" | "Helm"; mode: "Cards" | "List" };
+    | { action: "setDeliveryView"; page: "GitOps" | "Helm"; mode: "Cards" | "List" }
+    | { action: "clickDetailControl"; label: string }
+    | { action: "openLiveSessionPopover" }
+    | { action: "expectLiveSessionRow"; target: string; status: string; controls: string[] }
+    | { action: "liveSessionControl"; operation: "Show" | "Reconnect" | "Copy" | "Stop" | "Manage"; target?: string }
+    | ({ action: "expectHealthTooltip" } & Identity & { state: string; source: string; statuses: string[]; partial: boolean })
+    | ({ action: "expectTimestampTooltip" } & Identity & { value: string })
+    | { action: "expectEventTimeTooltip"; index: number }
+    | { action: "panelControl"; control: PanelControl }
+    | { action: "expectPanelControl"; control: PanelControl; present: boolean }
+    | { action: "skipGraph" }
+    | { action: "mapKey"; key: MapKey }
+    | { action: "expectMapFocus" | "expectNoMapFocus"; id: string }
+    | { action: "resizeDetail"; key: DetailResizeKey }
+    | { action: "expectDetailResize"; value: number }
+    | { action: "expectYamlDiagnostic"; severity: "error" | "warning" | "info"; source: string; message: string; path: string }
+    | { action: "expectNoYamlDiagnostic"; message: string }
+    | { action: "expectActionLoadError"; text: string }
+    | { action: "expectNoActionLoadError" | "retryActionPermission" }
+    | { action: "expectActionLock"; row: string; locked: boolean; reason?: string };
+export const PANEL_CONTROLS = [
+    "Collapse ownership map", "Show ownership map", "Collapse resource table", "Show resource table",
+] as const;
+type PanelControl = (typeof PANEL_CONTROLS)[number];
+export const MAP_KEYS = ["Tab", "Shift+Tab", "Enter", "Space"] as const;
+type MapKey = (typeof MAP_KEYS)[number];
+export const DETAIL_RESIZE_KEYS = ["ArrowLeft", "ArrowRight", "Home", "End"] as const;
+type DetailResizeKey = (typeof DETAIL_RESIZE_KEYS)[number];
 export const RBAC_CATEGORIES = ["Namespace Access", "Roles", "Cluster Roles", "Bindings", "Service Accounts"] as const;
 type RbacCategory = (typeof RBAC_CATEGORIES)[number];
 export const RBAC_RISKS = ["All", "High", "Medium", "Low", "No flags", "Unknown"] as const;

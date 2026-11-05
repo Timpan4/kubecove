@@ -234,7 +234,7 @@ fn signal(value: usize, label: &str, description: &str) -> impl IntoElement {
 }
 
 /// `raw()` in `HealthAssessmentBadge.svelte`: strings as-is, other values as JSON.
-fn raw(value: &serde_json::Value) -> String {
+pub(super) fn raw(value: &serde_json::Value) -> String {
     match value {
         serde_json::Value::String(text) => text.clone(),
         other => other.to_string(),

@@ -1,0 +1,50 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "incidents.open-resources-health",
+      "title": "Open resources applies the incident's health filter",
+      "steps": [
+        { "action": "openPage", "page": "Incidents" },
+        { "action": "filterIncidents", "filter": "Degraded" },
+        { "action": "openIncidentResources" },
+        { "action": "expectHealthFilter", "label": "Degraded", "pressed": true },
+        { "action": "expectResource", "kind": "Pod", "namespace": "operations", "name": "operations-crashloop-7f468cd8b8-lab01" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" }
+      ]
+    },
+    {
+      "id": "settings-diagnostics.latency-copy",
+      "title": "The latency report refreshes, copies redacted output, and clears",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Diagnostics" },
+        { "action": "toggleSetting", "setting": "Enable diagnostics" },
+        { "action": "refreshLatencyReport" },
+        { "action": "expectSettingsText", "value": "Trace refreshed." },
+        { "action": "copyLatencyReport" },
+        { "action": "expectSettingsText", "value": "Redacted report copied." },
+        { "action": "expectLatencyReportCopy", "contains": "\"redacted\": true" },
+        { "action": "clearLatencyReport" },
+        { "action": "expectSettingsText", "value": "Trace cleared." }
+      ]
+    },
+    {
+      "id": "settings-updates.header-popover",
+      "title": "The header update popover shows release notes and dismisses the version",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "update-available" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "updateStatusControl", "control": "Open" },
+        { "action": "expectSettingsText", "value": "Ready to check." },
+        { "action": "updateStatusControl", "control": "Check" },
+        { "action": "expectSettingsText", "value": "KubeCove 0.14.0 is available." },
+        { "action": "expectSettingsText", "value": "Fixes topology edges." },
+        { "action": "updateStatusControl", "control": "Later" },
+        { "action": "expectNoSettingsText", "value": "KubeCove 0.14.0 is available." }
+      ]
+    }
+  ]
+}

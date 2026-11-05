@@ -52,14 +52,16 @@ impl Inspector {
         let Some(time) = value.and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok()) else {
             return relative.to_owned();
         };
+        // `formatExactTimestamp` at the web's default minute precision: local
+        // time has no suffix, UTC is marked.
         let exact = match self.persisted.preferences.timestamp_timezone {
             crate::preferences::TimestampTimezone::Utc => time
                 .with_timezone(&chrono::Utc)
-                .format("%Y-%m-%d %H:%M:%S UTC")
+                .format("%Y-%m-%d %H:%M UTC")
                 .to_string(),
             crate::preferences::TimestampTimezone::Local => time
                 .with_timezone(&chrono::Local)
-                .format("%Y-%m-%d %H:%M:%S %Z")
+                .format("%Y-%m-%d %H:%M")
                 .to_string(),
         };
         format!("{relative} ({exact})")

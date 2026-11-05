@@ -25,6 +25,9 @@ mod custom_resources;
 mod delivery_summary;
 mod delivery_ui;
 mod detail;
+mod details_containers;
+mod details_metadata;
+mod details_status;
 mod details_tab;
 mod diagnostics;
 mod events;
@@ -49,6 +52,7 @@ mod gitops_page;
 mod gitops_section;
 mod gitops_tooltip;
 mod header;
+mod health_filter;
 mod helm_card;
 mod helm_details;
 mod helm_page;
@@ -62,6 +66,7 @@ mod launcher_transfer;
 mod live_data;
 mod live_events;
 mod live_rows;
+mod live_session_popover;
 mod live_status;
 mod log_row;
 mod logs_state;
@@ -69,6 +74,7 @@ mod logs_tab;
 mod map;
 mod metrics;
 mod namespace_list;
+mod navigation_state;
 mod overview;
 mod overview_saved;
 mod overview_shortcuts;
@@ -87,6 +93,7 @@ mod resource_filter_controls;
 mod resource_filters;
 mod resource_order;
 mod resources;
+mod restore_inventory;
 mod restore_prompt;
 mod revisions_tab;
 mod saved_forward_form;
@@ -103,16 +110,20 @@ mod sidebar_discovery;
 mod sidebar_tree;
 mod surface;
 mod table;
+mod table_status;
 #[cfg(test)]
 #[path = "../tests/native/terminal_buffer.rs"]
 mod terminal_buffer_tests;
 mod timeline;
+mod timestamp_text;
+mod update_panel;
 mod usage;
 mod workspace_editing;
 mod workspace_entries;
 mod workspace_reads;
 mod yaml_apply;
 mod yaml_lens;
+mod yaml_lint;
 mod yaml_marks;
 mod yaml_tab;
 mod yaml_view;
@@ -128,7 +139,8 @@ use gpui_kit::component::{
     select::{SearchableVec, SelectEvent, SelectState},
 };
 use gpui_kit::{
-    App, AppContext, Context, Entity, SharedString, Subscription, Task, Window, div, prelude::*, px,
+    App, AppContext, Context, Entity, MouseButton, MouseMoveEvent, SharedString, Subscription,
+    Task, Window, div, prelude::*, px,
 };
 use kubecove_lib::models::{NamespaceSummary, ResourceSummary};
 use std::{rc::Rc, sync::Arc};
@@ -165,6 +177,7 @@ pub struct Inspector {
     workspace_name: SharedString,
     workspace_read: Option<workspace_reads::OverviewRead>,
     saved_overview: overview_saved::SavedOverview,
+    restore_inventory: Option<restore_inventory::RestoreInventory>,
     shortcut_owner: Option<(u64, String, String)>,
     scope: Scope,
     page: Page,
@@ -172,7 +185,11 @@ pub struct Inspector {
     search: Entity<InputState>,
     namespaces: Vec<NamespaceSummary>,
     rows: Vec<ResourceSummary>,
+    /// `rows` with inherited GitOps owners, rebuilt on each data change.
+    prepared: Vec<ResourceSummary>,
+    custom_load: custom_resources::CustomLoad,
     visible: Vec<ResourceSummary>,
+    /// Stat counts over the rows in scope before the health filter.
     table_page: usize,
     table_sort: crate::table_sort::Sort,
     /// Group and kind-group keys the table has collapsed, as `collapsedGroups` on the web.
@@ -181,6 +198,13 @@ pub struct Inspector {
     warnings: Vec<String>,
     detail: Detail,
     map: map::MapState,
+    /// The map panel's collapse choice. `None` follows "Show ownership map by default".
+    map_open: Option<bool>,
+    table_open: bool,
+    /// The detail pane's percent and whether the GitOps size key it was set under.
+    detail_size: Option<(bool, f32)>,
+    detail_dragging: bool,
+    detail_resize: gpui_kit::FocusHandle,
     metrics: metrics::MetricsState,
     usage: usage::UsageState,
     gitops: gitops_section::GitOpsState,
@@ -202,10 +226,12 @@ pub struct Inspector {
     /// The compact-width navigation drawer; only shown below `sidebar::COMPACT_WIDTH`.
     navigation_open: bool,
     namespace_list: namespace_list::NamespaceListState,
+    update_panel: update_panel::PanelState,
     live: live_data::LiveData,
     kind_selection: kind_selection::KindSelection,
     filters: resource_filters::ResourceFilters,
     sidebar_tree: sidebar_tree::TreeState,
+    navigation: navigation_state::Memory,
     page_refresh: page_refresh::PageRefresh,
     notice: Option<String>,
     feedback: feedback::Feedback,
@@ -280,6 +306,7 @@ impl Inspector {
             workspace_name: "KubeCove".into(),
             workspace_read: None,
             saved_overview: Default::default(),
+            restore_inventory: None,
             shortcut_owner: None,
             scope: Scope::default(),
             page: Page::Overview,
@@ -287,6 +314,8 @@ impl Inspector {
             search,
             namespaces: vec![],
             rows: vec![],
+            prepared: vec![],
+            custom_load: Default::default(),
             visible: vec![],
             table_page: 0,
             table_sort: Default::default(),
@@ -295,6 +324,11 @@ impl Inspector {
             warnings: vec![],
             detail: Detail::Closed,
             map: map::MapState::new(),
+            map_open: None,
+            table_open: true,
+            detail_size: None,
+            detail_dragging: false,
+            detail_resize: cx.focus_handle(),
             metrics: Default::default(),
             usage: Default::default(),
             gitops: Default::default(),
@@ -314,10 +348,12 @@ impl Inspector {
             live_menu_open: false,
             navigation_open: false,
             namespace_list: Default::default(),
+            update_panel: Default::default(),
             live: Default::default(),
             kind_selection: kind_selection::KindSelection::new(window, cx),
             filters: resource_filters::ResourceFilters::new(window, cx),
             sidebar_tree: Default::default(),
+            navigation: Default::default(),
             page_refresh: Default::default(),
             notice: None,
             feedback: Default::default(),
@@ -333,6 +369,8 @@ impl Inspector {
         };
         this.load_preferences(cx);
         this.load_contexts(window, cx);
+        // The web checks once at startup when updates are enabled (`scheduleAutomaticUpdateCheck`).
+        this.check_settings_updates(window, cx);
         this
     }
 
@@ -376,6 +414,8 @@ impl Inspector {
         if !self.can_leave(cx) {
             return;
         }
+        // Resource navigation starts unfiltered, as `openResources` does on the web.
+        self.filters.health = resource_filters::HealthFilter::All;
         self.gitops_page.workspace = None;
         self.page = Page::Resources;
         self.sidebar_tree.selected = None;
@@ -515,6 +555,7 @@ impl Render for Inspector {
         if !compact {
             self.navigation_open = false;
         }
+        self.restore_remembered_detail(window, cx);
         let detail_open = !matches!(self.detail, Detail::Closed);
         let page = self.page_view(window, cx);
         let overlays = self.overlays(window, cx);
@@ -584,7 +625,16 @@ impl Render for Inspector {
                                     .child(page),
                             )
                             .when(detail_open, |row| {
-                                row.children(self.detail_pane(window, cx))
+                                row.on_mouse_move(cx.listener(
+                                    |this, event: &MouseMoveEvent, window, cx| {
+                                        this.drag_detail_pane(event, window, cx);
+                                    },
+                                ))
+                                .on_mouse_up(
+                                    MouseButton::Left,
+                                    cx.listener(|this, _, _, _| this.detail_dragging = false),
+                                )
+                                .children(self.detail_pane(window, cx))
                             }),
                     )
                     .children(self.usage_footer(cx)),

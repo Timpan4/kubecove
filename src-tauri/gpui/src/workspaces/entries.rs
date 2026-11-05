@@ -78,6 +78,15 @@ impl Entries {
             self.pinned.insert(0, entry);
         }
     }
+    /// Drops resource entries that `missing` reports as absent from a completed
+    /// read. Returns whether any entry was dropped.
+    pub fn drop_missing(&mut self, mut missing: impl FnMut(&Entry) -> bool) -> bool {
+        let before = self.pinned.len() + self.recent.len();
+        let mut keep = |entry: &Entry| entry.kind != EntryKind::Resource || !missing(entry);
+        self.pinned.retain(|entry| keep(entry));
+        self.recent.retain(|entry| keep(entry));
+        before != self.pinned.len() + self.recent.len()
+    }
     pub fn visit(&mut self, entry: Entry) {
         self.recent.retain(|item| !item.same_target(&entry));
         self.recent.insert(0, entry);

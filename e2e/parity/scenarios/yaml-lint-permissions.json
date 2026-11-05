@@ -1,0 +1,43 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "yaml-lint.kubernetes-diagnostics",
+      "title": "A draft whose kind differs from the selected Deployment shows the lint finding beside the line and in the diagnostics panel",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showYaml" },
+        { "action": "editYaml" },
+        { "action": "expectYamlLens", "line": 0 },
+        { "action": "replaceYamlDraft", "value": "apiVersion: apps/v1\nkind: StatefulSet\nmetadata:\n  name: payments-api\n  namespace: payments\n" },
+        { "action": "expectYamlDiagnostic", "severity": "error", "source": "Kubernetes", "message": "kind must match selected resource: expected Deployment, got StatefulSet.", "path": "kind" },
+        { "action": "expectYamlLens", "line": 2, "marked": "kind:" },
+        { "action": "replaceYamlDraft", "value": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: payments-api\n  namespace: payments\n" },
+        { "action": "expectNoYamlDiagnostic", "message": "kind must match selected resource: expected Deployment, got StatefulSet." },
+        { "action": "expectYamlLens", "line": 0 }
+      ]
+    },
+    {
+      "id": "actions-permission.load-retry",
+      "title": "A failed permission read keeps the Actions tab locked until Retry permission check succeeds",
+      "steps": [
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "get_resource_action_state", "context": "mock-dev" } },
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showTab", "tab": "Actions" },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "get_resource_action_state", "context": "mock-dev" } },
+        { "action": "expectActionLock", "row": "restart", "locked": true, "reason": "Permission has not been confirmed" },
+        { "action": "mockTiming", "control": { "operation": "failOnce", "command": "get_resource_action_state", "context": "mock-dev", "kind": "transport" } },
+        { "action": "expectActionLoadError", "text": "Unable to load action state and permissions. Actions remain locked. Scripted read: transport" },
+        { "action": "expectActionLock", "row": "restart", "locked": true, "reason": "Permission has not been confirmed" },
+        { "action": "retryActionPermission" },
+        { "action": "expectNoActionLoadError" },
+        { "action": "expectActionLock", "row": "restart", "locked": false }
+      ]
+    }
+  ]
+}

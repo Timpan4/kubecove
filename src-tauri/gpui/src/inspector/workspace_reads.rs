@@ -35,6 +35,7 @@ impl Inspector {
                     }
                     Err(error) => state.load = super::Load::Failed(error.message),
                 }
+                this.reconcile_workspace_entries(cx);
                 this.update_saved_overview();
                 cx.notify();
             });
@@ -83,14 +84,15 @@ impl Inspector {
         crate::workspaces::reads::resources(reads)
     }
 
+    /// Every Overview visit reads the saved scope, as the web's workspace query
+    /// does, so restore status and entry reconciliation never reuse a stale read.
     pub(super) fn load_workspace_overview(&mut self, refresh: bool, cx: &mut Context<Self>) {
         self.workspace_read = None;
-        if self.page != super::Page::Overview
-            || (self.workspace_contexts().len() <= 1 && self.scope.namespace.is_none())
-        {
+        if self.page != super::Page::Overview {
             self.update_saved_overview();
             return;
         }
+        self.load_restore_inventory(cx);
         let request = self.request.clone();
         let read = self.workspace_resources_read(refresh, cx);
         let task = cx.spawn(async move |this, cx| {
@@ -110,6 +112,7 @@ impl Inspector {
                     }
                     Err(error) => state.load = super::Load::Failed(error.message),
                 }
+                this.reconcile_workspace_entries(cx);
                 this.update_saved_overview();
                 cx.notify();
             });

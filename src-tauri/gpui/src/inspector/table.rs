@@ -1,7 +1,9 @@
 //! Resource table panel, mirroring the table in `ResourceBrowser.svelte`
 //! (`TABLE_CLASS`, sortable headers, group rows, `ResourceTableStatus` and the pager).
 
-use super::Inspector;
+use super::resources::Panel;
+use super::table_status::{health_badge, lifecycle_status};
+use super::{Inspector, surface, timestamp_text};
 use crate::model::{
     Entry, TableView, gitops_owner, gitops_owner_name, group_visual, kind_visual, table_page,
 };
@@ -10,7 +12,7 @@ use crate::theme::Tokens;
 use crate::ui::{self, Tone};
 use gpui_kit::TestSupportExt;
 use gpui_kit::{AnyElement, Context, Div, FontWeight, SharedString, div, prelude::*, px};
-use kubecove_lib::models::{HealthAssessmentState, ResourceSummary};
+use kubecove_lib::models::ResourceSummary;
 
 const EMPTY: &str = "—";
 /// `READINESS_NOT_REPORTED` in `src/features/resources/operational-data.ts`.
@@ -84,17 +86,6 @@ impl Column {
     }
 }
 
-/// `ResourceTableStatus`: the health label and its tone.
-fn health(row: &ResourceSummary) -> (Tone, &'static str) {
-    match row.health_assessment.state {
-        HealthAssessmentState::Healthy => (Tone::Success, "Healthy"),
-        HealthAssessmentState::NeedsAttention => (Tone::Warning, "Needs attention"),
-        HealthAssessmentState::Degraded => (Tone::Error, "Degraded"),
-        HealthAssessmentState::Unknown => (Tone::Neutral, "Unknown"),
-        HealthAssessmentState::NotEvaluated => (Tone::Neutral, "Not evaluated"),
-    }
-}
-
 /// `resourceReadyChip` in `src/features/resources/helpers.ts`. Only the
 /// `true` and `false` readiness values get a chip.
 fn ready_chip(row: &ResourceSummary) -> Option<(Tone, &'static str)> {
@@ -136,7 +127,6 @@ fn resource_id(row: &ResourceSummary) -> String {
         row.name
     )
 }
-
 fn cell(column: Column, content: impl IntoElement) -> Div {
     // Like the web's fixed table layout, only Name truncates; other cells may overflow.
     let cell = div()
@@ -216,7 +206,7 @@ impl Inspector {
     fn cell_text(&self, column: Column, row: &ResourceSummary) -> String {
         match column {
             Column::Name => row.name.clone(),
-            Column::Status => health(row).1.into(),
+            Column::Status => surface::health_state_label(row.health_assessment.state).into(),
             Column::Namespace => row.namespace.clone().unwrap_or_else(|| EMPTY.into()),
             Column::Kind => row.kind.clone(),
             Column::Ready => ready_text(row),
@@ -282,10 +272,27 @@ impl Inspector {
                     )),
             ),
             Column::Status => {
-                let (tone, label) = health(row);
-                cell(column, ui::status_badge(tone, label))
+                let content: AnyElement =
+                    match crate::topology::node::lifecycle(&row.kind, row.status.as_deref()) {
+                        Some(lifecycle) => {
+                            let id = format!(
+                                "status:{}:{}:{}",
+                                row.kind,
+                                row.namespace.as_deref().unwrap_or(""),
+                                row.name
+                            );
+                            lifecycle_status(
+                                SharedString::from(id),
+                                &lifecycle,
+                                self.live.updates_current(),
+                            )
+                            .into_any_element()
+                        }
+                        None => health_badge(row).into_any_element(),
+                    };
+                cell(column, content)
             }
-            Column::Namespace | Column::Kind | Column::Owner | Column::Age => {
+            Column::Namespace | Column::Kind | Column::Owner => {
                 text_cell(column, self.cell_text(column, row))
             }
             Column::Ready => match ready_chip(row) {
@@ -335,6 +342,20 @@ impl Inspector {
                         .aria_label(label),
                 )
             }
+            Column::Age => cell(
+                column,
+                timestamp_text::with_tooltip(
+                    format!(
+                        "age:{}:{}:{}",
+                        row.kind,
+                        row.namespace.as_deref().unwrap_or(""),
+                        row.name
+                    ),
+                    row.created_at.clone(),
+                    ui::sm(self.timestamp_label(&row.age, row.created_at.as_deref()))
+                        .whitespace_nowrap(),
+                ),
+            ),
             Column::Pin => {
                 let target = row.clone();
                 cell(
@@ -672,7 +693,17 @@ impl Inspector {
                                 .mt(px(2.)),
                             ),
                     )
-                    .child(ui::ghost_icon("panel-right-close", 28., 14.)),
+                    .child(
+                        ui::ghost_icon("panel-right-close", 28., 14.)
+                            .id("panel-control:Collapse resource table")
+                            .test_support()
+                            .aria_label("Collapse resource table")
+                            .cursor_pointer()
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.set_panel_open(Panel::Table, false);
+                                cx.notify();
+                            })),
+                    ),
             )
             .child(
                 div()

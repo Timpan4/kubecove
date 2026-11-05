@@ -1,0 +1,96 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "live-session-header.exec-show",
+      "title": "The header live-session popover lists a Pod exec session and Show brings its Exec tab back",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "start", "container": "app", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "openLiveSessionPopover" },
+        { "action": "expectLiveSessionRow", "target": "payments/Pod/payments-api-7d9c9b7f8d-k2r9p", "status": "running", "controls": ["Show", "Stop"] },
+        { "action": "liveSessionControl", "operation": "Show", "target": "payments/Pod/payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "execControl", "operation": "close" },
+        { "action": "expectExecState", "container": "app", "status": "closed", "contains": "" },
+        { "action": "closeDetail" }
+      ]
+    },
+    {
+      "id": "live-session-header.forward-controls",
+      "title": "The header popover reconnects and stops a Pod port-forward row",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Forward" },
+        { "action": "configureForward", "remote": "9090", "local": "19090" },
+        { "action": "forwardControl", "operation": "start" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "listening", "count": 1 },
+        { "action": "closeDetail" },
+        { "action": "openLiveSessionPopover" },
+        { "action": "expectLiveSessionRow", "target": "payments/Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "status": "listening", "controls": ["Reconnect", "Copy", "Stop"] },
+        { "action": "liveSessionControl", "operation": "Reconnect", "target": "payments/Pod/payments-api-7d9c9b7f8d-k2r9p:9090" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "listening", "count": 1 },
+        { "action": "openLiveSessionPopover" },
+        { "action": "liveSessionControl", "operation": "Stop", "target": "payments/Pod/payments-api-7d9c9b7f8d-k2r9p:9090" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "stopped", "count": 0 }
+      ]
+    },
+    {
+      "id": "live-session-header.manage-opens-page",
+      "title": "Manage in the header popover opens the Port Forwards page with the same session",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Forward" },
+        { "action": "configureForward", "remote": "9090", "local": "19090" },
+        { "action": "forwardControl", "operation": "start" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "listening", "count": 1 },
+        { "action": "closeDetail" },
+        { "action": "openLiveSessionPopover" },
+        { "action": "liveSessionControl", "operation": "Manage" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "listening", "count": 1 },
+        { "action": "forwardControl", "operation": "stop", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "stopped", "count": 0 }
+      ]
+    },
+    {
+      "id": "health-tooltips.table-status-partial",
+      "title": "A partial Pod status shows its state tooltip, raw status and Partial marker in the table",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "expectHealthTooltip", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p", "state": "Needs attention", "source": "Kubernetes status/conditions", "statuses": ["Running"], "partial": true }
+      ]
+    },
+    {
+      "id": "health-tooltips.table-status-complete",
+      "title": "A complete Deployment status shows its state tooltip without a Partial marker",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "expectHealthTooltip", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "state": "Healthy", "source": "Kubernetes status/conditions", "statuses": ["Synced"], "partial": false }
+      ]
+    },
+    {
+      "id": "timestamps.age-raw-tooltip",
+      "title": "The table age carries the raw creation timestamp as its tooltip",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "expectTimestampTooltip", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p", "value": "2026-06-11T08:00:00Z" }
+      ]
+    },
+    {
+      "id": "timestamps.event-exact-tooltip",
+      "title": "An event's last-seen time carries its exact timestamp as its tooltip",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "showTab", "tab": "Events" },
+        { "action": "expectEventTimeTooltip", "index": 0 }
+      ]
+    }
+  ]
+}

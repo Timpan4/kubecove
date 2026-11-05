@@ -9,8 +9,9 @@ use kubecove_lib::{
         AppError, AppErrorKind, ArgoApplicationInspector, ArgoApplicationRef,
         ArgoApplicationSummary, ClusterContext, ClusterOperationResult, DeploymentRevision,
         HelmReleaseDetails, HelmReleaseList, HelmReleaseReconciliation, HelmReleaseSummary,
-        IncidentCockpitSummary, NamespaceSummary, RbacAccessReviewRequest, RbacAccessReviewResult,
-        RbacInspectionSummary, ResourceActionPreview, ResourceActionRequest, ResourceActionState,
+        IncidentCockpitSummary, KubernetesYamlLintResult, NamespaceSummary,
+        RbacAccessReviewRequest, RbacAccessReviewResult, RbacInspectionSummary,
+        ResourceActionPreview, ResourceActionRequest, ResourceActionState,
         ResourceActionStateRequest, ResourceDetailsFull, ResourceEventSummary, ResourceSummary,
         ResourceTopology, WatchResourceKey, YamlApplyPreview, YamlApplyRequest, YamlApplyResult,
         YamlViewMode,
@@ -139,6 +140,16 @@ pub trait Backend: Send + Sync + 'static {
     }
     fn contexts(&self) -> Read<Vec<ClusterContext>>;
     fn resources(&self, scope: Scope, refresh: bool) -> Read<ScopeResult>;
+    /// Built-in kinds and namespaces, read before custom resources so the table
+    /// can render first. Defaults to the combined read.
+    fn scope_builtin_resources(&self, scope: Scope, refresh: bool) -> Read<ScopeResult> {
+        self.resources(scope, refresh)
+    }
+    /// Discovered custom-resource rows, read after the built-ins. `None` when the
+    /// combined read already covers them.
+    fn scope_custom_resources(&self, _scope: Scope) -> Option<Read<ScopeResult>> {
+        None
+    }
     /// The Application resource workspace uses all supported and discovered kinds.
     fn application_resources(
         &self,
@@ -270,6 +281,8 @@ pub trait Backend: Send + Sync + 'static {
     fn prepare_yaml_apply(&self, request: YamlApplyRequest) -> Read<YamlApplyPreview>;
     /// `apply_yaml`: applies a draft whose dry run the user reviewed.
     fn apply_yaml(&self, request: YamlApplyRequest) -> Read<YamlApplyResult>;
+    /// `lint_kubernetes_yaml`: parser and Kubernetes checks of an editor draft, with no cluster write.
+    fn lint_yaml(&self, request: YamlApplyRequest) -> Read<KubernetesYamlLintResult>;
     /// `list_namespaces` for a context the workspace launcher scopes.
     fn namespaces(&self, context: String) -> Read<Vec<NamespaceSummary>>;
     /// `list_rbac_inspection` for the RBAC Cockpit.
@@ -311,7 +324,9 @@ mod workspace_files;
 pub use detail_reads::{LogStream, LogTarget};
 pub use kubecove_lib::commands::kubeconfig::KubeconfigSourcesSummary;
 pub use remote::DesktopBackend;
-pub use settings_integrations::{INSTALL_UNAVAILABLE, RemoteConnectionSummary, UpdateStatus};
+pub use settings_integrations::{
+    AvailableUpdate, INSTALL_UNAVAILABLE, RemoteConnectionSummary, UpdateStatus,
+};
 mod inventory;
 mod session_controls;
 mod topology_metrics;
@@ -495,6 +510,14 @@ impl Backend for NativeBackend {
         live_data::resources(self, scope, refresh)
     }
 
+    fn scope_builtin_resources(&self, scope: Scope, refresh: bool) -> Read<ScopeResult> {
+        live_data::builtin_resources(self, scope, refresh)
+    }
+
+    fn scope_custom_resources(&self, scope: Scope) -> Option<Read<ScopeResult>> {
+        Some(live_data::custom_resources(self, scope))
+    }
+
     fn details(&self, resource: ResourceSummary) -> Read<ResourceDetailsFull> {
         let cancellations = self.cancellations.clone();
         if let Some(kind) =
@@ -645,6 +668,10 @@ impl Backend for NativeBackend {
 
     fn apply_yaml(&self, request: YamlApplyRequest) -> Read<YamlApplyResult> {
         self.read(commands::apply_yaml(request))
+    }
+
+    fn lint_yaml(&self, request: YamlApplyRequest) -> Read<KubernetesYamlLintResult> {
+        self.read(commands::lint_kubernetes_yaml(request))
     }
 
     fn namespaces(&self, context: String) -> Read<Vec<NamespaceSummary>> {

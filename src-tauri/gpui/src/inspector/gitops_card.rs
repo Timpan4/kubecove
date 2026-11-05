@@ -162,6 +162,7 @@ fn actions(selection: Selection, resources_label: &str, cx: &mut Context<Inspect
 pub(super) fn card(
     selection: Selection,
     width: f32,
+    selected: bool,
     cx: &mut Context<Inspector>,
 ) -> impl IntoElement + use<> {
     let source = selection.source_mode();
@@ -229,6 +230,18 @@ pub(super) fn card(
         .border_color(Tokens::border())
         .bg(Tokens::card())
         .cursor_pointer()
+        // The focused row, as `border-primary/60` marks it in the web.
+        .when(selected, |card| {
+            card.border_color(Tokens::primary().opacity(0.6)).child(
+                div()
+                    .id("gitops-selected")
+                    .test_support()
+                    .aria_label(selection.name().to_string())
+                    .absolute()
+                    .w(px(0.))
+                    .h(px(0.)),
+            )
+        })
         .hover(|card| {
             card.border_color(Tokens::primary().opacity(0.5))
                 .shadow_md()

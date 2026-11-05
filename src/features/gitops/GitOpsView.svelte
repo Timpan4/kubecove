@@ -504,6 +504,7 @@
 								{@const sourceTooltipGroups = gitOpsSelectionSourceTooltipGroups(item)}
 								{@const sourceLine = gitOpsSelectionSourceLine(item)}
 								<div
+									data-gitops-selected={gitOpsSelectionKey(item) === selectedGitOpsItemKey ? "true" : undefined}
 									class={gitOpsSelectionKey(item) === selectedGitOpsItemKey
 										? "group relative flex h-[18.5rem] overflow-hidden rounded-lg border border-primary/60 bg-accent/40 text-xs/relaxed shadow-sm transition-[border-color,background-color,box-shadow] hover:border-primary/70 hover:bg-accent/50 hover:shadow-md motion-reduce:transition-none"
 										: "group relative flex h-[18.5rem] overflow-hidden rounded-lg border bg-surface-1 text-xs/relaxed transition-[border-color,background-color,box-shadow] hover:border-primary/50 hover:bg-accent/30 hover:shadow-md motion-reduce:transition-none"}

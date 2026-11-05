@@ -169,15 +169,22 @@ impl Inspector {
                 if !d.yaml.editing() || d.editor.read(cx).value().as_ref() != before {
                     return;
                 }
+                let mut formatted = false;
                 match result {
                     Ok(text) => {
                         d.yaml.draft_changed();
                         d.editor.update(cx, |e, cx| e.set_value(text, window, cx));
                         d.marks.refresh(&d.editor, cx);
+                        formatted = true;
                     }
                     Err(e) => d.yaml.feedback = Feedback::FormatFailed(e.message),
                 }
-                this.refresh_yaml_lens(cx);
+                // `set_value` emits no change event, so the formatted draft is linted here.
+                if formatted {
+                    this.schedule_yaml_lint(window, cx);
+                } else {
+                    this.refresh_yaml_lens(cx);
+                }
                 cx.notify();
             });
         }));

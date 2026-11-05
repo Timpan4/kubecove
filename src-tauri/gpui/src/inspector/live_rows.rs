@@ -45,13 +45,6 @@ impl Inspector {
             .filter(&matches)
             .map(|row| ((row.namespace.clone(), row.name.clone()), row))
             .collect();
-        let search = self.search.read(cx).value().trim().to_lowercase();
-        let kinds = self.scope_kinds();
-        let mut visible = next
-            .values()
-            .filter(|row| self.row_visible(row, &search, &kinds))
-            .map(|row| ((row.namespace.clone(), row.name.clone()), row.clone()))
-            .collect::<HashMap<_, _>>();
         let rows = if self.page == super::Page::ClusterOverview
             && crate::backend::CLUSTER_KINDS.contains(&key.resource_kind.kind.as_str())
         {
@@ -71,25 +64,18 @@ impl Inspector {
             }
         });
         rows.extend(next.into_values());
-        self.visible.retain_mut(|row| {
-            if !matches(row) {
-                return true;
-            }
-            if let Some(new) = visible.remove(&(row.namespace.clone(), row.name.clone())) {
-                *row = new;
-                true
-            } else {
-                false
-            }
-        });
-        self.visible.extend(visible.into_values());
+        // Inherited owners may cross kinds, so the prepared rows and their
+        // filtered list are rebuilt rather than patched in place.
+        self.prepare_rows();
+        self.filter(cx);
         if !matches!(self.load, Load::Ready) && !self.rows.is_empty() {
             self.load = Load::Ready;
         }
         cx.notify();
     }
 
-    pub(super) fn row_visible(
+    /// Whether a row is in the page's scope, before the health filter.
+    pub(super) fn row_in_scope(
         &self,
         row: &ResourceSummary,
         search: &str,
@@ -105,5 +91,14 @@ impl Inspector {
                 row.kind == kind.kind && row.api_version.as_ref() == Some(&kind.api_version)
             })
             && (search.is_empty() || resource_search::haystack(row).contains(search))
+    }
+
+    pub(super) fn row_visible(
+        &self,
+        row: &ResourceSummary,
+        search: &str,
+        kinds: &[String],
+    ) -> bool {
+        self.row_in_scope(row, search, kinds)
     }
 }

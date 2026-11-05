@@ -245,29 +245,17 @@ impl Inspector {
                     text(session.namespace.clone()),
                     text(exec_command(&session.command)),
                     text(exec_status(session.status)),
-                    text(super::incident_guide::timestamp(&session.started_at)),
+                    super::timestamp_text::with_tooltip(
+                        format!("exec-started:{id}"),
+                        Some(session.started_at.clone()),
+                        text(super::incident_guide::timestamp(&session.started_at)),
+                    ),
                     xs_button("square", "Stop", true)
                         .id(SharedString::from(format!("stop-exec:{id}")))
                         .test_support()
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            if this.sessions.busy {
-                                return;
-                            }
-                            let read = this.backend.stop_exec(id.clone());
-                            this.run_session_action(
-                                Box::pin(async move {
-                                    if read.await? {
-                                        Ok(())
-                                    } else {
-                                        Err(kubecove_lib::models::AppError::new(
-                                            "Session was not stopped",
-                                            kubecove_lib::models::AppErrorKind::Cluster,
-                                        ))
-                                    }
-                                }),
-                                cx,
-                            );
-                        }))
+                        .on_click(
+                            cx.listener(move |this, _, _, cx| this.stop_exec_id(id.clone(), cx)),
+                        )
                         .into_any_element(),
                 ]
             })

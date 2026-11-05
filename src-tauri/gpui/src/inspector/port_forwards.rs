@@ -19,6 +19,8 @@ pub(super) struct SessionsState {
     pub(super) busy: bool,
     pub(super) error: Option<String>,
     pub(super) scope_context: Option<String>,
+    /// `ActiveLiveSessionsButton`'s popover, open from the header count.
+    pub(super) popover: bool,
     request: Rc<()>,
     task: Option<Task<()>>,
     poll: Option<Task<()>>,
@@ -32,6 +34,7 @@ impl SessionsState {
             busy: false,
             error: None,
             scope_context: None,
+            popover: false,
             request: Rc::new(()),
             task: None,
             poll: None,

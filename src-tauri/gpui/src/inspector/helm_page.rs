@@ -32,9 +32,29 @@ enum HelmLoad {
     Failed(String),
 }
 
+/// A release opened from another page, such as a resource's Open Helm release
+/// action. The page selects it after the next successful list read.
+pub(super) struct HelmTarget {
+    pub(super) name: String,
+    pub(super) namespace: Option<String>,
+}
+
+impl HelmTarget {
+    /// `findHelmReleaseTarget`: a release with this name, in the namespace when one is given.
+    fn matches(&self, release: &HelmReleaseSummary) -> bool {
+        release.name == self.name
+            && self
+                .namespace
+                .as_ref()
+                .is_none_or(|namespace| &release.namespace == namespace)
+    }
+}
+
 pub(super) struct HelmPage {
     /// The context `load` belongs to.
     context: String,
+    /// Set by `open_helm_release`; consumed by the next successful list read.
+    pub(super) target: Option<HelmTarget>,
     load: HelmLoad,
     request: Rc<()>,
     task: Option<Task<()>>,
@@ -67,6 +87,7 @@ impl HelmPage {
         });
         Self {
             context: String::new(),
+            target: None,
             load: HelmLoad::Loading,
             request: Rc::new(()),
             task: None,
@@ -179,13 +200,29 @@ impl Inspector {
                     .map(|group| (group.namespace.to_owned(), group.count))
                     .collect();
                 let namespace = page.namespace.take();
+                // A pending target applies after a successful read and stays pending after a failed one.
+                let target = if success { page.target.take() } else { None };
+                let namespace = target
+                    .as_ref()
+                    .and_then(|target| target.namespace.clone())
+                    .or(namespace);
                 page.namespace = helm::resolve_namespace(page.releases(), namespace);
-                // `selectedHelmReleaseExists`: a vanished release closes its details.
-                page.selected = previous.and_then(|previous| {
+                let target_index = target.as_ref().and_then(|target| {
                     page.releases()
                         .iter()
-                        .position(|release| helm::same_release(release, &previous))
+                        .position(|release| target.matches(release))
                 });
+                // `selectedHelmReleaseExists`: a vanished release closes its details.
+                page.selected = target_index.or_else(|| {
+                    previous.and_then(|previous| {
+                        page.releases()
+                            .iter()
+                            .position(|release| helm::same_release(release, &previous))
+                    })
+                });
+                if target_index.is_some() {
+                    page.details = HelmDetails::default();
+                }
                 if page.selected.is_none() {
                     page.details = HelmDetails::default();
                 }

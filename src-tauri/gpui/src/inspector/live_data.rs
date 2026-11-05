@@ -90,6 +90,12 @@ impl LiveData {
         }
     }
 
+    /// Whether row activity may animate: every watch is live and no read is pending.
+    /// Mirrors `updatesCurrent` in `ResourceBrowser.svelte`.
+    pub fn updates_current(&self) -> bool {
+        !self.scope_loading && self.label() == "Live"
+    }
+
     pub fn messages(&self) -> impl Iterator<Item = &String> {
         self.refresh_error
             .iter()
@@ -157,14 +163,22 @@ pub(super) async fn receive_or_tick(
 }
 
 impl Inspector {
+    /// Custom kinds present in the selected namespace, or cluster-wide with no
+    /// namespace, as the web's `listPresentCustomResourceKinds` returns them.
     pub(super) fn discover_kinds(&mut self, cx: &mut Context<Self>) {
         self.live.kinds.clear();
-        let context = self.scope.context.clone();
+        let scope = self.scope.clone();
+        let context = scope.context.clone();
         let backend = self.backend.clone();
         let timings = self.timings.clone();
         self.live.discovery = Some(cx.spawn(async move |this, cx| {
             let result = crate::read_retry::cancelled_read(
-                || timings.measure("resource_kinds", backend.resource_kinds(context.clone())),
+                || {
+                    timings.measure(
+                        "list_present_custom_resource_kinds",
+                        backend.namespace_custom_kinds(scope.clone()),
+                    )
+                },
                 |delay| cx.background_executor().timer(delay),
             )
             .await;

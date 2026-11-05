@@ -36,18 +36,22 @@ impl Inspector {
                     .child(ui::icon(icon, 12., Tokens::foreground()))
                     .child(ui::medium(ui::text(shortcut.label.clone(), 12., 19.5)))
                     .on_click(cx.listener(move |this, _, window, cx| match &target {
-                        Target::Argo { argo_app } => {
-                            if let Some(name) = argo_app {
+                        Target::Argo { argo_app } => match argo_app {
+                            Some(name) => {
+                                let context = this
+                                    .active_saved_context()
+                                    .unwrap_or_else(|| this.scope.context.clone());
                                 this.visit_scope(
                                     crate::workspaces::entries::EntryKind::App,
-                                    this.scope.context.clone(),
+                                    context,
                                     None,
                                     name.clone(),
                                     cx,
                                 );
+                                this.open_gitops_application(name.clone(), cx);
                             }
-                            this.open_page(Page::GitOps, cx);
-                        }
+                            None => this.open_page(Page::GitOps, cx),
+                        },
                         Target::Resources { namespace }
                         | Target::Namespace { namespace }
                         | Target::Compare { namespace } => {

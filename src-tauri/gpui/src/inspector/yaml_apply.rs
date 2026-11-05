@@ -98,7 +98,11 @@ pub(super) fn disabled_reason(resource: &ResourceSummary) -> Option<&'static str
 }
 
 /// `buildYamlApplyRequest` for the exact selected resource.
-fn apply_request(resource: &ResourceSummary, yaml: String, force: bool) -> YamlApplyRequest {
+pub(super) fn apply_request(
+    resource: &ResourceSummary,
+    yaml: String,
+    force: bool,
+) -> YamlApplyRequest {
     YamlApplyRequest {
         cluster_context: resource.cluster.clone(),
         kubeconfig_env_var: None,
@@ -153,6 +157,7 @@ impl Inspector {
             return;
         };
         detail.yaml = YamlApply::default();
+        detail.lint.clear();
         let selected =
             gpui_kit::SharedString::from(if detail.yaml_view.mode == YamlViewMode::ApplyClean {
                 "Apply clean"
@@ -173,6 +178,7 @@ impl Inspector {
             .update(cx, |editor, cx| editor.set_value(yaml, window, cx));
         detail.marks.refresh(&detail.editor, cx);
         self.notice = None;
+        self.refresh_yaml_lens(cx);
         cx.notify();
     }
 
@@ -222,6 +228,7 @@ impl Inspector {
                         detail.yaml.feedback = Feedback::PrepareFailed(error);
                     }
                 }
+                this.schedule_yaml_lint(window, cx);
                 cx.notify();
             });
         }));

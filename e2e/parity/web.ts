@@ -6,21 +6,27 @@ import { parse } from "yaml";
 import { chromeExecutable, freePort, readinessTimeoutMs, startIdentity, stopGroup, waitFor } from "../../.agents/skills/verify-kubecove/scripts/processes";
 import type { Contract, Step } from "./contract";
 import { adapterAction } from "./web-adapters";
-import { feedbackAction } from "./web-feedback";
 import { argoAction } from "./web-argo";
 import { coverageAction } from "./web-coverage";
 import { checkCoverage } from "./web-coverage-checks";
+import { detailStatusAction } from "./web-detail-status";
+import { detailsAction } from "./web-details";
+import { feedbackAction } from "./web-feedback";
+import { incidentDiagnosticsAction } from "./web-incident-diagnostics";
 import { liveSessionAction } from "./web-live-sessions";
 import { logRowAndRestoreAction } from "./web-logs-restore";
 import { mcpAction } from "./web-mcp";
-import { timingAction } from "./web-timing";
-import { shellAction } from "./web-shell";
 import { navigationAction } from "./web-navigation";
+import { panelAction } from "./web-panels";
 import { resourceFilterAction } from "./web-resource-filters";
+import { resourceTableAction } from "./web-resource-table";
+import { sessionHealthAction } from "./web-session-health";
+import { shellAction } from "./web-shell";
 import { sidebarLiveAction } from "./web-sidebar-live";
 import { terminalAction } from "./web-terminal";
-import { resourceTableAction } from "./web-resource-table";
+import { timingAction } from "./web-timing";
 import { expectRetainedWorkspaceFields, workspaceAction } from "./web-workspaces";
+import { yamlPermissionAction } from "./web-yaml-permissions";
 
 export async function action(page: Page, step: Step) {
 	const search = page.getByRole("textbox", { name: "Search resources" });
@@ -36,6 +42,7 @@ export async function action(page: Page, step: Step) {
         case "toggleResourcePin": case "expectWorkspaceEntry": case "openWorkspaceEntry": await shellAction(page, step); break;
         case "reorderKindKey": case "expectRemoteHost": await shellAction(page, step); break;
         case "configureShellRead": case "retryLauncher": case "expectLauncherRetry": await shellAction(page, step); break;
+        case "expectActivePage": case "expectGitOpsSelection": await shellAction(page, step); break;
         case "overviewOperation": case "overviewIncident": case "reviewIncidentAction": await shellAction(page, step); break;
         case "expectTopologyDenied": case "mockTiming": await timingAction(page, step); break;
         case "coverageSelect": await coverageAction(page, step); break;
@@ -43,6 +50,7 @@ export async function action(page: Page, step: Step) {
         case "coverageScript": await coverageAction(page, step); break;
         case "coverageCheck": await checkCoverage(page, step.check); break;
         case "coverageClick": case "coverageFill": case "coverageText": case "paletteKey": case "expectPaletteOpen": case "deleteSavedWorkspace": case "importDecision": case "cancelImport": case "searchEvents": await coverageAction(page, step); break;
+        case "panelControl": case "expectPanelControl": case "skipGraph": case "mapKey": case "expectMapFocus": case "expectNoMapFocus": case "resizeDetail": case "expectDetailResize": await panelAction(page, step); break;
         case "terminalFit": case "terminalOutput": case "terminalSelect": case "terminalCopy": case "terminalPaste": case "terminalScroll":
             await terminalAction(page, step); break;
         case "failWorkspaceContext": case "expectWorkspaceReadWarning":
@@ -53,14 +61,19 @@ export async function action(page: Page, step: Step) {
         case "openNamespaceList": case "expectNamespaceRow": case "resizeViewport": case "openNavigationDrawer": case "expectNavigationDrawer": case "sidebarKey": await navigationAction(page, step); break;
         case "replayPageReads": case "focusStalePage": case "expectPageText": case "searchCustomKinds": case "searchKindPicker": case "expectCustomGroup": case "toggleKind": case "openKindPicker": case "closeKindPicker": case "selectAllKinds": case "expectKindChecked": await sidebarLiveAction(page, step); break;
         case "openNamespacePicker": case "closeNamespacePicker": case "searchNamespacePicker": case "selectAllNamespaces": case "toggleNamespace": case "expectNamespaceChecked": case "expectNamespaceTrigger": case "selectHealthFilter": case "expectHealthFilter": case "chooseGitOpsOwner": case "clearResourceFilters": case "setHistoricalReplicaSets": await resourceFilterAction(page, step); break;
+        case "toggleDetailDisclosure": case "expectNoPageText": await detailStatusAction(page, step); break;
         case "fillMcpPort": case "mcpControl": case "expectMcpState": case "expectMcpCopy": case "expectMcpRequests":
             await mcpAction(page, step); break;
         case "configureArgoMock": case "argoControl": case "focusArgoResource": case "expectNoSavedArgoProfile": case "copyArgoValue": case "configureArgoInventory": case "expandArgoDiff": case "reconnectArgoProfile":
         case "connectArgoProfile": case "disconnectArgoProfile": case "reviewArgoOperation": case "confirmArgoReview": case "cancelArgoReview": case "expectArgoReview": case "expectArgoText": case "argoDocument":
         case "selectArgoPreference": case "expectSavedArgoProfile": case "configureArgoSync": case "selectArgoHistory": case "expectArgoWorkspaceTransport": case "completeArgoOperation": case "confirmArgoTunnel":
             await argoAction(page, step); break;
+        case "expectYamlDiagnostic": case "expectNoYamlDiagnostic": case "expectActionLoadError": case "expectNoActionLoadError": case "retryActionPermission": case "expectActionLock":
+            await yamlPermissionAction(page, step); break;
         case "cancelYamlEdit": case "revealSecretValue": case "hideSecretValue": case "expectSecretValue": case "expectYamlLens": case "refreshLatencyReport": case "clearLatencyReport": case "expectLatencyEmpty": case "expectLatencyTiming": case "openDocumentation": case "expectDocumentationRequest":
             await adapterAction(page, step); break;
+        case "openIncidentResources": case "updateStatusControl": case "copyLatencyReport": case "expectLatencyReportCopy":
+            await incidentDiagnosticsAction(page, step); break;
         case "expectWorkspaceExport": {
             await loadSettingsMocks(page);
             const content = await (await page.waitForFunction(() => (globalThis as unknown as { paritySettingsMocks: { workspaceExportMock(): string } }).paritySettingsMocks.workspaceExportMock())).jsonValue();
@@ -102,10 +115,10 @@ export async function action(page: Page, step: Step) {
             break;
         case "configureSettingsMock":
             await page.evaluate(`import('/src/lib/settings-integration-mocks.ts').then(m => m.configureSettingsMock(${JSON.stringify(step.script)}))`);
-            if (step.script === "no-update" || step.script === "invalid-signature") {
+            if (step.script === "no-update" || step.script === "invalid-signature" || step.script === "update-available") {
                 await page.evaluate(`Promise.all([import('/src/features/app-updates/store.ts'), import('/src/lib/release-channel.ts')]).then(([m, channel]) => {
                     channel.setAppUpdatesEnabledForTests(true);
-                    m.setAppUpdateApiForTests({ check: async () => ${step.script === "no-update" ? "null" : "({ currentVersion: '0.13.0', version: '0.14.0', downloadAndInstall: async () => { throw new Error('Invalid update signature'); } })"}, relaunch: async () => { throw new Error('Tests cannot relaunch'); } });
+                    m.setAppUpdateApiForTests({ check: async () => ${step.script === "no-update" ? "null" : `({ currentVersion: '0.13.0', version: '0.14.0', ${step.script === "update-available" ? "body: 'Fixes topology edges.', " : ""}downloadAndInstall: async () => { throw new Error('Invalid update signature'); } })`}, relaunch: async () => { throw new Error('Tests cannot relaunch'); } });
                 })`);
             }
             break;
@@ -114,6 +127,7 @@ export async function action(page: Page, step: Step) {
             await page.getByText("Invalid update signature", { exact: true }).waitFor();
             break;
         case "configureForward": case "forwardControl": case "expectForwardState": case "execControl": case "expectExecState": case "replaySessions": case "confirmExecLeave": case "configurePreset": case "presetControl": await liveSessionAction(page, step); break;
+        case "openLiveSessionPopover": case "expectLiveSessionRow": case "liveSessionControl": case "expectHealthTooltip": case "expectTimestampTooltip": case "expectEventTimeTooltip": await sessionHealthAction(page, step); break;
         case "expectLiveState":
             await page.getByRole("button", { name: "Live updates and refresh options" }).first().getByText(step.label, { exact: true }).waitFor();
             if (step.notice) await page.getByText(step.notice, { exact: true }).first().waitFor();
@@ -186,6 +200,7 @@ export async function action(page: Page, step: Step) {
             if (!isDeepStrictEqual(parse(text), JSON.parse(step.value))) throw new Error("Formatting changed YAML content");
             break;
         }
+		case "clickDetailControl": await detailsAction(page, step); break;
 		case "openResources": await page.getByRole("button", { name: "Resources", exact: true }).first().click(); break;
 		case "search": await search.fill(step.value); break;
 		case "expectSearch": if (await search.inputValue() !== step.value) throw new Error("Search changed after refresh"); break;

@@ -6,9 +6,9 @@
 use kubecove_gpui::backend::{LogStream, LogTarget, Read};
 use kubecove_lib::models::{
     AppError, AppErrorKind, ClusterOperationResult, ClusterOperationTarget, DeploymentRevision,
-    ResourceActionPreview, ResourceActionRequest, ResourceActionState, ResourceActionStateRequest,
-    ResourceSummary, StreamMessage, YamlApplyPreview, YamlApplyRequest, YamlApplyResult,
-    YamlEncoding, YamlViewMode,
+    KubernetesYamlLintResult, ResourceActionPreview, ResourceActionRequest, ResourceActionState,
+    ResourceActionStateRequest, ResourceSummary, StreamMessage, YamlApplyPreview, YamlApplyRequest,
+    YamlApplyResult, YamlEncoding, YamlViewMode,
 };
 use serde::Deserialize;
 
@@ -30,6 +30,16 @@ pub struct DetailTabs {
     actions: Actions,
     #[serde(rename = "yamlApply")]
     yaml_apply: Vec<YamlApply>,
+    /// Lint results for the drafts the scenarios edit. Fixtures exported before
+    /// the lint existed have none, so every lint read reports it missing.
+    #[serde(rename = "yamlLint", default)]
+    yaml_lint: Vec<YamlLint>,
+}
+
+#[derive(Deserialize)]
+struct YamlLint {
+    request: YamlApplyRequest,
+    result: KubernetesYamlLintResult,
 }
 
 #[derive(Deserialize)]
@@ -255,6 +265,22 @@ impl DetailTabs {
     pub fn prepare_yaml_apply(&self, request: YamlApplyRequest) -> Read<YamlApplyPreview> {
         let found = self.yaml_entry(&request).map(|entry| entry.preview.clone());
         ready(found.map_or_else(|| missing("YAML dry run"), Ok))
+    }
+
+    /// The exported lint for this draft, matched like the dry run. The timing
+    /// gate is applied by the caller, as for every other mock read.
+    pub fn lint_yaml(
+        &self,
+        request: &YamlApplyRequest,
+    ) -> Result<KubernetesYamlLintResult, AppError> {
+        let mut actual = request.clone();
+        actual.kubeconfig_env_var = None;
+        let actual = serde_json::to_value(actual).unwrap();
+        let found = self
+            .yaml_lint
+            .iter()
+            .find(|entry| serde_json::to_value(&entry.request).unwrap() == actual);
+        found.map_or_else(|| missing("YAML lint"), |entry| Ok(entry.result.clone()))
     }
 
     /// The browser mocks refuse every apply; the fixture reports the same error.

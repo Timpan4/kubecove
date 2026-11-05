@@ -14,7 +14,15 @@ pub enum UpdateStatus {
     #[default]
     Idle,
     UpToDate,
-    Available(String),
+    Available(AvailableUpdate),
+}
+
+/// A newer release from the update manifest. `notes` is the manifest's `notes`
+/// field, the same text the web's updater plugin exposes as `body`.
+#[derive(Clone, Debug)]
+pub struct AvailableUpdate {
+    pub version: String,
+    pub notes: Option<String>,
 }
 
 pub const INSTALL_UNAVAILABLE: &str = "Native installation is disabled. The release feed contains Tauri installers; a signed GPUI release artifact and installer are required.";
@@ -100,8 +108,16 @@ pub fn update_status(manifest: &serde_json::Value) -> Result<UpdateStatus, AppEr
         .map_err(|_| AppError::new("Invalid update version", AppErrorKind::Validation))?;
     let current =
         semver::Version::parse(env!("CARGO_PKG_VERSION")).expect("Cargo package version is semver");
+    let notes = manifest["notes"]
+        .as_str()
+        .map(str::trim)
+        .filter(|notes| !notes.is_empty())
+        .map(str::to_owned);
     Ok(if version > current {
-        UpdateStatus::Available(version.to_string())
+        UpdateStatus::Available(AvailableUpdate {
+            version: version.to_string(),
+            notes,
+        })
     } else {
         UpdateStatus::UpToDate
     })

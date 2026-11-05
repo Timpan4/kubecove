@@ -142,7 +142,24 @@ pub(super) fn watch(backend: &NativeBackend, target: WatchTarget) -> Read<LogStr
     })
 }
 
+/// Built-in resources and namespaces. The web stages these before custom kinds.
 pub(super) fn resources(backend: &NativeBackend, scope: Scope, refresh: bool) -> Read<ScopeResult> {
+    let builtin = builtin_resources(backend, scope.clone(), refresh);
+    let custom = custom_resources(backend, scope);
+    backend.read(async move {
+        let mut result = builtin.await?;
+        let custom = custom.await?;
+        result.resources.extend(custom.resources);
+        result.warnings.extend(custom.warnings);
+        Ok(result)
+    })
+}
+
+pub(super) fn builtin_resources(
+    backend: &NativeBackend,
+    scope: Scope,
+    refresh: bool,
+) -> Read<ScopeResult> {
     let store = backend.store.clone();
     backend.read(async move {
         let kinds = INSPECTION_KINDS.to_vec();
@@ -198,6 +215,20 @@ pub(super) fn resources(backend: &NativeBackend, scope: Scope, refresh: bool) ->
                 Err(error) => return Err(error),
             }
         }
+        Ok(ScopeResult {
+            namespaces,
+            resources,
+            warnings,
+        })
+    })
+}
+
+/// Discovered custom kinds and their rows, read after the built-in resources.
+pub(super) fn custom_resources(backend: &NativeBackend, scope: Scope) -> Read<ScopeResult> {
+    let store = backend.store.clone();
+    backend.read(async move {
+        let mut warnings = Vec::new();
+        let mut resources = Vec::new();
         let discovered =
             crate::read_retry::cancelled_read(
                 || {
@@ -237,7 +268,7 @@ pub(super) fn resources(backend: &NativeBackend, scope: Scope, refresh: bool) ->
             Err(error) => warnings.push(format!("Custom Resources: {}", error.message)),
         }
         Ok(ScopeResult {
-            namespaces,
+            namespaces: Vec::new(),
             resources,
             warnings,
         })

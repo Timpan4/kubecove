@@ -9,12 +9,15 @@ mod viewport;
 use paint::EdgePaint;
 
 use super::Inspector;
+use super::resources::Panel;
 use crate::theme::Tokens;
 use crate::topology::{self, Viewport};
 use crate::ui;
 use gpui_kit::TestSupportExt;
-use gpui_kit::{AnyElement, Context, Div, Pixels, Point, SharedString, div, prelude::*, px};
-use kubecove_lib::models::{AppError, AppErrorKind, ResourceSummary, ResourceTopology};
+use gpui_kit::{
+    AnyElement, Context, Div, FocusHandle, Pixels, Point, SharedString, div, prelude::*, px,
+};
+use kubecove_lib::models::{AppError, AppErrorKind, ResourceTopology};
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -38,6 +41,11 @@ pub(super) struct MapState {
     /// A pan or zoom, kept while the fitted viewport it started from is current.
     adjusted: Option<(Viewport, Viewport)>,
     drag: Option<(Point<Pixels>, Viewport)>,
+    /// One focus handle per entry of `cache.nodes`, so Tab visits nodes in order.
+    /// `sync_map_focus` grows and trims it; rebuilding the view does not recreate it.
+    pub node_focus: Vec<FocusHandle>,
+    /// Where "skip graph" moves focus: the element right after the graph.
+    pub skip_target: Option<FocusHandle>,
 }
 
 impl MapState {
@@ -51,6 +59,8 @@ impl MapState {
             size: Rc::default(),
             adjusted: None,
             drag: None,
+            node_focus: Vec::new(),
+            skip_target: None,
         }
     }
 }
@@ -133,7 +143,17 @@ impl Inspector {
                     .min_w_0()
                     .items_center()
                     .gap(px(8.))
-                    .child(ui::ghost_icon("panel-left-close", 28., 16.))
+                    .child(
+                        ui::ghost_icon("panel-left-close", 28., 16.)
+                            .id("panel-control:Collapse ownership map")
+                            .test_support()
+                            .aria_label("Collapse ownership map")
+                            .cursor_pointer()
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.set_panel_open(Panel::Map, false);
+                                cx.notify();
+                            })),
+                    )
                     .child(ui::icon(
                         if self.map.network {
                             "network"
@@ -237,10 +257,31 @@ impl Inspector {
                             16.,
                         )))
                         // Button `variant="link"`: `text-primary`.
-                        .child(ui::text("skip graph", 11., 16.).text_color(Tokens::primary()))
+                        .child(
+                            ui::text("skip graph", 11., 16.)
+                                .id("map-skip-graph")
+                                .test_support()
+                                .aria_label("skip graph")
+                                .text_color(Tokens::primary())
+                                .cursor_pointer()
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    if let Some(target) = &this.map.skip_target {
+                                        target.focus(window, cx);
+                                    }
+                                })),
+                        )
                         .child(ui::muted(ui::text(".", 11., 16.)))
                         .into_any_element(),
                     self.map_viewport(view, cx),
+                    // Focus target after the graph. Tab skips it, so only "skip graph" lands here.
+                    match &self.map.skip_target {
+                        Some(target) => div()
+                            .id("map-graph-end")
+                            .test_support()
+                            .track_focus(target)
+                            .into_any_element(),
+                        None => div().into_any_element(),
+                    },
                 ];
                 if !warnings.is_empty() {
                     body.push(
@@ -290,9 +331,18 @@ impl Inspector {
             .child(header)
             .children(body)
     }
-}
 
-enum MapClick {
-    Resource(Option<Box<ResourceSummary>>),
-    Group(String),
+    /// Keeps one focus handle per graph node and one for "skip graph". Called before
+    /// the page renders, so handles follow the cached view without rebuilding it.
+    pub(super) fn sync_map_focus(&mut self, cx: &mut Context<Self>) {
+        let count = self.map.cache.as_ref().map_or(0, |view| view.nodes.len());
+        let focus = &mut self.map.node_focus;
+        if focus.len() < count {
+            focus.extend(std::iter::repeat_with(|| cx.focus_handle()).take(count - focus.len()));
+        }
+        focus.truncate(count);
+        if self.map.skip_target.is_none() {
+            self.map.skip_target = Some(cx.focus_handle());
+        }
+    }
 }

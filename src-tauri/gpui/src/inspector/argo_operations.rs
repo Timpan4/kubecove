@@ -27,7 +27,7 @@ pub(super) struct Operation {
     request: Rc<()>,
     task: Option<Task<()>>,
     baseline: Option<kubecove_lib::models::ArgoApplicationInspector>,
-    last_request: Option<ArgoOperationRequest>,
+    pub(super) last_request: Option<ArgoOperationRequest>,
 }
 impl Inspector {
     pub(super) fn review_argo_operation(
@@ -114,6 +114,7 @@ impl Inspector {
         };
         state.refresh_options = false;
         state.options.open = false;
+        state.options.confirming = false;
         self.start_argo_review(request, window, cx);
     }
     pub(super) fn retry_argo_operation(&mut self, window: &mut Window, cx: &mut Context<Self>) {

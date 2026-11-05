@@ -1,0 +1,19 @@
+{
+  "apiVersion": "kubecove.dev/workspace/v1",
+  "kind": "Workspace",
+  "metadata": { "name": "application-shortcut" },
+  "spec": {
+    "displayName": "Application shortcut",
+    "scope": {
+      "clusterContext": "mock-dev",
+      "namespaces": [],
+      "kinds": ["Pod", "Application"],
+      "layout": "overview",
+      "argoAppFilter": ""
+    },
+    "shortcuts": [
+      { "id": "argo:platform-argocd", "label": "platform-argocd", "kind": "argo", "argoApp": "platform-argocd" }
+    ],
+    "portForwards": []
+  }
+}

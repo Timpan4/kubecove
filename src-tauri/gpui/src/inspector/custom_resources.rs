@@ -1,7 +1,61 @@
 //! Discovered kinds retain their API identity even before they contain objects.
 use super::{Inspector, Page};
+use crate::backend::ScopeResult;
 use crate::{theme::Tokens, ui};
 use gpui_kit::{AnyElement, Context, SharedString, TestSupportExt, deferred, div, prelude::*, px};
+use kubecove_lib::models::AppError;
+
+/// The custom-resource read that follows the built-in resource read.
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
+pub(super) enum CustomLoad {
+    /// No custom read was started for the current scope.
+    #[default]
+    Idle,
+    Loading,
+    Ready,
+    Failed,
+}
+
+impl Inspector {
+    /// The resource summary card's detail, as `customResourcesStatus` in
+    /// `ResourceBrowserTopBar.svelte`. `None` renders as "available".
+    pub(super) fn custom_status(&self) -> Option<&'static str> {
+        if !self.persisted.preferences.show_custom_resources {
+            return Some("Custom Resources off");
+        }
+        match self.custom_load {
+            CustomLoad::Loading => Some("Loading Custom Resources"),
+            CustomLoad::Failed => Some("Custom Resources unavailable"),
+            CustomLoad::Ready | CustomLoad::Idle if !self.live.kinds.is_empty() => {
+                Some("Custom Resources added")
+            }
+            CustomLoad::Ready | CustomLoad::Idle => None,
+        }
+    }
+
+    /// Adds the custom rows after the built-in rows have rendered.
+    pub(super) fn apply_custom_resources(
+        &mut self,
+        result: Result<ScopeResult, AppError>,
+        cx: &mut Context<Self>,
+    ) {
+        match result {
+            Ok(result) => {
+                self.rows.extend(result.resources);
+                self.warnings.extend(result.warnings);
+                self.custom_load = CustomLoad::Ready;
+            }
+            Err(error) => {
+                self.warnings
+                    .push(format!("Custom Resources: {}", error.message));
+                self.custom_load = CustomLoad::Failed;
+            }
+        }
+        self.prepare_rows();
+        self.filter(cx);
+        cx.notify();
+    }
+}
 
 impl Inspector {
     pub(super) fn custom_kind_rows(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {

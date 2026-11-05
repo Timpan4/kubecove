@@ -115,38 +115,11 @@ impl Inspector {
                     .justify_end()
                     .children(self.permission_return(cx))
                     .gap(px(4.))
-                    // `ActiveLiveSessionsButton.svelte`: ghost `sm` with `mr-1 h-8`. The web
-                    // opens a popover whose Manage button opens this page; native opens it directly.
                     .when_some(
                         self.live_session_count().filter(|count| *count > 0),
-                        |row, count| {
-                            row.child(
-                                div()
-                                    .id("live-sessions")
-                                    .test_support()
-                                    .aria_label(format!("Open live sessions ({count} active)"))
-                                    .flex()
-                                    .items_center()
-                                    .gap(px(4.))
-                                    .h(px(32.))
-                                    .pl(px(6.))
-                                    .pr(px(8.))
-                                    .mr(px(4.))
-                                    .rounded(px(6.))
-                                    .cursor_pointer()
-                                    .hover(|button| button.bg(Tokens::muted()))
-                                    .child(ui::icon("cable", 12., Tokens::muted_foreground()))
-                                    .child(ui::muted(ui::medium(ui::text(
-                                        count.to_string(),
-                                        12.,
-                                        19.5,
-                                    ))))
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.open_page(Page::PortForwards, cx)
-                                    })),
-                            )
-                        },
+                        |row, count| row.child(self.live_session_control(count, cx)),
                     )
+                    .children(self.update_control(cx))
                     .child(
                         ui::ghost_icon("folder-open", 28., 14.)
                             .id("header-workspaces")

@@ -22,6 +22,10 @@ pub(super) struct SettingsState {
     pub(super) kind_focus: std::collections::HashMap<String, gpui_kit::FocusHandle>,
     pub(super) diagnostics: crate::backend::adapters::BackendDiagnostics,
     pub(super) diagnostics_error: Option<String>,
+    /// The last latency-report action's result, shown under the report.
+    pub(super) diagnostics_status: Option<String>,
+    /// Whether Copy includes identifiers. Redacted by default, as on the web.
+    pub(super) latency_identifiers: bool,
     pub(super) diagnostics_task: Option<Task<()>>,
     pub(super) confirming_skip_review: bool,
     pub(super) integrations: super::settings_integrations::Integrations,
@@ -56,6 +60,8 @@ impl SettingsState {
             kind_focus: Default::default(),
             diagnostics: Default::default(),
             diagnostics_error: None,
+            diagnostics_status: None,
+            latency_identifiers: false,
             diagnostics_task: None,
             confirming_skip_review: false,
             integrations: super::settings_integrations::Integrations::new(window, cx),

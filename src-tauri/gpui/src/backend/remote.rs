@@ -255,6 +255,11 @@ impl Backend for DesktopBackend {
         json!({"request":request})
     );
     route!(
+        lint_yaml(request: YamlApplyRequest) -> KubernetesYamlLintResult,
+        "lint_kubernetes_yaml",
+        json!({"request":request})
+    );
+    route!(
         deployment_revisions(resource: ResourceSummary) -> Vec<DeploymentRevision>,
         "list_deployment_revisions",
         json!({"clusterContext":resource.cluster,"name":resource.name,"namespace":resource.namespace})

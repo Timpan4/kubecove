@@ -1,0 +1,55 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "resources.no-kind-scope",
+      "title": "Clearing every kind shows the no-scope state and restoring one kind returns the table",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openKindPicker" },
+        { "action": "expectKindChecked", "kind": "Deployment", "checked": true },
+        { "action": "toggleKind", "kind": "Pod", "checked": false },
+        { "action": "toggleKind", "kind": "Deployment", "checked": false },
+        { "action": "toggleKind", "kind": "ReplicaSet", "checked": false },
+        { "action": "toggleKind", "kind": "Job", "checked": false },
+        { "action": "toggleKind", "kind": "CronJob", "checked": false },
+        { "action": "toggleKind", "kind": "Service", "checked": false },
+        { "action": "toggleKind", "kind": "Ingress", "checked": false },
+        { "action": "toggleKind", "kind": "ConfigMap", "checked": false },
+        { "action": "toggleKind", "kind": "Secret", "checked": false },
+        { "action": "closeKindPicker" },
+        { "action": "expectPageText", "text": "No resource scope" },
+        { "action": "expectPageText", "text": "Select at least one kind." },
+        { "action": "openKindPicker" },
+        { "action": "toggleKind", "kind": "Deployment", "checked": true },
+        { "action": "closeKindPicker" },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" }
+      ]
+    },
+    {
+      "id": "resources.loading-state",
+      "title": "A held scope read shows the loading state until it is released",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_scope", "context": "mock-dev" } },
+        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_scope", "context": "mock-dev" } },
+        { "action": "expectPageText", "text": "Loading resources" },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_scope", "context": "mock-dev" } },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" }
+      ]
+    },
+    {
+      "id": "resources.lifecycle-failure",
+      "title": "A crash-looping Pod shows its lifecycle label in place of the health badge",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "selectNamespace", "namespace": "operations" },
+        { "action": "search", "value": "operations-crashloop" },
+        { "action": "expectPageText", "text": "CrashLoopBackOff" },
+        { "action": "expectResource", "kind": "Pod", "namespace": "operations", "name": "operations-crashloop-7f468cd8b8-lab01" }
+      ]
+    }
+  ]
+}

@@ -3,15 +3,18 @@
 
 use super::Inspector;
 use super::detail::ResourceDetail;
+use super::details_containers;
+use super::details_metadata;
+use super::details_status;
 use super::timeline::{incident_signals, timeline};
-use crate::model::{exact_timestamp, health_source};
+use crate::model::health_source;
 use crate::theme::Tokens;
 use crate::ui::{self, Tone};
 use gpui_kit::{Context, Div, SharedString, TestSupportExt, div, prelude::*, px};
 use kubecove_lib::models::{HealthAssessmentState, ResourceSummary};
 
 /// `grid grid-cols-[7rem_minmax(0,1fr)] gap-2 py-1.5`; `metadata_card` adds the row borders.
-fn row(label: &str, value: impl IntoElement) -> Div {
+pub(super) fn row(label: &str, value: impl IntoElement) -> Div {
     div()
         .flex()
         .items_center()
@@ -21,12 +24,12 @@ fn row(label: &str, value: impl IntoElement) -> Div {
         .child(div().flex().flex_1().min_w_0().child(value))
 }
 
-fn value(text: impl Into<SharedString>) -> Div {
+pub(super) fn value(text: impl Into<SharedString>) -> Div {
     ui::semibold(ui::xs(text)).truncate()
 }
 
 /// `rounded-md border bg-background/70 p-3` with a muted `mb-2` title.
-fn metadata_card(title: &str, rows: Vec<Div>) -> Div {
+pub(super) fn metadata_card(title: &str, rows: Vec<Div>) -> Div {
     div()
         .p(px(12.))
         .rounded(px(8.))
@@ -115,20 +118,6 @@ pub(super) fn details_tab(
     let summary = &detail.data.summary;
     let (tone, label) = health(summary);
     let source = health_source(&summary.health_assessment.winning_sources);
-    let created = summary
-        .created_at
-        .as_deref()
-        .and_then(|value| exact_timestamp(value, timezone));
-    let finalizers =
-        detail.data.metadata["finalizers"]
-            .as_array()
-            .map_or("none".to_owned(), |items| {
-                items
-                    .iter()
-                    .filter_map(|item| item.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            });
     // One wrapping badge row (the `HealthAssessmentBadge` group and its closed
     // `<details>` are flex items), the incident summary, then the metadata section.
     let ready_badge = |text: String| ui::status_badge(Tone::Neutral, text);
@@ -157,20 +146,7 @@ pub(super) fn details_tab(
                             ui::muted(ui::text(format!("Source: {source}"), 11., 20.)).truncate(),
                         ),
                 )
-                .child(
-                    div()
-                        .mt(px(8.))
-                        .p(px(8.))
-                        .rounded(px(8.))
-                        .border_1()
-                        .border_color(Tokens::border())
-                        .bg(Tokens::background().opacity(0.4))
-                        .flex()
-                        .items_center()
-                        .gap(px(6.))
-                        .child(ui::icon("play", 8., Tokens::foreground()))
-                        .child(ui::medium(ui::xs("Health evidence"))),
-                )
+                .child(details_status::health_evidence(detail, cx))
                 .when_some(summary.ready.clone(), |row, ready| {
                     row.child(ready_badge(format!("Ready {ready}")))
                 })
@@ -179,10 +155,21 @@ pub(super) fn details_tab(
                     summary
                         .restarts
                         .map_or("not reported".to_owned(), |count| count.to_string())
-                ))),
+                )))
+                .when_some(details_metadata::owner_badge(summary), |row, owner| {
+                    row.child(owner)
+                })
+                .when_some(
+                    details_metadata::helm_header_button(summary, cx),
+                    |row, button| row.child(button),
+                ),
         )
         .child(incident_summary(detail))
         .child(timeline(detail, cx))
+        .when_some(
+            details_status::conditions(detail, timezone),
+            |column, section| column.child(section),
+        )
         .child(
             div()
                 .p(px(12.))
@@ -198,23 +185,23 @@ pub(super) fn details_tab(
                         .gap(px(12.))
                         .child(metadata_card(
                             "Identity",
-                            vec![
-                                row("Name", value(summary.name.clone())),
-                                row(
-                                    "Namespace",
-                                    value(summary.namespace.clone().unwrap_or("Cluster".into())),
-                                ),
-                            ],
+                            details_status::identity_rows(detail),
                         ))
                         .child(metadata_card(
                             "Lifecycle",
-                            vec![
-                                row("Created", value(created.unwrap_or("unknown".into()))),
-                                row("Age", value(summary.age.clone())),
-                                row("Deletion", ui::status_badge(Tone::Success, "not scheduled")),
-                                row("Finalizers", value(finalizers)),
-                            ],
-                        )),
+                            details_status::lifecycle_rows(detail, timezone),
+                        ))
+                        .child(details_metadata::ownership_card(detail, cx))
+                        .child(details_metadata::labels_card(detail, cx))
+                        .child(details_metadata::annotations_card(detail, cx)),
                 ),
         )
+        .when_some(
+            details_containers::containers_section(detail, timezone),
+            |column, section| column.child(section),
+        )
+        .child(details_metadata::advanced_metadata(detail, cx))
+        .when_some(details_status::status_details(detail), |column, section| {
+            column.child(section)
+        })
 }

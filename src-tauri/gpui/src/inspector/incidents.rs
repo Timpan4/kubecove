@@ -322,7 +322,7 @@ impl Inspector {
                             .id("incidents-open-resources")
                             .cursor_pointer()
                             .on_click(cx.listener(|this, _, window, cx| {
-                                this.select_namespace(None, window, cx)
+                                this.open_incident_resources(this.incidents.filter, window, cx)
                             })),
                     ),
             )

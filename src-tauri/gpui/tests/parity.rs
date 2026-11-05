@@ -15,8 +15,16 @@ mod coverage_checks;
 mod delivery;
 #[path = "parity/detail.rs"]
 mod detail;
+#[path = "parity/detail_status.rs"]
+mod detail_status;
+#[path = "parity/details_metadata.rs"]
+mod details_metadata;
 #[path = "parity/feedback.rs"]
 mod feedback;
+#[path = "parity/incident_diagnostics.rs"]
+mod incident_diagnostics;
+#[path = "parity/lint_permissions.rs"]
+mod lint_permissions;
 #[path = "parity/live_data.rs"]
 mod live_data;
 #[path = "parity/live_sessions.rs"]
@@ -27,6 +35,8 @@ mod locate;
 mod log_coverage;
 #[path = "parity/log_restore.rs"]
 mod log_restore;
+#[path = "parity/map_panels.rs"]
+mod map_panels;
 #[path = "parity/mcp.rs"]
 mod mcp;
 #[path = "parity/navigation.rs"]
@@ -37,6 +47,8 @@ mod resource_filters;
 mod resource_table;
 #[path = "parity/scroll.rs"]
 mod scroll;
+#[path = "parity/session_health.rs"]
+mod session_health;
 #[path = "parity/settings_integrations.rs"]
 mod settings_integrations;
 #[path = "parity/shell.rs"]
@@ -191,18 +203,24 @@ fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
         || mcp::act(window, cx, step)
         || live_sessions::apply(window, cx, step)
         || log_restore::apply(window, cx, step)
+        || session_health::act(window, cx, step)
         || terminal::apply(window, cx, step)
         || settings_integrations::act(window, cx, step)
         || live_data::apply(window, cx, step)
         || sidebar_live::apply(window, cx, step)
         || navigation::apply(window, cx, step)
         || resource_filters::act(window, cx, step)
+        || map_panels::apply(window, cx, step)
         || topology_metrics::apply(window, cx, step)
         || resource_table::act(window, cx, step)
         || detail::act(window, cx, step)
+        || detail_status::act(window, cx, step)
+        || details_metadata::act(window, cx, step)
+        || lint_permissions::act(window, cx, step)
         || workspace::act(window, cx, step)
         || workspace_editing::act(window, cx, step)
         || feedback::act(window, cx, step)
+        || incident_diagnostics::act(window, cx, step)
         || delivery::act(window, cx, step))
     {
         panic!("unknown parity action: {}", string(step, "action"));
@@ -247,8 +265,8 @@ fn finish(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
         window.click("argo-connect-submit", cx);
     }
     if step["action"] == "configureArgoSync" {
-        reveal(window, "detail-body", "argo-sync-advanced", cx);
-        window.click("argo-sync-advanced", cx);
+        reveal(window, "detail-body", "argo-sync-confirm", cx);
+        window.click("argo-sync-confirm", cx);
     }
     if step["action"] == "reopenStoredSettings" {
         window.click("open-settings", cx);
@@ -596,6 +614,12 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
             })
             .unwrap();
             cx.run_until_parked();
+            if matches!(string(step, "action"), "editYaml" | "replaceYamlDraft") {
+                // The editor lints a changed draft after its 450 ms delay.
+                cx.background_executor
+                    .advance_clock(std::time::Duration::from_millis(450));
+                cx.run_until_parked();
+            }
         }
         passed.push(json!({"id": id, "status": "passed"}));
         cx.update_window(handle, |_, window, _| window.remove_window())

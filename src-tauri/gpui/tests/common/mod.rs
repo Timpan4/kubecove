@@ -9,6 +9,7 @@ mod detail_tabs;
 mod live_data;
 mod mcp;
 mod page_reads;
+mod resource_fixture;
 mod session_controls;
 mod settings_integrations;
 mod timing;
@@ -25,11 +26,11 @@ use kubecove_lib::models::{
     AppError, AppErrorKind, ArgoApplicationInspector, ArgoApplicationRef, ArgoApplicationSummary,
     ClusterContext, ClusterOperationResult, DeploymentRevision, HelmReleaseDetails,
     HelmReleaseList, HelmReleaseReconciliation, HelmReleaseSummary, IncidentCockpitSummary,
-    NamespaceSummary, PodExecSessionSummary, PortForwardSessionSummary, RbacAccessReviewRequest,
-    RbacAccessReviewResult, RbacAccessReviewTarget, RbacInspectionSummary, ResourceActionPreview,
-    ResourceActionRequest, ResourceActionState, ResourceActionStateRequest, ResourceDetailsFull,
-    ResourceEventSummary, ResourceSummary, ResourceTopology, YamlApplyPreview, YamlApplyRequest,
-    YamlApplyResult, YamlViewMode,
+    KubernetesYamlLintResult, NamespaceSummary, PodExecSessionSummary, PortForwardSessionSummary,
+    RbacAccessReviewRequest, RbacAccessReviewResult, RbacAccessReviewTarget, RbacInspectionSummary,
+    ResourceActionPreview, ResourceActionRequest, ResourceActionState, ResourceActionStateRequest,
+    ResourceDetailsFull, ResourceEventSummary, ResourceSummary, ResourceTopology, YamlApplyPreview,
+    YamlApplyRequest, YamlApplyResult, YamlViewMode,
 };
 use serde::Deserialize;
 use std::{collections::HashMap, path::Path, sync::Mutex};
@@ -395,7 +396,12 @@ impl Backend for Fixture {
         &self,
         context: String,
     ) -> Read<Vec<kubecove_lib::models::DiscoveredResourceKind>> {
-        let kinds = self.kinds.clone();
+        let missing = *self.shell_read_phase.lock().unwrap() == "kind-missing";
+        let kinds = if missing {
+            Vec::new()
+        } else {
+            self.kinds.clone()
+        };
         self.timing.read("list_resource_kinds", &context, "", kinds)
     }
     fn watch(&self, target: kubecove_gpui::backend::WatchTarget) -> Read<LogStream> {
@@ -413,62 +419,18 @@ impl Backend for Fixture {
         if *self.shell_read_phase.lock().unwrap() == "contexts-empty" {
             return Box::pin(async { Ok(vec![]) });
         }
-        let contexts = self.cluster_contexts.clone();
-        Box::pin(async move { Ok(contexts) })
+        // The saved primary context of the parity workspaces is mock-dev.
+        let missing = *self.shell_read_phase.lock().unwrap() == "primary-context-missing";
+        let available: Vec<_> = self
+            .cluster_contexts
+            .iter()
+            .filter(|context| !(missing && context.name == "mock-dev"))
+            .cloned()
+            .collect();
+        Box::pin(async move { Ok(available) })
     }
     fn resources(&self, scope: Scope, _: bool) -> Read<ScopeResult> {
-        if *self.shell_read_phase.lock().unwrap() == "resources-failed" {
-            return Box::pin(async {
-                Err(AppError::new(
-                    "Scripted resources read failure",
-                    AppErrorKind::Cluster,
-                ))
-            });
-        }
-        if self.failed_workspace_context.lock().unwrap().as_deref() == Some(&scope.context) {
-            return Box::pin(async {
-                Err(AppError::new("Context unavailable", AppErrorKind::Cluster))
-            });
-        }
-        if self.live_failed() {
-            return Box::pin(async {
-                Err(AppError::new(
-                    "Scripted reload failure",
-                    AppErrorKind::Cluster,
-                ))
-            });
-        }
-        // Cluster-scoped kinds come from `cluster_resources`, as in the native backend.
-        // Each context has the exact rows exported by the browser mocks.
-        let resources = self
-            .context_resources
-            .iter()
-            .filter(|row| row.cluster == scope.context)
-            .filter(|row| !CLUSTER_KINDS.contains(&row.kind.as_str()))
-            .filter(|row| {
-                scope.namespace.is_none() || row.namespace.as_deref() == scope.namespace.as_deref()
-            })
-            .map(|row| ResourceSummary {
-                cluster: scope.context.clone(),
-                ..row.clone()
-            })
-            .collect();
-        let resources = self.live_rows(resources);
-        let namespaces = self.namespaces.clone();
-        let read = self.timing.read(
-            "list_resource_scope",
-            &scope.context,
-            scope.namespace.as_deref().unwrap_or_default(),
-            (namespaces, resources),
-        );
-        Box::pin(async move {
-            let (namespaces, resources) = read.await?;
-            Ok(ScopeResult {
-                namespaces,
-                resources,
-                warnings: vec![],
-            })
-        })
+        self.resource_fixture(scope)
     }
     fn details(&self, resource: ResourceSummary) -> Read<ResourceDetailsFull> {
         let found = self
@@ -695,6 +657,18 @@ impl Backend for Fixture {
     }
     fn apply_yaml(&self, request: YamlApplyRequest) -> Read<YamlApplyResult> {
         self.detail_tabs.apply_yaml(request)
+    }
+    fn lint_yaml(&self, request: YamlApplyRequest) -> Read<KubernetesYamlLintResult> {
+        // The browser mock's lint is a command like any other, so the timing gate applies.
+        let context = request.cluster_context.clone();
+        let lint = self.detail_tabs.lint_yaml(&request);
+        let timing = self.timing.clone();
+        Box::pin(async move {
+            let lint = lint?;
+            timing
+                .read("lint_kubernetes_yaml", &context, "", lint)
+                .await
+        })
     }
     fn namespaces(&self, _: String) -> Read<Vec<NamespaceSummary>> {
         if *self.shell_read_phase.lock().unwrap() == "namespaces-failed" {

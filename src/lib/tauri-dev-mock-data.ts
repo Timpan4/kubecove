@@ -151,7 +151,10 @@ export const resources: ResourceSummary[] = [
 	res("Service", "traefik", "traefik", "healthy", undefined, "LoadBalancer", 0, "platform"),
 	res("Secret", "traefik-gateway-tls", "traefik", "unknown", undefined, "Redacted", 0, "platform"),
 	res("Deployment", "payments-api", "payments", "healthy", "3/3", "Synced", 0, "shop"),
-	res("Pod", "payments-api-7d9c9b7f8d-k2r9p", "payments", "attention", "1/1", "Running", 2, "shop"),
+	res("Pod", "payments-api-7d9c9b7f8d-k2r9p", "payments", "attention", "1/1", "Running", 2, "shop", {
+		// Partial completeness drives the table's Partial marker in parity scenarios.
+		healthAssessment: { ...mockHealthAssessment("needsAttention", "attention"), completeness: "partial" },
+	}),
 	res("Pod", "payments-api-7d9c9b7f8d-x4m8v", "payments", "healthy", "1/1", "Running", 0, "shop"),
 	res("Service", "payments-api", "payments", "healthy", undefined, "ClusterIP", 0, "shop"),
 	res("Ingress", "payments-api", "payments", "degraded", undefined, "MissingBackend", 0, "shop", { apiVersion: "networking.k8s.io/v1" }),

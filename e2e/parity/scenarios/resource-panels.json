@@ -1,0 +1,61 @@
+{
+	"fixture": "browser-mocks",
+	"context": "mock-dev",
+	"scenarios": [
+		{
+			"id": "resources.panels-collapse-restore",
+			"title": "The ownership map and resource table collapse and restore independently",
+			"steps": [
+				{ "action": "openResources" },
+				{ "action": "expectPanelControl", "control": "Collapse ownership map", "present": true },
+				{ "action": "expectPanelControl", "control": "Collapse resource table", "present": true },
+				{ "action": "panelControl", "control": "Collapse ownership map" },
+				{ "action": "expectPanelControl", "control": "Show ownership map", "present": true },
+				{ "action": "expectPanelControl", "control": "Collapse ownership map", "present": false },
+				{ "action": "expectPanelControl", "control": "Collapse resource table", "present": true },
+				{ "action": "panelControl", "control": "Collapse resource table" },
+				{ "action": "expectPanelControl", "control": "Show resource table", "present": true },
+				{ "action": "expectPanelControl", "control": "Show ownership map", "present": true },
+				{ "action": "panelControl", "control": "Show ownership map" },
+				{ "action": "expectPanelControl", "control": "Collapse ownership map", "present": true },
+				{ "action": "expectPanelControl", "control": "Show resource table", "present": true },
+				{ "action": "panelControl", "control": "Show resource table" },
+				{ "action": "expectPanelControl", "control": "Collapse resource table", "present": true }
+			]
+		},
+		{
+			"id": "resources.graph-keyboard-skip",
+			"title": "Graph nodes take focus in order with Tab, and skip graph moves focus past the graph",
+			"steps": [
+				{ "action": "openResources" },
+				{ "action": "selectNamespace", "namespace": "payments" },
+				{ "action": "selectTopologyNode", "id": "mock-dev:apps/v1:Deployment:payments:payments-api" },
+				{ "action": "expectMapFocus", "id": "mock-dev:apps/v1:Deployment:payments:payments-api" },
+				{ "action": "mapKey", "key": "Tab" },
+				{ "action": "expectNoMapFocus", "id": "mock-dev:apps/v1:Deployment:payments:payments-api" },
+				{ "action": "skipGraph" },
+				{ "action": "expectNoMapFocus", "id": "mock-dev:apps/v1:Deployment:payments:payments-api" }
+			]
+		},
+		{
+			"id": "resources.detail-resize-keys",
+			"title": "The detail splitter resizes with the arrow, Home and End keys within the web's limits",
+			"steps": [
+				{ "action": "openResources" },
+				{ "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+				{ "action": "expectDetailResize", "value": 40 },
+				{ "action": "resizeDetail", "key": "ArrowLeft" },
+				{ "action": "expectDetailResize", "value": 42 },
+				{ "action": "resizeDetail", "key": "ArrowRight" },
+				{ "action": "resizeDetail", "key": "ArrowRight" },
+				{ "action": "expectDetailResize", "value": 38 },
+				{ "action": "resizeDetail", "key": "End" },
+				{ "action": "expectDetailResize", "value": 70 },
+				{ "action": "resizeDetail", "key": "Home" },
+				{ "action": "expectDetailResize", "value": 33 },
+				{ "action": "resizeDetail", "key": "ArrowRight" },
+				{ "action": "expectDetailResize", "value": 33 }
+			]
+		}
+	]
+}

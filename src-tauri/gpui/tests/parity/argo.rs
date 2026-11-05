@@ -119,6 +119,8 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 "All changes" => "argo-all-changes",
                 "Show diff" => "argo-removal::secret:argocd:argocd-secret",
                 "Show fewer lines" => "argo-diff-lines:0",
+                "Sync options" => "argo-sync-options",
+                "Sync with these options" => "argo-sync-advanced",
                 other => panic!("unknown Argo control {other}"),
             };
             reveal(window, "detail-body", id, cx);
@@ -229,6 +231,9 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 reveal(window, "detail-body", id, cx);
                 window.click(id, cx);
             }
+            reveal(window, "detail-body", "argo-sync-advanced", cx);
+            window.click("argo-sync-advanced", cx);
+            window.render_frame(cx);
             reveal(window, "detail-body", "argo-sync-name", cx);
             replace_text(window, cx, "argo-sync-name", string(step, "name"));
         }

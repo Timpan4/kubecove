@@ -1,4 +1,5 @@
-//! Sync options keep the Application-name confirmation guard.
+//! Sync options follow the Svelte flow. Choices beyond the Application defaults
+//! open the Application-name confirmation before the reviewed operation starts.
 use super::{
     Inspector,
     argo_tab::ArgoTab,
@@ -8,6 +9,7 @@ use crate::ui;
 use gpui_kit::{
     AppContext, Context, Div, Entity, TestSupportExt, Window,
     component::input::{Input, InputState},
+    div,
     prelude::*,
     px,
 };
@@ -36,6 +38,8 @@ impl gpui_kit::component::searchable_list::SearchableListItem for HistoryChoice 
 }
 pub(super) struct Options {
     pub open: bool,
+    /// Second step of Sync with options: the name confirmation is shown.
+    pub confirming: bool,
     pub revision: Entity<InputState>,
     pub name: Entity<InputState>,
     pub prune: Option<bool>,
@@ -76,6 +80,7 @@ impl Options {
             picker,
             _subscription: subscription,
             open: false,
+            confirming: false,
             revision: cx.new(|cx| InputState::new(window, cx)),
             name: cx.new(|cx| InputState::new(window, cx)),
             prune: None,
@@ -85,43 +90,62 @@ impl Options {
         }
     }
 }
+
+/// Any choice away from the Application defaults. Prune counts whenever it was
+/// toggled, which is stricter than the web's comparison against the Application policy.
+fn needs_confirmation(state: &ArgoTab, cx: &gpui_kit::App) -> bool {
+    let options = &state.options;
+    options.prune.is_some()
+        || options.dry_run
+        || options.force
+        || !options.revision.read(cx).value().as_str().trim().is_empty()
+}
+
+fn choice(label: &'static str, checked: bool, cx: &mut Context<Inspector>) -> gpui_kit::AnyElement {
+    button(Variant::Outline, 24., false)
+        .id(gpui_kit::SharedString::from(format!("argo-sync:{label}")))
+        .test_support()
+        .flex_1()
+        .child(
+            div()
+                .size(px(14.))
+                .flex_none()
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(3.))
+                .border_1()
+                .border_color(crate::theme::Tokens::border())
+                .when(checked, |boxed| {
+                    boxed.bg(crate::theme::Tokens::primary()).child(ui::icon(
+                        "check",
+                        10.,
+                        crate::theme::Tokens::primary_foreground(),
+                    ))
+                }),
+        )
+        .child(label)
+        .on_click(cx.listener(move |this, _, _, cx| {
+            if let Some(s) = this.argo_tab_state() {
+                match label {
+                    "Prune" => s.options.prune = Some(!s.options.prune.unwrap_or(false)),
+                    "Dry run" => s.options.dry_run = !s.options.dry_run,
+                    _ => s.options.force = !s.options.force,
+                };
+                cx.notify();
+            }
+        }))
+        .into_any_element()
+}
+
 pub(super) fn panel(state: &ArgoTab, name: &str, cx: &mut Context<Inspector>) -> Div {
     let mut panel = super::argo_panels::panel().flex().flex_col().gap(px(8.));
-    if state.options.open {
+    if !state.options.open {
+        return panel;
+    }
+    if state.options.confirming {
         panel = panel
-            .child(ui::xs(
-                "Sync with options. Choices beyond Application defaults require confirmation.",
-            ))
-            .child(
-                Input::new(&state.options.revision)
-                    .id("argo-sync-revision")
-                    .aria_label("Revision override"),
-            )
-            .children(["Prune", "Dry run", "Force / replace"].map(|label| {
-                button(Variant::Outline, 24., false)
-                    .id(gpui_kit::SharedString::from(format!("argo-sync:{label}")))
-                    .test_support()
-                    .child(format!(
-                        "{label}: {}",
-                        match label {
-                            "Prune" => state.options.prune.unwrap_or(false),
-                            "Dry run" => state.options.dry_run,
-                            _ => state.options.force,
-                        }
-                    ))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        if let Some(s) = this.argo_tab_state() {
-                            match label {
-                                "Prune" => {
-                                    s.options.prune = Some(!s.options.prune.unwrap_or(false))
-                                }
-                                "Dry run" => s.options.dry_run = !s.options.dry_run,
-                                _ => s.options.force = !s.options.force,
-                            };
-                            cx.notify();
-                        }
-                    }))
-            }))
+            .child(ui::sm("Confirm advanced sync"))
             .child(ui::xs(format!("Type {name} to confirm advanced sync")))
             .child(
                 Input::new(&state.options.name)
@@ -130,14 +154,64 @@ pub(super) fn panel(state: &ArgoTab, name: &str, cx: &mut Context<Inspector>) ->
             )
             .child(
                 button(Variant::Default, 24., false)
-                    .id("argo-sync-advanced")
+                    .id("argo-sync-confirm")
                     .test_support()
-                    .child("Review advanced sync")
+                    .child("Confirm sync")
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.review_argo_operation("Advanced Sync", window, cx)
                     })),
+            )
+            .child(
+                button(Variant::Outline, 24., false)
+                    .id("argo-sync-back")
+                    .test_support()
+                    .child("Back")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        if let Some(s) = this.argo_tab_state() {
+                            s.options.confirming = false;
+                            cx.notify();
+                        }
+                    })),
             );
+        return panel;
     }
+    panel = panel
+        .child(ui::sm("Sync with options"))
+        .child(ui::xs(
+            "Main Sync uses Application defaults. Choices beyond those defaults require confirmation.",
+        ))
+        .child(ui::xs("Revision override"))
+        .child(
+            Input::new(&state.options.revision)
+                .id("argo-sync-revision")
+                .aria_label("Revision override"),
+        )
+        .child(
+            div()
+                .flex()
+                .gap(px(6.))
+                .child(choice("Prune", state.options.prune.unwrap_or(false), cx))
+                .child(choice("Dry run", state.options.dry_run, cx)),
+        )
+        .child(choice("Force / replace", state.options.force, cx))
+        .child(
+            button(Variant::Default, 24., false)
+                .id("argo-sync-advanced")
+                .test_support()
+                .w_full()
+                .child("Sync with these options")
+                .on_click(cx.listener(|this, _, window, cx| {
+                    let Some(state) = this.argo_tab_state() else {
+                        return;
+                    };
+                    if needs_confirmation(state, cx) {
+                        state.options.confirming = true;
+                        cx.notify();
+                    } else {
+                        this.review_argo_operation("Sync", window, cx);
+                    }
+                })),
+        );
     panel
 }
 
@@ -157,6 +231,7 @@ fn trigger(disabled: bool, cx: &mut Context<Inspector>) -> gpui_kit::AnyElement 
             }
             if let Some(s) = this.argo_tab_state() {
                 s.options.open = !s.options.open;
+                s.options.confirming = false;
                 cx.notify();
             }
         }))
@@ -170,41 +245,61 @@ pub(super) fn controls(
     cx: &mut Context<Inspector>,
 ) -> Div {
     use crate::theme::Tokens;
-    use gpui_kit::{SharedString, div};
-    let busy = pending
-        || matches!(
-            state.operation.phase,
-            super::argo_operations::Phase::Checking
-                | super::argo_operations::Phase::Submitting
-                | super::argo_operations::Phase::Unconfirmed(_)
-        );
-    let operation =
-        |label: &'static str, variant, cx: &mut Context<Inspector>| {
-            button(variant, 24., busy)
-                .id(SharedString::from(format!("argo-operation:{label}")))
-                .test_support()
-                .when(label != "Rollback", |b| {
-                    b.child(ui::icon(
-                        if busy {
-                            "loader-circle"
-                        } else if label == "Refresh" {
-                            "refresh-cw"
-                        } else {
-                            "rotate-ccw"
-                        },
-                        12.,
-                        if label == "Sync" {
-                            Tokens::primary_foreground()
-                        } else {
-                            Tokens::foreground()
-                        },
-                    ))
-                })
-                .child(label)
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    this.review_argo_operation(label, window, cx)
-                }))
+    use gpui_kit::SharedString;
+    let operation_active = matches!(
+        state.operation.phase,
+        super::argo_operations::Phase::Checking
+            | super::argo_operations::Phase::Submitting
+            | super::argo_operations::Phase::Unconfirmed(_)
+    );
+    let busy = pending || operation_active;
+    // Only the button that started the in-flight operation shows a spinner.
+    let in_flight = state
+        .operation
+        .last_request
+        .as_ref()
+        .map(|request| request.action.as_str());
+    let refreshing = operation_active && matches!(in_flight, Some("refresh" | "hardRefresh"));
+    let syncing = operation_active && in_flight == Some("sync");
+    let has_previous = state
+        .inspector
+        .as_ref()
+        .is_some_and(|snapshot| snapshot.history.len() > 1);
+    let operation = |label: &'static str, variant, cx: &mut Context<Inspector>| {
+        let disabled = busy || (label == "Rollback" && !has_previous);
+        let spinning = match label {
+            "Refresh" | "Hard refresh" => refreshing,
+            "Sync" => syncing,
+            _ => false,
         };
+        button(variant, 24., disabled)
+            .id(SharedString::from(format!("argo-operation:{label}")))
+            .test_support()
+            .when(label != "Rollback", |b| {
+                b.child(ui::icon(
+                    if spinning {
+                        "loader-circle"
+                    } else if label == "Refresh" {
+                        "refresh-cw"
+                    } else {
+                        "rotate-ccw"
+                    },
+                    12.,
+                    if label == "Sync" {
+                        Tokens::primary_foreground()
+                    } else {
+                        Tokens::foreground()
+                    },
+                ))
+            })
+            .child(label)
+            .on_click(cx.listener(move |this, _, window, cx| {
+                if disabled {
+                    return;
+                }
+                this.review_argo_operation(label, window, cx)
+            }))
+    };
     div().flex().flex_wrap().gap(px(6.))
         .child(operation("Rollback", Variant::Outline, cx))
         .child(div().relative().flex()

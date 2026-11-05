@@ -119,17 +119,21 @@ impl Inspector {
             .map(|state| state.app.name.as_str())
     }
 
+    /// The Application whose resources the Resources page shows in this context.
+    pub(super) fn focused_application(&self) -> Option<&ArgoApplicationSummary> {
+        self.gitops_page
+            .workspace
+            .as_ref()
+            .filter(|state| self.page == Page::Resources && state.app.cluster == self.scope.context)
+            .map(|state| &state.app)
+    }
+
     pub(super) fn application_resources_read(
         &self,
         mut refresh: bool,
         cx: &Context<Self>,
     ) -> crate::backend::Read<crate::backend::ScopeResult> {
-        let application = self
-            .gitops_page
-            .workspace
-            .as_ref()
-            .filter(|state| self.page == Page::Resources && state.app.cluster == self.scope.context)
-            .map(|state| state.app.clone());
+        let application = self.focused_application().cloned();
         let backend = self.backend.clone();
         let scope = self.scope.clone();
         crate::read_retry::read(cx.background_executor().clone(), move || {

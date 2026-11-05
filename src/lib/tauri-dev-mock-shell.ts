@@ -1,8 +1,9 @@
-export type ShellReadPhase = "ready" | "contexts-failed" | "contexts-empty" | "namespaces-failed" | "namespaces-empty" | "resources-failed";
+export type ShellReadPhase = "ready" | "contexts-failed" | "contexts-empty" | "namespaces-failed" | "namespaces-empty" | "resources-failed" | "primary-context-missing" | "kind-missing" | "payments-api-removed";
 function initialPhase(): ShellReadPhase {
     const value = globalThis.sessionStorage?.getItem("parity-shell-read");
     switch (value) {
-        case "contexts-failed": case "contexts-empty": case "namespaces-failed": case "namespaces-empty": case "resources-failed": return value;
+        case "contexts-failed": case "contexts-empty": case "namespaces-empty": case "namespaces-failed": case "resources-failed":
+        case "primary-context-missing": case "kind-missing": case "payments-api-removed": return value;
         default: return "ready";
     }
 }
@@ -13,8 +14,17 @@ export function configureShellRead(next: ShellReadPhase): void {
     globalThis.sessionStorage?.setItem("parity-shell-read", next);
 }
 
-export function shellRead<Item>(read: "contexts" | "namespaces" | "resources", items: Item[]): Item[] {
+export function shellRead<Item>(read: "contexts" | "namespaces" | "resources" | "kinds", items: Item[]): Item[] {
     if (phase === `${read}-failed`) throw new Error(`Scripted ${read} read failure`);
-    const empty = (read === "contexts" && phase === "contexts-empty") || (read === "namespaces" && phase === "namespaces-empty");
-    return empty ? [] : items;
+    if ((read === "namespaces" && phase === "namespaces-empty") || (read === "contexts" && phase === "contexts-empty")) return [];
+    // The saved primary context of the parity workspaces is mock-dev.
+    if (read === "contexts" && phase === "primary-context-missing") return items.filter((item) => (item as { name?: string }).name !== "mock-dev");
+    if (read === "kinds" && phase === "kind-missing") return [];
+    return items;
+}
+
+/** Removes the scripted Deployment from scope reads, as if it were deleted from the cluster. */
+export function shellWithoutRemoved<Row extends { kind: string; namespace?: string | null; name: string }>(rows: Row[]): Row[] {
+    if (phase !== "payments-api-removed") return rows;
+    return rows.filter((row) => !(row.kind === "Deployment" && row.namespace === "payments" && row.name === "payments-api"));
 }

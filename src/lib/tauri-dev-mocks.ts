@@ -20,13 +20,16 @@ import {
 	resources,
 	source,
 } from "./tauri-dev-mock-data";
+import { withDetailStatusFixture } from "./tauri-dev-mock-detail-status";
 import { evictedWorkerName, evictedWorkerStatus } from "./tauri-dev-mock-incidents";
+import { lintMockYaml } from "./tauri-dev-mock-lint";
 import { liveEvents, liveResources, registerMockWatch, stopMockWatch } from "./tauri-dev-mock-live";
 import { operationMockHandlers } from "./tauri-dev-mock-operations";
 import { pageReadResult } from "./tauri-dev-mock-pages";
 import { rbacInspectionMock, rbacReviewMock } from "./tauri-dev-mock-rbac";
 import { cleanupMockSessions, listMockExecs, listMockForwards, mockExecInput, resizeMockExec, startMockExec, startMockForward, stopMockExec, stopMockForward } from "./tauri-dev-mock-session-controls";
-import { shellRead } from "./tauri-dev-mock-shell";
+import { shellRead, shellWithoutRemoved } from "./tauri-dev-mock-shell";
+import { mockTiming } from "./tauri-dev-mock-timing";
 import { createMockChannel, type TauriClient } from "./tauri-runtime";
 import type {
 	AppUsageMetrics,
@@ -49,7 +52,6 @@ import type {
 	YamlApplyPreview,
 } from "./types";
 import { formatYamlDocument } from "./yamlFormat";
-import { mockTiming } from "./tauri-dev-mock-timing";
 
 
 let failedWorkspaceContext: string | undefined;
@@ -125,7 +127,7 @@ const handlers = {
 	reorder_kubeconfig_paths: kubeconfigSources,
 	list_kube_contexts: () => shellRead("contexts", mockContexts),
 	list_namespaces: () => shellRead("namespaces", namespaces),
-	list_resource_kinds: () => customResourceKinds(),
+	list_resource_kinds: () => shellRead("kinds", customResourceKinds()),
 	list_present_custom_resource_kinds: (args) =>
 		presentCustomResourceKinds(args?.namespaces),
 	list_resources: (args) => filterResources(args?.kind, args?.namespace ?? undefined, args?.clusterContext),
@@ -136,16 +138,16 @@ const handlers = {
         shellRead("resources", []);
         if (failedWorkspaceContext && args.clusterContext === failedWorkspaceContext) throw new Error("Context unavailable");
         return {
-		resources: listScope(args?.requests, args?.clusterContext),
+		resources: shellWithoutRemoved(listScope(args?.requests, args?.clusterContext)),
 		completedRequests: args?.requests ?? [],
 		failures: [],
 	}; },
 	get_resource_yaml: (args) => builtInYamlFor(args),
-	get_resource_details: (args) => detailsFor(args),
-	get_dynamic_resource_details: (args) => detailsFor(args),
+	get_resource_details: (args) => withDetailStatusFixture(detailsFor(args)),
+	get_dynamic_resource_details: (args) => withDetailStatusFixture(detailsFor(args)),
 	prepare_yaml_apply: (args) => coverageYamlPreview(args?.request?.forceConflicts, applyPreview(args)),
 	apply_yaml: unavailable("YAML apply is unavailable in browser mock mode."),
-	lint_kubernetes_yaml: () => ({ diagnostics: [], notes: [] }),
+	lint_kubernetes_yaml: (args) => lintMockYaml(args.request),
 	list_resource_events: (args) => eventsFor(args),
 	list_resource_topology: (args) => coverageTopology(topologyFor(args)),
 	refresh_resource_cache: () => ({ clearedEntries: 1 }),
@@ -226,11 +228,8 @@ function detailsFor(args: MockArgs): ResourceDetailsFull {
 	return {
 		summary,
 		yaml: args.yamlEncoding === "kyaml" ? formatYamlDocument(yaml, "kyaml") : yaml,
-		metadata: { labels: { "app.kubernetes.io/name": summary.name }, annotations: { "kubecove.dev/mock": "true" } },
-		status: summary.name === evictedWorkerName
-			? evictedWorkerStatus
-            : { phase: summary.status, ready: summary.ready, restarts: summary.restarts,
-                ...(summary.kind === "Pod" && summary.namespace === "payments" && summary.name === "payments-api-7d9c9b7f8d-k2r9p" ? { containerStatuses: ["app", "sidecar"].map((name) => ({ name, ready: true, restartCount: 0, state: { running: { startedAt: now } } })) } : {}) },
+		metadata: {},
+		status: summary.name === evictedWorkerName ? evictedWorkerStatus : {},
 	};
 }
 

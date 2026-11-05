@@ -262,6 +262,7 @@ impl Inspector {
                 div()
                     .id(SharedString::from(row.id))
                     .test_support()
+                    .aria_selected(selected)
                     .relative()
                     .flex()
                     .flex_none()

@@ -330,7 +330,7 @@ fn check_list(
 }
 
 /// `h-7 gap-2 rounded-sm px-2 text-xs` with a `Checkbox`.
-fn check_row(id: SharedString, label: &str, checked: bool, disabled: bool) -> Observed {
+pub(super) fn check_row(id: SharedString, label: &str, checked: bool, disabled: bool) -> Observed {
     div()
         .id(id)
         .test_support()

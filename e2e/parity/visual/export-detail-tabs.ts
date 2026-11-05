@@ -8,6 +8,7 @@ import type { TauriClient } from "../../../src/lib/tauri";
 import type {
 	ClusterOperationResult,
 	DeploymentRevision,
+	KubernetesYamlLintResult,
 	ResourceActionPreview,
 	ResourceActionRequest,
 	ResourceActionState,
@@ -17,6 +18,11 @@ import type {
 } from "../../../src/lib/types";
 
 const ACTION_KINDS = new Set(["Deployment", "StatefulSet", "DaemonSet", "Pod", "ConfigMap"]);
+/** Drafts `yaml-lint-permissions.json` types into the editor. Each must match its step exactly. */
+const LINT_DRAFTS = [
+	"apiVersion: apps/v1\nkind: StatefulSet\nmetadata:\n  name: payments-api\n  namespace: payments\n",
+	"apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: payments-api\n  namespace: payments\n",
+];
 
 export async function streamMessages(client: TauriClient, command: string, request: object): Promise<StreamMessage[]> {
 	const messages: StreamMessage[] = [];
@@ -100,5 +106,11 @@ export async function exportDetailTabs(client: TauriClient, resources: ResourceS
 	const yamlApply = [{ request: yamlRequest, preview, applyError }];
 	const forcedRequest = { ...yamlRequest, forceConflicts: true };
 	yamlApply.push({ request: forcedRequest, preview: await client.invoke<YamlApplyPreview>("prepare_yaml_apply", { request: forcedRequest }), applyError });
-	return { logs, revisions, actions: { states, pausedState, previews, executions }, yamlApply, yamlReads };
+	// The editor lints the loaded draft and each typed draft, with the request the pane sends.
+	const yamlLint = [];
+	for (const yaml of [draft, ...LINT_DRAFTS]) {
+		const request = buildYamlApplyRequest({ resource: focus, yaml, yamlEncoding: "yaml", forceConflicts: false });
+		yamlLint.push({ request, result: await client.invoke<KubernetesYamlLintResult>("lint_kubernetes_yaml", { request }) });
+	}
+	return { logs, revisions, actions: { states, pausedState, previews, executions }, yamlApply, yamlLint, yamlReads };
 }

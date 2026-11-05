@@ -90,6 +90,8 @@
 		createWorkspaceNavigation,
 		navigateWorkspace,
 		treeNodeForResource,
+		rememberedWorkspacePath,
+		rememberWorkspacePath,
 		workspacePathForWorkspace,
 		workspaceNavigationSnapshot,
 		type WorkspaceNavigationIntent,
@@ -126,7 +128,10 @@
 		}),
 	);
 	function initialPathSnapshotForWorkspace() {
-		return workspacePathForWorkspace(workspace, initialPathState);
+		return workspacePathForWorkspace(
+			workspace,
+			initialPathState ?? rememberedWorkspacePath(workspace.id),
+		);
 	}
 	const initialPathSnapshot = initialPathSnapshotForWorkspace();
 	function initialWorkspaceNavigation() {
@@ -374,11 +379,13 @@
 	}
 
 	$effect(() => {
+		const workspacePath = currentPathState();
+		rememberWorkspacePath(workspacePath);
 		schedulePathStateWrite({
 			version: 1,
 			runtime: "svelte",
 			launcherView: "workspaces",
-			workspace: currentPathState(),
+			workspace: workspacePath,
 		});
 	});
 

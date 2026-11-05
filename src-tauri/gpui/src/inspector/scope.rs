@@ -1,6 +1,8 @@
 //! Context and resource-scope reads, refresh, and visible resource filtering.
 
+use super::custom_resources::CustomLoad;
 use super::{Inspector, Load, map};
+use crate::backend::ScopeResult;
 use crate::collate::collate;
 use crate::model::{HealthSummary, gitops_owner_filter};
 use gpui_kit::component::select::SearchableVec;
@@ -83,30 +85,54 @@ impl Inspector {
         self.load = Load::Loading;
         self.rows.clear();
         self.warnings.clear();
+        self.prepare_rows();
         self.filter(cx);
-        let read = self.application_resources_read(refresh, cx);
-        let read = self.timings.measure("list_resource_scope", read);
+        let (builtin, custom) = self.scope_reads(refresh, cx);
+        let builtin = self.timings.measure("list_resource_scope", builtin);
+        self.custom_load = if custom.is_some() {
+            CustomLoad::Loading
+        } else {
+            CustomLoad::Idle
+        };
+        // One task, so dropping it (a newer scope or refresh) cancels the custom read too.
         self.scope_task = Some(cx.spawn_in(window, async move |this, cx| {
-            let result = read.await;
-            let _ = this.update(cx, |this, cx| {
+            let result = builtin.await;
+            let applied = this.update(cx, |this, cx| {
                 if !Rc::ptr_eq(&this.request, &request) {
-                    return;
+                    return false;
                 }
                 this.live.scope_loading = false;
-                match result {
+                let ready = match result {
                     Ok(result) => {
                         this.namespaces = result.namespaces;
                         this.rows = result.resources;
                         this.warnings = result.warnings;
                         this.load = Load::Ready;
+                        true
                     }
                     Err(error) => {
                         this.live.refresh_error = Some(error.message.clone());
                         this.load = Load::Failed(error.message);
+                        this.custom_load = CustomLoad::Idle;
+                        false
                     }
-                }
+                };
+                this.prepare_rows();
                 this.filter(cx);
                 cx.notify();
+                ready
+            });
+            let Some(custom) = custom else {
+                return;
+            };
+            if !matches!(applied, Ok(true)) {
+                return;
+            }
+            let result = custom.await;
+            let _ = this.update(cx, |this, cx| {
+                if Rc::ptr_eq(&this.request, &request) {
+                    this.apply_custom_resources(result, cx);
+                }
             });
         }));
         // The map loads on its own, like the web's topology query, so a
@@ -199,6 +225,8 @@ impl Inspector {
                             this.namespaces = result.namespaces;
                             this.warnings = result.warnings;
                             this.load = Load::Ready;
+                            this.custom_load = CustomLoad::Ready;
+                            this.prepare_rows();
                             this.filter(cx);
                         }
                         Err(error) => this.live.refresh_error = Some(error.message),
@@ -222,7 +250,7 @@ impl Inspector {
         let mut owner_map = BTreeMap::new();
         let mut summary = HealthSummary::default();
         let mut visible = Vec::new();
-        for row in self.rows.iter().chain(self.cluster_rows()) {
+        for row in self.prepared.iter().chain(self.cluster_prepared()) {
             if !(self.row_visible(row, "", &kinds) && self.filters.in_namespace(row)) {
                 continue;
             }
@@ -248,6 +276,49 @@ impl Inspector {
         self.visible = visible;
         self.rebuild_map();
         cx.notify();
+    }
+
+    /// Resolves inherited GitOps owners. Call once per change to `rows` or the
+    /// cluster rows; filtering, grouping and search then read the result.
+    pub(super) fn prepare_rows(&mut self) {
+        self.prepared = crate::model::inherit_gitops_owners(&self.rows);
+        self.cluster.prepared = crate::model::inherit_gitops_owners(&self.cluster.rows);
+    }
+
+    /// The resource scope read in two stages: built-ins first, then custom kinds.
+    /// A focused GitOps application keeps its single application read.
+    fn scope_reads(
+        &self,
+        mut refresh: bool,
+        cx: &Context<Self>,
+    ) -> (
+        crate::backend::Read<ScopeResult>,
+        Option<crate::backend::Read<ScopeResult>>,
+    ) {
+        if self.focused_application().is_some() {
+            return (self.application_resources_read(refresh, cx), None);
+        }
+        let backend = self.backend.clone();
+        let scope = self.scope.clone();
+        let custom = self
+            .backend
+            .scope_custom_resources(scope.clone())
+            .map(|first| {
+                let backend = self.backend.clone();
+                let scope = scope.clone();
+                let mut first = Some(first);
+                crate::read_retry::read(cx.background_executor().clone(), move || {
+                    first.take().unwrap_or_else(|| {
+                        backend
+                            .scope_custom_resources(scope.clone())
+                            .expect("custom read remains available")
+                    })
+                })
+            });
+        let builtin = crate::read_retry::read(cx.background_executor().clone(), move || {
+            backend.scope_builtin_resources(scope.clone(), std::mem::take(&mut refresh))
+        });
+        (builtin, custom)
     }
 
     /// Rows in the saved workspace kinds, which the overview summarizes.

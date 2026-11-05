@@ -1,6 +1,6 @@
 use super::Fixture;
 use kubecove_gpui::backend::{
-    KubeconfigSourcesSummary, Read, RemoteConnectionSummary, UpdateStatus,
+    AvailableUpdate, KubeconfigSourcesSummary, Read, RemoteConnectionSummary, UpdateStatus,
 };
 use kubecove_lib::models::{AppError, AppErrorKind};
 use std::sync::Mutex;
@@ -20,6 +20,9 @@ impl Fixture {
             ),
             "choose-unavailable-workspace" => Some(
                 include_str!("../../../../src/lib/overview-unavailable-workspace.json").to_owned(),
+            ),
+            "choose-application-workspace" => Some(
+                include_str!("../../../../src/lib/overview-application-workspace.json").to_owned(),
             ),
             _ => None,
         };
@@ -161,14 +164,20 @@ impl Fixture {
     pub(super) fn updates_enabled_read(&self) -> bool {
         matches!(
             self.settings.script.lock().unwrap().as_str(),
-            "no-update" | "invalid-signature"
+            "no-update" | "invalid-signature" | "update-available"
         )
     }
     pub(super) fn check_updates_read(&self) -> Read<UpdateStatus> {
-        let status = if *self.settings.script.lock().unwrap() == "invalid-signature" {
-            UpdateStatus::Available("0.14.0".into())
-        } else {
-            UpdateStatus::UpToDate
+        let status = match self.settings.script.lock().unwrap().as_str() {
+            "invalid-signature" => UpdateStatus::Available(AvailableUpdate {
+                version: "0.14.0".into(),
+                notes: None,
+            }),
+            "update-available" => UpdateStatus::Available(AvailableUpdate {
+                version: "0.14.0".into(),
+                notes: Some("Fixes topology edges.".into()),
+            }),
+            _ => UpdateStatus::UpToDate,
         };
         Box::pin(async move { Ok(status) })
     }

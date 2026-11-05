@@ -1,15 +1,22 @@
-//! Pan, zoom and viewport culling for `OwnershipMap.svelte`.
+//! Pan, zoom, viewport culling and node focus for `OwnershipMap.svelte`.
 use super::cards::{group_card, resource_card, selection_ring};
 use super::paint::{EdgePaint, paint_edges};
-use super::{HANDLE_HALF, Inspector, MapClick, ZOOM_STEP};
+use super::{HANDLE_HALF, Inspector, ZOOM_STEP};
 use crate::{
     theme::Tokens,
     topology::{self, FlowItem, Viewport},
     ui,
 };
 use gpui_kit::TestSupportExt;
-use gpui_kit::{AnyElement, Context, Div, MouseButton, SharedString, canvas, div, prelude::*, px};
+use gpui_kit::{
+    AnyElement, Context, Div, KeyDownEvent, MouseButton, SharedString, Window, canvas, div,
+    prelude::*, px,
+};
 use std::rc::Rc;
+
+/// `OwnershipMap.svelte`: graphs below this many nodes and edges stay fully
+/// mounted so Tab reaches offscreen nodes. Larger graphs render visible nodes only.
+const VISIBLE_ELEMENT_RENDER_THRESHOLD: usize = 120;
 
 impl Inspector {
     pub(super) fn map_viewport(
@@ -23,6 +30,7 @@ impl Inspector {
             (Some((base, current)), Some(fit)) if base == fit => Some(current),
             _ => fit,
         };
+        let cull = view.nodes.len() + view.edges.len() >= VISIBLE_ELEMENT_RENDER_THRESHOLD;
         let size = self.map.size.clone();
         let entity = cx.entity_id();
         let mut edge_cache = self.map.edge_cache.borrow_mut();
@@ -79,14 +87,16 @@ impl Inspector {
                 let z = viewport.zoom;
                 view.nodes
                     .iter()
-                    .filter(|node| {
-                        node.x * z + viewport.x <= width
-                            && (node.x + node.width) * z + viewport.x >= 0.
-                            && node.y * z + viewport.y <= height
-                            && (node.y + node.height) * z + viewport.y >= 0.
+                    .enumerate()
+                    .filter(|(_, node)| {
+                        !cull
+                            || (node.x * z + viewport.x <= width
+                                && (node.x + node.width) * z + viewport.x >= 0.
+                                && node.y * z + viewport.y <= height
+                                && (node.y + node.height) * z + viewport.y >= 0.)
                     })
-                    .map(|node| {
-                        let (id, content, click): (SharedString, Div, MapClick) = match &node.item {
+                    .map(|(index, node)| {
+                        let (id, content): (SharedString, Div) = match &node.item {
                             FlowItem::Resource(resource) => (
                                 format!("map-node:{}", resource.id).into(),
                                 resource_card(
@@ -96,11 +106,6 @@ impl Inspector {
                                     self.map.network,
                                     self.resource_metric(&resource.summary),
                                 ),
-                                MapClick::Resource(
-                                    resource
-                                        .selectable
-                                        .then(|| Box::new(resource.summary.clone())),
-                                ),
                             ),
                             FlowItem::Group {
                                 kind,
@@ -109,7 +114,6 @@ impl Inspector {
                             } => (
                                 format!("map-group:{kind}").into(),
                                 group_card(kind, members.len(), *expanded, node.dimmed, z),
-                                MapClick::Group(kind.clone()),
                             ),
                         };
                         div()
@@ -121,21 +125,24 @@ impl Inspector {
                             .w(px(node.width * z))
                             .h(px(node.height * z))
                             .cursor_pointer()
+                            .when_some(self.map.node_focus.get(index), |item, focus| {
+                                item.track_focus(focus)
+                                    .tab_stop(true)
+                                    .focus(|style| style.border_2().border_color(Tokens::ring()))
+                            })
                             .children(selection_ring(node, z))
                             .child(content)
-                            .on_click(cx.listener(move |this, _, window, cx| match &click {
-                                MapClick::Resource(Some(resource)) => {
-                                    this.open_resource((**resource).clone(), window, cx)
-                                }
-                                MapClick::Resource(None) => {}
-                                MapClick::Group(kind) => {
-                                    if !this.map.expanded.remove(kind) {
-                                        this.map.expanded.insert(kind.clone());
-                                    }
-                                    this.rebuild_map();
-                                    cx.notify();
-                                }
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.activate_map_node(index, window, cx);
                             }))
+                            .on_key_down(cx.listener(
+                                move |this, event: &KeyDownEvent, window, cx| {
+                                    if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                                        this.activate_map_node(index, window, cx);
+                                        cx.stop_propagation();
+                                    }
+                                },
+                            ))
                             .into_any_element()
                     })
                     .collect()
@@ -261,5 +268,34 @@ impl Inspector {
                 cx.listener(|this, _, _, _| this.map.drag = None),
             )
             .into_any_element()
+    }
+
+    /// Selects a resource or expands a group. Clicks and Enter or Space on a
+    /// focused node share this path, so keyboard and pointer behave the same.
+    pub(super) fn activate_map_node(
+        &mut self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(view) = self.map.cache.clone() else {
+            return;
+        };
+        let Some(node) = view.nodes.get(index) else {
+            return;
+        };
+        match &node.item {
+            FlowItem::Resource(resource) if resource.selectable => {
+                self.open_resource(resource.summary.clone(), window, cx);
+            }
+            FlowItem::Resource(_) => {}
+            FlowItem::Group { kind, .. } => {
+                if !self.map.expanded.remove(kind) {
+                    self.map.expanded.insert(kind.clone());
+                }
+                self.rebuild_map();
+                cx.notify();
+            }
+        }
     }
 }

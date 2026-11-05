@@ -178,8 +178,15 @@ fn action_row(
             }
             None => Some("· Permission has not been confirmed".into()),
         };
+        let lock = match &reason {
+            Some(reason) => format!("Needs {needs} {reason}"),
+            None => format!("Needs {needs}"),
+        };
         info = info.child(
             div()
+                .id(SharedString::from(format!("action-lock:{}", row.id.key())))
+                .test_support()
+                .aria_label(lock)
                 .mt(px(4.))
                 .flex()
                 .items_center()
@@ -299,6 +306,43 @@ fn notice(id: &'static str, text: String, success: bool) -> impl IntoElement {
         .text_color(foreground)
 }
 
+/// The failed permission read: every action stays locked until the retry
+/// succeeds. The retry is disabled while a read runs, as on the web.
+fn load_error(actions: &ActionsState, error: &str, cx: &mut Context<Inspector>) -> Div {
+    let text =
+        format!("Unable to load action state and permissions. Actions remain locked. {error}");
+    let retry = button(Variant::Ghost, 28., actions.loading)
+        .id("action-load-retry")
+        .test_support()
+        .aria_label("Retry permission check")
+        .child("Retry permission check");
+    let retry = if actions.loading {
+        retry
+    } else {
+        retry.on_click(cx.listener(|this, _, window, cx| this.load_action_state(window, cx)))
+    };
+    div()
+        .flex()
+        .flex_wrap()
+        .items_center()
+        .justify_between()
+        .gap(px(8.))
+        .px(px(12.))
+        .py(px(8.))
+        .border_b_1()
+        .border_color(Tokens::destructive().opacity(0.3))
+        .bg(Tokens::destructive().opacity(0.05))
+        .child(
+            ui::xs(text.clone())
+                .id("action-load-error")
+                .test_support()
+                .aria_label(text)
+                .role(gpui_kit::Role::Status)
+                .text_color(Tokens::destructive()),
+        )
+        .child(retry)
+}
+
 pub(super) fn actions_tab(detail: &ResourceDetail, cx: &mut Context<Inspector>) -> AnyElement {
     let Some(actions) = detail.actions.as_ref() else {
         return div().into_any_element();
@@ -325,15 +369,12 @@ pub(super) fn actions_tab(detail: &ResourceDetail, cx: &mut Context<Inspector>) 
         .min_h_0()
         .overflow_y_scroll()
         .child(header(actions))
-        .children(actions.load_error.as_ref().map(|error| {
-            notice(
-                "action-load-error",
-                format!(
-                    "Unable to load action state and permissions. Actions remain locked. {error}"
-                ),
-                false,
-            )
-        }))
+        .children(
+            actions
+                .load_error
+                .as_ref()
+                .map(|error| load_error(actions, error, cx)),
+        )
         .children(
             actions
                 .result
