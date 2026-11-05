@@ -103,4 +103,4 @@ pub use tunnel::{
     MAX_TUNNEL_FRAME_BYTES, MAX_TUNNEL_PAYLOAD_BYTES, decode_tunnel_frame, encode_tunnel_frame,
     is_tunnel_connection_id,
 };
-pub use usage::{AppUsageMetrics, AppUsageMetricsBreakdown};
+pub use usage::{AppUsageMemory, AppUsageMetrics, AppUsageMetricsBreakdown};

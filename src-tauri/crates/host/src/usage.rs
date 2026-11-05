@@ -1,5 +1,6 @@
 #[cfg(feature = "bench-support")]
 pub mod benchmark;
+mod memory;
 #[cfg(feature = "bench-support")]
 pub use benchmark::{BenchUsagePlatform, BenchUsageProcess, benchmark_usage_process_attribution};
 
@@ -17,18 +18,25 @@ use super::usage_webview::{
 };
 use chrono::Utc;
 use kubecove_models::AppErrorKind;
-use kubecove_models::{AppError, AppUsageMetrics, AppUsageMetricsBreakdown};
+use kubecove_models::{AppError, AppUsageMemory, AppUsageMetrics, AppUsageMetricsBreakdown};
+use memory::{MemoryTotal, WorkingSetBaseline, resident_bytes, sample_process_memory};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use sysinfo::{
     Pid, Process, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind, get_current_pid,
 };
 
-/// The process table is created on the first sample: `System::new` fails on platforms
-/// sysinfo does not support, and that failure belongs to the sample that needs it.
 #[derive(Clone, Default)]
 pub struct AppUsageMonitor {
-    system: Arc<Mutex<Option<System>>>,
+    state: Arc<Mutex<MonitorState>>,
+}
+
+#[derive(Default)]
+struct MonitorState {
+    /// Created on the first sample: `System::new` fails on platforms sysinfo
+    /// does not support, and that failure belongs to the sample that needs it.
+    system: Option<System>,
+    working_set: WorkingSetBaseline,
 }
 
 fn usage_error(error: &sysinfo::Error) -> AppError {
@@ -36,15 +44,21 @@ fn usage_error(error: &sysinfo::Error) -> AppError {
 }
 
 impl AppUsageMonitor {
-    pub fn sample(&self) -> Result<AppUsageMetrics, AppError> {
+    /// `measure_working_set` resets Linux referenced bits on every sample so
+    /// the next sample can report WSS. Other platforms ignore it.
+    pub fn sample(&self, measure_working_set: bool) -> Result<AppUsageMetrics, AppError> {
         let current_pid = get_current_pid().map_err(|error| usage_error(&error))?;
-        let mut guard = self.system.lock().map_err(|_| {
+        let mut guard = self.state.lock().map_err(|_| {
             AppError::new(
                 "usage metrics monitor is unavailable",
                 AppErrorKind::UsageMetrics,
             )
         })?;
-        let system = match &mut *guard {
+        let MonitorState {
+            system,
+            working_set,
+        } = &mut *guard;
+        let system = match system {
             Some(system) => system,
             empty => empty.insert(System::new().map_err(|error| usage_error(&error))?),
         };
@@ -91,33 +105,33 @@ impl AppUsageMonitor {
                     .with_cmd(UpdateKind::Always),
             );
         }
-        let process_count = observed_process_count(&pids, |pid| system.process(pid));
-        let memory_bytes =
-            process_tree_memory_bytes(&pids, |pid| system.process(pid), |process| process.memory());
-        let raw_cpu_percent = process_tree_cpu_percent(
-            &pids,
-            |pid| system.process(pid),
-            |process| process.cpu_usage(),
-        );
-        let cpu_count = available_cpu_count();
-        let cpu_percent = normalize_cpu_percent(raw_cpu_percent, cpu_count);
-        let breakdown = process_tree_breakdown(system, &pids, current_pid, cpu_count);
+        let processes: Vec<(Pid, &Process)> = pids
+            .iter()
+            .filter_map(|pid| system.process(*pid).map(|process| (*pid, process)))
+            .collect();
+        let memory = sample_process_memory(&processes, working_set, measure_working_set);
+        let samples: Vec<(Pid, SampledProcess)> = processes
+            .into_iter()
+            .zip(memory.memory)
+            .map(|((pid, process), memory)| (pid, SampledProcess { process, memory }))
+            .collect();
 
-        Ok(AppUsageMetrics {
-            cpu_percent,
-            memory_bytes,
-            process_count,
-            sampled_at: Utc::now().to_rfc3339(),
-            breakdown,
-        })
+        Ok(usage_metrics_from_samples(
+            samples.iter().map(|(pid, process)| (*pid, process)),
+            current_pid,
+            available_cpu_count(),
+            Utc::now().to_rfc3339(),
+            memory.working_set_window_ms,
+        ))
     }
 }
 
 pub async fn get_app_usage_metrics(
+    measure_working_set: bool,
     monitor: kubecove_kube::runtime::State<'_, AppUsageMonitor>,
 ) -> Result<AppUsageMetrics, AppError> {
     let monitor = monitor.inner().clone();
-    tokio::task::spawn_blocking(move || monitor.sample())
+    tokio::task::spawn_blocking(move || monitor.sample(measure_working_set))
         .await
         .map_err(|error| {
             AppError::new(
@@ -246,45 +260,29 @@ fn process_tree_pids_from_roots(
     pids
 }
 
-fn observed_process_count<T>(
-    pids: &HashSet<Pid>,
-    mut process_by_pid: impl FnMut(Pid) -> Option<T>,
-) -> usize {
+fn usage_metrics_from_samples<'a, T: UsageProcessView + 'a>(
+    samples: impl Iterator<Item = (Pid, &'a T)> + Clone,
+    root_pid: Pid,
+    cpu_count: usize,
+    sampled_at: String,
+    working_set_window_ms: Option<u64>,
+) -> AppUsageMetrics {
+    let mut memory = MemoryTotal::default();
+    let mut raw_cpu_percent = 0.0;
     let mut process_count = 0;
-    for pid in pids {
-        if process_by_pid(*pid).is_some() {
-            process_count += 1;
-        }
+    for (_, process) in samples.clone() {
+        memory.add(process.memory());
+        raw_cpu_percent += process.raw_cpu_percent();
+        process_count += 1;
     }
-    process_count
-}
-
-fn process_tree_memory_bytes<T>(
-    pids: &HashSet<Pid>,
-    mut process_by_pid: impl FnMut(Pid) -> Option<T>,
-    mut memory_bytes: impl FnMut(&T) -> u64,
-) -> u64 {
-    let mut total_memory_bytes = 0;
-    for pid in pids {
-        if let Some(process) = process_by_pid(*pid) {
-            total_memory_bytes += memory_bytes(&process);
-        }
+    AppUsageMetrics {
+        cpu_percent: normalize_cpu_percent(raw_cpu_percent, cpu_count),
+        memory: memory.total(),
+        working_set_window_ms,
+        process_count,
+        sampled_at,
+        breakdown: process_tree_breakdown_from_processes(samples, root_pid, cpu_count),
     }
-    total_memory_bytes
-}
-
-fn process_tree_cpu_percent<T>(
-    pids: &HashSet<Pid>,
-    mut process_by_pid: impl FnMut(Pid) -> Option<T>,
-    mut cpu_percent: impl FnMut(&T) -> f32,
-) -> f32 {
-    let mut total_cpu_percent = 0.0;
-    for pid in pids {
-        if let Some(process) = process_by_pid(*pid) {
-            total_cpu_percent += cpu_percent(&process);
-        }
-    }
-    total_cpu_percent
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -323,7 +321,7 @@ impl UsageProcessGroup {
 #[derive(Default)]
 struct UsageProcessGroupTotals {
     raw_cpu_percent: f32,
-    memory_bytes: u64,
+    memory: MemoryTotal,
     process_count: usize,
     children: Vec<UsageProcessSample>,
 }
@@ -332,13 +330,13 @@ struct UsageProcessSample {
     label: String,
     description: String,
     raw_cpu_percent: f32,
-    memory_bytes: u64,
+    memory: AppUsageMemory,
 }
 
 impl UsageProcessGroupTotals {
     fn add_sample(&mut self, sample: UsageProcessSample, include_child_sample: bool) {
         self.raw_cpu_percent += sample.raw_cpu_percent;
-        self.memory_bytes += sample.memory_bytes;
+        self.memory.add(sample.memory);
         self.process_count += 1;
         if include_child_sample {
             self.children.push(sample);
@@ -348,7 +346,7 @@ impl UsageProcessGroupTotals {
 
 trait UsageProcessView {
     fn raw_cpu_percent(&self) -> f32;
-    fn memory_bytes(&self) -> u64;
+    fn memory(&self) -> AppUsageMemory;
     fn is_webview_descendant(&self) -> bool;
     fn child_label(&self) -> String;
     fn child_description(&self) -> String;
@@ -358,38 +356,32 @@ trait UsageProcessView {
     }
 }
 
-impl UsageProcessView for Process {
+/// A sysinfo process with the memory figures sampled for it.
+struct SampledProcess<'a> {
+    process: &'a Process,
+    memory: AppUsageMemory,
+}
+
+impl UsageProcessView for SampledProcess<'_> {
     fn raw_cpu_percent(&self) -> f32 {
-        self.cpu_usage()
+        self.process.cpu_usage()
     }
 
-    fn memory_bytes(&self) -> u64 {
-        self.memory()
+    fn memory(&self) -> AppUsageMemory {
+        self.memory
     }
 
     fn is_webview_descendant(&self) -> bool {
-        is_webview_descendant_process(self)
+        is_webview_descendant_process(self.process)
     }
 
     fn child_label(&self) -> String {
-        usage_process_child_label(self)
+        usage_process_child_label(self.process)
     }
 
     fn child_description(&self) -> String {
-        usage_process_child_description(self)
+        usage_process_child_description(self.process)
     }
-}
-
-fn process_tree_breakdown(
-    system: &System,
-    pids: &HashSet<Pid>,
-    root_pid: Pid,
-    cpu_count: usize,
-) -> Vec<AppUsageMetricsBreakdown> {
-    let samples = pids
-        .iter()
-        .filter_map(|pid| system.process(*pid).map(|process| (*pid, process)));
-    process_tree_breakdown_from_processes(samples, root_pid, cpu_count)
 }
 
 fn process_tree_breakdown_from_processes<'a, T: UsageProcessView + 'a>(
@@ -412,7 +404,7 @@ fn process_tree_breakdown_from_processes<'a, T: UsageProcessView + 'a>(
                 String::new()
             },
             raw_cpu_percent: process.raw_cpu_percent(),
-            memory_bytes: process.memory_bytes(),
+            memory: process.memory(),
         };
         (group, sample)
     });
@@ -453,7 +445,7 @@ fn process_tree_breakdown_from_samples(
             label: group.label().to_string(),
             description: group.description().to_string(),
             cpu_percent: normalize_cpu_percent(totals.raw_cpu_percent, cpu_count),
-            memory_bytes: totals.memory_bytes,
+            memory: totals.memory.total(),
             process_count: totals.process_count,
             children: usage_process_children(group, totals.children, cpu_count),
         })
@@ -465,7 +457,7 @@ fn usage_process_children(
     mut children: Vec<UsageProcessSample>,
     cpu_count: usize,
 ) -> Vec<AppUsageMetricsBreakdown> {
-    children.sort_by_key(|child| std::cmp::Reverse(child.memory_bytes));
+    children.sort_by_key(|child| std::cmp::Reverse(resident_bytes(&child.memory)));
     let mut label_counts: HashMap<String, usize> = HashMap::new();
     children
         .into_iter()
@@ -484,7 +476,7 @@ fn usage_process_children(
             },
             description: child.description,
             cpu_percent: normalize_cpu_percent(child.raw_cpu_percent, cpu_count),
-            memory_bytes: child.memory_bytes,
+            memory: child.memory,
             process_count: 1,
             children: Vec::new(),
         })
@@ -554,11 +546,12 @@ mod tests {
         });
         let task_pid = started_rx.recv().expect("worker identity");
         let monitor = super::AppUsageMonitor::default();
-        let metrics = monitor.sample().expect("usage sample");
+        let metrics = monitor.sample(false).expect("usage sample");
         let includes_task = monitor
-            .system
+            .state
             .lock()
             .expect("monitor lock")
+            .system
             .as_ref()
             .expect("sampled system")
             .process(task_pid)
@@ -570,6 +563,31 @@ mod tests {
             !includes_task,
             "thread tasks must not be sampled as processes"
         );
+    }
+
+    // Failure modes: WSS reported before any reset (it would count every page
+    // touched since process start), a baseline that survives turning WSS off,
+    // and PSS missing because smaps_rollup was not read.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_wss_covers_only_the_interval_since_a_reset() {
+        let monitor = super::AppUsageMonitor::default();
+        let sample = |measure| monitor.sample(measure).expect("usage sample");
+
+        let first = sample(true);
+        assert_eq!(first.memory.wss_bytes, None);
+        assert_eq!(first.working_set_window_ms, None);
+        assert!(first.memory.rss_bytes.is_some_and(|bytes| bytes > 0));
+        assert!(first.memory.pss_bytes.is_some_and(|bytes| bytes > 0));
+
+        let second = sample(true);
+        assert!(second.memory.wss_bytes.is_some_and(|bytes| bytes > 0));
+        assert!(second.working_set_window_ms.is_some());
+
+        let disabled = sample(false);
+        assert_eq!(disabled.memory.wss_bytes, None);
+        assert_eq!(disabled.working_set_window_ms, None);
+        assert_eq!(sample(true).memory.wss_bytes, None);
     }
 
     #[test]

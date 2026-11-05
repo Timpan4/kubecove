@@ -630,7 +630,8 @@ function metrics(): ResourceMetricsSummary {
 }
 
 function usage(): AppUsageMetrics {
-	return { cpuPercent: 3.8, memoryBytes: 388_000_000, processCount: 3, sampledAt: now, breakdown: [{ label: "KubeCove browser mock", description: "Bun tab with fake Tauri responses", cpuPercent: 3.8, memoryBytes: 388_000_000, processCount: 3, children: [] }] };
+	const memory = { wssBytes: null, rssBytes: 388_000_000, pssBytes: 301_000_000 };
+	return { cpuPercent: 3.8, memory, workingSetWindowMs: null, processCount: 3, sampledAt: now, breakdown: [{ label: "KubeCove browser mock", description: "Bun tab with fake Tauri responses", cpuPercent: 3.8, memory, processCount: 3, children: [] }] };
 }
 
 function argoApplication(args: MockArgs) {

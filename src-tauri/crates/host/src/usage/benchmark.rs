@@ -1,10 +1,9 @@
 use super::{
-    UsageProcessView, normalize_cpu_percent, observed_process_count,
-    process_tree_breakdown_from_processes, process_tree_cpu_percent, process_tree_memory_bytes,
-    process_tree_pids_from_roots, usage_process_child_description_from_webview,
+    UsageProcessView, process_tree_pids_from_roots, usage_metrics_from_samples,
+    usage_process_child_description_from_webview,
 };
 use crate::usage_webview;
-use kubecove_models::AppUsageMetrics;
+use kubecove_models::{AppUsageMemory, AppUsageMetrics};
 use std::collections::{HashMap, HashSet};
 use sysinfo::Pid;
 
@@ -33,8 +32,11 @@ impl UsageProcessView for BenchUsageProcess {
         self.raw_cpu_percent
     }
 
-    fn memory_bytes(&self) -> u64 {
-        self.memory_bytes
+    fn memory(&self) -> AppUsageMemory {
+        AppUsageMemory {
+            rss_bytes: Some(self.memory_bytes),
+            ..AppUsageMemory::default()
+        }
     }
 
     fn is_webview_descendant(&self) -> bool {
@@ -149,28 +151,16 @@ pub fn benchmark_usage_process_attribution(
         }
     }
 
-    let process_count = observed_process_count(&pids, |pid| processes.get(&pid.as_u32()));
-    let memory_bytes = process_tree_memory_bytes(
-        &pids,
-        |pid| processes.get(&pid.as_u32()),
-        |process| process.memory_bytes,
-    );
-    let raw_cpu_percent = process_tree_cpu_percent(
-        &pids,
-        |pid| processes.get(&pid.as_u32()),
-        |process| process.raw_cpu_percent,
-    );
     let samples = pids
         .iter()
         .filter_map(|pid| processes.get(&pid.as_u32()).map(|process| (*pid, process)));
-    let breakdown = process_tree_breakdown_from_processes(samples, root_pid, cpu_count);
-    AppUsageMetrics {
-        cpu_percent: normalize_cpu_percent(raw_cpu_percent, cpu_count),
-        memory_bytes,
-        process_count,
-        sampled_at: "2026-10-11T00:00:00Z".to_string(),
-        breakdown,
-    }
+    usage_metrics_from_samples(
+        samples,
+        root_pid,
+        cpu_count,
+        "2026-10-11T00:00:00Z".to_string(),
+        None,
+    )
 }
 
 fn usage_process_child_label_from_text(process_text: &str) -> String {

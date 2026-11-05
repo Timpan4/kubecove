@@ -1,9 +1,34 @@
-import type { AppUsageMetrics, AppUsageMetricsBreakdown } from "./types";
+import type { AppUsageMemory, AppUsageMetrics, AppUsageMetricsBreakdown } from "./types";
 
 export interface FlattenedUsageMetricsBreakdown {
 	item: AppUsageMetricsBreakdown;
 	depth: number;
 }
+
+export interface UsageMemoryFigure {
+	key: keyof AppUsageMemory;
+	label: string;
+	description: string;
+}
+
+export const USAGE_MEMORY_FIGURES: readonly UsageMemoryFigure[] = [
+	{
+		key: "wssBytes",
+		label: "WSS",
+		description:
+			"Working set size. Windows reports its working set. Linux reports memory touched since the previous refresh when working set measurement is on. Not available on macOS.",
+	},
+	{
+		key: "rssBytes",
+		label: "RSS",
+		description: "Resident set size on Linux and macOS. Pages shared between processes count once per process.",
+	},
+	{
+		key: "pssBytes",
+		label: "PSS",
+		description: "Proportional set size on Linux. Shared pages are split between the processes that map them.",
+	},
+];
 
 export function formatCpuPercent(value: number): string {
 	if (!Number.isFinite(value)) return "--";
@@ -26,18 +51,36 @@ export function formatMemoryBytes(bytes: number): string {
 	return `${value.toFixed(precision)} ${units[unitIndex]}`;
 }
 
+/** Unreported figures render as "--", like other unavailable usage values. */
+export function formatMemoryFigure(bytes: number | null): string {
+	return bytes === null ? "--" : formatMemoryBytes(bytes);
+}
+
 export function formatProcessCount(count: number): string {
 	if (!Number.isFinite(count) || count < 0) return "--";
 	const normalized = Math.floor(count);
 	return `${normalized} ${normalized === 1 ? "process" : "processes"}`;
 }
 
+function formatMemoryFigures(memory: AppUsageMemory): string[] {
+	return USAGE_MEMORY_FIGURES.map((figure) => `${figure.label} ${formatMemoryFigure(memory[figure.key])}`);
+}
+
 export function formatUsageMetrics(metrics: AppUsageMetrics): string {
 	return [
 		`CPU ${formatCpuPercent(metrics.cpuPercent)}`,
-		`Memory ${formatMemoryBytes(metrics.memoryBytes)}`,
+		...formatMemoryFigures(metrics.memory),
 		formatProcessCount(metrics.processCount),
 	].join(" · ");
+}
+
+/** Explains each memory figure, and the interval Linux WSS covers when it is measured. */
+export function describeUsageMemory(metrics: AppUsageMetrics): string {
+	const lines = USAGE_MEMORY_FIGURES.map((figure) => `${figure.label}: ${figure.description}`);
+	if (metrics.workingSetWindowMs !== null) {
+		lines.push(`WSS covers the last ${(metrics.workingSetWindowMs / 1000).toFixed(1)} s.`);
+	}
+	return lines.join("\n");
 }
 
 export function formatUsageMetricsBreakdownDetails(
@@ -45,7 +88,7 @@ export function formatUsageMetricsBreakdownDetails(
 ): string {
 	return [
 		`CPU ${formatCpuPercent(item.cpuPercent)}`,
-		formatMemoryBytes(item.memoryBytes),
+		...formatMemoryFigures(item.memory),
 		formatProcessCount(item.processCount),
 	].join(" · ");
 }

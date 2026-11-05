@@ -511,8 +511,9 @@ export async function listResourceTopology(
 
 export async function getAppUsageMetrics(
 	client: TauriClient,
+	measureWorkingSet: boolean,
 ): Promise<AppUsageMetrics> {
-	return client.invoke<AppUsageMetrics>("get_app_usage_metrics");
+	return client.invoke<AppUsageMetrics>("get_app_usage_metrics", { measureWorkingSet });
 }
 
 export async function listResourceMetrics(

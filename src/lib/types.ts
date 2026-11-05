@@ -464,18 +464,27 @@ export interface WatchResourceTarget {
 	name?: string | null;
 }
 
+/** A figure is null when the platform does not report it or a group total would be partial. */
+export interface AppUsageMemory {
+	wssBytes: number | null;
+	rssBytes: number | null;
+	pssBytes: number | null;
+}
+
 export interface AppUsageMetricsBreakdown {
 	label: string;
 	description: string;
 	cpuPercent: number;
-	memoryBytes: number;
+	memory: AppUsageMemory;
 	processCount: number;
 	children: AppUsageMetricsBreakdown[];
 }
 
 export interface AppUsageMetrics {
 	cpuPercent: number;
-	memoryBytes: number;
+	memory: AppUsageMemory;
+	/** Interval covered by Linux WSS; null when WSS is not an interval measurement. */
+	workingSetWindowMs: number | null;
 	processCount: number;
 	sampledAt: string;
 	breakdown: AppUsageMetricsBreakdown[];

@@ -73,6 +73,11 @@
 			title: "Show CPU and memory footer",
 			description: "Shows compact app process CPU and memory usage.",
 		},
+		workingSet: {
+			title: "Measure working set (WSS)",
+			description:
+				"Linux only. Each footer refresh resets the kernel's referenced-page bits for KubeCove processes, so WSS shows memory touched since the previous refresh. The kernel may then reclaim those pages sooner. Windows always reports its working set; macOS has none.",
+		},
 		fullTopologyOnSelection: {
 			title: "Keep full map visible during selection",
 			description:
@@ -452,6 +457,14 @@
 					checked={settings.showUsageFooter}
 					onCheckedChange={settings.setShowUsageFooter}
 					aria-label={GENERAL_ROWS.usageFooter.title}
+				/>
+			</SettingsRow>
+			<SettingsRow {...GENERAL_ROWS.workingSet}>
+				<Switch
+					checked={settings.measureWorkingSet}
+					onCheckedChange={settings.setMeasureWorkingSet}
+					disabled={!settings.showUsageFooter}
+					aria-label={GENERAL_ROWS.workingSet.title}
 				/>
 			</SettingsRow>
 			<SettingsRow {...GENERAL_ROWS.redactSecrets}>
