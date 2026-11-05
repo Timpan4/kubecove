@@ -1,20 +1,41 @@
-//! Common copy announcements, technical errors and exact permission handoffs.
+//! Shared failure feedback: the `FriendlyError.svelte` panel (classified copy,
+//! collapsible technical detail, Copy detail and the exact RBAC handoff) and
+//! the `CopyToast.svelte` notification that `copy_toast` renders.
 use super::{
     Inspector, Page,
     detail::{Detail, DetailTab},
+    friendly_error::{self, Bucket, Context as ErrorContext, Presentation},
 };
-use crate::{backend::Scope, theme::Tokens, ui};
+use crate::{
+    backend::Scope,
+    theme::{Palette, Tokens},
+    ui,
+};
 use gpui_kit::{
     AnyElement, ClipboardItem, Context, SharedString, Task, TestSupportExt, Window, prelude::*, px,
 };
-use kubecove_lib::models::{RbacAccessReviewTarget, ResourceSummary};
+use kubecove_lib::models::{AppErrorKind, RbacAccessReviewTarget, ResourceSummary};
+use std::{collections::HashSet, time::Duration};
 
 #[derive(Default)]
 pub(super) struct Feedback {
-    expanded: Option<(String, String)>,
-    announcement: Option<String>,
+    /// Error panels whose technical detail is open.
+    expanded: HashSet<&'static str>,
+    /// The panel whose Copy detail button shows the last result, and whether
+    /// the copy succeeded.
+    copy: Option<(&'static str, bool)>,
     copy_task: Option<Task<()>>,
+    /// The persistent copy notification. It stays until dismissed or replaced.
+    toast: Option<String>,
     origin: Option<Origin>,
+}
+
+/// The RBAC handoff a failed read can offer. `source` names the read in the
+/// Return button, as `permissionSourceLabel` does on the web.
+pub(super) struct Permission {
+    pub cluster: String,
+    pub target: RbacAccessReviewTarget,
+    pub source: String,
 }
 
 struct Origin {
@@ -23,90 +44,144 @@ struct Origin {
     workspace: Option<u64>,
     resource: Option<ResourceSummary>,
     tab: Option<DetailTab>,
+    source: String,
 }
 
 impl Inspector {
-    /// GPUI's clipboard adapter has no fallible write result. Fallible adapters
-    /// can use `announce_copy` with their actual result instead.
-    pub(super) fn copy_text(&mut self, text: String, cx: &mut Context<Self>) {
+    /// Writes the detail and shows the panel's own result for 1200 ms, as
+    /// `FriendlyError.svelte` does. GPUI's clipboard write cannot fail, so
+    /// the failed label is reached only through `finish_detail_copy`.
+    pub(super) fn copy_detail(&mut self, id: &'static str, text: String, cx: &mut Context<Self>) {
         cx.write_to_clipboard(ClipboardItem::new_string(text));
-        self.announce_copy(Ok(()), cx);
+        self.finish_detail_copy(id, Ok(()), cx);
     }
 
-    pub(super) fn announce_copy(&mut self, result: Result<(), String>, cx: &mut Context<Self>) {
-        self.feedback.announcement = Some(match result {
-            Ok(()) => "Copied".into(),
-            Err(_) => "Copy failed".into(),
-        });
-        // FriendlyError.svelte resets its copied label after 1200 ms.
+    fn finish_detail_copy(
+        &mut self,
+        id: &'static str,
+        result: Result<(), String>,
+        cx: &mut Context<Self>,
+    ) {
+        self.feedback.copy = Some((id, result.is_ok()));
         self.feedback.copy_task = Some(cx.spawn(async move |this, cx| {
             cx.background_executor()
-                .timer(std::time::Duration::from_millis(1200))
+                .timer(Duration::from_millis(1200))
                 .await;
             let _ = this.update(cx, |this, cx| {
-                this.feedback.announcement = None;
+                this.feedback.copy = None;
                 cx.notify();
             });
         }));
         cx.notify();
     }
 
-    pub(super) fn copy_announcement(&self) -> Option<AnyElement> {
-        self.feedback.announcement.as_ref().map(|text| {
+    fn toggle_technical_detail(&mut self, id: &'static str, cx: &mut Context<Self>) {
+        if !self.feedback.expanded.remove(id) {
+            self.feedback.expanded.insert(id);
+        }
+        cx.notify();
+    }
+
+    /// `CopyToast.svelte`'s message. `CopyableText` sets it after each copy.
+    pub(super) fn show_copy_toast(&mut self, message: String, cx: &mut Context<Self>) {
+        self.feedback.toast = Some(message);
+        cx.notify();
+    }
+
+    pub(super) fn copy_toast(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        self.feedback.toast.as_ref().map(|text| {
             ui::panel()
-                .id("copy-announcement")
+                .id("copy-toast")
                 .test_support()
                 .role(gpui_kit::Role::Status)
                 .aria_label(text.clone())
                 .absolute()
                 .bottom(px(16.))
                 .right(px(16.))
+                .max_w(px(384.))
                 .p(px(12.))
-                .child(ui::xs(text.clone()))
+                .flex()
+                .items_start()
+                .gap(px(12.))
+                .child(ui::xs(text.clone()).min_w_0())
+                .child(
+                    ui::outline_button()
+                        .id("copy-toast-dismiss")
+                        .test_support()
+                        .aria_label("Dismiss copy notification")
+                        .child(ui::icon("x", 14., Tokens::muted_foreground()))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.feedback.toast = None;
+                            cx.notify();
+                        })),
+                )
                 .into_any_element()
         })
     }
 
-    /// Callers supply the exact target. Error text never invents a permission.
+    /// The shared error panel. `kind` and `message` come from the failed read;
+    /// `permission` is offered only when the classified error is a forbidden
+    /// RBAC denial, as `FriendlyError.svelte` does.
     pub(super) fn friendly_failure(
         &self,
         id: &'static str,
-        title: &str,
-        detail: &str,
-        permission: Option<(String, RbacAccessReviewTarget)>,
+        kind: Option<AppErrorKind>,
+        message: &str,
+        context: ErrorContext<'_>,
+        permission: Option<Permission>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let expanded = self
+        let presentation = friendly_error::present(kind, message, &context);
+        // `FriendlyError.svelte` compact mode hides the next step and the
+        // "still works" note, but keeps the summary and technical detail.
+        let compact = context.compact;
+        let permission = permission.filter(|_| presentation.bucket == Bucket::ForbiddenRbac);
+        let expanded = self.feedback.expanded.contains(id);
+        let copied = self
             .feedback
-            .expanded
-            .as_ref()
-            .is_some_and(|(key, value)| key == id && value == detail);
-        let detail = detail.to_owned();
-        let toggle_detail = detail.clone();
-        let copy_detail = detail.clone();
+            .copy
+            .filter(|(key, _)| *key == id)
+            .map(|(_, ok)| ok);
+        let technical = message.to_owned();
+        let copy_text = technical.clone();
+        let description = description(&presentation, compact);
+        let border = if presentation.warning {
+            Palette::amber500(0.35)
+        } else {
+            Tokens::destructive().opacity(0.4)
+        };
         ui::panel()
             .id(id)
             .test_support()
             .role(gpui_kit::Role::Alert)
-            .aria_label(title.to_owned())
-            .p(px(12.))
-            .border_color(Tokens::destructive().opacity(0.4))
-            .child(ui::semibold(ui::sm(title.to_owned())))
-            .child(
-                ui::muted(ui::xs(
-                    "The original technical error is still available below.",
-                ))
-                .mt(px(8.)),
+            .aria_label(presentation.title.clone())
+            .aria_description(description)
+            .px(px(12.))
+            .py(px(if compact { 8. } else { 12. }))
+            .border_color(border)
+            .child(ui::semibold(ui::sm(presentation.title.clone())))
+            .child(ui::muted(ui::xs(presentation.summary.clone())).mt(px(8.)))
+            .when_some(
+                presentation.still_works.filter(|_| !compact),
+                |panel, text| panel.child(ui::muted(ui::xs(text)).mt(px(8.))),
             )
-            .child(ui::muted(ui::xs("Copy the detail if this needs debugging.")).mt(px(8.)))
-            .when_some(permission, |panel, (context, target)| {
+            .when_some(presentation.next.filter(|_| !compact), |panel, text| {
+                panel.child(ui::muted(ui::xs(text)).mt(px(8.)))
+            })
+            .when_some(permission, |panel, permission| {
                 panel.child(
                     ui::outline_button()
                         .id(SharedString::from(format!("{id}:permission")))
                         .test_support()
                         .child("Inspect required permission")
                         .on_click(cx.listener(move |this, _, window, cx| {
-                            this.inspect_permission(context.clone(), target.clone(), window, cx);
+                            this.inspect_permission(
+                                permission.cluster.clone(),
+                                permission.target.clone(),
+                                permission.source.clone(),
+                                window,
+                                cx,
+                            );
                         })),
                 )
             })
@@ -116,34 +191,44 @@ impl Inspector {
                     .test_support()
                     .aria_label("Technical detail")
                     .child("Technical detail")
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.feedback.expanded = if expanded {
-                            None
-                        } else {
-                            Some((id.into(), toggle_detail.clone()))
-                        };
-                        cx.notify();
-                    })),
+                    .on_click(
+                        cx.listener(move |this, _, _, cx| this.toggle_technical_detail(id, cx)),
+                    ),
             )
             .when(expanded, |panel| {
-                panel.child(ui::xs(detail).mt(px(8.))).child(
-                    ui::outline_button()
-                        .id(SharedString::from(format!("{id}:copy")))
-                        .test_support()
-                        .aria_label("Copy detail")
-                        .child("Copy detail")
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.copy_text(copy_detail.clone(), cx)
-                        })),
-                )
+                panel
+                    .child(ui::xs(technical).mt(px(8.)))
+                    .child(
+                        ui::outline_button()
+                            .id(SharedString::from(format!("{id}:copy")))
+                            .test_support()
+                            .aria_label(if copied == Some(true) {
+                                "Copied"
+                            } else {
+                                "Copy detail"
+                            })
+                            .child(if copied == Some(true) {
+                                "Copied"
+                            } else {
+                                "Copy detail"
+                            })
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.copy_detail(id, copy_text.clone(), cx)
+                            })),
+                    )
+                    .when(copied == Some(false), |row| {
+                        row.child(ui::muted(ui::xs("Copy failed")))
+                    })
             })
             .into_any_element()
     }
 
+    /// Hands the exact target to the RBAC verifier and records where to return.
     pub(super) fn inspect_permission(
         &mut self,
-        context: String,
+        cluster: String,
         target: RbacAccessReviewTarget,
+        source: String,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -156,14 +241,15 @@ impl Inspector {
                 Detail::Ready(detail) => Some(detail.tab),
                 _ => None,
             },
+            source,
         };
         self.open_rbac(None, window, cx);
         if self.page != Page::Rbac {
             return;
         }
-        if self.scope.context != context {
+        if self.scope.context != cluster {
             self.scope = Scope {
-                context,
+                context: cluster,
                 namespace: None,
             };
             self.load_scope(false, window, cx);
@@ -174,12 +260,12 @@ impl Inspector {
     }
 
     pub(super) fn permission_return(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        self.feedback.origin.as_ref().map(|_| {
+        self.feedback.origin.as_ref().map(|origin| {
             ui::outline_button()
                 .id("permission-return")
                 .test_support()
-                .aria_label("Return to source")
-                .child("Return to source")
+                .aria_label(format!("Return to {}", origin.source))
+                .child(format!("Return to {}", origin.source))
                 .on_click(cx.listener(|this, _, window, cx| {
                     let Some(origin) = this.feedback.origin.take() else {
                         return;
@@ -197,4 +283,18 @@ impl Inspector {
                 .into_any_element()
         })
     }
+}
+
+/// The visible text, which `aria_description` carries so drivers can read it.
+fn description(presentation: &Presentation, compact: bool) -> String {
+    let visible = |text: Option<&'static str>| text.filter(|_| !compact);
+    [
+        Some(presentation.summary.as_str()),
+        visible(presentation.still_works),
+        visible(presentation.next),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(" ")
 }

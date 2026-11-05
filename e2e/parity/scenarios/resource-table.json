@@ -1,0 +1,87 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "resources.table-search-identity",
+      "title": "Search matches API identity, GitOps owner terms and Helm release",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "apps/v1" },
+        { "action": "expectResource", "kind": "Deployment", "name": "checkout-worker", "namespace": "payments" },
+        { "action": "expectNoResource", "kind": "Service", "name": "payments-api", "namespace": "payments" },
+        { "action": "search", "value": "application" },
+        { "action": "expectResource", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-k2r9p", "namespace": "payments" },
+        { "action": "search", "value": "metrics-gateway" },
+        { "action": "expectResource", "kind": "Deployment", "name": "metrics-gateway", "namespace": "platform" }
+      ]
+    },
+    {
+      "id": "resources.table-sort",
+      "title": "Column headers sort ascending, then descending, with name ties",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api-7d9c9b7f8d" },
+        { "action": "expectResourceOrder", "names": ["payments-api-7d9c9b7f8d-k2r9p", "payments-api-7d9c9b7f8d-x4m8v"] },
+        { "action": "sortResourceTable", "column": "Restarts" },
+        { "action": "expectResourceOrder", "names": ["payments-api-7d9c9b7f8d-x4m8v", "payments-api-7d9c9b7f8d-k2r9p"] },
+        { "action": "sortResourceTable", "column": "Restarts" },
+        { "action": "expectResourceOrder", "names": ["payments-api-7d9c9b7f8d-k2r9p", "payments-api-7d9c9b7f8d-x4m8v"] },
+        { "action": "sortResourceTable", "column": "Name" },
+        { "action": "expectResourceOrder", "names": ["payments-api-7d9c9b7f8d-k2r9p", "payments-api-7d9c9b7f8d-x4m8v"] },
+        { "action": "sortResourceTable", "column": "Name" },
+        { "action": "expectResourceOrder", "names": ["payments-api-7d9c9b7f8d-x4m8v", "payments-api-7d9c9b7f8d-k2r9p"] }
+      ]
+    },
+    {
+      "id": "resources.table-groups",
+      "title": "Ownership and kind group rows collapse and expand their rows",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api-7d9c9b7f8d" },
+        { "action": "expectResource", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-k2r9p", "namespace": "payments" },
+        { "action": "toggleResourceGroup", "label": "Pods" },
+        { "action": "expectResourceGroup", "label": "Pods", "expanded": false },
+        { "action": "expectNoResource", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-k2r9p", "namespace": "payments" },
+        { "action": "toggleResourceGroup", "label": "Pods" },
+        { "action": "expectResourceGroup", "label": "Pods", "expanded": true },
+        { "action": "expectResource", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-k2r9p", "namespace": "payments" },
+        { "action": "toggleResourceGroup", "label": "Owned by Argo CD: shop (partial evidence)" },
+        { "action": "expectResourceGroup", "label": "Owned by Argo CD: shop (partial evidence)", "expanded": false },
+        { "action": "expectNoResource", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-k2r9p", "namespace": "payments" },
+        { "action": "toggleResourceGroup", "label": "Owned by Argo CD: shop (partial evidence)" },
+        { "action": "expectResourceGroup", "label": "Owned by Argo CD: shop (partial evidence)", "expanded": true },
+        { "action": "expectResource", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-k2r9p", "namespace": "payments" }
+      ]
+    },
+    {
+      "id": "resources.table-row-open",
+      "title": "Clicking any cell of a resource row opens its detail",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api-7d9c9b7f8d" },
+        { "action": "openResourceRow", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-k2r9p", "namespace": "payments", "column": "Namespace" },
+        { "action": "expectDetail", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-k2r9p", "namespace": "payments" },
+        { "action": "closeDetail" },
+        { "action": "expectDetailClosed" },
+        { "action": "openResourceRow", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-x4m8v", "namespace": "payments", "column": "Kind" },
+        { "action": "expectDetail", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-x4m8v", "namespace": "payments" }
+      ]
+    },
+    {
+      "id": "resources.table-cells",
+      "title": "Readiness, restart and GitOps owner cells show the reported values",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api-7d9c9b7f8d" },
+        { "action": "expectResourceCell", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-k2r9p", "namespace": "payments", "column": "Ready", "text": "1/1" },
+        { "action": "expectResourceCell", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-k2r9p", "namespace": "payments", "column": "Restarts", "text": "2" },
+        { "action": "expectResourceCell", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-k2r9p", "namespace": "payments", "column": "Owner", "text": "shop" },
+        { "action": "expectResourceCell", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-x4m8v", "namespace": "payments", "column": "Restarts", "text": "0" },
+        { "action": "search", "value": "operations-crashloop" },
+        { "action": "expectResourceCell", "kind": "Pod", "name": "operations-crashloop-7f468cd8b8-lab01", "namespace": "operations", "column": "Ready", "text": "0/1" },
+        { "action": "expectResourceCell", "kind": "Pod", "name": "operations-crashloop-7f468cd8b8-lab01", "namespace": "operations", "column": "Restarts", "text": "7" }
+      ]
+    }
+  ]
+}

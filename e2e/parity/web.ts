@@ -6,13 +6,18 @@ import { parse } from "yaml";
 import { chromeExecutable, freePort, readinessTimeoutMs, startIdentity, stopGroup, waitFor } from "../../.agents/skills/verify-kubecove/scripts/processes";
 import type { Contract, Step } from "./contract";
 import { adapterAction } from "./web-adapters";
+import { feedbackAction } from "./web-feedback";
 import { argoAction } from "./web-argo";
 import { liveSessionAction } from "./web-live-sessions";
+import { logRowAndRestoreAction } from "./web-logs-restore";
 import { mcpAction } from "./web-mcp";
 import { timingAction } from "./web-timing";
 import { shellAction } from "./web-shell";
+import { navigationAction } from "./web-navigation";
+import { resourceFilterAction } from "./web-resource-filters";
 import { sidebarLiveAction } from "./web-sidebar-live";
 import { terminalAction } from "./web-terminal";
+import { resourceTableAction } from "./web-resource-table";
 import { expectRetainedWorkspaceFields, workspaceAction } from "./web-workspaces";
 
 export async function action(page: Page, step: Step) {
@@ -25,6 +30,7 @@ export async function action(page: Page, step: Step) {
         case "dragKind": await shellAction(page, step); break;
         case "expectEmptyLauncher": case "expectEntryCount": await shellAction(page, step); break;
         case "copyErrorDetail": await shellAction(page, step); break;
+        case "expectForegroundLoading": case "expectFriendlyError": case "inspectRequiredPermission": case "expectPermissionTarget": case "returnToSource": case "copyResourceName": case "expectCopyToast": case "dismissCopyToast": await feedbackAction(page, step); break;
         case "toggleResourcePin": case "expectWorkspaceEntry": case "openWorkspaceEntry": await shellAction(page, step); break;
         case "reorderKindKey": case "expectRemoteHost": await shellAction(page, step); break;
         case "configureShellRead": case "retryLauncher": case "expectLauncherRetry": await shellAction(page, step); break;
@@ -37,7 +43,9 @@ export async function action(page: Page, step: Step) {
         case "editSavedWorkspace": case "expectNoSavedWorkspace": case "saveWorkspace": case "cancelWorkspaceEdit": case "toggleWorkspaceContext": case "expectOverviewHealth": case "expectDetailContext":
             await workspaceAction(page, step); break;
         case "sidebarToggle": case "sidebarSelect": case "expectSidebarRow": case "collapseSidebar": case "expectSidebarBranch": case "refreshPage": await sidebarLiveAction(page, step); break;
+        case "openNamespaceList": case "expectNamespaceRow": case "resizeViewport": case "openNavigationDrawer": case "expectNavigationDrawer": case "sidebarKey": await navigationAction(page, step); break;
         case "replayPageReads": case "focusStalePage": case "expectPageText": case "searchCustomKinds": case "searchKindPicker": case "expectCustomGroup": case "toggleKind": case "openKindPicker": case "closeKindPicker": case "selectAllKinds": case "expectKindChecked": await sidebarLiveAction(page, step); break;
+        case "openNamespacePicker": case "closeNamespacePicker": case "searchNamespacePicker": case "selectAllNamespaces": case "toggleNamespace": case "expectNamespaceChecked": case "expectNamespaceTrigger": case "selectHealthFilter": case "expectHealthFilter": case "chooseGitOpsOwner": case "clearResourceFilters": case "setHistoricalReplicaSets": await resourceFilterAction(page, step); break;
         case "fillMcpPort": case "mcpControl": case "expectMcpState": case "expectMcpCopy": case "expectMcpRequests":
             await mcpAction(page, step); break;
         case "configureArgoMock": case "argoControl": case "focusArgoResource": case "expectNoSavedArgoProfile": case "copyArgoValue": case "configureArgoInventory": case "expandArgoDiff": case "reconnectArgoProfile":
@@ -104,6 +112,7 @@ export async function action(page: Page, step: Step) {
             if (step.notice) await page.getByText(step.notice, { exact: true }).first().waitFor();
             break;
         case "replayLiveData": await page.evaluate(`import('/src/lib/tauri-dev-mock-live.ts').then(m => m.replayLiveData(${JSON.stringify(step.script)}))`); break;
+        case "sortResourceTable": case "expectResourceOrder": case "toggleResourceGroup": case "expectResourceGroup": case "openResourceRow": case "expectResourceCell": await resourceTableAction(page, step); break;
         case "expectResourceStatus": await resourceRow(page, step).getByText(step.status, { exact: true }).waitFor(); break;
         case "openCustomKind": {
             if (step.surface === "sidebar") {
@@ -239,6 +248,7 @@ export async function action(page: Page, step: Step) {
 			break;
 		case "filterLogs": await page.getByRole("textbox", { name: "Filter log lines" }).fill(step.value); break;
 		case "toggleLogLevel": await page.getByRole("group", { name: "Filter by level" }).getByRole("button", { name: new RegExp(`^${step.level} `) }).click(); break;
+		case "toggleLogRow": case "toggleLogExpandAll": case "expectLogRowOpen": case "copyLogLine": case "expectRestorePrompt": case "restorePromptControl": await logRowAndRestoreAction(page, step); break;
 		case "expectLogsEmpty": await page.getByText(step.title, { exact: true }).waitFor(); break;
 		case "selectRevision": await revisionButton(page, step.label).click(); break;
 		case "expectRevisionDiff": {

@@ -3,66 +3,14 @@
 //! `@3xl`/`@5xl` breakpoints use the section width derived from the window.
 
 use super::detail::Detail;
+use super::resource_filters::HealthFilter;
 use super::{Inspector, Load, Page};
-use crate::model::HealthSummary;
 use crate::theme::{Palette, Tokens};
 use crate::ui;
 use gpui_kit::TestSupportExt;
-use gpui_kit::{AnyElement, Context, Div, FontWeight, Hsla, Window, div, prelude::*, px};
+use gpui_kit::{AnyElement, Context, Div, Window, div, prelude::*, px};
 
 const SIDEBAR: f32 = 260.;
-
-fn scope_trigger(label: &str, value: String) -> Div {
-    div()
-        .flex()
-        .flex_none()
-        .items_center()
-        .gap(px(6.))
-        .h(px(32.))
-        .px(px(10.))
-        .rounded(px(8.))
-        .border_1()
-        .border_color(Tokens::border())
-        .bg(Tokens::background().opacity(0.7))
-        .child(ui::muted(ui::xs(label.to_owned())))
-        .child(ui::semibold(ui::xs(value)).truncate())
-        .child(ui::icon("chevron-down", 14., Tokens::muted_foreground()))
-}
-
-fn stat(label: &str, value: usize, tone: Option<Hsla>, active: bool) -> AnyElement {
-    let color = if value == 0 {
-        Tokens::muted_foreground().opacity(0.7)
-    } else {
-        tone.unwrap_or(Tokens::foreground())
-    };
-    div()
-        .flex()
-        .flex_col()
-        .justify_center()
-        .gap(px(2.))
-        .min_w_0()
-        .min_h(px(48.))
-        .px(px(10.))
-        .py(px(6.))
-        .rounded(px(8.))
-        .border_1()
-        .border_color(if active {
-            Tokens::primary().opacity(0.5)
-        } else {
-            Tokens::border()
-        })
-        // The outline button's `dark:bg-input/30` wins over its base background.
-        .bg(Tokens::input().opacity(0.3))
-        // The button's `text-xs/relaxed` leading (1.625) also applies to the 10px label.
-        .child(ui::caps(label, 10.).line_height(px(16.25)).truncate())
-        .child(
-            ui::xs(value.to_string())
-                .line_height(px(19.5))
-                .font_weight(FontWeight::BOLD)
-                .text_color(color),
-        )
-        .into_any_element()
-}
 
 fn info_card(title: &str, detail: &str) -> Div {
     ui::panel()
@@ -212,40 +160,22 @@ impl Inspector {
 
     fn top_bar(&self, width: f32, cx: &mut Context<Self>) -> impl IntoElement {
         let wide = width >= 1024.;
-        let health = HealthSummary::of(&self.visible);
-        let has_filters = !self.search.read(cx).value().is_empty();
-        let namespace = self.scope.namespace.clone().unwrap_or_else(|| "All".into());
+        let health = &self.filters.summary;
+        let has_filters = self.filters_active(cx);
         let selectors = div()
             .flex()
             .flex_wrap()
             .items_center()
             .gap(px(8.))
-            .child(scope_trigger("Namespace", namespace))
+            .child(self.namespace_picker(cx))
             .child(self.kinds_picker(cx));
         let owners = div()
             .flex()
             .flex_wrap()
             .items_center()
             .gap(px(8.))
-            .child(
-                ui::outline_button()
-                    .h(px(32.))
-                    .px(px(8.))
-                    .gap(px(8.))
-                    .bg(Tokens::background().opacity(0.7))
-                    .child(ui::xs("All GitOps owners"))
-                    .child(ui::icon("chevron-down", 14., Tokens::muted_foreground())),
-            )
-            .when(has_filters, |row| {
-                row.child(
-                    ui::outline_button()
-                        .h(px(32.))
-                        .px(px(8.))
-                        .bg(Tokens::background().opacity(0.7))
-                        .child(ui::icon("x", 12., Tokens::foreground()))
-                        .child(ui::medium(ui::xs("Clear"))),
-                )
-            });
+            .children((!self.filters.owners.is_empty()).then(|| self.gitops_owner_select(cx)))
+            .when(has_filters, |row| row.child(self.clear_filters_button(cx)));
         let controls = if wide {
             div()
                 .flex()
@@ -264,27 +194,42 @@ impl Inspector {
                 .child(owners)
         };
         let stats = vec![
-            stat("Total", health.total, None, true),
-            stat(
+            self.health_stat(HealthFilter::All, "Total", health.total, None, cx),
+            self.health_stat(
+                HealthFilter::Healthy,
                 "Healthy",
                 health.healthy,
                 Some(Palette::emerald300()),
-                false,
+                cx,
             ),
-            stat("Unknown", health.unknown, None, false),
-            stat("Not evaluated", health.not_evaluated, None, false),
-            stat(
+            self.health_stat(HealthFilter::Unknown, "Unknown", health.unknown, None, cx),
+            self.health_stat(
+                HealthFilter::NotEvaluated,
+                "Not evaluated",
+                health.not_evaluated,
+                None,
+                cx,
+            ),
+            self.health_stat(
+                HealthFilter::Attention,
                 "Needs attention",
                 health.attention,
                 Some(Palette::amber300()),
-                false,
+                cx,
             ),
-            stat("Degraded", health.degraded, Some(Palette::red300()), false),
-            stat(
+            self.health_stat(
+                HealthFilter::Degraded,
+                "Degraded",
+                health.degraded,
+                Some(Palette::red300()),
+                cx,
+            ),
+            self.health_stat(
+                HealthFilter::Restarted,
                 "Restart evidence",
                 health.restart_evidence,
                 Some(Palette::sky300()),
-                false,
+                cx,
             ),
         ];
         let extras = vec![
@@ -331,28 +276,7 @@ impl Inspector {
             )
             .children(self.application_resource_filters(cx))
             // `w-fit`: the separator spans only the checkbox label.
-            .child(
-                div().flex().child(
-                    div()
-                        .flex_none()
-                        .mt(px(8.))
-                        .pt(px(8.))
-                        .border_t_1()
-                        .border_color(Tokens::border())
-                        .flex()
-                        .items_center()
-                        .gap(px(8.))
-                        .child(
-                            div()
-                                .size(px(13.))
-                                .rounded(px(3.))
-                                .border_1()
-                                .border_color(Tokens::muted_foreground())
-                                .bg(Tokens::background()),
-                        )
-                        .child(ui::muted(ui::xs("Hide historical ReplicaSets"))),
-                ),
-            )
+            .child(self.historical_toggle(cx))
     }
 
     pub(super) fn resources(

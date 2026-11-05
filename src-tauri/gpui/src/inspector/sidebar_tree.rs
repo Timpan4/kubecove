@@ -2,9 +2,11 @@
 use super::{Inspector, Page};
 use crate::{model, rbac::RbacView, theme::Tokens, ui};
 use gpui_kit::{
-    AnyElement, ClickEvent, Context, SharedString, TestSupportExt, Window, div, prelude::*, px,
+    AnyElement, App, ClickEvent, Context, FocusHandle, KeyDownEvent, ScrollHandle, SharedString,
+    TestSupportExt, Window, div, prelude::*, px,
 };
-use std::collections::HashSet;
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
 
 pub(super) const GROUPS: &[(&str, &[&str])] = &[
     (
@@ -46,6 +48,31 @@ pub(super) struct TreeState {
     pub discovery: super::sidebar_discovery::Discovery,
     pub open: HashSet<String>,
     pub selected: Option<String>,
+    /// Shared by the desktop sidebar and the drawer, which never render together,
+    /// so the tree keeps its scroll position when the drawer closes.
+    pub scroll: ScrollHandle,
+    /// One focus handle per row path, so keyboard focus survives re-renders.
+    focus: RefCell<HashMap<String, FocusHandle>>,
+}
+
+impl TreeState {
+    fn focus_handle(&self, path: &str, cx: &mut App) -> FocusHandle {
+        self.focus
+            .borrow_mut()
+            .entry(path.to_owned())
+            .or_insert_with(|| cx.focus_handle())
+            .clone()
+    }
+}
+
+/// What a click or Enter or Space press on a built-in row activates.
+#[derive(Clone)]
+struct RowTarget {
+    path: String,
+    label: SharedString,
+    namespace: Option<String>,
+    is_namespace: bool,
+    expandable: bool,
 }
 
 impl Inspector {
@@ -82,6 +109,72 @@ impl Inspector {
         self.sidebar_tree.selected = Some(path);
         self.close_detail(cx);
         self.filter(cx);
+    }
+
+    /// Activates a row the way a click does. Enter and Space select without
+    /// toggling, as the web's `selectNode` does.
+    fn activate_row(&mut self, row: RowTarget, window: &mut Window, cx: &mut Context<Self>) {
+        let RowTarget {
+            path: target,
+            label,
+            namespace,
+            is_namespace,
+            expandable,
+        } = row;
+        if is_namespace {
+            self.select_namespace(namespace, window, cx);
+            return;
+        }
+        if let Some(ns) = namespace.as_ref()
+            && target.starts_with(&format!("{ns}/Custom Resources"))
+        {
+            if let Some(kind) = self.namespace_custom_target(ns, &target) {
+                self.select_namespace(Some(ns.clone()), window, cx);
+                self.live.selected = Some(kind);
+                self.live.kind_locked = true;
+                self.sidebar_tree.selected = Some(target.clone());
+                self.filter(cx);
+            }
+            return;
+        }
+        if target.starts_with("RBAC/") {
+            let view = RbacView::ALL
+                .into_iter()
+                .find(|view| view.label() == label.as_ref());
+            self.open_rbac(view, window, cx);
+            self.sidebar_tree.selected = Some(target.clone());
+        } else if target == "RBAC" {
+            self.open_rbac(None, window, cx);
+            self.sidebar_tree.selected = Some(target.clone());
+        } else if target == "Cluster Overview" {
+            self.select_namespace(None, window, cx);
+            self.open_cluster_overview(window, cx);
+            self.sidebar_tree.selected = Some(target.clone());
+        } else if expandable && namespace.is_none() {
+            self.select_namespace(None, window, cx);
+            self.sidebar_tree.selected = Some(target.clone());
+        } else {
+            let kinds = GROUPS
+                .iter()
+                .find(|(name, _)| *name == label.as_ref())
+                .map(|(_, kinds)| *kinds)
+                .unwrap_or_else(|| {
+                    GROUPS
+                        .iter()
+                        .flat_map(|(_, kinds)| kinds.iter())
+                        .find(|kind| **kind == label.as_ref())
+                        .map(std::slice::from_ref)
+                        .expect("builtin kind")
+                });
+            self.tree_select(target.clone(), namespace.clone(), kinds, window, cx);
+        }
+    }
+
+    fn toggle_tree_row(&mut self, path: &str, cx: &mut Context<Self>) {
+        if !self.sidebar_tree.open.remove(path) {
+            self.sidebar_tree.open.insert(path.to_owned());
+        }
+        cx.notify();
     }
 
     pub(super) fn builtin_branch(
@@ -179,6 +272,13 @@ impl Inspector {
             },
         );
         let expanded = self.sidebar_tree.open.contains(&path);
+        // A collapsed branch that holds the selection shows it in its label.
+        let hides_selection = !expanded
+            && self
+                .sidebar_tree
+                .selected
+                .as_deref()
+                .is_some_and(|selected| selected.starts_with(&format!("{path}/")));
         let visual = if is_namespace {
             ("folder-tree", Tokens::muted_foreground())
         } else if expandable {
@@ -206,11 +306,23 @@ impl Inspector {
         } else {
             format!("tree:{path}")
         };
-        let toggle = path.clone();
-        let target = path.clone();
+        let focus = self.sidebar_tree.focus_handle(&path, cx);
+        let chevron = path.clone();
+        let key_toggle = path.clone();
+        let target = RowTarget {
+            path,
+            label: label.clone(),
+            namespace,
+            is_namespace,
+            expandable,
+        };
+        let click_row = target.clone();
+        let key_row = target;
         div()
             .id(SharedString::from(id))
             .test_support()
+            .track_focus(&focus)
+            .tab_index(0)
             .aria_label(label.clone())
             .aria_description(if selected { "selected" } else { "unselected" })
             .relative()
@@ -238,7 +350,7 @@ impl Inspector {
             .hover(|row| row.bg(Tokens::card()))
             .child(
                 div()
-                    .id(SharedString::from(format!("tree-toggle:{path}")))
+                    .id(SharedString::from(format!("tree-toggle:{chevron}")))
                     .test_support()
                     .flex()
                     .items_center()
@@ -257,10 +369,7 @@ impl Inspector {
                         .on_click(cx.listener(
                             move |this, _: &ClickEvent, _, cx| {
                                 cx.stop_propagation();
-                                if !this.sidebar_tree.open.remove(&toggle) {
-                                    this.sidebar_tree.open.insert(toggle.clone());
-                                }
-                                cx.notify();
+                                this.toggle_tree_row(&chevron, cx);
                             },
                         ))
                     }),
@@ -278,55 +387,25 @@ impl Inspector {
                     .truncate()
                     .when(depth == 0 && !is_namespace, |text| {
                         text.font_weight(gpui_kit::FontWeight::MEDIUM)
-                    }),
+                    })
+                    .when(hides_selection, |text| text.text_color(Tokens::primary())),
             )
             .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
-                if is_namespace {
-                    this.select_namespace(namespace.clone(), window, cx);
-                    return;
-                }
-                if let Some(ns) = namespace.as_ref()
-                    && target.starts_with(&format!("{ns}/Custom Resources"))
-                {
-                    if let Some(kind) = this.namespace_custom_target(ns, &target) {
-                        this.select_namespace(Some(ns.clone()), window, cx);
-                        this.live.selected = Some(kind);
-                        this.live.kind_locked = true;
-                        this.sidebar_tree.selected = Some(target.clone());
-                        this.filter(cx);
+                this.activate_row(click_row.clone(), window, cx);
+            }))
+            .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
+                match event.keystroke.key.as_str() {
+                    "enter" | "space" => {
+                        cx.stop_propagation();
+                        this.activate_row(key_row.clone(), window, cx);
                     }
-                    return;
-                }
-                if target.starts_with("RBAC/") {
-                    let view = RbacView::ALL
-                        .into_iter()
-                        .find(|view| view.label() == label.as_ref());
-                    this.open_rbac(view, window, cx);
-                    this.sidebar_tree.selected = Some(target.clone());
-                } else if target == "RBAC" {
-                    this.open_rbac(None, window, cx);
-                    this.sidebar_tree.selected = Some(target.clone());
-                } else if target == "Cluster Overview" {
-                    this.select_namespace(None, window, cx);
-                    this.open_cluster_overview(window, cx);
-                    this.sidebar_tree.selected = Some(target.clone());
-                } else if expandable && namespace.is_none() {
-                    this.select_namespace(None, window, cx);
-                    this.sidebar_tree.selected = Some(target.clone());
-                } else {
-                    let kinds = GROUPS
-                        .iter()
-                        .find(|(name, _)| *name == label.as_ref())
-                        .map(|(_, kinds)| *kinds)
-                        .unwrap_or_else(|| {
-                            GROUPS
-                                .iter()
-                                .flat_map(|(_, kinds)| kinds.iter())
-                                .find(|kind| **kind == label.as_ref())
-                                .map(std::slice::from_ref)
-                                .expect("builtin kind")
-                        });
-                    this.tree_select(target.clone(), namespace.clone(), kinds, window, cx);
+                    "right" if expandable && !expanded => {
+                        this.toggle_tree_row(&key_toggle, cx);
+                    }
+                    "left" if expandable && expanded => {
+                        this.toggle_tree_row(&key_toggle, cx);
+                    }
+                    _ => {}
                 }
             }))
             .into_any_element()

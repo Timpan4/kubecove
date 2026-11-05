@@ -1,0 +1,78 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "namespace-list.table",
+      "title": "View all opens the namespace table with ages and created times",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openNamespaceList" },
+        { "action": "expectNamespaceRow", "name": "payments", "age": "18d" },
+        { "action": "expectNamespaceRow", "name": "default", "age": "42d" },
+        { "action": "expectNamespaceRow", "name": "todo", "age": "5d" }
+      ]
+    },
+    {
+      "id": "namespace-list.empty",
+      "title": "An empty namespace read shows the empty state",
+      "steps": [
+        { "action": "configureShellRead", "phase": "namespaces-empty" },
+        { "action": "openResources" },
+        { "action": "openNamespaceList" },
+        { "action": "expectPageText", "text": "No namespaces found" },
+        { "action": "configureShellRead", "phase": "ready" }
+      ]
+    },
+    {
+      "id": "namespace-list.error",
+      "title": "A failed namespace read shows the friendly error",
+      "steps": [
+        { "action": "configureShellRead", "phase": "namespaces-failed" },
+        { "action": "openResources" },
+        { "action": "openNamespaceList" },
+        { "action": "expectPageText", "text": "Failed to load namespaces" },
+        { "action": "configureShellRead", "phase": "ready" }
+      ]
+    },
+    {
+      "id": "sidebar.keyboard",
+      "title": "Tree rows expand and collapse with arrows and select with Enter or Space",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "collapseSidebar" },
+        { "action": "sidebarKey", "path": ["Workloads"], "key": "ArrowRight" },
+        { "action": "expectSidebarRow", "path": ["Workloads", "Pod"], "visible": true, "selected": false },
+        { "action": "sidebarKey", "path": ["Workloads"], "key": "ArrowLeft" },
+        { "action": "expectSidebarRow", "path": ["Workloads", "Pod"], "visible": false, "selected": false },
+        { "action": "sidebarKey", "path": ["Workloads"], "key": "ArrowLeft" },
+        { "action": "expectSidebarRow", "path": ["Workloads", "Pod"], "visible": false, "selected": false },
+        { "action": "sidebarKey", "path": ["Workloads"], "key": "ArrowRight" },
+        { "action": "expectSidebarRow", "path": ["Workloads", "Deployment"], "visible": true, "selected": false },
+        { "action": "sidebarKey", "path": ["Workloads", "Deployment"], "key": "Enter" },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "sidebarKey", "path": ["Workloads", "Deployment"], "key": "Space" },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" }
+      ]
+    },
+    {
+      "id": "shell.navigation-drawer",
+      "title": "Below the wide breakpoint the sidebar moves into a drawer that closes on selection",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "resizeViewport", "width": 1000, "height": 800 },
+        { "action": "expectSidebarRow", "path": ["Workloads"], "visible": false, "selected": false },
+        { "action": "expectNavigationDrawer", "open": false },
+        { "action": "openNavigationDrawer" },
+        { "action": "expectNavigationDrawer", "open": true },
+        { "action": "expectSidebarRow", "path": ["Workloads"], "visible": true, "selected": false },
+        { "action": "sidebarSelect", "path": ["Workloads", "Deployment"] },
+        { "action": "expectNavigationDrawer", "open": false },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "resizeViewport", "width": 1440, "height": 900 },
+        { "action": "expectSidebarRow", "path": ["Workloads"], "visible": true, "selected": false },
+        { "action": "expectNavigationDrawer", "open": false }
+      ]
+    }
+  ]
+}

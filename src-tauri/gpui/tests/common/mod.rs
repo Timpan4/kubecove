@@ -456,8 +456,12 @@ impl Backend for Fixture {
             })
             .cloned()
             .or_else(|| self.gitops.application_details(&resource));
+        let read = self
+            .timing
+            .read("get_resource_details", &resource.cluster, "", found);
         Box::pin(async move {
-            found.ok_or_else(|| AppError::new("No fixture details", AppErrorKind::NotFound))
+            read.await?
+                .ok_or_else(|| AppError::new("No fixture details", AppErrorKind::NotFound))
         })
     }
     fn application_resources(&self, _: ArgoApplicationSummary, _: bool) -> Read<ScopeResult> {
@@ -636,7 +640,11 @@ impl Backend for Fixture {
                 ))
             });
         }
-        let namespaces = self.namespaces.clone();
+        let namespaces = if *self.shell_read_phase.lock().unwrap() == "namespaces-empty" {
+            Vec::new()
+        } else {
+            self.namespaces.clone()
+        };
         Box::pin(async move { Ok(namespaces) })
     }
     fn rbac(&self, context: String) -> Read<RbacInspectionSummary> {

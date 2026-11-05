@@ -1,0 +1,116 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "resource-filters.namespace-multiselect",
+      "title": "Toolbar namespaces add to the sidebar scope, filter client-side and select all",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "openNamespacePicker" },
+        { "action": "expectNamespaceTrigger", "label": "payments" },
+        { "action": "expectNamespaceChecked", "namespace": "payments", "checked": true },
+        { "action": "expectNamespaceChecked", "namespace": "monitoring", "checked": false },
+        { "action": "toggleNamespace", "namespace": "monitoring", "checked": true },
+        { "action": "expectNamespaceTrigger", "label": "monitoring, payments" },
+        { "action": "closeNamespacePicker" },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "monitoring", "name": "grafana" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "argocd", "name": "argocd-server" },
+        { "action": "openNamespacePicker" },
+        { "action": "selectAllNamespaces" },
+        { "action": "expectNamespaceTrigger", "label": "All" },
+        { "action": "closeNamespacePicker" },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "argocd", "name": "argocd-server" }
+      ]
+    },
+    {
+      "id": "resource-filters.health-buttons",
+      "title": "Health summary buttons filter rows and show the pressed filter",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "selectHealthFilter", "label": "Degraded" },
+        { "action": "expectHealthFilter", "label": "Degraded", "pressed": true },
+        { "action": "expectHealthFilter", "label": "Total", "pressed": false },
+        { "action": "expectResource", "kind": "Ingress", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "selectHealthFilter", "label": "Healthy" },
+        { "action": "expectNoResource", "kind": "Ingress", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "selectHealthFilter", "label": "Unknown" },
+        { "action": "expectResource", "kind": "Secret", "namespace": "payments", "name": "payments-api-secrets" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "selectHealthFilter", "label": "Not evaluated" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "selectHealthFilter", "label": "Restart evidence" },
+        { "action": "expectResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "expectNoResource", "kind": "Service", "namespace": "payments", "name": "payments-api" },
+        { "action": "selectHealthFilter", "label": "Total" },
+        { "action": "expectHealthFilter", "label": "Total", "pressed": true },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" }
+      ]
+    },
+    {
+      "id": "resource-filters.clear-filters",
+      "title": "Clear resets the search and health filter but keeps the namespace selection",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "selectHealthFilter", "label": "Degraded" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "clearResourceFilters" },
+        { "action": "expectSearch", "value": "" },
+        { "action": "expectHealthFilter", "label": "Total", "pressed": true },
+        { "action": "expectHealthFilter", "label": "Degraded", "pressed": false }
+      ]
+    },
+    {
+      "id": "resource-filters.gitops-owner",
+      "title": "The GitOps owner dropdown keeps only rows owned by the chosen Argo CD application",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "chooseGitOpsOwner", "owner": "Owned by Argo CD: shop (partial evidence)" },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "monitoring", "name": "grafana" },
+        { "action": "chooseGitOpsOwner", "owner": "All GitOps owners" }
+      ]
+    },
+    {
+      "id": "resource-filters.hide-historical-replicasets",
+      "title": "The historical ReplicaSet checkbox toggles without removing current rows",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "setHistoricalReplicaSets", "checked": true },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "setHistoricalReplicaSets", "checked": false },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" }
+      ]
+    },
+    {
+      "id": "resource-filters.kind-picker-select-all",
+      "title": "Kind picker selects all kinds, searches them and keeps unchecked kinds hidden",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openKindPicker" },
+        { "action": "selectAllKinds" },
+        { "action": "searchKindPicker", "value": "Deployment" },
+        { "action": "expectKindChecked", "kind": "Deployment", "checked": true },
+        { "action": "toggleKind", "kind": "Deployment", "checked": false },
+        { "action": "searchKindPicker", "value": "Service" },
+        { "action": "expectKindChecked", "kind": "Service", "checked": true },
+        { "action": "closeKindPicker" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectResource", "kind": "Service", "namespace": "payments", "name": "payments-api" },
+        { "action": "openKindPicker" },
+        { "action": "searchKindPicker", "value": "Deployment" },
+        { "action": "toggleKind", "kind": "Deployment", "checked": true },
+        { "action": "closeKindPicker" },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" }
+      ]
+    }
+  ]
+}

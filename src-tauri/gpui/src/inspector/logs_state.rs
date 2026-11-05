@@ -19,7 +19,7 @@ use kubecove_lib::models::{
     AggregatedLogStreamRequest, LogLineSource, PodLogStreamRequest, ResourceDetailsFull,
     StreamMessage, StreamStatus,
 };
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum LogStatus {
@@ -56,6 +56,12 @@ pub(super) struct LogsState {
     pub hidden: [bool; 4],
     pub wrap: bool,
     pub latest_first: bool,
+    /// `expandAll`: one-line rows open unless the user toggled them away.
+    pub expand_all: bool,
+    /// Buffer indices whose state differs from `expand_all` (`toggledRows`).
+    toggled: HashSet<u64>,
+    /// The buffer index whose Copy line button last copied its raw text.
+    pub copied_line: Option<u64>,
     pub paused: bool,
     pending: VecDeque<(String, Option<LogLineSource>)>,
     pub unseen: usize,
@@ -153,6 +159,9 @@ impl LogsState {
             hidden: [false; 4],
             wrap: true,
             latest_first: false,
+            expand_all: false,
+            toggled: HashSet::new(),
+            copied_line: None,
             paused: false,
             pending: VecDeque::new(),
             unseen: 0,
@@ -255,12 +264,31 @@ impl LogsState {
         }
     }
 
+    /// Whether a one-line row shows its details. `LogsTab.svelte` clears the
+    /// toggled set on Expand all and on Clear, and keeps `expandAll` otherwise.
+    pub fn row_open(&self, index: u64) -> bool {
+        self.expand_all != self.toggled.contains(&index)
+    }
+
+    pub fn toggle_row(&mut self, index: u64) {
+        if !self.toggled.remove(&index) {
+            self.toggled.insert(index);
+        }
+    }
+
+    pub fn toggle_expand_all(&mut self) {
+        self.expand_all = !self.expand_all;
+        self.toggled.clear();
+    }
+
     /// `onClear` and `resetLogLines`.
     pub fn clear(&mut self) {
         self.buffer.clear();
         self.pending.clear();
         self.unseen = 0;
         self.visible.clear();
+        self.toggled.clear();
+        self.copied_line = None;
         self.list.reset(0);
         if !self.latest_first {
             self.list.set_follow_mode(FollowMode::Tail);

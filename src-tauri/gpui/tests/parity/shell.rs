@@ -104,10 +104,10 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             return true;
         }
         "copyErrorDetail" => {
-            let id = if step["error"] == "contexts" {
-                "launcher-context-error"
-            } else {
-                "launcher-namespace-error"
+            let id = match string(step, "error") {
+                "contexts" => "launcher-context-error",
+                "namespaces" => "launcher-namespace-error",
+                _ => "detail-error",
             };
             window.click(format!("{id}:detail"), cx);
             window.render_frame(cx);
@@ -117,7 +117,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 Some(string(step, "expected").to_owned())
             );
             window.render_frame(cx);
-            assert_eq!(window.find("copy-announcement").label(), Some("Copied"));
+            assert_eq!(window.find(format!("{id}:copy")).label(), Some("Copied"));
             return true;
         }
         "toggleResourcePin" => {

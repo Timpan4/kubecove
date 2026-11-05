@@ -67,6 +67,8 @@ pub struct ParsedLogLine {
     /// Arrival order across the stream, which addresses the line in the buffer.
     pub index: u64,
     pub structure: LogStructure,
+    /// `line.raw`: the line as streamed, copied by the expanded row's Copy line.
+    pub raw: SharedString,
     /// `formatLogTime`: local time of day with milliseconds, or `-`.
     pub time: SharedString,
     /// `LogEntry`'s `sourceLabel`: `pod/container`, the Pod alone, or empty.
@@ -344,6 +346,7 @@ pub fn parse_line(line: &str, source: Option<&LogLineSource>, index: u64) -> Par
     });
     ParsedLogLine {
         index,
+        raw: line.into(),
         time: time_label(timestamp),
         source_label,
         structure,

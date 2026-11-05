@@ -11,8 +11,8 @@ use gpui_kit::component::{
     select::{SearchableVec, Select, SelectEvent, SelectState},
 };
 use gpui_kit::{
-    AnyElement, AppContext, Context, Entity, SharedString, Subscription, TestSupportExt, Window,
-    div, prelude::*, px,
+    AnyElement, AppContext, Context, Entity, KeyDownEvent, SharedString, Subscription,
+    TestSupportExt, Window, div, prelude::*, px,
 };
 
 pub(super) struct ExecCustomForm {
@@ -72,6 +72,21 @@ impl Inspector {
         });
         cx.notify();
     }
+    /// `runCustom`: starts the argv in the chosen container. An empty argv does nothing.
+    fn run_custom(
+        &mut self,
+        container: String,
+        argv: Vec<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if argv.is_empty() {
+            return;
+        }
+        self.start_exec(container, argv, window, cx);
+        self.exec.custom = None;
+    }
+
     pub(super) fn exec_custom_menu(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let form = self.exec.custom.as_ref()?;
         let argv: Vec<String> = form
@@ -101,6 +116,7 @@ impl Inspector {
                 &container
             }
         );
+        let (key_container, key_argv) = (container.clone(), argv.clone());
         Some(
             div()
                 .w(px(256.))
@@ -112,6 +128,14 @@ impl Inspector {
                 .border_1()
                 .border_color(Tokens::border())
                 .rounded(px(6.))
+                // Runs before the textarea sees Enter, so Cmd or Ctrl-Enter runs
+                // instead of inserting a line. `secondary` is Cmd on macOS, Ctrl elsewhere.
+                .capture_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
+                    if event.keystroke.key == "enter" && event.keystroke.modifiers.secondary(cx) {
+                        cx.stop_propagation();
+                        this.run_custom(key_container.clone(), key_argv.clone(), window, cx);
+                    }
+                }))
                 .child(ui::muted(ui::xs("Custom command")))
                 .child(ui::muted(ui::xs("Container")))
                 .child(
@@ -143,15 +167,7 @@ impl Inspector {
                                 .aria_label(run_label.clone())
                                 .child(ui::xs(run_label))
                                 .on_click(cx.listener(move |this, _, window, cx| {
-                                    if !argv.is_empty() {
-                                        this.start_exec(
-                                            container.clone(),
-                                            argv.clone(),
-                                            window,
-                                            cx,
-                                        );
-                                        this.exec.custom = None;
-                                    }
+                                    this.run_custom(container.clone(), argv.clone(), window, cx);
                                 })),
                         ),
                 )

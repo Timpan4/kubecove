@@ -1,6 +1,6 @@
 //! Snapshot reconciliation patches listed and visible rows without rebuilding the table.
 use super::{Inspector, Load};
-use crate::{backend::Scope, model::ownership_group};
+use crate::{backend::Scope, resource_search};
 use gpui_kit::Context;
 use kubecove_lib::models::{ResourceSummary, WatchResourceKey};
 use std::collections::{HashMap, HashSet};
@@ -104,17 +104,6 @@ impl Inspector {
             && self.live.selected.as_ref().is_none_or(|kind| {
                 row.kind == kind.kind && row.api_version.as_ref() == Some(&kind.api_version)
             })
-            && (search.is_empty()
-                || row.name.to_lowercase().contains(search)
-                || row.kind.to_lowercase().contains(search)
-                || row
-                    .namespace
-                    .as_deref()
-                    .is_some_and(|ns| ns.to_lowercase().contains(search))
-                || ownership_group(row).0.to_lowercase().contains(search)
-                || row
-                    .helm_release
-                    .as_deref()
-                    .is_some_and(|release| release.to_lowercase().contains(search)))
+            && (search.is_empty() || resource_search::haystack(row).contains(search))
     }
 }

@@ -21,6 +21,7 @@ impl Inspector {
             Page::GitOps => self.refresh_focused_page(cx),
             Page::Incidents => self.load_incidents(cx),
             Page::Helm => self.load_helm(cx),
+            Page::Namespaces => self.load_namespace_list(cx),
             Page::Resources => self.load_application_workspace(cx),
             _ => {}
         }

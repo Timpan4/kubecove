@@ -48,7 +48,12 @@ export async function shellAction(page: Page, step: Step): Promise<void> {
             break;
         }
         case "copyErrorDetail": {
-            const alert = page.getByRole("alert").filter({ hasText: step.error === "contexts" ? "Failed to load contexts" : "Failed to load namespaces" });
+            const titles = new Map([
+                ["contexts", "Failed to load contexts"],
+                ["namespaces", "Failed to load namespaces"],
+                ["details", "KubeCove does not have permission for this"],
+            ]);
+            const alert = page.getByRole("alert").filter({ hasText: titles.get(step.error) });
             await alert.getByText("Technical detail", { exact: true }).click();
             await alert.getByText(step.expected, { exact: true }).waitFor();
             await alert.getByRole("button", { name: "Copy detail", exact: true }).click();

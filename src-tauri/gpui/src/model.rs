@@ -1,10 +1,11 @@
 //! Presentation model shared by the overview and resource table. Each rule
 //! cites the Svelte module it mirrors so the two clients stay comparable.
 
-use crate::collate::collate;
+use crate::table_sort::{self, Sort};
 use crate::theme::Tokens;
 use gpui_kit::Hsla;
 use kubecove_lib::models::{HealthAssessmentSource, HealthAssessmentState, ResourceSummary};
+use std::collections::HashSet;
 
 /// `DEFAULT_WORKSPACE_KINDS` in `src/lib/workspace-model.ts`.
 pub const WORKSPACE_KINDS: &[&str] = &[
@@ -37,20 +38,43 @@ impl HealthSummary {
     pub fn of<'a>(rows: impl IntoIterator<Item = &'a ResourceSummary>) -> Self {
         let mut summary = Self::default();
         for row in rows {
-            summary.total += 1;
-            match row.health_assessment.state {
-                HealthAssessmentState::Healthy => summary.healthy += 1,
-                HealthAssessmentState::NeedsAttention => summary.attention += 1,
-                HealthAssessmentState::Degraded => summary.degraded += 1,
-                HealthAssessmentState::NotEvaluated => summary.not_evaluated += 1,
-                HealthAssessmentState::Unknown => summary.unknown += 1,
-            }
-            if row.restarts.unwrap_or(0) > 0 {
-                summary.restart_evidence += 1;
-            }
+            summary.add(row);
         }
         summary
     }
+
+    pub fn add(&mut self, row: &ResourceSummary) {
+        self.total += 1;
+        match row.health_assessment.state {
+            HealthAssessmentState::Healthy => self.healthy += 1,
+            HealthAssessmentState::NeedsAttention => self.attention += 1,
+            HealthAssessmentState::Degraded => self.degraded += 1,
+            HealthAssessmentState::NotEvaluated => self.not_evaluated += 1,
+            HealthAssessmentState::Unknown => self.unknown += 1,
+        }
+        if row.restarts.unwrap_or(0) > 0 {
+            self.restart_evidence += 1;
+        }
+    }
+}
+
+/// The GitOps owner filter entry for a row, as `gitOpsOwnership` in
+/// `src/lib/gitops-ownership-evidence.ts` computes it: the `filterKey`
+/// (`provider:kind:namespace:name`) and the group label. Owners the adapters
+/// do not recognize have no entry.
+pub fn gitops_owner_filter(row: &ResourceSummary) -> Option<(String, String)> {
+    let label = gitops_label(row)?;
+    let key = match row.git_ops_owner.as_ref() {
+        Some(owner) => format!(
+            "{}:{}:{}:{}",
+            owner.provider,
+            owner.kind,
+            owner.namespace.as_deref().unwrap_or_default(),
+            owner.name.trim()
+        ),
+        None => format!("argo:Application::{}", row.argo_app.as_deref()?.trim()),
+    };
+    Some((key, label))
 }
 
 /// `gitOpsOwnershipGroup` in `src/lib/gitops-ownership-evidence.ts`.
@@ -69,33 +93,67 @@ pub fn ownership_group(row: &ResourceSummary) -> (String, u8) {
     (label.into(), 2)
 }
 
-fn gitops_label(row: &ResourceSummary) -> Option<String> {
+/// A GitOps owner that a provider adapter recognizes, as `gitOpsOwnership`
+/// returns it in `src/lib/gitops-ownership-evidence.ts`.
+pub struct GitOpsOwned {
+    pub provider: String,
+    pub kind: String,
+    pub name: String,
+    pub namespace: Option<String>,
+    pub confidence: String,
+    pub provenance: String,
+    pub partial: bool,
+}
+
+/// The row's GitOps owner. An Argo CD name annotation stands in when the
+/// backend reports no owner, and a row with no recognized owner has none.
+pub fn gitops_owner(row: &ResourceSummary) -> Option<GitOpsOwned> {
     // Rust owners always state `partial`; an annotation-only Argo app is partial.
-    let (provider, kind, name, namespace, partial) = match row.git_ops_owner.as_ref() {
-        Some(owner) => (
-            owner.provider.as_str(),
-            owner.kind.as_str(),
-            owner.name.trim().to_owned(),
-            owner.namespace.clone(),
-            owner.partial,
-        ),
-        None => {
-            let app = row.argo_app.as_deref()?.trim();
-            ("argo", "Application", app.to_owned(), None, true)
-        }
+    let owner = match row.git_ops_owner.as_ref() {
+        Some(owner) => GitOpsOwned {
+            provider: owner.provider.clone(),
+            kind: owner.kind.clone(),
+            name: owner.name.trim().to_owned(),
+            namespace: owner.namespace.clone(),
+            confidence: owner.confidence.clone(),
+            provenance: owner.provenance.clone(),
+            partial: owner.partial,
+        },
+        None => GitOpsOwned {
+            provider: "argo".into(),
+            kind: "Application".into(),
+            name: row.argo_app.as_deref()?.trim().to_owned(),
+            namespace: None,
+            confidence: "metadata".into(),
+            provenance: "argocd-name-annotation".into(),
+            partial: true,
+        },
     };
-    if name.is_empty() {
-        return None;
-    }
-    let label = match (provider, kind) {
-        ("argo", "Application") => format!("Owned by Argo CD: {name}"),
-        ("flux", "Kustomization" | "HelmRelease") => {
-            let owner = namespace.map_or(name.clone(), |ns| format!("{ns}/{name}"));
-            format!("Owned by Flux {kind}: {owner}")
-        }
-        _ => return None,
+    let recognized = matches!(
+        (owner.provider.as_str(), owner.kind.as_str()),
+        ("argo", "Application") | ("flux", "Kustomization" | "HelmRelease")
+    );
+    (recognized && !owner.name.is_empty()).then_some(owner)
+}
+
+/// `ownerName` in `gitOpsOwnership`: the Flux owner is qualified by its namespace.
+pub fn gitops_owner_name(row: &ResourceSummary) -> Option<String> {
+    let owner = gitops_owner(row)?;
+    Some(match (owner.provider.as_str(), owner.namespace) {
+        ("flux", Some(namespace)) => format!("{namespace}/{}", owner.name),
+        _ => owner.name,
+    })
+}
+
+fn gitops_label(row: &ResourceSummary) -> Option<String> {
+    let owner = gitops_owner(row)?;
+    let name = gitops_owner_name(row)?;
+    let label = if owner.provider == "argo" {
+        format!("Owned by Argo CD: {name}")
+    } else {
+        format!("Owned by Flux {}: {name}", owner.kind)
     };
-    Some(if partial {
+    Some(if owner.partial {
         format!("{label} (partial evidence)")
     } else {
         label
@@ -143,15 +201,42 @@ pub fn type_label(row: &ResourceSummary) -> String {
 
 pub enum Entry {
     Group {
+        key: String,
         label: String,
         count: usize,
+        collapsed: bool,
     },
     Type {
+        key: String,
         label: String,
         kind: String,
         count: usize,
+        collapsed: bool,
     },
     Row(usize),
+}
+
+/// What the table shows besides its rows: the sort, the collapsed group keys
+/// and the open detail's resource, whose groups stay expanded.
+pub struct TableView<'a> {
+    pub page: usize,
+    pub sort: Sort,
+    pub collapsed: &'a HashSet<String>,
+    pub selected: Option<&'a ResourceSummary>,
+}
+
+/// The collapse key of an ownership group, as `resourceGroupCollapseKey` in `src/features/resources/helpers.ts`.
+fn group_key(group: &str) -> String {
+    format!("group:{group}")
+}
+
+/// The collapse key of a kind group, as `resourceTypeGroupCollapseKey` in `helpers.ts`.
+fn type_key(group: &str, type_label: &str) -> String {
+    format!("{}::type:{type_label}", group_key(group))
+}
+
+fn same_resource(left: &ResourceSummary, right: &ResourceSummary) -> bool {
+    left.kind == right.kind && left.namespace == right.namespace && left.name == right.name
 }
 
 pub struct TablePage {
@@ -161,17 +246,18 @@ pub struct TablePage {
     pub page_count: usize,
 }
 
-/// Name-sorted rows grouped by ownership, then kind lane, as
-/// `buildResourceTableDisplay` and `buildResourceTableEntries` do.
+/// Rows sorted by the table's column, grouped by ownership, then kind lane, as
+/// `buildResourceTableDisplay` and `buildResourceTableEntries` do. Only the
+/// current page's rows are cloned.
 pub fn table_page(
     rows: &[ResourceSummary],
-    page: usize,
+    view: &TableView<'_>,
     preferred: impl Fn(&ResourceSummary) -> bool,
     lanes: &crate::preferences::KindLanes,
+    usage: impl Fn(&ResourceSummary) -> table_sort::Usage,
 ) -> TablePage {
-    let mut sorted: Vec<&ResourceSummary> = rows.iter().collect();
-    // `Intl.Collator(undefined, { numeric: true })`.
-    sorted.sort_by(|a, b| collate(&a.name, &b.name, true));
+    let order = table_sort::order(rows, view.sort, usage);
+    let mut sorted: Vec<&ResourceSummary> = order.into_iter().map(|index| &rows[index]).collect();
     let grouped_by_gitops = sorted.iter().any(|row| gitops_label(row).is_some());
     if grouped_by_gitops {
         sorted.sort_by_key(|row| !preferred(row));
@@ -209,35 +295,54 @@ pub fn table_page(
     }
     let total = display.len();
     let page_count = total.div_ceil(PAGE_SIZE).max(1);
-    let page = page.min(page_count - 1);
+    let page = view.page.min(page_count - 1);
     let page_rows: Vec<ResourceSummary> = display
-        .into_iter()
+        .iter()
         .skip(page * PAGE_SIZE)
         .take(PAGE_SIZE)
-        .cloned()
+        .map(|row| (*row).clone())
         .collect();
+    // The selected resource's groups stay open even when collapsed, as on the web.
+    let selected = view
+        .selected
+        .and_then(|selected| display.iter().find(|row| same_resource(row, selected)))
+        .map(|row| {
+            let group = ownership_group(row).0;
+            let type_label = type_label(row);
+            (group_key(&group), type_key(&group, &type_label))
+        });
     let mut entries = Vec::new();
     let mut previous: Option<(String, String)> = None;
     for (index, row) in page_rows.iter().enumerate() {
-        let group = if grouped_by_gitops {
-            ownership_group(row).0
-        } else {
-            String::new()
-        };
+        let group = ownership_group(row).0;
         let kind = type_label(row);
-        let same_group = previous.as_ref().is_some_and(|(g, _)| *g == group);
-        let same_type = same_group && previous.as_ref().is_some_and(|(_, t)| *t == kind);
-        if grouped_by_gitops && !same_group {
+        let group_changed = previous.as_ref().is_none_or(|(g, _)| *g != group);
+        let type_changed = previous
+            .as_ref()
+            .is_none_or(|(g, t)| (grouped_by_gitops && *g != group) || *t != kind);
+        let (row_group_key, row_type_key) = (group_key(&group), type_key(&group, &kind));
+        let group_collapsed = grouped_by_gitops
+            && selected
+                .as_ref()
+                .is_none_or(|(key, _)| *key != row_group_key)
+            && view.collapsed.contains(&row_group_key);
+        let type_collapsed = selected
+            .as_ref()
+            .is_none_or(|(_, key)| *key != row_type_key)
+            && view.collapsed.contains(&row_type_key);
+        if grouped_by_gitops && group_changed {
             let count = page_rows
                 .iter()
                 .filter(|other| ownership_group(other).0 == group)
                 .count();
             entries.push(Entry::Group {
+                key: row_group_key.clone(),
                 label: group.clone(),
                 count,
+                collapsed: group_collapsed,
             });
         }
-        if !same_type {
+        if type_changed && !group_collapsed {
             let count = page_rows
                 .iter()
                 .filter(|other| {
@@ -246,12 +351,16 @@ pub fn table_page(
                 })
                 .count();
             entries.push(Entry::Type {
+                key: row_type_key.clone(),
                 label: kind.clone(),
                 kind: row.kind.clone(),
                 count,
+                collapsed: type_collapsed,
             });
         }
-        entries.push(Entry::Row(index));
+        if !group_collapsed && !type_collapsed {
+            entries.push(Entry::Row(index));
+        }
         previous = Some((group, kind));
     }
     TablePage {

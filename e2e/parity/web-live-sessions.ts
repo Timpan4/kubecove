@@ -58,6 +58,7 @@ export async function liveSessionAction(page: Page, step: Step): Promise<void> {
                 await page.getByRole("option", { name: step.container, exact: true }).click();
             }
             else if (step.operation === "arguments") await page.getByPlaceholder("/usr/bin/env\nprintenv", { exact: true }).fill(step.command ?? "");
+            else if (step.operation === "shortcut") await page.getByPlaceholder("/usr/bin/env\nprintenv", { exact: true }).press("ControlOrMeta+Enter");
             else if (step.operation === "run") await page.getByRole("button", { name: `Run ${step.command} in ${step.container}`, exact: true }).click();
             else if (step.operation === "start") {
                 const start = page.getByRole("button", { name: `Open ${step.command} in ${step.container}`, exact: true }).last();

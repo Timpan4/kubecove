@@ -20,6 +20,7 @@ mod argo_tunnel;
 mod argo_workspace;
 mod cluster;
 mod controls;
+mod copyable;
 mod custom_resources;
 mod delivery_summary;
 mod delivery_ui;
@@ -39,7 +40,9 @@ mod exec_selection;
 mod exec_state;
 mod exec_view;
 mod feedback;
+mod foreground_bar;
 mod forward_tab;
+mod friendly_error;
 mod gitops_card;
 mod gitops_nav;
 mod gitops_page;
@@ -65,6 +68,7 @@ mod logs_state;
 mod logs_tab;
 mod map;
 mod metrics;
+mod namespace_list;
 mod overview;
 mod overview_saved;
 mod overview_shortcuts;
@@ -79,8 +83,11 @@ mod rbac_page;
 mod rbac_queue;
 mod rbac_review;
 mod rbac_verify;
+mod resource_filter_controls;
+mod resource_filters;
 mod resource_order;
 mod resources;
+mod restore_prompt;
 mod revisions_tab;
 mod saved_forward_form;
 mod scope;
@@ -145,6 +152,7 @@ pub(crate) enum Page {
     Settings,
     GitOps,
     Helm,
+    Namespaces,
 }
 
 /// The native workspace: sidebar navigation, header and the active page, laid
@@ -166,6 +174,9 @@ pub struct Inspector {
     rows: Vec<ResourceSummary>,
     visible: Vec<ResourceSummary>,
     table_page: usize,
+    table_sort: crate::table_sort::Sort,
+    /// Group and kind-group keys the table has collapsed, as `collapsedGroups` on the web.
+    collapsed_groups: std::collections::HashSet<String>,
     load: Load,
     warnings: Vec<String>,
     detail: Detail,
@@ -188,12 +199,17 @@ pub struct Inspector {
     launcher: launcher::LauncherState,
     palette: palette::PaletteState,
     live_menu_open: bool,
+    /// The compact-width navigation drawer; only shown below `sidebar::COMPACT_WIDTH`.
+    navigation_open: bool,
+    namespace_list: namespace_list::NamespaceListState,
     live: live_data::LiveData,
     kind_selection: kind_selection::KindSelection,
+    filters: resource_filters::ResourceFilters,
     sidebar_tree: sidebar_tree::TreeState,
     page_refresh: page_refresh::PageRefresh,
     notice: Option<String>,
     feedback: feedback::Feedback,
+    restore_prompt: restore_prompt::RestorePrompt,
     request: Rc<()>,
     detail_request: Rc<()>,
     context_task: Option<Task<()>>,
@@ -273,6 +289,8 @@ impl Inspector {
             rows: vec![],
             visible: vec![],
             table_page: 0,
+            table_sort: Default::default(),
+            collapsed_groups: Default::default(),
             load: Load::Loading,
             warnings: vec![],
             detail: Detail::Closed,
@@ -294,12 +312,16 @@ impl Inspector {
             launcher: launcher::LauncherState::new(window, cx),
             palette: palette::PaletteState::new(window, cx),
             live_menu_open: false,
+            navigation_open: false,
+            namespace_list: Default::default(),
             live: Default::default(),
             kind_selection: kind_selection::KindSelection::new(window, cx),
+            filters: resource_filters::ResourceFilters::new(window, cx),
             sidebar_tree: Default::default(),
             page_refresh: Default::default(),
             notice: None,
             feedback: Default::default(),
+            restore_prompt: Default::default(),
             request: Rc::new(()),
             detail_request: Rc::new(()),
             context_task: None,
@@ -362,6 +384,8 @@ impl Inspector {
         self.live.selected = None;
         self.live.kind_locked = false;
         self.kind_selection.chosen = None;
+        // The sidebar scope replaces any toolbar namespace selection.
+        self.filters.namespaces.clear();
         if let Some(namespace) = &namespace {
             self.visit_scope(
                 crate::workspaces::entries::EntryKind::Namespace,
@@ -475,6 +499,7 @@ impl Inspector {
             Page::Settings => self.settings_page(cx).into_any_element(),
             Page::GitOps => self.gitops_page_view(window, cx),
             Page::Helm => self.helm_page_view(window, cx),
+            Page::Namespaces => self.namespace_list_page(),
         }
     }
 }
@@ -485,9 +510,16 @@ impl Render for Inspector {
         self.sync_sidebar_discovery(cx);
         self.sync_live(window, cx);
         self.flush_live_patches(cx);
+        // `xl` in the web shell: the sidebar is in flow only at this width or wider.
+        let compact = window.viewport_size().width < px(sidebar::COMPACT_WIDTH);
+        if !compact {
+            self.navigation_open = false;
+        }
         let detail_open = !matches!(self.detail, Detail::Closed);
         let page = self.page_view(window, cx);
         let overlays = self.overlays(window, cx);
+        let sidebar = (!compact).then(|| self.sidebar(cx, sidebar::WIDE_WIDTH).into_any_element());
+        let drawer = (compact && self.navigation_open).then(|| self.navigation_drawer(cx));
         div()
             .relative()
             .size_full()
@@ -501,7 +533,8 @@ impl Render for Inspector {
             .bg(Tokens::background())
             .text_color(Tokens::foreground())
             .font_family(crate::theme::SANS)
-            .child(self.sidebar(cx))
+            .child(self.foreground_bar())
+            .children(sidebar)
             .child(
                 div()
                     .flex()
@@ -514,7 +547,7 @@ impl Render for Inspector {
                     .border_1()
                     .border_color(Tokens::border())
                     .bg(Tokens::background())
-                    .child(self.header(cx))
+                    .child(self.header(cx, compact))
                     .when_some(
                         self.persistence_error.clone().or(self.notice.clone()),
                         |main, notice| {
@@ -532,6 +565,7 @@ impl Render for Inspector {
                             )
                         },
                     )
+                    .children(self.restore_prompt(cx))
                     .child(
                         div()
                             .flex()
@@ -556,6 +590,7 @@ impl Render for Inspector {
                     .children(self.usage_footer(cx)),
             )
             .children(overlays)
-            .children(self.copy_announcement())
+            .children(drawer)
+            .children(self.copy_toast(cx))
     }
 }

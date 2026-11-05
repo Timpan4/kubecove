@@ -24,6 +24,8 @@
 
 <div
 	aria-hidden="true"
+	data-foreground-loading
+	data-active={active ? "true" : "false"}
 	bind:this={host}
 	class={cnfast(
 		"h-0.5 overflow-hidden bg-transparent opacity-0 transition-opacity",

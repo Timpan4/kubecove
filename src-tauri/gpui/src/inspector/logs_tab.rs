@@ -10,6 +10,7 @@ use super::events_tab::empty;
 use super::log_row::{chip_colors, log_row, red500};
 use super::logs_state::{LogStatus, LogsState, SINCE};
 use crate::logs::LogLevel;
+use crate::preferences::LogLayout;
 use crate::theme::{MONO, Tokens};
 use crate::ui;
 use gpui_kit::component::{input::Input, select::Select};
@@ -199,7 +200,7 @@ fn toolbar(logs: &LogsState, cx: &mut Context<Inspector>) -> Div {
         )
 }
 
-fn filters(logs: &LogsState, cx: &mut Context<Inspector>) -> Div {
+fn filters(logs: &LogsState, layout: LogLayout, cx: &mut Context<Inspector>) -> Div {
     let counts = logs.buffer.counts();
     let toggle = |shown: bool| {
         if shown {
@@ -291,6 +292,24 @@ fn filters(logs: &LogsState, cx: &mut Context<Inspector>) -> Div {
                 .items_center()
                 .gap(px(4.))
                 .children(chips)
+                // Only the one-line layout has rows to expand, as in `LogsTab.svelte`.
+                .children((layout == LogLayout::OneLine).then(|| {
+                    icon_button("chevrons-up-down", toggle(logs.expand_all))
+                        .id("log-expand-all")
+                        .test_support()
+                        .aria_label(if logs.expand_all {
+                            "Collapse all"
+                        } else {
+                            "Expand all"
+                        })
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            if let Some(logs) = this.logs_state() {
+                                logs.toggle_expand_all();
+                                logs.list.remeasure();
+                            }
+                            cx.notify();
+                        }))
+                }))
                 .child(
                     icon_button("wrap-text", toggle(logs.wrap))
                         .id("log-wrap")
@@ -378,7 +397,7 @@ fn viewport(logs: &LogsState, cx: &mut Context<Inspector>) -> Div {
     } else {
         list(
             logs.list.clone(),
-            cx.processor(|this: &mut Inspector, position: usize, _, _| {
+            cx.processor(|this: &mut Inspector, position: usize, _, cx| {
                 let layout = this.persisted.preferences.log_layout;
                 let Some(logs) = this.logs_state() else {
                     return div().into_any_element();
@@ -388,7 +407,7 @@ fn viewport(logs: &LogsState, cx: &mut Context<Inspector>) -> Div {
                     .get(position)
                     .and_then(|index| logs.buffer.line(*index));
                 match line {
-                    Some(line) => log_row(line, logs, position, layout).into_any_element(),
+                    Some(line) => log_row(line, logs, position, layout, cx).into_any_element(),
                     None => div().into_any_element(),
                 }
             }),
@@ -435,7 +454,11 @@ fn viewport(logs: &LogsState, cx: &mut Context<Inspector>) -> Div {
     frame.child(body).children(jump)
 }
 
-pub(super) fn logs_tab(detail: &ResourceDetail, cx: &mut Context<Inspector>) -> AnyElement {
+pub(super) fn logs_tab(
+    detail: &ResourceDetail,
+    layout: LogLayout,
+    cx: &mut Context<Inspector>,
+) -> AnyElement {
     let Some(logs) = detail.logs.as_ref() else {
         return div().into_any_element();
     };
@@ -472,7 +495,7 @@ pub(super) fn logs_tab(detail: &ResourceDetail, cx: &mut Context<Inspector>) -> 
         .min_h_0()
         .gap(px(6.))
         .child(toolbar(logs, cx))
-        .child(filters(logs, cx))
+        .child(filters(logs, layout, cx))
         .children(error)
         .child(viewport(logs, cx))
         .into_any_element()

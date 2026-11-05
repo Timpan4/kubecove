@@ -49,16 +49,41 @@ fn units(text: &str, numeric: bool) -> Vec<Unit<'_>> {
     units
 }
 
+/// A text's collation units, built once so that sorting compares keys without
+/// allocating.
+pub struct Key<'a> {
+    units: Vec<Unit<'a>>,
+    text: &'a str,
+}
+
+impl<'a> Key<'a> {
+    pub fn new(text: &'a str, numeric: bool) -> Self {
+        Self {
+            units: units(text, numeric),
+            text,
+        }
+    }
+
+    /// `Intl.Collator` with `sensitivity: "base"`: case-only differences compare equal.
+    pub fn base_cmp(&self, other: &Self) -> Ordering {
+        self.units.cmp(&other.units)
+    }
+
+    /// Like `collate`: equal letters break ties on case, lowercase first, then bytes.
+    pub fn full_cmp(&self, other: &Self) -> Ordering {
+        self.base_cmp(other)
+            .then_with(|| {
+                self.text
+                    .chars()
+                    .map(|c| c.is_ascii_uppercase())
+                    .cmp(other.text.chars().map(|c| c.is_ascii_uppercase()))
+            })
+            .then_with(|| self.text.cmp(other.text))
+    }
+}
+
 /// Compares like `a.localeCompare(b, undefined, { numeric })`: letters first
 /// ignore case, then lowercase sorts before uppercase.
 pub fn collate(a: &str, b: &str, numeric: bool) -> Ordering {
-    units(a, numeric)
-        .cmp(&units(b, numeric))
-        .then_with(|| {
-            let case = |text: &str| -> Vec<bool> {
-                text.chars().map(|c| c.is_ascii_uppercase()).collect()
-            };
-            case(a).cmp(&case(b))
-        })
-        .then_with(|| a.cmp(b))
+    Key::new(a, numeric).full_cmp(&Key::new(b, numeric))
 }

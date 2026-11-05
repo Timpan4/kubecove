@@ -84,6 +84,8 @@ impl Inspector {
                         (!errors.is_empty()).then(|| errors.join("\n"))
                     }
                 };
+                this.restore_prompt
+                    .finish_start(this.sessions.error.clone());
                 this.load_sessions(cx);
                 cx.notify();
             });

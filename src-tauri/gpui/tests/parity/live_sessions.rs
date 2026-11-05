@@ -117,6 +117,11 @@ pub fn apply(window: &mut Window, cx: &mut App, step: &Value) -> bool {
                     Some(string(step, "command"))
                 );
             }
+            // Cmd on macOS, Ctrl elsewhere, like the web's `ControlOrMeta+Enter`.
+            "shortcut" => {
+                window.press("secondary-enter", cx);
+                window.render_frame(cx);
+            }
             "run" => {
                 assert_eq!(
                     window.find("exec-custom-run").label(),

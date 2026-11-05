@@ -2,7 +2,29 @@ use super::*;
 use gpui_kit::InputEvent;
 use gpui_kit::test::TestEventExt;
 
-fn click_sidebar(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, id: String) {
+/// The test id of a sidebar row from its path: `nav:` for top-level built-in
+/// groups, `namespace:` for namespaces and `tree:` for nested rows.
+pub(super) fn sidebar_row_id(path: &[&str]) -> String {
+    let joined = path.join("/");
+    let builtin = [
+        "Workloads",
+        "Network",
+        "Config",
+        "Storage",
+        "RBAC",
+        "Cluster Overview",
+    ]
+    .contains(&path[0]);
+    if path.len() > 1 {
+        format!("tree:{joined}")
+    } else if builtin {
+        format!("nav:{joined}")
+    } else {
+        format!("namespace:{joined}")
+    }
+}
+
+pub(super) fn click_sidebar(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, id: String) {
     let position = window.find(id).bounds().center();
     window.pointer_move(position, None, cx);
     window.dispatch_event(
@@ -45,22 +67,7 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
                 .map(|part| part.as_str().unwrap())
                 .collect();
             let joined = path.join("/");
-            let builtin = [
-                "Workloads",
-                "Network",
-                "Config",
-                "Storage",
-                "RBAC",
-                "Cluster Overview",
-            ]
-            .contains(&path[0]);
-            let id = if path.len() > 1 {
-                format!("tree:{joined}")
-            } else if builtin {
-                format!("nav:{joined}")
-            } else {
-                format!("namespace:{joined}")
-            };
+            let id = sidebar_row_id(&path);
             match string(step, "action") {
                 "expectSidebarRow" => {
                     let found = window.try_find(id);

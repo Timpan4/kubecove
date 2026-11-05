@@ -1,4 +1,7 @@
 type Identity = { kind: string; name: string; namespace: string };
+export const TABLE_COLUMNS = ["Name", "Status", "Namespace", "Kind", "Ready", "Restarts", "CPU", "Memory", "Owner", "Age"] as const;
+type TableColumn = (typeof TABLE_COLUMNS)[number];
+export const SORT_COLUMNS = ["Name", "Status", "Namespace", "Kind", "Ready", "Restarts", "CPU", "Memory", "Age"] as const;
 export type Step =
     | { action: "sidebarToggle" | "sidebarSelect"; path: string[] }
     | { action: "expectSidebarRow"; path: string[]; visible: boolean; selected: boolean }
@@ -12,12 +15,24 @@ export type Step =
     | { action: "dragKind"; kind: string; target: string }
     | { action: "expectEmptyLauncher" }
     | { action: "expectEntryCount"; panel: "Pinned" | "Recent"; count: number }
-    | { action: "copyErrorDetail"; error: "contexts" | "namespaces"; expected: string }
+    | { action: "copyErrorDetail"; error: "contexts" | "namespaces" | "details"; expected: string }
+    | { action: "expectForegroundLoading"; active: boolean }
+    | { action: "expectFriendlyError"; title: string; next: string }
+    | { action: "inspectRequiredPermission" | "returnToSource" | "dismissCopyToast" }
+    | { action: "expectPermissionTarget"; verb: string; resource: string }
+    | ({ action: "copyResourceName" } & Identity)
+    | { action: "expectCopyToast"; text: string }
     | ({ action: "toggleResourcePin" } & Identity)
     | { action: "expectWorkspaceEntry" | "openWorkspaceEntry"; panel: "Pinned" | "Recent"; label: string; index: number; count: number }
     | { action: "reorderKindKey"; kind: string; key: "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" }
     | { action: "expectRemoteHost"; url: string }
-    | { action: "configureShellRead"; phase: "ready" | "contexts-failed" | "contexts-empty" | "namespaces-failed" | "resources-failed" }
+    | { action: "configureShellRead"; phase: "ready" | "contexts-failed" | "contexts-empty" | "namespaces-failed" | "namespaces-empty" | "resources-failed" }
+    | { action: "openNamespaceList" }
+    | { action: "expectNamespaceRow"; name: string; age: string }
+    | { action: "resizeViewport"; width: number; height: number }
+    | { action: "openNavigationDrawer" }
+    | { action: "expectNavigationDrawer"; open: boolean }
+    | { action: "sidebarKey"; path: string[]; key: "Enter" | "Space" | "ArrowLeft" | "ArrowRight" }
     | { action: "retryLauncher"; read: "contexts" | "namespaces" }
     | { action: "expectLauncherRetry"; read: "contexts" | "namespaces" }
     | { action: "overviewOperation"; destination: "Resources" | "Workspaces" | "Port Forwards" | "Incidents" }
@@ -44,6 +59,14 @@ export type Step =
     | { action: "expectCustomGroup"; group: string; visible: boolean }
     | { action: "toggleKind"; kind: string; checked: boolean }
     | { action: "openKindPicker" | "closeKindPicker" | "selectAllKinds" }
+    | { action: "openNamespacePicker" | "closeNamespacePicker" | "selectAllNamespaces" | "clearResourceFilters" }
+    | { action: "searchNamespacePicker"; value: string }
+    | { action: "toggleNamespace" | "expectNamespaceChecked"; namespace: string; checked: boolean }
+    | { action: "expectNamespaceTrigger"; label: string }
+    | { action: "selectHealthFilter"; label: string }
+    | { action: "expectHealthFilter"; label: string; pressed: boolean }
+    | { action: "chooseGitOpsOwner"; owner: string }
+    | { action: "setHistoricalReplicaSets"; checked: boolean }
     | { action: "expectKindChecked"; kind: string; checked: boolean }
     | { action: "fillMcpPort"; value: string }
     | { action: "mcpControl"; control: "MCP server" | "Submit port" | "Save" | "Copy token" | "Copy Claude Code command" | "Rotate token" }
@@ -83,7 +106,7 @@ export type Step =
     | { action: "configureForward"; remote: string; local: string }
     | { action: "forwardControl"; operation: "start" | "save" | "restore" | "stop" | "reconnect"; target?: string }
     | { action: "expectForwardState"; target: string; local: string; status: string; resolved?: string; count: number }
-    | { action: "execControl"; operation: "start" | "input" | "close" | "stop" | "select" | "custom" | "arguments" | "run"; container?: string; command?: string; data?: string; tab?: number }
+    | { action: "execControl"; operation: "start" | "input" | "close" | "stop" | "select" | "custom" | "arguments" | "shortcut" | "run"; container?: string; command?: string; data?: string; tab?: number }
     | { action: "expectExecState"; container: string; status: string; contains: string; absent?: string; command?: string }
     | { action: "expectWorkspaceExport"; name: string }
     | { action: "fillSettingsField"; field: "Server URL" | "Server token"; value: string }
@@ -122,6 +145,12 @@ export type Step =
     | { action: "expectLogLines"; lines: string[] }
     | { action: "filterLogs" | "confirmDeletion" | "editReplicas"; value: string }
     | { action: "toggleLogLevel"; level: LogLevel }
+    | { action: "toggleLogRow"; line: string }
+    | { action: "toggleLogExpandAll" }
+    | { action: "expectLogRowOpen"; line: string; open: boolean }
+    | { action: "copyLogLine"; line: string; contains: string }
+    | { action: "expectRestorePrompt"; visible: boolean; count?: number }
+    | { action: "restorePromptControl"; control: "Start saved" | "Review" | "Skip" | "Auto-start" }
     | { action: "expectLogsEmpty" | "expectYamlNotice" | "expectNoYamlNotice"; title: string }
     | { action: "selectRevision" | "reviewAction"; label: string }
     | { action: "expectRevisionDiff"; selected: string; comparison: string; contains: string[] }
@@ -185,6 +214,12 @@ export type Step =
     | { action: "expectTopologyEmpty"; title: string }
     | { action: "selectTopologyNode" | "expectNoTopologyNode"; id: string }
     | { action: "expectResourceMetrics"; kind: string; namespace: string; name: string; cpu: string; memory: string }
+    | { action: "sortResourceTable"; column: (typeof SORT_COLUMNS)[number] }
+    | { action: "expectResourceOrder"; names: string[] }
+    | { action: "toggleResourceGroup"; label: string }
+    | { action: "expectResourceGroup"; label: string; expanded: boolean }
+    | ({ action: "openResourceRow"; column: TableColumn } & Identity)
+    | ({ action: "expectResourceCell"; column: TableColumn; text: string } & Identity)
     | { action: "setDeliveryView"; page: "GitOps" | "Helm"; mode: "Cards" | "List" };
 export const RBAC_CATEGORIES = ["Namespace Access", "Roles", "Cluster Roles", "Bindings", "Service Accounts"] as const;
 type RbacCategory = (typeof RBAC_CATEGORIES)[number];

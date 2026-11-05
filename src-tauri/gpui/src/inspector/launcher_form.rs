@@ -116,11 +116,16 @@ impl Inspector {
                 form.child(
                     self.friendly_failure(
                         "launcher-context-error",
-                        "Failed to load contexts",
+                        None,
                         state
                             .context_error
                             .as_deref()
                             .unwrap_or("Context read failed"),
+                        super::friendly_error::Context {
+                            operation: Some(super::friendly_error::Operation::Contexts),
+                            fallback_title: Some("Failed to load contexts"),
+                            ..Default::default()
+                        },
                         None,
                         cx,
                     ),
@@ -148,11 +153,18 @@ impl Inspector {
                 form.child(
                     self.friendly_failure(
                         "launcher-namespace-error",
-                        "Failed to load namespaces",
+                        None,
                         state
                             .namespace_error
                             .as_deref()
                             .unwrap_or("Namespace read failed"),
+                        super::friendly_error::Context {
+                            operation: Some(super::friendly_error::Operation::Resources),
+                            fallback_title: Some("Failed to load namespaces"),
+                            partial: true,
+                            compact: true,
+                            ..Default::default()
+                        },
                         None,
                         cx,
                     ),

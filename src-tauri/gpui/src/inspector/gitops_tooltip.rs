@@ -61,10 +61,13 @@ pub(super) fn revision(selection: Selection) -> String {
     format!("Revisions · {} unique\n{}", rows.len(), rows.join("\n"))
 }
 
+/// Shows `text` on hover and copies it on click. The copy names `label` in the
+/// shared copy toast, as `GitOpsView.svelte`'s `copyRevealedValue` does.
 pub(super) fn reveal(
     element: Div,
     id: String,
     text: String,
+    label: String,
     cx: &mut Context<Inspector>,
 ) -> Stateful<Div> {
     let copy = text.clone();
@@ -72,8 +75,9 @@ pub(super) fn reveal(
         .id(SharedString::from(id))
         .cursor_pointer()
         .tooltip(move |window, cx| Tooltip::new(text.clone()).build(window, cx))
-        .on_click(cx.listener(move |_, _, _, cx| {
+        .on_click(cx.listener(move |this, _, _, cx| {
             cx.stop_propagation();
             cx.write_to_clipboard(ClipboardItem::new_string(copy.clone()));
+            this.show_copy_toast(format!("Copied {label}."), cx);
         }))
 }

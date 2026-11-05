@@ -60,6 +60,7 @@ fn source_badge(
         badge,
         format!("gitops-source:{}", selection.key()),
         gitops_tooltip::source(selection),
+        "source details".to_owned(),
         cx,
     )
 }
@@ -203,6 +204,7 @@ pub(super) fn card(
                         field,
                         format!("gitops-fact:{}:{label}", selection.key()),
                         text,
+                        label.to_lowercase(),
                         cx,
                     )
                 }))
@@ -319,6 +321,7 @@ pub(super) fn card(
                             .bg(Tokens::background().opacity(0.4)),
                         format!("gitops-source-line:{}", selection.key()),
                         gitops_tooltip::source(selection),
+                        "source details".to_owned(),
                         cx,
                     ))
                 })

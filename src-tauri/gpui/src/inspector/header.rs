@@ -8,7 +8,8 @@ use gpui_kit::component::select::Select;
 use gpui_kit::{Context, FontWeight, div, prelude::*, px};
 
 impl Inspector {
-    pub(super) fn header(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    /// `compact` shows the menu button that opens the navigation drawer.
+    pub(super) fn header(&self, cx: &mut Context<Self>, compact: bool) -> impl IntoElement {
         let dirty = self.dirty(cx);
         let location = match self.page {
             Page::Overview => self.workspace_name.clone(),
@@ -19,6 +20,7 @@ impl Inspector {
             Page::Settings => "Settings".into(),
             Page::GitOps => self.gitops_location().into(),
             Page::Helm => "Helm Releases".into(),
+            Page::Namespaces => "Namespaces".into(),
         };
         div()
             .flex()
@@ -30,6 +32,18 @@ impl Inspector {
             .border_b_1()
             .border_color(Tokens::border())
             .bg(Tokens::card())
+            .when(compact, |bar| {
+                bar.child(
+                    ui::ghost_icon("menu", 28., 16.)
+                        .id("open-navigation")
+                        .test_support()
+                        .aria_label("Open workspace navigation")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.navigation_open = true;
+                            cx.notify();
+                        })),
+                )
+            })
             .child(
                 div()
                     .flex()

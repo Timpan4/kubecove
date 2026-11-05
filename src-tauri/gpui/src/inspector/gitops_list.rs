@@ -154,6 +154,7 @@ pub(in crate::inspector) fn list_row(
             ),
             format!("gitops-list-revision:{}", selection.key()),
             gitops_tooltip::revision(selection),
+            "revision".to_owned(),
             cx,
         ))
         .child(cell(4).child(ui::muted(ui::sm(selection.destination().to_owned())).truncate()))

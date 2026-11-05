@@ -1,9 +1,12 @@
 //! Context and resource-scope reads, refresh, and visible resource filtering.
 
 use super::{Inspector, Load, map};
+use crate::collate::collate;
+use crate::model::{HealthSummary, gitops_owner_filter};
 use gpui_kit::component::select::SearchableVec;
 use gpui_kit::{Context, SharedString, Window};
 use kubecove_lib::models::ResourceSummary;
+use std::collections::BTreeMap;
 use std::rc::Rc;
 
 impl Inspector {
@@ -212,13 +215,35 @@ impl Inspector {
         self.update_saved_overview();
         let search = self.search.read(cx).value().trim().to_lowercase();
         let kinds = self.scope_kinds();
-        self.visible = self
-            .rows
-            .iter()
-            .chain(self.cluster_rows())
-            .filter(|row| self.row_visible(row, &search, &kinds))
-            .cloned()
-            .collect();
+        // One pass over the rows. Owner choices and health counts exclude the
+        // search and owner filters, as the web's table model does.
+        let mut owner_map = BTreeMap::new();
+        let mut summary = HealthSummary::default();
+        let mut visible = Vec::new();
+        for row in self.rows.iter().chain(self.cluster_rows()) {
+            if !(self.row_visible(row, "", &kinds) && self.filters.in_namespace(row)) {
+                continue;
+            }
+            let owner = gitops_owner_filter(row);
+            if let Some((key, label)) = &owner {
+                owner_map
+                    .entry(key.clone())
+                    .or_insert_with(|| label.clone());
+            }
+            let owner_key = owner.as_ref().map(|(key, _)| key.as_str());
+            if !(self.row_visible(row, &search, &kinds) && self.filters.in_owner(owner_key)) {
+                continue;
+            }
+            summary.add(row);
+            if self.filters.health.matches(row) {
+                visible.push(row.clone());
+            }
+        }
+        let mut owners: Vec<(String, String)> = owner_map.into_iter().collect();
+        owners.sort_by(|left, right| collate(&left.1, &right.1, false));
+        self.filters.summary = summary;
+        self.filters.owners = owners;
+        self.visible = visible;
         self.rebuild_map();
         cx.notify();
     }

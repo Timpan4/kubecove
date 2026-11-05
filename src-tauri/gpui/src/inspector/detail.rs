@@ -8,6 +8,8 @@ use super::argo_tab::{ArgoTab, argo_tab};
 use super::details_tab::details_tab;
 use super::events::EventsState;
 use super::events_tab::events_tab;
+use super::feedback;
+use super::friendly_error;
 use super::logs_state::LogsState;
 use super::logs_tab::logs_tab;
 use super::revisions_tab::{RevisionsState, revisions_tab};
@@ -26,8 +28,15 @@ use kubecove_lib::models::{AppError, HealthAssessment, ResourceDetailsFull, Reso
 pub(super) enum Detail {
     Closed,
     Loading(Box<ResourceSummary>),
-    Failed(String),
+    Failed(Box<FailedDetail>),
     Ready(Box<ResourceDetail>),
+}
+
+/// A details read that failed. It keeps the resource so the failure can offer
+/// the required permission and return to the same object.
+pub(super) struct FailedDetail {
+    pub resource: ResourceSummary,
+    pub error: AppError,
 }
 
 impl Detail {
@@ -36,7 +45,8 @@ impl Detail {
         match self {
             Detail::Loading(resource) => Some(resource),
             Detail::Ready(detail) => Some(&detail.data.summary),
-            Detail::Closed | Detail::Failed(_) => None,
+            Detail::Failed(failed) => Some(&failed.resource),
+            Detail::Closed => None,
         }
     }
 }
@@ -211,19 +221,23 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let opened = match std::mem::replace(&mut self.detail, Detail::Closed) {
-            Detail::Loading(resource) => Some(resource.health_assessment),
+        let loading = match std::mem::replace(&mut self.detail, Detail::Closed) {
+            Detail::Loading(resource) => Some(*resource),
             _ => None,
         };
-        self.detail = match result {
-            Ok(data) => {
+        self.detail = match (result, loading) {
+            (Ok(data), loading) => {
                 let mut detail = ResourceDetail::new(data, window, cx);
-                if let Some(health) = opened {
-                    detail.opened_health = health;
+                if let Some(resource) = loading {
+                    detail.opened_health = resource.health_assessment;
                 }
                 Detail::Ready(Box::new(detail))
             }
-            Err(error) => Detail::Failed(error.message),
+            (Err(error), Some(resource)) => {
+                Detail::Failed(Box::new(FailedDetail { resource, error }))
+            }
+            // Settling only follows a Loading state; without one there is no panel to show.
+            (Err(_), None) => Detail::Closed,
         };
         if let Detail::Ready(detail) = &mut self.detail {
             detail.events.default_open = self.persisted.preferences.expand_timeline_by_default;
@@ -382,12 +396,28 @@ impl Inspector {
             Detail::Loading(_) => {
                 ui::muted(ui::xs("Loading resource details...")).into_any_element()
             }
-            Detail::Failed(error) => div()
-                .id("detail-error")
-                .role(gpui_kit::Role::Alert)
-                .text_color(Tokens::destructive())
-                .child(ui::xs(error.clone()))
-                .into_any_element(),
+            Detail::Failed(failed) => {
+                let permission =
+                    friendly_error::resource_permission(&failed.resource, "get").map(|target| {
+                        feedback::Permission {
+                            cluster: failed.resource.cluster.clone(),
+                            target,
+                            source: "Resource details".into(),
+                        }
+                    });
+                self.friendly_failure(
+                    "detail-error",
+                    Some(failed.error.kind),
+                    &failed.error.message,
+                    friendly_error::Context {
+                        operation: Some(friendly_error::Operation::Details),
+                        fallback_title: Some("Failed to load details"),
+                        ..Default::default()
+                    },
+                    permission,
+                    cx,
+                )
+            }
             Detail::Ready(detail) => {
                 let summary = &detail.data.summary;
                 let identity = format!(
@@ -404,7 +434,7 @@ impl Inspector {
                     DetailTab::Forward => self.forward_tab(cx).into_any_element(),
                     DetailTab::Exec => self.exec_view(cx),
                     DetailTab::Events => events_tab(detail, cx),
-                    DetailTab::Logs => logs_tab(detail, cx),
+                    DetailTab::Logs => logs_tab(detail, self.persisted.preferences.log_layout, cx),
                     DetailTab::Revisions => revisions_tab(detail, cx),
                     DetailTab::Argo => argo_tab(
                         detail,

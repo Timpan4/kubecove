@@ -1,15 +1,17 @@
 //! One row of the Logs tab, mirroring the default stacked layout of
 //! `LogEntry.svelte`: time, level badge, headline, source, error and fields.
 
-use super::controls::red300;
+use super::Inspector;
+use super::controls::{Variant, button, red300};
 use super::events::tw;
 use super::logs_state::LogsState;
 use crate::logs::{LogLevel, ParsedLogLine, highlight_ranges};
 use crate::theme::{MONO, Tokens, oklch};
+use crate::ui;
 use gpui_kit::base::ObservedElement;
 use gpui_kit::{
-    Div, FontWeight, HighlightStyle, Hsla, SharedString, Stateful, StyledText, TestSupportExt, div,
-    prelude::*, px, relative,
+    ClipboardItem, Context, Div, FontWeight, HighlightStyle, Hsla, SharedString, Stateful,
+    StyledText, TestSupportExt, div, prelude::*, px, relative,
 };
 
 fn red400(alpha: f32) -> Hsla {
@@ -57,41 +59,161 @@ fn highlighted(text: &SharedString, term: &str) -> StyledText {
     StyledText::new(text.clone()).with_highlights(ranges.into_iter().map(|range| (range, style)))
 }
 
-/// One stacked `LogEntry` row.
+/// `fieldChips` item: a muted key and its value, both marked for the filter.
+fn field_pair(key: &SharedString, value: &SharedString, term: &str) -> Div {
+    div()
+        .flex()
+        .child(
+            div()
+                .text_color(Tokens::muted_foreground())
+                .child(highlighted(key, term)),
+        )
+        .child(div().w(px(6.3)))
+        .child(highlighted(value, term))
+}
+
+/// `LogEntry.svelte`'s `oneLine` row. The summary line toggles the row. An
+/// open row drops the inline error and fields for a block with the error,
+/// the field chips and Copy line.
+fn one_line_row(
+    line: &ParsedLogLine,
+    logs: &LogsState,
+    position: usize,
+    cx: &mut Context<Inspector>,
+) -> ObservedElement<Stateful<Div>> {
+    let structure = &line.structure;
+    let index = line.index;
+    let open = logs.row_open(index);
+    let term = logs.term.as_str();
+    let summary = div()
+        .id(("log-summary", position))
+        .test_support()
+        .flex()
+        .gap(px(8.))
+        .min_w_0()
+        .font_family(MONO)
+        .text_size(px(12.))
+        .child(line.time.clone())
+        .children(structure.level.map(|level| ui::xs(level.label())))
+        .children(
+            (logs.is_aggregate() && !line.source_label.is_empty())
+                .then(|| ui::xs(line.source_label.clone())),
+        )
+        .child(highlighted(&structure.headline, term))
+        .when(!open, |summary| {
+            summary
+                .children(
+                    structure
+                        .error
+                        .as_ref()
+                        .map(|error| highlighted(error, term)),
+                )
+                .children(structure.fields.iter().map(|field| {
+                    highlighted(&format!("{}={}", field.key, field.value).into(), term)
+                }))
+        });
+    let details = open.then(|| {
+        div()
+            .id(("log-details", position))
+            .test_support()
+            .flex()
+            .flex_col()
+            .items_start()
+            .gap(px(4.))
+            .pt(px(2.))
+            .pb(px(4.))
+            .children(structure.error.as_ref().map(|error| {
+                div()
+                    .font_family(MONO)
+                    .text_size(px(11.5))
+                    .line_height(px(16.))
+                    .text_color(red300())
+                    .child(highlighted(error, term))
+            }))
+            .when(!structure.fields.is_empty(), |details| {
+                details.child(div().flex().flex_wrap().gap(px(3.)).children(
+                    structure.fields.iter().map(|item| {
+                        field_pair(&item.key, &item.value, term)
+                            .whitespace_nowrap()
+                            .px(px(6.))
+                            .rounded(px(4.))
+                            .border_1()
+                            .border_color(Tokens::border())
+                            .bg(Tokens::muted().opacity(0.4))
+                            .font_family(MONO)
+                            .text_size(px(10.5))
+                            .line_height(px(15.))
+                    }),
+                ))
+            })
+            .child(copy_line(line, logs, position, cx))
+    });
+    div()
+        .id(("log-row", position))
+        .test_support()
+        .aria_label(structure.headline.clone())
+        .aria_expanded(open)
+        .on_click(cx.listener(move |this, _, _, cx| {
+            if let Some(logs) = this.logs_state() {
+                logs.toggle_row(index);
+                logs.list.remeasure_items(position..position + 1);
+            }
+            cx.notify();
+        }))
+        .flex()
+        .flex_col()
+        .px(px(12.))
+        .py(px(4.))
+        .hover(|row| row.bg(Tokens::muted().opacity(0.4)))
+        .when(open, |row| row.bg(Tokens::muted().opacity(0.5)))
+        .child(summary)
+        .children(details)
+}
+
+/// The Copy line button of an open row. Its click copies the raw line and
+/// does not toggle the row.
+fn copy_line(
+    line: &ParsedLogLine,
+    logs: &LogsState,
+    position: usize,
+    cx: &mut Context<Inspector>,
+) -> impl IntoElement {
+    let index = line.index;
+    let raw = line.raw.to_string();
+    let copied = logs.copied_line == Some(index);
+    div()
+        .id(("log-copy-area", position))
+        .on_click(|_, _, cx| cx.stop_propagation())
+        .child(
+            button(Variant::Outline, 22., false)
+                .id(("log-copy", position))
+                .test_support()
+                .aria_label("Copy line")
+                .gap(px(4.))
+                .px(px(6.))
+                .child(ui::icon("copy", 12., Tokens::foreground()))
+                .child(ui::xs(if copied { "Copied" } else { "Copy line" }))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    cx.write_to_clipboard(ClipboardItem::new_string(raw.clone()));
+                    if let Some(logs) = this.logs_state() {
+                        logs.copied_line = Some(index);
+                    }
+                    cx.notify();
+                })),
+        )
+}
+
+/// One `LogEntry` row in the layout the preferences select.
 pub(super) fn log_row(
     line: &ParsedLogLine,
     logs: &LogsState,
     position: usize,
     layout: crate::preferences::LogLayout,
+    cx: &mut Context<Inspector>,
 ) -> ObservedElement<Stateful<Div>> {
     let structure = &line.structure;
     if layout == crate::preferences::LogLayout::OneLine {
-        return div()
-            .id(("log-row", position))
-            .test_support()
-            .aria_label(structure.headline.clone())
-            .flex()
-            .gap(px(8.))
-            .px(px(12.))
-            .py(px(4.))
-            .font_family(MONO)
-            .text_size(px(12.))
-            .child(line.time.clone())
-            .children(structure.level.map(|level| crate::ui::xs(level.label())))
-            .children(
-                (logs.is_aggregate() && !line.source_label.is_empty())
-                    .then(|| crate::ui::xs(line.source_label.clone())),
-            )
-            .child(highlighted(&structure.headline, &logs.term))
-            .children(
-                structure
-                    .error
-                    .as_ref()
-                    .map(|error| highlighted(error, &logs.term)),
-            )
-            .children(structure.fields.iter().map(|field| {
-                highlighted(&format!("{}={}", field.key, field.value).into(), &logs.term)
-            }));
+        return one_line_row(line, logs, position, cx);
     }
     let term = logs.term.as_str();
     let wrap = logs.wrap;
@@ -161,17 +283,6 @@ pub(super) fn log_row(
         );
     }
     let fields = (!structure.fields.is_empty()).then(|| {
-        let field = |key: &SharedString, value: &SharedString| {
-            div()
-                .flex()
-                .child(
-                    div()
-                        .text_color(Tokens::muted_foreground())
-                        .child(highlighted(key, term)),
-                )
-                .child(div().w(px(6.3)))
-                .child(highlighted(value, term))
-        };
         let row = div()
             .mt(px(3.))
             .font_family(MONO)
@@ -181,7 +292,7 @@ pub(super) fn log_row(
                 .flex_wrap()
                 .gap(px(3.))
                 .children(structure.fields.iter().map(|item| {
-                    field(&item.key, &item.value)
+                    field_pair(&item.key, &item.value, term)
                         .whitespace_nowrap()
                         .px(px(6.))
                         .rounded(px(4.))
@@ -197,12 +308,11 @@ pub(super) fn log_row(
                 .whitespace_nowrap()
                 .text_size(px(11.))
                 .line_height(px(16.))
-                .children(
-                    structure
-                        .fields
-                        .iter()
-                        .map(|item| field(&item.key, &item.value).flex_none().mr(px(10.))),
-                )
+                .children(structure.fields.iter().map(|item| {
+                    field_pair(&item.key, &item.value, term)
+                        .flex_none()
+                        .mr(px(10.))
+                }))
         }
     });
     div()

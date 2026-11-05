@@ -192,8 +192,13 @@ impl Inspector {
                 |page, error| {
                     page.child(self.friendly_failure(
                         "overview-error",
-                        "Failed to load workspace resources",
+                        None,
                         error,
+                        super::friendly_error::Context {
+                            operation: Some(super::friendly_error::Operation::Resources),
+                            fallback_title: Some("Failed to load workspace resources"),
+                            ..Default::default()
+                        },
                         None,
                         cx,
                     ))

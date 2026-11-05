@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { LOG_LEVELS, RBAC_CATEGORIES, RBAC_RISKS, type Step, VERDICTS } from "./contract-steps";
+import { LOG_LEVELS, RBAC_CATEGORIES, RBAC_RISKS, SORT_COLUMNS, TABLE_COLUMNS, type Step, VERDICTS } from "./contract-steps";
 
 export type { Step } from "./contract-steps";
 function oneOf<T extends string>(values: readonly T[], value: unknown, label: string): T {
@@ -20,6 +20,8 @@ export const ACTIONS = [
     "dragKind",
     "expectEmptyLauncher", "expectEntryCount",
     "copyErrorDetail",
+    "expectForegroundLoading", "expectFriendlyError", "inspectRequiredPermission", "expectPermissionTarget", "returnToSource",
+    "copyResourceName", "expectCopyToast", "dismissCopyToast",
     "toggleResourcePin", "expectWorkspaceEntry", "openWorkspaceEntry",
     "reorderKindKey", "expectRemoteHost",
     "configureShellRead", "retryLauncher", "expectLauncherRetry",
@@ -27,6 +29,7 @@ export const ACTIONS = [
     "expectTopologyDenied",
     "mockTiming",
     "terminalFit",
+    "openNamespaceList", "expectNamespaceRow", "resizeViewport", "openNavigationDrawer", "expectNavigationDrawer", "sidebarKey",
     "terminalOutput", "terminalSelect", "terminalCopy", "terminalPaste", "terminalScroll",
     "configureArgoMock", "argoControl", "focusArgoResource", "expectNoSavedArgoProfile", "copyArgoValue", "configureArgoInventory", "expandArgoDiff", "reconnectArgoProfile",
     "failWorkspaceContext", "expectWorkspaceReadWarning",
@@ -34,6 +37,8 @@ export const ACTIONS = [
     "sidebarToggle", "sidebarSelect", "expectSidebarRow", "collapseSidebar", "expectSidebarBranch", "refreshPage",
     "replayPageReads", "focusStalePage", "expectPageText",
     "searchCustomKinds", "searchKindPicker", "expectCustomGroup", "toggleKind", "openKindPicker", "closeKindPicker", "selectAllKinds", "expectKindChecked",
+    "openNamespacePicker", "closeNamespacePicker", "selectAllNamespaces", "clearResourceFilters", "searchNamespacePicker", "toggleNamespace", "expectNamespaceChecked", "expectNamespaceTrigger",
+    "selectHealthFilter", "expectHealthFilter", "chooseGitOpsOwner", "setHistoricalReplicaSets",
     "fillMcpPort", "mcpControl", "expectMcpState", "expectMcpCopy", "expectMcpRequests",
     "selectArgoPreference", "expectSavedArgoProfile", "configureArgoSync", "selectArgoHistory", "expectArgoWorkspaceTransport", "completeArgoOperation", "confirmArgoTunnel",
     "connectArgoProfile", "disconnectArgoProfile", "confirmArgoReview", "cancelArgoReview", "reviewArgoOperation", "expectArgoReview", "expectArgoText", "argoDocument",
@@ -54,6 +59,7 @@ export const ACTIONS = [
 	"expectResource", "openResource", "expectDetail", "expectClusterResource", "expectNoClusterResource", "expectYaml", "openPage", "showTab", "filterEvents",
 	"expectEvent", "expectEventCount", "expectLiveSessionCount", "filterIncidents", "expectIncidentGuide", "expectGitOpsCount", "expectPortForward",
 	"expectLogLines", "filterLogs", "toggleLogLevel", "expectLogsEmpty", "selectRevision", "expectRevisionDiff", "reviewAction", "editReplicas",
+	"toggleLogRow", "toggleLogExpandAll", "expectLogRowOpen", "copyLogLine", "expectRestorePrompt", "restorePromptControl",
 	"expectReview", "confirmDeletion", "executeReview", "closeReview", "expectNoReview", "expectActionResult", "expectNoActionResult",
 	"editYaml", "applyYaml", "dryRunYaml", "expectDryRun", "expectYamlNotice", "expectNoYamlNotice", "expectYamlReadOnly",
 	"expectNoResource", "openLauncher", "openSavedWorkspace", "expectSavedWorkspace", "nameWorkspace", "selectWorkspaceContext", "toggleWorkspaceNamespace",
@@ -66,6 +72,7 @@ export const ACTIONS = [
 	"openGitOps", "expandNav", "expectGitOpsTable", "expectGitOpsItem", "expectNoGitOpsItem", "openGitOpsDetails", "expectArgoApplication",
 	"expectArgoSignal", "expectHelmCount", "expectHelmRelease", "expectNoHelmRelease", "openHelmRelease", "selectHelmNamespace", "searchHelm",
 	"expectHelmDetails", "openGitOpsResources", "expectArgoWorkspace", "filterArgoResources", "setDeliveryView",
+    "sortResourceTable", "expectResourceOrder", "toggleResourceGroup", "expectResourceGroup", "openResourceRow", "expectResourceCell",
 ] as const satisfies readonly Step["action"][];
 type Missing = Exclude<Step["action"], (typeof ACTIONS)[number]>;
 const allActionsListed: Missing extends never ? true : Missing = true;
@@ -111,12 +118,25 @@ function step(value: unknown): Step {
         case "retryOverview": case "expectOverviewRetry": return { action: item.action };
         case "dragKind": return { action: item.action, kind: string(item.kind), target: string(item.target) };
         case "expectEntryCount": return { action: item.action, panel: oneOf(["Pinned", "Recent"], item.panel, "an entry panel"), count: count(item.count) };
-        case "copyErrorDetail": return { action: item.action, error: oneOf(["contexts", "namespaces"], item.error, "a launcher error"), expected: string(item.expected) };
+        case "copyErrorDetail": return { action: item.action, error: oneOf(["contexts", "namespaces", "details"], item.error, "an error panel"), expected: string(item.expected) };
+        case "expectForegroundLoading": return { action: item.action, active: boolean(item.active) };
+        case "expectFriendlyError": return { action: item.action, title: string(item.title), next: string(item.next) };
+        case "inspectRequiredPermission": case "returnToSource": case "dismissCopyToast": return { action: item.action };
+        case "expectPermissionTarget": return { action: item.action, verb: string(item.verb), resource: string(item.resource) };
+        case "copyResourceName": return { action: item.action, kind: string(item.kind), namespace: string(item.namespace), name: string(item.name) };
+        case "expectCopyToast": return { action: item.action, text: string(item.text) };
         case "toggleResourcePin": return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace) };
         case "expectWorkspaceEntry": case "openWorkspaceEntry": return { action: item.action, panel: oneOf(["Pinned", "Recent"], item.panel, "an entry panel"), label: string(item.label), index: count(item.index), count: count(item.count) };
         case "reorderKindKey": return { action: item.action, kind: string(item.kind), key: oneOf(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"], item.key, "a reorder key") };
         case "expectRemoteHost": return { action: item.action, url: string(item.url) };
-        case "configureShellRead": return { action: item.action, phase: oneOf(["ready", "contexts-failed", "contexts-empty", "namespaces-failed", "resources-failed"], item.phase, "a shell read phase") };
+        case "configureShellRead": return { action: item.action, phase: oneOf(["ready", "contexts-failed", "contexts-empty", "namespaces-failed", "namespaces-empty", "resources-failed"], item.phase, "a shell read phase") };
+        case "openNamespaceList": case "openNavigationDrawer": return { action: item.action };
+        case "expectNamespaceRow": return { action: item.action, name: string(item.name), age: string(item.age) };
+        case "resizeViewport": return { action: item.action, width: count(item.width), height: count(item.height) };
+        case "expectNavigationDrawer":
+            if (typeof item.open !== "boolean") throw new Error("Expected drawer state");
+            return { action: item.action, open: item.open };
+        case "sidebarKey": return { action: item.action, path: strings(item.path, false), key: oneOf(["Enter", "Space", "ArrowLeft", "ArrowRight"], item.key, "a sidebar key") };
         case "retryLauncher": case "expectLauncherRetry": return { action: item.action, read: oneOf(["contexts", "namespaces"], item.read, "a launcher read") };
         case "overviewOperation": return { action: item.action, destination: oneOf(["Resources", "Workspaces", "Port Forwards", "Incidents"], item.destination, "an overview operation") };
         case "overviewIncident": return { action: item.action, filter: oneOf(["Degraded", "Needs attention", "Restart evidence"], item.filter, "an incident shortcut") };
@@ -200,7 +220,7 @@ function step(value: unknown): Step {
         case "execControl": {
             const control: Extract<Step, { action: "execControl" }> = {
                 action: item.action,
-                operation: oneOf(["start", "input", "close", "stop", "select", "custom", "arguments", "run"], item.operation, "an exec control"),
+                operation: oneOf(["start", "input", "close", "stop", "select", "custom", "arguments", "shortcut", "run"], item.operation, "an exec control"),
             };
             if (item.container !== undefined) control.container = string(item.container);
             if (item.command !== undefined) control.command = string(item.command);
@@ -217,6 +237,14 @@ function step(value: unknown): Step {
         case "expectCustomGroup": return { action: item.action, group: string(item.group), visible: boolean(item.visible) };
         case "toggleKind": case "expectKindChecked": return { action: item.action, kind: string(item.kind), checked: boolean(item.checked) };
         case "openKindPicker": case "closeKindPicker": case "selectAllKinds": return { action: item.action };
+        case "openNamespacePicker": case "closeNamespacePicker": case "selectAllNamespaces": case "clearResourceFilters": return { action: item.action };
+        case "searchNamespacePicker": return { action: item.action, value: item.value === "" ? "" : string(item.value) };
+        case "toggleNamespace": case "expectNamespaceChecked": return { action: item.action, namespace: string(item.namespace), checked: boolean(item.checked) };
+        case "expectNamespaceTrigger": return { action: item.action, label: string(item.label) };
+        case "selectHealthFilter": return { action: item.action, label: oneOf(["Total", "Healthy", "Unknown", "Not evaluated", "Needs attention", "Degraded", "Restart evidence"], item.label, "a health filter") };
+        case "expectHealthFilter": return { action: item.action, label: oneOf(["Total", "Healthy", "Unknown", "Not evaluated", "Needs attention", "Degraded", "Restart evidence"], item.label, "a health filter"), pressed: boolean(item.pressed) };
+        case "chooseGitOpsOwner": return { action: item.action, owner: string(item.owner) };
+        case "setHistoricalReplicaSets": return { action: item.action, checked: boolean(item.checked) };
         case "expectUsageFooter": return { action: item.action, text: string(item.text) };
         case "expectUsageProcess": return { action: item.action, label: string(item.label) };
         case "openUsageTree": case "expectNoUsageFooter": return { action: item.action };
@@ -267,6 +295,12 @@ function step(value: unknown): Step {
 			return { action: item.action, level };
 		}
 		case "expectLogsEmpty": case "expectYamlNotice": case "expectNoYamlNotice": return { action: item.action, title: string(item.title) };
+		case "toggleLogRow": return { action: item.action, line: string(item.line) };
+		case "toggleLogExpandAll": return { action: item.action };
+		case "expectLogRowOpen": return { action: item.action, line: string(item.line), open: boolean(item.open) };
+		case "copyLogLine": return { action: item.action, line: string(item.line), contains: string(item.contains) };
+		case "expectRestorePrompt": return { action: item.action, visible: boolean(item.visible), ...(item.count === undefined ? {} : { count: count(item.count) }) };
+		case "restorePromptControl": return { action: item.action, control: oneOf(["Start saved", "Review", "Skip", "Auto-start"], item.control, "a restore prompt control") };
 		case "selectRevision": case "reviewAction": return { action: item.action, label: string(item.label) };
 		case "expectRevisionDiff":
 			return { action: item.action, selected: string(item.selected), comparison: string(item.comparison), contains: strings(item.contains, false) };
@@ -341,6 +375,12 @@ function step(value: unknown): Step {
 		case "selectHelmNamespace": return { action: item.action, namespace: string(item.namespace) };
 		case "searchHelm": return { action: item.action, value: string(item.value) };
 		case "expectHelmDetails": return { action: item.action, title: string(item.title), description: string(item.description), totals: string(item.totals) };
+		case "sortResourceTable": return { action: item.action, column: oneOf(SORT_COLUMNS, item.column, "a sortable table column") };
+		case "expectResourceOrder": return { action: item.action, names: strings(item.names, false) };
+		case "toggleResourceGroup": return { action: item.action, label: string(item.label) };
+		case "expectResourceGroup": return { action: item.action, label: string(item.label), expanded: boolean(item.expanded) };
+		case "openResourceRow": return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), column: oneOf(TABLE_COLUMNS, item.column, "a table column") };
+		case "expectResourceCell": return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), column: oneOf(TABLE_COLUMNS, item.column, "a table column"), text: string(item.text) };
 		default: throw new Error(`Unknown action: ${String(item.action)}`);
 	}
 }

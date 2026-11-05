@@ -263,6 +263,7 @@ fn copyable(id: &str, value: &str, muted: bool, cx: &mut Context<Inspector>) -> 
                 .child(ui::icon("copy", 12., Tokens::muted_foreground())),
             format!("{id}-copy"),
             value.to_owned(),
+            "value".to_owned(),
             cx,
         ))
 }

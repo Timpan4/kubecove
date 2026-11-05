@@ -11,14 +11,24 @@ mod common;
 mod delivery;
 #[path = "parity/detail.rs"]
 mod detail;
+#[path = "parity/feedback.rs"]
+mod feedback;
 #[path = "parity/live_data.rs"]
 mod live_data;
 #[path = "parity/live_sessions.rs"]
 mod live_sessions;
 #[path = "parity/locate.rs"]
 mod locate;
+#[path = "parity/log_restore.rs"]
+mod log_restore;
 #[path = "parity/mcp.rs"]
 mod mcp;
+#[path = "parity/navigation.rs"]
+mod navigation;
+#[path = "parity/resource_filters.rs"]
+mod resource_filters;
+#[path = "parity/resource_table.rs"]
+mod resource_table;
 #[path = "parity/scroll.rs"]
 mod scroll;
 #[path = "parity/settings_integrations.rs"]
@@ -172,14 +182,19 @@ fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
         || adapters::act(window, cx, step)
         || mcp::act(window, cx, step)
         || live_sessions::apply(window, cx, step)
+        || log_restore::apply(window, cx, step)
         || terminal::apply(window, cx, step)
         || settings_integrations::act(window, cx, step)
         || live_data::apply(window, cx, step)
         || sidebar_live::apply(window, cx, step)
+        || navigation::apply(window, cx, step)
+        || resource_filters::act(window, cx, step)
         || topology_metrics::apply(window, cx, step)
+        || resource_table::act(window, cx, step)
         || detail::act(window, cx, step)
         || workspace::act(window, cx, step)
         || workspace_editing::act(window, cx, step)
+        || feedback::act(window, cx, step)
         || delivery::act(window, cx, step))
     {
         panic!("unknown parity action: {}", string(step, "action"));
@@ -455,6 +470,16 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
             }
             if step["action"] == "terminalOutput" {
                 backend.terminal_output(string(step, "container"), string(step, "data"));
+                cx.run_until_parked();
+            }
+            if step["action"] == "resizeViewport" {
+                cx.simulate_window_resize(
+                    handle,
+                    size(
+                        px(number(step, "width") as f32),
+                        px(number(step, "height") as f32),
+                    ),
+                );
                 cx.run_until_parked();
             }
             if step["action"] == "terminalFit" {

@@ -9,6 +9,13 @@ use gpui_kit::{
     AnyElement, Context, ElementId, FontWeight, Hsla, SharedString, div, prelude::*, px,
 };
 
+/// The web shell's `xl` breakpoint. The sidebar is in flow at this width or wider.
+pub(super) const COMPACT_WIDTH: f32 = 1280.;
+/// The sidebar's width in the wide layout.
+pub(super) const WIDE_WIDTH: f32 = 260.;
+/// The width of the compact navigation drawer, `SheetContent`'s `w-[280px]`.
+const DRAWER_WIDTH: f32 = 280.;
+
 struct Node {
     label: &'static str,
     icon: &'static str,
@@ -203,13 +210,57 @@ impl Inspector {
             .collect()
     }
 
-    pub(super) fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    /// The compact-width drawer, `WorkspaceSidebar`'s `SheetContent`. Any click in
+    /// the panel that reaches it closes the drawer, after the clicked row acts.
+    pub(super) fn navigation_drawer(&self, cx: &mut Context<Self>) -> AnyElement {
+        div()
+            .id("workspace-navigation")
+            .test_support()
+            .aria_label("Workspace navigation")
+            .absolute()
+            .top_0()
+            .bottom_0()
+            .left_0()
+            .right_0()
+            .flex()
+            .child(
+                div()
+                    .id("navigation-backdrop")
+                    .test_support()
+                    .absolute()
+                    .top_0()
+                    .bottom_0()
+                    .left_0()
+                    .right_0()
+                    .bg(Tokens::background().opacity(0.6))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.navigation_open = false;
+                        cx.notify();
+                    })),
+            )
+            .child(
+                div()
+                    .id("navigation-panel")
+                    .test_support()
+                    .relative()
+                    .h_full()
+                    .bg(Tokens::background())
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.navigation_open = false;
+                        cx.notify();
+                    }))
+                    .child(self.sidebar(cx, DRAWER_WIDTH)),
+            )
+            .into_any_element()
+    }
+
+    pub(super) fn sidebar(&self, cx: &mut Context<Self>, width: f32) -> impl IntoElement {
         let namespaces = self.namespace_rows(cx);
         div()
             .flex()
             .flex_col()
             .flex_none()
-            .w(px(260.))
+            .w(px(width))
             .h_full()
             .overflow_hidden()
             .rounded(px(14.))
@@ -256,6 +307,8 @@ impl Inspector {
                                     .test_support()
                                     .aria_label("Collapse all sidebar sections")
                                     .on_click(cx.listener(|this, _, _, cx| {
+                                        // Clicking this inside the drawer must not close it.
+                                        cx.stop_propagation();
                                         this.gitops_page.nav_open.clear();
                                         this.live.custom_open = false;
                                         this.live.groups.clear();
@@ -274,6 +327,7 @@ impl Inspector {
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()
+                    .track_scroll(&self.sidebar_tree.scroll)
                     .py(px(8.))
                     .child(self.section_header("Workspace", None))
                     .children(self.nodes(WORKSPACE, cx))
@@ -291,8 +345,18 @@ impl Inspector {
                             "Namespaces",
                             Some(
                                 ui::muted(ui::text("View all", 10.5, 14.))
+                                    .id("view-all-namespaces")
+                                    .test_support()
+                                    .aria_label("View all")
+                                    .when(self.page == Page::Namespaces, |link| {
+                                        link.text_color(Tokens::primary())
+                                    })
                                     .font_weight(FontWeight::MEDIUM)
                                     .px(px(8.))
+                                    .cursor_pointer()
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.open_namespace_list(cx);
+                                    }))
                                     .into_any_element(),
                             ),
                         ),
