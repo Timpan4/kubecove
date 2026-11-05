@@ -184,6 +184,7 @@
           "action": "openSavedWorkspace",
           "name": "Parity mock workspace"
         },
+        { "action": "openPage", "page": "Workspace Overview" },
         {
           "action": "expectOverviewHealth",
           "total": 55

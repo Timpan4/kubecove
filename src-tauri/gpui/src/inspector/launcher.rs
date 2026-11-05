@@ -135,6 +135,7 @@ impl Inspector {
                             .collect();
                         this.launcher.contexts_load = Discovery::Ready;
                         this.discover_namespaces(window, cx);
+                        this.update_saved_overview();
                     }
                     Err(error) => {
                         this.launcher.contexts_load = Discovery::Failed;
@@ -265,6 +266,9 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
         let mut overlays = Vec::new();
+        if let Some(dialog) = self.argo_sync_dialog(cx) {
+            overlays.push(dialog);
+        }
         if let Some(dialog) = self.argo_connection_dialog(cx) {
             overlays.push(dialog);
         }

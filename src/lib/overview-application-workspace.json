@@ -7,7 +7,7 @@
     "scope": {
       "clusterContext": "mock-dev",
       "namespaces": [],
-      "kinds": ["Pod", "Application"],
+      "kinds": ["Pod", { "group": "argoproj.io", "version": "v1alpha1", "apiVersion": "argoproj.io/v1alpha1", "kind": "Application", "plural": "applications", "namespaced": true }],
       "layout": "overview",
       "argoAppFilter": ""
     },

@@ -484,7 +484,9 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
             if step["action"] == "expectDocumentationRequest" {
                 assert_eq!(backend.documentation_requests(), vec![string(step, "url")]);
             }
-            if step["action"] == "restartClient" {
+            if step["action"] == "restartClient"
+                || (step["action"] == "configureShellRead" && step["phase"] != "ready")
+            {
                 cx.update_window(handle, |_, window, _| window.remove_window())
                     .unwrap();
                 let (reopened, _) = cx.update(|cx| {

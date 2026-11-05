@@ -352,7 +352,7 @@
 	function openLauncher() {
 		void confirmStoppingExecSessions().then((stop) => {
 			if (!stop) return;
-			applyWorkspaceNavigation({ type: "openLauncher" });
+			rememberWorkspacePath(currentPathState());
 			onOpenLauncher();
 		});
 	}

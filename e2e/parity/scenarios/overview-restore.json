@@ -67,7 +67,7 @@
         { "action": "openPage", "page": "Workspace Overview" },
         { "action": "expectOverviewShortcuts", "labels": ["platform-argocd"] },
         { "action": "overviewShortcut", "label": "platform-argocd" },
-        { "action": "expectActivePage", "page": "Argo CD" },
+        { "action": "expectActivePage", "page": "GitOps" },
         { "action": "expectGitOpsSelection", "name": "platform-argocd" }
       ]
     },
@@ -82,7 +82,7 @@
         { "action": "openPage", "page": "Workspace Overview" },
         { "action": "expectWorkspaceEntry", "panel": "Recent", "label": "Application / platform-argocd", "index": 0, "count": 1 },
         { "action": "openWorkspaceEntry", "panel": "Recent", "label": "Application / platform-argocd", "index": 0, "count": 1 },
-        { "action": "expectActivePage", "page": "Argo CD" },
+        { "action": "expectActivePage", "page": "GitOps" },
         { "action": "expectGitOpsSelection", "name": "platform-argocd" }
       ]
     },

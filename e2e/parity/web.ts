@@ -76,8 +76,7 @@ export async function action(page: Page, step: Step) {
             await incidentDiagnosticsAction(page, step); break;
         case "expectWorkspaceExport": {
             await loadSettingsMocks(page);
-            const content = await (await page.waitForFunction(() => (globalThis as unknown as { paritySettingsMocks: { workspaceExportMock(): string } }).paritySettingsMocks.workspaceExportMock())).jsonValue();
-            if (typeof content !== "string") throw new Error("Missing workspace export content");
+            const content = await (await page.waitForFunction(() => window.paritySettingsMocks.workspaceExportMock())).jsonValue();
             const document = JSON.parse(content);
             const items = document.kind === "WorkspaceList" ? document.items : [document];
             if (!items.some((item: { spec: { displayName: string; scope: { clusterContext: string; namespaces: string[] } } }) => item.spec.displayName === step.name && item.spec.scope.clusterContext === "mock-dev" && item.spec.scope.namespaces.includes("payments"))) throw new Error("Export ignored the imported workspace scope");
@@ -96,7 +95,7 @@ export async function action(page: Page, step: Step) {
             break;
         case "expectRuntimeEndpoint": {
             await loadSettingsMocks(page);
-            await page.waitForFunction((expected) => ((globalThis as unknown as { paritySettingsMocks: { remoteMockStatus(): { serverUrl: string } | null } }).paritySettingsMocks.remoteMockStatus()?.serverUrl ?? "local") === expected, step.value);
+            await page.waitForFunction((expected) => (window.paritySettingsMocks.remoteMockStatus()?.serverUrl ?? "local") === expected, step.value);
             break;
         }
         case "reopenStoredSettings":
@@ -201,7 +200,10 @@ export async function action(page: Page, step: Step) {
             break;
         }
 		case "clickDetailControl": await detailsAction(page, step); break;
-		case "openResources": await page.getByRole("button", { name: "Resources", exact: true }).first().click(); break;
+		case "openResources":
+			await action(page, { action: "openPage", page: "Workspace Overview" });
+			await page.getByRole("button", { name: "Resources", exact: true }).first().click();
+			break;
 		case "search": await search.fill(step.value); break;
 		case "expectSearch": if (await search.inputValue() !== step.value) throw new Error("Search changed after refresh"); break;
 		case "expectResource": case "openResource": {
@@ -311,7 +313,7 @@ export async function action(page: Page, step: Step) {
 			break;
 		// Absence is checked after a preceding step waited for the new scope's rows.
 		case "expectNoResource": await resourceRow(page, step).waitFor({ state: "detached" }); break;
-		case "openLauncher": await page.getByRole("button", { name: "Open workspaces", exact: true }).click(); break;
+		case "openLauncher": await shellAction(page, step); break;
 		case "openSavedWorkspace": await page.getByRole("button", { name: `Open ${step.name}`, exact: true }).click(); await page.waitForURL(/#\/workspace\/[^/]+\//); break;
 		case "expectSavedWorkspace":
 			await page.getByRole("group", { name: `${step.name} actions`, exact: true }).waitFor();

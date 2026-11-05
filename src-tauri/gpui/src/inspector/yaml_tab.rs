@@ -589,6 +589,8 @@ pub(super) fn yaml_tab(
         // editor needs a definite height, so longer YAML scrolls inside it.
         .child(
             div()
+                .id("yaml-editor")
+                .test_support()
                 .relative()
                 .h(px(if editing { 420. } else { 520. }))
                 .flex_none()

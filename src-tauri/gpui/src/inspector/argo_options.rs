@@ -43,6 +43,7 @@ pub(super) struct Options {
     pub revision: Entity<InputState>,
     pub name: Entity<InputState>,
     pub prune: Option<bool>,
+    pub default_prune: bool,
     pub dry_run: bool,
     pub force: bool,
     pub history: Option<i64>,
@@ -84,6 +85,7 @@ impl Options {
             revision: cx.new(|cx| InputState::new(window, cx)),
             name: cx.new(|cx| InputState::new(window, cx)),
             prune: None,
+            default_prune: false,
             dry_run: false,
             force: false,
             history: None,
@@ -91,11 +93,9 @@ impl Options {
     }
 }
 
-/// Any choice away from the Application defaults. Prune counts whenever it was
-/// toggled, which is stricter than the web's comparison against the Application policy.
 fn needs_confirmation(state: &ArgoTab, cx: &gpui_kit::App) -> bool {
     let options = &state.options;
-    options.prune.is_some()
+    options.prune.unwrap_or(options.default_prune) != options.default_prune
         || options.dry_run
         || options.force
         || !options.revision.read(cx).value().as_str().trim().is_empty()
@@ -144,8 +144,25 @@ pub(super) fn panel(state: &ArgoTab, name: &str, cx: &mut Context<Inspector>) ->
         return panel;
     }
     if state.options.confirming {
+        let revision = state.options.revision.read(cx).value();
+        let revision = if revision.is_empty() {
+            state.configured_revision()
+        } else {
+            revision.as_str()
+        };
+        let enabled = |value| if value { "Enabled" } else { "Disabled" };
         panel = panel
             .child(ui::sm("Confirm advanced sync"))
+            .child(ui::xs(
+                "These choices go beyond Application defaults. Type Application name to continue.",
+            ))
+            .child(ui::xs(format!(
+                "Revision: {}. Prune: {}. Dry run: {}. Force: {}.",
+                revision,
+                enabled(state.options.prune.unwrap_or(state.options.default_prune)),
+                enabled(state.options.dry_run),
+                enabled(state.options.force)
+            )))
             .child(ui::xs(format!("Type {name} to confirm advanced sync")))
             .child(
                 Input::new(&state.options.name)
@@ -153,22 +170,27 @@ pub(super) fn panel(state: &ArgoTab, name: &str, cx: &mut Context<Inspector>) ->
                     .aria_label("Application name confirmation"),
             )
             .child(
-                button(Variant::Default, 24., false)
-                    .id("argo-sync-confirm")
-                    .test_support()
-                    .child("Confirm sync")
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.review_argo_operation("Advanced Sync", window, cx)
-                    })),
+                button(
+                    Variant::Default,
+                    24.,
+                    state.options.name.read(cx).value().as_str() != name,
+                )
+                .id("argo-sync-confirm")
+                .test_support()
+                .child("Confirm sync")
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.review_argo_operation("Advanced Sync", window, cx)
+                })),
             )
             .child(
                 button(Variant::Outline, 24., false)
                     .id("argo-sync-back")
                     .test_support()
-                    .child("Back")
+                    .child("Cancel")
                     .on_click(cx.listener(|this, _, _, cx| {
                         if let Some(s) = this.argo_tab_state() {
                             s.options.confirming = false;
+                            s.options.open = false;
                             cx.notify();
                         }
                     })),
@@ -179,7 +201,7 @@ pub(super) fn panel(state: &ArgoTab, name: &str, cx: &mut Context<Inspector>) ->
         .child(ui::sm("Sync with options"))
         .child(ui::xs(
             "Main Sync uses Application defaults. Choices beyond those defaults require confirmation.",
-        ))
+        ).id("argo-sync-description").test_support().aria_label("Main Sync uses Application defaults. Choices beyond those defaults require confirmation."))
         .child(ui::xs("Revision override"))
         .child(
             Input::new(&state.options.revision)
@@ -205,6 +227,7 @@ pub(super) fn panel(state: &ArgoTab, name: &str, cx: &mut Context<Inspector>) ->
                         return;
                     };
                     if needs_confirmation(state, cx) {
+                        state.options.name.update(cx, |input, cx| input.set_value("", window, cx));
                         state.options.confirming = true;
                         cx.notify();
                     } else {
@@ -213,6 +236,38 @@ pub(super) fn panel(state: &ArgoTab, name: &str, cx: &mut Context<Inspector>) ->
                 })),
         );
     panel
+}
+
+impl Inspector {
+    pub(super) fn argo_sync_dialog(&self, cx: &mut Context<Self>) -> Option<gpui_kit::AnyElement> {
+        let super::detail::Detail::Ready(detail) = &self.detail else {
+            return None;
+        };
+        let state = detail.argo.as_ref()?;
+        if !state.options.confirming {
+            return None;
+        }
+        Some(
+            div()
+                .absolute()
+                .inset_0()
+                .occlude()
+                .flex()
+                .items_center()
+                .justify_center()
+                .bg(crate::theme::Tokens::background().opacity(0.8))
+                .child(
+                    div()
+                        .id("argo-sync-dialog")
+                        .test_support()
+                        .role(gpui_kit::Role::Dialog)
+                        .aria_label("Confirm advanced sync")
+                        .w(px(512.))
+                        .child(panel(state, &detail.data.summary.name, cx)),
+                )
+                .into_any_element(),
+        )
+    }
 }
 
 fn trigger(disabled: bool, cx: &mut Context<Inspector>) -> gpui_kit::AnyElement {
@@ -317,5 +372,5 @@ pub(super) fn controls(
         .child(div().relative().flex()
             .child(operation("Sync", Variant::Default, cx))
             .child(trigger(busy, cx))
-            .when(state.options.open, |group| group.child(gpui_kit::deferred(panel(state, name, cx).occlude().absolute().top(px(28.)).right_0().w(px(320.)).shadow_lg()).with_priority(1))))
+            .when(state.options.open && !state.options.confirming, |group| group.child(gpui_kit::deferred(panel(state, name, cx).occlude().absolute().top(px(28.)).right_0().w(px(320.)).shadow_lg()).with_priority(1))))
 }

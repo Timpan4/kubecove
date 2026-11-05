@@ -56,12 +56,25 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             Some(string(step, "value"))
         ),
         "replaceYamlDraft" => {
+            reveal(window, "detail-body", "yaml-editor", cx);
             let target = locate::id(&window.within("detail-body").find_by_label("Resource YAML"));
             window.within("detail-body").click(target, cx);
             window.press("secondary-a", cx);
             window.input(string(step, "value"), cx);
+            window.render_frame(cx);
+            let edited = window.within("detail-body").find_by_label("Resource YAML");
+            assert_eq!(
+                edited.value(),
+                Some(string(step, "value")),
+                "YAML replacement did not reach the editor: editor {:?}, body {:?}",
+                edited.bounds(),
+                window.find("detail-body").bounds()
+            );
         }
-        "formatYaml" => window.click("yaml-format", cx),
+        "formatYaml" => {
+            reveal(window, "detail-body", "yaml-format", cx);
+            window.click("yaml-format", cx);
+        }
         "expectYamlDocument" => {
             let yaml = window.find_by_label("Resource YAML");
             let actual: serde_json::Value = serde_yaml::from_str(yaml.value().unwrap()).unwrap();
@@ -247,7 +260,10 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             Some(string(step, "text"))
         ),
         "expectNoActionResult" => assert!(window.try_find("action-result").is_none()),
-        "editYaml" => window.click("edit-draft", cx),
+        "editYaml" => {
+            reveal(window, "detail-body", "edit-draft", cx);
+            window.click("edit-draft", cx);
+        }
         "applyYaml" => window.click("yaml-apply", cx),
         "dryRunYaml" => window.click("yaml-dry-run", cx),
         "expectDryRun" => contains_lines(

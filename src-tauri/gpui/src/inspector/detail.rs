@@ -511,7 +511,10 @@ impl Inspector {
                     .flex_col()
                     .flex_1()
                     .min_h_0()
-                    .when(detail.tab == DetailTab::Argo, |body| body.flex_none())
+                    .when(
+                        matches!(detail.tab, DetailTab::Argo | DetailTab::Yaml),
+                        |body| body.flex_none(),
+                    )
                     .child(
                         div()
                             .id("detail-identity")

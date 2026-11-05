@@ -38,8 +38,7 @@
 
 	$effect(() => {
 		if (!preferredContextName) return;
-		const selectedStillExists = contexts.some((context) => context.name === value);
-		if (!value || !selectedStillExists) onClusterChange(preferredContextName);
+		if (!value) onClusterChange(preferredContextName);
 	});
 </script>
 

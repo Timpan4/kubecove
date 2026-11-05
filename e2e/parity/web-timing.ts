@@ -4,6 +4,7 @@ import type { Step } from "./contract";
 
 declare global {
     interface Window { __kubecoveTiming: import("../../src/lib/tauri-dev-mock-timing").MockTiming; }
+    interface Window { paritySettingsMocks: typeof import("../../src/lib/settings-integration-mocks"); }
 }
 
 export async function timingAction(page: Page, step: Step) {

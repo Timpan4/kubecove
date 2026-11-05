@@ -144,6 +144,7 @@
         { "action": "restartClient" },
         { "action": "openLauncher" },
         { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openPage", "page": "Workspace Overview" },
         { "action": "expectWorkspaceEntry", "panel": "Pinned", "label": "Deployment / payments-api", "index": 0, "count": 1 },
         { "action": "openLauncher" },
         { "action": "nameWorkspace", "value": "Isolated pins" },

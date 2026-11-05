@@ -22,11 +22,8 @@ export async function adapterAction(page: Page, step: Step): Promise<void> {
                     return previous?.textContent;
                 });
                 if (!line) throw new Error("Missing inline YAML diagnostic");
-                const marker = page.locator(".cm-lintRange-error").first();
-                await marker.waitFor();
-                const text = await marker.evaluate((node) => node.closest(".cm-line")?.textContent);
                 const marked = step.marked ?? "metadata:";
-                if (!text?.includes(marked)) throw new Error("YAML diagnostic marked the wrong line");
+                await page.locator(".cm-line").filter({ hasText: marked }).locator(".cm-yaml-error-lens").waitFor();
             }
             break;
         }

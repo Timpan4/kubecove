@@ -49,6 +49,15 @@ pub(super) struct ArgoTab {
     pub(super) refresh_options: bool,
 }
 
+impl ArgoTab {
+    pub(super) fn configured_revision(&self) -> &str {
+        match &self.load {
+            ArgoLoad::Ready(view) => &view.configured_revision,
+            ArgoLoad::Loading | ArgoLoad::Failed(_) => "Revision unavailable",
+        }
+    }
+}
+
 impl Inspector {
     pub(super) fn argo_tab_state(&mut self) -> Option<&mut ArgoTab> {
         match &mut self.detail {
@@ -178,6 +187,11 @@ impl Inspector {
                                     })
                                     .unwrap_or(false),
                             );
+                            state.options.default_prune = state.options.prune.unwrap_or(false);
+                            state.options.revision = cx.new(|cx| {
+                                gpui_kit::component::input::InputState::new(window, cx)
+                                    .placeholder(view.configured_revision.clone())
+                            });
                             ArgoLoad::Ready(view)
                         }
                         Err(error) => ArgoLoad::Failed(error.message),

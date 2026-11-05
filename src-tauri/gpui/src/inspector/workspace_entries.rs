@@ -124,10 +124,10 @@ impl Inspector {
             }))
             .into_any_element()
     }
-    /// Opens GitOps on the Argo CD section focused on one Application, as the
+    /// Opens GitOps focused on one Application, as the
     /// web's `openArgo` with a target does.
     pub(super) fn open_gitops_application(&mut self, name: String, cx: &mut Context<Self>) {
-        self.open_gitops(Focus::Argo(None), cx);
+        self.open_gitops(Focus::Section, cx);
         if self.page != Page::GitOps {
             return;
         }

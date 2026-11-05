@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 
 #[derive(Clone)]
 struct Snapshot {
+    context: String,
     page: Page,
     search: String,
     namespace: Option<String>,
@@ -54,6 +55,7 @@ impl Inspector {
             Detail::Closed | Detail::Failed(_) => None,
         };
         let snapshot = Snapshot {
+            context: self.scope.context.clone(),
             page: self.page,
             search: self.search.read(cx).value().to_string(),
             namespace: self.scope.namespace.clone(),
@@ -72,7 +74,12 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let saved = self.navigation.workspaces.get(&id).cloned();
+        let saved = self
+            .navigation
+            .workspaces
+            .get(&id)
+            .filter(|saved| saved.context == context)
+            .cloned();
         self.page = saved.as_ref().map_or(Page::Overview, |saved| saved.page);
         self.scope = Scope {
             context: context.to_owned(),

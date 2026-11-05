@@ -3,6 +3,9 @@ import type { Step } from "./contract";
 
 export async function shellAction(page: Page, step: Step): Promise<void> {
     switch (step.action) {
+        case "openLauncher":
+            if (!await page.getByRole("button", { name: "Create workspace", exact: true }).isVisible()) await page.getByRole("button", { name: "Open workspaces", exact: true }).click();
+            break;
         case "expectOverviewShortcuts": case "overviewShortcut": {
             const section = page.getByRole("heading", { name: "Shortcuts", exact: true }).locator("xpath=ancestor::section[1]");
             if (step.action === "overviewShortcut") await section.getByRole("button", { name: step.label, exact: true }).click();
@@ -74,9 +77,7 @@ export async function shellAction(page: Page, step: Step): Promise<void> {
             break;
         }
         case "expectActivePage": {
-            // The sidebar marks the active page's row with aria-selected.
-            const escaped = step.page.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            await page.getByRole("treeitem", { name: new RegExp(`^(?:(?:Expand|Collapse) )?${escaped}$`), selected: true }).waitFor();
+            await page.getByRole("treeitem", { selected: true }).filter({ has: page.getByText(step.page, { exact: true }) }).waitFor();
             break;
         }
         case "expectGitOpsSelection":

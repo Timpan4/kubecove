@@ -138,7 +138,7 @@ export class MockTiming {
     }
 
     private load<T>(command: string, args: MockArgs, read: () => T | Promise<T>, signal?: AbortSignal): Promise<T> {
-        const rule = this.rules.get(this.key(command, args.clusterContext ?? ""));
+        const rule = this.rules.get(this.key(command, args.clusterContext ?? args.request?.clusterContext ?? ""));
         if (!rule) return Promise.resolve().then(read);
         rule.requests++;
         if (rule.failure) return Promise.reject(rule.failure);

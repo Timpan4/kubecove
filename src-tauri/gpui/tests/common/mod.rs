@@ -622,7 +622,12 @@ impl Backend for Fixture {
         self.detail_tabs.deployment_revisions(resource)
     }
     fn action_state(&self, request: ResourceActionStateRequest) -> Read<ResourceActionState> {
-        self.detail_tabs.action_state(request)
+        let context = request.target.cluster_context.clone();
+        self.timing.wrap(
+            "get_resource_action_state",
+            &context,
+            self.detail_tabs.action_state(request),
+        )
     }
     fn preview_action(&self, request: ResourceActionRequest) -> Read<ResourceActionPreview> {
         self.detail_tabs.preview_action(request)
