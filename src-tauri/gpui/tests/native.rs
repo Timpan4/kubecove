@@ -4,6 +4,8 @@ mod argo;
 mod argo_gaps;
 #[path = "native/argo_outcomes.rs"]
 mod argo_outcomes;
+#[path = "native/default_read_retry.rs"]
+mod default_read_retry;
 #[path = "native/detail_tabs.rs"]
 mod detail_tabs;
 #[path = "native/kind_selection.rs"]
@@ -60,6 +62,7 @@ use std::sync::{
 struct Controlled {
     shell: shell::ShellControls,
     retry: read_retry::RetryControls,
+    default_retry: read_retry::RetryControls,
     pages: page_reads::PageControls,
     argo: argo::ArgoControls,
     secret: adapters::SecretControls,
@@ -214,6 +217,10 @@ impl Backend for Controlled {
         })
     }
     fn resources(&self, scope: Scope, _: bool) -> Read<ScopeResult> {
+        self.default_retry.calls.fetch_add(1, Ordering::SeqCst);
+        if let Some(kind) = self.default_retry.errors.lock().unwrap().pop_front() {
+            return Box::pin(async move { Err(AppError::new("scripted resource failure", kind)) });
+        }
         if let Some(read) = self.workspace.read(&scope) {
             return read;
         }

@@ -16,7 +16,7 @@ impl Inspector {
     /// Live sessions load on every page because the header shows their count.
     pub(super) fn load_page(&mut self, cx: &mut Context<Self>) {
         self.sync_page_reads(cx);
-        self.load_sessions(cx);
+        self.ensure_sessions(cx);
         match self.page {
             Page::GitOps => self.refresh_focused_page(cx),
             Page::Incidents => self.load_incidents(cx),

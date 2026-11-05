@@ -52,6 +52,18 @@ impl Inspector {
         }
     }
 
+    pub(super) fn ensure_sessions(&mut self, cx: &mut Context<Self>) {
+        if self.sessions.scope_context.as_deref() != Some(&self.scope.context)
+            || self
+                .sessions
+                .task
+                .as_ref()
+                .is_none_or(|task| task.is_ready())
+        {
+            self.load_sessions(cx);
+        }
+    }
+
     pub(super) fn load_sessions(&mut self, cx: &mut Context<Self>) {
         if self.sessions.poll.is_none() {
             // `portForwardLifecycle.ts` and `podExecLifecycle.ts` query default.
@@ -60,7 +72,10 @@ impl Inspector {
                     cx.background_executor()
                         .timer(std::time::Duration::from_millis(3_000))
                         .await;
-                    if this.update(cx, |this, cx| this.load_sessions(cx)).is_err() {
+                    if this
+                        .update(cx, |this, cx| this.ensure_sessions(cx))
+                        .is_err()
+                    {
                         break;
                     }
                 }
@@ -71,6 +86,9 @@ impl Inspector {
             .preferences
             .keep_live_sessions_on_workspace_switch;
         let state = &mut self.sessions;
+        if state.load.as_ref().is_some_and(Result::is_err) {
+            state.load = None;
+        }
         state.request = Rc::new(());
         let request = state.request.clone();
         let context = self.scope.context.clone();
@@ -86,8 +104,14 @@ impl Inspector {
             .and_then(|r| r.as_ref().ok())
             .and_then(|s| s.source_key.clone());
         let backend = self.backend.clone();
+        let executor = cx.background_executor().clone();
+        let source = backend.clone();
+        let read_sessions = move || {
+            let source = source.clone();
+            crate::read_retry::read(executor.clone(), move || source.live_sessions())
+        };
         let read = async move {
-            let sessions = backend.live_sessions().await?;
+            let sessions = read_sessions().await?;
             if (cleanup
                 || (!keep && previous_source.is_some() && previous_source != sessions.source_key))
                 && let Some(source) = &sessions.source_key
@@ -98,7 +122,7 @@ impl Inspector {
                         kubeconfig_source_key: source.clone(),
                     })
                     .await?;
-                return backend.live_sessions().await;
+                return read_sessions().await;
             }
             Ok(sessions)
         };

@@ -62,7 +62,24 @@ impl Inspector {
             let backend = self.backend.clone();
             self.usage.task = Some(cx.spawn(async move |this, cx| {
                 loop {
-                    let result = backend.app_usage().await.map_err(|error| error.message);
+                    if this
+                        .update(cx, |this, cx| {
+                            if this.usage.sample.as_ref().is_some_and(Result::is_err) {
+                                this.usage.sample = None;
+                                cx.notify();
+                            }
+                        })
+                        .is_err()
+                    {
+                        break;
+                    }
+                    let source = backend.clone();
+                    let result =
+                        crate::read_retry::read(cx.background_executor().clone(), move || {
+                            source.app_usage()
+                        })
+                        .await
+                        .map_err(|error| error.message);
                     if this
                         .update(cx, |this, cx| {
                             this.usage.sample = Some(result);

@@ -343,12 +343,61 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
             if index < startup_steps {
                 continue;
             }
+            if (step["action"] == "expectArgoText"
+                && matches!(
+                    step["text"].as_str(),
+                    Some(
+                        "Fixture discovery unavailable" | "Fixture provider detection unavailable"
+                    )
+                ))
+                || (step["action"] == "expectPageText"
+                    && step["text"] == "Scripted page refresh failure")
+                || (step["action"] == "expectLiveState" && step["label"] == "Refresh failed")
+                || step["action"] == "expectLauncherRetry"
+                || step["action"] == "expectOverviewRetry"
+                || step["action"] == "expectOverviewHealth"
+                || step["action"] == "expectWorkspaceReadWarning"
+            {
+                for millis in [1000, 2000] {
+                    cx.background_executor
+                        .advance_clock(std::time::Duration::from_millis(millis));
+                    cx.run_until_parked();
+                }
+            }
             if step["action"] == "mockTiming" {
+                if step["control"]["operation"] == "expectRequests" {
+                    cx.background_executor
+                        .advance_clock(std::time::Duration::from_millis(1000));
+                    cx.run_until_parked();
+                }
                 if step["control"]["operation"] == "expectNoRetry" {
                     // The web's default maximum retry delay in query-core/src/retryer.ts.
                     cx.background_executor
-                        .advance_clock(std::time::Duration::from_millis(30_000));
+                        .advance_clock(std::time::Duration::from_millis(
+                            if step["control"]["command"] == "get_backend_diagnostics" {
+                                1000
+                            } else {
+                                30_000
+                            },
+                        ));
                     cx.run_until_parked();
+                }
+                if step["control"]["operation"] == "expectNoError" {
+                    cx.update_window(handle, |_, window, cx| {
+                        window.render_frame(cx);
+                        for id in [
+                            "surface-error",
+                            "load-error",
+                            "gitops-error",
+                            "argo-discovery-error",
+                        ] {
+                            assert!(
+                                window.try_find(id).is_none(),
+                                "Read error shown while retry is pending"
+                            );
+                        }
+                    })
+                    .unwrap();
                 }
                 backend.timing_control(&step["control"]);
                 if step["control"]["operation"] == "contend" {

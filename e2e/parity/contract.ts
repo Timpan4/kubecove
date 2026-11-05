@@ -150,8 +150,8 @@ function step(value: unknown): Step {
         case "mockTiming": {
             const control = object(item.control);
             const timing: import("../../src/lib/tauri-dev-mock-timing").TimingControl = {
-                operation: oneOf(["hold", "dirty", "contend", "release", "fail", "failOnce", "expectRequests", "expectPending", "expectNoRetry"], control.operation, "a timing operation"),
-                command: string(control.command), context: string(control.context),
+                operation: oneOf(["hold", "dirty", "contend", "release", "fail", "failOnce", "expectRequests", "expectPending", "expectNoRetry", "expectNoError"], control.operation, "a timing operation"),
+                command: string(control.command), context: control.context === "" ? "" : string(control.context),
             };
             if (control.kind !== undefined) timing.kind = string(control.kind);
             if (control.namespace !== undefined) timing.namespace = string(control.namespace);

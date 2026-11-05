@@ -81,8 +81,19 @@ impl Inspector {
             .request
             .get_or_insert_with(|| Rc::new(()))
             .clone();
-        let details = refresh[0].then(|| self.backend.helm_release(release.clone()));
-        let reconciliation = refresh[1].then(|| self.backend.helm_reconciliation(release));
+        let details = refresh[0].then(|| {
+            let backend = self.backend.clone();
+            let release = release.clone();
+            crate::read_retry::read(cx.background_executor().clone(), move || {
+                backend.helm_release(release.clone())
+            })
+        });
+        let reconciliation = refresh[1].then(|| {
+            let backend = self.backend.clone();
+            crate::read_retry::read(cx.background_executor().clone(), move || {
+                backend.helm_reconciliation(release.clone())
+            })
+        });
         let current = move |this: &Inspector| {
             this.helm_page
                 .details
@@ -92,6 +103,10 @@ impl Inspector {
         };
         let current_too = current.clone();
         if let Some(details) = details {
+            self.helm_page.details.errors[0] = None;
+            if matches!(self.helm_page.details.details, Load::Failed(_)) {
+                self.helm_page.details.details = Load::Loading;
+            }
             self.helm_page.details.fetching[0] = true;
             self.helm_page.details.tasks[0] = Some(cx.spawn(async move |this, cx| {
                 let result = details.await;
@@ -131,6 +146,10 @@ impl Inspector {
             }));
         }
         if let Some(reconciliation) = reconciliation {
+            self.helm_page.details.errors[1] = None;
+            if matches!(self.helm_page.details.reconciliation, Load::Failed(_)) {
+                self.helm_page.details.reconciliation = Load::Loading;
+            }
             self.helm_page.details.fetching[1] = true;
             self.helm_page.details.tasks[1] = Some(cx.spawn(async move |this, cx| {
                 let result = reconciliation.await;

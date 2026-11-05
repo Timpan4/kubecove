@@ -2,6 +2,7 @@ use super::Fixture;
 use kubecove_gpui::backend::{
     KubeconfigSourcesSummary, Read, RemoteConnectionSummary, UpdateStatus,
 };
+use kubecove_lib::models::{AppError, AppErrorKind};
 use std::sync::Mutex;
 
 #[derive(Default)]
@@ -170,6 +171,52 @@ impl Fixture {
             UpdateStatus::UpToDate
         };
         Box::pin(async move { Ok(status) })
+    }
+    pub(super) fn kubeconfig_sources_read(&self) -> Read<KubeconfigSourcesSummary> {
+        let sources = self.kubeconfig.lock().expect("kubeconfig lock").clone();
+        self.coverage_read(
+            "get_kubeconfig_sources",
+            self.timing.read("get_kubeconfig_sources", "", "", sources),
+        )
+    }
+    pub(super) fn set_kubeconfig_env_var_read(
+        &self,
+        env_var: String,
+    ) -> Read<KubeconfigSourcesSummary> {
+        if self.coverage_script() == "failed" {
+            return self.coverage_read(
+                "set_kubeconfig_env_var",
+                Box::pin(async {
+                    Err(AppError::new(
+                        "Missing coverage response",
+                        AppErrorKind::NotFound,
+                    ))
+                }),
+            );
+        }
+        let mut sources = self.kubeconfig.lock().expect("kubeconfig lock");
+        let trimmed = env_var.trim();
+        sources.kubeconfig_env_var = if trimmed.is_empty() {
+            "KUBECONFIG".to_owned()
+        } else {
+            trimmed.to_owned()
+        };
+        self.saved_sources_read(sources.clone())
+    }
+    pub(super) fn set_source_labels_read(&self, show: bool) -> Read<KubeconfigSourcesSummary> {
+        let mut sources = self.kubeconfig.lock().expect("kubeconfig lock");
+        sources.show_source_labels = show;
+        self.saved_sources_read(sources.clone())
+    }
+    fn saved_sources_read(
+        &self,
+        sources: KubeconfigSourcesSummary,
+    ) -> Read<KubeconfigSourcesSummary> {
+        let saved = self.save_settings(&sources);
+        Box::pin(async move {
+            saved?;
+            Ok(sources)
+        })
     }
 }
 

@@ -45,14 +45,19 @@ impl Inspector {
     /// currently filtered to a namespace or its cluster page has not opened.
     pub(super) fn warm_palette(&mut self, cx: &mut Context<Self>) {
         let context = self.scope.context.clone();
-        let workspace = self.backend.resources(
-            Scope {
-                context: context.clone(),
-                namespace: None,
-            },
-            false,
-        );
-        let cluster = self.backend.cluster_resources(context.clone(), false);
+        let backend = self.backend.clone();
+        let scope = Scope {
+            context: context.clone(),
+            namespace: None,
+        };
+        let workspace = crate::read_retry::read(cx.background_executor().clone(), move || {
+            backend.resources(scope.clone(), false)
+        });
+        let backend = self.backend.clone();
+        let read_context = context.clone();
+        let cluster = crate::read_retry::read(cx.background_executor().clone(), move || {
+            backend.cluster_resources(read_context.clone(), false)
+        });
         let state = &mut self.palette.search;
         state.status = Status::Loading;
         state.request = Rc::new(());

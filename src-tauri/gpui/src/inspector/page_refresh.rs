@@ -97,7 +97,7 @@ impl Inspector {
         }
         if self.page_read_stale(self.page, cx) {
             match self.page {
-                Page::GitOps => self.load_gitops(true, cx),
+                Page::GitOps if !self.gitops.fetching => self.load_gitops(true, cx),
                 Page::Helm => self.load_helm(cx),
                 Page::Rbac => self.refresh_rbac(cx),
                 Page::Incidents => self.load_incidents(cx),
@@ -107,6 +107,9 @@ impl Inspector {
     }
 
     pub(super) fn sync_page_reads(&mut self, cx: &mut Context<Self>) {
+        if self.page != Page::Settings {
+            self.settings.diagnostics_task.take();
+        }
         let owner = (self.page, self.scope.context.clone());
         if self.page_refresh.owner.as_ref() == Some(&owner) {
             return;

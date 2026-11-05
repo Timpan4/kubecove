@@ -121,19 +121,24 @@ impl Inspector {
 
     pub(super) fn application_resources_read(
         &self,
-        refresh: bool,
+        mut refresh: bool,
+        cx: &Context<Self>,
     ) -> crate::backend::Read<crate::backend::ScopeResult> {
-        match self
+        let application = self
             .gitops_page
             .workspace
             .as_ref()
             .filter(|state| self.page == Page::Resources && state.app.cluster == self.scope.context)
-        {
-            Some(state) => self
-                .backend
-                .application_resources(state.app.clone(), refresh),
-            None => self.backend.resources(self.scope.clone(), refresh),
-        }
+            .map(|state| state.app.clone());
+        let backend = self.backend.clone();
+        let scope = self.scope.clone();
+        crate::read_retry::read(cx.background_executor().clone(), move || {
+            let refresh = std::mem::take(&mut refresh);
+            match &application {
+                Some(app) => backend.application_resources(app.clone(), refresh),
+                None => backend.resources(scope.clone(), refresh),
+            }
+        })
     }
 
     pub(super) fn load_application_workspace(&mut self, cx: &mut Context<Self>) {

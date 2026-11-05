@@ -166,7 +166,12 @@ impl Inspector {
             return;
         };
         let scope = self.scope.clone();
-        let read = self.backend.kind_resources(scope.clone(), key.clone());
+        let backend = self.backend.clone();
+        let read_scope = scope.clone();
+        let read_key = key.clone();
+        let read = crate::read_retry::read(cx.background_executor().clone(), move || {
+            backend.kind_resources(read_scope.clone(), read_key.clone())
+        });
         let selected = id.clone();
         self.kind_selection.reads.insert(
             id,

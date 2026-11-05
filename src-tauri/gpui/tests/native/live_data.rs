@@ -61,13 +61,24 @@ pub(super) struct LiveControls {
 }
 
 #[gpui_kit::test]
-fn initial_resource_read_errors_recover_on_the_web_tick(cx: &mut TestAppContext) {
+fn deterministic_resource_read_errors_wait_for_manual_refresh(cx: &mut TestAppContext) {
     let backend = Arc::new(Controlled::default());
     backend.fail.store(true, Ordering::SeqCst);
     let handle = open(cx, backend.clone());
     backend.fail.store(false, Ordering::SeqCst);
     cx.background_executor
         .advance_clock(std::time::Duration::from_millis(15_000));
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(
+            window
+                .try_find("resource:Deployment:payments:payments-api")
+                .is_none()
+        );
+    })
+    .unwrap();
+    refresh(cx, handle);
     cx.run_until_parked();
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);

@@ -1,7 +1,7 @@
 import type { MockArgs } from "./tauri-dev-mock-contract";
 
 export type TimingControl = {
-    operation: "hold" | "dirty" | "contend" | "release" | "fail" | "failOnce" | "expectRequests" | "expectPending" | "expectNoRetry";
+    operation: "hold" | "dirty" | "contend" | "release" | "fail" | "failOnce" | "expectRequests" | "expectPending" | "expectNoRetry" | "expectNoError";
     command: string;
     context: string;
     namespace?: string;
@@ -61,6 +61,7 @@ export class MockTiming {
                 rule.failure = control.operation === "fail" ? new MockReadError(control.kind ?? "transport") : undefined;
                 for (const [key, load] of rule.loads) if (control.namespace === undefined || JSON.parse(key)[0] === control.namespace) load.reject(new MockReadError(control.kind ?? "transport"));
                 break;
+            case "expectNoError": break;
             case "expectNoRetry":
                 if (rule.requests !== rule.failedAt) throw new Error(`Read retried after failure for ${key}`);
                 break;

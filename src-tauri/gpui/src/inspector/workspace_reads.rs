@@ -16,7 +16,7 @@ impl Inspector {
     pub(super) fn retry_overview(&mut self, cx: &mut Context<Self>) {
         let rows = self.workspace_rows().cloned().collect();
         let request = self.request.clone();
-        let read = self.workspace_resources_read(true);
+        let read = self.workspace_resources_read(true, cx);
         let task = cx.spawn(async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
@@ -62,18 +62,21 @@ impl Inspector {
     pub(super) fn workspace_resources_read(
         &self,
         refresh: bool,
+        cx: &Context<Self>,
     ) -> Read<crate::backend::ScopeResult> {
         let reads = self
             .workspace_contexts()
             .into_iter()
             .map(|context| {
-                let read = self.backend.resources(
-                    Scope {
-                        context: context.clone(),
-                        namespace: None,
-                    },
-                    refresh,
-                );
+                let mut refresh = refresh;
+                let backend = self.backend.clone();
+                let scope = Scope {
+                    context: context.clone(),
+                    namespace: None,
+                };
+                let read = crate::read_retry::read(cx.background_executor().clone(), move || {
+                    backend.resources(scope.clone(), std::mem::take(&mut refresh))
+                });
                 (context, read)
             })
             .collect();
@@ -89,7 +92,7 @@ impl Inspector {
             return;
         }
         let request = self.request.clone();
-        let read = self.workspace_resources_read(refresh);
+        let read = self.workspace_resources_read(refresh, cx);
         let task = cx.spawn(async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {

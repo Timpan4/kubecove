@@ -26,6 +26,18 @@ struct Load {
 }
 
 impl Timing {
+    pub(super) fn wrap<T: Send + 'static>(
+        &self,
+        command: &str,
+        context: &str,
+        read: Read<T>,
+    ) -> Read<T> {
+        let gate = self.read(command, context, "", ());
+        Box::pin(async move {
+            gate.await?;
+            read.await
+        })
+    }
     pub(super) fn invalidate(&self, context: &str) {
         for ((command, rule_context), rule) in self.rules.lock().unwrap().iter_mut() {
             // Streams do not participate in the finite snapshot cache.
@@ -93,6 +105,7 @@ impl Timing {
                 }
             }
             "expectRequests" => assert_eq!(rule.requests, control["count"].as_u64().unwrap()),
+            "expectNoError" => {}
             "expectNoRetry" => assert_eq!(Some(rule.requests), rule.failed_at),
             "expectPending" => assert!(
                 rule.loads

@@ -19,7 +19,7 @@ pub(super) struct GitOpsState {
     pub(super) revision: u64,
     task: Option<Task<()>>,
     request: std::rc::Rc<()>,
-    fetching: bool,
+    pub(super) fetching: bool,
     trailing: bool,
     refresh_error: Option<String>,
 }
@@ -111,7 +111,12 @@ impl Inspector {
         let request = self.gitops.request.clone();
         self.gitops.task = Some(cx.spawn(async move |this, cx| {
             loop {
-                let result = backend.gitops(context.clone()).await;
+                let retry_backend = backend.clone();
+                let retry_context = context.clone();
+                let result = crate::read_retry::read(cx.background_executor().clone(), move || {
+                    retry_backend.gitops(retry_context.clone())
+                })
+                .await;
                 let again = this
                     .update(cx, |this, cx| {
                         if !std::rc::Rc::ptr_eq(&this.gitops.request, &request)

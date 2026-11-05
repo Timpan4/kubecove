@@ -162,6 +162,11 @@ fn retry_discovery_and_preview_recover_without_sending_credentials(cx: &mut Test
     backend.argo.discovery_fail.store(true, Ordering::SeqCst);
     let h = open_argo(cx, backend.clone());
     step(cx, h, |w, cx| w.click("argo-connect-open", cx));
+    for millis in [1000, 2000] {
+        cx.background_executor
+            .advance_clock(std::time::Duration::from_millis(millis));
+        cx.run_until_parked();
+    }
     backend.argo.discovery_fail.store(false, Ordering::SeqCst);
     step(cx, h, |w, cx| {
         scroll::reveal(w, "detail-body", "argo-discovery-retry", cx);

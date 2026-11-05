@@ -147,7 +147,11 @@ impl Inspector {
         page.request = Rc::new(());
         page.refresh_error = None;
         let request = page.request.clone();
-        let read = self.backend.helm_releases(page.context.clone());
+        let backend = self.backend.clone();
+        let context = page.context.clone();
+        let read = crate::read_retry::read(cx.background_executor().clone(), move || {
+            backend.helm_releases(context.clone())
+        });
         let read = self.timings.measure("helm_releases", read);
         page.task = Some(cx.spawn(async move |this, cx| {
             let result = read.await;

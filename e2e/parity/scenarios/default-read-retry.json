@@ -1,0 +1,730 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "resources.default-retry-recovers",
+      "title": "resources recovers after a transient read failure",
+      "steps": [
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_resource_scope",
+            "context": "mock-dev",
+            "operation": "hold"
+          }
+        },
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_resource_scope",
+            "context": "mock-dev",
+            "operation": "expectPending"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_resource_scope",
+            "context": "mock-dev",
+            "operation": "failOnce",
+            "kind": "transport"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_resource_scope",
+            "context": "mock-dev",
+            "operation": "expectNoError",
+            "kind": "transport"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_resource_scope",
+            "context": "mock-dev",
+            "operation": "expectRequests",
+            "count": 2
+          }
+        },
+        {
+          "action": "expectResource",
+          "kind": "Deployment",
+          "name": "payments-api",
+          "namespace": "payments"
+        }
+      ]
+    },
+    {
+      "id": "resources.default-retry-deterministic",
+      "title": "resources does not retry a deterministic read failure",
+      "steps": [
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_resource_scope",
+            "context": "mock-dev",
+            "operation": "hold"
+          }
+        },
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_resource_scope",
+            "context": "mock-dev",
+            "operation": "expectPending"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_resource_scope",
+            "context": "mock-dev",
+            "operation": "fail",
+            "kind": "forbidden"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_resource_scope",
+            "context": "mock-dev",
+            "operation": "expectNoRetry"
+          }
+        }
+      ]
+    },
+    {
+      "id": "helm.default-retry-recovers",
+      "title": "helm recovers after a transient read failure",
+      "steps": [
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_helm_releases",
+            "context": "mock-dev",
+            "operation": "hold"
+          }
+        },
+        {
+          "action": "openPage",
+          "page": "Helm"
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_helm_releases",
+            "context": "mock-dev",
+            "operation": "expectPending"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_helm_releases",
+            "context": "mock-dev",
+            "operation": "failOnce",
+            "kind": "transport"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_helm_releases",
+            "context": "mock-dev",
+            "operation": "expectNoError",
+            "kind": "transport"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_helm_releases",
+            "context": "mock-dev",
+            "operation": "expectRequests",
+            "count": 2
+          }
+        },
+        {
+          "action": "expectHelmRelease",
+          "namespace": "operations",
+          "name": "operations"
+        }
+      ]
+    },
+    {
+      "id": "helm.default-retry-deterministic",
+      "title": "helm does not retry a deterministic read failure",
+      "steps": [
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_helm_releases",
+            "context": "mock-dev",
+            "operation": "hold"
+          }
+        },
+        {
+          "action": "openPage",
+          "page": "Helm"
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_helm_releases",
+            "context": "mock-dev",
+            "operation": "expectPending"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_helm_releases",
+            "context": "mock-dev",
+            "operation": "fail",
+            "kind": "forbidden"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_helm_releases",
+            "context": "mock-dev",
+            "operation": "expectNoRetry"
+          }
+        }
+      ]
+    },
+    {
+      "id": "rbac.default-retry-recovers",
+      "title": "rbac recovers after a transient read failure",
+      "steps": [
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_rbac_inspection",
+            "context": "mock-dev",
+            "operation": "hold"
+          }
+        },
+        {
+          "action": "openPage",
+          "page": "RBAC"
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_rbac_inspection",
+            "context": "mock-dev",
+            "operation": "expectPending"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_rbac_inspection",
+            "context": "mock-dev",
+            "operation": "failOnce",
+            "kind": "transport"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_rbac_inspection",
+            "context": "mock-dev",
+            "operation": "expectNoError",
+            "kind": "transport"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_rbac_inspection",
+            "context": "mock-dev",
+            "operation": "expectRequests",
+            "count": 2
+          }
+        },
+        {
+          "action": "expectRbacCategory",
+          "category": "Service Accounts"
+        }
+      ]
+    },
+    {
+      "id": "rbac.default-retry-deterministic",
+      "title": "rbac does not retry a deterministic read failure",
+      "steps": [
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_rbac_inspection",
+            "context": "mock-dev",
+            "operation": "hold"
+          }
+        },
+        {
+          "action": "openPage",
+          "page": "RBAC"
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_rbac_inspection",
+            "context": "mock-dev",
+            "operation": "expectPending"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_rbac_inspection",
+            "context": "mock-dev",
+            "operation": "fail",
+            "kind": "forbidden"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_rbac_inspection",
+            "context": "mock-dev",
+            "operation": "expectNoRetry"
+          }
+        }
+      ]
+    },
+    {
+      "id": "incidents.default-retry-recovers",
+      "title": "incidents recovers after a transient read failure",
+      "steps": [
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_incident_cockpit",
+            "context": "mock-dev",
+            "operation": "hold"
+          }
+        },
+        {
+          "action": "openPage",
+          "page": "Incidents"
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_incident_cockpit",
+            "context": "mock-dev",
+            "operation": "expectPending"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_incident_cockpit",
+            "context": "mock-dev",
+            "operation": "failOnce",
+            "kind": "transport"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_incident_cockpit",
+            "context": "mock-dev",
+            "operation": "expectNoError",
+            "kind": "transport"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_incident_cockpit",
+            "context": "mock-dev",
+            "operation": "expectRequests",
+            "count": 2
+          }
+        },
+        {
+          "action": "expectPageText",
+          "text": "Pod/operations-crashloop-7f468cd8b8-lab01"
+        }
+      ]
+    },
+    {
+      "id": "incidents.default-retry-deterministic",
+      "title": "incidents does not retry a deterministic read failure",
+      "steps": [
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_incident_cockpit",
+            "context": "mock-dev",
+            "operation": "hold"
+          }
+        },
+        {
+          "action": "openPage",
+          "page": "Incidents"
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_incident_cockpit",
+            "context": "mock-dev",
+            "operation": "expectPending"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_incident_cockpit",
+            "context": "mock-dev",
+            "operation": "fail",
+            "kind": "forbidden"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_incident_cockpit",
+            "context": "mock-dev",
+            "operation": "expectNoRetry"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gitops.default-retry-recovers",
+      "title": "gitops recovers after a transient read failure",
+      "steps": [
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "detect_argocd",
+            "context": "mock-dev",
+            "operation": "hold"
+          }
+        },
+        {
+          "action": "openPage",
+          "page": "GitOps"
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "detect_argocd",
+            "context": "mock-dev",
+            "operation": "expectPending"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "detect_argocd",
+            "context": "mock-dev",
+            "operation": "failOnce",
+            "kind": "transport"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "detect_argocd",
+            "context": "mock-dev",
+            "operation": "expectNoError",
+            "kind": "transport"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "detect_argocd",
+            "context": "mock-dev",
+            "operation": "expectRequests",
+            "count": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "gitops.default-retry-deterministic",
+      "title": "gitops does not retry a deterministic read failure",
+      "steps": [
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "detect_argocd",
+            "context": "mock-dev",
+            "operation": "hold"
+          }
+        },
+        {
+          "action": "openPage",
+          "page": "GitOps"
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "detect_argocd",
+            "context": "mock-dev",
+            "operation": "expectPending"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "detect_argocd",
+            "context": "mock-dev",
+            "operation": "fail",
+            "kind": "forbidden"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "detect_argocd",
+            "context": "mock-dev",
+            "operation": "expectNoRetry"
+          }
+        }
+      ]
+    },
+    {
+      "id": "settings-diagnostics.default-retry-recovers",
+      "title": "Diagnostics recovers after a transient read failure",
+      "steps": [
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "get_backend_diagnostics",
+            "context": "",
+            "operation": "hold"
+          }
+        },
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "Diagnostics"
+        },
+        {
+          "action": "toggleSetting",
+          "setting": "Enable diagnostics"
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "get_backend_diagnostics",
+            "context": "",
+            "operation": "expectPending"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "get_backend_diagnostics",
+            "context": "",
+            "operation": "failOnce",
+            "kind": "transport"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "get_backend_diagnostics",
+            "context": "",
+            "operation": "expectNoError",
+            "kind": "transport"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "get_backend_diagnostics",
+            "context": "",
+            "operation": "expectRequests",
+            "count": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "settings-diagnostics.default-retry-deterministic",
+      "title": "Diagnostics does not retry a deterministic read failure",
+      "steps": [
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "get_backend_diagnostics",
+            "context": "",
+            "operation": "hold"
+          }
+        },
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "Diagnostics"
+        },
+        {
+          "action": "toggleSetting",
+          "setting": "Enable diagnostics"
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "get_backend_diagnostics",
+            "context": "",
+            "operation": "expectPending"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "get_backend_diagnostics",
+            "context": "",
+            "operation": "fail",
+            "kind": "forbidden"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "get_backend_diagnostics",
+            "context": "",
+            "operation": "expectNoRetry"
+          }
+        }
+      ]
+    },
+    {
+      "id": "usage-footer.default-retry-recovers",
+      "title": "usage-footer recovers after a transient read failure",
+      "steps": [
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "get_app_usage_metrics",
+            "context": "",
+            "operation": "hold"
+          }
+        },
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "toggleSetting",
+          "setting": "Show CPU and memory footer"
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "get_app_usage_metrics",
+            "context": "",
+            "operation": "expectPending"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "get_app_usage_metrics",
+            "context": "",
+            "operation": "failOnce",
+            "kind": "transport"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "get_app_usage_metrics",
+            "context": "",
+            "operation": "expectNoError",
+            "kind": "transport"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "get_app_usage_metrics",
+            "context": "",
+            "operation": "expectRequests",
+            "count": 2
+          }
+        },
+        {
+          "action": "expectUsageFooter",
+          "text": "CPU 3.8% · Memory 370 MB · 3 processes"
+        }
+      ]
+    },
+    {
+      "id": "live-sessions.default-retry-recovers",
+      "title": "Session inventory recovers after a transient failure",
+      "steps": [
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_port_forwards",
+            "context": "",
+            "operation": "hold"
+          }
+        },
+        {
+          "action": "openPage",
+          "page": "Port Forwards"
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_port_forwards",
+            "context": "",
+            "operation": "expectPending"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_port_forwards",
+            "context": "",
+            "operation": "failOnce",
+            "kind": "transport"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_port_forwards",
+            "context": "",
+            "operation": "expectNoError",
+            "kind": "transport"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "command": "list_port_forwards",
+            "context": "",
+            "operation": "expectRequests",
+            "count": 2
+          }
+        },
+        {
+          "action": "expectLiveSessionCount",
+          "count": 3
+        }
+      ]
+    }
+  ]
+}

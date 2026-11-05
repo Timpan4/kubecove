@@ -159,6 +159,11 @@ fn a_failed_incident_refresh_preserves_rows_and_exposes_the_error(cx: &mut TestA
     click(cx, handle, "nav:Incidents");
     backend.pages.fail.store(true, Ordering::SeqCst);
     click(cx, handle, "incidents-refresh");
+    for millis in [1000, 2000] {
+        cx.background_executor
+            .advance_clock(std::time::Duration::from_millis(millis));
+        cx.run_until_parked();
+    }
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
         assert!(

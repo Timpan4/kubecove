@@ -46,7 +46,7 @@ impl Inspector {
         }
     }
 
-    pub(super) fn load_cluster(&mut self, refresh: bool, cx: &mut Context<Self>) {
+    pub(super) fn load_cluster(&mut self, mut refresh: bool, cx: &mut Context<Self>) {
         let current = self.cluster.context == self.scope.context;
         if current && !refresh && self.cluster.load.is_some() {
             return;
@@ -57,9 +57,11 @@ impl Inspector {
             load: Some(Load::Loading),
             ..ClusterState::default()
         };
-        let read = self
-            .backend
-            .cluster_resources(self.scope.context.clone(), refresh);
+        let backend = self.backend.clone();
+        let context = self.scope.context.clone();
+        let read = crate::read_retry::read(cx.background_executor().clone(), move || {
+            backend.cluster_resources(context.clone(), std::mem::take(&mut refresh))
+        });
         self.cluster.task = Some(cx.spawn(async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {

@@ -8,10 +8,14 @@ use std::rc::Rc;
 impl Inspector {
     pub(super) fn discover_argo_servers(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.argo_connections.discovery_error = None;
-        let read = self.backend.discover_argo(ArgoTarget {
+        let target = ArgoTarget {
             context: self.scope.context.clone(),
             source: self.argo_source_key().map(str::to_owned),
             endpoint: None,
+        };
+        let backend = self.backend.clone();
+        let read = crate::read_retry::read(cx.background_executor().clone(), move || {
+            backend.discover_argo(target.clone())
         });
         let scope = self.argo_connections.scope.clone();
         self.argo_connections.discovery = Some(cx.spawn_in(window, async move |this, cx| {

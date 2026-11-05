@@ -14,8 +14,12 @@ export async function timingAction(page: Page, step: Step) {
             if (step.control.operation === "fail" && step.control.kind === "forbidden") await page.clock.install();
             if (step.control.operation === "expectNoRetry") {
                 // @tanstack/query-core/src/retryer.ts caps defaultRetryDelay at 30,000 ms.
-                await page.clock.runFor(30_000);
+                // Diagnostics polls every 1500 ms. Observe the first retry at 1000 ms before that independent poll.
+                await page.clock.runFor(step.control.command === "get_backend_diagnostics" ? 1000 : 30_000);
                 await page.clock.resume();
+            }
+            if (step.control.operation === "expectNoError") {
+                if (await page.getByText("Scripted read:", { exact: false }).count()) throw new Error("Read error shown while retry is pending");
             }
             if (step.control.operation === "expectPending") {
                 await waitFor("pending mock read", async () => page.evaluate((control) => window.__kubecoveTiming.pending(control.command, control.context, control.namespace), step.control));

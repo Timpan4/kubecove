@@ -14,6 +14,16 @@ use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{Context, Div, SharedString, Window, div, prelude::*, px};
 
 impl Inspector {
+    pub(super) fn kubeconfig_sources_read(
+        &self,
+        cx: &Context<Self>,
+    ) -> crate::backend::Read<KubeconfigSourcesSummary> {
+        let backend = self.backend.clone();
+        crate::read_retry::read(cx.background_executor().clone(), move || {
+            backend.kubeconfig_sources()
+        })
+    }
+
     fn kubeconfig_path_entry(
         &self,
         index: usize,

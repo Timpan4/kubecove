@@ -101,7 +101,11 @@ impl Inspector {
         state.enriched = None;
         let request = state.request.clone();
         let context = state.context.clone();
-        let read = self.backend.incidents(context.clone());
+        let backend = self.backend.clone();
+        let read_context = context.clone();
+        let read = crate::read_retry::read(cx.background_executor().clone(), move || {
+            backend.incidents(read_context.clone())
+        });
         state.tasks[0] = Some(cx.spawn(async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {

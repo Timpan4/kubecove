@@ -121,7 +121,9 @@ impl Inspector {
         self.launcher.contexts_load = Discovery::Loading;
         self.launcher.context_error = None;
         self.launcher.tasks[1] = None;
-        let read = self.backend.contexts();
+        let backend = self.backend.clone();
+        let read =
+            crate::read_retry::read(cx.background_executor().clone(), move || backend.contexts());
         let read = self.timings.measure("list_kube_contexts", read);
         self.launcher.tasks[0] = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;

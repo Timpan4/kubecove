@@ -159,6 +159,18 @@ impl Fixture {
 }
 
 impl Backend for Fixture {
+    fn diagnostics(
+        &self,
+        enabled: bool,
+        clear: bool,
+    ) -> Read<kubecove_gpui::backend::adapters::BackendDiagnostics> {
+        let read = Box::pin(async { Ok(Default::default()) });
+        if enabled && !clear {
+            self.timing.wrap("get_backend_diagnostics", "", read)
+        } else {
+            read
+        }
+    }
     mcp::fixture!();
     fn open_documentation(&self) -> Read<()> {
         self.documentation_requests
@@ -523,7 +535,7 @@ impl Backend for Fixture {
     }
     fn app_usage(&self) -> Read<kubecove_lib::models::AppUsageMetrics> {
         let usage = self.app_usage.clone();
-        Box::pin(async move { Ok(usage) })
+        self.timing.read("get_app_usage_metrics", "", "", usage)
     }
     fn metrics(&self, scope: Scope) -> Read<kubecove_lib::models::ResourceMetricsSummary> {
         let mut metrics = self.metrics.clone();
@@ -537,8 +549,10 @@ impl Backend for Fixture {
         }
         Box::pin(async move { Ok(metrics) })
     }
-    fn gitops(&self, _: String) -> Read<GitOpsInventory> {
-        let read = self.page_gitops();
+    fn gitops(&self, context: String) -> Read<GitOpsInventory> {
+        let read = self
+            .timing
+            .wrap("detect_argocd", &context, self.page_gitops());
         let mode = self.argo.inventory_mode.lock().unwrap().clone();
         Box::pin(async move {
             if mode == "unavailable" {
@@ -599,13 +613,14 @@ impl Backend for Fixture {
             .map_or_else(Vec::new, |row| row.events.clone());
         Box::pin(async move { Ok(found) })
     }
-    fn incidents(&self, _: String) -> Read<IncidentCockpitSummary> {
+    fn incidents(&self, context: String) -> Read<IncidentCockpitSummary> {
         let incidents = self.incidents.clone();
         self.coverage_read(
             "list_incident_cockpit",
             self.page_read(
                 "list_incident_cockpit",
-                Box::pin(async move { Ok(incidents) }),
+                self.timing
+                    .read("list_incident_cockpit", &context, "", incidents),
             ),
         )
     }
@@ -625,14 +640,18 @@ impl Backend for Fixture {
             "list_pod_exec_sessions",
             Box::pin(async move { Ok(sessions.exec_sessions) }),
         );
-        Box::pin(async move {
-            Ok(LiveSessions {
-                port_forwards: forwards.await?,
-                exec_sessions: exec.await?,
-                source_key: sessions.source_key,
-                show_source_labels: sessions.show_source_labels,
-            })
-        })
+        self.timing.wrap(
+            "list_port_forwards",
+            "",
+            Box::pin(async move {
+                Ok(LiveSessions {
+                    port_forwards: forwards.await?,
+                    exec_sessions: exec.await?,
+                    source_key: sessions.source_key,
+                    show_source_labels: sessions.show_source_labels,
+                })
+            }),
+        )
     }
     fn log_stream(&self, target: LogTarget) -> Read<LogStream> {
         self.detail_tabs.log_stream(target, &self.coverage_script())
@@ -699,11 +718,15 @@ impl Backend for Fixture {
             "list_rbac_inspection",
             self.page_read(
                 "list_rbac_inspection",
-                Box::pin(async move {
-                    found.ok_or_else(|| {
-                        AppError::new("No fixture RBAC inspection", AppErrorKind::NotFound)
-                    })
-                }),
+                self.timing.wrap(
+                    "list_rbac_inspection",
+                    &context,
+                    Box::pin(async move {
+                        found.ok_or_else(|| {
+                            AppError::new("No fixture RBAC inspection", AppErrorKind::NotFound)
+                        })
+                    }),
+                ),
             ),
         )
     }
@@ -729,56 +752,26 @@ impl Backend for Fixture {
         })
     }
     fn kubeconfig_sources(&self) -> Read<KubeconfigSourcesSummary> {
-        let sources = self.kubeconfig.lock().expect("kubeconfig lock").clone();
-        self.coverage_read(
-            "get_kubeconfig_sources",
-            Box::pin(async move { Ok(sources) }),
-        )
+        self.kubeconfig_sources_read()
     }
     fn kubeconfig_writes_unavailable(&self) -> Option<&'static str> {
         None
     }
     fn set_kubeconfig_env_var(&self, env_var: String) -> Read<KubeconfigSourcesSummary> {
-        if self.coverage_script() == "failed" {
-            return self.coverage_read(
-                "set_kubeconfig_env_var",
-                Box::pin(async {
-                    Err(AppError::new(
-                        "Missing coverage response",
-                        AppErrorKind::NotFound,
-                    ))
-                }),
-            );
-        }
-        let mut sources = self.kubeconfig.lock().expect("kubeconfig lock");
-        let trimmed = env_var.trim();
-        sources.kubeconfig_env_var = if trimmed.is_empty() {
-            "KUBECONFIG".to_owned()
-        } else {
-            trimmed.to_owned()
-        };
-        let sources = sources.clone();
-        let saved = self.save_settings(&sources);
-        Box::pin(async move {
-            saved?;
-            Ok(sources)
-        })
+        self.set_kubeconfig_env_var_read(env_var)
     }
     fn set_show_kubeconfig_source_labels(&self, show: bool) -> Read<KubeconfigSourcesSummary> {
-        let mut sources = self.kubeconfig.lock().expect("kubeconfig lock");
-        sources.show_source_labels = show;
-        let sources = sources.clone();
-        let saved = self.save_settings(&sources);
-        Box::pin(async move {
-            saved?;
-            Ok(sources)
-        })
+        self.set_source_labels_read(show)
     }
 
-    fn helm_releases(&self, _: String) -> Read<HelmReleaseList> {
+    fn helm_releases(&self, context: String) -> Read<HelmReleaseList> {
         self.coverage_read(
             "list_helm_releases",
-            self.page_read("list_helm_releases", self.helm.releases()),
+            self.page_read(
+                "list_helm_releases",
+                self.timing
+                    .wrap("list_helm_releases", &context, self.helm.releases()),
+            ),
         )
     }
     fn helm_release(&self, release: HelmReleaseSummary) -> Read<HelmReleaseDetails> {

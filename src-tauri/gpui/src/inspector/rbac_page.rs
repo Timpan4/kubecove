@@ -189,7 +189,11 @@ impl Inspector {
         state.refresh_error = None;
         state.request = Rc::new(());
         let request = state.request.clone();
-        let read = self.backend.rbac(state.context.clone());
+        let backend = self.backend.clone();
+        let context = state.context.clone();
+        let read = crate::read_retry::read(cx.background_executor().clone(), move || {
+            backend.rbac(context.clone())
+        });
         let read = self.timings.measure("rbac", read);
         state.task = Some(cx.spawn(async move |this, cx| {
             let result = read.await;

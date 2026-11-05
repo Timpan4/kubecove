@@ -263,7 +263,17 @@ impl Inspector {
                             });
                             timer.as_mut().await;
                             timer = Box::pin(cx.background_executor().timer(RECOVERY));
-                            let rows = backend.kind_resources(scope.clone(), key.clone()).await;
+                            let retry_backend = backend.clone();
+                            let retry_scope = scope.clone();
+                            let retry_key = key.clone();
+                            let rows = crate::read_retry::read(
+                                cx.background_executor().clone(),
+                                move || {
+                                    retry_backend
+                                        .kind_resources(retry_scope.clone(), retry_key.clone())
+                                },
+                            )
+                            .await;
                             let valid = this
                                 .update(cx, |this, cx| {
                                     if this.live.owner != owner {
@@ -344,7 +354,7 @@ impl Inspector {
                             names = None;
                         }
                         let valid = this
-                            .update_in(cx, |this, window, cx| {
+                            .update_in(cx, |this, _window, cx| {
                                 if this.live.owner != owner {
                                     return false;
                                 }
@@ -376,12 +386,6 @@ impl Inspector {
                                     }
                                 }
                                 w.catching_up = reload && names.is_none();
-                                if tick
-                                    && this.live.refresh_error.is_some()
-                                    && !this.live.refreshing
-                                {
-                                    this.refresh(window, cx);
-                                }
                                 if names.is_none() || !reload {
                                     cx.notify();
                                 }
@@ -393,7 +397,17 @@ impl Inspector {
                         }
                         if reload {
                             let started = std::time::Instant::now();
-                            let rows = backend.kind_resources(scope.clone(), key.clone()).await;
+                            let retry_backend = backend.clone();
+                            let retry_scope = scope.clone();
+                            let retry_key = key.clone();
+                            let rows = crate::read_retry::read(
+                                cx.background_executor().clone(),
+                                move || {
+                                    retry_backend
+                                        .kind_resources(retry_scope.clone(), retry_key.clone())
+                                },
+                            )
+                            .await;
                             read_failed = rows.is_err();
                             let valid = this
                                 .update_in(cx, |this, window, cx| {

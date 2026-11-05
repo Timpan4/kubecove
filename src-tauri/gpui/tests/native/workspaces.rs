@@ -59,6 +59,11 @@ fn one_failed_context_keeps_successful_rows_and_names_the_failure(cx: &mut TestA
     backend.workspace.fail_other.store(true, Ordering::SeqCst);
     let handle = open(cx, backend);
     create_group(cx, handle);
+    for millis in [1000, 2000] {
+        cx.background_executor
+            .advance_clock(std::time::Duration::from_millis(millis));
+        cx.run_until_parked();
+    }
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
         assert_eq!(

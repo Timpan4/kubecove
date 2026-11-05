@@ -82,7 +82,10 @@ impl Inspector {
         self.settings
             .search
             .update(cx, |input, cx| input.set_value("", window, cx));
-        let read = self.backend.kubeconfig_sources();
+        if self.settings.sources.as_ref().is_some_and(Result::is_err) {
+            self.settings.sources = None;
+        }
+        let read = self.kubeconfig_sources_read(cx);
         let read = self.timings.measure("kubeconfig_sources", read);
         self.run_kubeconfig(read, window, cx);
         self.initialize_settings_integrations(window, cx);

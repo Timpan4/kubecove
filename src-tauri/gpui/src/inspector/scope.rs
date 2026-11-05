@@ -13,7 +13,9 @@ impl Inspector {
     pub(super) fn load_contexts(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.context_task.take();
         self.load = Load::Loading;
-        let read = self.backend.contexts();
+        let backend = self.backend.clone();
+        let read =
+            crate::read_retry::read(cx.background_executor().clone(), move || backend.contexts());
         let read = self.timings.measure("list_kube_contexts", read);
         self.context_task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
@@ -82,7 +84,7 @@ impl Inspector {
         self.rows.clear();
         self.warnings.clear();
         self.filter(cx);
-        let read = self.application_resources_read(refresh);
+        let read = self.application_resources_read(refresh, cx);
         let read = self.timings.measure("list_resource_scope", read);
         self.scope_task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
@@ -180,7 +182,7 @@ impl Inspector {
             self.live.refreshing = true;
             self.live.scope_loading = true;
             self.live.refresh_error = None;
-            let read = self.application_resources_read(true);
+            let read = self.application_resources_read(true, cx);
             let read = self.timings.measure("list_resource_scope", read);
             let request = self.request.clone();
             self.scope_task = Some(cx.spawn_in(window, async move |this, cx| {

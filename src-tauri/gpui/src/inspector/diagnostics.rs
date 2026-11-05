@@ -12,9 +12,16 @@ use std::collections::BTreeMap;
 
 impl Inspector {
     pub(super) fn refresh_diagnostics(&mut self, clear: bool, cx: &mut Context<Self>) {
-        let read = self
-            .backend
-            .diagnostics(self.persisted.preferences.debug_mode_enabled, clear);
+        self.settings.diagnostics_error = None;
+        let backend = self.backend.clone();
+        let enabled = self.persisted.preferences.debug_mode_enabled;
+        let read = if clear {
+            backend.diagnostics(enabled, true)
+        } else {
+            crate::read_retry::read(cx.background_executor().clone(), move || {
+                backend.diagnostics(enabled, false)
+            })
+        };
         self.settings.diagnostics_task = Some(cx.spawn(async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {

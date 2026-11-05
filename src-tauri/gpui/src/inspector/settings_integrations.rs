@@ -163,7 +163,7 @@ impl Inspector {
         self.warnings.clear();
         self.scope = Default::default();
         self.settings.sources = None;
-        let sources = self.backend.kubeconfig_sources();
+        let sources = self.kubeconfig_sources_read(cx);
         self.run_kubeconfig(sources, window, cx);
         self.load_contexts(window, cx);
     }
