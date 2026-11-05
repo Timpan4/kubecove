@@ -1,9 +1,10 @@
 // Captures reference screenshots of the Svelte web frontend with browser mocks.
 // Usage: bun e2e/parity/visual/capture-web.ts <output-dir>
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { chromium, type Page } from "playwright-core";
 import { chromeExecutable, freePort, readinessTimeoutMs, startIdentity, stopGroup, waitFor } from "../../../.agents/skills/verify-kubecove/scripts/processes";
+import { liveSessionAction } from "../web-live-sessions";
 import { VIEWPORT, VIEWS, type View } from "./views";
 
 async function show(page: Page, view: View) {
@@ -12,6 +13,23 @@ async function show(page: Page, view: View) {
             await page.getByRole("button", { name: "Open settings", exact: true }).click();
             await page.getByRole("button", { name: view === "settings-remote" ? "Remote server" : view === "settings-updates" ? "Updates" : "Kubeconfig", exact: true }).click();
             return;
+        case "forward-start": case "forward-active": case "exec-session": {
+            await page.getByRole("button", { name: "Resources", exact: true }).first().click();
+            await page.getByRole("textbox", { name: "Search resources" }).fill("payments-api-7d9c9b7f8d-k2r9p");
+            await page.getByRole("button", { name: "Open resource payments-api-7d9c9b7f8d-k2r9p", exact: true }).click();
+            await page.getByRole("tab", { name: view === "exec-session" ? "Exec" : "Forward", exact: true }).click();
+            if (view === "exec-session") {
+                await liveSessionAction(page, { action: "execControl", operation: "start", container: "app", command: "/bin/sh" });
+                await liveSessionAction(page, { action: "expectExecState", container: "app", status: "running", contains: "Controlled exec app" });
+            } else {
+                await liveSessionAction(page, { action: "configureForward", remote: "9090", local: "19090" });
+                if (view === "forward-active") {
+                    await liveSessionAction(page, { action: "forwardControl", operation: "start" });
+                    await liveSessionAction(page, { action: "expectForwardState", target: "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", local: "19090", status: "listening", count: 1 });
+                }
+            }
+            return;
+        }
 		case "usage-footer":
             await page.getByRole("button", { name: "Open settings", exact: true }).click();
             await page.getByRole("switch", { name: "Show CPU and memory footer", exact: true }).click();
@@ -185,13 +203,14 @@ const port = await freePort();
 const env = { ...process.env };
 delete env.KUBECONFIG;
 delete env.ARGV0;
-const vite = Bun.spawn([process.execPath, join(process.cwd(), "node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", String(port), "--strictPort"], { cwd: process.cwd(), env, detached: true, stdout: "ignore", stderr: "ignore" });
+const vite = Bun.spawn([process.execPath, join(process.cwd(), "node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", String(port), "--strictPort"], { cwd: process.cwd(), env, detached: true, stdout: "pipe", stderr: "pipe" });
+const viteLogs = Promise.all([new Response(vite.stdout).text(), new Response(vite.stderr).text()]);
 const identity = startIdentity(vite.pid);
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
 try {
 	await waitFor("Vite", async (timeout) => (await fetch(`http://127.0.0.1:${port}/`, { signal: timeout })).ok);
 	browser = await chromium.launch({ executablePath: chromeExecutable(), headless: true });
-	for (const view of VIEWS) {
+    for (const view of VIEWS.filter((view) => !process.env.KUBECOVE_VISUAL_VIEWS || process.env.KUBECOVE_VISUAL_VIEWS.split(",").includes(view))) {
 		// GPUI's offscreen window renders at scale 2, so the web capture matches it.
 		const page = await browser.newPage({ viewport: VIEWPORT, deviceScaleFactor: 2, colorScheme: "dark", reducedMotion: "reduce" });
 		page.setDefaultTimeout(readinessTimeoutMs);
@@ -211,4 +230,5 @@ try {
 } finally {
 	await browser?.close();
 	if (!(await stopGroup(vite.pid, identity))) console.error(`Could not stop Vite process group ${vite.pid}`);
+    await writeFile(join(output, "vite.log"), (await viteLogs).join("\n"));
 }

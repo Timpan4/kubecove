@@ -4,6 +4,8 @@ mod detail_tabs;
 mod live_data;
 #[path = "native/remote_connections.rs"]
 mod remote_connections;
+#[path = "native/session_controls.rs"]
+mod session_controls;
 #[path = "native/settings_integrations.rs"]
 mod settings_integrations;
 #[path = "native/watch_burst.rs"]
@@ -36,6 +38,7 @@ use std::sync::{
 
 #[derive(Default)]
 struct Controlled {
+    sessions: session_controls::SessionControls,
     live: live_data::LiveControls,
     fail: AtomicBool,
     pending: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
@@ -49,6 +52,21 @@ fn resource(context: &str) -> ResourceSummary {
 }
 
 impl Backend for Controlled {
+    fn start_forward(
+        &self,
+        request: kubecove_lib::models::PortForwardRequest,
+    ) -> Read<kubecove_lib::models::PortForwardSessionSummary> {
+        self.sessions.forward(request)
+    }
+    fn stop_forward(&self, id: String) -> Read<bool> {
+        self.sessions.stop_forward(id)
+    }
+    fn exec(
+        &self,
+        request: kubecove_lib::models::PodExecSessionRequest,
+    ) -> Read<kubecove_gpui::backend::ExecStream> {
+        self.sessions.exec(request)
+    }
     fn watch(&self, target: kubecove_gpui::backend::WatchTarget) -> Read<LogStream> {
         self.live.open(target)
     }
@@ -69,6 +87,7 @@ impl Backend for Controlled {
     fn resources(&self, scope: Scope, _: bool) -> Read<ScopeResult> {
         let fail = self.fail.load(Ordering::SeqCst);
         let pending = self.pending.lock().unwrap().take();
+        let pod = self.sessions.enabled.load(Ordering::SeqCst);
         Box::pin(async move {
             if let Some(pending) = pending {
                 let _ = pending.await;
@@ -85,7 +104,14 @@ impl Backend for Controlled {
                     age: "1d".into(),
                     created_at: None,
                 }],
-                resources: vec![resource(&scope.context)],
+                resources: vec![if pod {
+                    ResourceSummary {
+                        kind: "Pod".into(),
+                        ..resource(&scope.context)
+                    }
+                } else {
+                    resource(&scope.context)
+                }],
                 warnings: vec![],
             })
         })
@@ -476,10 +502,10 @@ fn port_forwards_stay_in_the_workspace_scope(cx: &mut TestAppContext) {
     let handle = open(cx, Arc::new(Controlled::default()));
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
-        // The header counts every host session; the page filters to this workspace.
+        // Both the header and page exclude sessions from another source or context.
         assert_eq!(
             window.find("live-sessions").label(),
-            Some("Open live sessions (3 active)")
+            Some("Open live sessions (1 active)")
         );
         window.click("live-sessions", cx)
     })

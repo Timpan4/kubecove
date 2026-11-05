@@ -24,6 +24,7 @@ import type {
 } from "../../../src/lib/types";
 import { exportDetailTabs } from "./export-detail-tabs";
 import { exportGitOpsPage, exportHelm } from "./export-gitops-helm";
+import { exportSessionControls } from "./export-session-controls";
 
 // Browser mocks omit owner fields the Rust model requires; fill them with the
 // values the web frontend infers (`owner.partial ?? confidence !== "inventory"`).
@@ -109,5 +110,6 @@ for (const verb of ["get", "list", "watch", "create", "update", "patch", "delete
 	try { rbacReviews.push({ verb, result: await client.invoke<RbacAccessReviewResult>("review_rbac_access", { request }) }); }
 	catch (error) { rbacReviews.push({ verb, error: error instanceof Error ? error.message : String(error) }); }
 }
-await writeFile(output, JSON.stringify({ liveEvents: LIVE_EVENTS, contexts, namespaces, kinds, resources: resources.map(rustShape), details, events, topology: rustTopology, networkTopology, metrics, appUsage, namespaceTopologies, gitops, helm, incidents, liveSessions, detailTabs, rbac, rbacReviews, kubeconfig: sources }, null, "\t"));
+const sessionControls = await exportSessionControls(client, resources);
+await writeFile(output, JSON.stringify({ sessionControls, liveEvents: LIVE_EVENTS, contexts, namespaces, kinds, resources: resources.map(rustShape), details, events, topology: rustTopology, networkTopology, metrics, appUsage, namespaceTopologies, gitops, helm, incidents, liveSessions, detailTabs, rbac, rbacReviews, kubeconfig: sources }, null, "\t"));
 console.log(`fixture: ${resources.length} resources, ${details.length} details -> ${output}`);

@@ -50,6 +50,8 @@ pub(super) enum DetailTab {
     Argo,
     Actions,
     Yaml,
+    Forward,
+    Exec,
 }
 
 const TABS: &[(DetailTab, &str, &str)] = &[
@@ -58,6 +60,8 @@ const TABS: &[(DetailTab, &str, &str)] = &[
     (DetailTab::Logs, "show-logs", "Logs"),
     (DetailTab::Revisions, "show-revisions", "Revisions"),
     (DetailTab::Argo, "show-argo", "Argo CD"),
+    (DetailTab::Exec, "show-exec", "Exec"),
+    (DetailTab::Forward, "show-forward", "Forward"),
     (DetailTab::Actions, "show-actions", "Actions"),
     (DetailTab::Yaml, "show-yaml", "YAML"),
 ];
@@ -67,6 +71,8 @@ const TABS: &[(DetailTab, &str, &str)] = &[
 fn available(tab: DetailTab, resource: &ResourceSummary) -> bool {
     let namespaced = resource.namespace.is_some();
     match tab {
+        DetailTab::Forward => namespaced && matches!(resource.kind.as_str(), "Pod" | "Service"),
+        DetailTab::Exec => namespaced && resource.kind == "Pod",
         DetailTab::Logs => {
             namespaced && matches!(resource.kind.as_str(), "Pod" | "Deployment" | "Service")
         }
@@ -97,6 +103,7 @@ pub(super) struct ResourceDetail {
     pub opened_health: HealthAssessment,
     pub argo: Option<ArgoTab>,
     pub actions: Option<ActionsState>,
+    pub forward: super::forward_tab::ForwardForm,
     _draft_changed: Subscription,
 }
 
@@ -127,7 +134,14 @@ impl ResourceDetail {
             }
             cx.notify();
         });
+        let forward = super::forward_tab::ForwardForm::new(
+            &data.yaml,
+            data.summary.kind == "Service",
+            window,
+            cx,
+        );
         Self {
+            forward,
             opened_health: data.summary.health_assessment.clone(),
             data,
             editor,
@@ -371,6 +385,8 @@ impl Inspector {
                 );
                 let content: AnyElement = match detail.tab {
                     DetailTab::Details => details_tab(detail, cx).into_any_element(),
+                    DetailTab::Forward => self.forward_tab(cx).into_any_element(),
+                    DetailTab::Exec => self.exec_view(cx),
                     DetailTab::Events => events_tab(detail, cx),
                     DetailTab::Logs => logs_tab(detail, cx),
                     DetailTab::Revisions => revisions_tab(detail, cx),

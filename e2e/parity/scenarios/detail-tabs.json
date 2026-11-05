@@ -41,8 +41,8 @@
         { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
         { "action": "showTab", "tab": "Logs" },
         { "action": "expectLogLines", "lines": ["boot payments-api", "handled GET /healthz 200", "downstream retry budget at 82%"] },
-        { "action": "openResource", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-k2r9p", "namespace": "payments" },
-        { "action": "expectDetail", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-k2r9p", "namespace": "payments" },
+        { "action": "openResource", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-x4m8v", "namespace": "payments" },
+        { "action": "expectDetail", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-x4m8v", "namespace": "payments" },
         { "action": "showTab", "tab": "Logs" },
         { "action": "expectLogsEmpty", "title": "No containers found" },
         { "action": "expectLogLines", "lines": [] }

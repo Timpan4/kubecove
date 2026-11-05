@@ -3,6 +3,15 @@ import { join } from "node:path";
 
 type Identity = { kind: string; name: string; namespace: string };
 export type Step =
+    | { action: "configurePreset"; label: string; context: string; namespace: string; service: string; remote: string; local: string }
+    | { action: "presetControl"; operation: "add" | "save" | "edit" | "start" | "remove" | "absent"; label?: string }
+    | { action: "replaySessions"; script: "reconnecting" | "failed" | "foreign-output" }
+    | { action: "confirmExecLeave"; choice: "stay" | "stop" }
+    | { action: "configureForward"; remote: string; local: string }
+    | { action: "forwardControl"; operation: "start" | "save" | "restore" | "stop" | "reconnect"; target?: string }
+    | { action: "expectForwardState"; target: string; local: string; status: string; resolved?: string; count: number }
+    | { action: "execControl"; operation: "start" | "input" | "close" | "select" | "custom" | "arguments" | "run"; container?: string; command?: string; data?: string; tab?: number }
+    | { action: "expectExecState"; container: string; status: string; contains: string; absent?: string; command?: string }
     | { action: "expectWorkspaceExport"; name: string }
     | { action: "fillSettingsField"; field: "Server URL" | "Server token"; value: string }
     | { action: "clickSettingsButton"; label: string }
@@ -116,6 +125,9 @@ export type Contract = { scenarios: Scenario[] };
 
 /** Every action both drivers must implement; `contract.test.ts` checks each driver handles each one. */
 export const ACTIONS = [
+    "configurePreset", "presetControl",
+    "replaySessions", "confirmExecLeave",
+    "configureForward", "forwardControl", "expectForwardState", "execControl", "expectExecState",
     "expectWorkspaceExport",
     "fillSettingsField", "clickSettingsButton", "expectSettingsText", "expectNoSettingsText", "expectRuntimeEndpoint", "expectMaskedToken", "reopenStoredSettings", "attemptUnverifiedUpdate", "configureSettingsMock",
 	"expectLiveState", "replayLiveData", "expectResourceStatus", "openCustomKind",
@@ -170,6 +182,15 @@ function step(value: unknown): Step {
         case "expectMaskedToken": case "reopenStoredSettings": case "attemptUnverifiedUpdate": return { action: item.action };
         case "configureSettingsMock": return { action: item.action, script: oneOf(["choose-kubeconfig", "choose-workspace", "cancel-dialog", "no-update", "invalid-signature"], item.script, "a settings script") };
         case "expectWorkspaceExport": return { action: item.action, name: string(item.name) };
+        case "configurePreset": return { action: item.action, label: string(item.label), context: string(item.context), namespace: string(item.namespace), service: string(item.service), remote: string(item.remote), local: string(item.local) };
+        case "presetControl": return { action: item.action, operation: oneOf(["add", "save", "edit", "start", "remove", "absent"], item.operation, "a preset action"), ...(item.label === undefined ? {} : { label: string(item.label) }) };
+        case "replaySessions": return { action: item.action, script: oneOf(["reconnecting", "failed", "foreign-output"], item.script, "a session script") };
+        case "confirmExecLeave": return { action: item.action, choice: oneOf(["stay", "stop"], item.choice, "a leave choice") };
+        case "configureForward": return { action: item.action, remote: string(item.remote), local: typeof item.local === "string" ? item.local : "" };
+        case "forwardControl": return { action: item.action, operation: oneOf(["start", "save", "restore", "stop", "reconnect"], item.operation, "a forward control"), ...(item.target === undefined ? {} : { target: string(item.target) }) };
+        case "expectForwardState": return { action: item.action, target: string(item.target), local: string(item.local), status: string(item.status), count: count(item.count), ...(item.resolved === undefined ? {} : { resolved: string(item.resolved) }) };
+        case "execControl": return { action: item.action, operation: oneOf(["start", "input", "close", "select", "custom", "arguments", "run"], item.operation, "an exec control"), ...(item.container === undefined ? {} : { container: string(item.container) }), ...(item.command === undefined ? {} : { command: string(item.command) }), ...(item.data === undefined ? {} : { data: string(item.data) }), ...(item.tab === undefined ? {} : { tab: count(item.tab) }) };
+        case "expectExecState": return { action: item.action, container: string(item.container), status: string(item.status), contains: typeof item.contains === "string" ? item.contains : "", ...(item.absent === undefined ? {} : { absent: string(item.absent) }), ...(item.command === undefined ? {} : { command: string(item.command) }) };
         case "expectLiveState": return { action: item.action, label: string(item.label), ...(item.notice === undefined ? {} : { notice: string(item.notice) }) };
         case "replayLiveData": return { action: item.action, script: oneOf(["update", "delete", "reconnecting", "connected", "events", "forbidden", "failed"], item.script, "a live script") };
         case "expectResourceStatus": return { action: item.action, kind: string(item.kind), namespace: string(item.namespace), name: string(item.name), status: string(item.status) };

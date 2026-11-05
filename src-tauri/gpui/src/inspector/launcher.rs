@@ -205,7 +205,10 @@ impl Inspector {
         self.open_workspace(id, window, cx);
     }
 
-    fn open_workspace(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn open_workspace(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        if self.defer_exec_leave(super::exec_leave::LeaveIntent::Workspace(id), cx) {
+            return;
+        }
         if !self.can_leave(cx) {
             return;
         }
@@ -238,6 +241,9 @@ impl Inspector {
             picker.set_selected_value(&SharedString::from(context), window, cx)
         });
         self.load_scope(false, window, cx);
+        if self.sessions.auto_start {
+            self.restore_forwards(window, cx);
+        }
     }
 
     fn delete_workspace(&mut self, id: u64, cx: &mut Context<Self>) {
@@ -255,6 +261,9 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
         let mut overlays = Vec::new();
+        if let Some(dialog) = self.exec_leave_dialog(cx) {
+            overlays.push(dialog);
+        }
         if self.launcher.open {
             overlays.push(self.launcher_view(window, cx).into_any_element());
         }

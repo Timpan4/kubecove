@@ -1,0 +1,173 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "forward-start.exact-pod-ports",
+      "title": "A Pod forward starts on the selected target and ports and disappears on stop",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Forward" },
+        { "action": "configureForward", "remote": "9090", "local": "19090" },
+        { "action": "forwardControl", "operation": "start" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "listening", "count": 1 },
+        { "action": "forwardControl", "operation": "stop", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "stopped", "count": 0 }
+      ]
+    },
+    {
+      "id": "forward-active.service-reconnect-preset",
+      "title": "A saved Service forward preserves ports, resolves its selector and reconnects without duplication",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Service", "namespace": "payments", "name": "payments-api" },
+        { "action": "showTab", "tab": "Forward" },
+        { "action": "configureForward", "remote": "80", "local": "18081" },
+        { "action": "forwardControl", "operation": "save" },
+        { "action": "closeDetail" },
+        { "action": "openPage", "page": "Port Forwards" },
+        { "action": "forwardControl", "operation": "restore" },
+        { "action": "expectForwardState", "target": "Service/payments-api:80", "local": "18081", "status": "listening", "resolved": "payments-api-7d9c9b7f8d-k2r9p:8080", "count": 1 },
+        { "action": "replaySessions", "script": "reconnecting" },
+        { "action": "expectForwardState", "target": "Service/payments-api:80", "local": "18081", "status": "reconnecting", "count": 1 },
+        { "action": "replaySessions", "script": "failed" },
+        { "action": "expectForwardState", "target": "Service/payments-api:80", "local": "18081", "status": "error", "count": 1 },
+        { "action": "forwardControl", "operation": "reconnect", "target": "Service/payments-api:80" },
+        { "action": "expectForwardState", "target": "Service/payments-api:80", "local": "18081", "status": "listening", "resolved": "payments-api-7d9c9b7f8d-k2r9p:8080", "count": 1 },
+        { "action": "forwardControl", "operation": "stop", "target": "Service/payments-api:80" },
+        { "action": "expectForwardState", "target": "Service/payments-api:80", "local": "18081", "status": "stopped", "count": 0 }
+      ]
+    },
+    {
+      "id": "exec-session.container-output-cleanup",
+      "title": "Exec uses the confirmed container, isolates output and stops when its session closes",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "start", "container": "app", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "replaySessions", "script": "foreign-output" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app", "absent": "FOREIGN SESSION OUTPUT" },
+        { "action": "execControl", "operation": "input", "data": "printf parity\r" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "parity" },
+        { "action": "execControl", "operation": "close" },
+        { "action": "expectExecState", "container": "app", "status": "closed", "contains": "" },
+        { "action": "closeDetail" }
+      ]
+    },
+    {
+      "id": "exec-session.sidecar-isolation",
+      "title": "Container selection and tab switching keep each terminal's output separate",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "start", "container": "sidecar", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "sidecar", "status": "running", "contains": "Controlled exec sidecar", "absent": "Controlled exec app" },
+        { "action": "execControl", "operation": "start", "container": "app", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app", "absent": "Controlled exec sidecar" },
+        { "action": "execControl", "operation": "select", "container": "sidecar", "tab": 0 },
+        { "action": "expectExecState", "container": "sidecar", "status": "running", "contains": "Controlled exec sidecar", "absent": "Controlled exec app" },
+        { "action": "execControl", "operation": "close", "container": "sidecar", "tab": 0 },
+        { "action": "execControl", "operation": "close", "container": "app", "tab": 1 },
+        { "action": "expectExecState", "container": "app", "status": "closed", "contains": "" }
+      ]
+    },
+    {
+      "id": "forward-active.context-cleanup",
+      "title": "Switching workspaces stops forwards outside the new context",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Forward" },
+        { "action": "configureForward", "remote": "9090", "local": "19090" },
+        { "action": "forwardControl", "operation": "start" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "listening", "count": 1 },
+        { "action": "closeDetail" },
+        { "action": "openLauncher" },
+        { "action": "selectWorkspaceContext", "context": "docker-desktop" },
+        { "action": "createWorkspace", "name": "Session cleanup workspace" },
+        { "action": "openPage", "page": "Port Forwards" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "stopped", "count": 0 },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openPage", "page": "Port Forwards" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "stopped", "count": 0 }
+      ]
+    },
+    {
+      "id": "exec-session.custom-argv",
+      "title": "Custom argv runs in the chosen container without shell parsing",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "custom", "container": "sidecar" },
+        { "action": "execControl", "operation": "arguments", "command": "/usr/bin/env\nprintenv" },
+        { "action": "execControl", "operation": "run", "container": "sidecar", "command": "env" },
+        { "action": "expectExecState", "container": "sidecar", "command": "env", "status": "running", "contains": "Controlled exec sidecar" },
+        { "action": "execControl", "operation": "close" }
+      ]
+    },
+    {
+      "id": "forward-active.edit-remove-preset",
+      "title": "Editing a named preset changes its restored port and removal deletes it",
+      "steps": [
+        { "action": "openPage", "page": "Port Forwards" },
+        { "action": "presetControl", "operation": "add" },
+        { "action": "configurePreset", "label": "Parity preset", "context": "mock-dev", "namespace": "payments", "service": "payments-api", "remote": "80", "local": "18081" },
+        { "action": "presetControl", "operation": "save" },
+        { "action": "presetControl", "operation": "edit", "label": "Parity preset" },
+        { "action": "configurePreset", "label": "Edited preset", "context": "mock-dev", "namespace": "payments", "service": "payments-api", "remote": "80", "local": "18082" },
+        { "action": "presetControl", "operation": "save" },
+        { "action": "presetControl", "operation": "start", "label": "Edited preset" },
+        { "action": "expectForwardState", "target": "Service/payments-api:80", "local": "18082", "status": "listening", "count": 1 },
+        { "action": "forwardControl", "operation": "stop", "target": "Service/payments-api:80" },
+        { "action": "presetControl", "operation": "remove", "label": "Edited preset" },
+        { "action": "presetControl", "operation": "absent", "label": "Edited preset" }
+      ]
+    },
+    {
+      "id": "forward-active.auto-start-saved",
+      "title": "Restoring a workspace auto-starts its saved Service ports when enabled",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Service", "namespace": "payments", "name": "payments-api" },
+        { "action": "showTab", "tab": "Forward" },
+        { "action": "configureForward", "remote": "80", "local": "18081" },
+        { "action": "forwardControl", "operation": "save" },
+        { "action": "closeDetail" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Live sessions" },
+        { "action": "toggleSetting", "setting": "Auto-start saved port forwards" },
+        { "action": "expectSetting", "setting": "Auto-start saved port forwards", "checked": true },
+        { "action": "closeSettings" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openPage", "page": "Port Forwards" },
+        { "action": "expectForwardState", "target": "Service/payments-api:80", "local": "18081", "status": "listening", "count": 1 }
+      ]
+    },
+    {
+      "id": "exec-session.confirm-leave",
+      "title": "Leaving a running terminal requires confirmation and stops only its session",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "start", "container": "app", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "closeDetail" },
+        { "action": "confirmExecLeave", "choice": "stay" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "closeDetail" },
+        { "action": "confirmExecLeave", "choice": "stop" },
+        { "action": "expectDetailClosed" },
+        { "action": "openPage", "page": "Port Forwards" },
+        { "action": "expectLiveSessionCount", "count": 3 }
+      ]
+    }
+  ]
+}

@@ -5,6 +5,7 @@ import { chromium, type Locator, type Page } from "playwright-core";
 import { parse } from "yaml";
 import { chromeExecutable, freePort, readinessTimeoutMs, startIdentity, stopGroup, waitFor } from "../../.agents/skills/verify-kubecove/scripts/processes";
 import type { Contract, Step } from "./contract";
+import { liveSessionAction } from "./web-live-sessions";
 
 async function action(page: Page, step: Step) {
 	const search = page.getByRole("textbox", { name: "Search resources" });
@@ -59,6 +60,7 @@ async function action(page: Page, step: Step) {
             await page.getByRole("button", { name: "Install", exact: true }).click();
             await page.getByText("Invalid update signature", { exact: true }).waitFor();
             break;
+        case "configureForward": case "forwardControl": case "expectForwardState": case "execControl": case "expectExecState": case "replaySessions": case "confirmExecLeave": case "configurePreset": case "presetControl": await liveSessionAction(page, step); break;
         case "expectLiveState":
             await page.getByRole("button", { name: "Live updates and refresh options" }).first().getByText(step.label, { exact: true }).waitFor();
             if (step.notice) await page.getByText(step.notice, { exact: true }).first().waitFor();

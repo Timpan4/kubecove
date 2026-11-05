@@ -19,6 +19,14 @@ mod detail;
 mod details_tab;
 mod events;
 mod events_tab;
+mod exec_buffer;
+mod exec_custom;
+mod exec_input;
+mod exec_leave;
+mod exec_resize;
+mod exec_state;
+mod exec_view;
+mod forward_tab;
 mod gitops_card;
 mod gitops_nav;
 mod gitops_page;
@@ -45,6 +53,7 @@ mod map;
 mod metrics;
 mod overview;
 mod palette;
+mod port_forward_rows;
 mod port_forwards;
 mod rbac_inspector;
 mod rbac_page;
@@ -53,7 +62,10 @@ mod rbac_review;
 mod rbac_verify;
 mod resources;
 mod revisions_tab;
+mod saved_forward_form;
 mod scope;
+mod session_actions;
+mod session_preferences;
 mod settings_integrations;
 mod settings_kubeconfig;
 mod settings_page;
@@ -131,6 +143,7 @@ pub struct Inspector {
     cluster: cluster::ClusterState,
     incidents: incidents::IncidentsState,
     sessions: port_forwards::SessionsState,
+    exec: exec_state::ExecState,
     rbac: rbac_page::RbacState,
     settings: settings_page::SettingsState,
     launcher: launcher::LauncherState,
@@ -177,6 +190,11 @@ impl Inspector {
                     return;
                 };
                 if this.scope.context != context.as_ref() {
+                    if this
+                        .defer_exec_leave(exec_leave::LeaveIntent::Context(context.to_string()), cx)
+                    {
+                        return;
+                    }
                     this.scope = Scope {
                         context: context.to_string(),
                         namespace: None,
@@ -214,6 +232,7 @@ impl Inspector {
             cluster: Default::default(),
             incidents: incidents::IncidentsState::new(),
             sessions: port_forwards::SessionsState::new(),
+            exec: exec_state::ExecState::new(cx),
             rbac: rbac_page::RbacState::new(window, cx),
             settings: settings_page::SettingsState::new(window, cx),
             launcher: launcher::LauncherState::new(window, cx),
@@ -231,6 +250,7 @@ impl Inspector {
             _subscriptions: subscriptions,
         };
         this.load_contexts(window, cx);
+        this.load_session_preferences(cx);
         this
     }
 
@@ -241,6 +261,9 @@ impl Inspector {
     }
 
     fn open_page(&mut self, page: Page, cx: &mut Context<Self>) {
+        if self.page != page && self.defer_exec_leave(exec_leave::LeaveIntent::Page(page), cx) {
+            return;
+        }
         if self.page != page && self.can_leave(cx) {
             self.gitops_page.workspace = None;
             self.close_detail(cx);
@@ -256,6 +279,9 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.defer_exec_leave(exec_leave::LeaveIntent::Namespace(namespace.clone()), cx) {
+            return;
+        }
         if !self.can_leave(cx) {
             return;
         }
@@ -289,12 +315,16 @@ impl Inspector {
     }
 
     fn close_detail(&mut self, cx: &mut Context<Self>) {
+        if self.defer_exec_leave(exec_leave::LeaveIntent::Close, cx) {
+            return;
+        }
         if !self.can_leave(cx) {
             return;
         }
         self.detail_task.take();
         self.diff_task.take();
         self.detail_request = Rc::new(());
+        self.exec.clear();
         self.detail = Detail::Closed;
         self.rebuild_map();
         self.notice = None;
@@ -307,6 +337,12 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.defer_exec_leave(
+            exec_leave::LeaveIntent::Resource(Box::new(resource.clone())),
+            cx,
+        ) {
+            return;
+        }
         if !self.can_leave(cx) {
             return;
         }

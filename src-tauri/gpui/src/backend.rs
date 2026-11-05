@@ -72,6 +72,12 @@ pub trait Backend: Send + Sync + 'static {
     fn export_workspace(&self, _name: String, _content: String) -> Read<bool> {
         settings_integrations::unavailable("File dialog unavailable")
     }
+    fn session_preferences(&self) -> Read<SessionPreferences> {
+        Box::pin(async { Ok(SessionPreferences::default()) })
+    }
+    fn save_session_preferences(&self, _: SessionPreferences) -> Read<()> {
+        Box::pin(async { Ok(()) })
+    }
     fn resource_kinds(
         &self,
         _context: String,
@@ -161,6 +167,44 @@ pub trait Backend: Send + Sync + 'static {
     fn incidents(&self, context: String) -> Read<IncidentCockpitSummary>;
     /// The host's port forwards and exec sessions with the active kubeconfig source.
     fn live_sessions(&self) -> Read<LiveSessions>;
+    fn start_forward(
+        &self,
+        request: kubecove_lib::models::PortForwardRequest,
+    ) -> Read<kubecove_lib::models::PortForwardSessionSummary> {
+        let _ = request;
+        session_controls::unavailable()
+    }
+    fn stop_forward(&self, id: String) -> Read<bool> {
+        let _ = id;
+        session_controls::unavailable()
+    }
+    fn exec(&self, request: kubecove_lib::models::PodExecSessionRequest) -> Read<ExecStream> {
+        let _ = request;
+        session_controls::unavailable()
+    }
+    fn exec_input(&self, id: String, data: String) -> Read<bool> {
+        let _ = (id, data);
+        session_controls::unavailable()
+    }
+    fn exec_resize(
+        &self,
+        id: String,
+        size: kubecove_lib::models::PodExecTerminalSize,
+    ) -> Read<bool> {
+        let _ = (id, size);
+        session_controls::unavailable()
+    }
+    fn stop_exec(&self, id: String) -> Read<bool> {
+        let _ = id;
+        session_controls::unavailable()
+    }
+    fn cleanup_sessions(
+        &self,
+        request: kubecove_lib::models::LiveSessionCleanupRequest,
+    ) -> Read<kubecove_lib::models::LiveSessionCleanupResult> {
+        let _ = request;
+        session_controls::unavailable()
+    }
     /// Starts a log stream; dropping the returned stream stops it.
     fn log_stream(&self, target: LogTarget) -> Read<LogStream>;
     /// `list_deployment_revisions`: ReplicaSet pod templates a Deployment owns.
@@ -238,8 +282,12 @@ pub use kubecove_lib::commands::kubeconfig::KubeconfigSourcesSummary;
 pub use remote::DesktopBackend;
 pub use settings_integrations::{INSTALL_UNAVAILABLE, RemoteConnectionSummary, UpdateStatus};
 mod inventory;
+mod session_controls;
+mod session_preferences;
+pub use session_preferences::{SavedForward, SessionPreferences};
 mod topology_metrics;
 pub use inventory::CLUSTER_KINDS;
+pub use session_controls::ExecStream;
 
 /// Default built-in workspace kinds. Discovery adds custom kinds.
 pub use crate::model::WORKSPACE_KINDS as INSPECTION_KINDS;
@@ -250,7 +298,6 @@ pub struct NativeBackend {
     usage: commands::AppUsageMonitor,
     store: ClusterLiveStore,
     cancellations: BackendCancellationRegistry,
-    // The native client starts no live sessions yet (ADR 0003), so these stay empty.
     port_forwards: PortForwardRegistry,
     exec_sessions: PodExecRegistry,
     streams: Arc<StreamRegistry>,
@@ -312,6 +359,8 @@ impl Drop for NativeBackend {
         self.cancellations.cancel_all();
         self.store.cancel_loading();
         self.streams.stop_all();
+        self.port_forwards.stop_all();
+        self.exec_sessions.stop_all();
         if let Some(runtime) = self.runtime.take() {
             runtime.shutdown_background();
         }
@@ -335,6 +384,43 @@ impl Backend for NativeBackend {
             return self.read(security::unsaved());
         }
         self.read(async move { commands::add_kubeconfig_paths(paths) })
+    }
+    fn session_preferences(&self) -> Read<SessionPreferences> {
+        session_preferences::load(self)
+    }
+    fn save_session_preferences(&self, preferences: SessionPreferences) -> Read<()> {
+        session_preferences::save(self, preferences)
+    }
+    fn start_forward(
+        &self,
+        request: kubecove_lib::models::PortForwardRequest,
+    ) -> Read<kubecove_lib::models::PortForwardSessionSummary> {
+        session_controls::start_forward(self, request)
+    }
+    fn stop_forward(&self, id: String) -> Read<bool> {
+        session_controls::stop_forward(self, id)
+    }
+    fn exec(&self, request: kubecove_lib::models::PodExecSessionRequest) -> Read<ExecStream> {
+        session_controls::exec(self, request)
+    }
+    fn exec_input(&self, id: String, data: String) -> Read<bool> {
+        session_controls::input(self, id, data)
+    }
+    fn exec_resize(
+        &self,
+        id: String,
+        size: kubecove_lib::models::PodExecTerminalSize,
+    ) -> Read<bool> {
+        session_controls::resize(self, id, size)
+    }
+    fn stop_exec(&self, id: String) -> Read<bool> {
+        session_controls::stop_exec(self, id)
+    }
+    fn cleanup_sessions(
+        &self,
+        request: kubecove_lib::models::LiveSessionCleanupRequest,
+    ) -> Read<kubecove_lib::models::LiveSessionCleanupResult> {
+        session_controls::cleanup(self, request)
     }
     fn resource_kinds(
         &self,

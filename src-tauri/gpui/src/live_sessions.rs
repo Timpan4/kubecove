@@ -26,19 +26,11 @@ fn env_var_name(env_var: Option<&str>) -> &str {
 /// `normalizeKubeconfigSource` in `helpers.ts`.
 fn active_source(source: Option<&str>) -> String {
     match source {
-        Some(key) if key.starts_with("kubeconfigSource=") => key.to_owned(),
+        Some(key) if key.starts_with("kubeconfigSource=") || key.starts_with("kubeconfigEnv=") => {
+            key.to_owned()
+        }
         other => format!("kubeconfigEnv={}", env_var_name(other)),
     }
-}
-
-/// `sessionKubeconfigSource` in `helpers.ts`.
-fn session_source(key: Option<&String>, env_var: Option<&String>) -> String {
-    key.cloned().unwrap_or_else(|| {
-        format!(
-            "kubeconfigEnv={}",
-            env_var_name(env_var.map(String::as_str))
-        )
-    })
 }
 
 impl LiveSessions {
@@ -49,30 +41,19 @@ impl LiveSessions {
         context: &str,
     ) -> (Vec<&PortForwardSessionSummary>, Vec<&PodExecSessionSummary>) {
         let source = active_source(self.source_key.as_deref());
-        let visible = |cluster: &str, key: Option<&String>, env_var: Option<&String>| {
-            cluster == context && session_source(key, env_var) == source
+        // ADR 0003's 2026-10-22 amendment excludes sessions without a source key.
+        let visible = |cluster: &str, key: Option<&String>| {
+            cluster == context && key.is_some_and(|key| *key == source)
         };
         let mut forwards: Vec<_> = self
             .port_forwards
             .iter()
-            .filter(|s| {
-                visible(
-                    &s.cluster_context,
-                    s.kubeconfig_source_key.as_ref(),
-                    s.kubeconfig_env_var.as_ref(),
-                )
-            })
+            .filter(|s| visible(&s.cluster_context, s.kubeconfig_source_key.as_ref()))
             .collect();
         let mut exec: Vec<_> = self
             .exec_sessions
             .iter()
-            .filter(|s| {
-                visible(
-                    &s.cluster_context,
-                    s.kubeconfig_source_key.as_ref(),
-                    s.kubeconfig_env_var.as_ref(),
-                )
-            })
+            .filter(|s| visible(&s.cluster_context, s.kubeconfig_source_key.as_ref()))
             .collect();
         forwards.sort_by(|a, b| a.started_at.cmp(&b.started_at));
         exec.sort_by(|a, b| a.started_at.cmp(&b.started_at));

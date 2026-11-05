@@ -18,8 +18,6 @@ import {
 	helmReleases,
 	kinds,
 	mockContexts,
-	mockExecSessions,
-	mockPortForwards,
 	namespaces,
 	networkIngressTargets,
 	networkServiceFallbackSelectors,
@@ -34,6 +32,7 @@ import { evictedWorkerName, evictedWorkerStatus } from "./tauri-dev-mock-inciden
 import { liveEvents, liveResources, registerMockWatch, stopMockWatch } from "./tauri-dev-mock-live";
 import { operationMockHandlers } from "./tauri-dev-mock-operations";
 import { rbacInspectionMock, rbacReviewMock } from "./tauri-dev-mock-rbac";
+import { cleanupMockSessions, listMockExecs, listMockForwards, mockExecInput, resizeMockExec, startMockExec, startMockForward, stopMockExec, stopMockForward } from "./tauri-dev-mock-session-controls";
 import { createMockChannel, type TauriClient } from "./tauri-runtime";
 import type {
 	AppUsageMetrics,
@@ -56,7 +55,6 @@ import type {
 	IncidentCockpitSummary,
 	IncidentSeverity,
     KubeconfigSourcesSummary,
-	LiveSessionCleanupResult,
 	PodLogStreamRequest,
 	ResourceDetailsFull,
 	ResourceEventSummary,
@@ -125,6 +123,15 @@ export function createDevMockTauriClient(): TauriClient {
 			options?: InvokeOptions,
 		): Promise<T> => {
 			await delay(35);
+            // The same typed seam as the wrappers; live channels have a different message contract.
+            const live = args as { request: import("./types").PortForwardRequest & import("./types").PodExecSessionRequest & import("./types").LiveSessionCleanupRequest; sessionId: string; data: string; size: import("./types").PodExecTerminalSize; channel: Pick<Channel<import("./types").PodExecSessionMessage>, "onmessage"> } | undefined;
+            if (cmd === "start_pod_port_forward" && live) return startMockForward(live.request) as T;
+            if (cmd === "start_pod_exec_session" && live) return startMockExec(live.request, live.channel) as T;
+            if (cmd === "write_pod_exec_stdin" && live) return mockExecInput(live.sessionId, live.data) as T;
+            if (cmd === "resize_pod_exec_terminal" && live) return resizeMockExec(live.sessionId, live.size) as T;
+            if (cmd === "stop_pod_exec_session" && live) return stopMockExec(live.sessionId) as T;
+            if (cmd === "stop_port_forward" && live) return stopMockForward(live.sessionId) as T;
+            if (cmd === "stop_live_sessions_outside_scope" && live) return cleanupMockSessions(live.request) as T;
 			const handler = findMockHandler(cmd);
 			if (!handler) throw new Error(`No browser dev mock for command: ${cmd}`);
 			// SAFETY: caller's typed wrapper owns result T; each mock handler mirrors that command.
@@ -200,15 +207,8 @@ const handlers = {
 	start_pod_log_stream: (args) => startLogStream(args?.channel, false, args?.request?.batchLines === true),
 	start_aggregated_log_stream: (args) => startLogStream(args?.channel, true, args?.request?.batchLines === true),
 	stop_stream: (args) => stopMockWatch(args.id ?? ""),
-	start_pod_port_forward: unavailable("Port forwarding is unavailable in browser mock mode."),
-	stop_port_forward: () => true,
-	list_port_forwards: () => mockPortForwards,
-	start_pod_exec_session: unavailable("Pod exec is unavailable in browser mock mode."),
-	write_pod_exec_stdin: () => false,
-	resize_pod_exec_terminal: () => false,
-	stop_pod_exec_session: () => true,
-	list_pod_exec_sessions: () => mockExecSessions,
-	stop_live_sessions_outside_scope: () => ({ stoppedPortForwardIds: [], stoppedPodExecIds: [], stoppedPortForwards: 0, stoppedPodExecSessions: 0 }) satisfies LiveSessionCleanupResult,
+    list_port_forwards: listMockForwards,
+    list_pod_exec_sessions: listMockExecs,
 	get_app_usage_metrics: () => usage(),
 	list_resource_metrics: () => metrics(),
 	detect_argocd: () => true,
@@ -399,7 +399,8 @@ function detailsFor(args: MockArgs): ResourceDetailsFull {
 		metadata: { labels: { "app.kubernetes.io/name": summary.name }, annotations: { "kubecove.dev/mock": "true" } },
 		status: summary.name === evictedWorkerName
 			? evictedWorkerStatus
-			: { phase: summary.status, ready: summary.ready, restarts: summary.restarts },
+            : { phase: summary.status, ready: summary.ready, restarts: summary.restarts,
+                ...(summary.kind === "Pod" && summary.namespace === "payments" && summary.name === "payments-api-7d9c9b7f8d-k2r9p" ? { containerStatuses: ["app", "sidecar"].map((name) => ({ name, ready: true, restartCount: 0, state: { running: { startedAt: now } } })) } : {}) },
 	};
 }
 
@@ -426,6 +427,8 @@ function builtInYamlFor(args: MockArgs): string {
 
 function yamlFor(args: MockArgs): string {
 	const row = resourceFromArgs(args);
+    if (row.namespace === "payments" && row.kind === "Pod" && row.name.startsWith("payments-api-")) return stringify({ apiVersion: "v1", kind: "Pod", metadata: { name: row.name, namespace: row.namespace, labels: { app: "payments-api" } }, spec: { containers: [{ name: "app", image: "example/payments-api", ports: [{ containerPort: 8080 }] }, { name: "sidecar", image: "example/sidecar" }] } });
+    if (row.namespace === "payments" && row.kind === "Service" && row.name === "payments-api") return stringify({ apiVersion: "v1", kind: "Service", metadata: { name: row.name, namespace: row.namespace }, spec: { selector: { app: "payments-api" }, ports: [{ name: "http", port: 80, targetPort: 8080, protocol: "TCP" }] } });
 	const app = row.kind === "Application" ? argoApps.find((candidate) => candidate.name === row.name) : undefined;
 	if (app) return argoApplicationYaml(app);
 	if (row.name === evictedWorkerName) return `${genericYaml(row.kind, row.name, row.namespace, row.apiVersion)}${stringify({ status: evictedWorkerStatus })}`;

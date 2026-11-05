@@ -9,6 +9,8 @@ mod delivery;
 mod detail;
 #[path = "parity/live_data.rs"]
 mod live_data;
+#[path = "parity/live_sessions.rs"]
+mod live_sessions;
 #[path = "parity/locate.rs"]
 mod locate;
 #[path = "parity/scroll.rs"]
@@ -147,7 +149,8 @@ fn scenarios() -> Vec<Value> {
 }
 
 fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
-    if !(settings_integrations::act(window, cx, step)
+    if !(live_sessions::apply(window, cx, step)
+        || settings_integrations::act(window, cx, step)
         || live_data::apply(window, cx, step)
         || topology_metrics::apply(window, cx, step)
         || detail::act(window, cx, step)
@@ -244,6 +247,13 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
             }
             if step["action"] == "replayLiveData" {
                 backend.replay_live(string(step, "script"));
+            }
+            if step["action"] == "replaySessions" {
+                backend.replay_sessions(string(step, "script"));
+                // The live-session query interval in `portForwardLifecycle.ts`.
+                cx.background_executor
+                    .advance_clock(std::time::Duration::from_millis(3_000));
+                cx.run_until_parked();
             }
             println!("parity {id} step {index}: {}", string(step, "action"));
             // Reads a render starts must settle before the step observes or acts.

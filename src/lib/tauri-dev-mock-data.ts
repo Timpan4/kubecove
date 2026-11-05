@@ -66,7 +66,7 @@ export const deploymentRevisions: DeploymentRevision[] = [
 export const source: KubeconfigSourcesSummary = {
 	kubeconfigEnvVar: "kubeconfigSource=browser-mock",
 	paths: [],
-	sourceKey: "browser-mock",
+    sourceKey: "kubeconfigSource=browser-mock",
 	sourceLabel: "Browser mock",
 	showSourceLabels: true,
 	warnings: [],
@@ -504,6 +504,7 @@ export const helmReleases: HelmReleaseSummary[] = [
 export const mockPortForwards: PortForwardSessionSummary[] = [
 	{
 		id: "mock-pf-grafana",
+        kubeconfigSourceKey: source.sourceKey,
 		clusterContext: "mock-dev",
 		kubeconfigEnvVar: source.sourceKey,
 		namespace: "monitoring",
@@ -521,6 +522,7 @@ export const mockPortForwards: PortForwardSessionSummary[] = [
 	},
 	{
 		id: "mock-pf-payments",
+        kubeconfigSourceKey: source.sourceKey,
 		clusterContext: "mock-dev",
 		kubeconfigEnvVar: source.sourceKey,
 		namespace: "payments",
@@ -541,6 +543,7 @@ export const mockPortForwards: PortForwardSessionSummary[] = [
 export const mockExecSessions: PodExecSessionSummary[] = [
 	{
 		id: "mock-exec-payments",
+        kubeconfigSourceKey: source.sourceKey,
 		clusterContext: "mock-dev",
 		kubeconfigEnvVar: source.sourceKey,
 		namespace: "payments",

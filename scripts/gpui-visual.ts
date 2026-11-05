@@ -27,7 +27,7 @@ await run(["bun", "e2e/parity/visual/export-fixture.ts", fixture]);
 // Web references change only with the Svelte app; reuse the last capture when asked.
 const webDir = skipWeb ? join(latest, "web") : join(out, "web");
 if (!skipWeb) {
-	await run(["bun", "e2e/parity/visual/capture-web.ts", webDir]);
+    await run(["bun", "e2e/parity/visual/capture-web.ts", webDir], { ...process.env, KUBECOVE_VISUAL_VIEWS: views.join(",") });
 	// A fresh capture becomes the reference that --skip-web reuses.
 	await cp(webDir, join(latest, "web"), { recursive: true });
 }

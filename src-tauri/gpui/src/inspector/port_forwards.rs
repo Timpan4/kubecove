@@ -1,148 +1,50 @@
 //! Port Forwards page, mirroring `LiveSessionsSurface.svelte` and
-//! `LiveSessionsView.svelte`. Read-only: sessions and their states are listed,
-//! but starting, reconnecting and stopping sessions (ADR 0003), saving
-//! forwards and auto-start are rendered disabled. Copying a local URL stays
-//! available because it changes nothing.
+//! `LiveSessionsView.svelte`. Row actions use typed ADR 0003 session commands.
 
-use super::{Inspector, surface};
+use super::{
+    Inspector,
+    port_forward_rows::{card, card_title, stat, table, text, xs_button},
+    surface,
+};
 use crate::backend::LiveSessions;
-use crate::live_sessions::{
-    exec_command, exec_status, forward_resolution, forward_status, forward_title, local_url,
-};
-use crate::theme::{HEADING, Tokens};
-use crate::ui::{self, Tone};
+use crate::theme::Tokens;
+use crate::ui;
 use gpui_kit::TestSupportExt;
-use gpui_kit::{
-    AnyElement, ClipboardItem, Context, Div, FontWeight, SharedString, Task, div, prelude::*, px,
-};
+use gpui_kit::{AnyElement, Context, SharedString, Task, div, prelude::*, px};
 use std::rc::Rc;
 
 pub(super) struct SessionsState {
-    load: Option<Result<LiveSessions, String>>,
+    pub(super) preferences: super::session_preferences::PreferencesState,
+    pub(super) form: Option<super::saved_forward_form::PresetForm>,
+    pub(super) load: Option<Result<LiveSessions, String>>,
+    pub(super) busy: bool,
+    pub(super) error: Option<String>,
+    pub(super) presets: std::collections::HashMap<String, Vec<crate::backend::SavedForward>>,
+    pub(super) auto_start: bool,
+    pub(super) keep: bool,
+    pub(super) scope_context: Option<String>,
     request: Rc<()>,
     task: Option<Task<()>>,
+    poll: Option<Task<()>>,
 }
 
 impl SessionsState {
     pub(super) fn new() -> Self {
         Self {
+            preferences: Default::default(),
+            form: None,
             load: None,
+            busy: false,
+            error: None,
+            presets: Default::default(),
+            auto_start: false,
+            keep: false,
+            scope_context: None,
             request: Rc::new(()),
             task: None,
+            poll: None,
         }
     }
-}
-
-/// `Card size="sm"`: `rounded-lg border bg-surface-1 py-3 gap-3`.
-fn card() -> Div {
-    ui::card().py(px(12.)).gap(px(12.))
-}
-
-/// `CardHeader` with `CardTitle` and `CardDescription`.
-fn card_title(title: &str, description: &str) -> Div {
-    div()
-        .flex()
-        .flex_col()
-        .gap(px(4.))
-        .child(ui::heading(title.to_owned(), 14., 20.))
-        .child(ui::muted(ui::text(description.to_owned(), 12., 19.5)))
-}
-
-/// `Button size="xs"`: `h-5 rounded-sm px-2 text-[0.625rem]`, `size-2.5` icon.
-fn xs_button(icon: &str, label: &str, destructive: bool) -> Div {
-    let button = ui::outline_button()
-        .h(px(20.))
-        .pl(px(6.))
-        .pr(px(8.))
-        .rounded(px(4.));
-    let (button, color) = if destructive {
-        (
-            button
-                .border_color(gpui_kit::transparent_black())
-                .bg(Tokens::destructive().opacity(0.2)),
-            Tokens::destructive(),
-        )
-    } else {
-        (button, Tokens::foreground())
-    };
-    button
-        .child(ui::icon(icon, 10., color))
-        .child(ui::medium(ui::text(label.to_owned(), 10., 15.)).text_color(color))
-}
-
-fn cell(content: impl IntoElement) -> Div {
-    div()
-        .flex_1()
-        .flex_basis(px(0.))
-        .min_w_0()
-        .px(px(12.))
-        .py(px(8.))
-        .overflow_hidden()
-        .child(content)
-}
-
-/// `Table class="table-fixed text-sm"`: equal columns, header row `h-10`.
-fn table(headers: &[&str], rows: Vec<Vec<AnyElement>>, empty: &str) -> Div {
-    let columns = headers.len();
-    let header = div()
-        .flex()
-        .items_center()
-        .h(px(40.))
-        .border_b_1()
-        .border_color(Tokens::border())
-        .children(headers.iter().map(|header| {
-            cell(
-                ui::muted(ui::xs(header.to_uppercase()))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .whitespace_nowrap(),
-            )
-        }));
-    let body: Vec<Div> = if rows.is_empty() {
-        vec![
-            div()
-                .flex()
-                .justify_center()
-                .px(px(12.))
-                .py(px(32.))
-                .child(ui::muted(ui::sm(empty.to_owned()))),
-        ]
-    } else {
-        let last = rows.len() - 1;
-        rows.into_iter()
-            .enumerate()
-            .map(|(index, row)| {
-                debug_assert_eq!(row.len(), columns);
-                div()
-                    .flex()
-                    .items_center()
-                    .when(index < last, |row| {
-                        row.border_b_1().border_color(Tokens::border())
-                    })
-                    .children(row.into_iter().map(cell))
-            })
-            .collect()
-    };
-    div().px(px(12.)).child(header).children(body)
-}
-
-fn text(content: impl Into<SharedString>) -> AnyElement {
-    ui::sm(content).truncate().into_any_element()
-}
-
-fn stat(label: &str, value: usize) -> Div {
-    card().flex_1().min_w_0().child(
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(4.))
-            .px(px(12.))
-            .child(ui::muted(ui::text(label.to_owned(), 12., 19.5)))
-            .child(
-                ui::text(value.to_string(), 20., 28.)
-                    .font_family(HEADING)
-                    .font_weight(FontWeight::MEDIUM),
-            ),
-    )
 }
 
 impl Inspector {
@@ -150,16 +52,61 @@ impl Inspector {
     /// on the host, without the workspace filter the page applies.
     pub(super) fn live_session_count(&self) -> Option<usize> {
         match &self.sessions.load {
-            Some(Ok(sessions)) => Some(sessions.port_forwards.len() + sessions.exec_sessions.len()),
+            Some(Ok(sessions)) => {
+                let (forwards, execs) = sessions.for_context(&self.scope.context);
+                Some(forwards.len() + execs.len())
+            }
             _ => None,
         }
     }
 
     pub(super) fn load_sessions(&mut self, cx: &mut Context<Self>) {
+        if self.sessions.poll.is_none() {
+            // `portForwardLifecycle.ts` and `podExecLifecycle.ts` query default.
+            self.sessions.poll = Some(cx.spawn(async move |this, cx| {
+                loop {
+                    cx.background_executor()
+                        .timer(std::time::Duration::from_millis(3_000))
+                        .await;
+                    if this.update(cx, |this, cx| this.load_sessions(cx)).is_err() {
+                        break;
+                    }
+                }
+            }));
+        }
         let state = &mut self.sessions;
         state.request = Rc::new(());
         let request = state.request.clone();
-        let read = self.backend.live_sessions();
+        let context = self.scope.context.clone();
+        let changed = state
+            .scope_context
+            .as_ref()
+            .is_some_and(|old| *old != context);
+        state.scope_context = Some(context.clone());
+        let cleanup = changed && !state.keep;
+        let previous_source = state
+            .load
+            .as_ref()
+            .and_then(|r| r.as_ref().ok())
+            .and_then(|s| s.source_key.clone());
+        let keep = state.keep;
+        let backend = self.backend.clone();
+        let read = async move {
+            let sessions = backend.live_sessions().await?;
+            if (cleanup
+                || (!keep && previous_source.is_some() && previous_source != sessions.source_key))
+                && let Some(source) = &sessions.source_key
+            {
+                backend
+                    .cleanup_sessions(kubecove_lib::models::LiveSessionCleanupRequest {
+                        allowed_cluster_contexts: vec![context],
+                        kubeconfig_source_key: source.clone(),
+                    })
+                    .await?;
+                return backend.live_sessions().await;
+            }
+            Ok(sessions)
+        };
         state.task = Some(cx.spawn(async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
@@ -171,101 +118,6 @@ impl Inspector {
         }));
     }
 
-    fn forward_rows(
-        &self,
-        sessions: &LiveSessions,
-        cx: &mut Context<Self>,
-    ) -> Vec<Vec<AnyElement>> {
-        let (forwards, _) = sessions.for_context(&self.scope.context);
-        forwards
-            .into_iter()
-            .map(|session| {
-                let (status, destructive) = forward_status(session.status);
-                let url = local_url(session);
-                vec![
-                    div()
-                        .id(SharedString::from(format!("forward:{}", session.id)))
-                        .test_support()
-                        .aria_label(forward_title(session))
-                        .min_w_0()
-                        .child(ui::medium(ui::sm(forward_title(session))).truncate())
-                        .when_some(
-                            session
-                                .kubeconfig_source_label
-                                .clone()
-                                .filter(|_| sessions.show_source_labels),
-                            |title, label| title.child(ui::muted(ui::xs(label)).truncate()),
-                        )
-                        .into_any_element(),
-                    text(session.namespace.clone()),
-                    text(url.clone()),
-                    text(forward_resolution(session)),
-                    div()
-                        .min_w_0()
-                        .child(if destructive {
-                            ui::status_badge(Tone::Error, status)
-                        } else {
-                            ui::outline_badge(status)
-                        })
-                        .when_some(session.last_error.clone(), |cell, error| {
-                            cell.child(
-                                ui::xs(format!("Port-forward failed: {error}"))
-                                    .text_color(Tokens::destructive())
-                                    .mt(px(4.)),
-                            )
-                        })
-                        .into_any_element(),
-                    div()
-                        .flex()
-                        .flex_wrap()
-                        .gap(px(4.))
-                        .child(surface::disabled(xs_button(
-                            "rotate-ccw",
-                            "Reconnect",
-                            false,
-                        )))
-                        .child(
-                            xs_button("copy", "Copy", false)
-                                .id(SharedString::from(format!("copy-forward:{}", session.id)))
-                                .test_support()
-                                .cursor_pointer()
-                                .on_click(cx.listener(move |_, _, _, cx| {
-                                    cx.write_to_clipboard(ClipboardItem::new_string(url.clone()))
-                                })),
-                        )
-                        .child(surface::disabled(xs_button("square", "Stop", true)))
-                        .into_any_element(),
-                ]
-            })
-            .collect()
-    }
-
-    fn exec_rows(sessions: &LiveSessions, context: &str) -> Vec<Vec<AnyElement>> {
-        let (_, exec) = sessions.for_context(context);
-        exec.into_iter()
-            .map(|session| {
-                vec![
-                    div()
-                        .min_w_0()
-                        .child(ui::medium(ui::sm(session.pod_name.clone())).truncate())
-                        .when_some(
-                            session
-                                .kubeconfig_source_label
-                                .clone()
-                                .filter(|_| sessions.show_source_labels),
-                            |title, label| title.child(ui::muted(ui::xs(label)).truncate()),
-                        )
-                        .into_any_element(),
-                    text(session.namespace.clone()),
-                    text(exec_command(&session.command)),
-                    text(exec_status(session.status)),
-                    text(super::incident_guide::timestamp(&session.started_at)),
-                    surface::disabled(xs_button("square", "Stop", true)).into_any_element(),
-                ]
-            })
-            .collect()
-    }
-
     pub(super) fn port_forwards_page(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let body: AnyElement = match &self.sessions.load {
             None => surface::loading(),
@@ -274,11 +126,15 @@ impl Inspector {
                 let (forwards, exec) = sessions.for_context(&self.scope.context);
                 let counts = (forwards.len(), exec.len());
                 let forward_rows = self.forward_rows(sessions, cx);
-                let exec_rows = Self::exec_rows(sessions, &self.scope.context);
+                let exec_rows = self.exec_rows(sessions, cx);
                 div()
                     .flex()
                     .flex_col()
                     .gap(px(16.))
+                    .when_some(self.sessions.error.clone(), |body, error| body.child(
+                        div().id("session-action-message").test_support().aria_label(error.clone())
+                            .child(ui::xs(error).text_color(Tokens::destructive()))
+                    ))
                     .child(
                         div()
                             .flex()
@@ -293,21 +149,27 @@ impl Inspector {
                             .border_color(Tokens::border())
                             .bg(Tokens::background().opacity(0.5))
                             .child(
-                                surface::disabled(div().flex().items_center().gap(px(8.)))
+                                div().flex().items_center().gap(px(8.)).id("auto-start-forwards").test_support()
+                                    .aria_label("Auto-start saved port forwards").on_click(cx.listener(|this, _, _, cx| {
+                                        this.sessions.auto_start = !this.sessions.auto_start;
+                                        this.persist_session_preferences(cx);
+                                        cx.notify();
+                                    }))
                                     .child(
                                         div()
                                             .size(px(16.))
                                             .rounded(px(4.))
                                             .border_1()
                                             .border_color(Tokens::input())
-                                            .bg(Tokens::input().opacity(0.3)),
+                                            .bg(Tokens::input().opacity(0.3))
+                                            .when(self.sessions.auto_start, |box_| box_.bg(Tokens::primary()).child(ui::icon("check", 14., Tokens::primary_foreground()))),
                                     )
                                     .child(ui::muted(ui::xs("Auto-start saved"))),
                             )
-                            .child(surface::disabled(surface::small_button(
+                            .child(surface::small_button(
                                 Some("play"),
                                 "Start saved",
-                            ))),
+                            ).id("restore-forwards").test_support().on_click(cx.listener(|this, _, window, cx| this.restore_forwards(window, cx)))),
                     )
                     .child(
                         // `StatGrid`: `xl:grid-cols-5`, two cards filled.
@@ -353,12 +215,12 @@ impl Inspector {
                                         )
                                         .gap(px(0.)),
                                     )
-                                    .child(surface::disabled(surface::small_button(
+                                    .child(surface::small_button(
                                         Some("plus"),
                                         "Save forward",
-                                    ))),
+                                    ).id("save-forward").test_support().on_click(cx.listener(|this, _, window, cx| this.open_preset_form(None, window, cx)))),
                             )
-                            // The native client has no saved workspaces yet.
+                            .children(self.preset_form(cx))
                             .child(table(
                                 &[
                                     "Preset",
@@ -369,7 +231,25 @@ impl Inspector {
                                     "Status",
                                     "Actions",
                                 ],
-                                vec![],
+                                self.sessions.presets.get(&self.preset_key()).into_iter().flatten().enumerate().map(|(index, saved)| { let preset = &saved.request; vec![
+                                    div().id(SharedString::from(format!("preset:{index}"))).test_support().aria_label(saved.label.clone()).child(text(if saved.label.is_empty() { format!("{}:{}", preset.target_name.as_deref().unwrap_or_default(), preset.remote_port) } else { saved.label.clone() })).into_any_element(),
+                                    text(preset.cluster_context.clone()), text(preset.namespace.clone()),
+                                    text(preset.target_name.clone().unwrap_or_default()),
+                                    text(preset.local_port.map(|p| p.to_string()).unwrap_or_else(|| "auto".into())),
+                                    text("saved"),
+                                    div().flex().flex_wrap().gap(px(4.))
+                                    .child(xs_button("play", "Start", false).id(SharedString::from(format!("start-preset:{index}"))).test_support()
+                                        .on_click(cx.listener(move |this, _, window, cx| this.start_saved_forward(index, window, cx))))
+                                    .child(xs_button("pencil", "Edit", false).id(SharedString::from(format!("edit-preset:{index}"))).test_support()
+                                        .on_click(cx.listener(move |this, _, window, cx| this.open_preset_form(Some(index), window, cx))))
+                                    .child(xs_button("x", "Delete", true).id(SharedString::from(format!("remove-preset:{index}"))).test_support()
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            let preset_key = this.preset_key();
+                                            if let Some(presets) = this.sessions.presets.get_mut(&preset_key) { presets.remove(index); }
+                                            this.persist_session_preferences(cx);
+                                            cx.notify();
+                                        }))).into_any_element(),
+                                ]}).collect(),
                                 "No saved Service forwards",
                             )),
                     )

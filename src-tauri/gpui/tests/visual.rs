@@ -129,6 +129,43 @@ mod visual {
                         window.click(format!("settings-section:{category}"), cx)
                     });
                 }
+                "forward-start" | "forward-active" | "exec-session" => {
+                    act(&mut cx, handle, |window, cx| {
+                        window.click("open-resources", cx)
+                    });
+                    act(&mut cx, handle, |window, cx| {
+                        window.click("search", cx);
+                        window.input("payments-api-7d9c9b7f8d-k2r9p", cx);
+                    });
+                    act(&mut cx, handle, |window, cx| {
+                        window.click("resource:Pod:payments:payments-api-7d9c9b7f8d-k2r9p", cx)
+                    });
+                    act(&mut cx, handle, |window, cx| {
+                        window.click(
+                            if view == "exec-session" {
+                                "show-exec"
+                            } else {
+                                "show-forward"
+                            },
+                            cx,
+                        )
+                    });
+                    if view == "exec-session" {
+                        act(&mut cx, handle, |window, cx| window.click("exec-start", cx));
+                    } else {
+                        act(&mut cx, handle, |window, cx| {
+                            window.click("forward-remote", cx);
+                            window.input("9090", cx);
+                            window.click("forward-local", cx);
+                            window.input("19090", cx);
+                        });
+                        if view == "forward-active" {
+                            act(&mut cx, handle, |window, cx| {
+                                window.click("forward-start", cx)
+                            });
+                        }
+                    }
+                }
                 "overview" => {}
                 "live-limited" | "live-failed" | "live-reconnecting" => {
                     act(&mut cx, handle, |window, cx| {

@@ -1,0 +1,218 @@
+//! Failures the mock acceptance scenarios cannot schedule: denied/failed opens,
+//! cancellation during open, and output after its detail is gone.
+use super::{Controlled, open};
+use gpui_kit::test::TestWindowExt;
+use gpui_kit::{AppContext, TestAppContext};
+use kubecove_gpui::backend::{ExecStream, Read};
+use kubecove_lib::models::*;
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
+};
+
+#[derive(Default)]
+pub struct SessionControls {
+    pub enabled: AtomicBool,
+    pub transport: AtomicBool,
+    pub pending: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+    pub forward_pending: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+    pub stopped_forwards: Arc<Mutex<Vec<String>>>,
+}
+impl SessionControls {
+    pub fn forward(&self, request: PortForwardRequest) -> Read<PortForwardSessionSummary> {
+        let pending = self.forward_pending.lock().unwrap().take();
+        Box::pin(async move {
+            let Some(pending) = pending else {
+                return Err(AppError::new(
+                    "pods/portforward is forbidden",
+                    AppErrorKind::Forbidden,
+                ));
+            };
+            let _ = pending.await;
+            Ok(serde_json::from_value(serde_json::json!({
+                "id": "delayed-forward", "clusterContext": request.cluster_context,
+                "kubeconfigSourceKey": "kubeconfigSource=active", "namespace": request.namespace,
+                "targetKind": request.target_kind, "targetName": request.target_name,
+                "podName": "payments-api", "remotePort": request.remote_port,
+                "resolvedPodName": "payments-api", "resolvedPodPort": request.remote_port,
+                "localPort": request.local_port.unwrap(), "localAddress": "127.0.0.1",
+                "localUrl": "http://127.0.0.1:19090", "status": "listening", "startedAt": ""
+            }))
+            .unwrap())
+        })
+    }
+    pub fn stop_forward(&self, id: String) -> Read<bool> {
+        self.stopped_forwards.lock().unwrap().push(id);
+        Box::pin(async { Ok(true) })
+    }
+    pub fn exec(&self, _: PodExecSessionRequest) -> Read<ExecStream> {
+        let transport = self.transport.load(Ordering::SeqCst);
+        let pending = self.pending.lock().unwrap().take();
+        Box::pin(async move {
+            if let Some(pending) = pending {
+                let _ = pending.await;
+            }
+            Err(AppError::new(
+                if transport {
+                    "Exec transport disconnected"
+                } else {
+                    "pods/exec is forbidden"
+                },
+                if transport {
+                    AppErrorKind::Cluster
+                } else {
+                    AppErrorKind::Forbidden
+                },
+            ))
+        })
+    }
+}
+fn pod(cx: &mut TestAppContext, backend: Arc<Controlled>) -> gpui_kit::AnyWindowHandle {
+    backend.sessions.enabled.store(true, Ordering::SeqCst);
+    let handle = open(cx, backend);
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window.click("resource:Pod:payments:payments-api", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window.click("show-exec", cx);
+        window.render_frame(cx);
+        window.click("exec-start", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    handle
+}
+#[gpui_kit::test]
+fn refused_exec_is_visible(cx: &mut TestAppContext) {
+    let handle = pod(cx, Arc::new(Controlled::default()));
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        assert_eq!(w.find("exec-error").label(), Some("pods/exec is forbidden"));
+    })
+    .unwrap();
+}
+#[gpui_kit::test]
+fn exec_transport_error_is_visible(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    backend.sessions.transport.store(true, Ordering::SeqCst);
+    let handle = pod(cx, backend);
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        assert_eq!(
+            w.find("exec-error").label(),
+            Some("Exec transport disconnected")
+        );
+    })
+    .unwrap();
+}
+#[gpui_kit::test]
+fn closing_a_starting_exec_cancels_it(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    let (send, receive) = tokio::sync::oneshot::channel();
+    *backend.sessions.pending.lock().unwrap() = Some(receive);
+    let handle = pod(cx, backend);
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("exec-close:0", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert!(
+        send.send(()).is_err(),
+        "closed view releases the pending start"
+    );
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        assert!(w.try_find("exec-error").is_none());
+    })
+    .unwrap();
+}
+
+fn start_forward(cx: &mut TestAppContext, backend: Arc<Controlled>) -> gpui_kit::AnyWindowHandle {
+    backend.sessions.enabled.store(true, Ordering::SeqCst);
+    let handle = open(cx, backend);
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("resource:Pod:payments:payments-api", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("show-forward", cx);
+        w.render_frame(cx);
+        w.click("forward-remote", cx);
+        w.input("9090", cx);
+        w.click("forward-local", cx);
+        w.input("19090", cx);
+        w.click("forward-start", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    handle
+}
+#[gpui_kit::test]
+fn a_forward_that_finishes_after_context_change_is_stopped(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    let (send, receive) = tokio::sync::oneshot::channel();
+    *backend.sessions.forward_pending.lock().unwrap() = Some(receive);
+    let handle = start_forward(cx, backend.clone());
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.within("context").click("input", cx);
+        w.press("down", cx);
+        w.press("enter", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    send.send(()).unwrap();
+    cx.run_until_parked();
+    assert_eq!(
+        *backend.sessions.stopped_forwards.lock().unwrap(),
+        ["delayed-forward"]
+    );
+}
+#[gpui_kit::test]
+fn a_refused_forward_is_visible(cx: &mut TestAppContext) {
+    let handle = start_forward(cx, Arc::new(Controlled::default()));
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        assert_eq!(
+            w.find("forward-error").label(),
+            Some("pods/portforward is forbidden")
+        );
+    })
+    .unwrap();
+}
+#[gpui_kit::test]
+fn confirming_context_change_cancels_a_pending_exec(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    let (send, receive) = tokio::sync::oneshot::channel();
+    *backend.sessions.pending.lock().unwrap() = Some(receive);
+    let handle = pod(cx, backend);
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.within("context").click("input", cx);
+        w.press("down", cx);
+        w.press("enter", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("exec-leave-confirm", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert!(send.send(()).is_err());
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        assert!(w.try_find("exec-terminal").is_none());
+        assert!(w.try_find("exec-error").is_none());
+    })
+    .unwrap();
+}

@@ -234,6 +234,34 @@ impl Inspector {
                             .into_any_element(),
                     )
                     .into_any_element()
+                } else if row.title == "Auto-start saved port forwards"
+                    || row.title == "Keep live sessions across workspace switches"
+                {
+                    let auto = row.title == "Auto-start saved port forwards";
+                    settings_row(
+                        row.title,
+                        row.description.to_owned(),
+                        switch(
+                            row.title,
+                            if auto {
+                                self.sessions.auto_start
+                            } else {
+                                self.sessions.keep
+                            },
+                        )
+                        .cursor_pointer()
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            if auto {
+                                this.sessions.auto_start = !this.sessions.auto_start;
+                            } else {
+                                this.sessions.keep = !this.sessions.keep;
+                            }
+                            this.persist_session_preferences(cx);
+                            cx.notify();
+                        }))
+                        .into_any_element(),
+                    )
+                    .into_any_element()
                 } else if row.control == Control::Section {
                     super::settings_sections::section(row)
                 } else {

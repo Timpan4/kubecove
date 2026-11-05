@@ -5,6 +5,7 @@
 mod delivery;
 mod detail_tabs;
 mod live_data;
+mod session_controls;
 mod settings_integrations;
 
 use detail_tabs::DetailTabs;
@@ -34,6 +35,8 @@ pub struct Fixture {
     settings_file: std::path::PathBuf,
     #[serde(skip)]
     settings: settings_integrations::SettingsIntegrations,
+    #[serde(rename = "sessionControls", default)]
+    session_controls: session_controls::SessionControls,
     kinds: Vec<kubecove_lib::models::DiscoveredResourceKind>,
     #[serde(skip)]
     live: live_data::LiveData,
@@ -95,6 +98,11 @@ struct FixtureSessions {
 }
 
 impl Fixture {
+    // The visual harness shares the fixture but does not replay acceptance scripts.
+    #[allow(dead_code)]
+    pub fn replay_sessions(&self, script: &str) {
+        self.session_controls.replay(script);
+    }
     pub fn load(path: &Path) -> Self {
         let bytes = std::fs::read(path)
             .unwrap_or_else(|error| panic!("fixture {} unreadable: {error}", path.display()));
@@ -143,6 +151,44 @@ impl Backend for Fixture {
     }
     fn check_updates(&self) -> Read<kubecove_gpui::backend::UpdateStatus> {
         self.check_updates_read()
+    }
+    fn cleanup_sessions(
+        &self,
+        request: kubecove_lib::models::LiveSessionCleanupRequest,
+    ) -> Read<kubecove_lib::models::LiveSessionCleanupResult> {
+        self.session_controls.cleanup(
+            &self.live_sessions.port_forwards,
+            &self.live_sessions.exec_sessions,
+            request,
+        )
+    }
+    fn start_forward(
+        &self,
+        request: kubecove_lib::models::PortForwardRequest,
+    ) -> Read<PortForwardSessionSummary> {
+        self.session_controls.start(request)
+    }
+    fn stop_forward(&self, id: String) -> Read<bool> {
+        self.session_controls.stop(id)
+    }
+    fn exec(
+        &self,
+        request: kubecove_lib::models::PodExecSessionRequest,
+    ) -> Read<kubecove_gpui::backend::ExecStream> {
+        self.session_controls.exec(request)
+    }
+    fn exec_input(&self, id: String, data: String) -> Read<bool> {
+        self.session_controls.input(id, data)
+    }
+    fn stop_exec(&self, id: String) -> Read<bool> {
+        self.session_controls.stop_exec(id)
+    }
+    fn exec_resize(
+        &self,
+        id: String,
+        size: kubecove_lib::models::PodExecTerminalSize,
+    ) -> Read<bool> {
+        self.session_controls.resize(id, size)
     }
     fn kind_resources(
         &self,
@@ -333,8 +379,8 @@ impl Backend for Fixture {
     fn live_sessions(&self) -> Read<LiveSessions> {
         let sessions = &self.live_sessions;
         let sessions = LiveSessions {
-            port_forwards: sessions.port_forwards.clone(),
-            exec_sessions: sessions.exec_sessions.clone(),
+            port_forwards: self.session_controls.list(&sessions.port_forwards),
+            exec_sessions: self.session_controls.execs(&sessions.exec_sessions),
             source_key: sessions.source_key.clone(),
             show_source_labels: sessions.show_source_labels,
         };
