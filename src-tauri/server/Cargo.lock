@@ -2039,7 +2039,7 @@ dependencies = [
 
 [[package]]
 name = "kubecove"
-version = "0.13.2"
+version = "0.13.3"
 dependencies = [
  "chrono",
  "k8s-openapi",
@@ -2190,7 +2190,7 @@ dependencies = [
 
 [[package]]
 name = "kubecove-server"
-version = "0.13.2"
+version = "0.13.3"
 dependencies = [
  "axum",
  "axum-server",
