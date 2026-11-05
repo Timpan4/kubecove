@@ -177,8 +177,7 @@
 	let customResourceSearch = $state("");
 	function getLazyChildren(node: TreeNode) {
 		if (node.id.type !== "namespace" || !node.id.namespace) return node.children;
-		if (!showCustomResources) return node.children;
-		const customResources = customResourcesByNamespace.get(node.id.namespace) ?? [];
+		const customResources = showCustomResources ? (customResourcesByNamespace.get(node.id.namespace) ?? []) : [];
 		return buildExpandedNamespaceChildren(
 			node.id.namespace,
 			customResources,

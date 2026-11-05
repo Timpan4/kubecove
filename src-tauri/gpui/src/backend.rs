@@ -98,6 +98,19 @@ pub trait Backend: Send + Sync + 'static {
     ) -> Read<Vec<kubecove_lib::models::DiscoveredResourceKind>> {
         Box::pin(async { Ok(Vec::new()) })
     }
+    fn namespace_custom_kinds(
+        &self,
+        scope: Scope,
+    ) -> Read<Vec<kubecove_lib::models::DiscoveredResourceKind>> {
+        let read = self.resource_kinds(scope.context);
+        Box::pin(async move {
+            Ok(read
+                .await?
+                .into_iter()
+                .filter(|kind| kind.namespaced)
+                .collect())
+        })
+    }
     fn kind_resources(&self, scope: Scope, key: WatchResourceKey) -> Read<Vec<ResourceSummary>> {
         let read = self.resources(scope, false);
         Box::pin(async move {
@@ -460,6 +473,12 @@ impl Backend for NativeBackend {
         context: String,
     ) -> Read<Vec<kubecove_lib::models::DiscoveredResourceKind>> {
         live_data::resource_kinds(self, context)
+    }
+    fn namespace_custom_kinds(
+        &self,
+        scope: Scope,
+    ) -> Read<Vec<kubecove_lib::models::DiscoveredResourceKind>> {
+        live_data::namespace_custom_kinds(self, scope)
     }
     fn kind_resources(&self, scope: Scope, key: WatchResourceKey) -> Read<Vec<ResourceSummary>> {
         live_data::kind_resources(self, scope, key)

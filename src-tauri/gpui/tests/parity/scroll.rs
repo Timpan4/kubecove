@@ -23,7 +23,7 @@ pub fn reveal(window: &mut gpui_kit::Window, anchor: &str, id: &str, cx: &mut gp
     };
     let scroll_container = matches!(
         anchor,
-        "detail-body" | "argo-connection-dialog" | "actions-scroll"
+        "detail-body" | "argo-connection-dialog" | "actions-scroll" | "sidebar-tree"
     );
     let anchor = window.find(gpui_kit::ElementId::Name(anchor.to_owned().into()));
     if target.visible()

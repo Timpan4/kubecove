@@ -126,6 +126,24 @@ impl Inspector {
     }
 
     pub(super) fn kinds_picker(&self, cx: &mut Context<Self>) -> AnyElement {
+        if let Some(kind) = self
+            .sidebar_tree
+            .selected
+            .as_ref()
+            .and_then(|path| path.rsplit('/').next())
+            && self
+                .kind_selection
+                .chosen
+                .as_ref()
+                .is_some_and(|chosen| chosen.len() == 1 && chosen.contains(kind))
+        {
+            let label = SharedString::from(format!("Kind {kind}"));
+            return ui::outline_badge(label.clone())
+                .id("fixed-kind-scope")
+                .test_support()
+                .aria_label(label)
+                .into_any_element();
+        }
         if self.live.kind_locked
             && let Some(kind) = &self.live.selected
         {

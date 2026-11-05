@@ -1,7 +1,110 @@
 use super::*;
+use gpui_kit::InputEvent;
+use gpui_kit::test::TestEventExt;
+
+fn click_sidebar(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, id: String) {
+    let position = window.find(id).bounds().center();
+    window.pointer_move(position, None, cx);
+    window.dispatch_event(
+        gpui_kit::MouseDownEvent {
+            button: gpui_kit::MouseButton::Left,
+            position,
+            modifiers: Default::default(),
+            click_count: 1,
+            first_mouse: false,
+        }
+        .to_platform_input(),
+        cx,
+    );
+    window.draw(cx).clear(cx);
+    window.dispatch_event(
+        gpui_kit::MouseUpEvent {
+            button: gpui_kit::MouseButton::Left,
+            position,
+            modifiers: Default::default(),
+            click_count: 1,
+        }
+        .to_platform_input(),
+        cx,
+    );
+    let start = std::time::Instant::now();
+    window.draw(cx).clear(cx);
+    println!(
+        "sidebar_event_frame_ms={:.6}",
+        start.elapsed().as_secs_f64() * 1000.
+    );
+}
 
 pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) -> bool {
     match string(step, "action") {
+        "sidebarToggle" | "sidebarSelect" | "expectSidebarRow" => {
+            let path: Vec<_> = step["path"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|part| part.as_str().unwrap())
+                .collect();
+            let joined = path.join("/");
+            let builtin = [
+                "Workloads",
+                "Network",
+                "Config",
+                "Storage",
+                "RBAC",
+                "Cluster Overview",
+            ]
+            .contains(&path[0]);
+            let id = if path.len() > 1 {
+                format!("tree:{joined}")
+            } else if builtin {
+                format!("nav:{joined}")
+            } else {
+                format!("namespace:{joined}")
+            };
+            match string(step, "action") {
+                "expectSidebarRow" => {
+                    let found = window.try_find(id);
+                    assert_eq!(found.is_some(), step["visible"] == true, "{step}");
+                    if let Some(row) = found {
+                        assert_eq!(
+                            row.description(),
+                            Some(if step["selected"] == true {
+                                "selected"
+                            } else {
+                                "unselected"
+                            }),
+                            "{step}"
+                        );
+                    }
+                }
+                action => {
+                    let id = if action == "sidebarToggle" {
+                        format!("tree-toggle:{joined}")
+                    } else {
+                        id
+                    };
+                    reveal(window, "sidebar-tree", &id, cx);
+                    click_sidebar(window, cx, id);
+                }
+            }
+        }
+        "collapseSidebar" => window.click("collapse-sidebar", cx),
+        "expectSidebarBranch" => {
+            let page = string(step, "page");
+            let (id, child) = match page {
+                "GitOps" => ("nav:GitOps", "nav:Argo CD"),
+                "Argo CD" => ("nav:Argo CD", "nav:Argo CD Applications"),
+                "Custom Resources" => ("nav:Custom Resources", "custom-resource-search"),
+                "Helm" => ("nav:Helm", "nav:Helm/Releases"),
+                "testing.example.io" => (
+                    "custom-group:testing.example.io",
+                    "custom-kind:testing.example.io/v1:Widget",
+                ),
+                _ => panic!("unknown sidebar branch: {page}"),
+            };
+            window.find(id);
+            assert_eq!(window.try_find(child).is_some(), step["expanded"] == true);
+        }
         "refreshPage" => window.click(
             if step["page"] == "RBAC" {
                 "rbac-refresh"

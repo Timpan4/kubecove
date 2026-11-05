@@ -29,6 +29,23 @@ pub(super) fn resource_kinds(
     })
 }
 
+pub(super) fn namespace_custom_kinds(
+    backend: &NativeBackend,
+    scope: Scope,
+) -> Read<Vec<DiscoveredResourceKind>> {
+    let store = backend.store.clone();
+    backend.read(async move {
+        commands::list_present_custom_resource_kinds(
+            scope.context,
+            scope.namespace.into_iter().collect(),
+            None,
+            State::new(&store),
+        )
+        .await
+        .map(Arc::unwrap_or_clone)
+    })
+}
+
 pub(super) fn kind_resources(
     backend: &NativeBackend,
     scope: Scope,

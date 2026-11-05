@@ -92,6 +92,8 @@ mod settings_mcp;
 mod settings_page;
 mod settings_sections;
 mod sidebar;
+mod sidebar_discovery;
+mod sidebar_tree;
 mod surface;
 mod table;
 #[cfg(test)]
@@ -188,6 +190,7 @@ pub struct Inspector {
     live_menu_open: bool,
     live: live_data::LiveData,
     kind_selection: kind_selection::KindSelection,
+    sidebar_tree: sidebar_tree::TreeState,
     page_refresh: page_refresh::PageRefresh,
     notice: Option<String>,
     feedback: feedback::Feedback,
@@ -293,6 +296,7 @@ impl Inspector {
             live_menu_open: false,
             live: Default::default(),
             kind_selection: kind_selection::KindSelection::new(window, cx),
+            sidebar_tree: Default::default(),
             page_refresh: Default::default(),
             notice: None,
             feedback: Default::default(),
@@ -352,6 +356,7 @@ impl Inspector {
         }
         self.gitops_page.workspace = None;
         self.page = Page::Resources;
+        self.sidebar_tree.selected = None;
         self.shortcut_owner = None;
         self.palette.kind = None;
         self.live.selected = None;
@@ -477,6 +482,7 @@ impl Inspector {
 impl Render for Inspector {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.sync_argo_scope(window, cx);
+        self.sync_sidebar_discovery(cx);
         self.sync_live(window, cx);
         self.flush_live_patches(cx);
         let detail_open = !matches!(self.detail, Detail::Closed);

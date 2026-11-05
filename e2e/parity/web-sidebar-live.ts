@@ -3,6 +3,26 @@ import type { Step } from "./contract";
 
 export async function sidebarLiveAction(page: Page, step: Step) {
     switch (step.action) {
+        case "sidebarToggle": case "sidebarSelect": case "expectSidebarRow": {
+            let list = page.getByRole("tree");
+            for (const [index, label] of step.path.entries()) {
+                const row = list.getByRole("treeitem").and(page.locator(`[data-depth="${index}"]`)).filter({ has: page.getByText(label, { exact: true }) }).first();
+                if (index < step.path.length - 1) { list = row.locator("..").getByRole("group").first(); continue; }
+                if (step.action === "sidebarToggle") await row.getByRole("button").click();
+                else if (step.action === "sidebarSelect") await row.click();
+                else if (step.action === "expectSidebarRow") {
+                    await row.waitFor({ state: step.visible ? "visible" : "hidden" });
+                    if (step.visible && (await row.getAttribute("aria-selected") === "true") !== step.selected) throw new Error(`Wrong sidebar selection: ${step.path.join("/")}`);
+                }
+            }
+            break;
+        }
+        case "collapseSidebar": await page.getByRole("button", { name: "Collapse all sidebar sections", exact: true }).click(); break;
+        case "expectSidebarBranch": {
+            const label = `${step.expanded ? "Collapse" : "Expand"} ${step.page}`;
+            await page.getByRole("button", { name: label, exact: true }).waitFor();
+            break;
+        }
         case "refreshPage": await page.getByRole("button", { name: "Refresh", exact: true }).click(); break;
         case "replayPageReads": await page.evaluate(`import('/src/lib/tauri-dev-mock-pages.ts').then(m => m.replayPageReads(${JSON.stringify(step.phase)}))`); break;
         case "focusStalePage":

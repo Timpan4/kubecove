@@ -6,8 +6,6 @@ import {
 import type { ArgoApplicationSummary } from "@/lib/gitops-types";
 import { kindLabel } from "@/lib/kind-identity";
 import {
-	resourceRefFromSummary,
-	resourceSummaryFromRef,
 	type PathStateHealthFilter,
 	type PathStateIncidentFilter,
 	type PathStateResourceBrowserState,
@@ -15,6 +13,8 @@ import {
 	type PathStateSurfacesState,
 	type PathStateWorkspaceSnapshot,
 	type PathStateWorkspaceViewMode,
+	resourceRefFromSummary,
+	resourceSummaryFromRef,
 } from "@/lib/path-state";
 import {
 	resolveTreeScope,
@@ -365,6 +365,7 @@ export function navigateWorkspace(
 	if (intent.type === "selectNode") {
 		return {
 			...cleared,
+			resourceBrowserPathState: null,
 			resourceGitOpsFocusApplication: null,
 			initialIncidentFilter:
 				intent.node.type === "section" && intent.node.section === "incidents"

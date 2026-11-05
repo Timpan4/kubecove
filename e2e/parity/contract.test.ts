@@ -31,6 +31,11 @@ describe("parity input boundaries", () => {
 			expect(() => parseContract(value)).toThrow();
 		}
 	});
+	test("sidebar actions require a row target", () => {
+		for (const action of ["sidebarToggle", "sidebarSelect", "expectSidebarRow"]) {
+			expect(() => parseContract({ ...contract, scenarios: [{ ...contract.scenarios[0], steps: [{ action, path: [], visible: true, selected: false }] }] })).toThrow();
+		}
+	});
 	test("requires one passing result per declared scenario from each driver", () => {
 		const parsed = parseContract(contract);
 		validateReports(parsed, [report("web", [passed]), report("gpui", [passed])]);

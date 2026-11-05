@@ -225,6 +225,11 @@ impl Backend for DesktopBackend {
         json!({"clusterContext":context})
     );
     route!(
+        namespace_custom_kinds(scope: Scope) -> Vec<DiscoveredResourceKind>,
+        "list_present_custom_resource_kinds",
+        json!({"clusterContext":scope.context,"namespaces":scope.namespace.into_iter().collect::<Vec<_>>()})
+    );
+    route!(
         action_state(request: ResourceActionStateRequest) -> ResourceActionState,
         "get_resource_action_state",
         json!({"request":request})

@@ -6,7 +6,17 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             reveal(window, "open-resources", "open-gitops", cx);
             window.click("open-gitops", cx);
         }
-        "expandNav" => window.click(format!("nav-toggle:{}", string(step, "page")), cx),
+        "expandNav" => {
+            let page = string(step, "page");
+            let toggle = format!("nav-toggle:{page}");
+            let id = if window.try_find(toggle.clone()).is_some() {
+                toggle
+            } else {
+                format!("custom-group:{page}")
+            };
+            reveal(window, "sidebar-tree", &id, cx);
+            window.click(id, cx);
+        }
         "openGitOpsResources" => {
             let id = format!(
                 "gitops-resources:argoApp:mock-dev:{}:{}",

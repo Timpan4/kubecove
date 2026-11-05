@@ -3,6 +3,10 @@ import { join } from "node:path";
 
 type Identity = { kind: string; name: string; namespace: string };
 export type Step =
+    | { action: "sidebarToggle" | "sidebarSelect"; path: string[] }
+    | { action: "expectSidebarRow"; path: string[]; visible: boolean; selected: boolean }
+    | { action: "collapseSidebar" }
+    | { action: "expectSidebarBranch"; page: string; expanded: boolean }
     | { action: "expectOverviewShortcuts"; labels: string[] }
     | { action: "overviewShortcut"; label: string }
     | { action: "expectOverviewScope"; labels: string[] }
@@ -217,7 +221,7 @@ export const ACTIONS = [
     "configureArgoMock", "argoControl", "focusArgoResource", "expectNoSavedArgoProfile", "copyArgoValue", "configureArgoInventory", "expandArgoDiff", "reconnectArgoProfile",
     "failWorkspaceContext", "expectWorkspaceReadWarning",
     "editSavedWorkspace", "expectNoSavedWorkspace", "saveWorkspace", "cancelWorkspaceEdit", "toggleWorkspaceContext", "expectOverviewHealth", "expectDetailContext",
-    "refreshPage",
+    "sidebarToggle", "sidebarSelect", "expectSidebarRow", "collapseSidebar", "expectSidebarBranch", "refreshPage",
     "replayPageReads", "focusStalePage", "expectPageText",
     "searchCustomKinds", "searchKindPicker", "expectCustomGroup", "toggleKind", "openKindPicker", "closeKindPicker", "selectAllKinds", "expectKindChecked",
     "fillMcpPort", "mcpControl", "expectMcpState", "expectMcpCopy", "expectMcpRequests",
@@ -285,6 +289,10 @@ function optionalBoolean(value: unknown): boolean | undefined {
 function step(value: unknown): Step {
 	const item = object(value);
 	switch (item.action) {
+        case "sidebarToggle": case "sidebarSelect": return { action: item.action, path: strings(item.path, false) };
+        case "expectSidebarRow": return { action: item.action, path: strings(item.path, false), visible: boolean(item.visible), selected: boolean(item.selected) };
+        case "collapseSidebar": return { action: item.action };
+        case "expectSidebarBranch": return { action: item.action, page: string(item.page), expanded: boolean(item.expanded) };
         case "expectEmptyLauncher": return { action: item.action };
         case "expectOverviewShortcuts": return { action: item.action, labels: strings(item.labels, true) };
         case "overviewShortcut": return { action: item.action, label: string(item.label) };
@@ -409,7 +417,7 @@ function step(value: unknown): Step {
 		case "formatYaml": return { action: item.action };
 		case "openResources": case "showYaml": case "closeDetail": case "expectDetailClosed": case "expectEmpty": case "refresh":
 			return { action: item.action };
-		case "search": case "expectSearch": return { action: item.action, value: string(item.value) };
+		case "search": case "expectSearch": return { action: item.action, value: item.value === "" ? "" : string(item.value) };
 		case "expectResource": case "openResource": case "expectDetail": return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace) };
 		case "expectClusterResource": case "expectNoClusterResource": return { action: item.action, kind: string(item.kind), name: string(item.name) };
 		case "expectYaml":

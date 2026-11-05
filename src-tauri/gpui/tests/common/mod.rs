@@ -345,6 +345,25 @@ impl Backend for Fixture {
         let rows = self.live_rows(rows);
         Box::pin(async move { Ok(rows) })
     }
+    fn namespace_custom_kinds(
+        &self,
+        scope: Scope,
+    ) -> Read<Vec<kubecove_lib::models::DiscoveredResourceKind>> {
+        let kinds = self
+            .kinds
+            .iter()
+            .filter(|kind| {
+                kind.namespaced
+                    && self.resources.iter().any(|row| {
+                        row.kind == kind.kind
+                            && row.api_version.as_ref() == Some(&kind.api_version)
+                            && row.namespace == scope.namespace
+                    })
+            })
+            .cloned()
+            .collect();
+        Box::pin(async move { Ok(kinds) })
+    }
     fn resource_kinds(&self, _: String) -> Read<Vec<kubecove_lib::models::DiscoveredResourceKind>> {
         let kinds = self.kinds.clone();
         Box::pin(async move { Ok(kinds) })

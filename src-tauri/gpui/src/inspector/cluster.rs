@@ -38,15 +38,15 @@ impl Inspector {
     }
 
     /// Called by `load_scope`: re-reads the inventories for a new context or
-    /// a refresh. Cluster rows load only while their page is open.
+    /// a refresh. Cluster rows load for the overview or selected cluster kinds.
     pub(super) fn load_inventory(&mut self, refresh: bool, cx: &mut Context<Self>) {
         self.load_gitops(refresh, cx);
-        if self.page == Page::ClusterOverview {
+        if self.wants_cluster_rows() {
             self.load_cluster(refresh, cx);
         }
     }
 
-    fn load_cluster(&mut self, refresh: bool, cx: &mut Context<Self>) {
+    pub(super) fn load_cluster(&mut self, refresh: bool, cx: &mut Context<Self>) {
         let current = self.cluster.context == self.scope.context;
         if current && !refresh && self.cluster.load.is_some() {
             return;
@@ -87,13 +87,22 @@ impl Inspector {
         }
     }
 
-    /// Cluster rows join the filter source only on their page.
+    /// Cluster rows join the filter source when the selected scope needs them.
     pub(super) fn cluster_rows(&self) -> &[ResourceSummary] {
-        if self.page == Page::ClusterOverview {
+        if self.wants_cluster_rows() {
             &self.cluster.rows
         } else {
             &[]
         }
+    }
+
+    fn wants_cluster_rows(&self) -> bool {
+        self.page == Page::ClusterOverview
+            || self
+                .kind_selection
+                .chosen
+                .as_ref()
+                .is_some_and(|chosen| CLUSTER_KINDS.iter().any(|kind| chosen.contains(*kind)))
     }
 
     /// The resource browser's load state: the workspace read, then the

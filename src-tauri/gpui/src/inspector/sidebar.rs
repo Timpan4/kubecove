@@ -169,60 +169,42 @@ impl Inspector {
     fn nodes(&self, nodes: &'static [Node], cx: &mut Context<Self>) -> Vec<AnyElement> {
         nodes
             .iter()
-            .map(|node| {
+            .flat_map(|node| {
+                if node.expandable && node.label != "Custom Resources" {
+                    return self.builtin_branch(node.label, None, cx);
+                }
                 // Resources pages select their namespace or kind rows instead.
                 let selected = node.target == self.page && node.target != Page::Resources;
                 let target = node.target;
                 let custom = node.label == "Custom Resources";
-                self.tree_row(
-                    SharedString::from(format!("nav:{}", node.label)),
-                    node.label.into(),
-                    (node.icon, (node.tone)()),
-                    node.expandable,
-                    selected,
-                    true,
-                )
-                .on_click(cx.listener(move |this, _, window, cx| match target {
-                    Page::Resources if custom => {
-                        this.live.custom_open = !this.live.custom_open;
-                        cx.notify();
-                    }
-                    Page::Resources => this.select_namespace(None, window, cx),
-                    Page::ClusterOverview => this.open_cluster_overview(window, cx),
-                    Page::Rbac => this.open_rbac(None, window, cx),
-                    page => this.open_page(page, cx),
-                }))
-                .test_support()
-                .into_any_element()
+                vec![
+                    self.tree_row(
+                        SharedString::from(format!("nav:{}", node.label)),
+                        node.label.into(),
+                        (node.icon, (node.tone)()),
+                        node.expandable,
+                        selected,
+                        true,
+                    )
+                    .on_click(cx.listener(move |this, _, window, cx| match target {
+                        Page::Resources if custom => {
+                            this.live.custom_open = !this.live.custom_open;
+                            cx.notify();
+                        }
+                        Page::Resources => this.select_namespace(None, window, cx),
+                        Page::ClusterOverview => this.open_cluster_overview(window, cx),
+                        Page::Rbac => this.open_rbac(None, window, cx),
+                        page => this.open_page(page, cx),
+                    }))
+                    .test_support()
+                    .into_any_element(),
+                ]
             })
             .collect()
     }
 
     pub(super) fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let namespaces: Vec<AnyElement> = self
-            .namespaces
-            .iter()
-            .filter(|namespace| self.launcher.shows_namespace(&namespace.name))
-            .map(|namespace| {
-                let name = namespace.name.clone();
-                let selected = self.page == Page::Resources
-                    && self.application_workspace_name().is_none()
-                    && self.scope.namespace.as_deref() == Some(name.as_str());
-                self.tree_row(
-                    SharedString::from(format!("namespace:{name}")),
-                    name.clone().into(),
-                    ("folder-tree", Tokens::muted_foreground()),
-                    true,
-                    selected,
-                    false,
-                )
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    this.select_namespace(Some(name.clone()), window, cx)
-                }))
-                .test_support()
-                .into_any_element()
-            })
-            .collect();
+        let namespaces = self.namespace_rows(cx);
         div()
             .flex()
             .flex_col()
@@ -268,7 +250,19 @@ impl Inspector {
                             .items_center()
                             .gap(px(4.))
                             .child(ui::outline_badge("1"))
-                            .child(ui::ghost_icon("chevrons-down-up", 24., 12.)),
+                            .child(
+                                ui::ghost_icon("chevrons-down-up", 24., 12.)
+                                    .id("collapse-sidebar")
+                                    .test_support()
+                                    .aria_label("Collapse all sidebar sections")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.gitops_page.nav_open.clear();
+                                        this.live.custom_open = false;
+                                        this.live.groups.clear();
+                                        this.sidebar_tree.open.clear();
+                                        cx.notify();
+                                    })),
+                            ),
                     ),
             )
             .child(
