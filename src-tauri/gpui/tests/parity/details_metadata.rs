@@ -5,9 +5,17 @@ use super::*;
 pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) -> bool {
     match string(step, "action") {
         "clickDetailControl" => {
-            locate::click_label(window, "detail-body", string(step, "label"), cx)
+            let target = locate::id(
+                &window
+                    .within("detail-body")
+                    .find_by_label(string(step, "label")),
+            );
+            let gpui_kit::ElementId::Name(name) = &target else {
+                panic!("detail control must have a named ID");
+            };
+            reveal(window, "detail-body", name.as_ref(), cx);
+            window.click(target, cx);
         }
-        "expectNoPageText" => assert!(window.try_find_by_label(string(step, "text")).is_none()),
         _ => return false,
     }
     true

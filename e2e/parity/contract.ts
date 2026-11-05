@@ -239,7 +239,7 @@ function step(value: unknown): Step {
         case "expectLatencyTiming": return { action: item.action, command: string(item.command) };
         case "copyLatencyReport": return { action: item.action };
         case "expectLatencyReportCopy": return { action: item.action, contains: string(item.contains) };
-        case "updateStatusControl": return { action: item.action, control: oneOf(["Open", "Check", "Later"], item.control, "an update control") };
+        case "updateStatusControl": return { action: item.action, control: oneOf(["Open", "Check", "Later", "Escape"], item.control, "an update control") };
         case "expectDocumentationRequest": return { action: item.action, url: string(item.url) };
         case "fillSettingsField": return { action: item.action, field: oneOf(["Server URL", "Server token"], item.field, "a remote field"), value: string(item.value) };
         case "clickSettingsButton": return { action: item.action, label: string(item.label) };

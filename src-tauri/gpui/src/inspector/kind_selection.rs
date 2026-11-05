@@ -279,6 +279,7 @@ impl Inspector {
             .child(
                 div()
                     .id("kind-options")
+                    .test_support()
                     .h(px(224.))
                     .mt(px(4.))
                     .p(px(4.))

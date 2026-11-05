@@ -19,7 +19,7 @@ use gpui_kit::{
 };
 use kubecove_lib::models::{AppError, AppErrorKind, ResourceTopology};
 use std::cell::{Cell, RefCell};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 pub(super) enum TopologyLoad {
@@ -41,9 +41,8 @@ pub(super) struct MapState {
     /// A pan or zoom, kept while the fitted viewport it started from is current.
     adjusted: Option<(Viewport, Viewport)>,
     drag: Option<(Point<Pixels>, Viewport)>,
-    /// One focus handle per entry of `cache.nodes`, so Tab visits nodes in order.
-    /// `sync_map_focus` grows and trims it; rebuilding the view does not recreate it.
-    pub node_focus: Vec<FocusHandle>,
+    /// Focus follows node identity when selection reorders the graph.
+    pub node_focus: HashMap<SharedString, FocusHandle>,
     /// Where "skip graph" moves focus: the element right after the graph.
     pub skip_target: Option<FocusHandle>,
 }
@@ -59,7 +58,7 @@ impl MapState {
             size: Rc::default(),
             adjusted: None,
             drag: None,
-            node_focus: Vec::new(),
+            node_focus: HashMap::new(),
             skip_target: None,
         }
     }
@@ -335,12 +334,18 @@ impl Inspector {
     /// Keeps one focus handle per graph node and one for "skip graph". Called before
     /// the page renders, so handles follow the cached view without rebuilding it.
     pub(super) fn sync_map_focus(&mut self, cx: &mut Context<Self>) {
-        let count = self.map.cache.as_ref().map_or(0, |view| view.nodes.len());
-        let focus = &mut self.map.node_focus;
-        if focus.len() < count {
-            focus.extend(std::iter::repeat_with(|| cx.focus_handle()).take(count - focus.len()));
+        let mut keys = HashSet::new();
+        if let Some(view) = &self.map.cache {
+            for node in &view.nodes {
+                let key = viewport::node_id(&node.item);
+                keys.insert(key.clone());
+                self.map
+                    .node_focus
+                    .entry(key)
+                    .or_insert_with(|| cx.focus_handle());
+            }
         }
-        focus.truncate(count);
+        self.map.node_focus.retain(|key, _| keys.contains(key));
         if self.map.skip_target.is_none() {
             self.map.skip_target = Some(cx.focus_handle());
         }

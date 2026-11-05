@@ -9,14 +9,21 @@ use crate::{
 };
 use gpui_kit::TestSupportExt;
 use gpui_kit::{
-    AnyElement, Context, Div, KeyDownEvent, MouseButton, SharedString, Window, canvas, div,
-    prelude::*, px,
+    AnyElement, Context, KeyDownEvent, MouseButton, SharedString, Window, canvas, div, prelude::*,
+    px,
 };
 use std::rc::Rc;
 
 /// `OwnershipMap.svelte`: graphs below this many nodes and edges stay fully
 /// mounted so Tab reaches offscreen nodes. Larger graphs render visible nodes only.
 const VISIBLE_ELEMENT_RENDER_THRESHOLD: usize = 120;
+
+pub(super) fn node_id(item: &FlowItem) -> SharedString {
+    match item {
+        FlowItem::Resource(resource) => format!("map-node:{}", resource.id).into(),
+        FlowItem::Group { kind, .. } => format!("map-group:{kind}").into(),
+    }
+}
 
 impl Inspector {
     pub(super) fn map_viewport(
@@ -96,28 +103,23 @@ impl Inspector {
                                 && (node.y + node.height) * z + viewport.y >= 0.)
                     })
                     .map(|(index, node)| {
-                        let (id, content): (SharedString, Div) = match &node.item {
-                            FlowItem::Resource(resource) => (
-                                format!("map-node:{}", resource.id).into(),
-                                resource_card(
-                                    node,
-                                    resource,
-                                    z,
-                                    self.map.network,
-                                    self.resource_metric(&resource.summary),
-                                ),
+                        let content = match &node.item {
+                            FlowItem::Resource(resource) => resource_card(
+                                node,
+                                resource,
+                                z,
+                                self.map.network,
+                                self.resource_metric(&resource.summary),
                             ),
                             FlowItem::Group {
                                 kind,
                                 members,
                                 expanded,
-                            } => (
-                                format!("map-group:{kind}").into(),
-                                group_card(kind, members.len(), *expanded, node.dimmed, z),
-                            ),
+                            } => group_card(kind, members.len(), *expanded, node.dimmed, z),
                         };
+                        let id = node_id(&node.item);
                         div()
-                            .id(id)
+                            .id(id.clone())
                             .test_support()
                             .absolute()
                             .left(px(node.x * z + viewport.x))
@@ -125,7 +127,7 @@ impl Inspector {
                             .w(px(node.width * z))
                             .h(px(node.height * z))
                             .cursor_pointer()
-                            .when_some(self.map.node_focus.get(index), |item, focus| {
+                            .when_some(self.map.node_focus.get(&id), |item, focus| {
                                 item.track_focus(focus)
                                     .tab_stop(true)
                                     .focus(|style| style.border_2().border_color(Tokens::ring()))
@@ -284,6 +286,9 @@ impl Inspector {
         let Some(node) = view.nodes.get(index) else {
             return;
         };
+        if let Some(focus) = self.map.node_focus.get(&node_id(&node.item)) {
+            focus.focus(window, cx);
+        }
         match &node.item {
             FlowItem::Resource(resource) if resource.selectable => {
                 self.open_resource(resource.summary.clone(), window, cx);

@@ -10,6 +10,33 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
+#[gpui_kit::test]
+fn header_sessions_dismiss_without_stopping_sessions(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    let handle = open(cx, backend.clone());
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window.click("live-sessions", cx);
+        window.render_frame(cx);
+        assert!(window.try_find("live-session-popover").is_some());
+        window.press("escape", cx);
+        window.render_frame(cx);
+        assert!(window.try_find("live-session-popover").is_none());
+        window.click("live-sessions", cx);
+        window.render_frame(cx);
+        window.click("live-sessions", cx);
+        window.render_frame(cx);
+        assert!(window.try_find("live-session-popover").is_none());
+        window.click("live-sessions", cx);
+        window.render_frame(cx);
+        window.click("collapse-sidebar", cx);
+        window.render_frame(cx);
+        assert!(window.try_find("live-session-popover").is_none());
+    })
+    .unwrap();
+    assert!(backend.sessions.stopped_forwards.lock().unwrap().is_empty());
+}
+
 #[derive(Default)]
 pub struct SessionControls {
     pub enabled: AtomicBool,

@@ -119,7 +119,7 @@ export type Step =
     | { action: "expectDocumentationRequest"; url: string }
     | { action: "copyLatencyReport" }
     | { action: "expectLatencyReportCopy"; contains: string }
-    | { action: "updateStatusControl"; control: "Open" | "Check" | "Later" }
+    | { action: "updateStatusControl"; control: "Open" | "Check" | "Later" | "Escape" }
     | { action: "configurePreset"; label: string; context: string; namespace: string; service: string; remote: string; local: string }
     | { action: "presetControl"; operation: "add" | "save" | "edit" | "start" | "remove" | "absent"; label?: string }
     | { action: "replaySessions"; script: "reconnecting" | "failed" | "foreign-output" }

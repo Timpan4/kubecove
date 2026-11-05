@@ -5,7 +5,15 @@ type Identity = { kind: string; namespace: string; name: string };
 
 /** A live-session popover row, found by the target text it shows. */
 function sessionRow(page: Page, target: string) {
-	return page.locator("div.rounded-md.border.bg-background.p-2").filter({ hasText: target });
+	const rows = page.locator('[data-slot="popover-content"][data-state="open"] div.rounded-md.border.bg-background.p-2').filter({ has: page.getByText(target, { exact: true }) });
+	return target.includes(":") ? rows : rows.filter({ has: page.getByRole("button", { name: /^Show exec session in / }) });
+}
+
+function sessionControl(page: Page, target: string, operation: string) {
+	const row = sessionRow(page, target);
+	return operation === "Show"
+		? row.getByRole("button", { name: /^Show exec session in / })
+		: row.getByRole("button", { name: operation, exact: true });
 }
 
 function resourceRow(page: Page, step: Identity) {
@@ -22,25 +30,26 @@ const exactTimestamp = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}( UTC)?$/;
 export async function sessionHealthAction(page: Page, step: Step): Promise<void> {
 	switch (step.action) {
 		case "openLiveSessionPopover":
-			await page.getByRole("button", { name: /^Open live sessions \(\d+ active\)$/ }).click();
+			if (await page.getByRole("button", { name: /^Open live sessions \(\d+ active\)$/ }).getAttribute("aria-expanded") !== "true") {
+				await page.getByRole("button", { name: /^Open live sessions \(\d+ active\)$/ }).click();
+			}
 			break;
 		case "expectLiveSessionRow": {
 			const row = sessionRow(page, step.target);
 			await row.getByText(step.status, { exact: true }).waitFor();
-			for (const control of step.controls) await row.getByRole("button", { name: control, exact: true }).waitFor();
+			for (const control of step.controls) await sessionControl(page, step.target, control).waitFor();
 			break;
 		}
 		case "liveSessionControl":
 			if (step.operation === "Manage") await page.getByRole("button", { name: "Manage", exact: true }).click();
-			else await sessionRow(page, step.target ?? "").getByRole("button", { name: step.operation, exact: true }).click();
+			else await sessionControl(page, step.target ?? "", step.operation).click();
 			break;
 		case "expectHealthTooltip": {
 			const row = resourceRow(page, step);
 			const trigger = row.locator("button").filter({ hasText: step.state }).first();
-			// The first hover swaps the lazy trigger for the Tooltip component, so hover again to open it.
-			await trigger.hover();
-			await trigger.hover();
-			const tooltip = page.getByRole("tooltip");
+			// Focus survives the lazy trigger replacement through the component's activation handler.
+			await trigger.focus();
+			const tooltip = page.locator('[data-slot="tooltip-content"]');
 			await tooltip.getByText(step.state, { exact: true }).waitFor();
 			await tooltip.getByText(step.source, { exact: true }).waitFor();
 			for (const status of step.statuses) await tooltip.getByText(status, { exact: true }).waitFor();

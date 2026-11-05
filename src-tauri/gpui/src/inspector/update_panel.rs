@@ -15,7 +15,7 @@ use gpui_kit::{
 /// web, a version opens the popover once, and closing it keeps it closed.
 #[derive(Default)]
 pub(super) struct PanelState {
-    open: bool,
+    pub(super) open: bool,
     auto_opened: Option<String>,
 }
 
@@ -41,7 +41,7 @@ impl Inspector {
         }
     }
 
-    fn close_update_panel(&mut self) {
+    pub(super) fn close_update_panel(&mut self) {
         self.update_panel.open = false;
         if let Some(version) = self.available_version() {
             self.update_panel.auto_opened = Some(version);
@@ -77,19 +77,23 @@ impl Inspector {
         if !self.backend.updates_enabled() {
             return None;
         }
+        let open = self.update_panel.open;
         let trigger = ui::ghost_icon("refresh-cw", 28., 14.)
             .id("header-update")
             .test_support()
             .aria_label(self.update_tooltip())
             .cursor_pointer()
-            .on_click(cx.listener(|this, _, _, cx| {
-                if this.update_panel.open {
-                    this.close_update_panel();
-                } else {
-                    this.update_panel.open = true;
-                }
-                cx.notify();
-            }));
+            .on_mouse_down(
+                gpui_kit::MouseButton::Left,
+                cx.listener(move |this, _, _, cx| {
+                    if open {
+                        this.close_update_panel();
+                    } else {
+                        this.update_panel.open = true;
+                    }
+                    cx.notify();
+                }),
+            );
         let mut wrapper = div().relative().mr(px(4.)).child(trigger);
         if self.available_version().is_some() {
             wrapper = wrapper.child(
@@ -106,6 +110,11 @@ impl Inspector {
             wrapper = wrapper.child(
                 deferred(
                     self.update_panel_card(cx)
+                        .id("update-status-popover")
+                        .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                            this.close_update_panel();
+                            cx.notify();
+                        }))
                         .occlude()
                         .absolute()
                         .top(px(36.))

@@ -44,7 +44,7 @@ export function detailMetadataFor(summary: ResourceSummary): JsonObject {
 			"prometheus.io/port": "9402",
 			"prometheus.io/scrape": "true",
 			"reloader.stakater.com/auto": "true",
-			"kubecove.dev/notes": "Long mock note that exceeds the inline annotation limit, so it stays in Advanced metadata.",
+			"kubecove.dev/notes": "Long mock note that exceeds the inline annotation limit, so it stays in Advanced metadata rather than appearing as an inline badge.",
 		},
 		managedFields: ["kube-controller-manager", "kubelet", "helm", "kubectl-client-side-apply", "argocd-controller"].map(
 			(manager) => ({ manager, operation: "Update" }),

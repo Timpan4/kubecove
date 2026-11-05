@@ -35,6 +35,8 @@ pub(super) fn health_evidence(
     let evidence = &detail.data.summary.health_assessment.evidence;
     div()
         .id("details-health-evidence")
+        .test_support()
+        .aria_label("Health evidence")
         .mt(px(8.))
         .p(px(8.))
         .rounded(px(8.))
@@ -244,6 +246,18 @@ pub(super) fn lifecycle_rows(detail: &ResourceDetail, timezone: TimestampTimezon
         None => row("Deletion", ui::status_badge(Tone::Success, "not scheduled")),
     });
     rows.push(field_row("Finalizers", finalizers(&metadata["finalizers"])));
+    rows
+}
+
+pub(super) fn naming_rows(detail: &ResourceDetail) -> Vec<Div> {
+    let mut rows = Vec::new();
+    if let Some(name) = text(&detail.data.metadata, "generateName") {
+        rows.push(field_row("Generate name", name));
+    }
+    rows.push(field_row("Kind", detail.data.summary.kind.clone()));
+    if let Some(api) = &detail.data.summary.api_version {
+        rows.push(field_row("API Version", api.clone()));
+    }
     rows
 }
 

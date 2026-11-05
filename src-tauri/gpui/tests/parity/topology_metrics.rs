@@ -20,7 +20,11 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
                 .visible()
         ),
         "expectNoUsageFooter" => assert!(window.try_find("usage-footer").is_none()),
-        "selectNamespace" => window.click(format!("namespace:{}", s("namespace")), cx),
+        "selectNamespace" => {
+            let id = format!("namespace:{}", s("namespace"));
+            super::reveal(window, "sidebar-tree", &id, cx);
+            window.click(id, cx);
+        }
         "setTopologyMode" => window.click(format!("map-mode:{}", s("mode")), cx),
         "expectTopology" => assert_eq!(
             window.find("map-counts").label(),

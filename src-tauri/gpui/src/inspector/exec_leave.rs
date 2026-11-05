@@ -12,6 +12,7 @@ pub(super) enum LeaveIntent {
     Page(Page),
     Resource(Box<ResourceSummary>),
     Namespace(Option<String>),
+    IncidentResources(crate::incidents::Filter),
     Context(String),
     Workspace(u64),
 }
@@ -142,6 +143,11 @@ impl Inspector {
                                                                 namespace, window, cx,
                                                             )
                                                         }
+                                                        Some(LeaveIntent::IncidentResources(
+                                                            filter,
+                                                        )) => this.open_incident_resources(
+                                                            filter, window, cx,
+                                                        ),
                                                         Some(LeaveIntent::Context(context)) => {
                                                             this.scope.context = context;
                                                             this.scope.namespace = None;

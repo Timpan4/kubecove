@@ -66,7 +66,16 @@ pub fn apply(window: &mut Window, cx: &mut App, step: &Value) -> bool {
         }
         "expectForwardState" => {
             let target = string(step, "target");
-            let matches = window.find_all_by_label(target);
+            let mut matches = window.find_all_by_label(target);
+            if matches.is_empty() {
+                let suffix = format!("/{target}");
+                matches = window
+                    .elements()
+                    .iter()
+                    .filter(|node| node.label().is_some_and(|label| label.ends_with(&suffix)))
+                    .cloned()
+                    .collect();
+            }
             assert_eq!(
                 matches.len() as u64,
                 number(step, "count"),

@@ -3,7 +3,7 @@ import type { Step } from "./contract";
 
 function forwardRows(page: Page, target: string) {
     const table = page.locator("table").filter({ has: page.getByRole("columnheader", { name: "Target", exact: true }) });
-    return table.locator("tbody tr").or(page.locator("div.rounded-md.border.bg-background.p-3")).filter({ hasText: target });
+    return table.locator("tbody tr").or(page.locator("div.rounded-md.border.bg-background.p-3")).or(page.locator('[data-slot="popover-content"][data-state="open"] div.rounded-md.border.bg-background.p-2')).filter({ hasText: target });
 }
 export async function liveSessionAction(page: Page, step: Step): Promise<void> {
     switch (step.action) {

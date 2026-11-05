@@ -170,6 +170,7 @@ pub(crate) enum Page {
 /// The native workspace: sidebar navigation, header and the active page, laid
 /// out like the Svelte `WorkspaceShell`.
 pub struct Inspector {
+    focus: gpui_kit::FocusHandle,
     backend: Arc<dyn Backend>,
     timings: crate::diagnostics::Timings,
     persisted: crate::preferences::Document,
@@ -298,7 +299,10 @@ impl Inspector {
                 .update(cx, |this, cx| this.can_leave(cx))
                 .unwrap_or(true)
         });
+        let focus = cx.focus_handle();
+        focus.focus(window, cx);
         let mut this = Self {
+            focus,
             timings: Default::default(),
             backend,
             persisted: Default::default(),
@@ -562,11 +566,20 @@ impl Render for Inspector {
         let sidebar = (!compact).then(|| self.sidebar(cx, sidebar::WIDE_WIDTH).into_any_element());
         let drawer = (compact && self.navigation_open).then(|| self.navigation_drawer(cx));
         div()
+            .track_focus(&self.focus)
             .relative()
             .size_full()
             .capture_key_down(cx.listener(|this, event: &gpui_kit::KeyDownEvent, _, cx| {
-                if this.navigation_open && event.keystroke.key == "escape" {
+                if event.keystroke.key != "escape" {
+                    return;
+                }
+                if this.navigation_open {
                     this.navigation_open = false;
+                    cx.stop_propagation();
+                    cx.notify();
+                } else if this.sessions.popover || this.update_panel.open {
+                    this.sessions.popover = false;
+                    this.close_update_panel();
                     cx.stop_propagation();
                     cx.notify();
                 }

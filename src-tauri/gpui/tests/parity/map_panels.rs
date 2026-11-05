@@ -14,10 +14,12 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
         }
         "skipGraph" => window.click("map-skip-graph", cx),
         "mapKey" => window.press(&s("key").replace('+', "-").to_lowercase(), cx),
-        "expectMapFocus" => assert_eq!(
-            window.find(format!("map-node:{}", s("id"))).focused(),
-            Some(true)
-        ),
+        "expectMapFocus" => {
+            assert_eq!(
+                window.find(format!("map-node:{}", s("id"))).focused(),
+                Some(true)
+            );
+        }
         "expectNoMapFocus" => assert_ne!(
             window.find(format!("map-node:{}", s("id"))).focused(),
             Some(true)

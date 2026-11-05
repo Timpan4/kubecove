@@ -5,7 +5,11 @@ use super::*;
 /// web tooltip shows with the same text on the native element.
 pub fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) -> bool {
     match string(step, "action") {
-        "openLiveSessionPopover" => window.click("live-sessions", cx),
+        "openLiveSessionPopover" => {
+            if window.try_find("live-session-popover").is_none() {
+                window.click("live-sessions", cx);
+            }
+        }
         "expectLiveSessionRow" => {
             let target = string(step, "target");
             assert_eq!(
@@ -25,7 +29,7 @@ pub fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) 
                     string(step, "target"),
                     operation.to_lowercase()
                 );
-                window.click(id, cx)
+                locate::click_in(window, "live-session-list", id.into(), cx)
             }
         },
         "expectHealthTooltip" => {

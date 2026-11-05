@@ -13,6 +13,10 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             );
         }
         "updateStatusControl" => {
+            if string(step, "control") == "Escape" {
+                window.press("escape", cx);
+                return true;
+            }
             let id = match string(step, "control") {
                 "Open" => "header-update",
                 "Check" => "header-update-check",

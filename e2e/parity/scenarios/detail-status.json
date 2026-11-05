@@ -43,6 +43,7 @@
         { "action": "showTab", "tab": "Details" },
         { "action": "expectPageText", "text": "3f1d9c52-0b7e-4c1a-9d8e-7a2b6c4e1f10" },
         { "action": "expectPageText", "text": "714382" },
+        { "action": "expectPageText", "text": "Naming" },
         { "action": "expectPageText", "text": "example.io/payment-drain" },
         { "action": "expectNoPageText", "text": "not scheduled" }
       ]

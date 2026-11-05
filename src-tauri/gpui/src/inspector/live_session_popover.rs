@@ -30,6 +30,7 @@ fn row_button(id: String, icon: &str, label: &str) -> ObservedElement<Stateful<D
 impl Inspector {
     /// The header's count button, with its popover anchored beneath it while open.
     pub(super) fn live_session_control(&self, count: usize, cx: &mut Context<Self>) -> Div {
+        let open = self.sessions.popover;
         let trigger = div()
             .id("live-sessions")
             .test_support()
@@ -50,10 +51,13 @@ impl Inspector {
                 12.,
                 19.5,
             ))))
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.sessions.popover = !this.sessions.popover;
-                cx.notify();
-            }));
+            .on_mouse_down(
+                gpui_kit::MouseButton::Left,
+                cx.listener(move |this, _, _, cx| {
+                    this.sessions.popover = !open;
+                    cx.notify();
+                }),
+            );
         let mut wrapper = div().relative().child(trigger);
         if self.sessions.popover {
             wrapper = wrapper.child(deferred(self.live_session_panel(cx)).with_priority(1));
@@ -97,6 +101,10 @@ impl Inspector {
             .border_color(Tokens::border())
             .bg(Tokens::card())
             .shadow_lg()
+            .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                this.sessions.popover = false;
+                cx.notify();
+            }))
             .child(
                 div()
                     .flex()
@@ -234,6 +242,7 @@ impl Inspector {
             .kubeconfig_source_label
             .clone()
             .filter(|_| show_labels);
+        let description = format!("{url} {status}");
         let (reconnect, stop_id, copy_url) = (session.clone(), session.id.clone(), url.clone());
         let badge = if destructive {
             ui::status_badge(Tone::Error, status)
@@ -241,6 +250,7 @@ impl Inspector {
             ui::outline_badge(status)
         };
         row_frame(&label)
+            .aria_description(description)
             .child(
                 div()
                     .flex()

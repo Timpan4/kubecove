@@ -11,7 +11,7 @@ use crate::model::health_source;
 use crate::theme::Tokens;
 use crate::ui::{self, Tone};
 use gpui_kit::{Context, Div, SharedString, TestSupportExt, div, prelude::*, px};
-use kubecove_lib::models::{HealthAssessmentState, ResourceSummary};
+use kubecove_lib::models::{HealthAssessmentCompleteness, HealthAssessmentState, ResourceSummary};
 
 /// `grid grid-cols-[7rem_minmax(0,1fr)] gap-2 py-1.5`; `metadata_card` adds the row borders.
 pub(super) fn row(label: &str, value: impl IntoElement) -> Div {
@@ -36,7 +36,13 @@ pub(super) fn metadata_card(title: &str, rows: Vec<Div>) -> Div {
         .border_1()
         .border_color(Tokens::border())
         .bg(Tokens::background().opacity(0.7))
-        .child(ui::muted(ui::semibold(ui::xs(title.to_owned()))).mb(px(8.)))
+        .child(
+            ui::muted(ui::semibold(ui::xs(title.to_owned())))
+                .mb(px(8.))
+                .id(format!("metadata-card:{title}"))
+                .test_support()
+                .aria_label(title.to_owned()),
+        )
         .children({
             // `border-b last:border-b-0`
             let last = rows.len().saturating_sub(1);
@@ -142,6 +148,11 @@ pub(super) fn details_tab(
                         .gap(px(6.))
                         .min_w_0()
                         .child(ui::status_badge(tone, label))
+                        .when(
+                            summary.health_assessment.completeness
+                                == HealthAssessmentCompleteness::Partial,
+                            |row| row.child(ui::outline_badge("Partial").border_dashed()),
+                        )
                         .child(
                             ui::muted(ui::text(format!("Source: {source}"), 11., 20.)).truncate(),
                         ),
@@ -187,6 +198,7 @@ pub(super) fn details_tab(
                             "Identity",
                             details_status::identity_rows(detail),
                         ))
+                        .child(metadata_card("Naming", details_status::naming_rows(detail)))
                         .child(metadata_card(
                             "Lifecycle",
                             details_status::lifecycle_rows(detail, timezone),

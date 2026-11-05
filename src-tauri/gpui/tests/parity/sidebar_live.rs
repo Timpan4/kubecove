@@ -157,7 +157,12 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
                 .is_some(),
             step["visible"] == true
         ),
-        "openKindPicker" | "closeKindPicker" => window.click("kinds-picker", cx),
+        "openKindPicker" => window.click("kinds-picker", cx),
+        "closeKindPicker" => {
+            if window.try_find("kind-options").is_some() {
+                window.click("kinds-picker", cx);
+            }
+        }
         "selectAllKinds" => window.click("select-all-kinds", cx),
         "toggleKind" | "expectKindChecked" => {
             let option = locate::described(
@@ -176,7 +181,7 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
                 let found = window
                     .within("kind-options")
                     .find_by_label(string(step, "kind"));
-                window.click(locate::id(&found), cx);
+                locate::click_in(window, "kind-options", locate::id(&found), cx);
             }
         }
         _ => return false,

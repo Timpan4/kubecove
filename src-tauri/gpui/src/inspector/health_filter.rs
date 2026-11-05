@@ -28,9 +28,13 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.defer_exec_leave(
+            super::exec_leave::LeaveIntent::IncidentResources(filter),
+            cx,
+        ) {
+            return;
+        }
         self.select_namespace(None, window, cx);
-        // A deferred leave (dirty draft or open exec session) returns without
-        // navigating; the handoff then does not apply.
         if self.page != Page::Resources {
             return;
         }

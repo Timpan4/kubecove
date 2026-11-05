@@ -320,6 +320,8 @@ impl Inspector {
                     .child(
                         surface::small_button(Some("external-link"), "Open resources")
                             .id("incidents-open-resources")
+                            .test_support()
+                            .aria_label("Open resources")
                             .cursor_pointer()
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.open_incident_resources(this.incidents.filter, window, cx)
