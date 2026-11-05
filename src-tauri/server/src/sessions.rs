@@ -280,7 +280,12 @@ struct ReleaseHeapOnDrop;
 
 impl Drop for ReleaseHeapOnDrop {
     fn drop(&mut self) {
-        kubecove_lib::commands::release_freed_heap();
+        // The trim took 1.5 to 2.9 ms after a large session, and the last owner
+        // reference usually drops on an async worker.
+        match tokio::runtime::Handle::try_current() {
+            Ok(runtime) => drop(runtime.spawn_blocking(kubecove_lib::commands::release_freed_heap)),
+            Err(_) => kubecove_lib::commands::release_freed_heap(),
+        }
     }
 }
 
