@@ -5,6 +5,7 @@
 
 	type LucideComponent = ComponentType<SvelteComponent>;
 	type QueryLike = {
+		data?: unknown;
 		isPending: boolean;
 		isError: boolean;
 		error: unknown;
@@ -46,12 +47,15 @@
 		<div class="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground">
 			<Spinner class="size-4" /> Loading...
 		</div>
-	{:else if query.isError}
-		<FriendlyError
-			error={query.error}
-			context={{ operation: "surfaceLoad", fallbackTitle: errorLabel }}
-		/>
 	{:else}
-		{@render children()}
+		{#if query.isError}
+			<FriendlyError
+				error={query.error}
+				context={{ operation: "surfaceLoad", fallbackTitle: errorLabel }}
+			/>
+		{/if}
+		{#if !query.isError || query.data !== undefined}
+			{@render children()}
+		{/if}
 	{/if}
 </section>

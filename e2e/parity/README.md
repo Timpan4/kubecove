@@ -7,6 +7,32 @@ The Svelte web frontend and the GPUI native client share one set of UI acceptanc
 
 `bun run e2e:parity` exports the fixture, runs both drivers and passes only when both report every scenario as passed. A passing mock scenario proves UI integration through the command seam, not a real Kubernetes request or a packaged application.
 
+## Focused checks
+
+Run new scenarios in each driver before the full suite. This catches missing native test registration and driver input mistakes without rerunning unrelated views. From the worktree root, with its local TMPDIR already set:
+
+1. Run a web scenario prefix. This example checks the kind picker and records screenshots and `web.json`.
+
+   ```sh
+   mkdir -p e2e/artifacts/parity-focus
+   PARITY_PREFIX=kind-picker nice -n 10 bun -e 'import { loadContract } from "./e2e/parity/contract"; import { runWeb } from "./e2e/parity/web"; const contract = await loadContract(); await runWeb({ scenarios: contract.scenarios.filter((scenario) => scenario.id.startsWith(process.env.PARITY_PREFIX ?? "")) }, `${process.cwd()}/e2e/artifacts/parity-focus`, new AbortController().signal);'
+   ```
+
+2. Export the same fixture and run that prefix offscreen in GPUI. The native input helper sends Backspace for an empty replacement; typing an empty string does not clear an input.
+
+   ```sh
+   bun e2e/parity/visual/export-fixture.ts e2e/artifacts/parity-focus/fixture.json
+   KUBECOVE_PARITY_FIXTURE="$PWD/e2e/artifacts/parity-focus/fixture.json" \
+   KUBECOVE_E2E_ARTIFACTS="$PWD/e2e/artifacts/parity-focus" \
+   KUBECOVE_PARITY_SCENARIO_PREFIX=kind-picker \
+   CARGO_TARGET_DIR="$PWD/src-tauri/gpui/target" \
+   CARGO_BUILD_BUILD_DIR="$PWD/src-tauri/gpui/build" \
+   CARGO_BUILD_JOBS=1 nice -n 10 \
+   cargo test --manifest-path src-tauri/gpui/Cargo.toml --test parity
+   ```
+
+3. Run `bun run e2e:parity` without the prefix filter for the completion gate. Focused reports prove only the scenarios they name.
+
 ## Equal-tests rule
 
 A UI change in either client lands with a shared scenario that both drivers pass. `contract.test.ts` checks two invariants on every `bun test` run:
@@ -35,6 +61,10 @@ The topology-metrics scenarios cover namespace-scoped Network Flow edges, switch
 The Actions scenarios cover named-container image edits, environment preservation and add/rename/remove, quantities with distinct request and limit units, metadata key preservation, rollback revision selection, and guarded review before execution. YAML scenarios cover shape and encoding changes and content-preserving formatting in YAML and KYAML, including discovered resources read through their details command. The fixture includes multiple containers and referenced environment values so replacing a whole container or environment list fails the exact request check.
 
 ## Native gaps
+
+The native custom-resource sidebar now searches discovered kinds by kind, plural, short name, API group and API version, using the web's trimmed case-insensitive match. The kind picker supports independent checkboxes and Select all kinds. Background reads preserve the chosen kinds and resource search; namespace navigation restores the destination scope's defaults. `sidebar-live.json` covers empty discovered kinds, changing and clearing search, multiple selections, unchecked rows after refresh and namespace changes.
+
+GitOps now refreshes from Application, ApplicationSet, AppProject and discovered Flux watches. It reuses the web's 250 ms coalescing delay from `src/lib/live-view-refresh.ts` and 15,000 ms watch recovery interval from `src/lib/resource-watch.ts`. Helm, RBAC and Incidents refetch stale reads on page entry or window focus. Their staleness values come from `HelmSurface.svelte` (15,000 ms lists/details, 30,000 ms reconciliation), `RbacSurface.svelte` (30,000 ms) and `IncidentSurface.svelte` (15,000 ms). Those pages have no web polling interval. RBAC and Incidents also retain explicit Refresh. `page-live-reads.json` covers watch/focus updates and failed refreshes that preserve cached rows and selection. Native page tests cover cancelled reads on navigation and context changes, failed refresh recovery and a watch change during an in-flight read. These checks use mock commands and offscreen windows.
 
 Local preferences now persist through Backend in a versioned native document under [ADR 0030](../../docs/decisions/0030-gpui-local-preferences.md). The fixture backend stays in memory. The 19 rows previously disabled for missing browser storage now accept edits. Footer and delivery view choices also persist. Saved local workspaces, imported workspace documents and workspace-scoped RBAC review notes survive restart. Corruption and failed writes remain visible and preserve existing files. Remote workspace, profile and review data stays session-only pending ADR 0023.
 

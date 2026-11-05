@@ -23,6 +23,8 @@ mod mcp;
 mod scroll;
 #[path = "parity/settings_integrations.rs"]
 mod settings_integrations;
+#[path = "parity/sidebar_live.rs"]
+mod sidebar_live;
 #[path = "parity/topology_metrics.rs"]
 mod topology_metrics;
 #[path = "parity/workspace.rs"]
@@ -114,7 +116,11 @@ fn replace_text(
 ) {
     window.click(id, cx);
     window.press("secondary-a", cx);
-    window.input(text, cx);
+    if text.is_empty() {
+        window.press("backspace", cx);
+    } else {
+        window.input(text, cx);
+    }
 }
 
 /// A palette result: its name, described by kind and namespace.
@@ -163,6 +169,7 @@ fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
         || live_sessions::apply(window, cx, step)
         || settings_integrations::act(window, cx, step)
         || live_data::apply(window, cx, step)
+        || sidebar_live::apply(window, cx, step)
         || topology_metrics::apply(window, cx, step)
         || detail::act(window, cx, step)
         || workspace::act(window, cx, step)
@@ -343,6 +350,27 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
             }
             if step["action"] == "replayLiveData" {
                 backend.replay_live(string(step, "script"));
+            }
+            if step["action"] == "replayPageReads" {
+                backend.replay_page_reads(string(step, "phase"));
+                cx.run_until_parked();
+                cx.background_executor
+                    .advance_clock(std::time::Duration::from_millis(250));
+                cx.run_until_parked();
+            }
+            if step["action"] == "focusStalePage" {
+                gpui_kit::VisualTestContext::from_window(handle, cx).deactivate_window();
+                cx.background_executor
+                    .advance_clock(std::time::Duration::from_millis(
+                        if step["page"] == "RBAC" {
+                            30_000
+                        } else {
+                            15_000
+                        },
+                    ));
+                cx.update_window(handle, |_, window, _| window.activate_window())
+                    .unwrap();
+                cx.run_until_parked();
             }
             if step["action"] == "completeArgoOperation" {
                 backend.complete_argo_operation();

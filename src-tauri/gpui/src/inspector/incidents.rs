@@ -19,6 +19,7 @@ pub(super) struct IncidentsState {
     /// `None` while the first read is pending.
     pub(super) load: Option<Result<IncidentCockpitSummary, String>>,
     fetching: bool,
+    refresh_error: Option<String>,
     context: String,
     pub(super) filter: Filter,
     selected: Option<String>,
@@ -36,6 +37,7 @@ impl IncidentsState {
         Self {
             load: None,
             fetching: false,
+            refresh_error: None,
             context: String::new(),
             filter: Filter::All,
             selected: None,
@@ -84,6 +86,7 @@ impl Inspector {
         }
         state.request = Rc::new(());
         state.fetching = true;
+        state.refresh_error = None;
         state.enriched = None;
         let request = state.request.clone();
         let context = state.context.clone();
@@ -97,21 +100,38 @@ impl Inspector {
                 }
                 state.fetching = false;
                 // `loadIncidents` prefixes each warning with its cluster.
-                state.load = Some(
-                    result
-                        .map(|mut summary| {
-                            for warning in &mut summary.warnings {
-                                *warning = format!("{context}: {warning}");
-                            }
-                            summary
-                        })
-                        .map_err(|error| error.message),
-                );
+                let result = result
+                    .map(|mut summary| {
+                        for warning in &mut summary.warnings {
+                            *warning = format!("{context}: {warning}");
+                        }
+                        summary
+                    })
+                    .map_err(|error| error.message);
+                let success = result.is_ok();
+                if let Err(error) = &result
+                    && matches!(state.load, Some(Ok(_)))
+                {
+                    state.refresh_error = Some(error.clone());
+                } else {
+                    state.load = Some(result);
+                }
                 this.enrich_incident(cx);
+                if success {
+                    this.page_read_finished(super::Page::Incidents, cx);
+                } else {
+                    this.invalidate_page_read(super::Page::Incidents);
+                }
                 cx.notify();
             });
         }));
         cx.notify();
+    }
+
+    pub(super) fn cancel_incident_reads(&mut self) {
+        self.incidents.tasks = [None, None, None];
+        self.incidents.request = Rc::new(());
+        self.incidents.fetching = false;
     }
 
     /// Loads details and, for Pods, the namespace's ownership graph for the
@@ -381,6 +401,9 @@ impl Inspector {
                     .min_w_0()
                     .gap(px(12.))
                     .child(self.overview_section(cx))
+                    .when_some(self.incidents.refresh_error.clone(), |body, error| {
+                        body.child(surface::failed("Incident refresh failed", error))
+                    })
                     .when(!warnings.is_empty(), |body| {
                         body.child(
                             ui::panel()

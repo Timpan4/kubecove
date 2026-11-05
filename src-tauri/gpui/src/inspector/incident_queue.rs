@@ -80,6 +80,7 @@ impl Inspector {
                 div()
                     .id(SharedString::from(format!("incident:{key}")))
                     .test_support()
+                    .aria_label(format!("{}/{}", resource.kind, resource.name))
                     .w_full()
                     .p(px(12.))
                     .cursor_pointer()

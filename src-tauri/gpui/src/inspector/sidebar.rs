@@ -274,6 +274,7 @@ impl Inspector {
             .child(
                 div()
                     .id("sidebar-tree")
+                    .test_support()
                     .flex()
                     .flex_col()
                     .flex_1()
@@ -288,7 +289,8 @@ impl Inspector {
                     .child(self.section_header("All namespaces", None))
                     .children(self.nodes(ALL_NAMESPACES, cx))
                     .when(self.live.custom_open, |tree| {
-                        tree.children(self.custom_kind_rows(false, cx))
+                        tree.child(self.custom_search_input())
+                            .children(self.custom_kind_rows(cx))
                     })
                     .child(
                         self.section_header(

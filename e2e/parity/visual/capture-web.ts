@@ -64,6 +64,15 @@ async function show(page: Page, view: View) {
             await page.evaluate(`import('/src/lib/tauri-dev-mock-live.ts').then(m => m.replayLiveData(${JSON.stringify(view === "live-limited" ? "forbidden" : view === "live-failed" ? "failed" : "reconnecting")}))`);
             await page.getByRole("button", { name: "Live updates and refresh options" }).first().getByText(view === "live-limited" ? "Polling (limited)" : view === "live-failed" ? "Refresh failed" : "Reconnecting", { exact: true }).waitFor();
             return;
+        case "custom-search":
+            await action(page, { action: "searchCustomKinds", value: "kustom" });
+            await action(page, { action: "expectCustomGroup", group: "kustomize.toolkit.fluxcd.io", visible: true });
+            return;
+        case "kind-picker":
+            await action(page, { action: "openResources" });
+            await action(page, { action: "openKindPicker" });
+            await action(page, { action: "searchKindPicker", value: "Service" });
+            return;
         case "custom-resources":
             await page.getByRole("button", { name: "Expand Custom Resources", exact: true }).click();
             await page.getByRole("button", { name: "Expand kustomize.toolkit.fluxcd.io", exact: true }).click();

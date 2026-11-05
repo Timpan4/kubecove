@@ -31,6 +31,7 @@ import {
 import { evictedWorkerName, evictedWorkerStatus } from "./tauri-dev-mock-incidents";
 import { liveEvents, liveResources, registerMockWatch, stopMockWatch } from "./tauri-dev-mock-live";
 import { operationMockHandlers } from "./tauri-dev-mock-operations";
+import { pageReadResult } from "./tauri-dev-mock-pages";
 import { rbacInspectionMock, rbacReviewMock } from "./tauri-dev-mock-rbac";
 import { cleanupMockSessions, listMockExecs, listMockForwards, mockExecInput, resizeMockExec, startMockExec, startMockForward, stopMockExec, stopMockForward } from "./tauri-dev-mock-session-controls";
 import { createMockChannel, type TauriClient } from "./tauri-runtime";
@@ -139,7 +140,7 @@ export function createDevMockTauriClient(): TauriClient {
 			const handler = findMockHandler(cmd);
 			if (!handler) throw new Error(`No browser dev mock for command: ${cmd}`);
 			// SAFETY: caller's typed wrapper owns result T; each mock handler mirrors that command.
-			return (await handler(readMockArgs(args), options)) as T;
+			return pageReadResult(cmd, await handler(readMockArgs(args), options)) as T;
 		},
 	};
 }
@@ -330,6 +331,7 @@ function customResourceKinds(): DiscoveredResourceKind[] {
 			"argoproj.io",
 			"kustomize.toolkit.fluxcd.io",
 			"helm.toolkit.fluxcd.io",
+            "testing.example.io",
 		].includes(kind.group),
 	);
 }

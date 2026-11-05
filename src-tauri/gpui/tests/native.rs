@@ -4,8 +4,12 @@ mod argo;
 mod argo_outcomes;
 #[path = "native/detail_tabs.rs"]
 mod detail_tabs;
+#[path = "native/kind_selection.rs"]
+mod kind_selection;
 #[path = "native/live_data.rs"]
 mod live_data;
+#[path = "native/page_reads.rs"]
+mod page_reads;
 #[path = "native/preferences.rs"]
 mod preferences;
 #[path = "native/preferences_migration.rs"]
@@ -48,6 +52,7 @@ use std::sync::{
 
 #[derive(Default)]
 struct Controlled {
+    pages: page_reads::PageControls,
     argo: argo::ArgoControls,
     secret: adapters::SecretControls,
     sessions: session_controls::SessionControls,
@@ -211,7 +216,15 @@ impl Backend for Controlled {
         })
     }
     fn gitops(&self, _: String) -> Read<GitOpsInventory> {
-        Box::pin(async { Ok(GitOpsInventory::default()) })
+        let inventory = self
+            .pages
+            .inventory
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or_default();
+        self.pages
+            .read("GitOps", Box::pin(async move { Ok(inventory) }))
     }
     fn cluster_resources(&self, context: String, _: bool) -> Read<ScopeResult> {
         Box::pin(async move {
@@ -242,7 +255,10 @@ impl Backend for Controlled {
             "cluster": cluster, "generatedAt": "", "requestedScope": [], "warnings": [],
             "items": [item("Deployment", "payments-api", "attention"), item("Pod", "payments-api-0", "degraded")],
         });
-        Box::pin(async move { Ok(serde_json::from_value(summary).unwrap()) })
+        self.pages.read(
+            "Incidents",
+            Box::pin(async move { Ok(serde_json::from_value(summary).unwrap()) }),
+        )
     }
     fn live_sessions(&self) -> Read<LiveSessions> {
         let session = |id: &str, context: &str, source: &str| {
@@ -306,7 +322,10 @@ impl Backend for Controlled {
         Box::pin(async { Ok(vec![]) })
     }
     fn rbac(&self, _: String) -> Read<RbacInspectionSummary> {
-        Box::pin(async { Err(AppError::new("RBAC read denied", AppErrorKind::Forbidden)) })
+        self.pages.read(
+            "RBAC",
+            Box::pin(async { Err(AppError::new("RBAC read denied", AppErrorKind::Forbidden)) }),
+        )
     }
     fn review_rbac(&self, _: RbacAccessReviewRequest) -> Read<RbacAccessReviewResult> {
         Box::pin(async { Err(AppError::new("Review denied", AppErrorKind::Forbidden)) })
@@ -328,12 +347,15 @@ impl Backend for Controlled {
     }
 
     fn helm_releases(&self, _: String) -> Read<HelmReleaseList> {
-        Box::pin(async {
-            Ok(HelmReleaseList {
-                releases: vec![],
-                warnings: vec![],
-            })
-        })
+        self.pages.read(
+            "Helm",
+            Box::pin(async {
+                Ok(HelmReleaseList {
+                    releases: vec![],
+                    warnings: vec![],
+                })
+            }),
+        )
     }
     fn helm_release(&self, _: HelmReleaseSummary) -> Read<HelmReleaseDetails> {
         Box::pin(async { Err(AppError::new("No Helm release", AppErrorKind::NotFound)) })

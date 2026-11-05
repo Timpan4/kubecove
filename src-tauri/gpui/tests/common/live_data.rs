@@ -6,16 +6,16 @@ use tokio::sync::mpsc;
 
 #[derive(Default)]
 pub struct LiveData {
-    state: Mutex<ScriptState>,
+    pub(super) state: Mutex<ScriptState>,
 }
 #[derive(Default)]
-struct ScriptState {
+pub(super) struct ScriptState {
     failed: bool,
     burst: bool,
     changed: bool,
     deleted: bool,
     events: bool,
-    watches: Vec<(WatchTarget, mpsc::UnboundedSender<StreamMessage>)>,
+    pub(super) watches: Vec<(WatchTarget, mpsc::UnboundedSender<StreamMessage>)>,
 }
 impl Fixture {
     pub(super) fn live_failed(&self) -> bool {

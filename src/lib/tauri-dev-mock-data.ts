@@ -115,6 +115,7 @@ export const kinds: DiscoveredResourceKind[] = [
 	kind("cilium.io", "v2", "CiliumNetworkPolicy", "ciliumnetworkpolicies", true),
 	kind("kustomize.toolkit.fluxcd.io", "v1", "Kustomization", "kustomizations", true),
 	kind("helm.toolkit.fluxcd.io", "v2", "HelmRelease", "helmreleases", true),
+    { ...kind("testing.example.io", "v1", "Widget", "widgets", true), shortNames: ["wgt"] },
 ];
 
 export const resources: ResourceSummary[] = [

@@ -37,7 +37,12 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
             let label = window.find_by_label(string(step, "kind"));
             let id = locate::id(&label);
             assert!(format!("{id:?}").contains(query));
-            window.click(id, cx);
+            if !picker || label.description() == Some("unchecked") {
+                window.click(id, cx);
+            }
+            if picker {
+                window.click("kinds-picker", cx);
+            }
         }
         _ => return false,
     }

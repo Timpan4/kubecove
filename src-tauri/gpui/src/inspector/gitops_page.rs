@@ -285,6 +285,9 @@ impl Inspector {
             .flex()
             .flex_col()
             .gap(px(16.))
+            .when_some(self.gitops.error().map(str::to_owned), |column, error| {
+                column.child(super::surface::failed("GitOps refresh failed", error))
+            })
             .when_some(data.list_error.clone(), |column, error| {
                 column.child(super::surface::failed(
                     "Some GitOps resources could not load",

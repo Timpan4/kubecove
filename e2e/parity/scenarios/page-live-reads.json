@@ -1,0 +1,112 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "helm.failed-refresh",
+      "title": "A Helm refetch failure shows an error and keeps cached releases",
+      "steps": [
+        { "action": "openPage", "page": "Helm" },
+        { "action": "searchHelm", "value": "operations" },
+        { "action": "expectHelmRelease", "namespace": "operations", "name": "operations" },
+        { "action": "replayPageReads", "phase": "failed" },
+        { "action": "focusStalePage", "page": "Helm" },
+        { "action": "expectPageText", "text": "Scripted page refresh failure" },
+        { "action": "expectHelmRelease", "namespace": "operations", "name": "operations" }
+      ]
+    },
+    {
+      "id": "rbac.failed-refresh",
+      "title": "An RBAC refresh failure retains the selected subject and allows retry",
+      "steps": [
+        { "action": "openPage", "page": "RBAC" },
+        { "action": "selectRbacItem", "title": "ServiceAccount/payments-api" },
+        { "action": "replayPageReads", "phase": "failed" },
+        { "action": "refreshPage", "page": "RBAC" },
+        { "action": "expectPageText", "text": "Scripted page refresh failure" },
+        { "action": "expectRbacIdentity", "identity": "system:serviceaccount:payments:payments-api" },
+        { "action": "replayPageReads", "phase": "updated" },
+        { "action": "refreshPage", "page": "RBAC" },
+        { "action": "expectPageText", "text": "ServiceAccount/live-payments-api" }
+      ]
+    },
+    {
+      "id": "incidents.failed-refresh",
+      "title": "An incident refresh failure preserves the queue and retry control",
+      "steps": [
+        { "action": "openPage", "page": "Incidents" },
+        { "action": "expectPageText", "text": "Pod/operations-crashloop-7f468cd8b8-lab01" },
+        { "action": "replayPageReads", "phase": "failed" },
+        { "action": "refreshPage", "page": "Incidents" },
+        { "action": "expectPageText", "text": "Scripted page refresh failure" },
+        { "action": "expectPageText", "text": "Pod/operations-crashloop-7f468cd8b8-lab01" },
+        { "action": "replayPageReads", "phase": "updated" },
+        { "action": "refreshPage", "page": "Incidents" },
+        { "action": "expectPageText", "text": "Deployment/live-opensearch-dashboards" }
+      ]
+    },
+    {
+      "id": "gitops.live-appsets",
+      "title": "GitOps watches refresh ApplicationSets while retaining current rows",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "expandNav", "page": "GitOps" },
+        { "action": "expandNav", "page": "Argo CD" },
+        { "action": "openPage", "page": "Argo CD ApplicationSets" },
+        { "action": "expectGitOpsTable", "title": "Argo CD ApplicationSets", "count": 2 },
+        { "action": "replayPageReads", "phase": "updated" },
+        { "action": "expectGitOpsItem", "kind": "ApplicationSet", "namespace": "argocd", "name": "live-shop-generators" },
+        { "action": "expectGitOpsItem", "kind": "ApplicationSet", "namespace": "argocd", "name": "shop-generators" },
+        { "action": "replayPageReads", "phase": "failed" },
+        { "action": "expectPageText", "text": "Scripted page refresh failure" },
+        { "action": "expectGitOpsItem", "kind": "ApplicationSet", "namespace": "argocd", "name": "live-shop-generators" }
+      ]
+    },
+    {
+      "id": "gitops.live-flux",
+      "title": "A discovered Flux kind watch refreshes the provider list",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "expandNav", "page": "GitOps" },
+        { "action": "openPage", "page": "Flux" },
+        { "action": "expectGitOpsItem", "kind": "Kustomization", "namespace": "flux-system", "name": "platform" },
+        { "action": "replayPageReads", "phase": "updated" },
+        { "action": "expectGitOpsItem", "kind": "Kustomization", "namespace": "flux-system", "name": "live-platform" }
+      ]
+    },
+    {
+      "id": "helm.stale-focus",
+      "title": "Helm refetches stale data on focus and retains the search",
+      "steps": [
+        { "action": "openPage", "page": "Helm" },
+        { "action": "searchHelm", "value": "operations" },
+        { "action": "expectHelmRelease", "namespace": "operations", "name": "operations" },
+        { "action": "replayPageReads", "phase": "updated" },
+        { "action": "focusStalePage", "page": "Helm" },
+        { "action": "expectHelmRelease", "namespace": "operations", "name": "live-operations" },
+        { "action": "expectHelmCount", "count": 2 }
+      ]
+    },
+    {
+      "id": "rbac.stale-focus",
+      "title": "RBAC refetches stale data on focus",
+      "steps": [
+        { "action": "openPage", "page": "RBAC" },
+        { "action": "expectRbacCategory", "category": "Service Accounts" },
+        { "action": "replayPageReads", "phase": "updated" },
+        { "action": "focusStalePage", "page": "RBAC" },
+        { "action": "expectPageText", "text": "ServiceAccount/live-payments-api" }
+      ]
+    },
+    {
+      "id": "incidents.stale-focus",
+      "title": "Incidents refetch stale data on focus and preserve the selected guide",
+      "steps": [
+        { "action": "openPage", "page": "Incidents" },
+        { "action": "replayPageReads", "phase": "updated" },
+        { "action": "focusStalePage", "page": "Incidents" },
+        { "action": "expectPageText", "text": "Deployment/live-opensearch-dashboards" }
+      ]
+    }
+  ]
+}

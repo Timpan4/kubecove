@@ -6,7 +6,8 @@ use crate::model::health_source;
 use crate::theme::{Palette, Tokens};
 use crate::ui::{self, Tone};
 use gpui_kit::{
-    AnyElement, Context, Div, FontWeight, Hsla, SharedString, Styled, div, prelude::*, px,
+    AnyElement, Context, Div, FontWeight, Hsla, SharedString, Styled, TestSupportExt, div,
+    prelude::*, px,
 };
 use kubecove_lib::models::{HealthAssessment, HealthAssessmentCompleteness, HealthAssessmentState};
 
@@ -14,8 +15,10 @@ impl Inspector {
     /// Pages with their own reads load when shown and when the scope changes.
     /// Live sessions load on every page because the header shows their count.
     pub(super) fn load_page(&mut self, cx: &mut Context<Self>) {
+        self.sync_page_reads(cx);
         self.load_sessions(cx);
         match self.page {
+            Page::GitOps => self.refresh_focused_page(cx),
             Page::Incidents => self.load_incidents(cx),
             Page::Helm => self.load_helm(cx),
             Page::Resources => self.load_application_workspace(cx),
@@ -69,6 +72,9 @@ pub(super) fn loading() -> AnyElement {
 pub(super) fn failed(title: &str, message: String) -> AnyElement {
     ui::panel()
         .id("surface-error")
+        .test_support()
+        .aria_label(title.to_owned())
+        .aria_description(message.clone())
         .role(gpui_kit::Role::Alert)
         .p(px(12.))
         .border_color(Tokens::destructive().opacity(0.4))

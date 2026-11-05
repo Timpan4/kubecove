@@ -7,6 +7,7 @@ mod delivery;
 mod detail_tabs;
 mod live_data;
 mod mcp;
+mod page_reads;
 mod session_controls;
 mod settings_integrations;
 
@@ -33,6 +34,10 @@ use std::{collections::HashMap, path::Path, sync::Mutex};
 
 #[derive(Deserialize)]
 pub struct Fixture {
+    #[serde(rename = "pageReads", default)]
+    page_reads: HashMap<String, serde_json::Value>,
+    #[serde(skip)]
+    page_read_phase: Mutex<String>,
     mcp: mcp::McpFixture,
     #[serde(rename = "argoConnected")]
     argo: argo::Argo,
@@ -439,7 +444,7 @@ impl Backend for Fixture {
         Box::pin(async move { Ok(metrics) })
     }
     fn gitops(&self, _: String) -> Read<GitOpsInventory> {
-        self.gitops.inventory()
+        self.page_gitops()
     }
     fn cluster_resources(&self, _: String, _: bool) -> Read<ScopeResult> {
         let resources = self
@@ -477,7 +482,10 @@ impl Backend for Fixture {
     }
     fn incidents(&self, _: String) -> Read<IncidentCockpitSummary> {
         let incidents = self.incidents.clone();
-        Box::pin(async move { Ok(incidents) })
+        self.page_read(
+            "list_incident_cockpit",
+            Box::pin(async move { Ok(incidents) }),
+        )
     }
     fn live_sessions(&self) -> Read<LiveSessions> {
         let sessions = &self.live_sessions;
@@ -530,9 +538,14 @@ impl Backend for Fixture {
     }
     fn rbac(&self, context: String) -> Read<RbacInspectionSummary> {
         let found = self.rbac.get(&context).cloned();
-        Box::pin(async move {
-            found.ok_or_else(|| AppError::new("No fixture RBAC inspection", AppErrorKind::NotFound))
-        })
+        self.page_read(
+            "list_rbac_inspection",
+            Box::pin(async move {
+                found.ok_or_else(|| {
+                    AppError::new("No fixture RBAC inspection", AppErrorKind::NotFound)
+                })
+            }),
+        )
     }
     fn review_rbac(&self, request: RbacAccessReviewRequest) -> Read<RbacAccessReviewResult> {
         let verb = match &request.target {
@@ -589,7 +602,7 @@ impl Backend for Fixture {
     }
 
     fn helm_releases(&self, _: String) -> Read<HelmReleaseList> {
-        self.helm.releases()
+        self.page_read("list_helm_releases", self.helm.releases())
     }
     fn helm_release(&self, release: HelmReleaseSummary) -> Read<HelmReleaseDetails> {
         self.helm.release(release)

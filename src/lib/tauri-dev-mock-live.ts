@@ -24,6 +24,13 @@ export function registerMockWatch(args: Omit<Watch, "id" | "channel"> & { channe
     return id;
 }
 export function stopMockWatch(id: string): boolean { return watches.delete(id); }
+export function emitMockKindChange(kind: string): void {
+    for (const watch of watches.values()) {
+        if (watch.keys?.some((key) => key.resourceKind.kind === kind)) {
+            watch.channel.onmessage({ type: "resourceChanged", streamId: watch.id, target: { cluster: watch.context, kind }, action: "applied" });
+        }
+    }
+}
 export function liveResources(rows: ResourceSummary[]): ResourceSummary[] {
     if (failed) throw new Error("Scripted reload failure");
     return rows.filter((row) => !(deleted && target(row))).map((row) => changed && target(row) && row.healthAssessment ? { ...row, status: "Progressing", healthAssessment: { ...row.healthAssessment, state: "degraded" } } : row);

@@ -62,6 +62,8 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) {
         self.scope_task.take();
+        self.sync_page_reads(cx);
+        self.kind_selection.reads.clear();
         self.live.reset_scope();
         self.live.scope_loading = true;
         self.discover_kinds(cx);
@@ -216,6 +218,13 @@ impl Inspector {
             .iter()
             .map(|kind| (*kind).to_owned())
             .collect();
+        if let Some(chosen) = &self.kind_selection.chosen {
+            for (key, label, _) in self.available_kind_keys() {
+                if chosen.contains(&key) && !kinds.contains(&label) {
+                    kinds.push(label);
+                }
+            }
+        }
         if !self.persisted.preferences.show_custom_resources {
             return kinds;
         }

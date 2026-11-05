@@ -145,7 +145,7 @@ impl LiveControls {
             Ok(stream)
         })
     }
-    fn send(&self, message: StreamMessage) {
+    pub(super) fn send(&self, message: StreamMessage) {
         for (_, sender) in self.streams.lock().unwrap().iter() {
             if !sender.is_closed() {
                 sender.send(message.clone()).unwrap();

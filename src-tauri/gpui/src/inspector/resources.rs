@@ -148,7 +148,7 @@ impl Inspector {
                         div()
                             .size(px(6.))
                             .rounded_full()
-                            .bg(match self.live.label() {
+                            .bg(match self.live_label() {
                                 "Live" => super::events::tw::emerald400(1.),
                                 "Refresh failed" => Tokens::destructive(),
                                 "Catching up" => super::events::tw::sky300(),
@@ -157,8 +157,8 @@ impl Inspector {
                             }),
                     )
                     .child(
-                        ui::xs(self.live.label())
-                            .text_color(match self.live.label() {
+                        ui::xs(self.live_label())
+                            .text_color(match self.live_label() {
                                 "Refresh failed" => Tokens::destructive(),
                                 "Reconnecting" | "Polling (limited)" | "Live (limited)" => {
                                     Palette::amber300()
@@ -167,7 +167,7 @@ impl Inspector {
                             })
                             .id("live-label")
                             .test_support()
-                            .aria_label(self.live.label()),
+                            .aria_label(self.live_label()),
                     )
                     .child(ui::icon("chevron-down", 12., Tokens::muted_foreground()))
                     .on_click(cx.listener(|this, _, _, cx| {

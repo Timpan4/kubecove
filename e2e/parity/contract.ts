@@ -9,6 +9,15 @@ export type Step =
     | { action: "toggleWorkspaceContext"; context: string }
     | { action: "expectOverviewHealth"; total: number }
     | { action: "expectDetailContext"; context: string }
+    | { action: "refreshPage"; page: "RBAC" | "Incidents" }
+    | { action: "replayPageReads"; phase: "base" | "updated" | "failed" }
+    | { action: "focusStalePage"; page: "GitOps" | "Helm" | "RBAC" | "Incidents" }
+    | { action: "expectPageText"; text: string }
+    | { action: "searchCustomKinds" | "searchKindPicker"; value: string }
+    | { action: "expectCustomGroup"; group: string; visible: boolean }
+    | { action: "toggleKind"; kind: string; checked: boolean }
+    | { action: "openKindPicker" | "closeKindPicker" | "selectAllKinds" }
+    | { action: "expectKindChecked"; kind: string; checked: boolean }
     | { action: "fillMcpPort"; value: string }
     | { action: "mcpControl"; control: "MCP server" | "Submit port" | "Save" | "Copy token" | "Copy Claude Code command" | "Rotate token" }
     | { action: "expectMcpState"; enabled: boolean; port: string; running: boolean; save: boolean; command: boolean }
@@ -161,6 +170,9 @@ export type Contract = { scenarios: Scenario[] };
 export const ACTIONS = [
     "failWorkspaceContext", "expectWorkspaceReadWarning",
     "editSavedWorkspace", "expectNoSavedWorkspace", "saveWorkspace", "cancelWorkspaceEdit", "toggleWorkspaceContext", "expectOverviewHealth", "expectDetailContext",
+    "refreshPage",
+    "replayPageReads", "focusStalePage", "expectPageText",
+    "searchCustomKinds", "searchKindPicker", "expectCustomGroup", "toggleKind", "openKindPicker", "closeKindPicker", "selectAllKinds", "expectKindChecked",
     "fillMcpPort", "mcpControl", "expectMcpState", "expectMcpCopy", "expectMcpRequests",
     "selectArgoPreference", "expectSavedArgoProfile", "configureArgoSync", "selectArgoHistory", "expectArgoWorkspaceTransport", "completeArgoOperation", "confirmArgoTunnel",
     "connectArgoProfile", "disconnectArgoProfile", "confirmArgoReview", "cancelArgoReview", "reviewArgoOperation", "expectArgoReview", "expectArgoText", "argoDocument",
@@ -214,6 +226,10 @@ function strings(value: unknown, allowEmpty: boolean): string[] {
 	if (!Array.isArray(value) || (!allowEmpty && !value.length)) throw new Error("Expected a list of strings");
 	return value.map(string);
 }
+function boolean(value: unknown): boolean {
+    if (typeof value !== "boolean") throw new Error("Expected boolean");
+    return value;
+}
 function optionalBoolean(value: unknown): boolean | undefined {
     if (value == null) return undefined;
     if (typeof value !== "boolean") throw new Error("Expected boolean");
@@ -227,6 +243,10 @@ function step(value: unknown): Step {
         case "saveWorkspace": case "cancelWorkspaceEdit": return { action: item.action };
         case "toggleWorkspaceContext": case "expectDetailContext": return { action: item.action, context: string(item.context) };
         case "expectOverviewHealth": return { action: item.action, total: count(item.total) };
+        case "refreshPage": return { action: item.action, page: oneOf(["RBAC", "Incidents"], item.page, "a refresh button page") };
+        case "replayPageReads": return { action: item.action, phase: oneOf(["base", "updated", "failed"], item.phase, "a page read phase") };
+        case "focusStalePage": return { action: item.action, page: oneOf(["GitOps", "Helm", "RBAC", "Incidents"], item.page, "a refreshing page") };
+        case "expectPageText": return { action: item.action, text: string(item.text) };
         case "fillMcpPort": return { action: item.action, value: string(item.value) };
         case "mcpControl": return { action: item.action, control: oneOf(["MCP server", "Submit port", "Save", "Copy token", "Copy Claude Code command", "Rotate token"], item.control, "an MCP control") };
         case "expectMcpState":
@@ -275,6 +295,10 @@ function step(value: unknown): Step {
         case "replayLiveData": return { action: item.action, script: oneOf(["update", "delete", "reconnecting", "connected", "events", "forbidden", "failed"], item.script, "a live script") };
         case "expectResourceStatus": return { action: item.action, kind: string(item.kind), namespace: string(item.namespace), name: string(item.name), status: string(item.status) };
         case "openCustomKind": return { action: item.action, kind: string(item.kind), surface: oneOf(["sidebar", "picker"], item.surface, "a kind surface") };
+        case "searchCustomKinds": case "searchKindPicker": return { action: item.action, value: item.value === "" ? "" : string(item.value) };
+        case "expectCustomGroup": return { action: item.action, group: string(item.group), visible: boolean(item.visible) };
+        case "toggleKind": case "expectKindChecked": return { action: item.action, kind: string(item.kind), checked: boolean(item.checked) };
+        case "openKindPicker": case "closeKindPicker": case "selectAllKinds": return { action: item.action };
         case "expectUsageFooter": return { action: item.action, text: string(item.text) };
         case "expectUsageProcess": return { action: item.action, label: string(item.label) };
         case "openUsageTree": case "expectNoUsageFooter": return { action: item.action };

@@ -38,6 +38,7 @@ pub(super) struct HelmPage {
     load: HelmLoad,
     request: Rc<()>,
     task: Option<Task<()>>,
+    refresh_error: Option<String>,
     /// `helmNamespace`; `None` is All releases.
     namespace: Option<String>,
     search: Entity<InputState>,
@@ -69,6 +70,7 @@ impl HelmPage {
             load: HelmLoad::Loading,
             request: Rc::new(()),
             task: None,
+            refresh_error: None,
             namespace: None,
             search,
             filtered: Vec::new(),
@@ -143,6 +145,7 @@ impl Inspector {
             page.filtered.clear();
         }
         page.request = Rc::new(());
+        page.refresh_error = None;
         let request = page.request.clone();
         let read = self.backend.helm_releases(page.context.clone());
         let read = self.timings.measure("helm_releases", read);
@@ -156,10 +159,17 @@ impl Inspector {
                 let previous = page
                     .selected
                     .and_then(|index| page.releases().get(index).cloned());
-                page.load = match result {
-                    Ok(list) => HelmLoad::Ready(list),
-                    Err(error) => HelmLoad::Failed(error.message),
-                };
+                let success = result.is_ok();
+                match result {
+                    Ok(list) => page.load = HelmLoad::Ready(list),
+                    Err(error) => {
+                        if matches!(page.load, HelmLoad::Ready(_)) {
+                            page.refresh_error = Some(error.message);
+                        } else {
+                            page.load = HelmLoad::Failed(error.message);
+                        }
+                    }
+                }
                 page.namespace_counts = helm::groups(page.releases())
                     .into_iter()
                     .map(|group| (group.namespace.to_owned(), group.count))
@@ -176,8 +186,20 @@ impl Inspector {
                     page.details = HelmDetails::default();
                 }
                 this.filter_helm(cx);
+                if success {
+                    this.page_read_finished(super::Page::Helm, cx);
+                } else {
+                    this.invalidate_page_read(super::Page::Helm);
+                }
+                this.refresh_helm_details(cx);
             });
         }));
+    }
+
+    pub(super) fn cancel_helm_reads(&mut self) {
+        self.helm_page.task.take();
+        self.helm_page.request = Rc::new(());
+        self.helm_page.details.cancel();
     }
 
     fn filter_helm(&mut self, cx: &mut Context<Self>) {
@@ -325,6 +347,9 @@ impl Inspector {
                 &facts,
                 page.layout.summary_columns,
             ))
+            .when_some(page.refresh_error.clone(), |column, error| {
+                column.child(surface::failed("Helm refresh failed", error))
+            })
             .when(!data.warnings.is_empty(), |column| {
                 column.child(helm_card::alert(
                     "Some Helm releases may be missing",

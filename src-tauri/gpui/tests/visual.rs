@@ -268,6 +268,27 @@ mod visual {
                         "reconnecting"
                     });
                 }
+                "kind-picker" => {
+                    act(&mut cx, handle, |window, cx| {
+                        window.click("open-resources", cx)
+                    });
+                    act(&mut cx, handle, |window, cx| {
+                        window.click("kinds-picker", cx)
+                    });
+                    act(&mut cx, handle, |window, cx| {
+                        window.click("kind-search", cx);
+                        window.input("Service", cx);
+                    });
+                }
+                "custom-search" => {
+                    act(&mut cx, handle, |window, cx| {
+                        window.click("nav:Custom Resources", cx)
+                    });
+                    act(&mut cx, handle, |window, cx| {
+                        window.click("custom-resource-search", cx);
+                        window.input("kustom", cx);
+                    });
+                }
                 "custom-resources" => {
                     act(&mut cx, handle, |window, cx| {
                         window.click("nav:Custom Resources", cx)

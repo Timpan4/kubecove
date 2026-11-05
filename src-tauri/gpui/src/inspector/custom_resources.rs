@@ -1,83 +1,97 @@
 //! Discovered kinds retain their API identity even before they contain objects.
 use super::{Inspector, Page};
 use crate::{theme::Tokens, ui};
-use gpui_kit::{AnyElement, Context, SharedString, TestSupportExt, div, prelude::*, px};
+use gpui_kit::{AnyElement, Context, SharedString, TestSupportExt, deferred, div, prelude::*, px};
 
 impl Inspector {
-    pub(super) fn custom_kind_rows(&self, picker: bool, cx: &mut Context<Self>) -> Vec<AnyElement> {
+    pub(super) fn custom_kind_rows(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
         if !self.persisted.preferences.show_custom_resources {
             return Vec::new();
         }
-        if !picker {
-            let mut groups = self
-                .live
-                .kinds
-                .iter()
-                .map(|kind| kind.group.clone())
-                .collect::<Vec<_>>();
-            groups.sort();
-            groups.dedup();
-            let mut rows = Vec::new();
-            for group in groups {
-                let expanded = self.live.groups.contains(&group);
-                let selected = group.clone();
-                rows.push(
-                    div()
-                        .id(SharedString::from(format!("custom-group:{group}")))
-                        .test_support()
-                        .aria_label(group.clone())
-                        .flex()
-                        .items_center()
-                        .h(px(26.))
-                        .pl(px(28.))
-                        .gap(px(4.))
-                        .cursor_pointer()
-                        .child(ui::icon(
-                            if expanded {
-                                "chevron-down"
-                            } else {
-                                "chevron-right"
-                            },
-                            12.,
-                            Tokens::muted_foreground(),
-                        ))
-                        .child(ui::xs(group.clone()))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            if !this.live.groups.remove(&selected) {
-                                this.live.groups.insert(selected.clone());
-                            }
-                            cx.notify();
-                        }))
-                        .into_any_element(),
-                );
-                if expanded {
-                    rows.extend(self.kind_rows(false, Some(&group), cx));
-                }
-            }
-            return rows;
+        let mut groups = self
+            .live
+            .kinds
+            .iter()
+            .filter(|kind| self.custom_matches(kind, cx))
+            .map(|kind| kind.group.clone())
+            .collect::<Vec<_>>();
+        groups.sort();
+        groups.dedup();
+        let mut rows = Vec::new();
+        if groups.is_empty() {
+            rows.push(
+                div()
+                    .pl(px(28.))
+                    .py(px(4.))
+                    .child(ui::xs(
+                        if self
+                            .kind_selection
+                            .sidebar
+                            .read(cx)
+                            .value()
+                            .trim()
+                            .is_empty()
+                        {
+                            "No custom resources"
+                        } else {
+                            "No custom resources match search"
+                        },
+                    ))
+                    .into_any_element(),
+            );
         }
-        self.kind_rows(true, None, cx)
+        for group in groups {
+            let expanded = self.live.groups.contains(&group);
+            let selected = group.clone();
+            rows.push(
+                div()
+                    .id(SharedString::from(format!("custom-group:{group}")))
+                    .test_support()
+                    .aria_label(group.clone())
+                    .flex()
+                    .items_center()
+                    .h(px(26.))
+                    .pl(px(28.))
+                    .gap(px(4.))
+                    .cursor_pointer()
+                    .child(ui::icon(
+                        if expanded {
+                            "chevron-down"
+                        } else {
+                            "chevron-right"
+                        },
+                        12.,
+                        Tokens::muted_foreground(),
+                    ))
+                    .child(ui::xs(group.clone()))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if !this.live.groups.remove(&selected) {
+                            this.live.groups.insert(selected.clone());
+                        }
+                        cx.notify();
+                    }))
+                    .into_any_element(),
+            );
+            if expanded {
+                rows.extend(self.kind_rows(&group, cx));
+            }
+        }
+        rows
     }
 
-    fn kind_rows(
-        &self,
-        picker: bool,
-        group: Option<&str>,
-        cx: &mut Context<Self>,
-    ) -> Vec<AnyElement> {
+    fn kind_rows(&self, group: &str, cx: &mut Context<Self>) -> Vec<AnyElement> {
         self.live
             .kinds
             .iter()
-            .filter(|kind| group.is_none_or(|group| kind.group == group))
+            .filter(|kind| kind.group == group)
+            .filter(|kind| self.custom_matches(kind, cx))
             .map(|kind| {
                 let kind = kind.clone();
                 let label = kind.kind.clone();
                 div()
                     .id(SharedString::from(format!(
-                        "{}:{}:{}",
-                        if picker { "pick-kind" } else { "custom-kind" },
-                        kind.api_version,
-                        kind.kind
+                        "custom-kind:{}:{}",
+                        kind.api_version, kind.kind
                     )))
                     .test_support()
                     .aria_label(label.clone())
@@ -95,13 +109,14 @@ impl Inspector {
                             return;
                         }
                         this.close_detail(cx);
-                        if !picker && this.scope.namespace.is_some() {
+                        if this.scope.namespace.is_some() {
                             this.select_namespace(None, window, cx);
                         }
                         this.page = Page::Resources;
                         this.palette.kind = None;
                         this.live.selected = Some(kind.clone());
-                        this.live.kind_locked = !picker;
+                        this.kind_selection.chosen = None;
+                        this.live.kind_locked = true;
                         this.live.picker_open = false;
                         this.filter(cx);
                     }))
@@ -129,7 +144,16 @@ impl Inspector {
                     .cursor_pointer()
                     .child(ui::muted(ui::xs("Kinds")))
                     .child(ui::xs(self.live.selected.as_ref().map_or_else(
-                        || crate::model::kinds_label(&self.scope_kinds()),
+                        || {
+                            crate::model::kinds_label(
+                                &self
+                                    .available_kind_keys()
+                                    .into_iter()
+                                    .filter(|(key, _, _)| self.kind_selected(key))
+                                    .map(|(_, label, _)| label)
+                                    .collect::<Vec<_>>(),
+                            )
+                        },
                         |kind| kind.kind.clone(),
                     )))
                     .child(ui::icon("chevron-down", 14., Tokens::muted_foreground()))
@@ -140,18 +164,23 @@ impl Inspector {
             )
             .when(self.live.picker_open, |picker| {
                 picker.child(
-                    div()
-                        .absolute()
-                        .top(px(34.))
-                        .left_0()
-                        .min_w(px(240.))
-                        .p(px(4.))
-                        .rounded(px(8.))
-                        .border_1()
-                        .border_color(Tokens::border())
-                        .bg(Tokens::card())
-                        .shadow_lg()
-                        .children(self.custom_kind_rows(true, cx)),
+                    deferred(
+                        div()
+                            .id("kind-popup")
+                            .occlude()
+                            .absolute()
+                            .top(px(34.))
+                            .left_0()
+                            .min_w(px(240.))
+                            .p(px(4.))
+                            .rounded(px(8.))
+                            .border_1()
+                            .border_color(Tokens::border())
+                            .bg(Tokens::surface2())
+                            .shadow_lg()
+                            .child(self.kind_picker_options(cx)),
+                    )
+                    .with_priority(1),
                 )
             })
             .into_any_element()

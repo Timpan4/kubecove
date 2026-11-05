@@ -48,6 +48,7 @@ mod helm_page;
 mod incident_guide;
 mod incident_queue;
 mod incidents;
+mod kind_selection;
 mod launcher;
 mod launcher_form;
 mod launcher_transfer;
@@ -61,6 +62,7 @@ mod logs_tab;
 mod map;
 mod metrics;
 mod overview;
+mod page_refresh;
 mod palette;
 mod port_forward_rows;
 mod port_forwards;
@@ -172,6 +174,8 @@ pub struct Inspector {
     palette: palette::PaletteState,
     live_menu_open: bool,
     live: live_data::LiveData,
+    kind_selection: kind_selection::KindSelection,
+    page_refresh: page_refresh::PageRefresh,
     notice: Option<String>,
     request: Rc<()>,
     detail_request: Rc<()>,
@@ -201,6 +205,11 @@ impl Inspector {
         });
         let owner = cx.entity().downgrade();
         let subscriptions = vec![
+            cx.observe_window_activation(window, |this, window, cx| {
+                if window.is_window_active() {
+                    this.refresh_focused_page(cx);
+                }
+            }),
             cx.subscribe_in(&search, window, |this, _, event, _, cx| {
                 if matches!(event, InputEvent::Change) {
                     this.table_page = 0;
@@ -267,6 +276,8 @@ impl Inspector {
             palette: palette::PaletteState::new(window, cx),
             live_menu_open: false,
             live: Default::default(),
+            kind_selection: kind_selection::KindSelection::new(window, cx),
+            page_refresh: Default::default(),
             notice: None,
             request: Rc::new(()),
             detail_request: Rc::new(()),
@@ -323,6 +334,7 @@ impl Inspector {
         self.palette.kind = None;
         self.live.selected = None;
         self.live.kind_locked = false;
+        self.kind_selection.chosen = None;
         self.filter(cx);
         if self.scope.namespace != namespace {
             self.scope.namespace = namespace;

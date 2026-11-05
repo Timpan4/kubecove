@@ -1,0 +1,69 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "custom-search.matches",
+      "title": "Custom search matches case, plural, short name and API group and clears stale matches",
+      "steps": [
+        { "action": "searchCustomKinds", "value": " WGT " },
+        { "action": "expectCustomGroup", "group": "testing.example.io", "visible": true },
+        { "action": "expectCustomGroup", "group": "helm.toolkit.fluxcd.io", "visible": false },
+        { "action": "searchCustomKinds", "value": "  KUSTOMIZATIONS  " },
+        { "action": "expectCustomGroup", "group": "kustomize.toolkit.fluxcd.io", "visible": true },
+        { "action": "expectCustomGroup", "group": "helm.toolkit.fluxcd.io", "visible": false },
+        { "action": "searchCustomKinds", "value": "HELM.TOOLKIT" },
+        { "action": "expectCustomGroup", "group": "helm.toolkit.fluxcd.io", "visible": true },
+        { "action": "expectCustomGroup", "group": "kustomize.toolkit.fluxcd.io", "visible": false },
+        { "action": "searchCustomKinds", "value": "missing-kind" },
+        { "action": "expectCustomGroup", "group": "helm.toolkit.fluxcd.io", "visible": false },
+        { "action": "searchCustomKinds", "value": "" },
+        { "action": "expectCustomGroup", "group": "kustomize.toolkit.fluxcd.io", "visible": true },
+        { "action": "expectCustomGroup", "group": "helm.toolkit.fluxcd.io", "visible": true }
+      ]
+    },
+    {
+      "id": "kind-picker.multiselect-refresh",
+      "title": "Several checked kinds survive refresh while unchecked rows stay hidden",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openKindPicker" },
+        { "action": "searchKindPicker", "value": "Deployment" },
+        { "action": "toggleKind", "kind": "Deployment", "checked": false },
+        { "action": "searchKindPicker", "value": "Service" },
+        { "action": "expectKindChecked", "kind": "Service", "checked": true },
+        { "action": "closeKindPicker" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectResource", "kind": "Service", "namespace": "payments", "name": "payments-api" },
+        { "action": "refresh" },
+        { "action": "expectSearch", "value": "payments-api" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "openKindPicker" },
+        { "action": "searchKindPicker", "value": "Deployment" },
+        { "action": "expectKindChecked", "kind": "Deployment", "checked": false },
+        { "action": "toggleKind", "kind": "Deployment", "checked": true },
+        { "action": "closeKindPicker" },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" }
+      ]
+    },
+    {
+      "id": "kind-picker.scope-reset",
+      "title": "A namespace change restores that scope's default kinds",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openKindPicker" },
+        { "action": "searchKindPicker", "value": "Deployment" },
+        { "action": "toggleKind", "kind": "Deployment", "checked": false },
+        { "action": "closeKindPicker" },
+        { "action": "selectNamespace", "namespace": "monitoring" },
+        { "action": "openKindPicker" },
+        { "action": "searchKindPicker", "value": "" },
+        { "action": "expectKindChecked", "kind": "Deployment", "checked": true },
+        { "action": "expectKindChecked", "kind": "Service", "checked": true },
+        { "action": "closeKindPicker" },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "monitoring", "name": "grafana" }
+      ]
+    }
+  ]
+}

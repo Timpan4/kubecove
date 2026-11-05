@@ -12,7 +12,10 @@ use crate::rbac::{self, Bucket, CockpitItem, ObjectRef, RbacView};
 use crate::theme::{Palette, Tokens};
 use crate::ui;
 use gpui_kit::component::input::{InputEvent, InputState};
-use gpui_kit::{Context, Div, Entity, FontWeight, Subscription, Task, Window, div, prelude::*, px};
+use gpui_kit::{
+    Context, Div, Entity, FontWeight, Subscription, Task, TestSupportExt, Window, div, prelude::*,
+    px,
+};
 use kubecove_lib::models::{RbacCoverageStatus, RbacInspectionSummary, RbacRiskLevel};
 use std::rc::Rc;
 
@@ -55,6 +58,7 @@ pub(super) struct RbacState {
     observed: Option<(Identity, Observed)>,
     request: Rc<()>,
     task: Option<Task<()>>,
+    refresh_error: Option<String>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -89,6 +93,7 @@ impl RbacState {
             observed: None,
             request: Rc::new(()),
             task: None,
+            refresh_error: None,
             _subscriptions: subscriptions,
         }
     }
@@ -166,15 +171,22 @@ impl Inspector {
         if self.scope.context.is_empty() {
             return;
         }
+        let stale = self.page_read_stale(Page::Rbac, cx);
         let state = &mut self.rbac;
-        if state.context == self.scope.context && !matches!(state.load, RbacLoad::Failed(_)) {
+        if state.context == self.scope.context
+            && !matches!(state.load, RbacLoad::Failed(_))
+            && !stale
+        {
             return;
         }
+        if state.context != self.scope.context {
+            state.load = RbacLoad::Loading;
+            state.selected = None;
+            state.identity = IdentitySource::Selection;
+            state.observed = None;
+        }
         state.context = self.scope.context.clone();
-        state.load = RbacLoad::Loading;
-        state.selected = None;
-        state.identity = IdentitySource::Selection;
-        state.observed = None;
+        state.refresh_error = None;
         state.request = Rc::new(());
         let request = state.request.clone();
         let read = self.backend.rbac(state.context.clone());
@@ -185,19 +197,39 @@ impl Inspector {
                 if !Rc::ptr_eq(&this.rbac.request, &request) {
                     return;
                 }
-                this.rbac.load = match result {
-                    Ok(data) => RbacLoad::Ready(Box::new(data)),
-                    Err(error) => RbacLoad::Failed(error.message),
-                };
+                let success = result.is_ok();
+                match result {
+                    Ok(data) => {
+                        this.rbac.load = RbacLoad::Ready(Box::new(data));
+                        this.rbac.observed = None;
+                    }
+                    Err(error) => {
+                        if matches!(this.rbac.load, RbacLoad::Ready(_)) {
+                            this.rbac.refresh_error = Some(error.message);
+                        } else {
+                            this.rbac.load = RbacLoad::Failed(error.message);
+                        }
+                    }
+                }
+                if success {
+                    this.page_read_finished(Page::Rbac, cx);
+                } else {
+                    this.invalidate_page_read(Page::Rbac);
+                }
                 this.rebuild_rbac_items(cx);
             });
         }));
         cx.notify();
     }
 
-    fn refresh_rbac(&mut self, cx: &mut Context<Self>) {
-        self.rbac.context.clear();
+    pub(super) fn refresh_rbac(&mut self, cx: &mut Context<Self>) {
+        self.invalidate_page_read(Page::Rbac);
         self.load_rbac(cx);
+    }
+
+    pub(super) fn cancel_rbac_read(&mut self) {
+        self.rbac.task.take();
+        self.rbac.request = Rc::new(());
     }
 
     /// `setView`: clears the search, selection and subject.
@@ -283,7 +315,19 @@ impl Inspector {
             }
             RbacLoad::Ready(_) => self.rbac_body(cx).into_any_element(),
         };
-        surface::frame("key-round", "RBAC Cockpit", true, body)
+        surface::frame(
+            "key-round",
+            "RBAC Cockpit",
+            true,
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(12.))
+                .when_some(self.rbac.refresh_error.clone(), |body, error| {
+                    body.child(surface::failed("RBAC refresh failed", error))
+                })
+                .child(body),
+        )
     }
 
     fn rbac_body(&mut self, cx: &mut Context<Self>) -> Div {
@@ -421,6 +465,7 @@ impl Inspector {
                         .child(
                             button(Variant::Outline, 24., false)
                                 .id("rbac-refresh")
+                                .test_support()
                                 .child(ui::icon("refresh-cw", 12., Tokens::foreground()))
                                 .child("Refresh")
                                 .on_click(cx.listener(|this, _, _, cx| this.refresh_rbac(cx))),

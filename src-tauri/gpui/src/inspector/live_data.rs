@@ -159,10 +159,6 @@ pub(super) async fn receive_or_tick(
 impl Inspector {
     pub(super) fn discover_kinds(&mut self, cx: &mut Context<Self>) {
         self.live.kinds.clear();
-        if !self.persisted.preferences.show_custom_resources {
-            return;
-        }
-        self.live.selected = None;
         let context = self.scope.context.clone();
         let read = self.backend.resource_kinds(context.clone());
         let read = self.timings.measure("resource_kinds", read);
@@ -185,15 +181,21 @@ impl Inspector {
 
     /// Reconciles before rendering: changed scopes drop their tasks and stream guards.
     pub(super) fn sync_live(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.sync_gitops_watches(window, cx);
         let owner = format!(
-            "{:?}:{}:{:?}:{:?}",
+            "{:?}:{}:{:?}:{:?}:{:?}",
             self.page as u8,
             self.scope.context,
             self.scope.namespace,
             self.live
                 .selected
                 .as_ref()
-                .map(|kind| (&kind.api_version, &kind.kind))
+                .map(|kind| (&kind.api_version, &kind.kind)),
+            self.kind_selection.chosen.as_ref().map(|kinds| {
+                let mut kinds: Vec<_> = kinds.iter().collect();
+                kinds.sort();
+                kinds
+            })
         );
         if owner != self.live.owner {
             self.live.watches.clear();
@@ -209,16 +211,11 @@ impl Inspector {
             return;
         }
         let mut keys: Vec<_> = self
-            .base_kinds()
-            .iter()
-            .map(|kind| key(kind, self.scope.namespace.clone()))
+            .available_kind_keys()
+            .into_iter()
+            .filter(|(id, _, _)| self.kind_selected(id))
+            .map(|(_, _, key)| key)
             .collect();
-        keys.extend(
-            self.live
-                .kinds
-                .iter()
-                .map(|kind| dynamic_key(kind, self.scope.namespace.clone())),
-        );
         if let Some(kind) = &self.live.selected {
             keys = vec![dynamic_key(kind, self.scope.namespace.clone())];
         }
@@ -269,7 +266,10 @@ impl Inspector {
                                         return false;
                                     }
                                     match rows {
-                                        Ok(rows) => this.patch_kind(&scope, &key, rows, None, cx),
+                                        Ok(rows) => {
+                                            this.supersede_kind_read(&key);
+                                            this.patch_kind(&scope, &key, rows, None, cx);
+                                        }
                                         Err(error) => {
                                             if let Some(w) = this.live.watches.get_mut(&id) {
                                                 w.reload_error = Some(error.message);
@@ -398,6 +398,7 @@ impl Inspector {
                                     }
                                     match rows {
                                         Ok(rows) => {
+                                            this.supersede_kind_read(&key);
                                             this.queue_live_patch(
                                                 super::live_rows::Patch {
                                                     scope: scope.clone(),

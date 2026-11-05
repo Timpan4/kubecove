@@ -11,7 +11,10 @@ use crate::ui;
 use gpui_kit::TestSupportExt;
 use gpui_kit::{Context, Div, FontWeight, SharedString, Task, div, prelude::*, px};
 use kubecove_lib::models::{HelmReleaseDetails, HelmReleaseReconciliation};
-use std::rc::Rc;
+use std::{
+    rc::Rc,
+    time::{Duration, Instant},
+};
 
 #[derive(Default)]
 enum Load<T> {
@@ -34,6 +37,17 @@ pub(super) struct HelmDetails {
     reconciliation: Load<Box<HelmReleaseReconciliation>>,
     request: Option<Rc<()>>,
     tasks: [Option<Task<()>>; 2],
+    read_at: [Option<Instant>; 2],
+    errors: [Option<String>; 2],
+    fetching: [bool; 2],
+}
+
+impl HelmDetails {
+    pub(super) fn cancel(&mut self) {
+        self.tasks = [None, None];
+        self.request = None;
+        self.fetching = [false; 2];
+    }
 }
 
 impl Inspector {
@@ -42,14 +56,33 @@ impl Inspector {
         let page = &mut self.helm_page;
         page.details = HelmDetails::default();
         page.selected = index;
-        let Some(release) = index.and_then(|index| page.releases().get(index).cloned()) else {
+        self.refresh_helm_details(cx);
+    }
+
+    pub(super) fn refresh_helm_details(&mut self, cx: &mut Context<Self>) {
+        let page = &mut self.helm_page;
+        let Some(release) = page
+            .selected
+            .and_then(|index| page.releases().get(index).cloned())
+        else {
             cx.notify();
             return;
         };
-        let request = Rc::new(());
-        page.details.request = Some(request.clone());
-        let details = self.backend.helm_release(release.clone());
-        let reconciliation = self.backend.helm_reconciliation(release);
+        let now = cx.background_executor().now();
+        // HelmSurface.svelte: details staleTime 15_000, reconciliation 30_000.
+        let stale = [15_000, 30_000].map(Duration::from_millis);
+        let refresh = [0, 1].map(|index| {
+            !page.details.fetching[index]
+                && page.details.read_at[index]
+                    .is_none_or(|at| now.duration_since(at) >= stale[index])
+        });
+        let request = page
+            .details
+            .request
+            .get_or_insert_with(|| Rc::new(()))
+            .clone();
+        let details = refresh[0].then(|| self.backend.helm_release(release.clone()));
+        let reconciliation = refresh[1].then(|| self.backend.helm_reconciliation(release));
         let current = move |this: &Inspector| {
             this.helm_page
                 .details
@@ -58,14 +91,26 @@ impl Inspector {
                 .is_some_and(|current| Rc::ptr_eq(current, &request))
         };
         let current_too = current.clone();
-        self.helm_page.details.tasks = [
-            Some(cx.spawn(async move |this, cx| {
+        if let Some(details) = details {
+            self.helm_page.details.fetching[0] = true;
+            self.helm_page.details.tasks[0] = Some(cx.spawn(async move |this, cx| {
                 let result = details.await;
                 let _ = this.update(cx, |this, cx| {
                     if !current(this) {
                         return;
                     }
-                    this.helm_page.details.details = match result {
+                    let state = &mut this.helm_page.details;
+                    state.fetching[0] = false;
+                    if let Err(error) = &result
+                        && matches!(state.details, Load::Ready(_))
+                    {
+                        state.errors[0] = Some(error.message.clone());
+                        cx.notify();
+                        return;
+                    }
+                    state.errors[0] = None;
+                    state.read_at[0] = result.is_ok().then(|| cx.background_executor().now());
+                    state.details = match result {
                         Ok(data) => Load::Ready(Box::new(Details {
                             yaml: if data.yaml.is_empty() {
                                 "No YAML returned".into()
@@ -83,14 +128,28 @@ impl Inspector {
                     };
                     cx.notify();
                 });
-            })),
-            Some(cx.spawn(async move |this, cx| {
+            }));
+        }
+        if let Some(reconciliation) = reconciliation {
+            self.helm_page.details.fetching[1] = true;
+            self.helm_page.details.tasks[1] = Some(cx.spawn(async move |this, cx| {
                 let result = reconciliation.await;
                 let _ = this.update(cx, |this, cx| {
                     if !current_too(this) {
                         return;
                     }
-                    this.helm_page.details.reconciliation = match result {
+                    let state = &mut this.helm_page.details;
+                    state.fetching[1] = false;
+                    if let Err(error) = &result
+                        && matches!(state.reconciliation, Load::Ready(_))
+                    {
+                        state.errors[1] = Some(error.message.clone());
+                        cx.notify();
+                        return;
+                    }
+                    state.errors[1] = None;
+                    state.read_at[1] = result.is_ok().then(|| cx.background_executor().now());
+                    state.reconciliation = match result {
                         Ok(mut data) => {
                             helm::sort_reconciliation(&mut data.resources);
                             Load::Ready(Box::new(data))
@@ -99,8 +158,8 @@ impl Inspector {
                     };
                     cx.notify();
                 });
-            })),
-        ];
+            }));
+        }
         cx.notify();
     }
 
@@ -175,7 +234,14 @@ impl Inspector {
                 div().child(surface::failed("Helm details unavailable", error.clone()))
             }
             Load::Ready(details) => self.helm_details_body(details),
-        };
+        }
+        .children(
+            page.details
+                .errors
+                .iter()
+                .flatten()
+                .map(|error| surface::failed("Helm refresh failed", error.clone())),
+        );
         div().child(
             div()
                 .id("helm-release-details")
