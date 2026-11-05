@@ -176,6 +176,10 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             window.press(&string(step, "key").replace("Arrow", "").to_lowercase(), cx);
             return true;
         }
+        "resetKindOrder" => {
+            locate::click_in(window, "page", "reset-kind-order".into(), cx);
+            return true;
+        }
         "expectRemoteHost" => {
             assert_eq!(
                 window.find("remote-host-scope").label(),

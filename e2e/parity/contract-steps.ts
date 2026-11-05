@@ -38,6 +38,7 @@ export type Step =
     | ({ action: "toggleResourcePin" } & Identity)
     | { action: "expectWorkspaceEntry" | "openWorkspaceEntry"; panel: "Pinned" | "Recent"; label: string; index: number; count: number }
     | { action: "reorderKindKey"; kind: string; key: "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" }
+    | { action: "resetKindOrder" }
     | { action: "expectRemoteHost"; url: string }
     | { action: "configureShellRead"; phase: "ready" | "contexts-failed" | "contexts-empty" | "namespaces-failed" | "namespaces-empty" | "resources-failed" | "primary-context-missing" | "kind-missing" | "payments-api-removed" }
     | { action: "openNamespaceList" }

@@ -1,0 +1,33 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "settings-group-order.lane-reorder-reset",
+      "title": "Dragging a kind changes Resource Table group order, and Reset restores the default order",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api-" },
+        { "action": "expectResourceOrder", "names": ["payments-api-7d9c9b7f8d-k2r9p", "payments-api-7d9c9b7f8d-x4m8v", "payments-api-config", "payments-api-secrets"] },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Appearance" },
+        { "action": "dragKind", "kind": "ConfigMap", "target": "Pod" },
+        { "action": "expectResourceKindPosition", "kind": "ConfigMap", "lane": "Show first", "index": 0 },
+        { "action": "expectResourceKindPosition", "kind": "Pod", "lane": "Show first", "index": 1 },
+        { "action": "closeSettings" },
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api-" },
+        { "action": "expectResourceOrder", "names": ["payments-api-config", "payments-api-7d9c9b7f8d-k2r9p", "payments-api-7d9c9b7f8d-x4m8v", "payments-api-secrets"] },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Appearance" },
+        { "action": "resetKindOrder" },
+        { "action": "expectResourceKindPosition", "kind": "ConfigMap", "lane": "Normal", "index": 4 },
+        { "action": "expectResourceKindPosition", "kind": "Pod", "lane": "Show first", "index": 0 },
+        { "action": "closeSettings" },
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api-" },
+        { "action": "expectResourceOrder", "names": ["payments-api-7d9c9b7f8d-k2r9p", "payments-api-7d9c9b7f8d-x4m8v", "payments-api-config", "payments-api-secrets"] }
+      ]
+    }
+  ]
+}

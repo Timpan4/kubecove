@@ -87,6 +87,9 @@ export async function shellAction(page: Page, step: Step): Promise<void> {
             await page.locator(`[data-kind-drop="${step.kind}"]`).focus();
             await page.keyboard.press(step.key);
             break;
+        case "resetKindOrder":
+            await page.getByRole("button", { name: "Reset", exact: true }).click();
+            break;
         case "expectRemoteHost":
             await page.getByText(`Remote host: ${step.url}`, { exact: true }).waitFor();
             break;

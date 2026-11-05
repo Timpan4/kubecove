@@ -40,7 +40,7 @@ export async function action(page: Page, step: Step) {
         case "copyErrorDetail": await shellAction(page, step); break;
         case "expectForegroundLoading": case "expectFriendlyError": case "inspectRequiredPermission": case "expectPermissionTarget": case "returnToSource": case "copyResourceName": case "expectCopyToast": case "dismissCopyToast": await feedbackAction(page, step); break;
         case "toggleResourcePin": case "expectWorkspaceEntry": case "openWorkspaceEntry": await shellAction(page, step); break;
-        case "reorderKindKey": case "expectRemoteHost": await shellAction(page, step); break;
+        case "reorderKindKey": case "resetKindOrder": case "expectRemoteHost": await shellAction(page, step); break;
         case "configureShellRead": case "retryLauncher": case "expectLauncherRetry": await shellAction(page, step); break;
         case "expectActivePage": case "expectGitOpsSelection": await shellAction(page, step); break;
         case "overviewOperation": case "overviewIncident": case "reviewIncidentAction": await shellAction(page, step); break;
