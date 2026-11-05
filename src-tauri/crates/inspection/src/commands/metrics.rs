@@ -12,14 +12,71 @@ use futures_util::{StreamExt, stream};
 use k8s_openapi::NamespaceResourceScope;
 use k8s_openapi::api::apps::v1::ReplicaSet;
 use k8s_openapi::api::core::v1::Pod;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::{
     Client, Error,
     api::{Api, ApiResource, DynamicObject},
     discovery::verbs,
 };
 use kubecove_kube::commands::discover_resources;
+use kubecove_kube::commands::list_projection::{self, Typed};
+use serde::Deserialize;
+use serde::de::IgnoredAny;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
+
+/// The `PodMetrics` and `NodeMetrics` fields `metric_from_object` reads. Other
+/// metadata, such as the Pod labels metrics-server copies, is skipped while
+/// decoding instead of being built and dropped.
+#[derive(Clone, Deserialize)]
+struct MetricsProjection {
+    #[serde(default)]
+    metadata: Option<MetricsName>,
+    #[serde(default)]
+    timestamp: Option<Value>,
+    #[serde(default)]
+    containers: Option<Value>,
+    #[serde(default)]
+    usage: Option<Value>,
+}
+
+#[derive(Clone, Default, Deserialize)]
+struct MetricsName {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    namespace: Option<String>,
+}
+
+impl From<MetricsProjection> for DynamicObject {
+    fn from(value: MetricsProjection) -> Self {
+        let name = value.metadata.unwrap_or_default();
+        let mut data = serde_json::Map::new();
+        for (key, field) in [
+            ("timestamp", value.timestamp),
+            ("containers", value.containers),
+            ("usage", value.usage),
+        ] {
+            if let Some(field) = field {
+                data.insert(key.to_string(), field);
+            }
+        }
+        Self {
+            types: None,
+            metadata: ObjectMeta {
+                name: name.name,
+                namespace: name.namespace,
+                ..ObjectMeta::default()
+            },
+            data: Value::Object(data),
+        }
+    }
+}
+
+async fn list_metrics(api: Api<DynamicObject>) -> Result<Vec<DynamicObject>, Error> {
+    let list = list_projection::list::<_, MetricsProjection>(api, &list_params()).await?;
+    Ok(list.items.into_iter().map(Into::into).collect())
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MetricsListStatus {
@@ -179,8 +236,8 @@ async fn list_pod_metric_objects(client: Client, namespaces: &[String]) -> Metri
     let mut result = MetricsObjectList::default();
     if namespaces.is_empty() {
         let api: Api<DynamicObject> = Api::all_with(client, &resource);
-        match api.list(&list_params()).await {
-            Ok(list) => result.objects = list.items,
+        match list_metrics(api).await {
+            Ok(objects) => result.objects = objects,
             Err(error) => result.failures.push(classify_metrics_error(&error)),
         }
         return result;
@@ -189,14 +246,14 @@ async fn list_pod_metric_objects(client: Client, namespaces: &[String]) -> Metri
         .map(|namespace| {
             let api: Api<DynamicObject> =
                 Api::namespaced_with(client.clone(), &namespace, &resource);
-            async move { api.list(&list_params()).await }
+            list_metrics(api)
         })
         .buffered(MAX_LIST_CONCURRENCY)
         .collect::<Vec<_>>()
         .await;
     for outcome in outcomes {
         match outcome {
-            Ok(list) => result.objects.extend(list.items),
+            Ok(objects) => result.objects.extend(objects),
             Err(error) => result.failures.push(classify_metrics_error(&error)),
         }
     }
@@ -206,10 +263,28 @@ async fn list_pod_metric_objects(client: Client, namespaces: &[String]) -> Metri
 async fn list_node_metric_objects(client: Client) -> Result<Vec<DynamicObject>, MetricsListStatus> {
     let resource = metrics_api_resource("NodeMetrics", "nodes");
     let api: Api<DynamicObject> = Api::all_with(client, &resource);
-    api.list(&list_params())
+    list_metrics(api)
         .await
-        .map(|list| list.items)
         .map_err(|error| classify_metrics_error(&error))
+}
+
+/// The workload rollup reads only metadata, so spec and status are skipped
+/// while decoding and each object keeps nothing but its metadata.
+async fn list_owner_metadata<K>(api: Api<K>) -> Result<Vec<K>, Error>
+where
+    K: kube::Resource + k8s_openapi::Resource + Clone + Default,
+{
+    let list =
+        list_projection::list::<_, Typed<K, IgnoredAny, IgnoredAny>>(api, &list_params()).await?;
+    Ok(list
+        .items
+        .into_iter()
+        .map(|item| {
+            let mut resource = K::default();
+            *resource.meta_mut() = item.metadata;
+            resource
+        })
+        .collect())
 }
 
 /// Lists every namespace when none are given; otherwise the named namespaces, failing on the
@@ -217,30 +292,26 @@ async fn list_node_metric_objects(client: Client) -> Result<Vec<DynamicObject>, 
 async fn list_in_namespaces<K>(client: Client, namespaces: &[String]) -> Result<Vec<K>, AppError>
 where
     K: kube::Resource<DynamicType = (), Scope = NamespaceResourceScope>
+        + k8s_openapi::Resource
         + Clone
-        + serde::de::DeserializeOwned
-        + std::fmt::Debug,
+        + Default,
 {
     if namespaces.is_empty() {
         let api: Api<K> = Api::all(client);
-        return api
-            .list(&list_params())
-            .await
-            .map(|list| list.items)
-            .map_err(AppError::from);
+        return list_owner_metadata(api).await.map_err(AppError::from);
     }
     // Owned names keep this future Send for the command boundary.
     let outcomes = stream::iter(namespaces.to_vec())
         .map(|namespace| {
             let api: Api<K> = Api::namespaced(client.clone(), &namespace);
-            async move { api.list(&list_params()).await }
+            list_owner_metadata(api)
         })
         .buffered(MAX_LIST_CONCURRENCY)
         .collect::<Vec<_>>()
         .await;
     let mut out = Vec::new();
     for outcome in outcomes {
-        out.extend(outcome.map_err(AppError::from)?.items);
+        out.extend(outcome.map_err(AppError::from)?);
     }
     Ok(out)
 }

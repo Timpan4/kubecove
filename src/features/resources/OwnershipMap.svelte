@@ -22,6 +22,8 @@
 		selectedStandaloneExpansionId as resolveSelectedStandaloneExpansionId,
 		type FlowTopologyNode,
 	} from "./topology";
+	import { buildFlowTopologyEdgeLayer } from "./topology-edge-layer";
+	import OwnershipMapEdgeLayer from "./OwnershipMapEdgeLayer.svelte";
 	import OwnershipMapViewport from "./OwnershipMapViewport.svelte";
 	import OwnershipResourceNode from "./OwnershipResourceNode.svelte";
 	import StandaloneKindGroupNode from "./StandaloneKindGroupNode.svelte";
@@ -99,6 +101,12 @@
 		graph
 			? graph.nodes.length + graph.edges.length >= VISIBLE_ELEMENT_RENDER_THRESHOLD
 			: false,
+	);
+	// Culled maps draw their edges in one SVG layer; see topology-edge-layer.ts.
+	const edgeLayer = $derived(
+		graph && onlyRenderVisibleElements
+			? buildFlowTopologyEdgeLayer(graph.nodes, graph.edges)
+			: null,
 	);
 	const focusedGraph = $derived(
 		Boolean(
@@ -238,7 +246,7 @@
 			{#if hasViewportSize}
 				<SvelteFlow
 					nodes={graph.nodes}
-					edges={graph.edges}
+					edges={edgeLayer?.native ?? graph.edges}
 					{nodeTypes}
 					{translateExtent}
 					class="ownership-map-flow"
@@ -256,6 +264,9 @@
 					proOptions={{ hideAttribution: true }}
 					onnodeclick={handleNodeClick}
 				>
+					{#if edgeLayer}
+						<OwnershipMapEdgeLayer edges={edgeLayer.layered} />
+					{/if}
 					<OwnershipMapViewport
 						nodes={graph.nodes}
 						edges={graph.edges}

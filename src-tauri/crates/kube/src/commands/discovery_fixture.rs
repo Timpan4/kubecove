@@ -28,7 +28,13 @@ pub struct FixtureKind {
 /// are listed in the order `kinds` first names them, and the first listed
 /// version is the preferred one.
 pub fn client(kinds: &[FixtureKind]) -> Client {
-    serve(kinds, &[], true)
+    serve(kinds, &[], true, BTreeMap::new())
+}
+
+/// Like [`client`], but a request whose path is a key of `lists` answers 200
+/// with that body, whatever its query string. Use it to serve list responses.
+pub fn client_with_lists(kinds: &[FixtureKind], lists: BTreeMap<String, Value>) -> Client {
+    serve(kinds, &[], true, lists)
 }
 
 /// Like [`client`], but the per-group list also names each `(group, version)`
@@ -39,19 +45,20 @@ pub fn client_with_unavailable_groups(
     kinds: &[FixtureKind],
     unavailable: &[(&'static str, &'static str)],
 ) -> Client {
-    serve(kinds, unavailable, true)
+    serve(kinds, unavailable, true, BTreeMap::new())
 }
 
 /// Like [`client`], but the group lists at `/api` and `/apis` answer 503, as
 /// an overloaded or restarting API server does.
 pub fn client_with_unavailable_group_list(kinds: &[FixtureKind]) -> Client {
-    serve(kinds, &[], false)
+    serve(kinds, &[], false, BTreeMap::new())
 }
 
 fn serve(
     kinds: &[FixtureKind],
     unavailable: &[(&'static str, &'static str)],
     group_list_available: bool,
+    lists: BTreeMap<String, Value>,
 ) -> Client {
     let kinds = kinds.to_vec();
     let unavailable = unavailable.to_vec();
@@ -62,7 +69,9 @@ fn serve(
             .and_then(|accept| accept.to_str().ok())
             .is_some_and(|accept| accept.contains("apidiscovery.k8s.io"));
         let path = request.uri().path();
-        let (status, body) = if !group_list_available && matches!(path, "/api" | "/apis") {
+        let (status, body) = if let Some(list) = lists.get(path) {
+            (200, list.clone())
+        } else if !group_list_available && matches!(path, "/api" | "/apis") {
             service_unavailable(path)
         } else {
             route(path, aggregated, &kinds, &unavailable)
