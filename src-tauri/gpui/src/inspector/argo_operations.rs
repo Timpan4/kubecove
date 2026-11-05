@@ -27,6 +27,7 @@ pub(super) struct Operation {
     request: Rc<()>,
     task: Option<Task<()>>,
     baseline: Option<kubecove_lib::models::ArgoApplicationInspector>,
+    last_request: Option<ArgoOperationRequest>,
 }
 impl Inspector {
     pub(super) fn review_argo_operation(
@@ -60,6 +61,7 @@ impl Inspector {
         };
         let action = match label {
             "Refresh" => "refresh",
+            "Hard refresh" => "hardRefresh",
             "Sync" | "Advanced Sync" => "sync",
             "Rollback" => "rollback",
             _ => return,
@@ -110,7 +112,43 @@ impl Inspector {
             force: (action == "sync").then_some(advanced && state.options.force),
             ..Default::default()
         };
+        state.refresh_options = false;
+        state.options.open = false;
+        self.start_argo_review(request, window, cx);
+    }
+    pub(super) fn retry_argo_operation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(state) = self.argo_tab_state() else {
+            return;
+        };
+        if !matches!(state.operation.phase, Phase::Failed(_)) {
+            return;
+        }
+        let Some(request) = state.operation.last_request.clone() else {
+            return;
+        };
+        self.start_argo_review(request, window, cx);
+    }
+    fn start_argo_review(
+        &mut self,
+        request: ArgoOperationRequest,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let backend = self.backend.clone();
+        let Some(state) = self.argo_tab_state() else {
+            return;
+        };
+        if state.inspector.as_ref().is_none_or(|s| {
+            let app = &s.application;
+            app.context != request.application.context
+                || app.workspace_id != request.application.workspace_id
+                || app.namespace != request.application.namespace
+                || app.name != request.application.name
+                || app.uid != request.application.uid
+        }) {
+            return;
+        }
+        state.operation.last_request = Some(request.clone());
         let read = async move {
             let before = backend
                 .inspect_argo(crate::backend::ArgoInspection {
@@ -255,6 +293,26 @@ pub(super) fn panel(state: &Operation, cx: &mut Context<Inspector>) -> gpui_kit:
                             Tokens::foreground()
                         },
                     ),
+            )
+            .child(
+                button(Variant::Outline, 24., false)
+                    .id("argo-operation-retry")
+                    .test_support()
+                    .child(if matches!(state.phase, Phase::Unconfirmed(_)) {
+                        "Retry state refresh"
+                    } else {
+                        "Retry operation"
+                    })
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        if this
+                            .argo_tab_state()
+                            .is_some_and(|s| matches!(s.operation.phase, Phase::Unconfirmed(_)))
+                        {
+                            this.reload_argo(window, cx);
+                        } else {
+                            this.retry_argo_operation(window, cx);
+                        }
+                    })),
             )
             .into_any_element(),
         Phase::Review(review) => {

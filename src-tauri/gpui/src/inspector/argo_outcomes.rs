@@ -10,6 +10,10 @@ pub(super) struct Outcome {
     pub message: String,
     identity: Rc<()>,
     _task: Task<()>,
+    request: ArgoOperationRequest,
+    baseline: ArgoApplicationInspector,
+    retryable: bool,
+    saw_pending: bool,
 }
 fn key(app: &ArgoApplicationRef) -> String {
     serde_json::to_string(&(&app.context, &app.workspace_id, &app.namespace, &app.name))
@@ -22,18 +26,46 @@ impl Inspector {
     pub(super) fn argo_operation_busy(&self, app: &ArgoApplicationRef) -> bool {
         self.argo_outcomes.get(&key(app)).is_some_and(|o| o.busy)
     }
-    pub(super) fn argo_outcome_panel(&self, detail: &ResourceDetail) -> Option<Div> {
+    pub(super) fn argo_outcome_panel(
+        &self,
+        detail: &ResourceDetail,
+        cx: &mut Context<Self>,
+    ) -> Option<Div> {
         let mut panel = None;
         if let Some(snapshot) = detail.argo.as_ref().and_then(|s| s.inspector.as_ref())
             && let Some(outcome) = self.argo_outcomes.get(&key(&snapshot.application))
         {
             panel = Some(
-                div().child(
-                    ui::xs(outcome.message.clone())
-                        .id("argo-outcome")
-                        .test_support()
-                        .aria_label(outcome.message.clone()),
-                ),
+                div()
+                    .child(
+                        ui::xs(outcome.message.clone())
+                            .id("argo-outcome")
+                            .test_support()
+                            .aria_label(outcome.message.clone()),
+                    )
+                    .when(outcome.retryable, |panel| {
+                        let id = key(&snapshot.application);
+                        panel.child(
+                            super::controls::button(super::controls::Variant::Outline, 24., false)
+                                .id("argo-state-retry")
+                                .test_support()
+                                .child("Retry state refresh")
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    let Some(job) = this
+                                        .argo_outcomes
+                                        .get(&id)
+                                        .filter(|j| j.busy && j.retryable)
+                                    else {
+                                        return;
+                                    };
+                                    this.observe_argo_operation(
+                                        job.request.clone(),
+                                        job.baseline.clone(),
+                                        cx,
+                                    );
+                                })),
+                        )
+                    }),
             );
         }
         panel
@@ -49,8 +81,13 @@ impl Inspector {
         let current = identity.clone();
         let job_id = id.clone();
         let backend = self.backend.clone();
+        let saved_request = request.clone();
+        let saved_baseline = baseline.clone();
+        let saw_pending = self
+            .argo_outcomes
+            .get(&id)
+            .is_some_and(|job| job.busy && job.saw_pending);
         let task = cx.spawn(async move |this, cx| {
-            let mut saw_pending = false;
             loop {
                 let result = backend
                     .inspect_argo(ArgoInspection {
@@ -67,12 +104,14 @@ impl Inspector {
                     };
                     match result {
                         Err(error) => {
+                            job.retryable = true;
                             job.message = format!(
                                 "Operation accepted; current status unavailable. Retrying observation. {}",
                                 error.message
                             );
                         }
                         Ok(snapshot) => {
+                            job.retryable = false;
                             if baseline.application.uid.is_some()
                                 && baseline.application.uid != snapshot.application.uid
                             {
@@ -94,7 +133,7 @@ impl Inspector {
                                 } else {
                                     text(&snapshot.operation_state, "startedAt") != text(&baseline.operation_state, "startedAt")
                                 };
-                                if !pending && (saw_pending || changed) {
+                                if !pending && (job.saw_pending || changed) {
                                     if refresh || phase == Some("Succeeded") {
                                         job.busy = false;
                                         job.message = "Argo CD confirmed completion".into();
@@ -106,7 +145,7 @@ impl Inspector {
                                         );
                                     }
                                 }
-                                saw_pending |= pending;
+                                job.saw_pending |= pending;
                             }
                         }
                     }
@@ -127,6 +166,10 @@ impl Inspector {
                 message: "Accepted; waiting for Argo CD to complete".into(),
                 identity,
                 _task: task,
+                request: saved_request,
+                baseline: saved_baseline,
+                retryable: false,
+                saw_pending,
             },
         );
     }

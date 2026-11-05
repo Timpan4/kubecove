@@ -55,7 +55,7 @@ fn needs_reconciliation(resource: &ArgoManagedResource) -> bool {
 }
 
 /// `argoResourceIdentityKey`.
-fn identity_key(resource: &ArgoManagedResource) -> Option<String> {
+pub(crate) fn identity_key(resource: &ArgoManagedResource) -> Option<String> {
     let kind = normalized(resource.kind.as_deref());
     let name = normalized(resource.name.as_deref());
     if kind.is_empty() || name.is_empty() {
@@ -159,7 +159,10 @@ pub struct Change {
     pub inexact: bool,
 }
 
-fn change(resource: &ArgoManagedResource, comparisons: &[ArgoResourceComparison]) -> Change {
+pub(crate) fn change(
+    resource: &ArgoManagedResource,
+    comparisons: &[ArgoResourceComparison],
+) -> Change {
     let key = identity_key(resource);
     let comparison = key.as_ref().and_then(|key| {
         comparisons

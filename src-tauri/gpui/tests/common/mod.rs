@@ -40,7 +40,7 @@ pub struct Fixture {
     page_read_phase: Mutex<String>,
     mcp: mcp::McpFixture,
     #[serde(rename = "argoConnected")]
-    argo: argo::Argo,
+    pub argo: argo::Argo,
     #[serde(rename = "secretReveals")]
     secret_reveals: Vec<serde_json::Value>,
     #[serde(skip)]
@@ -200,6 +200,16 @@ impl Backend for Fixture {
     }
     fn disconnect_argo(&self, id: String) -> Read<()> {
         self.argo.disconnect(id)
+    }
+    fn forget_argo(&self, profile: kubecove_lib::models::ArgoConnectionProfile) -> Read<()> {
+        self.argo.forget(profile)
+    }
+    fn compare_argo(
+        &self,
+        request: kubecove_gpui::backend::ArgoInspection,
+        resource: kubecove_lib::models::ArgoManagedResource,
+    ) -> Read<kubecove_lib::models::ArgoResourceComparison> {
+        self.argo.compare(request, resource)
     }
     fn inspect_argo(
         &self,
@@ -448,7 +458,32 @@ impl Backend for Fixture {
         Box::pin(async move { Ok(metrics) })
     }
     fn gitops(&self, _: String) -> Read<GitOpsInventory> {
-        self.page_gitops()
+        let read = self.page_gitops();
+        let mode = self.argo.inventory_mode.lock().unwrap().clone();
+        Box::pin(async move {
+            if mode == "unavailable" {
+                return Err(AppError::new(
+                    "Fixture provider detection unavailable",
+                    AppErrorKind::Cluster,
+                ));
+            }
+            let mut result = read.await?;
+            match mode.as_str() {
+                "absent" => {
+                    result.argo = None;
+                    result.flux = None;
+                    result.app_sets.clear();
+                    result.projects.clear();
+                }
+                "empty" => result.argo = Some(vec![]),
+                "partial" => {
+                    result.argo = Some(vec![]);
+                    result.list_error = Some("Fixture Argo inventory unavailable".into());
+                }
+                _ => {}
+            }
+            Ok(result)
+        })
     }
     fn cluster_resources(&self, _: String, _: bool) -> Read<ScopeResult> {
         let resources = self

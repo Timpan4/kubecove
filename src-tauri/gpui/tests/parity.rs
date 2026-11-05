@@ -291,6 +291,17 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
         });
         cx.run_until_parked();
         for (index, step) in scenario["steps"].as_array().unwrap().iter().enumerate() {
+            if step["action"] == "configureArgoInventory" {
+                *backend.argo.inventory_mode.lock().unwrap() = string(step, "mode").into();
+            }
+            if step["action"] == "configureArgoMock" {
+                *backend.argo.script.lock().unwrap() = string(step, "script").into();
+                if step["script"] == "snapshot-error" {
+                    cx.background_executor
+                        .advance_clock(std::time::Duration::from_millis(15_000));
+                    cx.run_until_parked();
+                }
+            }
             if step["action"] == "failWorkspaceContext" {
                 *backend.failed_workspace_context.lock().unwrap() =
                     Some(string(step, "context").to_owned());

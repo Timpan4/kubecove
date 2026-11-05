@@ -41,6 +41,8 @@ pub(super) struct Connections {
     pub request: Rc<()>,
     pub task: Option<Task<()>>,
     pub discovery: Option<Task<()>>,
+    pub discovery_error: Option<String>,
+    pub forgetting: Option<Task<()>>,
     pub reconnecting: bool,
     pub pending_reconnect: std::collections::VecDeque<ArgoConnectionProfile>,
     pub picker: Entity<
@@ -120,6 +122,8 @@ impl Connections {
             request: Rc::new(()),
             task: None,
             discovery: None,
+            discovery_error: None,
+            forgetting: None,
             reconnecting: false,
             pending_reconnect: Default::default(),
         }
@@ -148,7 +152,12 @@ impl Inspector {
     pub(super) fn cancel_argo_connection(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.argo_connections.request = Rc::new(());
         self.argo_connections.task.take();
-        self.argo_connections.busy = false;
+        self.argo_connections.discovery.take();
+        self.argo_connections.busy = self
+            .argo_connections
+            .forgetting
+            .as_ref()
+            .is_some_and(|t| !t.is_ready());
         self.argo_connections.open = false;
         self.argo_connections.dialog = false;
         self.argo_connections.editing = None;
@@ -341,6 +350,10 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.argo_connections.busy {
+            return;
+        }
+        self.argo_connections.busy = true;
         let read = self.backend.disconnect_argo(id.clone());
         self.argo_connections.request = Rc::new(());
         let request = self.argo_connections.request.clone();
@@ -350,6 +363,7 @@ impl Inspector {
                 if !Rc::ptr_eq(&request, &this.argo_connections.request) {
                     return;
                 }
+                this.argo_connections.busy = false;
                 match result {
                     Ok(()) => {
                         for status in &mut this.argo_connections.profiles {

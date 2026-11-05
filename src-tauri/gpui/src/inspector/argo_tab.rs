@@ -15,6 +15,9 @@ use gpui_kit::{AnyElement, Context, Div, SharedString, Task, Window, div, prelud
 use kubecove_lib::models::{ArgoApplicationInspector, ArgoApplicationRef};
 use std::rc::Rc;
 
+#[path = "argo_comparison.rs"]
+mod comparison;
+
 enum ArgoLoad {
     Loading,
     Ready(Box<ArgoView>),
@@ -40,6 +43,10 @@ pub(super) struct ArgoTab {
     )>,
     request: Rc<()>,
     _task: Option<Task<()>>,
+    comparison: Option<Task<()>>,
+    comparison_request: Rc<()>,
+    pub(super) comparison_error: Option<String>,
+    pub(super) refresh_options: bool,
 }
 
 impl Inspector {
@@ -193,6 +200,10 @@ impl Inspector {
             editors: Vec::new(),
             request,
             _task: Some(task),
+            comparison: None,
+            comparison_request: Rc::new(()),
+            comparison_error: None,
+            refresh_options: false,
         });
     }
 }
@@ -234,6 +245,7 @@ pub(super) fn argo_tab(
     detail: &ResourceDetail,
     timezone: crate::preferences::TimestampTimezone,
     connection: Div,
+    pending: bool,
     cx: &mut Context<Inspector>,
 ) -> AnyElement {
     let Some(state) = detail.argo.as_ref() else {
@@ -413,14 +425,7 @@ pub(super) fn argo_tab(
                 ),
         )
         .child(
-            div()
-                .flex()
-                .flex_wrap()
-                .gap(px(6.))
-                .children(["Rollback", "Refresh", "Sync"].map(|label| controls::button(if label == "Sync" { Variant::Default } else { Variant::Outline }, 24., loading)
-                    .id(SharedString::from(format!("argo-operation:{label}"))).test_support().child(label)
-                    .on_click(cx.listener(move |this, _, window, cx| this.review_argo_operation(label, window, cx)))))
-                .child(super::argo_options::trigger(cx)),
+            super::argo_options::controls(state, &summary.name, loading || pending, cx),
         );
     let counts = view.map(|view| view.counts).unwrap_or_default();
     let signals = div()
@@ -466,14 +471,19 @@ pub(super) fn argo_tab(
             |column| column.child(super::argo_operations::panel(&state.operation, cx)),
         )
         .child(connection);
-    if state.options.open {
-        column = column.child(super::argo_options::panel(state, &summary.name, cx));
-    }
     if let ArgoLoad::Failed(error) = &state.load {
-        column = column.child(surface::failed(
-            "Argo CD Application snapshot unavailable",
-            error.clone(),
-        ));
+        column = column
+            .child(surface::failed(
+                "Argo CD Application snapshot unavailable",
+                error.clone(),
+            ))
+            .child(
+                controls::button(Variant::Outline, 24., false)
+                    .id("argo-snapshot-retry")
+                    .test_support()
+                    .child("Retry snapshot")
+                    .on_click(cx.listener(|this, _, window, cx| this.reload_argo(window, cx))),
+            );
     }
     if let Some(fallback) = state
         .inspector
@@ -507,6 +517,23 @@ pub(super) fn argo_tab(
             }))
             .child(navigator(view, state, cx))
             .child(delivery(view, state, timezone));
+    }
+    if let Some(error) = &state.comparison_error {
+        column = column
+            .child(surface::failed(
+                "Resource comparison unavailable",
+                error.clone(),
+            ))
+            .child(
+                controls::button(Variant::Outline, 24., false)
+                    .id("argo-comparison-retry")
+                    .test_support()
+                    .child("Retry comparison")
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        let index = this.argo_tab_state().and_then(|s| s.focus);
+                        this.focus_argo_resource(index, window, cx);
+                    })),
+            );
     }
     let failed = matches!(state.load, ArgoLoad::Failed(_));
     column

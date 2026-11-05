@@ -1,5 +1,7 @@
 #[path = "native/argo.rs"]
 mod argo;
+#[path = "native/argo_gaps.rs"]
+mod argo_gaps;
 #[path = "native/argo_outcomes.rs"]
 mod argo_outcomes;
 #[path = "native/detail_tabs.rs"]
@@ -70,6 +72,69 @@ fn resource(context: &str) -> ResourceSummary {
 }
 
 impl Backend for Controlled {
+    fn load_preferences(&self) -> Result<kubecove_gpui::preferences::Document, AppError> {
+        Ok(self.argo.document.lock().unwrap().clone())
+    }
+    fn save_preferences(
+        &self,
+        document: kubecove_gpui::preferences::Document,
+    ) -> Result<kubecove_gpui::preferences::Document, AppError> {
+        let count = self.argo.saves.fetch_add(1, Ordering::SeqCst) + 1;
+        if self.argo.fail_save.load(Ordering::SeqCst) == count {
+            return Err(AppError::new(
+                "Fixture preferences write failed",
+                AppErrorKind::ArgoConnection,
+            ));
+        }
+        *self.argo.document.lock().unwrap() = document.clone();
+        Ok(document)
+    }
+    fn disconnect_argo(&self, _: String) -> Read<()> {
+        Box::pin(async { Ok(()) })
+    }
+    fn compare_argo(
+        &self,
+        request: kubecove_gpui::backend::ArgoInspection,
+        resource: kubecove_lib::models::ArgoManagedResource,
+    ) -> Read<kubecove_lib::models::ArgoResourceComparison> {
+        assert_eq!(request.application.context.as_deref(), Some("mock-dev"));
+        assert_eq!(request.application.uid.as_deref(), Some("original"));
+        assert!(request.connection_id.is_some());
+        assert_eq!(resource.namespace.as_deref(), Some("payments"));
+        let gate = self.argo.comparison_gate.lock().unwrap().take();
+        let fail = self.argo.comparison_fail.load(Ordering::SeqCst);
+        Box::pin(async move {
+            if let Some(gate) = gate {
+                let _ = gate.await;
+            }
+            if fail {
+                return Err(AppError::new(
+                    "Fixture comparison refused",
+                    AppErrorKind::Forbidden,
+                ));
+            }
+            Ok(kubecove_lib::models::ArgoResourceComparison {
+                target_state: Some(
+                    json!({"kind": resource.kind, "metadata": {"name":"same-name"}}),
+                ),
+                resource,
+                exact: Some(true),
+                ..Default::default()
+            })
+        })
+    }
+    fn forget_argo(&self, profile: kubecove_lib::models::ArgoConnectionProfile) -> Read<()> {
+        if self.argo.forget_fail.load(Ordering::SeqCst) {
+            return Box::pin(async {
+                Err(AppError::new(
+                    "Fixture credential deletion failed",
+                    AppErrorKind::ArgoConnection,
+                ))
+            });
+        }
+        self.argo.forgotten.lock().unwrap().push(profile.id);
+        Box::pin(async { Ok(()) })
+    }
     fn discover_argo(
         &self,
         _: kubecove_gpui::backend::ArgoTarget,

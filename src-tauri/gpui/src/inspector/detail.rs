@@ -410,7 +410,12 @@ impl Inspector {
                         detail,
                         self.persisted.preferences.timestamp_timezone,
                         self.argo_connection_panel(cx)
-                            .children(self.argo_outcome_panel(detail)),
+                            .children(self.argo_outcome_panel(detail, cx)),
+                        detail
+                            .argo
+                            .as_ref()
+                            .and_then(|s| s.inspector.as_ref())
+                            .is_some_and(|s| self.argo_operation_busy(&s.application)),
                         cx,
                     ),
                     DetailTab::Actions => actions_tab(detail, cx),

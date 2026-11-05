@@ -2,6 +2,128 @@ use super::*;
 
 pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) -> bool {
     match string(step, "action") {
+        "reconnectArgoProfile" => {
+            reveal(window, "detail-body", "argo-connect-open", cx);
+            window.click("argo-connect-open", cx);
+            window.render_frame(cx);
+            locate::click_label(window, "root", "Reconnect", cx);
+        }
+        "expandArgoDiff" => {
+            reveal(window, "detail-body", "argo-diff-lines:0", cx);
+            window.click("argo-diff-lines:0", cx);
+        }
+        "configureArgoInventory" => {
+            assert!(seek(window, cx, "gitops-list", "live-status"));
+            window.click("live-status", cx);
+            window.render_frame(cx);
+            window.click("refresh", cx);
+        }
+        "copyArgoValue" => {
+            use gpui_kit::test::TestEventExt;
+            use gpui_kit::{MouseButton, point, px};
+            let control = string(step, "control");
+            let position = match control {
+                "source" | "revision" => {
+                    let id = "gitops-card:argoApp:mock-dev:argocd:platform-cilium";
+                    assert!(seek(window, cx, "gitops-list", id));
+                    let bounds = window.find(id).bounds();
+                    if control == "source" {
+                        point(bounds.right() - px(26.), bounds.top() + px(26.))
+                    } else {
+                        point(bounds.left() + px(40.), bounds.top() + px(164.))
+                    }
+                }
+                _ => {
+                    let id = match control {
+                        "repository value" => "argo-route-1-value",
+                        "release value" => "argo-route-2-value",
+                        "cluster target value" => "argo-route-3-value",
+                        _ => unreachable!(),
+                    };
+                    let bounds = window.find(id).bounds();
+                    point(bounds.right() + px(14.), bounds.center().y)
+                }
+            };
+            window.pointer_move(position, None, cx);
+            window.pointer_down(position, MouseButton::Left, cx);
+            window.pointer_up(position, MouseButton::Left, cx);
+            assert!(
+                cx.read_from_clipboard()
+                    .and_then(|c| c.text())
+                    .is_some_and(|c| c.contains(string(step, "contains"))),
+                "wrong clipboard for {control}"
+            );
+        }
+        "configureArgoMock" => {}
+        "focusArgoResource" => {
+            use gpui_kit::test::TestEventExt;
+            use gpui_kit::{InputEvent, ScrollDelta, ScrollEvent, point, px};
+            let id = format!("argo-change:{}", string(step, "key"));
+            reveal(window, "detail-body", "argo-navigator", cx);
+            let navigator = window.find("argo-navigator").bounds();
+            let target = window.find(id.clone()).bounds();
+            let position = navigator.center();
+            window.pointer_move(position, None, cx);
+            window.dispatch_event(
+                ScrollEvent {
+                    position,
+                    delta: ScrollDelta::Pixels(point(
+                        navigator.center().x - target.center().x,
+                        px(0.),
+                    )),
+                    ..Default::default()
+                }
+                .to_platform_input(),
+                cx,
+            );
+            window.render_frame(cx);
+            assert_eq!(
+                window.find("argo-navigator").bounds().top(),
+                navigator.top(),
+                "horizontal navigation must not scroll the detail vertically"
+            );
+            window.click(id, cx);
+        }
+        "expectNoSavedArgoProfile" => {
+            reveal(window, "detail-body", "argo-connect-open", cx);
+            window.click("argo-connect-open", cx);
+            window.render_frame(cx);
+            assert!(
+                window
+                    .try_find(format!("argo-saved:{}", string(step, "url")))
+                    .is_none()
+            );
+            window.click("argo-connection-close", cx);
+        }
+        "argoControl" => {
+            let id = match string(step, "control") {
+                "Open connection" => "argo-connect-open",
+                "Close connection" => "argo-connection-close",
+                "Forget" => {
+                    reveal(window, "detail-body", "argo-connect-open", cx);
+                    window.click("argo-connect-open", cx);
+                    window.render_frame(cx);
+                    let id = format!(
+                        "argo-forget:argo:native-session:mock-dev:kubeconfigSource=browser-mock:{}",
+                        string(step, "url")
+                    );
+                    reveal(window, "detail-body", &id, cx);
+                    window.click(id, cx);
+                    return true;
+                }
+                "Retry" => "argo-discovery-retry",
+                "Confirm target again" => "argo-target-retry",
+                "Retry operation" => "argo-operation-retry",
+                "Retry state refresh" => "argo-state-retry",
+                "Retry snapshot" => "argo-snapshot-retry",
+                "All changes" => "argo-all-changes",
+                "Show diff" => "argo-removal::secret:argocd:argocd-secret",
+                "Show fewer lines" => "argo-diff-lines:0",
+                other => panic!("unknown Argo control {other}"),
+            };
+            reveal(window, "detail-body", id, cx);
+            window.click(id, cx);
+        }
         "connectArgoProfile" => {
             let anchor = if step["surface"] == "page" {
                 "argo-connection-dialog"
@@ -40,6 +162,11 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             locate::click_label(window, "root", "Disconnect", cx);
         }
         "reviewArgoOperation" => {
+            if string(step, "operation") == "Hard refresh" {
+                reveal(window, "detail-body", "argo-refresh-options", cx);
+                window.click("argo-refresh-options", cx);
+                window.render_frame(cx);
+            }
             let id = format!("argo-operation:{}", string(step, "operation"));
             reveal(window, "detail-body", &id, cx);
             window.click(id, cx);
@@ -135,7 +262,8 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 window
                     .elements()
                     .iter()
-                    .any(|e| e.label().is_some_and(|l| l.contains(expected))),
+                    .any(|e| e.label().is_some_and(|l| l.contains(expected))
+                        || e.description().is_some_and(|l| l.contains(expected))),
                 "missing {expected}"
             );
         }

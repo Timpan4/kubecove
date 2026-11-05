@@ -96,8 +96,12 @@ fn segmented(active: DiffView, cx: &mut Context<Inspector>) -> Div {
 }
 
 /// `border-t p-3 text-xs leading-relaxed`, with an optional medium title.
-fn note(title: Option<&str>, text: &str) -> Div {
+fn note(title: Option<&str>, text: &str) -> impl IntoElement {
     div()
+        .id("argo-note")
+        .test_support()
+        .aria_label(title.unwrap_or(text).to_owned())
+        .aria_description(text.to_owned())
         .p(px(12.))
         .border_t_1()
         .border_color(Tokens::border())
@@ -335,8 +339,8 @@ fn article(
                 xs_button(Variant::Ghost, "Focus")
                     .id(SharedString::from(format!("argo-focus:{}", change.key)))
                     .test_support()
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        update(this, cx, |state| state.focus = Some(index))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.focus_argo_resource(Some(index), window, cx)
                     })),
             )
         });
@@ -435,8 +439,8 @@ pub(super) fn snapshot(
                         xs_button(Variant::Outline, "All changes")
                             .id("argo-snapshot-all")
                             .test_support()
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                update(this, cx, |state| state.focus = None)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.focus_argo_resource(None, window, cx)
                             })),
                     )
                 })

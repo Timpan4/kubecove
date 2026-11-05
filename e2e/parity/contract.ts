@@ -36,7 +36,15 @@ export type Step =
     | { action: "completeArgoOperation" | "confirmArgoTunnel" }
     | { action: "connectArgoProfile"; url: string; surface?: "page"; remember?: boolean; tunnel?: boolean; local?: boolean; insecure?: boolean; customCa?: string }
     | { action: "disconnectArgoProfile" | "confirmArgoReview" | "cancelArgoReview" }
-    | { action: "reviewArgoOperation"; operation: "Refresh" | "Sync" | "Rollback" }
+    | { action: "reviewArgoOperation"; operation: "Refresh" | "Hard refresh" | "Sync" | "Rollback" }
+    | { action: "configureArgoMock"; script: import("../../src/lib/tauri-dev-mock-argo").ArgoMockScript }
+    | { action: "argoControl"; control: "Open connection" | "Close connection" | "Forget" | "Retry" | "Confirm target again" | "Retry operation" | "Retry state refresh" | "Retry snapshot" | "Show diff" | "Show fewer lines" | "All changes"; url?: string }
+    | { action: "focusArgoResource"; key: string; label: string }
+    | { action: "expectNoSavedArgoProfile"; url: string }
+    | { action: "expandArgoDiff" }
+    | { action: "reconnectArgoProfile" }
+    | { action: "configureArgoInventory"; mode: import("../../src/lib/tauri-dev-mock-argo").ArgoInventoryMode }
+    | { action: "copyArgoValue"; control: "source" | "revision" | "repository value" | "release value" | "cluster target value"; contains: string }
     | { action: "expectArgoReview"; operation: string; name: string; namespace: string; transport: string }
     | { action: "expectArgoText"; text: string }
     | { action: "argoDocument"; view: "Desired" | "Live" | "Changes"; contains: string }
@@ -175,6 +183,7 @@ export type Contract = { scenarios: Scenario[] };
 export const ACTIONS = [
     "terminalFit",
     "terminalOutput", "terminalSelect", "terminalCopy", "terminalPaste", "terminalScroll",
+    "configureArgoMock", "argoControl", "focusArgoResource", "expectNoSavedArgoProfile", "copyArgoValue", "configureArgoInventory", "expandArgoDiff", "reconnectArgoProfile",
     "failWorkspaceContext", "expectWorkspaceReadWarning",
     "editSavedWorkspace", "expectNoSavedWorkspace", "saveWorkspace", "cancelWorkspaceEdit", "toggleWorkspaceContext", "expectOverviewHealth", "expectDetailContext",
     "refreshPage",
@@ -271,7 +280,15 @@ function step(value: unknown): Step {
         case "confirmArgoTunnel": case "completeArgoOperation": return { action: item.action };
         case "connectArgoProfile": return { action: item.action, url: string(item.url), remember: optionalBoolean(item.remember), tunnel: optionalBoolean(item.tunnel), local: optionalBoolean(item.local), insecure: optionalBoolean(item.insecure), customCa: item.customCa == null ? undefined : string(item.customCa), surface: item.surface == null ? undefined : oneOf<"page">(["page"], item.surface, "an Argo connection surface") };
         case "disconnectArgoProfile": case "confirmArgoReview": case "cancelArgoReview": return { action: item.action };
-        case "reviewArgoOperation": return { action: item.action, operation: oneOf(["Refresh", "Sync", "Rollback"], item.operation, "an Argo operation") };
+        case "configureArgoMock": return { action: item.action, script: oneOf(["base", "discovery-error", "target-mismatch", "snapshot-error", "operation-error", "lazy", "full-diff"], item.script, "an Argo fixture script") };
+        case "argoControl": return { action: item.action, control: oneOf(["Open connection", "Close connection", "Forget", "Retry", "Confirm target again", "Retry operation", "Retry state refresh", "Retry snapshot", "Show diff", "Show fewer lines", "All changes"], item.control, "an Argo control"), url: item.url == null ? undefined : string(item.url) };
+        case "focusArgoResource": return { action: item.action, key: string(item.key), label: string(item.label) };
+        case "expectNoSavedArgoProfile": return { action: item.action, url: string(item.url) };
+        case "expandArgoDiff": return { action: item.action };
+        case "reconnectArgoProfile": return { action: item.action };
+        case "configureArgoInventory": return { action: item.action, mode: oneOf(["base", "absent", "empty", "partial", "unavailable"], item.mode, "an Argo inventory mode") };
+        case "copyArgoValue": return { action: item.action, control: oneOf(["source", "revision", "repository value", "release value", "cluster target value"], item.control, "an Argo copy control"), contains: string(item.contains) };
+        case "reviewArgoOperation": return { action: item.action, operation: oneOf(["Refresh", "Hard refresh", "Sync", "Rollback"], item.operation, "an Argo operation") };
         case "expectArgoReview": return { action: item.action, operation: string(item.operation), name: string(item.name), namespace: string(item.namespace), transport: string(item.transport) };
         case "expectArgoText": return { action: item.action, text: string(item.text) };
         case "argoDocument": return { action: item.action, view: oneOf(["Desired", "Live", "Changes"], item.view, "an Argo document"), contains: string(item.contains) };

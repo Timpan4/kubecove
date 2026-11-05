@@ -7,6 +7,7 @@ use std::rc::Rc;
 
 impl Inspector {
     pub(super) fn discover_argo_servers(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.argo_connections.discovery_error = None;
         let read = self.backend.discover_argo(ArgoTarget {
             context: self.scope.context.clone(),
             source: self.argo_source_key().map(str::to_owned),
@@ -21,7 +22,7 @@ impl Inspector {
                 }
                 match result {
                     Ok(servers) => this.argo_connections.servers = servers,
-                    Err(error) => this.argo_connections.error = Some(error.message),
+                    Err(error) => this.argo_connections.discovery_error = Some(error.message),
                 }
                 cx.notify();
             });
@@ -43,6 +44,7 @@ impl Inspector {
         let request = self.argo_connections.request.clone();
         self.argo_connections.busy = true;
         self.argo_connections.preview = None;
+        self.argo_connections.error = None;
         self.argo_connections.task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {

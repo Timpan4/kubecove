@@ -106,6 +106,98 @@ impl From<ArgoServerEndpoint> for Endpoint {
     }
 }
 impl Inspector {
+    pub(super) fn forget_argo_profile(
+        &mut self,
+        id: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.argo_connections.busy {
+            return;
+        }
+        let Some(profile) = self
+            .argo_connections
+            .profiles
+            .iter()
+            .filter_map(|s| s.profile.as_ref())
+            .find(|p| p.id == id && self.argo_profile_matches(p))
+            .cloned()
+        else {
+            return;
+        };
+        // Persist the auto-reconnect opt-out before touching the credential. A later
+        // failure leaves a visible, retryable profile that cannot reconnect on startup.
+        let mut document = self.persisted.clone();
+        for p in &mut document.preferences.argo_profiles {
+            if p.id == id {
+                p.remember_credential = false;
+            }
+        }
+        match self.backend.save_preferences(document) {
+            Ok(document) => self.persisted = document,
+            Err(error) => {
+                self.argo_connections.error = Some(format!(
+                    "Forget stopped before credential deletion. {}",
+                    error.message
+                ));
+                cx.notify();
+                return;
+            }
+        }
+        self.argo_connections
+            .pending_reconnect
+            .retain(|p| p.id != id);
+        for p in self
+            .argo_connections
+            .profiles
+            .iter_mut()
+            .filter_map(|s| s.profile.as_mut())
+        {
+            if p.id == id {
+                p.remember_credential = false;
+            }
+        }
+        let backend = self.backend.clone();
+        let read = async move {
+            backend.disconnect_argo(profile.id.clone()).await?;
+            backend.forget_argo(profile).await
+        };
+        self.argo_connections.busy = true;
+        self.argo_connections.error = None;
+        // Forget is not cancelled by closing the form. Its credential and metadata
+        // cleanup must finish together; the task is retained separately from login.
+        self.argo_connections.forgetting = Some(cx.spawn_in(window, async move |this, cx| {
+            let result = read.await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                this.argo_connections.busy = false;
+                for s in &mut this.argo_connections.profiles {
+                    if s.profile.as_ref().is_some_and(|p| p.id == id) { s.connected = false; }
+                }
+                let result = result.and_then(|()| {
+                    let mut document = this.persisted.clone();
+                    document.preferences.argo_profiles.retain(|p| p.id != id);
+                    document.preferences.argo_connection_preferences.retain(|_, p|
+                        !matches!(p, ConnectionPreference::Connected { profile_id } if profile_id == &id));
+                    this.backend.save_preferences(document)
+                });
+                match result {
+                    Ok(document) => {
+                        this.persisted = document;
+                        this.argo_connections.profiles.retain(|s| s.profile.as_ref().is_none_or(|p| p.id != id));
+                        if matches!(&this.argo_connections.selected, Preference::Connected(p) if p == &id) {
+                            this.argo_connections.selected = Preference::Automatic;
+                        }
+                        this.argo_connections.error = None;
+                    }
+                    Err(error) => this.argo_connections.error = Some(format!("Forget incomplete. Automatic reconnect is disabled. Retry Forget. {}", error.message)),
+                }
+                this.sync_argo_picker(window, cx);
+                this.reload_argo(window, cx);
+                cx.notify();
+            });
+        }));
+        cx.notify();
+    }
     pub(super) fn sync_argo_scope(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let scope = format!(
             "{}:{}:{:?}",

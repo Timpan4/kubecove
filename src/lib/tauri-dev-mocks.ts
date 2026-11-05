@@ -1,22 +1,13 @@
 import type { Channel, InvokeOptions } from "@tauri-apps/api/core";
 import { stringify } from "yaml";
-import type {
-	ArgoApplicationRef,
-	ArgoConnectionProfile,
-	ArgoOperationRequest,
-	ArgoServerEndpoint,
-} from "./gitops-types";
 import { connectRemoteMock, disconnectRemoteMock, remoteMockStatus, saveWorkspaceMock, selectedDialogPath, selectedWorkspaceFile } from "./settings-integration-mocks";
+import { argoApplicationSummary, argoApplicationYaml, argoMockHandlers, customResourceKinds, presentCustomResourceKinds } from "./tauri-dev-mock-argo";
+import { type MockArgs, type MockHandler, type MockResult, readMockArgs } from "./tauri-dev-mock-contract";
 import {
 	argoApps,
-	argoManagedResourceRefs,
 	deploymentRevisions,
 	dockerResources,
-	fluxHelmKind,
-	fluxKind,
-	fluxResources,
 	helmReleases,
-	kinds,
 	mockContexts,
 	namespaces,
 	networkIngressTargets,
@@ -37,17 +28,7 @@ import { cleanupMockSessions, listMockExecs, listMockForwards, mockExecInput, re
 import { createMockChannel, type TauriClient } from "./tauri-runtime";
 import type {
 	AppUsageMetrics,
-	ArgoApplicationDetails,
-	ArgoApplicationSetDetails,
-	ArgoApplicationSetSummary,
-	ArgoAppProjectDetails,
-	ArgoAppProjectSummary,
-	ArgoManagedResource,
 	BackendDiagnosticEvent,
-	DiscoveredResourceKind,
-	FluxDetectionSummary,
-	FluxResourceDetails,
-	FluxResourceKind,
 	HelmReconciliationResource,
 	HelmReleaseDetails,
 	HelmReleaseList,
@@ -56,7 +37,6 @@ import type {
 	IncidentCockpitSummary,
 	IncidentSeverity,
     KubeconfigSourcesSummary,
-	PodLogStreamRequest,
 	ResourceDetailsFull,
 	ResourceEventSummary,
 	ResourceListRequest,
@@ -64,60 +44,14 @@ import type {
 	ResourceSummary,
 	ResourceTopology,
 	StreamMessage,
-	TopologyMode,
 	YamlApplyPreview,
-	YamlApplyRequest,
 } from "./types";
 import { formatYamlDocument } from "./yamlFormat";
 
-type MockRequest = Partial<ArgoOperationRequest & YamlApplyRequest & Pick<PodLogStreamRequest, "batchLines">>;
-interface MockArgs {
-    content?: string;
-    command?: string;
-    args?: MockArgs;
-	yamlEncoding?: YamlApplyRequest["yamlEncoding"];
-	yamlViewMode?: "kubectl" | "applyClean";
-	application?: Partial<ArgoApplicationRef>;
-	channel?: Pick<Channel<StreamMessage>, "onmessage">;
-	clusterContext?: string;
-	endpoint?: ArgoServerEndpoint;
-	envVar?: string;
-	id?: string;
-	kind?: string;
-	kubeconfigEnvVar?: string;
-	mode?: TopologyMode;
-	name?: string;
-	namespace?: string | null;
-	namespaces?: string[];
-	rememberCredential?: boolean;
-	request?: MockRequest;
-	requests?: ResourceListRequest[];
-	resource?: ArgoManagedResource;
-	resourceKind?: DiscoveredResourceKind | FluxResourceKind;
-    keys?: import("./types").WatchResourceKey[];
-	serverUrl?: string;
-	show?: boolean;
-	storageName?: string;
-    path?: string;
-	transport?: "connected" | "kubernetes";
-	username?: string;
-	workspaceId?: string;
-}
-
-type MockResult = boolean | number | object | string | null | undefined;
-type MockHandler = (args: MockArgs, options?: InvokeOptions) => MockResult | Promise<MockResult>;
-let argoOutcomeComplete = false;
 let failedWorkspaceContext: string | undefined;
 export function failWorkspaceContext(context: string) { failedWorkspaceContext = context; }
-export function completeMockArgoOperation() { argoOutcomeComplete = true; }
-const argoConnections = new Map<string, ArgoConnectionProfile>();
 
-function readMockArgs<Args extends object>(args: Args | undefined): MockArgs {
-	if (args === undefined) return {};
-	// SAFETY: browser mocks are called only through typed Tauri wrappers whose command arguments
-	// match the corresponding handler fields declared by MockArgs.
-	return args as MockArgs;
-}
+
 
 export function createDevMockTauriClient(): TauriClient {
 	return {
@@ -218,86 +152,8 @@ const handlers = {
     list_pod_exec_sessions: listMockExecs,
 	get_app_usage_metrics: () => usage(),
 	list_resource_metrics: () => metrics(),
-	detect_argocd: () => true,
-	discover_argo_servers: () => [
-		{ id: "service:argocd:argocd-server:443", name: "argocd-server", namespace: "argocd", url: null, transport: "serviceTunnel", endpoint: { kind: "serviceTunnel", namespace: "argocd", serviceName: "argocd-server", servicePort: 443, scheme: "https" }, unavailableReason: null, targetPod: "argocd-server-7d9f8b6c5-x2k4q", argoLabeled: true },
-		{ id: "service:argocd:argocd-server:80", name: "argocd-server", namespace: "argocd", url: null, transport: "serviceTunnel", endpoint: { kind: "serviceTunnel", namespace: "argocd", serviceName: "argocd-server", servicePort: 80, scheme: "https" }, unavailableReason: null, targetPod: "argocd-server-7d9f8b6c5-x2k4q", argoLabeled: true },
-		{ id: "service:argocd:external", name: "argocd-external", namespace: "argocd", url: null, transport: "serviceTunnel", endpoint: null, unavailableReason: "ExternalName Services cannot be port-forwarded", argoLabeled: false },
-	],
-	preview_argo_tunnel_target: (args) => {
-		const endpoint = args?.endpoint?.kind === "serviceTunnel" ? args.endpoint : null;
-		return {
-			namespace: endpoint?.namespace ?? "argocd",
-			serviceName: endpoint?.serviceName ?? "argocd-server",
-			podName: "argocd-server-7d9f8b6c5-x2k4q",
-			certificateSha256: endpoint?.scheme === "http" ? null : "3f".repeat(32),
-		};
-	},
-	connect_argo_server: (args) => {
-		const serverUrl = args?.serverUrl ?? "https://argocd.example.test";
-		const endpoint = args?.endpoint ?? { kind: "externalHttps", url: serverUrl };
-		const profile: ArgoConnectionProfile = { id: args?.id ?? "mock-profile", endpoint, url: serverUrl, clusterContext: args?.clusterContext ?? null, workspaceId: args?.workspaceId ?? null, kubeconfigSourceKey: args?.kubeconfigEnvVar ?? source.sourceKey, transport: "connected", rememberCredential: Boolean(args?.rememberCredential) };
-		argoConnections.set(profile.id, profile);
-		return { profile, connected: true, username: args?.username ?? "mock-user", unavailableReason: null, targetPod: "argocd-server-7d9f8b6c5-x2k4q", argoLabeled: true };
-	},
-	get_argo_connection_status: (args) => {
-		const profile = args?.id ? argoConnections.get(args.id) ?? null : null;
-		return { profile, connected: profile !== null, username: profile ? "mock-user" : null, unavailableReason: profile ? null : "Profile is not connected" };
-	},
-	disconnect_argo_server: (args) => {
-		if (args?.id) argoConnections.delete(args.id);
-	},
+	...argoMockHandlers(genericYaml),
 	reveal_secret_data_value: () => "c2VjcmV0",
-	forget_argo_credential: () => undefined,
-	get_argo_application_inspector: (args) => {
-		const app = argoApplication(args);
-		const managedResources = argoManagedResources(args);
-		return {
-			application: {
-				...args?.application,
-				project: app.project,
-				resourceVersion: "42",
-				uid: `mock-${app.name}`,
-			},
-			status: {
-				sync: { status: app.syncStatus ?? "Unknown", revision: "8f4c2d1" },
-				health: { status: app.healthStatus ?? "Unknown" },
-				reconciledAt: now,
-			},
-			history: [
-				{ id: 18, revision: "8f4c2d1", revisions: [], deployedAt: now, initiatedBy: "mock-dev", source: null, sources: [] },
-				{ id: 17, revision: "3d91a7b", revisions: [], deployedAt: "2026-06-28T09:30:00Z", initiatedBy: "automation", source: null, sources: [] },
-			],
-			resources: managedResources,
-			comparisons: managedResources.map((resource) =>
-				argoComparison({ ...args, resource }),
-			),
-			conditions: [{ type: "ComparisonError", message: "Mock drift requires review before sync.", lastTransitionTime: now }],
-			operationState: argoOutcomeComplete ? { phase: "Succeeded", startedAt: "2026-11-05T00:00:01Z", message: "Fixture operation finished" } : null,
-			connected: args?.transport === "connected",
-			transport: args?.transport === "connected" ? "connected" : "kubernetes",
-			provenance:
-				args?.transport === "connected"
-					? "argocd-api"
-					: "kubernetes-status-no-diff",
-		};
-	},
-	get_argo_resource_comparison: (args) => argoComparison(args),
-	preflight_argo_operation: (args) => {
-		const request = args?.request;
-		const allowed = ["refresh", "hardRefresh", "sync", "retry"].includes(String(request?.action)) || (request?.action === "rollback" && request.transport === "connected");
-		return { allowed, transport: request?.transport, action: request?.action, reason: allowed ? null : "operation unavailable in browser mock", sessionId: allowed ? "mock-session" : null, expiresAt: allowed ? Date.now() + 300_000 : null, reviewedRequest: allowed ? request : null };
-	},
-	run_argo_operation: () => ({ accepted: true, transport: "kubernetes", message: "Mock operation accepted", operation: null }),
-	list_argocd_applications: () => argoApps,
-	get_argocd_application_details: (args) => argoDetails(args),
-	list_argocd_appsets: () => appSets(),
-	list_argocd_appprojects: () => projects(),
-	get_argocd_appset_details: (args) => appSetDetails(args),
-	get_argocd_appproject_details: (args) => projectDetails(args),
-	detect_flux: () => ({ detected: true, kinds: [fluxKind, fluxHelmKind], missingKinds: [] }) satisfies FluxDetectionSummary,
-	list_flux_resources: (args) => fluxResources.filter((row) => row.resourceKind.kind === args?.resourceKind?.kind),
-	get_flux_resource_details: (args) => fluxDetails(args),
 	list_helm_releases: () => ({ releases: helmReleases, warnings: [] }) satisfies HelmReleaseList,
 	get_helm_release_details: (args) => helmDetails(args),
 	get_helm_release_reconciliation: (args) => helmReconciliation(args),
@@ -325,28 +181,6 @@ function resourcesForCluster(cluster = "mock-dev"): ResourceSummary[] {
 	return rows.map((row) => ({ ...row, cluster }));
 }
 
-function customResourceKinds(): DiscoveredResourceKind[] {
-	return kinds.filter((kind) =>
-		[
-			"argoproj.io",
-			"kustomize.toolkit.fluxcd.io",
-			"helm.toolkit.fluxcd.io",
-            "testing.example.io",
-		].includes(kind.group),
-	);
-}
-
-function presentCustomResourceKinds(namespaces: string[] = []): DiscoveredResourceKind[] {
-	const namespaceSet = new Set(namespaces);
-	return customResourceKinds().filter((kind) =>
-		resources.some(
-			(row) =>
-				row.kind === kind.kind &&
-				row.dynamic === true &&
-				(namespaceSet.size === 0 || (row.namespace !== null && namespaceSet.has(row.namespace))),
-		),
-	);
-}
 
 function filterResources(kindName?: string, namespace?: string, cluster?: string): ResourceSummary[] {
 	return liveResources(resourcesForCluster(cluster)).filter((row) => (!kindName || row.kind === kindName) && (!namespace || row.namespace === namespace));
@@ -374,26 +208,8 @@ function resourceFromArgs(args: MockArgs): ResourceSummary {
 	const match = rows.find((row) => row.kind === kind && row.name === args?.name && (args?.namespace === undefined || row.namespace === args.namespace));
 	if (match) return match;
 	if (kind === "Application" && args?.name !== undefined) {
-		const application = argoApps.find((candidate) => candidate.name === args.name);
-		if (application) {
-			const summary: ResourceSummary = {
-				kind: "Application",
-				cluster: application.cluster,
-				name: application.name,
-				namespace: application.namespace ?? null,
-				age: application.age ?? "unknown",
-				apiVersion: "argoproj.io/v1alpha1",
-				group: "argoproj.io",
-				version: "v1alpha1",
-				plural: "applications",
-				namespaced: true,
-				dynamic: true,
-				health: "healthy",
-				createdAt: application.createdAt,
-			};
-			if (application.syncStatus) summary.status = application.syncStatus;
-			return summary;
-		}
+		const summary = argoApplicationSummary(args.name);
+		if (summary) return summary;
 	}
 	return rows[0];
 }
@@ -444,9 +260,6 @@ function yamlFor(args: MockArgs): string {
 	return genericYaml(row.kind, row.name, row.namespace, row.apiVersion);
 }
 
-function argoApplicationYaml(app: (typeof argoApps)[number]): string {
-	return `apiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: ${app.name}\n  namespace: ${app.namespace ?? "argocd"}\nspec:\n  project: ${app.project ?? "default"}\n  source:\n    repoURL: ${app.sourceRepo ?? "https://github.com/example/platform-config.git"}\n    path: environments/mock-dev\n    targetRevision: ${app.sourceRevision ?? "main"}\n  destination:\n    server: ${app.destinationServer ?? "https://kubernetes.default.svc"}\n    namespace: ${app.destinationNamespace ?? "default"}\n  syncPolicy:\n    automated:\n      prune: true\n      selfHeal: true\n`;
-}
 
 function genericYaml(kindName: string, name: string, namespace?: string | null, apiVersion = "v1"): string {
 	const ns = namespace ? `  namespace: ${namespace}\n` : "";
@@ -702,126 +515,6 @@ function metrics(): ResourceMetricsSummary {
 
 function usage(): AppUsageMetrics {
 	return { cpuPercent: 3.8, memoryBytes: 388_000_000, processCount: 3, sampledAt: now, breakdown: [{ label: "KubeCove browser mock", description: "Bun tab with fake Tauri responses", cpuPercent: 3.8, memoryBytes: 388_000_000, processCount: 3, children: [] }] };
-}
-
-function argoApplication(args: MockArgs) {
-	const application = args?.application;
-	return argoApps.find((candidate) => candidate.name === application?.name) ?? argoApps[0];
-}
-
-function argoManagedResources(args: MockArgs): ArgoManagedResource[] {
-	const app = argoApplication(args);
-	const refs = argoManagedResourceRefs[app.name] ?? [];
-	const rows = resources.filter(
-		(row) =>
-			row.name !== "kube-root-ca.crt" &&
-			refs.some(
-				(ref) =>
-					ref.kind === row.kind &&
-					ref.name === row.name &&
-					ref.namespace === row.namespace,
-			),
-	);
-	return rows.map((row) => {
-		const progressing = row.kind === "ConfigMap";
-		const degraded = row.kind === "Deployment";
-		const prune = row.kind === "Secret";
-		const apiVersion = row.apiVersion ?? "v1";
-		const [group = "", version = "v1"] = apiVersion.includes("/")
-			? apiVersion.split("/", 2)
-			: ["", apiVersion];
-		const targetState = prune ? undefined : argoManifest(row, true);
-		const liveState = argoManifest(row, false);
-		const resource: ArgoManagedResource = {
-			group,
-			version,
-			kind: row.kind,
-			namespace: row.namespace,
-			name: row.name,
-			status: row.kind === "Service" ? "Synced" : "OutOfSync",
-			health: degraded ? "Degraded" : progressing ? "Progressing" : prune ? "Missing" : "Healthy",
-			hook: false,
-			requiresPruning: prune,
-		};
-		if (args?.transport === "connected") {
-			resource.targetState = targetState;
-			resource.liveState = liveState;
-		}
-		return resource;
-	});
-}
-
-function argoComparison(args: MockArgs) {
-	const requested = args?.resource;
-	const resource = argoManagedResources({ ...args, transport: "connected" }).find(
-		(candidate) =>
-			candidate.group === requested?.group &&
-			candidate.kind === requested?.kind &&
-			candidate.namespace === requested?.namespace &&
-			candidate.name === requested?.name,
-	) ?? requested ?? {};
-	if (args?.transport !== "connected") {
-		return { resource, targetState: null, liveState: null, normalizedLiveState: null, predictedLiveState: null, modified: null, exact: false, provenance: "kubernetes-status-no-diff", availableActions: [] };
-	}
-	return {
-		resource,
-		targetState: resource.targetState ?? null,
-		liveState: resource.liveState ?? null,
-		normalizedLiveState: resource.liveState ?? null,
-		predictedLiveState: resource.targetState ?? null,
-		modified: resource.requiresPruning === true || JSON.stringify(resource.targetState) !== JSON.stringify(resource.liveState),
-		exact: true,
-		provenance: "argocd-managed-resource",
-		availableActions: [],
-	};
-}
-
-function argoManifest(row: ResourceSummary, desired: boolean) {
-	return {
-		apiVersion: row.apiVersion ?? "v1",
-		kind: row.kind,
-		metadata: {
-			name: row.name,
-			namespace: row.namespace,
-			labels: { "app.kubernetes.io/managed-by": "argocd", "kubecove.dev/state": desired ? "desired" : "live" },
-		},
-		spec: row.kind === "Deployment" ? { replicas: desired ? 3 : 2 } : undefined,
-		data: row.kind === "ConfigMap" ? { release: desired ? "8f4c2d1" : "3d91a7b" } : undefined,
-	};
-}
-
-function argoDetails(args: MockArgs): ArgoApplicationDetails {
-	const summary = argoApps.find((app) => app.name === args?.name) ?? argoApps[0];
-	return { summary, yaml: argoApplicationYaml(summary), metadata: { labels: { "argocd.argoproj.io/instance": summary.name } }, status: { sync: { status: summary.syncStatus }, health: { status: summary.healthStatus } } };
-}
-
-function appSets(): ArgoApplicationSetSummary[] {
-	return [
-		{ name: "shop-generators", cluster: "mock-dev", namespace: "argocd", age: "18d", createdAt: "2026-06-11T08:00:00Z", project: "default", status: "Ready", syncStatus: "Synced", healthStatus: "Healthy", destinationNamespace: "payments", destinationServer: "https://kubernetes.default.svc", sourceRepo: "https://github.com/example/shop", sourceRevision: "main" },
-		{ name: "tenant-previews", cluster: "mock-dev", namespace: "argocd", age: "9d", createdAt: "2026-06-20T08:00:00Z", project: "platform", status: "Ready", syncStatus: "Synced", healthStatus: "Healthy", destinationNamespace: "todo", destinationServer: "https://kubernetes.default.svc", sourceRepo: "https://github.com/example/previews", sourceRevision: "main" },
-	];
-}
-
-function appSetDetails(args: MockArgs): ArgoApplicationSetDetails {
-	const summary = appSets().find((appSet) => appSet.name === args?.name) ?? appSets()[0];
-	return { summary, yaml: genericYaml("ApplicationSet", summary.name, summary.namespace, "argoproj.io/v1alpha1"), metadata: { labels: { "kubecove.dev/mock": "true" } } };
-}
-
-function projects(): ArgoAppProjectSummary[] {
-	return [
-		{ name: "default", cluster: "mock-dev", namespace: "argocd", age: "42d", createdAt: "2026-05-18T08:00:00Z", description: "Mock default project", status: "Active" },
-		{ name: "platform", cluster: "mock-dev", namespace: "argocd", age: "31d", createdAt: "2026-05-29T08:00:00Z", description: "Platform-owned observability and ingress apps", status: "Active" },
-	];
-}
-
-function projectDetails(args: MockArgs): ArgoAppProjectDetails {
-	const summary = projects().find((project) => project.name === args?.name) ?? projects()[0];
-	return { summary, yaml: genericYaml("AppProject", summary.name, summary.namespace, "argoproj.io/v1alpha1"), metadata: { labels: { "kubecove.dev/mock": "true" } } };
-}
-
-function fluxDetails(args: MockArgs): FluxResourceDetails {
-	const summary = fluxResources.find((resource) => resource.name === args?.name && resource.resourceKind.kind === args?.resourceKind?.kind) ?? fluxResources[0];
-	return { summary, yaml: genericYaml(summary.resourceKind.kind, summary.name, summary.namespace, summary.resourceKind.apiVersion), metadata: { labels: { "kustomize.toolkit.fluxcd.io/name": summary.name } }, status: { conditions: [{ type: "Ready", status: summary.readyStatus ?? "Unknown", message: summary.message }] } };
 }
 
 function helmReleaseFromArgs(args: MockArgs): HelmReleaseSummary {

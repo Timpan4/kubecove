@@ -141,8 +141,8 @@ pub(super) fn panel(state: &ArgoTab, name: &str, cx: &mut Context<Inspector>) ->
     panel
 }
 
-pub(super) fn trigger(cx: &mut Context<Inspector>) -> gpui_kit::AnyElement {
-    button(Variant::Default, 24., false)
+fn trigger(disabled: bool, cx: &mut Context<Inspector>) -> gpui_kit::AnyElement {
+    button(Variant::Default, 24., disabled)
         .id("argo-sync-options")
         .test_support()
         .aria_label("Sync options")
@@ -151,11 +151,76 @@ pub(super) fn trigger(cx: &mut Context<Inspector>) -> gpui_kit::AnyElement {
             12.,
             crate::theme::Tokens::primary_foreground(),
         ))
-        .on_click(cx.listener(|this, _, _, cx| {
+        .on_click(cx.listener(move |this, _, _, cx| {
+            if disabled {
+                return;
+            }
             if let Some(s) = this.argo_tab_state() {
                 s.options.open = !s.options.open;
                 cx.notify();
             }
         }))
         .into_any_element()
+}
+
+pub(super) fn controls(
+    state: &ArgoTab,
+    name: &str,
+    pending: bool,
+    cx: &mut Context<Inspector>,
+) -> Div {
+    use crate::theme::Tokens;
+    use gpui_kit::{SharedString, div};
+    let busy = pending
+        || matches!(
+            state.operation.phase,
+            super::argo_operations::Phase::Checking
+                | super::argo_operations::Phase::Submitting
+                | super::argo_operations::Phase::Unconfirmed(_)
+        );
+    let operation =
+        |label: &'static str, variant, cx: &mut Context<Inspector>| {
+            button(variant, 24., busy)
+                .id(SharedString::from(format!("argo-operation:{label}")))
+                .test_support()
+                .when(label != "Rollback", |b| {
+                    b.child(ui::icon(
+                        if busy {
+                            "loader-circle"
+                        } else if label == "Refresh" {
+                            "refresh-cw"
+                        } else {
+                            "rotate-ccw"
+                        },
+                        12.,
+                        if label == "Sync" {
+                            Tokens::primary_foreground()
+                        } else {
+                            Tokens::foreground()
+                        },
+                    ))
+                })
+                .child(label)
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.review_argo_operation(label, window, cx)
+                }))
+        };
+    div().flex().flex_wrap().gap(px(6.))
+        .child(operation("Rollback", Variant::Outline, cx))
+        .child(div().relative().flex()
+            .child(operation("Refresh", Variant::Outline, cx))
+            .child(button(Variant::Outline, 24., busy).id("argo-refresh-options").test_support().aria_label("Refresh options")
+                .child(ui::icon("chevron-down", 12., Tokens::foreground()))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    if busy { return; }
+                    if let Some(s) = this.argo_tab_state() { s.refresh_options = !s.refresh_options; cx.notify(); }
+                })))
+            .when(state.refresh_options, |group| group.child(gpui_kit::deferred(super::argo_panels::panel().occlude().absolute().top(px(28.)).right_0().w(px(256.)).shadow_lg()
+                .child(ui::sm("Refresh Application"))
+                .child(ui::muted(ui::xs("Normal refresh re-reads Application state. Hard refresh also invalidates Argo CD manifest and repository caches.")))
+                .child(operation("Hard refresh", Variant::Outline, cx))).with_priority(1))))
+        .child(div().relative().flex()
+            .child(operation("Sync", Variant::Default, cx))
+            .child(trigger(busy, cx))
+            .when(state.options.open, |group| group.child(gpui_kit::deferred(panel(state, name, cx).occlude().absolute().top(px(28.)).right_0().w(px(320.)).shadow_lg()).with_priority(1))))
 }

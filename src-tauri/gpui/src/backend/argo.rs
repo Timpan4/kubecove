@@ -52,6 +52,34 @@ pub(super) fn disconnect(backend: &NativeBackend, id: String) -> Read<()> {
     backend.read(async move { commands::disconnect_argo_server(id, State::new(&*store)).await })
 }
 
+pub(super) fn forget(backend: &NativeBackend, profile: ArgoConnectionProfile) -> Read<()> {
+    backend.read(async move { commands::forget_argo_credential(profile) })
+}
+
+pub(super) fn compare(
+    backend: &NativeBackend,
+    request: ArgoInspection,
+    resource: ArgoManagedResource,
+) -> Read<ArgoResourceComparison> {
+    let store = backend.argo_connections.clone();
+    let cancellations = backend.cancellations.clone();
+    backend.read(async move {
+        commands::get_argo_resource_comparison(
+            request.application.context.clone().unwrap_or_default(),
+            request.source,
+            request.connection_id,
+            "connected".into(),
+            request.application,
+            resource,
+            None,
+            None,
+            State::new(&*store),
+            State::new(&cancellations),
+        )
+        .await
+    })
+}
+
 pub(super) fn inspect(
     backend: &NativeBackend,
     request: ArgoInspection,
@@ -124,6 +152,16 @@ pub(super) fn preview(backend: &NativeBackend, r: ArgoTarget) -> Read<ArgoTunnel
 }
 macro_rules! defaults {
     () => {
+        fn forget_argo(&self, _: kubecove_lib::models::ArgoConnectionProfile) -> Read<()> {
+            settings_integrations::unavailable("Argo CD credential deletion unavailable")
+        }
+        fn compare_argo(
+            &self,
+            _: ArgoInspection,
+            _: kubecove_lib::models::ArgoManagedResource,
+        ) -> Read<kubecove_lib::models::ArgoResourceComparison> {
+            settings_integrations::unavailable("Argo CD resource comparison unavailable")
+        }
         fn connect_argo(&self, _: ArgoConnect) -> Read<kubecove_lib::models::ArgoConnectionStatus> {
             settings_integrations::unavailable("Argo CD connection unavailable")
         }
@@ -165,6 +203,16 @@ macro_rules! defaults {
 pub(super) use defaults;
 macro_rules! native {
     () => {
+        fn forget_argo(&self, profile: kubecove_lib::models::ArgoConnectionProfile) -> Read<()> {
+            argo::forget(self, profile)
+        }
+        fn compare_argo(
+            &self,
+            request: ArgoInspection,
+            resource: kubecove_lib::models::ArgoManagedResource,
+        ) -> Read<kubecove_lib::models::ArgoResourceComparison> {
+            argo::compare(self, request, resource)
+        }
         fn connect_argo(
             &self,
             request: ArgoConnect,

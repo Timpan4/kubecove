@@ -13,6 +13,16 @@ use kubecove_lib::models::{
 
 #[derive(Default)]
 pub struct ArgoControls {
+    pub document: Mutex<kubecove_gpui::preferences::Document>,
+    pub saves: std::sync::atomic::AtomicUsize,
+    pub fail_save: std::sync::atomic::AtomicUsize,
+    pub forget_fail: AtomicBool,
+    pub forgotten: Mutex<Vec<String>>,
+    pub discovery_fail: AtomicBool,
+    pub reviews: Mutex<Vec<ArgoOperationRequest>>,
+    pub lazy: AtomicBool,
+    pub comparison_gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+    pub comparison_fail: AtomicBool,
     pub enabled: AtomicBool,
     fail: AtomicBool,
     connect_gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
@@ -27,6 +37,7 @@ pub struct ArgoControls {
 }
 impl ArgoControls {
     pub fn preflight(&self, request: ArgoOperationRequest) -> Read<ArgoOperationPreflight> {
+        self.reviews.lock().unwrap().push(request.clone());
         Box::pin(async move {
             Ok(ArgoOperationPreflight {
                 allowed: true,
@@ -79,6 +90,14 @@ impl ArgoControls {
         })
     }
     pub fn discover(&self) -> Read<Vec<kubecove_lib::models::ArgoServerCapability>> {
+        if self.discovery_fail.load(Ordering::SeqCst) {
+            return Box::pin(async {
+                Err(AppError::new(
+                    "Fixture discovery unavailable",
+                    AppErrorKind::ArgoConnection,
+                ))
+            });
+        }
         Box::pin(async {
             Ok(vec![kubecove_lib::models::ArgoServerCapability {
                 id: "fixture-service".into(),
@@ -118,6 +137,7 @@ impl ArgoControls {
         })
     }
     pub fn inspect(&self, request: ArgoInspection) -> Read<ArgoApplicationInspector> {
+        let lazy = self.lazy.load(Ordering::SeqCst);
         let gate = self.inspect_gate.lock().unwrap().take();
         let observation = self.observation.load(Ordering::SeqCst);
         let repeated_revision = self.repeated_revision.load(Ordering::SeqCst);
@@ -142,13 +162,37 @@ impl ArgoControls {
             );
             Ok(ArgoApplicationInspector {
                 application,
+                resources: if lazy {
+                    ["Deployment", "ConfigMap"]
+                        .map(|kind| kubecove_lib::models::ArgoManagedResource {
+                            group: Some(if kind == "Deployment" { "apps" } else { "" }.into()),
+                            version: Some("v1".into()),
+                            kind: Some(kind.into()),
+                            namespace: Some("payments".into()),
+                            name: Some("same-name".into()),
+                            status: Some("OutOfSync".into()),
+                            ..Default::default()
+                        })
+                        .into()
+                } else {
+                    vec![]
+                },
                 history: if repeated_revision {
                     serde_json::from_value(json!([
                         {"id":18,"revision":"same-commit","revisions":[],"deployedAt":null,"initiatedBy":null,"source":null,"sources":[]},
                         {"id":17,"revision":"same-commit","revisions":[],"deployedAt":null,"initiatedBy":null,"source":null,"sources":[]}
                     ])).unwrap()
-                } else { Vec::new() },
-                operation_state: (observation == 1).then(|| json!({"phase":"Failed","startedAt":"new-operation","message":"Fixture sync failed"})),
+                } else {
+                    Vec::new()
+                },
+                operation_state: match observation {
+                    1 => Some(
+                        json!({"phase":"Failed","startedAt":"new-operation","message":"Fixture sync failed"}),
+                    ),
+                    5 => Some(json!({"phase":"Failed","message":"Fixture sync failed"})),
+                    _ => None,
+                },
+                operation_requested: observation == 4,
                 transport: if request.connection_id.is_some() {
                     "connected"
                 } else {
@@ -194,6 +238,12 @@ pub(super) fn open_argo(
     handle
 }
 pub(super) fn connect(cx: &mut TestAppContext, h: gpui_kit::AnyWindowHandle) {
+    connect_with(cx, h, false);
+}
+pub(super) fn connect_remembered(cx: &mut TestAppContext, h: gpui_kit::AnyWindowHandle) {
+    connect_with(cx, h, true);
+}
+fn connect_with(cx: &mut TestAppContext, h: gpui_kit::AnyWindowHandle, remember: bool) {
     step(cx, h, |w, cx| {
         w.click("argo-connect-open", cx);
         w.render_frame(cx);
@@ -203,6 +253,10 @@ pub(super) fn connect(cx: &mut TestAppContext, h: gpui_kit::AnyWindowHandle) {
         scroll::reveal(w, "detail-body", "argo-token", cx);
         w.click("argo-token", cx);
         w.input("native-fixture-token", cx);
+        if remember {
+            scroll::reveal(w, "detail-body", "argo-remember", cx);
+            w.click("argo-remember", cx);
+        }
     });
     step(cx, h, |w, cx| {
         scroll::reveal(w, "detail-body", "argo-connect-submit", cx);
@@ -302,7 +356,10 @@ fn failed_execution_consumes_the_confirmation(cx: &mut TestAppContext) {
     assert_eq!(backend.argo.submitted.load(Ordering::SeqCst), 1);
 }
 
-fn preview(cx: &mut TestAppContext, backend: Arc<Controlled>) -> gpui_kit::AnyWindowHandle {
+pub(super) fn preview(
+    cx: &mut TestAppContext,
+    backend: Arc<Controlled>,
+) -> gpui_kit::AnyWindowHandle {
     let h = open_argo(cx, backend);
     step(cx, h, |w, cx| {
         w.click("argo-connect-open", cx);

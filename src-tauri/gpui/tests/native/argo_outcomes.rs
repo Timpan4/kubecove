@@ -76,6 +76,10 @@ fn replacement_does_not_claim_completion(cx: &mut TestAppContext) {
 fn observation_errors_remain_pending(cx: &mut TestAppContext) {
     let backend = Arc::new(Controlled::default());
     let h = submit(cx, backend.clone());
+    backend.argo.observation.store(4, Ordering::SeqCst);
+    cx.background_executor
+        .advance_clock(std::time::Duration::from_millis(15_000));
+    cx.run_until_parked();
     backend.argo.observation.store(3, Ordering::SeqCst);
     cx.background_executor
         .advance_clock(std::time::Duration::from_millis(15_000));
@@ -91,4 +95,22 @@ fn observation_errors_remain_pending(cx: &mut TestAppContext) {
         w.click("argo-operation:Sync", cx);
     });
     assert_eq!(backend.argo.submitted.load(Ordering::SeqCst), 1);
+    backend.argo.observation.store(5, Ordering::SeqCst);
+    argo::step(cx, h, |w, cx| {
+        scroll::reveal(w, "detail-body", "argo-state-retry", cx);
+        w.click("argo-state-retry", cx);
+    });
+    argo::step(cx, h, |w, _| {
+        assert!(
+            w.find("argo-outcome")
+                .label()
+                .unwrap()
+                .contains("Argo CD reported failure")
+        )
+    });
+    assert_eq!(
+        backend.argo.submitted.load(Ordering::SeqCst),
+        1,
+        "state refresh must not resubmit"
+    );
 }

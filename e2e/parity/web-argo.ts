@@ -2,6 +2,55 @@ import type { Page } from "playwright-core";
 import type { Step } from "./contract";
 export async function argoAction(page: Page, step: Step) {
     switch (step.action) {
+        case "reconnectArgoProfile":
+            await page.getByRole("tabpanel").getByRole("button", { name: /^(Manage connection|Connect Argo CD)$/ }).click();
+            await page.getByRole("dialog").getByRole("button", { name: "Reconnect", exact: true }).click();
+            break;
+        case "expandArgoDiff": await page.getByRole("button", { name: /^Show all .* lines$/ }).first().click(); break;
+        case "configureArgoInventory":
+            await page.evaluate(`import('/src/lib/tauri-dev-mock-argo.ts').then(m => m.configureArgoInventory(${JSON.stringify(step.mode)}))`);
+            await page.getByRole("button", { name: "Live updates and refresh options", exact: true }).first().click();
+            await page.getByRole("button", { name: "Refresh (clear cache)", exact: true }).click();
+            await page.keyboard.press("Escape");
+            break;
+        case "copyArgoValue": {
+            await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (value: string) => { document.documentElement.dataset.argoCopy = value; } } }));
+            if (step.control.endsWith("value")) await page.getByRole("button", { name: new RegExp(`^Copy ${step.control}:`) }).click();
+            else {
+                const suffix = step.control === "source" ? "Activate to copy source details." : "Activate to copy.";
+                const card = page.locator("div.group.relative").filter({ has: page.getByRole("button", { name: "Open details for Application platform-cilium in argocd", exact: true }) });
+                await card.locator(`[aria-label$="${suffix}"]`).filter({ hasText: step.control === "source" ? "" : step.contains }).first().click();
+            }
+            if (!(await page.locator("html").getAttribute("data-argo-copy"))?.includes(step.contains)) throw new Error("Wrong Argo clipboard value");
+            break;
+        }
+        case "configureArgoMock":
+            await page.evaluate(`import('/src/lib/tauri-dev-mock-argo.ts').then(m => m.configureArgoMock(${JSON.stringify(step.script)}))`);
+            break;
+        case "focusArgoResource":
+            await page.getByRole("tabpanel").getByRole("button", { name: step.label, exact: false }).first().click();
+            break;
+        case "expectNoSavedArgoProfile": {
+            await page.getByRole("tabpanel").getByRole("button", { name: /^(Manage connection|Connect Argo CD)$/ }).click();
+            await page.getByRole("dialog", { name: "Argo CD connection" }).getByText(step.url, { exact: true }).waitFor({ state: "hidden" });
+            await page.keyboard.press("Escape");
+            break;
+        }
+        case "argoControl": {
+            if (step.control === "Open connection") {
+                await page.getByRole("tabpanel").getByRole("button", { name: /^(Manage connection|Connect Argo CD)$/ }).click();
+                await page.getByRole("dialog").getByRole("radio", { name: "Found in cluster", exact: true }).click();
+            } else if (step.control === "Close connection") {
+                await page.keyboard.press("Escape");
+            } else if (step.control === "Forget") {
+                await page.getByRole("tabpanel").getByRole("button", { name: /^(Manage connection|Connect Argo CD)$/ }).click();
+                const dialog = page.getByRole("dialog", { name: "Argo CD connection" });
+                await dialog.getByRole("button", { name: "Forget", exact: true }).click();
+                await dialog.getByRole("button", { name: "Forget", exact: true }).waitFor({ state: "hidden" });
+                await page.keyboard.press("Escape");
+            } else await page.getByRole("button", { name: step.control, exact: true }).first().click();
+            break;
+        }
         case "connectArgoProfile": {
             await (step.surface === "page" ? page.getByRole("button", { name: "Argo CD connection", exact: true }) : page.getByRole("tabpanel").getByRole("button", { name: "Connect Argo CD", exact: true })).click();
             const dialog = page.getByRole("dialog", { name: "Argo CD connection" });
@@ -40,7 +89,12 @@ export async function argoAction(page: Page, step: Step) {
             await page.keyboard.press("Escape");
             break;
         }
-        case "reviewArgoOperation": await page.getByRole("tabpanel").getByRole("button", { name: step.operation, exact: true }).click(); break;
+        case "reviewArgoOperation":
+            if (step.operation === "Hard refresh") {
+                await page.getByRole("button", { name: "Refresh options", exact: true }).click();
+                await page.getByRole("button", { name: "Hard refresh", exact: true }).click();
+            } else await page.getByRole("tabpanel").getByRole("button", { name: step.operation, exact: true }).click();
+            break;
         case "confirmArgoReview": await page.getByRole("button", { name: "Confirm Argo CD operation", exact: true }).click(); break;
         case "cancelArgoReview": await page.getByRole("button", { name: "Cancel review", exact: true }).click(); break;
         case "expectArgoReview": {
@@ -48,7 +102,14 @@ export async function argoAction(page: Page, step: Step) {
             await review.getByText(`${step.operation} ${step.transport} mock-dev Application ${step.namespace} ${step.name}`, { exact: true }).waitFor();
             break;
         }
-        case "expectArgoText": await page.getByRole("tabpanel").getByText(step.text, { exact: false }).first().waitFor(); break;
+        case "expectArgoText": {
+            const text = page.getByText(step.text, { exact: false }).first();
+            await text.waitFor({ state: "attached" });
+            const technical = page.locator("details").filter({ has: text });
+            if (await technical.count() && !(await text.isVisible())) await technical.locator("summary").click();
+            await text.waitFor();
+            break;
+        }
         case "argoDocument":
             await page.getByRole("tabpanel").getByRole("radio", { name: step.view, exact: true }).click();
             await page.getByRole("tabpanel").getByText(step.contains, { exact: false }).first().waitFor();
@@ -89,7 +150,7 @@ export async function argoAction(page: Page, step: Step) {
             break;
         case "expectArgoWorkspaceTransport": await page.getByText(step.text, { exact: false }).first().waitFor(); break;
         case "completeArgoOperation":
-            await page.evaluate("import('/src/lib/tauri-dev-mocks.ts').then(m => m.completeMockArgoOperation())");
+            await page.evaluate("import('/src/lib/tauri-dev-mock-argo.ts').then(m => m.completeMockArgoOperation())");
             break;
 
         default: throw new Error(`Unknown Argo action ${step.action}`);

@@ -1,0 +1,566 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "argo-connected.forget-profile",
+      "title": "Forget removes saved metadata and its credential across restart",
+      "steps": [
+        {
+          "action": "openPage",
+          "page": "GitOps"
+        },
+        {
+          "action": "openGitOpsDetails",
+          "kind": "Application",
+          "name": "tenant-ledger",
+          "namespace": "argocd"
+        },
+        {
+          "action": "connectArgoProfile",
+          "url": "https://argocd.example.test",
+          "remember": true
+        },
+        {
+          "action": "argoControl",
+          "control": "Forget",
+          "url": "https://argocd.example.test"
+        },
+        {
+          "action": "restartClient"
+        },
+        {
+          "action": "openPage",
+          "page": "GitOps"
+        },
+        {
+          "action": "openGitOpsDetails",
+          "kind": "Application",
+          "name": "tenant-ledger",
+          "namespace": "argocd"
+        },
+        {
+          "action": "expectNoSavedArgoProfile",
+          "url": "https://argocd.example.test"
+        }
+      ]
+    },
+    {
+      "id": "argo-review.hard-refresh",
+      "title": "Hard refresh and normal refresh review distinct canonical actions",
+      "steps": [
+        {
+          "action": "openPage",
+          "page": "GitOps"
+        },
+        {
+          "action": "openGitOpsDetails",
+          "kind": "Application",
+          "name": "tenant-ledger",
+          "namespace": "argocd"
+        },
+        {
+          "action": "connectArgoProfile",
+          "url": "https://argocd.example.test",
+          "remember": true
+        },
+        {
+          "action": "reviewArgoOperation",
+          "operation": "Hard refresh"
+        },
+        {
+          "action": "expectArgoReview",
+          "operation": "hardRefresh",
+          "name": "tenant-ledger",
+          "namespace": "argocd",
+          "transport": "connected"
+        },
+        {
+          "action": "cancelArgoReview"
+        },
+        {
+          "action": "reviewArgoOperation",
+          "operation": "Refresh"
+        },
+        {
+          "action": "expectArgoReview",
+          "operation": "refresh",
+          "name": "tenant-ledger",
+          "namespace": "argocd",
+          "transport": "connected"
+        },
+        {
+          "action": "cancelArgoReview"
+        }
+      ]
+    },
+    {
+      "id": "argo-review.retry-preflight",
+      "title": "Retry obtains a fresh review after a failed exact Application preflight",
+      "steps": [
+        {
+          "action": "openPage",
+          "page": "GitOps"
+        },
+        {
+          "action": "openGitOpsDetails",
+          "kind": "Application",
+          "name": "tenant-ledger",
+          "namespace": "argocd"
+        },
+        {
+          "action": "configureArgoMock",
+          "script": "operation-error"
+        },
+        {
+          "action": "reviewArgoOperation",
+          "operation": "Refresh"
+        },
+        {
+          "action": "expectArgoText",
+          "text": "Fixture preflight unavailable"
+        },
+        {
+          "action": "configureArgoMock",
+          "script": "base"
+        },
+        {
+          "action": "argoControl",
+          "control": "Retry operation"
+        },
+        {
+          "action": "expectArgoReview",
+          "operation": "refresh",
+          "name": "tenant-ledger",
+          "namespace": "argocd",
+          "transport": "kubernetes"
+        },
+        {
+          "action": "cancelArgoReview"
+        }
+      ]
+    },
+    {
+      "id": "argo-app.retry-snapshot",
+      "title": "Retry snapshot recovers the selected Application after a failed read",
+      "steps": [
+        {
+          "action": "configureArgoMock",
+          "script": "snapshot-error"
+        },
+        {
+          "action": "openPage",
+          "page": "GitOps"
+        },
+        {
+          "action": "openGitOpsDetails",
+          "kind": "Application",
+          "name": "tenant-ledger",
+          "namespace": "argocd"
+        },
+        {
+          "action": "expectArgoText",
+          "text": "Fixture snapshot unavailable"
+        },
+        {
+          "action": "configureArgoMock",
+          "script": "base"
+        },
+        {
+          "action": "argoControl",
+          "control": "Retry snapshot"
+        },
+        {
+          "action": "expectArgoApplication",
+          "name": "tenant-ledger",
+          "health": "Degraded",
+          "sync": "OutOfSync"
+        }
+      ]
+    },
+    {
+      "id": "argo-connected.lazy-comparison",
+      "title": "An oversized snapshot loads the focused resource comparison through its exact identity",
+      "steps": [
+        {
+          "action": "openPage",
+          "page": "GitOps"
+        },
+        {
+          "action": "openGitOpsDetails",
+          "kind": "Application",
+          "name": "tenant-ledger",
+          "namespace": "argocd"
+        },
+        {
+          "action": "configureArgoMock",
+          "script": "lazy"
+        },
+        {
+          "action": "connectArgoProfile",
+          "url": "https://argocd.example.test",
+          "remember": true
+        },
+        {
+          "action": "focusArgoResource",
+          "key": "apps:statefulset:tenant-ledger:ledger",
+          "label": "StatefulSet · ledger"
+        },
+        {
+          "action": "argoDocument",
+          "view": "Desired",
+          "contains": "kind: StatefulSet"
+        },
+        {
+          "action": "argoControl",
+          "control": "All changes"
+        }
+      ]
+    },
+    {
+      "id": "argo-connected.discovery-retry",
+      "title": "Discovery Retry recovers the connection form after an unavailable discovery read",
+      "steps": [
+        {
+          "action": "openPage",
+          "page": "GitOps"
+        },
+        {
+          "action": "openGitOpsDetails",
+          "kind": "Application",
+          "name": "tenant-ledger",
+          "namespace": "argocd"
+        },
+        {
+          "action": "configureArgoMock",
+          "script": "discovery-error"
+        },
+        {
+          "action": "argoControl",
+          "control": "Open connection"
+        },
+        {
+          "action": "expectArgoText",
+          "text": "Fixture discovery unavailable"
+        },
+        {
+          "action": "configureArgoMock",
+          "script": "base"
+        },
+        {
+          "action": "argoControl",
+          "control": "Retry"
+        },
+        {
+          "action": "expectArgoText",
+          "text": "argocd/argocd-server:443"
+        },
+        {
+          "action": "argoControl",
+          "control": "Close connection"
+        }
+      ]
+    },
+    {
+      "id": "argo-connected.reconfirm-target",
+      "title": "A target mismatch requires a new Pod and certificate preview before retrying connection",
+      "steps": [
+        {
+          "action": "openPage",
+          "page": "GitOps"
+        },
+        {
+          "action": "openGitOpsDetails",
+          "kind": "Application",
+          "name": "tenant-ledger",
+          "namespace": "argocd"
+        },
+        {
+          "action": "connectArgoProfile",
+          "url": "https://argocd-server.argocd.svc",
+          "tunnel": true,
+          "remember": true
+        },
+        {
+          "action": "confirmArgoTunnel"
+        },
+        {
+          "action": "disconnectArgoProfile"
+        },
+        {
+          "action": "configureArgoMock",
+          "script": "target-mismatch"
+        },
+        {
+          "action": "reconnectArgoProfile"
+        },
+        {
+          "action": "expectArgoText",
+          "text": "Fixture tunnel target changed"
+        },
+        {
+          "action": "configureArgoMock",
+          "script": "base"
+        },
+        {
+          "action": "argoControl",
+          "control": "Confirm target again"
+        },
+        {
+          "action": "confirmArgoTunnel"
+        },
+        {
+          "action": "expectArgoText",
+          "text": "Connected Argo CD API"
+        }
+      ]
+    },
+    {
+      "id": "argo-app.copy-disclosures",
+      "title": "Source, revision and destination disclosures copy their full evidence",
+      "steps": [
+        {
+          "action": "openPage",
+          "page": "GitOps"
+        },
+        {
+          "action": "copyArgoValue",
+          "control": "source",
+          "contains": "platform-cilium"
+        },
+        {
+          "action": "copyArgoValue",
+          "control": "revision",
+          "contains": "main"
+        }
+      ]
+    },
+    {
+      "id": "argo-workspace.copy-route",
+      "title": "Managed workspace route disclosures copy repository, release and cluster target",
+      "steps": [
+        {
+          "action": "openPage",
+          "page": "GitOps"
+        },
+        {
+          "action": "openGitOpsDetails",
+          "kind": "Application",
+          "name": "tenant-ledger",
+          "namespace": "argocd"
+        },
+        {
+          "action": "closeDetail"
+        },
+        {
+          "action": "openGitOpsResources",
+          "kind": "Application",
+          "name": "tenant-ledger",
+          "namespace": "argocd"
+        },
+        {
+          "action": "expectArgoWorkspace",
+          "name": "tenant-ledger"
+        },
+        {
+          "action": "copyArgoValue",
+          "control": "repository value",
+          "contains": "git-server"
+        },
+        {
+          "action": "copyArgoValue",
+          "control": "release value",
+          "contains": "8f4c2d1"
+        },
+        {
+          "action": "copyArgoValue",
+          "control": "cluster target value",
+          "contains": "tenant-ledger"
+        }
+      ]
+    },
+    {
+      "id": "argo-app.removal-disclosure",
+      "title": "A pruned resource requires explicit disclosure before its live document appears",
+      "steps": [
+        {
+          "action": "openPage",
+          "page": "GitOps"
+        },
+        {
+          "action": "openGitOpsDetails",
+          "kind": "Application",
+          "name": "platform-argocd",
+          "namespace": "argocd"
+        },
+        {
+          "action": "connectArgoProfile",
+          "url": "https://argocd.example.test"
+        },
+        {
+          "action": "focusArgoResource",
+          "key": ":secret:argocd:argocd-secret",
+          "label": "Secret · argocd-secret"
+        },
+        {
+          "action": "argoControl",
+          "control": "Show diff"
+        },
+        {
+          "action": "argoDocument",
+          "view": "Live",
+          "contains": "kind: Secret"
+        },
+        {
+          "action": "argoDocument",
+          "view": "Desired",
+          "contains": "No desired manifest"
+        }
+      ]
+    },
+    {
+      "id": "argo-app.inventory-absent",
+      "title": "Argo inventory exposes its absent state",
+      "steps": [
+        {
+          "action": "openPage",
+          "page": "GitOps"
+        },
+        {
+          "action": "configureArgoInventory",
+          "mode": "absent"
+        },
+        {
+          "action": "expectPageText",
+          "text": "No GitOps providers detected"
+        }
+      ]
+    },
+    {
+      "id": "argo-app.inventory-unavailable",
+      "title": "Provider detection errors remain visible",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "configureArgoInventory", "mode": "unavailable" },
+        { "action": "expectArgoText", "text": "Fixture provider detection unavailable" }
+      ]
+    },
+    {
+      "id": "argo-app.inventory-empty",
+      "title": "Argo inventory exposes its empty state",
+      "steps": [
+        {
+          "action": "openPage",
+          "page": "GitOps"
+        },
+        {
+          "action": "configureArgoInventory",
+          "mode": "empty"
+        },
+        {
+          "action": "expectPageText",
+          "text": "No Argo CD Applications found"
+        }
+      ]
+    },
+    {
+      "id": "argo-app.inventory-partial",
+      "title": "Argo inventory exposes its partial state",
+      "steps": [
+        {
+          "action": "openPage",
+          "page": "GitOps"
+        },
+        {
+          "action": "configureArgoInventory",
+          "mode": "partial"
+        },
+        {
+          "action": "expectArgoText",
+          "text": "Fixture Argo inventory unavailable"
+        }
+      ]
+    },
+    {
+      "id": "argo-app.full-diff",
+      "title": "A long comparison expands and collapses its diff preview",
+      "steps": [
+        {
+          "action": "openPage",
+          "page": "GitOps"
+        },
+        {
+          "action": "openGitOpsDetails",
+          "kind": "Application",
+          "name": "tenant-ledger",
+          "namespace": "argocd"
+        },
+        {
+          "action": "configureArgoMock",
+          "script": "full-diff"
+        },
+        {
+          "action": "connectArgoProfile",
+          "url": "https://argocd.example.test"
+        },
+        {
+          "action": "expandArgoDiff"
+        },
+        {
+          "action": "argoControl",
+          "control": "Show fewer lines"
+        }
+      ]
+    },
+    {
+      "id": "argo-review.retry-accepted-state",
+      "title": "Retry state refresh observes an accepted operation without resubmitting",
+      "steps": [
+        {
+          "action": "openPage",
+          "page": "GitOps"
+        },
+        {
+          "action": "openGitOpsDetails",
+          "kind": "Application",
+          "name": "tenant-ledger",
+          "namespace": "argocd"
+        },
+        {
+          "action": "connectArgoProfile",
+          "url": "https://argocd.example.test"
+        },
+        {
+          "action": "reviewArgoOperation",
+          "operation": "Sync"
+        },
+        {
+          "action": "confirmArgoReview"
+        },
+        {
+          "action": "configureArgoMock",
+          "script": "snapshot-error"
+        },
+        {
+          "action": "expectArgoText",
+          "text": "Fixture snapshot unavailable"
+        },
+        {
+          "action": "configureArgoMock",
+          "script": "base"
+        },
+        {
+          "action": "argoControl",
+          "control": "Retry state refresh"
+        },
+        {
+          "action": "completeArgoOperation"
+        },
+        {
+          "action": "expectArgoText",
+          "text": "Argo CD confirmed completion"
+        }
+      ]
+    }
+  ]
+}

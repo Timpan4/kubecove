@@ -153,7 +153,7 @@
 	const observationPending = $derived(trackedOperation?.phase === "unknown");
 	const lastOperationRequest = $derived(trackedOperation?.request ?? null);
 
-	let selectedResource = $state<ArgoManagedResource | null>(null);
+	let selectedResource = $state.raw<ArgoManagedResource | null>(null);
 	let selectedHistoryKey = $state<string | null>(null);
 	let rollbackHistoryId = $state<number | null>(null);
 	let diffView = $state<DiffView>("changes");

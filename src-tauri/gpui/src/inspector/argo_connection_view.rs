@@ -112,6 +112,7 @@ impl Inspector {
             };
             let saved = p.clone();
             let id = p.id.clone();
+            let forget_id = id.clone();
             panel = panel.child(
                 div()
                     .flex()
@@ -156,11 +157,47 @@ impl Inspector {
                                         input.set_value(saved.url.clone(), window, cx)
                                     });
                                     this.argo_connections.editing = Some(saved.clone());
-                                    this.connect_argo_profile(None, window, cx);
+                                    let confirmed = if saved.remember_credential {
+                                        match &saved.endpoint {
+                                            kubecove_lib::models::ArgoServerEndpoint::ServiceTunnel { namespace, service_name, .. } => Some(ArgoConfirmedTarget { namespace: namespace.clone(), service_name: service_name.clone(), pod_name: None, certificate_sha256: None }),
+                                            _ => None,
+                                        }
+                                    } else { None };
+                                    this.connect_argo_profile(confirmed, window, cx);
                                 }
+                            })),
+                    )
+                    .child(
+                        button(Variant::Outline, 24., state.busy)
+                            .id(gpui_kit::SharedString::from(format!(
+                                "argo-forget:{forget_id}"
+                            )))
+                            .test_support()
+                            .aria_label("Forget")
+                            .child("Forget")
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.forget_argo_profile(forget_id.clone(), window, cx)
                             })),
                     ),
             );
+        }
+        if let Some(error) = &state.discovery_error {
+            panel = panel
+                .child(
+                    ui::xs(error.clone())
+                        .id("argo-discovery-error")
+                        .test_support()
+                        .aria_label(error.clone()),
+                )
+                .child(
+                    button(Variant::Outline, 24., false)
+                        .id("argo-discovery-retry")
+                        .test_support()
+                        .child("Retry")
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.discover_argo_servers(window, cx)
+                        })),
+                );
         }
         panel = panel.child(
             div()
@@ -211,6 +248,7 @@ impl Inspector {
                         server.id
                     )))
                     .test_support()
+                    .aria_label(super::argo_profiles::endpoint_label(&endpoint))
                     .child(format!(
                         "{}{}",
                         super::argo_profiles::endpoint_label(&endpoint),
@@ -346,7 +384,11 @@ impl Inspector {
                 button(Variant::Default, 24., state.busy)
                     .id("argo-connect-submit")
                     .test_support()
-                    .child("Connect")
+                    .child(if state.busy {
+                        "Connecting…"
+                    } else {
+                        "Connect"
+                    })
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.connect_argo_profile(None, window, cx)
                     })),
@@ -360,6 +402,26 @@ impl Inspector {
                         cx.listener(|this, _, window, cx| this.cancel_argo_connection(window, cx)),
                     ),
             );
+        if state.error.is_some()
+            && let Some(endpoint) = state
+                .preview_endpoint
+                .clone()
+                .or_else(|| state.editing.as_ref().map(|p| p.endpoint.clone()))
+            && matches!(
+                endpoint,
+                kubecove_lib::models::ArgoServerEndpoint::ServiceTunnel { .. }
+            )
+        {
+            panel = panel.child(
+                button(Variant::Outline, 24., state.busy)
+                    .id("argo-target-retry")
+                    .test_support()
+                    .child("Confirm target again")
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.preview_argo_target(endpoint.clone(), window, cx)
+                    })),
+            );
+        }
         panel.when_some(state.error.clone(), |p, error| {
             p.child(
                 ui::xs(error.clone())

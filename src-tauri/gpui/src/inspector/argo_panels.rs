@@ -40,12 +40,7 @@ pub(super) fn navigator(view: &ArgoView, state: &ArgoTab, cx: &mut Context<Inspe
     .id("argo-all-changes")
     .test_support()
     .child("All changes")
-    .on_click(cx.listener(|this, _, _, cx| {
-        if let Some(state) = this.argo_tab_state() {
-            state.focus = None;
-            cx.notify();
-        }
-    }));
+    .on_click(cx.listener(|this, _, window, cx| this.focus_argo_resource(None, window, cx)));
     panel()
         .child(
             div()
@@ -70,11 +65,20 @@ pub(super) fn navigator(view: &ArgoView, state: &ArgoTab, cx: &mut Context<Inspe
         .child(
             div()
                 .id("argo-navigator")
+                .test_support()
                 .mt(px(12.))
                 .pb(px(4.))
                 .flex()
                 .gap(px(8.))
                 .overflow_x_scroll()
+                .restrict_scroll_to_axis()
+                .on_scroll(|event, window, cx| {
+                    let delta = event.delta.pixel_delta(window.line_height());
+                    // GPUI otherwise remaps the horizontal delta onto the detail's y axis.
+                    if delta.x.abs() > delta.y.abs() {
+                        cx.stop_propagation();
+                    }
+                })
                 .child(all)
                 .children(view.changes.iter().enumerate().map(|(index, change)| {
                     let selected = state.focus == Some(index);
@@ -110,11 +114,8 @@ pub(super) fn navigator(view: &ArgoView, state: &ArgoTab, cx: &mut Context<Inspe
                                     }),
                             ),
                     )
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        if let Some(state) = this.argo_tab_state() {
-                            state.focus = Some(index);
-                            cx.notify();
-                        }
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.focus_argo_resource(Some(index), window, cx)
                     }))
                 })),
         )

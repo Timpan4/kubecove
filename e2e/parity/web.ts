@@ -27,6 +27,7 @@ export async function action(page: Page, step: Step) {
         case "replayPageReads": case "focusStalePage": case "expectPageText": case "searchCustomKinds": case "searchKindPicker": case "expectCustomGroup": case "toggleKind": case "openKindPicker": case "closeKindPicker": case "selectAllKinds": case "expectKindChecked": await sidebarLiveAction(page, step); break;
         case "fillMcpPort": case "mcpControl": case "expectMcpState": case "expectMcpCopy": case "expectMcpRequests":
             await mcpAction(page, step); break;
+        case "configureArgoMock": case "argoControl": case "focusArgoResource": case "expectNoSavedArgoProfile": case "copyArgoValue": case "configureArgoInventory": case "expandArgoDiff": case "reconnectArgoProfile":
         case "connectArgoProfile": case "disconnectArgoProfile": case "reviewArgoOperation": case "confirmArgoReview": case "cancelArgoReview": case "expectArgoReview": case "expectArgoText": case "argoDocument":
         case "selectArgoPreference": case "expectSavedArgoProfile": case "configureArgoSync": case "selectArgoHistory": case "expectArgoWorkspaceTransport": case "completeArgoOperation": case "confirmArgoTunnel":
             await argoAction(page, step); break;
