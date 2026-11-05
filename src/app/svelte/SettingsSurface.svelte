@@ -24,7 +24,7 @@
 	import FriendlyError from "@/components/FriendlyError.svelte";
 	import type { LogLayout, TimestampTimezone, YamlDiffStyle } from "@/lib/settings";
 	import { IS_DEV_BUILD } from "@/lib/build-env";
-	import { isBrowserRuntime, isTauriRuntime } from "@/lib/tauri-runtime";
+	import { isBrowserRuntime, isTauriRuntime, isBrowserDevMockMode } from "@/lib/tauri-runtime";
 	import {
 		getBrowserSessionState,
 		subscribeBrowserSession,
@@ -250,10 +250,10 @@
 		updates: !isBrowserRuntime() ? Object.values(UPDATES_ROWS) : [],
 		diagnostics: DIAGNOSTICS_ROWS,
 		advanced: Object.values(ADVANCED_ROWS),
-		remote: !isBrowserRuntime() && isTauriRuntime()
+		remote: !isBrowserRuntime() && (isTauriRuntime() || isBrowserDevMockMode())
 			? [{ title: "Remote KubeCove server", description: "Connect this desktop to a headless KubeCove host." }]
 			: [],
-		agents: !isBrowserRuntime() && isTauriRuntime() ? Object.values(MCP_ROWS) : [],
+		agents: !isBrowserRuntime() && (isTauriRuntime() || isBrowserDevMockMode()) ? Object.values(MCP_ROWS) : [],
 	} satisfies Record<SettingsCategoryId, SettingsRowMeta[]>;
 
 	const categories: Array<{ id: SettingsCategoryId; label: string }> = [
@@ -265,8 +265,8 @@
 		...(!isBrowserRuntime() ? [{ id: "updates" as const, label: "Updates" }] : []),
 		{ id: "diagnostics", label: "Diagnostics" },
 		{ id: "advanced", label: "Advanced" },
-		...(!isBrowserRuntime() && isTauriRuntime() ? [{ id: "remote" as const, label: "Remote server" }] : []),
-		...(!isBrowserRuntime() && isTauriRuntime() ? [{ id: "agents" as const, label: "AI agents" }] : []),
+		...(!isBrowserRuntime() && (isTauriRuntime() || isBrowserDevMockMode()) ? [{ id: "remote" as const, label: "Remote server" }] : []),
+		...(!isBrowserRuntime() && (isTauriRuntime() || isBrowserDevMockMode()) ? [{ id: "agents" as const, label: "AI agents" }] : []),
 	];
 
 	let activeCategory = $state<SettingsCategoryId>("general");
@@ -598,7 +598,7 @@
 			<AdvancedActionsSettings />
 		{/if}
 
-		{#if showCategory("remote") && isTauriRuntime()}
+		{#if showCategory("remote") && (isTauriRuntime() || isBrowserDevMockMode())}
 			<FieldGroup>
 				<SettingsRow {...categoryRows.remote[0]}>
 					<RemoteConnectionSettings />
@@ -606,7 +606,7 @@
 			</FieldGroup>
 		{/if}
 
-		{#if showCategory("agents") && isTauriRuntime()}
+		{#if showCategory("agents") && (isTauriRuntime() || isBrowserDevMockMode())}
 			<McpServerSettings rows={MCP_ROWS} />
 		{/if}
 

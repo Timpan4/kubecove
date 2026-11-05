@@ -22,7 +22,7 @@ pub mod theme;
 mod topology;
 mod ui;
 mod unified_diff;
-mod workspaces;
+pub mod workspaces;
 
 pub use inspector::Inspector;
 

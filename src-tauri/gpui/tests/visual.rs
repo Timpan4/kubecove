@@ -116,6 +116,19 @@ mod visual {
                 .unwrap();
             cx.run_until_parked();
             match view.as_str() {
+                "settings-remote" | "settings-updates" | "settings-kubeconfig" => {
+                    act(&mut cx, handle, |window, cx| {
+                        window.click("open-settings", cx)
+                    });
+                    let category = match view.as_str() {
+                        "settings-remote" => "Remote server",
+                        "settings-updates" => "Updates",
+                        _ => "Kubeconfig",
+                    };
+                    act(&mut cx, handle, |window, cx| {
+                        window.click(format!("settings-section:{category}"), cx)
+                    });
+                }
                 "overview" => {}
                 "live-limited" | "live-failed" | "live-reconnecting" => {
                     act(&mut cx, handle, |window, cx| {

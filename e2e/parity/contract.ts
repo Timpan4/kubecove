@@ -3,6 +3,12 @@ import { join } from "node:path";
 
 type Identity = { kind: string; name: string; namespace: string };
 export type Step =
+    | { action: "expectWorkspaceExport"; name: string }
+    | { action: "fillSettingsField"; field: "Server URL" | "Server token"; value: string }
+    | { action: "clickSettingsButton"; label: string }
+    | { action: "expectSettingsText" | "expectNoSettingsText" | "expectRuntimeEndpoint"; value: string }
+    | { action: "expectMaskedToken" | "reopenStoredSettings" | "attemptUnverifiedUpdate" }
+    | { action: "configureSettingsMock"; script: "choose-kubeconfig" | "choose-workspace" | "cancel-dialog" | "no-update" | "invalid-signature" }
 	| { action: "expectLiveState"; label: string; notice?: string }
 	| { action: "replayLiveData"; script: import("../../src/lib/tauri-dev-mock-live").LiveScript }
 	| ({ action: "expectResourceStatus"; status: string } & Identity)
@@ -110,6 +116,8 @@ export type Contract = { scenarios: Scenario[] };
 
 /** Every action both drivers must implement; `contract.test.ts` checks each driver handles each one. */
 export const ACTIONS = [
+    "expectWorkspaceExport",
+    "fillSettingsField", "clickSettingsButton", "expectSettingsText", "expectNoSettingsText", "expectRuntimeEndpoint", "expectMaskedToken", "reopenStoredSettings", "attemptUnverifiedUpdate", "configureSettingsMock",
 	"expectLiveState", "replayLiveData", "expectResourceStatus", "openCustomKind",
 	"selectTopologyNode", "expectTopologyEmpty", "expectUsageFooter", "openUsageTree", "expectNoUsageFooter", "expectUsageProcess", "setTopologyMode", "selectNamespace", "expectTopology", "expectTopologyEdge", "expectNoTopologyNode", "expectResourceMetrics",
 	"expectYamlAbsent",
@@ -156,6 +164,12 @@ function strings(value: unknown, allowEmpty: boolean): string[] {
 function step(value: unknown): Step {
 	const item = object(value);
 	switch (item.action) {
+        case "fillSettingsField": return { action: item.action, field: oneOf(["Server URL", "Server token"], item.field, "a remote field"), value: string(item.value) };
+        case "clickSettingsButton": return { action: item.action, label: string(item.label) };
+        case "expectSettingsText": case "expectNoSettingsText": case "expectRuntimeEndpoint": return { action: item.action, value: string(item.value) };
+        case "expectMaskedToken": case "reopenStoredSettings": case "attemptUnverifiedUpdate": return { action: item.action };
+        case "configureSettingsMock": return { action: item.action, script: oneOf(["choose-kubeconfig", "choose-workspace", "cancel-dialog", "no-update", "invalid-signature"], item.script, "a settings script") };
+        case "expectWorkspaceExport": return { action: item.action, name: string(item.name) };
         case "expectLiveState": return { action: item.action, label: string(item.label), ...(item.notice === undefined ? {} : { notice: string(item.notice) }) };
         case "replayLiveData": return { action: item.action, script: oneOf(["update", "delete", "reconnecting", "connected", "events", "forbidden", "failed"], item.script, "a live script") };
         case "expectResourceStatus": return { action: item.action, kind: string(item.kind), namespace: string(item.namespace), name: string(item.name), status: string(item.status) };

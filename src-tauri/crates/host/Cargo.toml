@@ -15,7 +15,9 @@ desktop = [
     "dep:rustls",
     "dep:kubecove-live",
     "kubecove-kube/desktop",
+    "remote-client",
 ]
+remote-client = ["dep:tokio-tungstenite", "dep:rustls", "dep:kubecove-live"]
 bench-support = ["desktop"]
 
 [dependencies]

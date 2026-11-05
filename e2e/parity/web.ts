@@ -1,4 +1,4 @@
-import { writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { chromium, type Locator, type Page } from "playwright-core";
@@ -10,6 +10,55 @@ async function action(page: Page, step: Step) {
 	const search = page.getByRole("textbox", { name: "Search resources" });
 	const close = page.getByRole("button", { name: "Close resource details" });
 	switch (step.action) {
+        case "expectWorkspaceExport": {
+            await page.waitForFunction(`() => import('/src/lib/settings-integration-mocks.ts').then(m => !!m.workspaceExportMock())`);
+            const content = await page.evaluate("import('/src/lib/settings-integration-mocks.ts').then(m => m.workspaceExportMock())");
+            if (typeof content !== "string") throw new Error("Missing workspace export content");
+            const document = JSON.parse(content);
+            const items = document.kind === "WorkspaceList" ? document.items : [document];
+            if (!items.some((item: { spec: { displayName: string; scope: { clusterContext: string; namespaces: string[] } } }) => item.spec.displayName === step.name && item.spec.scope.clusterContext === "mock-dev" && item.spec.scope.namespaces.includes("payments"))) throw new Error("Export ignored the imported workspace scope");
+            break;
+        }
+        case "fillSettingsField": await page.getByLabel(step.field, { exact: true }).fill(step.value); break;
+        case "clickSettingsButton": await page.getByRole("button", { name: step.label, exact: true }).click(); break;
+        case "expectSettingsText": await page.getByText(step.value, { exact: false }).first().waitFor(); break;
+        case "expectNoSettingsText":
+            if ((await page.locator("body").textContent())?.includes(step.value)) throw new Error("Unexpected settings text");
+            break;
+        case "expectMaskedToken":
+            if (await page.getByLabel("Server token", { exact: true }).getAttribute("type") !== "password") throw new Error("Credential is not masked");
+            break;
+        case "expectRuntimeEndpoint": {
+            await page.waitForFunction(`async () => ((await import('/src/lib/settings-integration-mocks.ts')).remoteMockStatus()?.serverUrl ?? 'local') === ${JSON.stringify(step.value)}`);
+            break;
+        }
+        case "reopenStoredSettings":
+            {
+                const directory = await mkdtemp(join(process.env.TMPDIR ?? join(process.cwd(), ".t"), "parity-settings-"));
+                try {
+                    const snapshot = await page.evaluate("import('/src/lib/tauri-dev-mocks.ts').then(m => m.createDevMockTauriClient().invoke('get_kubeconfig_sources'))");
+                    const path = join(directory, "sources.json");
+                    await writeFile(path, JSON.stringify(snapshot));
+                    await page.getByRole("button", { name: "Back to app", exact: true }).click();
+                    await page.reload();
+                    await page.evaluate(`import('/src/lib/tauri-dev-mocks.ts').then(m => m.restoreMockKubeconfigSources(${await readFile(path, "utf8")}))`);
+                    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+                } finally { await rm(directory, { recursive: true }); }
+            }
+            break;
+        case "configureSettingsMock":
+            await page.evaluate(`import('/src/lib/settings-integration-mocks.ts').then(m => m.configureSettingsMock(${JSON.stringify(step.script)}))`);
+            if (step.script === "no-update" || step.script === "invalid-signature") {
+                await page.evaluate(`Promise.all([import('/src/features/app-updates/store.ts'), import('/src/lib/release-channel.ts')]).then(([m, channel]) => {
+                    channel.setAppUpdatesEnabledForTests(true);
+                    m.setAppUpdateApiForTests({ check: async () => ${step.script === "no-update" ? "null" : "({ currentVersion: '0.13.0', version: '0.14.0', downloadAndInstall: async () => { throw new Error('Invalid update signature'); } })"}, relaunch: async () => { throw new Error('Tests cannot relaunch'); } });
+                })`);
+            }
+            break;
+        case "attemptUnverifiedUpdate":
+            await page.getByRole("button", { name: "Install", exact: true }).click();
+            await page.getByText("Invalid update signature", { exact: true }).waitFor();
+            break;
         case "expectLiveState":
             await page.getByRole("button", { name: "Live updates and refresh options" }).first().getByText(step.label, { exact: true }).waitFor();
             if (step.notice) await page.getByText(step.notice, { exact: true }).first().waitFor();

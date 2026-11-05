@@ -1,0 +1,97 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "workspaces.native-dialog-import-export",
+      "title": "Preview the chosen workspace file and export the imported scope",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "choose-workspace" },
+        { "action": "openLauncher" },
+        { "action": "clickSettingsButton", "label": "Import" },
+        { "action": "expectSettingsText", "value": "Import preview" },
+        { "action": "clickSettingsButton", "label": "Apply import" },
+        { "action": "expectSavedWorkspace", "name": "Controlled import", "summary": "mock-dev / payments / Pod" },
+        { "action": "clickSettingsButton", "label": "Export all" },
+        { "action": "expectWorkspaceExport", "name": "Controlled import" }
+      ]
+    },
+    {
+      "id": "workspaces.native-dialog-cancellation",
+      "title": "Cancelling a workspace import preserves saved workspaces",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "cancel-dialog" },
+        { "action": "openLauncher" },
+        { "action": "clickSettingsButton", "label": "Import" },
+        { "action": "expectSettingsText", "value": "Import canceled." },
+        { "action": "expectSavedWorkspace", "name": "Parity mock workspace", "summary": "mock-dev / All namespaces / Pod, Deployment +7" }
+      ]
+    },
+    {
+      "id": "settings-remote.endpoint-and-disconnect",
+      "title": "Connect to the entered host, hide the credential, and explicitly return to local runtime",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "fillSettingsField", "field": "Server token", "value": "parity-controlled-credential" },
+        { "action": "expectMaskedToken" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "expectSettingsText", "value": "http://127.0.0.1:43117" },
+        { "action": "expectNoSettingsText", "value": "parity-controlled-credential" },
+        { "action": "expectRuntimeEndpoint", "value": "http://127.0.0.1:43117" },
+        { "action": "clickSettingsButton", "label": "Disconnect" },
+        { "action": "expectRuntimeEndpoint", "value": "local" },
+        { "action": "expectSettingsText", "value": "Server token" }
+      ]
+    },
+    {
+      "id": "settings-kubeconfig.dialog-and-reopen",
+      "title": "Apply selected files only to kubeconfig sources, preserve cancellation and reopen stored settings",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Kubeconfig" },
+        { "action": "setKubeconfigEnvVar", "value": "PARITY_KUBECONFIG" },
+        { "action": "configureSettingsMock", "script": "choose-kubeconfig" },
+        { "action": "clickSettingsButton", "label": "Choose files" },
+        { "action": "expectSettingsText", "value": "/controlled/parity.config" },
+        { "action": "expectKubeconfigEnvVar", "value": "PARITY_KUBECONFIG" },
+        { "action": "configureSettingsMock", "script": "cancel-dialog" },
+        { "action": "clickSettingsButton", "label": "Choose files" },
+        { "action": "expectSettingsText", "value": "/controlled/parity.config" },
+        { "action": "reopenStoredSettings" },
+        { "action": "showSettingsSection", "section": "Kubeconfig" },
+        { "action": "expectKubeconfigEnvVar", "value": "PARITY_KUBECONFIG" },
+        { "action": "expectSettingsText", "value": "/controlled/parity.config" },
+        { "action": "clickSettingsButton", "label": "Remove kubeconfig path" },
+        { "action": "expectNoSettingsText", "value": "/controlled/parity.config" }
+      ]
+    },
+    {
+      "id": "settings-updates.no-update",
+      "title": "An empty update response offers no install",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "no-update" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Updates" },
+        { "action": "clickSettingsButton", "label": "Check" },
+        { "action": "expectSettingsText", "value": "KubeCove version" },
+        { "action": "expectNoSettingsText", "value": "Update available" },
+        { "action": "expectNoSettingsText", "value": "Install" }
+      ]
+    },
+    {
+      "id": "settings-updates.signature-refusal",
+      "title": "An unverified update is never installed",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "invalid-signature" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Updates" },
+        { "action": "clickSettingsButton", "label": "Check" },
+        { "action": "expectSettingsText", "value": "Update available" },
+        { "action": "attemptUnverifiedUpdate" },
+        { "action": "expectNoSettingsText", "value": "Relaunch required" }
+      ]
+    }
+  ]
+}

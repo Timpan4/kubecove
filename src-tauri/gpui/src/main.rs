@@ -1,9 +1,15 @@
 use gpui_kit::{AppContext, Bounds, WindowBounds, WindowOptions, px, size};
-use kubecove_gpui::{Inspector, assets::AppAssets, backend::NativeBackend};
+use kubecove_gpui::{
+    Inspector,
+    assets::AppAssets,
+    backend::{DesktopBackend, NativeBackend, settings_integrations::config_directory},
+};
 use std::sync::Arc;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let backend = Arc::new(NativeBackend::new()?);
+    let backend = Arc::new(DesktopBackend::new(NativeBackend::with_settings_directory(
+        config_directory()?,
+    )?));
     gpui_kit::application()
         .with_assets(AppAssets)
         .run(move |cx| {

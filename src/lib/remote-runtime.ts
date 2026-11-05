@@ -1,7 +1,15 @@
-import { Channel, type InvokeOptions, invoke } from "@tauri-apps/api/core";
+import { Channel, type InvokeArgs, type InvokeOptions, invoke as nativeInvoke } from "@tauri-apps/api/core";
 import { writable } from "svelte/store";
-import { getChannelId, type TauriClient } from "./tauri-runtime";
+import { getChannelId, shouldUseBrowserDevMocks, type TauriClient } from "./tauri-runtime";
 import type { JsonObject, JsonValue } from "./types";
+
+async function invoke<T>(command: string, args?: InvokeArgs): Promise<T> {
+	if (shouldUseBrowserDevMocks()) {
+		const { createDevMockTauriClient } = await import("./tauri-dev-mocks");
+		return createDevMockTauriClient().invoke<T>(command, args);
+	}
+	return nativeInvoke<T>(command, args);
+}
 
 export interface RemoteConnectionSummary {
 	serverUrl: string;

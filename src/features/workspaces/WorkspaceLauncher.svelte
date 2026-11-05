@@ -54,7 +54,7 @@
 		pickWorkspaceImportJson,
 		saveWorkspaceExportJson,
 	} from "@/lib/tauri";
-	import { isBrowserRuntime } from "@/lib/tauri-runtime";
+	import { isBrowserRuntime, shouldUseBrowserDevMocks } from "@/lib/tauri-runtime";
 	import { queryKeys } from "@/lib/queryKeys";
 	import { kubeconfigSourcesQueryOptions } from "@/lib/kubeconfig-sources-query";
 	import type { ClusterContext, NamespaceSummary } from "@/lib/types";
@@ -98,7 +98,7 @@
 	];
 
 	const client = createTauriClient();
-	const browserRuntime = isBrowserRuntime();
+	const browserRuntime = isBrowserRuntime() && !shouldUseBrowserDevMocks();
 	let importFileInput = $state<HTMLInputElement | null>(null);
 	const sourceQuery = createQuery(() => kubeconfigSourcesQueryOptions(client));
 	const sourceReady = $derived(sourceQuery.isSuccess || sourceQuery.isError);

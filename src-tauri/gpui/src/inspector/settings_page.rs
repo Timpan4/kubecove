@@ -9,7 +9,7 @@ use crate::settings::{self, Category, Control, Row};
 use crate::theme::{HEADING, Tokens};
 use crate::ui;
 use gpui_kit::TestSupportExt;
-use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::input::{Input, InputEvent, InputState, TextareaState};
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
     AnyElement, Context, Div, Entity, FontWeight, SharedString, Stateful, Subscription, Task,
@@ -19,11 +19,13 @@ use gpui_kit::{
 pub(super) type Observed = gpui_kit::base::ObservedElement<Stateful<Div>>;
 
 pub(super) struct SettingsState {
+    pub(super) integrations: super::settings_integrations::Integrations,
     /// The page "Back to app" returns to.
     previous: Page,
     category: Category,
     search: Entity<InputState>,
     pub(super) env_var: Entity<InputState>,
+    pub(super) pasted_paths: Entity<TextareaState>,
     pub(super) sources: Option<Result<KubeconfigSourcesSummary, String>>,
     pub(super) busy: bool,
     pub(super) task: Option<Task<()>>,
@@ -34,16 +36,23 @@ impl SettingsState {
     pub(super) fn new(window: &mut Window, cx: &mut Context<Inspector>) -> Self {
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search settings..."));
         let env_var = cx.new(|cx| InputState::new(window, cx).placeholder("KUBECONFIG"));
+        let pasted_paths = cx.new(|cx| {
+            TextareaState::new(window, cx)
+                .placeholder("/path/to/kubeconfig.yaml")
+                .rows(2)
+        });
         let subscriptions = vec![cx.subscribe_in(&search, window, |_, _, event, _, cx| {
             if matches!(event, InputEvent::Change) {
                 cx.notify();
             }
         })];
         Self {
+            integrations: super::settings_integrations::Integrations::new(window, cx),
             previous: Page::Overview,
             category: Category::General,
             search,
             env_var,
+            pasted_paths,
             sources: None,
             busy: false,
             task: None,
@@ -63,6 +72,7 @@ impl Inspector {
             .update(cx, |input, cx| input.set_value("", window, cx));
         let read = self.backend.kubeconfig_sources();
         self.run_kubeconfig(read, window, cx);
+        self.initialize_settings_integrations(window, cx);
         self.open_page(Page::Settings, cx);
     }
 
@@ -200,6 +210,12 @@ impl Inspector {
     }
 
     fn settings_category(&self, category: Category, cx: &mut Context<Self>) -> AnyElement {
+        if category == Category::Remote {
+            return self.remote_settings_section(cx).into_any_element();
+        }
+        if category == Category::Updates {
+            return self.updates_settings_section(cx).into_any_element();
+        }
         if category == Category::Kubeconfig {
             return self.kubeconfig_section(cx).into_any_element();
         }
@@ -226,14 +242,6 @@ impl Inspector {
             }))
             .into_any_element()
     }
-}
-
-pub(super) fn settings_reason(title: &str) -> &'static str {
-    settings::ROWS
-        .iter()
-        .find(|row| row.title == title)
-        .and_then(|row| row.unavailable)
-        .unwrap_or("Not available in the native client yet.")
 }
 
 /// `SettingsRow.svelte`: `rounded-md border bg-card p-3`, title and description

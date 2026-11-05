@@ -6,6 +6,7 @@ import type {
 	ArgoOperationRequest,
 	ArgoServerEndpoint,
 } from "./gitops-types";
+import { connectRemoteMock, disconnectRemoteMock, remoteMockStatus, saveWorkspaceMock, selectedDialogPath, selectedWorkspaceFile } from "./settings-integration-mocks";
 import {
 	argoApps,
 	argoManagedResourceRefs,
@@ -54,6 +55,7 @@ import type {
 	HelmReleaseSummary,
 	IncidentCockpitSummary,
 	IncidentSeverity,
+    KubeconfigSourcesSummary,
 	LiveSessionCleanupResult,
 	PodLogStreamRequest,
 	ResourceDetailsFull,
@@ -71,6 +73,9 @@ import { formatYamlDocument } from "./yamlFormat";
 
 type MockRequest = Partial<ArgoOperationRequest & YamlApplyRequest & Pick<PodLogStreamRequest, "batchLines">>;
 interface MockArgs {
+    content?: string;
+    command?: string;
+    args?: MockArgs;
 	yamlEncoding?: YamlApplyRequest["yamlEncoding"];
 	yamlViewMode?: "kubectl" | "applyClean";
 	application?: Partial<ArgoApplicationRef>;
@@ -94,6 +99,7 @@ interface MockArgs {
 	serverUrl?: string;
 	show?: boolean;
 	storageName?: string;
+    path?: string;
 	transport?: "connected" | "kubernetes";
 	username?: string;
 	workspaceId?: string;
@@ -130,8 +136,20 @@ export function createDevMockTauriClient(): TauriClient {
 // The page's kubeconfig settings, so saved values read back like the desktop settings file.
 const kubeconfigSource = { ...source };
 const kubeconfigSources = () => ({ ...kubeconfigSource });
+export function restoreMockKubeconfigSources(sources: KubeconfigSourcesSummary): void {
+    Object.assign(kubeconfigSource, sources);
+}
 
 const handlers = {
+	remote_connect: (args) => connectRemoteMock(args.serverUrl ?? ""),
+	remote_disconnect: disconnectRemoteMock,
+	remote_connection_status: remoteMockStatus,
+	remote_invoke: (args): MockResult | Promise<MockResult> => {
+		if (!remoteMockStatus()?.connected) throw new Error("Selected remote server is disconnected");
+		const handler = findMockHandler(args.command ?? "");
+		if (!handler) throw new Error("Unknown controlled remote command");
+		return handler(args.args ?? {});
+	},
 	get_kubeconfig_sources: kubeconfigSources,
 	set_kubeconfig_env_var: (args) => {
 		kubeconfigSource.kubeconfigEnvVar = args.envVar?.trim() || "KUBECONFIG";
@@ -141,11 +159,18 @@ const handlers = {
 		kubeconfigSource.showSourceLabels = Boolean(args.show);
 		return kubeconfigSources();
 	},
-	pick_kubeconfig_paths: kubeconfigSources,
-	save_workspace_export_json: () => true,
-	pick_workspace_import_json: () => null,
+	pick_kubeconfig_paths: () => {
+		const path = selectedDialogPath();
+		if (path && !kubeconfigSource.paths.some((entry) => entry.path === path)) kubeconfigSource.paths = [...kubeconfigSource.paths, { path }];
+		return kubeconfigSources();
+	},
+	save_workspace_export_json: (args) => saveWorkspaceMock(String(args.content)),
+	pick_workspace_import_json: selectedWorkspaceFile,
 	add_kubeconfig_paths: kubeconfigSources,
-	remove_kubeconfig_path: kubeconfigSources,
+	remove_kubeconfig_path: (args) => {
+        kubeconfigSource.paths = kubeconfigSource.paths.filter((entry) => entry.path !== args.path);
+        return kubeconfigSources();
+    },
 	reorder_kubeconfig_paths: kubeconfigSources,
 	list_kube_contexts: () => mockContexts,
 	list_namespaces: () => namespaces,

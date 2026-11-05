@@ -20,16 +20,15 @@ use kubecove_lib::models::ResourceSummary;
 
 type Observed = gpui_kit::base::ObservedElement<Stateful<Div>>;
 
-const FILE_DIALOG: &str =
-    "Needs the desktop file dialog, which the native client has no host adapter for yet.";
 const EDIT: &str = "Editing a saved workspace is not available in the native client yet.";
 
 pub(super) struct LauncherState {
+    pub(super) transfer: super::launcher_transfer::TransferState,
     pub(super) open: bool,
-    saved: Vec<SavedWorkspace>,
+    pub(super) saved: Vec<SavedWorkspace>,
     active: Option<u64>,
     /// Ids and edit order for new records.
-    next: u64,
+    pub(super) next: u64,
     pub(super) name: Entity<InputState>,
     /// Kube contexts by name, with whether each is current.
     pub(super) context_choices: Vec<(String, bool)>,
@@ -46,6 +45,7 @@ pub(super) struct LauncherState {
 impl LauncherState {
     pub(super) fn new(window: &mut Window, cx: &mut Context<Inspector>) -> Self {
         Self {
+            transfer: Default::default(),
             open: false,
             saved: vec![],
             active: None,
@@ -373,22 +373,31 @@ impl Inspector {
                         div()
                             .flex()
                             .gap(px(8.))
-                            .child(unavailable(
-                                "launcher-import",
-                                FILE_DIALOG,
-                                button(Variant::Outline, 24., false)
+                            .child(
+                                button(Variant::Outline, 24., state.transfer.busy)
+                                    .id("settings-button:Import")
+                                    .test_support()
+                                    .aria_label("Import")
                                     .child(ui::icon("upload", 12., Tokens::foreground()))
-                                    .child("Import"),
-                            ))
-                            .child(unavailable(
-                                "launcher-export-all",
-                                FILE_DIALOG,
-                                button(Variant::Outline, 24., false)
+                                    .child("Import")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.import_workspace_file(window, cx)
+                                    })),
+                            )
+                            .child(
+                                button(Variant::Outline, 24., state.transfer.busy)
+                                    .id("settings-button:Export all")
+                                    .test_support()
+                                    .aria_label("Export all")
                                     .child(ui::icon("download", 12., Tokens::foreground()))
-                                    .child("Export all"),
-                            )),
+                                    .child("Export all")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.export_workspace_file(None, window, cx)
+                                    })),
+                            ),
                     ),
             )
+            .child(self.workspace_transfer_panel(cx))
             .child(
                 div()
                     .flex()
@@ -447,11 +456,15 @@ impl Inspector {
                                                 this.open_workspace(id, window, cx)
                                             })),
                                     )
-                                    .child(unavailable(
-                                        ("workspace-export", id as usize),
-                                        FILE_DIALOG,
-                                        ui::ghost_icon("download", 24., 14.),
-                                    ))
+                                    .child(
+                                        ui::ghost_icon("download", 24., 14.)
+                                            .id(("workspace-export", id as usize))
+                                            .test_support()
+                                            .aria_label(format!("Export {}", workspace.name))
+                                            .on_click(cx.listener(move |this, _, window, cx| {
+                                                this.export_workspace_file(Some(id), window, cx)
+                                            })),
+                                    )
                                     .child(unavailable(
                                         ("workspace-edit", id as usize),
                                         EDIT,

@@ -8,6 +8,10 @@ import { VIEWPORT, VIEWS, type View } from "./views";
 
 async function show(page: Page, view: View) {
 	switch (view) {
+        case "settings-remote": case "settings-updates": case "settings-kubeconfig":
+            await page.getByRole("button", { name: "Open settings", exact: true }).click();
+            await page.getByRole("button", { name: view === "settings-remote" ? "Remote server" : view === "settings-updates" ? "Updates" : "Kubeconfig", exact: true }).click();
+            return;
 		case "usage-footer":
             await page.getByRole("button", { name: "Open settings", exact: true }).click();
             await page.getByRole("switch", { name: "Show CPU and memory footer", exact: true }).click();

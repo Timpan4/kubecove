@@ -52,8 +52,6 @@ pub enum Control {
 /// Why a row is disabled in the native client.
 pub const LOCAL_STORE: &str =
     "Saved in the web client's local storage. The native client has no settings store yet.";
-const FILE_DIALOG: &str =
-    "Needs the desktop file dialog, which the native client has no host adapter for yet.";
 const DESKTOP_HOST: &str =
     "Runs in the Tauri desktop host. The native client has no host adapter for it yet.";
 const BROWSER_TOOL: &str =
@@ -254,16 +252,14 @@ pub const ROWS: &[Row] = &[
         "Added kubeconfig paths",
         "Extra kubeconfig files KubeCove reads alongside the environment variable.",
         Section,
-        Some(FILE_DIALOG),
+        None,
     ),
     row(
         C::Updates,
         "KubeCove version",
         "Current version, update checks, and installing new releases.",
         Section,
-        Some(
-            "Application updates need the desktop updater, which the native client has no host adapter for yet.",
-        ),
+        None,
     ),
     row(
         C::Diagnostics,
@@ -313,7 +309,7 @@ pub const ROWS: &[Row] = &[
         "Remote KubeCove server",
         "Connect this desktop to a headless KubeCove host.",
         Section,
-        Some(DESKTOP_HOST),
+        None,
     ),
     row(
         C::Agents,

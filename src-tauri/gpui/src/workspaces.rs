@@ -6,6 +6,7 @@
 //! no Rust storage command for them, so this list lives for the session only.
 
 use crate::model::WORKSPACE_KINDS;
+pub mod transfer;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SavedWorkspace {

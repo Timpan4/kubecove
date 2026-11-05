@@ -59,24 +59,21 @@ pub(super) fn section(row: &'static Row) -> AnyElement {
         "Resource group order" => resource_order(row),
         "Interaction report" => report(row, true),
         "Latency report" => report(row, false),
-        "KubeCove version" => settings_row(
+        "MCP port" => settings_row(
             row.title,
-            format!("Current version {}. Native updater unavailable.", env!("CARGO_PKG_VERSION")),
-            disabled(row, actions(&["Check"])),
-        ).into_any_element(),
-        "Remote KubeCove server" => panel(row)
-            .child(heading(row, div()))
-            .child(disabled(row, div().flex().flex_col().gap(px(12.)).mt(px(12.))
-                .child(field("Server URL", "https://kube.example.com"))
-                .child(field("Server token", ""))
-                .child(ui::muted(ui::xs("The token stays in native Rust memory until you disconnect or close the app.")))
-                .child(actions(&["Connect"]))))
-            .into_any_element(),
-        "MCP port" => settings_row(row.title, row.description.into(), disabled(row, field("MCP port", "")))
-            .into_any_element(),
-        "Agent access token" => settings_row(row.title, row.description.into(), disabled(row, actions(&["Copy", "Rotate"])))
-            .into_any_element(),
-        _ => settings_row(row.title, row.description.into(), disabled(row, div())).into_any_element(),
+            row.description.into(),
+            disabled(row, field("MCP port", "")),
+        )
+        .into_any_element(),
+        "Agent access token" => settings_row(
+            row.title,
+            row.description.into(),
+            disabled(row, actions(&["Copy", "Rotate"])),
+        )
+        .into_any_element(),
+        _ => {
+            settings_row(row.title, row.description.into(), disabled(row, div())).into_any_element()
+        }
     }
 }
 

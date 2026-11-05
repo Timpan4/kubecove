@@ -13,6 +13,8 @@ mod live_data;
 mod locate;
 #[path = "parity/scroll.rs"]
 mod scroll;
+#[path = "parity/settings_integrations.rs"]
+mod settings_integrations;
 #[path = "parity/topology_metrics.rs"]
 mod topology_metrics;
 #[path = "parity/workspace.rs"]
@@ -124,6 +126,7 @@ fn cluster_row(step: &Value) -> String {
 
 /// Every scenario file in name order, as `loadContract` in `e2e/parity/contract.ts` reads them.
 fn scenarios() -> Vec<Value> {
+    let prefix = std::env::var("KUBECOVE_PARITY_SCENARIO_PREFIX").unwrap_or_default();
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../e2e/parity/scenarios");
     let mut files: Vec<PathBuf> = fs::read_dir(&dir)
         .unwrap_or_else(|error| panic!("{} unreadable: {error}", dir.display()))
@@ -139,11 +142,13 @@ fn scenarios() -> Vec<Value> {
             assert_eq!(contract["context"], "mock-dev", "{}", file.display());
             contract["scenarios"].as_array().unwrap().clone()
         })
+        .filter(|scenario| string(scenario, "id").starts_with(&prefix))
         .collect()
 }
 
 fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
-    if !(live_data::apply(window, cx, step)
+    if !(settings_integrations::act(window, cx, step)
+        || live_data::apply(window, cx, step)
         || topology_metrics::apply(window, cx, step)
         || detail::act(window, cx, step)
         || workspace::act(window, cx, step)
@@ -157,6 +162,9 @@ fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
 /// apply when the update that typed ends, as they do between a user's
 /// keystrokes and a later click.
 fn finish(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
+    if step["action"] == "reopenStoredSettings" {
+        window.click("open-settings", cx);
+    }
     if matches!(
         string(step, "action"),
         "selectYamlShape" | "selectYamlEncoding"
@@ -222,10 +230,22 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
         });
         cx.run_until_parked();
         for (index, step) in scenario["steps"].as_array().unwrap().iter().enumerate() {
+            if step["action"] == "reopenStoredSettings" {
+                backend.reopen_settings_storage();
+            }
+            if step["action"] == "configureSettingsMock" {
+                backend.settings_script(string(step, "script"));
+            }
+            if step["action"] == "expectRuntimeEndpoint" {
+                assert_eq!(backend.runtime_endpoint(), string(step, "value"));
+            }
+            if step["action"] == "expectWorkspaceExport" {
+                backend.expect_workspace_export(string(step, "name"));
+            }
             if step["action"] == "replayLiveData" {
                 backend.replay_live(string(step, "script"));
             }
-            println!("parity {id} step {index}: {step}");
+            println!("parity {id} step {index}: {}", string(step, "action"));
             // Reads a render starts must settle before the step observes or acts.
             cx.update_window(handle, |_, window, cx| window.render_frame(cx))
                 .unwrap();

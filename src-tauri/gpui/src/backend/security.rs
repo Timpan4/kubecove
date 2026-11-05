@@ -11,9 +11,11 @@ use kubecove_lib::{
 };
 
 /// The kubeconfig source commands persist only after the desktop host calls
-/// `init_kubeconfig_settings_path`. The native client does not, so a write
-/// would return success without saving; the settings page disables them.
-pub(crate) const KUBECONFIG_WRITES: &str = "Saved in the desktop app's kubeconfig settings file, which the native client does not load yet.";
+/// `init_kubeconfig_settings_path`. Production calls it at startup; isolated
+/// backends without a settings directory must refuse writes instead of reporting
+/// a successful save that would be lost.
+pub(crate) const KUBECONFIG_WRITES: &str =
+    "This backend has no settings directory. Kubeconfig source changes cannot be saved.";
 
 /// `RbacSurface.svelte`'s `listRbacInspection` query.
 pub(super) async fn rbac(

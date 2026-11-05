@@ -21,9 +21,16 @@ through the command boundary, not a packaged app or a live Kubernetes request.
 RBAC inspection, exact access verification, workspace scope selection, settings
 search and command-palette navigation have shared scenarios. Saved workspaces and
 RBAC review notes last for the session only. The repository has no Rust storage
-commands for these records. Kubeconfig writes remain disabled in the production
-native backend until its host initializes the existing settings storage path.
-Other unsupported settings keep their controls disabled with a reason.
+commands for these records. Production initializes the desktop's existing
+kubeconfig settings file. File selection and workspace import/export use native
+dialogs behind `Backend`; tests supply controlled responses. Remote token-mode
+connections reuse the Rust HTTP/WebSocket client, with no local fallback after
+socket failure. Explicit disconnect returns to local access.
+
+Update checks read the configured desktop feed. Installation stays disabled
+because its artifacts install Tauri, not GPUI. Browser-only preferences keep their
+controls disabled pending a storage decision. Settings scenarios use worktree-local
+temporary storage; native storage tests reopen it in separate processes.
 
 The Actions tab supports image, environment, requests and limits, labels, annotations
 and revision rollback through the existing typed preview and execution commands.

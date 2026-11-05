@@ -1,0 +1,11 @@
+{
+  "apiVersion": "kubecove.dev/workspace/v1",
+  "kind": "Workspace",
+  "metadata": { "name": "controlled-import" },
+  "spec": {
+    "displayName": "Controlled import",
+    "scope": { "clusterContext": "mock-dev", "namespaces": ["payments"], "kinds": ["Pod"], "layout": "overview" },
+    "shortcuts": [],
+    "portForwards": []
+  }
+}

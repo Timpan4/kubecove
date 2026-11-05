@@ -2,6 +2,10 @@
 mod detail_tabs;
 #[path = "native/live_data.rs"]
 mod live_data;
+#[path = "native/remote_connections.rs"]
+mod remote_connections;
+#[path = "native/settings_integrations.rs"]
+mod settings_integrations;
 #[path = "native/watch_burst.rs"]
 mod watch_burst;
 

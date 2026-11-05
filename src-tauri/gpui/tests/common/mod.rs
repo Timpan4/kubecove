@@ -5,6 +5,7 @@
 mod delivery;
 mod detail_tabs;
 mod live_data;
+mod settings_integrations;
 
 use detail_tabs::DetailTabs;
 use kubecove_gpui::{
@@ -29,6 +30,10 @@ use std::{collections::HashMap, path::Path, sync::Mutex};
 
 #[derive(Deserialize)]
 pub struct Fixture {
+    #[serde(skip)]
+    settings_file: std::path::PathBuf,
+    #[serde(skip)]
+    settings: settings_integrations::SettingsIntegrations,
     kinds: Vec<kubecove_lib::models::DiscoveredResourceKind>,
     #[serde(skip)]
     live: live_data::LiveData,
@@ -93,11 +98,52 @@ impl Fixture {
     pub fn load(path: &Path) -> Self {
         let bytes = std::fs::read(path)
             .unwrap_or_else(|error| panic!("fixture {} unreadable: {error}", path.display()));
-        serde_json::from_slice(&bytes).expect("fixture must match the Rust models")
+        let mut fixture: Self =
+            serde_json::from_slice(&bytes).expect("fixture must match the Rust models");
+        fixture.initialize_settings_storage();
+        fixture
     }
 }
 
 impl Backend for Fixture {
+    fn remove_kubeconfig_path(&self, path: String) -> Read<KubeconfigSourcesSummary> {
+        let mut sources = self.kubeconfig.lock().unwrap();
+        sources.paths.retain(|entry| entry.path != path);
+        let sources = sources.clone();
+        let saved = self.save_settings(&sources);
+        Box::pin(async move {
+            saved?;
+            Ok(sources)
+        })
+    }
+    fn import_workspace(&self) -> Read<Option<String>> {
+        self.import_workspace_read()
+    }
+    fn export_workspace(&self, _name: String, content: String) -> Read<bool> {
+        self.export_workspace_read(content)
+    }
+    fn remote_status(&self) -> Read<Option<kubecove_gpui::backend::RemoteConnectionSummary>> {
+        self.remote_status_read()
+    }
+    fn connect_remote(
+        &self,
+        url: String,
+        _token: String,
+    ) -> Read<kubecove_gpui::backend::RemoteConnectionSummary> {
+        self.connect_remote_read(url)
+    }
+    fn disconnect_remote(&self) -> Read<()> {
+        self.disconnect_remote_read()
+    }
+    fn pick_kubeconfig_paths(&self) -> Read<KubeconfigSourcesSummary> {
+        self.pick_kubeconfig_read()
+    }
+    fn updates_enabled(&self) -> bool {
+        self.updates_enabled_read()
+    }
+    fn check_updates(&self) -> Read<kubecove_gpui::backend::UpdateStatus> {
+        self.check_updates_read()
+    }
     fn kind_resources(
         &self,
         scope: Scope,
@@ -376,13 +422,21 @@ impl Backend for Fixture {
             trimmed.to_owned()
         };
         let sources = sources.clone();
-        Box::pin(async move { Ok(sources) })
+        let saved = self.save_settings(&sources);
+        Box::pin(async move {
+            saved?;
+            Ok(sources)
+        })
     }
     fn set_show_kubeconfig_source_labels(&self, show: bool) -> Read<KubeconfigSourcesSummary> {
         let mut sources = self.kubeconfig.lock().expect("kubeconfig lock");
         sources.show_source_labels = show;
         let sources = sources.clone();
-        Box::pin(async move { Ok(sources) })
+        let saved = self.save_settings(&sources);
+        Box::pin(async move {
+            saved?;
+            Ok(sources)
+        })
     }
 
     fn helm_releases(&self, _: String) -> Read<HelmReleaseList> {

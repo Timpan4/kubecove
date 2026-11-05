@@ -4,16 +4,102 @@
 
 use super::Inspector;
 use super::controls::{Variant, button};
-use super::settings_page::{Observed, settings_reason, settings_row, switch, unavailable_control};
+use super::settings_page::{Observed, settings_row, switch};
 use crate::backend::KubeconfigSourcesSummary;
 use crate::theme::Tokens;
 use crate::ui;
 use gpui_kit::TestSupportExt;
-use gpui_kit::component::input::Input;
+use gpui_kit::component::input::{Input, Textarea};
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{Context, Div, SharedString, Window, div, prelude::*, px};
 
 impl Inspector {
+    fn kubeconfig_path_entry(
+        &self,
+        index: usize,
+        entry: &kubecove_lib::commands::kubeconfig::KubeconfigPathEntry,
+        count: usize,
+        cx: &mut Context<Self>,
+    ) -> Observed {
+        let disabled = self.settings.busy || self.backend.kubeconfig_writes_unavailable().is_some();
+        let path = entry.path.clone();
+        div()
+            .id(SharedString::from(format!("kubeconfig-path:{path}")))
+            .test_support()
+            .aria_label(path.clone())
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .mt(px(8.))
+            .p(px(8.))
+            .rounded(px(8.))
+            .border_1()
+            .border_color(Tokens::border())
+            .bg(Tokens::background())
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .child(
+                        ui::medium(ui::xs(
+                            path.rsplit(['/', '\\']).next().unwrap_or(&path).to_owned(),
+                        ))
+                        .truncate(),
+                    )
+                    .child(ui::muted(ui::xs(path.clone())).truncate()),
+            )
+            .children(
+                [
+                    ("Move kubeconfig path up", "arrow-up", index.checked_sub(1)),
+                    (
+                        "Move kubeconfig path down",
+                        "arrow-down",
+                        (index + 1 < count).then_some(index + 1),
+                    ),
+                ]
+                .into_iter()
+                .map(|(label, icon, target)| {
+                    button(Variant::Ghost, 24., disabled || target.is_none())
+                        .id(SharedString::from(label))
+                        .test_support()
+                        .aria_label(label)
+                        .child(ui::icon(icon, 14., Tokens::foreground()))
+                        .when(!disabled && target.is_some(), |button| {
+                            button.on_click(cx.listener(move |this, _, window, cx| {
+                                let Some(Ok(sources)) = &this.settings.sources else {
+                                    return;
+                                };
+                                let mut paths: Vec<_> = sources
+                                    .paths
+                                    .iter()
+                                    .map(|entry| entry.path.clone())
+                                    .collect();
+                                let Some(target) = target
+                                    .filter(|target| *target < paths.len() && index < paths.len())
+                                else {
+                                    return;
+                                };
+                                paths.swap(index, target);
+                                let read = this.backend.reorder_kubeconfig_paths(paths);
+                                this.run_kubeconfig(read, window, cx);
+                            }))
+                        })
+                }),
+            )
+            .child(
+                button(Variant::Ghost, 24., disabled)
+                    .id("settings-button:Remove kubeconfig path")
+                    .test_support()
+                    .aria_label("Remove kubeconfig path")
+                    .child(ui::icon("trash-2", 14., Tokens::foreground()))
+                    .when(!disabled, |button| {
+                        button.on_click(cx.listener(move |this, _, window, cx| {
+                            let read = this.backend.remove_kubeconfig_path(path.clone());
+                            this.run_kubeconfig(read, window, cx);
+                        }))
+                    }),
+            )
+    }
     /// `runSourceUpdate`: applies the returned sources and refills the draft.
     pub(super) fn run_kubeconfig(
         &mut self,
@@ -194,19 +280,24 @@ impl Inspector {
                 "Marks contexts with kubeconfig source they were discovered from.".into(),
                 switch.into_any_element(),
             ))
-            .child(added_paths(
-                state
-                    .sources
-                    .as_ref()
-                    .and_then(|sources| sources.as_ref().ok()),
-            ))
+            .child(
+                self.added_paths(
+                    state
+                        .sources
+                        .as_ref()
+                        .and_then(|sources| sources.as_ref().ok()),
+                    cx,
+                ),
+            )
     }
-}
-
-/// "Added kubeconfig paths": adding files needs a native file dialog.
-fn added_paths(sources: Option<&KubeconfigSourcesSummary>) -> Observed {
-    let paths = sources.map_or(&[][..], |sources| sources.paths.as_slice());
-    div()
+    /// "Added kubeconfig paths": adding files needs a native file dialog.
+    fn added_paths(
+        &self,
+        sources: Option<&KubeconfigSourcesSummary>,
+        cx: &mut Context<Self>,
+    ) -> Observed {
+        let paths = sources.map_or(&[][..], |sources| sources.paths.as_slice());
+        div()
         .id("setting-row:Added kubeconfig paths")
         .test_support()
         .p(px(12.))
@@ -230,35 +321,17 @@ fn added_paths(sources: Option<&KubeconfigSourcesSummary>) -> Observed {
                             "Extra kubeconfig files KubeCove reads beside environment variable.",
                         ))),
                 )
-                .child(unavailable_control(
-                    "kubeconfig-choose-files",
-                    settings_reason("Added kubeconfig paths"),
-                    button(Variant::Outline, 24., false)
-                        .child(ui::icon("plus", 12., Tokens::foreground()))
-                        .child("Choose files"),
-                )),
-        )
-        .children(paths.iter().map(|entry| {
-            div()
-                .mt(px(8.))
-                .p(px(8.))
-                .rounded(px(8.))
-                .border_1()
-                .border_color(Tokens::border())
-                .bg(Tokens::background())
                 .child(
-                    ui::medium(ui::xs(
-                        entry
-                            .path
-                            .rsplit(['/', '\\'])
-                            .next()
-                            .unwrap_or(&entry.path)
-                            .to_owned(),
-                    ))
-                    .truncate(),
-                )
-                .child(ui::muted(ui::xs(entry.path.clone())).truncate())
-        }))
+                    button(Variant::Outline, 24., self.backend.kubeconfig_writes_unavailable().is_some() || self.settings.busy)
+                        .id("settings-button:Choose files").test_support().aria_label("Choose files")
+                        .child(ui::icon("plus", 12., Tokens::foreground()))
+                        .child("Choose files")
+                        .when(self.backend.kubeconfig_writes_unavailable().is_none() && !self.settings.busy, |button| button.on_click(cx.listener(|this, _, window, cx| {
+                            let read = this.backend.pick_kubeconfig_paths(); this.run_kubeconfig(read, window, cx);
+                        }))),
+                ),
+        )
+        .children(paths.iter().enumerate().map(|(index, entry)| self.kubeconfig_path_entry(index, entry, paths.len(), cx)))
         .when(paths.is_empty(), |panel| {
             panel.child(
                 ui::muted(ui::xs("No app-added kubeconfig paths."))
@@ -270,4 +343,14 @@ fn added_paths(sources: Option<&KubeconfigSourcesSummary>) -> Observed {
                     .bg(Tokens::background()),
             )
         })
+        .child(div().mt(px(8.)).child(Textarea::new(&self.settings.pasted_paths).aria_label("Kubeconfig paths").disabled(self.backend.kubeconfig_writes_unavailable().is_some()).text_xs().h(px(64.))))
+        .child(div().flex().justify_end().mt(px(8.)).child(button(Variant::Outline, 24., self.settings.busy || self.backend.kubeconfig_writes_unavailable().is_some() || self.settings.pasted_paths.read(cx).value().trim().is_empty())
+            .id("settings-button:Add pasted paths").test_support().aria_label("Add pasted paths")
+            .child(ui::icon("plus",12.,Tokens::foreground())).child("Add pasted paths")
+            .when(self.backend.kubeconfig_writes_unavailable().is_none() && !self.settings.busy, |button| button.on_click(cx.listener(|this, _, window, cx| {
+                let value = this.settings.pasted_paths.read(cx).value().to_string();
+                if value.trim().is_empty() { return; }
+                let read = this.backend.add_kubeconfig_paths(vec![value]); this.run_kubeconfig(read,window,cx);
+            })))))
+    }
 }

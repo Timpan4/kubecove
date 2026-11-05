@@ -36,6 +36,42 @@ pub struct ScopeResult {
 /// Both production commands and controlled UI-test responses use this seam.
 /// Dropping a pending read must cancel its host-owned task.
 pub trait Backend: Send + Sync + 'static {
+    fn remote_status(&self) -> Read<Option<RemoteConnectionSummary>> {
+        Box::pin(async { Ok(None) })
+    }
+    fn connect_remote(&self, _url: String, _token: String) -> Read<RemoteConnectionSummary> {
+        settings_integrations::unavailable("Remote host adapter unavailable")
+    }
+    fn disconnect_remote(&self) -> Read<()> {
+        Box::pin(async { Ok(()) })
+    }
+    fn pick_kubeconfig_paths(&self) -> Read<KubeconfigSourcesSummary> {
+        settings_integrations::unavailable("File dialog unavailable")
+    }
+    fn add_kubeconfig_paths(&self, _paths: Vec<String>) -> Read<KubeconfigSourcesSummary> {
+        settings_integrations::unavailable("Source writes unavailable")
+    }
+    fn remove_kubeconfig_path(&self, _path: String) -> Read<KubeconfigSourcesSummary> {
+        settings_integrations::unavailable("Source writes unavailable")
+    }
+    fn reorder_kubeconfig_paths(&self, _paths: Vec<String>) -> Read<KubeconfigSourcesSummary> {
+        settings_integrations::unavailable("Source writes unavailable")
+    }
+    fn updates_enabled(&self) -> bool {
+        !cfg!(debug_assertions)
+    }
+    fn check_updates(&self) -> Read<UpdateStatus> {
+        settings_integrations::unavailable("Update checks unavailable")
+    }
+    fn install_update(&self) -> Read<()> {
+        settings_integrations::unavailable(INSTALL_UNAVAILABLE)
+    }
+    fn import_workspace(&self) -> Read<Option<String>> {
+        settings_integrations::unavailable("File dialog unavailable")
+    }
+    fn export_workspace(&self, _name: String, _content: String) -> Read<bool> {
+        settings_integrations::unavailable("File dialog unavailable")
+    }
     fn resource_kinds(
         &self,
         _context: String,
@@ -193,9 +229,14 @@ mod delivery;
 mod delivery_workspace;
 pub use delivery_workspace::APPLICATION_KINDS;
 mod detail_reads;
+mod remote;
 mod security;
+pub mod settings_integrations;
+mod workspace_files;
 pub use detail_reads::{LogStream, LogTarget};
 pub use kubecove_lib::commands::kubeconfig::KubeconfigSourcesSummary;
+pub use remote::DesktopBackend;
+pub use settings_integrations::{INSTALL_UNAVAILABLE, RemoteConnectionSummary, UpdateStatus};
 mod inventory;
 mod topology_metrics;
 pub use inventory::CLUSTER_KINDS;
@@ -204,6 +245,7 @@ pub use inventory::CLUSTER_KINDS;
 pub use crate::model::WORKSPACE_KINDS as INSPECTION_KINDS;
 
 pub struct NativeBackend {
+    settings_initialized: bool,
     runtime: Option<tokio::runtime::Runtime>,
     usage: commands::AppUsageMonitor,
     store: ClusterLiveStore,
@@ -219,6 +261,7 @@ pub struct NativeBackend {
 impl NativeBackend {
     pub fn new() -> std::io::Result<Self> {
         Ok(Self {
+            settings_initialized: false,
             runtime: Some(
                 tokio::runtime::Builder::new_multi_thread()
                     .enable_all()
@@ -287,6 +330,12 @@ fn supported(kind: &str) -> Result<(), AppError> {
 }
 
 impl Backend for NativeBackend {
+    fn add_kubeconfig_paths(&self, paths: Vec<String>) -> Read<KubeconfigSourcesSummary> {
+        if !self.settings_initialized {
+            return self.read(security::unsaved());
+        }
+        self.read(async move { commands::add_kubeconfig_paths(paths) })
+    }
     fn resource_kinds(
         &self,
         context: String,
@@ -482,15 +531,49 @@ impl Backend for NativeBackend {
     }
 
     fn kubeconfig_writes_unavailable(&self) -> Option<&'static str> {
-        Some(security::KUBECONFIG_WRITES)
+        (!self.settings_initialized).then_some(security::KUBECONFIG_WRITES)
     }
 
-    fn set_kubeconfig_env_var(&self, _: String) -> Read<KubeconfigSourcesSummary> {
-        self.read(security::unsaved())
+    fn set_kubeconfig_env_var(&self, value: String) -> Read<KubeconfigSourcesSummary> {
+        if !self.settings_initialized {
+            return self.read(security::unsaved());
+        }
+        self.read(async move { commands::set_kubeconfig_env_var(value) })
     }
 
-    fn set_show_kubeconfig_source_labels(&self, _: bool) -> Read<KubeconfigSourcesSummary> {
-        self.read(security::unsaved())
+    fn set_show_kubeconfig_source_labels(&self, show: bool) -> Read<KubeconfigSourcesSummary> {
+        if !self.settings_initialized {
+            return self.read(security::unsaved());
+        }
+        self.read(async move { commands::set_show_kubeconfig_source_labels(show) })
+    }
+
+    fn pick_kubeconfig_paths(&self) -> Read<KubeconfigSourcesSummary> {
+        if !self.settings_initialized {
+            return self.read(security::unsaved());
+        }
+        self.pick_kubeconfig()
+    }
+    fn remove_kubeconfig_path(&self, path: String) -> Read<KubeconfigSourcesSummary> {
+        if !self.settings_initialized {
+            return self.read(security::unsaved());
+        }
+        self.read(async move { commands::remove_kubeconfig_path(path) })
+    }
+    fn reorder_kubeconfig_paths(&self, paths: Vec<String>) -> Read<KubeconfigSourcesSummary> {
+        if !self.settings_initialized {
+            return self.read(security::unsaved());
+        }
+        self.read(async move { commands::reorder_kubeconfig_paths(paths) })
+    }
+    fn check_updates(&self) -> Read<UpdateStatus> {
+        self.read(settings_integrations::check_updates())
+    }
+    fn import_workspace(&self) -> Read<Option<String>> {
+        self.read(workspace_files::import())
+    }
+    fn export_workspace(&self, name: String, content: String) -> Read<bool> {
+        self.read(workspace_files::export(name, content))
     }
 
     fn helm_releases(&self, context: String) -> Read<HelmReleaseList> {
