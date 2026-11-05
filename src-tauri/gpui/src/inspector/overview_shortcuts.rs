@@ -1,5 +1,5 @@
 use super::{Inspector, Page};
-use crate::{ui, workspaces::shortcuts::Target};
+use crate::{theme::Tokens, ui, workspaces::shortcuts::Target};
 use gpui_kit::{Context, SharedString, TestSupportExt, div, prelude::*, px};
 
 impl Inspector {
@@ -20,12 +20,21 @@ impl Inspector {
             })
             .children(shortcuts.iter().map(|shortcut| {
                 let target = shortcut.target.clone();
+                let icon = match &target {
+                    Target::Argo { .. } => "git-branch",
+                    Target::Namespace { .. } => "layers",
+                    Target::Compare { .. } => "git-compare-arrows",
+                    Target::Resources { .. } => "boxes",
+                };
                 ui::outline_button()
                     .id(SharedString::from(format!("shortcut:{}", shortcut.id)))
                     .test_support()
                     .aria_label(shortcut.label.clone())
                     .h(px(24.))
-                    .child(ui::xs(shortcut.label.clone()))
+                    .pl(px(6.))
+                    .pr(px(8.))
+                    .child(ui::icon(icon, 12., Tokens::foreground()))
+                    .child(ui::medium(ui::text(shortcut.label.clone(), 12., 19.5)))
                     .on_click(cx.listener(move |this, _, window, cx| match &target {
                         Target::Argo { argo_app } => {
                             if let Some(name) = argo_app {

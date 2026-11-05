@@ -166,6 +166,7 @@ impl Inspector {
     }
     pub(super) fn saved_scope_view(&self) -> impl IntoElement {
         div()
+            .mt(px(8.))
             .flex()
             .flex_col()
             .gap(px(8.))
