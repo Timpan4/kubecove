@@ -53,14 +53,23 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
-      - name: Cache Rust builds
-        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Setup Mr Boxington
+        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
         with:
-          shared-key: kubecove-e2e
-          workspaces: |
-            ./src-tauri -> target
-            ./src-tauri/server -> target
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          version: "1.29.2"
+          working-directory: src-tauri
+          cache-generation: kubecove-e2e
+
+      - name: Cache headless E2E builds
+        if: runner.os != 'Windows'
+        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
+        with:
+          version: "1.29.2"
+          working-directory: src-tauri/server
+          cache-generation: kubecove-server-e2e
+
+      - name: Activate Cargo caching
+        run: node scripts/ci-mbx-cargo.mjs
 
       - name: Cache Bun dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -142,15 +151,23 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
-      - name: Cache Rust builds
-        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Setup Mr Boxington
+        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
         with:
-          shared-key: kubecove-e2e
-          workspaces: |
-            ./src-tauri -> target
-            ./src-tauri/server -> target
-          # The primary Kubernetes version seeds the cache for all Linux runs.
-          save-if: ${{ github.ref == 'refs/heads/main' && matrix.kubernetes == '1.35' }}
+          version: "1.29.2"
+          working-directory: src-tauri
+          cache-generation: kubecove-e2e
+
+      - name: Cache headless E2E builds
+        if: runner.os != 'Windows'
+        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
+        with:
+          version: "1.29.2"
+          working-directory: src-tauri/server
+          cache-generation: kubecove-server-e2e
+
+      - name: Activate Cargo caching
+        run: node scripts/ci-mbx-cargo.mjs
 
       - name: Cache Bun dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -215,14 +232,26 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
-      - name: Cache Rust builds
-        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Setup Mr Boxington
+        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
         with:
-          shared-key: kubecove-e2e
-          workspaces: |
-            ./src-tauri -> target
-            ./src-tauri/server -> target
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          version: "1.29.2"
+          working-directory: src-tauri
+          cache-generation: kubecove-e2e
+          # Desktop jobs do not run on push; trusted manual runs on main seed them.
+          save-on-workflow-dispatch: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Cache headless E2E builds
+        if: runner.os != 'Windows'
+        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
+        with:
+          version: "1.29.2"
+          working-directory: src-tauri/server
+          cache-generation: kubecove-server-e2e
+          save-on-workflow-dispatch: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Activate Cargo caching
+        run: node scripts/ci-mbx-cargo.mjs
 
       - name: Cache Bun dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

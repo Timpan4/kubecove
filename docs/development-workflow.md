@@ -140,14 +140,30 @@ See [ADR 0010](decisions/0010-e2e-only-wdio-security-boundary.md), [ADR 0011](de
 
 ## CI caching
 
-CI uses standard GitHub-hosted runners. CI, CodSpeed, and E2E restore Rust
-dependency caches. Successful runs on `main` publish those
-caches so PR runs can reuse them without saving duplicate branch caches. The
-primary Kubernetes version publishes the shared Linux E2E cache; the remaining
-Kubernetes versions restore it. Desktop caches remain separate by OS and
-architecture. E2E caches cover dependencies for both the desktop and headless
-server targets. Workspace artifacts are excluded because fresh checkout times
-can invalidate them, and source-only edits do not change the dependency cache key.
+CI uses standard GitHub-hosted runners. The main CI workflow uses
+[Mr Boxington](https://mr-boxington.jdx.dev/github-action) for Rust tests, Clippy,
+and headless server builds. The action and mbx version are pinned in the workflow.
+Each Cargo workspace has an explicit `working-directory` and a separate cache
+generation for desktop, GUI-free backend, and server checks. The default `target`
+payload carries the workspace's pruned target tree and Cargo downloads.
+Only successful pushes to the default branch publish these caches; pull requests
+and manual runs restore without saving. Builds run through `mbx`, while
+`cargo tree` remains a direct inspection command.
+
+Standalone and release E2E use mbx with separate desktop and headless server
+workspace caches. The primary Kubernetes version publishes the Linux E2E cache
+on pushes to `main`; the scheduled matrix and release E2E restore it. Desktop
+caches remain separate by OS and architecture. A manual E2E run on `main`
+seeds the macOS and Windows caches; scheduled runs restore them.
+The Cargo shim installed by
+`scripts/ci-mbx-cargo.mjs` also wraps Cargo launched by Bun and Tauri.
+`MBX_TARGET_VIEWS=0` preserves the target paths consumed by E2E and packaging.
+
+Native desktop and headless server release builds use mbx's `local` backend.
+They neither restore nor save shared compiler outputs, following the upstream
+[production release guidance](https://mr-boxington.jdx.dev/github-action#production-releases).
+Container and Nix builds keep their existing build paths. CodSpeed retains its
+Rust dependency cache.
 
 The frontend, headless server, and E2E jobs share Bun's download cache on each
 OS. They still run `bun install --frozen-lockfile` after restoring it. Caches
