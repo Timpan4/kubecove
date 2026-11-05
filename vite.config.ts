@@ -71,7 +71,7 @@ export default defineConfig(({ command }) => {
 			strictPort: true,
 			host: host || "localhost",
 			hmr: host ? { host } : undefined,
-			watch: { ignored: ["**/src-tauri/**", "**/.e2e/**", "**/e2e/artifacts/**"] },
+			watch: { ignored: ["**/src-tauri/**", "**/.e2e/**", "**/.t/**", "**/e2e/artifacts/**"] },
 		},
 		preview: { host: "127.0.0.1", port: Number(process.env.PORT ?? 4173), strictPort: true },
 	};

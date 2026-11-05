@@ -77,7 +77,7 @@ pub(super) fn icon_button(name: &str, color: Hsla) -> Div {
 }
 
 /// `diffLineClassName`: (background, foreground).
-fn diff_colors(kind: DiffLineKind) -> (Hsla, Hsla) {
+pub(super) fn diff_colors(kind: DiffLineKind) -> (Hsla, Hsla) {
     let clear = gpui_kit::transparent_black();
     match kind {
         DiffLineKind::Add => (tw::emerald500(0.12), tw::emerald300()),

@@ -19,25 +19,62 @@ pub const CLUSTER_KINDS: &[&str] = &[
     "CustomResourceDefinition",
 ];
 
-/// The overview's `detectArgoCD`/`listArgoApplications` and
-/// `detectFlux`/`listFluxResources` queries, read from CRDs.
+/// The `detectArgoCD`, `listArgoApplications`, `listArgoApplicationSets`,
+/// `listArgoAppProjects`, `detectFlux` and `listFluxResources` queries, read from CRDs.
 pub(super) async fn gitops(context: String) -> Result<GitOpsInventory, AppError> {
-    let argo = if commands::detect_argocd(context.clone(), None).await? {
-        Some(commands::list_argocd_applications(context.clone(), None).await?)
-    } else {
-        None
-    };
-    let detection = commands::detect_flux(context.clone(), None).await?;
-    let flux = if detection.detected {
-        let mut rows = Vec::new();
-        for kind in detection.kinds {
-            rows.extend(commands::list_flux_resources(context.clone(), kind, None).await?);
+    let mut inventory = GitOpsInventory::default();
+    let mut errors = Vec::new();
+    match commands::detect_argocd(context.clone(), None).await {
+        Ok(true) => {
+            inventory.argo = Some(
+                match commands::list_argocd_applications(context.clone(), None).await {
+                    Ok(rows) => rows,
+                    Err(error) => {
+                        errors.push(error);
+                        Vec::new()
+                    }
+                },
+            );
+            match commands::list_argocd_appsets(context.clone(), None).await {
+                Ok(rows) => inventory.app_sets = rows,
+                Err(error) => errors.push(error),
+            }
+            match commands::list_argocd_appprojects(context.clone(), None).await {
+                Ok(rows) => inventory.projects = rows,
+                Err(error) => errors.push(error),
+            }
         }
-        Some(rows)
-    } else {
-        None
-    };
-    Ok(GitOpsInventory { argo, flux })
+        Ok(false) => {}
+        Err(error) => errors.push(error),
+    }
+    match commands::detect_flux(context.clone(), None).await {
+        Ok(detection) if detection.detected => {
+            let mut rows = Vec::new();
+            for kind in detection.kinds {
+                match commands::list_flux_resources(context.clone(), kind, None).await {
+                    Ok(resources) => rows.extend(resources),
+                    Err(error) => errors.push(error),
+                }
+            }
+            inventory.flux = Some(rows);
+        }
+        Ok(_) => {}
+        Err(error) => errors.push(error),
+    }
+    if !inventory.detected() {
+        if let Some(error) = errors.into_iter().next() {
+            return Err(error);
+        }
+    } else if !errors.is_empty() {
+        inventory.list_error = Some(
+            errors
+                .into_iter()
+                .map(|error| error.message)
+                .collect::<Vec<_>>()
+                .join("\n"),
+        );
+    }
+    Ok(inventory)
 }
 
 /// Lists the cluster-scoped kinds. A forbidden kind becomes a warning, like

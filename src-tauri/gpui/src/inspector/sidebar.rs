@@ -9,19 +9,12 @@ use gpui_kit::{
     AnyElement, Context, ElementId, FontWeight, Hsla, SharedString, div, prelude::*, px,
 };
 
-#[derive(Clone, Copy)]
-enum Target {
-    Page(Page),
-    /// Product areas the native client has not implemented yet.
-    Unavailable,
-}
-
 struct Node {
     label: &'static str,
     icon: &'static str,
     tone: fn() -> Hsla,
     expandable: bool,
-    target: Target,
+    target: Page,
 }
 
 const fn node(
@@ -29,7 +22,7 @@ const fn node(
     icon: &'static str,
     tone: fn() -> Hsla,
     expandable: bool,
-    target: Target,
+    target: Page,
 ) -> Node {
     Node {
         label,
@@ -46,51 +39,32 @@ const WORKSPACE: &[Node] = &[
         "package",
         Tokens::muted_foreground,
         false,
-        Target::Page(Page::Overview),
+        Page::Overview,
     ),
     node(
         "Incidents",
         "circle-alert",
         Tokens::cluster,
         false,
-        Target::Page(Page::Incidents),
+        Page::Incidents,
     ),
     node(
         "Port Forwards",
         "cable",
         Tokens::network,
         false,
-        Target::Page(Page::PortForwards),
+        Page::PortForwards,
     ),
 ];
+/// The Cluster section after its GitOps and Helm nodes, which `gitops_nav` draws.
 const CLUSTER: &[Node] = &[
-    node(
-        "GitOps",
-        "package",
-        Tokens::muted_foreground,
-        true,
-        Target::Unavailable,
-    ),
-    node(
-        "Helm",
-        "package",
-        Tokens::muted_foreground,
-        true,
-        Target::Unavailable,
-    ),
-    node(
-        "RBAC",
-        "shield",
-        Tokens::secret,
-        true,
-        Target::Page(Page::Rbac),
-    ),
+    node("RBAC", "shield", Tokens::secret, true, Page::Rbac),
     node(
         "Cluster Overview",
         "server",
         Tokens::cluster,
         true,
-        Target::Page(Page::ClusterOverview),
+        Page::ClusterOverview,
     ),
 ];
 const ALL_NAMESPACES: &[Node] = &[
@@ -99,35 +73,23 @@ const ALL_NAMESPACES: &[Node] = &[
         "boxes",
         Tokens::workload,
         true,
-        Target::Page(Page::Resources),
+        Page::Resources,
     ),
-    node(
-        "Network",
-        "network",
-        Tokens::network,
-        true,
-        Target::Page(Page::Resources),
-    ),
-    node(
-        "Config",
-        "file-cog",
-        Tokens::config,
-        true,
-        Target::Page(Page::Resources),
-    ),
+    node("Network", "network", Tokens::network, true, Page::Resources),
+    node("Config", "file-cog", Tokens::config, true, Page::Resources),
     node(
         "Storage",
         "hard-drive",
         Tokens::storage,
         true,
-        Target::Page(Page::Resources),
+        Page::Resources,
     ),
     node(
         "Custom Resources",
         "package",
         Tokens::muted_foreground,
         true,
-        Target::Page(Page::Resources),
+        Page::Resources,
     ),
 ];
 
@@ -209,8 +171,7 @@ impl Inspector {
             .iter()
             .map(|node| {
                 // Resources pages select their namespace or kind rows instead.
-                let selected = matches!(node.target, Target::Page(page)
-                    if page == self.page && page != Page::Resources);
+                let selected = node.target == self.page && node.target != Page::Resources;
                 let target = node.target;
                 self.tree_row(
                     SharedString::from(format!("nav:{}", node.label)),
@@ -220,20 +181,11 @@ impl Inspector {
                     selected,
                     true,
                 )
-                .when(matches!(target, Target::Unavailable), |row| {
-                    row.cursor_default().tooltip(|window, cx| {
-                        gpui_kit::component::tooltip::Tooltip::new(
-                            "Not available in the native client yet",
-                        )
-                        .build(window, cx)
-                    })
-                })
                 .on_click(cx.listener(move |this, _, window, cx| match target {
-                    Target::Page(Page::Resources) => this.select_namespace(None, window, cx),
-                    Target::Page(Page::ClusterOverview) => this.open_cluster_overview(window, cx),
-                    Target::Page(Page::Rbac) => this.open_rbac(None, window, cx),
-                    Target::Page(page) => this.open_page(page, cx),
-                    Target::Unavailable => {}
+                    Page::Resources => this.select_namespace(None, window, cx),
+                    Page::ClusterOverview => this.open_cluster_overview(window, cx),
+                    Page::Rbac => this.open_rbac(None, window, cx),
+                    page => this.open_page(page, cx),
                 }))
                 .test_support()
                 .into_any_element()
@@ -249,6 +201,7 @@ impl Inspector {
             .map(|namespace| {
                 let name = namespace.name.clone();
                 let selected = self.page == Page::Resources
+                    && self.application_workspace_name().is_none()
                     && self.scope.namespace.as_deref() == Some(name.as_str());
                 self.tree_row(
                     SharedString::from(format!("namespace:{name}")),
@@ -325,6 +278,7 @@ impl Inspector {
                     .child(self.section_header("Workspace", None))
                     .children(self.nodes(WORKSPACE, cx))
                     .child(self.section_header("Cluster", None))
+                    .children(self.delivery_nav(cx))
                     .children(self.nodes(CLUSTER, cx))
                     .child(self.section_header("All namespaces", None))
                     .children(self.nodes(ALL_NAMESPACES, cx))

@@ -13,12 +13,17 @@ fn main() {
 mod common;
 
 #[cfg(target_os = "linux")]
+#[path = "parity/scroll.rs"]
+mod parity_scroll;
+
+#[cfg(target_os = "linux")]
 mod visual {
     use crate::common::Fixture;
-    use gpui_kit::test::TestWindowExt;
+    use crate::parity_scroll;
+    use gpui_kit::test::{TestEventExt, TestWindowExt};
     use gpui_kit::{
-        AnyWindowHandle, AppContext, Bounds, HeadlessAppContext, WindowBounds, WindowOptions, px,
-        size,
+        AnyWindowHandle, AppContext, Bounds, HeadlessAppContext, InputEvent, ScrollDelta,
+        ScrollEvent, WindowBounds, WindowOptions, point, px, size,
     };
     use kubecove_gpui::{Inspector, assets::AppAssets};
     use std::{
@@ -152,6 +157,72 @@ mod visual {
                         window.click("open-palette", cx)
                     });
                     act(&mut cx, handle, |window, cx| window.input("payments", cx));
+                }
+                "gitops" | "gitops-list" | "flux" => {
+                    act(&mut cx, handle, |window, cx| window.click("nav:GitOps", cx));
+                    if view == "gitops-list" {
+                        act(&mut cx, handle, |window, cx| {
+                            window.click("gitops-view:List", cx)
+                        });
+                    }
+                    if view == "flux" {
+                        act(&mut cx, handle, |window, cx| {
+                            window.click("nav-toggle:GitOps", cx)
+                        });
+                        act(&mut cx, handle, |window, cx| window.click("nav:Flux", cx));
+                    }
+                }
+                "argo-app" => {
+                    act(&mut cx, handle, |window, cx| window.click("nav:GitOps", cx));
+                    act(&mut cx, handle, |window, cx| {
+                        window.click("gitops-details:Application:argocd:root-application", cx)
+                    });
+                }
+                "argo-workspace" => {
+                    act(&mut cx, handle, |window, cx| window.click("nav:GitOps", cx));
+                    act(&mut cx, handle, |window, cx| {
+                        window.click(
+                            "gitops-resources:argoApp:mock-dev:argocd:platform-argocd",
+                            cx,
+                        )
+                    });
+                }
+                "helm" | "helm-list" | "helm-release" => {
+                    act(&mut cx, handle, |window, cx| window.click("nav:Helm", cx));
+                    if view == "helm-list" {
+                        act(&mut cx, handle, |window, cx| {
+                            window.click("helm-view:List", cx)
+                        });
+                    }
+                    if view == "helm-release" {
+                        act(&mut cx, handle, |window, cx| {
+                            window.click("helm-details:platform:metrics-gateway", cx)
+                        });
+                        act(&mut cx, handle, |window, cx| {
+                            assert!(parity_scroll::seek(
+                                window,
+                                cx,
+                                "helm-list",
+                                "helm-release-details"
+                            ));
+                            let list = window.find("helm-list").bounds();
+                            let details = window.find("helm-release-details").bounds();
+                            let position = list.origin + point(px(4.), px(4.));
+                            window.pointer_move(position, None, cx);
+                            window.dispatch_event(
+                                ScrollEvent {
+                                    position,
+                                    delta: ScrollDelta::Pixels(point(
+                                        px(0.),
+                                        list.origin.y - details.origin.y,
+                                    )),
+                                    ..Default::default()
+                                }
+                                .to_platform_input(),
+                                cx,
+                            );
+                        });
+                    }
                 }
                 other => panic!("unknown view: {other}"),
             }

@@ -15,7 +15,25 @@ pub(super) struct GitOpsState {
     /// The context `load` belongs to; empty before the first read.
     context: String,
     load: GitOpsLoad,
+    /// Bumped whenever `load` changes, so the GitOps page knows to rebuild its rows.
+    pub(super) revision: u64,
     task: Option<Task<()>>,
+}
+
+impl GitOpsState {
+    pub(super) fn inventory(&self) -> Option<&GitOpsInventory> {
+        match &self.load {
+            GitOpsLoad::Ready(inventory) => Some(inventory),
+            _ => None,
+        }
+    }
+
+    pub(super) fn error(&self) -> Option<&str> {
+        match &self.load {
+            GitOpsLoad::Failed(error) => Some(error),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -68,6 +86,7 @@ impl Inspector {
         }
         self.gitops.context = self.scope.context.clone();
         self.gitops.load = GitOpsLoad::Detecting;
+        self.gitops.revision += 1;
         let read = self.backend.gitops(self.scope.context.clone());
         self.gitops.task = Some(cx.spawn(async move |this, cx| {
             let result = read.await;
@@ -76,12 +95,13 @@ impl Inspector {
                     Ok(inventory) => GitOpsLoad::Ready(inventory),
                     Err(error) => GitOpsLoad::Failed(error.message),
                 };
+                this.gitops.revision += 1;
                 cx.notify();
             });
         }));
     }
 
-    pub(super) fn gitops_body(&self) -> impl IntoElement + use<> {
+    pub(super) fn gitops_body(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let body = div().id("gitops-inventory").test_support().p(px(12.));
         let content: AnyElement = match &self.gitops.load {
             GitOpsLoad::Detecting => pending("Detecting...").into_any_element(),
@@ -130,14 +150,13 @@ impl Inspector {
                         .h(px(28.))
                         .pl(px(6.))
                         .pr(px(8.))
+                        .test_support()
+                        .cursor_pointer()
                         .child(ui::icon("git-branch", 14., Tokens::foreground()))
                         .child(ui::medium(ui::text("Open GitOps", 12., 19.5)))
-                        .tooltip(|window, cx| {
-                            gpui_kit::component::tooltip::Tooltip::new(
-                                "Not available in the native client yet",
-                            )
-                            .build(window, cx)
-                        }),
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.open_gitops(crate::gitops_surface::Focus::Section, cx)
+                        })),
                 )
                 .into_any_element(),
         };

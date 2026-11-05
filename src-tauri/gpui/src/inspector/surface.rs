@@ -15,8 +15,11 @@ impl Inspector {
     /// Live sessions load on every page because the header shows their count.
     pub(super) fn load_page(&mut self, cx: &mut Context<Self>) {
         self.load_sessions(cx);
-        if self.page == Page::Incidents {
-            self.load_incidents(cx);
+        match self.page {
+            Page::Incidents => self.load_incidents(cx),
+            Page::Helm => self.load_helm(cx),
+            Page::Resources => self.load_application_workspace(cx),
+            _ => {}
         }
         if self.page == Page::Rbac {
             self.load_rbac(cx);
@@ -98,14 +101,14 @@ pub(super) fn secondary_badge(content: impl Into<SharedString>) -> Div {
     ui::status_badge(Tone::Neutral, content)
 }
 
+/// `Badge variant="outline"` with tone classes. `ui::outline_badge` fixes its
+/// text to the foreground, so the tone goes on the text itself.
 fn tinted_outline(color: Hsla, border: Hsla, content: impl Into<SharedString>) -> Div {
-    ui::outline_badge(content)
-        .border_color(border)
-        .text_color(color)
+    super::delivery_ui::badge((border, Tokens::input().opacity(0.3), color), content)
 }
 
 /// The badge alone, with the web's tone classes.
-fn health_state_badge(state: HealthAssessmentState) -> Div {
+pub(super) fn health_state_badge(state: HealthAssessmentState) -> Div {
     let label = match state {
         HealthAssessmentState::Healthy => "Healthy",
         HealthAssessmentState::NeedsAttention => "Needs attention",

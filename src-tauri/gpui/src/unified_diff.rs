@@ -100,6 +100,16 @@ pub fn compact(current: &str, dry_run: &str) -> Vec<DiffLine> {
     )
 }
 
+/// `buildArgoResourceDiff`: an Argo CD target document against its live state.
+pub fn argo(target: &str, live: &str) -> Vec<DiffLine> {
+    unified(
+        target,
+        live,
+        CONTEXT_LINES,
+        ("target", "live", "Target and live state match."),
+    )
+}
+
 fn context(current: &str, dry_run: &str, full: bool) -> usize {
     if full {
         current

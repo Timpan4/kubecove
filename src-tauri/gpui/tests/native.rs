@@ -12,11 +12,13 @@ use kubecove_gpui::{
     gitops::GitOpsInventory,
 };
 use kubecove_lib::models::{
-    AppError, AppErrorKind, ClusterContext, ClusterOperationResult, DeploymentRevision,
-    IncidentCockpitSummary, NamespaceSummary, RbacAccessReviewRequest, RbacAccessReviewResult,
-    RbacInspectionSummary, ResourceActionPreview, ResourceActionRequest, ResourceActionState,
-    ResourceActionStateRequest, ResourceDetailsFull, ResourceEventSummary, ResourceSummary,
-    ResourceTopology, YamlApplyPreview, YamlApplyRequest, YamlApplyResult, YamlViewMode,
+    AppError, AppErrorKind, ArgoApplicationInspector, ArgoApplicationRef, ClusterContext,
+    ClusterOperationResult, DeploymentRevision, HelmReleaseDetails, HelmReleaseList,
+    HelmReleaseReconciliation, HelmReleaseSummary, IncidentCockpitSummary, NamespaceSummary,
+    RbacAccessReviewRequest, RbacAccessReviewResult, RbacInspectionSummary, ResourceActionPreview,
+    ResourceActionRequest, ResourceActionState, ResourceActionStateRequest, ResourceDetailsFull,
+    ResourceEventSummary, ResourceSummary, ResourceTopology, YamlApplyPreview, YamlApplyRequest,
+    YamlApplyResult, YamlViewMode,
 };
 use serde_json::json;
 use std::sync::{
@@ -210,6 +212,24 @@ impl Backend for Controlled {
     }
     fn set_show_kubeconfig_source_labels(&self, _: bool) -> Read<KubeconfigSourcesSummary> {
         unreachable!("the settings page must not write when writes are unavailable")
+    }
+
+    fn helm_releases(&self, _: String) -> Read<HelmReleaseList> {
+        Box::pin(async {
+            Ok(HelmReleaseList {
+                releases: vec![],
+                warnings: vec![],
+            })
+        })
+    }
+    fn helm_release(&self, _: HelmReleaseSummary) -> Read<HelmReleaseDetails> {
+        Box::pin(async { Err(AppError::new("No Helm release", AppErrorKind::NotFound)) })
+    }
+    fn helm_reconciliation(&self, _: HelmReleaseSummary) -> Read<HelmReleaseReconciliation> {
+        Box::pin(async { Err(AppError::new("No Helm release", AppErrorKind::NotFound)) })
+    }
+    fn argo_inspector(&self, _: ArgoApplicationRef) -> Read<ArgoApplicationInspector> {
+        Box::pin(async { Err(AppError::new("No Application", AppErrorKind::NotFound)) })
     }
 }
 

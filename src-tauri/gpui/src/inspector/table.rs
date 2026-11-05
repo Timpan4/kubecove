@@ -246,7 +246,9 @@ impl Inspector {
     }
 
     pub(super) fn table_panel(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        let page = table_page(&self.visible, self.table_page);
+        let page = table_page(&self.visible, self.table_page, |row| {
+            self.application_manages(row)
+        });
         self.table_page = self.table_page.min(page.page_count - 1);
         let columns = self.columns(&page.rows);
         let min_width: f32 = columns.iter().map(|column| column.width()).sum();

@@ -17,6 +17,8 @@ impl Inspector {
             Page::PortForwards => "Port Forwards".into(),
             Page::Rbac => self.rbac.location().into(),
             Page::Settings => "Settings".into(),
+            Page::GitOps => self.gitops_location().into(),
+            Page::Helm => "Helm Releases".into(),
         };
         div()
             .flex()
@@ -62,7 +64,11 @@ impl Inspector {
                         ui::muted(ui::xs(location))
                             .font_weight(FontWeight::MEDIUM)
                             .truncate(),
-                    ),
+                    )
+                    .when_some(self.application_workspace_name(), |row, name| {
+                        row.child(ui::icon("chevron-right", 14., Tokens::muted_foreground()))
+                            .child(ui::semibold(ui::xs(name.to_owned())).truncate())
+                    }),
             )
             .child(
                 div()

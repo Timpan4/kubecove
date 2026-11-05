@@ -4374,6 +4374,7 @@ dependencies = [
  "serde_json",
  "similar 3.2.1",
  "tokio",
+ "yaml_serde",
 ]
 
 [[package]]

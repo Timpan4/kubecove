@@ -15,11 +15,11 @@ pub enum Destination {
     Resources(Option<&'static str>),
     Incidents,
     PortForwards,
+    GitOps(crate::gitops_surface::Focus),
+    Helm,
     Rbac(Option<crate::rbac::RbacView>),
     Settings,
     Launcher,
-    /// Sections the native client has not implemented yet.
-    Unavailable,
 }
 
 pub struct NavEntry {
@@ -116,12 +116,35 @@ fn destination(section: &str, child: Option<&'static str>) -> Destination {
         }
         "incidents" => Destination::Incidents,
         "portForwards" => Destination::PortForwards,
+        "argo" => {
+            use crate::gitops_surface::{ARGO_KINDS, FLUX_FAMILIES, Focus};
+            let focus = child
+                .and_then(|child| {
+                    ARGO_KINDS
+                        .iter()
+                        .find(|(_, label)| *label == child)
+                        .map(|(kind, _)| Focus::Argo(Some(*kind)))
+                        .or_else(|| {
+                            FLUX_FAMILIES
+                                .iter()
+                                .flat_map(|(_, kinds)| kinds.iter())
+                                .find(|(_, label)| *label == child)
+                                .map(|(kind, _)| Focus::Flux {
+                                    family: None,
+                                    kind: Some(*kind),
+                                })
+                        })
+                })
+                .unwrap_or(Focus::Section);
+            Destination::GitOps(focus)
+        }
+        "helm" => Destination::Helm,
         "rbac" => Destination::Rbac(child.and_then(|child| {
             crate::rbac::RbacView::ALL
                 .into_iter()
                 .find(|view| view.label() == child)
         })),
-        _ => Destination::Unavailable,
+        _ => unreachable!("navigation section missing a destination: {section}"),
     }
 }
 

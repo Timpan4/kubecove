@@ -5,6 +5,8 @@
 mod common;
 #[path = "parity/locate.rs"]
 mod locate;
+#[path = "parity/scroll.rs"]
+mod scroll;
 
 use std::{
     fs,
@@ -13,12 +15,10 @@ use std::{
 };
 
 use common::Fixture;
-use gpui_kit::test::{TestEventExt, TestQueryExt, TestWindowExt};
-use gpui_kit::{
-    AppContext, Bounds, InputEvent, ScrollDelta, ScrollEvent, TestAppContext, WindowBounds,
-    WindowOptions, point, px, size,
-};
+use gpui_kit::test::{TestQueryExt, TestWindowExt};
+use gpui_kit::{AppContext, Bounds, TestAppContext, WindowBounds, WindowOptions, px, size};
 use kubecove_gpui::Inspector;
+use scroll::{reveal, seek};
 use serde_json::{Value, json};
 
 fn string<'a>(v: &'a Value, key: &str) -> &'a str {
@@ -36,41 +36,31 @@ fn row(step: &Value) -> String {
     )
 }
 
-/// Scrolls an element into view before a click, as Playwright does. The wheel
-/// goes to the top-left corner of `anchor`, a visible element at the top of
-/// the same scroll area, so a nested scroll area such as the ownership map
-/// does not take it. The element lands mid-window.
 /// The first detail tab, at the top of the scrolling detail body.
 const DETAIL_TOP: &str = "show-details";
 /// The RBAC category bar, at the top of the page's scroll area.
 const RBAC_TOP: &str = "rbac-category:Roles";
 
-fn reveal(window: &mut gpui_kit::Window, anchor: &str, id: &str, cx: &mut gpui_kit::App) {
-    let id = gpui_kit::ElementId::Name(id.to_owned().into());
-    window.render_frame(cx);
-    let target = window.find(id.clone());
-    if target.visible() {
-        return;
-    }
-    let anchor = window.find(gpui_kit::ElementId::Name(anchor.to_owned().into()));
-    assert!(
-        anchor.visible(),
-        "scroll anchor {:?} is not visible",
-        anchor.path()
-    );
-    let position = anchor.bounds().origin + point(px(4.), px(4.));
-    let delta = window.viewport_size().height / 2. - target.bounds().center().y;
-    window.pointer_move(position, None, cx);
-    window.dispatch_event(
-        ScrollEvent {
-            position,
-            delta: ScrollDelta::Pixels(point(px(0.), delta)),
-            ..Default::default()
-        }
-        .to_platform_input(),
-        cx,
-    );
-    window.render_frame(cx);
+/// The Details button of a GitOps card or list row.
+fn gitops_details(step: &Value) -> String {
+    format!(
+        "gitops-details:{}:{}:{}",
+        string(step, "kind"),
+        string(step, "namespace"),
+        string(step, "name")
+    )
+}
+
+fn helm_release(step: &Value) -> String {
+    format!(
+        "helm-release:{}:{}",
+        string(step, "namespace"),
+        string(step, "name")
+    )
+}
+
+fn item_count(count: u64) -> String {
+    format!("{count} item{}", if count == 1 { "" } else { "s" })
 }
 
 fn strings(step: &Value, key: &str) -> Vec<String> {
@@ -515,6 +505,104 @@ fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
         ),
         "choosePaletteEntry" => {
             locate::click_label(window, "palette-list", string(step, "label"), cx)
+        }
+        "openGitOps" => {
+            reveal(window, "open-resources", "open-gitops", cx);
+            window.click("open-gitops", cx);
+        }
+        "expandNav" => window.click(format!("nav-toggle:{}", string(step, "page")), cx),
+        "openGitOpsResources" => {
+            let id = format!(
+                "gitops-resources:argoApp:mock-dev:{}:{}",
+                string(step, "namespace"),
+                string(step, "name")
+            );
+            assert!(seek(window, cx, "gitops-list", &id));
+            window.click(id, cx);
+        }
+        "expectArgoWorkspace" => assert_eq!(
+            window.find("argo-workspace-name").label(),
+            Some(string(step, "name"))
+        ),
+        "filterArgoResources" => {
+            window.click(format!("argo-filter:{}", string(step, "filter")), cx)
+        }
+        "setDeliveryView" => window.click(
+            format!(
+                "{}-view:{}",
+                string(step, "page").to_lowercase(),
+                string(step, "mode")
+            ),
+            cx,
+        ),
+        "expectGitOpsTable" => {
+            assert_eq!(
+                window.find("gitops-table-title").label(),
+                Some(string(step, "title"))
+            );
+            assert_eq!(
+                window.find("gitops-count").label(),
+                Some(item_count(number(step, "count")).as_str())
+            );
+        }
+        "expectGitOpsItem" => assert!(seek(window, cx, "gitops-list", &gitops_details(step))),
+        "expectNoGitOpsItem" => assert!(window.try_find(gitops_details(step)).is_none()),
+        "openGitOpsDetails" => {
+            let id = gitops_details(step);
+            assert!(seek(window, cx, "gitops-list", &id));
+            window.click(id, cx);
+        }
+        "expectArgoApplication" => assert_eq!(
+            window.find("argo-app-status").label(),
+            Some(
+                format!(
+                    "{} {} {}",
+                    string(step, "name"),
+                    string(step, "health"),
+                    string(step, "sync")
+                )
+                .as_str()
+            )
+        ),
+        "expectArgoSignal" => assert_eq!(
+            window
+                .find(format!("argo-signal:{}", string(step, "label")))
+                .label(),
+            Some(number(step, "count").to_string().as_str())
+        ),
+        "expectHelmCount" => assert_eq!(
+            window.find("helm-count").label(),
+            Some(item_count(number(step, "count")).as_str())
+        ),
+        "expectHelmRelease" => assert!(seek(window, cx, "helm-list", &helm_release(step))),
+        "expectNoHelmRelease" => assert!(window.try_find(helm_release(step)).is_none()),
+        "openHelmRelease" => {
+            let id = format!(
+                "helm-details:{}:{}",
+                string(step, "namespace"),
+                string(step, "name")
+            );
+            assert!(seek(window, cx, "helm-list", &id));
+            window.click(id, cx);
+        }
+        "selectHelmNamespace" => {
+            window.click(format!("helm-namespace:{}", string(step, "namespace")), cx)
+        }
+        "searchHelm" => replace_text(window, cx, "helm-search", string(step, "value")),
+        "expectHelmDetails" => {
+            assert!(seek(window, cx, "helm-list", "helm-details-title"));
+            assert_eq!(
+                window.find("helm-details-title").label(),
+                Some(string(step, "title"))
+            );
+            assert_eq!(
+                window.find("helm-details-description").label(),
+                Some(string(step, "description"))
+            );
+            assert_eq!(
+                window.find("helm-details-totals").label(),
+                Some(string(step, "totals"))
+            );
         }
         action => panic!("unknown parity action: {action}"),
     }

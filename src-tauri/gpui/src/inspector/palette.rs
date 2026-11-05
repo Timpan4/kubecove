@@ -220,13 +220,11 @@ impl Inspector {
             }
             Destination::Incidents => self.open_page(Page::Incidents, cx),
             Destination::PortForwards => self.open_page(Page::PortForwards, cx),
+            Destination::GitOps(focus) => self.open_gitops(focus, cx),
+            Destination::Helm => self.open_page(Page::Helm, cx),
             Destination::Rbac(view) => self.open_rbac(view, window, cx),
             Destination::Settings => self.open_settings(window, cx),
             Destination::Launcher => self.open_launcher(window, cx),
-            Destination::Unavailable => {
-                self.notice = Some("This view is not available in the native client yet.".into());
-                cx.notify();
-            }
         }
     }
 

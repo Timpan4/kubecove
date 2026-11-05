@@ -316,7 +316,7 @@ impl Inspector {
                             div()
                                 .child(ui::semibold(ui::sm("GitOps")))
                                 .child(ui::muted(ui::xs("Argo CD and Flux inventory."))),
-                            self.gitops_body(),
+                            self.gitops_body(cx),
                         )
                         .w(px(320.))
                         .flex_none(),

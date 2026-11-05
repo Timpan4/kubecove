@@ -81,6 +81,49 @@ async function show(page: Page, view: View) {
 			await page.getByPlaceholder("Search views, namespaces, and resources...").fill("payments");
 			await page.getByRole("option").first().waitFor();
 			return;
+		case "gitops":
+		case "gitops-list":
+		case "flux":
+		case "argo-app":
+		case "argo-workspace":
+			await page.getByRole("treeitem").filter({ hasText: /^\s*GitOps\s*$/ }).click();
+			await page.getByRole("heading", { level: 2, name: "Argo CD Applications", exact: true }).waitFor();
+			if (view === "gitops-list") await page.getByRole("radio", { name: "List", exact: true }).click();
+			if (view === "flux") {
+				await page.getByRole("button", { name: "Expand GitOps", exact: true }).click();
+				await page.getByRole("treeitem", { name: /^(?:(?:Expand|Collapse) Flux )?Flux$/ }).click();
+				await page.getByRole("heading", { level: 2, name: "Flux Resources", exact: true }).waitFor();
+			}
+			if (view === "argo-app") {
+				await page.getByRole("button", { name: "Open details for Application root-application in argocd", exact: true }).click();
+				await page.getByText("Change navigator", { exact: true }).waitFor();
+			}
+			if (view === "argo-workspace") {
+				await page.getByRole("button", { name: "View resources for platform-argocd", exact: true }).first().click();
+				await page.getByRole("heading", { level: 2 }).filter({ hasText: "platform-argocd" }).waitFor();
+				await page.getByLabel("Argo CD resource filters").waitFor();
+			}
+			return;
+		case "helm":
+		case "helm-list":
+		case "helm-release":
+			await page.getByRole("treeitem").filter({ hasText: /^\s*Helm\s*$/ }).click();
+			await page.getByRole("heading", { level: 2, name: "Helm Releases", exact: true }).waitFor();
+			if (view === "helm-list") await page.getByRole("radio", { name: "List", exact: true }).click();
+			if (view === "helm-release") {
+				const card = page.locator('[data-slot="card"]').filter({ has: page.locator('[data-slot="card-title"]').getByText("metrics-gateway", { exact: true }) });
+				await card.getByRole("button", { name: "Details", exact: true }).click();
+				await page.getByText("4 tracked, 1 missing, 0 label-only", { exact: true }).waitFor();
+				await page.getByRole("button", { name: "Close Helm details", exact: true }).evaluate((button) => {
+					const details = button.closest('[data-slot="card"]');
+					const viewport = details?.closest(".overflow-y-auto, .overflow-auto");
+					if (!(details instanceof HTMLElement) || !(viewport instanceof HTMLElement)) throw new Error("Helm details scroll viewport missing");
+					viewport.scrollTop += details.getBoundingClientRect().top - viewport.getBoundingClientRect().top - viewport.clientTop;
+				});
+				const header = await page.getByRole("button", { name: "Search views, namespaces, and resources", exact: true }).boundingBox();
+				if (!header || header.y < 0) throw new Error("Helm details capture scrolled the workspace header out of view");
+			}
+			return;
 	}
 }
 
@@ -89,7 +132,8 @@ await mkdir(output, { recursive: true });
 const port = await freePort();
 const env = { ...process.env };
 delete env.KUBECONFIG;
-const vite = Bun.spawn(["bun", "--bun", "vite", "--host", "127.0.0.1", "--port", String(port), "--strictPort"], { cwd: process.cwd(), env, detached: true, stdout: "ignore", stderr: "ignore" });
+delete env.ARGV0;
+const vite = Bun.spawn([process.execPath, join(process.cwd(), "node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", String(port), "--strictPort"], { cwd: process.cwd(), env, detached: true, stdout: "ignore", stderr: "ignore" });
 const identity = startIdentity(vite.pid);
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
 try {

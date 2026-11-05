@@ -80,6 +80,8 @@ impl Inspector {
     pub(super) fn base_kinds(&self) -> &'static [&'static str] {
         if self.page == Page::ClusterOverview {
             CLUSTER_KINDS
+        } else if self.application_workspace_name().is_some() {
+            crate::backend::APPLICATION_KINDS
         } else {
             crate::model::WORKSPACE_KINDS
         }

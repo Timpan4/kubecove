@@ -3,7 +3,7 @@
 //! `@3xl`/`@5xl` breakpoints use the section width derived from the window.
 
 use super::detail::Detail;
-use super::{Inspector, Load};
+use super::{Inspector, Load, Page};
 use crate::model::{HealthSummary, kinds_label};
 use crate::theme::{Palette, Tokens};
 use crate::ui;
@@ -11,7 +11,6 @@ use gpui_kit::TestSupportExt;
 use gpui_kit::{AnyElement, Context, Div, FontWeight, Hsla, Window, div, prelude::*, px};
 
 const SIDEBAR: f32 = 260.;
-const DETAIL_SHARE: f32 = 0.395;
 
 fn scope_trigger(label: &str, value: String) -> Div {
     div()
@@ -100,18 +99,41 @@ fn grid(items: Vec<AnyElement>, columns: usize, gap: f32) -> Div {
     div().flex().flex_col().gap(px(gap)).children(rows)
 }
 
+/// The page column's width: the main panel, less the detail pane when open.
+pub(super) fn page_width(this: &Inspector, window: &Window) -> f32 {
+    let main = main_width(window);
+    if matches!(this.detail, Detail::Closed) {
+        main
+    } else {
+        main * (1. - detail_share(this.page))
+    }
+}
+
+/// The detail pane's visible width. `DetailPanelFrame.svelte` sizes the page
+/// and the pane as non-shrinking percentages of the frame, so the `w-2` resize
+/// handle between them overflows the frame and clips the pane by 8px.
+pub(super) fn detail_width(this: &Inspector, window: &Window) -> f32 {
+    main_width(window) * detail_share(this.page) - 8.
+}
+
+/// The main panel's inner width: the window less the shell's `p-2`, the
+/// sidebar, the gap and the panel's border.
+fn main_width(window: &Window) -> f32 {
+    f32::from(window.viewport_size().width) - 16. - SIDEBAR - 8. - 2.
+}
+
+/// `WorkspaceShell.svelte` opens the detail pane at 30% on the GitOps page and
+/// 40% elsewhere.
+fn detail_share(page: Page) -> f32 {
+    if page == Page::GitOps { 0.3 } else { 0.4 }
+}
+
 impl Inspector {
     fn section_width(&self, window: &Window) -> f32 {
-        let main = f32::from(window.viewport_size().width) - 16. - SIDEBAR - 8. - 2.;
-        let page = if matches!(self.detail, Detail::Closed) {
-            main
-        } else {
-            main * (1. - DETAIL_SHARE)
-        };
-        page - 32. - 18.
+        page_width(self, window) - 32. - 18.
     }
 
-    fn live_control(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn live_control(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .relative()
             .child(
@@ -287,6 +309,7 @@ impl Inspector {
                     .border_t_1()
                     .border_color(Tokens::border()),
             )
+            .children(self.application_resource_filters(cx))
             // `w-fit`: the separator spans only the checkbox label.
             .child(
                 div().flex().child(
@@ -409,6 +432,7 @@ impl Inspector {
             .when(stacked, |page| page.flex_none())
             .p(px(16.))
             .gap(px(12.))
+            .children(self.application_workspace_header(cx))
             .child(body)
     }
 }

@@ -2,6 +2,7 @@
 //! exports the web's `tauri-dev-mocks` responses, so the GPUI client sees the same data the
 //! Svelte client does in the visual comparison and the parity scenarios.
 
+mod delivery;
 mod detail_tabs;
 
 use detail_tabs::DetailTabs;
@@ -13,9 +14,10 @@ use kubecove_gpui::{
     gitops::GitOpsInventory,
 };
 use kubecove_lib::models::{
-    AppError, AppErrorKind, ArgoApplicationSummary, ClusterContext, ClusterOperationResult,
-    DeploymentRevision, FluxResourceSummary, IncidentCockpitSummary, NamespaceSummary,
-    PodExecSessionSummary, PortForwardSessionSummary, RbacAccessReviewRequest,
+    AppError, AppErrorKind, ArgoApplicationInspector, ArgoApplicationRef, ArgoApplicationSummary,
+    ClusterContext, ClusterOperationResult, DeploymentRevision, HelmReleaseDetails,
+    HelmReleaseList, HelmReleaseReconciliation, HelmReleaseSummary, IncidentCockpitSummary,
+    NamespaceSummary, PodExecSessionSummary, PortForwardSessionSummary, RbacAccessReviewRequest,
     RbacAccessReviewResult, RbacAccessReviewTarget, RbacInspectionSummary, ResourceActionPreview,
     ResourceActionRequest, ResourceActionState, ResourceActionStateRequest, ResourceDetailsFull,
     ResourceEventSummary, ResourceSummary, ResourceTopology, YamlApplyPreview, YamlApplyRequest,
@@ -33,7 +35,8 @@ pub struct Fixture {
     details: Vec<ResourceDetailsFull>,
     events: Vec<ResourceEvents>,
     topology: ResourceTopology,
-    gitops: GitOps,
+    gitops: delivery::GitOps,
+    helm: delivery::Helm,
     /// Per-namespace graphs, which the incident guide reads for Pods.
     #[serde(rename = "namespaceTopologies")]
     namespace_topologies: HashMap<String, ResourceTopology>,
@@ -56,12 +59,6 @@ struct RbacReview {
     verb: String,
     result: Option<RbacAccessReviewResult>,
     error: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct GitOps {
-    argo: Option<Vec<ArgoApplicationSummary>>,
-    flux: Option<Vec<FluxResourceSummary>>,
 }
 
 #[derive(Deserialize)]
@@ -127,9 +124,21 @@ impl Backend for Fixture {
                     && detail.summary.name == resource.name
                     && detail.summary.namespace == resource.namespace
             })
-            .cloned();
+            .cloned()
+            .or_else(|| self.gitops.application_details(&resource));
         Box::pin(async move {
             found.ok_or_else(|| AppError::new("No fixture details", AppErrorKind::NotFound))
+        })
+    }
+    fn application_resources(&self, _: ArgoApplicationSummary, _: bool) -> Read<ScopeResult> {
+        let resources = self.resources.clone();
+        let namespaces = self.namespaces.clone();
+        Box::pin(async move {
+            Ok(ScopeResult {
+                namespaces,
+                resources,
+                warnings: vec![],
+            })
         })
     }
     /// The all-namespaces graph, or a namespace's graph the fixture exported.
@@ -142,11 +151,7 @@ impl Backend for Fixture {
         Box::pin(async move { Ok(topology) })
     }
     fn gitops(&self, _: String) -> Read<GitOpsInventory> {
-        let inventory = GitOpsInventory {
-            argo: self.gitops.argo.clone(),
-            flux: self.gitops.flux.clone(),
-        };
-        Box::pin(async move { Ok(inventory) })
+        self.gitops.inventory()
     }
     fn cluster_resources(&self, _: String, _: bool) -> Read<ScopeResult> {
         let resources = self
@@ -282,5 +287,18 @@ impl Backend for Fixture {
         sources.show_source_labels = show;
         let sources = sources.clone();
         Box::pin(async move { Ok(sources) })
+    }
+
+    fn helm_releases(&self, _: String) -> Read<HelmReleaseList> {
+        self.helm.releases()
+    }
+    fn helm_release(&self, release: HelmReleaseSummary) -> Read<HelmReleaseDetails> {
+        self.helm.release(release)
+    }
+    fn helm_reconciliation(&self, release: HelmReleaseSummary) -> Read<HelmReleaseReconciliation> {
+        self.helm.reconciliation(release)
+    }
+    fn argo_inspector(&self, application: ArgoApplicationRef) -> Read<ArgoApplicationInspector> {
+        self.gitops.inspector(application)
     }
 }

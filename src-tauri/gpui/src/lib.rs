@@ -1,8 +1,11 @@
 mod actions;
+mod argo_app;
 pub mod assets;
 pub mod backend;
 mod collate;
 pub mod gitops;
+mod gitops_surface;
+mod helm;
 mod incident;
 mod incident_timeline;
 mod incidents;

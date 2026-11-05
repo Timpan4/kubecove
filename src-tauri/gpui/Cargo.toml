@@ -20,6 +20,9 @@ serde_json = "=1.0.154"
 # log-structure patterns; `serde` reads JSON log fields in document order.
 regex = "=1.13.1"
 serde = "=1.0.229"
+# The backend's YAML crate, which the Argo CD tab uses to read the Application
+# spec and print comparison documents, as `yaml` does in the web.
+serde_yaml = { package = "yaml_serde", version = "=0.10.7" }
 
 [dev-dependencies]
 gpui-kit = { version = "=0.9.0", default-features = false, features = ["test-support"] }

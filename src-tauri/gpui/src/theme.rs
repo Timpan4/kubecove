@@ -195,6 +195,15 @@ impl Palette {
     pub fn red300() -> Hsla {
         oklch(0.808, 0.114, 19.571, 1.0)
     }
+    pub fn emerald400() -> Hsla {
+        oklch(0.765, 0.177, 163.223, 1.0)
+    }
+    pub fn violet300() -> Hsla {
+        oklch(0.811, 0.111, 293.571, 1.0)
+    }
+    pub fn violet500(alpha: f32) -> Hsla {
+        oklch(0.606, 0.25, 292.717, alpha)
+    }
 }
 
 pub const SANS: &str = "Inter";

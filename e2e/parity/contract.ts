@@ -54,7 +54,22 @@ export type Step =
 	| { action: "toggleSetting"; setting: string }
 	| { action: "expectSetting"; setting: string; checked: boolean }
 	| { action: "openPalette"; via: "button" | "shortcut" }
-	| { action: "expectPaletteEntry" | "expectNoPaletteEntry" | "choosePaletteEntry"; label: string };
+	| { action: "expectPaletteEntry" | "expectNoPaletteEntry" | "choosePaletteEntry"; label: string }
+	| { action: "openGitOps" }
+	| { action: "expandNav"; page: string }
+	| { action: "expectGitOpsTable"; title: string; count: number }
+	| ({ action: "expectGitOpsItem" | "expectNoGitOpsItem" | "openGitOpsDetails" } & Identity)
+	| { action: "expectArgoApplication"; name: string; health: string; sync: string }
+	| { action: "expectArgoSignal"; label: string; count: number }
+	| { action: "expectHelmCount"; count: number }
+	| { action: "expectHelmRelease" | "expectNoHelmRelease" | "openHelmRelease"; name: string; namespace: string }
+	| { action: "selectHelmNamespace"; namespace: string }
+	| { action: "searchHelm"; value: string }
+	| { action: "expectHelmDetails"; title: string; description: string; totals: string }
+	| ({ action: "openGitOpsResources" } & Identity)
+	| { action: "expectArgoWorkspace"; name: string }
+	| { action: "filterArgoResources"; filter: string }
+	| { action: "setDeliveryView"; page: "GitOps" | "Helm"; mode: "Cards" | "List" };
 const RBAC_CATEGORIES = ["Namespace Access", "Roles", "Cluster Roles", "Bindings", "Service Accounts"] as const;
 type RbacCategory = (typeof RBAC_CATEGORIES)[number];
 const RBAC_RISKS = ["All", "High", "Medium", "Low", "No flags", "Unknown"] as const;
@@ -85,6 +100,9 @@ export const ACTIONS = [
 	"expectKubeconfigEnvVar", "toggleSetting", "expectSetting", "openPalette", "searchPalette", "expectPaletteResource", "expectNoPaletteResource",
 	"choosePaletteResource", "expectPaletteEntry", "expectNoPaletteEntry", "choosePaletteEntry",
 	"editRbacReviewNote", "expectRbacReviewNote", "saveRbacReview", "expectRbacReview", "clearRbacReview",
+	"openGitOps", "expandNav", "expectGitOpsTable", "expectGitOpsItem", "expectNoGitOpsItem", "openGitOpsDetails", "expectArgoApplication",
+	"expectArgoSignal", "expectHelmCount", "expectHelmRelease", "expectNoHelmRelease", "openHelmRelease", "selectHelmNamespace", "searchHelm",
+	"expectHelmDetails", "openGitOpsResources", "expectArgoWorkspace", "filterArgoResources", "setDeliveryView",
 ] as const satisfies readonly Step["action"][];
 type Missing = Exclude<Step["action"], (typeof ACTIONS)[number]>;
 const allActionsListed: Missing extends never ? true : Missing = true;
@@ -186,6 +204,28 @@ function step(value: unknown): Step {
 			if (item.via !== "button" && item.via !== "shortcut") throw new Error("Expected how the palette opens");
 			return { action: item.action, via: item.via };
 		case "expectPaletteEntry": case "expectNoPaletteEntry": case "choosePaletteEntry": return { action: item.action, label: string(item.label) };
+		case "openGitOps": return { action: item.action };
+		case "openGitOpsResources":
+			return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace) };
+		case "expectArgoWorkspace": return { action: item.action, name: string(item.name) };
+		case "filterArgoResources": return { action: item.action, filter: string(item.filter) };
+		case "setDeliveryView": {
+			if (item.page !== "GitOps" && item.page !== "Helm") throw new Error("Expected a delivery page");
+			if (item.mode !== "Cards" && item.mode !== "List") throw new Error("Expected Cards or List");
+			return { action: item.action, page: item.page, mode: item.mode };
+		}
+		case "expandNav": return { action: item.action, page: string(item.page) };
+		case "expectGitOpsTable": return { action: item.action, title: string(item.title), count: count(item.count) };
+		case "expectGitOpsItem": case "expectNoGitOpsItem": case "openGitOpsDetails":
+			return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace) };
+		case "expectArgoApplication": return { action: item.action, name: string(item.name), health: string(item.health), sync: string(item.sync) };
+		case "expectArgoSignal": return { action: item.action, label: string(item.label), count: count(item.count) };
+		case "expectHelmCount": return { action: item.action, count: count(item.count) };
+		case "expectHelmRelease": case "expectNoHelmRelease": case "openHelmRelease":
+			return { action: item.action, name: string(item.name), namespace: string(item.namespace) };
+		case "selectHelmNamespace": return { action: item.action, namespace: string(item.namespace) };
+		case "searchHelm": return { action: item.action, value: string(item.value) };
+		case "expectHelmDetails": return { action: item.action, title: string(item.title), description: string(item.description), totals: string(item.totals) };
 		default: throw new Error(`Unknown action: ${String(item.action)}`);
 	}
 }

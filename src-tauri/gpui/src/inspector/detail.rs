@@ -4,6 +4,7 @@
 use super::Inspector;
 use super::actions_state::ActionsState;
 use super::actions_tab::actions_tab;
+use super::argo_tab::{ArgoTab, argo_tab};
 use super::details_tab::details_tab;
 use super::events::EventsState;
 use super::events_tab::events_tab;
@@ -20,7 +21,7 @@ use gpui_kit::component::input::{EditorState, InputEvent};
 use gpui_kit::{
     AnyElement, App, AppContext, Context, Entity, Subscription, Window, div, prelude::*, px,
 };
-use kubecove_lib::models::{ResourceDetailsFull, ResourceSummary};
+use kubecove_lib::models::{AppError, HealthAssessment, ResourceDetailsFull, ResourceSummary};
 
 pub(super) enum Detail {
     Closed,
@@ -46,6 +47,7 @@ pub(super) enum DetailTab {
     Events,
     Logs,
     Revisions,
+    Argo,
     Actions,
     Yaml,
 }
@@ -55,12 +57,13 @@ const TABS: &[(DetailTab, &str, &str)] = &[
     (DetailTab::Events, "show-events", "Events"),
     (DetailTab::Logs, "show-logs", "Logs"),
     (DetailTab::Revisions, "show-revisions", "Revisions"),
+    (DetailTab::Argo, "show-argo", "Argo CD"),
     (DetailTab::Actions, "show-actions", "Actions"),
     (DetailTab::Yaml, "show-yaml", "YAML"),
 ];
 
-/// `canShowLogs` and `canShowRevisions`; the other ported tabs always show.
-/// Exec and Forward are not ported yet.
+/// `canShowLogs`, `canShowRevisions` and `isArgoApplication`; the other ported
+/// tabs always show. Exec and Forward are not ported yet.
 fn available(tab: DetailTab, resource: &ResourceSummary) -> bool {
     let namespaced = resource.namespace.is_some();
     match tab {
@@ -68,6 +71,13 @@ fn available(tab: DetailTab, resource: &ResourceSummary) -> bool {
             namespaced && matches!(resource.kind.as_str(), "Pod" | "Deployment" | "Service")
         }
         DetailTab::Revisions => namespaced && resource.kind == "Deployment",
+        DetailTab::Argo => {
+            resource.kind == "Application"
+                && resource
+                    .api_version
+                    .as_deref()
+                    .is_some_and(|version| version.starts_with("argoproj.io/"))
+        }
         _ => true,
     }
 }
@@ -81,6 +91,10 @@ pub(super) struct ResourceDetail {
     pub events: EventsState,
     pub logs: Option<LogsState>,
     pub revisions: Option<RevisionsState>,
+    /// The health assessment of the summary the panel opened for. The web's
+    /// Argo CD tab reads `resource` (that summary), not the details read.
+    pub opened_health: HealthAssessment,
+    pub argo: Option<ArgoTab>,
     pub actions: Option<ActionsState>,
     _draft_changed: Subscription,
 }
@@ -113,6 +127,7 @@ impl ResourceDetail {
             cx.notify();
         });
         Self {
+            opened_health: data.summary.health_assessment.clone(),
             data,
             editor,
             marks,
@@ -121,6 +136,7 @@ impl ResourceDetail {
             events: EventsState::new(window, cx),
             logs: None,
             revisions: None,
+            argo: None,
             actions: None,
             _draft_changed,
         }
@@ -139,14 +155,97 @@ impl Inspector {
         match tab {
             DetailTab::Logs => self.open_logs(window, cx),
             DetailTab::Revisions => self.open_revisions(window, cx),
+            DetailTab::Argo => self.open_argo(window, cx),
             DetailTab::Actions => self.open_actions(window, cx),
             _ => {}
         }
         cx.notify();
     }
+
+    /// Opens a resource on a tab, as the GitOps page's Details button opens an
+    /// Application on its Argo CD tab (`openGitOpsDetails` in `GitOpsSurface.svelte`).
+    pub(super) fn open_resource_on(
+        &mut self,
+        resource: ResourceSummary,
+        tab: Option<DetailTab>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_resource(resource, window, cx);
+        if matches!(self.detail, Detail::Loading(_)) {
+            self.detail_tab = tab;
+        }
+    }
+
+    /// Replaces the loading panel with the read's result, then loads events and
+    /// applies a tab `open_resource_on` requested, if the loaded resource shows it.
+    pub(super) fn settle_detail(
+        &mut self,
+        result: Result<ResourceDetailsFull, AppError>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let opened = match std::mem::replace(&mut self.detail, Detail::Closed) {
+            Detail::Loading(resource) => Some(resource.health_assessment),
+            _ => None,
+        };
+        self.detail = match result {
+            Ok(data) => {
+                let mut detail = ResourceDetail::new(data, window, cx);
+                if let Some(health) = opened {
+                    detail.opened_health = health;
+                }
+                Detail::Ready(Box::new(detail))
+            }
+            Err(error) => Detail::Failed(error.message),
+        };
+        self.load_events(window, cx);
+        let Some(tab) = self.detail_tab.take() else {
+            return;
+        };
+        if let Detail::Ready(detail) = &self.detail
+            && available(tab, &detail.data.summary)
+        {
+            self.set_tab(tab, window, cx);
+        }
+    }
 }
 
 impl Inspector {
+    /// `DetailPanelFrame.svelte`: the `w-2` resize handle (a centered
+    /// `w-px bg-border/70` line under an `h-8 w-1` grip), then the `aside`.
+    /// Resizing is not ported.
+    pub(super) fn detail_pane(&self, window: &Window, cx: &mut Context<Self>) -> [AnyElement; 2] {
+        let handle = div()
+            .relative()
+            .flex()
+            .flex_none()
+            .items_center()
+            .justify_center()
+            .w(px(8.))
+            .h_full()
+            .child(div().w(px(1.)).h_full().bg(Tokens::border().opacity(0.7)))
+            .child(
+                div()
+                    .absolute()
+                    .w(px(4.))
+                    .h(px(32.))
+                    .rounded_full()
+                    .bg(Tokens::border())
+                    .opacity(0.7),
+            );
+        let aside = div()
+            .flex_none()
+            .w(px(super::resources::detail_width(self, window)))
+            .h_full()
+            .border_l_1()
+            .border_color(Tokens::border())
+            // `ResourceInspector.svelte`: `bg-surface-1` (= card).
+            .bg(Tokens::card())
+            .child(self.detail_view(cx));
+        [handle.into_any_element(), aside.into_any_element()]
+    }
+
     pub(super) fn detail_view(&self, cx: &mut Context<Self>) -> AnyElement {
         let (name, subtitle) = match &self.detail {
             Detail::Closed => return div().into_any_element(),
@@ -272,6 +371,7 @@ impl Inspector {
                     DetailTab::Events => events_tab(detail, cx),
                     DetailTab::Logs => logs_tab(detail, cx),
                     DetailTab::Revisions => revisions_tab(detail, cx),
+                    DetailTab::Argo => argo_tab(detail, cx),
                     DetailTab::Actions => actions_tab(detail, cx),
                     DetailTab::Yaml => yaml_tab(detail, cx).into_any_element(),
                 };

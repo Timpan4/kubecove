@@ -1,21 +1,29 @@
-import { normalizeArgoKindLabel } from "./gitops-nav";
+import type { TreeNodeId } from "@/lib/tree-nav";
 import type {
 	ArgoApplicationSetSummary,
 	ArgoApplicationSummary,
 	ArgoAppProjectSummary,
 	FluxResourceSummary,
 } from "@/lib/types";
-import type { TreeNodeId } from "@/lib/tree-nav";
-import { gitOpsSelectionCells, type GitOpsSelection } from "./surfaceSelection";
+import { FLUX_KIND_LABELS, isFluxKindLabel, normalizeArgoKindLabel } from "./gitops-nav";
+import { type GitOpsSelection, gitOpsSelectionCells } from "./surfaceSelection";
+
+export type { GitOpsSelection } from "./surfaceSelection";
 export {
 	gitOpsDetailsActionKey,
 	gitOpsSelectionKey,
 	gitOpsSelectionPrimaryAction,
 	gitOpsSelectionResource,
 } from "./surfaceSelection";
-export type { GitOpsSelection } from "./surfaceSelection";
-export { buildGitOpsSummary } from "./surfaceSummary";
 export type { GitOpsSummary, GitOpsSummaryFact } from "./surfaceSummary";
+export { buildGitOpsSummary } from "./surfaceSummary";
+export type {
+	GitOpsRevisionTooltipRow,
+	GitOpsSourceMode,
+	GitOpsSourceTooltipGroup,
+	GitOpsSourceTooltipRow,
+	GitOpsTooltipField,
+} from "./surfaceTooltips";
 export {
 	gitOpsSelectionAgeTooltip,
 	gitOpsSelectionRevisionLabel,
@@ -29,13 +37,6 @@ export {
 	gitOpsSelectionSourceTooltipGroups,
 	gitOpsSelectionSourceTooltipLines,
 	gitOpsSelectionSourceTooltipTitle,
-} from "./surfaceTooltips";
-export type {
-	GitOpsRevisionTooltipRow,
-	GitOpsSourceMode,
-	GitOpsSourceTooltipGroup,
-	GitOpsSourceTooltipRow,
-	GitOpsTooltipField,
 } from "./surfaceTooltips";
 
 export interface GitOpsData {
@@ -71,7 +72,7 @@ export function buildGitOpsTable(
 	data: GitOpsData,
 	selectedNode: TreeNodeId | null,
 ): GitOpsTable {
-	const selectedKind = selectedNode?.type === "kind" ? selectedNode.kind : null;
+	const selectedKind = selectedNodeKind(selectedNode);
 	const argoKind = normalizeArgoKindLabel(selectedKind ?? null);
 	if (argoKind === "applicationSets") {
 		return {
@@ -117,7 +118,7 @@ export function buildGitOpsSelections(
 	data: GitOpsData,
 	selectedNode: TreeNodeId | null,
 ): GitOpsSelection[] {
-	const selectedKind = selectedNode?.type === "kind" ? selectedNode.kind : null;
+	const selectedKind = selectedNodeKind(selectedNode);
 	const argoKind = normalizeArgoKindLabel(selectedKind ?? null);
 	if (argoKind === "applicationSets") {
 		return data.appSets.map((item) => ({ type: "argoAppSet", item }));
@@ -199,7 +200,7 @@ export function gitOpsActiveRailKey(
 	data: GitOpsData,
 	selectedNode: TreeNodeId | null,
 ): string {
-	const selectedKind = selectedNode?.type === "kind" ? selectedNode.kind : null;
+	const selectedKind = selectedNodeKind(selectedNode);
 	const argoKind = normalizeArgoKindLabel(selectedKind ?? null);
 	if (argoKind === "applicationSets") return "argo:applicationSets";
 	if (argoKind === "appProjects") return "argo:appProjects";
@@ -230,10 +231,17 @@ export function gitOpsUnavailableProvider(
 	return null;
 }
 
+/** The selected kind node's kind. Flux nodes carry nav labels such as "Flux Helm Releases"; rows carry `HelmRelease`. */
+function selectedNodeKind(selectedNode: TreeNodeId | null): string | null {
+	const kind = selectedNode?.type === "kind" ? selectedNode.kind : null;
+	return kind ? (FLUX_KIND_LABELS[kind] ?? kind) : null;
+}
+
 function isFluxSelection(selectedNode: TreeNodeId | null): boolean {
 	return (
 		selectedNode?.section === "argo" &&
-		selectedNode.group?.startsWith("gitops:flux") === true
+		(selectedNode.group?.startsWith("gitops:flux") === true ||
+			(selectedNode.type === "kind" && isFluxKindLabel(selectedNode.kind ?? null)))
 	);
 }
 

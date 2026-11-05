@@ -1,8 +1,10 @@
-//! GitOps inventory for the workspace overview, mirroring the Argo CD and Flux
-//! queries in `src/features/workspaces/WorkspaceOverview.svelte`. It reads
-//! Kubernetes CRDs only; connected Argo CD API access (ADR 0013) is out of scope.
+//! GitOps inventory for the workspace overview and the GitOps page, mirroring
+//! the Argo CD and Flux queries in `WorkspaceOverview.svelte` and
+//! `GitOpsSurface.svelte`. It reads Kubernetes CRDs only.
 
-use kubecove_lib::models::{ArgoApplicationSummary, FluxResourceSummary};
+use kubecove_lib::models::{
+    ArgoAppProjectSummary, ArgoApplicationSetSummary, ArgoApplicationSummary, FluxResourceSummary,
+};
 
 #[derive(Clone, Debug, Default)]
 pub struct GitOpsInventory {
@@ -10,6 +12,12 @@ pub struct GitOpsInventory {
     pub argo: Option<Vec<ArgoApplicationSummary>>,
     /// Resources across the installed Flux kinds when Flux is detected.
     pub flux: Option<Vec<FluxResourceSummary>>,
+    /// ApplicationSets; empty unless Argo CD is detected.
+    pub app_sets: Vec<ArgoApplicationSetSummary>,
+    /// AppProjects; empty unless Argo CD is detected.
+    pub projects: Vec<ArgoAppProjectSummary>,
+    /// A failed provider read, reported while preserving the other CRD lists.
+    pub list_error: Option<String>,
 }
 
 impl GitOpsInventory {

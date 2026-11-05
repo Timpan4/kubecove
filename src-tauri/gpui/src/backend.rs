@@ -2,11 +2,13 @@ use crate::gitops::GitOpsInventory;
 pub use crate::live_sessions::LiveSessions;
 use kubecove_lib::{
     commands::{
-        self, BackendCancellationRegistry, ClusterAccess, ClusterLiveStore, PodExecRegistry,
-        PortForwardRegistry, StreamRegistry,
+        self, ArgoConnectionStore, BackendCancellationRegistry, ClusterAccess, ClusterLiveStore,
+        PodExecRegistry, PortForwardRegistry, StreamRegistry,
     },
     models::{
-        AppError, AppErrorKind, ClusterContext, ClusterOperationResult, DeploymentRevision,
+        AppError, AppErrorKind, ArgoApplicationInspector, ArgoApplicationRef,
+        ArgoApplicationSummary, ClusterContext, ClusterOperationResult, DeploymentRevision,
+        HelmReleaseDetails, HelmReleaseList, HelmReleaseReconciliation, HelmReleaseSummary,
         IncidentCockpitSummary, NamespaceSummary, RbacAccessReviewRequest, RbacAccessReviewResult,
         RbacInspectionSummary, ResourceActionPreview, ResourceActionRequest, ResourceActionState,
         ResourceActionStateRequest, ResourceDetailsFull, ResourceEventSummary, ResourceSummary,
@@ -36,6 +38,20 @@ pub struct ScopeResult {
 pub trait Backend: Send + Sync + 'static {
     fn contexts(&self) -> Read<Vec<ClusterContext>>;
     fn resources(&self, scope: Scope, refresh: bool) -> Read<ScopeResult>;
+    /// The Application resource workspace uses all supported and discovered kinds.
+    fn application_resources(
+        &self,
+        application: ArgoApplicationSummary,
+        refresh: bool,
+    ) -> Read<ScopeResult> {
+        self.resources(
+            Scope {
+                context: application.cluster,
+                namespace: None,
+            },
+            refresh,
+        )
+    }
     fn details(&self, resource: ResourceSummary) -> Read<ResourceDetailsFull>;
     /// The ownership graph for the scope's namespaces (all when unscoped).
     fn topology(&self, scope: Scope) -> Read<ResourceTopology>;
@@ -83,8 +99,19 @@ pub trait Backend: Send + Sync + 'static {
     fn set_kubeconfig_env_var(&self, env_var: String) -> Read<KubeconfigSourcesSummary>;
     /// `set_show_kubeconfig_source_labels`.
     fn set_show_kubeconfig_source_labels(&self, show: bool) -> Read<KubeconfigSourcesSummary>;
+    /// `list_helm_releases`: releases from Helm storage across the context's namespaces.
+    fn helm_releases(&self, context: String) -> Read<HelmReleaseList>;
+    /// `get_helm_release_details`: one release's storage record, values and manifest summary.
+    fn helm_release(&self, release: HelmReleaseSummary) -> Read<HelmReleaseDetails>;
+    /// `get_helm_release_reconciliation`: the manifest compared with live Helm-labelled resources.
+    fn helm_reconciliation(&self, release: HelmReleaseSummary) -> Read<HelmReleaseReconciliation>;
+    /// `get_argo_application_inspector` over the Kubernetes transport; `context` names the cluster.
+    fn argo_inspector(&self, application: ArgoApplicationRef) -> Read<ArgoApplicationInspector>;
 }
 
+mod delivery;
+mod delivery_workspace;
+pub use delivery_workspace::APPLICATION_KINDS;
 mod detail_reads;
 mod security;
 pub use detail_reads::{LogStream, LogTarget};
@@ -104,6 +131,8 @@ pub struct NativeBackend {
     port_forwards: PortForwardRegistry,
     exec_sessions: PodExecRegistry,
     streams: Arc<StreamRegistry>,
+    // Stays empty: the native client makes no connected Argo CD sessions (ADR 0013).
+    argo_connections: Arc<ArgoConnectionStore>,
 }
 
 impl NativeBackend {
@@ -119,6 +148,7 @@ impl NativeBackend {
             port_forwards: PortForwardRegistry::default(),
             exec_sessions: PodExecRegistry::default(),
             streams: Arc::default(),
+            argo_connections: Arc::default(),
         })
     }
 
@@ -164,7 +194,7 @@ impl Drop for NativeBackend {
 }
 
 fn supported(kind: &str) -> Result<(), AppError> {
-    if INSPECTION_KINDS.contains(&kind) || CLUSTER_KINDS.contains(&kind) {
+    if APPLICATION_KINDS.contains(&kind) {
         Ok(())
     } else {
         Err(AppError::new(
@@ -242,6 +272,11 @@ impl Backend for NativeBackend {
 
     fn details(&self, resource: ResourceSummary) -> Read<ResourceDetailsFull> {
         let cancellations = self.cancellations.clone();
+        if let Some(kind) =
+            delivery::dynamic_kind(&resource).filter(|_| resource.dynamic == Some(true))
+        {
+            return self.read(delivery::dynamic_details(resource, kind, cancellations));
+        }
         self.read(async move {
             supported(&resource.kind)?;
             commands::get_resource_details(
@@ -256,6 +291,18 @@ impl Backend for NativeBackend {
             )
             .await
         })
+    }
+
+    fn application_resources(
+        &self,
+        application: ArgoApplicationSummary,
+        refresh: bool,
+    ) -> Read<ScopeResult> {
+        self.read(delivery_workspace::resources(
+            application,
+            refresh,
+            self.store.clone(),
+        ))
     }
 
     fn topology(&self, scope: Scope) -> Read<ResourceTopology> {
@@ -417,5 +464,22 @@ impl Backend for NativeBackend {
 
     fn set_show_kubeconfig_source_labels(&self, _: bool) -> Read<KubeconfigSourcesSummary> {
         self.read(security::unsaved())
+    }
+
+    fn helm_releases(&self, context: String) -> Read<HelmReleaseList> {
+        self.read(commands::list_helm_releases(context, None))
+    }
+
+    fn helm_release(&self, release: HelmReleaseSummary) -> Read<HelmReleaseDetails> {
+        self.read(delivery::helm_release(release))
+    }
+
+    fn helm_reconciliation(&self, release: HelmReleaseSummary) -> Read<HelmReleaseReconciliation> {
+        self.read(delivery::helm_reconciliation(release))
+    }
+
+    fn argo_inspector(&self, application: ArgoApplicationRef) -> Read<ArgoApplicationInspector> {
+        let (store, cancellations) = (self.argo_connections.clone(), self.cancellations.clone());
+        self.read(delivery::argo_inspector(application, store, cancellations))
     }
 }

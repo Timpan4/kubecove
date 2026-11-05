@@ -22,6 +22,7 @@ import type {
 	ResourceTopology,
 } from "../../../src/lib/types";
 import { exportDetailTabs } from "./export-detail-tabs";
+import { exportGitOpsPage, exportHelm } from "./export-gitops-helm";
 
 // Browser mocks omit owner fields the Rust model requires; fill them with the
 // values the web frontend infers (`owner.partial ?? confidence !== "inventory"`).
@@ -55,6 +56,8 @@ const rustTopology = rustGraph(topology);
 const argo = (await client.invoke<boolean>("detect_argocd", { clusterContext })) ? await client.invoke<ArgoApplicationSummary[]>("list_argocd_applications", { clusterContext }) : null;
 const fluxDetection = await client.invoke<FluxDetectionSummary>("detect_flux", { clusterContext });
 const flux = fluxDetection.detected ? (await Promise.all(fluxDetection.kinds.map((resourceKind) => client.invoke<FluxResourceSummary[]>("list_flux_resources", { clusterContext, resourceKind })))).flat() : null;
+const gitops = { argo, flux, ...(await exportGitOpsPage(client, clusterContext, argo !== null)) };
+const helm = await exportHelm(client, clusterContext);
 // Mock incidents omit the states the Rust model requires; fill them as `incidentState` infers.
 const cockpit = await client.invoke<IncidentCockpitSummary>("list_incident_cockpit", { clusterContext, requests: [] });
 const incidents = {
@@ -66,9 +69,16 @@ const incidents = {
 };
 // The incident guide reads the ownership graph of a Pod's namespace.
 const namespaceTopologies: Record<string, unknown> = {};
+const topologyNamespaces = new Set<string>();
 for (const item of incidents.items) {
 	const namespace = item.resource.namespace;
-	if (item.resource.kind !== "Pod" || !namespace || namespace in namespaceTopologies) continue;
+	if (item.resource.kind === "Pod" && namespace) topologyNamespaces.add(namespace);
+}
+for (const app of argo ?? []) {
+	for (const namespace of app.resourceNamespaces ?? []) topologyNamespaces.add(namespace);
+	if (app.destinationNamespace) topologyNamespaces.add(app.destinationNamespace);
+}
+for (const namespace of topologyNamespaces) {
 	namespaceTopologies[namespace] = rustGraph(await client.invoke<ResourceTopology>("list_resource_topology", { clusterContext, namespaces: [namespace], mode: "ownership" }));
 }
 const sources = await client.invoke<KubeconfigSourcesSummary>("get_kubeconfig_sources");
@@ -95,5 +105,5 @@ for (const verb of ["get", "list", "watch", "create", "update", "patch", "delete
 	try { rbacReviews.push({ verb, result: await client.invoke<RbacAccessReviewResult>("review_rbac_access", { request }) }); }
 	catch (error) { rbacReviews.push({ verb, error: error instanceof Error ? error.message : String(error) }); }
 }
-await writeFile(output, JSON.stringify({ contexts, namespaces, kinds, resources: resources.map(rustShape), details, events, topology: rustTopology, namespaceTopologies, gitops: { argo, flux }, incidents, liveSessions, detailTabs, rbac, rbacReviews, kubeconfig: sources }, null, "\t"));
+await writeFile(output, JSON.stringify({ contexts, namespaces, kinds, resources: resources.map(rustShape), details, events, topology: rustTopology, namespaceTopologies, gitops, helm, incidents, liveSessions, detailTabs, rbac, rbacReviews, kubeconfig: sources }, null, "\t"));
 console.log(`fixture: ${resources.length} resources, ${details.length} details -> ${output}`);

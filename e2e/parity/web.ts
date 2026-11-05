@@ -116,7 +116,7 @@ async function action(page: Page, step: Step) {
 			if (await page.getByRole("button", { name: "Dry run", exact: true }).count()) throw new Error("The YAML draft editor opened");
 			break;
 		// Absence is checked after a preceding step waited for the new scope's rows.
-		case "expectNoResource": if (await resourceRow(page, step).count()) throw new Error(`${step.kind} ${step.namespace}/${step.name} is listed`); break;
+		case "expectNoResource": await resourceRow(page, step).waitFor({ state: "detached" }); break;
 		case "openLauncher": await page.getByRole("button", { name: "Open workspaces", exact: true }).click(); break;
 		case "openSavedWorkspace": await page.getByRole("button", { name: `Open ${step.name}`, exact: true }).click(); break;
 		case "expectSavedWorkspace":
@@ -129,7 +129,7 @@ async function action(page: Page, step: Step) {
 			await page.getByRole("option", { name: step.context, exact: true }).click();
 			break;
 		case "toggleWorkspaceNamespace": await page.getByRole("checkbox", { name: step.namespace, exact: true }).click(); break;
-		case "createWorkspace": await page.getByRole("button", { name: "Create workspace", exact: true }).click(); break;
+		case "createWorkspace": await page.getByRole("button", { name: "Create workspace", exact: true }).click(); await page.waitForURL(/#\/workspace\/[^/]+\/overview$/); break;
 		case "expectOpenWorkspace":
 			await page.locator("div.min-w-0").filter({ has: page.getByText(step.name, { exact: true }) }).filter({ has: page.getByText(step.context, { exact: true }) }).first().waitFor();
 			break;
@@ -201,6 +201,54 @@ async function action(page: Page, step: Step) {
 		case "expectPaletteEntry": await page.getByRole("option", { name: step.label, exact: true }).waitFor(); break;
 		case "expectNoPaletteEntry": if (await page.getByRole("option", { name: step.label, exact: true }).count()) throw new Error(`${step.label} is a palette result`); break;
 		case "choosePaletteEntry": await page.getByRole("option", { name: step.label, exact: true }).click(); break;
+		case "openGitOps":
+			await page.getByRole("button", { name: "Open GitOps", exact: true }).scrollIntoViewIfNeeded();
+			await page.getByRole("button", { name: "Open GitOps", exact: true }).click(); break;
+		case "openGitOpsResources": {
+			await page.getByRole("button", { name: `View resources for ${step.name}`, exact: true }).first().click();
+			break;
+		}
+		case "expectArgoWorkspace": await page.getByRole("heading", { level: 2 }).filter({ hasText: step.name }).waitFor(); break;
+		case "filterArgoResources":
+			await page.getByLabel("Argo CD resource filters").getByRole("button", { name: new RegExp(`^${literal(step.filter)} `) }).click(); break;
+		case "setDeliveryView": await page.getByRole("radio", { name: step.mode, exact: true }).click(); break;
+		// GitOps rows render above the namespace sections, so a shared label such as Workloads matches the GitOps node first.
+		case "expandNav": await page.getByRole("button", { name: `Expand ${step.page}`, exact: true }).first().click(); break;
+		case "expectGitOpsTable":
+			await page.getByRole("heading", { level: 2, name: step.title, exact: true }).waitFor();
+			await page.getByText(itemCount(step.count), { exact: true }).waitFor();
+			break;
+		case "expectGitOpsItem": await gitOpsDetails(page, step).waitFor(); break;
+		// Absence is checked after a preceding step waited for the page's rows.
+		case "expectNoGitOpsItem": if (await gitOpsDetails(page, step).count()) throw new Error(`${step.kind} ${step.name} is still listed`); break;
+		case "openGitOpsDetails": {
+			const button = gitOpsDetails(page, step);
+			await revealGitOps(page, button);
+			await button.click(); break;
+		}
+		case "expectArgoApplication": {
+			const panel = page.getByRole("tabpanel");
+			await panel.getByRole("heading", { level: 2, name: step.name, exact: true }).waitFor();
+			await panel.getByText(`Health ${step.health}`, { exact: true }).waitFor();
+			await panel.getByText(`Sync ${step.sync}`, { exact: true }).waitFor();
+			break;
+		}
+		case "expectArgoSignal":
+			await page.getByRole("tabpanel").locator("div.p-2\\.5").filter({ has: page.getByText(step.label, { exact: true }) }).locator("div.text-base").filter({ hasText: new RegExp(`^${step.count}$`) }).waitFor();
+			break;
+		case "expectHelmCount": await page.getByText(itemCount(step.count), { exact: true }).waitFor(); break;
+		case "expectHelmRelease": await helmCard(page, step.name, step.namespace).waitFor(); break;
+		case "expectNoHelmRelease": if (await helmCard(page, step.name, step.namespace).count()) throw new Error(`Helm release ${step.name} is still listed`); break;
+		case "openHelmRelease": await helmCard(page, step.name, step.namespace).getByRole("button", { name: "Details", exact: true }).click(); break;
+		case "selectHelmNamespace": await page.getByRole("button", { name: new RegExp(`^${literal(step.namespace)}\\s*\\d+$`) }).click(); break;
+		case "searchHelm": await page.getByRole("textbox", { name: "Search Helm releases" }).fill(step.value); break;
+		case "expectHelmDetails": {
+			const card = page.locator('[data-slot="card"]').filter({ has: page.getByRole("button", { name: "Close Helm details", exact: true }) });
+			await card.locator('[data-slot="card-title"]').getByText(step.title, { exact: true }).waitFor();
+			await card.getByText(step.description, { exact: true }).waitFor();
+			await card.getByText(step.totals, { exact: true }).waitFor();
+			break;
+		}
 		default: { const unhandled: never = step; throw new Error(`Unhandled parity step: ${JSON.stringify(unhandled)}`); }
 	}
 }
@@ -232,6 +280,36 @@ function paletteResource(page: Page, step: Identity) {
 /** Event rows in the Events tab: each starts with its `<time>`. */
 function eventRows(page: Page) { return page.locator("div.grid:has(> time[datetime])"); }
 function literal(text: string) { return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+function itemCount(count: number) { return `${count} item${count === 1 ? "" : "s"}`; }
+/** A GitOps card or list row, by the label of its Details button. */
+function gitOpsDetails(page: Page, item: { kind: string; name: string; namespace: string }) {
+	return page.getByRole("button", { name: `Open details for ${item.kind} ${item.name} in ${item.namespace}`, exact: true });
+}
+/** Scrolls virtual rows until the requested Application mounts or both ends are reached. */
+async function revealGitOps(page: Page, target: Locator) {
+	await page.getByRole("heading", { level: 2 }).first().waitFor();
+	for (const direction of [1, -1]) {
+		while (await target.count() === 0) {
+			const moved = await page.locator("[data-virtual-row]").first().evaluate(async (row, direction) => {
+				const viewport = row.closest(".overflow-y-auto, .overflow-auto");
+				if (!(viewport instanceof HTMLElement)) throw new Error("GitOps scroll viewport missing");
+				const previous = viewport.scrollTop;
+				viewport.scrollTop += direction * viewport.clientHeight;
+				await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+				return viewport.scrollTop !== previous;
+			}, direction);
+			if (!moved) break;
+		}
+		if (await target.count()) return;
+	}
+	throw new Error("GitOps details target missing after scrolling the collection");
+}
+/** A Helm release card, by its title and namespace description. */
+function helmCard(page: Page, name: string, namespace: string) {
+	return page.locator('[data-slot="card"]')
+		.filter({ has: page.locator('[data-slot="card-title"]').getByText(name, { exact: true }) })
+		.filter({ has: page.locator('[data-slot="card-description"]').getByText(namespace, { exact: true }) });
+}
 /** A revision in the Revisions list; its comparison picker shows the same label. */
 function revisionButton(page: Page, label: string) { return page.locator("button.w-full.p-3").filter({ has: page.locator("div.font-medium", { hasText: new RegExp(`^${literal(label)}$`) }) }); }
 /** Waits until the element's rendered lines include every expected diff line. */
@@ -247,8 +325,8 @@ async function containsLines(locator: Locator, lines: string[]) {
 export async function runWeb(contract: Contract, artifacts: string, signal: AbortSignal) {
 	const results: { id: string; status: "passed" | "failed"; error?: string }[] = [];
 	const port = await freePort();
-	const env = { ...process.env }; delete env.KUBECONFIG;
-	const vite = Bun.spawn(["bun", "--bun", "vite", "--host", "127.0.0.1", "--port", String(port), "--strictPort"], { cwd: process.cwd(), env, detached: true, stdout: "pipe", stderr: "pipe" });
+	const env = { ...process.env }; delete env.KUBECONFIG; delete env.ARGV0;
+	const vite = Bun.spawn([process.execPath, join(process.cwd(), "node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", String(port), "--strictPort"], { cwd: process.cwd(), env, detached: true, stdout: "pipe", stderr: "pipe" });
 	const identity = startIdentity(vite.pid);
 	const logs = Promise.all([new Response(vite.stdout).text(), new Response(vite.stderr).text()]);
 	let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;

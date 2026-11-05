@@ -191,11 +191,18 @@ pub struct TablePage {
 
 /// Name-sorted rows grouped by ownership, then kind lane, as
 /// `buildResourceTableDisplay` and `buildResourceTableEntries` do.
-pub fn table_page(rows: &[ResourceSummary], page: usize) -> TablePage {
+pub fn table_page(
+    rows: &[ResourceSummary],
+    page: usize,
+    preferred: impl Fn(&ResourceSummary) -> bool,
+) -> TablePage {
     let mut sorted: Vec<&ResourceSummary> = rows.iter().collect();
     // `Intl.Collator(undefined, { numeric: true })`.
     sorted.sort_by(|a, b| collate(&a.name, &b.name, true));
     let grouped_by_gitops = sorted.iter().any(|row| gitops_label(row).is_some());
+    if grouped_by_gitops {
+        sorted.sort_by_key(|row| !preferred(row));
+    }
     let mut groups: Vec<(String, u8, Vec<&ResourceSummary>)> = Vec::new();
     for row in sorted {
         let (label, rank) = if grouped_by_gitops {
@@ -205,7 +212,7 @@ pub fn table_page(rows: &[ResourceSummary], page: usize) -> TablePage {
         };
         match groups.iter_mut().find(|group| group.0 == label) {
             Some(group) => group.2.push(row),
-            None => groups.push((label, rank, vec![row])),
+            None => groups.push((label, if preferred(row) { 0 } else { rank + 1 }, vec![row])),
         }
     }
     groups.sort_by_key(|group| group.1);
@@ -218,7 +225,13 @@ pub fn table_page(rows: &[ResourceSummary], page: usize) -> TablePage {
                 None => kinds.push((&row.kind, vec![row])),
             }
         }
-        kinds.sort_by_key(|kind| kind_rank(kind.0));
+        kinds.sort_by_key(|kind| {
+            if grouped_by_gitops && preferred(kind.1[0]) {
+                0
+            } else {
+                kind_rank(kind.0) + 1
+            }
+        });
         display.extend(kinds.into_iter().flat_map(|kind| kind.1));
     }
     let total = display.len();

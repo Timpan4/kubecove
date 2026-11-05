@@ -1,14 +1,27 @@
 mod actions_review;
 mod actions_state;
 mod actions_tab;
+mod argo_panels;
+mod argo_snapshot;
+mod argo_tab;
+mod argo_workspace;
 mod cluster;
 mod controls;
+mod delivery_summary;
+mod delivery_ui;
 mod detail;
 mod details_tab;
 mod events;
 mod events_tab;
+mod gitops_card;
+mod gitops_nav;
+mod gitops_page;
 mod gitops_section;
+mod gitops_tooltip;
 mod header;
+mod helm_card;
+mod helm_details;
+mod helm_page;
 mod incident_guide;
 mod incident_queue;
 mod incidents;
@@ -28,6 +41,7 @@ mod rbac_review;
 mod rbac_verify;
 mod resources;
 mod revisions_tab;
+mod scope;
 mod settings_kubeconfig;
 mod settings_page;
 mod settings_sections;
@@ -40,10 +54,9 @@ mod yaml_marks;
 mod yaml_tab;
 
 use crate::backend::{Backend, Scope};
-use crate::model::{WORKSPACE_KINDS, ownership_group};
 use crate::theme::Tokens;
 use crate::ui;
-use detail::{Detail, ResourceDetail};
+use detail::Detail;
 use gpui_kit::component::{
     IconName, IndexPath,
     input::{Input, InputEvent, InputState},
@@ -72,6 +85,8 @@ pub(crate) enum Page {
     PortForwards,
     Rbac,
     Settings,
+    GitOps,
+    Helm,
 }
 
 /// The native workspace: sidebar navigation, header and the active page, laid
@@ -92,6 +107,10 @@ pub struct Inspector {
     detail: Detail,
     map: map::MapState,
     gitops: gitops_section::GitOpsState,
+    gitops_page: gitops_page::GitOpsPage,
+    helm_page: helm_page::HelmPage,
+    /// A tab `open_resource_on` asked the loading detail panel to show.
+    detail_tab: Option<detail::DetailTab>,
     cluster: cluster::ClusterState,
     incidents: incidents::IncidentsState,
     sessions: port_forwards::SessionsState,
@@ -169,6 +188,9 @@ impl Inspector {
             detail: Detail::Closed,
             map: map::MapState::new(),
             gitops: Default::default(),
+            gitops_page: gitops_page::GitOpsPage::new(),
+            helm_page: helm_page::HelmPage::new(window, cx),
+            detail_tab: None,
             cluster: Default::default(),
             incidents: incidents::IncidentsState::new(),
             sessions: port_forwards::SessionsState::new(),
@@ -197,167 +219,9 @@ impl Inspector {
         self
     }
 
-    fn load_contexts(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.context_task.take();
-        self.load = Load::Loading;
-        let read = self.backend.contexts();
-        self.context_task = Some(cx.spawn_in(window, async move |this, cx| {
-            let result = read.await;
-            let _ = this.update_in(cx, |this, window, cx| {
-                match result {
-                    Ok(contexts) if contexts.is_empty() => {
-                        this.load = Load::Failed(
-                            "No Kubernetes contexts found. Configure KUBECONFIG and retry.".into(),
-                        )
-                    }
-                    Ok(contexts) => {
-                        let selected = contexts
-                            .iter()
-                            .find(|context| context.is_current)
-                            .unwrap_or(&contexts[0])
-                            .name
-                            .clone();
-                        this.context_picker.update(cx, |state, cx| {
-                            state.set_items(
-                                SearchableVec::new(
-                                    contexts
-                                        .into_iter()
-                                        .map(|context| SharedString::from(context.name))
-                                        .collect::<Vec<_>>(),
-                                ),
-                                window,
-                                cx,
-                            );
-                            state.set_selected_value(
-                                &SharedString::from(selected.clone()),
-                                window,
-                                cx,
-                            );
-                        });
-                        this.scope.context = selected;
-                        this.load_scope(false, window, cx);
-                    }
-                    Err(error) => this.load = Load::Failed(error.message),
-                }
-                cx.notify();
-            });
-        }));
-    }
-
-    fn load_scope(&mut self, refresh: bool, window: &mut Window, cx: &mut Context<Self>) {
-        self.scope_task.take();
-        self.close_detail(cx);
-        self.request = Rc::new(());
-        let request = self.request.clone();
-        self.load = Load::Loading;
-        self.rows.clear();
-        self.warnings.clear();
-        self.filter(cx);
-        let read = self.backend.resources(self.scope.clone(), refresh);
-        self.scope_task = Some(cx.spawn_in(window, async move |this, cx| {
-            let result = read.await;
-            let _ = this.update(cx, |this, cx| {
-                if !Rc::ptr_eq(&this.request, &request) {
-                    return;
-                }
-                match result {
-                    Ok(result) => {
-                        this.namespaces = result.namespaces;
-                        this.rows = result.resources;
-                        this.warnings = result.warnings;
-                        this.load = Load::Ready;
-                    }
-                    Err(error) => this.load = Load::Failed(error.message),
-                }
-                this.filter(cx);
-                cx.notify();
-            });
-        }));
-        // The map loads on its own, like the web's topology query, so a
-        // topology failure leaves the table usable.
-        self.map.topology = map::TopologyLoad::Loading;
-        let request = self.request.clone();
-        let read = self.backend.topology(self.scope.clone());
-        self.topology_task = Some(cx.spawn_in(window, async move |this, cx| {
-            let result = read.await;
-            let _ = this.update(cx, |this, cx| {
-                if !Rc::ptr_eq(&this.request, &request) {
-                    return;
-                }
-                this.map.topology = match result {
-                    Ok(topology) => map::TopologyLoad::Ready(topology),
-                    Err(error) => map::TopologyLoad::Failed(error.message),
-                };
-                cx.notify();
-            });
-        }));
-        self.load_inventory(refresh, cx);
-        self.load_page(cx);
-        cx.notify();
-    }
-
-    fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.live_menu_open = false;
-        if self.scope.context.is_empty() {
-            self.load_contexts(window, cx)
-        } else {
-            self.load_scope(true, window, cx)
-        }
-    }
-
-    fn filter(&mut self, cx: &mut Context<Self>) {
-        let search = self.search.read(cx).value().trim().to_lowercase();
-        let kinds = self.scope_kinds();
-        self.visible = self
-            .rows
-            .iter()
-            .chain(self.cluster_rows())
-            .filter(|row| kinds.contains(&row.kind))
-            .filter(|row| self.launcher.in_scope(row))
-            .filter(|row| self.palette.kind.is_none_or(|kind| row.kind == kind))
-            .filter(|row| {
-                search.is_empty()
-                    || row.name.to_lowercase().contains(&search)
-                    || row.kind.to_lowercase().contains(&search)
-                    || row
-                        .namespace
-                        .as_deref()
-                        .is_some_and(|ns| ns.to_lowercase().contains(&search))
-                    || ownership_group(row).0.to_lowercase().contains(&search)
-                    || row
-                        .helm_release
-                        .as_deref()
-                        .is_some_and(|release| release.to_lowercase().contains(&search))
-            })
-            .cloned()
-            .collect();
-        cx.notify();
-    }
-
-    /// Rows in the saved workspace kinds, which the overview summarizes.
-    fn workspace_rows(&self) -> impl Iterator<Item = &ResourceSummary> {
-        self.rows
-            .iter()
-            .filter(|row| WORKSPACE_KINDS.contains(&row.kind.as_str()))
-    }
-
-    /// Kinds in the resource scope: the page's kinds plus custom kinds present.
-    fn scope_kinds(&self) -> Vec<String> {
-        let mut kinds: Vec<String> = self
-            .base_kinds()
-            .iter()
-            .map(|kind| (*kind).to_owned())
-            .collect();
-        for row in &self.rows {
-            if row.dynamic == Some(true) && !kinds.contains(&row.kind) {
-                kinds.push(row.kind.clone());
-            }
-        }
-        kinds
-    }
-
     fn open_page(&mut self, page: Page, cx: &mut Context<Self>) {
         if self.page != page && self.can_leave(cx) {
+            self.gitops_page.workspace = None;
             self.close_detail(cx);
             self.page = page;
             self.load_page(cx);
@@ -374,6 +238,7 @@ impl Inspector {
         if !self.can_leave(cx) {
             return;
         }
+        self.gitops_page.workspace = None;
         self.page = Page::Resources;
         self.palette.kind = None;
         self.filter(cx);
@@ -431,11 +296,7 @@ impl Inspector {
                 if !Rc::ptr_eq(&this.detail_request, &request) {
                     return;
                 }
-                this.detail = match result {
-                    Ok(data) => Detail::Ready(Box::new(ResourceDetail::new(data, window, cx))),
-                    Err(error) => Detail::Failed(error.message),
-                };
-                this.load_events(window, cx);
+                this.settle_detail(result, window, cx);
                 cx.notify();
             });
         }));
@@ -466,6 +327,8 @@ impl Inspector {
             Page::PortForwards => self.port_forwards_page(cx).into_any_element(),
             Page::Rbac => self.rbac_page(window, cx).into_any_element(),
             Page::Settings => self.settings_page(cx).into_any_element(),
+            Page::GitOps => self.gitops_page_view(window, cx),
+            Page::Helm => self.helm_page_view(window, cx),
         }
     }
 }
@@ -531,17 +394,7 @@ impl Render for Inspector {
                                     .child(page),
                             )
                             .when(detail_open, |row| {
-                                row.child(
-                                    div()
-                                        .flex_none()
-                                        .w(gpui_kit::relative(0.395))
-                                        .h_full()
-                                        .border_l_1()
-                                        .border_color(Tokens::border())
-                                        // `ResourceInspector.svelte`: `bg-surface-1` (= card).
-                                        .bg(Tokens::card())
-                                        .child(self.detail_view(cx)),
-                                )
+                                row.children(self.detail_pane(window, cx))
                             }),
                     ),
             )

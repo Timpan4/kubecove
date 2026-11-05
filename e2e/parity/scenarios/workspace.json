@@ -7,7 +7,7 @@
       "title": "The workspace overview counts Argo CD and Flux resources",
       "steps": [
         { "action": "expectGitOpsCount", "label": "Applications", "count": 8 },
-        { "action": "expectGitOpsCount", "label": "Out of sync", "count": 0 },
+        { "action": "expectGitOpsCount", "label": "Out of sync", "count": 1 },
         { "action": "expectGitOpsCount", "label": "Flux resources", "count": 2 },
         { "action": "expectLiveSessionCount", "count": 3 }
       ]
