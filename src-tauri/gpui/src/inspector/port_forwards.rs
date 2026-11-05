@@ -14,14 +14,10 @@ use gpui_kit::{AnyElement, Context, SharedString, Task, div, prelude::*, px};
 use std::rc::Rc;
 
 pub(super) struct SessionsState {
-    pub(super) preferences: super::session_preferences::PreferencesState,
     pub(super) form: Option<super::saved_forward_form::PresetForm>,
     pub(super) load: Option<Result<LiveSessions, String>>,
     pub(super) busy: bool,
     pub(super) error: Option<String>,
-    pub(super) presets: std::collections::HashMap<String, Vec<crate::backend::SavedForward>>,
-    pub(super) auto_start: bool,
-    pub(super) keep: bool,
     pub(super) scope_context: Option<String>,
     request: Rc<()>,
     task: Option<Task<()>>,
@@ -31,14 +27,10 @@ pub(super) struct SessionsState {
 impl SessionsState {
     pub(super) fn new() -> Self {
         Self {
-            preferences: Default::default(),
             form: None,
             load: None,
             busy: false,
             error: None,
-            presets: Default::default(),
-            auto_start: false,
-            keep: false,
             scope_context: None,
             request: Rc::new(()),
             task: None,
@@ -74,6 +66,10 @@ impl Inspector {
                 }
             }));
         }
+        let keep = self
+            .persisted
+            .preferences
+            .keep_live_sessions_on_workspace_switch;
         let state = &mut self.sessions;
         state.request = Rc::new(());
         let request = state.request.clone();
@@ -83,13 +79,12 @@ impl Inspector {
             .as_ref()
             .is_some_and(|old| *old != context);
         state.scope_context = Some(context.clone());
-        let cleanup = changed && !state.keep;
+        let cleanup = changed && !keep;
         let previous_source = state
             .load
             .as_ref()
             .and_then(|r| r.as_ref().ok())
             .and_then(|s| s.source_key.clone());
-        let keep = state.keep;
         let backend = self.backend.clone();
         let read = async move {
             let sessions = backend.live_sessions().await?;
@@ -151,8 +146,8 @@ impl Inspector {
                             .child(
                                 div().flex().items_center().gap(px(8.)).id("auto-start-forwards").test_support()
                                     .aria_label("Auto-start saved port forwards").on_click(cx.listener(|this, _, _, cx| {
-                                        this.sessions.auto_start = !this.sessions.auto_start;
-                                        this.persist_session_preferences(cx);
+                                        this.persisted.preferences.auto_start_saved_port_forwards = !this.persisted.preferences.auto_start_saved_port_forwards;
+                                        this.save_preferences(cx);
                                         cx.notify();
                                     }))
                                     .child(
@@ -162,7 +157,7 @@ impl Inspector {
                                             .border_1()
                                             .border_color(Tokens::input())
                                             .bg(Tokens::input().opacity(0.3))
-                                            .when(self.sessions.auto_start, |box_| box_.bg(Tokens::primary()).child(ui::icon("check", 14., Tokens::primary_foreground()))),
+                                            .when(self.persisted.preferences.auto_start_saved_port_forwards, |box_| box_.bg(Tokens::primary()).child(ui::icon("check", 14., Tokens::primary_foreground()))),
                                     )
                                     .child(ui::muted(ui::xs("Auto-start saved"))),
                             )
@@ -231,7 +226,7 @@ impl Inspector {
                                     "Status",
                                     "Actions",
                                 ],
-                                self.sessions.presets.get(&self.preset_key()).into_iter().flatten().enumerate().map(|(index, saved)| { let preset = &saved.request; vec![
+                                self.persisted.saved_forward_presets.get(&self.preset_key()).into_iter().flatten().enumerate().map(|(index, saved)| { let preset = &saved.request; vec![
                                     div().id(SharedString::from(format!("preset:{index}"))).test_support().aria_label(saved.label.clone()).child(text(if saved.label.is_empty() { format!("{}:{}", preset.target_name.as_deref().unwrap_or_default(), preset.remote_port) } else { saved.label.clone() })).into_any_element(),
                                     text(preset.cluster_context.clone()), text(preset.namespace.clone()),
                                     text(preset.target_name.clone().unwrap_or_default()),
@@ -245,8 +240,8 @@ impl Inspector {
                                     .child(xs_button("x", "Delete", true).id(SharedString::from(format!("remove-preset:{index}"))).test_support()
                                         .on_click(cx.listener(move |this, _, _, cx| {
                                             let preset_key = this.preset_key();
-                                            if let Some(presets) = this.sessions.presets.get_mut(&preset_key) { presets.remove(index); }
-                                            this.persist_session_preferences(cx);
+                                            if let Some(presets) = this.persisted.saved_forward_presets.get_mut(&preset_key) { presets.remove(index); }
+                                            this.save_preferences(cx);
                                             cx.notify();
                                         }))).into_any_element(),
                                 ]}).collect(),

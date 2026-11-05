@@ -32,6 +32,8 @@ use std::{collections::HashMap, path::Path, sync::Mutex};
 #[derive(Deserialize)]
 pub struct Fixture {
     #[serde(skip)]
+    preferences: kubecove_gpui::preferences::Store,
+    #[serde(skip)]
     settings_file: std::path::PathBuf,
     #[serde(skip)]
     settings: settings_integrations::SettingsIntegrations,
@@ -114,6 +116,15 @@ impl Fixture {
 }
 
 impl Backend for Fixture {
+    fn load_preferences(&self) -> Result<kubecove_gpui::preferences::Document, AppError> {
+        self.preferences.load()
+    }
+    fn save_preferences(
+        &self,
+        document: kubecove_gpui::preferences::Document,
+    ) -> Result<kubecove_gpui::preferences::Document, AppError> {
+        self.preferences.save(document)
+    }
     fn remove_kubeconfig_path(&self, path: String) -> Read<KubeconfigSourcesSummary> {
         let mut sources = self.kubeconfig.lock().unwrap();
         sources.paths.retain(|entry| entry.path != path);

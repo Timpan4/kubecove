@@ -351,6 +351,11 @@ impl Inspector {
                         }
                     }
                 }
+                if this.persisted.preferences.skip_change_review
+                    && action != ResourceActionKind::Delete
+                {
+                    this.execute_review(window, cx);
+                }
                 cx.notify();
                 window.refresh();
             });

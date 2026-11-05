@@ -124,16 +124,24 @@ impl Inspector {
         if self.nav_open("GitOps") {
             match self.gitops.inventory() {
                 Some(data) => {
-                    if data.argo.is_some() {
-                        rows.push(row(
-                            1,
-                            "nav:Argo CD".into(),
-                            Some("Argo CD"),
-                            "Argo CD",
-                            ("git-branch", Tokens::primary),
-                            Open::GitOps(Focus::Argo(None)),
-                        ));
-                        if self.nav_open("Argo CD") {
+                    if data.argo.is_some()
+                        || self
+                            .persisted
+                            .preferences
+                            .show_unavailable_git_ops_providers
+                    {
+                        rows.push(Row {
+                            disabled: data.argo.is_none(),
+                            ..row(
+                                1,
+                                "nav:Argo CD".into(),
+                                Some("Argo CD"),
+                                "Argo CD",
+                                ("git-branch", Tokens::primary),
+                                Open::GitOps(Focus::Argo(None)),
+                            )
+                        });
+                        if data.argo.is_some() && self.nav_open("Argo CD") {
                             rows.extend(ARGO_KINDS.iter().map(|(kind, label)| {
                                 row(
                                     2,
@@ -146,19 +154,27 @@ impl Inspector {
                             }));
                         }
                     }
-                    if data.flux.is_some() {
-                        rows.push(row(
-                            1,
-                            "nav:Flux".into(),
-                            Some("Flux"),
-                            "Flux",
-                            ("package", Tokens::muted_foreground),
-                            Open::GitOps(Focus::Flux {
-                                family: None,
-                                kind: None,
-                            }),
-                        ));
-                        if self.nav_open("Flux") {
+                    if data.flux.is_some()
+                        || self
+                            .persisted
+                            .preferences
+                            .show_unavailable_git_ops_providers
+                    {
+                        rows.push(Row {
+                            disabled: data.flux.is_none(),
+                            ..row(
+                                1,
+                                "nav:Flux".into(),
+                                Some("Flux"),
+                                "Flux",
+                                ("package", Tokens::muted_foreground),
+                                Open::GitOps(Focus::Flux {
+                                    family: None,
+                                    kind: None,
+                                }),
+                            )
+                        });
+                        if data.flux.is_some() && self.nav_open("Flux") {
                             for (family, kinds) in FLUX_FAMILIES {
                                 rows.push(row(
                                     2,

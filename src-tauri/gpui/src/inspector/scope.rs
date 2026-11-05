@@ -210,8 +210,14 @@ impl Inspector {
             .iter()
             .map(|kind| (*kind).to_owned())
             .collect();
+        if !self.persisted.preferences.show_custom_resources {
+            return kinds;
+        }
         for row in &self.rows {
-            if row.dynamic == Some(true) && !kinds.contains(&row.kind) {
+            if self.persisted.preferences.show_custom_resources
+                && row.dynamic == Some(true)
+                && !kinds.contains(&row.kind)
+            {
                 kinds.push(row.kind.clone());
             }
         }

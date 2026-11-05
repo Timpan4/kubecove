@@ -28,8 +28,8 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) {
         let saved = editing.and_then(|i| {
-            self.sessions
-                .presets
+            self.persisted
+                .saved_forward_presets
                 .get(&self.preset_key())
                 .and_then(|p| p.get(i))
         });
@@ -197,8 +197,12 @@ impl Inspector {
             remote_port: remote.unwrap().into(),
             local_port: port.map(i64::from),
         };
-        let presets = self.sessions.presets.entry(preset_key).or_default();
-        let saved = crate::backend::SavedForward {
+        let presets = self
+            .persisted
+            .saved_forward_presets
+            .entry(preset_key)
+            .or_default();
+        let saved = crate::preferences::SavedForward {
             request,
             label: form.label.read(cx).value().trim().to_owned(),
         };
@@ -207,7 +211,7 @@ impl Inspector {
             None => presets.push(saved),
         }
         self.sessions.form = None;
-        self.persist_session_preferences(cx);
+        self.save_preferences(cx);
         cx.notify();
     }
 }

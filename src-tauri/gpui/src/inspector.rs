@@ -55,6 +55,8 @@ mod overview;
 mod palette;
 mod port_forward_rows;
 mod port_forwards;
+mod preference_controls;
+mod preferences;
 mod rbac_inspector;
 mod rbac_page;
 mod rbac_queue;
@@ -65,7 +67,6 @@ mod revisions_tab;
 mod saved_forward_form;
 mod scope;
 mod session_actions;
-mod session_preferences;
 mod settings_integrations;
 mod settings_kubeconfig;
 mod settings_page;
@@ -84,6 +85,7 @@ use crate::backend::{Backend, Scope};
 use crate::theme::Tokens;
 use crate::ui;
 use detail::Detail;
+use gpui_kit::TestSupportExt;
 use gpui_kit::component::{
     IconName, IndexPath,
     input::{Input, InputEvent, InputState},
@@ -120,6 +122,8 @@ pub(crate) enum Page {
 /// out like the Svelte `WorkspaceShell`.
 pub struct Inspector {
     backend: Arc<dyn Backend>,
+    persisted: crate::preferences::Document,
+    persistence_error: Option<String>,
     workspace_name: SharedString,
     scope: Scope,
     page: Page,
@@ -210,6 +214,8 @@ impl Inspector {
         });
         let mut this = Self {
             backend,
+            persisted: Default::default(),
+            persistence_error: None,
             workspace_name: "KubeCove".into(),
             scope: Scope::default(),
             page: Page::Overview,
@@ -249,8 +255,8 @@ impl Inspector {
             diff_task: None,
             _subscriptions: subscriptions,
         };
+        this.load_preferences(cx);
         this.load_contexts(window, cx);
-        this.load_session_preferences(cx);
         this
     }
 
@@ -428,18 +434,21 @@ impl Render for Inspector {
                     .border_color(Tokens::border())
                     .bg(Tokens::background())
                     .child(self.header(cx))
-                    .when_some(self.notice.clone(), |main, notice| {
-                        main.child(
-                            div()
-                                .id("notice")
-                                .role(gpui_kit::Role::Alert)
-                                .px(px(16.))
-                                .py(px(8.))
-                                .border_b_1()
-                                .border_color(Tokens::border())
-                                .child(ui::xs(notice)),
-                        )
-                    })
+                    .when_some(
+                        self.persistence_error.clone().or(self.notice.clone()),
+                        |main, notice| {
+                            main.child(
+                                div()
+                                    .id("notice")
+                                    .role(gpui_kit::Role::Alert)
+                                    .px(px(16.))
+                                    .py(px(8.))
+                                    .border_b_1()
+                                    .border_color(Tokens::border())
+                                    .child(ui::xs(notice)),
+                            )
+                        },
+                    )
                     .child(
                         div()
                             .flex()
@@ -448,6 +457,7 @@ impl Render for Inspector {
                             .child(
                                 div()
                                     .id("page")
+                                    .test_support()
                                     .flex()
                                     .flex_col()
                                     .flex_1()

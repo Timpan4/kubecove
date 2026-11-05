@@ -36,6 +36,15 @@ pub struct ScopeResult {
 /// Both production commands and controlled UI-test responses use this seam.
 /// Dropping a pending read must cancel its host-owned task.
 pub trait Backend: Send + Sync + 'static {
+    fn load_preferences(&self) -> Result<crate::preferences::Document, AppError> {
+        Ok(Default::default())
+    }
+    fn save_preferences(
+        &self,
+        document: crate::preferences::Document,
+    ) -> Result<crate::preferences::Document, AppError> {
+        Ok(document)
+    }
     fn remote_status(&self) -> Read<Option<RemoteConnectionSummary>> {
         Box::pin(async { Ok(None) })
     }
@@ -71,12 +80,6 @@ pub trait Backend: Send + Sync + 'static {
     }
     fn export_workspace(&self, _name: String, _content: String) -> Read<bool> {
         settings_integrations::unavailable("File dialog unavailable")
-    }
-    fn session_preferences(&self) -> Read<SessionPreferences> {
-        Box::pin(async { Ok(SessionPreferences::default()) })
-    }
-    fn save_session_preferences(&self, _: SessionPreferences) -> Read<()> {
-        Box::pin(async { Ok(()) })
     }
     fn resource_kinds(
         &self,
@@ -283,8 +286,6 @@ pub use remote::DesktopBackend;
 pub use settings_integrations::{INSTALL_UNAVAILABLE, RemoteConnectionSummary, UpdateStatus};
 mod inventory;
 mod session_controls;
-mod session_preferences;
-pub use session_preferences::{SavedForward, SessionPreferences};
 mod topology_metrics;
 pub use inventory::CLUSTER_KINDS;
 pub use session_controls::ExecStream;
@@ -294,6 +295,7 @@ pub use crate::model::WORKSPACE_KINDS as INSPECTION_KINDS;
 
 pub struct NativeBackend {
     settings_initialized: bool,
+    preferences: crate::preferences::Store,
     runtime: Option<tokio::runtime::Runtime>,
     usage: commands::AppUsageMonitor,
     store: ClusterLiveStore,
@@ -309,6 +311,7 @@ impl NativeBackend {
     pub fn new() -> std::io::Result<Self> {
         Ok(Self {
             settings_initialized: false,
+            preferences: Default::default(),
             runtime: Some(
                 tokio::runtime::Builder::new_multi_thread()
                     .enable_all()
@@ -379,17 +382,20 @@ fn supported(kind: &str) -> Result<(), AppError> {
 }
 
 impl Backend for NativeBackend {
+    fn load_preferences(&self) -> Result<crate::preferences::Document, AppError> {
+        self.preferences.load()
+    }
+    fn save_preferences(
+        &self,
+        document: crate::preferences::Document,
+    ) -> Result<crate::preferences::Document, AppError> {
+        self.preferences.save(document)
+    }
     fn add_kubeconfig_paths(&self, paths: Vec<String>) -> Read<KubeconfigSourcesSummary> {
         if !self.settings_initialized {
             return self.read(security::unsaved());
         }
         self.read(async move { commands::add_kubeconfig_paths(paths) })
-    }
-    fn session_preferences(&self) -> Read<SessionPreferences> {
-        session_preferences::load(self)
-    }
-    fn save_session_preferences(&self, preferences: SessionPreferences) -> Read<()> {
-        session_preferences::save(self, preferences)
     }
     fn start_forward(
         &self,

@@ -396,7 +396,14 @@ impl Inspector {
                 )
                 .into_any_element(),
             _ => {
-                let panels = if stacked {
+                let panels = if !self.persisted.preferences.show_ownership_map_by_default {
+                    div()
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .min_h(px(400.))
+                        .child(self.table_panel(cx))
+                } else if stacked {
                     div()
                         .flex()
                         .flex_col()

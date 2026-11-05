@@ -216,6 +216,10 @@ impl Inspector {
             }
             Err(error) => Detail::Failed(error.message),
         };
+        if let Detail::Ready(detail) = &mut self.detail {
+            detail.events.default_open = self.persisted.preferences.expand_timeline_by_default;
+        }
+        self.apply_yaml_defaults(cx, window);
         self.load_events(window, cx);
         let Some(tab) = self.detail_tab.take() else {
             return;
@@ -384,15 +388,22 @@ impl Inspector {
                     summary.name
                 );
                 let content: AnyElement = match detail.tab {
-                    DetailTab::Details => details_tab(detail, cx).into_any_element(),
+                    DetailTab::Details => {
+                        details_tab(detail, self.persisted.preferences.timestamp_timezone, cx)
+                            .into_any_element()
+                    }
                     DetailTab::Forward => self.forward_tab(cx).into_any_element(),
                     DetailTab::Exec => self.exec_view(cx),
                     DetailTab::Events => events_tab(detail, cx),
                     DetailTab::Logs => logs_tab(detail, cx),
                     DetailTab::Revisions => revisions_tab(detail, cx),
-                    DetailTab::Argo => argo_tab(detail, cx),
+                    DetailTab::Argo => {
+                        argo_tab(detail, self.persisted.preferences.timestamp_timezone, cx)
+                    }
                     DetailTab::Actions => actions_tab(detail, cx),
-                    DetailTab::Yaml => yaml_tab(detail, cx).into_any_element(),
+                    DetailTab::Yaml => {
+                        yaml_tab(detail, &self.persisted.preferences, cx).into_any_element()
+                    }
                 };
                 div()
                     .flex()

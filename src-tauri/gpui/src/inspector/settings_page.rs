@@ -19,6 +19,7 @@ use gpui_kit::{
 pub(super) type Observed = gpui_kit::base::ObservedElement<Stateful<Div>>;
 
 pub(super) struct SettingsState {
+    pub(super) confirming_skip_review: bool,
     pub(super) integrations: super::settings_integrations::Integrations,
     /// The page "Back to app" returns to.
     previous: Page,
@@ -47,6 +48,7 @@ impl SettingsState {
             }
         })];
         Self {
+            confirming_skip_review: false,
             integrations: super::settings_integrations::Integrations::new(window, cx),
             previous: Page::Overview,
             category: Category::General,
@@ -224,44 +226,10 @@ impl Inspector {
             .flex_col()
             .gap(px(16.))
             .children(settings::rows(category).map(|row| {
-                if row.title == "Show CPU and memory footer" {
-                    settings_row(
-                        row.title,
-                        row.description.to_owned(),
-                        switch("Show CPU and memory footer", self.usage.visible)
-                            .cursor_pointer()
-                            .on_click(cx.listener(|this, _, _, cx| this.toggle_usage(cx)))
-                            .into_any_element(),
-                    )
-                    .into_any_element()
-                } else if row.title == "Auto-start saved port forwards"
-                    || row.title == "Keep live sessions across workspace switches"
-                {
-                    let auto = row.title == "Auto-start saved port forwards";
-                    settings_row(
-                        row.title,
-                        row.description.to_owned(),
-                        switch(
-                            row.title,
-                            if auto {
-                                self.sessions.auto_start
-                            } else {
-                                self.sessions.keep
-                            },
-                        )
-                        .cursor_pointer()
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            if auto {
-                                this.sessions.auto_start = !this.sessions.auto_start;
-                            } else {
-                                this.sessions.keep = !this.sessions.keep;
-                            }
-                            this.persist_session_preferences(cx);
-                            cx.notify();
-                        }))
-                        .into_any_element(),
-                    )
-                    .into_any_element()
+                if row.unavailable.is_none() && row.control != Control::Section {
+                    self.preference_control(row, cx)
+                } else if row.title == "Resource group order" {
+                    self.resource_order_controls(row, cx)
                 } else if row.control == Control::Section {
                     super::settings_sections::section(row)
                 } else {

@@ -72,7 +72,9 @@ impl Inspector {
             Snapshot::Loading => "Loading Application and managed resources…".to_owned(),
             Snapshot::Failed(error) => format!("Argo data unavailable: {error}"),
             Snapshot::Ready(_) => status(&["reconciledAt"])
-                .and_then(exact_timestamp)
+                .and_then(|value| {
+                    exact_timestamp(value, self.persisted.preferences.timestamp_timezone)
+                })
                 .map(|time| format!("Reconciled {time}"))
                 .unwrap_or_else(|| "Application CRD managed-resource state".into()),
         };

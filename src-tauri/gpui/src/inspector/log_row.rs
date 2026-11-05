@@ -62,8 +62,37 @@ pub(super) fn log_row(
     line: &ParsedLogLine,
     logs: &LogsState,
     position: usize,
+    layout: crate::preferences::LogLayout,
 ) -> ObservedElement<Stateful<Div>> {
     let structure = &line.structure;
+    if layout == crate::preferences::LogLayout::OneLine {
+        return div()
+            .id(("log-row", position))
+            .test_support()
+            .aria_label(structure.headline.clone())
+            .flex()
+            .gap(px(8.))
+            .px(px(12.))
+            .py(px(4.))
+            .font_family(MONO)
+            .text_size(px(12.))
+            .child(line.time.clone())
+            .children(structure.level.map(|level| crate::ui::xs(level.label())))
+            .children(
+                (logs.is_aggregate() && !line.source_label.is_empty())
+                    .then(|| crate::ui::xs(line.source_label.clone())),
+            )
+            .child(highlighted(&structure.headline, &logs.term))
+            .children(
+                structure
+                    .error
+                    .as_ref()
+                    .map(|error| highlighted(error, &logs.term)),
+            )
+            .children(structure.fields.iter().map(|field| {
+                highlighted(&format!("{}={}", field.key, field.value).into(), &logs.term)
+            }));
+    }
     let term = logs.term.as_str();
     let wrap = logs.wrap;
     let edge = match structure.level {
@@ -147,7 +176,7 @@ pub(super) fn log_row(
             .mt(px(3.))
             .font_family(MONO)
             .text_color(Tokens::foreground().opacity(0.85));
-        if wrap {
+        if wrap && layout == crate::preferences::LogLayout::Stacked {
             row.flex()
                 .flex_wrap()
                 .gap(px(3.))
@@ -197,11 +226,17 @@ pub(super) fn log_row(
                 .w(px(2.))
                 .bg(edge),
         )
+        .when(layout == crate::preferences::LogLayout::Gutter, |row| {
+            row.py(px(3.))
+        })
         .child(head)
         .when_some(structure.error.as_ref(), |row, error| {
             row.child(clip(
                 div()
                     .mt(px(1.))
+                    .when(layout == crate::preferences::LogLayout::Gutter, |row| {
+                        row.ml(px(86.2 + if logs.buffer.has_levels() { 37. } else { 0. }))
+                    })
                     .font_family(MONO)
                     .text_size(px(11.5))
                     .line_height(px(16.))
@@ -209,5 +244,9 @@ pub(super) fn log_row(
                     .child(highlighted(error, term)),
             ))
         })
-        .children(fields)
+        .children(fields.map(|fields| {
+            fields.when(layout == crate::preferences::LogLayout::Gutter, |row| {
+                row.ml(px(86.2 + if logs.buffer.has_levels() { 37. } else { 0. }))
+            })
+        }))
 }

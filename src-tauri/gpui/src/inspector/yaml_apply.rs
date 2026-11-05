@@ -222,6 +222,7 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) {
         let backend = self.backend.clone();
+        let global_force = self.persisted.preferences.allow_yaml_force_conflicts;
         let Some(detail) = self.yaml_apply() else {
             return;
         };
@@ -233,13 +234,13 @@ impl Inspector {
         state.phase = Phase::Preparing;
         state.feedback = Feedback::None;
         state.show_full = false;
-        let force = force.unwrap_or(state.force_for_resource);
+        let force = force.unwrap_or(state.force_for_resource || global_force);
         let mut request = apply_request(&detail.data.summary, draft, force);
         request.yaml_encoding = detail.yaml_view.format;
         let read = backend.prepare_yaml_apply(request.clone());
         self.diff_task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
-            let _ = this.update(cx, |this, cx| {
+            let _ = this.update_in(cx, |this, window, cx| {
                 let Some(detail) = this.yaml_apply() else {
                     return;
                 };
@@ -250,6 +251,9 @@ impl Inspector {
                         Phase::Editing
                     }
                 };
+                if this.persisted.preferences.skip_change_review {
+                    this.apply_yaml_review(window, cx);
+                }
                 cx.notify();
             });
         }));

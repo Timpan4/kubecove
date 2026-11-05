@@ -2,6 +2,10 @@
 mod detail_tabs;
 #[path = "native/live_data.rs"]
 mod live_data;
+#[path = "native/preferences.rs"]
+mod preferences;
+#[path = "native/preferences_migration.rs"]
+mod preferences_migration;
 #[path = "native/remote_connections.rs"]
 mod remote_connections;
 #[path = "native/session_controls.rs"]

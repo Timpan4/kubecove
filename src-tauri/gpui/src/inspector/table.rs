@@ -236,7 +236,10 @@ impl Inspector {
                     .or_else(|| row.helm_release.clone())
                     .unwrap_or(EMPTY.into()),
             ),
-            Column::Age => text_cell(column, row.age.clone()),
+            Column::Age => text_cell(
+                column,
+                self.timestamp_label(&row.age, row.created_at.as_deref()),
+            ),
             Column::Pin => cell(
                 column,
                 div()
@@ -294,9 +297,12 @@ impl Inspector {
     }
 
     pub(super) fn table_panel(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        let page = table_page(&self.visible, self.table_page, |row| {
-            self.application_manages(row)
-        });
+        let page = table_page(
+            &self.visible,
+            self.table_page,
+            |row| self.application_manages(row),
+            &self.persisted.preferences.resource_kind_lanes,
+        );
         self.table_page = self.table_page.min(page.page_count - 1);
         let columns = self.columns(&page.rows);
         let min_width: f32 = columns.iter().map(|column| column.width()).sum();

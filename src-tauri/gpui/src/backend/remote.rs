@@ -19,6 +19,7 @@ pub struct DesktopBackend {
     remote: Arc<RemoteConnectionStore>,
     selected: Arc<AtomicBool>,
     channel: AtomicU64,
+    preferences: Arc<crate::preferences::Store>,
 }
 
 impl DesktopBackend {
@@ -28,6 +29,7 @@ impl DesktopBackend {
             remote: Arc::default(),
             selected: Arc::default(),
             channel: AtomicU64::new(1),
+            preferences: Default::default(),
         }
     }
     fn selected(&self) -> bool {
@@ -84,6 +86,23 @@ macro_rules! route {
 }
 
 impl Backend for DesktopBackend {
+    fn load_preferences(&self) -> Result<crate::preferences::Document, AppError> {
+        if self.selected() {
+            self.preferences.load()
+        } else {
+            self.local.load_preferences()
+        }
+    }
+    fn save_preferences(
+        &self,
+        document: crate::preferences::Document,
+    ) -> Result<crate::preferences::Document, AppError> {
+        if self.selected() {
+            self.preferences.save(document)
+        } else {
+            self.local.save_preferences(document)
+        }
+    }
     fn add_kubeconfig_paths(&self, paths: Vec<String>) -> Read<KubeconfigSourcesSummary> {
         if self.selected() {
             return settings_integrations::unavailable(
@@ -100,12 +119,14 @@ impl Backend for DesktopBackend {
     fn connect_remote(&self, url: String, token: String) -> Read<RemoteConnectionSummary> {
         let remote = self.remote.clone();
         let selected = self.selected.clone();
+        let preferences = self.preferences.clone();
         self.local.read(async move {
             let summary = remote::remote_connect(url, token.clone(), State::new(&remote))
                 .await
                 .map_err(|error| {
                     AppError::new(error.message.replace(&token, "[redacted]"), error.kind)
                 })?;
+            preferences.clear_memory()?;
             selected.store(true, Ordering::Release);
             Ok(summary)
         })
@@ -113,8 +134,10 @@ impl Backend for DesktopBackend {
     fn disconnect_remote(&self) -> Read<()> {
         let remote = self.remote.clone();
         let selected = self.selected.clone();
+        let preferences = self.preferences.clone();
         self.local.read(async move {
             remote::remote_disconnect(State::new(&remote)).await?;
+            preferences.clear_memory()?;
             selected.store(false, Ordering::Release);
             Ok(())
         })

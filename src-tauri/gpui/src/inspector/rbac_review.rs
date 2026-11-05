@@ -42,6 +42,7 @@ impl Inspector {
 
     /// `RbacReviewPanel`'s `save`.
     fn save_rbac_review(&mut self, disposition: Disposition, cx: &mut Context<Self>) {
+        self.ensure_active_workspace();
         let state = &mut self.rbac;
         let (Some(data), Some(item)) = (state.data(), state.selected_item()) else {
             return;
@@ -55,6 +56,9 @@ impl Inspector {
             reviewed_at: chrono::Utc::now().to_rfc3339(),
         };
         state.verifier.note_error = review::upsert(&mut state.reviews, record).err();
+        if state.verifier.note_error.is_none() {
+            self.save_preferences(cx);
+        }
         cx.notify();
     }
 
@@ -63,6 +67,7 @@ impl Inspector {
         if let (Some(data), Some(item)) = (state.data(), state.selected_item()) {
             let (cluster, key) = (data.cluster.clone(), item.key.clone());
             review::remove(&mut state.reviews, &cluster, &key);
+            self.save_preferences(cx);
         }
         cx.notify();
     }

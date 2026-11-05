@@ -16,6 +16,7 @@ mod logs;
 mod metrics;
 pub mod model;
 mod palette;
+pub mod preferences;
 mod rbac;
 mod settings;
 pub mod theme;

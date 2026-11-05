@@ -116,11 +116,23 @@ mod visual {
                 .unwrap();
             cx.run_until_parked();
             match view.as_str() {
-                "settings-remote" | "settings-updates" | "settings-kubeconfig" => {
+                "settings-appearance"
+                | "settings-sessions"
+                | "settings-yaml"
+                | "settings-diagnostics"
+                | "settings-advanced"
+                | "settings-remote"
+                | "settings-updates"
+                | "settings-kubeconfig" => {
                     act(&mut cx, handle, |window, cx| {
                         window.click("open-settings", cx)
                     });
                     let category = match view.as_str() {
+                        "settings-appearance" => "Appearance",
+                        "settings-sessions" => "Live sessions",
+                        "settings-yaml" => "YAML",
+                        "settings-diagnostics" => "Diagnostics",
+                        "settings-advanced" => "Advanced",
                         "settings-remote" => "Remote server",
                         "settings-updates" => "Updates",
                         _ => "Kubeconfig",

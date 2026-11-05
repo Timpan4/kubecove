@@ -65,7 +65,11 @@ impl Inspector {
             TopologyLoad::Ready(topology) => Some(Rc::new(topology::view(
                 topology,
                 &self.visible,
-                self.detail.resource(),
+                if self.persisted.preferences.show_full_topology_on_selection {
+                    None
+                } else {
+                    self.detail.resource()
+                },
                 &self.map.expanded,
                 self.map.network,
             ))),

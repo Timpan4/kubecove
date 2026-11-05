@@ -144,6 +144,9 @@ impl Inspector {
         cx.notify();
     }
     fn runtime_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.launcher = super::launcher::LauncherState::new(window, cx);
+        self.rbac = super::rbac_page::RbacState::new(window, cx);
+        self.load_preferences(cx);
         self.context_task.take();
         self.scope_task.take();
         self.topology_task.take();
@@ -253,6 +256,7 @@ impl Inspector {
                         .format("%b %-d, %Y, %-H:%M")
                         .to_string(),
                 );
+                this.persisted.updates.last_checked_at = state.checked_at.clone();
                 match result {
                     Ok(status) => state.update = status,
                     Err(error) => {
@@ -260,6 +264,7 @@ impl Inspector {
                         state.update_error = Some(error.message);
                     }
                 }
+                this.save_preferences(cx);
                 cx.notify();
             });
         }));
@@ -272,7 +277,11 @@ impl Inspector {
             format!(
                 "Current version {}. Last checked: {}.",
                 env!("CARGO_PKG_VERSION"),
-                state.checked_at.as_deref().unwrap_or("Not checked yet")
+                self.persisted
+                    .updates
+                    .last_checked_at
+                    .as_deref()
+                    .unwrap_or("Not checked yet")
             )
         } else {
             format!(

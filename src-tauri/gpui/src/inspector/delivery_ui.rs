@@ -241,6 +241,7 @@ pub(super) fn view_toggle(
                     .id(SharedString::from(format!("{id}:{label}")))
                     .test_support()
                     .aria_label(label)
+                    .aria_selected(active)
                     .cursor_pointer()
                     .flex()
                     .items_center()
@@ -255,6 +256,19 @@ pub(super) fn view_toggle(
                     }))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         set(this, option);
+                        this.persisted.preferences.git_ops_view_mode =
+                            if this.gitops_page.mode == ViewMode::Cards {
+                                crate::preferences::DeliveryMode::Cards
+                            } else {
+                                crate::preferences::DeliveryMode::List
+                            };
+                        this.persisted.preferences.helm_view_mode =
+                            if this.helm_page.mode == ViewMode::Cards {
+                                crate::preferences::DeliveryMode::Cards
+                            } else {
+                                crate::preferences::DeliveryMode::List
+                            };
+                        this.save_preferences(cx);
                         cx.notify();
                     }))
             }),

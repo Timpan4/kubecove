@@ -63,6 +63,12 @@ fn switching_remote_endpoints_routes_reads_and_disconnect_clears_selection() {
     runtime.block_on(async {
         let (first, first_task, _) = server("first-controlled-host").await;
         let (second, second_task, _) = server("second-controlled-host").await;
+        let mut local = backend.load_preferences().unwrap();
+        local.preferences.argo_connection_preferences.insert(
+            "local-workspace".into(),
+            kubecove_gpui::preferences::ConnectionPreference::Kubernetes,
+        );
+        backend.save_preferences(local.clone()).unwrap();
         backend
             .connect_remote(first, "controlled-test-credential".into())
             .await
@@ -71,6 +77,20 @@ fn switching_remote_endpoints_routes_reads_and_disconnect_clears_selection() {
             backend.contexts().await.unwrap()[0].name,
             "first-controlled-host"
         );
+        assert!(
+            backend
+                .load_preferences()
+                .unwrap()
+                .preferences
+                .argo_connection_preferences
+                .is_empty()
+        );
+        let mut remote = backend.load_preferences().unwrap();
+        remote.preferences.argo_connection_preferences.insert(
+            "remote-workspace".into(),
+            kubecove_gpui::preferences::ConnectionPreference::Kubernetes,
+        );
+        backend.save_preferences(remote).unwrap();
         backend
             .connect_remote(second, "controlled-test-credential".into())
             .await
@@ -79,7 +99,19 @@ fn switching_remote_endpoints_routes_reads_and_disconnect_clears_selection() {
             backend.contexts().await.unwrap()[0].name,
             "second-controlled-host"
         );
+        assert!(
+            backend
+                .load_preferences()
+                .unwrap()
+                .preferences
+                .argo_connection_preferences
+                .is_empty()
+        );
         backend.disconnect_remote().await.unwrap();
+        assert_eq!(
+            backend.load_preferences().unwrap().preferences,
+            local.preferences
+        );
         assert!(backend.remote_status().await.unwrap().is_none());
         assert!(
             !backend

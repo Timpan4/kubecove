@@ -26,10 +26,16 @@ pub fn config_directory() -> Result<PathBuf, AppError> {
 }
 
 impl NativeBackend {
+    pub fn with_legacy_session_file(mut self, path: PathBuf) -> Self {
+        self.preferences.set_legacy_file(path);
+        self
+    }
+
     pub fn with_settings_directory(directory: PathBuf) -> std::io::Result<Self> {
-        commands::init_kubeconfig_settings_path(directory);
+        commands::init_kubeconfig_settings_path(directory.clone());
         let mut backend = Self::new()?;
         backend.settings_initialized = true;
+        backend.preferences = crate::preferences::Store::file(directory);
         Ok(backend)
     }
 

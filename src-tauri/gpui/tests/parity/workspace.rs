@@ -117,10 +117,13 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             Some(string(step, "outcome"))
         ),
         "openSettings" => window.click("open-settings", cx),
-        "closeSettings" => window.click("settings-back", cx),
-        "showSettingsSection" => {
-            window.click(format!("settings-section:{}", string(step, "section")), cx)
-        }
+        "closeSettings" => locate::click_in(window, "page", "settings-back".into(), cx),
+        "showSettingsSection" => locate::click_in(
+            window,
+            "page",
+            format!("settings-section:{}", string(step, "section")).into(),
+            cx,
+        ),
         "searchSettings" => replace_text(window, cx, "settings-search", string(step, "value")),
         "expectSettingsHeading" => assert_eq!(
             window.find("settings-heading").label(),
@@ -148,7 +151,60 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             window.find("kubeconfig-env-var").value(),
             Some(string(step, "value"))
         ),
-        "toggleSetting" => window.click(format!("setting:{}", string(step, "setting")), cx),
+        "selectSettingOption" => locate::click_in(
+            window,
+            "page",
+            format!(
+                "setting-option:{}:{}",
+                string(step, "setting"),
+                string(step, "value")
+            )
+            .into(),
+            cx,
+        ),
+        "expectSettingOption" => assert_eq!(
+            window
+                .find(format!(
+                    "setting-option:{}:{}",
+                    string(step, "setting"),
+                    string(step, "value")
+                ))
+                .selected(),
+            Some(true)
+        ),
+        "moveResourceKindEarlier" => locate::click_in(
+            window,
+            "page",
+            format!("kind-order:{}:Earlier", string(step, "kind")).into(),
+            cx,
+        ),
+        "expectResourceKindPosition" => assert_eq!(
+            window
+                .find(format!("kind-order-item:{}", string(step, "kind")))
+                .description(),
+            Some(format!("{}:{}", string(step, "lane"), step["index"]).as_str())
+        ),
+        "expectDeliveryView" => assert_eq!(
+            window
+                .find(format!(
+                    "{}-view:{}",
+                    if string(step, "page") == "GitOps" {
+                        "gitops"
+                    } else {
+                        "helm"
+                    },
+                    string(step, "mode")
+                ))
+                .selected(),
+            Some(true)
+        ),
+        "restartClient" => {}
+        "toggleSetting" => locate::click_in(
+            window,
+            "page",
+            format!("setting:{}", string(step, "setting")).into(),
+            cx,
+        ),
         "expectSetting" => assert_eq!(
             window
                 .find(format!("setting:{}", string(step, "setting")))

@@ -79,7 +79,12 @@ export type Step =
 	| { action: "showSettingsSection"; section: string }
 	| { action: "expectSettingsHeading"; heading: string }
 	| { action: "expectSettingRow" | "expectNoSettingRow"; title: string }
-	| { action: "toggleSetting"; setting: string }
+	| { action: "restartClient" }
+    | { action: "expectDeliveryView"; page: string; mode: string }
+    | { action: "moveResourceKindEarlier"; kind: string }
+    | { action: "expectResourceKindPosition"; kind: string; lane: string; index: number }
+    | { action: "toggleSetting"; setting: string }
+    | { action: "selectSettingOption" | "expectSettingOption"; setting: string; value: string }
 	| { action: "expectSetting"; setting: string; checked: boolean }
 	| { action: "openPalette"; via: "button" | "shortcut" }
 	| { action: "expectPaletteEntry" | "expectNoPaletteEntry" | "choosePaletteEntry"; label: string }
@@ -146,7 +151,7 @@ export const ACTIONS = [
 	"createWorkspace", "expectOpenWorkspace", "selectRbacCategory", "expectRbacCategory", "filterRbacRisk", "expectRbacItem", "expectNoRbacItem", "selectRbacItem",
 	"investigateRbacSubject", "expectRbacIdentity", "expectRbacGrant", "expectNoRbacGrant", "verifyRbacAccess", "expectRbacVerdict", "openSettings", "closeSettings",
 	"showSettingsSection", "searchSettings", "expectSettingsHeading", "expectSettingRow", "expectNoSettingRow", "expectSettingsEmpty", "setKubeconfigEnvVar",
-	"expectKubeconfigEnvVar", "toggleSetting", "expectSetting", "openPalette", "searchPalette", "expectPaletteResource", "expectNoPaletteResource",
+	"expectKubeconfigEnvVar", "moveResourceKindEarlier", "expectResourceKindPosition", "expectDeliveryView", "restartClient", "toggleSetting", "expectSetting", "selectSettingOption", "expectSettingOption", "openPalette", "searchPalette", "expectPaletteResource", "expectNoPaletteResource",
 	"choosePaletteResource", "expectPaletteEntry", "expectNoPaletteEntry", "choosePaletteEntry",
 	"editRbacReviewNote", "expectRbacReviewNote", "saveRbacReview", "expectRbacReview", "clearRbacReview",
 	"openGitOps", "expandNav", "expectGitOpsTable", "expectGitOpsItem", "expectNoGitOpsItem", "openGitOpsDetails", "expectArgoApplication",
@@ -284,7 +289,12 @@ function step(value: unknown): Step {
 		case "showSettingsSection": return { action: item.action, section: string(item.section) };
 		case "expectSettingsHeading": return { action: item.action, heading: string(item.heading) };
 		case "expectSettingRow": case "expectNoSettingRow": return { action: item.action, title: string(item.title) };
-		case "toggleSetting": return { action: item.action, setting: string(item.setting) };
+		case "selectSettingOption": case "expectSettingOption": return { action: item.action, setting: string(item.setting), value: string(item.value) };
+        case "moveResourceKindEarlier": return { action: item.action, kind: string(item.kind) };
+        case "expectResourceKindPosition": return { action: item.action, kind: string(item.kind), lane: string(item.lane), index: count(item.index) };
+        case "expectDeliveryView": return { action: item.action, page: string(item.page), mode: string(item.mode) };
+        case "restartClient": return { action: item.action };
+        case "toggleSetting": return { action: item.action, setting: string(item.setting) };
 		case "expectSetting":
 			if (typeof item.checked !== "boolean") throw new Error("Expected a checked state");
 			return { action: item.action, setting: string(item.setting), checked: item.checked };

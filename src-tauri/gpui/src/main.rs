@@ -7,9 +7,13 @@ use kubecove_gpui::{
 use std::sync::Arc;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let backend = Arc::new(DesktopBackend::new(NativeBackend::with_settings_directory(
-        config_directory()?,
-    )?));
+    let directory = config_directory()?;
+    let legacy_sessions = directory
+        .with_file_name("kubecove-gpui")
+        .join("live-sessions.json");
+    let local = NativeBackend::with_settings_directory(directory)?
+        .with_legacy_session_file(legacy_sessions);
+    let backend = Arc::new(DesktopBackend::new(local));
     gpui_kit::application()
         .with_assets(AppAssets)
         .run(move |cx| {

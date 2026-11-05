@@ -103,11 +103,18 @@ fn health(summary: &ResourceSummary) -> (Tone, &'static str) {
     }
 }
 
-pub(super) fn details_tab(detail: &ResourceDetail, cx: &mut Context<Inspector>) -> Div {
+pub(super) fn details_tab(
+    detail: &ResourceDetail,
+    timezone: crate::preferences::TimestampTimezone,
+    cx: &mut Context<Inspector>,
+) -> Div {
     let summary = &detail.data.summary;
     let (tone, label) = health(summary);
     let source = health_source(&summary.health_assessment.winning_sources);
-    let created = summary.created_at.as_deref().and_then(exact_timestamp);
+    let created = summary
+        .created_at
+        .as_deref()
+        .and_then(|value| exact_timestamp(value, timezone));
     let finalizers =
         detail.data.metadata["finalizers"]
             .as_array()

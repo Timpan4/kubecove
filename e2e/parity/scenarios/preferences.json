@@ -1,0 +1,836 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "settings-general.saved-switches",
+      "title": "General preferences retain edits after reopening",
+      "steps": [
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "General"
+        },
+        {
+          "action": "toggleSetting",
+          "setting": "Show exact timestamps"
+        },
+        {
+          "action": "expectSetting",
+          "setting": "Show exact timestamps",
+          "checked": true
+        },
+        {
+          "action": "toggleSetting",
+          "setting": "Redact secrets"
+        },
+        {
+          "action": "expectSetting",
+          "setting": "Redact secrets",
+          "checked": false
+        },
+        {
+          "action": "toggleSetting",
+          "setting": "Keep full map visible during selection"
+        },
+        {
+          "action": "expectSetting",
+          "setting": "Keep full map visible during selection",
+          "checked": true
+        },
+        {
+          "action": "toggleSetting",
+          "setting": "Show ownership map by default"
+        },
+        {
+          "action": "expectSetting",
+          "setting": "Show ownership map by default",
+          "checked": false
+        },
+        {
+          "action": "toggleSetting",
+          "setting": "Expand timeline by default"
+        },
+        {
+          "action": "expectSetting",
+          "setting": "Expand timeline by default",
+          "checked": true
+        },
+        {
+          "action": "toggleSetting",
+          "setting": "Show unavailable GitOps providers"
+        },
+        {
+          "action": "expectSetting",
+          "setting": "Show unavailable GitOps providers",
+          "checked": true
+        },
+        {
+          "action": "toggleSetting",
+          "setting": "Show Custom Resources"
+        },
+        {
+          "action": "expectSetting",
+          "setting": "Show Custom Resources",
+          "checked": false
+        },
+        {
+          "action": "closeSettings"
+        },
+        {
+          "action": "restartClient"
+        },
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "General"
+        },
+        {
+          "action": "expectSetting",
+          "setting": "Show exact timestamps",
+          "checked": true
+        },
+        {
+          "action": "expectSetting",
+          "setting": "Redact secrets",
+          "checked": false
+        },
+        {
+          "action": "expectSetting",
+          "setting": "Keep full map visible during selection",
+          "checked": true
+        },
+        {
+          "action": "expectSetting",
+          "setting": "Show ownership map by default",
+          "checked": false
+        },
+        {
+          "action": "expectSetting",
+          "setting": "Expand timeline by default",
+          "checked": true
+        },
+        {
+          "action": "expectSetting",
+          "setting": "Show unavailable GitOps providers",
+          "checked": true
+        },
+        {
+          "action": "expectSetting",
+          "setting": "Show Custom Resources",
+          "checked": false
+        }
+      ]
+    },
+    {
+      "id": "settings-sessions.saved-switches",
+      "title": "Live sessions preferences retain edits after reopening",
+      "steps": [
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "Live sessions"
+        },
+        {
+          "action": "toggleSetting",
+          "setting": "Auto-start saved port forwards"
+        },
+        {
+          "action": "expectSetting",
+          "setting": "Auto-start saved port forwards",
+          "checked": true
+        },
+        {
+          "action": "toggleSetting",
+          "setting": "Keep live sessions across workspace switches"
+        },
+        {
+          "action": "expectSetting",
+          "setting": "Keep live sessions across workspace switches",
+          "checked": true
+        },
+        {
+          "action": "closeSettings"
+        },
+        {
+          "action": "restartClient"
+        },
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "Live sessions"
+        },
+        {
+          "action": "expectSetting",
+          "setting": "Auto-start saved port forwards",
+          "checked": true
+        },
+        {
+          "action": "expectSetting",
+          "setting": "Keep live sessions across workspace switches",
+          "checked": true
+        }
+      ]
+    },
+    {
+      "id": "settings-yaml.saved-switches",
+      "title": "YAML preferences retain edits after reopening",
+      "steps": [
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "YAML"
+        },
+        {
+          "action": "toggleSetting",
+          "setting": "YAML error lens"
+        },
+        {
+          "action": "expectSetting",
+          "setting": "YAML error lens",
+          "checked": false
+        },
+        {
+          "action": "toggleSetting",
+          "setting": "Allow YAML force-conflicts"
+        },
+        {
+          "action": "expectSetting",
+          "setting": "Allow YAML force-conflicts",
+          "checked": true
+        },
+        {
+          "action": "closeSettings"
+        },
+        {
+          "action": "restartClient"
+        },
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "YAML"
+        },
+        {
+          "action": "expectSetting",
+          "setting": "YAML error lens",
+          "checked": false
+        },
+        {
+          "action": "expectSetting",
+          "setting": "Allow YAML force-conflicts",
+          "checked": true
+        }
+      ]
+    },
+    {
+      "id": "settings-diagnostics.saved-switches",
+      "title": "Diagnostics preferences retain edits after reopening",
+      "steps": [
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "Diagnostics"
+        },
+        {
+          "action": "toggleSetting",
+          "setting": "Enable diagnostics"
+        },
+        {
+          "action": "expectSetting",
+          "setting": "Enable diagnostics",
+          "checked": true
+        },
+        {
+          "action": "closeSettings"
+        },
+        {
+          "action": "restartClient"
+        },
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "Diagnostics"
+        },
+        {
+          "action": "expectSetting",
+          "setting": "Enable diagnostics",
+          "checked": true
+        }
+      ]
+    },
+    {
+      "id": "settings-advanced.saved-switches",
+      "title": "Advanced preferences retain edits after reopening",
+      "steps": [
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "Advanced"
+        },
+        {
+          "action": "toggleSetting",
+          "setting": "Skip change review"
+        },
+        {
+          "action": "clickSettingsButton",
+          "label": "Skip review"
+        },
+        {
+          "action": "expectSetting",
+          "setting": "Skip change review",
+          "checked": true
+        },
+        {
+          "action": "closeSettings"
+        },
+        {
+          "action": "restartClient"
+        },
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "Advanced"
+        },
+        {
+          "action": "expectSetting",
+          "setting": "Skip change review",
+          "checked": true
+        }
+      ]
+    },
+    {
+      "id": "settings-general.saved-timestamp-timezone",
+      "title": "Timestamp timezone retains the selected option",
+      "steps": [
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "General"
+        },
+        {
+          "action": "selectSettingOption",
+          "setting": "Timestamp timezone",
+          "value": "UTC"
+        },
+        {
+          "action": "closeSettings"
+        },
+        {
+          "action": "restartClient"
+        },
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "General"
+        },
+        {
+          "action": "expectSettingOption",
+          "setting": "Timestamp timezone",
+          "value": "UTC"
+        }
+      ]
+    },
+    {
+      "id": "settings-appearance.saved-log-layout",
+      "title": "Log layout retains the selected option",
+      "steps": [
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "Appearance"
+        },
+        {
+          "action": "selectSettingOption",
+          "setting": "Log layout",
+          "value": "Gutter"
+        },
+        {
+          "action": "closeSettings"
+        },
+        {
+          "action": "restartClient"
+        },
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "Appearance"
+        },
+        {
+          "action": "expectSettingOption",
+          "setting": "Log layout",
+          "value": "Gutter"
+        }
+      ]
+    },
+    {
+      "id": "settings-yaml.saved-yaml-shape",
+      "title": "YAML shape retains the selected option",
+      "steps": [
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "YAML"
+        },
+        {
+          "action": "selectSettingOption",
+          "setting": "YAML shape",
+          "value": "Apply clean"
+        },
+        {
+          "action": "closeSettings"
+        },
+        {
+          "action": "restartClient"
+        },
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "YAML"
+        },
+        {
+          "action": "expectSettingOption",
+          "setting": "YAML shape",
+          "value": "Apply clean"
+        },
+        {
+          "action": "closeSettings"
+        },
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "openResource",
+          "kind": "Deployment",
+          "name": "payments-api",
+          "namespace": "payments"
+        },
+        {
+          "action": "showYaml"
+        },
+        {
+          "action": "expectYamlPicker",
+          "label": "YAML shape",
+          "value": "Apply clean"
+        }
+      ]
+    },
+    {
+      "id": "settings-yaml.saved-yaml-encoding",
+      "title": "YAML encoding retains the selected option",
+      "steps": [
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "YAML"
+        },
+        {
+          "action": "selectSettingOption",
+          "setting": "YAML encoding",
+          "value": "KYAML"
+        },
+        {
+          "action": "closeSettings"
+        },
+        {
+          "action": "restartClient"
+        },
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "YAML"
+        },
+        {
+          "action": "expectSettingOption",
+          "setting": "YAML encoding",
+          "value": "KYAML"
+        },
+        {
+          "action": "closeSettings"
+        },
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "openResource",
+          "kind": "Deployment",
+          "name": "payments-api",
+          "namespace": "payments"
+        },
+        {
+          "action": "showYaml"
+        },
+        {
+          "action": "expectYamlPicker",
+          "label": "YAML encoding",
+          "value": "KYAML"
+        }
+      ]
+    },
+    {
+      "id": "settings-yaml.saved-yaml-diff-appearance",
+      "title": "YAML diff appearance retains the selected option",
+      "steps": [
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "YAML"
+        },
+        {
+          "action": "selectSettingOption",
+          "setting": "YAML diff appearance",
+          "value": "Git"
+        },
+        {
+          "action": "closeSettings"
+        },
+        {
+          "action": "restartClient"
+        },
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "YAML"
+        },
+        {
+          "action": "expectSettingOption",
+          "setting": "YAML diff appearance",
+          "value": "Git"
+        }
+      ]
+    },
+    {
+      "id": "workspaces.saved-review-restart",
+      "title": "A saved workspace retains private RBAC context after restarting",
+      "steps": [
+        {
+          "action": "openLauncher"
+        },
+        {
+          "action": "nameWorkspace",
+          "value": "Durable review"
+        },
+        {
+          "action": "createWorkspace"
+        },
+        {
+          "action": "openPage",
+          "page": "RBAC"
+        },
+        {
+          "action": "selectRbacItem",
+          "title": "ServiceAccount/payments-api"
+        },
+        {
+          "action": "editRbacReviewNote",
+          "value": "Payments owner reviewed this access"
+        },
+        {
+          "action": "saveRbacReview",
+          "disposition": "expected"
+        },
+        {
+          "action": "restartClient"
+        },
+        {
+          "action": "openLauncher"
+        },
+        {
+          "action": "openSavedWorkspace",
+          "name": "Durable review"
+        },
+        {
+          "action": "openPage",
+          "page": "RBAC"
+        },
+        {
+          "action": "selectRbacItem",
+          "title": "ServiceAccount/payments-api"
+        },
+        {
+          "action": "expectRbacReview",
+          "label": "Expected"
+        },
+        {
+          "action": "expectRbacReviewNote",
+          "value": "Payments owner reviewed this access"
+        }
+      ]
+    },
+    {
+      "id": "settings-appearance.saved-kind-order",
+      "title": "Resource group order survives restart",
+      "steps": [
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "Appearance"
+        },
+        {
+          "action": "moveResourceKindEarlier",
+          "kind": "Deployment"
+        },
+        {
+          "action": "expectResourceKindPosition",
+          "kind": "Deployment",
+          "lane": "Show first",
+          "index": 0
+        },
+        {
+          "action": "closeSettings"
+        },
+        {
+          "action": "restartClient"
+        },
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "Appearance"
+        },
+        {
+          "action": "expectResourceKindPosition",
+          "kind": "Deployment",
+          "lane": "Show first",
+          "index": 0
+        }
+      ]
+    },
+    {
+      "id": "settings.saved-footer-restart",
+      "title": "The usage footer survives a client restart",
+      "steps": [
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "toggleSetting",
+          "setting": "Show CPU and memory footer"
+        },
+        {
+          "action": "closeSettings"
+        },
+        {
+          "action": "restartClient"
+        },
+        {
+          "action": "expectUsageFooter",
+          "text": "CPU 3.8% · Memory 370 MB · 3 processes"
+        }
+      ]
+    },
+    {
+      "id": "settings-advanced.skip-successful-review",
+      "title": "Skipping review still performs a dry run and executes the guarded request",
+      "steps": [
+        {
+          "action": "openSettings"
+        },
+        {
+          "action": "showSettingsSection",
+          "section": "Advanced"
+        },
+        {
+          "action": "toggleSetting",
+          "setting": "Skip change review"
+        },
+        {
+          "action": "clickSettingsButton",
+          "label": "Skip review"
+        },
+        {
+          "action": "closeSettings"
+        },
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "search",
+          "value": "payments-api"
+        },
+        {
+          "action": "openResource",
+          "kind": "Deployment",
+          "name": "payments-api",
+          "namespace": "payments"
+        },
+        {
+          "action": "showTab",
+          "tab": "Actions"
+        },
+        {
+          "action": "editReplicas",
+          "value": "3"
+        },
+        {
+          "action": "reviewAction",
+          "label": "Check changes"
+        },
+        {
+          "action": "expectNoReview"
+        },
+        {
+          "action": "expectActionResult",
+          "text": "Simulated edit of Deployment payments/payments-api in context mock-dev in browser mock mode."
+        }
+      ]
+    },
+    {
+      "id": "gitops.saved-view-restart",
+      "title": "GitOps view mode survives restart",
+      "steps": [
+        {
+          "action": "openPage",
+          "page": "GitOps"
+        },
+        {
+          "action": "setDeliveryView",
+          "page": "GitOps",
+          "mode": "List"
+        },
+        {
+          "action": "expectDeliveryView",
+          "page": "GitOps",
+          "mode": "List"
+        },
+        {
+          "action": "openPage",
+          "page": "Workspace Overview"
+        },
+        {
+          "action": "restartClient"
+        },
+        {
+          "action": "openPage",
+          "page": "GitOps"
+        },
+        {
+          "action": "expectDeliveryView",
+          "page": "GitOps",
+          "mode": "List"
+        }
+      ]
+    },
+    {
+      "id": "helm.saved-view-restart",
+      "title": "Helm view mode survives restart",
+      "steps": [
+        {
+          "action": "openPage",
+          "page": "Helm"
+        },
+        {
+          "action": "setDeliveryView",
+          "page": "Helm",
+          "mode": "List"
+        },
+        {
+          "action": "expectDeliveryView",
+          "page": "Helm",
+          "mode": "List"
+        },
+        {
+          "action": "openPage",
+          "page": "Workspace Overview"
+        },
+        {
+          "action": "restartClient"
+        },
+        {
+          "action": "openPage",
+          "page": "Helm"
+        },
+        {
+          "action": "expectDeliveryView",
+          "page": "Helm",
+          "mode": "List"
+        }
+      ]
+    },
+    {
+      "id": "forward-active.saved-preset-restart",
+      "title": "A saved Service forward remains editable after restart",
+      "steps": [
+        {
+          "action": "openPage",
+          "page": "Port Forwards"
+        },
+        {
+          "action": "presetControl",
+          "operation": "add"
+        },
+        {
+          "action": "configurePreset",
+          "label": "Durable preset",
+          "context": "mock-dev",
+          "namespace": "payments",
+          "service": "payments-api",
+          "remote": "80",
+          "local": "18081"
+        },
+        {
+          "action": "presetControl",
+          "operation": "save"
+        },
+        {
+          "action": "openPage",
+          "page": "Workspace Overview"
+        },
+        {
+          "action": "restartClient"
+        },
+        {
+          "action": "openPage",
+          "page": "Port Forwards"
+        },
+        {
+          "action": "presetControl",
+          "operation": "edit",
+          "label": "Durable preset"
+        }
+      ]
+    }
+  ]
+}

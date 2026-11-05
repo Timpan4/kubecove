@@ -129,7 +129,11 @@ fn raw(value: &serde_json::Value) -> String {
     }
 }
 
-pub(super) fn argo_tab(detail: &ResourceDetail, cx: &mut Context<Inspector>) -> AnyElement {
+pub(super) fn argo_tab(
+    detail: &ResourceDetail,
+    timezone: crate::preferences::TimestampTimezone,
+    cx: &mut Context<Inspector>,
+) -> AnyElement {
     let Some(state) = detail.argo.as_ref() else {
         return div().into_any_element();
     };
@@ -401,7 +405,7 @@ pub(super) fn argo_tab(detail: &ResourceDetail, cx: &mut Context<Inspector>) -> 
                     )
             }))
             .child(navigator(view, state, cx))
-            .child(delivery(view));
+            .child(delivery(view, timezone));
     }
     let failed = matches!(state.load, ArgoLoad::Failed(_));
     column

@@ -2,13 +2,13 @@
 //! `src/features/workspaces/workspaceLauncherModel.ts` and the scope helpers
 //! in `src/lib/workspace-model.ts`.
 //!
-//! The web keeps workspaces in browser local storage. The native client has
-//! no Rust storage command for them, so this list lives for the session only.
+//! The Backend seam persists local saved records under ADR 0030.
 
 use crate::model::WORKSPACE_KINDS;
 pub mod transfer;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SavedWorkspace {
     pub id: u64,
     pub name: String,

@@ -1,5 +1,5 @@
 //! Workspace file schema, shared with `workspace-sharing-parse.ts`.
-//! Imported documents stay in the launcher's existing session memory.
+//! Workspace metadata is retained for export and native persistence.
 use super::SavedWorkspace;
 use serde_json::{Value, json};
 

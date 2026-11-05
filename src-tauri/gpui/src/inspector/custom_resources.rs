@@ -5,6 +5,9 @@ use gpui_kit::{AnyElement, Context, SharedString, TestSupportExt, div, prelude::
 
 impl Inspector {
     pub(super) fn custom_kind_rows(&self, picker: bool, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        if !self.persisted.preferences.show_custom_resources {
+            return Vec::new();
+        }
         if !picker {
             let mut groups = self
                 .live

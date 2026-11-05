@@ -35,8 +35,8 @@ if (!skipWeb) {
 const workspace = resolve("src-tauri/gpui");
 // One build job by default: parallel rustc and linker processes for the GPUI
 // tree exhausted RAM on a shared workstation. Set CARGO_BUILD_JOBS to override.
-// Worktrees that share CARGO_TARGET_DIR and CARGO_BUILD_BUILD_DIR queue on
-// Cargo's build lock instead of building at the same time.
+// Keep both Cargo directories specific to this worktree. Shared path-crate
+// artifacts can overwrite each other across checkouts.
 const env = { ...process.env, CARGO_BUILD_JOBS: process.env.CARGO_BUILD_JOBS ?? "1", CARGO_TARGET_DIR: process.env.CARGO_TARGET_DIR ?? join(workspace, "target"), CARGO_BUILD_BUILD_DIR: process.env.CARGO_BUILD_BUILD_DIR ?? join(workspace, "build"), KUBECOVE_VISUAL_FIXTURE: fixture, KUBECOVE_VISUAL_OUT: join(out, "gpui"), KUBECOVE_VISUAL_VIEWS: views.join(",") };
 delete env.ARGV0;
 delete env.KUBECOVE_E2E_ARTIFACTS;

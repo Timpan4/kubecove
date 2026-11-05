@@ -9,9 +9,10 @@ import { VIEWPORT, VIEWS, type View } from "./views";
 
 async function show(page: Page, view: View) {
 	switch (view) {
+        case "settings-appearance": case "settings-sessions": case "settings-yaml": case "settings-diagnostics": case "settings-advanced":
         case "settings-remote": case "settings-updates": case "settings-kubeconfig":
             await page.getByRole("button", { name: "Open settings", exact: true }).click();
-            await page.getByRole("button", { name: view === "settings-remote" ? "Remote server" : view === "settings-updates" ? "Updates" : "Kubeconfig", exact: true }).click();
+            await page.getByRole("button", { name: ({ "settings-appearance": "Appearance", "settings-sessions": "Live sessions", "settings-yaml": "YAML", "settings-diagnostics": "Diagnostics", "settings-advanced": "Advanced", "settings-remote": "Remote server", "settings-updates": "Updates", "settings-kubeconfig": "Kubeconfig" })[view], exact: true }).click();
             return;
         case "forward-start": case "forward-active": case "exec-session": {
             await page.getByRole("button", { name: "Resources", exact: true }).first().click();

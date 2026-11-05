@@ -1,8 +1,6 @@
 //! Workspace launcher, mirroring `WorkspaceLauncher.svelte` in the app's
-//! launcher shell. The web keeps saved workspaces in browser local storage;
-//! the native client has no Rust storage command for them, so they live for
-//! the session. Opening a workspace sets the context and limits rows and the
-//! sidebar to its namespaces.
+//! launcher shell. Local saved records persist through Backend under ADR 0030.
+//! Opening a workspace sets the context and limits rows and the sidebar to its namespaces.
 
 use super::controls::{Variant, button};
 use super::{Inspector, Page};
@@ -26,7 +24,7 @@ pub(super) struct LauncherState {
     pub(super) transfer: super::launcher_transfer::TransferState,
     pub(super) open: bool,
     pub(super) saved: Vec<SavedWorkspace>,
-    active: Option<u64>,
+    pub(super) active: Option<u64>,
     /// Ids and edit order for new records.
     pub(super) next: u64,
     pub(super) name: Entity<InputState>,
@@ -93,23 +91,8 @@ impl Inspector {
         if self.palette.open {
             self.close_palette(window, cx);
         }
+        self.ensure_active_workspace();
         let state = &mut self.launcher;
-        // The workspace this window opened with is the session's first record.
-        if state.saved.is_empty() && !self.scope.context.is_empty() {
-            let id = state.next;
-            state.next += 1;
-            state.saved.push(
-                Draft {
-                    name: &self.workspace_name,
-                    effective: &self.scope.context,
-                    group: &[],
-                    namespaces: &[],
-                    kinds: None,
-                }
-                .build(id, id),
-            );
-            state.active = Some(id);
-        }
         state.open = true;
         state.context.clear();
         state.context_menu = false;
@@ -192,7 +175,7 @@ impl Inspector {
         }
         let name = state.name.read(cx).value();
         let id = state.next;
-        state.next += 1;
+        state.next = state.next.saturating_add(1);
         let workspace = Draft {
             name: &name,
             effective: &effective,
@@ -202,6 +185,7 @@ impl Inspector {
         }
         .build(id, id);
         state.saved.push(workspace);
+        self.save_preferences(cx);
         self.open_workspace(id, window, cx);
     }
 
@@ -241,8 +225,16 @@ impl Inspector {
             picker.set_selected_value(&SharedString::from(context), window, cx)
         });
         self.load_scope(false, window, cx);
-        if self.sessions.auto_start {
+        if self.persisted.preferences.auto_start_saved_port_forwards {
             self.restore_forwards(window, cx);
+        }
+    }
+
+    pub(super) fn sync_workspace_reviews(&mut self) {
+        if let Some(id) = self.launcher.active
+            && let Some(workspace) = self.launcher.saved.iter_mut().find(|s| s.id == id)
+        {
+            workspace.reviews = self.rbac.reviews.clone();
         }
     }
 
@@ -250,6 +242,7 @@ impl Inspector {
         let state = &mut self.launcher;
         if state.active != Some(id) {
             state.saved.retain(|saved| saved.id != id);
+            self.save_preferences(cx);
             cx.notify();
         }
     }

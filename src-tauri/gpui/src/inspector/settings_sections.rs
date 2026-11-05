@@ -56,7 +56,6 @@ fn actions(labels: &[&'static str]) -> Div {
 
 pub(super) fn section(row: &'static Row) -> AnyElement {
     match row.title {
-        "Resource group order" => resource_order(row),
         "Interaction report" => report(row, true),
         "Latency report" => report(row, false),
         "MCP port" => settings_row(
@@ -95,70 +94,6 @@ fn field(label: &'static str, placeholder: &'static str) -> Div {
                 .bg(Tokens::input().opacity(0.3))
                 .child(ui::muted(ui::xs(placeholder))),
         )
-}
-
-fn resource_order(row: &'static Row) -> AnyElement {
-    let lanes: [(&str, &[&str]); 3] = [
-        (
-            "Show first",
-            &["Pod", "Deployment", "StatefulSet", "DaemonSet"],
-        ),
-        (
-            "Normal",
-            &[
-                "CronJob",
-                "Job",
-                "Service",
-                "Ingress",
-                "ConfigMap",
-                "Secret",
-                "PersistentVolumeClaim",
-                "All other kinds",
-            ],
-        ),
-        (
-            "Show last",
-            &["ReplicaSet", "Node", "PersistentVolume", "StorageClass"],
-        ),
-    ];
-    panel(row)
-        .child(heading(row, disabled(row, actions(&["Reset"]))))
-        .child(disabled(
-            row,
-            div()
-                .flex()
-                .items_stretch()
-                .gap(px(8.))
-                .mt(px(12.))
-                .children(lanes.into_iter().map(|(label, kinds)| {
-                    div()
-                        .flex()
-                        .flex_col()
-                        .flex_1()
-                        .min_w_0()
-                        .min_h(px(96.))
-                        .gap(px(6.))
-                        .p(px(8.))
-                        .rounded(px(8.))
-                        .border_1()
-                        .border_color(Tokens::border())
-                        .bg(Tokens::background())
-                        .child(ui::medium(ui::sm(label)).mb(px(4.)))
-                        .children(kinds.iter().map(|kind| {
-                            ui::sm(*kind)
-                                .px(px(8.))
-                                .py(px(6.))
-                                .rounded(px(8.))
-                                .border_1()
-                                .border_color(Tokens::border())
-                                .bg(Tokens::card())
-                                .when(*kind == "All other kinds", |kind| {
-                                    kind.border_dashed().text_color(Tokens::muted_foreground())
-                                })
-                        }))
-                })),
-        ))
-        .into_any_element()
 }
 
 fn table(headers: &[&'static str], empty: &'static str) -> Div {

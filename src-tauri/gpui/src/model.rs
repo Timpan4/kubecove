@@ -19,26 +19,6 @@ pub const WORKSPACE_KINDS: &[&str] = &[
     "Secret",
 ];
 
-/// `defaultResourceKindLanes` in `src/lib/resource-kind-order.ts`; `*` holds unlisted kinds.
-const KIND_ORDER: &[&str] = &[
-    "Pod",
-    "Deployment",
-    "StatefulSet",
-    "DaemonSet",
-    "CronJob",
-    "Job",
-    "Service",
-    "Ingress",
-    "ConfigMap",
-    "Secret",
-    "PersistentVolumeClaim",
-    "*",
-    "ReplicaSet",
-    "Node",
-    "PersistentVolume",
-    "StorageClass",
-];
-
 pub const PAGE_SIZE: usize = 50;
 
 /// `buildResourceHealthSummary` in `src/features/resources/helpers.ts`.
@@ -161,14 +141,6 @@ pub fn type_label(row: &ResourceSummary) -> String {
     }
 }
 
-fn kind_rank(kind: &str) -> usize {
-    KIND_ORDER
-        .iter()
-        .position(|candidate| *candidate == kind)
-        .or_else(|| KIND_ORDER.iter().position(|candidate| *candidate == "*"))
-        .unwrap_or(KIND_ORDER.len())
-}
-
 pub enum Entry {
     Group {
         label: String,
@@ -195,6 +167,7 @@ pub fn table_page(
     rows: &[ResourceSummary],
     page: usize,
     preferred: impl Fn(&ResourceSummary) -> bool,
+    lanes: &crate::preferences::KindLanes,
 ) -> TablePage {
     let mut sorted: Vec<&ResourceSummary> = rows.iter().collect();
     // `Intl.Collator(undefined, { numeric: true })`.
@@ -229,7 +202,7 @@ pub fn table_page(
             if grouped_by_gitops && preferred(kind.1[0]) {
                 0
             } else {
-                kind_rank(kind.0) + 1
+                lanes.order(kind.0) + 1
             }
         });
         display.extend(kinds.into_iter().flat_map(|kind| kind.1));
@@ -344,14 +317,21 @@ pub fn health_source(sources: &[HealthAssessmentSource]) -> String {
 
 /// `formatExactTimestamp(value, "local", "millisecond")` in
 /// `src/components/timestamp-format.ts`.
-pub fn exact_timestamp(value: &str) -> Option<String> {
+pub fn exact_timestamp(
+    value: &str,
+    timezone: crate::preferences::TimestampTimezone,
+) -> Option<String> {
     let parsed = chrono::DateTime::parse_from_rfc3339(value).ok()?;
-    Some(
-        parsed
+    Some(match timezone {
+        crate::preferences::TimestampTimezone::Local => parsed
             .with_timezone(&chrono::Local)
             .format("%Y-%m-%d %H:%M:%S%.3f")
             .to_string(),
-    )
+        crate::preferences::TimestampTimezone::Utc => parsed
+            .with_timezone(&chrono::Utc)
+            .format("%Y-%m-%d %H:%M:%S%.3f UTC")
+            .to_string(),
+    })
 }
 
 /// Kinds label in the resource scope trigger: first three, then `+N`.

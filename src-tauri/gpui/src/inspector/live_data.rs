@@ -159,6 +159,9 @@ pub(super) async fn receive_or_tick(
 impl Inspector {
     pub(super) fn discover_kinds(&mut self, cx: &mut Context<Self>) {
         self.live.kinds.clear();
+        if !self.persisted.preferences.show_custom_resources {
+            return;
+        }
         self.live.selected = None;
         let context = self.scope.context.clone();
         let read = self.backend.resource_kinds(context.clone());

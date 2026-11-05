@@ -379,6 +379,7 @@ fn viewport(logs: &LogsState, cx: &mut Context<Inspector>) -> Div {
         list(
             logs.list.clone(),
             cx.processor(|this: &mut Inspector, position: usize, _, _| {
+                let layout = this.persisted.preferences.log_layout;
                 let Some(logs) = this.logs_state() else {
                     return div().into_any_element();
                 };
@@ -387,7 +388,7 @@ fn viewport(logs: &LogsState, cx: &mut Context<Inspector>) -> Div {
                     .get(position)
                     .and_then(|index| logs.buffer.line(*index));
                 match line {
-                    Some(line) => log_row(line, logs, position).into_any_element(),
+                    Some(line) => log_row(line, logs, position, layout).into_any_element(),
                     None => div().into_any_element(),
                 }
             }),

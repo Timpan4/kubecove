@@ -307,7 +307,20 @@ async function action(page: Page, step: Step) {
 			await page.waitForFunction(({ input, value }) => input instanceof HTMLInputElement && input.value === value, { input, value: step.value });
 			break;
 		}
-		case "toggleSetting": await page.getByRole("switch", { name: step.setting, exact: true }).click(); break;
+		case "selectSettingOption": await page.getByText(step.setting, { exact: true }).locator("xpath=../..").getByRole("radio", { name: step.value, exact: true }).click(); break;
+        case "expectSettingOption": {
+            const button = page.getByText(step.setting, { exact: true }).locator("xpath=../..").getByRole("radio", { name: step.value, exact: true });
+            if (await button.getAttribute("aria-checked") !== "true") throw new Error("Setting option not selected");
+            break;
+        }
+        case "moveResourceKindEarlier": await page.getByRole("button", { name: `${step.kind}, Show first`, exact: true }).press("ArrowUp"); break;
+        case "expectResourceKindPosition": {
+            const item = page.getByRole("region", { name: step.lane, exact: true }).getByRole("button").nth(step.index);
+            if (await item.getAttribute("aria-label") !== `${step.kind}, ${step.lane}`) throw new Error("Resource kind order changed");
+            break;
+        }
+        case "restartClient": await page.reload(); await page.getByRole("button", { name: "Open settings", exact: true }).waitFor(); break;
+        case "toggleSetting": await page.getByRole("switch", { name: step.setting, exact: true }).click(); break;
 		case "expectSetting": await page.getByRole("switch", { name: step.setting, exact: true }).and(page.locator(`[aria-checked="${step.checked}"]`)).waitFor(); break;
 		case "openPalette": {
 			// The palette's window shortcut listener mounts with the header's search button.
@@ -335,7 +348,8 @@ async function action(page: Page, step: Step) {
 		case "expectArgoWorkspace": await page.getByRole("heading", { level: 2 }).filter({ hasText: step.name }).waitFor(); break;
 		case "filterArgoResources":
 			await page.getByLabel("Argo CD resource filters").getByRole("button", { name: new RegExp(`^${literal(step.filter)} `) }).click(); break;
-		case "setDeliveryView": await page.getByRole("radio", { name: step.mode, exact: true }).click(); break;
+		case "expectDeliveryView": await page.getByRole("radio", { name: step.mode, exact: true }).and(page.locator('[aria-checked="true"]')).waitFor(); break;
+        case "setDeliveryView": await page.getByRole("radio", { name: step.mode, exact: true }).click(); break;
 		// GitOps rows render above the namespace sections, so a shared label such as Workloads matches the GitOps node first.
 		case "expandNav": await page.getByRole("button", { name: `Expand ${step.page}`, exact: true }).first().click(); break;
 		case "expectGitOpsTable":

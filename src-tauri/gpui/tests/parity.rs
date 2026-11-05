@@ -209,7 +209,7 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
         // A fresh fixture per scenario, as the web driver reloads the page and its
         // in-memory mock state.
         let backend = Arc::new(Fixture::load(Path::new(&fixture)));
-        let (handle, _) = cx.update(|cx| {
+        let (mut handle, _) = cx.update(|cx| {
             gpui_kit::open_window(
                 WindowOptions {
                     // The web driver's viewport.
@@ -233,6 +233,35 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
         });
         cx.run_until_parked();
         for (index, step) in scenario["steps"].as_array().unwrap().iter().enumerate() {
+            if step["action"] == "restartClient" {
+                cx.update_window(handle, |_, window, _| window.remove_window())
+                    .unwrap();
+                let (reopened, _) = cx.update(|cx| {
+                    gpui_kit::open_window(
+                        WindowOptions {
+                            // The web driver's viewport.
+                            window_bounds: Some(WindowBounds::Windowed(Bounds {
+                                origin: Default::default(),
+                                size: size(px(1440.), px(900.)),
+                            })),
+                            focus: false,
+                            show: false,
+                            ..Default::default()
+                        },
+                        cx,
+                        |window, cx| {
+                            cx.new(|cx| {
+                                Inspector::new(backend.clone(), window, cx)
+                                    .with_workspace_name("Parity mock workspace")
+                            })
+                        },
+                    )
+                    .unwrap()
+                });
+
+                handle = reopened;
+                cx.run_until_parked();
+            }
             if step["action"] == "reopenStoredSettings" {
                 backend.reopen_settings_storage();
             }

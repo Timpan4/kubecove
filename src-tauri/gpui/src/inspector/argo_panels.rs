@@ -116,7 +116,7 @@ pub(super) fn navigator(view: &ArgoView, state: &ArgoTab, cx: &mut Context<Inspe
         )
 }
 
-pub(super) fn delivery(view: &ArgoView) -> Div {
+pub(super) fn delivery(view: &ArgoView, timezone: crate::preferences::TimestampTimezone) -> Div {
     let facts = [
         ("Repository", &view.repository),
         ("Path", &view.path),
@@ -187,7 +187,7 @@ pub(super) fn delivery(view: &ArgoView) -> Div {
                                     entry
                                         .deployed_at
                                         .as_deref()
-                                        .and_then(exact_timestamp)
+                                        .and_then(|value| exact_timestamp(value, timezone))
                                         .unwrap_or_else(|| "No deployment timestamp".into()),
                                     entry.initiated_by
                                 ),

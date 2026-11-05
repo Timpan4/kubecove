@@ -88,9 +88,9 @@ fn operation_scope(resource: &ResourceSummary) -> ObservedElement<Stateful<Div>>
         .child(line(format!("Resource: {}", resource.name)))
 }
 
-fn force_conflicts(state: &YamlApply) -> Div {
+fn force_conflicts(state: &YamlApply, global: bool) -> Div {
     let reviewed = state.review().map(|review| review.request.force_conflicts);
-    let enabled = reviewed.unwrap_or(state.force_for_resource);
+    let enabled = reviewed.unwrap_or(state.force_for_resource || global);
     let status = match reviewed {
         Some(true) => "enabled",
         Some(false) => "disabled",
@@ -99,6 +99,8 @@ fn force_conflicts(state: &YamlApply) -> Div {
     };
     let source = if state.force_for_resource {
         "Current-resource override"
+    } else if global {
+        "Global preference"
     } else {
         "Not enabled"
     };
@@ -134,7 +136,12 @@ fn force_conflicts(state: &YamlApply) -> Div {
         .child(ui::muted(ui::xs(review)))
 }
 
-fn dry_run_diff(review: &Review, full: bool, cx: &mut Context<Inspector>) -> Div {
+fn dry_run_diff(
+    review: &Review,
+    full: bool,
+    style: crate::preferences::DiffStyle,
+    cx: &mut Context<Inspector>,
+) -> Div {
     let lines = if full {
         &review.full_lines
     } else {
@@ -196,7 +203,30 @@ fn dry_run_diff(review: &Review, full: bool, cx: &mut Context<Inspector>) -> Div
                 .max_h(px(288.))
                 .overflow_y_scroll()
                 .py(px(4.))
-                .child(diff_lines(shown, 19.5)),
+                .child({
+                    let clean: Vec<_> = shown
+                        .iter()
+                        .cloned()
+                        .map(|mut line| {
+                            line.text = line
+                                .text
+                                .strip_prefix(['+', '-', ' '])
+                                .unwrap_or(&line.text)
+                                .to_owned()
+                                .into();
+                            line
+                        })
+                        .collect();
+                    diff_lines(
+                        if style == crate::preferences::DiffStyle::Git {
+                            shown
+                        } else {
+                            &clean
+                        },
+                        19.5,
+                    )
+                    .into_any_element()
+                }),
         )
         .when(hidden > 0, |pane| {
             pane.child(
@@ -282,7 +312,12 @@ fn edit_controls(
         })
 }
 
-pub(super) fn yaml_tab(detail: &ResourceDetail, cx: &mut Context<Inspector>) -> Div {
+pub(super) fn yaml_tab(
+    detail: &ResourceDetail,
+    preferences: &crate::preferences::Preferences,
+    cx: &mut Context<Inspector>,
+) -> Div {
+    let style = preferences.yaml_diff_style;
     let summary = &detail.data.summary;
     let state = &detail.yaml;
     let editing = state.editing();
@@ -379,7 +414,10 @@ pub(super) fn yaml_tab(detail: &ResourceDetail, cx: &mut Context<Inspector>) -> 
                 .when(editing, |column| {
                     column
                         .child(operation_scope(summary))
-                        .child(force_conflicts(state))
+                        .child(force_conflicts(
+                            state,
+                            preferences.allow_yaml_force_conflicts,
+                        ))
                         .child(edit_controls(
                             state,
                             draft_empty,
@@ -447,7 +485,7 @@ pub(super) fn yaml_tab(detail: &ResourceDetail, cx: &mut Context<Inspector>) -> 
             |pane, message| pane.child(failure("yaml-apply-error", "YAML apply failed", message)),
         )
         .when_some(state.review().filter(|_| editing), |pane, review| {
-            pane.child(dry_run_diff(review, state.show_full, cx))
+            pane.child(dry_run_diff(review, state.show_full, style, cx))
         })
         // `YamlCodeEditor minHeight`: 520px read-only, 420px while editing. GPUI's
         // editor needs a definite height, so longer YAML scrolls inside it.

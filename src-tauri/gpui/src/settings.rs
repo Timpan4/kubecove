@@ -50,8 +50,6 @@ pub enum Control {
 }
 
 /// Why a row is disabled in the native client.
-pub const LOCAL_STORE: &str =
-    "Saved in the web client's local storage. The native client has no settings store yet.";
 const DESKTOP_HOST: &str =
     "Runs in the Tauri desktop host. The native client has no host adapter for it yet.";
 const BROWSER_TOOL: &str =
@@ -86,8 +84,6 @@ const fn row(
 use Category as C;
 use Control::{Button, Section, Segments, Switch};
 
-const STORED: Option<&str> = Some(LOCAL_STORE);
-
 /// Every searchable row. Defaults mirror `src/lib/settings.ts`.
 pub const ROWS: &[Row] = &[
     row(
@@ -104,14 +100,14 @@ pub const ROWS: &[Row] = &[
         "Show exact timestamps",
         "Adds exact timestamps next to relative ages.",
         Switch(false),
-        STORED,
+        None,
     ),
     row(
         C::General,
         "Timestamp timezone",
         "Controls exact timestamps in labels and tooltips.",
         Segments(&["Local", "UTC"], 0),
-        STORED,
+        None,
     ),
     row(
         C::General,
@@ -125,105 +121,105 @@ pub const ROWS: &[Row] = &[
         "Redact secrets",
         "Keeps Secret values hidden by default. Connected Argo Secret values stay provider masked.",
         Switch(true),
-        STORED,
+        None,
     ),
     row(
         C::General,
         "Keep full map visible during selection",
         "Shows unrelated ownership branches while a resource is selected. Large namespaces may render slower.",
         Switch(false),
-        STORED,
+        None,
     ),
     row(
         C::General,
         "Show ownership map by default",
         "Opens the ownership map in new resource views. Returning to a view restores its previous layout.",
         Switch(true),
-        STORED,
+        None,
     ),
     row(
         C::General,
         "Expand timeline by default",
         "Shows messages and facts in resource timelines. You can still collapse individual entries.",
         Switch(false),
-        STORED,
+        None,
     ),
     row(
         C::General,
         "Show unavailable GitOps providers",
         "Shows Argo CD and Flux provider groups as disabled when CRDs are missing.",
         Switch(false),
-        STORED,
+        None,
     ),
     row(
         C::General,
         "Show Custom Resources",
         "Loads Custom Resources after native Kubernetes resources are visible.",
         Switch(true),
-        STORED,
+        None,
     ),
     row(
         C::Appearance,
         "Log layout",
         "Controls how entries are shown in the Logs tab.",
         Segments(&["Stacked", "Gutter", "One line"], 0),
-        STORED,
+        None,
     ),
     row(
         C::Appearance,
         "Resource group order",
-        "Drag kinds between lanes to order Resource Table groups, or focus a kind and use the arrow keys. Column sorting still orders rows inside each group.",
+        "Move kinds earlier or later to order Resource Table groups. Column sorting still orders rows inside each group.",
         Section,
-        STORED,
+        None,
     ),
     row(
         C::Sessions,
         "Auto-start saved port forwards",
         "Starts saved Service port-forward presets when a workspace is restored.",
         Switch(false),
-        STORED,
+        None,
     ),
     row(
         C::Sessions,
         "Keep live sessions across workspace switches",
         "Leaves port-forward and Pod exec sessions running when you leave their scope.",
         Switch(false),
-        STORED,
+        None,
     ),
     row(
         C::Yaml,
         "YAML shape",
         "Controls whether YAML opens as Kubectl view or Apply clean output.",
         Segments(&["Kubectl view", "Apply clean"], 0),
-        STORED,
+        None,
     ),
     row(
         C::Yaml,
         "YAML encoding",
         "Controls whether YAML panels open as regular YAML or KYAML.",
         Segments(&["YAML", "KYAML"], 0),
-        STORED,
+        None,
     ),
     row(
         C::Yaml,
         "YAML diff appearance",
         "Controls selected-resource dry-run diff rendering.",
         Segments(&["Clean", "Git"], 0),
-        STORED,
+        None,
     ),
     row(
         C::Yaml,
         "YAML error lens",
         "Shows inline editor diagnostics below YAML lines.",
         Switch(true),
-        STORED,
+        None,
     ),
     row(
         C::Yaml,
         "Allow YAML force-conflicts",
         "Lets guarded YAML operations take server-side field ownership.",
         Switch(false),
-        STORED,
+        None,
     ),
     row(
         C::Kubeconfig,
@@ -266,7 +262,7 @@ pub const ROWS: &[Row] = &[
         "Enable diagnostics",
         "Collects local latency timings for release smoke testing. Trace data stays in memory.",
         Switch(false),
-        STORED,
+        None,
     ),
     row(
         C::Diagnostics,
@@ -302,7 +298,7 @@ pub const ROWS: &[Row] = &[
         "Skip change review",
         "Successful dry-runs apply without showing a diff, across every context including production. Dry-run remains required, and deletes always ask.",
         Switch(false),
-        STORED,
+        None,
     ),
     row(
         C::Remote,

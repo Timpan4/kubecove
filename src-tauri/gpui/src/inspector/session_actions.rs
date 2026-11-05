@@ -44,7 +44,12 @@ impl Inspector {
                             .as_ref()
                             .and_then(|r| r.as_ref().ok())
                             .and_then(|s| s.source_key.clone());
-                        current == source && (this.sessions.keep || this.scope.context == context)
+                        current == source
+                            && (this
+                                .persisted
+                                .preferences
+                                .keep_live_sessions_on_workspace_switch
+                                || this.scope.context == context)
                     })
                     .unwrap_or(false);
                 if !belongs {
@@ -268,17 +273,21 @@ impl Inspector {
         let preset_key = self.preset_key();
         match self.forward_request(cx) {
             Ok(request) => {
-                let presets = self.sessions.presets.entry(preset_key).or_default();
+                let presets = self
+                    .persisted
+                    .saved_forward_presets
+                    .entry(preset_key)
+                    .or_default();
                 if !presets.iter().any(|p| {
                     serde_json::to_value(&p.request).ok() == serde_json::to_value(&request).ok()
                 }) {
-                    presets.push(crate::backend::SavedForward {
+                    presets.push(crate::preferences::SavedForward {
                         request,
                         label: String::new(),
                     });
                 }
                 self.sessions.error = Some("Saved Service forward to this workspace.".into());
-                self.persist_session_preferences(cx);
+                self.save_preferences(cx);
             }
             Err(error) => self.sessions.error = Some(error),
         }
@@ -289,8 +298,8 @@ impl Inspector {
             return;
         }
         let requests = self
-            .sessions
-            .presets
+            .persisted
+            .saved_forward_presets
             .get(&self.preset_key())
             .map(|presets| presets.iter().map(|p| p.request.clone()).collect())
             .unwrap_or_default();
@@ -306,8 +315,8 @@ impl Inspector {
             return;
         }
         let Some(saved) = self
-            .sessions
-            .presets
+            .persisted
+            .saved_forward_presets
             .get(&self.preset_key())
             .and_then(|p| p.get(index))
         else {

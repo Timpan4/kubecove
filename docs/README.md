@@ -13,6 +13,7 @@ User-facing procedures start in the [public Wiki](https://github.com/Timpan4/kub
 
 ## Engineering
 
+- [GPUI local persistence](decisions/0030-gpui-local-preferences.md): native preference schema, local workspace and review storage, migration and runtime ownership.
 - [GPUI native client](../src-tauri/gpui/README.md): opt-in native inspection client and shared frontend acceptance scenarios under [ADR 0029](decisions/0029-gpui-native-client-and-feature-parity.md).
 - [Development Workflow](development-workflow.md) — setup, local development, and checks.
 - [Legacy code and test audit](legacy-test-audit.md) — removal evidence, preserved coverage, and verification boundaries.

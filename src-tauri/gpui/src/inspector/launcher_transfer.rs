@@ -18,7 +18,7 @@ use std::collections::HashMap;
 pub(super) struct TransferState {
     pub(super) busy: bool,
     task: Option<Task<()>>,
-    documents: HashMap<u64, serde_json::Value>,
+    pub(super) documents: HashMap<u64, serde_json::Value>,
     preview: Vec<ImportedWorkspace>,
     decisions: Vec<ImportAction>,
     error: Option<String>,
@@ -146,7 +146,7 @@ impl Inspector {
                 })
                 .flatten();
             let next = self.launcher.next;
-            self.launcher.next += 1;
+            self.launcher.next = self.launcher.next.saturating_add(1);
             let id = existing.map_or(next, |index| self.launcher.saved[index].id);
             let mut name = item.name;
             if existing.is_none() {
@@ -175,6 +175,7 @@ impl Inspector {
                 self.launcher.saved.push(workspace);
             }
         }
+        self.save_preferences(cx);
         cx.notify();
     }
     pub(super) fn workspace_transfer_panel(&self, cx: &mut Context<Self>) -> Div {
