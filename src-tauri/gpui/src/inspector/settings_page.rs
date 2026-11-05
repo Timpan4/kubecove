@@ -24,6 +24,7 @@ pub(super) struct SettingsState {
     pub(super) diagnostics_task: Option<Task<()>>,
     pub(super) confirming_skip_review: bool,
     pub(super) integrations: super::settings_integrations::Integrations,
+    pub(super) mcp: super::settings_mcp::McpState,
     /// The page "Back to app" returns to.
     previous: Page,
     category: Category,
@@ -56,6 +57,7 @@ impl SettingsState {
             diagnostics_task: None,
             confirming_skip_review: false,
             integrations: super::settings_integrations::Integrations::new(window, cx),
+            mcp: super::settings_mcp::McpState::new(window, cx),
             previous: Page::Overview,
             category: Category::General,
             search,
@@ -82,6 +84,7 @@ impl Inspector {
         let read = self.timings.measure("kubeconfig_sources", read);
         self.run_kubeconfig(read, window, cx);
         self.initialize_settings_integrations(window, cx);
+        self.initialize_mcp(window, cx);
         self.open_page(Page::Settings, cx);
     }
 
@@ -219,6 +222,9 @@ impl Inspector {
     }
 
     fn settings_category(&self, category: Category, cx: &mut Context<Self>) -> AnyElement {
+        if category == Category::Agents {
+            return self.mcp_settings_section(cx).into_any_element();
+        }
         if category == Category::Remote {
             return self.remote_settings_section(cx).into_any_element();
         }

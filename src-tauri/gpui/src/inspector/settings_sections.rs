@@ -58,42 +58,10 @@ pub(super) fn section(row: &'static Row) -> AnyElement {
     match row.title {
         "Interaction report" => report(row, true),
         "Latency report" => report(row, false),
-        "MCP port" => settings_row(
-            row.title,
-            row.description.into(),
-            disabled(row, field("MCP port", "")),
-        )
-        .into_any_element(),
-        "Agent access token" => settings_row(
-            row.title,
-            row.description.into(),
-            disabled(row, actions(&["Copy", "Rotate"])),
-        )
-        .into_any_element(),
         _ => {
             settings_row(row.title, row.description.into(), disabled(row, div())).into_any_element()
         }
     }
-}
-
-fn field(label: &'static str, placeholder: &'static str) -> Div {
-    div()
-        .flex()
-        .flex_col()
-        .gap(px(8.))
-        .child(ui::medium(ui::sm(label)))
-        .child(
-            div()
-                .h(px(32.))
-                .px(px(8.))
-                .flex()
-                .items_center()
-                .rounded(px(8.))
-                .border_1()
-                .border_color(Tokens::input())
-                .bg(Tokens::input().opacity(0.3))
-                .child(ui::muted(ui::xs(placeholder))),
-        )
 }
 
 fn table(headers: &[&'static str], empty: &'static str) -> Div {

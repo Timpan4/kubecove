@@ -166,7 +166,8 @@ mod visual {
                         });
                     }
                 }
-                "settings-appearance"
+                "settings-agents"
+                | "settings-appearance"
                 | "settings-sessions"
                 | "settings-yaml"
                 | "settings-diagnostics"
@@ -178,6 +179,7 @@ mod visual {
                         window.click("open-settings", cx)
                     });
                     let category = match view.as_str() {
+                        "settings-agents" => "AI agents",
                         "settings-appearance" => "Appearance",
                         "settings-sessions" => "Live sessions",
                         "settings-yaml" => "YAML",

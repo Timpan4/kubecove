@@ -55,6 +55,7 @@ pub trait Backend: Send + Sync + 'static {
         Ok(document)
     }
     argo::defaults!();
+    mcp::defaults!();
     fn remote_status(&self) -> Read<Option<RemoteConnectionSummary>> {
         Box::pin(async { Ok(None) })
     }
@@ -289,6 +290,7 @@ mod delivery;
 mod delivery_workspace;
 pub use delivery_workspace::APPLICATION_KINDS;
 mod detail_reads;
+mod mcp;
 mod remote;
 mod security;
 pub mod settings_integrations;
@@ -307,6 +309,7 @@ pub use session_controls::ExecStream;
 pub use crate::model::WORKSPACE_KINDS as INSPECTION_KINDS;
 
 pub struct NativeBackend {
+    mcp: Arc<kubecove_lib::mcp::McpHost>,
     settings_initialized: bool,
     preferences: crate::preferences::Store,
     runtime: Option<tokio::runtime::Runtime>,
@@ -322,6 +325,7 @@ pub struct NativeBackend {
 impl NativeBackend {
     pub fn new() -> std::io::Result<Self> {
         Ok(Self {
+            mcp: Arc::default(),
             settings_initialized: false,
             preferences: Default::default(),
             runtime: Some(
@@ -413,6 +417,7 @@ impl Backend for NativeBackend {
         self.preferences.save(document)
     }
     argo::native!();
+    mcp::native!();
     fn add_kubeconfig_paths(&self, paths: Vec<String>) -> Read<KubeconfigSourcesSummary> {
         if !self.settings_initialized {
             return self.read(security::unsaved());

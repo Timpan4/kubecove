@@ -3,6 +3,11 @@ import { join } from "node:path";
 
 type Identity = { kind: string; name: string; namespace: string };
 export type Step =
+    | { action: "fillMcpPort"; value: string }
+    | { action: "mcpControl"; control: "MCP server" | "Submit port" | "Save" | "Copy token" | "Copy Claude Code command" | "Rotate token" }
+    | { action: "expectMcpState"; enabled: boolean; port: string; running: boolean; save: boolean; command: boolean }
+    | { action: "expectMcpCopy"; kind: "token" | "command"; rotated: boolean }
+    | { action: "expectMcpRequests"; requests: string[] }
     | { action: "selectArgoPreference"; preference: "Automatic" | "Kubernetes" }
     | { action: "expectSavedArgoProfile"; url: string }
     | { action: "configureArgoSync"; revision: string; name: string }
@@ -148,6 +153,7 @@ export type Contract = { scenarios: Scenario[] };
 
 /** Every action both drivers must implement; `contract.test.ts` checks each driver handles each one. */
 export const ACTIONS = [
+    "fillMcpPort", "mcpControl", "expectMcpState", "expectMcpCopy", "expectMcpRequests",
     "selectArgoPreference", "expectSavedArgoProfile", "configureArgoSync", "selectArgoHistory", "expectArgoWorkspaceTransport", "completeArgoOperation", "confirmArgoTunnel",
     "connectArgoProfile", "disconnectArgoProfile", "confirmArgoReview", "cancelArgoReview", "reviewArgoOperation", "expectArgoReview", "expectArgoText", "argoDocument",
     "cancelYamlEdit",
@@ -208,6 +214,15 @@ function optionalBoolean(value: unknown): boolean | undefined {
 function step(value: unknown): Step {
 	const item = object(value);
 	switch (item.action) {
+        case "fillMcpPort": return { action: item.action, value: string(item.value) };
+        case "mcpControl": return { action: item.action, control: oneOf(["MCP server", "Submit port", "Save", "Copy token", "Copy Claude Code command", "Rotate token"], item.control, "an MCP control") };
+        case "expectMcpState":
+            if (typeof item.enabled !== "boolean" || typeof item.running !== "boolean" || typeof item.save !== "boolean" || typeof item.command !== "boolean") throw new Error("Expected MCP control states");
+            return { action: item.action, enabled: item.enabled, port: string(item.port), running: item.running, save: item.save, command: item.command };
+        case "expectMcpCopy":
+            if (typeof item.rotated !== "boolean") throw new Error("Expected rotation state");
+            return { action: item.action, kind: oneOf(["token", "command"], item.kind, "an MCP copy kind"), rotated: item.rotated };
+        case "expectMcpRequests": return { action: item.action, requests: strings(item.requests, true) };
         case "selectArgoPreference": return { action: item.action, preference: oneOf(["Automatic", "Kubernetes"], item.preference, "an inspection preference") };
         case "expectSavedArgoProfile": return { action: item.action, url: string(item.url) };
         case "configureArgoSync": return { action: item.action, revision: string(item.revision), name: string(item.name) };

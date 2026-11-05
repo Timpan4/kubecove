@@ -17,6 +17,8 @@ mod live_data;
 mod live_sessions;
 #[path = "parity/locate.rs"]
 mod locate;
+#[path = "parity/mcp.rs"]
+mod mcp;
 #[path = "parity/scroll.rs"]
 mod scroll;
 #[path = "parity/settings_integrations.rs"]
@@ -155,6 +157,7 @@ fn scenarios() -> Vec<Value> {
 fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
     if !(argo::act(window, cx, step)
         || adapters::act(window, cx, step)
+        || mcp::act(window, cx, step)
         || live_sessions::apply(window, cx, step)
         || settings_integrations::act(window, cx, step)
         || live_data::apply(window, cx, step)
@@ -275,6 +278,18 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
         });
         cx.run_until_parked();
         for (index, step) in scenario["steps"].as_array().unwrap().iter().enumerate() {
+            if step["action"] == "expectMcpRequests" {
+                assert_eq!(backend.mcp_requests(), strings(step, "requests"));
+            }
+            if step["action"] == "expectMcpCopy" {
+                use kubecove_gpui::backend::Backend;
+                let preferences =
+                    serde_json::to_string(&backend.load_preferences().unwrap()).unwrap();
+                assert!(
+                    !preferences.contains("parity-mcp"),
+                    "MCP credentials must not enter preferences"
+                );
+            }
             if step["action"] == "expectDocumentationRequest" {
                 assert_eq!(backend.documentation_requests(), vec![string(step, "url")]);
             }

@@ -6,6 +6,7 @@ mod argo;
 mod delivery;
 mod detail_tabs;
 mod live_data;
+mod mcp;
 mod session_controls;
 mod settings_integrations;
 
@@ -32,6 +33,7 @@ use std::{collections::HashMap, path::Path, sync::Mutex};
 
 #[derive(Deserialize)]
 pub struct Fixture {
+    mcp: mcp::McpFixture,
     #[serde(rename = "argoConnected")]
     argo: argo::Argo,
     #[serde(rename = "secretReveals")]
@@ -134,6 +136,7 @@ impl Fixture {
 }
 
 impl Backend for Fixture {
+    mcp::fixture!();
     fn open_documentation(&self) -> Read<()> {
         self.documentation_requests
             .lock()

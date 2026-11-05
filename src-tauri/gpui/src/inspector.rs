@@ -79,6 +79,7 @@ mod secret_data;
 mod session_actions;
 mod settings_integrations;
 mod settings_kubeconfig;
+mod settings_mcp;
 mod settings_page;
 mod settings_sections;
 mod sidebar;

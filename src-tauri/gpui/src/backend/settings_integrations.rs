@@ -35,6 +35,7 @@ impl NativeBackend {
         commands::init_kubeconfig_settings_path(directory.clone());
         let mut backend = Self::new()?;
         backend.settings_initialized = true;
+        backend = backend.with_mcp_directory(directory.clone());
         backend.preferences = crate::preferences::Store::file(directory);
         Ok(backend)
     }

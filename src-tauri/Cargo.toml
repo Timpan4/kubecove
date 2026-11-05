@@ -82,9 +82,10 @@ desktop = [
     "dep:tauri-plugin-process", "dep:tauri-plugin-dialog", "dep:tauri-plugin-opener",
     "kubecove-kube/desktop", "kubecove-inspection/desktop", "kubecove-live/desktop",
     "kubecove-gitops/desktop", "kubecove-host/desktop",
-    "dep:kubecove-mcp", "kubecove-mcp/desktop", "dep:tokio-util",
+    "mcp-host", "kubecove-mcp/desktop",
     "dep:webkit2gtk",
 ]
+mcp-host = ["dep:kubecove-mcp", "kubecove-mcp/loopback", "dep:tokio-util"]
 bench-support = [
     "desktop", "kubecove-kube/bench-support", "kubecove-inspection/bench-support",
     "kubecove-live/bench-support", "kubecove-gitops/bench-support", "kubecove-host/bench-support",

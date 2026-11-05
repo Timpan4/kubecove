@@ -23,8 +23,8 @@ mod appimage_webkit;
 pub mod commands;
 #[cfg(feature = "desktop")]
 mod ipc;
-#[cfg(feature = "desktop")]
-mod mcp;
+#[cfg(feature = "mcp-host")]
+pub mod mcp;
 #[cfg(feature = "e2e")]
 use kubecove_kube::e2e;
 pub use kubecove_kube::runtime;

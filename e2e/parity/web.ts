@@ -8,11 +8,14 @@ import type { Contract, Step } from "./contract";
 import { adapterAction } from "./web-adapters";
 import { argoAction } from "./web-argo";
 import { liveSessionAction } from "./web-live-sessions";
+import { mcpAction } from "./web-mcp";
 
 export async function action(page: Page, step: Step) {
 	const search = page.getByRole("textbox", { name: "Search resources" });
 	const close = page.getByRole("button", { name: "Close resource details" });
 	switch (step.action) {
+        case "fillMcpPort": case "mcpControl": case "expectMcpState": case "expectMcpCopy": case "expectMcpRequests":
+            await mcpAction(page, step); break;
         case "connectArgoProfile": case "disconnectArgoProfile": case "reviewArgoOperation": case "confirmArgoReview": case "cancelArgoReview": case "expectArgoReview": case "expectArgoText": case "argoDocument":
         case "selectArgoPreference": case "expectSavedArgoProfile": case "configureArgoSync": case "selectArgoHistory": case "expectArgoWorkspaceTransport": case "completeArgoOperation": case "confirmArgoTunnel":
             await argoAction(page, step); break;

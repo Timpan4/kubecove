@@ -86,6 +86,7 @@ macro_rules! route {
 }
 
 impl Backend for DesktopBackend {
+    super::mcp::local!();
     fn diagnostics(&self, enabled: bool, clear: bool) -> Read<super::adapters::BackendDiagnostics> {
         if !self.selected() {
             return self.local.diagnostics(enabled, clear);

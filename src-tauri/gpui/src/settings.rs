@@ -50,8 +50,6 @@ pub enum Control {
 }
 
 /// Why a row is disabled in the native client.
-const DESKTOP_HOST: &str =
-    "Runs in the Tauri desktop host. The native client has no host adapter for it yet.";
 const BROWSER_TOOL: &str =
     "Measures the web frontend's DOM. It does not apply to the native client.";
 
@@ -309,21 +307,21 @@ pub const ROWS: &[Row] = &[
         "MCP server",
         "Lets AI agents such as Claude Code read cluster state through read-only tools on 127.0.0.1. Off by default.",
         Switch(false),
-        Some(DESKTOP_HOST),
+        None,
     ),
     row(
         C::Agents,
         "MCP port",
         "Loopback port for the MCP endpoint. Agents connect to http://127.0.0.1:<port>/mcp.",
         Section,
-        Some(DESKTOP_HOST),
+        None,
     ),
     row(
         C::Agents,
         "Agent access token",
         "Agents send this bearer token. Rotating it disconnects every agent configured with the old one.",
         Section,
-        Some(DESKTOP_HOST),
+        None,
     ),
 ];
 

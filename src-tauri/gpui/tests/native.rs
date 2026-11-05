@@ -599,3 +599,5 @@ fn port_forwards_stay_in_the_workspace_scope(cx: &mut TestAppContext) {
 }
 #[path = "native/adapters.rs"]
 mod adapters;
+#[path = "native/mcp.rs"]
+mod mcp;
