@@ -116,12 +116,24 @@ fn apply_request(resource: &ResourceSummary, yaml: String, force: bool) -> YamlA
     }
 }
 
-fn review(request: YamlApplyRequest, preview: &YamlApplyPreview) -> Review {
+fn review(
+    request: YamlApplyRequest,
+    preview: &YamlApplyPreview,
+    style: crate::preferences::DiffStyle,
+) -> Review {
     let (current, dry_run) = (&preview.current_yaml, &preview.dry_run_yaml);
     let force = request.force_conflicts;
     Review {
-        lines: unified_diff::dry_run(current, dry_run, false, force),
-        full_lines: unified_diff::dry_run(current, dry_run, true, force),
+        lines: if style == crate::preferences::DiffStyle::Git {
+            unified_diff::dry_run_git(current, dry_run, false)
+        } else {
+            unified_diff::dry_run(current, dry_run, false, force)
+        },
+        full_lines: if style == crate::preferences::DiffStyle::Git {
+            unified_diff::dry_run_git(current, dry_run, true)
+        } else {
+            unified_diff::dry_run(current, dry_run, true, force)
+        },
         request,
     }
 }
@@ -245,11 +257,12 @@ impl Inspector {
         self.diff_task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
+                let style = this.persisted.preferences.yaml_diff_style;
                 let Some(detail) = this.yaml_apply() else {
                     return;
                 };
                 detail.yaml.phase = match result {
-                    Ok(preview) => Phase::Reviewed(review(request, &preview)),
+                    Ok(preview) => Phase::Reviewed(review(request, &preview, style)),
                     Err(error) => {
                         detail.yaml.feedback = Feedback::PrepareFailed(error);
                         Phase::Editing

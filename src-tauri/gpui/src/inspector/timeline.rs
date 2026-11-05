@@ -135,7 +135,7 @@ fn ghost_button(
         .on_click(on_click)
 }
 
-fn evidence(item: &TimelineItem) -> Div {
+fn evidence(item: &TimelineItem) -> gpui_kit::base::ObservedElement<gpui_kit::Stateful<Div>> {
     let row = |label: &str, value: String, mono: bool| {
         [
             ui::text(label.to_owned(), 11., 16.).text_color(Tokens::foreground().opacity(0.65)),
@@ -180,6 +180,12 @@ fn evidence(item: &TimelineItem) -> Div {
         );
     div()
         .mx(px(12.))
+        .id(gpui_kit::SharedString::from(format!(
+            "timeline-evidence:{}",
+            item.key()
+        )))
+        .test_support()
+        .aria_label("Timeline evidence")
         .pt(px(8.))
         .pb(px(12.))
         .border_t_1()

@@ -285,6 +285,7 @@ impl Inspector {
                 false,
             )
             .id(id)
+            .test_support()
             .px(px(6.))
             .child(label)
         };
@@ -459,6 +460,11 @@ impl Inspector {
             RbacAccessReviewOutcome::Denied => ("denied", "Denied", Tokens::destructive()),
             RbacAccessReviewOutcome::NoOpinion => ("noOpinion", "No opinion", Palette::amber300()),
         });
+        let evidence: gpui_kit::SharedString = format!(
+            "{} · {}\n{}\n{}",
+            data.cluster, submitted.timestamp, submitted.identity, submitted.target
+        )
+        .into();
         Some(
             div()
                 .p(px(12.))
@@ -489,20 +495,19 @@ impl Inspector {
                 .when_some(failure.cloned(), |panel, message| {
                     panel.child(
                         ui::xs(format!("Verifier unavailable · {message}"))
+                            .id("rbac-verifier-error")
+                            .test_support()
+                            .aria_label(format!("Verifier unavailable · {message}"))
                             .mt(px(8.))
                             .text_color(Tokens::destructive()),
                     )
                 })
                 .child(
-                    ui::muted(ui::text(
-                        format!(
-                            "{} · {}\n{}\n{}",
-                            data.cluster, submitted.timestamp, submitted.identity, submitted.target
-                        ),
-                        10.,
-                        14.,
-                    ))
-                    .mt(px(8.)),
+                    ui::muted(ui::text(evidence.clone(), 10., 14.))
+                        .id("rbac-submitted")
+                        .test_support()
+                        .aria_label(evidence)
+                        .mt(px(8.)),
                 )
                 .into_any_element(),
         )

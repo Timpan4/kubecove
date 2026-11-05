@@ -7,6 +7,10 @@ mod adapters;
 #[path = "parity/argo.rs"]
 mod argo;
 mod common;
+#[path = "parity/coverage.rs"]
+mod coverage;
+#[path = "parity/coverage_checks.rs"]
+mod coverage_checks;
 #[path = "parity/delivery.rs"]
 mod delivery;
 #[path = "parity/detail.rs"]
@@ -19,6 +23,8 @@ mod live_data;
 mod live_sessions;
 #[path = "parity/locate.rs"]
 mod locate;
+#[path = "parity/log_coverage.rs"]
+mod log_coverage;
 #[path = "parity/log_restore.rs"]
 mod log_restore;
 #[path = "parity/mcp.rs"]
@@ -76,8 +82,8 @@ fn row(step: &Value) -> String {
 
 /// The first detail tab, at the top of the scrolling detail body.
 const DETAIL_TOP: &str = "show-details";
-/// The RBAC category bar, at the top of the page's scroll area.
-const RBAC_TOP: &str = "rbac-category:Roles";
+/// The RBAC page's scrolling content, below the fixed workspace header.
+const RBAC_TOP: &str = "page";
 
 /// The Details button of a GitOps card or list row.
 fn gitops_details(step: &Value) -> String {
@@ -178,6 +184,8 @@ fn scenarios() -> Vec<Value> {
 
 fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
     if !(shell::act(window, cx, step)
+        || coverage_checks::act(window, cx, step)
+        || coverage::act(window, cx, step)
         || argo::act(window, cx, step)
         || adapters::act(window, cx, step)
         || mcp::act(window, cx, step)
@@ -201,10 +209,12 @@ fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
     }
 }
 
-/// The second half of steps that type and then click. Input change events
-/// apply when the update that typed ends, as they do between a user's
-/// keystrokes and a later click.
+/// Finish inputs after the prior update dispatches its events.
+/// Typing can update buttons; opening a picker can move keyboard focus.
 fn finish(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
+    if step["action"] == "coverageSelect" {
+        coverage::finish(window, cx, step);
+    }
     if step["action"] == "selectArgoPreference" {
         window.press("enter", cx);
     }
@@ -295,6 +305,17 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
         for step in &steps[..startup_steps] {
             backend.timing_control(&step["control"]);
         }
+        let initial_coverage = scenario["steps"]
+            .as_array()
+            .unwrap()
+            .first()
+            .filter(|step| {
+                step["action"] == "coverageScript"
+                    && matches!(string(step, "script"), "loading" | "startup-failed")
+            });
+        if let Some(step) = initial_coverage {
+            backend.configure_coverage(string(step, "script"));
+        }
         let (mut handle, _) = cx.update(|cx| {
             gpui_kit::open_window(
                 WindowOptions {
@@ -370,6 +391,12 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
             }
             if step["action"] == "configureShellRead" {
                 *backend.shell_read_phase.lock().unwrap() = string(step, "phase").to_owned();
+            }
+            if step["action"] == "coverageScript" && (index != 0 || initial_coverage.is_none()) {
+                backend.configure_coverage(string(step, "script"));
+            }
+            if step["action"] == "coverageCheck" && step["check"] == "emit-log" {
+                backend.emit_coverage_log();
             }
             if step["action"] == "failWorkspaceContext" {
                 *backend.failed_workspace_context.lock().unwrap() =

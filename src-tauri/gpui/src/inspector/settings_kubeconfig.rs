@@ -248,8 +248,11 @@ impl Inspector {
             )
             .when_some(error, |section, error| {
                 section.child(
-                    ui::xs(error)
+                    ui::xs(error.clone())
                         .id("kubeconfig-error")
+                        .test_support()
+                        .aria_label("Kubeconfig sources failed")
+                        .aria_description(error)
                         .role(gpui_kit::Role::Alert)
                         .text_color(Tokens::destructive()),
                 )

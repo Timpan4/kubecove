@@ -7,7 +7,7 @@ use super::timeline::{incident_signals, timeline};
 use crate::model::{exact_timestamp, health_source};
 use crate::theme::Tokens;
 use crate::ui::{self, Tone};
-use gpui_kit::{Context, Div, SharedString, div, prelude::*, px};
+use gpui_kit::{Context, Div, SharedString, TestSupportExt, div, prelude::*, px};
 use kubecove_lib::models::{HealthAssessmentState, ResourceSummary};
 
 /// `grid grid-cols-[7rem_minmax(0,1fr)] gap-2 py-1.5`; `metadata_card` adds the row borders.
@@ -48,6 +48,7 @@ fn metadata_card(title: &str, rows: Vec<Div>) -> Div {
 /// Incident summary from `DetailsTab.svelte`; the signal cards are in `timeline`.
 fn incident_summary(detail: &ResourceDetail) -> Div {
     let summary = &detail.data.summary;
+    let resource_label = format!("{}/{}", summary.kind, summary.name);
     div()
         .p(px(12.))
         .rounded(px(8.))
@@ -66,7 +67,10 @@ fn incident_summary(detail: &ResourceDetail) -> Div {
                         .min_w_0()
                         .child(ui::muted(ui::caps("Incident summary", 12.)))
                         .child(
-                            ui::semibold(ui::sm(format!("{}/{}", summary.kind, summary.name)))
+                            ui::semibold(ui::sm(resource_label.clone()))
+                                .id("detail-incident-summary")
+                                .test_support()
+                                .aria_label(format!("Incident summary for {resource_label}"))
                                 .mt(px(4.)),
                         ),
                 )

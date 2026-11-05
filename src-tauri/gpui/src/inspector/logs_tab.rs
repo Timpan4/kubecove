@@ -169,6 +169,7 @@ fn toolbar(logs: &LogsState, cx: &mut Context<Inspector>) -> Div {
     };
     div()
         .flex()
+        .flex_wrap()
         .flex_none()
         .items_center()
         .gap(px(6.))
@@ -310,19 +311,22 @@ fn filters(logs: &LogsState, layout: LogLayout, cx: &mut Context<Inspector>) -> 
                             cx.notify();
                         }))
                 }))
-                .child(
-                    icon_button("wrap-text", toggle(logs.wrap))
-                        .id("log-wrap")
-                        .test_support()
-                        .aria_label("Wrap lines")
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            if let Some(logs) = this.logs_state() {
-                                logs.wrap = !logs.wrap;
-                                logs.list.reset(logs.visible.len());
-                            }
-                            cx.notify();
-                        })),
-                )
+                // Wrap applies only to the other layouts, as in `LogsTab.svelte`.
+                .when(layout != LogLayout::OneLine, |row| {
+                    row.child(
+                        icon_button("wrap-text", toggle(logs.wrap))
+                            .id("log-wrap")
+                            .test_support()
+                            .aria_label("Wrap lines")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                if let Some(logs) = this.logs_state() {
+                                    logs.wrap = !logs.wrap;
+                                    logs.list.reset(logs.visible.len());
+                                }
+                                cx.notify();
+                            })),
+                    )
+                })
                 .child(
                     icon_button("arrow-down-up", toggle(logs.latest_first))
                         .id("log-order")
@@ -355,8 +359,10 @@ fn filters(logs: &LogsState, layout: LogLayout, cx: &mut Context<Inspector>) -> 
         )
 }
 
-fn viewport(logs: &LogsState, cx: &mut Context<Inspector>) -> Div {
+fn viewport(logs: &LogsState, cx: &mut Context<Inspector>) -> impl IntoElement {
     let frame = div()
+        .id("log-viewport")
+        .test_support()
         .relative()
         .flex()
         .flex_col()
@@ -392,6 +398,7 @@ fn viewport(logs: &LogsState, cx: &mut Context<Inspector>) -> Div {
         ui::muted(ui::sm("No log lines match the current filters."))
             .id("log-no-match")
             .test_support()
+            .aria_label("No log lines match the current filters.")
             .p(px(12.))
             .into_any_element()
     } else {
@@ -430,6 +437,7 @@ fn viewport(logs: &LogsState, cx: &mut Context<Inspector>) -> Div {
                 button(Variant::Default, 28., false)
                     .id("log-jump")
                     .test_support()
+                    .aria_label(text.clone())
                     .rounded_full()
                     .px(px(12.))
                     .shadow_lg()
@@ -478,6 +486,7 @@ pub(super) fn logs_tab(
             .id("log-error")
             .test_support()
             .aria_label(format!("Log stream failed: {error}"))
+            .aria_description(error.clone())
             .role(gpui_kit::Role::Alert)
             .flex_none()
             .p(px(12.))

@@ -140,6 +140,15 @@ pub fn dry_run(current: &str, dry_run: &str, full: bool, force_conflicts: bool) 
     lines
 }
 
+pub fn dry_run_git(current: &str, dry_run: &str, full: bool) -> Vec<DiffLine> {
+    unified(
+        current,
+        dry_run,
+        context(current, dry_run, full),
+        ("current", "dry-run", "No server-side dry-run changes."),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

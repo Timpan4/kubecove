@@ -417,7 +417,13 @@ pub(super) fn alert(title: &str, items: &[String]) -> Div {
         .border_1()
         .border_color(Tokens::border())
         .bg(Tokens::card())
-        .child(ui::medium(ui::text(title.to_owned(), 12., 19.5)))
+        .child(
+            ui::medium(ui::text(title.to_owned(), 12., 19.5))
+                .id(SharedString::from(format!("alert:{title}")))
+                .test_support()
+                .aria_label(title.to_owned())
+                .aria_description(items.join(" ")),
+        )
         .child(
             div()
                 .mt(px(2.))

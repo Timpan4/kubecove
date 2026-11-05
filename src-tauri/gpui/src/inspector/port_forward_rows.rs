@@ -76,12 +76,12 @@ pub(super) fn table(headers: &[&str], rows: Vec<Vec<AnyElement>>, empty: &str) -
         }));
     let body: Vec<Div> = if rows.is_empty() {
         vec![
-            div()
-                .flex()
-                .justify_center()
-                .px(px(12.))
-                .py(px(32.))
-                .child(ui::muted(ui::sm(empty.to_owned()))),
+            div().flex().justify_center().px(px(12.)).py(px(32.)).child(
+                ui::muted(ui::sm(empty.to_owned()))
+                    .id(SharedString::from(format!("session-empty:{empty}")))
+                    .test_support()
+                    .aria_label(empty.to_owned()),
+            ),
         ]
     } else {
         let last = rows.len() - 1;
@@ -169,8 +169,12 @@ impl Inspector {
                             ui::outline_badge(status)
                         })
                         .when_some(session.last_error.clone(), |cell, error| {
+                            let message = format!("Port-forward failed: {error}");
                             cell.child(
-                                ui::xs(format!("Port-forward failed: {error}"))
+                                ui::xs(message.clone())
+                                    .id(SharedString::from(format!("forward-error:{}", session.id)))
+                                    .test_support()
+                                    .aria_label(message)
                                     .text_color(Tokens::destructive())
                                     .mt(px(4.)),
                             )

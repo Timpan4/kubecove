@@ -1,0 +1,116 @@
+{
+	"fixture": "browser-mocks",
+	"context": "mock-dev",
+	"scenarios": [
+		{
+			"id": "coverage-helm.cards-resources",
+			"title": "Cards release resources preserve the release search and namespace",
+			"steps": [
+				{
+					"action": "openPage",
+					"page": "Helm"
+				},
+				{
+					"action": "setDeliveryView",
+					"page": "Helm",
+					"mode": "Cards"
+				},
+				{
+					"action": "searchHelm",
+					"value": "metrics-gateway"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "helm-card-resources"
+				},
+				{
+					"action": "expectResource",
+					"kind": "Deployment",
+					"name": "metrics-gateway",
+					"namespace": "platform"
+				},
+				{
+					"action": "expectNoResource",
+					"kind": "Deployment",
+					"name": "payments-api",
+					"namespace": "payments"
+				}
+			]
+		},
+		{
+			"id": "coverage-helm.list-resources",
+			"title": "List release resources preserve the release search and namespace",
+			"steps": [
+				{
+					"action": "openPage",
+					"page": "Helm"
+				},
+				{
+					"action": "setDeliveryView",
+					"page": "Helm",
+					"mode": "List"
+				},
+				{
+					"action": "searchHelm",
+					"value": "metrics-gateway"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "helm-list-resources"
+				},
+				{
+					"action": "expectResource",
+					"kind": "Deployment",
+					"name": "metrics-gateway",
+					"namespace": "platform"
+				},
+				{
+					"action": "expectNoResource",
+					"kind": "Deployment",
+					"name": "payments-api",
+					"namespace": "payments"
+				}
+			]
+		},
+		{
+			"id": "coverage-helm.clear-search",
+			"title": "Clearing release search preserves the selected namespace",
+			"steps": [
+				{
+					"action": "openPage",
+					"page": "Helm"
+				},
+				{
+					"action": "selectHelmNamespace",
+					"namespace": "platform"
+				},
+				{
+					"action": "searchHelm",
+					"value": "no-such-release"
+				},
+				{
+					"action": "expectHelmCount",
+					"count": 0
+				},
+				{
+					"action": "coverageClick",
+					"label": "Clear Helm search"
+				},
+				{
+					"action": "expectHelmCount",
+					"count": 1
+				},
+				{
+					"action": "expectHelmRelease",
+					"name": "metrics-gateway",
+					"namespace": "platform"
+				},
+				{
+					"action": "expectNoHelmRelease",
+					"name": "grafana",
+					"namespace": "monitoring"
+				}
+			]
+		}
+	]
+}

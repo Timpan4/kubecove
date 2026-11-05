@@ -1,0 +1,377 @@
+{
+	"fixture": "browser-mocks",
+	"context": "mock-dev",
+	"scenarios": [
+		{
+			"id": "coverage-rbac.search-more-copy",
+			"title": "RBAC searches object names, loads the next queue page and copies the selected evidence",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "many"
+				},
+				{
+					"action": "openPage",
+					"page": "RBAC"
+				},
+				{
+					"action": "selectRbacCategory",
+					"category": "Roles"
+				},
+				{
+					"action": "expectNoRbacItem",
+					"title": "Role/coverage-role-051"
+				},
+				{
+					"action": "coverageFill",
+					"label": "Search RBAC objects",
+					"value": "coverage-role-051"
+				},
+				{
+					"action": "expectNoRbacItem",
+					"title": "Role/coverage-role-001"
+				},
+				{
+					"action": "selectRbacItem",
+					"title": "Role/coverage-role-051"
+				},
+				{
+					"action": "coverageCopy",
+					"label": "Copy evidence",
+					"text": "coverage-role-051",
+					"match": "contains"
+				},
+				{
+					"action": "coverageFill",
+					"label": "Search RBAC objects",
+					"value": ""
+				},
+				{
+					"action": "expectNoRbacItem",
+					"title": "Role/coverage-role-051"
+				},
+				{
+					"action": "coverageClick",
+					"label": "Load 50 more"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "rbac-pages"
+				},
+				{
+					"action": "expectRbacItem",
+					"title": "Role/coverage-role-051",
+					"risk": "No flags"
+				}
+			]
+		},
+		{
+			"id": "coverage-rbac.manual-identities",
+			"title": "Manual identities and resource or URL targets show the live authorizer result",
+			"steps": [
+				{
+					"action": "openPage",
+					"page": "RBAC"
+				},
+				{
+					"action": "coverageClick",
+					"label": "Investigate identity"
+				},
+				{
+					"action": "coverageFill",
+					"label": "Identity name",
+					"value": "alice"
+				},
+				{
+					"action": "coverageFill",
+					"label": "Groups",
+					"value": "developers,system:authenticated"
+				},
+				{
+					"action": "coverageFill",
+					"label": "API group, blank for core",
+					"value": "apps"
+				},
+				{
+					"action": "coverageFill",
+					"label": "Resource",
+					"value": "deployments"
+				},
+				{
+					"action": "coverageFill",
+					"label": "Namespace, blank for cluster",
+					"value": "payments"
+				},
+				{
+					"action": "coverageFill",
+					"label": "Subresource, optional",
+					"value": "scale"
+				},
+				{
+					"action": "coverageFill",
+					"label": "Resource name, optional",
+					"value": "payments-api"
+				},
+				{
+					"action": "coverageClick",
+					"label": "Verify access"
+				},
+				{
+					"action": "expectRbacVerdict",
+					"outcome": "allowed"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "rbac-user"
+				},
+				{
+					"action": "coverageClick",
+					"label": "Group"
+				},
+				{
+					"action": "coverageFill",
+					"label": "Identity name",
+					"value": "developers"
+				},
+				{
+					"action": "coverageClick",
+					"label": "Non-resource"
+				},
+				{
+					"action": "coverageFill",
+					"label": "Non-resource URL",
+					"value": "/healthz"
+				},
+				{
+					"action": "coverageClick",
+					"label": "Verify access"
+				},
+				{
+					"action": "expectRbacVerdict",
+					"outcome": "allowed"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "rbac-group"
+				},
+				{
+					"action": "coverageClick",
+					"label": "ServiceAccount"
+				},
+				{
+					"action": "coverageFill",
+					"label": "Identity name",
+					"value": "payments-api"
+				},
+				{
+					"action": "coverageFill",
+					"label": "ServiceAccount namespace",
+					"value": "payments"
+				},
+				{
+					"action": "coverageClick",
+					"label": "Resource"
+				},
+				{
+					"action": "coverageFill",
+					"label": "Verb",
+					"value": "delete"
+				},
+				{
+					"action": "coverageFill",
+					"label": "Resource",
+					"value": "pods"
+				},
+				{
+					"action": "coverageFill",
+					"label": "API group, blank for core",
+					"value": ""
+				},
+				{
+					"action": "coverageFill",
+					"label": "Subresource, optional",
+					"value": ""
+				},
+				{
+					"action": "coverageFill",
+					"label": "Resource name, optional",
+					"value": ""
+				},
+				{
+					"action": "coverageClick",
+					"label": "Verify access"
+				},
+				{
+					"action": "expectRbacVerdict",
+					"outcome": "denied"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "rbac-sa"
+				}
+			]
+		},
+		{
+			"id": "coverage-rbac.verifier-failure",
+			"title": "A failed verifier never retains the prior allowed verdict",
+			"steps": [
+				{
+					"action": "openPage",
+					"page": "RBAC"
+				},
+				{
+					"action": "selectRbacItem",
+					"title": "ServiceAccount/payments-api"
+				},
+				{
+					"action": "verifyRbacAccess",
+					"verb": "get"
+				},
+				{
+					"action": "expectRbacVerdict",
+					"outcome": "allowed"
+				},
+				{
+					"action": "verifyRbacAccess",
+					"verb": "impersonate"
+				},
+				{
+					"action": "coverageText",
+					"text": "Verifier unavailable · Browser mock verifier unavailable.",
+					"visible": true
+				}
+			]
+		},
+		{
+			"id": "coverage-forward.copy-url",
+			"title": "Copy uses the selected forward local URL and failures retain its exact target and resolved Pod",
+			"steps": [
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "openResource",
+					"kind": "Service",
+					"namespace": "payments",
+					"name": "payments-api"
+				},
+				{
+					"action": "showTab",
+					"tab": "Forward"
+				},
+				{
+					"action": "configureForward",
+					"remote": "80",
+					"local": "18081"
+				},
+				{
+					"action": "forwardControl",
+					"operation": "start"
+				},
+				{
+					"action": "expectForwardState",
+					"target": "Service/payments-api:80",
+					"local": "18081",
+					"status": "listening",
+					"resolved": "payments-api-7d9c9b7f8d-k2r9p:8080",
+					"count": 1
+				},
+				{
+					"action": "coverageCopy",
+					"label": "Copy",
+					"text": "http://127.0.0.1:18081",
+					"match": "exact"
+				},
+				{
+					"action": "replaySessions",
+					"script": "failed"
+				},
+				{
+					"action": "expectForwardState",
+					"target": "Service/payments-api:80",
+					"local": "18081",
+					"status": "error",
+					"count": 1
+				},
+				{
+					"action": "coverageText",
+					"text": "Port-forward failed",
+					"visible": true
+				}
+			]
+		},
+		{
+			"id": "coverage-incidents.context-and-open",
+			"title": "Incident context controls and drill-through preserve the selected Pod identity",
+			"steps": [
+				{
+					"action": "openPage",
+					"page": "Incidents"
+				},
+				{
+					"action": "expectIncidentGuide",
+					"title": "Status: CrashLoopBackOff"
+				},
+				{
+					"action": "coverageCopy",
+					"label": "Copy resource name operations-crashloop-7f468cd8b8-lab01",
+					"text": "operations-crashloop-7f468cd8b8-lab01",
+					"match": "exact"
+				},
+				{
+					"action": "coverageClick",
+					"label": "Show context"
+				},
+				{
+					"action": "coverageText",
+					"text": "Open evidence in the detail pane without losing queue selection.",
+					"visible": true
+				},
+				{
+					"action": "coverageClick",
+					"label": "Hide context"
+				},
+				{
+					"action": "coverageText",
+					"text": "Open evidence in the detail pane without losing queue selection.",
+					"visible": false
+				},
+				{
+					"action": "coverageClick",
+					"label": "Show context"
+				},
+				{
+					"action": "coverageClick",
+					"label": "Open events"
+				},
+				{
+					"action": "expectDetail",
+					"kind": "Pod",
+					"namespace": "operations",
+					"name": "operations-crashloop-7f468cd8b8-lab01"
+				},
+				{
+					"action": "expectEventCount",
+					"count": 2
+				},
+				{
+					"action": "closeDetail"
+				},
+				{
+					"action": "openPage",
+					"page": "Incidents"
+				},
+				{
+					"action": "coverageClick",
+					"label": "Open in Resources"
+				},
+				{
+					"action": "expectDetail",
+					"kind": "Pod",
+					"namespace": "operations",
+					"name": "operations-crashloop-7f468cd8b8-lab01"
+				}
+			]
+		}
+	]
+}

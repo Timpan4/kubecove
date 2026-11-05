@@ -18,7 +18,7 @@ import type {
 
 const ACTION_KINDS = new Set(["Deployment", "StatefulSet", "DaemonSet", "Pod", "ConfigMap"]);
 
-async function streamMessages(client: TauriClient, command: string, request: object): Promise<StreamMessage[]> {
+export async function streamMessages(client: TauriClient, command: string, request: object): Promise<StreamMessage[]> {
 	const messages: StreamMessage[] = [];
 	if (!client.createChannel) throw new Error("The mock client has no stream channel");
 	const channel = client.createChannel<StreamMessage>((message) => messages.push(message));
@@ -49,6 +49,7 @@ export async function exportDetailTabs(client: TauriClient, resources: ResourceS
 	// so every non-delete execution is followed by a reviewed delete that resets it.
 	const previews: { request: ResourceActionRequest; preview: ResourceActionPreview }[] = [];
 	const executions: { request: ResourceActionRequest; result: ClusterOperationResult }[] = [];
+	let pausedState: ResourceActionState | undefined;
 	const review = async (request: ResourceActionRequest) => {
 		const preview = await client.invoke<ResourceActionPreview>("preview_resource_action", { request });
 		const confirmed: ResourceActionRequest = { ...request, expectedUid: preview.uid, expectedResourceVersion: preview.resourceVersion, confirmed: true, ...(request.action === "rollback" && { expectedRevisionUid: preview.revisionUid, expectedRevisionResourceVersion: preview.revisionResourceVersion }) };
@@ -74,6 +75,13 @@ export async function exportDetailTabs(client: TauriClient, resources: ResourceS
 		const { preview, confirmed, result } = await review(request);
 		previews.push({ request, preview });
 		executions.push({ request: confirmed, result });
+		if (request.action === "pause") {
+			pausedState = await client.invoke<ResourceActionState>("get_resource_action_state", { request: target(focus) });
+			const resume: ResourceActionRequest = { ...target(focus), action: "resume", confirmed: false };
+			const resumed = await review(resume);
+			previews.push({ request: resume, preview: resumed.preview });
+			executions.push({ request: resumed.confirmed, result: resumed.result });
+		}
 		if (request.action !== "delete") await review({ ...target(focus), action: "delete", confirmed: false });
 	}
 	const draft = await client.invoke<string>("get_resource_yaml", { clusterContext, kind: focus.kind, name: focus.name, namespace: focus.namespace, yamlViewMode: "applyClean" });
@@ -90,5 +98,7 @@ export async function exportDetailTabs(client: TauriClient, resources: ResourceS
 		}
 	}
 	const yamlApply = [{ request: yamlRequest, preview, applyError }];
-	return { logs, revisions, actions: { states, previews, executions }, yamlApply, yamlReads };
+	const forcedRequest = { ...yamlRequest, forceConflicts: true };
+	yamlApply.push({ request: forcedRequest, preview: await client.invoke<YamlApplyPreview>("prepare_yaml_apply", { request: forcedRequest }), applyError });
+	return { logs, revisions, actions: { states, pausedState, previews, executions }, yamlApply, yamlReads };
 }

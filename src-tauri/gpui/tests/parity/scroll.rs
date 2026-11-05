@@ -23,7 +23,12 @@ pub fn reveal(window: &mut gpui_kit::Window, anchor: &str, id: &str, cx: &mut gp
     };
     let scroll_container = matches!(
         anchor,
-        "detail-body" | "argo-connection-dialog" | "actions-scroll" | "sidebar-tree"
+        "page"
+            | "detail-body"
+            | "argo-connection-dialog"
+            | "actions-scroll"
+            | "incident-guide"
+            | "sidebar-tree"
     );
     let anchor = window.find(gpui_kit::ElementId::Name(anchor.to_owned().into()));
     if target.visible()
@@ -34,11 +39,7 @@ pub fn reveal(window: &mut gpui_kit::Window, anchor: &str, id: &str, cx: &mut gp
     {
         return;
     }
-    assert!(
-        anchor.visible(),
-        "scroll anchor {:?} is not visible",
-        anchor.path()
-    );
+    assert!(anchor.visible(), "scroll anchor is offscreen");
     let position = anchor.bounds().origin + point(px(4.), px(4.));
     let delta = window.viewport_size().height / 2. - target.bounds().center().y;
     window.pointer_move(position, None, cx);

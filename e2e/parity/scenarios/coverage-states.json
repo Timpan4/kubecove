@@ -1,0 +1,309 @@
+{
+	"fixture": "browser-mocks",
+	"context": "mock-dev",
+	"scenarios": [
+		{
+			"id": "coverage-helm.loading",
+			"title": "Helm shows a pending read and replaces it with data",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "loading"
+				},
+				{
+					"action": "openPage",
+					"page": "Helm"
+				},
+				{
+					"action": "coverageText",
+					"text": "Loading...",
+					"visible": true
+				},
+				{
+					"action": "coverageScript",
+					"script": "base"
+				},
+				{
+					"action": "coverageText",
+					"text": "Loading...",
+					"visible": false
+				}
+			]
+		},
+		{
+			"id": "coverage-helm.empty",
+			"title": "Helm distinguishes an empty successful response",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "empty"
+				},
+				{
+					"action": "openPage",
+					"page": "Helm"
+				},
+				{
+					"action": "coverageText",
+					"text": "No Helm releases",
+					"visible": true
+				}
+			]
+		},
+		{
+			"id": "coverage-helm.failed",
+			"title": "Helm reports a failed read rather than an empty successful response",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "failed"
+				},
+				{
+					"action": "openPage",
+					"page": "Helm"
+				},
+				{
+					"action": "coverageText",
+					"text": "Helm releases unavailable",
+					"visible": true
+				}
+			]
+		},
+		{
+			"id": "coverage-helm.partial",
+			"title": "Helm keeps the data and its partial-coverage warning",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "partial"
+				},
+				{
+					"action": "openPage",
+					"page": "Helm"
+				},
+				{
+					"action": "coverageText",
+					"text": "Controlled Helm storage warning",
+					"visible": true
+				}
+			]
+		},
+		{
+			"id": "coverage-rbac.loading",
+			"title": "RBAC shows a pending read and replaces it with data",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "loading"
+				},
+				{
+					"action": "openPage",
+					"page": "RBAC"
+				},
+				{
+					"action": "coverageText",
+					"text": "Loading...",
+					"visible": true
+				},
+				{
+					"action": "coverageScript",
+					"script": "base"
+				},
+				{
+					"action": "coverageText",
+					"text": "Loading...",
+					"visible": false
+				}
+			]
+		},
+		{
+			"id": "coverage-rbac.empty",
+			"title": "RBAC distinguishes an empty successful response",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "empty"
+				},
+				{
+					"action": "openPage",
+					"page": "RBAC"
+				},
+				{
+					"action": "selectRbacCategory",
+					"category": "Roles"
+				},
+				{
+					"action": "coverageText",
+					"text": "No matching RBAC objects.",
+					"visible": true
+				}
+			]
+		},
+		{
+			"id": "coverage-rbac.failed",
+			"title": "RBAC reports a failed read rather than an empty successful response",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "failed"
+				},
+				{
+					"action": "openPage",
+					"page": "RBAC"
+				},
+				{
+					"action": "coverageText",
+					"text": "RBAC inspection unavailable",
+					"visible": true
+				}
+			]
+		},
+		{
+			"id": "coverage-rbac.partial",
+			"title": "RBAC keeps the data and its partial-coverage warning",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "partial"
+				},
+				{
+					"action": "openPage",
+					"page": "RBAC"
+				},
+				{
+					"action": "coverageText",
+					"text": "Partial RBAC data",
+					"visible": true
+				}
+			]
+		},
+		{
+			"id": "coverage-incidents.loading",
+			"title": "Incidents shows a pending read and replaces it with data",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "loading"
+				},
+				{
+					"action": "openPage",
+					"page": "Incidents"
+				},
+				{
+					"action": "coverageText",
+					"text": "Loading...",
+					"visible": true
+				},
+				{
+					"action": "coverageScript",
+					"script": "base"
+				},
+				{
+					"action": "coverageText",
+					"text": "Loading...",
+					"visible": false
+				}
+			]
+		},
+		{
+			"id": "coverage-incidents.empty",
+			"title": "Incidents distinguishes an empty successful response",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "empty"
+				},
+				{
+					"action": "openPage",
+					"page": "Incidents"
+				},
+				{
+					"action": "coverageText",
+					"text": "No active incident signals",
+					"visible": true
+				}
+			]
+		},
+		{
+			"id": "coverage-incidents.failed",
+			"title": "Incidents reports a failed read rather than an empty successful response",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "failed"
+				},
+				{
+					"action": "openPage",
+					"page": "Incidents"
+				},
+				{
+					"action": "coverageText",
+					"text": "Incidents unavailable",
+					"visible": true
+				}
+			]
+		},
+		{
+			"id": "coverage-incidents.partial",
+			"title": "Incidents keeps the data and its partial-coverage warning",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "partial"
+				},
+				{
+					"action": "openPage",
+					"page": "Incidents"
+				},
+				{
+					"action": "coverageText",
+					"text": "Partial incident data",
+					"visible": true
+				}
+			]
+		},
+		{
+			"id": "coverage-map.loading-failure",
+			"title": "Ownership map exposes a pending read and then its failed request",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "loading"
+				},
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "coverageText",
+					"text": "Loading topology",
+					"visible": true
+				},
+				{
+					"action": "coverageScript",
+					"script": "failed"
+				},
+				{
+					"action": "coverageText",
+					"text": "Failed to load ownership map",
+					"visible": true
+				}
+			]
+		},
+		{
+			"id": "coverage-map.viewport",
+			"title": "Ownership map pan, zoom and Fit change the visible node bounds",
+			"steps": [
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "selectNamespace",
+					"namespace": "payments"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "map-viewport"
+				}
+			]
+		}
+	]
+}

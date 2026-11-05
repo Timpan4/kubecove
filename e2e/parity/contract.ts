@@ -28,6 +28,11 @@ export const ACTIONS = [
     "overviewOperation", "overviewIncident", "reviewIncidentAction",
     "expectTopologyDenied",
     "mockTiming",
+    "coverageSelect",
+    "coverageCopy",
+    "coverageScript",
+    "coverageCheck",
+    "coverageClick", "coverageFill", "coverageText", "paletteKey", "expectPaletteOpen", "deleteSavedWorkspace", "importDecision", "cancelImport", "searchEvents",
     "terminalFit",
     "openNamespaceList", "expectNamespaceRow", "resizeViewport", "openNavigationDrawer", "expectNavigationDrawer", "sidebarKey",
     "terminalOutput", "terminalSelect", "terminalCopy", "terminalPaste", "terminalScroll",
@@ -153,6 +158,19 @@ function step(value: unknown): Step {
             if (control.count !== undefined) timing.count = count(control.count);
             return { action: item.action, control: timing };
         }
+        case "coverageSelect": return { action: item.action, label: string(item.label), value: string(item.value) };
+        case "coverageCopy": return { action: item.action, label: string(item.label), text: string(item.text), match: oneOf(["contains", "exact"], item.match, "a clipboard match") };
+        case "coverageScript": return { action: item.action, script: oneOf(["base", "loading", "failed", "empty", "partial", "many", "conflict", "logs-empty", "logs-failed", "logs-options", "logs-long", "logs-stream", "startup-failed", "foreign", "detail-loading", "enrichment-failed", "enrichment-loading", "attention-only", "stop-failed"], item.script, "a coverage script") };
+        case "coverageCheck": return { action: item.action, check: string(item.check) };
+        case "coverageClick": return { action: item.action, label: string(item.label) };
+        case "coverageFill": return { action: item.action, label: string(item.label), value: item.value === "" ? "" : string(item.value) };
+        case "coverageText": return { action: item.action, text: string(item.text), visible: boolean(item.visible) };
+        case "paletteKey": return { action: item.action, key: oneOf(["ArrowDown", "ArrowUp", "Enter", "Escape"], item.key, "a palette key") };
+        case "expectPaletteOpen": return { action: item.action, open: boolean(item.open) };
+        case "deleteSavedWorkspace": return { action: item.action, name: string(item.name) };
+        case "importDecision": return { action: item.action, choice: oneOf(["Add as new", "Replace", "Skip"], item.choice, "an import decision") };
+        case "cancelImport": return { action: item.action };
+        case "searchEvents": return { action: item.action, value: item.value === "" ? "" : string(item.value) };
         case "failWorkspaceContext": case "expectWorkspaceReadWarning": return { action: item.action, context: string(item.context) };
         case "editSavedWorkspace": case "expectNoSavedWorkspace": return { action: item.action, name: string(item.name) };
         case "saveWorkspace": case "cancelWorkspaceEdit": return { action: item.action };
@@ -288,7 +306,8 @@ function step(value: unknown): Step {
 			return { action: item.action };
 		// An empty list asserts that no log row renders.
 		case "expectLogLines": return { action: item.action, lines: strings(item.lines, true) };
-		case "filterLogs": case "confirmDeletion": case "editReplicas": return { action: item.action, value: string(item.value) };
+		case "filterLogs": return { action: item.action, value: item.value === "" ? "" : string(item.value) };
+		case "confirmDeletion": case "editReplicas": return { action: item.action, value: string(item.value) };
 		case "toggleLogLevel": {
 			const level = LOG_LEVELS.find((candidate) => candidate === item.level);
 			if (!level) throw new Error("Expected a log level");

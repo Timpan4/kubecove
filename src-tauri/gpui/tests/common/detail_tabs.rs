@@ -14,6 +14,15 @@ use serde::Deserialize;
 
 #[derive(Deserialize)]
 pub struct DetailTabs {
+    #[serde(skip)]
+    log_sender: std::sync::Mutex<
+        Option<(
+            tokio::sync::mpsc::UnboundedSender<StreamMessage>,
+            StreamMessage,
+        )>,
+    >,
+    #[serde(skip)]
+    paused: std::sync::Mutex<bool>,
     logs: Logs,
     #[serde(rename = "yamlReads")]
     yaml_reads: Vec<YamlRead>,
@@ -35,11 +44,23 @@ struct YamlRead {
 struct Logs {
     pod: Vec<StreamMessage>,
     aggregate: Vec<StreamMessage>,
+    #[serde(default)]
+    cases: Vec<LogCase>,
+}
+
+#[derive(Deserialize)]
+struct LogCase {
+    script: String,
+    request: serde_json::Value,
+    messages: Vec<StreamMessage>,
+    next: Option<StreamMessage>,
 }
 
 #[derive(Deserialize)]
 struct Actions {
     states: Vec<ResourceActionState>,
+    #[serde(rename = "pausedState")]
+    paused_state: Option<ResourceActionState>,
     previews: Vec<Previewed>,
     executions: Vec<Executed>,
 }
@@ -83,6 +104,15 @@ fn comparable(request: &ResourceActionRequest) -> serde_json::Value {
 }
 
 impl DetailTabs {
+    // Other fixture harnesses do not inject a subsequent log message.
+    #[allow(dead_code)]
+    pub fn emit_log(&self) {
+        let sender = self.log_sender.lock().unwrap();
+        let (sender, message) = sender.as_ref().expect("active controlled stream");
+        sender
+            .send(message.clone())
+            .expect("controlled log receiver");
+    }
     pub fn resource_yaml(
         &self,
         resource: ResourceSummary,
@@ -117,7 +147,36 @@ impl DetailTabs {
         ))
     }
 
-    pub fn log_stream(&self, target: LogTarget) -> Read<LogStream> {
+    pub fn log_stream(&self, target: LogTarget, script: &str) -> Read<LogStream> {
+        if script.starts_with("logs-") {
+            let mut request = match target {
+                LogTarget::Pod(request) => serde_json::to_value(request).unwrap(),
+                LogTarget::Aggregate(request) => serde_json::to_value(request).unwrap(),
+            };
+            request
+                .as_object_mut()
+                .unwrap()
+                .retain(|key, value| key != "kubeconfigEnvVar" && !value.is_null());
+            return ready(
+                self.logs
+                    .cases
+                    .iter()
+                    .find(|entry| entry.script == script && entry.request == request)
+                    .map(|entry| {
+                        let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+                        for message in &entry.messages {
+                            sender.send(message.clone()).unwrap();
+                        }
+                        if let Some(next) = &entry.next {
+                            *self.log_sender.lock().unwrap() = Some((sender.clone(), next.clone()));
+                        }
+                        LogStream::new(receiver, sender)
+                    })
+                    .ok_or_else(|| {
+                        AppError::new("No exact log fixture request", AppErrorKind::NotFound)
+                    }),
+            );
+        }
         let messages = match target {
             LogTarget::Pod(_) => self.logs.pod.clone(),
             LogTarget::Aggregate(_) => self.logs.aggregate.clone(),
@@ -136,6 +195,15 @@ impl DetailTabs {
 
     pub fn action_state(&self, request: ResourceActionStateRequest) -> Read<ResourceActionState> {
         let target = request.target;
+        if *self.paused.lock().unwrap()
+            && let Some(state) = &self.actions.paused_state
+            && state.target.cluster_context == target.cluster_context
+            && state.target.kind == target.kind
+            && state.target.name == target.name
+            && state.target.namespace == target.namespace
+        {
+            return ready(Ok(state.clone()));
+        }
         let found = self.actions.states.iter().find(|state| {
             state.target.cluster_context == target.cluster_context
                 && state.target.kind == target.kind
@@ -159,12 +227,17 @@ impl DetailTabs {
     }
 
     pub fn execute_action(&self, request: ResourceActionRequest) -> Read<ClusterOperationResult> {
+        let action = request.action;
         let request = comparable(&request);
         let found = self
             .actions
             .executions
             .iter()
             .find(|entry| comparable(&entry.request) == request);
+        if found.is_some() {
+            *self.paused.lock().unwrap() =
+                action == kubecove_lib::models::ResourceActionKind::Pause;
+        }
         ready(found.map_or_else(
             || missing("action execution"),
             |entry| Ok(entry.result.clone()),

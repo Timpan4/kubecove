@@ -50,6 +50,10 @@ The ignored `watch_burst_frame_time` native test measures a burst against the 10
 
 The detail-tab scenarios run guarded operations only against the browser mocks. The fixture backend answers a preview or execution only when its request matches the exported one exactly, so a wrong target or a missing guard field fails the scenario instead of reaching a cluster.
 
+The `coverage-*.json` scenarios cover workspace deletion and import collisions, palette keyboard and dismissal controls, table page and group totals, map viewport and scope controls, timeline and event searches, log layouts and stream controls, force-conflict review and diff styles, action drafts, exec and forward controls, retained sessions, Helm resource entry points, RBAC form fields and evidence, incident context and failure states, and failed kubeconfig reads and saves. Pending, partial, empty and failed reads come from `tauri-dev-mock-coverage.ts`; the native fixture exports those same responses. Log viewport scenarios request the production default tail of 200 lines, then inject a subsequent line to check Jump to latest. Clipboard checks use page-local and native in-memory substitutes.
+
+The shared YAML editor scenario covers selection replacement and document Home/End keys. Ctrl+Z undoes an edit in GPUI and leaves the web editor unchanged. The web editor scrolls in the detail pane; native code configures a fixed-height editor with internal scrolling. Folding and syntax/indent decoration equivalence remain unverified. Remote kubeconfig editing also needs a product decision: the native remote backend disables server-owned edits, while the web exposes server-path and environment-variable edits.
+
 ## Failure modes
 
 [Scripted backend timing](mock-timing.md) records the asynchronous failure modes,

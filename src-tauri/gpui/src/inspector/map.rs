@@ -195,7 +195,7 @@ impl Inspector {
         };
         let body: Vec<AnyElement> = match (&self.map.topology, &view) {
             (TopologyLoad::Loading, _) => {
-                vec![centered(ui::muted(ui::xs("Loading topology"))).id("map-loading").test_support().into_any_element()]
+                vec![centered(ui::muted(ui::xs("Loading topology"))).id("map-loading").test_support().aria_label("Loading topology").into_any_element()]
             }
             (TopologyLoad::Failed(error), _) => vec![
                 div()
@@ -204,6 +204,7 @@ impl Inspector {
                         div()
                             .id("map-error")
                             .test_support()
+                            .aria_description(error.message.clone())
                             .role(gpui_kit::Role::Alert)
                             .aria_label(if error.kind == AppErrorKind::Forbidden {
                                 "KubeCove does not have permission for this"
@@ -253,7 +254,7 @@ impl Inspector {
                             .border_color(Tokens::border())
                             .child(ui::semibold(ui::text("Topology warnings", 11., 16.)))
                             .children(warnings.iter().take(3).map(|warning| {
-                                ui::muted(ui::text(warning.clone(), 11., 16.)).truncate()
+                                ui::muted(ui::text(warning.clone(), 11., 16.)).truncate().id(SharedString::from(format!("map-warning:{warning}"))).test_support().aria_label(warning.clone())
                             }))
                             .when(warnings.len() > 3, |list| {
                                 list.child(ui::muted(ui::text(

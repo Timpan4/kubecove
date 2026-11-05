@@ -170,7 +170,6 @@
 				bind:value={envDraft}
 				placeholder={DEFAULT_KUBECONFIG_ENV_VAR}
 				aria-label="Kubeconfig env var"
-				oninput={() => getSettingsSnapshot().setKubeconfigEnvVar(envDraft)}
 			/>
 			<Button
 				type="button"

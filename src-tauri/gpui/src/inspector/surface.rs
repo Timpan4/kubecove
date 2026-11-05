@@ -60,6 +60,9 @@ pub(super) fn frame(icon: &str, title: &str, wide: bool, body: impl IntoElement)
 /// `SurfaceFrame`'s pending and error states.
 pub(super) fn loading() -> AnyElement {
     div()
+        .id("surface-loading")
+        .test_support()
+        .aria_label("Loading...")
         .flex()
         .items_center()
         .justify_center()

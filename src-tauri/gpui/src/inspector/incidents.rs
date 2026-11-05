@@ -426,6 +426,10 @@ impl Inspector {
                     .when(!warnings.is_empty(), |body| {
                         body.child(
                             ui::panel()
+                                .id("incident-warnings")
+                                .test_support()
+                                .aria_label("Partial incident data")
+                                .aria_description(warnings.clone())
                                 .px(px(12.))
                                 .py(px(8.))
                                 .border_color(Palette::amber500(0.4))

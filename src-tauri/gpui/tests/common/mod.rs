@@ -3,6 +3,7 @@
 //! Svelte client does in the visual comparison and the parity scenarios.
 
 mod argo;
+mod coverage;
 mod delivery;
 mod detail_tabs;
 mod live_data;
@@ -39,6 +40,10 @@ pub struct Fixture {
     pub shell_read_phase: Mutex<String>,
     #[serde(skip)]
     timing: timing::Timing,
+    #[serde(default)]
+    coverage: HashMap<String, HashMap<String, serde_json::Value>>,
+    #[serde(skip)]
+    coverage_state: coverage::CoverageState,
     #[serde(rename = "pageReads", default)]
     page_reads: HashMap<String, serde_json::Value>,
     #[serde(skip)]
@@ -289,6 +294,15 @@ impl Backend for Fixture {
         self.session_controls.start(request)
     }
     fn stop_forward(&self, id: String) -> Read<bool> {
+        if self.coverage_script() == "stop-failed" {
+            assert!(
+                self.session_controls
+                    .list(&self.live_sessions.port_forwards)
+                    .iter()
+                    .any(|session| session.id == id)
+            );
+            return self.coverage_read("stop_port_forward", Box::pin(async { Ok(false) }));
+        }
         self.session_controls.stop(id)
     }
     fn exec(
@@ -459,10 +473,13 @@ impl Backend for Fixture {
         let read = self
             .timing
             .read("get_resource_details", &resource.cluster, "", found);
-        Box::pin(async move {
-            read.await?
-                .ok_or_else(|| AppError::new("No fixture details", AppErrorKind::NotFound))
-        })
+        self.coverage_read(
+            "get_resource_details",
+            Box::pin(async move {
+                read.await?
+                    .ok_or_else(|| AppError::new("No fixture details", AppErrorKind::NotFound))
+            }),
+        )
     }
     fn application_resources(&self, _: ArgoApplicationSummary, _: bool) -> Read<ScopeResult> {
         let resources = self.resources.clone();
@@ -484,8 +501,11 @@ impl Backend for Fixture {
             .and_then(|namespace| self.namespace_topologies.get(&namespace))
             .unwrap_or(&self.topology)
             .clone();
-        self.timing
-            .read("list_resource_topology", &context, &key, topology)
+        self.coverage_read(
+            "list_resource_topology",
+            self.timing
+                .read("list_resource_topology", &context, &key, topology),
+        )
     }
     fn network_topology(&self, scope: Scope) -> Read<ResourceTopology> {
         let mut graph = self.network_topology.clone();
@@ -581,9 +601,12 @@ impl Backend for Fixture {
     }
     fn incidents(&self, _: String) -> Read<IncidentCockpitSummary> {
         let incidents = self.incidents.clone();
-        self.page_read(
+        self.coverage_read(
             "list_incident_cockpit",
-            Box::pin(async move { Ok(incidents) }),
+            self.page_read(
+                "list_incident_cockpit",
+                Box::pin(async move { Ok(incidents) }),
+            ),
         )
     }
     fn live_sessions(&self) -> Read<LiveSessions> {
@@ -594,10 +617,25 @@ impl Backend for Fixture {
             source_key: sessions.source_key.clone(),
             show_source_labels: sessions.show_source_labels,
         };
-        Box::pin(async move { Ok(sessions) })
+        let forwards = self.coverage_read(
+            "list_port_forwards",
+            Box::pin(async move { Ok(sessions.port_forwards) }),
+        );
+        let exec = self.coverage_read(
+            "list_pod_exec_sessions",
+            Box::pin(async move { Ok(sessions.exec_sessions) }),
+        );
+        Box::pin(async move {
+            Ok(LiveSessions {
+                port_forwards: forwards.await?,
+                exec_sessions: exec.await?,
+                source_key: sessions.source_key,
+                show_source_labels: sessions.show_source_labels,
+            })
+        })
     }
     fn log_stream(&self, target: LogTarget) -> Read<LogStream> {
-        self.detail_tabs.log_stream(target)
+        self.detail_tabs.log_stream(target, &self.coverage_script())
     }
     fn deployment_revisions(&self, resource: ResourceSummary) -> Read<Vec<DeploymentRevision>> {
         self.detail_tabs.deployment_revisions(resource)
@@ -626,6 +664,14 @@ impl Backend for Fixture {
     }
 
     fn prepare_yaml_apply(&self, request: YamlApplyRequest) -> Read<YamlApplyPreview> {
+        if self.coverage_script() == "conflict" && !request.force_conflicts {
+            return Box::pin(async {
+                Err(AppError::new(
+                    "Controlled field ownership conflict",
+                    AppErrorKind::FieldManagerConflict,
+                ))
+            });
+        }
         self.detail_tabs.prepare_yaml_apply(request)
     }
     fn apply_yaml(&self, request: YamlApplyRequest) -> Read<YamlApplyResult> {
@@ -649,13 +695,16 @@ impl Backend for Fixture {
     }
     fn rbac(&self, context: String) -> Read<RbacInspectionSummary> {
         let found = self.rbac.get(&context).cloned();
-        self.page_read(
+        self.coverage_read(
             "list_rbac_inspection",
-            Box::pin(async move {
-                found.ok_or_else(|| {
-                    AppError::new("No fixture RBAC inspection", AppErrorKind::NotFound)
-                })
-            }),
+            self.page_read(
+                "list_rbac_inspection",
+                Box::pin(async move {
+                    found.ok_or_else(|| {
+                        AppError::new("No fixture RBAC inspection", AppErrorKind::NotFound)
+                    })
+                }),
+            ),
         )
     }
     fn review_rbac(&self, request: RbacAccessReviewRequest) -> Read<RbacAccessReviewResult> {
@@ -681,12 +730,26 @@ impl Backend for Fixture {
     }
     fn kubeconfig_sources(&self) -> Read<KubeconfigSourcesSummary> {
         let sources = self.kubeconfig.lock().expect("kubeconfig lock").clone();
-        Box::pin(async move { Ok(sources) })
+        self.coverage_read(
+            "get_kubeconfig_sources",
+            Box::pin(async move { Ok(sources) }),
+        )
     }
     fn kubeconfig_writes_unavailable(&self) -> Option<&'static str> {
         None
     }
     fn set_kubeconfig_env_var(&self, env_var: String) -> Read<KubeconfigSourcesSummary> {
+        if self.coverage_script() == "failed" {
+            return self.coverage_read(
+                "set_kubeconfig_env_var",
+                Box::pin(async {
+                    Err(AppError::new(
+                        "Missing coverage response",
+                        AppErrorKind::NotFound,
+                    ))
+                }),
+            );
+        }
         let mut sources = self.kubeconfig.lock().expect("kubeconfig lock");
         let trimmed = env_var.trim();
         sources.kubeconfig_env_var = if trimmed.is_empty() {
@@ -713,10 +776,13 @@ impl Backend for Fixture {
     }
 
     fn helm_releases(&self, _: String) -> Read<HelmReleaseList> {
-        self.page_read("list_helm_releases", self.helm.releases())
+        self.coverage_read(
+            "list_helm_releases",
+            self.page_read("list_helm_releases", self.helm.releases()),
+        )
     }
     fn helm_release(&self, release: HelmReleaseSummary) -> Read<HelmReleaseDetails> {
-        self.helm.release(release)
+        self.coverage_read("get_helm_release_details", self.helm.release(release))
     }
     fn helm_reconciliation(&self, release: HelmReleaseSummary) -> Read<HelmReleaseReconciliation> {
         self.helm.reconciliation(release)

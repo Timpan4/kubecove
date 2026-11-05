@@ -131,6 +131,15 @@ impl Inspector {
         cx.notify();
     }
     fn apply_workspace_import(&mut self, cx: &mut Context<Self>) {
+        if self
+            .launcher
+            .transfer
+            .decisions
+            .iter()
+            .all(|action| *action == ImportAction::Skip)
+        {
+            return;
+        }
         let preview = std::mem::take(&mut self.launcher.transfer.preview);
         let decisions = std::mem::take(&mut self.launcher.transfer.decisions);
         for (item, decision) in preview.into_iter().zip(decisions) {

@@ -238,7 +238,21 @@ impl Inspector {
                     .child(ui::muted(ui::xs(format!(
                         "Pod/{}:{}",
                         session.resolved_pod_name, session.resolved_pod_port
-                    )))),
+                    ))))
+                    .when_some(session.last_error.clone(), |body, error| {
+                        let message = format!("Port-forward failed: {error}");
+                        body.child(
+                            ui::xs(message.clone())
+                                .id(SharedString::from(format!(
+                                    "forward-card-error:{}",
+                                    session.id
+                                )))
+                                .test_support()
+                                .aria_label(message)
+                                .text_color(Tokens::destructive())
+                                .mt(px(4.)),
+                        )
+                    }),
             )
             .child(
                 div()
@@ -250,6 +264,8 @@ impl Inspector {
                         let url = crate::live_sessions::local_url(session);
                         button(Variant::Outline, 24., false)
                             .id(SharedString::from(format!("copy-forward:{}", session.id)))
+                            .test_support()
+                            .aria_label("Copy")
                             .child(ui::icon("copy", 14., Tokens::foreground()))
                             .child(ui::xs("Copy"))
                             .on_click(cx.listener(move |_, _, _, cx| {

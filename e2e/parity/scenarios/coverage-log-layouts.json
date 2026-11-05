@@ -1,0 +1,142 @@
+{
+	"fixture": "browser-mocks",
+	"context": "mock-dev",
+	"scenarios": [
+		{
+			"id": "coverage-logs.one-line",
+			"title": "One-line logs expand individual or all rows and copy the exact selected raw line",
+			"steps": [
+				{
+					"action": "openSettings"
+				},
+				{
+					"action": "showSettingsSection",
+					"section": "Appearance"
+				},
+				{
+					"action": "selectSettingOption",
+					"setting": "Log layout",
+					"value": "One line"
+				},
+				{
+					"action": "closeSettings"
+				},
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "openResource",
+					"kind": "Pod",
+					"namespace": "payments",
+					"name": "payments-api-7d9c9b7f8d-k2r9p"
+				},
+				{
+					"action": "showTab",
+					"tab": "Logs"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "log-one-line"
+				},
+				{
+					"action": "coverageCopy",
+					"label": "Copy line",
+					"text": "2026-06-29T10:00:00Z boot payments-api",
+					"match": "exact"
+				}
+			]
+		},
+		{
+			"id": "coverage-logs.log-stacked",
+			"title": "Stacked layout changes rendered log row spacing without losing lines",
+			"steps": [
+				{
+					"action": "openSettings"
+				},
+				{
+					"action": "showSettingsSection",
+					"section": "Appearance"
+				},
+				{
+					"action": "selectSettingOption",
+					"setting": "Log layout",
+					"value": "Stacked"
+				},
+				{
+					"action": "closeSettings"
+				},
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "openResource",
+					"kind": "Pod",
+					"namespace": "payments",
+					"name": "payments-api-7d9c9b7f8d-k2r9p"
+				},
+				{
+					"action": "showTab",
+					"tab": "Logs"
+				},
+				{
+					"action": "expectLogLines",
+					"lines": [
+						"boot payments-api",
+						"handled GET /healthz 200",
+						"downstream retry budget at 82%"
+					]
+				},
+				{
+					"action": "coverageCheck",
+					"check": "log-stacked"
+				}
+			]
+		},
+		{
+			"id": "coverage-logs.log-gutter",
+			"title": "Gutter layout changes rendered log row spacing without losing lines",
+			"steps": [
+				{
+					"action": "openSettings"
+				},
+				{
+					"action": "showSettingsSection",
+					"section": "Appearance"
+				},
+				{
+					"action": "selectSettingOption",
+					"setting": "Log layout",
+					"value": "Gutter"
+				},
+				{
+					"action": "closeSettings"
+				},
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "openResource",
+					"kind": "Pod",
+					"namespace": "payments",
+					"name": "payments-api-7d9c9b7f8d-k2r9p"
+				},
+				{
+					"action": "showTab",
+					"tab": "Logs"
+				},
+				{
+					"action": "expectLogLines",
+					"lines": [
+						"boot payments-api",
+						"handled GET /healthz 200",
+						"downstream retry budget at 82%"
+					]
+				},
+				{
+					"action": "coverageCheck",
+					"check": "log-gutter"
+				}
+			]
+		}
+	]
+}

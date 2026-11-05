@@ -1,7 +1,7 @@
 //! Guided investigation pane, mirroring `IncidentGuide.svelte`. Steps open the
 //! resource in the detail pane. Guarded actions hand off to the Actions tab.
 
-use super::{Inspector, Page, incidents::severity_badge, surface};
+use super::{Inspector, Page, detail::DetailTab, incidents::severity_badge, surface};
 use crate::incidents::{
     self,
     guidance::{self, Enrichment, Evidence, Tone},
@@ -86,12 +86,13 @@ impl Inspector {
     fn inspect_resource(
         &mut self,
         resource: ResourceSummary,
+        tab: Option<DetailTab>,
         window: &mut gpui_kit::Window,
         cx: &mut Context<Self>,
     ) {
         self.select_namespace(None, window, cx);
         if self.page == Page::Resources {
-            self.open_resource(resource, window, cx);
+            self.open_resource_on(resource, tab, window, cx);
         }
     }
 
@@ -100,11 +101,20 @@ impl Inspector {
         index: usize,
         title: String,
         target: ResourceSummary,
+        tab: &'static str,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let tab = match tab {
+            "details" => DetailTab::Details,
+            "events" => DetailTab::Events,
+            "logs" => DetailTab::Logs,
+            "yaml" => DetailTab::Yaml,
+            other => unreachable!("unknown incident detail tab {other}"),
+        };
         ui::outline_button()
             .id(SharedString::from(format!("incident-step:{index}")))
             .test_support()
+            .aria_label(title.clone())
             .h(px(24.))
             .pl(px(8.))
             .pr(px(6.))
@@ -112,19 +122,20 @@ impl Inspector {
             .child(ui::medium(ui::text(title, 12., 19.5)))
             .child(ui::icon("arrow-right", 12., Tokens::foreground()))
             .on_click(cx.listener(move |this, _, window, cx| {
-                this.inspect_resource(target.clone(), window, cx)
+                this.inspect_resource(target.clone(), Some(tab), window, cx)
             }))
             .into_any_element()
     }
 
     fn steps_section(&self, steps: Vec<guidance::Step>, cx: &mut Context<Self>) -> Div {
         let context = self.incidents.show_step_context;
+        let context_help = "Open evidence in the detail pane without losing queue selection.";
         let steps: Vec<AnyElement> = steps
             .into_iter()
             .enumerate()
             .map(|(index, step)| {
                 if !context {
-                    return self.step_button(index, step.title, step.target, cx);
+                    return self.step_button(index, step.title, step.target, step.tab, cx);
                 }
                 let tab = if step.tab == "details" {
                     "details"
@@ -160,6 +171,7 @@ impl Inspector {
                         index,
                         format!("Open {tab}"),
                         step.target,
+                        step.tab,
                         cx,
                     )))
                     .into_any_element()
@@ -180,10 +192,11 @@ impl Inspector {
                             .child(label("Next investigation steps"))
                             .when(context, |title| {
                                 title.child(
-                                    ui::muted(ui::xs(
-                                        "Open evidence in the detail pane without losing queue selection.",
-                                    ))
-                                    .mt(px(4.)),
+                                    ui::muted(ui::xs(context_help))
+                                        .id("incident-context-help")
+                                        .test_support()
+                                        .aria_label(context_help)
+                                        .mt(px(4.)),
                                 )
                             }),
                     )
@@ -199,12 +212,17 @@ impl Inspector {
                             .cursor_pointer()
                             .hover(|button| button.bg(Tokens::muted().opacity(0.5)))
                             .child(ui::medium(ui::text(
-                                if context { "Hide context" } else { "Show context" },
+                                if context {
+                                    "Hide context"
+                                } else {
+                                    "Show context"
+                                },
                                 12.,
                                 19.5,
                             )))
                             .on_click(cx.listener(|this, _, _, cx| {
-                                this.incidents.show_step_context = !this.incidents.show_step_context;
+                                this.incidents.show_step_context =
+                                    !this.incidents.show_step_context;
                                 cx.notify();
                             })),
                     ),
@@ -381,7 +399,7 @@ impl Inspector {
                                             .test_support()
                                             .cursor_pointer()
                                             .on_click(cx.listener(move |this, _, window, cx| {
-                                                this.inspect_resource(resource.clone(), window, cx)
+                                                this.inspect_resource(resource.clone(), None, window, cx)
                                             })),
                                     ),
                             ),
@@ -437,6 +455,9 @@ impl Inspector {
                                 .when(enriching, |notice| {
                                     notice.child(ui::icon("loader-circle", 16., Tokens::muted_foreground()))
                                 })
+                                .id("incident-enrichment")
+                                .test_support()
+                                .aria_label(if failed { "Some live evidence is unavailable. Snapshot guidance remains usable." } else { "Loading live conditions and controller ownership…" })
                                 .child(ui::xs(if failed {
                                     "Some live evidence is unavailable. Snapshot guidance remains usable."
                                 } else {

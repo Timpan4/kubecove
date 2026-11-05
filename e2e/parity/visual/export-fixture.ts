@@ -24,6 +24,7 @@ import type {
 	ResourceTopology,
 } from "../../../src/lib/types";
 import { exportArgo } from "./export-argo";
+import { exportCoverage, exportCoverageLogs } from "./export-coverage";
 import { exportDetailTabs } from "./export-detail-tabs";
 import { exportGitOpsPage, exportHelm } from "./export-gitops-helm";
 import { exportPageReads } from "./export-page-reads";
@@ -125,11 +126,13 @@ for (const verb of ["get", "list", "watch", "create", "update", "patch", "delete
 }
 const sessionControls = await exportSessionControls(client, resources);
 const argoConnected = await exportArgo(client, gitops.applications);
+const coverage = await exportCoverage(client, { helm: helm.list, rbac: rbac[clusterContext ?? "mock-dev"], incidents, topology: rustTopology, sessions: liveSessions });
+const logCases = await exportCoverageLogs(client);
 const pageReads = exportPageReads({ list_flux_resources: gitops.flux, list_argocd_appsets: gitops.appSets, list_helm_releases: helm.list, list_rbac_inspection: rbac[clusterContext ?? "mock-dev"], list_incident_cockpit: incidents });
 const secretReveals = [];
 for (const row of resources.filter((row) => row.kind === "Secret")) {
     const request = { clusterContext: row.cluster, name: row.name, namespace: row.namespace, key: "token" };
     secretReveals.push({ request, encoded: await client.invoke<string>("reveal_secret_data_value", request) });
 }
-await writeFile(output, JSON.stringify({ pageReads, mcp: mcpMockStatus(), argoConnected, secretReveals, sessionControls, liveEvents: LIVE_EVENTS, contexts, namespaces, kinds, contextResources, resources: resources.map(rustShape), details, events, topology: rustTopology, networkTopology, metrics, appUsage, namespaceTopologies, gitops, helm, incidents, liveSessions, detailTabs, rbac, rbacReviews, kubeconfig: sources }, null, "\t"));
+await writeFile(output, JSON.stringify({ coverage, pageReads, mcp: mcpMockStatus(), argoConnected, secretReveals, sessionControls, liveEvents: LIVE_EVENTS, contexts, namespaces, kinds, contextResources, resources: resources.map(rustShape), details, events, topology: rustTopology, networkTopology, metrics, appUsage, namespaceTopologies, gitops, helm, incidents, liveSessions, detailTabs: { ...detailTabs, logs: { ...detailTabs.logs, cases: logCases } }, rbac, rbacReviews, kubeconfig: sources }, null, "\t"));
 console.log(`fixture: ${resources.length} resources, ${details.length} details -> ${output}`);

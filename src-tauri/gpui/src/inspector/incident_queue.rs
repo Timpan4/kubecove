@@ -134,6 +134,8 @@ impl Inspector {
                     .child(
                         div()
                             .id(SharedString::from(format!("incident-copy:{key}")))
+                            .test_support()
+                            .aria_label(format!("Copy resource name {}", resource.name))
                             .flex()
                             .items_center()
                             .gap(px(4.))
@@ -235,6 +237,9 @@ impl Inspector {
         clean: bool,
     ) -> AnyElement {
         div()
+            .id("incident-empty")
+            .test_support()
+            .aria_label(title.to_owned())
             .flex()
             .flex_col()
             .items_center()

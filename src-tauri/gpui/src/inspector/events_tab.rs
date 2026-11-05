@@ -46,8 +46,15 @@ fn compact_time(event: &ResourceEventSummary) -> String {
 }
 
 /// `Empty class="border border-dashed"` with a title and description.
-pub(super) fn empty(title: &str, description: &str, height: f32) -> Div {
+pub(super) fn empty(
+    title: &str,
+    description: &str,
+    height: f32,
+) -> gpui_kit::base::ObservedElement<gpui_kit::Stateful<Div>> {
     div()
+        .id(SharedString::from(format!("empty:{title}")))
+        .test_support()
+        .aria_label(title.to_owned())
         .min_h(px(height))
         .flex()
         .flex_col()
@@ -312,7 +319,13 @@ pub(super) fn events_tab(detail: &ResourceDetail, cx: &mut Context<Inspector>) -
                 .child(tile("Warnings", warnings))
                 .child(tile("Latest", latest))
                 .child(tile("Sources", tile_value(summary.sources.to_string())))
-                .child(tile("Namespace", tile_value(summary.namespace.clone()))),
+                .child(tile("Namespace", tile_value(summary.namespace.clone())))
+                .id("events-summary")
+                .test_support()
+                .aria_label(format!(
+                    "Total {} events; Warnings {}; Sources {}; Namespace {}",
+                    summary.total, summary.warnings, summary.sources, summary.namespace
+                )),
         )
         .child(
             div()

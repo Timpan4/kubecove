@@ -169,6 +169,7 @@ pub enum RbacAccessReviewIdentity {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
+#[serde(rename_all_fields = "camelCase")]
 pub enum RbacAccessReviewTarget {
     Resource {
         verb: String,
@@ -192,6 +193,30 @@ pub struct RbacAccessReviewRequest {
     pub identity: RbacAccessReviewIdentity,
     pub target: RbacAccessReviewTarget,
     pub kubeconfig_env_var: Option<String>,
+}
+
+#[cfg(test)]
+mod review_target_tests {
+    use super::RbacAccessReviewTarget;
+
+    // Failure modes: apiGroup silently falls back to the core API, or a
+    // nonResourceUrl request is rejected because serde expects snake_case.
+    #[test]
+    fn review_targets_round_trip_frontend_fields() {
+        for wire in [
+            serde_json::json!({
+                "kind": "resource", "verb": "get", "resource": "deployments",
+                "apiGroup": "apps", "namespace": "payments",
+                "subresource": "scale", "name": "payments-api"
+            }),
+            serde_json::json!({
+                "kind": "nonResource", "verb": "get", "nonResourceUrl": "/healthz"
+            }),
+        ] {
+            let target: RbacAccessReviewTarget = serde_json::from_value(wire.clone()).unwrap();
+            assert_eq!(serde_json::to_value(target).unwrap(), wire);
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

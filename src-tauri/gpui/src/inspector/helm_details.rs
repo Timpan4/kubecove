@@ -503,5 +503,10 @@ fn pending(label: &str) -> Div {
         .items_center()
         .gap(px(8.))
         .child(ui::icon("loader-circle", 16., Tokens::muted_foreground()))
-        .child(ui::muted(ui::sm(label.to_owned())))
+        .child(
+            ui::muted(ui::sm(label.to_owned()))
+                .id(SharedString::from(format!("helm-pending:{label}")))
+                .test_support()
+                .aria_label(label.to_owned()),
+        )
 }

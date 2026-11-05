@@ -8,6 +8,8 @@ import type { Contract, Step } from "./contract";
 import { adapterAction } from "./web-adapters";
 import { feedbackAction } from "./web-feedback";
 import { argoAction } from "./web-argo";
+import { coverageAction } from "./web-coverage";
+import { checkCoverage } from "./web-coverage-checks";
 import { liveSessionAction } from "./web-live-sessions";
 import { logRowAndRestoreAction } from "./web-logs-restore";
 import { mcpAction } from "./web-mcp";
@@ -36,6 +38,11 @@ export async function action(page: Page, step: Step) {
         case "configureShellRead": case "retryLauncher": case "expectLauncherRetry": await shellAction(page, step); break;
         case "overviewOperation": case "overviewIncident": case "reviewIncidentAction": await shellAction(page, step); break;
         case "expectTopologyDenied": case "mockTiming": await timingAction(page, step); break;
+        case "coverageSelect": await coverageAction(page, step); break;
+        case "coverageCopy": await coverageAction(page, step); break;
+        case "coverageScript": await coverageAction(page, step); break;
+        case "coverageCheck": await checkCoverage(page, step.check); break;
+        case "coverageClick": case "coverageFill": case "coverageText": case "paletteKey": case "expectPaletteOpen": case "deleteSavedWorkspace": case "importDecision": case "cancelImport": case "searchEvents": await coverageAction(page, step); break;
         case "terminalFit": case "terminalOutput": case "terminalSelect": case "terminalCopy": case "terminalPaste": case "terminalScroll":
             await terminalAction(page, step); break;
         case "failWorkspaceContext": case "expectWorkspaceReadWarning":

@@ -511,10 +511,16 @@ impl Inspector {
                     .whitespace_nowrap(),
             )
             .child(
-                ui::muted(ui::text(count, count_size, size * 1.625))
-                    .font_weight(FontWeight::MEDIUM)
-                    .ml(px(2.))
-                    .whitespace_nowrap(),
+                div()
+                    .id(SharedString::from(format!("group-count:{key}")))
+                    .test_support()
+                    .aria_label(count.clone())
+                    .child(
+                        ui::muted(ui::text(count, count_size, size * 1.625))
+                            .font_weight(FontWeight::MEDIUM)
+                            .ml(px(2.))
+                            .whitespace_nowrap(),
+                    ),
             )
     }
 
@@ -707,6 +713,9 @@ impl Inspector {
                             .flex_1()
                             .child(
                                 ui::muted(ui::xs(format!("{} total rows", page.total)))
+                                    .id("table-total")
+                                    .test_support()
+                                    .aria_label(format!("{} total rows", page.total))
                                     .flex_1()
                                     .flex()
                                     .justify_center(),

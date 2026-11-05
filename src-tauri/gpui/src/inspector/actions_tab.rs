@@ -345,7 +345,13 @@ pub(super) fn actions_tab(detail: &ResourceDetail, cx: &mut Context<Inspector>) 
             .child(ui::muted(ui::sm("Actions are not available for this resource.")).py(px(32.)));
     } else if visible.is_empty() {
         let filter = actions.filter.read(cx).value().to_string();
-        body = body.child(ui::muted(ui::sm(format!("No action matches “{filter}”."))).py(px(32.)));
+        body = body.child(
+            ui::muted(ui::sm(format!("No action matches “{filter}”.")))
+                .id("action-empty")
+                .test_support()
+                .aria_label(format!("No action matches “{filter}”."))
+                .py(px(32.)),
+        );
     }
     for group in groups {
         let rows: Vec<&&ActionRow> = visible.iter().filter(|row| row.group == group).collect();

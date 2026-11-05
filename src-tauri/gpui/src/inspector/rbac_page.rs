@@ -339,6 +339,7 @@ impl Inspector {
             .filter(|entry| entry.status == RbacCoverageStatus::Complete)
             .count();
         let total = data.coverage.len();
+        let warnings = data.warnings.join("\n");
         div()
             .flex()
             .flex_col()
@@ -361,6 +362,9 @@ impl Inspector {
                     .child(ui::outline_badge("Entire cluster")),
             )
             .child(self.rbac_posture(complete, total, cx))
+            .when(!warnings.is_empty(), |body| {
+                body.child(surface::failed("Partial RBAC data", warnings))
+            })
             .child(self.rbac_toolbar(cx))
             .child(
                 div()
@@ -473,6 +477,7 @@ impl Inspector {
                         .child(
                             button(Variant::Default, 24., false)
                                 .id("rbac-investigate")
+                                .test_support()
                                 .child(ui::icon("shield-check", 12., Tokens::primary_foreground()))
                                 .child("Investigate identity")
                                 .on_click(cx.listener(|this, _, window, cx| {

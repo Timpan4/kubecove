@@ -3,6 +3,19 @@ export const TABLE_COLUMNS = ["Name", "Status", "Namespace", "Kind", "Ready", "R
 type TableColumn = (typeof TABLE_COLUMNS)[number];
 export const SORT_COLUMNS = ["Name", "Status", "Namespace", "Kind", "Ready", "Restarts", "CPU", "Memory", "Age"] as const;
 export type Step =
+    | { action: "coverageSelect"; label: string; value: string }
+    | { action: "coverageCopy"; label: string; text: string; match: "contains" | "exact" }
+    | { action: "coverageScript"; script: "base" | "loading" | "failed" | "empty" | "partial" | "many" | "conflict" | "logs-empty" | "logs-failed" | "logs-options" | "logs-long" | "logs-stream" | "startup-failed" | "foreign" | "detail-loading" | "enrichment-failed" | "enrichment-loading" | "attention-only" | "stop-failed" }
+    | { action: "coverageCheck"; check: string }
+    | { action: "coverageClick"; label: string }
+    | { action: "coverageFill"; label: string; value: string }
+    | { action: "coverageText"; text: string; visible: boolean }
+    | { action: "paletteKey"; key: "ArrowDown" | "ArrowUp" | "Enter" | "Escape" }
+    | { action: "expectPaletteOpen"; open: boolean }
+    | { action: "deleteSavedWorkspace"; name: string }
+    | { action: "importDecision"; choice: "Add as new" | "Replace" | "Skip" }
+    | { action: "cancelImport" }
+    | { action: "searchEvents"; value: string }
     | { action: "sidebarToggle" | "sidebarSelect"; path: string[] }
     | { action: "expectSidebarRow"; path: string[]; visible: boolean; selected: boolean }
     | { action: "collapseSidebar" }

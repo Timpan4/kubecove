@@ -189,6 +189,9 @@ impl Inspector {
                     .when(empty, |list| {
                         list.child(
                             ui::muted(ui::sm("No matching RBAC objects."))
+                                .id("rbac-empty")
+                                .test_support()
+                                .aria_label("No matching RBAC objects.")
                                 .p(px(24.))
                                 .text_center(),
                         )
@@ -197,6 +200,7 @@ impl Inspector {
                         list.child(
                             button(Variant::Outline, 24., false)
                                 .id("rbac-more")
+                                .test_support()
                                 .w_full()
                                 .child("Load 50 more")
                                 .on_click(cx.listener(|this, _, _, cx| {

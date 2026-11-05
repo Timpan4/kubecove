@@ -8,11 +8,14 @@ const forwards = new Map(mockPortForwards.map((s) => [s.id, s]));
 const execs = new Map(mockExecSessions.map((s) => [s.id, s]));
 const channels = new Map<string, Pick<Channel<PodExecSessionMessage>, "onmessage">>();
 export type SessionScript = "reconnecting" | "failed" | "foreign-output";
+export function forwardReplayState(script: Exclude<SessionScript, "foreign-output">): Pick<PortForwardSessionSummary, "status" | "lastError"> {
+    return script === "failed" ? { status: "error", lastError: "Controlled transport failure" } : { status: "reconnecting" };
+}
 export function replaySessions(script: SessionScript) {
     if (script === "foreign-output") {
         for (const channel of channels.values()) channel.onmessage({ type: "output", sessionId: "foreign-session", stream: "stdout", data: "FOREIGN SESSION OUTPUT" });
     } else {
-        for (const [id, session] of forwards) forwards.set(id, { ...session, status: script === "failed" ? "error" : "reconnecting", ...(script === "failed" ? { lastError: "Controlled transport failure" } : {}) });
+        for (const [id, session] of forwards) forwards.set(id, { ...session, ...forwardReplayState(script) });
     }
 }
 

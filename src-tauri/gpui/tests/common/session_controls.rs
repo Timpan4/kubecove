@@ -9,8 +9,16 @@ use tokio::sync::mpsc;
 pub struct SessionControls {
     forwards: Vec<Forward>,
     execs: Vec<Exec>,
+    #[serde(default)]
+    replay: std::collections::HashMap<String, ForwardReplay>,
     #[serde(skip)]
     state: Arc<Mutex<Running>>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ForwardReplay {
+    status: PortForwardSessionStatus,
+    last_error: Option<String>,
 }
 #[derive(Deserialize)]
 struct Forward {
@@ -136,12 +144,15 @@ impl SessionControls {
                 });
             }
         } else {
+            let update = self
+                .replay
+                .get(script)
+                .expect("exported forward replay state");
             for session in &mut state.forwards {
-                session.status = if script == "failed" {
-                    PortForwardSessionStatus::Error
-                } else {
-                    PortForwardSessionStatus::Reconnecting
-                };
+                session.status = update.status;
+                if update.last_error.is_some() {
+                    session.last_error = update.last_error.clone();
+                }
             }
         }
     }

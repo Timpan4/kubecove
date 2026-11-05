@@ -184,6 +184,7 @@ impl Inspector {
             .child(
                 button(Variant::Outline, 24., selected.is_none())
                     .id("rbac-copy")
+                    .test_support()
                     .child(ui::icon("clipboard", 12., Tokens::foreground()))
                     .child("Copy evidence")
                     .on_click(cx.listener(|this, _, _, cx| this.copy_rbac_evidence(cx))),

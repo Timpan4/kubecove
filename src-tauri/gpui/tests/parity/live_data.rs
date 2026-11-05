@@ -34,9 +34,13 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
                 window.render_frame(cx);
             }
             let query = if picker { "pick-kind" } else { "custom-kind" };
-            let label = window.find_by_label(string(step, "kind"));
+            // Table Kind cells carry the same label, so pick the sidebar or picker entry.
+            let label = window
+                .find_all_by_label(string(step, "kind"))
+                .into_iter()
+                .find(|label| format!("{:?}", locate::id(label)).contains(query))
+                .unwrap_or_else(|| panic!("no {query} entry labelled {}", string(step, "kind")));
             let id = locate::id(&label);
-            assert!(format!("{id:?}").contains(query));
             if !picker || label.description() == Some("unchecked") {
                 window.click(id, cx);
             }

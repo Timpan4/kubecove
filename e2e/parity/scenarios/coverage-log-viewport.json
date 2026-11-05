@@ -1,0 +1,121 @@
+{
+	"fixture": "browser-mocks",
+	"context": "mock-dev",
+	"scenarios": [
+		{
+			"id": "coverage-logs.logs-long",
+			"title": "Wrapping preserves the long log row and changes its rendered height",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "logs-long"
+				},
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "openResource",
+					"kind": "Pod",
+					"namespace": "payments",
+					"name": "payments-api-7d9c9b7f8d-k2r9p"
+				},
+				{
+					"action": "showTab",
+					"tab": "Logs"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "log-wrap"
+				}
+			]
+		},
+		{
+			"id": "coverage-logs.logs-stream",
+			"title": "New lines remain available while scrolled back and Jump reaches the latest line",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "logs-stream"
+				},
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "openResource",
+					"kind": "Pod",
+					"namespace": "payments",
+					"name": "payments-api-7d9c9b7f8d-k2r9p"
+				},
+				{
+					"action": "showTab",
+					"tab": "Logs"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "log-scroll-back"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "emit-log"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "log-jump"
+				}
+			]
+		},
+		{
+			"id": "coverage-logs.pause-arrivals",
+			"title": "Pause holds arriving lines and Resume releases each line once",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "logs-stream"
+				},
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "openResource",
+					"kind": "Pod",
+					"namespace": "payments",
+					"name": "payments-api-7d9c9b7f8d-k2r9p"
+				},
+				{
+					"action": "showTab",
+					"tab": "Logs"
+				},
+				{
+					"action": "filterLogs",
+					"value": "Newest controlled line"
+				},
+				{
+					"action": "expectLogLines",
+					"lines": []
+				},
+				{
+					"action": "coverageClick",
+					"label": "Pause"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "emit-log"
+				},
+				{
+					"action": "expectLogLines",
+					"lines": []
+				},
+				{
+					"action": "coverageClick",
+					"label": "Resume"
+				},
+				{
+					"action": "expectLogLines",
+					"lines": [
+						"Newest controlled line"
+					]
+				}
+			]
+		}
+	]
+}

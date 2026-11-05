@@ -3,6 +3,7 @@ import { stringify } from "yaml";
 import { connectRemoteMock, disconnectRemoteMock, remoteMockStatus, saveWorkspaceMock, selectedDialogPath, selectedWorkspaceFile } from "./settings-integration-mocks";
 import { argoApplicationSummary, argoApplicationYaml, argoMockHandlers, customResourceKinds, presentCustomResourceKinds } from "./tauri-dev-mock-argo";
 import { type MockArgs, type MockHandler, type MockResult, readMockArgs } from "./tauri-dev-mock-contract";
+import { beforeCoverageRead, coverageHelm, coverageIncidents, coverageLogs, coverageRbac, coverageSessions, coverageStopForward, coverageTopology, coverageYamlPreview, registerCoverageLogStream } from "./tauri-dev-mock-coverage";
 import {
 	argoApps,
 	deploymentRevisions,
@@ -65,6 +66,7 @@ export function createDevMockTauriClient(): TauriClient {
 			options?: InvokeOptions,
 		): Promise<T> => {
 			await delay(35);
+			await beforeCoverageRead(cmd);
             // The same typed seam as the wrappers; live channels have a different message contract.
             const live = args as { request: import("./types").PortForwardRequest & import("./types").PodExecSessionRequest & import("./types").LiveSessionCleanupRequest; sessionId: string; data: string; size: import("./types").PodExecTerminalSize; channel: Pick<Channel<import("./types").PodExecSessionMessage>, "onmessage"> } | undefined;
             if (cmd === "start_pod_port_forward" && live) return startMockForward(live.request) as T;
@@ -72,7 +74,7 @@ export function createDevMockTauriClient(): TauriClient {
             if (cmd === "write_pod_exec_stdin" && live) return mockExecInput(live.sessionId, live.data) as T;
             if (cmd === "resize_pod_exec_terminal" && live) return resizeMockExec(live.sessionId, live.size) as T;
             if (cmd === "stop_pod_exec_session" && live) return stopMockExec(live.sessionId) as T;
-            if (cmd === "stop_port_forward" && live) return stopMockForward(live.sessionId) as T;
+            if (cmd === "stop_port_forward" && live) { coverageStopForward(live.sessionId, listMockForwards()); return stopMockForward(live.sessionId) as T; }
             if (cmd === "stop_live_sessions_outside_scope" && live) return cleanupMockSessions(live.request) as T;
 			const handler = findMockHandler(cmd);
 			if (!handler) throw new Error(`No browser dev mock for command: ${cmd}`);
@@ -141,29 +143,29 @@ const handlers = {
 	get_resource_yaml: (args) => builtInYamlFor(args),
 	get_resource_details: (args) => detailsFor(args),
 	get_dynamic_resource_details: (args) => detailsFor(args),
-	prepare_yaml_apply: (args) => applyPreview(args),
+	prepare_yaml_apply: (args) => coverageYamlPreview(args?.request?.forceConflicts, applyPreview(args)),
 	apply_yaml: unavailable("YAML apply is unavailable in browser mock mode."),
 	lint_kubernetes_yaml: () => ({ diagnostics: [], notes: [] }),
 	list_resource_events: (args) => eventsFor(args),
-	list_resource_topology: (args) => topologyFor(args),
+	list_resource_topology: (args) => coverageTopology(topologyFor(args)),
 	refresh_resource_cache: () => ({ clearedEntries: 1 }),
 	start_resource_watch: (args) => registerMockWatch({ channel: args.channel, context: args.clusterContext ?? "mock-dev", keys: args.keys }),
 	start_resource_event_watch: (args) => registerMockWatch({ channel: args.channel, context: args.clusterContext ?? "mock-dev", kind: args.kind, name: args.name, namespace: args.namespace }),
-	start_pod_log_stream: (args) => startLogStream(args?.channel, false, args?.request?.batchLines === true),
+	start_pod_log_stream: (args) => startLogStream(args?.channel, false, args?.request?.batchLines === true, args?.request),
 	start_aggregated_log_stream: (args) => startLogStream(args?.channel, true, args?.request?.batchLines === true),
 	stop_stream: (args) => stopMockWatch(args.id ?? ""),
-    list_port_forwards: listMockForwards,
-    list_pod_exec_sessions: listMockExecs,
+    list_port_forwards: () => coverageSessions(listMockForwards()),
+    list_pod_exec_sessions: () => coverageSessions(listMockExecs()),
 	get_app_usage_metrics: () => usage(),
 	list_resource_metrics: () => metrics(),
 	...argoMockHandlers(genericYaml),
 	reveal_secret_data_value: () => "c2VjcmV0",
-	list_helm_releases: () => ({ releases: helmReleases, warnings: [] }) satisfies HelmReleaseList,
+	list_helm_releases: () => coverageHelm({ releases: helmReleases, warnings: [] } satisfies HelmReleaseList),
 	get_helm_release_details: (args) => helmDetails(args),
 	get_helm_release_reconciliation: (args) => helmReconciliation(args),
-	list_rbac_inspection: (args) => rbacInspectionMock(args?.clusterContext),
+	list_rbac_inspection: (args) => coverageRbac(rbacInspectionMock(args?.clusterContext)),
 	review_rbac_access: (args) => rbacReviewMock(args),
-	list_incident_cockpit: (args) => incidents(args?.clusterContext),
+	list_incident_cockpit: (args) => coverageIncidents(incidents(args?.clusterContext)),
 	set_backend_diagnostics_enabled: () => true,
 	get_backend_diagnostics: () => [] satisfies BackendDiagnosticEvent[],
 	get_backend_cache_diagnostics: () => [],
@@ -557,8 +559,11 @@ function startLogStream(
 	channel: Pick<Channel<StreamMessage>, "onmessage"> | undefined,
 	aggregate = false,
 	batchLines = false,
+	request = {},
 ): string {
 	const streamId = `mock-logs-${Date.now()}`;
+	const controlled = coverageLogs(request, streamId);
+	if (controlled) { registerCoverageLogStream(streamId, (message) => send(channel, message)); for (const message of controlled) send(channel, message); return streamId; }
 	send(channel, { type: "started", streamId, label: aggregate ? "Mock aggregate logs" : "Mock pod logs" });
 	send(channel, { type: "status", streamId, status: "connected", message: aggregate ? "Streaming 2 pod containers" : "Mock log stream connected" });
 	const sources = aggregate

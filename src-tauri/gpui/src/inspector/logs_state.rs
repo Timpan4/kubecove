@@ -308,6 +308,8 @@ impl LogsState {
         }
         let following = self.pinned();
         let added = self.buffer.append(batch);
+        self.toggled
+            .retain(|index| self.buffer.line(*index).is_some());
         // Evictions shift buffer positions, so `refilter` remeasures then.
         self.refilter();
         if !following {

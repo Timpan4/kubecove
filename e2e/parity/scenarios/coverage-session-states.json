@@ -1,0 +1,100 @@
+{
+	"fixture": "browser-mocks",
+	"context": "mock-dev",
+	"scenarios": [
+		{
+			"id": "coverage-sessions.loading",
+			"title": "Live sessions show pending data and replace it when the read completes",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "loading"
+				},
+				{
+					"action": "openPage",
+					"page": "Port Forwards"
+				},
+				{
+					"action": "coverageText",
+					"text": "Loading...",
+					"visible": true
+				},
+				{
+					"action": "coverageScript",
+					"script": "base"
+				},
+				{
+					"action": "expectPortForward",
+					"title": "Service/grafana:80"
+				}
+			]
+		},
+		{
+			"id": "coverage-sessions.failed",
+			"title": "Failed live-session inspection shows a read error",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "failed"
+				},
+				{
+					"action": "openPage",
+					"page": "Port Forwards"
+				},
+				{
+					"action": "coverageText",
+					"text": "Live sessions unavailable",
+					"visible": true
+				}
+			]
+		},
+		{
+			"id": "coverage-sessions.empty",
+			"title": "Empty live-session reads clear the forward and exec tables",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "empty"
+				},
+				{
+					"action": "openPage",
+					"page": "Port Forwards"
+				},
+				{
+					"action": "coverageText",
+					"text": "No active port forwards",
+					"visible": true
+				},
+				{
+					"action": "coverageText",
+					"text": "No active exec sessions",
+					"visible": true
+				}
+			]
+		},
+		{
+			"id": "coverage-sessions.foreign-source",
+			"title": "Sessions from another kubeconfig source never appear in the active source",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "foreign"
+				},
+				{
+					"action": "openPage",
+					"page": "Port Forwards"
+				},
+				{
+					"action": "coverageText",
+					"text": "No active port forwards",
+					"visible": true
+				},
+				{
+					"action": "coverageText",
+					"text": "No active exec sessions",
+					"visible": true
+				}
+			]
+		}
+	]
+}
