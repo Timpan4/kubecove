@@ -149,16 +149,17 @@ jobs:
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
       - name: Cache Rust
-        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
         with:
-          shared-key: kubecove-rust-release-verify
-          workspaces: "./src-tauri -> target"
+          version: "1.29.2"
+          working-directory: src-tauri
+          cache-generation: kubecove-rust-ci
 
       - name: Test Rust
-        run: cargo test --workspace --manifest-path src-tauri/Cargo.toml
+        run: mbx test --workspace --manifest-path src-tauri/Cargo.toml
 
       - name: Lint Rust
-        run: cargo clippy --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+        run: mbx clippy --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
 
   e2e:
     name: Kubernetes ${{ matrix.kubernetes }} release E2E
@@ -199,6 +200,24 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      - name: Setup Mr Boxington
+        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
+        with:
+          version: "1.29.2"
+          working-directory: src-tauri
+          cache-generation: kubecove-e2e
+
+      - name: Cache headless E2E builds
+        if: runner.os != 'Windows'
+        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
+        with:
+          version: "1.29.2"
+          working-directory: src-tauri/server
+          cache-generation: kubecove-server-e2e
+
+      - name: Activate Cargo caching
+        run: node scripts/ci-mbx-cargo.mjs
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -415,10 +434,13 @@ jobs:
         run: rustup target add ${{ matrix.rust-targets }}
 
       - name: Cache Rust
-        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
         with:
-          shared-key: kubecove-rust-release-build
-          workspaces: "./src-tauri -> target"
+          version: "1.29.2"
+          backend: local
+
+      - name: Activate Cargo caching
+        run: node scripts/ci-mbx-cargo.mjs
 
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile

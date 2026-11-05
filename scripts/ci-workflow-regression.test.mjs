@@ -211,7 +211,7 @@ test("Rust verification selects all workspace members despite root-only default-
   const hook = readFileSync(new URL("../.githooks/pre-commit-user", import.meta.url), "utf8");
   const commands = [
     ...["rust:test", "rust:check", "rust:lint"].map((name) => scripts[name]),
-    ...[job("rust"), release].flatMap((source) => [...source.matchAll(/run: (cargo (?:test|clippy) [^\n]+)/g)].map((match) => match[1])),
+    ...[job("rust"), release].flatMap((source) => [...source.matchAll(/run: ((?:cargo|mbx) (?:test|clippy) [^\n]+)/g)].map((match) => match[1])),
     ...[...hook.matchAll(/^\s*(cargo check [^\n]*--manifest-path src-tauri\/Cargo.toml[^\n]*)/gm)].map((match) => match[1]),
   ];
   assert.equal(commands.length, 8, "package, CI, release and hook verification commands must be covered");
@@ -249,12 +249,30 @@ test("container and Nix build sources include every scripts module vite.config.t
 });
 test("headless checks run without GUI packages and the gate requires their success", () => {
   assert.doesNotMatch(job("server"), /apt-get|cache-apt-pkgs|pkg-config|--all-features/);
-  assert.match(job("server"), /cargo test --locked --workspace --no-default-features --manifest-path src-tauri\/Cargo.toml/);
+  assert.match(job("server"), /mbx test --locked --workspace --no-default-features --manifest-path src-tauri\/Cargo.toml/);
   assert.match(job("server"), /cargo tree --manifest-path src-tauri\/server\/Cargo.toml --locked --edges normal,build/);
-  assert.match(job("server"), /cargo test --manifest-path src-tauri\/server\/Cargo.toml --locked --no-default-features/);
-  assert.match(job("server"), /cargo test --manifest-path src-tauri\/server\/Cargo.toml --locked/);
+  assert.match(job("server"), /mbx test --manifest-path src-tauri\/server\/Cargo.toml --locked --no-default-features/);
+  assert.match(job("server"), /mbx test --manifest-path src-tauri\/server\/Cargo.toml --locked/);
   for (const result of ["failure", "cancelled", "skipped", ""]) assert.notEqual(gate({ SERVER_RESULT: result }), 0);
   assert.equal(gate({ FRONTEND_REQUIRED: "false", FRONTEND_RESULT: "skipped", RUST_REQUIRED: "false", RUST_RESULT: "skipped", SERVER_RESULT: "skipped" }), 0);
+});
+// Missing workspace paths produce empty caches; shared keys can restore the wrong target tree.
+// Running Cargo directly bypasses mbx; save opt-ins would expand the trusted write policy.
+test("Mr Boxington covers CI workspaces with separate caches and default-branch-only writes", () => {
+  const generations = new Set();
+  for (const [name, directories] of [["rust", ["src-tauri"]], ["server", ["src-tauri", "src-tauri/server"]]]) {
+    const source = job(name);
+    assert.doesNotMatch(source, /swatinem\/rust-cache|save-on-(?:pull-request|protected-branch|workflow-dispatch)/i);
+    assert.doesNotMatch(source, /(?:run: |^\s+)cargo (?:build|test|clippy)\b/m);
+    const setups = [...source.matchAll(/uses: jdx\/mr-boxington-action@([a-f0-9]{40})[^\n]*\n {8}with:\n {10}version: "([^"]+)"\n {10}working-directory: ([^\n]+)\n {10}cache-generation: ([^\n]+)/g)];
+    assert.deepEqual(setups.map((match) => match[3]), directories);
+    assert.ok(source.indexOf("dtolnay/rust-toolchain@") < source.indexOf("jdx/mr-boxington-action@"));
+    for (const setup of setups) {
+      assert.match(setup[2], /^\d+\.\d+\.\d+$/);
+      assert.ok(!generations.has(setup[4]), "each target tree needs its own restore namespace");
+      generations.add(setup[4]);
+    }
+  }
 });
 test("whitespace check rejects bad diffs even without an available base", () => {
   const root = mkdtempSync(join(tmpdir(), "kubecove-ci-whitespace-"));
