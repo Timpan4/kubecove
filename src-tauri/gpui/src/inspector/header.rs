@@ -8,11 +8,9 @@ use gpui_kit::component::select::Select;
 use gpui_kit::{Context, FontWeight, div, prelude::*, px};
 
 impl Inspector {
-    /// `compact` shows the menu button that opens the navigation drawer.
-    pub(super) fn header(&self, cx: &mut Context<Self>, compact: bool) -> impl IntoElement {
-        let dirty = self.dirty(cx);
-        let location = match self.page {
-            Page::Overview => self.workspace_name.clone(),
+    pub(super) fn shell_title(&self) -> String {
+        match self.page {
+            Page::Overview => self.workspace_name.to_string(),
             Page::Resources | Page::ClusterOverview => "Resources".into(),
             Page::Incidents => "Incident Cockpit".into(),
             Page::PortForwards => "Port Forwards".into(),
@@ -21,7 +19,13 @@ impl Inspector {
             Page::GitOps => self.gitops_location().into(),
             Page::Helm => "Helm Releases".into(),
             Page::Namespaces => "Namespaces".into(),
-        };
+        }
+    }
+
+    /// `compact` shows the menu button that opens the navigation drawer.
+    pub(super) fn header(&self, cx: &mut Context<Self>, compact: bool) -> impl IntoElement {
+        let dirty = self.dirty(cx);
+        let location = self.shell_title();
         div()
             .flex()
             .flex_none()

@@ -184,6 +184,7 @@ impl Inspector {
                 let selected = node.target == self.page && node.target != Page::Resources;
                 let target = node.target;
                 let custom = node.label == "Custom Resources";
+                let focus = self.sidebar_tree.focus_handle(node.label, cx);
                 vec![
                     self.tree_row(
                         SharedString::from(format!("nav:{}", node.label)),
@@ -193,15 +194,23 @@ impl Inspector {
                         selected,
                         true,
                     )
-                    .on_click(cx.listener(move |this, _, window, cx| match target {
-                        Page::Resources if custom => {
-                            this.live.custom_open = !this.live.custom_open;
-                            cx.notify();
-                        }
-                        Page::Resources => this.select_namespace(None, window, cx),
-                        Page::ClusterOverview => this.open_cluster_overview(window, cx),
-                        Page::Rbac => this.open_rbac(None, window, cx),
-                        page => this.open_page(page, cx),
+                    .track_focus(&focus)
+                    .tab_index(0)
+                    .on_key_down(cx.listener(
+                        move |this, event: &gpui_kit::KeyDownEvent, window, cx| {
+                            if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                                cx.stop_propagation();
+                                this.activate_navigation(target, custom, window, cx);
+                            } else if custom
+                                && matches!(event.keystroke.key.as_str(), "left" | "right")
+                            {
+                                this.live.custom_open = event.keystroke.key == "right";
+                                cx.notify();
+                            }
+                        },
+                    ))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.activate_navigation(target, custom, window, cx);
                     }))
                     .test_support()
                     .into_any_element(),
@@ -210,8 +219,30 @@ impl Inspector {
             .collect()
     }
 
-    /// The compact-width drawer, `WorkspaceSidebar`'s `SheetContent`. Any click in
-    /// the panel that reaches it closes the drawer, after the clicked row acts.
+    fn activate_navigation(
+        &mut self,
+        target: Page,
+        custom: bool,
+        window: &mut gpui_kit::Window,
+        cx: &mut Context<Self>,
+    ) {
+        if custom {
+            self.live.custom_open = !self.live.custom_open;
+            cx.notify();
+            return;
+        }
+        if self.can_leave(cx) {
+            self.navigation_open = false;
+        }
+        match target {
+            Page::Resources => self.select_namespace(None, window, cx),
+            Page::ClusterOverview => self.open_cluster_overview(window, cx),
+            Page::Rbac => self.open_rbac(None, window, cx),
+            page => self.open_page(page, cx),
+        }
+    }
+
+    /// The compact-width drawer, `WorkspaceSidebar`'s `SheetContent`.
     pub(super) fn navigation_drawer(&self, cx: &mut Context<Self>) -> AnyElement {
         div()
             .id("workspace-navigation")
@@ -245,10 +276,6 @@ impl Inspector {
                     .relative()
                     .h_full()
                     .bg(Tokens::background())
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.navigation_open = false;
-                        cx.notify();
-                    }))
                     .child(self.sidebar(cx, DRAWER_WIDTH)),
             )
             .into_any_element()

@@ -91,6 +91,8 @@
         { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
         { "action": "expectRestorePrompt", "visible": true, "count": 1 },
         { "action": "restorePromptControl", "control": "Start saved" },
+        { "action": "expectRestorePrompt", "visible": false },
+        { "action": "openPage", "page": "Port Forwards" },
         { "action": "expectForwardState", "target": "Service/payments-api:80", "local": "18081", "status": "listening", "resolved": "payments-api-7d9c9b7f8d-k2r9p:8080", "count": 1 },
         { "action": "expectRestorePrompt", "visible": false }
       ]

@@ -38,7 +38,7 @@ export async function logRowAndRestoreAction(page: Page, step: Step): Promise<vo
             await prompt.waitFor();
             if (step.count !== undefined) {
                 const text = `This workspace has ${step.count} saved Service ${step.count === 1 ? "forward" : "forwards"} ready to start.`;
-                if (!(await prompt.textContent())?.includes(text)) throw new Error("Wrong restore prompt count");
+                await prompt.getByText(text, { exact: true }).waitFor();
             }
             break;
         }

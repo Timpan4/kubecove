@@ -80,9 +80,11 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             window.press("secondary-a", cx);
             window.input(string(step, "value"), cx);
         }
-        // Expectations on rows mean rendered in the table, possibly scrolled out of
-        // view, as Playwright's `visible` state does.
-        "expectResource" => assert!(window.try_find(row(step)).is_some()),
+        "expectResource" => {
+            let target = row(step);
+            reveal(window, "resources", &target, cx);
+            assert!(window.try_find(target).is_some());
+        }
         "openResource" => {
             let row = row(step);
             reveal(window, "resources", &row, cx);

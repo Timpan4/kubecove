@@ -56,7 +56,7 @@ pub(super) struct TreeState {
 }
 
 impl TreeState {
-    fn focus_handle(&self, path: &str, cx: &mut App) -> FocusHandle {
+    pub(super) fn focus_handle(&self, path: &str, cx: &mut App) -> FocusHandle {
         self.focus
             .borrow_mut()
             .entry(path.to_owned())
@@ -114,6 +114,9 @@ impl Inspector {
     /// Activates a row the way a click does. Enter and Space select without
     /// toggling, as the web's `selectNode` does.
     fn activate_row(&mut self, row: RowTarget, window: &mut Window, cx: &mut Context<Self>) {
+        if self.can_leave(cx) {
+            self.navigation_open = false;
+        }
         let RowTarget {
             path: target,
             label,

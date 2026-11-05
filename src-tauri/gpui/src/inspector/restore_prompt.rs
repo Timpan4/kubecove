@@ -66,11 +66,14 @@ impl Inspector {
                     .items_center()
                     .gap(px(6.))
                     .aria_label("Auto-start saved port forwards")
-                    .on_click(cx.listener(|this, _, _, cx| {
+                    .on_click(cx.listener(|this, _, window, cx| {
                         let auto_start =
                             &mut this.persisted.preferences.auto_start_saved_port_forwards;
                         *auto_start = !*auto_start;
                         this.save_preferences(cx);
+                        if this.persisted.preferences.auto_start_saved_port_forwards {
+                            this.start_restore_prompt(window, cx);
+                        }
                         cx.notify();
                     }))
                     .child(
@@ -99,6 +102,7 @@ impl Inspector {
                     .id("restore-prompt-review")
                     .test_support()
                     .aria_label("Review")
+                    .child(ui::icon("eye", 12., Tokens::foreground()))
                     .child(ui::xs("Review"))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.open_page(Page::PortForwards, cx);

@@ -170,9 +170,11 @@ fn a_failed_incident_refresh_preserves_rows_and_exposes_the_error(cx: &mut TestA
             window.try_find("incidents-refresh").is_some(),
             "stale incident controls must remain usable"
         );
-        assert!(window.try_find("surface-error").is_some());
+        assert!(window.try_find("Incident refresh failed").is_some());
+        window.click("Incident refresh failed:detail", cx);
+        window.render_frame(cx);
         assert_eq!(
-            window.find("surface-error").description(),
+            window.find("Incident refresh failed:technical").label(),
             Some("Page refresh refused")
         );
     })
@@ -181,7 +183,7 @@ fn a_failed_incident_refresh_preserves_rows_and_exposes_the_error(cx: &mut TestA
     click(cx, handle, "incidents-refresh");
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
-        assert!(window.try_find("surface-error").is_none());
+        assert!(window.try_find("Incident refresh failed").is_none());
     })
     .unwrap();
 }

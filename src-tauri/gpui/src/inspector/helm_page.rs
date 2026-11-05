@@ -336,11 +336,11 @@ impl Inspector {
             Item::Header => dui::frame_header("package", "Helm", Vec::new()).pt(px(20.)),
             Item::Status => div().pt(px(16.)).child(match &self.helm_page.load {
                 HelmLoad::Failed(error) => {
-                    surface::failed("Helm releases unavailable", error.clone())
+                    self.page_failure("Helm releases unavailable", error.clone(), cx)
                 }
                 _ => surface::loading(),
             }),
-            Item::Summary => self.helm_summary().pt(px(16.)),
+            Item::Summary => self.helm_summary(cx).pt(px(16.)),
             Item::Top => self.helm_top(cx).pt(px(16.)),
             Item::Rows(row) => self.helm_row(row, cx),
             Item::Details => self.helm_details_card(cx).pt(px(16.)),
@@ -351,7 +351,7 @@ impl Inspector {
             .into_any_element()
     }
 
-    fn helm_summary(&self) -> Div {
+    fn helm_summary(&self, cx: &mut Context<Self>) -> Div {
         let page = &self.helm_page;
         let HelmLoad::Ready(data) = &page.load else {
             return div();
@@ -389,7 +389,7 @@ impl Inspector {
                 page.layout.summary_columns,
             ))
             .when_some(page.refresh_error.clone(), |column, error| {
-                column.child(surface::failed("Helm refresh failed", error))
+                column.child(self.page_failure("Helm refresh failed", error, cx))
             })
             .when(!data.warnings.is_empty(), |column| {
                 column.child(helm_card::alert(

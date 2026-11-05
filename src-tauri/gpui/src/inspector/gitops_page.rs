@@ -250,8 +250,8 @@ impl Inspector {
         let last = index + 1 == self.gitops_items();
         let item = match self.gitops_item(index) {
             Item::Header => self.gitops_header(cx).pt(px(20.)),
-            Item::Status => self.gitops_status().pt(px(16.)),
-            Item::Summary => self.gitops_summary().pt(px(16.)),
+            Item::Status => self.gitops_status(cx).pt(px(16.)),
+            Item::Summary => self.gitops_summary(cx).pt(px(16.)),
             Item::Top => self.gitops_top(cx).pt(px(16.)),
             Item::Rows(row) => self.gitops_row(row, cx),
         };
@@ -283,9 +283,9 @@ impl Inspector {
         dui::frame_header("git-branch", "GitOps", actions)
     }
 
-    fn gitops_status(&self) -> Div {
+    fn gitops_status(&self, cx: &mut Context<Self>) -> Div {
         let body = match (self.gitops.inventory(), self.gitops.error()) {
-            (_, Some(error)) => super::surface::failed("GitOps data unavailable", error.to_owned()),
+            (_, Some(error)) => self.page_failure("GitOps data unavailable", error.to_owned(), cx),
             (None, None) => super::surface::loading(),
             (Some(data), _) => match model::unavailable(data, self.gitops_page.focus) {
                 Some(unavailable) => dui::empty(
@@ -307,7 +307,7 @@ impl Inspector {
         div().child(body)
     }
 
-    fn gitops_summary(&self) -> Div {
+    fn gitops_summary(&self, cx: &mut Context<Self>) -> Div {
         let Some(data) = self.gitops.inventory() else {
             return div();
         };
@@ -331,13 +331,10 @@ impl Inspector {
             .flex_col()
             .gap(px(16.))
             .when_some(self.gitops.error().map(str::to_owned), |column, error| {
-                column.child(super::surface::failed("GitOps refresh failed", error))
+                column.child(self.page_failure("GitOps refresh failed", error, cx))
             })
             .when_some(data.list_error.clone(), |column, error| {
-                column.child(super::surface::failed(
-                    "Some GitOps resources could not load",
-                    error,
-                ))
+                column.child(self.page_failure("Some GitOps resources could not load", error, cx))
             })
             .child(summary_ui::summary(
                 "gitops",

@@ -454,7 +454,6 @@ impl Inspector {
                         feedback::Permission {
                             cluster: failed.resource.cluster.clone(),
                             target,
-                            source: "Resource details".into(),
                         }
                     });
                 self.friendly_failure(

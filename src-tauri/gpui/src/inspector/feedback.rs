@@ -30,12 +30,10 @@ pub(super) struct Feedback {
     origin: Option<Origin>,
 }
 
-/// The RBAC handoff a failed read can offer. `source` names the read in the
-/// Return button, as `permissionSourceLabel` does on the web.
+/// The RBAC handoff a failed read can offer.
 pub(super) struct Permission {
     pub cluster: String,
     pub target: RbacAccessReviewTarget,
-    pub source: String,
 }
 
 struct Origin {
@@ -48,6 +46,25 @@ struct Origin {
 }
 
 impl Inspector {
+    pub(super) fn page_failure(
+        &self,
+        title: &'static str,
+        message: String,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        self.friendly_failure(
+            title,
+            None,
+            &message,
+            ErrorContext {
+                fallback_title: Some(title),
+                ..Default::default()
+            },
+            None,
+            cx,
+        )
+    }
+
     /// Writes the detail and shows the panel's own result for 1200 ms, as
     /// `FriendlyError.svelte` does. GPUI's clipboard write cannot fail, so
     /// the failed label is reached only through `finish_detail_copy`.
@@ -178,7 +195,6 @@ impl Inspector {
                             this.inspect_permission(
                                 permission.cluster.clone(),
                                 permission.target.clone(),
-                                permission.source.clone(),
                                 window,
                                 cx,
                             );
@@ -197,7 +213,13 @@ impl Inspector {
             )
             .when(expanded, |panel| {
                 panel
-                    .child(ui::xs(technical).mt(px(8.)))
+                    .child(
+                        ui::xs(technical.clone())
+                            .id(SharedString::from(format!("{id}:technical")))
+                            .test_support()
+                            .aria_label(technical)
+                            .mt(px(8.)),
+                    )
                     .child(
                         ui::outline_button()
                             .id(SharedString::from(format!("{id}:copy")))
@@ -228,7 +250,6 @@ impl Inspector {
         &mut self,
         cluster: String,
         target: RbacAccessReviewTarget,
-        source: String,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -241,7 +262,7 @@ impl Inspector {
                 Detail::Ready(detail) => Some(detail.tab),
                 _ => None,
             },
-            source,
+            source: self.shell_title(),
         };
         self.open_rbac(None, window, cx);
         if self.page != Page::Rbac {

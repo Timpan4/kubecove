@@ -123,8 +123,19 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
         "replayPageReads" | "focusStalePage" => {}
         "expectPageText" => {
             if string(step, "text") == "Scripted page refresh failure" {
+                let title = [
+                    "Helm refresh failed",
+                    "RBAC refresh failed",
+                    "Incident refresh failed",
+                    "GitOps refresh failed",
+                ]
+                .into_iter()
+                .find(|title| window.try_find(*title).is_some())
+                .expect("refresh failure panel");
+                window.click(format!("{title}:detail"), cx);
+                window.render_frame(cx);
                 assert_eq!(
-                    window.find("surface-error").description(),
+                    window.find(format!("{title}:technical")).label(),
                     Some(string(step, "text"))
                 );
             } else {

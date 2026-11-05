@@ -128,14 +128,6 @@ impl Inspector {
                 .border_1()
                 .border_color(Tokens::border())
                 .rounded(px(6.))
-                // Runs before the textarea sees Enter, so Cmd or Ctrl-Enter runs
-                // instead of inserting a line. `secondary` is Cmd on macOS, Ctrl elsewhere.
-                .capture_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
-                    if event.keystroke.key == "enter" && event.keystroke.modifiers.secondary(cx) {
-                        cx.stop_propagation();
-                        this.run_custom(key_container.clone(), key_argv.clone(), window, cx);
-                    }
-                }))
                 .child(ui::muted(ui::xs("Custom command")))
                 .child(ui::muted(ui::xs("Container")))
                 .child(
@@ -144,7 +136,25 @@ impl Inspector {
                         .h(px(28.)),
                 )
                 .child(ui::muted(ui::xs("Arguments, one per line")))
-                .child(Textarea::new(&form.argv).aria_label("Exec arguments"))
+                .child(
+                    div()
+                        .capture_key_down(cx.listener(
+                            move |this, event: &KeyDownEvent, window, cx| {
+                                if event.keystroke.key == "enter"
+                                    && event.keystroke.modifiers.secondary(cx)
+                                {
+                                    cx.stop_propagation();
+                                    this.run_custom(
+                                        key_container.clone(),
+                                        key_argv.clone(),
+                                        window,
+                                        cx,
+                                    );
+                                }
+                            },
+                        ))
+                        .child(Textarea::new(&form.argv).aria_label("Exec arguments")),
+                )
                 .child(ui::muted(ui::xs("Passed as-is. No shell parsing.")))
                 .child(
                     div()

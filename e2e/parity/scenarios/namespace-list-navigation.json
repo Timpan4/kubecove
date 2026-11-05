@@ -66,6 +66,8 @@
         { "action": "openNavigationDrawer" },
         { "action": "expectNavigationDrawer", "open": true },
         { "action": "expectSidebarRow", "path": ["Workloads"], "visible": true, "selected": false },
+        { "action": "sidebarToggle", "path": ["Workloads"] },
+        { "action": "expectNavigationDrawer", "open": true },
         { "action": "sidebarSelect", "path": ["Workloads", "Deployment"] },
         { "action": "expectNavigationDrawer", "open": false },
         { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },

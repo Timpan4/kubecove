@@ -250,16 +250,16 @@ impl Inspector {
         let content = match &page.details.details {
             Load::Loading => pending("Loading Helm release details..."),
             Load::Failed(error) => {
-                div().child(surface::failed("Helm details unavailable", error.clone()))
+                div().child(self.page_failure("Helm details unavailable", error.clone(), cx))
             }
-            Load::Ready(details) => self.helm_details_body(details),
+            Load::Ready(details) => self.helm_details_body(details, cx),
         }
         .children(
             page.details
                 .errors
                 .iter()
                 .flatten()
-                .map(|error| surface::failed("Helm refresh failed", error.clone())),
+                .map(|error| self.page_failure("Helm refresh failed", error.clone(), cx)),
         );
         div().child(
             div()
@@ -278,7 +278,7 @@ impl Inspector {
         )
     }
 
-    fn helm_details_body(&self, details: &Details) -> Div {
+    fn helm_details_body(&self, details: &Details, cx: &mut Context<Self>) -> Div {
         let page = &self.helm_page;
         let summary = &details.data.summary;
         let values = &details.data.values_summary;
@@ -405,7 +405,7 @@ impl Inspector {
                         )
                     }),
             )
-            .child(self.helm_reconciliation(left));
+            .child(self.helm_reconciliation(left, cx));
         let yaml = div()
             .min_w_0()
             .flex_1()
@@ -442,7 +442,7 @@ impl Inspector {
         }
     }
 
-    fn helm_reconciliation(&self, width: f32) -> Div {
+    fn helm_reconciliation(&self, width: f32, cx: &mut Context<Self>) -> Div {
         let state = &self.helm_page.details.reconciliation;
         let totals = match state {
             Load::Ready(data) => Some(format!(
@@ -468,10 +468,9 @@ impl Inspector {
             });
         let body = match state {
             Load::Loading => pending("Loading reconciliation..."),
-            Load::Failed(error) => div().child(surface::failed(
-                "Helm reconciliation unavailable",
-                error.clone(),
-            )),
+            Load::Failed(error) => {
+                div().child(self.page_failure("Helm reconciliation unavailable", error.clone(), cx))
+            }
             Load::Ready(data) => {
                 let rows = data
                     .resources

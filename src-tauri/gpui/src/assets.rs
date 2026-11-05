@@ -42,6 +42,7 @@ const ICONS: &[(&str, &[u8])] = embedded![
     "download",
     "earth",
     "external-link",
+    "eye",
     "file-code-corner",
     "file-cog",
     "folder",

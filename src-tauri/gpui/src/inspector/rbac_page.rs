@@ -315,7 +315,7 @@ impl Inspector {
         let body = match &self.rbac.load {
             RbacLoad::Loading => surface::loading(),
             RbacLoad::Failed(message) => {
-                surface::failed("RBAC inspection unavailable", message.clone())
+                self.page_failure("RBAC inspection unavailable", message.clone(), cx)
             }
             RbacLoad::Ready(_) => self.rbac_body(cx).into_any_element(),
         };
@@ -328,7 +328,7 @@ impl Inspector {
                 .flex_col()
                 .gap(px(12.))
                 .when_some(self.rbac.refresh_error.clone(), |body, error| {
-                    body.child(surface::failed("RBAC refresh failed", error))
+                    body.child(self.page_failure("RBAC refresh failed", error, cx))
                 })
                 .child(body),
         )

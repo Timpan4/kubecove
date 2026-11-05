@@ -32,6 +32,7 @@ export async function feedbackAction(page: Page, step: Step): Promise<void> {
             const copyName = `Copy resource name: ${step.name}`;
             await page.evaluate(clipboardRecorder);
             await page.getByRole("row").filter({ hasText: step.namespace })
+                .filter({ has: page.getByText(step.kind, { exact: true }) })
                 .filter({ has: page.getByRole("button", { name: copyName, exact: true }) })
                 .getByRole("button", { name: copyName, exact: true })
                 .click();

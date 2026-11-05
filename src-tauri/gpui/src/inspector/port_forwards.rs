@@ -143,7 +143,7 @@ impl Inspector {
     pub(super) fn port_forwards_page(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let body: AnyElement = match &self.sessions.load {
             None => surface::loading(),
-            Some(Err(error)) => surface::failed("Live sessions unavailable", error.clone()),
+            Some(Err(error)) => self.page_failure("Live sessions unavailable", error.clone(), cx),
             Some(Ok(sessions)) => {
                 let (forwards, exec) = sessions.for_context(&self.scope.context);
                 let counts = (forwards.len(), exec.len());

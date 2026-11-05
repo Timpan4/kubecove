@@ -582,6 +582,7 @@ export function res(kindName: string, name: string, namespace: string | null, he
 		namespace,
 		age: namespace === "payments" ? "18d" : "12d",
 		apiVersion: extra.apiVersion ?? (kindName === "Deployment" ? "apps/v1" : "v1"),
+		plural: kinds.find((kind) => kind.kind === kindName)?.plural,
 		namespaced: namespace !== null,
 		health,
 		healthAssessment: extra.healthAssessment ?? mockHealthAssessment(assessmentState, health),

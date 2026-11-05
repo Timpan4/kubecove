@@ -19,7 +19,8 @@ use kubecove_lib::models::{
     AggregatedLogStreamRequest, LogLineSource, PodLogStreamRequest, ResourceDetailsFull,
     StreamMessage, StreamStatus,
 };
-use std::collections::{HashSet, VecDeque};
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum LogStatus {
@@ -62,6 +63,7 @@ pub(super) struct LogsState {
     toggled: HashSet<u64>,
     /// The buffer index whose Copy line button last copied its raw text.
     pub copied_line: Option<u64>,
+    pub row_focus: RefCell<HashMap<u64, gpui_kit::FocusHandle>>,
     pub paused: bool,
     pending: VecDeque<(String, Option<LogLineSource>)>,
     pub unseen: usize,
@@ -162,6 +164,7 @@ impl LogsState {
             expand_all: false,
             toggled: HashSet::new(),
             copied_line: None,
+            row_focus: RefCell::new(HashMap::new()),
             paused: false,
             pending: VecDeque::new(),
             unseen: 0,
@@ -237,6 +240,7 @@ impl LogsState {
         let next = &self.visible;
         // Evicted lines leave the oldest end; new lines arrive at the newest end.
         let first = self.buffer.first_index();
+        self.row_focus.get_mut().retain(|index, _| *index >= first);
         let evicted = previous.iter().filter(|index| **index < first).count();
         if !self.latest_first {
             let kept = &previous[evicted..];
@@ -284,6 +288,7 @@ impl LogsState {
     /// `onClear` and `resetLogLines`.
     pub fn clear(&mut self) {
         self.buffer.clear();
+        self.row_focus.get_mut().clear();
         self.pending.clear();
         self.unseen = 0;
         self.visible.clear();

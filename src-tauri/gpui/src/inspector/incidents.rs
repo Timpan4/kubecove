@@ -370,7 +370,7 @@ impl Inspector {
     ) -> impl IntoElement {
         let body: AnyElement = match &self.incidents.load {
             None => surface::loading(),
-            Some(Err(error)) => surface::failed("Incidents unavailable", error.clone()),
+            Some(Err(error)) => self.page_failure("Incidents unavailable", error.clone(), cx),
             Some(Ok(summary)) => {
                 let warnings = summary.warnings.join(" ");
                 let state = &self.incidents;
@@ -425,7 +425,7 @@ impl Inspector {
                     .gap(px(12.))
                     .child(self.overview_section(cx))
                     .when_some(self.incidents.refresh_error.clone(), |body, error| {
-                        body.child(surface::failed("Incident refresh failed", error))
+                        body.child(self.page_failure("Incident refresh failed", error, cx))
                     })
                     .when(!warnings.is_empty(), |body| {
                         body.child(

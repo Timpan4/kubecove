@@ -564,6 +564,13 @@ impl Render for Inspector {
         div()
             .relative()
             .size_full()
+            .capture_key_down(cx.listener(|this, event: &gpui_kit::KeyDownEvent, _, cx| {
+                if this.navigation_open && event.keystroke.key == "escape" {
+                    this.navigation_open = false;
+                    cx.stop_propagation();
+                    cx.notify();
+                }
+            }))
             .flex()
             .gap(px(8.))
             .px(px(8.))
