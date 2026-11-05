@@ -398,7 +398,7 @@ impl Inspector {
                     .size_4()
                     .text_color(Tokens::muted_foreground()),
             )
-            .bg(Tokens::background().opacity(0.7))
+            .bg(Tokens::input().opacity(0.3))
             .text_xs()
             .w_full()
     }

@@ -69,15 +69,33 @@ impl Inspector {
         let mut body = div()
             .flex()
             .flex_col()
-            .gap(px(8.))
-            .child(ui::medium(ui::sm("Latency report")))
-            .child(ui::muted(ui::xs(row.description)))
-            .child(ui::xs(format!("Native {} events.", events.len())))
-            .child(ui::medium(ui::xs("Native command round trips")))
-            .child(ui::muted(ui::xs("Name · Count · p50 · p95 · Max")));
+            .gap(px(16.))
+            .mt(px(16.))
+            .child(ui::muted(ui::xs(format!(
+                "Native {} events.",
+                events.len()
+            ))));
+        let mut table =
+            div()
+                .p(px(12.))
+                .rounded(px(8.))
+                .border_1()
+                .border_color(Tokens::border())
+                .child(
+                    div()
+                        .flex()
+                        .py(px(8.))
+                        .border_b_1()
+                        .border_color(Tokens::border())
+                        .children(["NAME", "COUNT", "P50", "P95", "MAX"].map(|label| {
+                            ui::semibold(ui::muted(ui::xs(label))).flex_1().px(px(12.))
+                        })),
+                );
         if groups.is_empty() {
-            body = body.child(
-                ui::muted(ui::xs("No timed native commands yet."))
+            table = table.child(
+                ui::muted(ui::sm("No timed native commands yet."))
+                    .py(px(32.))
+                    .text_center()
                     .id("latency-empty")
                     .test_support()
                     .aria_label("No timed native commands yet."),
@@ -93,13 +111,30 @@ impl Inspector {
                 percentile(95),
                 values[n - 1]
             );
-            body = body.child(
-                ui::xs(text.clone())
+            let cells = [
+                name.to_owned(),
+                n.to_string(),
+                format!("{:.2} ms", percentile(50)),
+                format!("{:.2} ms", percentile(95)),
+                format!("{:.2} ms", values[n - 1]),
+            ];
+            table = table.child(
+                div()
+                    .flex()
+                    .py(px(8.))
                     .id(SharedString::from(format!("latency-command:{name}")))
                     .test_support()
-                    .aria_label(text),
+                    .aria_label(text)
+                    .children(
+                        cells.map(|value| ui::xs(value).flex_1().min_w_0().truncate().px(px(12.))),
+                    ),
             );
         }
+        body = body.child(
+            div()
+                .child(ui::medium(ui::xs("Native command round trips")))
+                .child(table.mt(px(8.))),
+        );
         body = body.child(ui::medium(ui::xs("Backend timings")));
         for event in &self.settings.diagnostics.events {
             body = body.child(ui::xs(format!(
@@ -125,6 +160,7 @@ impl Inspector {
                     .id("latency-refresh")
                     .test_support()
                     .aria_label("Refresh")
+                    .child(ui::icon("refresh-ccw", 14., Tokens::foreground()))
                     .child("Refresh")
                     .on_click(cx.listener(|this, _, _, cx| this.refresh_diagnostics(false, cx))),
             )
@@ -133,6 +169,7 @@ impl Inspector {
                     .id("latency-clear")
                     .test_support()
                     .aria_label("Clear")
+                    .child(ui::icon("trash-2", 14., Tokens::foreground()))
                     .child("Clear")
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.timings.clear();
@@ -141,10 +178,11 @@ impl Inspector {
                     })),
             )
             .child(
-                button(Variant::Outline, 24., false)
+                button(Variant::Default, 24., false)
                     .id("latency-copy")
                     .test_support()
                     .aria_label("Copy")
+                    .child(ui::icon("copy", 14., Tokens::primary_foreground()))
                     .child("Copy")
                     .on_click(cx.listener(|this, _, _, cx| {
                         let backend: Vec<_> = this.settings.diagnostics.events.iter().map(|event|
@@ -164,7 +202,22 @@ impl Inspector {
             .border_1()
             .border_color(Tokens::border())
             .bg(Tokens::card())
-            .child(div().flex().justify_between().child(body).child(controls))
+            .child(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .items_start()
+                    .justify_between()
+                    .gap(px(12.))
+                    .child(
+                        div()
+                            .min_w_0()
+                            .child(ui::medium(ui::sm("Latency report")))
+                            .child(ui::muted(ui::xs(row.description)).mt(px(4.))),
+                    )
+                    .child(controls),
+            )
+            .child(body)
             .into_any_element()
     }
 }

@@ -89,9 +89,9 @@ fn field(label: &str, input: impl IntoElement, help: &str) -> Div {
         .flex()
         .flex_col()
         .gap(px(8.))
-        .child(ui::medium(ui::xs(label.to_owned())))
+        .child(ui::medium(ui::xs(label.to_owned())).line_height(px(16.5)))
         .child(input)
-        .child(ui::muted(ui::xs(help.to_owned())))
+        .child(ui::muted(ui::xs(help.to_owned())).line_height(px(18.)))
 }
 
 impl Inspector {
@@ -166,57 +166,70 @@ impl Inspector {
             .gap(px(12.))
             .child(
                 ui::card()
-                    .p(px(12.))
+                    .px(px(8.))
+                    .py(px(6.))
                     .flex()
                     .flex_row()
                     .items_start()
-                    .gap(px(8.))
-                    .child(ui::icon("cable", 16., Tokens::foreground()))
+                    .gap(px(6.))
+                    .child(ui::icon("cable", 14., Tokens::foreground()).mt(px(2.)))
                     .child(
                         div()
                             .flex()
                             .flex_col()
-                            .gap(px(4.))
-                            .child(ui::medium(ui::xs("Guarded port-forward")))
-                            .child(ui::muted(ui::xs(format!(
-                                "Target: {}/{} ({})",
-                                resource.namespace.as_deref().unwrap_or_default(),
-                                resource.name,
-                                resource.kind
-                            )))),
+                            .gap(px(2.))
+                            .child(ui::medium(ui::text("Guarded port-forward", 12., 19.5)))
+                            .child(
+                                ui::muted(ui::xs(format!(
+                                    "Target: {}/{} ({})",
+                                    resource.namespace.as_deref().unwrap_or_default(),
+                                    resource.name,
+                                    resource.kind
+                                )))
+                                .line_height(px(19.5)),
+                            ),
                     ),
             )
-            .child(field(
-                if service { "Service port" } else { "Pod port" },
-                if let Some(picker) = &detail.forward.service_port {
-                    Select::new(picker)
-                        .id("forward-service-port")
-                        .h(px(28.))
-                        .into_any_element()
-                } else {
-                    Input::new(&detail.forward.remote)
-                        .h(px(28.))
-                        .id("forward-remote")
-                        .aria_label("Remote port")
-                        .into_any_element()
-                },
-                if detail.forward.service_port.is_some() {
-                    "TCP ports parsed from Service YAML."
-                } else {
-                    "Remote TCP port to forward."
-                },
-            ))
-            .child(field(
-                "Local port",
-                Input::new(&detail.forward.local)
-                    .h(px(28.))
-                    .id("forward-local")
-                    .aria_label("Local port"),
-                "Optional. Must be 1024 or higher when set.",
-            ))
             .child(
                 div()
                     .flex()
+                    .flex_col()
+                    .gap(px(16.))
+                    .child(field(
+                        if service { "Service port" } else { "Pod port" },
+                        if let Some(picker) = &detail.forward.service_port {
+                            Select::new(picker)
+                                .id("forward-service-port")
+                                .h(px(28.))
+                                .into_any_element()
+                        } else {
+                            Input::new(&detail.forward.remote)
+                                .h(px(28.))
+                                .text_xs()
+                                .id("forward-remote")
+                                .aria_label("Remote port")
+                                .into_any_element()
+                        },
+                        if detail.forward.service_port.is_some() {
+                            "TCP ports parsed from Service YAML."
+                        } else {
+                            "Remote TCP port to forward."
+                        },
+                    ))
+                    .child(field(
+                        "Local port",
+                        Input::new(&detail.forward.local)
+                            .h(px(28.))
+                            .text_xs()
+                            .id("forward-local")
+                            .aria_label("Local port"),
+                        "Optional. Must be 1024 or higher when set.",
+                    )),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
                     .gap(px(8.))
                     .child(
                         button(Variant::Default, 28., self.sessions.busy)

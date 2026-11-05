@@ -261,18 +261,32 @@ impl Inspector {
             .border_1()
             .border_color(Tokens::border())
             .bg(Tokens::card())
-            .child(ui::medium(ui::sm(row.title)))
-            .child(ui::muted(ui::xs(row.description)))
             .child(
-                button(Variant::Outline, 24., false)
-                    .id("reset-kind-order")
-                    .test_support()
-                    .aria_label("Reset")
-                    .child("Reset")
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.persisted.preferences.resource_kind_lanes = KindLanes::default();
-                        this.save_preferences(cx);
-                    })),
+                div()
+                    .flex()
+                    .items_start()
+                    .justify_between()
+                    .gap(px(16.))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(ui::medium(ui::sm(row.title)))
+                            .child(ui::muted(ui::sm(row.description)).mt(px(4.))),
+                    )
+                    .child(
+                        button(Variant::Ghost, 24., false)
+                            .id("reset-kind-order")
+                            .test_support()
+                            .aria_label("Reset")
+                            .child(ui::icon("rotate-ccw", 14., Tokens::foreground()))
+                            .child("Reset")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.persisted.preferences.resource_kind_lanes =
+                                    KindLanes::default();
+                                this.save_preferences(cx);
+                            })),
+                    ),
             )
             .child(
                 div().flex().gap(px(8.)).children(
@@ -287,8 +301,15 @@ impl Inspector {
                             .flex()
                             .flex_col()
                             .flex_1()
+                            .min_w_0()
+                            .min_h(px(96.))
+                            .p(px(8.))
+                            .rounded(px(8.))
+                            .border_1()
+                            .border_color(Tokens::border())
+                            .bg(Tokens::background())
                             .gap(px(6.))
-                            .child(ui::medium(ui::sm(title)))
+                            .child(ui::medium(ui::sm(title)).mb(px(4.)))
                             .children(kinds.iter().enumerate().map(|(position, kind)| {
                                 let target = kind.clone();
                                 div()
@@ -298,19 +319,32 @@ impl Inspector {
                                     .flex()
                                     .gap(px(4.))
                                     .items_center()
+                                    .h(px(34.))
+                                    .px(px(8.))
+                                    .rounded(px(8.))
+                                    .border_1()
+                                    .border_color(Tokens::border())
+                                    .bg(Tokens::card())
                                     .child(
                                         ui::sm(if kind == "*" {
                                             "All other kinds".to_owned()
                                         } else {
                                             kind.clone()
                                         })
-                                        .flex_1(),
+                                        .flex_1()
+                                        .min_w_0()
+                                        .truncate()
+                                        .when(kind == "*", |label| {
+                                            label.text_color(Tokens::muted_foreground())
+                                        }),
                                     )
                                     .children(
                                         [("Earlier", true), ("Later", false)].into_iter().map(
                                             |(label, earlier)| {
                                                 let target = target.clone();
-                                                button(Variant::Outline, 24., false)
+                                                button(Variant::Ghost, 24., false)
+                                                    .w(px(24.))
+                                                    .p_0()
                                                     .id(SharedString::from(format!(
                                                         "kind-order:{target}:{label}"
                                                     )))

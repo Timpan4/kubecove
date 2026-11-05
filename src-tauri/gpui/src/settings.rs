@@ -163,7 +163,7 @@ pub const ROWS: &[Row] = &[
     row(
         C::Appearance,
         "Resource group order",
-        "Move kinds earlier or later to order Resource Table groups. Column sorting still orders rows inside each group.",
+        "Use the arrow buttons to move kinds between lanes or reorder the Resource Table groups. Column sorting still orders rows inside each group.",
         Section,
         None,
     ),

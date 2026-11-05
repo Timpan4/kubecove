@@ -54,12 +54,16 @@ pub(super) fn navigator(view: &ArgoView, state: &ArgoTab, cx: &mut Context<Inspe
                 .justify_between()
                 .gap(px(8.))
                 .child(
-                    div().child(caps("Change navigator")).child(
-                        ui::muted(ui::xs(
-                            "Focus one reconciliation item or keep the complete snapshot.",
-                        ))
-                        .mt(px(2.)),
-                    ),
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .child(caps("Change navigator"))
+                        .child(
+                            ui::muted(ui::xs(
+                                "Focus one reconciliation item or keep the complete snapshot.",
+                            ))
+                            .mt(px(2.)),
+                        ),
                 )
                 .child(ui::outline_badge(view.changes.len().to_string())),
         )

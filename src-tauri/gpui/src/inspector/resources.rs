@@ -51,11 +51,8 @@ fn stat(label: &str, value: usize, tone: Option<Hsla>, active: bool) -> AnyEleme
         } else {
             Tokens::border()
         })
-        .bg(if active {
-            Tokens::primary().opacity(0.1)
-        } else {
-            Tokens::background().opacity(0.3)
-        })
+        // The outline button's `dark:bg-input/30` wins over its base background.
+        .bg(Tokens::input().opacity(0.3))
         // The button's `text-xs/relaxed` leading (1.625) also applies to the 10px label.
         .child(ui::caps(label, 10.).line_height(px(16.25)).truncate())
         .child(

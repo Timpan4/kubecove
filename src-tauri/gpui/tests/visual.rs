@@ -65,6 +65,34 @@ mod visual {
         cx.run_until_parked();
     }
 
+    /// Keep the visible context when revealing a control, as browser automation does.
+    fn reveal_detail(window: &mut gpui_kit::Window, id: &str, cx: &mut gpui_kit::App) {
+        window.render_frame(cx);
+        let viewport = window.find("detail-body").bounds();
+        let target = window
+            .find(gpui_kit::ElementId::Name(id.to_owned().into()))
+            .bounds();
+        let delta = if target.top() < viewport.top() {
+            viewport.top() - target.top()
+        } else if target.bottom() > viewport.bottom() {
+            viewport.bottom() - target.bottom()
+        } else {
+            return;
+        };
+        let position = viewport.origin + point(px(4.), px(4.));
+        window.pointer_move(position, None, cx);
+        window.dispatch_event(
+            ScrollEvent {
+                position,
+                delta: ScrollDelta::Pixels(point(px(0.), delta)),
+                ..Default::default()
+            }
+            .to_platform_input(),
+            cx,
+        );
+        window.render_frame(cx);
+    }
+
     pub fn run() {
         let (Some(fixture), Some(out)) = (
             std::env::var_os("KUBECOVE_VISUAL_FIXTURE"),
@@ -144,25 +172,22 @@ mod visual {
                     });
                     if view == "argo-review" {
                         act(&mut cx, handle, |w, cx| {
-                            parity_scroll::reveal(w, "detail-body", "argo-operation:Sync", cx);
+                            reveal_detail(w, "argo-operation:Sync", cx);
                             w.click("argo-operation:Sync", cx);
-                        });
-                        act(&mut cx, handle, |w, cx| {
-                            parity_scroll::reveal(w, "detail-body", "argo-review", cx)
                         });
                     }
                     if view == "argo-desired" {
                         act(&mut cx, handle, |w, cx| {
-                            parity_scroll::reveal(w, "detail-body", "argo-view:Desired", cx);
+                            reveal_detail(w, "argo-view:Desired", cx);
                             w.click("argo-view:Desired", cx);
                         });
                     }
                     if view == "argo-connected" {
                         act(&mut cx, handle, |w, cx| {
-                            parity_scroll::reveal(w, "detail-body", "argo-view:Changes", cx);
+                            reveal_detail(w, "argo-view:Changes", cx);
                             w.click("argo-view:Changes", cx);
                             w.render_frame(cx);
-                            parity_scroll::reveal(w, "detail-body", "argo-diff:0", cx);
+                            reveal_detail(w, "argo-diff:0", cx);
                         });
                     }
                 }

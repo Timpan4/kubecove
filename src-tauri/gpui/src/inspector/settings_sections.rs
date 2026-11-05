@@ -30,22 +30,6 @@ fn panel(row: &'static Row) -> Observed {
         .bg(Tokens::card())
 }
 
-fn heading(row: &'static Row, controls: impl IntoElement) -> Div {
-    div()
-        .flex()
-        .items_start()
-        .justify_between()
-        .gap(px(12.))
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .child(ui::medium(ui::sm(row.title)))
-                .child(ui::muted(ui::xs(row.description)).mt(px(4.))),
-        )
-        .child(controls)
-}
-
 fn actions(labels: &[&'static str]) -> Div {
     div().flex().gap(px(8.)).children(
         labels
@@ -66,6 +50,8 @@ pub(super) fn section(row: &'static Row) -> AnyElement {
 
 fn table(headers: &[&'static str], empty: &'static str) -> Div {
     div()
+        .py(px(12.))
+        .px(px(12.))
         .rounded(px(8.))
         .border_1()
         .border_color(Tokens::border())
@@ -76,14 +62,15 @@ fn table(headers: &[&'static str], empty: &'static str) -> Div {
                 .gap(px(8.))
                 .px(px(12.))
                 .py(px(8.))
-                .bg(Tokens::muted().opacity(0.3))
+                .border_b_1()
+                .border_color(Tokens::border())
                 .children(
-                    headers
-                        .iter()
-                        .map(|header| ui::medium(ui::xs(*header)).flex_1()),
+                    headers.iter().map(|header| {
+                        ui::semibold(ui::muted(ui::xs(header.to_uppercase()))).flex_1()
+                    }),
                 ),
         )
-        .child(ui::muted(ui::xs(empty)).p(px(12.)))
+        .child(ui::muted(ui::sm(empty)).py(px(32.)).text_center())
 }
 
 fn report(row: &'static Row, interactions: bool) -> AnyElement {
@@ -135,23 +122,19 @@ fn report(row: &'static Row, interactions: bool) -> AnyElement {
             ));
     }
     panel(row)
-        .child(heading(
-            row,
-            disabled(
-                row,
-                actions(if interactions {
-                    &["Clear", "Copy"]
-                } else {
-                    &["Refresh", "Clear", "Copy"]
-                }),
-            ),
-        ))
-        .child(body)
         .child(
-            ui::muted(ui::xs(
-                row.unavailable.expect("report needs a host adapter"),
-            ))
-            .mt(px(12.)),
+            div()
+                .child(ui::medium(ui::sm(row.title)))
+                .child(ui::muted(ui::xs(row.description)).mt(px(4.))),
         )
+        .child(div().mt(px(12.)).child(disabled(
+            row,
+            actions(if interactions {
+                &["Clear", "Copy"]
+            } else {
+                &["Refresh", "Clear", "Copy"]
+            }),
+        )))
+        .child(body)
         .into_any_element()
 }
