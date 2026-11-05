@@ -5,7 +5,7 @@ import type { Step } from "./contract";
 type Identity = { kind: string; name: string; namespace: string };
 
 /** The table row for one resource, found by its name, kind and namespace. */
-function resourceRow(page: Page, step: Identity) {
+export function resourceRow(page: Page, step: Identity) {
 	return page.locator("tr").filter({ has: page.getByRole("button", { name: `Open resource ${step.name}`, exact: true }) }).filter({ has: page.getByText(step.kind, { exact: true }) }).filter({ has: page.getByText(step.namespace, { exact: true }) });
 }
 
