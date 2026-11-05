@@ -70,7 +70,7 @@
         { "action": "showSettingsSection", "section": "Kubeconfig" },
         { "action": "expectKubeconfigEnvVar", "value": "PARITY_KUBECONFIG" },
         { "action": "expectSettingsText", "value": "/controlled/parity.config" },
-        { "action": "clickSettingsButton", "label": "Remove kubeconfig path" },
+        { "action": "clickKubeconfigPathButton", "value": "/controlled/parity.config", "label": "Remove kubeconfig path" },
         { "action": "expectNoSettingsText", "value": "/controlled/parity.config" }
       ]
     },
@@ -85,6 +85,7 @@
         { "action": "clickSettingsButton", "label": "Connect" },
         { "action": "expectRemoteHost", "url": "http://127.0.0.1:43117" },
         { "action": "showSettingsSection", "section": "Kubeconfig" },
+        { "action": "expectNoSettingsText", "value": "Choose files" },
         { "action": "setKubeconfigEnvVar", "value": "PARITY_REMOTE_KUBECONFIG" },
         { "action": "addServerKubeconfigPath", "value": "/srv/parity-remote.yaml" },
         { "action": "expectSettingsText", "value": "/srv/parity-remote.yaml" },
@@ -95,6 +96,57 @@
         { "action": "expectKubeconfigEnvVar", "value": "PARITY_REMOTE_KUBECONFIG" },
         { "action": "expectSettingsText", "value": "/srv/parity-remote.yaml" },
         { "action": "expectNoSettingsText", "value": "parity-controlled-credential" }
+      ]
+    },
+    {
+      "id": "settings-kubeconfig.remote-paths-reorder-remove-labels",
+      "title": "Remote mode orders, removes and labels server kubeconfig sources, and the saved order survives reopening Settings",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "fillSettingsField", "field": "Server token", "value": "parity-controlled-credential" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "expectRemoteHost", "url": "http://127.0.0.1:43117" },
+        { "action": "showSettingsSection", "section": "Kubeconfig" },
+        { "action": "addServerKubeconfigPath", "value": "/srv/parity-remote.yaml" },
+        { "action": "addServerKubeconfigPath", "value": "/srv/parity-second.yaml" },
+        { "action": "expectKubeconfigPathBefore", "value": "/srv/parity-remote.yaml", "other": "/srv/parity-second.yaml" },
+        { "action": "clickKubeconfigPathButton", "value": "/srv/parity-second.yaml", "label": "Move kubeconfig path up" },
+        { "action": "expectKubeconfigPathBefore", "value": "/srv/parity-second.yaml", "other": "/srv/parity-remote.yaml" },
+        { "action": "toggleSetting", "setting": "Show kubeconfig source labels" },
+        { "action": "expectSetting", "setting": "Show kubeconfig source labels", "checked": false },
+        { "action": "clickKubeconfigPathButton", "value": "/srv/parity-second.yaml", "label": "Remove kubeconfig path" },
+        { "action": "expectNoSettingsText", "value": "/srv/parity-second.yaml" },
+        { "action": "closeSettings" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Kubeconfig" },
+        { "action": "expectSettingsText", "value": "/srv/parity-remote.yaml" },
+        { "action": "expectNoSettingsText", "value": "/srv/parity-second.yaml" },
+        { "action": "expectSetting", "setting": "Show kubeconfig source labels", "checked": false }
+      ]
+    },
+    {
+      "id": "settings-remote.header-badge-and-session",
+      "title": "The header badge names the connected host with its status tooltip, and Settings shows the server and grace period while connected",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "expectSettingsText", "value": "The token stays in native Rust memory until you disconnect or close the app." },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "fillSettingsField", "field": "Server token", "value": "parity-controlled-credential" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "expectSettingsText", "value": "Connected to http://127.0.0.1:43117." },
+        { "action": "expectSettingsText", "value": "Server 0.13.0. Session grace: 300 seconds." },
+        { "action": "expectRemoteHostTooltip", "value": "Cluster access runs on this remote host" },
+        { "action": "closeSettings" },
+        { "action": "expectRemoteHost", "url": "http://127.0.0.1:43117" },
+        { "action": "expectRemoteHostTooltip", "value": "Cluster access runs on this remote host" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "clickSettingsButton", "label": "Disconnect" },
+        { "action": "expectNoRemoteHost" },
+        { "action": "expectRuntimeEndpoint", "value": "local" }
       ]
     },
     {

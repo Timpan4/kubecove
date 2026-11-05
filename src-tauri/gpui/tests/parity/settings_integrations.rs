@@ -42,10 +42,34 @@ pub fn act(window: &mut Window, cx: &mut App, step: &Value) -> bool {
             );
         }
         "addServerKubeconfigPath" => {
-            locate::click_in(window, "page", "kubeconfig-paths-input".into(), cx);
+            locate::click_in(window, "page", "kubeconfig-server-path".into(), cx);
             window.press("secondary-a", cx);
             window.input(string(step, "value"), cx);
-            window.click("settings-button:Add pasted paths", cx);
+            locate::click_in(window, "page", "settings-button:Add server path".into(), cx);
+        }
+        "clickKubeconfigPathButton" => {
+            let id = format!(
+                "kubeconfig-path-button:{}:{}",
+                string(step, "label"),
+                string(step, "value")
+            );
+            locate::click_in(window, "page", id.into(), cx);
+        }
+        "expectKubeconfigPathBefore" => {
+            // A row above another has the smaller y origin.
+            let row = |path: &str| {
+                window
+                    .find(format!("kubeconfig-path:{path}"))
+                    .bounds()
+                    .origin
+                    .y
+            };
+            assert!(
+                row(string(step, "value")) < row(string(step, "other")),
+                "{} is not above {}",
+                string(step, "value"),
+                string(step, "other")
+            );
         }
         "expectMaskedToken" => {
             // GPUI Kit excludes password values from accessibility and test snapshots.

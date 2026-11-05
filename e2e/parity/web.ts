@@ -41,7 +41,7 @@ export async function action(page: Page, step: Step) {
         case "copyErrorDetail": await shellAction(page, step); break;
         case "expectForegroundLoading": case "expectFriendlyError": case "inspectRequiredPermission": case "expectPermissionTarget": case "returnToSource": case "copyResourceName": case "expectCopyToast": case "dismissCopyToast": await feedbackAction(page, step); break;
         case "toggleResourcePin": case "expectWorkspaceEntry": case "openWorkspaceEntry": await shellAction(page, step); break;
-        case "reorderKindKey": case "resetKindOrder": case "expectRemoteHost": await shellAction(page, step); break;
+        case "reorderKindKey": case "resetKindOrder": case "expectRemoteHost": case "expectRemoteHostTooltip": case "expectNoRemoteHost": await shellAction(page, step); break;
         case "configureShellRead": case "retryLauncher": case "expectLauncherRetry": await shellAction(page, step); break;
         case "expectActivePage": case "expectGitOpsSelection": await shellAction(page, step); break;
         case "overviewOperation": case "overviewIncident": case "reviewIncidentAction": await shellAction(page, step); break;
@@ -322,7 +322,7 @@ export async function action(page: Page, step: Step) {
 		case "expectSettingRow": await page.getByText(step.title, { exact: true }).first().waitFor(); break;
 		case "expectNoSettingRow": if (await page.getByText(step.title, { exact: true }).count()) throw new Error(`${step.title} is shown`); break;
 		case "expectSettingsEmpty": await page.getByText(`No settings match "${step.value}".`, { exact: true }).waitFor(); break;
-		case "addServerKubeconfigPath": await kubeconfigSettingsAction(page, step); break;
+		case "addServerKubeconfigPath": case "clickKubeconfigPathButton": case "expectKubeconfigPathBefore": await kubeconfigSettingsAction(page, step); break;
 		case "setKubeconfigEnvVar": {
 			await page.getByRole("textbox", { name: "Kubeconfig env var", exact: true }).fill(step.value);
 			const save = page.getByRole("button", { name: "Save", exact: true });

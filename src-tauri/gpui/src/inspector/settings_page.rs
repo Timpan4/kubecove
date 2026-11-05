@@ -36,6 +36,8 @@ pub(super) struct SettingsState {
     search: Entity<InputState>,
     pub(super) env_var: Entity<InputState>,
     pub(super) pasted_paths: Entity<TextareaState>,
+    /// The single-line server path field that remote mode uses instead of `pasted_paths`.
+    pub(super) server_path: Entity<InputState>,
     pub(super) sources: Option<Result<KubeconfigSourcesSummary, String>>,
     pub(super) busy: bool,
     pub(super) task: Option<Task<()>>,
@@ -51,6 +53,8 @@ impl SettingsState {
                 .placeholder("/path/to/kubeconfig.yaml")
                 .rows(2)
         });
+        let server_path =
+            cx.new(|cx| InputState::new(window, cx).placeholder("/path/on/server/kubeconfig.yaml"));
         let subscriptions = vec![cx.subscribe_in(&search, window, |_, _, event, _, cx| {
             if matches!(event, InputEvent::Change) {
                 cx.notify();
@@ -71,6 +75,7 @@ impl SettingsState {
             search,
             env_var,
             pasted_paths,
+            server_path,
             sources: None,
             busy: false,
             task: None,

@@ -22,7 +22,7 @@ import {
 } from "./tauri-dev-mock-data";
 import { withDetailStatusFixture } from "./tauri-dev-mock-detail-status";
 import { evictedWorkerName, evictedWorkerStatus } from "./tauri-dev-mock-incidents";
-import { addKubeconfigPathsMock } from "./tauri-dev-mock-kubeconfig";
+import { addKubeconfigPathsMock, reorderKubeconfigPathsMock } from "./tauri-dev-mock-kubeconfig";
 import { lintMockYaml } from "./tauri-dev-mock-lint";
 import { liveEvents, liveResources, registerMockWatch, stopMockWatch } from "./tauri-dev-mock-live";
 import { operationMockHandlers } from "./tauri-dev-mock-operations";
@@ -125,7 +125,7 @@ const handlers = {
         kubeconfigSource.paths = kubeconfigSource.paths.filter((entry) => entry.path !== args.path);
         return kubeconfigSources();
     },
-	reorder_kubeconfig_paths: kubeconfigSources,
+	reorder_kubeconfig_paths: (args) => reorderKubeconfigPathsMock(kubeconfigSource, args.paths),
 	list_kube_contexts: () => shellRead("contexts", mockContexts),
 	list_namespaces: () => shellRead("namespaces", namespaces),
 	list_resource_kinds: () => shellRead("kinds", customResourceKinds()),

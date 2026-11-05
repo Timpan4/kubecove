@@ -180,21 +180,24 @@ impl Inspector {
                     remote.server_url
                 )
             };
-            body = body
-                .when(remote.connected, |body| body.child(ui::muted(ui::xs("Kubernetes requests and port forwards run through this server. Forwarded ports listen only on 127.0.0.1 on this laptop.")).id("remote-forward-explanation").test_support().aria_label("Forwarded ports listen only on 127.0.0.1 on this laptop.")))
-                .child(
-                    ui::sm(status.clone())
-                        .id("remote-status")
-                        .test_support()
-                        .aria_label(status),
-                )
-                .child(ui::muted(ui::xs(format!(
-                    "Server {}. Session grace: {} seconds.",
-                    remote.server_version, remote.session_grace_seconds
-                ))).id("remote-server-session").test_support().aria_label(format!("Server {}. Session grace: {} seconds.", remote.server_version, remote.session_grace_seconds)))
-                .child(action("Disconnect", state.remote_busy).on_click(
-                    cx.listener(|this, _, window, cx| this.disconnect_settings_remote(window, cx)),
-                ));
+            body = body.child(
+                ui::sm(status.clone())
+                    .id("remote-status")
+                    .test_support()
+                    .aria_label(status),
+            );
+            // The web shows the forwarding note and server details only while connected.
+            if remote.connected {
+                body = body
+                    .child(ui::muted(ui::xs("Kubernetes requests and port forwards run through this server. Forwarded ports listen only on 127.0.0.1 on this laptop.")).id("remote-forward-explanation").test_support().aria_label("Forwarded ports listen only on 127.0.0.1 on this laptop."))
+                    .child(ui::muted(ui::xs(format!(
+                        "Server {}. Session grace: {} seconds.",
+                        remote.server_version, remote.session_grace_seconds
+                    ))).id("remote-server-session").test_support().aria_label(format!("Server {}. Session grace: {} seconds.", remote.server_version, remote.session_grace_seconds)));
+            }
+            body = body.child(action("Disconnect", state.remote_busy).on_click(
+                cx.listener(|this, _, window, cx| this.disconnect_settings_remote(window, cx)),
+            ));
         }
         if !state.remote.as_ref().is_some_and(|remote| remote.connected) {
             body = body
@@ -371,8 +374,15 @@ fn field(label: &'static str, id: &'static str, input: &Entity<InputState>, disa
                 .h_7(),
         )
         .when(label == "Server token", |field| {
-            field.child(ui::muted(ui::xs(
-                "The token stays in native Rust memory until you disconnect or close the app.",
-            )))
+            field.child(
+                ui::muted(ui::xs(
+                    "The token stays in native Rust memory until you disconnect or close the app.",
+                ))
+                .id("remote-token-note")
+                .test_support()
+                .aria_label(
+                    "The token stays in native Rust memory until you disconnect or close the app.",
+                ),
+            )
         })
 }

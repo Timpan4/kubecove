@@ -187,6 +187,18 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             );
             return true;
         }
+        "expectRemoteHostTooltip" => {
+            // The web's title attribute and this badge's accessible description carry the same text.
+            assert_eq!(
+                window.find("remote-host-scope").description(),
+                Some(string(step, "value"))
+            );
+            return true;
+        }
+        "expectNoRemoteHost" => {
+            assert!(window.try_find("remote-host-scope").is_none());
+            return true;
+        }
         "expectActivePage" => {
             let id = format!("nav:{}", string(step, "page"));
             assert!(seek(window, cx, "sidebar-tree", &id));

@@ -1,6 +1,7 @@
 //! The Kubeconfig settings category, mirroring `KubeconfigSettings.svelte`.
-//! Sources read and write through the backend's typed commands; when the
-//! backend cannot save them, the controls render disabled with the reason.
+//! Sources read and write through the backend's typed commands. Remote mode saves the
+//! environment variable, server paths, removals, reordering and labels on the server; file
+//! picks need this desktop's filesystem, so remote mode does not offer them.
 
 use super::Inspector;
 use super::controls::{Variant, button};
@@ -24,6 +25,11 @@ impl Inspector {
         })
     }
 
+    /// `remoteFilesystem` in the web: paths refer to files on the connected server.
+    fn remote_mode(&self) -> bool {
+        self.settings.integrations.remote.is_some()
+    }
+
     fn kubeconfig_path_entry(
         &self,
         index: usize,
@@ -31,7 +37,8 @@ impl Inspector {
         count: usize,
         cx: &mut Context<Self>,
     ) -> Observed {
-        let disabled = self.settings.busy || self.backend.kubeconfig_writes_unavailable().is_some();
+        let disabled =
+            self.settings.busy || self.backend.kubeconfig_source_edits_unavailable().is_some();
         let path = entry.path.clone();
         div()
             .id(SharedString::from(format!("kubeconfig-path:{path}")))
@@ -69,8 +76,11 @@ impl Inspector {
                 ]
                 .into_iter()
                 .map(|(label, icon, target)| {
+                    // Row buttons share labels, so each id names its path.
                     button(Variant::Ghost, 24., disabled || target.is_none())
-                        .id(SharedString::from(label))
+                        .id(SharedString::from(format!(
+                            "kubeconfig-path-button:{label}:{path}"
+                        )))
                         .test_support()
                         .aria_label(label)
                         .child(ui::icon(icon, 14., Tokens::foreground()))
@@ -98,7 +108,9 @@ impl Inspector {
             )
             .child(
                 button(Variant::Ghost, 24., disabled)
-                    .id("settings-button:Remove kubeconfig path")
+                    .id(SharedString::from(format!(
+                        "kubeconfig-path-button:Remove kubeconfig path:{path}"
+                    )))
                     .test_support()
                     .aria_label("Remove kubeconfig path")
                     .child(ui::icon("trash-2", 14., Tokens::foreground()))
@@ -110,10 +122,22 @@ impl Inspector {
                     }),
             )
     }
+
     /// `runSourceUpdate`: applies the returned sources and refills the draft.
     pub(super) fn run_kubeconfig(
         &mut self,
         read: crate::backend::Read<KubeconfigSourcesSummary>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.run_kubeconfig_draft(read, false, window, cx);
+    }
+
+    /// Like `run_kubeconfig`. A saved path also clears the path draft, as `addPastedPaths` does.
+    fn run_kubeconfig_draft(
+        &mut self,
+        read: crate::backend::Read<KubeconfigSourcesSummary>,
+        clear_path_draft: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -129,6 +153,14 @@ impl Inspector {
                         state
                             .env_var
                             .update(cx, |input, cx| input.set_value(value, window, cx));
+                        if clear_path_draft {
+                            state
+                                .server_path
+                                .update(cx, |input, cx| input.set_value("", window, cx));
+                            state
+                                .pasted_paths
+                                .update(cx, |input, cx| input.set_value("", window, cx));
+                        }
                         state.sources = Some(Ok(sources));
                     }
                     Err(error) => state.sources = Some(Err(error.message)),
@@ -160,12 +192,30 @@ impl Inspector {
         self.run_kubeconfig(read, window, cx);
     }
 
+    /// `addServerPath` in the web's remote mode: one typed path on the server.
+    fn add_server_path(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let value = self.settings.server_path.read(cx).value().to_string();
+        self.add_paths_draft(value, window, cx);
+    }
+
+    /// `addPastedPaths` in local mode.
+    fn add_pasted_paths(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let value = self.settings.pasted_paths.read(cx).value().to_string();
+        self.add_paths_draft(value, window, cx);
+    }
+
+    fn add_paths_draft(&mut self, value: String, window: &mut Window, cx: &mut Context<Self>) {
+        if value.trim().is_empty() {
+            return;
+        }
+        let read = self.backend.add_kubeconfig_paths(vec![value]);
+        self.run_kubeconfig_draft(read, true, window, cx);
+    }
+
     pub(super) fn kubeconfig_section(&self, cx: &mut Context<Self>) -> Div {
         let state = &self.settings;
-        // Remote mode edits the environment variable and paths on the server, but file picks,
-        // removals, reordering and labels still need the desktop backend.
-        let unavailable = self.backend.kubeconfig_writes_unavailable();
-        let disabled = unavailable.is_some() || state.busy;
+        let remote = self.remote_mode();
+        // File picks are the only source change that stays local-only.
         let source_edits = self.backend.kubeconfig_source_edits_unavailable();
         let edits_disabled = source_edits.is_some() || state.busy;
         let (label, description, show, error) = match &state.sources {
@@ -177,10 +227,17 @@ impl Inspector {
             ),
             Some(Ok(sources)) => (
                 sources.source_label.clone(),
-                format!(
-                    "{}. Full file paths are shown only here.",
-                    sources.source_label
-                ),
+                if remote {
+                    format!(
+                        "{}. Paths refer to files on the KubeCove server.",
+                        sources.source_label
+                    )
+                } else {
+                    format!(
+                        "{}. Full file paths are shown only here.",
+                        sources.source_label
+                    )
+                },
                 sources.show_source_labels,
                 None,
             ),
@@ -222,8 +279,8 @@ impl Inspector {
         .when(!edits_disabled, |reset| {
             reset.on_click(cx.listener(|this, _, window, cx| this.reset_env_var(window, cx)))
         });
-        let switch = reason(switch("Show kubeconfig source labels", show), unavailable).when(
-            !disabled,
+        let switch = reason(switch("Show kubeconfig source labels", show), source_edits).when(
+            !edits_disabled,
             |switch| {
                 switch.on_click(
                     cx.listener(|this, _, window, cx| this.toggle_source_labels(window, cx)),
@@ -307,71 +364,158 @@ impl Inspector {
                         .sources
                         .as_ref()
                         .and_then(|sources| sources.as_ref().ok()),
+                    remote,
                     cx,
                 ),
             )
     }
-    /// "Added kubeconfig paths": adding files needs a native file dialog.
+
+    /// "Added kubeconfig paths". Local mode adds pasted paths or picked files; remote mode adds
+    /// one server path.
     fn added_paths(
         &self,
         sources: Option<&KubeconfigSourcesSummary>,
+        remote: bool,
         cx: &mut Context<Self>,
     ) -> Observed {
         let paths = sources.map_or(&[][..], |sources| sources.paths.as_slice());
-        div()
-        .id("setting-row:Added kubeconfig paths")
-        .test_support()
-        .p(px(12.))
-        .rounded(px(8.))
-        .border_1()
-        .border_color(Tokens::border())
-        .bg(Tokens::card())
-        .child(
+        let edits_unavailable = self.backend.kubeconfig_source_edits_unavailable();
+        let edits_disabled = edits_unavailable.is_some() || self.settings.busy;
+        let description = if remote {
+            "Extra kubeconfig files read from the server filesystem."
+        } else {
+            "Extra kubeconfig files KubeCove reads beside environment variable."
+        };
+        let picks_disabled =
+            self.backend.kubeconfig_writes_unavailable().is_some() || self.settings.busy;
+        let pick = (!remote).then(|| {
+            button(Variant::Outline, 24., picks_disabled)
+                .id("settings-button:Choose files")
+                .test_support()
+                .aria_label("Choose files")
+                .child(ui::icon("plus", 12., Tokens::foreground()))
+                .child("Choose files")
+                .when(!picks_disabled, |button| {
+                    button.on_click(cx.listener(|this, _, window, cx| {
+                        let read = this.backend.pick_kubeconfig_paths();
+                        this.run_kubeconfig(read, window, cx);
+                    }))
+                })
+        });
+        let draft = if remote {
+            let server_path_empty = self.settings.server_path.read(cx).value().trim().is_empty();
             div()
                 .flex()
-                .items_start()
-                .justify_between()
-                .gap(px(12.))
+                .items_center()
+                .gap(px(8.))
+                .mt(px(8.))
                 .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap(px(4.))
-                        .child(ui::medium(ui::sm("Added kubeconfig paths")))
-                        .child(ui::muted(ui::xs(
-                            "Extra kubeconfig files KubeCove reads beside environment variable.",
-                        ))),
+                    div().flex_1().child(
+                        Input::new(&self.settings.server_path)
+                            .id("kubeconfig-server-path")
+                            .aria_label("Kubeconfig path on server")
+                            .disabled(edits_unavailable.is_some())
+                            .text_xs()
+                            .h(px(32.)),
+                    ),
                 )
                 .child(
-                    button(Variant::Outline, 24., self.backend.kubeconfig_writes_unavailable().is_some() || self.settings.busy)
-                        .id("settings-button:Choose files").test_support().aria_label("Choose files")
+                    button(Variant::Outline, 24., edits_disabled || server_path_empty)
+                        .id("settings-button:Add server path")
+                        .test_support()
+                        .aria_label("Add server path")
                         .child(ui::icon("plus", 12., Tokens::foreground()))
-                        .child("Choose files")
-                        .when(self.backend.kubeconfig_writes_unavailable().is_none() && !self.settings.busy, |button| button.on_click(cx.listener(|this, _, window, cx| {
-                            let read = this.backend.pick_kubeconfig_paths(); this.run_kubeconfig(read, window, cx);
-                        }))),
-                ),
-        )
-        .children(paths.iter().enumerate().map(|(index, entry)| self.kubeconfig_path_entry(index, entry, paths.len(), cx)))
-        .when(paths.is_empty(), |panel| {
-            panel.child(
-                ui::muted(ui::xs("No app-added kubeconfig paths."))
-                    .mt(px(12.))
-                    .p(px(12.))
-                    .rounded(px(8.))
-                    .border_1()
-                    .border_color(Tokens::border())
-                    .bg(Tokens::background()),
+                        .child("Add server path")
+                        .when(!edits_disabled && !server_path_empty, |button| {
+                            button.on_click(cx.listener(|this, _, window, cx| {
+                                this.add_server_path(window, cx);
+                            }))
+                        }),
+                )
+                .into_any_element()
+        } else {
+            div()
+                .child(
+                    div()
+                        .id("kubeconfig-paths-input")
+                        .test_support()
+                        .mt(px(8.))
+                        .child(
+                            Textarea::new(&self.settings.pasted_paths)
+                                .aria_label("Kubeconfig paths")
+                                .disabled(edits_unavailable.is_some())
+                                .text_xs()
+                                .h(px(64.)),
+                        ),
+                )
+                .child(
+                    div().flex().justify_end().mt(px(8.)).child(
+                        button(
+                            Variant::Outline,
+                            24.,
+                            edits_disabled
+                                || self
+                                    .settings
+                                    .pasted_paths
+                                    .read(cx)
+                                    .value()
+                                    .trim()
+                                    .is_empty(),
+                        )
+                        .id("settings-button:Add pasted paths")
+                        .test_support()
+                        .aria_label("Add pasted paths")
+                        .child(ui::icon("plus", 12., Tokens::foreground()))
+                        .child("Add pasted paths")
+                        .when(!edits_disabled, |button| {
+                            button.on_click(cx.listener(|this, _, window, cx| {
+                                this.add_pasted_paths(window, cx);
+                            }))
+                        }),
+                    ),
+                )
+                .into_any_element()
+        };
+        div()
+            .id("setting-row:Added kubeconfig paths")
+            .test_support()
+            .p(px(12.))
+            .rounded(px(8.))
+            .border_1()
+            .border_color(Tokens::border())
+            .bg(Tokens::card())
+            .child(
+                div()
+                    .flex()
+                    .items_start()
+                    .justify_between()
+                    .gap(px(12.))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap(px(4.))
+                            .child(ui::medium(ui::sm("Added kubeconfig paths")))
+                            .child(ui::muted(ui::xs(description))),
+                    )
+                    .children(pick),
             )
-        })
-        .child(div().id("kubeconfig-paths-input").test_support().mt(px(8.)).child(Textarea::new(&self.settings.pasted_paths).aria_label("Kubeconfig paths").disabled(self.backend.kubeconfig_source_edits_unavailable().is_some()).text_xs().h(px(64.))))
-        .child(div().flex().justify_end().mt(px(8.)).child(button(Variant::Outline, 24., self.settings.busy || self.backend.kubeconfig_source_edits_unavailable().is_some() || self.settings.pasted_paths.read(cx).value().trim().is_empty())
-            .id("settings-button:Add pasted paths").test_support().aria_label("Add pasted paths")
-            .child(ui::icon("plus",12.,Tokens::foreground())).child("Add pasted paths")
-            .when(self.backend.kubeconfig_source_edits_unavailable().is_none() && !self.settings.busy, |button| button.on_click(cx.listener(|this, _, window, cx| {
-                let value = this.settings.pasted_paths.read(cx).value().to_string();
-                if value.trim().is_empty() { return; }
-                let read = this.backend.add_kubeconfig_paths(vec![value]); this.run_kubeconfig(read,window,cx);
-            })))))
+            .children(
+                paths.iter().enumerate().map(|(index, entry)| {
+                    self.kubeconfig_path_entry(index, entry, paths.len(), cx)
+                }),
+            )
+            .when(paths.is_empty(), |panel| {
+                panel.child(
+                    ui::muted(ui::xs("No app-added kubeconfig paths."))
+                        .mt(px(12.))
+                        .p(px(12.))
+                        .rounded(px(8.))
+                        .border_1()
+                        .border_color(Tokens::border())
+                        .bg(Tokens::background()),
+                )
+            })
+            .child(draft)
     }
 }

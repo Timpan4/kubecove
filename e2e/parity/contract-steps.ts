@@ -40,6 +40,8 @@ export type Step =
     | { action: "reorderKindKey"; kind: string; key: "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" }
     | { action: "resetKindOrder" }
     | { action: "expectRemoteHost"; url: string }
+    | { action: "expectRemoteHostTooltip"; value: string }
+    | { action: "expectNoRemoteHost" }
     | { action: "configureShellRead"; phase: "ready" | "contexts-failed" | "contexts-empty" | "namespaces-failed" | "namespaces-empty" | "resources-failed" | "primary-context-missing" | "kind-missing" | "payments-api-removed" }
     | { action: "openNamespaceList" }
     | { action: "expectNamespaceRow"; name: string; age: string }
@@ -132,6 +134,8 @@ export type Step =
     | { action: "expectWorkspaceExport"; name: string }
     | { action: "fillSettingsField"; field: "Server URL" | "Server token"; value: string }
     | { action: "clickSettingsButton"; label: string }
+    | { action: "clickKubeconfigPathButton"; value: string; label: string }
+    | { action: "expectKubeconfigPathBefore"; value: string; other: string }
     | { action: "expectSettingsText" | "expectNoSettingsText" | "expectRuntimeEndpoint"; value: string }
     | { action: "expectMaskedToken" | "reopenStoredSettings" | "attemptUnverifiedUpdate" }
     | { action: "configureSettingsMock"; script: "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "choose-application-workspace" | "cancel-dialog" | "no-update" | "invalid-signature" | "update-available" }

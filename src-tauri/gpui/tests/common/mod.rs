@@ -252,6 +252,9 @@ impl Backend for Fixture {
     ) -> Read<kubecove_lib::models::ArgoOperationResult> {
         self.argo.run(confirmation)
     }
+    fn reorder_kubeconfig_paths(&self, paths: Vec<String>) -> Read<KubeconfigSourcesSummary> {
+        self.reorder_kubeconfig_read(paths)
+    }
     fn remove_kubeconfig_path(&self, path: String) -> Read<KubeconfigSourcesSummary> {
         let mut sources = self.kubeconfig.lock().unwrap();
         sources.paths.retain(|entry| entry.path != path);

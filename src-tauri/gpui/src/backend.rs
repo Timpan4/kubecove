@@ -291,11 +291,11 @@ pub trait Backend: Send + Sync + 'static {
     fn review_rbac(&self, request: RbacAccessReviewRequest) -> Read<RbacAccessReviewResult>;
     /// `get_kubeconfig_sources`.
     fn kubeconfig_sources(&self) -> Read<KubeconfigSourcesSummary>;
-    /// Why desktop-only source changes (file picks, removals, reordering and labels) are
-    /// unavailable, or `None` when they are.
+    /// Why file picks are unavailable, or `None` when they are. Picks read the desktop's
+    /// filesystem, so remote mode offers typed server paths instead.
     fn kubeconfig_writes_unavailable(&self) -> Option<&'static str>;
-    /// Why the environment variable and typed path edits would not persist, or `None` when
-    /// they do. Remote mode saves both on the server.
+    /// Why the environment variable, typed paths, removals, reordering and labels would not
+    /// persist, or `None` when they do. Remote mode saves all of them on the server.
     fn kubeconfig_source_edits_unavailable(&self) -> Option<&'static str>;
     /// `set_kubeconfig_env_var`.
     fn set_kubeconfig_env_var(&self, env_var: String) -> Read<KubeconfigSourcesSummary>;

@@ -238,6 +238,23 @@ impl Fixture {
         sources.show_source_labels = show;
         self.saved_sources_read(sources.clone())
     }
+    /// Orders the known paths as listed. Paths the list omits keep their relative order at the end.
+    pub(super) fn reorder_kubeconfig_read(
+        &self,
+        paths: Vec<String>,
+    ) -> Read<KubeconfigSourcesSummary> {
+        let mut sources = self.kubeconfig.lock().expect("kubeconfig lock");
+        let mut remaining = std::mem::take(&mut sources.paths);
+        let mut ordered = Vec::with_capacity(remaining.len());
+        for path in &paths {
+            if let Some(index) = remaining.iter().position(|entry| &entry.path == path) {
+                ordered.push(remaining.remove(index));
+            }
+        }
+        ordered.extend(remaining);
+        sources.paths = ordered;
+        self.saved_sources_read(sources.clone())
+    }
     fn saved_sources_read(
         &self,
         sources: KubeconfigSourcesSummary,

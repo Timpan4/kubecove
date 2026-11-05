@@ -19,17 +19,23 @@ fn saved_sources(command: &str, arguments: &serde_json::Value) -> serde_json::Va
     } else {
         json!("KUBECONFIG")
     };
-    let paths: Vec<_> = if command == "add_kubeconfig_paths" {
-        arguments["paths"]
+    // Add and reorder return the paths the client sent. Remove returns none, which is enough
+    // for these controlled responses.
+    let paths: Vec<_> = match command {
+        "add_kubeconfig_paths" | "reorder_kubeconfig_paths" => arguments["paths"]
             .as_array()
             .unwrap()
             .iter()
             .map(|path| json!({"path": path}))
-            .collect()
-    } else {
-        Vec::new()
+            .collect(),
+        _ => Vec::new(),
     };
-    json!({"kubeconfigEnvVar":env_var,"paths":paths,"sourceKey":"remote","sourceLabel":"Server","showSourceLabels":true,"warnings":[]})
+    let show = if command == "set_show_kubeconfig_source_labels" {
+        arguments["show"].clone()
+    } else {
+        json!(true)
+    };
+    json!({"kubeconfigEnvVar":env_var,"paths":paths,"sourceKey":"remote","sourceLabel":"Server","showSourceLabels":show,"warnings":[]})
 }
 async fn server(name: &'static str) -> (String, tokio::task::JoinHandle<()>, Requests) {
     let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
@@ -65,7 +71,7 @@ async fn server(name: &'static str) -> (String, tokio::task::JoinHandle<()>, Req
                 } else if matches!(command, Some("list_namespaces" | "list_resource_kinds" | "list_resources")) {
                     json!([])
                 } else if command == Some("start_resource_watch") { json!("controlled-stream") }
-                else if let Some(command @ ("set_kubeconfig_env_var" | "add_kubeconfig_paths")) = command {
+                else if let Some(command @ ("set_kubeconfig_env_var" | "add_kubeconfig_paths" | "remove_kubeconfig_path" | "reorder_kubeconfig_paths" | "set_show_kubeconfig_source_labels")) = command {
                     saved_sources(command, &serde_json::from_slice(&body).unwrap())
                 }
                 else { json!(true) };
@@ -140,7 +146,7 @@ fn switching_remote_endpoints_routes_reads_and_disconnect_clears_selection() {
             !backend
                 .kubeconfig_writes_unavailable()
                 .unwrap()
-                .contains("server operator")
+                .contains("Remote mode")
         );
         first_task.abort();
         second_task.abort();
@@ -182,6 +188,36 @@ fn kubeconfig_env_var_and_server_path_save_on_the_connected_server() {
         assert!(sent.contains(&(
             "add_kubeconfig_paths".into(),
             json!({"paths": ["/srv/remote.yaml"]})
+        )));
+        let sources = backend
+            .reorder_kubeconfig_paths(vec!["/srv/second.yaml".into(), "/srv/remote.yaml".into()])
+            .await
+            .unwrap();
+        assert_eq!(sources.paths[0].path, "/srv/second.yaml");
+        let sources = backend
+            .set_show_kubeconfig_source_labels(false)
+            .await
+            .unwrap();
+        assert!(!sources.show_source_labels);
+        backend
+            .remove_kubeconfig_path("/srv/second.yaml".into())
+            .await
+            .unwrap();
+        let mut sent = Vec::new();
+        while let Ok(request) = requests.try_recv() {
+            sent.push(request);
+        }
+        assert!(sent.contains(&(
+            "reorder_kubeconfig_paths".into(),
+            json!({"paths": ["/srv/second.yaml", "/srv/remote.yaml"]})
+        )));
+        assert!(sent.contains(&(
+            "set_show_kubeconfig_source_labels".into(),
+            json!({"show": false})
+        )));
+        assert!(sent.contains(&(
+            "remove_kubeconfig_path".into(),
+            json!({"path": "/srv/second.yaml"})
         )));
         task.abort();
         let _ = task.await;

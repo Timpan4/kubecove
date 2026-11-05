@@ -93,6 +93,13 @@ export async function shellAction(page: Page, step: Step): Promise<void> {
         case "expectRemoteHost":
             await page.getByText(`Remote host: ${step.url}`, { exact: true }).waitFor();
             break;
+        case "expectRemoteHostTooltip":
+            await page.getByTitle(step.value, { exact: true }).waitFor();
+            break;
+        case "expectNoRemoteHost":
+            // Waits for removal to render, as the settings text check does.
+            await page.waitForFunction(() => !document.body.textContent?.includes("Remote host:"));
+            break;
         case "configureShellRead":
             await page.evaluate(`import('/src/lib/tauri-dev-mock-shell.ts').then(m => m.configureShellRead(${JSON.stringify(step.phase)}))`);
             if (step.phase !== "ready") await page.reload();

@@ -1,10 +1,11 @@
 //! Workspace header, mirroring `WorkspaceHeader.svelte` and `ClusterSelector.svelte`.
 
 use super::{Inspector, Page};
-use crate::theme::{MONO, Tokens};
+use crate::theme::{MONO, Palette, Tokens};
 use crate::ui;
 use gpui_kit::TestSupportExt;
 use gpui_kit::component::select::Select;
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{Context, FontWeight, div, prelude::*, px};
 
 impl Inspector {
@@ -100,11 +101,31 @@ impl Inspector {
                             " (disconnected)"
                         }
                     );
+                    // Same text as the web badge's title, shown as a tooltip.
+                    let (dot, tooltip) = if remote.connected {
+                        (
+                            Palette::emerald500(1.0),
+                            "Cluster access runs on this remote host",
+                        )
+                    } else {
+                        (
+                            Tokens::muted_foreground(),
+                            "This remote host remains selected, but is disconnected",
+                        )
+                    };
+                    // The status dot precedes the label. Row reversal places it before the text
+                    // while keeping the label as the badge's first child.
+                    let status_dot = div().size(px(6.)).flex_none().rounded_full().bg(dot);
                     header.child(
                         ui::outline_badge(label.clone())
+                            .flex_row_reverse()
+                            .gap(px(6.))
+                            .child(status_dot)
                             .id("remote-host-scope")
                             .test_support()
                             .aria_label(label)
+                            .aria_description(tooltip)
+                            .tooltip(move |window, cx| Tooltip::new(tooltip).build(window, cx))
                             .max_w(px(256.))
                             .truncate(),
                     )

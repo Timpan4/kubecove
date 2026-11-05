@@ -24,7 +24,7 @@ export const ACTIONS = [
     "expectForegroundLoading", "expectFriendlyError", "inspectRequiredPermission", "expectPermissionTarget", "returnToSource",
     "copyResourceName", "expectCopyToast", "dismissCopyToast",
     "toggleResourcePin", "expectWorkspaceEntry", "openWorkspaceEntry",
-    "reorderKindKey", "resetKindOrder", "expectRemoteHost",
+    "reorderKindKey", "resetKindOrder", "expectRemoteHost", "expectRemoteHostTooltip", "expectNoRemoteHost",
     "configureShellRead", "retryLauncher", "expectLauncherRetry",
     "overviewOperation", "overviewIncident", "reviewIncidentAction",
     "expectTopologyDenied",
@@ -55,7 +55,7 @@ export const ACTIONS = [
     "replaySessions", "confirmExecLeave",
     "configureForward", "forwardControl", "expectForwardState", "execControl", "expectExecState",
     "expectWorkspaceExport",
-    "fillSettingsField", "clickSettingsButton", "expectSettingsText", "expectNoSettingsText", "expectRuntimeEndpoint", "expectMaskedToken", "reopenStoredSettings", "attemptUnverifiedUpdate", "configureSettingsMock",
+    "fillSettingsField", "clickSettingsButton", "clickKubeconfigPathButton", "expectKubeconfigPathBefore", "expectSettingsText", "expectNoSettingsText", "expectRuntimeEndpoint", "expectMaskedToken", "reopenStoredSettings", "attemptUnverifiedUpdate", "configureSettingsMock",
 	"expectLiveState", "replayLiveData", "expectResourceStatus", "openCustomKind",
 	"selectTopologyNode", "expectTopologyEmpty", "expectUsageFooter", "openUsageTree", "expectNoUsageFooter", "expectUsageProcess", "setTopologyMode", "selectNamespace", "expectTopology", "expectTopologyEdge", "expectNoTopologyNode", "expectResourceMetrics",
 	"expectYamlAbsent",
@@ -143,6 +143,8 @@ function step(value: unknown): Step {
         case "reorderKindKey": return { action: item.action, kind: string(item.kind), key: oneOf(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"], item.key, "a reorder key") };
         case "resetKindOrder": return { action: item.action };
         case "expectRemoteHost": return { action: item.action, url: string(item.url) };
+        case "expectRemoteHostTooltip": return { action: item.action, value: string(item.value) };
+        case "expectNoRemoteHost": return { action: item.action };
         case "configureShellRead": return { action: item.action, phase: oneOf(["ready", "contexts-failed", "contexts-empty", "namespaces-failed", "namespaces-empty", "resources-failed", "primary-context-missing", "kind-missing", "payments-api-removed"], item.phase, "a shell read phase") };
         case "openNamespaceList": case "openNavigationDrawer": return { action: item.action };
         case "expectNamespaceRow": return { action: item.action, name: string(item.name), age: string(item.age) };
@@ -243,6 +245,8 @@ function step(value: unknown): Step {
         case "expectDocumentationRequest": return { action: item.action, url: string(item.url) };
         case "fillSettingsField": return { action: item.action, field: oneOf(["Server URL", "Server token"], item.field, "a remote field"), value: string(item.value) };
         case "clickSettingsButton": return { action: item.action, label: string(item.label) };
+        case "clickKubeconfigPathButton": return { action: item.action, value: string(item.value), label: string(item.label) };
+        case "expectKubeconfigPathBefore": return { action: item.action, value: string(item.value), other: string(item.other) };
         case "expectSettingsText": case "expectNoSettingsText": case "expectRuntimeEndpoint": return { action: item.action, value: string(item.value) };
         case "expectMaskedToken": case "reopenStoredSettings": case "attemptUnverifiedUpdate": return { action: item.action };
         case "configureSettingsMock": return { action: item.action, script: oneOf(["choose-kubeconfig", "choose-workspace", "choose-unavailable-workspace", "choose-application-workspace", "cancel-dialog", "no-update", "invalid-signature", "update-available"], item.script, "a settings script") };

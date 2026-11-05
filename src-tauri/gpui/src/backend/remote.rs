@@ -14,6 +14,10 @@ use reads::inventory;
 mod contract;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
+/// File picks read this desktop's filesystem, so remote mode offers server paths instead.
+const KUBECONFIG_PICKS_REMOTE: &str =
+    "Remote mode uses paths on the server, so files cannot be picked here.";
+
 pub struct DesktopBackend {
     local: NativeBackend,
     remote: Arc<RemoteConnectionStore>,
@@ -535,7 +539,7 @@ impl Backend for DesktopBackend {
     }
     fn kubeconfig_writes_unavailable(&self) -> Option<&'static str> {
         if self.selected() {
-            Some("Kubeconfig sources are set by the server operator")
+            Some(KUBECONFIG_PICKS_REMOTE)
         } else {
             self.local.kubeconfig_writes_unavailable()
         }
@@ -555,33 +559,25 @@ impl Backend for DesktopBackend {
     }
     fn set_show_kubeconfig_source_labels(&self, show: bool) -> Read<KubeconfigSourcesSummary> {
         if self.selected() {
-            return settings_integrations::unavailable(
-                "Kubeconfig sources are set by the server operator",
-            );
+            return self.call("set_show_kubeconfig_source_labels", json!({"show": show}));
         }
         self.local.set_show_kubeconfig_source_labels(show)
     }
     fn pick_kubeconfig_paths(&self) -> Read<KubeconfigSourcesSummary> {
         if self.selected() {
-            return settings_integrations::unavailable(
-                "Kubeconfig sources are set by the server operator",
-            );
+            return settings_integrations::unavailable(KUBECONFIG_PICKS_REMOTE);
         }
         self.local.pick_kubeconfig_paths()
     }
     fn remove_kubeconfig_path(&self, path: String) -> Read<KubeconfigSourcesSummary> {
         if self.selected() {
-            return settings_integrations::unavailable(
-                "Kubeconfig sources are set by the server operator",
-            );
+            return self.call("remove_kubeconfig_path", json!({"path": path}));
         }
         self.local.remove_kubeconfig_path(path)
     }
     fn reorder_kubeconfig_paths(&self, paths: Vec<String>) -> Read<KubeconfigSourcesSummary> {
         if self.selected() {
-            return settings_integrations::unavailable(
-                "Kubeconfig sources are set by the server operator",
-            );
+            return self.call("reorder_kubeconfig_paths", json!({"paths": paths}));
         }
         self.local.reorder_kubeconfig_paths(paths)
     }
