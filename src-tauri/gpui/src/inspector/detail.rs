@@ -416,6 +416,8 @@ impl Inspector {
                             div()
                                 .id(*id)
                                 .test_support()
+                                .role(gpui_kit::Role::Tab)
+                                .aria_selected(selected)
                                 .relative()
                                 .flex()
                                 .items_center()

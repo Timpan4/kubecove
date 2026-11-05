@@ -119,6 +119,9 @@ export async function shellAction(page: Page, step: Step): Promise<void> {
         case "reviewIncidentAction":
             await page.locator("[data-incident-guide]").getByRole("button", { name: "Review in Actions", exact: true }).nth(step.index).click();
             break;
+        case "expectDetailTab":
+            await page.getByRole("tab", { name: step.tab, exact: true, selected: true }).waitFor();
+            break;
         default: throw new Error(`Not a shell action: ${step.action}`);
     }
 }

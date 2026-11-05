@@ -113,6 +113,10 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 .as_str()
             )
         ),
+        "expectDetailTab" => {
+            let id = format!("show-{}", string(step, "tab").to_lowercase());
+            assert_eq!(window.find(id).selected(), Some(true));
+        }
         "expectClusterResource" => {
             assert!(window.try_find(cluster_row(step)).is_some())
         }

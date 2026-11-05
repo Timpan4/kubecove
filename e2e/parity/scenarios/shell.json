@@ -95,6 +95,7 @@
         { "action": "expectIncidentGuide", "title": "Status: CrashLoopBackOff" },
         { "action": "reviewIncidentAction", "index": 0 },
         { "action": "expectDetail", "kind": "Pod", "namespace": "operations", "name": "operations-crashloop-7f468cd8b8-lab01" },
+        { "action": "expectDetailTab", "tab": "Actions" },
         { "action": "expectNoReview" },
         { "action": "expectNoActionResult" }
       ]

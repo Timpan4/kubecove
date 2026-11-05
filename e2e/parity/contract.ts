@@ -63,7 +63,7 @@ export const ACTIONS = [
 	"fillContainerImage",
 	"openActionEditor", "fillActionField", "chooseActionRevision", "selectYamlShape", "selectYamlEncoding", "replaceYamlDraft", "expectYamlDocument", "expectYamlPicker", "formatYaml",
 	"openResources", "showYaml", "closeDetail", "expectDetailClosed", "expectEmpty", "refresh", "search", "expectSearch",
-	"expectResource", "openResource", "expectDetail", "expectClusterResource", "expectNoClusterResource", "expectYaml", "openPage", "showTab", "filterEvents",
+	"expectResource", "openResource", "expectDetail", "expectDetailTab", "expectClusterResource", "expectNoClusterResource", "expectYaml", "openPage", "showTab", "filterEvents",
 	"expectEvent", "expectEventCount", "expectLiveSessionCount", "filterIncidents", "expectIncidentGuide", "openIncidentResources", "expectGitOpsCount", "expectPortForward",
 	"expectLogLines", "filterLogs", "toggleLogLevel", "expectLogsEmpty", "selectRevision", "expectRevisionDiff", "reviewAction", "editReplicas",
 	"toggleLogRow", "toggleLogExpandAll", "expectLogRowOpen", "copyLogLine", "expectRestorePrompt", "restorePromptControl",
@@ -327,7 +327,7 @@ function step(value: unknown): Step {
 			if (!Array.isArray(item.contains) || !item.contains.length) throw new Error("Expected YAML fragments");
 			return { action: item.action, contains: item.contains.map(string) };
 		case "openPage": return { action: item.action, page: string(item.page) };
-		case "showTab": return { action: item.action, tab: string(item.tab) };
+		case "showTab": case "expectDetailTab": return { action: item.action, tab: string(item.tab) };
 		case "filterEvents":
 			if (item.filter !== "All" && item.filter !== "Warnings" && item.filter !== "Normal") throw new Error("Expected an event filter");
 			return { action: item.action, filter: item.filter };

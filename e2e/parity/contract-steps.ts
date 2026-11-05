@@ -158,7 +158,7 @@ export type Step =
     | { action: "expectClusterResource" | "expectNoClusterResource"; kind: string; name: string }
     | { action: "expectYaml"; contains: string[] }
     | { action: "openPage"; page: string }
-    | { action: "showTab"; tab: string }
+    | { action: "showTab" | "expectDetailTab"; tab: string }
     | { action: "filterEvents"; filter: "All" | "Warnings" | "Normal" }
     | { action: "expectEvent"; index: number; reason: string; message: string }
     | { action: "expectEventCount" | "expectLiveSessionCount"; count: number }
