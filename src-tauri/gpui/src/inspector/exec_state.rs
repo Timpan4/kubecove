@@ -17,13 +17,18 @@ pub(super) struct ExecTab {
     pub command: Vec<String>,
     pub status: String,
     pub error: Option<String>,
-    pub parser: vt100::Parser,
+    pub parser: super::exec_reflow::Parser,
+    pub selection: Option<super::exec_selection::Selection>,
     pub lines: Vec<SharedString>,
     pub rendered: Vec<super::exec_buffer::TerminalRow>,
     pub accessible: SharedString,
     pub task: Option<Task<()>>,
     pub stdin: Option<tokio::sync::mpsc::UnboundedSender<String>>,
     pub input_task: Option<Task<()>>,
+    pub resize_task: Option<Task<()>>,
+    pub resize_sender: Option<tokio::sync::watch::Sender<PodExecTerminalSize>>,
+    pub pending_start: Option<PodExecSessionRequest>,
+    pub cursor_visible: bool,
 }
 pub(super) struct ExecState {
     pub custom: Option<super::exec_custom::ExecCustomForm>,
@@ -36,6 +41,9 @@ pub(super) struct ExecState {
     pub leave: Option<super::exec_leave::LeaveIntent>,
     pub leave_error: Option<String>,
     pub stopping: bool,
+    pub bounds: Option<gpui_kit::Bounds<gpui_kit::Pixels>>,
+    pub selecting: bool,
+    pub blink_task: Option<Task<()>>,
 }
 impl ExecState {
     pub fn new(cx: &mut Context<Inspector>) -> Self {
@@ -50,12 +58,16 @@ impl ExecState {
             leave: None,
             leave_error: None,
             stopping: false,
+            bounds: None,
+            selecting: false,
+            blink_task: None,
         }
     }
     pub fn active(&self) -> Option<&ExecTab> {
         self.tabs.iter().find(|t| Some(t.key) == self.active)
     }
     pub fn clear(&mut self) {
+        self.blink_task = None;
         self.custom = None;
         self.tabs.clear();
         self.active = None;
@@ -63,7 +75,18 @@ impl ExecState {
 }
 impl ExecTab {
     pub(super) fn refresh_view(&mut self) {
-        self.rendered = super::exec_buffer::snapshot(self.parser.screen());
+        if self
+            .selection
+            .is_some_and(|s| s.ordered().0.0 < self.parser.callbacks().discarded)
+        {
+            self.selection = None;
+        }
+        self.rendered = super::exec_buffer::snapshot(
+            self.parser.screen(),
+            self.selection,
+            self.viewport_start(),
+            self.cursor_visible,
+        );
         self.lines = self.rendered.iter().map(|row| row.text.clone()).collect();
         self.accessible = self
             .lines
@@ -74,6 +97,7 @@ impl ExecTab {
             .into();
     }
     fn output(&mut self, data: &str) {
+        let alternate = self.parser.screen().alternate_screen();
         // `execTerminal.ts` enables xterm's convertEol.
         for part in data.split_inclusive('\n') {
             if let Some(line) = part.strip_suffix('\n') {
@@ -82,6 +106,9 @@ impl ExecTab {
             } else {
                 self.parser.process(part.as_bytes());
             }
+        }
+        if self.parser.screen().alternate_screen() != alternate {
+            self.selection = None;
         }
         // Cache viewport rows only on output, never copy/reflow scrollback in render.
         self.refresh_view();
@@ -182,23 +209,78 @@ impl Inspector {
             command,
             status: "starting".into(),
             error: None,
-            parser: vt100::Parser::new(
+            parser: super::exec_reflow::Parser::new_with_callbacks(
                 NonZeroU16::new(ROWS).unwrap(),
                 NonZeroU16::new(cols).unwrap(),
                 SCROLLBACK,
+                Default::default(),
             ),
+            selection: None,
             lines: vec![],
             rendered: vec![],
             accessible: "".into(),
             task: None,
             stdin: None,
             input_task: None,
+            resize_task: None,
+            resize_sender: None,
+            pending_start: None,
+            cursor_visible: true,
         };
         tab.output(&format!(
             "\x1b[2mStarting {} on {}\x1b[0m\r\n\r\n",
             tab.command.join(" "),
             request.confirmation.target
         ));
+        tab.pending_start = Some(request);
+        self.exec.tabs.push(tab);
+        if self.exec.blink_task.is_none() {
+            self.exec.blink_task = Some(cx.spawn(async move |this, cx| {
+                loop {
+                    // xterm DomRenderer's 1s step-end animation changes at 50%.
+                    cx.background_executor()
+                        .timer(std::time::Duration::from_millis(500))
+                        .await;
+                    if !this
+                        .update(cx, |this, cx| {
+                            if this.exec.tabs.is_empty() {
+                                return false;
+                            }
+                            if let Some(tab) = this
+                                .exec
+                                .tabs
+                                .iter_mut()
+                                .find(|t| Some(t.key) == this.exec.active)
+                            {
+                                tab.cursor_visible = !tab.cursor_visible;
+                                tab.refresh_view();
+                                cx.notify();
+                            }
+                            true
+                        })
+                        .unwrap_or(false)
+                    {
+                        break;
+                    }
+                }
+            }));
+        }
+        window.focus(&self.exec.focus, cx);
+        cx.notify();
+    }
+
+    pub(super) fn begin_exec_stream(&mut self, key: usize, cx: &mut Context<Self>) {
+        let Some(tab) = self.exec.tabs.iter_mut().find(|t| t.key == key) else {
+            return;
+        };
+        let Some(mut request) = tab.pending_start.take() else {
+            return;
+        };
+        let (rows, cols) = tab.parser.screen().size();
+        request.terminal_size = PodExecTerminalSize {
+            cols: cols.get(),
+            rows: rows.get(),
+        };
         let read = self.backend.exec(request);
         tab.task = Some(cx.spawn(async move |this, cx| match read.await {
             Ok(mut stream) => {
@@ -261,8 +343,6 @@ impl Inspector {
                 });
             }
         }));
-        self.exec.tabs.push(tab);
-        window.focus(&self.exec.focus, cx);
         cx.notify();
     }
 
@@ -272,6 +352,16 @@ impl Inspector {
         };
         if let Some(sender) = &tab.stdin {
             let _ = sender.send(data);
+        }
+        if let Some(tab) = self
+            .exec
+            .tabs
+            .iter_mut()
+            .find(|t| Some(t.key) == self.exec.active)
+        {
+            tab.parser.screen_mut().set_scrollback(0);
+            tab.selection = None;
+            tab.refresh_view();
         }
         cx.notify();
     }
@@ -339,6 +429,9 @@ impl Inspector {
             return;
         };
         self.exec.tabs.remove(index);
+        if self.exec.tabs.is_empty() {
+            self.exec.blink_task = None;
+        }
         if self.exec.active == Some(key) {
             self.exec.active = self
                 .exec

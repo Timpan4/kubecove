@@ -17,10 +17,13 @@ export function createExecTerminal(
 	onData: (data: string) => void,
 	onResize: (size: PodExecTerminalSize) => void,
 ): ExecTerminalHandle {
+	// Canvas font measurement cannot resolve CSS var() expressions.
+	const fontFamily = getComputedStyle(host).getPropertyValue("--font-mono").trim()
+		|| "ui-monospace, SFMono-Regular, Consolas, monospace";
 	const terminal = new Terminal({
 		cursorBlink: true,
 		convertEol: true,
-		fontFamily: "var(--font-mono, ui-monospace, SFMono-Regular, Consolas, monospace)",
+		fontFamily,
 		fontSize: 12,
 		theme: {
 			background: "#101113",

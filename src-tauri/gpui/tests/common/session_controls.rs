@@ -55,6 +55,20 @@ impl Drop for Owner {
     }
 }
 impl SessionControls {
+    pub fn terminal_output(&self, container: &str, data: &str) {
+        let state = self.state.lock().unwrap();
+        for (summary, sender) in &state.execs {
+            if summary.container.as_deref() == Some(container) {
+                sender
+                    .send(PodExecSessionMessage::Output {
+                        session_id: summary.id.clone(),
+                        stream: "stdout".into(),
+                        data: data.into(),
+                    })
+                    .unwrap();
+            }
+        }
+    }
     pub fn cleanup(
         &self,
         forwards: &[PortForwardSessionSummary],
@@ -168,7 +182,12 @@ impl SessionControls {
     }
     pub fn exec(&self, request: PodExecSessionRequest) -> Read<ExecStream> {
         let Some(record) = self.execs.iter().find(|r| {
-            serde_json::to_value(&r.request).unwrap() == serde_json::to_value(&request).unwrap()
+            let mut expected = r.request.clone();
+            expected.terminal_size = request.terminal_size.clone();
+            (1..=500).contains(&request.terminal_size.cols)
+                && (1..=500).contains(&request.terminal_size.rows)
+                && serde_json::to_value(expected).unwrap()
+                    == serde_json::to_value(&request).unwrap()
         }) else {
             return refused();
         };

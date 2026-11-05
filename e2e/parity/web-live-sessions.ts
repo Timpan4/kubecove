@@ -50,7 +50,8 @@ export async function liveSessionAction(page: Page, step: Step): Promise<void> {
             break;
         }
         case "execControl":
-            if (step.operation === "custom") {
+            if (step.operation === "stop") await page.getByRole("button", { name: "Stop session", exact: true }).click();
+            else if (step.operation === "custom") {
                 await page.getByRole("button", { name: "Other", exact: true }).click();
                 await page.getByRole("button", { name: "Custom command…", exact: true }).click();
                 await page.getByRole("combobox", { name: "Exec container", exact: true }).click();

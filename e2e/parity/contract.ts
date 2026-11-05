@@ -3,6 +3,11 @@ import { join } from "node:path";
 
 type Identity = { kind: string; name: string; namespace: string };
 export type Step =
+    | { action: "terminalFit"; width: number; height: number }
+    | { action: "terminalOutput"; data: string; container: string }
+    | { action: "terminalSelect"; row: number; col: number; endRow: number; endCol: number; word: boolean }
+    | { action: "terminalCopy" | "terminalPaste"; text: string }
+    | { action: "terminalScroll"; rows: number }
     | { action: "failWorkspaceContext" | "expectWorkspaceReadWarning"; context: string }
     | { action: "editSavedWorkspace" | "expectNoSavedWorkspace"; name: string }
     | { action: "saveWorkspace" | "cancelWorkspaceEdit" }
@@ -48,7 +53,7 @@ export type Step =
     | { action: "configureForward"; remote: string; local: string }
     | { action: "forwardControl"; operation: "start" | "save" | "restore" | "stop" | "reconnect"; target?: string }
     | { action: "expectForwardState"; target: string; local: string; status: string; resolved?: string; count: number }
-    | { action: "execControl"; operation: "start" | "input" | "close" | "select" | "custom" | "arguments" | "run"; container?: string; command?: string; data?: string; tab?: number }
+    | { action: "execControl"; operation: "start" | "input" | "close" | "stop" | "select" | "custom" | "arguments" | "run"; container?: string; command?: string; data?: string; tab?: number }
     | { action: "expectExecState"; container: string; status: string; contains: string; absent?: string; command?: string }
     | { action: "expectWorkspaceExport"; name: string }
     | { action: "fillSettingsField"; field: "Server URL" | "Server token"; value: string }
@@ -168,6 +173,8 @@ export type Contract = { scenarios: Scenario[] };
 
 /** Every action both drivers must implement; `contract.test.ts` checks each driver handles each one. */
 export const ACTIONS = [
+    "terminalFit",
+    "terminalOutput", "terminalSelect", "terminalCopy", "terminalPaste", "terminalScroll",
     "failWorkspaceContext", "expectWorkspaceReadWarning",
     "editSavedWorkspace", "expectNoSavedWorkspace", "saveWorkspace", "cancelWorkspaceEdit", "toggleWorkspaceContext", "expectOverviewHealth", "expectDetailContext",
     "refreshPage",
@@ -281,6 +288,11 @@ function step(value: unknown): Step {
         case "expectSettingsText": case "expectNoSettingsText": case "expectRuntimeEndpoint": return { action: item.action, value: string(item.value) };
         case "expectMaskedToken": case "reopenStoredSettings": case "attemptUnverifiedUpdate": return { action: item.action };
         case "configureSettingsMock": return { action: item.action, script: oneOf(["choose-kubeconfig", "choose-workspace", "cancel-dialog", "no-update", "invalid-signature"], item.script, "a settings script") };
+        case "terminalFit": return { action: item.action, width: count(item.width), height: count(item.height) };
+        case "terminalOutput": return { action: item.action, data: string(item.data), container: string(item.container) };
+        case "terminalSelect": return { action: item.action, row: count(item.row), col: count(item.col), endRow: count(item.endRow), endCol: count(item.endCol), word: optionalBoolean(item.word) ?? false };
+        case "terminalCopy": case "terminalPaste": return { action: item.action, text: item.text === "" ? "" : string(item.text) };
+        case "terminalScroll": return { action: item.action, rows: count(item.rows) };
         case "expectWorkspaceExport": return { action: item.action, name: string(item.name) };
         case "configurePreset": return { action: item.action, label: string(item.label), context: string(item.context), namespace: string(item.namespace), service: string(item.service), remote: string(item.remote), local: string(item.local) };
         case "presetControl": return { action: item.action, operation: oneOf(["add", "save", "edit", "start", "remove", "absent"], item.operation, "a preset action"), ...(item.label === undefined ? {} : { label: string(item.label) }) };
@@ -289,7 +301,17 @@ function step(value: unknown): Step {
         case "configureForward": return { action: item.action, remote: string(item.remote), local: typeof item.local === "string" ? item.local : "" };
         case "forwardControl": return { action: item.action, operation: oneOf(["start", "save", "restore", "stop", "reconnect"], item.operation, "a forward control"), ...(item.target === undefined ? {} : { target: string(item.target) }) };
         case "expectForwardState": return { action: item.action, target: string(item.target), local: string(item.local), status: string(item.status), count: count(item.count), ...(item.resolved === undefined ? {} : { resolved: string(item.resolved) }) };
-        case "execControl": return { action: item.action, operation: oneOf(["start", "input", "close", "select", "custom", "arguments", "run"], item.operation, "an exec control"), ...(item.container === undefined ? {} : { container: string(item.container) }), ...(item.command === undefined ? {} : { command: string(item.command) }), ...(item.data === undefined ? {} : { data: string(item.data) }), ...(item.tab === undefined ? {} : { tab: count(item.tab) }) };
+        case "execControl": {
+            const control: Extract<Step, { action: "execControl" }> = {
+                action: item.action,
+                operation: oneOf(["start", "input", "close", "stop", "select", "custom", "arguments", "run"], item.operation, "an exec control"),
+            };
+            if (item.container !== undefined) control.container = string(item.container);
+            if (item.command !== undefined) control.command = string(item.command);
+            if (item.data !== undefined) control.data = string(item.data);
+            if (item.tab !== undefined) control.tab = count(item.tab);
+            return control;
+        }
         case "expectExecState": return { action: item.action, container: string(item.container), status: string(item.status), contains: typeof item.contains === "string" ? item.contains : "", ...(item.absent === undefined ? {} : { absent: string(item.absent) }), ...(item.command === undefined ? {} : { command: string(item.command) }) };
         case "expectLiveState": return { action: item.action, label: string(item.label), ...(item.notice === undefined ? {} : { notice: string(item.notice) }) };
         case "replayLiveData": return { action: item.action, script: oneOf(["update", "delete", "reconnecting", "connected", "events", "forbidden", "failed"], item.script, "a live script") };

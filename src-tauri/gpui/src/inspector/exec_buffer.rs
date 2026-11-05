@@ -41,12 +41,18 @@ fn style(cell: &vt100::Cell, cursor: bool) -> HighlightStyle {
     };
     let (mut foreground, mut background) =
         (color(foreground, 0xf4f4f5), color(cell.bgcolor(), 0x101113));
-    if cell.inverse() || cursor {
+    if cell.inverse() {
         std::mem::swap(&mut foreground, &mut background);
+    }
+    if cursor {
+        foreground = rgb(0x000000).into();
+        background = rgb(0xffffff).into();
     }
     // xterm's renderer applies DIM_OPACITY=0.5 for SGR faint.
     if cell.dim() {
-        foreground = foreground.opacity(0.5);
+        // HighlightStyle blends with the inherited text color, so resolve
+        // opacity against the terminal background before applying the run.
+        foreground = background.blend(foreground.opacity(0.5));
     }
     HighlightStyle {
         color: Some(foreground),
@@ -61,10 +67,15 @@ fn style(cell: &vt100::Cell, cursor: bool) -> HighlightStyle {
         ..Default::default()
     }
 }
-pub(super) fn snapshot(screen: &vt100::Screen) -> Vec<TerminalRow> {
+pub(super) fn snapshot(
+    screen: &vt100::Screen,
+    selection: Option<super::exec_selection::Selection>,
+    top: usize,
+    cursor_visible: bool,
+) -> Vec<TerminalRow> {
     let (rows, cols) = screen.size();
-    let cursor =
-        (!screen.hide_cursor() && screen.scrollback() == 0).then(|| screen.cursor_position());
+    let cursor = (cursor_visible && !screen.hide_cursor() && screen.scrollback() == 0)
+        .then(|| screen.cursor_position());
     (0..rows.get())
         .map(|row| {
             let end = (0..cols.get())
@@ -92,7 +103,14 @@ pub(super) fn snapshot(screen: &vt100::Screen) -> Vec<TerminalRow> {
                 } else {
                     text.push_str(cell.contents());
                 }
-                let style = style(cell, cursor == Some((row, col)));
+                let mut style = style(cell, cursor == Some((row, col)));
+                if selection.is_some_and(|s| s.contains((top + usize::from(row), col))) {
+                    // ThemeService.DEFAULT_SELECTION, white at 30% opacity.
+                    style.background_color = Some(
+                        color(vt100::Color::Default, 0x101113)
+                            .blend(gpui_kit::Hsla::from(rgb(0xffffff)).opacity(0.3)),
+                    );
+                }
                 if let Some((range, previous)) = highlights.last_mut()
                     && *previous == style
                 {

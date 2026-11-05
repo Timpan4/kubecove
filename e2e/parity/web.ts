@@ -8,6 +8,7 @@ import type { Contract, Step } from "./contract";
 import { adapterAction } from "./web-adapters";
 import { argoAction } from "./web-argo";
 import { liveSessionAction } from "./web-live-sessions";
+import { terminalAction } from "./web-terminal";
 import { mcpAction } from "./web-mcp";
 import { sidebarLiveAction } from "./web-sidebar-live";
 import { expectRetainedWorkspaceFields, workspaceAction } from "./web-workspaces";
@@ -16,6 +17,8 @@ export async function action(page: Page, step: Step) {
 	const search = page.getByRole("textbox", { name: "Search resources" });
 	const close = page.getByRole("button", { name: "Close resource details" });
 	switch (step.action) {
+        case "terminalFit": case "terminalOutput": case "terminalSelect": case "terminalCopy": case "terminalPaste": case "terminalScroll":
+            await terminalAction(page, step); break;
         case "failWorkspaceContext": case "expectWorkspaceReadWarning":
             await workspaceAction(page, step); break;
         case "editSavedWorkspace": case "expectNoSavedWorkspace": case "saveWorkspace": case "cancelWorkspaceEdit": case "toggleWorkspaceContext": case "expectOverviewHealth": case "expectDetailContext":

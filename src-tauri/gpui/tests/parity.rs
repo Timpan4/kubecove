@@ -25,6 +25,8 @@ mod scroll;
 mod settings_integrations;
 #[path = "parity/sidebar_live.rs"]
 mod sidebar_live;
+#[path = "parity/terminal.rs"]
+mod terminal;
 #[path = "parity/topology_metrics.rs"]
 mod topology_metrics;
 #[path = "parity/workspace.rs"]
@@ -167,6 +169,7 @@ fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
         || adapters::act(window, cx, step)
         || mcp::act(window, cx, step)
         || live_sessions::apply(window, cx, step)
+        || terminal::apply(window, cx, step)
         || settings_integrations::act(window, cx, step)
         || live_data::apply(window, cx, step)
         || sidebar_live::apply(window, cx, step)
@@ -383,6 +386,20 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
                 // The live-session query interval in `portForwardLifecycle.ts`.
                 cx.background_executor
                     .advance_clock(std::time::Duration::from_millis(3_000));
+                cx.run_until_parked();
+            }
+            if step["action"] == "terminalOutput" {
+                backend.terminal_output(string(step, "container"), string(step, "data"));
+                cx.run_until_parked();
+            }
+            if step["action"] == "terminalFit" {
+                cx.simulate_window_resize(
+                    handle,
+                    size(
+                        px(number(step, "width") as f32),
+                        px(number(step, "height") as f32),
+                    ),
+                );
                 cx.run_until_parked();
             }
             println!("parity {id} step {index}: {}", string(step, "action"));

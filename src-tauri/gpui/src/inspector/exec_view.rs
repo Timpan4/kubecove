@@ -46,7 +46,17 @@ impl Inspector {
             .flex_col()
             .gap(px(4.))
             .when(self.exec.menu, |menu| {
-                menu.when_some(self.exec_custom_menu(cx), |menu, custom| menu.child(custom))
+                menu.absolute()
+                    .top(px(36.))
+                    .left(px(4.))
+                    .w(px(256.))
+                    .p(px(4.))
+                    .bg(Tokens::background())
+                    .border_1()
+                    .border_color(Tokens::border())
+                    .rounded(px(6.))
+                    .occlude()
+                    .when_some(self.exec_custom_menu(cx), |menu, custom| menu.child(custom))
                     .when(self.exec.custom.is_none(), |menu| {
                         menu.children(containers.iter().flat_map(|container| {
                             ["/bin/sh", "/bin/bash"].map(|shell| {
@@ -79,7 +89,7 @@ impl Inspector {
                     })
             });
         if self.exec.tabs.is_empty() {
-            return div().flex().flex_col().items_center().justify_center().min_h(px(288.)).gap(px(12.))
+            return div().relative().flex().flex_col().items_center().justify_center().min_h(px(288.)).gap(px(12.))
                 .border_1().border_color(Tokens::border()).rounded(px(8.))
                 .child(ui::heading("No exec sessions", 14., 20.))
                 .child(ui::muted(ui::xs("Open a shell inside this Pod. Sessions stop when you close the Pod or switch to another one.")))
@@ -140,7 +150,9 @@ impl Inspector {
         let focus = self.exec.focus.clone();
         let active_key = self.exec.active;
         let current_size = active.map(|t| t.parser.screen().size());
+        let pending_start = active.is_some_and(|t| t.pending_start.is_some());
         div()
+            .relative()
             .flex()
             .flex_col()
             .min_h(px(288.))
@@ -219,7 +231,6 @@ impl Inspector {
                         })
                     }),
             )
-            .child(menu)
             .when_some(active.and_then(|t| t.error.clone()), |view, error| {
                 view.child(
                     div()
@@ -232,6 +243,7 @@ impl Inspector {
             .child(
                 div()
                     .id("exec-terminal")
+                    .relative()
                     .test_support()
                     .track_focus(&self.exec.focus)
                     .tab_index(0)
@@ -248,54 +260,55 @@ impl Inspector {
                     .overflow_hidden()
                     .on_mouse_down(
                         gpui_kit::MouseButton::Left,
-                        cx.listener(|this, _, window, cx| window.focus(&this.exec.focus, cx)),
+                        cx.listener(|this, event, window, cx| this.select_exec(event, window, cx)),
+                    )
+                    .on_mouse_move(cx.listener(|this, event, _, cx| this.drag_exec(event, cx)))
+                    .on_mouse_up(
+                        gpui_kit::MouseButton::Left,
+                        cx.listener(|this, event: &gpui_kit::MouseUpEvent, _, cx| {
+                            this.exec.selecting = false;
+                            if !event.modifiers.shift
+                                && let Some(cell) = this.exec_cell(event.position)
+                            {
+                                this.exec_mouse(cell, 0, true, cx);
+                            }
+                        }),
                     )
                     .on_scroll(cx.listener(|this, event: &gpui_kit::ScrollEvent, _, cx| {
                         let delta =
                             (f32::from(event.delta.pixel_delta(px(14.)).y) / 14.).round() as isize;
+                        if !event.modifiers.shift
+                            && this.exec.active().is_some_and(|tab| {
+                                tab.parser.screen().mouse_protocol_mode()
+                                    != vt100::MouseProtocolMode::None
+                            })
+                            && let Some(cell) = this.exec_cell(event.position)
+                        {
+                            for _ in 0..delta.unsigned_abs() {
+                                this.exec_mouse(cell, if delta > 0 { 64 } else { 65 }, false, cx);
+                            }
+                            cx.stop_propagation();
+                            return;
+                        }
                         if let Some(tab) = this
                             .exec
                             .active
                             .and_then(|key| this.exec.tabs.iter_mut().find(|t| t.key == key))
                         {
-                            let offset = tab
-                                .parser
-                                .screen()
-                                .scrollback()
-                                .saturating_add_signed(delta);
+                            let offset = tab.parser.screen().scrollback().saturating_add_signed(
+                                if event.modifiers.alt {
+                                    delta * 5
+                                } else {
+                                    delta
+                                },
+                            );
                             tab.parser.screen_mut().set_scrollback(offset);
                             tab.refresh_view();
                             cx.notify();
                             cx.stop_propagation();
                         }
                     }))
-                    .on_key_down(cx.listener(|this, event: &gpui_kit::KeyDownEvent, _, cx| {
-                        let key = &event.keystroke;
-                        let control = key.modifiers.control
-                            && key.key.len() == 1
-                            && key.key.as_bytes()[0].is_ascii_alphabetic();
-                        let data = if control {
-                            String::from(
-                                (key.key.as_bytes()[0].to_ascii_uppercase() & 0x1f) as char,
-                            )
-                        } else {
-                            match key.key.as_str() {
-                                "enter" => "\r".to_owned(),
-                                "backspace" => "\x7f".into(),
-                                "tab" => "\t".into(),
-                                "escape" => "\x1b".into(),
-                                "up" => "\x1b[A".into(),
-                                "down" => "\x1b[B".into(),
-                                "right" => "\x1b[C".into(),
-                                "left" => "\x1b[D".into(),
-                                _ => String::new(),
-                            }
-                        };
-                        if !data.is_empty() {
-                            this.exec_input(data, cx);
-                            cx.stop_propagation();
-                        }
-                    }))
+                    .on_key_down(cx.listener(|this, event, _, cx| this.exec_key(event, cx)))
                     .children(
                         active
                             .into_iter()
@@ -322,17 +335,19 @@ impl Inspector {
                                         .floor()
                                         .clamp(1., 500.)
                                         as u16;
-                                    if current_size.map(|(r, c)| (r.get(), c.get()))
-                                        != Some((rows, cols))
+                                    if pending_start
+                                        || current_size.map(|(r, c)| (r.get(), c.get()))
+                                            != Some((rows, cols))
                                     {
                                         let owner = entity.clone();
-                                        window.on_next_frame(move |_, cx| {
+                                        cx.defer(move |cx| {
                                             owner.update(cx, |this, cx| {
                                                 this.resize_exec(key, cols, rows, cx)
-                                            })
+                                            });
                                         });
                                     }
                                 }
+                                entity.update(cx, |this, _| this.exec.bounds = Some(bounds));
                                 window.handle_input(
                                     &focus,
                                     gpui_kit::ElementInputHandler::new(bounds, entity.clone()),
@@ -341,9 +356,11 @@ impl Inspector {
                             },
                         )
                         .absolute()
+                        .inset_0()
                         .size_full(),
                     ),
             )
+            .child(menu)
             .into_any_element()
     }
 }

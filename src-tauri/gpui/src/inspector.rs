@@ -31,8 +31,11 @@ mod events_tab;
 mod exec_buffer;
 mod exec_custom;
 mod exec_input;
+mod exec_keys;
 mod exec_leave;
+mod exec_reflow;
 mod exec_resize;
+mod exec_selection;
 mod exec_state;
 mod exec_view;
 mod forward_tab;
@@ -87,6 +90,9 @@ mod settings_sections;
 mod sidebar;
 mod surface;
 mod table;
+#[cfg(test)]
+#[path = "../tests/native/terminal_buffer.rs"]
+mod terminal_buffer_tests;
 mod timeline;
 mod usage;
 mod workspace_editing;

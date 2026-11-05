@@ -85,6 +85,7 @@ pub fn apply(window: &mut Window, cx: &mut App, step: &Value) -> bool {
             }
         }
         "execControl" => match string(step, "operation") {
+            "stop" => window.click("exec-stop", cx),
             "custom" => {
                 window.click("exec-other", cx);
                 window.render_frame(cx);

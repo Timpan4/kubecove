@@ -119,6 +119,10 @@ struct FixtureSessions {
 
 impl Fixture {
     #[allow(dead_code)]
+    pub fn terminal_output(&self, container: &str, data: &str) {
+        self.session_controls.terminal_output(container, data);
+    }
+    #[allow(dead_code)]
     pub fn documentation_requests(&self) -> Vec<String> {
         self.documentation_requests.lock().unwrap().clone()
     }
