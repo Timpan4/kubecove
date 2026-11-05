@@ -160,10 +160,14 @@ impl Inspector {
     pub(super) fn discover_kinds(&mut self, cx: &mut Context<Self>) {
         self.live.kinds.clear();
         let context = self.scope.context.clone();
-        let read = self.backend.resource_kinds(context.clone());
-        let read = self.timings.measure("resource_kinds", read);
+        let backend = self.backend.clone();
+        let timings = self.timings.clone();
         self.live.discovery = Some(cx.spawn(async move |this, cx| {
-            let result = read.await;
+            let result = crate::read_retry::cancelled_read(
+                || timings.measure("resource_kinds", backend.resource_kinds(context.clone())),
+                |delay| cx.background_executor().timer(delay),
+            )
+            .await;
             let _ = this.update(cx, |this, cx| {
                 if this.scope.context != context {
                     return;

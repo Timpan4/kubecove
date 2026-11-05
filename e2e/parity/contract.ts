@@ -22,6 +22,7 @@ export type Step =
     | { action: "overviewOperation"; destination: "Resources" | "Workspaces" | "Port Forwards" | "Incidents" }
     | { action: "overviewIncident"; filter: "Degraded" | "Needs attention" | "Restart evidence" }
     | { action: "reviewIncidentAction"; index: number }
+    | { action: "cancelNextTopology" | "expectCancelledReadRecovery" }
     | { action: "terminalFit"; width: number; height: number }
     | { action: "terminalOutput"; data: string; container: string }
     | { action: "terminalSelect"; row: number; col: number; endRow: number; endCol: number; word: boolean }
@@ -210,6 +211,7 @@ export const ACTIONS = [
     "reorderKindKey", "expectRemoteHost",
     "configureShellRead", "retryLauncher", "expectLauncherRetry",
     "overviewOperation", "overviewIncident", "reviewIncidentAction",
+    "cancelNextTopology", "expectCancelledReadRecovery",
     "terminalFit",
     "terminalOutput", "terminalSelect", "terminalCopy", "terminalPaste", "terminalScroll",
     "configureArgoMock", "argoControl", "focusArgoResource", "expectNoSavedArgoProfile", "copyArgoValue", "configureArgoInventory", "expandArgoDiff", "reconnectArgoProfile",
@@ -509,6 +511,7 @@ function step(value: unknown): Step {
 		case "selectHelmNamespace": return { action: item.action, namespace: string(item.namespace) };
 		case "searchHelm": return { action: item.action, value: string(item.value) };
 		case "expectHelmDetails": return { action: item.action, title: string(item.title), description: string(item.description), totals: string(item.totals) };
+        case "cancelNextTopology": case "expectCancelledReadRecovery": return { action: item.action };
 		default: throw new Error(`Unknown action: ${String(item.action)}`);
 	}
 }

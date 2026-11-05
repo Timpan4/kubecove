@@ -28,6 +28,7 @@ export async function action(page: Page, step: Step) {
         case "reorderKindKey": case "expectRemoteHost": await shellAction(page, step); break;
         case "configureShellRead": case "retryLauncher": case "expectLauncherRetry": await shellAction(page, step); break;
         case "overviewOperation": case "overviewIncident": case "reviewIncidentAction": await shellAction(page, step); break;
+        case "cancelNextTopology": case "expectCancelledReadRecovery": await sidebarLiveAction(page, step); break;
         case "terminalFit": case "terminalOutput": case "terminalSelect": case "terminalCopy": case "terminalPaste": case "terminalScroll":
             await terminalAction(page, step); break;
         case "failWorkspaceContext": case "expectWorkspaceReadWarning":

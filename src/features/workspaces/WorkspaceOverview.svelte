@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { cancelledQueryRetry } from "@/lib/query-retry";
 	import { createQueries, createQuery } from "@tanstack/svelte-query";
 	import {
 		AlertTriangle,
@@ -128,7 +129,7 @@
 		queryKey: queryKeys.resourceKinds(workspace.scope.clusterContext, kubeconfigSourceKey),
 		queryFn: () => listResourceKinds(client, workspace.scope.clusterContext, kubeconfigSourceKey),
 		enabled: sourceReady && clusterAvailable && !contextsQuery.isPending,
-		retry: false,
+		retry: cancelledQueryRetry,
 	}));
 	const discoveredKinds = $derived(kindsQuery.data ?? []);
 

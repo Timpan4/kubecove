@@ -1,0 +1,17 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "resources.cancelled-topology",
+      "title": "A superseded ownership read recovers without an error banner",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "cancelNextTopology" },
+        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "expectCancelledReadRecovery" },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" }
+      ]
+    }
+  ]
+}

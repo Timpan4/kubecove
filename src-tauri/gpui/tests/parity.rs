@@ -294,6 +294,16 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
         });
         cx.run_until_parked();
         for (index, step) in scenario["steps"].as_array().unwrap().iter().enumerate() {
+            if step["action"] == "cancelNextTopology" {
+                backend
+                    .cancel_next_topology
+                    .store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+            if step["action"] == "expectCancelledReadRecovery" {
+                cx.background_executor
+                    .advance_clock(std::time::Duration::from_millis(1000));
+                cx.run_until_parked();
+            }
             if step["action"] == "configureArgoInventory" {
                 *backend.argo.inventory_mode.lock().unwrap() = string(step, "mode").into();
             }

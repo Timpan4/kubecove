@@ -195,7 +195,7 @@ impl Inspector {
         };
         let body: Vec<AnyElement> = match (&self.map.topology, &view) {
             (TopologyLoad::Loading, _) => {
-                vec![centered(ui::muted(ui::xs("Loading topology"))).into_any_element()]
+                vec![centered(ui::muted(ui::xs("Loading topology"))).id("map-loading").test_support().into_any_element()]
             }
             (TopologyLoad::Failed(error), _) => vec![
                 div()
@@ -203,6 +203,7 @@ impl Inspector {
                     .child(
                         div()
                             .id("map-error")
+                            .test_support()
                             .role(gpui_kit::Role::Alert)
                             .p(px(12.))
                             .rounded(px(8.))

@@ -16,6 +16,8 @@ mod page_reads;
 mod preferences;
 #[path = "native/preferences_migration.rs"]
 mod preferences_migration;
+#[path = "native/read_retry.rs"]
+mod read_retry;
 #[path = "native/remote_connections.rs"]
 mod remote_connections;
 #[path = "native/session_controls.rs"]
@@ -57,6 +59,7 @@ use std::sync::{
 #[derive(Default)]
 struct Controlled {
     shell: shell::ShellControls,
+    retry: read_retry::RetryControls,
     pages: page_reads::PageControls,
     argo: argo::ArgoControls,
     secret: adapters::SecretControls,
@@ -275,7 +278,16 @@ impl Backend for Controlled {
         })
     }
     fn topology(&self, scope: Scope) -> Read<ResourceTopology> {
+        self.retry.calls.fetch_add(1, Ordering::SeqCst);
+        let error = self.retry.errors.lock().unwrap().pop_front();
+        let gate = self.retry.gate.lock().unwrap().take();
         Box::pin(async move {
+            if let Some(gate) = gate {
+                let _ = gate.await;
+            }
+            if let Some(kind) = error {
+                return Err(AppError::new("scripted topology failure", kind));
+            }
             Ok(serde_json::from_value(json!({
                 "nodes": [{"id": MAP_NODE, "kind": "Deployment", "name": "payments-api", "namespace": "payments", "status": "Available", "health": "healthy", "selectable": true, "summary": resource(&scope.context)}],
                 "edges": [],

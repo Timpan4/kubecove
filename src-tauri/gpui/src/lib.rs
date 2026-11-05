@@ -18,6 +18,7 @@ pub mod model;
 mod palette;
 pub mod preferences;
 mod rbac;
+mod read_retry;
 mod settings;
 pub mod theme;
 mod topology;

@@ -152,6 +152,9 @@ impl Inspector {
         let surface =
             incidents::surface_state(state.items(), state.filter, state.selected.as_deref());
         let Some(item) = surface.selected else {
+            state.tasks[1] = None;
+            state.tasks[2] = None;
+            state.enriched = None;
             state.details = (Enrichment::Idle, None);
             state.topology = (Enrichment::Idle, None);
             return;
@@ -191,13 +194,18 @@ impl Inspector {
         };
         state.topology = (Enrichment::Loading, None);
         let request = state.request.clone();
-        let read = self.backend.topology(Scope {
+        let backend = self.backend.clone();
+        let scope = Scope {
             context: resource.cluster.clone(),
             namespace: Some(namespace),
-        });
+        };
         let selected = state.enriched.clone();
         state.tasks[2] = Some(cx.spawn(async move |this, cx| {
-            let result = read.await;
+            let result = crate::read_retry::cancelled_read(
+                || backend.topology(scope.clone()),
+                |delay| cx.background_executor().timer(delay),
+            )
+            .await;
             let _ = this.update(cx, |this, cx| {
                 let state = &mut this.incidents;
                 if Rc::ptr_eq(&state.request, &request) && state.enriched == selected {

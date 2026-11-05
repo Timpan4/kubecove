@@ -181,7 +181,21 @@ pub(super) fn resources(backend: &NativeBackend, scope: Scope, refresh: bool) ->
                 Err(error) => return Err(error),
             }
         }
-        match commands::list_resource_kinds(scope.context.clone(), None, State::new(&store)).await {
+        let discovered =
+            crate::read_retry::cancelled_read(
+                || {
+                    Box::pin({
+                        let store = store.clone();
+                        let context = scope.context.clone();
+                        async move {
+                            commands::list_resource_kinds(context, None, State::new(&store)).await
+                        }
+                    })
+                },
+                tokio::time::sleep,
+            )
+            .await;
+        match discovered {
             Ok(discovered) => {
                 for kind in discovered.iter() {
                     let namespace = if kind.namespaced {

@@ -107,7 +107,7 @@ impl Inspector {
         // The map loads on its own, like the web's topology query, so a
         // topology failure leaves the table usable.
         self.load_metrics(window, cx);
-        self.load_topology(window, cx);
+        self.load_topology(cx);
         self.load_inventory(refresh, cx);
         self.load_page(cx);
         cx.notify();
@@ -116,29 +116,44 @@ impl Inspector {
     pub(super) fn set_map_mode(
         &mut self,
         network: bool,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.map.network == network {
             return;
         }
         self.map.network = network;
-        self.load_topology(window, cx);
+        self.load_topology(cx);
     }
 
-    fn load_topology(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn load_topology(&mut self, cx: &mut Context<Self>) {
+        self.topology_task.take();
+        if !matches!(
+            self.page,
+            super::Page::Resources | super::Page::ClusterOverview
+        ) {
+            return;
+        }
         self.map.cache.take();
         self.map.topology = map::TopologyLoad::Loading;
         let request = self.request.clone();
         let network = self.map.network;
-        let read = if network {
-            self.backend.network_topology(self.scope.clone())
-        } else {
-            self.backend.topology(self.scope.clone())
-        };
-        let read = self.timings.measure("list_resource_topology", read);
-        self.topology_task = Some(cx.spawn_in(window, async move |this, cx| {
-            let result = read.await;
+        let backend = self.backend.clone();
+        let scope = self.scope.clone();
+        let timings = self.timings.clone();
+        self.topology_task = Some(cx.spawn(async move |this, cx| {
+            let result = crate::read_retry::cancelled_read(
+                || {
+                    let read = if network {
+                        backend.network_topology(scope.clone())
+                    } else {
+                        backend.topology(scope.clone())
+                    };
+                    timings.measure("list_resource_topology", read)
+                },
+                |delay| cx.background_executor().timer(delay),
+            )
+            .await;
             let _ = this.update(cx, |this, cx| {
                 if !Rc::ptr_eq(&this.request, &request) || this.map.network != network {
                     return;
@@ -186,6 +201,7 @@ impl Inspector {
                     cx.notify();
                 });
             }));
+            self.load_topology(cx);
             self.load_inventory(true, cx);
             self.load_page(cx);
         }

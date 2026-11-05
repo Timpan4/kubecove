@@ -36,6 +36,8 @@ use std::{collections::HashMap, path::Path, sync::Mutex};
 pub struct Fixture {
     #[serde(skip)]
     pub shell_read_phase: Mutex<String>,
+    #[serde(skip)]
+    pub cancel_next_topology: std::sync::atomic::AtomicBool,
     #[serde(rename = "pageReads", default)]
     page_reads: HashMap<String, serde_json::Value>,
     #[serde(skip)]
@@ -441,6 +443,14 @@ impl Backend for Fixture {
     }
     /// The all-namespaces graph, or a namespace's graph the fixture exported.
     fn topology(&self, scope: Scope) -> Read<ResourceTopology> {
+        if self
+            .cancel_next_topology
+            .swap(false, std::sync::atomic::Ordering::SeqCst)
+        {
+            return Box::pin(async {
+                Err(AppError::new("request cancelled", AppErrorKind::Cancelled))
+            });
+        }
         let topology = scope
             .namespace
             .and_then(|namespace| self.namespace_topologies.get(&namespace))

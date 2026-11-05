@@ -323,7 +323,11 @@ impl Inspector {
         if self.page != page && self.can_leave(cx) {
             self.gitops_page.workspace = None;
             self.close_detail(cx);
+            self.topology_task.take();
             self.page = page;
+            if matches!(page, Page::Resources | Page::ClusterOverview) {
+                self.load_topology(cx);
+            }
             if page == Page::Overview {
                 self.load_workspace_overview(false, cx);
             } else {
@@ -366,6 +370,8 @@ impl Inspector {
         if self.scope.namespace != namespace {
             self.scope.namespace = namespace;
             self.load_scope(false, window, cx);
+        } else {
+            self.load_topology(cx);
         }
         cx.notify();
     }

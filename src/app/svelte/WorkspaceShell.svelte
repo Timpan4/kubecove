@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { cancelledQueryRetry } from "@/lib/query-retry";
 	import ArgoAutoReconnect from "@/features/gitops/ArgoAutoReconnect.svelte";
 	import ArgoOperationMonitor from "@/features/gitops/ArgoOperationMonitor.svelte";
 	import { markStartup } from "@/lib/startup-marks";
@@ -203,7 +204,7 @@
 		),
 		enabled: showCustomResources && workspaceReadContext.sourceReady && Boolean(workspace.scope.clusterContext),
 		staleTime: 30_000,
-		retry: false,
+		retry: cancelledQueryRetry,
 	}));
 	const includePresentCustomResources = $derived(
 		resourceBrowserScope.canQuery &&
@@ -230,7 +231,7 @@
 			Boolean(workspace.scope.clusterContext) &&
 			includePresentCustomResources,
 		staleTime: 30_000,
-		retry: false,
+		retry: cancelledQueryRetry,
 	}));
 	const presentCustomResourceKinds = $derived(
 		!showCustomResources

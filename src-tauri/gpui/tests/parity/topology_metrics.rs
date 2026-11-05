@@ -4,6 +4,12 @@ use serde_json::Value;
 pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) -> bool {
     let s = |key: &str| step[key].as_str().expect("string field");
     match s("action") {
+        "cancelNextTopology" => {}
+        "expectCancelledReadRecovery" => {
+            assert!(window.try_find("map-error").is_none());
+            assert!(window.try_find("map-loading").is_none());
+            assert!(window.try_find("map-counts").is_some());
+        }
         "expectUsageFooter" => assert_eq!(window.find("usage-footer").label(), Some(s("text"))),
         "openUsageTree" => window.click("usage-footer", cx),
         "expectUsageProcess" => assert!(

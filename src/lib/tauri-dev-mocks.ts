@@ -49,6 +49,9 @@ import type {
 } from "./types";
 import { formatYamlDocument } from "./yamlFormat";
 
+let cancelNextTopologyRead = false;
+export function cancelNextTopology() { cancelNextTopologyRead = true; }
+
 let failedWorkspaceContext: string | undefined;
 export function failWorkspaceContext(context: string) { failedWorkspaceContext = context; }
 
@@ -63,6 +66,10 @@ export function createDevMockTauriClient(): TauriClient {
 			options?: InvokeOptions,
 		): Promise<T> => {
 			await delay(35);
+            if (cmd === "list_resource_topology" && cancelNextTopologyRead) {
+                cancelNextTopologyRead = false;
+                throw { kind: "cancelled", message: "request cancelled" };
+            }
             // The same typed seam as the wrappers; live channels have a different message contract.
             const live = args as { request: import("./types").PortForwardRequest & import("./types").PodExecSessionRequest & import("./types").LiveSessionCleanupRequest; sessionId: string; data: string; size: import("./types").PodExecTerminalSize; channel: Pick<Channel<import("./types").PodExecSessionMessage>, "onmessage"> } | undefined;
             if (cmd === "start_pod_port_forward" && live) return startMockForward(live.request) as T;

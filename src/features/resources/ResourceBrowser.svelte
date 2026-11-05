@@ -12,6 +12,7 @@
 </script>
 
 <script lang="ts">
+	import { cancelledQueryRetry } from "@/lib/query-retry";
 	import ResourceScopeWarnings from "./ResourceScopeWarnings.svelte";
 	import type { ResourceScopeResult } from "@/lib/types";
 	import ResourceLiveStatusMenu from "@/components/ResourceLiveStatusMenu.svelte";
@@ -329,7 +330,7 @@
 		queryFn: () => listResourceKinds(client, clusterContext, kubeconfigSourceKey),
 		enabled: readSpecs.resourceKindsEnabled,
 		staleTime: 30_000,
-		retry: false,
+		retry: cancelledQueryRetry,
 	}));
 	$effect(() => {
 		if (sourceReady && namespacesQuery.isSuccess && resourceKindsQuery.isSuccess) {

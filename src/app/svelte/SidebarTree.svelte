@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { cancelledQueryRetry } from "@/lib/query-retry";
 	import { tick, untrack } from "svelte";
 	import { createQueries, createQuery } from "@tanstack/svelte-query";
 	import FriendlyError from "@/components/FriendlyError.svelte";
@@ -107,7 +108,7 @@
 		queryKey: queryKeys.resourceKinds(clusterContext, kubeconfigSourceKey),
 		queryFn: () => listResourceKinds(client, clusterContext, kubeconfigSourceKey),
 		enabled: showCustomResources && Boolean(clusterContext) && sourceReady,
-		retry: false,
+		retry: cancelledQueryRetry,
 	}));
 
 	const argoDetectionQuery = createQuery<boolean>(() => ({
