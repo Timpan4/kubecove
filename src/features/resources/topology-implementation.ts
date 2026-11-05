@@ -52,6 +52,10 @@ const SVELTE_TOPOLOGY_LAYOUT = {
 	rowGap: 30,
 };
 const SVELTE_STANDALONE_NODE_WIDTH = 320;
+// Resource nodes come in two sizes, so they share two read-only handle arrays instead of
+// allocating three objects per node; Svelte Flow copies handles into its own internals.
+const RESOURCE_NODE_HANDLES = ownershipNodeHandles(SVELTE_TOPOLOGY_LAYOUT.nodeWidth, SVELTE_TOPOLOGY_LAYOUT.nodeHeight);
+const STANDALONE_NODE_HANDLES = ownershipNodeHandles(SVELTE_STANDALONE_NODE_WIDTH, SVELTE_TOPOLOGY_LAYOUT.nodeHeight);
 const SVELTE_MIN_ZOOM = 0.12;
 const SVELTE_MAX_ZOOM = 1.4;
 const WIDTH_FIT_PADDING = 0.08;
@@ -298,7 +302,7 @@ export function buildFlowTopologyLayout(
 			extent: standalone ? "parent" : undefined,
 			sourcePosition: Position.Right,
 			targetPosition: Position.Left,
-			handles: ownershipNodeHandles(width, height),
+			handles: standalone ? STANDALONE_NODE_HANDLES : RESOURCE_NODE_HANDLES,
 			width,
 			height,
 			// The style fixes the node's box to this size. Svelte Flow keeps a
