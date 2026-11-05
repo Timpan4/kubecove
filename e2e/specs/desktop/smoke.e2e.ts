@@ -37,8 +37,16 @@ describe("native desktop smoke", () => {
 					measureWorkingSet: true,
 				}),
 			);
+		// Totals are null when any WebView child lacks a figure, so assert on the host process,
+		// which every sample includes and the app can always read.
+		const hostMemory = (metrics: AppUsageMetrics) => {
+			const host = metrics.breakdown.find((group) => group.label === "KubeCove");
+			if (!host) throw new Error("Usage sample has no KubeCove host group");
+			return host.memory;
+		};
 		const first = await sample();
-		const { memory, workingSetWindowMs } = await sample();
+		const second = await sample();
+		const memory = hostMemory(second);
 		if (process.platform === "win32") {
 			expect(memory.wssBytes).toBeGreaterThan(0);
 			expect(memory.rssBytes).toBeNull();
@@ -49,9 +57,9 @@ describe("native desktop smoke", () => {
 			expect(memory.pssBytes).toBeNull();
 		} else {
 			// Linux WSS covers the interval since the previous sample reset referenced pages.
-			expect(first.memory.wssBytes).toBeNull();
+			expect(hostMemory(first).wssBytes).toBeNull();
 			expect(memory.wssBytes).toBeGreaterThan(0);
-			expect(workingSetWindowMs).not.toBeNull();
+			expect(second.workingSetWindowMs).not.toBeNull();
 			expect(memory.rssBytes).toBeGreaterThan(0);
 			expect(memory.pssBytes).toBeGreaterThan(0);
 		}
