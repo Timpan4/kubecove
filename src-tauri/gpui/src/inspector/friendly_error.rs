@@ -35,6 +35,7 @@ pub(crate) enum Operation {
     Surface,
     /// `providerDetection`: the Argo CD and Flux detection reads.
     ProviderDetection,
+    YamlDryRun,
 }
 
 impl Operation {
@@ -45,6 +46,7 @@ impl Operation {
             Self::Resources => "resources",
             Self::Surface => "this view",
             Self::ProviderDetection => "provider data",
+            Self::YamlDryRun => "dry run",
         }
     }
 }

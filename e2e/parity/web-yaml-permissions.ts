@@ -15,6 +15,19 @@ export async function yamlPermissionAction(page: Page, step: Step) {
 		case "expectNoYamlDiagnostic":
 			await page.getByText(step.message, { exact: true }).waitFor({ state: "detached" });
 			break;
+		case "expectYamlApplyDescription": {
+			const apply = page.getByRole("button", { name: "Apply", exact: true });
+			// The disabled button sits inside the tooltip trigger, which receives the pointer.
+			await apply.locator("xpath=..").hover();
+			const tooltip = page.locator("#yaml-apply-disabled-tooltip");
+			await tooltip.waitFor();
+			if ((await tooltip.textContent())?.trim() !== step.text) throw new Error(`Apply hint is not ${step.text}`);
+			if ((await apply.getAttribute("aria-describedby")) !== "yaml-apply-disabled-tooltip") throw new Error("Apply is not described by its hint");
+			break;
+		}
+		case "expectNoYamlApplyDescription":
+			if ((await page.getByRole("button", { name: "Apply", exact: true }).getAttribute("aria-describedby")) !== null) throw new Error("Apply is still described by a dry-run hint");
+			break;
 		case "expectActionLoadError":
 			await page.getByText(step.text, { exact: true }).waitFor();
 			break;

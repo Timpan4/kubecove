@@ -263,6 +263,8 @@ export type Step =
     | { action: "expectDetailResize"; value: number }
     | { action: "expectYamlDiagnostic"; severity: "error" | "warning" | "info"; source: string; message: string; path: string }
     | { action: "expectNoYamlDiagnostic"; message: string }
+    | { action: "expectYamlApplyDescription"; text: string }
+    | { action: "expectNoYamlApplyDescription" }
     | { action: "expectActionLoadError"; text: string }
     | { action: "expectNoActionLoadError" | "retryActionPermission" }
     | { action: "expectActionLock"; row: string; locked: boolean; reason?: string };

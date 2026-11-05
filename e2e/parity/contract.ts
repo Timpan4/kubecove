@@ -83,7 +83,7 @@ export const ACTIONS = [
 	"clickDetailControl",
 	"openLiveSessionPopover", "expectLiveSessionRow", "liveSessionControl", "expectHealthTooltip", "expectTimestampTooltip", "expectEventTimeTooltip",
     "panelControl", "expectPanelControl", "skipGraph", "mapKey", "expectMapFocus", "expectNoMapFocus", "resizeDetail", "expectDetailResize",
-	"expectYamlDiagnostic", "expectNoYamlDiagnostic", "expectActionLoadError", "expectNoActionLoadError", "retryActionPermission", "expectActionLock",
+	"expectYamlDiagnostic", "expectNoYamlDiagnostic", "expectYamlApplyDescription", "expectNoYamlApplyDescription", "expectActionLoadError", "expectNoActionLoadError", "retryActionPermission", "expectActionLock",
 ] as const satisfies readonly Step["action"][];
 type Missing = Exclude<Step["action"], (typeof ACTIONS)[number]>;
 const allActionsListed: Missing extends never ? true : Missing = true;
@@ -238,6 +238,8 @@ function step(value: unknown): Step {
             if (item.severity !== "error" && item.severity !== "warning" && item.severity !== "info") throw new Error("Expected a diagnostic severity");
             return { action: item.action, severity: item.severity, source: string(item.source), message: string(item.message), path: string(item.path) };
         case "expectNoYamlDiagnostic": return { action: item.action, message: string(item.message) };
+        case "expectYamlApplyDescription": return { action: item.action, text: string(item.text) };
+        case "expectNoYamlApplyDescription": return { action: item.action };
         case "expectActionLoadError": return { action: item.action, text: string(item.text) };
         case "expectNoActionLoadError": case "retryActionPermission": return { action: item.action };
         case "expectActionLock":

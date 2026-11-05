@@ -318,9 +318,10 @@ fn a_dry_run_of_an_old_draft_is_dropped(cx: &mut TestAppContext) {
         "the old dry run must release its gate when the draft changes"
     );
     step(cx, handle, |window, cx| {
+        assert_eq!(window.find("yaml-apply").label(), Some("Apply"));
         assert_eq!(
-            window.find("yaml-apply").label(),
-            Some("Apply (run a dry run before applying)")
+            window.find("yaml-apply").description(),
+            Some("Run a dry run before applying.")
         );
         window.click("yaml-apply", cx);
     });

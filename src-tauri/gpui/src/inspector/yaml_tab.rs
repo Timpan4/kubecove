@@ -5,11 +5,13 @@
 use super::Inspector;
 use super::controls::{Variant, button, diff_lines};
 use super::detail::ResourceDetail;
+use super::friendly_error::{Context as ErrorContext, Operation};
 use super::yaml_apply::{Feedback, Phase, Review, YamlApply, disabled_reason};
 use crate::theme::Tokens;
 use crate::ui;
 use gpui_kit::base::ObservedElement;
 use gpui_kit::component::input::Editor;
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
     AnyElement, Context, Div, FontWeight, SharedString, Stateful, TestSupportExt, div, prelude::*,
     px,
@@ -21,6 +23,9 @@ use kubecove_lib::models::{
 
 /// Lines the compact dry-run diff shows (`yamlDiffLines.slice(0, 24)`).
 const COMPACT_DIFF_LINES: usize = 24;
+
+/// The Apply control's description and tooltip until a dry run reviews the draft.
+const APPLY_NEEDS_DRY_RUN: &str = "Run a dry run before applying.";
 
 /// `FriendlyError` in its unclassified form: the title, the generic summary
 /// and the technical detail, which the native client shows expanded.
@@ -298,10 +303,13 @@ fn edit_controls(
             let apply = button(Variant::Default, 28., apply_disabled)
                 .id("yaml-apply")
                 .test_support()
-                .aria_label(if reviewed {
-                    "Apply"
-                } else {
-                    "Apply (run a dry run before applying)"
+                .aria_label("Apply")
+                .when(!reviewed, |button| {
+                    button
+                        .aria_description(APPLY_NEEDS_DRY_RUN)
+                        .tooltip(move |window, cx| {
+                            Tooltip::new(APPLY_NEEDS_DRY_RUN).build(window, cx)
+                        })
                 })
                 .when(applying, |button| {
                     button.child(ui::icon("loader-circle", 14., Tokens::primary_foreground()))
@@ -401,6 +409,7 @@ fn lint_diagnostics(diagnostics: &[KubernetesYamlLintDiagnostic]) -> Div {
 }
 
 pub(super) fn yaml_tab(
+    inspector: &Inspector,
     detail: &ResourceDetail,
     preferences: &crate::preferences::Preferences,
     cx: &mut Context<Inspector>,
@@ -471,7 +480,7 @@ pub(super) fn yaml_tab(
                         .flex_wrap()
                         .items_center()
                         .gap(px(8.))
-                        .child(ui::outline_badge(path))
+                        .child(ui::outline_badge(path.clone()))
                         .when_some(applied, |row, message| {
                             row.child(
                                 ui::xs(message.clone())
@@ -535,11 +544,29 @@ pub(super) fn yaml_tab(
                     .border_1()
                     .border_color(Tokens::border())
                     .child(ui::medium(ui::sm("YAML apply unavailable")))
-                    .child(ui::muted(ui::xs(reason))),
+                    .child(
+                        div()
+                            .id("yaml-apply-reason")
+                            .test_support()
+                            .aria_label(reason)
+                            .child(ui::muted(ui::xs(reason))),
+                    ),
             )
         })
-        .when_some(detail.lint.error.clone(), |pane, message| {
-            pane.child(failure("yaml-lint-error", "YAML lint failed", message))
+        .when_some(detail.lint.error.clone(), |pane, error| {
+            pane.child(inspector.friendly_failure(
+                "yaml-lint-error",
+                Some(error.kind),
+                &error.message,
+                ErrorContext {
+                    operation: Some(Operation::YamlDryRun),
+                    fallback_title: Some("YAML lint failed"),
+                    target: Some(path.as_str()),
+                    ..ErrorContext::default()
+                },
+                None,
+                cx,
+            ))
         })
         .when_some(lint_status(&detail.lint.notes), |pane, status| {
             pane.child(status)

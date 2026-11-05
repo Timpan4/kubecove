@@ -33,6 +33,17 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 string(step, "severity")
             );
         }
+        "expectYamlApplyDescription" => {
+            reveal(window, "detail-body", "yaml-apply", cx);
+            assert_eq!(
+                window.find("yaml-apply").description(),
+                Some(string(step, "text"))
+            );
+        }
+        "expectNoYamlApplyDescription" => {
+            reveal(window, "detail-body", "yaml-apply", cx);
+            assert_eq!(window.find("yaml-apply").description(), None);
+        }
         "expectNoYamlDiagnostic" => assert!(
             window.find_all_by_label(string(step, "message")).is_empty(),
             "unexpected diagnostic {:?}",

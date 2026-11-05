@@ -503,7 +503,7 @@ impl Inspector {
                     ),
                     DetailTab::Actions => actions_tab(detail, cx),
                     DetailTab::Yaml => {
-                        yaml_tab(detail, &self.persisted.preferences, cx).into_any_element()
+                        yaml_tab(self, detail, &self.persisted.preferences, cx).into_any_element()
                     }
                 };
                 div()

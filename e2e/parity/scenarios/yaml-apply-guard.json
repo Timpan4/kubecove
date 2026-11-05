@@ -1,0 +1,51 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "yaml-apply.lint-failure",
+      "title": "A failed lint of the YAML draft shows the friendly lint failure until a later lint succeeds",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showYaml" },
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "lint_kubernetes_yaml", "context": "mock-dev" } },
+        { "action": "editYaml" },
+        { "action": "replaceYamlDraft", "value": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: payments-api\n  namespace: payments\n" },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "lint_kubernetes_yaml", "context": "mock-dev" } },
+        { "action": "mockTiming", "control": { "operation": "failOnce", "command": "lint_kubernetes_yaml", "context": "mock-dev", "kind": "transport" } },
+        { "action": "expectYamlNotice", "title": "KubeCove could not reach the Kubernetes API" },
+        { "action": "replaceYamlDraft", "value": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: payments-api\n  namespace: payments\nspec: {}\n" },
+        { "action": "expectNoYamlNotice", "title": "KubeCove could not reach the Kubernetes API" }
+      ]
+    },
+    {
+      "id": "yaml-apply.secret-disabled-message",
+      "title": "A Secret's YAML tab states why apply is disabled",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api-secrets" },
+        { "action": "openResource", "kind": "Secret", "name": "payments-api-secrets", "namespace": "payments" },
+        { "action": "showYaml" },
+        { "action": "expectYamlNotice", "title": "YAML apply unavailable" },
+        { "action": "expectYamlNotice", "title": "Secret YAML apply is disabled to avoid exposing sensitive data." }
+      ]
+    },
+    {
+      "id": "yaml-apply.dry-run-hint",
+      "title": "Apply names the dry run it needs and drops that description once a dry run reviews the draft",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showYaml" },
+        { "action": "editYaml" },
+        { "action": "expectYamlApplyDescription", "text": "Run a dry run before applying." },
+        { "action": "dryRunYaml" },
+        { "action": "expectDryRun", "contains": ["+# dry-run: browser mock", "  force-conflicts: false"] },
+        { "action": "expectNoYamlApplyDescription" }
+      ]
+    }
+  ]
+}

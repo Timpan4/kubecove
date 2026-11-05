@@ -6,7 +6,7 @@
 use super::Inspector;
 use super::yaml_apply::apply_request;
 use gpui_kit::{Context, Task, Window};
-use kubecove_lib::models::{KubernetesYamlLintDiagnostic, KubernetesYamlLintStatusNote};
+use kubecove_lib::models::{AppError, KubernetesYamlLintDiagnostic, KubernetesYamlLintStatusNote};
 use std::time::Duration;
 
 /// The `linter` delay in `YamlCodeEditor.svelte`.
@@ -17,7 +17,9 @@ const LINT_DELAY: Duration = Duration::from_millis(450);
 pub(super) struct Lint {
     pub diagnostics: Vec<KubernetesYamlLintDiagnostic>,
     pub notes: Vec<KubernetesYamlLintStatusNote>,
-    pub error: Option<String>,
+    /// The failure as the command returned it, kept whole so the view can
+    /// classify it the way `FriendlyError` does.
+    pub error: Option<AppError>,
     task: Option<Task<()>>,
 }
 
@@ -60,7 +62,7 @@ impl Inspector {
                             Err(error) => {
                                 detail.lint.diagnostics.clear();
                                 detail.lint.notes.clear();
-                                detail.lint.error = Some(error.message);
+                                detail.lint.error = Some(error);
                             }
                         }
                     }
