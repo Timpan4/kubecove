@@ -47,6 +47,7 @@ async function show(page: Page, view: View) {
 		case "events":
 		case "logs":
 		case "revisions":
+		case "actions-image": case "actions-environment": case "actions-resources": case "actions-labels": case "actions-annotations": case "actions-rollback": case "yaml-edit": case "yaml-kyaml":
 		case "actions": {
 			await page.getByRole("button", { name: "Resources", exact: true }).first().click();
 			await page.getByRole("textbox", { name: "Search resources" }).fill("payments-api");
@@ -56,7 +57,7 @@ async function show(page: Page, view: View) {
 			// The pane opens on a loading placeholder; capture the loaded detail.
 			await page.getByRole("tab", { name: "Details", exact: true }).waitFor();
 			await page.getByText("Loading resource details", { exact: false }).waitFor({ state: "hidden" });
-			if (view === "yaml") {
+			if (view.startsWith("yaml")) {
 				await page.getByRole("tab", { name: "YAML", exact: true }).click();
 				await page.getByText("kind: Deployment", { exact: false }).first().waitFor();
 			}
@@ -72,11 +73,25 @@ async function show(page: Page, view: View) {
 				await page.getByRole("tab", { name: "Revisions", exact: true }).click();
 				await page.getByRole("combobox", { name: "Comparison revision" }).waitFor();
 			}
-			if (view === "actions") {
+			if (view.startsWith("actions")) {
 				await page.getByRole("tab", { name: "Actions", exact: true }).click();
 				await page.locator('[data-resource-action="replicas"]').waitFor();
 				await page.getByText("Loading", { exact: false }).waitFor({ state: "hidden" });
 			}
+			if (view.startsWith("actions-")) {
+				const editor = view.slice("actions-".length);
+				const row = page.locator(`[data-resource-action="${editor}"]`);
+				const label = { image: "Image", environment: "Environment", resources: "Requests and limits", labels: "Labels", annotations: "Annotations", rollback: "Revision" }[editor];
+				if (!label) throw new Error(`Unknown editor ${editor}`);
+				await page.getByRole("textbox", { name: "Resource action filter", exact: true }).fill(label);
+				await row.getByRole("button", { name: editor === "rollback" ? "Roll back" : "Edit", exact: true }).click();
+
+			}
+			if (view === "yaml-kyaml") {
+				await page.getByRole("combobox", { name: "YAML encoding", exact: true }).click();
+				await page.getByRole("option", { name: "KYAML", exact: true }).click();
+			}
+			if (view.startsWith("yaml-edit")) await page.getByRole("button", { name: "Edit YAML", exact: true }).click();
 			return;
 		}
 		case "incidents":
@@ -108,6 +123,7 @@ async function show(page: Page, view: View) {
 		case "gitops-list":
 		case "flux":
 		case "argo-app":
+		case "yaml-edit-kyaml":
 		case "argo-workspace":
 			await page.getByRole("treeitem").filter({ hasText: /^\s*GitOps\s*$/ }).click();
 			await page.getByRole("heading", { level: 2, name: "Argo CD Applications", exact: true }).waitFor();
@@ -117,9 +133,18 @@ async function show(page: Page, view: View) {
 				await page.getByRole("treeitem", { name: /^(?:(?:Expand|Collapse) Flux )?Flux$/ }).click();
 				await page.getByRole("heading", { level: 2, name: "Flux Resources", exact: true }).waitFor();
 			}
-			if (view === "argo-app") {
+			if (view === "argo-app" || view === "yaml-edit-kyaml") {
 				await page.getByRole("button", { name: "Open details for Application root-application in argocd", exact: true }).click();
 				await page.getByText("Change navigator", { exact: true }).waitFor();
+				if (view === "yaml-edit-kyaml") {
+					await page.getByRole("tab",{name:"YAML",exact:true}).click();
+					await page.getByRole("combobox",{name:"YAML shape",exact:true}).click();
+					await page.getByRole("option",{name:"Apply clean",exact:true}).click();
+					await page.getByRole("combobox",{name:"YAML encoding",exact:true}).click();
+					await page.getByRole("option",{name:"KYAML",exact:true}).click();
+					await page.getByRole("button",{name:"Edit YAML",exact:true}).click();
+					await page.getByRole("button",{name:"Format (KYAML)",exact:true}).waitFor();
+				}
 			}
 			if (view === "argo-workspace") {
 				await page.getByRole("button", { name: "View resources for platform-argocd", exact: true }).first().click();

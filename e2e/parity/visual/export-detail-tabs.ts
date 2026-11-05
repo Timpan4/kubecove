@@ -2,6 +2,8 @@
 // streams, Deployment revisions, selected-resource action state, dry-run
 // previews and executions, and the YAML apply review. Requests are built as the
 // clients send them, so the GPUI fixture can refuse any other request.
+import { readResourceYaml } from "../../../src/features/resource-detail/resourceDetailReadSpec";
+import { buildYamlApplyRequest } from "../../../src/features/resource-detail/yamlApplyModel";
 import type { TauriClient } from "../../../src/lib/tauri";
 import type {
 	ClusterOperationResult,
@@ -49,11 +51,20 @@ export async function exportDetailTabs(client: TauriClient, resources: ResourceS
 	const executions: { request: ResourceActionRequest; result: ClusterOperationResult }[] = [];
 	const review = async (request: ResourceActionRequest) => {
 		const preview = await client.invoke<ResourceActionPreview>("preview_resource_action", { request });
-		const confirmed: ResourceActionRequest = { ...request, expectedUid: preview.uid, expectedResourceVersion: preview.resourceVersion, confirmed: true };
+		const confirmed: ResourceActionRequest = { ...request, expectedUid: preview.uid, expectedResourceVersion: preview.resourceVersion, confirmed: true, ...(request.action === "rollback" && { expectedRevisionUid: preview.revisionUid, expectedRevisionResourceVersion: preview.revisionResourceVersion }) };
 		const result = await client.invoke<ClusterOperationResult>("execute_resource_action", { request: confirmed });
 		return { preview, confirmed, result };
 	};
+	const container = { name: "api", env: [], requests: {}, limits: {} };
 	const requests: ResourceActionRequest[] = [
+		{ ...target(focus), action: "edit", edits: { containers: [{ ...container, name: "sidecar", image: "registry.example/sidecar:v2" },{ ...container, env: [{name: "MODE", value: "merged"}] }] },confirmed:false },
+		{ ...target(focus), action: "edit", edits: { containers: [{ ...container, env: [{ name: "RENAMED", value: "new" }, { name: "MODE", remove: true }] }] }, confirmed: false },
+		{ ...target(focus), action: "edit", edits: { containers: [{ ...container, name: "sidecar", image: "registry.example/sidecar:v2" }] }, confirmed: false },
+		{ ...target(focus), action: "edit", edits: { containers: [{ ...container, env: [{ name: "MODE", value: "reviewed" }] }] }, confirmed: false },
+		{ ...target(focus), action: "edit", edits: { containers: [{ ...container, requests: { cpu: "100m" }, limits: { memory: "128Mi" } }] }, confirmed: false },
+		{ ...target(focus), action: "edit", edits: { labels: { app: "reviewed" } }, confirmed: false },
+		{ ...target(focus), action: "edit", edits: { annotations: { "mock.example/keep": "reviewed" } }, confirmed: false },
+		{ ...target(focus), action: "rollback", revision: 2, confirmed: false },
 		{ ...target(focus), action: "restart", confirmed: false },
 		{ ...target(focus), action: "pause", confirmed: false },
 		{ ...target(focus), action: "edit", edits: { replicas: 3 }, confirmed: false },
@@ -66,11 +77,18 @@ export async function exportDetailTabs(client: TauriClient, resources: ResourceS
 		if (request.action !== "delete") await review({ ...target(focus), action: "delete", confirmed: false });
 	}
 	const draft = await client.invoke<string>("get_resource_yaml", { clusterContext, kind: focus.kind, name: focus.name, namespace: focus.namespace, yamlViewMode: "applyClean" });
-	const preview = await client.invoke<YamlApplyPreview>("prepare_yaml_apply", { request: { clusterContext, kind: focus.kind, name: focus.name, namespace: focus.namespace, yaml: draft, forceConflicts: false } });
+	const yamlRequest = buildYamlApplyRequest({ resource: focus, yaml: draft, yamlEncoding: "yaml", forceConflicts: false });
+	const preview = await client.invoke<YamlApplyPreview>("prepare_yaml_apply", { request: yamlRequest });
 	const applyError = await client.invoke("apply_yaml", { request: { clusterContext, kind: focus.kind, name: focus.name, namespace: focus.namespace, yaml: draft } }).then(
 		() => { throw new Error("The browser mock unexpectedly applied YAML"); },
 		errorMessage,
 	);
-	const yamlApply = [{ kind: focus.kind, name: focus.name, namespace: focus.namespace ?? null, draft, preview, applyError }];
-	return { logs, revisions, actions: { states, previews, executions }, yamlApply };
+	const yamlReads = [];
+	for (const row of resources) {
+		for (const mode of ["kubectl", "applyClean"] as const) for (const encoding of ["yaml", "kyaml"] as const) {
+		    yamlReads.push({ target: target(row), mode, encoding, yaml: await readResourceYaml(client, row, { kubeconfigSourceKey: undefined, yamlViewMode: mode, yamlEncoding: encoding }) });
+		}
+	}
+	const yamlApply = [{ request: yamlRequest, preview, applyError }];
+	return { logs, revisions, actions: { states, previews, executions }, yamlApply, yamlReads };
 }

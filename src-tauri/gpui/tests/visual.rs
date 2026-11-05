@@ -168,7 +168,20 @@ mod visual {
                         window.click("map-mode:Network Flow", cx)
                     });
                 }
-                "detail" | "yaml" | "events" | "logs" | "revisions" | "actions" => {
+                "detail"
+                | "yaml"
+                | "events"
+                | "logs"
+                | "revisions"
+                | "actions"
+                | "actions-image"
+                | "actions-environment"
+                | "actions-resources"
+                | "actions-labels"
+                | "actions-annotations"
+                | "actions-rollback"
+                | "yaml-edit"
+                | "yaml-kyaml" => {
                     act(&mut cx, handle, |window, cx| {
                         window.click("open-resources", cx)
                     });
@@ -180,8 +193,48 @@ mod visual {
                         window.click("resource:Deployment:payments:payments-api", cx)
                     });
                     if view != "detail" {
-                        let tab = format!("show-{view}");
+                        let tab = format!("show-{}", view.split('-').next().unwrap());
                         act(&mut cx, handle, |window, cx| window.click(tab, cx));
+                    }
+                    if let Some(editor) = view.strip_prefix("actions-") {
+                        let label = match editor {
+                            "image" => "Image",
+                            "environment" => "Environment",
+                            "resources" => "Requests and limits",
+                            "labels" => "Labels",
+                            "annotations" => "Annotations",
+                            "rollback" => "Revision",
+                            _ => unreachable!(),
+                        };
+                        act(&mut cx, handle, |window, cx| {
+                            window.click("action-filter", cx);
+                            window.input(label, cx);
+                        });
+                        let id = format!("action-{editor}");
+                        act(&mut cx, handle, |window, cx| {
+                            parity_scroll::reveal(window, "actions-scroll", &id, cx);
+                            window.click(id, cx);
+                        });
+                        act(&mut cx, handle, |window, cx| {
+                            parity_scroll::reveal(
+                                window,
+                                "actions-scroll",
+                                &format!("action-row-{editor}"),
+                                cx,
+                            )
+                        });
+                    }
+                    if view == "yaml-kyaml" {
+                        act(&mut cx, handle, |window, cx| {
+                            window.click("yaml-encoding", cx)
+                        });
+                        act(&mut cx, handle, |window, cx| {
+                            window.press("down", cx);
+                            window.press("enter", cx);
+                        });
+                    }
+                    if view.starts_with("yaml-edit") {
+                        act(&mut cx, handle, |window, cx| window.click("edit-draft", cx));
                     }
                 }
                 "cluster-overview" => act(&mut cx, handle, |window, cx| {
@@ -214,11 +267,22 @@ mod visual {
                         act(&mut cx, handle, |window, cx| window.click("nav:Flux", cx));
                     }
                 }
-                "argo-app" => {
+                "argo-app" | "yaml-edit-kyaml" => {
                     act(&mut cx, handle, |window, cx| window.click("nav:GitOps", cx));
                     act(&mut cx, handle, |window, cx| {
                         window.click("gitops-details:Application:argocd:root-application", cx)
                     });
+                    if view == "yaml-edit-kyaml" {
+                        act(&mut cx, handle, |window, cx| window.click("show-yaml", cx));
+                        for picker in ["yaml-shape", "yaml-encoding"] {
+                            act(&mut cx, handle, |window, cx| window.click(picker, cx));
+                            act(&mut cx, handle, |window, cx| {
+                                window.press("down", cx);
+                                window.press("enter", cx);
+                            });
+                        }
+                        act(&mut cx, handle, |window, cx| window.click("edit-draft", cx));
+                    }
                 }
                 "argo-workspace" => {
                     act(&mut cx, handle, |window, cx| window.click("nav:GitOps", cx));

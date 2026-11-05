@@ -5,19 +5,30 @@
 
 use kubecove_gpui::backend::{LogStream, LogTarget, Read};
 use kubecove_lib::models::{
-    AppError, AppErrorKind, ClusterOperationResult, DeploymentRevision, ResourceActionPreview,
-    ResourceActionRequest, ResourceActionState, ResourceActionStateRequest, ResourceSummary,
-    StreamMessage, YamlApplyPreview, YamlApplyRequest, YamlApplyResult,
+    AppError, AppErrorKind, ClusterOperationResult, ClusterOperationTarget, DeploymentRevision,
+    ResourceActionPreview, ResourceActionRequest, ResourceActionState, ResourceActionStateRequest,
+    ResourceSummary, StreamMessage, YamlApplyPreview, YamlApplyRequest, YamlApplyResult,
+    YamlEncoding, YamlViewMode,
 };
 use serde::Deserialize;
 
 #[derive(Deserialize)]
 pub struct DetailTabs {
     logs: Logs,
+    #[serde(rename = "yamlReads")]
+    yaml_reads: Vec<YamlRead>,
     revisions: Vec<DeploymentRevision>,
     actions: Actions,
     #[serde(rename = "yamlApply")]
     yaml_apply: Vec<YamlApply>,
+}
+
+#[derive(Deserialize)]
+struct YamlRead {
+    target: ClusterOperationTarget,
+    mode: YamlViewMode,
+    encoding: YamlEncoding,
+    yaml: String,
 }
 
 #[derive(Deserialize)]
@@ -48,10 +59,7 @@ struct Executed {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct YamlApply {
-    kind: String,
-    name: String,
-    namespace: Option<String>,
-    draft: String,
+    request: YamlApplyRequest,
     preview: YamlApplyPreview,
     apply_error: String,
 }
@@ -75,6 +83,40 @@ fn comparable(request: &ResourceActionRequest) -> serde_json::Value {
 }
 
 impl DetailTabs {
+    pub fn resource_yaml(
+        &self,
+        resource: ResourceSummary,
+        mode: YamlViewMode,
+        encoding: YamlEncoding,
+    ) -> Read<String> {
+        let target = ClusterOperationTarget {
+            cluster_context: resource.cluster,
+            kind: resource.kind,
+            name: resource.name,
+            namespace: resource.namespace,
+            api_version: resource.api_version,
+        };
+        eprintln!(
+            "Fixture YAML {} mode={mode:?} encoding={encoding:?}",
+            target.name
+        );
+        let found = self.yaml_reads.iter().find(|e| {
+            serde_json::to_value(&e.target).unwrap() == serde_json::to_value(&target).unwrap()
+                && e.mode == mode
+                && e.encoding == encoding
+        });
+        ready(found.map_or_else(
+            || {
+                eprintln!(
+                    "No fixture YAML target={}",
+                    serde_json::to_string(&target).unwrap()
+                );
+                missing("YAML shape and encoding")
+            },
+            |e| Ok(e.yaml.clone()),
+        ))
+    }
+
     pub fn log_stream(&self, target: LogTarget) -> Read<LogStream> {
         let messages = match target {
             LogTarget::Pod(_) => self.logs.pod.clone(),
@@ -131,10 +173,9 @@ impl DetailTabs {
 
     fn yaml_entry(&self, request: &YamlApplyRequest) -> Option<&YamlApply> {
         self.yaml_apply.iter().find(|entry| {
-            entry.kind == request.kind
-                && entry.name == request.name
-                && entry.namespace == request.namespace
-                && entry.draft == request.yaml
+            let mut actual = request.clone();
+            actual.kubeconfig_env_var = None;
+            serde_json::to_value(&entry.request).unwrap() == serde_json::to_value(actual).unwrap()
         })
     }
 

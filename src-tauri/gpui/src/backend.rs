@@ -137,6 +137,28 @@ pub trait Backend: Send + Sync + 'static {
     fn execute_action(&self, request: ResourceActionRequest) -> Read<ClusterOperationResult>;
     /// `get_resource_yaml` in a view mode; the apply draft reads `ApplyClean`.
     fn resource_yaml(&self, resource: ResourceSummary, mode: YamlViewMode) -> Read<String>;
+    /// Selected read encoding, shared by the YAML pickers and draft loader.
+    fn resource_yaml_encoded(
+        &self,
+        resource: ResourceSummary,
+        mode: YamlViewMode,
+        encoding: kubecove_lib::models::YamlEncoding,
+    ) -> Read<String> {
+        let read = self.resource_yaml(resource, mode);
+        Box::pin(async move {
+            let yaml = read.await?;
+            if encoding == kubecove_lib::models::YamlEncoding::Yaml {
+                return Ok(yaml);
+            }
+            let value: serde_json::Value = serde_yaml::from_str(&yaml).map_err(|e| {
+                kubecove_lib::models::AppError::new(
+                    e.to_string(),
+                    kubecove_lib::models::AppErrorKind::Serialization,
+                )
+            })?;
+            commands::helpers::serialize_json_value_document(&value, encoding)
+        })
+    }
     /// `prepare_yaml_apply`: a server-side apply dry run of a draft.
     fn prepare_yaml_apply(&self, request: YamlApplyRequest) -> Read<YamlApplyPreview>;
     /// `apply_yaml`: applies a draft whose dry run the user reviewed.
@@ -418,23 +440,16 @@ impl Backend for NativeBackend {
     }
 
     fn resource_yaml(&self, resource: ResourceSummary, mode: YamlViewMode) -> Read<String> {
-        let cancellations = self.cancellations.clone();
-        self.read(async move {
-            supported(&resource.kind)?;
-            commands::get_resource_yaml(
-                resource.cluster,
-                resource.kind,
-                resource.name,
-                resource.namespace,
-                None,
-                Some(mode),
-                None,
-                None,
-                None,
-                State::new(&cancellations),
-            )
-            .await
-        })
+        self.resource_yaml_encoded(resource, mode, kubecove_lib::models::YamlEncoding::Yaml)
+    }
+
+    fn resource_yaml_encoded(
+        &self,
+        resource: ResourceSummary,
+        mode: YamlViewMode,
+        encoding: kubecove_lib::models::YamlEncoding,
+    ) -> Read<String> {
+        detail_reads::resource_yaml(self, resource, mode, encoding)
     }
 
     fn prepare_yaml_apply(&self, request: YamlApplyRequest) -> Read<YamlApplyPreview> {

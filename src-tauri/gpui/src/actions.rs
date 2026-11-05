@@ -36,15 +36,6 @@ impl RowId {
             Self::Delete => "delete",
         }
     }
-
-    /// Rows whose editors the native client has. The others render like the
-    /// web rows but keep their control disabled.
-    pub fn native(self) -> bool {
-        matches!(
-            self,
-            Self::Replicas | Self::Rollout | Self::Restart | Self::Delete
-        )
-    }
 }
 
 #[derive(Clone, Copy, Debug)]

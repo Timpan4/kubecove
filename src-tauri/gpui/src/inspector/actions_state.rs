@@ -1,5 +1,5 @@
 //! Actions tab session (ADR 0004, ADR 0024), ported from
-//! `resourceActionSession.ts`: the permission baseline, the replicas draft,
+//! `resourceActionSession.ts`: the permission baseline, typed edit drafts,
 //! the server dry-run review and the guarded execution that follows it. Each
 //! load and review owns its task, so replacing or closing one drops its result.
 
@@ -13,8 +13,8 @@ use gpui_kit::component::{
 };
 use gpui_kit::{App, AppContext, Context, Entity, SharedString, Subscription, Task, Window};
 use kubecove_lib::models::{
-    ResourceActionKind, ResourceActionPreview, ResourceActionRequest, ResourceActionState,
-    ResourceSummary,
+    ResourceActionEdits, ResourceActionKind, ResourceActionPreview, ResourceActionRequest,
+    ResourceActionState, ResourceSummary,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -68,8 +68,15 @@ pub(super) struct ActionsState {
     pub state: Option<ResourceActionState>,
     pub loading: bool,
     pub load_error: Option<String>,
-    /// `edits.replicas`, the only draft the native client edits.
+    /// The numeric replica draft. Other row deltas live in `edits`.
     pub replicas: Option<i32>,
+    pub edits: ResourceActionEdits,
+    pub pending_labels: Vec<(RowId, SharedString)>,
+    pub current_labels: Vec<(RowId, SharedString)>,
+    pub editor: super::action_editors::ActionEditor,
+    pub new_entries:
+        std::collections::HashMap<super::action_fields::GroupKind, super::action_fields::NewEntry>,
+    pub revision: Option<i64>,
     pub expanded: Option<RowId>,
     pub replicas_input: Entity<InputState>,
     pub review: Option<Review>,
@@ -86,6 +93,11 @@ impl ActionsState {
 
     pub fn pending(&self) -> usize {
         usize::from(self.replicas.is_some())
+            + self
+                .rows
+                .iter()
+                .map(|r| super::action_drafts::count(&self.edits, r.id))
+                .sum::<usize>()
     }
 }
 
@@ -105,6 +117,25 @@ impl Inspector {
             Detail::Ready(detail) => detail.actions.as_mut(),
             _ => None,
         }
+    }
+
+    /// Cache draft labels on changes so rendering only clones shared strings.
+    pub(super) fn refresh_action_labels(&mut self, cx: &mut Context<Self>) {
+        if let Some(a) = self.actions_state() {
+            a.pending_labels = a
+                .rows
+                .iter()
+                .filter_map(|row| {
+                    let label = if row.id == RowId::Replicas {
+                        a.replicas.map(|replicas| format!("Pending: {replicas}"))
+                    } else {
+                        super::action_drafts::pending_label(&a.edits, row.id)
+                    };
+                    label.map(|label| (row.id, label.into()))
+                })
+                .collect();
+        }
+        cx.notify();
     }
 
     /// Creates the session and loads the baseline the first time the tab opens.
@@ -140,7 +171,7 @@ impl Inspector {
                 {
                     actions.replicas = Some(value);
                 }
-                cx.notify();
+                this.refresh_action_labels(cx);
             }),
         ];
         let rows = actions::rows(&resource);
@@ -153,6 +184,12 @@ impl Inspector {
             state: None,
             load_error: None,
             replicas: None,
+            edits: ResourceActionEdits::default(),
+            pending_labels: Vec::new(),
+            current_labels: Vec::new(),
+            editor: Default::default(),
+            new_entries: Default::default(),
+            revision: None,
             expanded: None,
             replicas_input,
             review: None,
@@ -180,19 +217,41 @@ impl Inspector {
         });
         actions.load_task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
-            let _ = this.update(cx, |this, cx| {
-                if let Some(actions) = this.actions_state() {
+            let _ = this.update_in(cx, |this, window, cx| {
+                let row = if let Some(actions) = this.actions_state() {
                     match result {
                         Ok(state) => {
+                            actions.current_labels = actions
+                                .rows
+                                .iter()
+                                .map(|row| {
+                                    (
+                                        row.id,
+                                        actions::current_label(
+                                            row,
+                                            Some(&state),
+                                            &actions.resource.kind,
+                                        )
+                                        .into(),
+                                    )
+                                })
+                                .collect();
                             actions.state = Some(state);
                             actions.load_error = None;
                         }
                         Err(error) => {
                             actions.state = None;
+                            actions.current_labels.clear();
                             actions.load_error = Some(error.message);
                         }
                     }
                     actions.loading = false;
+                    actions.expanded
+                } else {
+                    None
+                };
+                if let Some(row) = row {
+                    this.prepare_action_editor(row, window, cx);
                 }
                 cx.notify();
             });
@@ -200,7 +259,7 @@ impl Inspector {
         cx.notify();
     }
 
-    /// Opens the replicas editor with the draft or the loaded value.
+    /// Opens a row editor with its draft or the loaded baseline.
     pub(super) fn toggle_action_row(
         &mut self,
         row: RowId,
@@ -222,6 +281,7 @@ impl Inspector {
             let input = actions.replicas_input.clone();
             input.update(cx, |input, cx| input.set_value(value, window, cx));
         }
+        self.prepare_action_editor(row, window, cx);
         cx.notify();
     }
 
@@ -239,7 +299,7 @@ impl Inspector {
         if actions.loading || !actions::allowed(actions.state.as_ref(), action) {
             return;
         }
-        if action == ResourceActionKind::Edit && actions.replicas.is_none() {
+        if action == ResourceActionKind::Edit && actions.pending() == 0 {
             return;
         }
         // A running execution keeps its result and refresh.
@@ -253,7 +313,18 @@ impl Inspector {
         let replicas = (action == ResourceActionKind::Edit)
             .then_some(actions.replicas)
             .flatten();
-        let request = actions::review_request(&actions.resource, action, replicas);
+        let mut request = actions::review_request(&actions.resource, action, replicas);
+        if action == ResourceActionKind::Edit {
+            let mut edits = actions.edits.clone();
+            edits.replicas = replicas;
+            request.edits = Some(edits);
+        }
+        if action == ResourceActionKind::Rollback {
+            let Some(revision) = actions.revision else {
+                return;
+            };
+            request.revision = Some(revision);
+        }
         let read = backend.preview_action(request.clone());
         let task = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
@@ -332,6 +403,9 @@ impl Inspector {
         review.status = ReviewStatus::Executing;
         review.error = None;
         let reviewed_replicas = request.edits.as_ref().and_then(|edits| edits.replicas);
+        let mut reviewed_edits = request.edits.clone().unwrap_or_default();
+        reviewed_edits.replicas = None;
+        let reviewed_edits = serde_json::to_value(reviewed_edits).expect("edits serialize");
         let edit = request.action == ResourceActionKind::Edit;
         let read = backend.execute_action(request);
         review._task = Some(cx.spawn_in(window, async move |this, cx| {
@@ -343,8 +417,18 @@ impl Inspector {
                 match result {
                     Ok(result) => {
                         // Drafts edited while this one executed stay pending.
-                        if edit && actions.replicas == reviewed_replicas {
+                        if edit
+                            && actions.replicas == reviewed_replicas
+                            && serde_json::to_value(&actions.edits).expect("edits serialize")
+                                == reviewed_edits
+                        {
                             actions.replicas = None;
+                            actions.edits = ResourceActionEdits::default();
+                            actions.pending_labels.clear();
+                            actions.editor = Default::default();
+                            actions.new_entries.retain(|kind, _| {
+                                matches!(kind, super::action_fields::GroupKind::Metadata(_))
+                            });
                             actions.expanded = None;
                         }
                         actions.review = None;

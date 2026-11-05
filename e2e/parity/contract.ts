@@ -3,10 +3,19 @@ import { join } from "node:path";
 
 type Identity = { kind: string; name: string; namespace: string };
 export type Step =
-    | { action: "expectLiveState"; label: string; notice?: string }
-    | { action: "replayLiveData"; script: import("../../src/lib/tauri-dev-mock-live").LiveScript }
-    | ({ action: "expectResourceStatus"; status: string } & Identity)
-    | { action: "openCustomKind"; kind: string; surface: "sidebar" | "picker" }
+	| { action: "expectLiveState"; label: string; notice?: string }
+	| { action: "replayLiveData"; script: import("../../src/lib/tauri-dev-mock-live").LiveScript }
+	| ({ action: "expectResourceStatus"; status: string } & Identity)
+	| { action: "openCustomKind"; kind: string; surface: "sidebar" | "picker" }
+	| { action: "expectYamlAbsent"; fragments: string[] }
+	| { action: "clickActionEntry"; label: string; button: "Add" | "Remove" | "Restore" }
+	| { action: "fillContainerImage"; container: string; value: string }
+	| { action: "openActionEditor"; row: "image" | "environment" | "resources" | "labels" | "annotations" | "rollback" }
+	| { action: "fillActionField"; label: string; value: string }
+	| { action: "chooseActionRevision"; revision: number }
+	| { action: "selectYamlShape" | "selectYamlEncoding" | "replaceYamlDraft" | "expectYamlDocument"; value: string }
+	| { action: "expectYamlPicker"; label: string; value: string }
+	| { action: "formatYaml" }
 	| { action: "openResources" | "showYaml" | "closeDetail" | "expectDetailClosed" | "expectEmpty" | "refresh" }
 	| { action: "search" | "expectSearch"; value: string }
 	| ({ action: "expectResource" | "openResource" | "expectDetail" } & Identity)
@@ -101,9 +110,13 @@ export type Contract = { scenarios: Scenario[] };
 
 /** Every action both drivers must implement; `contract.test.ts` checks each driver handles each one. */
 export const ACTIONS = [
-    "expectLiveState", "replayLiveData", "expectResourceStatus", "openCustomKind",
+	"expectLiveState", "replayLiveData", "expectResourceStatus", "openCustomKind",
 	"selectTopologyNode", "expectTopologyEmpty", "expectUsageFooter", "openUsageTree", "expectNoUsageFooter", "expectUsageProcess", "setTopologyMode", "selectNamespace", "expectTopology", "expectTopologyEdge", "expectNoTopologyNode", "expectResourceMetrics",
-    "openResources", "showYaml", "closeDetail", "expectDetailClosed", "expectEmpty", "refresh", "search", "expectSearch",
+	"expectYamlAbsent",
+	"clickActionEntry",
+	"fillContainerImage",
+	"openActionEditor", "fillActionField", "chooseActionRevision", "selectYamlShape", "selectYamlEncoding", "replaceYamlDraft", "expectYamlDocument", "expectYamlPicker", "formatYaml",
+	"openResources", "showYaml", "closeDetail", "expectDetailClosed", "expectEmpty", "refresh", "search", "expectSearch",
 	"expectResource", "openResource", "expectDetail", "expectClusterResource", "expectNoClusterResource", "expectYaml", "openPage", "showTab", "filterEvents",
 	"expectEvent", "expectEventCount", "expectLiveSessionCount", "filterIncidents", "expectIncidentGuide", "expectGitOpsCount", "expectPortForward",
 	"expectLogLines", "filterLogs", "toggleLogLevel", "expectLogsEmpty", "selectRevision", "expectRevisionDiff", "reviewAction", "editReplicas",
@@ -159,6 +172,14 @@ function step(value: unknown): Step {
         case "expectResourceMetrics":
             if (typeof item.namespace !== "string") throw new Error("Expected namespace");
             return { action: item.action, kind: string(item.kind), namespace: item.namespace, name: string(item.name), cpu: string(item.cpu), memory: string(item.memory) };
+		case "expectYamlAbsent": return { action: item.action, fragments: strings(item.fragments, false) };
+		case "clickActionEntry": return { action: item.action, label: string(item.label), button: oneOf(["Add", "Remove", "Restore"], item.button, "an entry action") };
+		case "fillContainerImage": return { action: item.action, container: string(item.container), value: string(item.value) };
+		case "openActionEditor": return { action: item.action, row: oneOf(["image", "environment", "resources", "labels", "annotations", "rollback"], item.row, "an action editor") };
+		case "fillActionField": case "expectYamlPicker": return { action: item.action, label: string(item.label), value: string(item.value) };
+		case "chooseActionRevision": return { action: item.action, revision: count(item.revision) };
+		case "selectYamlShape": case "selectYamlEncoding": case "replaceYamlDraft": case "expectYamlDocument": return { action: item.action, value: string(item.value) };
+		case "formatYaml": return { action: item.action };
 		case "openResources": case "showYaml": case "closeDetail": case "expectDetailClosed": case "expectEmpty": case "refresh":
 			return { action: item.action };
 		case "search": case "expectSearch": return { action: item.action, value: string(item.value) };

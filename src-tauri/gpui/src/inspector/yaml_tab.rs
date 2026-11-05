@@ -18,23 +18,6 @@ use kubecove_lib::models::{AppErrorKind, ResourceSummary};
 /// Lines the compact dry-run diff shows (`yamlDiffLines.slice(0, 24)`).
 const COMPACT_DIFF_LINES: usize = 24;
 
-fn picker(label: &str, value: &str) -> Div {
-    div()
-        .flex()
-        .items_center()
-        .gap(px(8.))
-        .child(ui::muted(ui::xs(label.to_owned())))
-        .child(
-            ui::outline_button()
-                .h(px(28.))
-                .w(px(140.))
-                .px(px(8.))
-                .justify_between()
-                .child(ui::xs(value.to_owned()))
-                .child(ui::icon("chevron-down", 14., Tokens::muted_foreground())),
-        )
-}
-
 /// `FriendlyError` in its unclassified form: the title, the generic summary
 /// and the technical detail, which the native client shows expanded.
 fn failure(id: &'static str, title: &str, detail: String) -> ObservedElement<Stateful<Div>> {
@@ -85,8 +68,8 @@ fn operation_scope(resource: &ResourceSummary) -> ObservedElement<Stateful<Div>>
             resource.kind,
             resource.name
         ))
-        .flex()
-        .flex_col()
+        .grid()
+        .grid_cols(2)
         .gap(px(4.))
         .p(px(12.))
         .rounded(px(8.))
@@ -133,8 +116,21 @@ fn force_conflicts(state: &YamlApply) -> Div {
         .border_1()
         .border_color(Tokens::border())
         .bg(Tokens::background().opacity(0.5))
-        .child(ui::xs(format!("Force-conflicts: {status}")))
-        .child(ui::xs(format!("Preference source: {source}")))
+        .child(
+            div()
+                .flex()
+                .gap(px(8.))
+                .child(
+                    ui::xs(format!("Force-conflicts: {status}"))
+                        .flex_1()
+                        .min_w_0(),
+                )
+                .child(
+                    ui::xs(format!("Preference source: {source}"))
+                        .flex_1()
+                        .min_w_0(),
+                ),
+        )
         .child(ui::muted(ui::xs(review)))
 }
 
@@ -213,7 +209,12 @@ fn dry_run_diff(review: &Review, full: bool, cx: &mut Context<Inspector>) -> Div
         })
 }
 
-fn edit_controls(state: &YamlApply, draft_empty: bool, cx: &mut Context<Inspector>) -> Div {
+fn edit_controls(
+    state: &YamlApply,
+    draft_empty: bool,
+    kyaml: bool,
+    cx: &mut Context<Inspector>,
+) -> Div {
     let preparing = matches!(state.phase, Phase::Preparing);
     let applying = matches!(state.phase, Phase::Applying(_));
     let reviewed = state.review().is_some();
@@ -226,12 +227,21 @@ fn edit_controls(state: &YamlApply, draft_empty: bool, cx: &mut Context<Inspecto
         .justify_end()
         .gap(px(8.))
         .child(
-            // Formatting is not ported yet, so the native control stays disabled.
-            button(Variant::Outline, 28., true)
+            button(Variant::Outline, 28., preparing || applying)
                 .id("yaml-format")
                 .test_support()
                 .child(ui::icon("wand-sparkles", 14., Tokens::foreground()))
-                .child("Format (YAML)"),
+                .aria_label(if kyaml {
+                    "Format (KYAML)"
+                } else {
+                    "Format (YAML)"
+                })
+                .child(if kyaml {
+                    "Format (KYAML)"
+                } else {
+                    "Format (YAML)"
+                })
+                .on_click(cx.listener(|this, _, window, cx| this.format_yaml(window, cx))),
         )
         .child({
             let dry_run = button(Variant::Secondary, 28., dry_run_disabled)
@@ -353,24 +363,37 @@ pub(super) fn yaml_tab(detail: &ResourceDetail, cx: &mut Context<Inspector>) -> 
                         .flex()
                         .items_center()
                         .gap(px(8.))
-                        .child(picker(
-                            "YAML shape",
-                            if editing {
-                                "Apply clean"
-                            } else {
-                                "Kubectl view"
-                            },
+                        .flex_wrap()
+                        .child(super::yaml_view::picker(
+                            &detail.yaml_view,
+                            true,
+                            editing || loading,
                         ))
-                        .child(picker("Encoding", "YAML")),
+                        .child(super::yaml_view::picker(
+                            &detail.yaml_view,
+                            false,
+                            editing || loading,
+                        ))
+                        .child(edit_button),
                 )
-                .child(div().flex().child(edit_button))
                 .when(editing, |column| {
                     column
                         .child(operation_scope(summary))
                         .child(force_conflicts(state))
-                        .child(edit_controls(state, draft_empty, cx))
+                        .child(edit_controls(
+                            state,
+                            draft_empty,
+                            detail.yaml_view.format == kubecove_lib::models::YamlEncoding::Kyaml,
+                            cx,
+                        ))
                 }),
         )
+        .when_some(state.feedback_format(), |pane, message| {
+            pane.child(failure("yaml-format-error", "Format failed", message))
+        })
+        .when_some(detail.yaml_view.error.clone(), |pane, message| {
+            pane.child(failure("yaml-view-error", "Failed to load YAML", message))
+        })
         .when_some(disabled, |pane, reason| {
             pane.child(
                 div()

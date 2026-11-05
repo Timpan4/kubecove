@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { ACTIONS, loadContract, parseContract, requireViewCoverage, validateReports } from "./contract";
 import { VIEWS } from "./visual/views";
 
@@ -10,10 +10,12 @@ describe("equal GPUI and Svelte tests", () => {
 	});
 	test("both drivers handle every shared action", async () => {
 		const web = await readFile("e2e/parity/web.ts", "utf8");
-		const gpui = (await Promise.all(["src-tauri/gpui/tests/parity.rs", "src-tauri/gpui/tests/parity/topology_metrics.rs", "src-tauri/gpui/tests/parity/live_data.rs"].map((path) => readFile(path, "utf8")))).join("\n");
+		const directory = "src-tauri/gpui/tests/parity";
+		const modules = (await readdir(directory)).filter((name) => name.endsWith(".rs"));
+		const gpui = (await Promise.all(["src-tauri/gpui/tests/parity.rs", ...modules.map((name) => `${directory}/${name}`)].map((path) => readFile(path, "utf8")))).join("\n");
 		const unhandled = ACTIONS.flatMap((action) => [
 			...(web.includes(`case "${action}"`) ? [] : [`web ${action}`]),
-			...(gpui.includes(`"${action}" =>`) ? [] : [`gpui ${action}`]),
+			...(new RegExp(`"${action}"(?:\\s*\\|\\s*"[^"]+")*\\s*=>`).test(gpui) ? [] : [`gpui ${action}`]),
 		]);
 		expect(unhandled).toEqual([]);
 	});

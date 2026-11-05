@@ -1,8 +1,6 @@
 //! Actions tab of the resource detail panel, mirroring
-//! `ResourceActionsTab.svelte`. Replicas, rollout pause and resume, restart and
-//! exact delete run natively; the other web rows render with their control
-//! disabled until their editors are ported. `actions_review` renders the
-//! review dialog.
+//! `ResourceActionsTab.svelte`. Row editors collect typed deltas;
+//! `actions_review` renders the server dry-run review before execution.
 
 use super::Inspector;
 use super::actions_state::ActionsState;
@@ -87,7 +85,9 @@ fn header(actions: &ActionsState) -> Div {
 fn row_button(actions: &ActionsState, row: &ActionRow, cx: &mut Context<Inspector>) -> Div {
     let state = actions.state.as_ref();
     let action = actions::action_for_row(row, state);
-    let disabled = !actions::allowed(state, action) || actions.loading || !row.id.native();
+    let disabled = !actions::allowed(state, action)
+        || actions.loading
+        || (row.id == RowId::Rollback && state.is_none_or(|s| s.revisions.is_empty()));
     let expanded = actions.expanded == Some(row.id);
     let (variant, label) = match row.id {
         RowId::Delete => (Variant::Destructive, "Delete"),
@@ -128,10 +128,11 @@ fn action_row(
     let state = actions.state.as_ref();
     let action = actions::action_for_row(row, state);
     let permission = actions::permission(state, action);
-    let pending = (row.id == RowId::Replicas)
-        .then_some(actions.replicas)
-        .flatten()
-        .map(|replicas| format!("Pending: {replicas}"));
+    let pending = actions
+        .pending_labels
+        .iter()
+        .find(|(id, _)| *id == row.id)
+        .map(|(_, label)| label.clone());
     let mut info = div()
         .flex_1()
         .min_w_0()
@@ -153,11 +154,14 @@ fn action_row(
                 }),
         )
         .child(
-            ui::muted(ui::xs(actions::current_label(
-                row,
-                state,
-                &actions.resource().kind,
-            )))
+            ui::muted(ui::xs(
+                actions
+                    .current_labels
+                    .iter()
+                    .find(|(id, _)| *id == row.id)
+                    .map(|(_, label)| label.clone())
+                    .unwrap_or_default(),
+            ))
             .mt(px(4.)),
         );
     if let Some(pending) = pending.clone() {
@@ -193,14 +197,36 @@ fn action_row(
         .when(pending.is_some(), |controls| {
             controls.child(
                 button(Variant::Ghost, 24., false)
-                    .id("action-revert-replicas")
+                    .id(SharedString::from(format!(
+                        "action-revert-{}",
+                        row.id.key()
+                    )))
                     .test_support()
                     .child("Revert")
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        if let Some(actions) = this.actions_state() {
-                            actions.replicas = None;
+                    .on_click(cx.listener({
+                        let id = row.id;
+                        move |this, _, window, cx| {
+                            if let Some(actions) = this.actions_state() {
+                                if id == RowId::Replicas {
+                                    actions.replicas = None;
+                                }
+                                super::action_drafts::revert(&mut actions.edits, id);
+                                actions.new_entries.retain(|kind, _| {
+                                    !matches!(
+                                        (id, kind),
+                                        (
+                                            RowId::Environment,
+                                            super::action_fields::GroupKind::Environment(_)
+                                        ) | (
+                                            RowId::Resources,
+                                            super::action_fields::GroupKind::Quantity(_, _)
+                                        )
+                                    )
+                                });
+                            }
+                            this.reset_action_editor(window, cx);
+                            this.refresh_action_labels(cx);
                         }
-                        cx.notify();
                     })),
             )
         })
@@ -242,6 +268,12 @@ fn action_row(
                 .child(controls),
         )
         .children(editor)
+        .when(
+            actions.expanded == Some(row.id)
+                && row.id != RowId::Replicas
+                && actions::allowed(state, action),
+            |pane| pane.child(super::action_editor_view::render(actions, cx)),
+        )
 }
 
 fn notice(id: &'static str, text: String, success: bool) -> impl IntoElement {
@@ -365,11 +397,13 @@ pub(super) fn actions_tab(detail: &ResourceDetail, cx: &mut Context<Inspector>) 
                             .id("action-discard")
                             .test_support()
                             .child("Discard")
-                            .on_click(cx.listener(|this, _, _, cx| {
+                            .on_click(cx.listener(|this, _, window, cx| {
                                 if let Some(actions) = this.actions_state() {
                                     actions.replicas = None;
+                                    actions.edits = Default::default();
                                 }
-                                cx.notify();
+                                this.reset_action_editor(window, cx);
+                                this.refresh_action_labels(cx);
                             })),
                     )
                     .child({

@@ -25,6 +25,14 @@ commands for these records. Kubeconfig writes remain disabled in the production
 native backend until its host initializes the existing settings storage path.
 Other unsupported settings keep their controls disabled with a reason.
 
+The Actions tab supports image, environment, requests and limits, labels, annotations
+and revision rollback through the existing typed preview and execution commands.
+Every change keeps its target scope and server review. YAML supports Kubectl and
+Apply clean shapes, YAML and KYAML encodings, and formatting in a background task.
+Discovered resources read their YAML through the existing dynamic-details command.
+Editor entries use virtual lists. Skip-review, log-layout and global force-conflict
+settings remain disabled because native browser-local-storage persistence is absent.
+
 The workspace pins GPUI Kit 0.9.0 with components, assets and the YAML grammar.
 Test support is enabled only for development builds. The backend dependency
 uses the existing GUI-free configuration.

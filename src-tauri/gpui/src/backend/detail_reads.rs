@@ -93,3 +93,46 @@ pub(super) fn log_stream(backend: &NativeBackend, target: LogTarget) -> super::R
         ))
     })
 }
+
+pub(super) fn resource_yaml(
+    backend: &NativeBackend,
+    resource: kubecove_lib::models::ResourceSummary,
+    mode: kubecove_lib::models::YamlViewMode,
+    encoding: kubecove_lib::models::YamlEncoding,
+) -> super::Read<String> {
+    let cancellations = backend.cancellations.clone();
+    backend.read(async move {
+        if let Some(kind) =
+            super::delivery::dynamic_kind(&resource).filter(|_| resource.dynamic == Some(true))
+        {
+            return commands::get_dynamic_resource_details(
+                resource.cluster,
+                kind,
+                resource.name,
+                resource.namespace,
+                None,
+                Some(mode),
+                Some(encoding),
+                None,
+                None,
+                State::new(&cancellations),
+            )
+            .await
+            .map(|details| details.yaml);
+        }
+        super::supported(&resource.kind)?;
+        commands::get_resource_yaml(
+            resource.cluster,
+            resource.kind,
+            resource.name,
+            resource.namespace,
+            None,
+            Some(mode),
+            Some(encoding),
+            None,
+            None,
+            State::new(&cancellations),
+        )
+        .await
+    })
+}

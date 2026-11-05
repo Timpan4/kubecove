@@ -88,6 +88,7 @@ pub(super) struct ResourceDetail {
     pub marks: YamlMarks,
     pub tab: DetailTab,
     pub yaml: YamlApply,
+    pub yaml_view: super::yaml_view::YamlView,
     pub events: EventsState,
     pub logs: Option<LogsState>,
     pub revisions: Option<RevisionsState>,
@@ -133,6 +134,7 @@ impl ResourceDetail {
             marks,
             tab: DetailTab::Details,
             yaml: YamlApply::default(),
+            yaml_view: super::yaml_view::YamlView::new(window, cx),
             events: EventsState::new(window, cx),
             logs: None,
             revisions: None,
@@ -157,6 +159,7 @@ impl Inspector {
             DetailTab::Revisions => self.open_revisions(window, cx),
             DetailTab::Argo => self.open_argo(window, cx),
             DetailTab::Actions => self.open_actions(window, cx),
+            DetailTab::Yaml => self.reload_yaml_view(window, cx),
             _ => {}
         }
         cx.notify();

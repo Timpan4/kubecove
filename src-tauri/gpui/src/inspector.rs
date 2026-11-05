@@ -1,3 +1,8 @@
+mod action_drafts;
+mod action_editor_view;
+mod action_editors;
+mod action_fields;
+mod action_rollback_view;
 mod actions_review;
 mod actions_state;
 mod actions_tab;
@@ -59,6 +64,7 @@ mod usage;
 mod yaml_apply;
 mod yaml_marks;
 mod yaml_tab;
+mod yaml_view;
 
 use crate::backend::{Backend, Scope};
 use crate::theme::Tokens;

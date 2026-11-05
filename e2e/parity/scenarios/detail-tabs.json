@@ -147,6 +147,736 @@
         { "action": "editYaml" },
         { "action": "expectYamlReadOnly" }
       ]
+    },
+    {
+      "id": "actions-image.container",
+      "title": "Review and apply image-container without losing unrelated fields",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "search",
+          "value": "payments-api"
+        },
+        {
+          "action": "openResource",
+          "kind": "Deployment",
+          "name": "payments-api",
+          "namespace": "payments"
+        },
+        {
+          "action": "showTab",
+          "tab": "Actions"
+        },
+        {
+          "action": "openActionEditor",
+          "row": "image"
+        },
+        {
+          "action": "fillContainerImage",
+          "container": "sidecar",
+          "value": "registry.example/sidecar:v2"
+        },
+        {
+          "action": "expectNoReview"
+        },
+        {
+          "action": "expectNoActionResult"
+        },
+        {
+          "action": "reviewAction",
+          "label": "Check changes"
+        },
+        {
+          "action": "expectReview",
+          "title": "Review edit for payments-api",
+          "description": "edit Deployment payments/payments-api in context mock-dev",
+          "contains": [
+            "-          image: registry.example/sidecar:v1",
+            "+          image: registry.example/sidecar:v2",
+            "         - name: sidecar"
+          ]
+        },
+        {
+          "action": "executeReview"
+        },
+        {
+          "action": "expectNoReview"
+        },
+        {
+          "action": "expectActionResult",
+          "text": "Simulated edit of Deployment payments/payments-api in context mock-dev in browser mock mode."
+        }
+      ]
+    },
+    {
+      "id": "actions-environment.preserves",
+      "title": "Review and apply environment-preserves without losing unrelated fields",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "search",
+          "value": "payments-api"
+        },
+        {
+          "action": "openResource",
+          "kind": "Deployment",
+          "name": "payments-api",
+          "namespace": "payments"
+        },
+        {
+          "action": "showTab",
+          "tab": "Actions"
+        },
+        {
+          "action": "openActionEditor",
+          "row": "environment"
+        },
+        {
+          "action": "fillActionField",
+          "label": "Environment value api MODE",
+          "value": "reviewed"
+        },
+        {
+          "action": "expectNoReview"
+        },
+        {
+          "action": "expectNoActionResult"
+        },
+        {
+          "action": "reviewAction",
+          "label": "Check changes"
+        },
+        {
+          "action": "expectReview",
+          "title": "Review edit for payments-api",
+          "description": "edit Deployment payments/payments-api in context mock-dev",
+          "contains": [
+            "-              value: safe",
+            "+              value: reviewed",
+            "                   key: token"
+          ]
+        },
+        {
+          "action": "executeReview"
+        },
+        {
+          "action": "expectNoReview"
+        },
+        {
+          "action": "expectActionResult",
+          "text": "Simulated edit of Deployment payments/payments-api in context mock-dev in browser mock mode."
+        }
+      ]
+    },
+    {
+      "id": "actions-resources.units",
+      "title": "Review and apply quantities-units without losing unrelated fields",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "search",
+          "value": "payments-api"
+        },
+        {
+          "action": "openResource",
+          "kind": "Deployment",
+          "name": "payments-api",
+          "namespace": "payments"
+        },
+        {
+          "action": "showTab",
+          "tab": "Actions"
+        },
+        {
+          "action": "openActionEditor",
+          "row": "resources"
+        },
+        {
+          "action": "fillActionField",
+          "label": "Request value api cpu",
+          "value": "100m"
+        },
+        {
+          "action": "fillActionField",
+          "label": "Limit value api memory",
+          "value": "128Mi"
+        },
+        {
+          "action": "expectNoReview"
+        },
+        {
+          "action": "expectNoActionResult"
+        },
+        {
+          "action": "reviewAction",
+          "label": "Check changes"
+        },
+        {
+          "action": "expectReview",
+          "title": "Review edit for payments-api",
+          "description": "edit Deployment payments/payments-api in context mock-dev",
+          "contains": [
+            "-              cpu: 25m",
+            "+              cpu: 100m",
+            "-              memory: 64Mi",
+            "+              memory: 128Mi"
+          ]
+        },
+        {
+          "action": "executeReview"
+        },
+        {
+          "action": "expectNoReview"
+        },
+        {
+          "action": "expectActionResult",
+          "text": "Simulated edit of Deployment payments/payments-api in context mock-dev in browser mock mode."
+        }
+      ]
+    },
+    {
+      "id": "actions-labels.preserve",
+      "title": "Review and apply labels-preserve without losing unrelated fields",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "search",
+          "value": "payments-api"
+        },
+        {
+          "action": "openResource",
+          "kind": "Deployment",
+          "name": "payments-api",
+          "namespace": "payments"
+        },
+        {
+          "action": "showTab",
+          "tab": "Actions"
+        },
+        {
+          "action": "openActionEditor",
+          "row": "labels"
+        },
+        {
+          "action": "fillActionField",
+          "label": "Labels value app",
+          "value": "reviewed"
+        },
+        {
+          "action": "expectNoReview"
+        },
+        {
+          "action": "expectNoActionResult"
+        },
+        {
+          "action": "reviewAction",
+          "label": "Check changes"
+        },
+        {
+          "action": "expectReview",
+          "title": "Review edit for payments-api",
+          "description": "edit Deployment payments/payments-api in context mock-dev",
+          "contains": [
+            "-    app: payments-api",
+            "+    app: reviewed",
+            "     keep: yes"
+          ]
+        },
+        {
+          "action": "executeReview"
+        },
+        {
+          "action": "expectNoReview"
+        },
+        {
+          "action": "expectActionResult",
+          "text": "Simulated edit of Deployment payments/payments-api in context mock-dev in browser mock mode."
+        }
+      ]
+    },
+    {
+      "id": "actions-annotations.preserve",
+      "title": "Review and apply annotations-preserve without losing unrelated fields",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "search",
+          "value": "payments-api"
+        },
+        {
+          "action": "openResource",
+          "kind": "Deployment",
+          "name": "payments-api",
+          "namespace": "payments"
+        },
+        {
+          "action": "showTab",
+          "tab": "Actions"
+        },
+        {
+          "action": "openActionEditor",
+          "row": "annotations"
+        },
+        {
+          "action": "fillActionField",
+          "label": "Annotations value mock.example/keep",
+          "value": "reviewed"
+        },
+        {
+          "action": "expectNoReview"
+        },
+        {
+          "action": "expectNoActionResult"
+        },
+        {
+          "action": "reviewAction",
+          "label": "Check changes"
+        },
+        {
+          "action": "expectReview",
+          "title": "Review edit for payments-api",
+          "description": "edit Deployment payments/payments-api in context mock-dev",
+          "contains": [
+            "-    mock.example/keep: yes",
+            "+    mock.example/keep: reviewed"
+          ]
+        },
+        {
+          "action": "executeReview"
+        },
+        {
+          "action": "expectNoReview"
+        },
+        {
+          "action": "expectActionResult",
+          "text": "Simulated edit of Deployment payments/payments-api in context mock-dev in browser mock mode."
+        }
+      ]
+    },
+    {
+      "id": "actions-rollback.revision",
+      "title": "Rollback reviews and executes the selected owned revision",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "search",
+          "value": "payments-api"
+        },
+        {
+          "action": "openResource",
+          "kind": "Deployment",
+          "name": "payments-api",
+          "namespace": "payments"
+        },
+        {
+          "action": "showTab",
+          "tab": "Actions"
+        },
+        {
+          "action": "openActionEditor",
+          "row": "rollback"
+        },
+        {
+          "action": "chooseActionRevision",
+          "revision": 2
+        },
+        {
+          "action": "reviewAction",
+          "label": "Review rollback"
+        },
+        {
+          "action": "expectReview",
+          "title": "Review rollback for payments-api",
+          "description": "rollback Deployment payments/payments-api in context mock-dev",
+          "contains": [
+            "+          image: registry.example/api:v0"
+          ]
+        },
+        {
+          "action": "executeReview"
+        },
+        {
+          "action": "expectActionResult",
+          "text": "Simulated rollback of Deployment payments/payments-api in context mock-dev in browser mock mode."
+        }
+      ]
+    },
+    {
+      "id": "yaml-kyaml.shape-encoding",
+      "title": "YAML pickers keep the requested shape and encoding",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "search",
+          "value": "payments-api"
+        },
+        {
+          "action": "openResource",
+          "kind": "Deployment",
+          "name": "payments-api",
+          "namespace": "payments"
+        },
+        {
+          "action": "showYaml"
+        },
+        {
+          "action": "expectYaml",
+          "contains": ["resourceVersion: \"7\"", "status:"]
+        },
+        {
+          "action": "selectYamlShape",
+          "value": "Apply clean"
+        },
+        {
+          "action": "expectYamlPicker",
+          "label": "YAML shape",
+          "value": "Apply clean"
+        },
+        {
+          "action": "expectYamlAbsent",
+          "fragments": ["resourceVersion", "mock-yaml-uid", "status:"]
+        },
+        {
+          "action": "selectYamlEncoding",
+          "value": "KYAML"
+        },
+        {
+          "action": "expectYamlPicker",
+          "label": "YAML encoding",
+          "value": "KYAML"
+        },
+        {
+          "action": "expectYaml",
+          "contains": [
+            "{",
+            "apiVersion: \"apps/v1\"",
+            "kind: \"Deployment\""
+          ]
+        },
+        {
+          "action": "selectYamlShape",
+          "value": "Kubectl view"
+        },
+        {
+          "action": "selectYamlEncoding",
+          "value": "YAML"
+        },
+        {
+          "action": "expectYamlPicker",
+          "label": "YAML shape",
+          "value": "Kubectl view"
+        },
+        {
+          "action": "expectYaml",
+          "contains": [
+            "apiVersion: apps/v1",
+            "kind: Deployment"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "yaml-edit.format-content",
+      "title": "Formatting a draft preserves its parsed YAML content",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "search",
+          "value": "payments-api"
+        },
+        {
+          "action": "openResource",
+          "kind": "Deployment",
+          "name": "payments-api",
+          "namespace": "payments"
+        },
+        {
+          "action": "showYaml"
+        },
+        {
+          "action": "editYaml"
+        },
+        {
+          "action": "replaceYamlDraft",
+          "value": "apiVersion: apps/v1\nkind: Deployment\nmetadata: {name: payments-api, namespace: payments, labels: {version: \"01\", active: \"true\"}}\nspec: {replicas: 3}\n"
+        },
+        {
+          "action": "formatYaml"
+        },
+        {
+          "action": "expectYaml",
+          "contains": ["metadata:\n  name: payments-api"]
+        },
+        {
+          "action": "expectYamlDocument",
+          "value": "{\"apiVersion\":\"apps/v1\",\"kind\":\"Deployment\",\"metadata\":{\"name\":\"payments-api\",\"namespace\":\"payments\",\"labels\":{\"version\":\"01\",\"active\":\"true\"}},\"spec\":{\"replicas\":3}}"
+        },
+        {
+          "action": "expectNoYamlNotice",
+          "title": "Format failed"
+        }
+      ]
+    },
+    {
+      "id": "actions-environment.add-rename-remove",
+      "title": "New variables can be renamed and removed without replacing the other variables",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "search",
+          "value": "payments-api"
+        },
+        {
+          "action": "openResource",
+          "kind": "Deployment",
+          "name": "payments-api",
+          "namespace": "payments"
+        },
+        {
+          "action": "showTab",
+          "tab": "Actions"
+        },
+        {
+          "action": "openActionEditor",
+          "row": "environment"
+        },
+        {
+          "action": "fillActionField",
+          "label": "New environment name api",
+          "value": "EXTRA"
+        },
+        {
+          "action": "fillActionField",
+          "label": "New environment value api",
+          "value": "new"
+        },
+        {
+          "action": "clickActionEntry",
+          "label": "New environment name api",
+          "button": "Add"
+        },
+        {
+          "action": "fillActionField",
+          "label": "Environment name api EXTRA",
+          "value": "RENAMED"
+        },
+        {
+          "action": "clickActionEntry",
+          "label": "Environment value api MODE",
+          "button": "Remove"
+        },
+        {
+          "action": "reviewAction",
+          "label": "Check changes"
+        },
+        {
+          "action": "expectReview",
+          "title": "Review edit for payments-api",
+          "description": "edit Deployment payments/payments-api in context mock-dev",
+          "contains": [
+            "+            - name: RENAMED",
+            "+              value: new",
+            "-            - name: MODE",
+            "-              value: safe"
+          ]
+        },
+        {
+          "action": "executeReview"
+        },
+        {
+          "action": "expectActionResult",
+          "text": "Simulated edit of Deployment payments/payments-api in context mock-dev in browser mock mode."
+        }
+      ]
+    },
+    {
+      "id": "yaml-edit-kyaml.dynamic-format",
+      "title": "Discovered-resource YAML uses the selected encoding and formats KYAML without changing values.",
+      "steps": [
+        {
+          "action": "openPage",
+          "page": "GitOps"
+        },
+        {
+          "action": "openGitOpsDetails",
+          "kind": "Application",
+          "name": "root-application",
+          "namespace": "argocd"
+        },
+        {
+          "action": "showYaml"
+        },
+        {
+          "action": "expectYaml",
+          "contains": [
+            "kind: Application",
+            "name: root-application"
+          ]
+        },
+        {
+          "action": "selectYamlShape",
+          "value": "Apply clean"
+        },
+        {
+          "action": "expectYamlPicker",
+          "label": "YAML shape",
+          "value": "Apply clean"
+        },
+        {
+          "action": "selectYamlEncoding",
+          "value": "KYAML"
+        },
+        {
+          "action": "expectYamlPicker",
+          "label": "YAML encoding",
+          "value": "KYAML"
+        },
+        {
+          "action": "expectNoYamlNotice",
+          "title": "Failed to load YAML"
+        },
+        {
+          "action": "expectYaml",
+          "contains": [
+            "kind: \"Application\"",
+            "name: \"root-application\""
+          ]
+        },
+        {
+          "action": "editYaml"
+        },
+        {
+          "action": "replaceYamlDraft",
+          "value": "apiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata: {name: root-application, namespace: argocd}\nspec: {project: \"01\"}\n"
+        },
+        {
+          "action": "formatYaml"
+        },
+        {
+          "action": "expectYaml",
+          "contains": [
+            "kind: \"Application\"",
+            "project: \"01\""
+          ]
+        },
+        {
+          "action": "expectYamlDocument",
+          "value": "{\"apiVersion\":\"argoproj.io/v1alpha1\",\"kind\":\"Application\",\"metadata\":{\"name\":\"root-application\",\"namespace\":\"argocd\"},\"spec\":{\"project\":\"01\"}}"
+        }
+      ]
+    },
+    {
+      "id": "actions-environment.merge-containers",
+      "title": "Renaming into an existing variable keeps one field and preserves edits in other containers",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "search",
+          "value": "payments-api"
+        },
+        {
+          "action": "openResource",
+          "kind": "Deployment",
+          "name": "payments-api",
+          "namespace": "payments"
+        },
+        {
+          "action": "showTab",
+          "tab": "Actions"
+        },
+        {
+          "action": "openActionEditor",
+          "row": "environment"
+        },
+        {
+          "action": "fillActionField",
+          "label": "New environment name api",
+          "value": "EXTRA"
+        },
+        {
+          "action": "fillActionField",
+          "label": "New environment value api",
+          "value": "new"
+        },
+        {
+          "action": "clickActionEntry",
+          "label": "New environment name api",
+          "button": "Add"
+        },
+        {
+          "action": "fillActionField",
+          "label": "Environment name api EXTRA",
+          "value": "MODE"
+        },
+        {
+          "action": "fillActionField",
+          "label": "Environment value api MODE",
+          "value": "renamed"
+        },
+        {
+          "action": "openActionEditor",
+          "row": "image"
+        },
+        {
+          "action": "fillContainerImage",
+          "container": "sidecar",
+          "value": "registry.example/sidecar:v2"
+        },
+        {
+          "action": "openActionEditor",
+          "row": "environment"
+        },
+        {
+          "action": "fillActionField",
+          "label": "Environment value api MODE",
+          "value": "merged"
+        },
+        {
+          "action": "expectNoActionResult"
+        },
+        {
+          "action": "reviewAction",
+          "label": "Check changes"
+        },
+        {
+          "action": "expectReview",
+          "title": "Review edit for payments-api",
+          "description": "edit Deployment payments/payments-api in context mock-dev",
+          "contains": [
+            "-              value: safe",
+            "+              value: merged",
+            "-          image: registry.example/sidecar:v1",
+            "+          image: registry.example/sidecar:v2"
+          ]
+        },
+        {
+          "action": "executeReview"
+        },
+        {
+          "action": "expectActionResult",
+          "text": "Simulated edit of Deployment payments/payments-api in context mock-dev in browser mock mode."
+        }
+      ]
     }
   ]
 }

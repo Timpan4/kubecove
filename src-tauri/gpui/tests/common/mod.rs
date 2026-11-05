@@ -309,20 +309,20 @@ impl Backend for Fixture {
     fn execute_action(&self, request: ResourceActionRequest) -> Read<ClusterOperationResult> {
         self.detail_tabs.execute_action(request)
     }
-    /// The browser mocks serve one YAML shape for every view mode, as `details` holds it.
-    fn resource_yaml(&self, resource: ResourceSummary, _: YamlViewMode) -> Read<String> {
-        let details = self.details(resource);
-        Box::pin(async move {
-            let details = details.await?;
-            if details.summary.dynamic == Some(true) {
-                return Err(AppError::new(
-                    format!("unsupported resource kind: {}", details.summary.kind),
-                    AppErrorKind::UnsupportedOperation,
-                ));
-            }
-            Ok(details.yaml)
-        })
+    fn resource_yaml_encoded(
+        &self,
+        resource: ResourceSummary,
+        mode: YamlViewMode,
+        encoding: kubecove_lib::models::YamlEncoding,
+    ) -> Read<String> {
+        self.detail_tabs.resource_yaml(resource, mode, encoding)
     }
+
+    fn resource_yaml(&self, resource: ResourceSummary, mode: YamlViewMode) -> Read<String> {
+        self.detail_tabs
+            .resource_yaml(resource, mode, kubecove_lib::models::YamlEncoding::Yaml)
+    }
+
     fn prepare_yaml_apply(&self, request: YamlApplyRequest) -> Read<YamlApplyPreview> {
         self.detail_tabs.prepare_yaml_apply(request)
     }

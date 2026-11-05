@@ -67,9 +67,12 @@ import type {
 	YamlApplyPreview,
 	YamlApplyRequest,
 } from "./types";
+import { formatYamlDocument } from "./yamlFormat";
 
 type MockRequest = Partial<ArgoOperationRequest & YamlApplyRequest & Pick<PodLogStreamRequest, "batchLines">>;
 interface MockArgs {
+	yamlEncoding?: YamlApplyRequest["yamlEncoding"];
+	yamlViewMode?: "kubectl" | "applyClean";
 	application?: Partial<ArgoApplicationRef>;
 	channel?: Pick<Channel<StreamMessage>, "onmessage">;
 	clusterContext?: string;
@@ -364,9 +367,10 @@ function resourceFromArgs(args: MockArgs): ResourceSummary {
 
 function detailsFor(args: MockArgs): ResourceDetailsFull {
 	const summary = resourceFromArgs(args);
+	const yaml = yamlFor(args);
 	return {
 		summary,
-		yaml: yamlFor(args),
+		yaml: args.yamlEncoding === "kyaml" ? formatYamlDocument(yaml, "kyaml") : yaml,
 		metadata: { labels: { "app.kubernetes.io/name": summary.name }, annotations: { "kubecove.dev/mock": "true" } },
 		status: summary.name === evictedWorkerName
 			? evictedWorkerStatus
@@ -378,7 +382,21 @@ function detailsFor(args: MockArgs): ResourceDetailsFull {
 function builtInYamlFor(args: MockArgs): string {
 	const row = resourceFromArgs(args);
 	if (row.dynamic) throw new Error(`unsupported resource kind: ${row.kind}`);
-	return yamlFor(args);
+	let yaml = yamlFor(args);
+	if (row.kind === "Deployment" && row.name === "payments-api") {
+		const clean = args.yamlViewMode === "applyClean";
+		const document = {
+			apiVersion: "apps/v1", kind: row.kind,
+			metadata: {
+			    name: row.name, namespace: row.namespace, labels: { "kubecove.dev/mock": "true" },
+			    ...(!clean && { uid: "mock-yaml-uid", resourceVersion: "7" }),
+			},
+			spec: {},
+			...(!clean && { status: { replicas: 2 } }),
+		};
+		yaml = stringify(document);
+	}
+	return args?.yamlEncoding === "kyaml" ? formatYamlDocument(yaml, "kyaml") : yaml;
 }
 
 function yamlFor(args: MockArgs): string {

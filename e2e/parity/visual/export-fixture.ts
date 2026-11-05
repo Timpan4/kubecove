@@ -95,7 +95,7 @@ const liveSessions = {
 // The detail tabs the views capture read Deployment payments/payments-api.
 const focus = resources.find((row) => row.kind === "Deployment" && row.name === "payments-api" && row.namespace === "payments");
 if (!focus) throw new Error("Browser mocks lack Deployment payments/payments-api");
-const detailTabs = await exportDetailTabs(client, resources, focus);
+const detailTabs = await exportDetailTabs(client, [...resources, ...gitops.applications.map((app) => app.details.summary)], focus);
 // The RBAC Cockpit per context, and the verifier's mock verdict per verb (an error for verbs it rejects).
 const rbac: Record<string, RbacInspectionSummary> = {};
 for (const context of contexts) {

@@ -29,6 +29,7 @@ pub(super) enum Phase {
 
 pub(super) enum Feedback {
     None,
+    FormatFailed(String),
     PrepareFailed(AppError),
     ApplyFailed(String),
     Applied(String),
@@ -56,6 +57,14 @@ impl Default for YamlApply {
 }
 
 impl YamlApply {
+    pub fn feedback_format(&self) -> Option<String> {
+        if let Feedback::FormatFailed(message) = &self.feedback {
+            Some(message.clone())
+        } else {
+            None
+        }
+    }
+
     /// `yamlEditing`: the draft editor replaces the read-only view.
     pub fn editing(&self) -> bool {
         !matches!(self.phase, Phase::Viewing | Phase::LoadingDraft)
@@ -132,7 +141,21 @@ impl Inspector {
             return;
         };
         detail.yaml = YamlApply::default();
-        let yaml = detail.data.yaml.clone();
+        let selected =
+            gpui_kit::SharedString::from(if detail.yaml_view.mode == YamlViewMode::ApplyClean {
+                "Apply clean"
+            } else {
+                "Kubectl view"
+            });
+        detail
+            .yaml_view
+            .shape
+            .update(cx, |s, cx| s.set_selected_value(&selected, window, cx));
+        let yaml = if detail.yaml_view.text.is_empty() {
+            detail.data.yaml.clone()
+        } else {
+            detail.yaml_view.text.clone()
+        };
         detail
             .editor
             .update(cx, |editor, cx| editor.set_value(yaml, window, cx));
@@ -156,7 +179,14 @@ impl Inspector {
             phase: Phase::LoadingDraft,
             ..Default::default()
         };
-        let read = backend.resource_yaml(detail.data.summary.clone(), YamlViewMode::ApplyClean);
+        detail.yaml_view.shape.update(cx, |s, cx| {
+            s.set_selected_value(&gpui_kit::SharedString::from("Apply clean"), window, cx)
+        });
+        let read = backend.resource_yaml_encoded(
+            detail.data.summary.clone(),
+            YamlViewMode::ApplyClean,
+            detail.yaml_view.format,
+        );
         self.diff_task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
@@ -204,7 +234,8 @@ impl Inspector {
         state.feedback = Feedback::None;
         state.show_full = false;
         let force = force.unwrap_or(state.force_for_resource);
-        let request = apply_request(&detail.data.summary, draft, force);
+        let mut request = apply_request(&detail.data.summary, draft, force);
+        request.yaml_encoding = detail.yaml_view.format;
         let read = backend.prepare_yaml_apply(request.clone());
         self.diff_task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
