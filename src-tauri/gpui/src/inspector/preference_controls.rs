@@ -298,6 +298,14 @@ impl Inspector {
                     .into_iter()
                     .map(|(title, kinds)| {
                         div()
+                            .id(SharedString::from(format!("kind-order-lane:{title}")))
+                            .test_support()
+                            .on_drop(cx.listener(
+                                move |this, drag: &super::resource_order::DragKind, _, cx| {
+                                    this.drop_kind(&drag.0, title, None, cx);
+                                    cx.stop_propagation();
+                                },
+                            ))
                             .flex()
                             .flex_col()
                             .flex_1()
@@ -312,8 +320,40 @@ impl Inspector {
                             .child(ui::medium(ui::sm(title)).mb(px(4.)))
                             .children(kinds.iter().enumerate().map(|(position, kind)| {
                                 let target = kind.clone();
+                                let keyboard_target = kind.clone();
+                                let drop_target = kind.clone();
                                 div()
                                     .id(SharedString::from(format!("kind-order-item:{kind}")))
+                                    .on_drag(
+                                        super::resource_order::DragKind(kind.clone()),
+                                        |drag, _, _, cx| cx.new(|_| drag.clone()),
+                                    )
+                                    .on_drop(cx.listener(
+                                        move |this,
+                                              drag: &super::resource_order::DragKind,
+                                              _,
+                                              cx| {
+                                            this.drop_kind(&drag.0, title, Some(&drop_target), cx);
+                                            cx.stop_propagation();
+                                        },
+                                    ))
+                                    .when_some(self.settings.kind_focus.get(kind), |item, focus| {
+                                        let focus = focus.clone();
+                                        item.track_focus(&focus).tab_index(0).on_click(cx.listener(
+                                            move |_, _, window, cx| focus.focus(window, cx),
+                                        ))
+                                    })
+                                    .on_key_down(cx.listener(
+                                        move |this, event: &gpui_kit::KeyDownEvent, _, cx| {
+                                            if this.move_kind_key(
+                                                &keyboard_target,
+                                                &event.keystroke.key,
+                                                cx,
+                                            ) {
+                                                cx.stop_propagation();
+                                            }
+                                        },
+                                    ))
                                     .test_support()
                                     .aria_description(format!("{title}:{position}"))
                                     .flex()

@@ -85,6 +85,12 @@ impl Inspector {
             if state.active == Some(id) {
                 self.rbac.reviews = workspace.reviews.clone();
             }
+            if let Some(document) = state.transfer.documents.get_mut(&id) {
+                document["spec"]["shortcuts"] = serde_json::to_value(
+                    crate::workspaces::shortcuts::generated(&workspace, Some(document)),
+                )
+                .expect("shortcut identities serialize");
+            }
             if let Some(saved) = state.saved.iter_mut().find(|saved| saved.id == id) {
                 *saved = workspace;
             }

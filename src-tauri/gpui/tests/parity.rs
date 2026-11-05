@@ -23,6 +23,8 @@ mod mcp;
 mod scroll;
 #[path = "parity/settings_integrations.rs"]
 mod settings_integrations;
+#[path = "parity/shell.rs"]
+mod shell;
 #[path = "parity/sidebar_live.rs"]
 mod sidebar_live;
 #[path = "parity/terminal.rs"]
@@ -165,7 +167,8 @@ fn scenarios() -> Vec<Value> {
 }
 
 fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
-    if !(argo::act(window, cx, step)
+    if !(shell::act(window, cx, step)
+        || argo::act(window, cx, step)
         || adapters::act(window, cx, step)
         || mcp::act(window, cx, step)
         || live_sessions::apply(window, cx, step)
@@ -301,6 +304,9 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
                         .advance_clock(std::time::Duration::from_millis(15_000));
                     cx.run_until_parked();
                 }
+            }
+            if step["action"] == "configureShellRead" {
+                *backend.shell_read_phase.lock().unwrap() = string(step, "phase").to_owned();
             }
             if step["action"] == "failWorkspaceContext" {
                 *backend.failed_workspace_context.lock().unwrap() =

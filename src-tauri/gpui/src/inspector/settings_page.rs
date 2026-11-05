@@ -19,6 +19,7 @@ use gpui_kit::{
 pub(super) type Observed = gpui_kit::base::ObservedElement<Stateful<Div>>;
 
 pub(super) struct SettingsState {
+    pub(super) kind_focus: std::collections::HashMap<String, gpui_kit::FocusHandle>,
     pub(super) diagnostics: crate::backend::adapters::BackendDiagnostics,
     pub(super) diagnostics_error: Option<String>,
     pub(super) diagnostics_task: Option<Task<()>>,
@@ -52,6 +53,7 @@ impl SettingsState {
             }
         })];
         Self {
+            kind_focus: Default::default(),
             diagnostics: Default::default(),
             diagnostics_error: None,
             diagnostics_task: None,

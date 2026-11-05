@@ -64,6 +64,13 @@ impl Inspector {
         if !self.can_leave(cx) {
             return;
         }
+        self.visit_scope(
+            crate::workspaces::entries::EntryKind::App,
+            app.cluster.clone(),
+            app.namespace.clone(),
+            app.name.clone(),
+            cx,
+        );
         self.close_detail(cx);
         self.search
             .update(cx, |search, cx| search.set_value("", window, cx));

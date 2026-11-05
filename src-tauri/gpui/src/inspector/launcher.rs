@@ -33,6 +33,9 @@ pub(super) struct LauncherState {
     pub(super) namespaces: Vec<String>,
     pub(super) discovered: Vec<String>,
     pub(super) discovery: Discovery,
+    pub(super) contexts_load: Discovery,
+    pub(super) context_error: Option<String>,
+    pub(super) namespace_error: Option<String>,
     tasks: [Option<Task<()>>; 2],
 }
 
@@ -53,6 +56,9 @@ impl LauncherState {
             namespaces: vec![],
             discovered: vec![],
             discovery: Discovery::Loading,
+            contexts_load: Discovery::Loading,
+            context_error: None,
+            namespace_error: None,
             tasks: [None, None],
         }
     }
@@ -108,20 +114,33 @@ impl Inspector {
         state
             .name
             .update(cx, |input, cx| input.set_value("", window, cx));
+        self.retry_launcher_contexts(window, cx);
+    }
+
+    pub(super) fn retry_launcher_contexts(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.launcher.contexts_load = Discovery::Loading;
+        self.launcher.context_error = None;
+        self.launcher.tasks[1] = None;
         let read = self.backend.contexts();
         let read = self.timings.measure("list_kube_contexts", read);
         self.launcher.tasks[0] = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
-                this.launcher.context_choices = result
-                    .map(|contexts| {
-                        contexts
+                match result {
+                    Ok(contexts) => {
+                        this.launcher.context_choices = contexts
                             .into_iter()
                             .map(|context| (context.name, context.is_current))
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                this.discover_namespaces(window, cx);
+                            .collect();
+                        this.launcher.contexts_load = Discovery::Ready;
+                        this.discover_namespaces(window, cx);
+                    }
+                    Err(error) => {
+                        this.launcher.contexts_load = Discovery::Failed;
+                        this.launcher.context_error = Some(error.message);
+                    }
+                }
+                cx.notify();
             });
         }));
         cx.notify();
@@ -135,7 +154,14 @@ impl Inspector {
             input.set_placeholder(effective.clone(), window, cx)
         });
         state.discovery = Discovery::Loading;
+        state.namespace_error = None;
         state.discovered.clear();
+        if effective.is_empty() {
+            state.tasks[1] = None;
+            state.discovery = Discovery::Ready;
+            cx.notify();
+            return;
+        }
         let read = self.backend.namespaces(effective);
         let read = self.timings.measure("namespaces", read);
         state.tasks[1] = Some(cx.spawn(async move |this, cx| {
@@ -147,7 +173,10 @@ impl Inspector {
                         state.discovered = namespaces.into_iter().map(|ns| ns.name).collect();
                         state.discovery = Discovery::Ready;
                     }
-                    Err(_) => state.discovery = Discovery::Failed,
+                    Err(error) => {
+                        state.discovery = Discovery::Failed;
+                        state.namespace_error = Some(error.message);
+                    }
                 }
                 cx.notify();
             });

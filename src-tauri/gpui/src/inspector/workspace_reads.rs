@@ -8,10 +8,46 @@ pub(super) struct OverviewRead {
     pub rows: Vec<kubecove_lib::models::ResourceSummary>,
     pub load: super::Load,
     pub warnings: Vec<String>,
+    pub retried: bool,
     _task: Task<()>,
 }
 
 impl Inspector {
+    pub(super) fn retry_overview(&mut self, cx: &mut Context<Self>) {
+        let rows = self.workspace_rows().cloned().collect();
+        let request = self.request.clone();
+        let read = self.workspace_resources_read(true);
+        let task = cx.spawn(async move |this, cx| {
+            let result = read.await;
+            let _ = this.update(cx, |this, cx| {
+                if !Rc::ptr_eq(&this.request, &request) {
+                    return;
+                }
+                let Some(state) = &mut this.workspace_read else {
+                    return;
+                };
+                match result {
+                    Ok(result) => {
+                        state.rows = result.resources;
+                        state.warnings = result.warnings;
+                        state.load = super::Load::Ready;
+                        state.retried = true;
+                    }
+                    Err(error) => state.load = super::Load::Failed(error.message),
+                }
+                this.update_saved_overview();
+                cx.notify();
+            });
+        });
+        self.workspace_read = Some(OverviewRead {
+            rows,
+            warnings: vec![],
+            load: super::Load::Loading,
+            retried: false,
+            _task: task,
+        });
+        cx.notify();
+    }
     pub(super) fn workspace_contexts(&self) -> Vec<String> {
         self.launcher
             .active
@@ -49,6 +85,7 @@ impl Inspector {
         if self.page != super::Page::Overview
             || (self.workspace_contexts().len() <= 1 && self.scope.namespace.is_none())
         {
+            self.update_saved_overview();
             return;
         }
         let request = self.request.clone();
@@ -70,10 +107,12 @@ impl Inspector {
                     }
                     Err(error) => state.load = super::Load::Failed(error.message),
                 }
+                this.update_saved_overview();
                 cx.notify();
             });
         });
         self.workspace_read = Some(OverviewRead {
+            retried: false,
             rows: vec![],
             warnings: vec![],
             load: super::Load::Loading,

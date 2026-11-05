@@ -73,6 +73,17 @@ pub(super) fn severity_badge(item: &Item) -> gpui_kit::Div {
 }
 
 impl Inspector {
+    pub(super) fn open_incident_filter(&mut self, filter: Filter, cx: &mut Context<Self>) {
+        self.open_page(super::Page::Incidents, cx);
+        if self.page == super::Page::Incidents {
+            self.incidents.filter = filter;
+            self.incidents.selected = None;
+            self.incidents.enriched = None;
+            self.enrich_incident(cx);
+            cx.notify();
+        }
+    }
+
     /// Reads the cockpit for the current context; a context change discards
     /// the previous selection and any stale reply.
     pub(super) fn load_incidents(&mut self, cx: &mut Context<Self>) {

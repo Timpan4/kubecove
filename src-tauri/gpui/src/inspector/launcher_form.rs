@@ -31,37 +31,45 @@ impl Inspector {
             .iter()
             .any(|(name, _)| *name == effective);
         let blocked = workspaces::availability(&effective, missing, state.discovery).err();
-        let contexts = state.context_choices.iter().map(|(name, _)| {
-            let primary = *name == effective;
-            let checked = primary || state.group.contains(name);
-            let name = name.clone();
-            check_row(
-                SharedString::from(format!("workspace-group:{name}")),
-                &name,
-                checked,
-                primary,
-            )
-            .when(!primary, |row| {
-                row.on_click(cx.listener(move |this, _, _, cx| {
-                    toggle(&mut this.launcher.group, &name);
+        let contexts = state
+            .context_choices
+            .iter()
+            .map(|(name, _)| {
+                let primary = *name == effective;
+                let checked = primary || state.group.contains(name);
+                let name = name.clone();
+                check_row(
+                    SharedString::from(format!("workspace-group:{name}")),
+                    &name,
+                    checked,
+                    primary,
+                )
+                .when(!primary, |row| {
+                    row.on_click(cx.listener(move |this, _, _, cx| {
+                        toggle(&mut this.launcher.group, &name);
+                        cx.notify();
+                    }))
+                })
+            })
+            .collect::<Vec<_>>();
+        let namespaces: Vec<_> = state
+            .discovered
+            .iter()
+            .map(|name| {
+                let checked = state.namespaces.contains(name);
+                let name = name.clone();
+                check_row(
+                    SharedString::from(format!("workspace-namespace:{name}")),
+                    &name,
+                    checked,
+                    false,
+                )
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    toggle(&mut this.launcher.namespaces, &name);
                     cx.notify();
                 }))
             })
-        });
-        let namespaces = state.discovered.iter().map(|name| {
-            let checked = state.namespaces.contains(name);
-            let name = name.clone();
-            check_row(
-                SharedString::from(format!("workspace-namespace:{name}")),
-                &name,
-                checked,
-                false,
-            )
-            .on_click(cx.listener(move |this, _, _, cx| {
-                toggle(&mut this.launcher.namespaces, &name);
-                cx.notify();
-            }))
-        });
+            .collect();
         let discovery = match state.discovery {
             Discovery::Loading => Some("Discovering namespaces..."),
             Discovery::Failed => Some("Namespace discovery failed."),
@@ -104,6 +112,62 @@ impl Inspector {
             .w(px(360.))
             .p(px(12.))
             .gap(px(12.))
+            .when(state.contexts_load == Discovery::Failed, |form| {
+                form.child(
+                    self.friendly_failure(
+                        "launcher-context-error",
+                        "Failed to load contexts",
+                        state
+                            .context_error
+                            .as_deref()
+                            .unwrap_or("Context read failed"),
+                        None,
+                        cx,
+                    ),
+                )
+                .child(
+                    ui::outline_button()
+                        .id("retry-launcher-contexts")
+                        .test_support()
+                        .aria_label("Retry contexts")
+                        .child("Retry")
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.retry_launcher_contexts(window, cx)
+                        })),
+                )
+            })
+            .when(
+                state.contexts_load == Discovery::Ready && state.context_choices.is_empty(),
+                |form| {
+                    form.child(ui::muted(ui::xs(
+                        "No Kubernetes contexts found. Configure KUBECONFIG and retry.",
+                    )))
+                },
+            )
+            .when(state.discovery == Discovery::Failed, |form| {
+                form.child(
+                    self.friendly_failure(
+                        "launcher-namespace-error",
+                        "Failed to load namespaces",
+                        state
+                            .namespace_error
+                            .as_deref()
+                            .unwrap_or("Namespace read failed"),
+                        None,
+                        cx,
+                    ),
+                )
+                .child(
+                    ui::outline_button()
+                        .id("retry-launcher-namespaces")
+                        .test_support()
+                        .aria_label("Retry namespaces")
+                        .child("Retry namespaces")
+                        .on_click(
+                            cx.listener(|this, _, window, cx| this.discover_namespaces(window, cx)),
+                        ),
+                )
+            })
             .child(
                 div()
                     .flex()
@@ -167,13 +231,13 @@ impl Inspector {
             .child(muted_label("Cluster group").child(check_list(
                 "workspace-groups",
                 128.,
-                contexts.collect(),
+                contexts,
                 None,
             )))
             .child(muted_label("Namespaces").child(check_list(
                 "workspace-namespaces",
                 208.,
-                namespaces.collect(),
+                namespaces,
                 discovery,
             )))
             .child(

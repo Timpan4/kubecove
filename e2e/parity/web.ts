@@ -8,15 +8,26 @@ import type { Contract, Step } from "./contract";
 import { adapterAction } from "./web-adapters";
 import { argoAction } from "./web-argo";
 import { liveSessionAction } from "./web-live-sessions";
-import { terminalAction } from "./web-terminal";
 import { mcpAction } from "./web-mcp";
+import { shellAction } from "./web-shell";
 import { sidebarLiveAction } from "./web-sidebar-live";
+import { terminalAction } from "./web-terminal";
 import { expectRetainedWorkspaceFields, workspaceAction } from "./web-workspaces";
 
 export async function action(page: Page, step: Step) {
 	const search = page.getByRole("textbox", { name: "Search resources" });
 	const close = page.getByRole("button", { name: "Close resource details" });
 	switch (step.action) {
+        case "expectOverviewShortcuts": case "overviewShortcut": await shellAction(page, step); break;
+        case "expectOverviewScope": case "expectCompareTotal": await shellAction(page, step); break;
+        case "retryOverview": case "expectOverviewRetry": await shellAction(page, step); break;
+        case "dragKind": await shellAction(page, step); break;
+        case "expectEmptyLauncher": case "expectEntryCount": await shellAction(page, step); break;
+        case "copyErrorDetail": await shellAction(page, step); break;
+        case "toggleResourcePin": case "expectWorkspaceEntry": case "openWorkspaceEntry": await shellAction(page, step); break;
+        case "reorderKindKey": case "expectRemoteHost": await shellAction(page, step); break;
+        case "configureShellRead": case "retryLauncher": case "expectLauncherRetry": await shellAction(page, step); break;
+        case "overviewOperation": case "overviewIncident": case "reviewIncidentAction": await shellAction(page, step); break;
         case "terminalFit": case "terminalOutput": case "terminalSelect": case "terminalCopy": case "terminalPaste": case "terminalScroll":
             await terminalAction(page, step); break;
         case "failWorkspaceContext": case "expectWorkspaceReadWarning":

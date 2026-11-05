@@ -5,7 +5,9 @@
 //! The Backend seam persists local saved records under ADR 0030.
 
 use crate::model::WORKSPACE_KINDS;
+pub mod entries;
 pub mod reads;
+pub mod shortcuts;
 pub mod transfer;
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

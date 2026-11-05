@@ -40,6 +40,13 @@
         { "action": "expectSettingsText", "value": "http://127.0.0.1:43117" },
         { "action": "expectNoSettingsText", "value": "parity-controlled-credential" },
         { "action": "expectRuntimeEndpoint", "value": "http://127.0.0.1:43117" },
+        { "action": "expectRemoteHost", "url": "http://127.0.0.1:43117" },
+        { "action": "expectSettingsText", "value": "Server 0.13.0. Session grace: 300 seconds." },
+        { "action": "expectSettingsText", "value": "Forwarded ports listen only on 127.0.0.1 on this laptop." },
+        { "action": "closeSettings" },
+        { "action": "expectRemoteHost", "url": "http://127.0.0.1:43117" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
         { "action": "clickSettingsButton", "label": "Disconnect" },
         { "action": "expectRuntimeEndpoint", "value": "local" },
         { "action": "expectSettingsText", "value": "Server token" }

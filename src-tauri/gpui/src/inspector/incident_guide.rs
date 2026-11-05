@@ -1,6 +1,5 @@
 //! Guided investigation pane, mirroring `IncidentGuide.svelte`. Steps open the
-//! resource in the detail pane; guarded actions are listed as disabled
-//! handoffs because the native client runs no cluster-changing operations.
+//! resource in the detail pane. Guarded actions hand off to the Actions tab.
 
 use super::{Inspector, Page, incidents::severity_badge, surface};
 use crate::incidents::{
@@ -221,7 +220,7 @@ impl Inspector {
             })
     }
 
-    fn actions_section(actions: Vec<guidance::Action>) -> Div {
+    fn actions_section(&self, actions: Vec<guidance::Action>, cx: &mut Context<Self>) -> Div {
         section()
             .p(px(12.))
             .child(
@@ -240,8 +239,8 @@ impl Inspector {
                         ),
                     ),
             )
-            .child(div().flex().flex_wrap().gap(px(8.)).children(actions.into_iter().map(
-                |action| {
+            .child(div().flex().flex_wrap().gap(px(8.)).children(actions.into_iter().enumerate().map(
+                |(index, action)| {
                     let target = &action.target;
                     let scope = format!(
                         "{} · {} · {}/{}",
@@ -250,14 +249,19 @@ impl Inspector {
                         target.kind,
                         target.name
                     );
-                    let button = surface::disabled(
-                        ui::outline_button()
+                    let target = action.target.clone();
+                    let button = ui::outline_button()
+                            .id(SharedString::from(format!("incident-action:{index}")))
+                            .test_support()
+                            .cursor_pointer()
                             .h(px(24.))
                             .pl(px(8.))
                             .pr(px(6.))
                             .child(ui::medium(ui::text("Review in Actions", 12., 19.5)))
-                            .child(ui::icon("arrow-right", 12., Tokens::foreground())),
-                    );
+                            .child(ui::icon("arrow-right", 12., Tokens::foreground()))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.open_resource_on(target.clone(), Some(super::detail::DetailTab::Actions), window, cx);
+                            }));
                     div()
                         .w(gpui_kit::relative(0.49))
                         .flex()
@@ -285,10 +289,7 @@ impl Inspector {
                                     ui::panel()
                                         .mt(px(8.))
                                         .p(px(8.))
-                                        .child(ui::muted(ui::xs(scope)))
-                                        .child(ui::muted(ui::xs(
-                                            "Not available in the native client: it runs no cluster-changing actions.",
-                                        ))),
+                                        .child(ui::muted(ui::xs(scope))),
                                 ),
                         )
                         .child(div().flex().child(button))
@@ -302,6 +303,7 @@ impl Inspector {
             incidents::surface_state(state.items(), state.filter, state.selected_key());
         let container = div()
             .id("incident-guide")
+            .test_support()
             .size_full()
             .min_w_0()
             .overflow_y_scroll()
@@ -485,7 +487,7 @@ impl Inspector {
                     )
                     .child(self.steps_section(guide.steps, cx))
                     .when(!guide.actions.is_empty(), |body| {
-                        body.child(Self::actions_section(guide.actions))
+                        body.child(self.actions_section(guide.actions, cx))
                     }),
             )
     }

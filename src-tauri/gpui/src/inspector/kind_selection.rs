@@ -113,7 +113,7 @@ impl Inspector {
         keys
     }
 
-    fn picker_builtin_kinds(&self) -> &'static [&'static str] {
+    pub(super) fn picker_builtin_kinds(&self) -> &'static [&'static str] {
         // SUPPORTED_KINDS and CLUSTER_SCOPED_KINDS in src/lib/types.ts.
         &[
             "Pod",

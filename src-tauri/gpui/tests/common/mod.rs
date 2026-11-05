@@ -34,6 +34,8 @@ use std::{collections::HashMap, path::Path, sync::Mutex};
 
 #[derive(Deserialize)]
 pub struct Fixture {
+    #[serde(skip)]
+    pub shell_read_phase: Mutex<String>,
     #[serde(rename = "pageReads", default)]
     page_reads: HashMap<String, serde_json::Value>,
     #[serde(skip)]
@@ -349,10 +351,29 @@ impl Backend for Fixture {
         self.live_watch(target)
     }
     fn contexts(&self) -> Read<Vec<ClusterContext>> {
+        if *self.shell_read_phase.lock().unwrap() == "contexts-failed" {
+            return Box::pin(async {
+                Err(AppError::new(
+                    "Scripted contexts read failure",
+                    AppErrorKind::Cluster,
+                ))
+            });
+        }
+        if *self.shell_read_phase.lock().unwrap() == "contexts-empty" {
+            return Box::pin(async { Ok(vec![]) });
+        }
         let contexts = self.cluster_contexts.clone();
         Box::pin(async move { Ok(contexts) })
     }
     fn resources(&self, scope: Scope, _: bool) -> Read<ScopeResult> {
+        if *self.shell_read_phase.lock().unwrap() == "resources-failed" {
+            return Box::pin(async {
+                Err(AppError::new(
+                    "Scripted resources read failure",
+                    AppErrorKind::Cluster,
+                ))
+            });
+        }
         if self.failed_workspace_context.lock().unwrap().as_deref() == Some(&scope.context) {
             return Box::pin(async {
                 Err(AppError::new("Context unavailable", AppErrorKind::Cluster))
@@ -572,6 +593,14 @@ impl Backend for Fixture {
         self.detail_tabs.apply_yaml(request)
     }
     fn namespaces(&self, _: String) -> Read<Vec<NamespaceSummary>> {
+        if *self.shell_read_phase.lock().unwrap() == "namespaces-failed" {
+            return Box::pin(async {
+                Err(AppError::new(
+                    "Scripted namespaces read failure",
+                    AppErrorKind::Cluster,
+                ))
+            });
+        }
         let namespaces = self.namespaces.clone();
         Box::pin(async move { Ok(namespaces) })
     }

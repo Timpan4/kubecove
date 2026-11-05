@@ -18,7 +18,7 @@ pub(super) struct Integrations {
     _subscriptions: Vec<gpui_kit::Subscription>,
     url: Entity<InputState>,
     token: Entity<InputState>,
-    remote: Option<RemoteConnectionSummary>,
+    pub(super) remote: Option<RemoteConnectionSummary>,
     remote_error: Option<String>,
     remote_busy: bool,
     remote_task: Option<Task<()>>,
@@ -147,6 +147,7 @@ impl Inspector {
         cx.notify();
     }
     fn runtime_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.feedback = Default::default();
         self.launcher = super::launcher::LauncherState::new(window, cx);
         self.rbac = super::rbac_page::RbacState::new(window, cx);
         self.load_preferences(cx);
@@ -179,6 +180,7 @@ impl Inspector {
                 )
             };
             body = body
+                .when(remote.connected, |body| body.child(ui::muted(ui::xs("Kubernetes requests and port forwards run through this server. Forwarded ports listen only on 127.0.0.1 on this laptop.")).id("remote-forward-explanation").test_support().aria_label("Forwarded ports listen only on 127.0.0.1 on this laptop.")))
                 .child(
                     ui::sm(status.clone())
                         .id("remote-status")
@@ -188,7 +190,7 @@ impl Inspector {
                 .child(ui::muted(ui::xs(format!(
                     "Server {}. Session grace: {} seconds.",
                     remote.server_version, remote.session_grace_seconds
-                ))))
+                ))).id("remote-server-session").test_support().aria_label(format!("Server {}. Session grace: {} seconds.", remote.server_version, remote.session_grace_seconds)))
                 .child(action("Disconnect", state.remote_busy).on_click(
                     cx.listener(|this, _, window, cx| this.disconnect_settings_remote(window, cx)),
                 ));

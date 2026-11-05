@@ -96,6 +96,7 @@ impl Inspector {
         kinds: &[String],
     ) -> bool {
         self.argo_workspace_matches(row)
+            && self.shortcut_owner_matches(row)
             && self.selected_row_kind(row)
             && kinds.contains(&row.kind)
             && self.launcher.in_scope(row)

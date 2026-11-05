@@ -88,6 +88,14 @@ impl Inspector {
         self.launcher.transfer.documents =
             document.workspace_documents.clone().into_iter().collect();
         self.persisted = document;
+        let lanes = &self.persisted.preferences.resource_kind_lanes;
+        self.settings.kind_focus = lanes
+            .first
+            .iter()
+            .chain(&lanes.normal)
+            .chain(&lanes.last)
+            .map(|kind| (kind.clone(), cx.focus_handle()))
+            .collect();
         self.refresh_diagnostics(false, cx);
         self.timings
             .set_enabled(self.persisted.preferences.debug_mode_enabled);
@@ -105,6 +113,9 @@ impl Inspector {
     pub(super) fn save_preferences(&mut self, cx: &mut Context<Self>) {
         self.sync_workspace_reviews();
         self.persisted.workspaces = self.launcher.saved.clone();
+        self.persisted
+            .workspace_entry_points
+            .retain(|id, _| self.launcher.saved.iter().any(|saved| saved.id == *id));
         self.persisted.workspace_documents = self
             .launcher
             .transfer

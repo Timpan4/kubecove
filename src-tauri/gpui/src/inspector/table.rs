@@ -240,15 +240,48 @@ impl Inspector {
                 column,
                 self.timestamp_label(&row.age, row.created_at.as_deref()),
             ),
-            Column::Pin => cell(
-                column,
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .size(px(28.))
-                    .child(ui::icon("pin", 14., Tokens::foreground())),
-            ),
+            Column::Pin => {
+                let target = row.clone();
+                cell(
+                    column,
+                    div()
+                        .id(SharedString::from(format!(
+                            "pin:{}:{}:{}",
+                            row.kind,
+                            row.namespace.as_deref().unwrap_or(""),
+                            row.name
+                        )))
+                        .test_support()
+                        .aria_label(format!(
+                            "{} {} {}",
+                            if self.resource_pinned(row) {
+                                "Unpin"
+                            } else {
+                                "Pin"
+                            },
+                            row.kind,
+                            row.name
+                        ))
+                        .cursor_pointer()
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.toggle_resource_pin(&target, cx);
+                            cx.stop_propagation();
+                        }))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .size(px(28.))
+                        .child(ui::icon(
+                            "pin",
+                            14.,
+                            if self.resource_pinned(row) {
+                                Tokens::primary()
+                            } else {
+                                Tokens::foreground()
+                            },
+                        )),
+                )
+            }
         }
     }
 
@@ -436,6 +469,7 @@ impl Inspector {
             .child(
                 div()
                     .id("resource-table")
+                    .test_support()
                     .flex_1()
                     .min_h_0()
                     .overflow_scroll()

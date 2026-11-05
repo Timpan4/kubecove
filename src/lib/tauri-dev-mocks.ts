@@ -25,6 +25,7 @@ import { operationMockHandlers } from "./tauri-dev-mock-operations";
 import { pageReadResult } from "./tauri-dev-mock-pages";
 import { rbacInspectionMock, rbacReviewMock } from "./tauri-dev-mock-rbac";
 import { cleanupMockSessions, listMockExecs, listMockForwards, mockExecInput, resizeMockExec, startMockExec, startMockForward, stopMockExec, stopMockForward } from "./tauri-dev-mock-session-controls";
+import { shellRead } from "./tauri-dev-mock-shell";
 import { createMockChannel, type TauriClient } from "./tauri-runtime";
 import type {
 	AppUsageMetrics,
@@ -118,8 +119,8 @@ const handlers = {
         return kubeconfigSources();
     },
 	reorder_kubeconfig_paths: kubeconfigSources,
-	list_kube_contexts: () => mockContexts,
-	list_namespaces: () => namespaces,
+	list_kube_contexts: () => shellRead("contexts", mockContexts),
+	list_namespaces: () => shellRead("namespaces", namespaces),
 	list_resource_kinds: () => customResourceKinds(),
 	list_present_custom_resource_kinds: (args) =>
 		presentCustomResourceKinds(args?.namespaces),
@@ -128,6 +129,7 @@ const handlers = {
 	...operationMockHandlers,
 	list_dynamic_resources: (args) => filterResources(args?.resourceKind?.kind, args?.namespace ?? undefined, args?.clusterContext),
 	list_resource_scope: (args) => {
+        shellRead("resources", []);
         if (failedWorkspaceContext && args.clusterContext === failedWorkspaceContext) throw new Error("Context unavailable");
         return {
 		resources: listScope(args?.requests, args?.clusterContext),

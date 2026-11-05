@@ -219,6 +219,7 @@ pub struct Document {
     pub updates: Updates,
     pub workspaces: Vec<crate::workspaces::SavedWorkspace>,
     pub workspace_documents: BTreeMap<u64, serde_json::Value>,
+    pub workspace_entry_points: BTreeMap<u64, crate::workspaces::entries::Entries>,
     pub saved_forward_presets: std::collections::HashMap<String, Vec<SavedForward>>,
 }
 impl Default for Document {
@@ -230,6 +231,7 @@ impl Default for Document {
             updates: Updates::default(),
             workspaces: Vec::new(),
             workspace_documents: BTreeMap::new(),
+            workspace_entry_points: BTreeMap::new(),
             saved_forward_presets: std::collections::HashMap::new(),
         }
     }

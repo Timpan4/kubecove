@@ -3,6 +3,25 @@ import { join } from "node:path";
 
 type Identity = { kind: string; name: string; namespace: string };
 export type Step =
+    | { action: "expectOverviewShortcuts"; labels: string[] }
+    | { action: "overviewShortcut"; label: string }
+    | { action: "expectOverviewScope"; labels: string[] }
+    | { action: "expectCompareTotal"; title: string; side: string; total: number }
+    | { action: "retryOverview" | "expectOverviewRetry" }
+    | { action: "dragKind"; kind: string; target: string }
+    | { action: "expectEmptyLauncher" }
+    | { action: "expectEntryCount"; panel: "Pinned" | "Recent"; count: number }
+    | { action: "copyErrorDetail"; error: "contexts" | "namespaces"; expected: string }
+    | ({ action: "toggleResourcePin" } & Identity)
+    | { action: "expectWorkspaceEntry" | "openWorkspaceEntry"; panel: "Pinned" | "Recent"; label: string; index: number; count: number }
+    | { action: "reorderKindKey"; kind: string; key: "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" }
+    | { action: "expectRemoteHost"; url: string }
+    | { action: "configureShellRead"; phase: "ready" | "contexts-failed" | "contexts-empty" | "namespaces-failed" | "resources-failed" }
+    | { action: "retryLauncher"; read: "contexts" | "namespaces" }
+    | { action: "expectLauncherRetry"; read: "contexts" | "namespaces" }
+    | { action: "overviewOperation"; destination: "Resources" | "Workspaces" | "Port Forwards" | "Incidents" }
+    | { action: "overviewIncident"; filter: "Degraded" | "Needs attention" | "Restart evidence" }
+    | { action: "reviewIncidentAction"; index: number }
     | { action: "terminalFit"; width: number; height: number }
     | { action: "terminalOutput"; data: string; container: string }
     | { action: "terminalSelect"; row: number; col: number; endRow: number; endCol: number; word: boolean }
@@ -68,7 +87,7 @@ export type Step =
     | { action: "clickSettingsButton"; label: string }
     | { action: "expectSettingsText" | "expectNoSettingsText" | "expectRuntimeEndpoint"; value: string }
     | { action: "expectMaskedToken" | "reopenStoredSettings" | "attemptUnverifiedUpdate" }
-    | { action: "configureSettingsMock"; script: "choose-kubeconfig" | "choose-workspace" | "cancel-dialog" | "no-update" | "invalid-signature" }
+    | { action: "configureSettingsMock"; script: "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "cancel-dialog" | "no-update" | "invalid-signature" }
 	| { action: "expectLiveState"; label: string; notice?: string }
 	| { action: "replayLiveData"; script: import("../../src/lib/tauri-dev-mock-live").LiveScript }
 	| ({ action: "expectResourceStatus"; status: string } & Identity)
@@ -181,6 +200,16 @@ export type Contract = { scenarios: Scenario[] };
 
 /** Every action both drivers must implement; `contract.test.ts` checks each driver handles each one. */
 export const ACTIONS = [
+    "expectOverviewShortcuts", "overviewShortcut",
+    "expectOverviewScope", "expectCompareTotal",
+    "retryOverview", "expectOverviewRetry",
+    "dragKind",
+    "expectEmptyLauncher", "expectEntryCount",
+    "copyErrorDetail",
+    "toggleResourcePin", "expectWorkspaceEntry", "openWorkspaceEntry",
+    "reorderKindKey", "expectRemoteHost",
+    "configureShellRead", "retryLauncher", "expectLauncherRetry",
+    "overviewOperation", "overviewIncident", "reviewIncidentAction",
     "terminalFit",
     "terminalOutput", "terminalSelect", "terminalCopy", "terminalPaste", "terminalScroll",
     "configureArgoMock", "argoControl", "focusArgoResource", "expectNoSavedArgoProfile", "copyArgoValue", "configureArgoInventory", "expandArgoDiff", "reconnectArgoProfile",
@@ -254,6 +283,24 @@ function optionalBoolean(value: unknown): boolean | undefined {
 function step(value: unknown): Step {
 	const item = object(value);
 	switch (item.action) {
+        case "expectEmptyLauncher": return { action: item.action };
+        case "expectOverviewShortcuts": return { action: item.action, labels: strings(item.labels, true) };
+        case "overviewShortcut": return { action: item.action, label: string(item.label) };
+        case "expectOverviewScope": return { action: item.action, labels: strings(item.labels, false) };
+        case "expectCompareTotal": return { action: item.action, title: string(item.title), side: string(item.side), total: count(item.total) };
+        case "retryOverview": case "expectOverviewRetry": return { action: item.action };
+        case "dragKind": return { action: item.action, kind: string(item.kind), target: string(item.target) };
+        case "expectEntryCount": return { action: item.action, panel: oneOf(["Pinned", "Recent"], item.panel, "an entry panel"), count: count(item.count) };
+        case "copyErrorDetail": return { action: item.action, error: oneOf(["contexts", "namespaces"], item.error, "a launcher error"), expected: string(item.expected) };
+        case "toggleResourcePin": return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace) };
+        case "expectWorkspaceEntry": case "openWorkspaceEntry": return { action: item.action, panel: oneOf(["Pinned", "Recent"], item.panel, "an entry panel"), label: string(item.label), index: count(item.index), count: count(item.count) };
+        case "reorderKindKey": return { action: item.action, kind: string(item.kind), key: oneOf(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"], item.key, "a reorder key") };
+        case "expectRemoteHost": return { action: item.action, url: string(item.url) };
+        case "configureShellRead": return { action: item.action, phase: oneOf(["ready", "contexts-failed", "contexts-empty", "namespaces-failed", "resources-failed"], item.phase, "a shell read phase") };
+        case "retryLauncher": case "expectLauncherRetry": return { action: item.action, read: oneOf(["contexts", "namespaces"], item.read, "a launcher read") };
+        case "overviewOperation": return { action: item.action, destination: oneOf(["Resources", "Workspaces", "Port Forwards", "Incidents"], item.destination, "an overview operation") };
+        case "overviewIncident": return { action: item.action, filter: oneOf(["Degraded", "Needs attention", "Restart evidence"], item.filter, "an incident shortcut") };
+        case "reviewIncidentAction": return { action: item.action, index: count(item.index) };
         case "failWorkspaceContext": case "expectWorkspaceReadWarning": return { action: item.action, context: string(item.context) };
         case "editSavedWorkspace": case "expectNoSavedWorkspace": return { action: item.action, name: string(item.name) };
         case "saveWorkspace": case "cancelWorkspaceEdit": return { action: item.action };
@@ -304,7 +351,7 @@ function step(value: unknown): Step {
         case "clickSettingsButton": return { action: item.action, label: string(item.label) };
         case "expectSettingsText": case "expectNoSettingsText": case "expectRuntimeEndpoint": return { action: item.action, value: string(item.value) };
         case "expectMaskedToken": case "reopenStoredSettings": case "attemptUnverifiedUpdate": return { action: item.action };
-        case "configureSettingsMock": return { action: item.action, script: oneOf(["choose-kubeconfig", "choose-workspace", "cancel-dialog", "no-update", "invalid-signature"], item.script, "a settings script") };
+        case "configureSettingsMock": return { action: item.action, script: oneOf(["choose-kubeconfig", "choose-workspace", "choose-unavailable-workspace", "cancel-dialog", "no-update", "invalid-signature"], item.script, "a settings script") };
         case "terminalFit": return { action: item.action, width: count(item.width), height: count(item.height) };
         case "terminalOutput": return { action: item.action, data: string(item.data), container: string(item.container) };
         case "terminalSelect": return { action: item.action, row: count(item.row), col: count(item.col), endRow: count(item.endRow), endCol: count(item.endCol), word: optionalBoolean(item.word) ?? false };

@@ -70,6 +70,28 @@ impl Inspector {
                             .child(ui::semibold(ui::xs(name.to_owned())).truncate())
                     }),
             )
+            .when_some(
+                self.settings.integrations.remote.as_ref(),
+                |header, remote| {
+                    let label = format!(
+                        "Remote host: {}{}",
+                        remote.server_url,
+                        if remote.connected {
+                            ""
+                        } else {
+                            " (disconnected)"
+                        }
+                    );
+                    header.child(
+                        ui::outline_badge(label.clone())
+                            .id("remote-host-scope")
+                            .test_support()
+                            .aria_label(label)
+                            .max_w(px(256.))
+                            .truncate(),
+                    )
+                },
+            )
             .child(
                 div()
                     .flex()
@@ -77,6 +99,7 @@ impl Inspector {
                     .min_w_0()
                     .items_center()
                     .justify_end()
+                    .children(self.permission_return(cx))
                     .gap(px(4.))
                     // `ActiveLiveSessionsButton.svelte`: ghost `sm` with `mr-1 h-8`. The web
                     // opens a popover whose Manage button opens this page; native opens it directly.

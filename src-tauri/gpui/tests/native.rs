@@ -22,6 +22,8 @@ mod remote_connections;
 mod session_controls;
 #[path = "native/settings_integrations.rs"]
 mod settings_integrations;
+#[path = "native/shell.rs"]
+mod shell;
 #[path = "native/watch_burst.rs"]
 mod watch_burst;
 #[path = "native/workspaces.rs"]
@@ -54,6 +56,7 @@ use std::sync::{
 
 #[derive(Default)]
 struct Controlled {
+    shell: shell::ShellControls,
     pages: page_reads::PageControls,
     argo: argo::ArgoControls,
     secret: adapters::SecretControls,
@@ -86,6 +89,7 @@ impl Backend for Controlled {
                 AppErrorKind::ArgoConnection,
             ));
         }
+        let document = self.shell.save(document)?;
         *self.argo.document.lock().unwrap() = document.clone();
         Ok(document)
     }
@@ -384,7 +388,7 @@ impl Backend for Controlled {
         self.detail.apply_yaml(request)
     }
     fn namespaces(&self, _: String) -> Read<Vec<NamespaceSummary>> {
-        Box::pin(async { Ok(vec![]) })
+        self.shell.namespaces()
     }
     fn rbac(&self, _: String) -> Read<RbacInspectionSummary> {
         self.pages.read(

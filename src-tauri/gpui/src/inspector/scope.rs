@@ -22,6 +22,10 @@ impl Inspector {
                         )
                     }
                     Ok(contexts) => {
+                        this.launcher.context_choices = contexts
+                            .iter()
+                            .map(|context| (context.name.clone(), context.is_current))
+                            .collect();
                         let selected = contexts
                             .iter()
                             .find(|context| context.is_current)
@@ -189,6 +193,7 @@ impl Inspector {
     }
 
     pub(super) fn filter(&mut self, cx: &mut Context<Self>) {
+        self.update_saved_overview();
         let search = self.search.read(cx).value().trim().to_lowercase();
         let kinds = self.scope_kinds();
         self.visible = self

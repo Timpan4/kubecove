@@ -177,6 +177,17 @@ fn validate(document: &Document) -> Result<(), AppError> {
         }
         reject_credentials(value)?;
     }
+    for (id, entries) in &document.workspace_entry_points {
+        if !ids.contains(id)
+            || entries
+                .pinned
+                .iter()
+                .chain(&entries.recent)
+                .any(|entry| !entry.valid())
+        {
+            return Err(invalid());
+        }
+    }
     for profile in &document.preferences.argo_profiles {
         if profile.id.trim().is_empty() {
             return Err(invalid());

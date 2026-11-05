@@ -1,7 +1,7 @@
 //! Workspace overview, mirroring `src/features/workspaces/WorkspaceOverview.svelte`.
 
 use super::{Inspector, Load, Page};
-use crate::model::{HealthSummary, WORKSPACE_KINDS};
+use crate::model::HealthSummary;
 use crate::theme::{Palette, Tokens};
 use crate::ui;
 use gpui_kit::TestSupportExt;
@@ -57,9 +57,20 @@ fn metric(label: &str, value: usize, tone: Option<Hsla>) -> AnyElement {
         .into_any_element()
 }
 
-fn shortcut(label: &str, count: usize) -> Option<AnyElement> {
+fn shortcut(label: &str, count: usize, cx: &mut Context<Inspector>) -> Option<AnyElement> {
+    let filter = match label {
+        "Degraded" => crate::incidents::Filter::Degraded,
+        "Needs attention" => crate::incidents::Filter::Attention,
+        _ => crate::incidents::Filter::Restarted,
+    };
     (count > 0).then(|| {
         ui::outline_button()
+            .id(gpui_kit::SharedString::from(format!(
+                "overview-incident:{label}"
+            )))
+            .test_support()
+            .cursor_pointer()
+            .on_click(cx.listener(move |this, _, _, cx| this.open_incident_filter(filter, cx)))
             .h(px(24.))
             .pl(px(6.))
             .pr(px(8.))
@@ -112,12 +123,27 @@ impl Inspector {
         let health = HealthSummary::of(self.workspace_rows());
         let loading = matches!(self.overview_load(), Load::Loading);
         let operations = [
-            ("open-resources", "boxes", "Resources", true),
-            ("open-workspaces", "folder-open", "Workspaces", false),
-            ("open-port-forwards", "cable", "Port Forwards", false),
-            ("open-incidents", "triangle-alert", "Incidents", false),
+            (
+                "open-resources",
+                "boxes",
+                "Resources",
+                Some(Page::Resources),
+            ),
+            ("open-workspaces", "folder-open", "Workspaces", None),
+            (
+                "open-port-forwards",
+                "cable",
+                "Port Forwards",
+                Some(Page::PortForwards),
+            ),
+            (
+                "open-incidents",
+                "triangle-alert",
+                "Incidents",
+                Some(Page::Incidents),
+            ),
         ]
-        .map(|(id, icon, label, available)| {
+        .map(|(id, icon, label, destination)| {
             ui::outline_button()
                 .id(id)
                 .test_support()
@@ -129,11 +155,14 @@ impl Inspector {
                 .gap(px(12.))
                 .child(ui::icon(icon, 16., Tokens::foreground()))
                 .child(ui::medium(ui::text(label, 12., 19.5)))
-                .when(available, |button| {
-                    button
-                        .cursor_pointer()
-                        .on_click(cx.listener(|this, _, _, cx| this.open_page(Page::Resources, cx)))
-                })
+                .cursor_pointer()
+                .on_click(cx.listener(move |this, _, window, cx| match destination {
+                    Some(Page::Incidents) => {
+                        this.open_incident_filter(crate::incidents::Filter::All, cx)
+                    }
+                    Some(page) => this.open_page(page, cx),
+                    None => this.open_launcher(window, cx),
+                }))
                 .into_any_element()
         });
         div()
@@ -161,12 +190,33 @@ impl Inspector {
                     _ => None,
                 },
                 |page, error| {
-                    page.child(
-                        ui::xs(error.clone())
-                            .id("overview-error")
+                    page.child(self.friendly_failure(
+                        "overview-error",
+                        "Failed to load workspace resources",
+                        error,
+                        None,
+                        cx,
+                    ))
+                    .child(
+                        ui::outline_button()
+                            .id("retry-overview")
                             .test_support()
-                            .aria_label(error.clone())
-                            .text_color(Tokens::destructive()),
+                            .aria_label("Retry workspace resources")
+                            .child("Retry workspace resources")
+                            .on_click(cx.listener(|this, _, _, cx| this.retry_overview(cx))),
+                    )
+                },
+            )
+            .when(
+                self.workspace_read
+                    .as_ref()
+                    .is_some_and(|state| state.retried),
+                |page| {
+                    page.child(
+                        ui::sm("Workspace resources loaded successfully after retry.")
+                            .id("overview-retry-success")
+                            .test_support()
+                            .aria_label("Workspace resources loaded successfully after retry."),
                     )
                 },
             )
@@ -177,30 +227,7 @@ impl Inspector {
                     .border_color(Tokens::border())
                     .child(ui::caps("Workspace Overview", 11.).line_height(px(16.)))
                     .child(ui::semibold(ui::text(self.workspace_name.clone(), 16., 24.)).mt(px(4.)))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_wrap()
-                            .gap(px(8.))
-                            .mt(px(8.))
-                            .child(ui::outline_badge(self.scope.context.clone()).rounded(px(6.)))
-                            .child(
-                                ui::outline_badge(
-                                    self.scope
-                                        .namespace
-                                        .as_ref()
-                                        .map_or("All namespaces".into(), |_| {
-                                            "1 namespaces".to_owned()
-                                        }),
-                                )
-                                .rounded(px(6.)),
-                            )
-                            .child(
-                                ui::outline_badge(WORKSPACE_KINDS.join(", "))
-                                    .rounded(px(6.))
-                                    .max_w(px(384.)),
-                            ),
-                    ),
+                    .child(self.saved_scope_view()),
             )
             .child(titled_card(
                 "Resource Health",
@@ -252,11 +279,12 @@ impl Inspector {
                                         ui::muted(ui::medium(ui::xs("Incident shortcuts")))
                                             .mr(px(4.)),
                                     )
-                                    .children(shortcut("Degraded", health.degraded))
-                                    .children(shortcut("Needs attention", health.attention))
+                                    .children(shortcut("Degraded", health.degraded, cx))
+                                    .children(shortcut("Needs attention", health.attention, cx))
                                     .children(shortcut(
                                         "Restart evidence",
                                         health.restart_evidence,
+                                        cx,
                                     )),
                             )
                         },
@@ -285,27 +313,10 @@ impl Inspector {
                                     .flex()
                                     .justify_between()
                                     .child(ui::semibold(ui::sm("Shortcuts")))
-                                    .child(ui::muted(ui::xs("1"))),
-                                div()
-                                    .flex()
-                                    .flex_wrap()
-                                    .items_start()
-                                    .min_h(px(64.))
-                                    .p(px(12.))
-                                    .child(
-                                        ui::outline_button()
-                                            .id("shortcut-resources")
-                                            .test_support()
-                                            .cursor_pointer()
-                                            .h(px(24.))
-                                            .pl(px(6.))
-                                            .pr(px(8.))
-                                            .child(ui::icon("boxes", 12., Tokens::foreground()))
-                                            .child(ui::medium(ui::text("Resources", 12., 19.5)))
-                                            .on_click(cx.listener(|this, _, _, cx| {
-                                                this.open_page(Page::Resources, cx)
-                                            })),
-                                    ),
+                                    .child(ui::muted(ui::xs(
+                                        self.saved_overview.shortcuts.len().to_string(),
+                                    ))),
+                                self.saved_shortcuts(cx),
                             ))
                             .child(
                                 div()
@@ -318,11 +329,7 @@ impl Inspector {
                                                 "Pinned",
                                                 "Saved resource entry points.",
                                             ),
-                                            ui::muted(ui::sm(
-                                                "Pin resources from the table or detail panel.",
-                                            ))
-                                            .min_h(px(80.))
-                                            .p(px(12.)),
+                                            self.entry_list(true, cx),
                                         )
                                         .flex_1(),
                                     )
@@ -333,9 +340,7 @@ impl Inspector {
                                                 "Recent",
                                                 "Explicitly opened resources and scopes.",
                                             ),
-                                            ui::muted(ui::sm("Recent visits will appear here."))
-                                                .min_h(px(80.))
-                                                .p(px(12.)),
+                                            self.entry_list(false, cx),
                                         )
                                         .flex_1(),
                                     ),
@@ -352,5 +357,6 @@ impl Inspector {
                         .flex_none(),
                     ),
             ))
+            .children(self.compare_cards())
     }
 }

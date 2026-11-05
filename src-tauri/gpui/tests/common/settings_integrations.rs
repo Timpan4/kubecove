@@ -13,9 +13,15 @@ pub(super) struct SettingsIntegrations {
 
 impl Fixture {
     pub(super) fn import_workspace_read(&self) -> Read<Option<String>> {
-        let content = (*self.settings.script.lock().unwrap() == "choose-workspace").then(|| {
-            include_str!("../../../../src/lib/settings-integration-workspace.json").to_owned()
-        });
+        let content = match self.settings.script.lock().unwrap().as_str() {
+            "choose-workspace" => Some(
+                include_str!("../../../../src/lib/settings-integration-workspace.json").to_owned(),
+            ),
+            "choose-unavailable-workspace" => Some(
+                include_str!("../../../../src/lib/overview-unavailable-workspace.json").to_owned(),
+            ),
+            _ => None,
+        };
         Box::pin(async move { Ok(content) })
     }
     pub(super) fn export_workspace_read(&self, content: String) -> Read<bool> {

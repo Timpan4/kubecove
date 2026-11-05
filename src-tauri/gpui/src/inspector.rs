@@ -38,6 +38,7 @@ mod exec_resize;
 mod exec_selection;
 mod exec_state;
 mod exec_view;
+mod feedback;
 mod forward_tab;
 mod gitops_card;
 mod gitops_nav;
@@ -65,6 +66,8 @@ mod logs_tab;
 mod map;
 mod metrics;
 mod overview;
+mod overview_saved;
+mod overview_shortcuts;
 mod page_refresh;
 mod palette;
 mod port_forward_rows;
@@ -76,6 +79,7 @@ mod rbac_page;
 mod rbac_queue;
 mod rbac_review;
 mod rbac_verify;
+mod resource_order;
 mod resources;
 mod revisions_tab;
 mod saved_forward_form;
@@ -96,6 +100,7 @@ mod terminal_buffer_tests;
 mod timeline;
 mod usage;
 mod workspace_editing;
+mod workspace_entries;
 mod workspace_reads;
 mod yaml_apply;
 mod yaml_lens;
@@ -149,6 +154,8 @@ pub struct Inspector {
     persistence_error: Option<String>,
     workspace_name: SharedString,
     workspace_read: Option<workspace_reads::OverviewRead>,
+    saved_overview: overview_saved::SavedOverview,
+    shortcut_owner: Option<(u64, String, String)>,
     scope: Scope,
     page: Page,
     context_picker: Entity<Choices>,
@@ -183,6 +190,7 @@ pub struct Inspector {
     kind_selection: kind_selection::KindSelection,
     page_refresh: page_refresh::PageRefresh,
     notice: Option<String>,
+    feedback: feedback::Feedback,
     request: Rc<()>,
     detail_request: Rc<()>,
     context_task: Option<Task<()>>,
@@ -252,6 +260,8 @@ impl Inspector {
             persistence_error: None,
             workspace_name: "KubeCove".into(),
             workspace_read: None,
+            saved_overview: Default::default(),
+            shortcut_owner: None,
             scope: Scope::default(),
             page: Page::Overview,
             context_picker,
@@ -285,6 +295,7 @@ impl Inspector {
             kind_selection: kind_selection::KindSelection::new(window, cx),
             page_refresh: Default::default(),
             notice: None,
+            feedback: Default::default(),
             request: Rc::new(()),
             detail_request: Rc::new(()),
             context_task: None,
@@ -337,10 +348,20 @@ impl Inspector {
         }
         self.gitops_page.workspace = None;
         self.page = Page::Resources;
+        self.shortcut_owner = None;
         self.palette.kind = None;
         self.live.selected = None;
         self.live.kind_locked = false;
         self.kind_selection.chosen = None;
+        if let Some(namespace) = &namespace {
+            self.visit_scope(
+                crate::workspaces::entries::EntryKind::Namespace,
+                self.scope.context.clone(),
+                Some(namespace.clone()),
+                namespace.clone(),
+                cx,
+            );
+        }
         self.filter(cx);
         if self.scope.namespace != namespace {
             self.scope.namespace = namespace;
@@ -398,6 +419,7 @@ impl Inspector {
             return;
         }
         self.close_detail(cx);
+        self.visit_resource(&resource, cx);
         self.detail = Detail::Loading(Box::new(resource.clone()));
         self.rebuild_map();
         let request = self.detail_request.clone();
@@ -487,6 +509,8 @@ impl Render for Inspector {
                             main.child(
                                 div()
                                     .id("notice")
+                                    .test_support()
+                                    .aria_label(notice.clone())
                                     .role(gpui_kit::Role::Alert)
                                     .px(px(16.))
                                     .py(px(8.))
@@ -520,5 +544,6 @@ impl Render for Inspector {
                     .children(self.usage_footer(cx)),
             )
             .children(overlays)
+            .children(self.copy_announcement())
     }
 }

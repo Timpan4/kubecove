@@ -377,7 +377,7 @@
 			<Button type="button" variant="outline" class="h-auto min-h-14 justify-start gap-3 px-4 py-3" onclick={onOpenPortForwards}>
 				<Cable class="size-4 shrink-0" /> Port Forwards
 			</Button>
-			<Button type="button" variant="outline" class="h-auto min-h-14 justify-start gap-3 px-4 py-3" onclick={onOpenIncidents}>
+			<Button type="button" variant="outline" class="h-auto min-h-14 justify-start gap-3 px-4 py-3" onclick={() => onOpenIncidents()}>
 				<AlertTriangle class="size-4 shrink-0" /> Incidents
 			</Button>
 		</CardContent>

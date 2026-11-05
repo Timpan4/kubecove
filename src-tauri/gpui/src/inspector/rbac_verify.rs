@@ -155,6 +155,44 @@ fn field(input: &Entity<InputState>, id: &'static str, label: &'static str) -> I
 }
 
 impl Inspector {
+    pub(super) fn fill_permission_target(
+        &mut self,
+        target: RbacAccessReviewTarget,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let verifier = &mut self.rbac.verifier;
+        verifier.reset();
+        let mut set = |input: &Entity<InputState>, value: String| {
+            input.update(cx, |input, cx| input.set_value(value, window, cx))
+        };
+        match target {
+            RbacAccessReviewTarget::Resource {
+                verb,
+                resource,
+                api_group,
+                namespace,
+                subresource,
+                name,
+            } => {
+                verifier.non_resource = false;
+                set(&verifier.verb, verb);
+                set(&verifier.resource, resource);
+                set(&verifier.api_group, api_group);
+                set(&verifier.target_namespace, namespace.unwrap_or_default());
+                set(&verifier.subresource, subresource.unwrap_or_default());
+                set(&verifier.resource_name, name.unwrap_or_default());
+            }
+            RbacAccessReviewTarget::NonResource {
+                verb,
+                non_resource_url,
+            } => {
+                verifier.non_resource = true;
+                set(&verifier.verb, verb);
+                set(&verifier.url, non_resource_url);
+            }
+        }
+    }
     /// `beginIdentity`.
     pub(super) fn begin_identity(
         &mut self,
