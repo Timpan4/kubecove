@@ -181,6 +181,14 @@ pub fn export(workspaces: &[(&SavedWorkspace, Option<&Value>)]) -> String {
         });
         document["metadata"]["name"] = json!(key);
         document["spec"]["displayName"] = json!(workspace.name);
+        let scope = &mut document["spec"]["scope"];
+        scope["clusterContext"] = json!(workspace.context);
+        scope["namespaces"] = json!(workspace.namespaces);
+        if workspace.group.is_empty() {
+            scope.as_object_mut().expect("validated scope").remove("clusterGroup");
+        } else {
+            scope["clusterGroup"] = json!({"id":format!("group:{}",workspace.id),"name":workspace.group_name,"members":workspace.contexts()});
+        }
         document
     }).collect();
     let document = if items.len() == 1 {

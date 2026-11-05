@@ -18,6 +18,8 @@ mod session_controls;
 mod settings_integrations;
 #[path = "native/watch_burst.rs"]
 mod watch_burst;
+#[path = "native/workspaces.rs"]
+mod workspaces;
 
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AppContext, Bounds, TestAppContext, WindowBounds, WindowOptions, px, size};
@@ -53,6 +55,7 @@ struct Controlled {
     fail: AtomicBool,
     pending: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
     detail: detail_tabs::DetailControls,
+    workspace: workspaces::WorkspaceControls,
 }
 
 const YAML: &str = "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: payments-api\n  namespace: payments\n";
@@ -134,6 +137,9 @@ impl Backend for Controlled {
         })
     }
     fn resources(&self, scope: Scope, _: bool) -> Read<ScopeResult> {
+        if let Some(read) = self.workspace.read(&scope) {
+            return read;
+        }
         let fail = self.fail.load(Ordering::SeqCst);
         let pending = self.pending.lock().unwrap().take();
         let pod = self.sessions.enabled.load(Ordering::SeqCst);

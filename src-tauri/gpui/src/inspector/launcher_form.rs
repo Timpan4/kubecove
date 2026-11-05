@@ -39,9 +39,14 @@ impl Inspector {
                 SharedString::from(format!("workspace-group:{name}")),
                 &name,
                 checked,
-                true,
+                primary,
             )
-            .when(!primary, |row| row.tooltip(|window, cx| Tooltip::new("The native workspace currently loads one context. Additional contexts cannot be selected yet.").build(window, cx)))
+            .when(!primary, |row| {
+                row.on_click(cx.listener(move |this, _, _, cx| {
+                    toggle(&mut this.launcher.group, &name);
+                    cx.notify();
+                }))
+            })
         });
         let namespaces = state.discovered.iter().map(|name| {
             let checked = state.namespaces.contains(name);
@@ -99,7 +104,28 @@ impl Inspector {
             .w(px(360.))
             .p(px(12.))
             .gap(px(12.))
-            .child(ui::medium(ui::sm("New workspace")))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .child(ui::medium(ui::sm(if state.editing.is_some() {
+                        "Edit workspace"
+                    } else {
+                        "New workspace"
+                    })))
+                    .when(state.editing.is_some(), |row| {
+                        row.child(
+                            ui::ghost_icon("x", 24., 14.)
+                                .id("workspace-cancel-edit")
+                                .test_support()
+                                .aria_label("Cancel edit")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.cancel_workspace_edit(window, cx)
+                                })),
+                        )
+                    }),
+            )
             .child(
                 label("Name").child(
                     Input::new(&state.name)
@@ -154,10 +180,26 @@ impl Inspector {
                 button(Variant::Default, 32., blocked.is_some())
                     .id("workspace-create")
                     .test_support()
-                    .aria_label("Create workspace")
+                    .aria_label(if state.editing.is_some() {
+                        "Save workspace"
+                    } else {
+                        "Create workspace"
+                    })
                     .w_full()
-                    .child(ui::icon("plus", 16., Tokens::primary_foreground()))
-                    .child("Create workspace")
+                    .child(ui::icon(
+                        if state.editing.is_some() {
+                            "folder-open"
+                        } else {
+                            "plus"
+                        },
+                        16.,
+                        Tokens::primary_foreground(),
+                    ))
+                    .child(if state.editing.is_some() {
+                        "Save workspace"
+                    } else {
+                        "Create workspace"
+                    })
                     .when_some(blocked, |button, reason| {
                         button.tooltip(move |window, cx| Tooltip::new(reason).build(window, cx))
                     })

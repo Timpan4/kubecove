@@ -4,8 +4,12 @@
   "metadata": { "name": "controlled-import" },
   "spec": {
     "displayName": "Controlled import",
-    "scope": { "clusterContext": "mock-dev", "namespaces": ["payments"], "kinds": ["Pod"], "layout": "overview" },
+    "scope": {
+      "clusterContext": "mock-dev", "namespaces": ["payments"], "kinds": ["Pod"], "layout": "resources",
+      "gitOpsFilter": "retained-owner", "argoAppFilter": "retained-app",
+      "shortcutPreferences": { "includeResources": false, "includeNamespaces": true, "includeCompare": false, "includeArgo": false }
+    },
     "shortcuts": [],
-    "portForwards": []
+    "portForwards": [{ "clusterContext": "mock-dev", "namespace": "payments", "serviceName": "payments-api", "servicePort": 9090, "label": "Retained forward" }]
   }
 }

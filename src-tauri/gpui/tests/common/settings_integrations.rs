@@ -40,6 +40,30 @@ impl Fixture {
                     .unwrap()
                     .contains(&serde_json::json!("payments"))
         }));
+        let item = items
+            .iter()
+            .find(|item| item["spec"]["displayName"] == name)
+            .unwrap();
+        let original: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../src/lib/settings-integration-workspace.json"
+        ))
+        .unwrap();
+        for field in [
+            "kinds",
+            "layout",
+            "gitOpsFilter",
+            "argoAppFilter",
+            "shortcutPreferences",
+        ] {
+            assert_eq!(
+                item["spec"]["scope"][field], original["spec"]["scope"][field],
+                "{field} lost on save"
+            );
+        }
+        assert_eq!(
+            item["spec"]["portForwards"],
+            original["spec"]["portForwards"]
+        );
     }
     pub(super) fn initialize_settings_storage(&mut self) {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);

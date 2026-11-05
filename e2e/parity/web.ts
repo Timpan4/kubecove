@@ -9,11 +9,16 @@ import { adapterAction } from "./web-adapters";
 import { argoAction } from "./web-argo";
 import { liveSessionAction } from "./web-live-sessions";
 import { mcpAction } from "./web-mcp";
+import { expectRetainedWorkspaceFields, workspaceAction } from "./web-workspaces";
 
 export async function action(page: Page, step: Step) {
 	const search = page.getByRole("textbox", { name: "Search resources" });
 	const close = page.getByRole("button", { name: "Close resource details" });
 	switch (step.action) {
+        case "failWorkspaceContext": case "expectWorkspaceReadWarning":
+            await workspaceAction(page, step); break;
+        case "editSavedWorkspace": case "expectNoSavedWorkspace": case "saveWorkspace": case "cancelWorkspaceEdit": case "toggleWorkspaceContext": case "expectOverviewHealth": case "expectDetailContext":
+            await workspaceAction(page, step); break;
         case "fillMcpPort": case "mcpControl": case "expectMcpState": case "expectMcpCopy": case "expectMcpRequests":
             await mcpAction(page, step); break;
         case "connectArgoProfile": case "disconnectArgoProfile": case "reviewArgoOperation": case "confirmArgoReview": case "cancelArgoReview": case "expectArgoReview": case "expectArgoText": case "argoDocument":
@@ -28,6 +33,7 @@ export async function action(page: Page, step: Step) {
             const document = JSON.parse(content);
             const items = document.kind === "WorkspaceList" ? document.items : [document];
             if (!items.some((item: { spec: { displayName: string; scope: { clusterContext: string; namespaces: string[] } } }) => item.spec.displayName === step.name && item.spec.scope.clusterContext === "mock-dev" && item.spec.scope.namespaces.includes("payments"))) throw new Error("Export ignored the imported workspace scope");
+            expectRetainedWorkspaceFields(items, step.name);
             break;
         }
         case "fillSettingsField": await page.getByLabel(step.field, { exact: true }).fill(step.value); break;
@@ -254,10 +260,10 @@ export async function action(page: Page, step: Step) {
 		// Absence is checked after a preceding step waited for the new scope's rows.
 		case "expectNoResource": await resourceRow(page, step).waitFor({ state: "detached" }); break;
 		case "openLauncher": await page.getByRole("button", { name: "Open workspaces", exact: true }).click(); break;
-		case "openSavedWorkspace": await page.getByRole("button", { name: `Open ${step.name}`, exact: true }).click(); break;
+		case "openSavedWorkspace": await page.getByRole("button", { name: `Open ${step.name}`, exact: true }).click(); await page.waitForURL(/#\/workspace\/[^/]+\//); break;
 		case "expectSavedWorkspace":
 			await page.getByRole("group", { name: `${step.name} actions`, exact: true }).waitFor();
-			await page.getByText(step.summary, { exact: true }).waitFor();
+			await page.getByRole("group", { name: `${step.name} actions`, exact: true }).locator('xpath=ancestor::*[@data-slot="card"]').getByText(step.summary, { exact: true }).waitFor();
 			break;
 		case "nameWorkspace": await page.locator("#workspace-name").fill(step.value); break;
 		case "selectWorkspaceContext":

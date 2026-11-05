@@ -1,7 +1,6 @@
 //! Context and resource-scope reads, refresh, and visible resource filtering.
 
 use super::{Inspector, Load, map};
-use crate::model::WORKSPACE_KINDS;
 use gpui_kit::component::select::SearchableVec;
 use gpui_kit::{Context, SharedString, Window};
 use kubecove_lib::models::ResourceSummary;
@@ -69,6 +68,7 @@ impl Inspector {
         self.close_detail(cx);
         self.request = Rc::new(());
         let request = self.request.clone();
+        self.load_workspace_overview(refresh, cx);
         self.load = Load::Loading;
         self.rows.clear();
         self.warnings.clear();
@@ -202,9 +202,11 @@ impl Inspector {
 
     /// Rows in the saved workspace kinds, which the overview summarizes.
     pub(super) fn workspace_rows(&self) -> impl Iterator<Item = &ResourceSummary> {
-        self.rows
+        self.workspace_read
+            .as_ref()
+            .map_or(&self.rows, |state| &state.rows)
             .iter()
-            .filter(|row| WORKSPACE_KINDS.contains(&row.kind.as_str()))
+            .filter(|row| self.launcher.overview_kind(&row.kind) && self.launcher.in_scope(row))
     }
 
     /// Kinds in the resource scope: the page's kinds plus custom kinds present.

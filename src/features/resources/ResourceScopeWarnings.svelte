@@ -13,7 +13,7 @@
 			<p>Showing resources this account can read. Unavailable resources are excluded from totals.</p>
 			<ul class="mt-2 list-inside list-disc">
 				{#each failures as failure}
-					<li>{failure.request.kind ?? failure.request.resourceKind?.kind} in {failure.clusterContext}, {failure.request.namespace ?? "all namespaces"}: access denied.</li>
+					<li>{failure.request.kind ?? failure.request.resourceKind?.kind} in {failure.clusterContext}, {failure.request.namespace ?? "all namespaces"}: {failure.error.message}</li>
 				{/each}
 			</ul>
 		</AlertDescription>

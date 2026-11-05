@@ -383,6 +383,14 @@ mod visual {
                 "workspaces" => act(&mut cx, handle, |window, cx| {
                     window.click("header-workspaces", cx)
                 }),
+                "workspace-editor" => {
+                    act(&mut cx, handle, |window, cx| {
+                        window.click("header-workspaces", cx)
+                    });
+                    act(&mut cx, handle, |window, cx| {
+                        window.click(("workspace-edit", 1_usize), cx)
+                    });
+                }
                 "settings" => act(&mut cx, handle, |window, cx| {
                     window.click("open-settings", cx)
                 }),

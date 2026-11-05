@@ -5,6 +5,7 @@
 //! The Backend seam persists local saved records under ADR 0030.
 
 use crate::model::WORKSPACE_KINDS;
+pub mod reads;
 pub mod transfer;
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -113,13 +114,16 @@ impl Draft<'_> {
             .filter(|context| context.as_str() != self.effective)
             .cloned()
             .collect();
+        let mut namespaces = self.namespaces.to_vec();
+        namespaces.sort_by(|a, b| crate::collate::collate(a, b, false));
+        namespaces.dedup();
         SavedWorkspace {
             id,
             name: name.to_owned(),
             context: self.effective.to_owned(),
             group_name: (!group.is_empty()).then(|| format!("{name} group")),
             group,
-            namespaces: self.namespaces.to_vec(),
+            namespaces,
             kinds: self.kinds.map_or_else(
                 || {
                     WORKSPACE_KINDS

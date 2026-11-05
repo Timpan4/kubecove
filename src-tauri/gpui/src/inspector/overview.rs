@@ -29,6 +29,11 @@ pub(super) fn titled_card(title: &str, description: &str, content: impl IntoElem
 
 fn metric(label: &str, value: usize, tone: Option<Hsla>) -> AnyElement {
     ui::card()
+        .id(gpui_kit::SharedString::from(format!(
+            "overview-metric:{label}"
+        )))
+        .test_support()
+        .aria_label(format!("{label}: {value}"))
         .flex_1()
         .min_w_0()
         .min_h(px(80.))
@@ -105,7 +110,7 @@ fn entry_title(icon: &str, title: &str, description: &str) -> Div {
 impl Inspector {
     pub(super) fn overview(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let health = HealthSummary::of(self.workspace_rows());
-        let loading = matches!(self.load, Load::Loading);
+        let loading = matches!(self.overview_load(), Load::Loading);
         let operations = [
             ("open-resources", "boxes", "Resources", true),
             ("open-workspaces", "folder-open", "Workspaces", false),
@@ -140,6 +145,31 @@ impl Inspector {
             .max_w(px(1280.))
             .mx_auto()
             .p(px(24.))
+            .when_some(self.workspace_read.as_ref(), |page, state| {
+                page.children(state.warnings.iter().map(|warning| {
+                    ui::xs(warning.clone())
+                        .id(gpui_kit::SharedString::from(format!(
+                            "overview-warning:{warning}"
+                        )))
+                        .test_support()
+                        .aria_label(warning.clone())
+                }))
+            })
+            .when_some(
+                match self.overview_load() {
+                    Load::Failed(error) => Some(error),
+                    _ => None,
+                },
+                |page, error| {
+                    page.child(
+                        ui::xs(error.clone())
+                            .id("overview-error")
+                            .test_support()
+                            .aria_label(error.clone())
+                            .text_color(Tokens::destructive()),
+                    )
+                },
+            )
             .child(
                 div()
                     .pb(px(12.))

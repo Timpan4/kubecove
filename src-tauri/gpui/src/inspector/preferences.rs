@@ -24,6 +24,11 @@ impl Inspector {
                 self.rbac.reviews = saved.reviews.clone();
                 return;
             }
+            // Saved records may have been renamed since the startup view was named.
+            // Opening the launcher must not recreate that old name.
+            if !self.launcher.saved.is_empty() {
+                return;
+            }
             let id = self.launcher.next;
             self.launcher.next = self.launcher.next.saturating_add(1);
             self.launcher.saved.push(

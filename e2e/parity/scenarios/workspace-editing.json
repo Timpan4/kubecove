@@ -1,0 +1,398 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "workspace-editor.edit-identity",
+      "title": "Editing a different saved workspace preserves identity and supports cancel",
+      "steps": [
+        {
+          "action": "openLauncher"
+        },
+        {
+          "action": "nameWorkspace",
+          "value": "Other workspace"
+        },
+        {
+          "action": "toggleWorkspaceNamespace",
+          "namespace": "payments"
+        },
+        {
+          "action": "createWorkspace"
+        },
+        {
+          "action": "openLauncher"
+        },
+        {
+          "action": "editSavedWorkspace",
+          "name": "Parity mock workspace"
+        },
+        {
+          "action": "nameWorkspace",
+          "value": "Canceled name"
+        },
+        {
+          "action": "cancelWorkspaceEdit"
+        },
+        {
+          "action": "expectNoSavedWorkspace",
+          "name": "Canceled name"
+        },
+        {
+          "action": "editSavedWorkspace",
+          "name": "Parity mock workspace"
+        },
+        {
+          "action": "nameWorkspace",
+          "value": "Renamed workspace"
+        },
+        {
+          "action": "toggleWorkspaceNamespace",
+          "namespace": "payments"
+        },
+        {
+          "action": "saveWorkspace"
+        },
+        {
+          "action": "expectNoSavedWorkspace",
+          "name": "Parity mock workspace"
+        },
+        {
+          "action": "expectSavedWorkspace",
+          "name": "Renamed workspace",
+          "summary": "mock-dev / payments / Pod, Deployment +7"
+        },
+        {
+          "action": "expectSavedWorkspace",
+          "name": "Other workspace",
+          "summary": "mock-dev / payments / Pod, Deployment +7"
+        },
+        {
+          "action": "openSavedWorkspace",
+          "name": "Renamed workspace"
+        },
+        {
+          "action": "expectOpenWorkspace",
+          "name": "Renamed workspace",
+          "context": "mock-dev"
+        },
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "search",
+          "value": "payments-api"
+        },
+        {
+          "action": "expectResource",
+          "kind": "Deployment",
+          "name": "payments-api",
+          "namespace": "payments"
+        },
+        {
+          "action": "restartClient"
+        },
+        {
+          "action": "openLauncher"
+        },
+        {
+          "action": "expectNoSavedWorkspace",
+          "name": "Parity mock workspace"
+        },
+        {
+          "action": "expectSavedWorkspace",
+          "name": "Renamed workspace",
+          "summary": "mock-dev / payments / Pod, Deployment +7"
+        }
+      ]
+    },
+    {
+      "id": "workspaces.multi-context-overview",
+      "title": "Overview counts duplicate names in each context and removed contexts disappear; Resources stays primary-only",
+      "steps": [
+        {
+          "action": "expectOverviewHealth",
+          "total": 55
+        },
+        {
+          "action": "openLauncher"
+        },
+        {
+          "action": "editSavedWorkspace",
+          "name": "Parity mock workspace"
+        },
+        {
+          "action": "toggleWorkspaceContext",
+          "context": "admin@solid-k8s"
+        },
+        {
+          "action": "saveWorkspace"
+        },
+        {
+          "action": "openSavedWorkspace",
+          "name": "Parity mock workspace"
+        },
+        {
+          "action": "expectOverviewHealth",
+          "total": 110
+        },
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "search",
+          "value": "payments-api"
+        },
+        {
+          "action": "openResource",
+          "kind": "Deployment",
+          "namespace": "payments",
+          "name": "payments-api"
+        },
+        {
+          "action": "expectDetailContext",
+          "context": "mock-dev"
+        },
+        {
+          "action": "showYaml"
+        },
+        {
+          "action": "expectYaml",
+          "contains": [
+            "kind: Deployment",
+            "name: payments-api"
+          ]
+        },
+        {
+          "action": "closeDetail"
+        },
+        {
+          "action": "openLauncher"
+        },
+        {
+          "action": "editSavedWorkspace",
+          "name": "Parity mock workspace"
+        },
+        {
+          "action": "toggleWorkspaceContext",
+          "context": "admin@solid-k8s"
+        },
+        {
+          "action": "saveWorkspace"
+        },
+        {
+          "action": "openSavedWorkspace",
+          "name": "Parity mock workspace"
+        },
+        {
+          "action": "expectOverviewHealth",
+          "total": 55
+        }
+      ]
+    },
+    {
+      "id": "workspaces.edit-primary",
+      "title": "Changing the primary context and namespace replaces scope without old rows",
+      "steps": [
+        {
+          "action": "openLauncher"
+        },
+        {
+          "action": "editSavedWorkspace",
+          "name": "Parity mock workspace"
+        },
+        {
+          "action": "selectWorkspaceContext",
+          "context": "docker-desktop"
+        },
+        {
+          "action": "toggleWorkspaceNamespace",
+          "namespace": "default"
+        },
+        {
+          "action": "saveWorkspace"
+        },
+        {
+          "action": "openSavedWorkspace",
+          "name": "Parity mock workspace"
+        },
+        {
+          "action": "expectOpenWorkspace",
+          "name": "Parity mock workspace",
+          "context": "docker-desktop"
+        },
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "search",
+          "value": "registry"
+        },
+        {
+          "action": "expectResource",
+          "kind": "Deployment",
+          "name": "registry",
+          "namespace": "default"
+        }
+      ]
+    },
+    {
+      "id": "workspaces.edit-imported-fields",
+      "title": "Editing an imported workspace preserves its selected kinds through save and restart",
+      "steps": [
+        {
+          "action": "openLauncher"
+        },
+        {
+          "action": "configureSettingsMock",
+          "script": "choose-workspace"
+        },
+        {
+          "action": "clickSettingsButton",
+          "label": "Import"
+        },
+        {
+          "action": "expectSettingsText",
+          "value": "Import preview"
+        },
+        {
+          "action": "clickSettingsButton",
+          "label": "Apply import"
+        },
+        {
+          "action": "editSavedWorkspace",
+          "name": "Controlled import"
+        },
+        {
+          "action": "nameWorkspace",
+          "value": "Edited import"
+        },
+        {
+          "action": "saveWorkspace"
+        },
+        {
+          "action": "expectNoSavedWorkspace",
+          "name": "Controlled import"
+        },
+        {
+          "action": "expectSavedWorkspace",
+          "name": "Edited import",
+          "summary": "mock-dev / payments / Pod"
+        },
+        {
+          "action": "openSavedWorkspace",
+          "name": "Edited import"
+        },
+        {
+          "action": "restartClient"
+        },
+        {
+          "action": "openLauncher"
+        },
+        {
+          "action": "expectSavedWorkspace",
+          "name": "Edited import",
+          "summary": "mock-dev / payments / Pod"
+        },
+        {
+          "action": "clickSettingsButton",
+          "label": "Export all"
+        },
+        {
+          "action": "expectWorkspaceExport",
+          "name": "Edited import"
+        }
+      ]
+    },
+    {
+      "id": "workspaces.partial-context-read",
+      "title": "A failed group member leaves successful Overview totals and a named warning",
+      "steps": [
+        {
+          "action": "openLauncher"
+        },
+        {
+          "action": "failWorkspaceContext",
+          "context": "admin@solid-k8s"
+        },
+        {
+          "action": "editSavedWorkspace",
+          "name": "Parity mock workspace"
+        },
+        {
+          "action": "toggleWorkspaceContext",
+          "context": "admin@solid-k8s"
+        },
+        {
+          "action": "saveWorkspace"
+        },
+        {
+          "action": "openSavedWorkspace",
+          "name": "Parity mock workspace"
+        },
+        {
+          "action": "expectOverviewHealth",
+          "total": 55
+        },
+        {
+          "action": "expectWorkspaceReadWarning",
+          "context": "admin@solid-k8s"
+        }
+      ]
+    },
+    {
+      "id": "workspaces.overview-namespaces",
+      "title": "Overview applies saved namespaces to every selected context",
+      "steps": [
+        {
+          "action": "openLauncher"
+        },
+        {
+          "action": "editSavedWorkspace",
+          "name": "Parity mock workspace"
+        },
+        {
+          "action": "toggleWorkspaceNamespace",
+          "namespace": "payments"
+        },
+        {
+          "action": "toggleWorkspaceContext",
+          "context": "admin@solid-k8s"
+        },
+        {
+          "action": "saveWorkspace"
+        },
+        {
+          "action": "openSavedWorkspace",
+          "name": "Parity mock workspace"
+        },
+        {
+          "action": "expectOverviewHealth",
+          "total": 18
+        },
+        {
+          "action": "openLauncher"
+        },
+        {
+          "action": "editSavedWorkspace",
+          "name": "Parity mock workspace"
+        },
+        {
+          "action": "toggleWorkspaceContext",
+          "context": "admin@solid-k8s"
+        },
+        {
+          "action": "saveWorkspace"
+        },
+        {
+          "action": "openSavedWorkspace",
+          "name": "Parity mock workspace"
+        },
+        {
+          "action": "expectOverviewHealth",
+          "total": 9
+        }
+      ]
+    }
+  ]
+}

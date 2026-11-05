@@ -87,6 +87,8 @@ mod surface;
 mod table;
 mod timeline;
 mod usage;
+mod workspace_editing;
+mod workspace_reads;
 mod yaml_apply;
 mod yaml_lens;
 mod yaml_marks;
@@ -138,6 +140,7 @@ pub struct Inspector {
     persisted: crate::preferences::Document,
     persistence_error: Option<String>,
     workspace_name: SharedString,
+    workspace_read: Option<workspace_reads::OverviewRead>,
     scope: Scope,
     page: Page,
     context_picker: Entity<Choices>,
@@ -233,6 +236,7 @@ impl Inspector {
             persisted: Default::default(),
             persistence_error: None,
             workspace_name: "KubeCove".into(),
+            workspace_read: None,
             scope: Scope::default(),
             page: Page::Overview,
             context_picker,
@@ -292,6 +296,11 @@ impl Inspector {
             self.gitops_page.workspace = None;
             self.close_detail(cx);
             self.page = page;
+            if page == Page::Overview {
+                self.load_workspace_overview(false, cx);
+            } else {
+                self.workspace_read = None;
+            }
             self.load_page(cx);
             cx.notify();
         }

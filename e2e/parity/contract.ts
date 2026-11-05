@@ -3,6 +3,12 @@ import { join } from "node:path";
 
 type Identity = { kind: string; name: string; namespace: string };
 export type Step =
+    | { action: "failWorkspaceContext" | "expectWorkspaceReadWarning"; context: string }
+    | { action: "editSavedWorkspace" | "expectNoSavedWorkspace"; name: string }
+    | { action: "saveWorkspace" | "cancelWorkspaceEdit" }
+    | { action: "toggleWorkspaceContext"; context: string }
+    | { action: "expectOverviewHealth"; total: number }
+    | { action: "expectDetailContext"; context: string }
     | { action: "fillMcpPort"; value: string }
     | { action: "mcpControl"; control: "MCP server" | "Submit port" | "Save" | "Copy token" | "Copy Claude Code command" | "Rotate token" }
     | { action: "expectMcpState"; enabled: boolean; port: string; running: boolean; save: boolean; command: boolean }
@@ -153,6 +159,8 @@ export type Contract = { scenarios: Scenario[] };
 
 /** Every action both drivers must implement; `contract.test.ts` checks each driver handles each one. */
 export const ACTIONS = [
+    "failWorkspaceContext", "expectWorkspaceReadWarning",
+    "editSavedWorkspace", "expectNoSavedWorkspace", "saveWorkspace", "cancelWorkspaceEdit", "toggleWorkspaceContext", "expectOverviewHealth", "expectDetailContext",
     "fillMcpPort", "mcpControl", "expectMcpState", "expectMcpCopy", "expectMcpRequests",
     "selectArgoPreference", "expectSavedArgoProfile", "configureArgoSync", "selectArgoHistory", "expectArgoWorkspaceTransport", "completeArgoOperation", "confirmArgoTunnel",
     "connectArgoProfile", "disconnectArgoProfile", "confirmArgoReview", "cancelArgoReview", "reviewArgoOperation", "expectArgoReview", "expectArgoText", "argoDocument",
@@ -214,6 +222,11 @@ function optionalBoolean(value: unknown): boolean | undefined {
 function step(value: unknown): Step {
 	const item = object(value);
 	switch (item.action) {
+        case "failWorkspaceContext": case "expectWorkspaceReadWarning": return { action: item.action, context: string(item.context) };
+        case "editSavedWorkspace": case "expectNoSavedWorkspace": return { action: item.action, name: string(item.name) };
+        case "saveWorkspace": case "cancelWorkspaceEdit": return { action: item.action };
+        case "toggleWorkspaceContext": case "expectDetailContext": return { action: item.action, context: string(item.context) };
+        case "expectOverviewHealth": return { action: item.action, total: count(item.total) };
         case "fillMcpPort": return { action: item.action, value: string(item.value) };
         case "mcpControl": return { action: item.action, control: oneOf(["MCP server", "Submit port", "Save", "Copy token", "Copy Claude Code command", "Rotate token"], item.control, "an MCP control") };
         case "expectMcpState":

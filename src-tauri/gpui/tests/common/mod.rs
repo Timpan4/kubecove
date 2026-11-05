@@ -57,6 +57,10 @@ pub struct Fixture {
     cluster_contexts: Vec<ClusterContext>,
     namespaces: Vec<NamespaceSummary>,
     resources: Vec<ResourceSummary>,
+    #[serde(rename = "contextResources")]
+    context_resources: Vec<ResourceSummary>,
+    #[serde(skip)]
+    pub failed_workspace_context: Mutex<Option<String>>,
     details: Vec<ResourceDetailsFull>,
     events: Vec<ResourceEvents>,
     topology: ResourceTopology,
@@ -330,6 +334,11 @@ impl Backend for Fixture {
         Box::pin(async move { Ok(contexts) })
     }
     fn resources(&self, scope: Scope, _: bool) -> Read<ScopeResult> {
+        if self.failed_workspace_context.lock().unwrap().as_deref() == Some(&scope.context) {
+            return Box::pin(async {
+                Err(AppError::new("Context unavailable", AppErrorKind::Cluster))
+            });
+        }
         if self.live_failed() {
             return Box::pin(async {
                 Err(AppError::new(
@@ -339,10 +348,11 @@ impl Backend for Fixture {
             });
         }
         // Cluster-scoped kinds come from `cluster_resources`, as in the native backend.
-        // The mocks serve the same rows for every context, labeled with it.
+        // Each context has the exact rows exported by the browser mocks.
         let resources = self
-            .resources
+            .context_resources
             .iter()
+            .filter(|row| row.cluster == scope.context)
             .filter(|row| !CLUSTER_KINDS.contains(&row.kind.as_str()))
             .filter(|row| {
                 scope.namespace.is_none() || row.namespace.as_deref() == scope.namespace.as_deref()
@@ -368,6 +378,7 @@ impl Backend for Fixture {
             .iter()
             .find(|detail| {
                 detail.summary.kind == resource.kind
+                    && detail.summary.cluster == resource.cluster
                     && detail.summary.name == resource.name
                     && detail.summary.namespace == resource.namespace
             })

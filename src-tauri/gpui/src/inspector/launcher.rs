@@ -7,18 +7,13 @@ use super::{Inspector, Page};
 use crate::backend::Scope;
 use crate::theme::Tokens;
 use crate::ui;
-use crate::workspaces::{self, Discovery, Draft, SavedWorkspace};
+use crate::workspaces::{self, Discovery, SavedWorkspace};
 use gpui_kit::TestSupportExt;
 use gpui_kit::component::input::InputState;
-use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
     AnyElement, Context, Div, Entity, SharedString, Stateful, Task, Window, div, prelude::*, px,
 };
 use kubecove_lib::models::ResourceSummary;
-
-type Observed = gpui_kit::base::ObservedElement<Stateful<Div>>;
-
-const EDIT: &str = "Editing a saved workspace is not available in the native client yet.";
 
 pub(super) struct LauncherState {
     pub(super) transfer: super::launcher_transfer::TransferState,
@@ -31,7 +26,8 @@ pub(super) struct LauncherState {
     /// Kube contexts by name, with whether each is current.
     pub(super) context_choices: Vec<(String, bool)>,
     /// The form's context; empty means the current one.
-    context: String,
+    pub(super) context: String,
+    pub(super) editing: Option<u64>,
     pub(super) context_menu: bool,
     pub(super) group: Vec<String>,
     pub(super) namespaces: Vec<String>,
@@ -51,6 +47,7 @@ impl LauncherState {
             name: cx.new(|cx| InputState::new(window, cx)),
             context_choices: vec![],
             context: String::new(),
+            editing: None,
             context_menu: false,
             group: vec![],
             namespaces: vec![],
@@ -64,6 +61,15 @@ impl LauncherState {
         self.active
             .and_then(|id| self.saved.iter().find(|saved| saved.id == id))
             .map_or(&[], |saved| saved.namespaces.as_slice())
+    }
+
+    pub(super) fn overview_kind(&self, kind: &str) -> bool {
+        self.active
+            .and_then(|id| self.saved.iter().find(|saved| saved.id == id))
+            .map_or_else(
+                || crate::model::WORKSPACE_KINDS.contains(&kind),
+                |saved| saved.kinds.iter().any(|saved| saved == kind),
+            )
     }
 
     /// Rows in the open workspace's namespaces; cluster-scoped rows always.
@@ -94,6 +100,7 @@ impl Inspector {
         self.ensure_active_workspace();
         let state = &mut self.launcher;
         state.open = true;
+        state.editing = None;
         state.context.clear();
         state.context_menu = false;
         state.group.clear();
@@ -121,7 +128,7 @@ impl Inspector {
     }
 
     /// Namespace discovery for the form's effective context.
-    fn discover_namespaces(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn discover_namespaces(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let state = &mut self.launcher;
         let effective = state.effective().to_owned();
         state.name.update(cx, |input, cx| {
@@ -159,36 +166,10 @@ impl Inspector {
         if state.effective() != context {
             state.context = context;
             state.namespaces.clear();
-            state.group.clear();
+            state.group.retain(|member| member != &state.context);
             self.discover_namespaces(window, cx);
         }
         cx.notify();
-    }
-
-    pub(super) fn create_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let state = &mut self.launcher;
-        let effective = state.effective().to_owned();
-        let missing = !state
-            .context_choices
-            .iter()
-            .any(|(name, _)| *name == effective);
-        if workspaces::availability(&effective, missing, state.discovery).is_err() {
-            return;
-        }
-        let name = state.name.read(cx).value();
-        let id = state.next;
-        state.next = state.next.saturating_add(1);
-        let workspace = Draft {
-            name: &name,
-            effective: &effective,
-            group: &state.group,
-            namespaces: &state.namespaces,
-            kinds: None,
-        }
-        .build(id, id);
-        state.saved.push(workspace);
-        self.save_preferences(cx);
-        self.open_workspace(id, window, cx);
     }
 
     pub(super) fn open_workspace(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
@@ -472,11 +453,15 @@ impl Inspector {
                                                 this.export_workspace_file(Some(id), window, cx)
                                             })),
                                     )
-                                    .child(unavailable(
-                                        ("workspace-edit", id as usize),
-                                        EDIT,
-                                        ui::ghost_icon("pencil", 24., 14.),
-                                    ))
+                                    .child(
+                                        ui::ghost_icon("pencil", 24., 14.)
+                                            .id(("workspace-edit", id as usize))
+                                            .test_support()
+                                            .aria_label(format!("Edit {}", workspace.name))
+                                            .on_click(cx.listener(move |this, _, window, cx| {
+                                                this.edit_workspace(id, window, cx)
+                                            })),
+                                    )
                                     .child(
                                         div()
                                             .id(("workspace-delete", id as usize))
@@ -499,19 +484,4 @@ impl Inspector {
                     })),
             )
     }
-}
-
-/// A control the native host cannot back: `disabled:opacity-50` with the reason.
-fn unavailable(
-    id: impl Into<gpui_kit::ElementId>,
-    reason: &'static str,
-    control: impl IntoElement,
-) -> Observed {
-    div()
-        .id(id)
-        .test_support()
-        .aria_description(reason)
-        .opacity(0.5)
-        .tooltip(move |window, cx| Tooltip::new(reason).build(window, cx))
-        .child(control)
 }

@@ -27,6 +27,8 @@ mod settings_integrations;
 mod topology_metrics;
 #[path = "parity/workspace.rs"]
 mod workspace;
+#[path = "parity/workspace_editing.rs"]
+mod workspace_editing;
 
 use std::{
     fs,
@@ -164,6 +166,7 @@ fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
         || topology_metrics::apply(window, cx, step)
         || detail::act(window, cx, step)
         || workspace::act(window, cx, step)
+        || workspace_editing::act(window, cx, step)
         || delivery::act(window, cx, step))
     {
         panic!("unknown parity action: {}", string(step, "action"));
@@ -278,6 +281,10 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
         });
         cx.run_until_parked();
         for (index, step) in scenario["steps"].as_array().unwrap().iter().enumerate() {
+            if step["action"] == "failWorkspaceContext" {
+                *backend.failed_workspace_context.lock().unwrap() =
+                    Some(string(step, "context").to_owned());
+            }
             if step["action"] == "expectMcpRequests" {
                 assert_eq!(backend.mcp_requests(), strings(step, "requests"));
             }

@@ -10,6 +10,10 @@ import { VIEWPORT, VIEWS, type View } from "./views";
 
 async function show(page: Page, view: View) {
 	switch (view) {
+        case "workspace-editor":
+            await action(page, { action: "openLauncher" });
+            await action(page, { action: "editSavedWorkspace", name: "Parity mock workspace" });
+            return;
         case "argo-connected": case "argo-review": case "argo-desired":
             await action(page, { action: "openPage", page: "GitOps" });
             await action(page, { action: "openGitOpsDetails", kind: "Application", name: "tenant-ledger", namespace: "argocd" });

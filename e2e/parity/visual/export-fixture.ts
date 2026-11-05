@@ -44,6 +44,16 @@ const namespaces = await client.invoke<NamespaceSummary[]>("list_namespaces", { 
 const kinds = await client.invoke<DiscoveredResourceKind[]>("list_resource_kinds", { clusterContext });
 const resources = await client.invoke<ResourceSummary[]>("list_resources", { clusterContext });
 const details: ResourceDetailsFull[] = [];
+const contextResources: ResourceSummary[] = [];
+for (const context of contexts) {
+    const rows = await client.invoke<ResourceSummary[]>("list_resources", { clusterContext: context.name });
+    contextResources.push(...rows.map(rustShape));
+    if (context.name === clusterContext) continue;
+    for (const row of rows) {
+        const detail = await client.invoke<ResourceDetailsFull>("get_resource_details", { clusterContext: context.name, kind: row.kind, name: row.name, namespace: row.namespace });
+        details.push({ ...detail, summary: rustShape({ ...detail.summary, cluster: context.name }) });
+    }
+}
 // Events per resource in the Rust `ResourceEventSummary` shape the mocks already use.
 const events: { kind: string; name: string; namespace: string | null; events: ResourceEventSummary[] }[] = [];
 for (const row of resources) {
@@ -98,7 +108,7 @@ const liveSessions = {
 // The detail tabs the views capture read Deployment payments/payments-api.
 const focus = resources.find((row) => row.kind === "Deployment" && row.name === "payments-api" && row.namespace === "payments");
 if (!focus) throw new Error("Browser mocks lack Deployment payments/payments-api");
-const detailTabs = await exportDetailTabs(client, [...resources, ...gitops.applications.map((app) => app.details.summary)], focus);
+const detailTabs = await exportDetailTabs(client, [...contextResources, ...gitops.applications.map((app) => app.details.summary)], focus);
 // The RBAC Cockpit per context, and the verifier's mock verdict per verb (an error for verbs it rejects).
 const rbac: Record<string, RbacInspectionSummary> = {};
 for (const context of contexts) {
@@ -119,5 +129,5 @@ for (const row of resources.filter((row) => row.kind === "Secret")) {
     const request = { clusterContext: row.cluster, name: row.name, namespace: row.namespace, key: "token" };
     secretReveals.push({ request, encoded: await client.invoke<string>("reveal_secret_data_value", request) });
 }
-await writeFile(output, JSON.stringify({ mcp: mcpMockStatus(), argoConnected, secretReveals, sessionControls, liveEvents: LIVE_EVENTS, contexts, namespaces, kinds, resources: resources.map(rustShape), details, events, topology: rustTopology, networkTopology, metrics, appUsage, namespaceTopologies, gitops, helm, incidents, liveSessions, detailTabs, rbac, rbacReviews, kubeconfig: sources }, null, "\t"));
+await writeFile(output, JSON.stringify({ mcp: mcpMockStatus(), argoConnected, secretReveals, sessionControls, liveEvents: LIVE_EVENTS, contexts, namespaces, kinds, contextResources, resources: resources.map(rustShape), details, events, topology: rustTopology, networkTopology, metrics, appUsage, namespaceTopologies, gitops, helm, incidents, liveSessions, detailTabs, rbac, rbacReviews, kubeconfig: sources }, null, "\t"));
 console.log(`fixture: ${resources.length} resources, ${details.length} details -> ${output}`);

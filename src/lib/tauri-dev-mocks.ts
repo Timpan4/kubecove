@@ -106,6 +106,8 @@ interface MockArgs {
 type MockResult = boolean | number | object | string | null | undefined;
 type MockHandler = (args: MockArgs, options?: InvokeOptions) => MockResult | Promise<MockResult>;
 let argoOutcomeComplete = false;
+let failedWorkspaceContext: string | undefined;
+export function failWorkspaceContext(context: string) { failedWorkspaceContext = context; }
 export function completeMockArgoOperation() { argoOutcomeComplete = true; }
 const argoConnections = new Map<string, ArgoConnectionProfile>();
 
@@ -190,11 +192,13 @@ const handlers = {
 	list_deployment_revisions: () => deploymentRevisions,
 	...operationMockHandlers,
 	list_dynamic_resources: (args) => filterResources(args?.resourceKind?.kind, args?.namespace ?? undefined, args?.clusterContext),
-	list_resource_scope: (args) => ({
+	list_resource_scope: (args) => {
+        if (failedWorkspaceContext && args.clusterContext === failedWorkspaceContext) throw new Error("Context unavailable");
+        return {
 		resources: listScope(args?.requests, args?.clusterContext),
 		completedRequests: args?.requests ?? [],
 		failures: [],
-	}),
+	}; },
 	get_resource_yaml: (args) => builtInYamlFor(args),
 	get_resource_details: (args) => detailsFor(args),
 	get_dynamic_resource_details: (args) => detailsFor(args),
