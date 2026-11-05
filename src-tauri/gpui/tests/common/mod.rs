@@ -35,6 +35,11 @@ pub struct Fixture {
     details: Vec<ResourceDetailsFull>,
     events: Vec<ResourceEvents>,
     topology: ResourceTopology,
+    #[serde(rename = "networkTopology")]
+    network_topology: ResourceTopology,
+    metrics: kubecove_lib::models::ResourceMetricsSummary,
+    #[serde(rename = "appUsage")]
+    app_usage: kubecove_lib::models::AppUsageMetrics,
     gitops: delivery::GitOps,
     helm: delivery::Helm,
     /// Per-namespace graphs, which the incident guide reads for Pods.
@@ -149,6 +154,36 @@ impl Backend for Fixture {
             .unwrap_or(&self.topology)
             .clone();
         Box::pin(async move { Ok(topology) })
+    }
+    fn network_topology(&self, scope: Scope) -> Read<ResourceTopology> {
+        let mut graph = self.network_topology.clone();
+        if let Some(namespace) = &scope.namespace {
+            graph
+                .nodes
+                .retain(|node| node.namespace.as_ref() == Some(namespace));
+            let ids: std::collections::HashSet<_> =
+                graph.nodes.iter().map(|node| &node.id).collect();
+            graph
+                .edges
+                .retain(|edge| ids.contains(&edge.source) && ids.contains(&edge.target));
+        }
+        Box::pin(async move { Ok(graph) })
+    }
+    fn app_usage(&self) -> Read<kubecove_lib::models::AppUsageMetrics> {
+        let usage = self.app_usage.clone();
+        Box::pin(async move { Ok(usage) })
+    }
+    fn metrics(&self, scope: Scope) -> Read<kubecove_lib::models::ResourceMetricsSummary> {
+        let mut metrics = self.metrics.clone();
+        for metric in metrics
+            .pods
+            .iter_mut()
+            .chain(&mut metrics.nodes)
+            .chain(&mut metrics.workloads)
+        {
+            metric.cluster = scope.context.clone();
+        }
+        Box::pin(async move { Ok(metrics) })
     }
     fn gitops(&self, _: String) -> Read<GitOpsInventory> {
         self.gitops.inventory()

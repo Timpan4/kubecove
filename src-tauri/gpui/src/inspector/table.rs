@@ -19,7 +19,8 @@ enum Column {
     Kind,
     Ready,
     Restarts,
-    // TODO: CPU and Memory columns once the native backend reads metrics.
+    Cpu,
+    Memory,
     Owner,
     Age,
     Pin,
@@ -34,6 +35,8 @@ impl Column {
             Column::Kind => "Kind",
             Column::Ready => "Ready",
             Column::Restarts => "Restarts",
+            Column::Cpu => "CPU",
+            Column::Memory => "Memory",
             Column::Owner => "Owner",
             Column::Age => "Age",
             Column::Pin => "",
@@ -49,6 +52,8 @@ impl Column {
             Column::Kind => 95.,
             Column::Ready => 70.,
             Column::Restarts => 75.,
+            Column::Cpu => 65.,
+            Column::Memory => 85.,
             Column::Owner => 110.,
             Column::Age => 65.,
             Column::Pin => 40.,
@@ -101,6 +106,20 @@ impl Inspector {
         }
         if rows.iter().any(|row| row.restarts.is_some()) {
             columns.push(Column::Restarts);
+        }
+        if rows.iter().any(|row| {
+            self.resource_metric(row)
+                .and_then(|m| m.cpu_millicores)
+                .is_some()
+        }) {
+            columns.push(Column::Cpu);
+        }
+        if rows.iter().any(|row| {
+            self.resource_metric(row)
+                .and_then(|m| m.memory_bytes)
+                .is_some()
+        }) {
+            columns.push(Column::Memory);
         }
         if rows
             .iter()
@@ -177,6 +196,34 @@ impl Inspector {
                 cell(
                     column,
                     div().flex().w_full().justify_center().child(content),
+                )
+            }
+            Column::Cpu | Column::Memory => {
+                let metric = self.resource_metric(row);
+                let value = match column {
+                    Column::Cpu => crate::metrics::cpu(metric.and_then(|m| m.cpu_millicores)),
+                    _ => crate::metrics::memory(metric.and_then(|m| m.memory_bytes)),
+                };
+                let label = format!(
+                    "{} usage {value}",
+                    if matches!(column, Column::Cpu) {
+                        "CPU"
+                    } else {
+                        "Memory"
+                    }
+                );
+                cell(
+                    column,
+                    ui::sm(value)
+                        .id(SharedString::from(format!(
+                            "metric:{}:{}:{}:{}",
+                            row.kind,
+                            row.namespace.as_deref().unwrap_or(""),
+                            row.name,
+                            column.label()
+                        )))
+                        .test_support()
+                        .aria_label(label),
                 )
             }
             Column::Owner => text_cell(

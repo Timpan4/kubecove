@@ -8,16 +8,25 @@ import { VIEWPORT, VIEWS, type View } from "./views";
 
 async function show(page: Page, view: View) {
 	switch (view) {
-		case "overview":
+		case "usage-footer":
+            await page.getByRole("button", { name: "Open settings", exact: true }).click();
+            await page.getByRole("switch", { name: "Show CPU and memory footer", exact: true }).click();
+            await page.locator("footer").getByText("CPU 3.8% · Memory 370 MB · 3 processes", { exact: true }).waitFor();
+            return;
+        case "overview":
 			return;
 		case "cluster-overview":
 			// The row's accessible name also includes its "Expand" button label.
 			await page.getByRole("treeitem").filter({ hasText: /^\s*Cluster Overview\s*$/ }).click();
 			await page.getByRole("button", { name: /^Open resource / }).first().waitFor();
 			return;
-		case "resources":
+		case "network-flow":
+        case "metrics":
+        case "resources":
 			await page.getByRole("button", { name: "Resources", exact: true }).first().click();
 			await page.getByRole("button", { name: /^Open resource / }).first().waitFor();
+            if (view === "network-flow") await page.getByRole("button", { name: "Network Flow", exact: true }).click();
+            if (view === "metrics") await page.getByRole("textbox", { name: "Search resources" }).fill("payments-api");
 			return;
 		case "detail":
 		case "yaml":

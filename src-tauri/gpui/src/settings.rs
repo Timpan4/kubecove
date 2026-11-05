@@ -120,7 +120,7 @@ pub const ROWS: &[Row] = &[
         "Show CPU and memory footer",
         "Shows compact app process CPU and memory usage.",
         Switch(false),
-        STORED,
+        None,
     ),
     row(
         C::General,

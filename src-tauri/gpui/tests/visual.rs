@@ -117,15 +117,31 @@ mod visual {
             cx.run_until_parked();
             match view.as_str() {
                 "overview" => {}
+                "usage-footer" => {
+                    act(&mut cx, handle, |window, cx| {
+                        window.click("open-settings", cx)
+                    });
+                    act(&mut cx, handle, |window, cx| {
+                        window.click("setting:Show CPU and memory footer", cx)
+                    });
+                }
                 "incidents" => act(&mut cx, handle, |window, cx| {
                     window.click("nav:Incidents", cx)
                 }),
                 "port-forwards" => act(&mut cx, handle, |window, cx| {
                     window.click("nav:Port Forwards", cx)
                 }),
-                "resources" => act(&mut cx, handle, |window, cx| {
+                "resources" | "metrics" => act(&mut cx, handle, |window, cx| {
                     window.click("open-resources", cx)
                 }),
+                "network-flow" => {
+                    act(&mut cx, handle, |window, cx| {
+                        window.click("open-resources", cx)
+                    });
+                    act(&mut cx, handle, |window, cx| {
+                        window.click("map-mode:Network Flow", cx)
+                    });
+                }
                 "detail" | "yaml" | "events" | "logs" | "revisions" | "actions" => {
                     act(&mut cx, handle, |window, cx| {
                         window.click("open-resources", cx)
@@ -225,6 +241,12 @@ mod visual {
                     }
                 }
                 other => panic!("unknown view: {other}"),
+            }
+            if view == "metrics" {
+                act(&mut cx, handle, |window, cx| {
+                    window.click("search", cx);
+                    window.input("payments-api", cx);
+                });
             }
             capture(&mut cx, handle, &out, &view);
         }

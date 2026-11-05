@@ -69,7 +69,17 @@ export type Step =
 	| ({ action: "openGitOpsResources" } & Identity)
 	| { action: "expectArgoWorkspace"; name: string }
 	| { action: "filterArgoResources"; filter: string }
-	| { action: "setDeliveryView"; page: "GitOps" | "Helm"; mode: "Cards" | "List" };
+	| { action: "expectUsageFooter"; text: string }
+    | { action: "openUsageTree" | "expectNoUsageFooter" }
+    | { action: "expectUsageProcess"; label: string }
+    | { action: "setTopologyMode"; mode: "Ownership" | "Network Flow" }
+    | { action: "selectNamespace"; namespace: string }
+    | { action: "expectTopology"; nodes: number; edges: number }
+    | { action: "expectTopologyEdge"; source: string; target: string }
+    | { action: "expectTopologyEmpty"; title: string }
+    | { action: "selectTopologyNode" | "expectNoTopologyNode"; id: string }
+    | { action: "expectResourceMetrics"; kind: string; namespace: string; name: string; cpu: string; memory: string }
+    | { action: "setDeliveryView"; page: "GitOps" | "Helm"; mode: "Cards" | "List" };
 const RBAC_CATEGORIES = ["Namespace Access", "Roles", "Cluster Roles", "Bindings", "Service Accounts"] as const;
 type RbacCategory = (typeof RBAC_CATEGORIES)[number];
 const RBAC_RISKS = ["All", "High", "Medium", "Low", "No flags", "Unknown"] as const;
@@ -87,7 +97,8 @@ export type Contract = { scenarios: Scenario[] };
 
 /** Every action both drivers must implement; `contract.test.ts` checks each driver handles each one. */
 export const ACTIONS = [
-	"openResources", "showYaml", "closeDetail", "expectDetailClosed", "expectEmpty", "refresh", "search", "expectSearch",
+	"selectTopologyNode", "expectTopologyEmpty", "expectUsageFooter", "openUsageTree", "expectNoUsageFooter", "expectUsageProcess", "setTopologyMode", "selectNamespace", "expectTopology", "expectTopologyEdge", "expectNoTopologyNode", "expectResourceMetrics",
+    "openResources", "showYaml", "closeDetail", "expectDetailClosed", "expectEmpty", "refresh", "search", "expectSearch",
 	"expectResource", "openResource", "expectDetail", "expectClusterResource", "expectNoClusterResource", "expectYaml", "openPage", "showTab", "filterEvents",
 	"expectEvent", "expectEventCount", "expectLiveSessionCount", "filterIncidents", "expectIncidentGuide", "expectGitOpsCount", "expectPortForward",
 	"expectLogLines", "filterLogs", "toggleLogLevel", "expectLogsEmpty", "selectRevision", "expectRevisionDiff", "reviewAction", "editReplicas",
@@ -127,6 +138,18 @@ function strings(value: unknown, allowEmpty: boolean): string[] {
 function step(value: unknown): Step {
 	const item = object(value);
 	switch (item.action) {
+        case "expectUsageFooter": return { action: item.action, text: string(item.text) };
+        case "expectUsageProcess": return { action: item.action, label: string(item.label) };
+        case "openUsageTree": case "expectNoUsageFooter": return { action: item.action };
+        case "setTopologyMode": return { action: item.action, mode: oneOf(["Ownership", "Network Flow"], item.mode, "a topology mode") };
+        case "selectNamespace": return { action: item.action, namespace: string(item.namespace) };
+        case "expectTopology": return { action: item.action, nodes: count(item.nodes), edges: count(item.edges) };
+        case "expectTopologyEdge": return { action: item.action, source: string(item.source), target: string(item.target) };
+        case "expectTopologyEmpty": return { action: item.action, title: string(item.title) };
+        case "selectTopologyNode": case "expectNoTopologyNode": return { action: item.action, id: string(item.id) };
+        case "expectResourceMetrics":
+            if (typeof item.namespace !== "string") throw new Error("Expected namespace");
+            return { action: item.action, kind: string(item.kind), namespace: item.namespace, name: string(item.name), cpu: string(item.cpu), memory: string(item.memory) };
 		case "openResources": case "showYaml": case "closeDetail": case "expectDetailClosed": case "expectEmpty": case "refresh":
 			return { action: item.action };
 		case "search": case "expectSearch": return { action: item.action, value: string(item.value) };

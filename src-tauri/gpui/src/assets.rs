@@ -12,6 +12,7 @@ macro_rules! embedded {
 }
 
 const ICONS: &[(&str, &[u8])] = embedded![
+    "activity",
     "arrow-down",
     "arrow-down-up",
     "arrow-left",

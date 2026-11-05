@@ -25,10 +25,30 @@ fn scaled_text(content: impl Into<SharedString>, size: f32, z: f32) -> Div {
     ui::text(content, size * z, size * z).whitespace_nowrap()
 }
 
-pub(super) fn resource_card(node: &FlowNode, resource: &TopologyNode, z: f32) -> Div {
+pub(super) fn resource_card(
+    node: &FlowNode,
+    resource: &TopologyNode,
+    z: f32,
+    network: bool,
+    metric: Option<&kubecove_lib::models::ResourceMetricSummary>,
+) -> Div {
     let s = |value: f32| px(value * z);
     let (icon, tone) = kind_visual(&resource.kind);
-    let card = node::card(resource);
+    let mut card = node::card(resource);
+    if network && card.lifecycle.is_none() && !resource.port_hints.is_empty() {
+        card.status = resource
+            .port_hints
+            .iter()
+            .take(3)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", ");
+    }
+    if let Some(metric) = metric
+        && let Some(hint) = crate::metrics::compact(metric)
+    {
+        card.meta.push_str(&format!(" · {hint}"));
+    }
     let rail = match card.rail {
         Rail::Info => Palette::sky300(),
         Rail::Tone(tone) => tone_color(tone),

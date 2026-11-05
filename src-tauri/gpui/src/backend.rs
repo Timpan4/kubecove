@@ -55,6 +55,30 @@ pub trait Backend: Send + Sync + 'static {
     fn details(&self, resource: ResourceSummary) -> Read<ResourceDetailsFull>;
     /// The ownership graph for the scope's namespaces (all when unscoped).
     fn topology(&self, scope: Scope) -> Read<ResourceTopology>;
+    fn network_topology(&self, _scope: Scope) -> Read<ResourceTopology> {
+        Box::pin(async {
+            Err(AppError::new(
+                "Network Flow unavailable",
+                AppErrorKind::UnsupportedOperation,
+            ))
+        })
+    }
+    fn app_usage(&self) -> Read<kubecove_lib::models::AppUsageMetrics> {
+        Box::pin(async {
+            Err(AppError::new(
+                "Usage metrics unavailable",
+                AppErrorKind::UnsupportedOperation,
+            ))
+        })
+    }
+    fn metrics(&self, _scope: Scope) -> Read<kubecove_lib::models::ResourceMetricsSummary> {
+        Box::pin(async {
+            Err(AppError::new(
+                "metrics API unavailable",
+                AppErrorKind::UnsupportedOperation,
+            ))
+        })
+    }
     /// Argo CD and Flux inventory from Kubernetes CRDs.
     fn gitops(&self, context: String) -> Read<GitOpsInventory>;
     /// The Cluster Overview's [`CLUSTER_KINDS`]; `namespaces` stays empty.
@@ -117,6 +141,7 @@ mod security;
 pub use detail_reads::{LogStream, LogTarget};
 pub use kubecove_lib::commands::kubeconfig::KubeconfigSourcesSummary;
 mod inventory;
+mod topology_metrics;
 pub use inventory::CLUSTER_KINDS;
 
 /// The native client reads the default workspace kinds; custom resource
@@ -125,6 +150,7 @@ pub use crate::model::WORKSPACE_KINDS as INSPECTION_KINDS;
 
 pub struct NativeBackend {
     runtime: Option<tokio::runtime::Runtime>,
+    usage: commands::AppUsageMonitor,
     store: ClusterLiveStore,
     cancellations: BackendCancellationRegistry,
     // The native client starts no live sessions yet (ADR 0003), so these stay empty.
@@ -143,6 +169,7 @@ impl NativeBackend {
                     .enable_all()
                     .build()?,
             ),
+            usage: Default::default(),
             store: ClusterLiveStore::default(),
             cancellations: BackendCancellationRegistry::default(),
             port_forwards: PortForwardRegistry::default(),
@@ -306,22 +333,19 @@ impl Backend for NativeBackend {
     }
 
     fn topology(&self, scope: Scope) -> Read<ResourceTopology> {
-        let store = self.store.clone();
-        let cancellations = self.cancellations.clone();
-        self.read(async move {
-            commands::list_resource_topology(
-                scope.context,
-                scope.namespace.into_iter().collect(),
-                Some("ownership".into()),
-                None,
-                None,
-                None,
-                State::new(&store),
-                State::new(&cancellations),
-            )
-            .await
-            .map(Arc::unwrap_or_clone)
-        })
+        topology_metrics::topology(self, scope, "ownership")
+    }
+
+    fn network_topology(&self, scope: Scope) -> Read<ResourceTopology> {
+        topology_metrics::topology(self, scope, "networkFlow")
+    }
+
+    fn app_usage(&self) -> Read<kubecove_lib::models::AppUsageMetrics> {
+        topology_metrics::app_usage(self)
+    }
+
+    fn metrics(&self, scope: Scope) -> Read<kubecove_lib::models::ResourceMetricsSummary> {
+        topology_metrics::metrics(self, scope)
     }
 
     fn gitops(&self, context: String) -> Read<GitOpsInventory> {

@@ -91,24 +91,50 @@ impl Inspector {
         }));
         // The map loads on its own, like the web's topology query, so a
         // topology failure leaves the table usable.
+        self.load_metrics(window, cx);
+        self.load_topology(window, cx);
+        self.load_inventory(refresh, cx);
+        self.load_page(cx);
+        cx.notify();
+    }
+
+    pub(super) fn set_map_mode(
+        &mut self,
+        network: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.map.network == network {
+            return;
+        }
+        self.map.network = network;
+        self.load_topology(window, cx);
+    }
+
+    fn load_topology(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.map.cache.take();
         self.map.topology = map::TopologyLoad::Loading;
         let request = self.request.clone();
-        let read = self.backend.topology(self.scope.clone());
+        let network = self.map.network;
+        let read = if network {
+            self.backend.network_topology(self.scope.clone())
+        } else {
+            self.backend.topology(self.scope.clone())
+        };
         self.topology_task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
-                if !Rc::ptr_eq(&this.request, &request) {
+                if !Rc::ptr_eq(&this.request, &request) || this.map.network != network {
                     return;
                 }
                 this.map.topology = match result {
                     Ok(topology) => map::TopologyLoad::Ready(topology),
                     Err(error) => map::TopologyLoad::Failed(error.message),
                 };
+                this.rebuild_map();
                 cx.notify();
             });
         }));
-        self.load_inventory(refresh, cx);
-        self.load_page(cx);
         cx.notify();
     }
 
@@ -148,6 +174,7 @@ impl Inspector {
             })
             .cloned()
             .collect();
+        self.rebuild_map();
         cx.notify();
     }
 

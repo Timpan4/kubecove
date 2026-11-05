@@ -268,7 +268,7 @@ impl Inspector {
             ),
         ];
         let extras = vec![
-            info_card("Resource metrics", "metrics available").into_any_element(),
+            self.metrics_card().into_any_element(),
             info_card("Custom Resources", "Custom Resources added").into_any_element(),
             div()
                 .flex()

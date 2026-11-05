@@ -208,7 +208,17 @@ impl Inspector {
             .flex_col()
             .gap(px(16.))
             .children(settings::rows(category).map(|row| {
-                if row.control == Control::Section {
+                if row.title == "Show CPU and memory footer" {
+                    settings_row(
+                        row.title,
+                        row.description.to_owned(),
+                        switch("Show CPU and memory footer", self.usage.visible)
+                            .cursor_pointer()
+                            .on_click(cx.listener(|this, _, _, cx| this.toggle_usage(cx)))
+                            .into_any_element(),
+                    )
+                    .into_any_element()
+                } else if row.control == Control::Section {
                     super::settings_sections::section(row)
                 } else {
                     setting_row(row, control(row)).into_any_element()

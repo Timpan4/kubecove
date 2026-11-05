@@ -13,6 +13,7 @@ pub mod inspector;
 mod live_sessions;
 mod log_buffer;
 mod logs;
+mod metrics;
 pub mod model;
 mod palette;
 mod rbac;

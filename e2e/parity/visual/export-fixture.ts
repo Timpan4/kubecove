@@ -52,6 +52,9 @@ for (const row of resources) {
 const topology = await client.invoke<ResourceTopology>("list_resource_topology", { clusterContext, namespaces: [], mode: "ownership" });
 const rustGraph = (graph: ResourceTopology) => ({ ...graph, nodes: graph.nodes.map((node) => ({ ...node, summary: rustShape(node.summary) })) });
 const rustTopology = rustGraph(topology);
+const networkTopology = rustGraph(await client.invoke<ResourceTopology>("list_resource_topology", { clusterContext, namespaces: [], mode: "networkFlow" }));
+const appUsage = await client.invoke("get_app_usage_metrics");
+const metrics = await client.invoke("list_resource_metrics", { clusterContext, namespaces: [] });
 // The overview's GitOps inventory: provider lists when their CRDs are detected, else null.
 const argo = (await client.invoke<boolean>("detect_argocd", { clusterContext })) ? await client.invoke<ArgoApplicationSummary[]>("list_argocd_applications", { clusterContext }) : null;
 const fluxDetection = await client.invoke<FluxDetectionSummary>("detect_flux", { clusterContext });
@@ -105,5 +108,5 @@ for (const verb of ["get", "list", "watch", "create", "update", "patch", "delete
 	try { rbacReviews.push({ verb, result: await client.invoke<RbacAccessReviewResult>("review_rbac_access", { request }) }); }
 	catch (error) { rbacReviews.push({ verb, error: error instanceof Error ? error.message : String(error) }); }
 }
-await writeFile(output, JSON.stringify({ contexts, namespaces, kinds, resources: resources.map(rustShape), details, events, topology: rustTopology, namespaceTopologies, gitops, helm, incidents, liveSessions, detailTabs, rbac, rbacReviews, kubeconfig: sources }, null, "\t"));
+await writeFile(output, JSON.stringify({ contexts, namespaces, kinds, resources: resources.map(rustShape), details, events, topology: rustTopology, networkTopology, metrics, appUsage, namespaceTopologies, gitops, helm, incidents, liveSessions, detailTabs, rbac, rbacReviews, kubeconfig: sources }, null, "\t"));
 console.log(`fixture: ${resources.length} resources, ${details.length} details -> ${output}`);

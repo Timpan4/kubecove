@@ -31,6 +31,7 @@ mod log_row;
 mod logs_state;
 mod logs_tab;
 mod map;
+mod metrics;
 mod overview;
 mod palette;
 mod port_forwards;
@@ -49,6 +50,7 @@ mod sidebar;
 mod surface;
 mod table;
 mod timeline;
+mod usage;
 mod yaml_apply;
 mod yaml_marks;
 mod yaml_tab;
@@ -106,6 +108,8 @@ pub struct Inspector {
     warnings: Vec<String>,
     detail: Detail,
     map: map::MapState,
+    metrics: metrics::MetricsState,
+    usage: usage::UsageState,
     gitops: gitops_section::GitOpsState,
     gitops_page: gitops_page::GitOpsPage,
     helm_page: helm_page::HelmPage,
@@ -187,6 +191,8 @@ impl Inspector {
             warnings: vec![],
             detail: Detail::Closed,
             map: map::MapState::new(),
+            metrics: Default::default(),
+            usage: Default::default(),
             gitops: Default::default(),
             gitops_page: gitops_page::GitOpsPage::new(),
             helm_page: helm_page::HelmPage::new(window, cx),
@@ -273,6 +279,7 @@ impl Inspector {
         self.diff_task.take();
         self.detail_request = Rc::new(());
         self.detail = Detail::Closed;
+        self.rebuild_map();
         self.notice = None;
         cx.notify();
     }
@@ -288,6 +295,7 @@ impl Inspector {
         }
         self.close_detail(cx);
         self.detail = Detail::Loading(Box::new(resource.clone()));
+        self.rebuild_map();
         let request = self.detail_request.clone();
         let read = self.backend.details(resource);
         self.detail_task = Some(cx.spawn_in(window, async move |this, cx| {
@@ -396,7 +404,8 @@ impl Render for Inspector {
                             .when(detail_open, |row| {
                                 row.children(self.detail_pane(window, cx))
                             }),
-                    ),
+                    )
+                    .children(self.usage_footer(cx)),
             )
             .children(overlays)
     }

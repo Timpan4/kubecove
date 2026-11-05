@@ -7,6 +7,8 @@ mod common;
 mod locate;
 #[path = "parity/scroll.rs"]
 mod scroll;
+#[path = "parity/topology_metrics.rs"]
+mod topology_metrics;
 
 use std::{
     fs,
@@ -133,6 +135,9 @@ fn scenarios() -> Vec<Value> {
 }
 
 fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
+    if topology_metrics::apply(window, cx, step) {
+        return;
+    }
     match string(step, "action") {
         "openResources" => {
             window.click("open-resources", cx);

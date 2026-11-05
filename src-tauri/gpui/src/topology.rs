@@ -13,19 +13,19 @@ const MIN_ZOOM: f32 = 0.12;
 const MAX_ZOOM: f32 = 1.4;
 const WIDTH_FIT_PADDING: f32 = 0.08;
 
-pub enum FlowItem<'a> {
-    Resource(&'a TopologyNode),
+pub enum FlowItem {
+    Resource(Box<TopologyNode>),
     /// Ownerless resources of one kind; `members` are topology node ids.
     Group {
         kind: String,
-        members: Vec<&'a str>,
+        members: Vec<String>,
         expanded: bool,
     },
 }
 
 /// A placed map node. Coordinates are absolute flow units.
-pub struct FlowNode<'a> {
-    pub item: FlowItem<'a>,
+pub struct FlowNode {
+    pub item: FlowItem,
     pub x: f32,
     pub y: f32,
     pub width: f32,
@@ -51,8 +51,8 @@ pub struct FlowEdge {
     pub state: EdgeState,
 }
 
-pub struct View<'a> {
-    pub nodes: Vec<FlowNode<'a>>,
+pub struct View {
+    pub nodes: Vec<FlowNode>,
     pub edges: Vec<FlowEdge>,
     /// Topology nodes after the table filter, before focusing on a selection.
     pub topology_nodes: usize,
@@ -198,12 +198,13 @@ fn root_subtree(graph: &Graph, selected: usize) -> (Vec<bool>, Vec<bool>) {
 
 /// Builds the ownership map for the table's filtered `rows`, focused on
 /// `selected` when it is in the graph.
-pub fn view<'a>(
-    topology: &'a ResourceTopology,
+pub fn view(
+    topology: &ResourceTopology,
     rows: &[ResourceSummary],
     selected: Option<&ResourceSummary>,
     expanded_kinds: &HashSet<String>,
-) -> View<'a> {
+    network: bool,
+) -> View {
     let (nodes, edges) = filter_by_rows(topology, rows);
     let topology_nodes = nodes.len();
     let selected = selected.and_then(|resource| selected_id(&nodes, resource));
@@ -218,7 +219,15 @@ pub fn view<'a>(
     let order = layout::order_keys(&graph, &depth);
     let positions = layout::positions(&graph, &depth, &order);
     let cmp = |a: usize, b: usize| layout::compare(&graph, &depth, &order, a, b);
-    let standalone = layout::standalone_groups(&graph, &positions, cmp, expanded_kinds, expansion);
+    let standalone = if network {
+        layout::Standalone {
+            groups: Vec::new(),
+            is_standalone: vec![false; graph.nodes.len()],
+            member_positions: HashMap::new(),
+        }
+    } else {
+        layout::standalone_groups(&graph, &positions, cmp, expanded_kinds, expansion)
+    };
 
     let mut flow: Vec<FlowNode> = standalone
         .groups
@@ -229,7 +238,7 @@ pub fn view<'a>(
                 members: group
                     .members
                     .iter()
-                    .map(|&node| graph.nodes[node].id.as_str())
+                    .map(|&node| graph.nodes[node].id.clone())
                     .collect(),
                 expanded: group.expanded,
             },
@@ -258,7 +267,7 @@ pub fn view<'a>(
         flow_index[node] = Some(flow.len());
         graph_nodes.push(Some(node));
         flow.push(FlowNode {
-            item: FlowItem::Resource(graph.nodes[node]),
+            item: FlowItem::Resource(Box::new(graph.nodes[node].clone())),
             x,
             y,
             width: if member.is_some() {
@@ -301,7 +310,7 @@ pub fn view<'a>(
             .zip(&graph_nodes)
             .map(|(node, graph_node)| match (&node.item, graph_node) {
                 (FlowItem::Group { members, .. }, _) => {
-                    members.iter().any(|&member| in_subtree(member))
+                    members.iter().any(|member| in_subtree(member))
                 }
                 (FlowItem::Resource(_), Some(graph_node)) => subtree[*graph_node],
                 (FlowItem::Resource(_), None) => false,
@@ -338,7 +347,7 @@ pub fn view<'a>(
         for (node, graph_node) in kept.iter_mut().zip(&kept_graph) {
             match (&node.item, graph_node) {
                 (FlowItem::Group { members, .. }, _) => {
-                    node.dimmed = !members.iter().any(|&member| on_path(member));
+                    node.dimmed = !members.iter().any(|member| on_path(member));
                 }
                 (FlowItem::Resource(_), Some(graph_node)) => {
                     node.selected = *graph_node == selected;
@@ -371,25 +380,23 @@ pub fn fit(nodes: &[FlowNode], width: f32, height: f32) -> Option<Viewport> {
     if width <= 0. || height <= 0. {
         return None;
     }
-    let path: Vec<&FlowNode> = nodes
-        .iter()
-        .filter(|node| node.selected || node.connected)
-        .collect();
-    let to_fit: Vec<&FlowNode> = if path.is_empty() {
-        nodes.iter().collect()
-    } else {
-        path
-    };
-    let left = to_fit.iter().map(|node| node.x).reduce(f32::min)?;
-    let top = to_fit.iter().map(|node| node.y).reduce(f32::min)?;
-    let right = to_fit
-        .iter()
-        .map(|node| node.x + node.width)
-        .reduce(f32::max)?;
-    let bottom = to_fit
-        .iter()
-        .map(|node| node.y + node.height)
-        .reduce(f32::max)?;
+    let has_path = nodes.iter().any(|node| node.selected || node.connected);
+    let mut bounds: Option<(f32, f32, f32, f32)> = None;
+    for node in nodes {
+        if has_path && !node.selected && !node.connected {
+            continue;
+        }
+        bounds = Some(match bounds {
+            None => (node.x, node.y, node.x + node.width, node.y + node.height),
+            Some((left, top, right, bottom)) => (
+                left.min(node.x),
+                top.min(node.y),
+                right.max(node.x + node.width),
+                bottom.max(node.y + node.height),
+            ),
+        });
+    }
+    let (left, top, right, bottom) = bounds?;
     let usable = (width * (1. - WIDTH_FIT_PADDING * 2.)).max(1.);
     let zoom = Viewport::clamp_zoom(usable / (right - left).max(1.));
     Some(Viewport {
