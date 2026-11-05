@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 	import { yaml } from "@codemirror/lang-yaml";
 	import { foldGutter, syntaxHighlighting } from "@codemirror/language";
 	import { lintGutter, linter, type Diagnostic } from "@codemirror/lint";
@@ -16,6 +17,7 @@
 		WidgetType,
 		highlightActiveLine,
 		highlightActiveLineGutter,
+		keymap,
 		lineNumbers,
 	} from "@codemirror/view";
 	import { onMount } from "svelte";
@@ -98,6 +100,8 @@
 			foldGutter(),
 			EditorView.editable.of(editable),
 			EditorState.readOnly.of(!editable),
+			history(),
+			keymap.of([...defaultKeymap, ...historyKeymap]),
 			editable ? highlightActiveLine() : [],
 			editable ? highlightActiveLineGutter() : [],
 			yaml(),

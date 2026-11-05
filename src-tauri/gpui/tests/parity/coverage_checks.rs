@@ -309,6 +309,63 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             window.render_frame(cx);
             assert_eq!(first, rows(window), "Previous did not restore page one");
         }
+        "yaml-undo" => {
+            let editor = locate::id(&window.find_by_label("Resource YAML"));
+            window.within("detail-body").click(editor, cx);
+            let original = window
+                .find_by_label("Resource YAML")
+                .value()
+                .map(|value| value.to_string());
+            window.press(
+                if cfg!(target_os = "macos") {
+                    "cmd-down"
+                } else {
+                    "ctrl-end"
+                },
+                cx,
+            );
+            window.input("undo: probe", cx);
+            window.render_frame(cx);
+            let edited = window
+                .find_by_label("Resource YAML")
+                .value()
+                .map(|value| value.to_string());
+            assert_ne!(edited, original, "The probe edit did not change the YAML");
+            window.press(
+                if cfg!(target_os = "macos") {
+                    "cmd-z"
+                } else {
+                    "ctrl-z"
+                },
+                cx,
+            );
+            window.render_frame(cx);
+            assert_eq!(
+                window
+                    .find_by_label("Resource YAML")
+                    .value()
+                    .map(|value| value.to_string()),
+                original,
+                "Undo did not restore the original YAML"
+            );
+            window.press(
+                if cfg!(target_os = "macos") {
+                    "cmd-shift-z"
+                } else {
+                    "ctrl-y"
+                },
+                cx,
+            );
+            window.render_frame(cx);
+            assert_eq!(
+                window
+                    .find_by_label("Resource YAML")
+                    .value()
+                    .map(|value| value.to_string()),
+                edited,
+                "Redo did not restore the edited YAML"
+            );
+        }
         "yaml-editor" => {
             let editor = locate::id(&window.find_by_label("Resource YAML"));
             window.within("detail-body").click(editor, cx);

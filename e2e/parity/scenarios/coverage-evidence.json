@@ -44,7 +44,7 @@
 		},
 		{
 			"id": "coverage-yaml.editor-selection",
-			"title": "YAML keyboard selection replaces one line and document-end insertion preserves earlier lines",
+			"title": "YAML undo and redo restore each edit, keyboard selection replaces one line, and document-end insertion preserves earlier lines",
 			"steps": [
 				{
 					"action": "openResources"
@@ -65,6 +65,10 @@
 				},
 				{
 					"action": "editYaml"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "yaml-undo"
 				},
 				{
 					"action": "coverageCheck",
