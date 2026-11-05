@@ -319,8 +319,7 @@ impl Inspector {
             is_namespace,
             expandable,
         };
-        let click_row = target.clone();
-        let key_row = target;
+        let click_row = target;
         div()
             .id(SharedString::from(id))
             .test_support()
@@ -396,12 +395,8 @@ impl Inspector {
             .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
                 this.activate_row(click_row.clone(), window, cx);
             }))
-            .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
+            .on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
                 match event.keystroke.key.as_str() {
-                    "enter" | "space" => {
-                        cx.stop_propagation();
-                        this.activate_row(key_row.clone(), window, cx);
-                    }
                     "right" if expandable && !expanded => {
                         this.toggle_tree_row(&key_toggle, cx);
                     }

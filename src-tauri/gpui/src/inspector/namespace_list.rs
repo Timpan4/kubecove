@@ -2,7 +2,7 @@
 //! context's namespaces with ages and created times, and its empty, error and
 //! loading states.
 
-use super::{Inspector, Page, surface};
+use super::{Inspector, Page};
 use crate::theme::Tokens;
 use crate::ui;
 use gpui_kit::{
@@ -60,14 +60,14 @@ impl Inspector {
         cx.notify();
     }
 
-    pub(super) fn namespace_list_page(&self) -> AnyElement {
+    pub(super) fn namespace_list_page(&self, cx: &mut Context<Self>) -> AnyElement {
         let body = if self.scope.context.is_empty() {
             no_context()
         } else {
             match &self.namespace_list.read {
                 NamespaceRead::Idle | NamespaceRead::Loading => loading(),
                 NamespaceRead::Failed(message) => {
-                    surface::failed("Failed to load namespaces", message.clone())
+                    self.page_failure("Failed to load namespaces", message.clone(), cx)
                 }
                 NamespaceRead::Ready(namespaces) if namespaces.is_empty() => empty(),
                 NamespaceRead::Ready(namespaces) => {

@@ -13,7 +13,8 @@ function restorePrompt(page: Page) {
 export async function logRowAndRestoreAction(page: Page, step: Step): Promise<void> {
     switch (step.action) {
         case "toggleLogRow":
-            await logRow(page, step.line).getByText(step.line, { exact: true }).click();
+            if (step.key) await logRow(page, step.line).press(step.key);
+            else await logRow(page, step.line).getByText(step.line, { exact: true }).click();
             break;
         case "toggleLogExpandAll":
             await page.getByRole("button", { name: /^(Expand|Collapse) all$/ }).click();

@@ -70,6 +70,7 @@
         { "action": "expectNavigationDrawer", "open": true },
         { "action": "sidebarSelect", "path": ["Workloads", "Deployment"] },
         { "action": "expectNavigationDrawer", "open": false },
+        { "action": "expectHealthFilter", "label": "Total", "pressed": true },
         { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
         { "action": "resizeViewport", "width": 1440, "height": 900 },
         { "action": "expectSidebarRow", "path": ["Workloads"], "visible": true, "selected": false },

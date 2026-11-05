@@ -17,6 +17,10 @@
         { "action": "expectLogRowOpen", "line": "handled GET /healthz 200", "open": false },
         { "action": "toggleLogRow", "line": "handled GET /healthz 200" },
         { "action": "expectLogRowOpen", "line": "handled GET /healthz 200", "open": true },
+        { "action": "toggleLogRow", "line": "handled GET /healthz 200", "key": "Enter" },
+        { "action": "expectLogRowOpen", "line": "handled GET /healthz 200", "open": false },
+        { "action": "toggleLogRow", "line": "handled GET /healthz 200", "key": "Space" },
+        { "action": "expectLogRowOpen", "line": "handled GET /healthz 200", "open": true },
         { "action": "expectLogRowOpen", "line": "boot payments-api", "open": false },
         { "action": "toggleLogExpandAll" },
         { "action": "expectLogRowOpen", "line": "boot payments-api", "open": true },
@@ -95,6 +99,25 @@
         { "action": "openPage", "page": "Port Forwards" },
         { "action": "expectForwardState", "target": "Service/payments-api:80", "local": "18081", "status": "listening", "resolved": "payments-api-7d9c9b7f8d-k2r9p:8080", "count": 1 },
         { "action": "expectRestorePrompt", "visible": false }
+      ]
+    },
+    {
+      "id": "forward-restore.prompt-auto-start",
+      "title": "Enabling auto-start in the prompt starts saved forwards immediately",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Service", "namespace": "payments", "name": "payments-api" },
+        { "action": "showTab", "tab": "Forward" },
+        { "action": "configureForward", "remote": "80", "local": "18081" },
+        { "action": "forwardControl", "operation": "save" },
+        { "action": "closeDetail" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectRestorePrompt", "visible": true, "count": 1 },
+        { "action": "restorePromptControl", "control": "Auto-start" },
+        { "action": "expectRestorePrompt", "visible": false },
+        { "action": "openPage", "page": "Port Forwards" },
+        { "action": "expectForwardState", "target": "Service/payments-api:80", "local": "18081", "status": "listening", "resolved": "payments-api-7d9c9b7f8d-k2r9p:8080", "count": 1 }
       ]
     }
   ]

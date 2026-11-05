@@ -166,7 +166,7 @@ export type Step =
     | { action: "expectLogLines"; lines: string[] }
     | { action: "filterLogs" | "confirmDeletion" | "editReplicas"; value: string }
     | { action: "toggleLogLevel"; level: LogLevel }
-    | { action: "toggleLogRow"; line: string }
+    | { action: "toggleLogRow"; line: string; key?: "Enter" | "Space" }
     | { action: "toggleLogExpandAll" }
     | { action: "expectLogRowOpen"; line: string; open: boolean }
     | { action: "copyLogLine"; line: string; contains: string }

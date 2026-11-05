@@ -161,18 +161,6 @@ fn one_line_row(
         .aria_expanded(open)
         .track_focus(&focus)
         .tab_index(0)
-        .on_key_down(
-            cx.listener(move |this, event: &gpui_kit::KeyDownEvent, _, cx| {
-                if matches!(event.keystroke.key.as_str(), "enter" | "space") {
-                    cx.stop_propagation();
-                    if let Some(logs) = this.logs_state() {
-                        logs.toggle_row(index);
-                        logs.list.remeasure_items(position..position + 1);
-                    }
-                    cx.notify();
-                }
-            }),
-        )
         .on_click(cx.listener(move |this, _, _, cx| {
             if let Some(logs) = this.logs_state() {
                 logs.toggle_row(index);

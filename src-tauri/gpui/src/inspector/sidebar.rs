@@ -196,19 +196,14 @@ impl Inspector {
                     )
                     .track_focus(&focus)
                     .tab_index(0)
-                    .on_key_down(cx.listener(
-                        move |this, event: &gpui_kit::KeyDownEvent, window, cx| {
-                            if matches!(event.keystroke.key.as_str(), "enter" | "space") {
-                                cx.stop_propagation();
-                                this.activate_navigation(target, custom, window, cx);
-                            } else if custom
-                                && matches!(event.keystroke.key.as_str(), "left" | "right")
-                            {
+                    .on_key_down(
+                        cx.listener(move |this, event: &gpui_kit::KeyDownEvent, _, cx| {
+                            if custom && matches!(event.keystroke.key.as_str(), "left" | "right") {
                                 this.live.custom_open = event.keystroke.key == "right";
                                 cx.notify();
                             }
-                        },
-                    ))
+                        }),
+                    )
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.activate_navigation(target, custom, window, cx);
                     }))
@@ -246,6 +241,7 @@ impl Inspector {
     pub(super) fn navigation_drawer(&self, cx: &mut Context<Self>) -> AnyElement {
         div()
             .id("workspace-navigation")
+            .occlude()
             .test_support()
             .aria_label("Workspace navigation")
             .absolute()
@@ -272,6 +268,7 @@ impl Inspector {
             .child(
                 div()
                     .id("navigation-panel")
+                    .occlude()
                     .test_support()
                     .relative()
                     .h_full()

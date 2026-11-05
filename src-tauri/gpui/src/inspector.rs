@@ -539,7 +539,7 @@ impl Inspector {
             Page::Settings => self.settings_page(cx).into_any_element(),
             Page::GitOps => self.gitops_page_view(window, cx),
             Page::Helm => self.helm_page_view(window, cx),
-            Page::Namespaces => self.namespace_list_page(),
+            Page::Namespaces => self.namespace_list_page(cx),
         }
     }
 }

@@ -10,7 +10,13 @@ pub fn apply(window: &mut Window, cx: &mut App, step: &Value) -> bool {
     match string(step, "action") {
         "toggleLogRow" => {
             let position = row_position(window, string(step, "line"));
-            window.click(("log-summary", position), cx);
+            if let Some(key) = step["key"].as_str() {
+                window
+                    .within(("log-row", position))
+                    .press(if key == "Enter" { "enter" } else { "space" }, cx);
+            } else {
+                window.click(("log-summary", position), cx);
+            }
         }
         "toggleLogExpandAll" => window.click("log-expand-all", cx),
         "expectLogRowOpen" => {

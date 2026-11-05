@@ -338,7 +338,11 @@ function step(value: unknown): Step {
 			return { action: item.action, level };
 		}
 		case "expectLogsEmpty": case "expectYamlNotice": case "expectNoYamlNotice": return { action: item.action, title: string(item.title) };
-		case "toggleLogRow": return { action: item.action, line: string(item.line) };
+		case "toggleLogRow": {
+			const row: Extract<Step, { action: "toggleLogRow" }> = { action: item.action, line: string(item.line) };
+			if (item.key !== undefined) row.key = oneOf<"Enter" | "Space">(["Enter", "Space"], item.key, "a log row key");
+			return row;
+		}
 		case "toggleLogExpandAll": return { action: item.action };
 		case "expectLogRowOpen": return { action: item.action, line: string(item.line), open: boolean(item.open) };
 		case "copyLogLine": return { action: item.action, line: string(item.line), contains: string(item.contains) };

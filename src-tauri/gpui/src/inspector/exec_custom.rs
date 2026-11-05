@@ -7,12 +7,12 @@ use super::{
 use crate::{theme::Tokens, ui};
 use gpui_kit::component::{
     IndexPath,
-    input::{InputEvent, Textarea, TextareaState},
+    input::{Enter, InputEvent, Textarea, TextareaState},
     select::{SearchableVec, Select, SelectEvent, SelectState},
 };
 use gpui_kit::{
-    AnyElement, AppContext, Context, Entity, KeyDownEvent, SharedString, Subscription,
-    TestSupportExt, Window, div, prelude::*, px,
+    AnyElement, AppContext, Context, Entity, Focusable, SharedString, Subscription, TestSupportExt,
+    Window, div, prelude::*, px,
 };
 
 pub(super) struct ExecCustomForm {
@@ -117,6 +117,7 @@ impl Inspector {
             }
         );
         let (key_container, key_argv) = (container.clone(), argv.clone());
+        let argv_focus = form.argv.read(cx).focus_handle(cx);
         Some(
             div()
                 .w(px(256.))
@@ -128,6 +129,12 @@ impl Inspector {
                 .border_1()
                 .border_color(Tokens::border())
                 .rounded(px(6.))
+                .capture_action(cx.listener(move |this, action: &Enter, window, cx| {
+                    if argv_focus.is_focused(window) && action.secondary {
+                        cx.stop_propagation();
+                        this.run_custom(key_container.clone(), key_argv.clone(), window, cx);
+                    }
+                }))
                 .child(ui::muted(ui::xs("Custom command")))
                 .child(ui::muted(ui::xs("Container")))
                 .child(
@@ -136,25 +143,7 @@ impl Inspector {
                         .h(px(28.)),
                 )
                 .child(ui::muted(ui::xs("Arguments, one per line")))
-                .child(
-                    div()
-                        .capture_key_down(cx.listener(
-                            move |this, event: &KeyDownEvent, window, cx| {
-                                if event.keystroke.key == "enter"
-                                    && event.keystroke.modifiers.secondary(cx)
-                                {
-                                    cx.stop_propagation();
-                                    this.run_custom(
-                                        key_container.clone(),
-                                        key_argv.clone(),
-                                        window,
-                                        cx,
-                                    );
-                                }
-                            },
-                        ))
-                        .child(Textarea::new(&form.argv).aria_label("Exec arguments")),
-                )
+                .child(Textarea::new(&form.argv).aria_label("Exec arguments"))
                 .child(ui::muted(ui::xs("Passed as-is. No shell parsing.")))
                 .child(
                     div()
