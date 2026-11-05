@@ -7,11 +7,14 @@ const { GITHUB_PATH, GITHUB_ENV } = process.env;
 if (!GITHUB_PATH || !GITHUB_ENV) throw new Error("Cargo activation requires a GitHub Actions job");
 
 // mbx 1.29.2 installs its Cargo shim under the platform's local data directory.
-const dataDirectory = process.platform === "win32"
-  ? process.env.LOCALAPPDATA
-  : process.platform === "darwin"
-    ? join(homedir(), "Library", "Application Support")
-    : process.env.XDG_DATA_HOME || join(homedir(), ".local", "share");
+let dataDirectory;
+if (process.platform === "win32") {
+  dataDirectory = process.env.LOCALAPPDATA;
+} else if (process.platform === "darwin") {
+  dataDirectory = join(homedir(), "Library", "Application Support");
+} else {
+  dataDirectory = process.env.XDG_DATA_HOME || join(homedir(), ".local", "share");
+}
 if (!dataDirectory) throw new Error("The runner has no local application data directory");
 const shimDirectory = join(dataDirectory, "mbx", "bin");
 execFileSync("mbx", ["setup", "--yes"], { stdio: "inherit" });

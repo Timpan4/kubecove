@@ -17,7 +17,14 @@ test("Cargo activation exports the platform shim only after successful setup", (
     const paths = platform === "win32" ? win32 : posix;
     const home = platform === "win32" ? "C:\\Users\\runner" : "/home/runner";
     const env = { GITHUB_PATH: "path-file", GITHUB_ENV: "env-file", LOCALAPPDATA: paths.join(home, "AppData", "Local"), XDG_DATA_HOME: "/custom/data" };
-    const data = platform === "win32" ? env.LOCALAPPDATA : platform === "darwin" ? paths.join(home, "Library", "Application Support") : env.XDG_DATA_HOME;
+    let data;
+    if (platform === "win32") {
+      data = env.LOCALAPPDATA;
+    } else if (platform === "darwin") {
+      data = paths.join(home, "Library", "Application Support");
+    } else {
+      data = env.XDG_DATA_HOME;
+    }
     const shim = paths.join(data, "mbx", "bin");
     const writes = [];
     let installed = false;
