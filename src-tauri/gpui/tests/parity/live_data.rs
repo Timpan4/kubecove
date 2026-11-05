@@ -1,7 +1,7 @@
 use super::*;
 pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) -> bool {
     match string(step, "action") {
-        "replayLiveData" => {}
+        "replayLiveData" | "mockTiming" => {}
         "expectLiveState" => {
             if let Some(notice) = step["notice"].as_str() {
                 assert_eq!(window.find("live-notice").label(), Some(notice));

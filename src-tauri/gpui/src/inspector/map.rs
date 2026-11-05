@@ -14,7 +14,7 @@ use crate::topology::{self, Viewport};
 use crate::ui;
 use gpui_kit::TestSupportExt;
 use gpui_kit::{AnyElement, Context, Div, Pixels, Point, SharedString, div, prelude::*, px};
-use kubecove_lib::models::{ResourceSummary, ResourceTopology};
+use kubecove_lib::models::{AppError, AppErrorKind, ResourceSummary, ResourceTopology};
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -22,7 +22,7 @@ use std::rc::Rc;
 pub(super) enum TopologyLoad {
     Loading,
     Ready(ResourceTopology),
-    Failed(String),
+    Failed(AppError),
 }
 
 type CachedEdges = (Rc<topology::View>, Rc<Vec<EdgePaint>>);
@@ -205,12 +205,19 @@ impl Inspector {
                             .id("map-error")
                             .test_support()
                             .role(gpui_kit::Role::Alert)
+                            .aria_label(if error.kind == AppErrorKind::Forbidden {
+                                "KubeCove does not have permission for this"
+                            } else if self.map.network {
+                                "Failed to load network flow"
+                            } else {
+                                "Failed to load ownership map"
+                            })
                             .p(px(12.))
                             .rounded(px(8.))
                             .border_1()
                             .border_color(Tokens::destructive().opacity(0.4))
-                            .child(ui::semibold(ui::xs(if self.map.network { "Failed to load network flow" } else { "Failed to load ownership map" })))
-                            .child(ui::muted(ui::xs(error.clone()))),
+                            .child(ui::semibold(ui::xs(if error.kind == AppErrorKind::Forbidden { "KubeCove does not have permission for this" } else if self.map.network { "Failed to load network flow" } else { "Failed to load ownership map" })))
+                            .child(ui::muted(ui::xs(error.message.clone()))),
                     )
                     .into_any_element(),
             ],

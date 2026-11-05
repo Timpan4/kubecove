@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 
 #[derive(Default)]
 pub struct LiveData {
-    pub(super) state: Mutex<ScriptState>,
+    pub(super) state: std::sync::Arc<Mutex<ScriptState>>,
 }
 #[derive(Default)]
 pub(super) struct ScriptState {
@@ -22,6 +22,9 @@ impl Fixture {
         self.live.state.lock().unwrap().failed
     }
     pub fn replay_live(&self, script: &str) {
+        if matches!(script, "update" | "delete") {
+            self.timing.invalidate("mock-dev");
+        }
         let mut state = self.live.state.lock().unwrap();
         match script {
             "burst" => state.burst = true,
@@ -100,21 +103,41 @@ impl Fixture {
         }
     }
     pub(super) fn live_watch(&self, target: WatchTarget) -> Read<LogStream> {
-        let (sender, receiver) = mpsc::unbounded_channel();
-        sender
-            .send(StreamMessage::Status {
-                stream_id: "fixture".into(),
-                status: StreamStatus::Connected,
-                message: "Live updates connected".into(),
-            })
-            .unwrap();
-        self.live
-            .state
-            .lock()
-            .unwrap()
-            .watches
-            .push((target, sender.clone()));
-        Box::pin(async move { Ok(LogStream::new(receiver, sender)) })
+        let context = match &target {
+            WatchTarget::Resource { scope, .. } => scope.context.clone(),
+            WatchTarget::Events(resource) => resource.cluster.clone(),
+        };
+        let opening = self.timing.read("start_resource_watch", &context, "", ());
+        let live = self.live.state.clone();
+        Box::pin(async move {
+            opening.await?;
+            let (sender, receiver) = mpsc::unbounded_channel();
+            sender
+                .send(StreamMessage::Status {
+                    stream_id: "fixture".into(),
+                    status: StreamStatus::Connected,
+                    message: "Live updates connected".into(),
+                })
+                .unwrap();
+            let mut state = live.lock().unwrap();
+            // The real stream opens at resourceVersion "0" in streams/watch.rs.
+            if (state.changed || state.deleted)
+                && matches!(&target, WatchTarget::Resource { key, .. } if key.resource_kind.kind == "Deployment")
+            {
+                let _ = sender.send(StreamMessage::ResourceChanged {
+                    stream_id: "fixture".into(),
+                    target: WatchResourceTarget {
+                        cluster: context,
+                        kind: "Deployment".into(),
+                        namespace: Some("payments".into()),
+                        name: Some("payments-api".into()),
+                    },
+                    action: if state.deleted { "deleted" } else { "applied" }.into(),
+                });
+            }
+            state.watches.push((target, sender.clone()));
+            Ok(LogStream::new(receiver, sender))
+        })
     }
     pub(super) fn live_rows(&self, rows: Vec<ResourceSummary>) -> Vec<ResourceSummary> {
         let state = self.live.state.lock().unwrap();

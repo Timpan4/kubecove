@@ -1,205 +1,14 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-type Identity = { kind: string; name: string; namespace: string };
-export type Step =
-    | { action: "sidebarToggle" | "sidebarSelect"; path: string[] }
-    | { action: "expectSidebarRow"; path: string[]; visible: boolean; selected: boolean }
-    | { action: "collapseSidebar" }
-    | { action: "expectSidebarBranch"; page: string; expanded: boolean }
-    | { action: "expectOverviewShortcuts"; labels: string[] }
-    | { action: "overviewShortcut"; label: string }
-    | { action: "expectOverviewScope"; labels: string[] }
-    | { action: "expectCompareTotal"; title: string; side: string; total: number }
-    | { action: "retryOverview" | "expectOverviewRetry" }
-    | { action: "dragKind"; kind: string; target: string }
-    | { action: "expectEmptyLauncher" }
-    | { action: "expectEntryCount"; panel: "Pinned" | "Recent"; count: number }
-    | { action: "copyErrorDetail"; error: "contexts" | "namespaces"; expected: string }
-    | ({ action: "toggleResourcePin" } & Identity)
-    | { action: "expectWorkspaceEntry" | "openWorkspaceEntry"; panel: "Pinned" | "Recent"; label: string; index: number; count: number }
-    | { action: "reorderKindKey"; kind: string; key: "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" }
-    | { action: "expectRemoteHost"; url: string }
-    | { action: "configureShellRead"; phase: "ready" | "contexts-failed" | "contexts-empty" | "namespaces-failed" | "resources-failed" }
-    | { action: "retryLauncher"; read: "contexts" | "namespaces" }
-    | { action: "expectLauncherRetry"; read: "contexts" | "namespaces" }
-    | { action: "overviewOperation"; destination: "Resources" | "Workspaces" | "Port Forwards" | "Incidents" }
-    | { action: "overviewIncident"; filter: "Degraded" | "Needs attention" | "Restart evidence" }
-    | { action: "reviewIncidentAction"; index: number }
-    | { action: "cancelNextTopology" | "expectCancelledReadRecovery" }
-    | { action: "terminalFit"; width: number; height: number }
-    | { action: "terminalOutput"; data: string; container: string }
-    | { action: "terminalSelect"; row: number; col: number; endRow: number; endCol: number; word: boolean }
-    | { action: "terminalCopy" | "terminalPaste"; text: string }
-    | { action: "terminalScroll"; rows: number }
-    | { action: "failWorkspaceContext" | "expectWorkspaceReadWarning"; context: string }
-    | { action: "editSavedWorkspace" | "expectNoSavedWorkspace"; name: string }
-    | { action: "saveWorkspace" | "cancelWorkspaceEdit" }
-    | { action: "toggleWorkspaceContext"; context: string }
-    | { action: "expectOverviewHealth"; total: number }
-    | { action: "expectDetailContext"; context: string }
-    | { action: "refreshPage"; page: "RBAC" | "Incidents" }
-    | { action: "replayPageReads"; phase: "base" | "updated" | "failed" }
-    | { action: "focusStalePage"; page: "GitOps" | "Helm" | "RBAC" | "Incidents" }
-    | { action: "expectPageText"; text: string }
-    | { action: "searchCustomKinds" | "searchKindPicker"; value: string }
-    | { action: "expectCustomGroup"; group: string; visible: boolean }
-    | { action: "toggleKind"; kind: string; checked: boolean }
-    | { action: "openKindPicker" | "closeKindPicker" | "selectAllKinds" }
-    | { action: "expectKindChecked"; kind: string; checked: boolean }
-    | { action: "fillMcpPort"; value: string }
-    | { action: "mcpControl"; control: "MCP server" | "Submit port" | "Save" | "Copy token" | "Copy Claude Code command" | "Rotate token" }
-    | { action: "expectMcpState"; enabled: boolean; port: string; running: boolean; save: boolean; command: boolean }
-    | { action: "expectMcpCopy"; kind: "token" | "command"; rotated: boolean }
-    | { action: "expectMcpRequests"; requests: string[] }
-    | { action: "selectArgoPreference"; preference: "Automatic" | "Kubernetes" }
-    | { action: "expectSavedArgoProfile"; url: string }
-    | { action: "configureArgoSync"; revision: string; name: string }
-    | { action: "selectArgoHistory"; revision: string }
-    | { action: "expectArgoWorkspaceTransport"; text: string }
-    | { action: "completeArgoOperation" | "confirmArgoTunnel" }
-    | { action: "connectArgoProfile"; url: string; surface?: "page"; remember?: boolean; tunnel?: boolean; local?: boolean; insecure?: boolean; customCa?: string }
-    | { action: "disconnectArgoProfile" | "confirmArgoReview" | "cancelArgoReview" }
-    | { action: "reviewArgoOperation"; operation: "Refresh" | "Hard refresh" | "Sync" | "Rollback" }
-    | { action: "configureArgoMock"; script: import("../../src/lib/tauri-dev-mock-argo").ArgoMockScript }
-    | { action: "argoControl"; control: "Open connection" | "Close connection" | "Forget" | "Retry" | "Confirm target again" | "Retry operation" | "Retry state refresh" | "Retry snapshot" | "Show diff" | "Show fewer lines" | "All changes"; url?: string }
-    | { action: "focusArgoResource"; key: string; label: string }
-    | { action: "expectNoSavedArgoProfile"; url: string }
-    | { action: "expandArgoDiff" }
-    | { action: "reconnectArgoProfile" }
-    | { action: "configureArgoInventory"; mode: import("../../src/lib/tauri-dev-mock-argo").ArgoInventoryMode }
-    | { action: "copyArgoValue"; control: "source" | "revision" | "repository value" | "release value" | "cluster target value"; contains: string }
-    | { action: "expectArgoReview"; operation: string; name: string; namespace: string; transport: string }
-    | { action: "expectArgoText"; text: string }
-    | { action: "argoDocument"; view: "Desired" | "Live" | "Changes"; contains: string }
-    | { action: "cancelYamlEdit" }
-    | { action: "revealSecretValue" | "hideSecretValue" | "refreshLatencyReport" | "clearLatencyReport" | "expectLatencyEmpty" | "openDocumentation" }
-    | { action: "expectSecretValue"; visible: boolean }
-    | { action: "expectYamlLens"; line: number }
-    | { action: "expectLatencyTiming"; command: string }
-    | { action: "expectDocumentationRequest"; url: string }
-    | { action: "configurePreset"; label: string; context: string; namespace: string; service: string; remote: string; local: string }
-    | { action: "presetControl"; operation: "add" | "save" | "edit" | "start" | "remove" | "absent"; label?: string }
-    | { action: "replaySessions"; script: "reconnecting" | "failed" | "foreign-output" }
-    | { action: "confirmExecLeave"; choice: "stay" | "stop" }
-    | { action: "configureForward"; remote: string; local: string }
-    | { action: "forwardControl"; operation: "start" | "save" | "restore" | "stop" | "reconnect"; target?: string }
-    | { action: "expectForwardState"; target: string; local: string; status: string; resolved?: string; count: number }
-    | { action: "execControl"; operation: "start" | "input" | "close" | "stop" | "select" | "custom" | "arguments" | "run"; container?: string; command?: string; data?: string; tab?: number }
-    | { action: "expectExecState"; container: string; status: string; contains: string; absent?: string; command?: string }
-    | { action: "expectWorkspaceExport"; name: string }
-    | { action: "fillSettingsField"; field: "Server URL" | "Server token"; value: string }
-    | { action: "clickSettingsButton"; label: string }
-    | { action: "expectSettingsText" | "expectNoSettingsText" | "expectRuntimeEndpoint"; value: string }
-    | { action: "expectMaskedToken" | "reopenStoredSettings" | "attemptUnverifiedUpdate" }
-    | { action: "configureSettingsMock"; script: "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "cancel-dialog" | "no-update" | "invalid-signature" }
-	| { action: "expectLiveState"; label: string; notice?: string }
-	| { action: "replayLiveData"; script: import("../../src/lib/tauri-dev-mock-live").LiveScript }
-	| ({ action: "expectResourceStatus"; status: string } & Identity)
-	| { action: "openCustomKind"; kind: string; surface: "sidebar" | "picker" }
-	| { action: "expectYamlAbsent"; fragments: string[] }
-	| { action: "clickActionEntry"; label: string; button: "Add" | "Remove" | "Restore" }
-	| { action: "fillContainerImage"; container: string; value: string }
-	| { action: "openActionEditor"; row: "image" | "environment" | "resources" | "labels" | "annotations" | "rollback" }
-	| { action: "fillActionField"; label: string; value: string }
-	| { action: "chooseActionRevision"; revision: number }
-	| { action: "selectYamlShape" | "selectYamlEncoding" | "replaceYamlDraft" | "expectYamlDocument"; value: string }
-	| { action: "expectYamlPicker"; label: string; value: string }
-	| { action: "formatYaml" }
-	| { action: "openResources" | "showYaml" | "closeDetail" | "expectDetailClosed" | "expectEmpty" | "refresh" }
-	| { action: "search" | "expectSearch"; value: string }
-	| ({ action: "expectResource" | "openResource" | "expectDetail" } & Identity)
-	| { action: "expectClusterResource" | "expectNoClusterResource"; kind: string; name: string }
-	| { action: "expectYaml"; contains: string[] }
-	| { action: "openPage"; page: string }
-	| { action: "showTab"; tab: string }
-	| { action: "filterEvents"; filter: "All" | "Warnings" | "Normal" }
-	| { action: "expectEvent"; index: number; reason: string; message: string }
-	| { action: "expectEventCount" | "expectLiveSessionCount"; count: number }
-	| { action: "filterIncidents"; filter: string }
-	| { action: "expectIncidentGuide"; title: string }
-	| { action: "expectGitOpsCount"; label: string; count: number }
-	| { action: "expectPortForward"; title: string }
-	| { action: "closeReview" | "expectNoReview" | "executeReview" | "expectNoActionResult" | "editYaml" | "applyYaml" | "dryRunYaml" | "expectYamlReadOnly" }
-	| { action: "expectLogLines"; lines: string[] }
-	| { action: "filterLogs" | "confirmDeletion" | "editReplicas"; value: string }
-	| { action: "toggleLogLevel"; level: LogLevel }
-	| { action: "expectLogsEmpty" | "expectYamlNotice" | "expectNoYamlNotice"; title: string }
-	| { action: "selectRevision" | "reviewAction"; label: string }
-	| { action: "expectRevisionDiff"; selected: string; comparison: string; contains: string[] }
-	| { action: "expectReview"; title: string; description: string; contains: string[] }
-	| { action: "expectActionResult"; text: string }
-	| { action: "expectDryRun"; contains: string[] }
-	| ({ action: "expectNoResource" | "expectPaletteResource" | "expectNoPaletteResource" | "choosePaletteResource" } & Identity)
-	| { action: "openLauncher" | "createWorkspace" | "openSettings" | "closeSettings" }
-	| { action: "nameWorkspace" | "searchSettings" | "setKubeconfigEnvVar" | "expectKubeconfigEnvVar" | "expectSettingsEmpty" | "searchPalette"; value: string }
-	| { action: "openSavedWorkspace"; name: string }
-	| { action: "expectSavedWorkspace"; name: string; summary: string }
-	| { action: "selectWorkspaceContext"; context: string }
-	| { action: "toggleWorkspaceNamespace"; namespace: string }
-	| { action: "expectOpenWorkspace"; name: string; context: string }
-	| { action: "selectRbacCategory" | "expectRbacCategory"; category: RbacCategory }
-	| { action: "filterRbacRisk"; filter: RbacRisk }
-	| { action: "expectRbacItem"; title: string; risk: string }
-	| { action: "expectNoRbacItem" | "selectRbacItem"; title: string }
-	| { action: "investigateRbacSubject"; subject: string }
-	| { action: "expectRbacIdentity"; identity: string }
-	| { action: "expectRbacGrant" | "expectNoRbacGrant"; grant: string }
-	| { action: "verifyRbacAccess"; verb: string }
-	| { action: "expectRbacVerdict"; outcome: "allowed" | "denied" | "noOpinion" }
-	| { action: "editRbacReviewNote" | "expectRbacReviewNote"; value: string }
-	| { action: "saveRbacReview"; disposition: "expected" | "anomalous" }
-	| { action: "expectRbacReview"; label: string }
-	| { action: "clearRbacReview" }
-	| { action: "showSettingsSection"; section: string }
-	| { action: "expectSettingsHeading"; heading: string }
-	| { action: "expectSettingRow" | "expectNoSettingRow"; title: string }
-	| { action: "restartClient" }
-    | { action: "expectDeliveryView"; page: string; mode: string }
-    | { action: "moveResourceKindEarlier"; kind: string }
-    | { action: "expectResourceKindPosition"; kind: string; lane: string; index: number }
-    | { action: "toggleSetting"; setting: string }
-    | { action: "selectSettingOption" | "expectSettingOption"; setting: string; value: string }
-	| { action: "expectSetting"; setting: string; checked: boolean }
-	| { action: "openPalette"; via: "button" | "shortcut" }
-	| { action: "expectPaletteEntry" | "expectNoPaletteEntry" | "choosePaletteEntry"; label: string }
-	| { action: "openGitOps" }
-	| { action: "expandNav"; page: string }
-	| { action: "expectGitOpsTable"; title: string; count: number }
-	| ({ action: "expectGitOpsItem" | "expectNoGitOpsItem" | "openGitOpsDetails" } & Identity)
-	| { action: "expectArgoApplication"; name: string; health: string; sync: string }
-	| { action: "expectArgoSignal"; label: string; count: number }
-	| { action: "expectHelmCount"; count: number }
-	| { action: "expectHelmRelease" | "expectNoHelmRelease" | "openHelmRelease"; name: string; namespace: string }
-	| { action: "selectHelmNamespace"; namespace: string }
-	| { action: "searchHelm"; value: string }
-	| { action: "expectHelmDetails"; title: string; description: string; totals: string }
-	| ({ action: "openGitOpsResources" } & Identity)
-	| { action: "expectArgoWorkspace"; name: string }
-	| { action: "filterArgoResources"; filter: string }
-	| { action: "expectUsageFooter"; text: string }
-    | { action: "openUsageTree" | "expectNoUsageFooter" }
-    | { action: "expectUsageProcess"; label: string }
-    | { action: "setTopologyMode"; mode: "Ownership" | "Network Flow" }
-    | { action: "selectNamespace"; namespace: string }
-    | { action: "expectTopology"; nodes: number; edges: number }
-    | { action: "expectTopologyEdge"; source: string; target: string }
-    | { action: "expectTopologyEmpty"; title: string }
-    | { action: "selectTopologyNode" | "expectNoTopologyNode"; id: string }
-    | { action: "expectResourceMetrics"; kind: string; namespace: string; name: string; cpu: string; memory: string }
-    | { action: "setDeliveryView"; page: "GitOps" | "Helm"; mode: "Cards" | "List" };
-const RBAC_CATEGORIES = ["Namespace Access", "Roles", "Cluster Roles", "Bindings", "Service Accounts"] as const;
-type RbacCategory = (typeof RBAC_CATEGORIES)[number];
-const RBAC_RISKS = ["All", "High", "Medium", "Low", "No flags", "Unknown"] as const;
-type RbacRisk = (typeof RBAC_RISKS)[number];
-const VERDICTS = ["allowed", "denied", "noOpinion"] as const;
+import { LOG_LEVELS, RBAC_CATEGORIES, RBAC_RISKS, type Step, VERDICTS } from "./contract-steps";
+
+export type { Step } from "./contract-steps";
 function oneOf<T extends string>(values: readonly T[], value: unknown, label: string): T {
 	const found = values.find((candidate) => candidate === value);
 	if (!found) throw new Error(`Expected ${label}`);
 	return found;
 }
-type LogLevel = "ERR" | "WRN" | "INF" | "DBG";
-const LOG_LEVELS: readonly LogLevel[] = ["ERR", "WRN", "INF", "DBG"];
 export type Scenario = { id: string; title: string; steps: Step[] };
 export type Contract = { scenarios: Scenario[] };
 
@@ -215,7 +24,8 @@ export const ACTIONS = [
     "reorderKindKey", "expectRemoteHost",
     "configureShellRead", "retryLauncher", "expectLauncherRetry",
     "overviewOperation", "overviewIncident", "reviewIncidentAction",
-    "cancelNextTopology", "expectCancelledReadRecovery",
+    "expectTopologyDenied",
+    "mockTiming",
     "terminalFit",
     "terminalOutput", "terminalSelect", "terminalCopy", "terminalPaste", "terminalScroll",
     "configureArgoMock", "argoControl", "focusArgoResource", "expectNoSavedArgoProfile", "copyArgoValue", "configureArgoInventory", "expandArgoDiff", "reconnectArgoProfile",
@@ -311,6 +121,18 @@ function step(value: unknown): Step {
         case "overviewOperation": return { action: item.action, destination: oneOf(["Resources", "Workspaces", "Port Forwards", "Incidents"], item.destination, "an overview operation") };
         case "overviewIncident": return { action: item.action, filter: oneOf(["Degraded", "Needs attention", "Restart evidence"], item.filter, "an incident shortcut") };
         case "reviewIncidentAction": return { action: item.action, index: count(item.index) };
+        case "expectTopologyDenied": return { action: item.action };
+        case "mockTiming": {
+            const control = object(item.control);
+            const timing: import("../../src/lib/tauri-dev-mock-timing").TimingControl = {
+                operation: oneOf(["hold", "dirty", "contend", "release", "fail", "failOnce", "expectRequests", "expectPending", "expectNoRetry"], control.operation, "a timing operation"),
+                command: string(control.command), context: string(control.context),
+            };
+            if (control.kind !== undefined) timing.kind = string(control.kind);
+            if (control.namespace !== undefined) timing.namespace = string(control.namespace);
+            if (control.count !== undefined) timing.count = count(control.count);
+            return { action: item.action, control: timing };
+        }
         case "failWorkspaceContext": case "expectWorkspaceReadWarning": return { action: item.action, context: string(item.context) };
         case "editSavedWorkspace": case "expectNoSavedWorkspace": return { action: item.action, name: string(item.name) };
         case "saveWorkspace": case "cancelWorkspaceEdit": return { action: item.action };
@@ -398,7 +220,7 @@ function step(value: unknown): Step {
         case "expectUsageFooter": return { action: item.action, text: string(item.text) };
         case "expectUsageProcess": return { action: item.action, label: string(item.label) };
         case "openUsageTree": case "expectNoUsageFooter": return { action: item.action };
-        case "setTopologyMode": return { action: item.action, mode: oneOf(["Ownership", "Network Flow"], item.mode, "a topology mode") };
+        case "setTopologyMode": return { action: item.action, mode: oneOf(["Ownership", "Network Flow"], item.mode, "a topology mode"), pending: optionalBoolean(item.pending) };
         case "selectNamespace": return { action: item.action, namespace: string(item.namespace) };
         case "expectTopology": return { action: item.action, nodes: count(item.nodes), edges: count(item.edges) };
         case "expectTopologyEdge": return { action: item.action, source: string(item.source), target: string(item.target) };
@@ -519,7 +341,6 @@ function step(value: unknown): Step {
 		case "selectHelmNamespace": return { action: item.action, namespace: string(item.namespace) };
 		case "searchHelm": return { action: item.action, value: string(item.value) };
 		case "expectHelmDetails": return { action: item.action, title: string(item.title), description: string(item.description), totals: string(item.totals) };
-        case "cancelNextTopology": case "expectCancelledReadRecovery": return { action: item.action };
 		default: throw new Error(`Unknown action: ${String(item.action)}`);
 	}
 }

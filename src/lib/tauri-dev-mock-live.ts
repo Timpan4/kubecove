@@ -1,4 +1,5 @@
 import type { Channel } from "@tauri-apps/api/core";
+import { mockTiming } from "./tauri-dev-mock-timing";
 import type { ResourceEventSummary, ResourceSummary, StreamMessage, WatchResourceKey } from "./types";
 
 export const LIVE_EVENTS: ResourceEventSummary[] = [
@@ -20,7 +21,14 @@ export function registerMockWatch(args: Omit<Watch, "id" | "channel"> & { channe
     const channel = args.channel;
     const id = `mock-live-${++serial}`;
     watches.set(id, { ...args, channel, id });
-    queueMicrotask(() => channel.onmessage({ type: "status", streamId: id, status: "connected", message: "Live updates connected" }));
+    queueMicrotask(() => {
+        channel.onmessage({ type: "status", streamId: id, status: "connected", message: "Live updates connected" });
+        // streams/watch.rs opens from resourceVersion "0", then forwards object
+        // events. A new watch observes the current object, including gap changes.
+        if ((changed || deleted) && args.keys?.some((key) => key.resourceKind.kind === "Deployment")) {
+            channel.onmessage({ type: "resourceChanged", streamId: id, target: { cluster: args.context, kind: "Deployment", name: "payments-api", namespace: "payments" }, action: deleted ? "deleted" : "applied" });
+        }
+    });
     return id;
 }
 export function stopMockWatch(id: string): boolean { return watches.delete(id); }
@@ -40,6 +48,7 @@ export function liveEvents(kind?: string, name?: string): ResourceEventSummary[]
     return events && kind === "Deployment" && name === "payments-api" ? LIVE_EVENTS : undefined;
 }
 export function replayLiveData(script: LiveScript): void {
+    if (script === "update" || script === "delete") mockTiming.invalidate("mock-dev");
     if (script === "failed") failed = true;
     if (script === "connected") failed = false;
     if (script === "update") changed = true;

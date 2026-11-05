@@ -4,6 +4,8 @@ import type { ArgoManagedResource, DiscoveredResourceKind, FluxResourceKind, Pod
 
 type MockRequest = Partial<ArgoOperationRequest & YamlApplyRequest & Pick<PodLogStreamRequest, "batchLines">>;
 export interface MockArgs {
+    cancelScope?: string;
+    requestId?: string;
     content?: string;
     command?: string;
     args?: MockArgs;

@@ -160,7 +160,7 @@ impl Inspector {
                 }
                 this.map.topology = match result {
                     Ok(topology) => map::TopologyLoad::Ready(topology),
-                    Err(error) => map::TopologyLoad::Failed(error.message),
+                    Err(error) => map::TopologyLoad::Failed(error),
                 };
                 this.rebuild_map();
                 cx.notify();

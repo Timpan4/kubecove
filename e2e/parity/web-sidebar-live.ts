@@ -57,13 +57,6 @@ export async function sidebarLiveAction(page: Page, step: Step) {
             else if (checked !== step.checked) throw new Error(`${step.kind} checked=${checked}, expected ${step.checked}`);
             break;
         }
-        case "cancelNextTopology":
-            await page.evaluate("import('/src/lib/tauri-dev-mocks.ts').then(m => m.cancelNextTopology())");
-            break;
-        case "expectCancelledReadRecovery":
-            await page.getByText("Loading topology", { exact: true }).waitFor({ state: "hidden" });
-            if (await page.getByText(/request cancelled|Failed to load ownership map/).count()) throw new Error("Cancelled read remained visible");
-            break;
         default: throw new Error(`Unknown sidebar action ${step.action}`);
     }
 }

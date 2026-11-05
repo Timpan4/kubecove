@@ -9,6 +9,7 @@ import { adapterAction } from "./web-adapters";
 import { argoAction } from "./web-argo";
 import { liveSessionAction } from "./web-live-sessions";
 import { mcpAction } from "./web-mcp";
+import { timingAction } from "./web-timing";
 import { shellAction } from "./web-shell";
 import { sidebarLiveAction } from "./web-sidebar-live";
 import { terminalAction } from "./web-terminal";
@@ -28,7 +29,7 @@ export async function action(page: Page, step: Step) {
         case "reorderKindKey": case "expectRemoteHost": await shellAction(page, step); break;
         case "configureShellRead": case "retryLauncher": case "expectLauncherRetry": await shellAction(page, step); break;
         case "overviewOperation": case "overviewIncident": case "reviewIncidentAction": await shellAction(page, step); break;
-        case "cancelNextTopology": case "expectCancelledReadRecovery": await sidebarLiveAction(page, step); break;
+        case "expectTopologyDenied": case "mockTiming": await timingAction(page, step); break;
         case "terminalFit": case "terminalOutput": case "terminalSelect": case "terminalCopy": case "terminalPaste": case "terminalScroll":
             await terminalAction(page, step); break;
         case "failWorkspaceContext": case "expectWorkspaceReadWarning":
@@ -125,7 +126,7 @@ export async function action(page: Page, step: Step) {
         case "selectNamespace": await page.getByRole("treeitem").filter({ has: page.getByText(step.namespace, { exact: true }) }).first().click(); break;
         case "setTopologyMode":
             await page.getByRole("button", { name: step.mode, exact: true }).click();
-            await page.getByText("Loading topology", { exact: true }).waitFor({ state: "hidden" });
+            if (!step.pending) await page.getByText("Loading topology", { exact: true }).waitFor({ state: "hidden" });
             break;
         case "expectTopology": await page.getByText(`${step.nodes} nodes / ${step.edges} edges`, { exact: true }).waitFor(); break;
         case "expectTopologyEdge": {
@@ -531,13 +532,16 @@ export async function runWeb(contract: Contract, artifacts: string, signal: Abor
 			try {
 				signal.throwIfAborted();
 				await page.goto(`http://127.0.0.1:${port}/`);
+                const prelude = scenario.steps.findIndex((step) => step.action !== "mockTiming" || step.control.operation !== "hold");
+                const startupSteps = prelude < 0 ? scenario.steps.length : prelude;
+                for (const step of scenario.steps.slice(0, startupSteps)) await action(page, step);
 				await page.locator("#workspace-name").fill("Parity mock workspace");
 				await page.getByRole("button", { name: "Create workspace", exact: true }).click();
 				// Creating a workspace navigates to its overview; a dialog opened before that navigation lands is closed by it.
 				await page.waitForURL(/#\/workspace\/[^/]+\/overview$/);
 				for (const [index, step] of scenario.steps.entries()) {
 					signal.throwIfAborted();
-					await action(page, step);
+					if (index >= startupSteps) await action(page, step);
 					await page.screenshot({ path: join(artifacts, `web-${scenarioIndex}-${index}.png`) });
 				}
 				results.push({ id: scenario.id, status: "passed" });

@@ -52,6 +52,9 @@ The detail-tab scenarios run guarded operations only against the browser mocks. 
 
 ## Failure modes
 
+[Scripted backend timing](mock-timing.md) records the asynchronous failure modes,
+release-gate contract, source-derived retry window and current model boundaries.
+
 Write acceptance scenarios before implementing the behavior they cover. The current scenarios target wrong-resource selection when kinds share a name, missing YAML identity, a detail panel that cannot close, an empty search that retains old rows, refresh that resets the search, event sort order and type filters, GitOps counts, cluster-scoped listings, an incident guide that ignores the signal filter, port forwards hidden by the source filter, aggregated log lines that lose their order, log filters and level toggles that hide the wrong lines, a log stream that survives a resource switch, a revision diff against the wrong comparison, a review that shows the wrong target or diff, a delete that executes without the typed name, a scale review with the wrong replica count, a dry run that skips the server, YAML apply offered for a Secret, RBAC risks that are not inherited from bindings and roles, a risk filter that keeps the wrong objects, an inspector or access check for the wrong subject, a workspace that opens or reopens with the wrong context or namespaces, kubeconfig settings that do not survive leaving Settings, settings search that keeps non-matching categories, and palette results or targets that ignore the query.
 
 Keep report files under `e2e/artifacts/`. Each report names the driver and scenario IDs it actually ran. Missing evidence is a failure.

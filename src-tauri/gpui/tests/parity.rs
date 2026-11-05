@@ -270,6 +270,16 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
         // A fresh fixture per scenario, as the web driver reloads the page and its
         // in-memory mock state.
         let backend = Arc::new(Fixture::load(Path::new(&fixture)));
+        let steps = scenario["steps"].as_array().unwrap();
+        let startup_steps = steps
+            .iter()
+            .take_while(|step| {
+                step["action"] == "mockTiming" && step["control"]["operation"] == "hold"
+            })
+            .count();
+        for step in &steps[..startup_steps] {
+            backend.timing_control(&step["control"]);
+        }
         let (mut handle, _) = cx.update(|cx| {
             gpui_kit::open_window(
                 WindowOptions {
@@ -294,15 +304,43 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
         });
         cx.run_until_parked();
         for (index, step) in scenario["steps"].as_array().unwrap().iter().enumerate() {
-            if step["action"] == "cancelNextTopology" {
-                backend
-                    .cancel_next_topology
-                    .store(true, std::sync::atomic::Ordering::SeqCst);
+            if index < startup_steps {
+                continue;
             }
-            if step["action"] == "expectCancelledReadRecovery" {
-                cx.background_executor
-                    .advance_clock(std::time::Duration::from_millis(1000));
+            if step["action"] == "mockTiming" {
+                if step["control"]["operation"] == "expectNoRetry" {
+                    // The web's default maximum retry delay in query-core/src/retryer.ts.
+                    cx.background_executor
+                        .advance_clock(std::time::Duration::from_millis(30_000));
+                    cx.run_until_parked();
+                }
+                backend.timing_control(&step["control"]);
+                if step["control"]["operation"] == "contend" {
+                    for read in backend.competing_reads(&step["control"]) {
+                        cx.background_executor
+                            .spawn(async move {
+                                let _ = read.await;
+                            })
+                            .detach();
+                    }
+                }
                 cx.run_until_parked();
+                if step["control"]["operation"] == "release"
+                    && step["control"]["command"] == "list_resource_topology"
+                {
+                    // read_retry.rs uses TanStack's first cancelled-read backoff.
+                    cx.background_executor
+                        .advance_clock(std::time::Duration::from_millis(1000));
+                    cx.run_until_parked();
+                }
+                if step["control"]["operation"] == "release"
+                    && step["control"]["command"] == "start_resource_watch"
+                {
+                    // live-view-refresh.ts coalesces changes for 250 ms.
+                    cx.background_executor
+                        .advance_clock(std::time::Duration::from_millis(250));
+                    cx.run_until_parked();
+                }
             }
             if step["action"] == "configureArgoInventory" {
                 *backend.argo.inventory_mode.lock().unwrap() = string(step, "mode").into();

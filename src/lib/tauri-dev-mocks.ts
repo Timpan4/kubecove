@@ -48,9 +48,8 @@ import type {
 	YamlApplyPreview,
 } from "./types";
 import { formatYamlDocument } from "./yamlFormat";
+import { mockTiming } from "./tauri-dev-mock-timing";
 
-let cancelNextTopologyRead = false;
-export function cancelNextTopology() { cancelNextTopologyRead = true; }
 
 let failedWorkspaceContext: string | undefined;
 export function failWorkspaceContext(context: string) { failedWorkspaceContext = context; }
@@ -66,10 +65,6 @@ export function createDevMockTauriClient(): TauriClient {
 			options?: InvokeOptions,
 		): Promise<T> => {
 			await delay(35);
-            if (cmd === "list_resource_topology" && cancelNextTopologyRead) {
-                cancelNextTopologyRead = false;
-                throw { kind: "cancelled", message: "request cancelled" };
-            }
             // The same typed seam as the wrappers; live channels have a different message contract.
             const live = args as { request: import("./types").PortForwardRequest & import("./types").PodExecSessionRequest & import("./types").LiveSessionCleanupRequest; sessionId: string; data: string; size: import("./types").PodExecTerminalSize; channel: Pick<Channel<import("./types").PodExecSessionMessage>, "onmessage"> } | undefined;
             if (cmd === "start_pod_port_forward" && live) return startMockForward(live.request) as T;
@@ -82,7 +77,7 @@ export function createDevMockTauriClient(): TauriClient {
 			const handler = findMockHandler(cmd);
 			if (!handler) throw new Error(`No browser dev mock for command: ${cmd}`);
 			// SAFETY: caller's typed wrapper owns result T; each mock handler mirrors that command.
-			return pageReadResult(cmd, await handler(readMockArgs(args), options)) as T;
+			return await mockTiming.read(cmd, readMockArgs(args), async () => pageReadResult(cmd, await handler(readMockArgs(args), options))) as T;
 		},
 	};
 }
@@ -173,9 +168,9 @@ const handlers = {
 	get_backend_diagnostics: () => [] satisfies BackendDiagnosticEvent[],
 	get_backend_cache_diagnostics: () => [],
 	clear_backend_diagnostics: () => undefined,
-	cancel_backend_requests: () => ({ cancelled: 0 }),
+	cancel_backend_requests: (args) => ({ cancelled: mockTiming.cancelScope(args.cancelScope ?? "") }),
 	cancel_workspace_requests: () => ({
-		cancelledRequests: 0,
+		cancelledRequests: mockTiming.cancelAll(),
 		cancelledLoads: 0,
 		clientGeneration: 1,
 	}),

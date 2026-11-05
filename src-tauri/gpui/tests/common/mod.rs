@@ -10,6 +10,7 @@ mod mcp;
 mod page_reads;
 mod session_controls;
 mod settings_integrations;
+mod timing;
 
 use detail_tabs::DetailTabs;
 use kubecove_gpui::{
@@ -37,7 +38,7 @@ pub struct Fixture {
     #[serde(skip)]
     pub shell_read_phase: Mutex<String>,
     #[serde(skip)]
-    pub cancel_next_topology: std::sync::atomic::AtomicBool,
+    timing: timing::Timing,
     #[serde(rename = "pageReads", default)]
     page_reads: HashMap<String, serde_json::Value>,
     #[serde(skip)]
@@ -364,9 +365,12 @@ impl Backend for Fixture {
             .collect();
         Box::pin(async move { Ok(kinds) })
     }
-    fn resource_kinds(&self, _: String) -> Read<Vec<kubecove_lib::models::DiscoveredResourceKind>> {
+    fn resource_kinds(
+        &self,
+        context: String,
+    ) -> Read<Vec<kubecove_lib::models::DiscoveredResourceKind>> {
         let kinds = self.kinds.clone();
-        Box::pin(async move { Ok(kinds) })
+        self.timing.read("list_resource_kinds", &context, "", kinds)
     }
     fn watch(&self, target: kubecove_gpui::backend::WatchTarget) -> Read<LogStream> {
         self.live_watch(target)
@@ -425,7 +429,14 @@ impl Backend for Fixture {
             .collect();
         let resources = self.live_rows(resources);
         let namespaces = self.namespaces.clone();
+        let read = self.timing.read(
+            "list_resource_scope",
+            &scope.context,
+            scope.namespace.as_deref().unwrap_or_default(),
+            (namespaces, resources),
+        );
         Box::pin(async move {
+            let (namespaces, resources) = read.await?;
             Ok(ScopeResult {
                 namespaces,
                 resources,
@@ -462,20 +473,15 @@ impl Backend for Fixture {
     }
     /// The all-namespaces graph, or a namespace's graph the fixture exported.
     fn topology(&self, scope: Scope) -> Read<ResourceTopology> {
-        if self
-            .cancel_next_topology
-            .swap(false, std::sync::atomic::Ordering::SeqCst)
-        {
-            return Box::pin(async {
-                Err(AppError::new("request cancelled", AppErrorKind::Cancelled))
-            });
-        }
+        let context = scope.context.clone();
+        let key = scope.namespace.clone().unwrap_or_default();
         let topology = scope
             .namespace
             .and_then(|namespace| self.namespace_topologies.get(&namespace))
             .unwrap_or(&self.topology)
             .clone();
-        Box::pin(async move { Ok(topology) })
+        self.timing
+            .read("list_resource_topology", &context, &key, topology)
     }
     fn network_topology(&self, scope: Scope) -> Read<ResourceTopology> {
         let mut graph = self.network_topology.clone();
