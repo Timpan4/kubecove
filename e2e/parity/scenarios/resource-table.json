@@ -73,6 +73,9 @@
       "title": "Readiness, restart and GitOps owner cells show the reported values",
       "steps": [
         { "action": "openResources" },
+        { "action": "search", "value": "argocd" },
+        { "action": "expectResourceCell", "kind": "ConfigMap", "name": "argocd-cm", "namespace": "argocd", "column": "Ready", "text": "Ready" },
+        { "action": "expectResourceCell", "kind": "ConfigMap", "name": "kube-root-ca.crt", "namespace": "argocd", "column": "Ready", "text": "Not ready" },
         { "action": "search", "value": "payments-api-7d9c9b7f8d" },
         { "action": "expectResourceCell", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-k2r9p", "namespace": "payments", "column": "Ready", "text": "1/1" },
         { "action": "expectResourceCell", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-k2r9p", "namespace": "payments", "column": "Restarts", "text": "2" },

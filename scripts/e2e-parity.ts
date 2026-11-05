@@ -18,6 +18,12 @@ let failure: string | undefined;
 try {
 	const contract = await loadContract();
 	requireViewCoverage(contract, VIEWS);
+	const prefix = process.env.PARITY_PREFIX;
+	if (prefix) {
+		contract.scenarios = contract.scenarios.filter((scenario) => scenario.id.startsWith(prefix));
+		if (!contract.scenarios.length) throw new Error(`No parity scenarios match ${prefix}`);
+		process.env.KUBECOVE_PARITY_SCENARIO_PREFIX = prefix;
+	}
 	// The GPUI driver renders the same browser-mock responses the web driver reads.
 	const fixture = join(artifacts, "fixture.json");
 	const exported = Bun.spawn(["bun", "e2e/parity/visual/export-fixture.ts", fixture], { stdout: "inherit", stderr: "inherit" });

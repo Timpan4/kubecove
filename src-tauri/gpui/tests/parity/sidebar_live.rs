@@ -162,7 +162,9 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
             if step["action"] == "expectKindChecked" {
                 assert!(option.is_some(), "wrong kind selection: {step}");
             } else if option.is_none() {
-                let found = window.find_by_label(string(step, "kind"));
+                let found = window
+                    .within("kind-options")
+                    .find_by_label(string(step, "kind"));
                 window.click(locate::id(&found), cx);
             }
         }

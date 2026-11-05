@@ -502,7 +502,7 @@ fn a_read_failure_is_visible_and_can_be_retried(cx: &mut TestAppContext) {
         window.render_frame(cx);
         assert_eq!(
             window.find("load-error").label(),
-            Some("Resource read denied")
+            Some("Failed to load resources")
         );
         assert!(window.try_find("empty").is_none());
     })

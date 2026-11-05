@@ -22,7 +22,7 @@ async function cellFor(page: Page, step: Identity & { column: string }) {
 export async function resourceTableAction(page: Page, step: Step) {
 	switch (step.action) {
 		case "sortResourceTable":
-			await page.locator("thead").getByRole("button", { name: `Sort by ${step.column}` }).click();
+			await page.locator("thead").getByRole("button", { name: `Sort by ${step.column}`, exact: true }).click();
 			break;
 		case "expectResourceOrder": {
 			const labels = await page.locator('tr button[aria-label^="Open resource "]').evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label") ?? ""));

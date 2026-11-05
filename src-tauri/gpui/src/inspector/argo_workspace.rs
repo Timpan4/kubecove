@@ -38,7 +38,7 @@ pub(super) struct ApplicationWorkspace {
     /// Each identity's filter memberships, rebuilt only after a read completes.
     identities: HashMap<String, [bool; 6]>,
     counts: [usize; 6],
-    filter: Option<usize>,
+    pub(super) filter: Option<usize>,
     request: Rc<()>,
     task: Option<Task<()>>,
 }

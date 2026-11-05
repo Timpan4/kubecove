@@ -302,19 +302,18 @@ impl Inspector {
                 .flex_col()
                 .gap(px(12.))
                 .child(self.top_bar(width, cx))
-                .child(
-                    div()
-                        .id("load-error")
-                        .test_support()
-                        .aria_label(error.clone())
-                        .role(gpui_kit::Role::Alert)
-                        .p(px(12.))
-                        .rounded(px(10.))
-                        .border_1()
-                        .border_color(Tokens::destructive().opacity(0.4))
-                        .text_color(Tokens::destructive())
-                        .child(ui::xs(error.clone())),
-                )
+                .child(self.friendly_failure(
+                    "load-error",
+                    None,
+                    error,
+                    super::friendly_error::Context {
+                        operation: Some(super::friendly_error::Operation::Resources),
+                        fallback_title: Some("Failed to load resources"),
+                        ..Default::default()
+                    },
+                    None,
+                    cx,
+                ))
                 .into_any_element(),
             _ => {
                 let panels = if !self.persisted.preferences.show_ownership_map_by_default {

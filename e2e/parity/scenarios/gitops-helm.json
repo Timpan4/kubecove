@@ -13,7 +13,7 @@
         { "action": "expectNoResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
         { "action": "filterArgoResources", "filter": "Prune" },
         { "action": "expectNoResource", "kind": "Deployment", "name": "argocd-server", "namespace": "argocd" },
-        { "action": "filterArgoResources", "filter": "Prune" },
+        { "action": "clearResourceFilters" },
         { "action": "expectResource", "kind": "Deployment", "name": "argocd-server", "namespace": "argocd" },
         { "action": "filterArgoResources", "filter": "All managed" },
         { "action": "expectResource", "kind": "Deployment", "name": "argocd-server", "namespace": "argocd" }

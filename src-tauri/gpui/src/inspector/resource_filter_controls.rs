@@ -41,6 +41,11 @@ impl Inspector {
         !self.search.read(cx).value().is_empty()
             || self.filters.gitops_owner.is_some()
             || self.filters.health != HealthFilter::All
+            || self
+                .gitops_page
+                .workspace
+                .as_ref()
+                .is_some_and(|state| state.filter.is_some())
     }
 
     pub(super) fn namespace_picker(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -398,6 +403,9 @@ impl Inspector {
         self.search
             .update(cx, |input, cx| input.set_value("", window, cx));
         self.filters.clear_owner_and_health();
+        if let Some(state) = &mut self.gitops_page.workspace {
+            state.filter = None;
+        }
         self.table_page = 0;
         self.filter(cx);
         cx.notify();

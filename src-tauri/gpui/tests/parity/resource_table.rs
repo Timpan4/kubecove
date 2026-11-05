@@ -2,6 +2,31 @@
 //! opening and the text each cell shows.
 
 use super::*;
+use gpui_kit::test::TestEventExt;
+use gpui_kit::{InputEvent, ScrollDelta, ScrollEvent, point, px};
+
+fn reveal_cell(window: &mut gpui_kit::Window, id: &str, cx: &mut gpui_kit::App) {
+    reveal(window, "resources", id, cx);
+    let target = window.find(id.to_owned());
+    if !target.visible() {
+        let bounds = window.find("resource-table").bounds();
+        let position = bounds.origin + point(px(4.), px(4.));
+        window.pointer_move(position, None, cx);
+        window.dispatch_event(
+            ScrollEvent {
+                position,
+                delta: ScrollDelta::Pixels(point(
+                    bounds.center().x - target.bounds().center().x,
+                    px(0.),
+                )),
+                ..Default::default()
+            }
+            .to_platform_input(),
+            cx,
+        );
+        window.render_frame(cx);
+    }
+}
 
 /// The table's visible resource names in visual order, limited to `expected`.
 fn visible_names(window: &mut gpui_kit::Window, expected: &[String]) -> Vec<String> {
@@ -23,7 +48,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
     match string(step, "action") {
         "sortResourceTable" => {
             let id = format!("sort:{}", string(step, "column"));
-            reveal(window, "resource-table", &id, cx);
+            reveal_cell(window, &id, cx);
             window.click(id, cx);
         }
         "expectResourceOrder" => {
@@ -51,7 +76,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
         }
         "openResourceRow" => {
             let cell = format!("cell:{}:{}", string(step, "column"), row(step));
-            reveal(window, "resources", &cell, cx);
+            reveal_cell(window, &cell, cx);
             window.click(cell, cx);
         }
         "expectResourceCell" => {

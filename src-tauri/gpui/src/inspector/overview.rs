@@ -196,7 +196,8 @@ impl Inspector {
                         error,
                         super::friendly_error::Context {
                             operation: Some(super::friendly_error::Operation::Resources),
-                            fallback_title: Some("Failed to load workspace resources"),
+                            fallback_title: Some("Failed to refresh workspace resources"),
+                            partial: true,
                             ..Default::default()
                         },
                         None,
