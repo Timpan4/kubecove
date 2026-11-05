@@ -1,6 +1,6 @@
 import { $, browser, expect } from "@wdio/globals";
 import { describe, it } from "mocha";
-import type { ClusterContext } from "../../../src/lib/types";
+import type { AppUsageMetrics, ClusterContext } from "../../../src/lib/types";
 
 type TauriBridge = {
 	core: {
@@ -28,5 +28,40 @@ describe("native desktop smoke", () => {
 		await settings.waitForClickable();
 		await settings.click();
 		await expect($("body")).toHaveText(expect.stringContaining("Settings"));
+	});
+
+	it("samples the memory figures this platform reports", async () => {
+		const sample = () =>
+			browser.execute(() =>
+				window.__TAURI__.core.invoke<AppUsageMetrics, { measureWorkingSet: boolean }>("get_app_usage_metrics", {
+					measureWorkingSet: true,
+				}),
+			);
+		// Totals are null when any WebView child lacks a figure, so assert on the host process,
+		// which every sample includes and the app can always read.
+		const hostMemory = (metrics: AppUsageMetrics) => {
+			const host = metrics.breakdown.find((group) => group.label === "KubeCove");
+			if (!host) throw new Error("Usage sample has no KubeCove host group");
+			return host.memory;
+		};
+		const first = await sample();
+		const second = await sample();
+		const memory = hostMemory(second);
+		if (process.platform === "win32") {
+			expect(memory.wssBytes).toBeGreaterThan(0);
+			expect(memory.rssBytes).toBeNull();
+			expect(memory.pssBytes).toBeNull();
+		} else if (process.platform === "darwin") {
+			expect(memory.wssBytes).toBeNull();
+			expect(memory.rssBytes).toBeGreaterThan(0);
+			expect(memory.pssBytes).toBeNull();
+		} else {
+			// Linux WSS covers the interval since the previous sample reset referenced pages.
+			expect(hostMemory(first).wssBytes).toBeNull();
+			expect(memory.wssBytes).toBeGreaterThan(0);
+			expect(second.workingSetWindowMs).not.toBeNull();
+			expect(memory.rssBytes).toBeGreaterThan(0);
+			expect(memory.pssBytes).toBeGreaterThan(0);
+		}
 	});
 });

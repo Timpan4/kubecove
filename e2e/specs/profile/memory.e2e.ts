@@ -31,7 +31,7 @@ profile("release-shaped frontend memory", () => {
 					yamlUtf8Bytes: new TextEncoder().encode(document.querySelector(".cm-content")?.textContent ?? "").byteLength,
 				};
 			});
-			const usage = await browser.execute(() => window.__TAURI__.core.invoke<AppUsageMetrics>("get_app_usage_metrics")).catch(() => null);
+			const usage = await browser.execute(() => window.__TAURI__.core.invoke<AppUsageMetrics, { measureWorkingSet: boolean }>("get_app_usage_metrics", { measureWorkingSet: false })).catch(() => null);
 			stages.push({ stage, durationMs: performance.now() - started, ...frontend, memory: startupReport([], frontend.heapBytes, usage).memory });
 			await save();
 			if (artifacts && ["first-resource-rows", "yaml", "topology-open"].includes(stage)) await browser.saveScreenshot(join(artifacts, `${stage}.png`));

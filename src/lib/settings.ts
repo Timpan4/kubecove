@@ -36,6 +36,7 @@ const DEFAULT_KUBECONFIG_SOURCE_KEY = "kubeconfigSource=default";
 export interface SettingsState {
 	showExactTimestamps: boolean;
 	showUsageFooter: boolean;
+	measureWorkingSet: boolean;
 	showOwnershipMapByDefault: boolean;
 	expandTimelineByDefault: boolean;
 	showFullTopologyOnSelection: boolean;
@@ -64,6 +65,7 @@ export interface SettingsState {
 	skipChangeReview: boolean;
 	setShowExactTimestamps: (show: boolean) => void;
 	setShowUsageFooter: (show: boolean) => void;
+	setMeasureWorkingSet: (measure: boolean) => void;
 	setShowOwnershipMapByDefault: (show: boolean) => void;
 	setExpandTimelineByDefault: (expand: boolean) => void;
 	setShowFullTopologyOnSelection: (show: boolean) => void;
@@ -139,6 +141,7 @@ export function mergePersistedSettings<Persisted>(
 		...current,
 		showExactTimestamps: booleanValue(saved.showExactTimestamps, current.showExactTimestamps),
 		showUsageFooter: booleanValue(saved.showUsageFooter, current.showUsageFooter),
+		measureWorkingSet: booleanValue(saved.measureWorkingSet, current.measureWorkingSet),
 		expandTimelineByDefault: booleanValue(saved.expandTimelineByDefault, current.expandTimelineByDefault),
 		showOwnershipMapByDefault:
 			booleanValue(saved.showOwnershipMapByDefault, current.showOwnershipMapByDefault),
@@ -285,6 +288,7 @@ export function partializeSettings(state: SettingsState): Partial<SettingsState>
 	return {
 		showExactTimestamps: state.showExactTimestamps,
 		showUsageFooter: state.showUsageFooter,
+		measureWorkingSet: state.measureWorkingSet,
 		expandTimelineByDefault: state.expandTimelineByDefault,
 		showOwnershipMapByDefault: state.showOwnershipMapByDefault,
 		showFullTopologyOnSelection: state.showFullTopologyOnSelection,
@@ -315,6 +319,7 @@ export const useSettingsState = createStore<SettingsState>()(
 		(set) => ({
 			showExactTimestamps: false,
 			showUsageFooter: false,
+			measureWorkingSet: false,
 			expandTimelineByDefault: false,
 			showOwnershipMapByDefault: true,
 			showFullTopologyOnSelection: false,
@@ -344,6 +349,7 @@ export const useSettingsState = createStore<SettingsState>()(
 			setShowExactTimestamps: (show: boolean) =>
 				set({ showExactTimestamps: show }),
 			setShowUsageFooter: (show: boolean) => set({ showUsageFooter: show }),
+			setMeasureWorkingSet: (measureWorkingSet: boolean) => set({ measureWorkingSet }),
 			setExpandTimelineByDefault: (expandTimelineByDefault: boolean) => set({ expandTimelineByDefault }),
 			setShowOwnershipMapByDefault: (show: boolean) =>
 				set({ showOwnershipMapByDefault: show }),

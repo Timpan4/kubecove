@@ -24,7 +24,7 @@ describe("release-shaped startup profile", () => {
 				viewport: { width: innerWidth, height: innerHeight, scale: devicePixelRatio },
 			};
 		});
-		const usage = await browser.execute(() => window.__TAURI__.core.invoke<AppUsageMetrics>("get_app_usage_metrics"))
+		const usage = await browser.execute(() => window.__TAURI__.core.invoke<AppUsageMetrics, { measureWorkingSet: boolean }>("get_app_usage_metrics", { measureWorkingSet: false }))
 			.catch(() => null);
 		const report = {
 			schemaVersion: 1,

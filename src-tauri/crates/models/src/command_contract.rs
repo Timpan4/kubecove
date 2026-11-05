@@ -300,7 +300,7 @@ macro_rules! command_contract {
             remote_intercepted async fn stop_live_sessions_outside_scope(
                 request: LiveSessionCleanupRequest,
             ) with State<PortForwardRegistry>, State<PodExecRegistry>;
-            both async fn get_app_usage_metrics() with State<AppUsageMonitor>;
+            both async fn get_app_usage_metrics(measureWorkingSet: bool) with State<AppUsageMonitor>;
             both sync fn get_kubeconfig_sources();
             both sync fn set_kubeconfig_env_var(envVar: String);
             both sync fn set_show_kubeconfig_source_labels(show: bool);

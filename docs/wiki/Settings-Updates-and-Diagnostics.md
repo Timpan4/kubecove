@@ -8,7 +8,8 @@ Open **Settings** from app navigation. Settings are global preferences. Argo CD 
 | --- | --- | --- |
 | Exact timestamps | Off | Adds absolute times beside relative ages. |
 | Timestamp timezone | Local | Changes exact timestamps and tooltips to local time or UTC. |
-| CPU and memory footer | Off | Shows app-process usage only. |
+| CPU and memory footer | Off | Shows app-process CPU, WSS, RSS, and PSS. Windows reports WSS, Linux and macOS report RSS, and Linux reports PSS. Figures a platform lacks show `--`. |
+| Measure working set (WSS) | Off | Linux only, while the footer is on. Each footer refresh resets the kernel's referenced-page bits for KubeCove processes, so WSS shows memory touched since the previous refresh. The kernel may then reclaim those pages sooner. |
 | Ownership map by default | On | Opens ownership map in resource views. |
 | Expand timeline by default | Off | Opens resource timeline messages and facts. Individual entries can still be collapsed. |
 | Redact secrets | On | Keeps Secret values hidden by default. Connected Argo Secret values remain masked. |

@@ -16,9 +16,11 @@
 	import { queryKeys } from "@/lib/queryKeys";
 	import { createTauriClient, getAppUsageMetrics } from "@/lib/tauri";
 	import {
+		USAGE_MEMORY_FIGURES,
+		describeUsageMemory,
 		flattenUsageMetricsBreakdown,
 		formatCpuPercent,
-		formatMemoryBytes,
+		formatMemoryFigure,
 		formatProcessCount,
 		formatUsageMetrics,
 	} from "@/lib/usage-metrics";
@@ -27,10 +29,11 @@
 	const client = createTauriClient();
 	let open = $state(false);
 	const visible = $derived($settingsStore.showUsageFooter);
+	const measureWorkingSet = $derived($settingsStore.measureWorkingSet);
 
 	const usageQuery = createQuery(() => ({
-		queryKey: queryKeys.appUsageMetrics(),
-		queryFn: () => getAppUsageMetrics(client),
+		queryKey: queryKeys.appUsageMetrics(measureWorkingSet),
+		queryFn: () => getAppUsageMetrics(client, measureWorkingSet),
 		enabled: visible,
 		placeholderData: (previousData) => previousData,
 		refetchInterval: visible ? 2_000 : false,
@@ -73,11 +76,12 @@
 				})}
 				aria-label="Show app process tree"
 				aria-expanded={open}
+				title={describeUsageMemory(metrics)}
 			>
 				<Activity data-icon="inline-start" class="size-3.5 shrink-0" />
 				<span class="truncate">{label}</span>
 				</PopoverTrigger>
-				<PopoverContent side="top" align="end" class="w-[31rem] max-w-[calc(100vw-2rem)] p-2">
+				<PopoverContent side="top" align="end" class="w-[40rem] max-w-[calc(100vw-2rem)] p-2">
 				<div class="px-1 pb-1 text-xs font-semibold uppercase text-muted-foreground">
 					App process tree
 				</div>
@@ -87,7 +91,9 @@
 							<TableRow class="border-0 text-xs font-semibold uppercase text-muted-foreground hover:bg-transparent">
 								<TableHead class="h-auto px-1 pb-1 text-left">Process</TableHead>
 								<TableHead class="h-auto px-1 pb-1 text-right">CPU</TableHead>
-								<TableHead class="h-auto px-1 pb-1 text-right">Memory</TableHead>
+								{#each USAGE_MEMORY_FIGURES as figure (figure.key)}
+									<TableHead class="h-auto px-1 pb-1 text-right" title={figure.description}>{figure.label}</TableHead>
+								{/each}
 								<TableHead class="h-auto px-1 pb-1 text-right">Count</TableHead>
 							</TableRow>
 						</TableHeader>
@@ -113,9 +119,11 @@
 									<TableCell class="whitespace-nowrap px-1 py-1 text-right align-top tabular-nums">
 										CPU {formatCpuPercent(row.item.cpuPercent)}
 									</TableCell>
-									<TableCell class="whitespace-nowrap px-1 py-1 text-right align-top tabular-nums">
-										{formatMemoryBytes(row.item.memoryBytes)}
-									</TableCell>
+									{#each USAGE_MEMORY_FIGURES as figure (figure.key)}
+										<TableCell class="whitespace-nowrap px-1 py-1 text-right align-top tabular-nums">
+											{formatMemoryFigure(row.item.memory[figure.key])}
+										</TableCell>
+									{/each}
 									<TableCell class="whitespace-nowrap py-1 pl-1 text-right align-top tabular-nums">
 										{formatProcessCount(row.item.processCount)}
 									</TableCell>
