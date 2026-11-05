@@ -1,0 +1,150 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "page-errors.rbac.failed-read",
+      "title": "A failed RBAC read classifies by its credential kind, not its message",
+      "steps": [
+        {
+          "action": "mockTiming",
+          "control": {
+            "operation": "fail",
+            "command": "list_rbac_inspection",
+            "context": "mock-dev",
+            "kind": "credentialUnavailable"
+          }
+        },
+        {
+          "action": "openPage",
+          "page": "RBAC"
+        },
+        {
+          "action": "expectFriendlyError",
+          "title": "Kubernetes authentication failed",
+          "next": "Sign in through the selected context's credential provider or refresh its credentials, then retry."
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "operation": "release",
+            "command": "list_rbac_inspection",
+            "context": "mock-dev"
+          }
+        }
+      ]
+    },
+    {
+      "id": "page-errors.helm.failed-read",
+      "title": "A failed Helm release read classifies by its credential kind, not its message",
+      "steps": [
+        {
+          "action": "mockTiming",
+          "control": {
+            "operation": "fail",
+            "command": "list_helm_releases",
+            "context": "mock-dev",
+            "kind": "credentialUnavailable"
+          }
+        },
+        {
+          "action": "openPage",
+          "page": "Helm"
+        },
+        {
+          "action": "expectFriendlyError",
+          "title": "Kubernetes authentication failed",
+          "next": "Sign in through the selected context's credential provider or refresh its credentials, then retry."
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "operation": "release",
+            "command": "list_helm_releases",
+            "context": "mock-dev"
+          }
+        }
+      ]
+    },
+    {
+      "id": "page-errors.port-forwards.failed-read",
+      "title": "A failed live-session read classifies by its target kind, not its message",
+      "steps": [
+        {
+          "action": "mockTiming",
+          "control": {
+            "operation": "fail",
+            "command": "list_port_forwards",
+            "context": "",
+            "kind": "liveSessionTargetUnavailable"
+          }
+        },
+        {
+          "action": "openPage",
+          "page": "Port Forwards"
+        },
+        {
+          "action": "expectFriendlyError",
+          "title": "The live-session target is unavailable",
+          "next": "Check that the Pod or Service target exists, has a ready Pod, and the local port is free."
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "operation": "release",
+            "command": "list_port_forwards",
+            "context": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": "page-errors.gitops.failed-detection",
+      "title": "A failed GitOps provider detection shows the partial warning classified by its credential kind",
+      "steps": [
+        {
+          "action": "mockTiming",
+          "control": {
+            "operation": "hold",
+            "command": "detect_argocd",
+            "context": "mock-dev"
+          }
+        },
+        {
+          "action": "openPage",
+          "page": "GitOps"
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "operation": "expectPending",
+            "command": "detect_argocd",
+            "context": "mock-dev"
+          }
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "operation": "fail",
+            "command": "detect_argocd",
+            "context": "mock-dev",
+            "kind": "credentialUnavailable"
+          }
+        },
+        {
+          "action": "expectFriendlyError",
+          "title": "Some GitOps providers could not be detected",
+          "summary": "KubeCove could not authenticate while loading provider data."
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "operation": "release",
+            "command": "detect_argocd",
+            "context": "mock-dev"
+          }
+        }
+      ]
+    }
+  ]
+}

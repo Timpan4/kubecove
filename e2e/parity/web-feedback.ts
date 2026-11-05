@@ -11,7 +11,8 @@ export async function feedbackAction(page: Page, step: Step): Promise<void> {
         case "expectFriendlyError": {
             const alert = page.getByRole("alert").filter({ hasText: step.title });
             await alert.getByText(step.title, { exact: true }).waitFor();
-            await alert.getByText(step.next, { exact: true }).waitFor();
+            if (step.next !== undefined) await alert.getByText(step.next, { exact: true }).waitFor();
+            if (step.summary !== undefined) await alert.getByText(step.summary, { exact: true }).waitFor();
             break;
         }
         case "inspectRequiredPermission":

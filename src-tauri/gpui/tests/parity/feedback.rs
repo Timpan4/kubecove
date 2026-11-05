@@ -19,14 +19,32 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
         }
         "expectFriendlyError" => {
             window.render_frame(cx);
-            let alert = window.find(friendly_panel(string(step, "title")));
-            assert_eq!(alert.label(), Some(string(step, "title")));
-            assert!(
-                alert
-                    .description()
-                    .is_some_and(|text| text.contains(string(step, "next"))),
-                "friendly error next step missing"
-            );
+            let title = string(step, "title");
+            let alert = match title {
+                "Failed to load contexts" => window.find("launcher-context-error"),
+                "KubeCove does not have permission for this" => window.find("detail-error"),
+                // Page panels keep their page ID, so the classified title finds them.
+                _ => {
+                    let mut alerts = window.find_all_by_label(title);
+                    alerts.retain(|element| element.role() == Some(gpui_kit::Role::Alert));
+                    assert_eq!(alerts.len(), 1, "one alert titled {title:?}");
+                    alerts.remove(0)
+                }
+            };
+            assert_eq!(alert.label(), Some(title));
+            let description = alert.description().unwrap_or_default();
+            if let Some(next) = step["next"].as_str() {
+                assert!(
+                    description.contains(next),
+                    "friendly error next step missing"
+                );
+            }
+            if let Some(summary) = step["summary"].as_str() {
+                assert!(
+                    description.contains(summary),
+                    "friendly error summary missing"
+                );
+            }
         }
         "inspectRequiredPermission" => {
             window.render_frame(cx);
@@ -66,13 +84,4 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
         _ => return false,
     }
     true
-}
-
-/// The native panel for each friendly error the shared scenarios show.
-fn friendly_panel(title: &str) -> &'static str {
-    match title {
-        "Failed to load contexts" => "launcher-context-error",
-        "KubeCove does not have permission for this" => "detail-error",
-        other => panic!("no friendly error panel titled {other:?}"),
-    }
 }

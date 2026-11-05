@@ -65,14 +65,14 @@ pub(super) async fn gitops(context: String) -> Result<GitOpsInventory, AppError>
         if let Some(error) = errors.into_iter().next() {
             return Err(error);
         }
-    } else if !errors.is_empty() {
-        inventory.list_error = Some(
-            errors
-                .into_iter()
-                .map(|error| error.message)
-                .collect::<Vec<_>>()
-                .join("\n"),
-        );
+    } else if let Some(kind) = errors.first().map(|error| error.kind) {
+        // The first failing read sets the kind, as the web's first failing query does.
+        let message = errors
+            .iter()
+            .map(|error| error.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        inventory.list_error = Some(AppError::new(message, kind));
     }
     Ok(inventory)
 }

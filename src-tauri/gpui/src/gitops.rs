@@ -3,7 +3,8 @@
 //! `GitOpsSurface.svelte`. It reads Kubernetes CRDs only.
 
 use kubecove_lib::models::{
-    ArgoAppProjectSummary, ArgoApplicationSetSummary, ArgoApplicationSummary, FluxResourceSummary,
+    AppError, ArgoAppProjectSummary, ArgoApplicationSetSummary, ArgoApplicationSummary,
+    FluxResourceSummary,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -17,7 +18,7 @@ pub struct GitOpsInventory {
     /// AppProjects; empty unless Argo CD is detected.
     pub projects: Vec<ArgoAppProjectSummary>,
     /// A failed provider read, reported while preserving the other CRD lists.
-    pub list_error: Option<String>,
+    pub list_error: Option<AppError>,
 }
 
 impl GitOpsInventory {

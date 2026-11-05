@@ -30,7 +30,7 @@ export type Step =
     | { action: "expectEntryCount"; panel: "Pinned" | "Recent"; count: number }
     | { action: "copyErrorDetail"; error: "contexts" | "namespaces" | "details"; expected: string }
     | { action: "expectForegroundLoading"; active: boolean }
-    | { action: "expectFriendlyError"; title: string; next: string }
+    | { action: "expectFriendlyError"; title: string; next?: string; summary?: string }
     | { action: "inspectRequiredPermission" | "returnToSource" | "dismissCopyToast" }
     | { action: "expectPermissionTarget"; verb: string; resource: string }
     | ({ action: "copyResourceName" } & Identity)

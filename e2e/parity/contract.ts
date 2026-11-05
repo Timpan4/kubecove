@@ -133,7 +133,12 @@ function step(value: unknown): Step {
         case "expectEntryCount": return { action: item.action, panel: oneOf(["Pinned", "Recent"], item.panel, "an entry panel"), count: count(item.count) };
         case "copyErrorDetail": return { action: item.action, error: oneOf(["contexts", "namespaces", "details"], item.error, "an error panel"), expected: string(item.expected) };
         case "expectForegroundLoading": return { action: item.action, active: boolean(item.active) };
-        case "expectFriendlyError": return { action: item.action, title: string(item.title), next: string(item.next) };
+        case "expectFriendlyError": {
+            const friendly: Extract<Step, { action: "expectFriendlyError" }> = { action: item.action, title: string(item.title) };
+            if (item.next !== undefined) friendly.next = string(item.next);
+            if (item.summary !== undefined) friendly.summary = string(item.summary);
+            return friendly;
+        }
         case "inspectRequiredPermission": case "returnToSource": case "dismissCopyToast": return { action: item.action };
         case "expectPermissionTarget": return { action: item.action, verb: string(item.verb), resource: string(item.resource) };
         case "copyResourceName": return { action: item.action, kind: string(item.kind), namespace: string(item.namespace), name: string(item.name) };

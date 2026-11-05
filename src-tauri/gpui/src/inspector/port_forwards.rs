@@ -3,6 +3,7 @@
 
 use super::{
     Inspector,
+    friendly_error::Operation,
     port_forward_rows::{card, card_title, stat, table, text, xs_button},
     surface,
 };
@@ -11,11 +12,12 @@ use crate::theme::Tokens;
 use crate::ui;
 use gpui_kit::TestSupportExt;
 use gpui_kit::{AnyElement, Context, SharedString, Task, div, prelude::*, px};
+use kubecove_lib::models::AppError;
 use std::rc::Rc;
 
 pub(super) struct SessionsState {
     pub(super) form: Option<super::saved_forward_form::PresetForm>,
-    pub(super) load: Option<Result<LiveSessions, String>>,
+    pub(super) load: Option<Result<LiveSessions, AppError>>,
     pub(super) busy: bool,
     pub(super) error: Option<String>,
     pub(super) scope_context: Option<String>,
@@ -133,7 +135,7 @@ impl Inspector {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
                 if Rc::ptr_eq(&this.sessions.request, &request) {
-                    this.sessions.load = Some(result.map_err(|error| error.message));
+                    this.sessions.load = Some(result);
                     cx.notify();
                 }
             });
@@ -143,7 +145,9 @@ impl Inspector {
     pub(super) fn port_forwards_page(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let body: AnyElement = match &self.sessions.load {
             None => surface::loading(),
-            Some(Err(error)) => self.page_failure("Live sessions unavailable", error.clone(), cx),
+            Some(Err(error)) => {
+                self.page_read_failure("Live sessions unavailable", error, Operation::Surface, cx)
+            }
             Some(Ok(sessions)) => {
                 let (forwards, exec) = sessions.for_context(&self.scope.context);
                 let counts = (forwards.len(), exec.len());

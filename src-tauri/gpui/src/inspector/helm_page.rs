@@ -7,7 +7,7 @@ use super::delivery_summary as summary_ui;
 use super::delivery_ui::{self as dui, Layout, ViewMode};
 use super::helm_card;
 use super::helm_details::HelmDetails;
-use super::{Inspector, surface};
+use super::{Inspector, friendly_error::Operation, surface};
 use crate::helm;
 use crate::theme::{Palette, Tokens};
 use crate::ui;
@@ -17,7 +17,7 @@ use gpui_kit::{
     AnyElement, AppContext, Context, Div, Entity, ListAlignment, ListState, ScrollHandle,
     Subscription, Task, Window, div, list, prelude::*, px,
 };
-use kubecove_lib::models::{HelmReleaseList, HelmReleaseSummary};
+use kubecove_lib::models::{AppError, HelmReleaseList, HelmReleaseSummary};
 use std::rc::Rc;
 
 #[path = "helm_rail.rs"]
@@ -29,7 +29,7 @@ const TOP_ROWS: [usize; 2] = [1, 4];
 enum HelmLoad {
     Loading,
     Ready(HelmReleaseList),
-    Failed(String),
+    Failed(AppError),
 }
 
 /// A release opened from another page, such as a resource's Open Helm release
@@ -58,7 +58,7 @@ pub(super) struct HelmPage {
     load: HelmLoad,
     request: Rc<()>,
     task: Option<Task<()>>,
-    refresh_error: Option<String>,
+    refresh_error: Option<AppError>,
     /// `helmNamespace`; `None` is All releases.
     namespace: Option<String>,
     search: Entity<InputState>,
@@ -189,9 +189,9 @@ impl Inspector {
                     Ok(list) => page.load = HelmLoad::Ready(list),
                     Err(error) => {
                         if matches!(page.load, HelmLoad::Ready(_)) {
-                            page.refresh_error = Some(error.message);
+                            page.refresh_error = Some(error);
                         } else {
-                            page.load = HelmLoad::Failed(error.message);
+                            page.load = HelmLoad::Failed(error);
                         }
                     }
                 }
@@ -335,9 +335,12 @@ impl Inspector {
         let item = match self.helm_item(index) {
             Item::Header => dui::frame_header("package", "Helm", Vec::new()).pt(px(20.)),
             Item::Status => div().pt(px(16.)).child(match &self.helm_page.load {
-                HelmLoad::Failed(error) => {
-                    self.page_failure("Helm releases unavailable", error.clone(), cx)
-                }
+                HelmLoad::Failed(error) => self.page_read_failure(
+                    "Helm releases unavailable",
+                    error,
+                    Operation::Surface,
+                    cx,
+                ),
                 _ => surface::loading(),
             }),
             Item::Summary => self.helm_summary(cx).pt(px(16.)),
@@ -389,7 +392,12 @@ impl Inspector {
                 page.layout.summary_columns,
             ))
             .when_some(page.refresh_error.clone(), |column, error| {
-                column.child(self.page_failure("Helm refresh failed", error, cx))
+                column.child(self.page_read_failure(
+                    "Helm refresh failed",
+                    &error,
+                    Operation::Surface,
+                    cx,
+                ))
             })
             .when(!data.warnings.is_empty(), |column| {
                 column.child(helm_card::alert(

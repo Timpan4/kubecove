@@ -3,14 +3,14 @@
 
 use super::delivery_ui as dui;
 use super::helm_card::{self, alert, table};
-use super::{Inspector, surface};
+use super::{Inspector, friendly_error::Operation, surface};
 use crate::gitops_surface::status_label;
 use crate::helm;
 use crate::theme::{HEADING, MONO, Tokens};
 use crate::ui;
 use gpui_kit::TestSupportExt;
 use gpui_kit::{Context, Div, FontWeight, SharedString, Task, div, prelude::*, px};
-use kubecove_lib::models::{HelmReleaseDetails, HelmReleaseReconciliation};
+use kubecove_lib::models::{AppError, HelmReleaseDetails, HelmReleaseReconciliation};
 use std::{
     rc::Rc,
     time::{Duration, Instant},
@@ -21,7 +21,7 @@ enum Load<T> {
     #[default]
     Loading,
     Ready(T),
-    Failed(String),
+    Failed(AppError),
 }
 
 /// The details read, with its YAML kept as shared text for rendering.
@@ -38,7 +38,7 @@ pub(super) struct HelmDetails {
     request: Option<Rc<()>>,
     tasks: [Option<Task<()>>; 2],
     read_at: [Option<Instant>; 2],
-    errors: [Option<String>; 2],
+    errors: [Option<AppError>; 2],
     fetching: [bool; 2],
 }
 
@@ -119,7 +119,7 @@ impl Inspector {
                     if let Err(error) = &result
                         && matches!(state.details, Load::Ready(_))
                     {
-                        state.errors[0] = Some(error.message.clone());
+                        state.errors[0] = Some(error.clone());
                         cx.notify();
                         return;
                     }
@@ -139,7 +139,7 @@ impl Inspector {
                             },
                             data,
                         })),
-                        Err(error) => Load::Failed(error.message),
+                        Err(error) => Load::Failed(error),
                     };
                     cx.notify();
                 });
@@ -162,7 +162,7 @@ impl Inspector {
                     if let Err(error) = &result
                         && matches!(state.reconciliation, Load::Ready(_))
                     {
-                        state.errors[1] = Some(error.message.clone());
+                        state.errors[1] = Some(error.clone());
                         cx.notify();
                         return;
                     }
@@ -173,7 +173,7 @@ impl Inspector {
                             helm::sort_reconciliation(&mut data.resources);
                             Load::Ready(Box::new(data))
                         }
-                        Err(error) => Load::Failed(error.message),
+                        Err(error) => Load::Failed(error),
                     };
                     cx.notify();
                 });
@@ -249,18 +249,17 @@ impl Inspector {
             );
         let content = match &page.details.details {
             Load::Loading => pending("Loading Helm release details..."),
-            Load::Failed(error) => {
-                div().child(self.page_failure("Helm details unavailable", error.clone(), cx))
-            }
+            Load::Failed(error) => div().child(self.page_read_failure(
+                "Helm details unavailable",
+                error,
+                Operation::Details,
+                cx,
+            )),
             Load::Ready(details) => self.helm_details_body(details, cx),
         }
-        .children(
-            page.details
-                .errors
-                .iter()
-                .flatten()
-                .map(|error| self.page_failure("Helm refresh failed", error.clone(), cx)),
-        );
+        .children(page.details.errors.iter().flatten().map(|error| {
+            self.page_read_failure("Helm refresh failed", error, Operation::Details, cx)
+        }));
         div().child(
             div()
                 .id("helm-release-details")
@@ -468,9 +467,12 @@ impl Inspector {
             });
         let body = match state {
             Load::Loading => pending("Loading reconciliation..."),
-            Load::Failed(error) => {
-                div().child(self.page_failure("Helm reconciliation unavailable", error.clone(), cx))
-            }
+            Load::Failed(error) => div().child(self.partial_read_failure(
+                "Helm reconciliation unavailable",
+                error,
+                Operation::Resources,
+                cx,
+            )),
             Load::Ready(data) => {
                 let rows = data
                     .resources

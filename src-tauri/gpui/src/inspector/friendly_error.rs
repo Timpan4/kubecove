@@ -31,6 +31,10 @@ pub(crate) enum Operation {
     Contexts,
     Details,
     Resources,
+    /// `surfaceLoad`: a page's whole read, as `SurfaceFrame.svelte` reports it.
+    Surface,
+    /// `providerDetection`: the Argo CD and Flux detection reads.
+    ProviderDetection,
 }
 
 impl Operation {
@@ -39,6 +43,8 @@ impl Operation {
             Self::Contexts => "cluster contexts",
             Self::Details => "resource details",
             Self::Resources => "resources",
+            Self::Surface => "this view",
+            Self::ProviderDetection => "provider data",
         }
     }
 }

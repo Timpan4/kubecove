@@ -14,7 +14,7 @@ use crate::{
 use gpui_kit::{
     AnyElement, ClipboardItem, Context, SharedString, Task, TestSupportExt, Window, prelude::*, px,
 };
-use kubecove_lib::models::{AppErrorKind, RbacAccessReviewTarget, ResourceSummary};
+use kubecove_lib::models::{AppError, AppErrorKind, RbacAccessReviewTarget, ResourceSummary};
 use std::{collections::HashSet, time::Duration};
 
 #[derive(Default)]
@@ -58,6 +58,54 @@ impl Inspector {
             &message,
             ErrorContext {
                 fallback_title: Some(title),
+                ..Default::default()
+            },
+            None,
+            cx,
+        )
+    }
+
+    /// A failed page read keeps its typed kind, so the panel classifies it as
+    /// `FriendlyError.svelte` does instead of by message text alone.
+    pub(super) fn page_read_failure(
+        &self,
+        title: &'static str,
+        error: &AppError,
+        operation: friendly_error::Operation,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        self.friendly_failure(
+            title,
+            Some(error.kind),
+            &error.message,
+            ErrorContext {
+                operation: Some(operation),
+                fallback_title: Some(title),
+                ..Default::default()
+            },
+            None,
+            cx,
+        )
+    }
+
+    /// A partial read failure in compact mode, as the web reports it beside
+    /// data that still loads. The fallback title replaces the classified one.
+    pub(super) fn partial_read_failure(
+        &self,
+        title: &'static str,
+        error: &AppError,
+        operation: friendly_error::Operation,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        self.friendly_failure(
+            title,
+            Some(error.kind),
+            &error.message,
+            ErrorContext {
+                operation: Some(operation),
+                fallback_title: Some(title),
+                partial: true,
+                compact: true,
                 ..Default::default()
             },
             None,

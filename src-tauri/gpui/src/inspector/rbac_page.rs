@@ -5,7 +5,7 @@
 use super::controls::{Variant, button};
 use super::rbac_queue::{has_level, tinted_badge};
 use super::rbac_verify::Verifier;
-use super::{Inspector, Page, surface};
+use super::{Inspector, Page, friendly_error::Operation, surface};
 use crate::rbac::permissions::{Identity, IdentityKind, Observed, observed};
 use crate::rbac::review::ReviewRecord;
 use crate::rbac::{self, Bucket, CockpitItem, ObjectRef, RbacView};
@@ -16,7 +16,7 @@ use gpui_kit::{
     Context, Div, Entity, FontWeight, Subscription, Task, TestSupportExt, Window, div, prelude::*,
     px,
 };
-use kubecove_lib::models::{RbacCoverageStatus, RbacInspectionSummary, RbacRiskLevel};
+use kubecove_lib::models::{AppError, RbacCoverageStatus, RbacInspectionSummary, RbacRiskLevel};
 use std::rc::Rc;
 
 /// `visible` in `RbacView.svelte`: the queue renders 50 cards and 50 more per click.
@@ -25,7 +25,7 @@ pub(super) const PAGE: usize = 50;
 pub(super) enum RbacLoad {
     Loading,
     Ready(Box<RbacInspectionSummary>),
-    Failed(String),
+    Failed(AppError),
 }
 
 /// `IdentitySource`: which identity the inspector and verifier use.
@@ -58,7 +58,7 @@ pub(super) struct RbacState {
     observed: Option<(Identity, Observed)>,
     request: Rc<()>,
     task: Option<Task<()>>,
-    refresh_error: Option<String>,
+    refresh_error: Option<AppError>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -209,9 +209,9 @@ impl Inspector {
                     }
                     Err(error) => {
                         if matches!(this.rbac.load, RbacLoad::Ready(_)) {
-                            this.rbac.refresh_error = Some(error.message);
+                            this.rbac.refresh_error = Some(error);
                         } else {
-                            this.rbac.load = RbacLoad::Failed(error.message);
+                            this.rbac.load = RbacLoad::Failed(error);
                         }
                     }
                 }
@@ -314,8 +314,8 @@ impl Inspector {
         self.sync_rbac_review_note(window, cx);
         let body = match &self.rbac.load {
             RbacLoad::Loading => surface::loading(),
-            RbacLoad::Failed(message) => {
-                self.page_failure("RBAC inspection unavailable", message.clone(), cx)
+            RbacLoad::Failed(error) => {
+                self.page_read_failure("RBAC inspection unavailable", error, Operation::Surface, cx)
             }
             RbacLoad::Ready(_) => self.rbac_body(cx).into_any_element(),
         };
@@ -328,7 +328,12 @@ impl Inspector {
                 .flex_col()
                 .gap(px(12.))
                 .when_some(self.rbac.refresh_error.clone(), |body, error| {
-                    body.child(self.page_failure("RBAC refresh failed", error, cx))
+                    body.child(self.page_read_failure(
+                        "RBAC refresh failed",
+                        &error,
+                        Operation::Surface,
+                        cx,
+                    ))
                 })
                 .child(body),
         )

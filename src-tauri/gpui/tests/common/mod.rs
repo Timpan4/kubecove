@@ -537,7 +537,10 @@ impl Backend for Fixture {
                 "empty" => result.argo = Some(vec![]),
                 "partial" => {
                     result.argo = Some(vec![]);
-                    result.list_error = Some("Fixture Argo inventory unavailable".into());
+                    result.list_error = Some(AppError::new(
+                        "Fixture Argo inventory unavailable",
+                        AppErrorKind::Cluster,
+                    ));
                 }
                 _ => {}
             }
@@ -678,7 +681,7 @@ impl Backend for Fixture {
                 .await
         })
     }
-    fn namespaces(&self, _: String) -> Read<Vec<NamespaceSummary>> {
+    fn namespaces(&self, context: String) -> Read<Vec<NamespaceSummary>> {
         if *self.shell_read_phase.lock().unwrap() == "namespaces-failed" {
             return Box::pin(async {
                 Err(AppError::new(
@@ -692,7 +695,11 @@ impl Backend for Fixture {
         } else {
             self.namespaces.clone()
         };
-        Box::pin(async move { Ok(namespaces) })
+        self.timing.wrap(
+            "list_namespaces",
+            &context,
+            Box::pin(async move { Ok(namespaces) }),
+        )
     }
     fn rbac(&self, context: String) -> Read<RbacInspectionSummary> {
         let found = self.rbac.get(&context).cloned();

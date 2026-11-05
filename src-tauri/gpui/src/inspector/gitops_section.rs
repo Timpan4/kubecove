@@ -9,6 +9,7 @@ use gpui_kit::TestSupportExt;
 use gpui_kit::{
     AnyElement, Context, Div, FontWeight, Hsla, SharedString, Task, div, prelude::*, px,
 };
+use kubecove_lib::models::AppError;
 
 #[derive(Default)]
 pub(super) struct GitOpsState {
@@ -21,7 +22,7 @@ pub(super) struct GitOpsState {
     request: std::rc::Rc<()>,
     pub(super) fetching: bool,
     trailing: bool,
-    refresh_error: Option<String>,
+    refresh_error: Option<AppError>,
 }
 
 impl GitOpsState {
@@ -32,7 +33,7 @@ impl GitOpsState {
         }
     }
 
-    pub(super) fn error(&self) -> Option<&str> {
+    pub(super) fn error(&self) -> Option<&AppError> {
         if let Some(error) = &self.refresh_error {
             return Some(error);
         }
@@ -48,7 +49,7 @@ enum GitOpsLoad {
     #[default]
     Detecting,
     Ready(GitOpsInventory),
-    Failed(String),
+    Failed(AppError),
 }
 
 /// `flex items-center justify-between py-2 text-xs` with a `<strong>` count.
@@ -138,9 +139,9 @@ impl Inspector {
                             }
                             Err(error) => {
                                 if this.gitops.inventory().is_some() {
-                                    this.gitops.refresh_error = Some(error.message);
+                                    this.gitops.refresh_error = Some(error);
                                 } else {
-                                    this.gitops.load = GitOpsLoad::Failed(error.message);
+                                    this.gitops.load = GitOpsLoad::Failed(error);
                                 }
                             }
                         }
@@ -186,7 +187,7 @@ impl Inspector {
                     ui::semibold(ui::xs("Failed to load GitOps inventory"))
                         .text_color(Tokens::destructive()),
                 )
-                .child(ui::muted(ui::xs(error.clone())))
+                .child(ui::muted(ui::xs(error.message.clone())))
                 .into_any_element(),
             GitOpsLoad::Ready(inventory) if !inventory.detected() => {
                 ui::muted(ui::xs("Not detected")).into_any_element()

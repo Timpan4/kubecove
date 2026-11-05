@@ -2,13 +2,13 @@
 //! context's namespaces with ages and created times, and its empty, error and
 //! loading states.
 
-use super::{Inspector, Page};
+use super::{Inspector, Page, friendly_error::Operation};
 use crate::theme::Tokens;
 use crate::ui;
 use gpui_kit::{
     AnyElement, Context, Div, FontWeight, SharedString, Task, TestSupportExt, div, prelude::*, px,
 };
-use kubecove_lib::models::NamespaceSummary;
+use kubecove_lib::models::{AppError, NamespaceSummary};
 
 #[derive(Default)]
 enum NamespaceRead {
@@ -16,7 +16,7 @@ enum NamespaceRead {
     Idle,
     Loading,
     Ready(Vec<NamespaceSummary>),
-    Failed(String),
+    Failed(AppError),
 }
 
 #[derive(Default)]
@@ -52,7 +52,7 @@ impl Inspector {
             let _ = this.update(cx, |this, cx| {
                 this.namespace_list.read = match result {
                     Ok(namespaces) => NamespaceRead::Ready(namespaces),
-                    Err(error) => NamespaceRead::Failed(error.message),
+                    Err(error) => NamespaceRead::Failed(error),
                 };
                 cx.notify();
             });
@@ -66,9 +66,12 @@ impl Inspector {
         } else {
             match &self.namespace_list.read {
                 NamespaceRead::Idle | NamespaceRead::Loading => loading(),
-                NamespaceRead::Failed(message) => {
-                    self.page_failure("Failed to load namespaces", message.clone(), cx)
-                }
+                NamespaceRead::Failed(error) => self.page_read_failure(
+                    "Failed to load namespaces",
+                    error,
+                    Operation::Resources,
+                    cx,
+                ),
                 NamespaceRead::Ready(namespaces) if namespaces.is_empty() => empty(),
                 NamespaceRead::Ready(namespaces) => {
                     self.namespace_table(namespaces).into_any_element()

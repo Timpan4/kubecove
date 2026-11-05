@@ -6,6 +6,7 @@
 
 use super::delivery_summary as summary_ui;
 use super::delivery_ui::{self as dui, Layout, ViewMode};
+use super::friendly_error::Operation;
 use super::gitops_card;
 use super::{Inspector, Page};
 use crate::gitops::GitOpsInventory;
@@ -285,7 +286,16 @@ impl Inspector {
 
     fn gitops_status(&self, cx: &mut Context<Self>) -> Div {
         let body = match (self.gitops.inventory(), self.gitops.error()) {
-            (_, Some(error)) => self.page_failure("GitOps data unavailable", error.to_owned(), cx),
+            // A failed detection read is the web's partial `providerDetection` warning.
+            (None, Some(error)) => self.partial_read_failure(
+                "Some GitOps providers could not be detected",
+                error,
+                Operation::ProviderDetection,
+                cx,
+            ),
+            (Some(_), Some(error)) => {
+                self.page_read_failure("GitOps data unavailable", error, Operation::Surface, cx)
+            }
             (None, None) => super::surface::loading(),
             (Some(data), _) => match model::unavailable(data, self.gitops_page.focus) {
                 Some(unavailable) => dui::empty(
@@ -330,11 +340,21 @@ impl Inspector {
             .flex()
             .flex_col()
             .gap(px(16.))
-            .when_some(self.gitops.error().map(str::to_owned), |column, error| {
-                column.child(self.page_failure("GitOps refresh failed", error, cx))
+            .when_some(self.gitops.error().cloned(), |column, error| {
+                column.child(self.page_read_failure(
+                    "GitOps refresh failed",
+                    &error,
+                    Operation::Surface,
+                    cx,
+                ))
             })
             .when_some(data.list_error.clone(), |column, error| {
-                column.child(self.page_failure("Some GitOps resources could not load", error, cx))
+                column.child(self.partial_read_failure(
+                    "Some GitOps resources could not load",
+                    &error,
+                    Operation::Resources,
+                    cx,
+                ))
             })
             .child(summary_ui::summary(
                 "gitops",
