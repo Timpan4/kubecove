@@ -33,6 +33,7 @@ export interface MockArgs {
 	show?: boolean;
 	storageName?: string;
     path?: string;
+    paths?: string[];
 	transport?: "connected" | "kubernetes";
 	username?: string;
 	workspaceId?: string;

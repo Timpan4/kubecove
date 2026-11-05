@@ -162,8 +162,12 @@ impl Inspector {
 
     pub(super) fn kubeconfig_section(&self, cx: &mut Context<Self>) -> Div {
         let state = &self.settings;
+        // Remote mode edits the environment variable and paths on the server, but file picks,
+        // removals, reordering and labels still need the desktop backend.
         let unavailable = self.backend.kubeconfig_writes_unavailable();
         let disabled = unavailable.is_some() || state.busy;
+        let source_edits = self.backend.kubeconfig_source_edits_unavailable();
+        let edits_disabled = source_edits.is_some() || state.busy;
         let (label, description, show, error) = match &state.sources {
             None => (
                 "KUBECONFIG".to_owned(),
@@ -187,7 +191,7 @@ impl Inspector {
                 Some(error.clone()),
             ),
         };
-        let reason = |element: Observed| -> Observed {
+        let reason = |element: Observed, unavailable: Option<&'static str>| -> Observed {
             match unavailable {
                 Some(reason) => element
                     .aria_description(reason)
@@ -202,8 +206,9 @@ impl Inspector {
                 .test_support()
                 .aria_label("Save")
                 .child("Save"),
+            source_edits,
         )
-        .when(!disabled, |save| {
+        .when(!edits_disabled, |save| {
             save.on_click(cx.listener(|this, _, window, cx| this.save_env_var(window, cx)))
         });
         let reset = reason(
@@ -212,16 +217,19 @@ impl Inspector {
                 .test_support()
                 .aria_label("Reset kubeconfig env var")
                 .child(ui::ghost_icon("rotate-ccw", 24., 14.)),
+            source_edits,
         )
-        .when(!disabled, |reset| {
+        .when(!edits_disabled, |reset| {
             reset.on_click(cx.listener(|this, _, window, cx| this.reset_env_var(window, cx)))
         });
-        let switch =
-            reason(switch("Show kubeconfig source labels", show)).when(!disabled, |switch| {
+        let switch = reason(switch("Show kubeconfig source labels", show), unavailable).when(
+            !disabled,
+            |switch| {
                 switch.on_click(
                     cx.listener(|this, _, window, cx| this.toggle_source_labels(window, cx)),
                 )
-            });
+            },
+        );
         div()
             .flex()
             .flex_col()
@@ -279,7 +287,7 @@ impl Inspector {
                             Input::new(&state.env_var)
                                 .id("kubeconfig-env-var")
                                 .aria_label("Kubeconfig env var")
-                                .disabled(unavailable.is_some())
+                                .disabled(source_edits.is_some())
                                 .text_xs()
                                 .h(px(32.)),
                         ),
@@ -356,11 +364,11 @@ impl Inspector {
                     .bg(Tokens::background()),
             )
         })
-        .child(div().mt(px(8.)).child(Textarea::new(&self.settings.pasted_paths).aria_label("Kubeconfig paths").disabled(self.backend.kubeconfig_writes_unavailable().is_some()).text_xs().h(px(64.))))
-        .child(div().flex().justify_end().mt(px(8.)).child(button(Variant::Outline, 24., self.settings.busy || self.backend.kubeconfig_writes_unavailable().is_some() || self.settings.pasted_paths.read(cx).value().trim().is_empty())
+        .child(div().id("kubeconfig-paths-input").test_support().mt(px(8.)).child(Textarea::new(&self.settings.pasted_paths).aria_label("Kubeconfig paths").disabled(self.backend.kubeconfig_source_edits_unavailable().is_some()).text_xs().h(px(64.))))
+        .child(div().flex().justify_end().mt(px(8.)).child(button(Variant::Outline, 24., self.settings.busy || self.backend.kubeconfig_source_edits_unavailable().is_some() || self.settings.pasted_paths.read(cx).value().trim().is_empty())
             .id("settings-button:Add pasted paths").test_support().aria_label("Add pasted paths")
             .child(ui::icon("plus",12.,Tokens::foreground())).child("Add pasted paths")
-            .when(self.backend.kubeconfig_writes_unavailable().is_none() && !self.settings.busy, |button| button.on_click(cx.listener(|this, _, window, cx| {
+            .when(self.backend.kubeconfig_source_edits_unavailable().is_none() && !self.settings.busy, |button| button.on_click(cx.listener(|this, _, window, cx| {
                 let value = this.settings.pasted_paths.read(cx).value().to_string();
                 if value.trim().is_empty() { return; }
                 let read = this.backend.add_kubeconfig_paths(vec![value]); this.run_kubeconfig(read,window,cx);

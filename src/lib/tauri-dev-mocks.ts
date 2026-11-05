@@ -22,6 +22,7 @@ import {
 } from "./tauri-dev-mock-data";
 import { withDetailStatusFixture } from "./tauri-dev-mock-detail-status";
 import { evictedWorkerName, evictedWorkerStatus } from "./tauri-dev-mock-incidents";
+import { addKubeconfigPathsMock } from "./tauri-dev-mock-kubeconfig";
 import { lintMockYaml } from "./tauri-dev-mock-lint";
 import { liveEvents, liveResources, registerMockWatch, stopMockWatch } from "./tauri-dev-mock-live";
 import { operationMockHandlers } from "./tauri-dev-mock-operations";
@@ -119,7 +120,7 @@ const handlers = {
 	},
 	save_workspace_export_json: (args) => saveWorkspaceMock(String(args.content)),
 	pick_workspace_import_json: selectedWorkspaceFile,
-	add_kubeconfig_paths: kubeconfigSources,
+	add_kubeconfig_paths: (args) => addKubeconfigPathsMock(kubeconfigSource, args.paths),
 	remove_kubeconfig_path: (args) => {
         kubeconfigSource.paths = kubeconfigSource.paths.filter((entry) => entry.path !== args.path);
         return kubeconfigSources();

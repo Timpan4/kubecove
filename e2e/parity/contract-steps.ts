@@ -181,7 +181,7 @@ export type Step =
     | { action: "expectDryRun"; contains: string[] }
     | ({ action: "expectNoResource" | "expectPaletteResource" | "expectNoPaletteResource" | "choosePaletteResource" } & Identity)
     | { action: "openLauncher" | "createWorkspace" | "openSettings" | "closeSettings" }
-    | { action: "nameWorkspace" | "searchSettings" | "setKubeconfigEnvVar" | "expectKubeconfigEnvVar" | "expectSettingsEmpty" | "searchPalette"; value: string }
+    | { action: "nameWorkspace" | "searchSettings" | "setKubeconfigEnvVar" | "expectKubeconfigEnvVar" | "addServerKubeconfigPath" | "expectSettingsEmpty" | "searchPalette"; value: string }
     | { action: "openSavedWorkspace"; name: string }
     | { action: "expectSavedWorkspace"; name: string; summary: string }
     | { action: "selectWorkspaceContext"; context: string }

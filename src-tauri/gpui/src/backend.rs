@@ -291,8 +291,12 @@ pub trait Backend: Send + Sync + 'static {
     fn review_rbac(&self, request: RbacAccessReviewRequest) -> Read<RbacAccessReviewResult>;
     /// `get_kubeconfig_sources`.
     fn kubeconfig_sources(&self) -> Read<KubeconfigSourcesSummary>;
-    /// Why kubeconfig source writes would not persist, or `None` when they do.
+    /// Why desktop-only source changes (file picks, removals, reordering and labels) are
+    /// unavailable, or `None` when they are.
     fn kubeconfig_writes_unavailable(&self) -> Option<&'static str>;
+    /// Why the environment variable and typed path edits would not persist, or `None` when
+    /// they do. Remote mode saves both on the server.
+    fn kubeconfig_source_edits_unavailable(&self) -> Option<&'static str>;
     /// `set_kubeconfig_env_var`.
     fn set_kubeconfig_env_var(&self, env_var: String) -> Read<KubeconfigSourcesSummary>;
     /// `set_show_kubeconfig_source_labels`.
@@ -696,6 +700,10 @@ impl Backend for NativeBackend {
     }
 
     fn kubeconfig_writes_unavailable(&self) -> Option<&'static str> {
+        (!self.settings_initialized).then_some(security::KUBECONFIG_WRITES)
+    }
+
+    fn kubeconfig_source_edits_unavailable(&self) -> Option<&'static str> {
         (!self.settings_initialized).then_some(security::KUBECONFIG_WRITES)
     }
 

@@ -436,6 +436,9 @@ impl Backend for Controlled {
     fn kubeconfig_writes_unavailable(&self) -> Option<&'static str> {
         Some(KUBECONFIG_WRITES)
     }
+    fn kubeconfig_source_edits_unavailable(&self) -> Option<&'static str> {
+        Some(KUBECONFIG_WRITES)
+    }
     fn set_kubeconfig_env_var(&self, _: String) -> Read<KubeconfigSourcesSummary> {
         unreachable!("the settings page must not write when writes are unavailable")
     }

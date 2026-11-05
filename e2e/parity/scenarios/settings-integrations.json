@@ -75,6 +75,29 @@
       ]
     },
     {
+      "id": "settings-kubeconfig.remote-env-and-server-path",
+      "title": "Remote mode saves the KUBECONFIG name and a server path, and both survive reopening Settings",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "fillSettingsField", "field": "Server token", "value": "parity-controlled-credential" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "expectRemoteHost", "url": "http://127.0.0.1:43117" },
+        { "action": "showSettingsSection", "section": "Kubeconfig" },
+        { "action": "setKubeconfigEnvVar", "value": "PARITY_REMOTE_KUBECONFIG" },
+        { "action": "addServerKubeconfigPath", "value": "/srv/parity-remote.yaml" },
+        { "action": "expectSettingsText", "value": "/srv/parity-remote.yaml" },
+        { "action": "expectKubeconfigEnvVar", "value": "PARITY_REMOTE_KUBECONFIG" },
+        { "action": "closeSettings" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Kubeconfig" },
+        { "action": "expectKubeconfigEnvVar", "value": "PARITY_REMOTE_KUBECONFIG" },
+        { "action": "expectSettingsText", "value": "/srv/parity-remote.yaml" },
+        { "action": "expectNoSettingsText", "value": "parity-controlled-credential" }
+      ]
+    },
+    {
       "id": "settings-updates.no-update",
       "title": "An empty update response offers no install",
       "steps": [

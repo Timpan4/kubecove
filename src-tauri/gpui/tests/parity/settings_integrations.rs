@@ -1,5 +1,5 @@
 //! User actions for the settings host adapters. No dialog or external server opens.
-use super::{replace_text, string};
+use super::{locate, replace_text, string};
 use gpui_kit::test::{TestQueryExt, TestWindowExt};
 use gpui_kit::{App, Window};
 use serde_json::Value;
@@ -40,6 +40,12 @@ pub fn act(window: &mut Window, cx: &mut App, step: &Value) -> bool {
                     .is_some_and(|text| text.contains(string(step, "value")))),
                 "Unexpected settings text"
             );
+        }
+        "addServerKubeconfigPath" => {
+            locate::click_in(window, "page", "kubeconfig-paths-input".into(), cx);
+            window.press("secondary-a", cx);
+            window.input(string(step, "value"), cx);
+            window.click("settings-button:Add pasted paths", cx);
         }
         "expectMaskedToken" => {
             // GPUI Kit excludes password values from accessibility and test snapshots.

@@ -73,7 +73,7 @@ export const ACTIONS = [
 	"createWorkspace", "expectOpenWorkspace", "selectRbacCategory", "expectRbacCategory", "filterRbacRisk", "expectRbacItem", "expectNoRbacItem", "selectRbacItem",
 	"investigateRbacSubject", "expectRbacIdentity", "expectRbacGrant", "expectNoRbacGrant", "verifyRbacAccess", "expectRbacVerdict", "openSettings", "closeSettings",
 	"showSettingsSection", "searchSettings", "expectSettingsHeading", "expectSettingRow", "expectNoSettingRow", "expectSettingsEmpty", "setKubeconfigEnvVar",
-	"expectKubeconfigEnvVar", "moveResourceKindEarlier", "expectResourceKindPosition", "expectDeliveryView", "restartClient", "toggleSetting", "expectSetting", "selectSettingOption", "expectSettingOption", "openPalette", "searchPalette", "expectPaletteResource", "expectNoPaletteResource",
+	"expectKubeconfigEnvVar", "addServerKubeconfigPath", "moveResourceKindEarlier", "expectResourceKindPosition", "expectDeliveryView", "restartClient", "toggleSetting", "expectSetting", "selectSettingOption", "expectSettingOption", "openPalette", "searchPalette", "expectPaletteResource", "expectNoPaletteResource",
 	"choosePaletteResource", "expectPaletteEntry", "expectNoPaletteEntry", "choosePaletteEntry",
 	"editRbacReviewNote", "expectRbacReviewNote", "saveRbacReview", "expectRbacReview", "clearRbacReview",
 	"openGitOps", "expandNav", "expectGitOpsTable", "expectGitOpsItem", "expectNoGitOpsItem", "openGitOpsDetails", "expectArgoApplication",
@@ -362,7 +362,7 @@ function step(value: unknown): Step {
 			if (typeof item.namespace !== "string") throw new Error("Expected a resource namespace, empty for cluster resources");
 			return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: item.namespace };
 		case "openLauncher": case "createWorkspace": case "openSettings": case "closeSettings": return { action: item.action };
-		case "nameWorkspace": case "searchSettings": case "setKubeconfigEnvVar": case "expectKubeconfigEnvVar": case "expectSettingsEmpty": case "searchPalette":
+		case "nameWorkspace": case "searchSettings": case "setKubeconfigEnvVar": case "expectKubeconfigEnvVar": case "addServerKubeconfigPath": case "expectSettingsEmpty": case "searchPalette":
 			return { action: item.action, value: string(item.value) };
 		case "openSavedWorkspace": return { action: item.action, name: string(item.name) };
 		case "expectSavedWorkspace": return { action: item.action, name: string(item.name), summary: string(item.summary) };

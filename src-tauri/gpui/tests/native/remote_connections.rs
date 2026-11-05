@@ -11,6 +11,26 @@ use tokio::{
 };
 
 type Requests = tokio::sync::mpsc::UnboundedReceiver<(String, serde_json::Value)>;
+
+/// The saved sources a controlled server returns for one kubeconfig edit.
+fn saved_sources(command: &str, arguments: &serde_json::Value) -> serde_json::Value {
+    let env_var = if command == "set_kubeconfig_env_var" {
+        arguments["envVar"].clone()
+    } else {
+        json!("KUBECONFIG")
+    };
+    let paths: Vec<_> = if command == "add_kubeconfig_paths" {
+        arguments["paths"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|path| json!({"path": path}))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    json!({"kubeconfigEnvVar":env_var,"paths":paths,"sourceKey":"remote","sourceLabel":"Server","showSourceLabels":true,"warnings":[]})
+}
 async fn server(name: &'static str) -> (String, tokio::task::JoinHandle<()>, Requests) {
     let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
         .await
@@ -45,6 +65,9 @@ async fn server(name: &'static str) -> (String, tokio::task::JoinHandle<()>, Req
                 } else if matches!(command, Some("list_namespaces" | "list_resource_kinds" | "list_resources")) {
                     json!([])
                 } else if command == Some("start_resource_watch") { json!("controlled-stream") }
+                else if let Some(command @ ("set_kubeconfig_env_var" | "add_kubeconfig_paths")) = command {
+                    saved_sources(command, &serde_json::from_slice(&body).unwrap())
+                }
                 else { json!(true) };
                 let body = response.to_string();
                 let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",body.len());
@@ -123,6 +146,45 @@ fn switching_remote_endpoints_routes_reads_and_disconnect_clears_selection() {
         second_task.abort();
         let _ = first_task.await;
         let _ = second_task.await;
+    });
+}
+
+#[test]
+fn kubeconfig_env_var_and_server_path_save_on_the_connected_server() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let backend = DesktopBackend::new(NativeBackend::new().unwrap());
+    runtime.block_on(async {
+        let (url, task, mut requests) = server("remote-kubeconfig-host").await;
+        backend
+            .connect_remote(url, "controlled-test-credential".into())
+            .await
+            .unwrap();
+        assert!(backend.kubeconfig_source_edits_unavailable().is_none());
+        assert!(backend.kubeconfig_writes_unavailable().is_some());
+        let sources = backend
+            .set_kubeconfig_env_var("PARITY_REMOTE".into())
+            .await
+            .unwrap();
+        assert_eq!(sources.kubeconfig_env_var, "PARITY_REMOTE");
+        let sources = backend
+            .add_kubeconfig_paths(vec!["/srv/remote.yaml".into()])
+            .await
+            .unwrap();
+        assert_eq!(sources.paths[0].path, "/srv/remote.yaml");
+        let mut sent = Vec::new();
+        while let Ok(request) = requests.try_recv() {
+            sent.push(request);
+        }
+        assert!(sent.contains(&(
+            "set_kubeconfig_env_var".into(),
+            json!({"envVar": "PARITY_REMOTE"})
+        )));
+        assert!(sent.contains(&(
+            "add_kubeconfig_paths".into(),
+            json!({"paths": ["/srv/remote.yaml"]})
+        )));
+        task.abort();
+        let _ = task.await;
     });
 }
 

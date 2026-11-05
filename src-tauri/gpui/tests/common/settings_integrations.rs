@@ -212,6 +212,27 @@ impl Fixture {
         };
         self.saved_sources_read(sources.clone())
     }
+    /// Mirrors the typed command for pasted or typed paths: trimmed, non-empty, unique.
+    pub(super) fn add_kubeconfig_paths_read(
+        &self,
+        paths: Vec<String>,
+    ) -> Read<KubeconfigSourcesSummary> {
+        let mut sources = self.kubeconfig.lock().expect("kubeconfig lock");
+        for path in paths
+            .iter()
+            .map(|path| path.trim())
+            .filter(|path| !path.is_empty())
+        {
+            if !sources.paths.iter().any(|entry| entry.path == path) {
+                sources
+                    .paths
+                    .push(kubecove_lib::commands::kubeconfig::KubeconfigPathEntry {
+                        path: path.to_owned(),
+                    });
+            }
+        }
+        self.saved_sources_read(sources.clone())
+    }
     pub(super) fn set_source_labels_read(&self, show: bool) -> Read<KubeconfigSourcesSummary> {
         let mut sources = self.kubeconfig.lock().expect("kubeconfig lock");
         sources.show_source_labels = show;

@@ -11,6 +11,7 @@ import { detailStatusAction } from "./web-detail-status";
 import { detailsAction } from "./web-details";
 import { feedbackAction } from "./web-feedback";
 import { incidentDiagnosticsAction } from "./web-incident-diagnostics";
+import { kubeconfigSettingsAction } from "./web-kubeconfig-settings";
 import { liveSessionAction } from "./web-live-sessions";
 import { logRowAndRestoreAction } from "./web-logs-restore";
 import { mcpAction } from "./web-mcp";
@@ -321,6 +322,7 @@ export async function action(page: Page, step: Step) {
 		case "expectSettingRow": await page.getByText(step.title, { exact: true }).first().waitFor(); break;
 		case "expectNoSettingRow": if (await page.getByText(step.title, { exact: true }).count()) throw new Error(`${step.title} is shown`); break;
 		case "expectSettingsEmpty": await page.getByText(`No settings match "${step.value}".`, { exact: true }).waitFor(); break;
+		case "addServerKubeconfigPath": await kubeconfigSettingsAction(page, step); break;
 		case "setKubeconfigEnvVar": {
 			await page.getByRole("textbox", { name: "Kubeconfig env var", exact: true }).fill(step.value);
 			const save = page.getByRole("button", { name: "Save", exact: true });

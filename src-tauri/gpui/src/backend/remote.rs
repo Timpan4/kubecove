@@ -176,9 +176,7 @@ impl Backend for DesktopBackend {
     );
     fn add_kubeconfig_paths(&self, paths: Vec<String>) -> Read<KubeconfigSourcesSummary> {
         if self.selected() {
-            return settings_integrations::unavailable(
-                "Kubeconfig sources are set by the server operator",
-            );
+            return self.call("add_kubeconfig_paths", json!({"paths": paths}));
         }
         self.local.add_kubeconfig_paths(paths)
     }
@@ -542,11 +540,16 @@ impl Backend for DesktopBackend {
             self.local.kubeconfig_writes_unavailable()
         }
     }
+    fn kubeconfig_source_edits_unavailable(&self) -> Option<&'static str> {
+        if self.selected() {
+            None
+        } else {
+            self.local.kubeconfig_source_edits_unavailable()
+        }
+    }
     fn set_kubeconfig_env_var(&self, value: String) -> Read<KubeconfigSourcesSummary> {
         if self.selected() {
-            return settings_integrations::unavailable(
-                "Kubeconfig sources are set by the server operator",
-            );
+            return self.call("set_kubeconfig_env_var", json!({"envVar": value}));
         }
         self.local.set_kubeconfig_env_var(value)
     }

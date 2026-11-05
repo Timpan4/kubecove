@@ -736,8 +736,14 @@ impl Backend for Fixture {
     fn kubeconfig_writes_unavailable(&self) -> Option<&'static str> {
         None
     }
+    fn kubeconfig_source_edits_unavailable(&self) -> Option<&'static str> {
+        None
+    }
     fn set_kubeconfig_env_var(&self, env_var: String) -> Read<KubeconfigSourcesSummary> {
         self.set_kubeconfig_env_var_read(env_var)
+    }
+    fn add_kubeconfig_paths(&self, paths: Vec<String>) -> Read<KubeconfigSourcesSummary> {
+        self.add_kubeconfig_paths_read(paths)
     }
     fn set_show_kubeconfig_source_labels(&self, show: bool) -> Read<KubeconfigSourcesSummary> {
         self.set_source_labels_read(show)
