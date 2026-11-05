@@ -1,0 +1,62 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "launcher-errors.contexts-failure",
+      "title": "A failed context read shows its retry and blocks creation without listing namespaces",
+      "steps": [
+        { "action": "configureShellRead", "phase": "contexts-failed" },
+        { "action": "openLauncher" },
+        { "action": "expectLauncherRetry", "read": "contexts" },
+        { "action": "expectFriendlyError", "title": "Failed to load contexts", "next": "Copy the detail if this needs debugging." },
+        { "action": "expectPageText", "text": "Select context" },
+        { "action": "expectNoPageText", "text": "Cluster group" },
+        { "action": "expectPageText", "text": "Select a context before creating this workspace." },
+        { "action": "configureShellRead", "phase": "ready" }
+      ]
+    },
+    {
+      "id": "launcher-errors.namespaces-failure-retry",
+      "title": "A failed namespace read keeps the name, hides the list and recovers on Retry",
+      "steps": [
+        { "action": "configureShellRead", "phase": "namespaces-failed" },
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Namespace failure" },
+        { "action": "expectLauncherRetry", "read": "namespaces" },
+        { "action": "expectPageText", "text": "Retry namespace discovery before creating this workspace." },
+        { "action": "copyErrorDetail", "error": "namespaces", "expected": "Scripted namespaces read failure" },
+        { "action": "configureShellRead", "phase": "ready" },
+        { "action": "retryLauncher", "read": "namespaces" },
+        { "action": "toggleWorkspaceNamespace", "namespace": "payments" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Namespace failure", "context": "mock-dev" }
+      ]
+    },
+    {
+      "id": "launcher-errors.namespaces-empty",
+      "title": "An empty namespace list still creates an unscoped workspace",
+      "steps": [
+        { "action": "configureShellRead", "phase": "namespaces-empty" },
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Unscoped" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Unscoped", "context": "mock-dev" },
+        { "action": "configureShellRead", "phase": "ready" }
+      ]
+    },
+    {
+      "id": "launcher-errors.no-contexts",
+      "title": "A kubeconfig without contexts shows the placeholder and visible reason, not a read error",
+      "steps": [
+        { "action": "configureShellRead", "phase": "contexts-empty" },
+        { "action": "openLauncher" },
+        { "action": "expectEmptyLauncher" },
+        { "action": "expectPageText", "text": "Select context" },
+        { "action": "expectNoPageText", "text": "Cluster group" },
+        { "action": "expectPageText", "text": "Select a context before creating this workspace." },
+        { "action": "configureShellRead", "phase": "ready" }
+      ]
+    }
+  ]
+}

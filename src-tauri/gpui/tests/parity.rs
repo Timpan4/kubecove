@@ -314,14 +314,21 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
         // in-memory mock state.
         let backend = Arc::new(Fixture::load(Path::new(&fixture)));
         let steps = scenario["steps"].as_array().unwrap();
+        // Leading phase and hold steps apply before the client starts, as the
+        // web driver's first load does for shell reads.
         let startup_steps = steps
             .iter()
             .take_while(|step| {
-                step["action"] == "mockTiming" && step["control"]["operation"] == "hold"
+                step["action"] == "configureShellRead"
+                    || (step["action"] == "mockTiming" && step["control"]["operation"] == "hold")
             })
             .count();
         for step in &steps[..startup_steps] {
-            backend.timing_control(&step["control"]);
+            if step["action"] == "configureShellRead" {
+                *backend.shell_read_phase.lock().unwrap() = string(step, "phase").to_owned();
+            } else {
+                backend.timing_control(&step["control"]);
+            }
         }
         let initial_coverage = scenario["steps"]
             .as_array()
@@ -372,6 +379,7 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
                     && step["text"] == "Scripted page refresh failure")
                 || (step["action"] == "expectLiveState" && step["label"] == "Refresh failed")
                 || step["action"] == "expectLauncherRetry"
+                || step["action"] == "expectFriendlyError"
                 || step["action"] == "expectOverviewRetry"
                 || step["action"] == "expectOverviewHealth"
                 || step["action"] == "expectWorkspaceReadWarning"
