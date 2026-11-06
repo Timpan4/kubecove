@@ -62,7 +62,6 @@ fn zoom_control(
     let button = match focus {
         Some(focus) if !disabled => button
             .track_focus(focus)
-            .tab_stop(true)
             .focus(|style| style.border_2().border_color(Tokens::ring())),
         _ => button,
     };
@@ -133,7 +132,8 @@ impl Inspector {
 
     /// `autoPanOnNodeFocus`: a node that focus reaches while outside the viewport
     /// is centered at the current zoom. Nodes that overlap the viewport stay put.
-    pub(super) fn pan_map_node_into_view(&mut self, key: &SharedString, cx: &mut Context<Self>) {
+    /// Runs before the page renders, so the render shows the new viewport.
+    pub(super) fn pan_map_node_into_view(&mut self, key: &SharedString) {
         let Some(view) = self.map.cache.clone() else {
             return;
         };
@@ -161,7 +161,6 @@ impl Inspector {
                 zoom,
             },
         ));
-        cx.notify();
     }
 
     pub(super) fn map_viewport(
@@ -263,7 +262,6 @@ impl Inspector {
                             .cursor_pointer()
                             .when_some(self.map.node_focus.get(&id), |item, focus| {
                                 item.track_focus(focus)
-                                    .tab_stop(true)
                                     .focus(|style| style.border_2().border_color(Tokens::ring()))
                             })
                             .children(selection_ring(node, z))
