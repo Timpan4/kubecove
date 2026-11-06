@@ -29,7 +29,7 @@ import { operationMockHandlers } from "./tauri-dev-mock-operations";
 import { pageReadResult } from "./tauri-dev-mock-pages";
 import { rbacInspectionMock, rbacReviewMock } from "./tauri-dev-mock-rbac";
 import { cleanupMockSessions, listMockExecs, listMockForwards, mockExecInput, resizeMockExec, startMockExec, startMockForward, stopMockExec, stopMockForward } from "./tauri-dev-mock-session-controls";
-import { shellRead, shellWithoutRemoved } from "./tauri-dev-mock-shell";
+import { shellKubeconfigSourcesRead, shellRead, shellWithoutRemoved } from "./tauri-dev-mock-shell";
 import { mockTiming } from "./tauri-dev-mock-timing";
 import { createMockChannel, type TauriClient } from "./tauri-runtime";
 import type {
@@ -89,7 +89,7 @@ export function createDevMockTauriClient(): TauriClient {
 
 // The page's kubeconfig settings, so saved values read back like the desktop settings file.
 const kubeconfigSource = { ...source };
-const kubeconfigSources = () => ({ ...kubeconfigSource });
+const kubeconfigSources = () => shellKubeconfigSourcesRead({ ...kubeconfigSource });
 export function restoreMockKubeconfigSources(sources: KubeconfigSourcesSummary): void {
     Object.assign(kubeconfigSource, sources);
 }

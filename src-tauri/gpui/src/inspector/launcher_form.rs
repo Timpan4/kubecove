@@ -114,7 +114,7 @@ impl Inspector {
                         .aria_label("Loading contexts..."),
                 )
             })
-            .when(state.contexts_load == Discovery::Failed, |form| {
+            .when(state.context_error.is_some(), |form| {
                 form.child(
                     self.friendly_failure(
                         "launcher-context-error",
@@ -350,7 +350,10 @@ fn muted_label(text: &'static str) -> Div {
     div().flex().flex_col().gap(px(8.)).child(
         ui::muted(ui::xs(text))
             .line_height(px(19.5))
-            .font_weight(FontWeight::MEDIUM),
+            .font_weight(FontWeight::MEDIUM)
+            .id(SharedString::from(format!("launcher-label:{text}")))
+            .test_support()
+            .aria_label(text),
     )
 }
 

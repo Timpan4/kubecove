@@ -54,7 +54,7 @@ export async function action(page: Page, step: Step) {
         case "panelControl": case "expectPanelControl": case "skipGraph": case "mapKey": case "expectMapFocus": case "expectNoMapFocus": case "resizeDetail": case "expectDetailResize": await panelAction(page, step); break;
         case "terminalFit": case "terminalOutput": case "terminalSelect": case "terminalCopy": case "terminalPaste": case "terminalScroll":
             await terminalAction(page, step); break;
-        case "failWorkspaceContext": case "expectWorkspaceReadWarning":
+        case "failWorkspaceContext": case "expectWorkspaceReadWarning": case "expectContextUnavailable":
             await workspaceAction(page, step); break;
         case "editSavedWorkspace": case "expectNoSavedWorkspace": case "saveWorkspace": case "cancelWorkspaceEdit": case "toggleWorkspaceContext": case "expectOverviewHealth": case "expectDetailContext":
             await workspaceAction(page, step); break;

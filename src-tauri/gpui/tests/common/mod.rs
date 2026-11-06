@@ -6,6 +6,7 @@ mod argo;
 mod coverage;
 mod delivery;
 mod detail_tabs;
+mod launcher_sources;
 mod live_data;
 mod mcp;
 mod namespace_rbac;
@@ -700,7 +701,7 @@ impl Backend for Fixture {
         self.review_rbac_read(request)
     }
     fn kubeconfig_sources(&self) -> Read<KubeconfigSourcesSummary> {
-        self.kubeconfig_sources_read()
+        self.launcher_kubeconfig_sources()
     }
     fn kubeconfig_writes_unavailable(&self) -> Option<&'static str> {
         None

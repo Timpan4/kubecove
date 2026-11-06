@@ -1,9 +1,9 @@
-export type ShellReadPhase = "ready" | "contexts-failed" | "contexts-empty" | "namespaces-failed" | "namespaces-credential-failed" | "namespaces-empty" | "resources-failed" | "primary-context-missing" | "kind-missing" | "payments-api-removed";
+export type ShellReadPhase = "ready" | "contexts-failed" | "contexts-empty" | "namespaces-failed" | "namespaces-credential-failed" | "namespaces-empty" | "resources-failed" | "primary-context-missing" | "kind-missing" | "payments-api-removed" | "sources-failed";
 function initialPhase(): ShellReadPhase {
     const value = globalThis.sessionStorage?.getItem("parity-shell-read");
     switch (value) {
         case "contexts-failed": case "contexts-empty": case "namespaces-empty": case "namespaces-failed": case "namespaces-credential-failed": case "resources-failed":
-        case "primary-context-missing": case "kind-missing": case "payments-api-removed": return value;
+        case "primary-context-missing": case "kind-missing": case "payments-api-removed": case "sources-failed": return value;
         default: return "ready";
     }
 }
@@ -23,6 +23,12 @@ export function shellRead<Item>(read: "contexts" | "namespaces" | "resources" | 
     if (read === "contexts" && phase === "primary-context-missing") return items.filter((item) => (item as { name?: string }).name !== "mock-dev");
     if (read === "kinds" && phase === "kind-missing") return [];
     return items;
+}
+
+/** Fails kubeconfig source reads while the `sources-failed` phase is set. */
+export function shellKubeconfigSourcesRead<Sources>(sources: Sources): Sources {
+    if (phase === "sources-failed") throw new Error("Scripted kubeconfig sources read failure");
+    return sources;
 }
 
 /** Removes the scripted Deployment from scope reads, as if it were deleted from the cluster. */

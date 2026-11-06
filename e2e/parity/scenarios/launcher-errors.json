@@ -57,6 +57,35 @@
         { "action": "expectPageText", "text": "Select a context before creating this workspace." },
         { "action": "configureShellRead", "phase": "ready" }
       ]
+    },
+    {
+      "id": "launcher-errors.sources-failure-retry",
+      "title": "A failed kubeconfig source read is reported as a kubeconfig error, and Retry refetches the source",
+      "steps": [
+        { "action": "configureShellRead", "phase": "sources-failed" },
+        { "action": "openLauncher" },
+        { "action": "expectLauncherRetry", "read": "contexts" },
+        { "action": "expectFriendlyError", "title": "KubeCove could not load the selected kubeconfig", "next": "Choose another kubeconfig source or fix the selected kubeconfig, then retry." },
+        { "action": "expectPageText", "text": "Cluster group" },
+        { "action": "configureShellRead", "phase": "ready" },
+        { "action": "retryLauncher", "read": "contexts" },
+        { "action": "expectNoPageText", "text": "KubeCove could not load the selected kubeconfig" },
+        { "action": "expectPageText", "text": "Cluster group" }
+      ]
+    },
+    {
+      "id": "launcher-errors.saved-context-unavailable",
+      "title": "A saved workspace whose primary context is missing is marked Context unavailable",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "choose-unavailable-workspace" },
+        { "action": "openLauncher" },
+        { "action": "clickSettingsButton", "label": "Import" },
+        { "action": "clickSettingsButton", "label": "Apply import" },
+        { "action": "configureShellRead", "phase": "primary-context-missing" },
+        { "action": "openLauncher" },
+        { "action": "expectContextUnavailable", "name": "Unavailable scope" },
+        { "action": "configureShellRead", "phase": "ready" }
+      ]
     }
   ]
 }

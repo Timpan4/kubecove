@@ -10,6 +10,14 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 .description(),
             Some(string(step, "summary"))
         ),
+        "expectContextUnavailable" => assert!(
+            window
+                .within("launcher")
+                .try_find_by_label(&format!("{} Context unavailable", string(step, "name")))
+                .is_some(),
+            "{} has no Context unavailable badge",
+            string(step, "name")
+        ),
         "openSavedWorkspace" => {
             let label = format!("Open {}", string(step, "name"));
             locate::click_label(window, "launcher-body", &label, cx);

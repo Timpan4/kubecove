@@ -1,7 +1,7 @@
-import type { Page } from "playwright-core";
-import type { Step } from "./contract";
-import original from "../../src/lib/settings-integration-workspace.json";
 import { isDeepStrictEqual } from "node:util";
+import type { Page } from "playwright-core";
+import original from "../../src/lib/settings-integration-workspace.json";
+import type { Step } from "./contract";
 
 export function expectRetainedWorkspaceFields(items: { spec: { displayName: string; scope: Record<string, unknown>; portForwards: unknown } }[], name: string) {
     const item = items.find((item) => item.spec.displayName === name);
@@ -18,6 +18,8 @@ export async function workspaceAction(page: Page, step: Step): Promise<void> {
             await page.evaluate(`import('/src/lib/tauri-dev-mocks.ts').then(m => m.failWorkspaceContext(${JSON.stringify(step.context)}))`); break;
         case "expectWorkspaceReadWarning":
             await page.getByRole("alert").filter({ hasText: step.context }).filter({ hasText: "Context unavailable" }).waitFor(); break;
+        case "expectContextUnavailable":
+            await page.getByRole("group", { name: `${step.name} actions`, exact: true }).locator('xpath=ancestor::*[@data-slot="card"]').getByText("Context unavailable", { exact: true }).waitFor(); break;
         case "editSavedWorkspace":
             await page.getByRole("button", { name: `Edit ${step.name}`, exact: true }).click(); break;
         case "expectNoSavedWorkspace":

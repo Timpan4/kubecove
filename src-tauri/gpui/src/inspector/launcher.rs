@@ -4,7 +4,7 @@
 
 use super::Inspector;
 use super::controls::{Variant, button};
-use crate::theme::Tokens;
+use crate::theme::{Palette, Tokens};
 use crate::ui;
 use crate::workspaces::{self, Discovery, SavedWorkspace};
 use gpui_kit::TestSupportExt;
@@ -97,6 +97,49 @@ impl LauncherState {
     }
 }
 
+/// The web's "No saved workspaces yet" empty state.
+fn no_saved_workspaces() -> gpui_kit::base::ObservedElement<Stateful<Div>> {
+    div()
+        .id("workspaces-empty")
+        .test_support()
+        .aria_label("No saved workspaces yet")
+        .flex()
+        .flex_col()
+        .items_center()
+        .justify_center()
+        .gap(px(8.))
+        .min_h(px(208.))
+        .p(px(24.))
+        .rounded(px(10.))
+        .border_1()
+        .border_color(Tokens::border())
+        .bg(Tokens::card())
+        .child(ui::icon("plus", 20., Tokens::muted_foreground()))
+        .child(ui::medium(ui::sm("No saved workspaces yet")))
+        .child(
+            ui::muted(ui::xs(
+                "Create a workspace from a cluster context to start inspecting resources, topology, and live sessions.",
+            ))
+            .text_center(),
+        )
+}
+
+/// The web's "Context unavailable" badge for a saved workspace whose context is missing.
+fn context_unavailable(name: &str) -> gpui_kit::base::ObservedElement<Stateful<Div>> {
+    div()
+        .id(SharedString::from(format!("workspace-unavailable:{name}")))
+        .test_support()
+        .aria_label(format!("{name} Context unavailable"))
+        .flex()
+        .items_center()
+        .h(px(20.))
+        .px(px(6.))
+        .rounded(px(4.))
+        .border_1()
+        .border_color(Palette::amber500(0.4))
+        .child(ui::xs("Context unavailable").text_color(Palette::amber300()))
+}
+
 impl Inspector {
     pub(super) fn open_launcher(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.palette.open {
@@ -120,11 +163,17 @@ impl Inspector {
         self.launcher.contexts_load = Discovery::Loading;
         self.launcher.context_error = None;
         self.launcher.tasks[1] = None;
+        // Retry refetches the kubeconfig source and then the contexts, as the web's Retry does.
+        let executor = cx.background_executor().clone();
         let backend = self.backend.clone();
-        let read =
-            crate::read_retry::read(cx.background_executor().clone(), move || backend.contexts());
+        let source =
+            crate::read_retry::read(executor.clone(), move || backend.kubeconfig_sources());
+        let backend = self.backend.clone();
+        let read = crate::read_retry::read(executor, move || backend.contexts());
         let read = self.timings.measure("list_kube_contexts", read);
         self.launcher.tasks[0] = Some(cx.spawn_in(window, async move |this, cx| {
+            // The web reports a failed source read ahead of a contexts failure.
+            let source_error = source.await.err().map(|error| error.message);
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
                 match result {
@@ -134,12 +183,13 @@ impl Inspector {
                             .map(|context| (context.name, context.is_current))
                             .collect();
                         this.launcher.contexts_load = Discovery::Ready;
+                        this.launcher.context_error = source_error;
                         this.discover_namespaces(window, cx);
                         this.update_saved_overview();
                     }
                     Err(error) => {
                         this.launcher.contexts_load = Discovery::Failed;
-                        this.launcher.context_error = Some(error.message);
+                        this.launcher.context_error = Some(source_error.unwrap_or(error.message));
                     }
                 }
                 cx.notify();
@@ -366,6 +416,7 @@ impl Inspector {
         let state = &self.launcher;
         let mut saved: Vec<&SavedWorkspace> = state.saved.iter().collect();
         saved.sort_by_key(|workspace| std::cmp::Reverse(workspace.updated));
+        let empty = saved.is_empty() && state.contexts_load != Discovery::Loading;
         div()
             .flex()
             .flex_col()
@@ -423,9 +474,15 @@ impl Inspector {
                     .flex()
                     .flex_col()
                     .gap(px(8.))
+                    .when(empty, |list| list.child(no_saved_workspaces()))
                     .children(saved.into_iter().map(|workspace| {
                         let id = workspace.id;
                         let active = state.active == Some(id);
+                        let unavailable = !state.context_choices.is_empty()
+                            && !state
+                                .context_choices
+                                .iter()
+                                .any(|(name, _)| name == &workspace.context);
                         div()
                             .id(("workspace", id as usize))
                             .test_support()
@@ -438,7 +495,11 @@ impl Inspector {
                             .pb(px(24.))
                             .rounded(px(10.))
                             .border_1()
-                            .border_color(Tokens::border())
+                            .border_color(if unavailable {
+                                Palette::amber500(0.4)
+                            } else {
+                                Tokens::border()
+                            })
                             .bg(Tokens::card())
                             .child(
                                 div()
@@ -449,6 +510,9 @@ impl Inspector {
                                     .gap(px(4.))
                                     .px(px(12.))
                                     .child(ui::medium(ui::sm(workspace.name.clone())).truncate())
+                                    .when(unavailable, |column| {
+                                        column.child(context_unavailable(&workspace.name))
+                                    })
                                     .child(
                                         ui::muted(ui::xs(workspace.summary()))
                                             .line_height(px(19.5))

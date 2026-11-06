@@ -69,7 +69,7 @@ export const ACTIONS = [
 	"toggleLogRow", "toggleLogExpandAll", "expectLogRowOpen", "copyLogLine", "expectRestorePrompt", "restorePromptControl",
 	"expectReview", "confirmDeletion", "executeReview", "closeReview", "expectNoReview", "expectActionResult", "expectNoActionResult",
 	"editYaml", "applyYaml", "dryRunYaml", "expectDryRun", "expectYamlNotice", "expectNoYamlNotice", "expectYamlReadOnly",
-	"expectNoResource", "openLauncher", "openSavedWorkspace", "expectSavedWorkspace", "nameWorkspace", "selectWorkspaceContext", "toggleWorkspaceNamespace",
+	"expectNoResource", "openLauncher", "openSavedWorkspace", "expectSavedWorkspace", "expectContextUnavailable", "nameWorkspace", "selectWorkspaceContext", "toggleWorkspaceNamespace",
 	"createWorkspace", "expectOpenWorkspace", "selectRbacCategory", "expectRbacCategory", "filterRbacRisk", "expectRbacItem", "expectNoRbacItem", "selectRbacItem",
 	"investigateRbacSubject", "expectRbacIdentity", "expectRbacGrant", "expectNoRbacGrant", "verifyRbacAccess", "expectRbacVerdict", "openSettings", "closeSettings",
 	"showSettingsSection", "searchSettings", "expectSettingsHeading", "expectSettingRow", "expectNoSettingRow", "expectSettingsEmpty", "setKubeconfigEnvVar",
@@ -152,7 +152,7 @@ function step(value: unknown): Step {
         case "expectRemoteHost": return { action: item.action, url: string(item.url) };
         case "expectRemoteHostTooltip": return { action: item.action, value: string(item.value) };
         case "expectNoRemoteHost": return { action: item.action };
-        case "configureShellRead": return { action: item.action, phase: oneOf(["ready", "contexts-failed", "contexts-empty", "namespaces-failed", "namespaces-credential-failed", "namespaces-empty", "resources-failed", "primary-context-missing", "kind-missing", "payments-api-removed"], item.phase, "a shell read phase") };
+        case "configureShellRead": return { action: item.action, phase: oneOf(["ready", "contexts-failed", "contexts-empty", "namespaces-failed", "namespaces-credential-failed", "namespaces-empty", "resources-failed", "primary-context-missing", "kind-missing", "payments-api-removed", "sources-failed"], item.phase, "a shell read phase") };
         case "openNamespaceList": case "openNavigationDrawer": return { action: item.action };
         case "expectNamespaceRow": return { action: item.action, name: string(item.name), age: string(item.age) };
         case "resizeViewport": return { action: item.action, width: count(item.width), height: count(item.height) };
@@ -379,6 +379,7 @@ function step(value: unknown): Step {
 			return { action: item.action, value: string(item.value) };
 		case "openSavedWorkspace": return { action: item.action, name: string(item.name) };
 		case "expectSavedWorkspace": return { action: item.action, name: string(item.name), summary: string(item.summary) };
+		case "expectContextUnavailable": return { action: item.action, name: string(item.name) };
 		case "selectWorkspaceContext": return { action: item.action, context: string(item.context) };
 		case "toggleWorkspaceNamespace": return { action: item.action, namespace: string(item.namespace) };
 		case "expectOpenWorkspace": return { action: item.action, name: string(item.name), context: string(item.context) };
