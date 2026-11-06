@@ -301,7 +301,7 @@ impl Inspector {
                             .w(px(node.width * z))
                             .h(px(node.height * z))
                             .cursor_pointer()
-                            .when_some(self.map.node_focus.get(&id), |item, focus| {
+                            .when_some(self.map.node_focus(&node.item), |item, focus| {
                                 item.track_focus(focus)
                                     .focus(|style| style.border_2().border_color(Tokens::ring()))
                             })
@@ -439,7 +439,7 @@ impl Inspector {
         let Some(node) = view.nodes.get(index) else {
             return;
         };
-        if let Some(focus) = self.map.node_focus.get(&node_id(&node.item, &self.map)) {
+        if let Some(focus) = self.map.node_focus(&node.item) {
             focus.focus(window, cx);
         }
         let super::TopologyLoad::Ready(topology) = &self.map.topology else {

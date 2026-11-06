@@ -46,7 +46,8 @@ pub(super) struct MapState {
     adjusted: Option<(Viewport, Viewport)>,
     drag: Option<(Point<Pixels>, Viewport)>,
     /// Focus follows node identity when selection reorders the graph.
-    pub node_focus: HashMap<SharedString, FocusHandle>,
+    resource_focus: Vec<Option<FocusHandle>>,
+    group_focus: HashMap<SharedString, FocusHandle>,
     /// The window's focus at the last render. Focus moving onto a node pans
     /// that node into view.
     last_focus: Option<WeakFocusHandle>,
@@ -74,7 +75,7 @@ struct PreparedMap {
 
 impl MapState {
     pub(super) fn replace_topology(&mut self, topology: TopologyLoad) {
-        self.node_ids = match &topology {
+        let node_ids: Vec<SharedString> = match &topology {
             TopologyLoad::Ready(topology) => topology
                 .nodes
                 .iter()
@@ -82,6 +83,17 @@ impl MapState {
                 .collect(),
             _ => Vec::new(),
         };
+        let previous: HashMap<_, _> = self
+            .node_ids
+            .iter()
+            .zip(&mut self.resource_focus)
+            .filter_map(|(id, handle)| handle.take().map(|handle| (id.clone(), handle)))
+            .collect();
+        self.resource_focus = node_ids
+            .iter()
+            .map(|id| previous.get(id).cloned())
+            .collect();
+        self.node_ids = node_ids;
         self.topology = topology;
         self.prepared.take();
         self.built.take();
@@ -101,7 +113,8 @@ impl MapState {
             size: Rc::default(),
             adjusted: None,
             drag: None,
-            node_focus: HashMap::new(),
+            resource_focus: Vec::new(),
+            group_focus: HashMap::new(),
             last_focus: None,
             focus_view: Weak::new(),
             zoom_focus: None,
