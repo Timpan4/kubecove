@@ -9,6 +9,13 @@ use gpui_kit::{InputEvent, ScrollDelta, ScrollEvent, point, px};
 /// the same scroll area, so a nested scroll area such as the ownership map
 /// does not take it. The element lands mid-window.
 pub fn reveal(window: &mut gpui_kit::Window, anchor: &str, id: &str, cx: &mut gpui_kit::App) {
+    if anchor == "sidebar-tree" && window.try_find(id.to_owned()).is_none() {
+        assert!(
+            seek(window, cx, anchor, id),
+            "sidebar row did not appear: {id}"
+        );
+        return;
+    }
     let id = gpui_kit::ElementId::Name(id.to_owned().into());
     window.render_frame(cx);
     let target = window.find(id.clone());
