@@ -15,6 +15,7 @@ test("ignores shell observers, timeout, tail and lock waiters mentioning parity"
 });
 
 test("ignores unrelated Bun scripts and script names embedded in arguments", () => {
+	expect(isParityProcess("/usr/bin/bun", ["bun", "observer.ts", "scripts/e2e-parity.ts"])).toBe(false);
 	expect(isParityProcess("/usr/bin/bun", ["bun", "scripts/gpui-frames.ts"])).toBe(false);
 	expect(isParityProcess("/usr/bin/bun", ["bun", "-e", "console.log('scripts/e2e-parity.ts')"])).toBe(false);
 });

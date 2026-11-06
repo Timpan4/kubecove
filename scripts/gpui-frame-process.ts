@@ -5,8 +5,9 @@ import { basename } from "node:path";
 export function isParityProcess(executable: string, argv: string[]): boolean {
 	const name = basename(executable);
 	if (name.startsWith("parity-") && basename(argv[0] ?? "") === name) return true;
-	return name === "bun" && argv.slice(1).some(arg =>
-		arg === "scripts/e2e-parity.ts" || arg.endsWith("/scripts/e2e-parity.ts"));
+	const script = argv[argv[1] === "run" ? 2 : 1];
+	return name === "bun" && script !== undefined &&
+		(script === "scripts/e2e-parity.ts" || script.endsWith("/scripts/e2e-parity.ts"));
 }
 
 async function parityProcesses(): Promise<string[]> {
