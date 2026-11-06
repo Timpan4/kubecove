@@ -220,6 +220,7 @@ pub struct Inspector {
     gitops: gitops_section::GitOpsState,
     gitops_page: gitops_page::GitOpsPage,
     argo_connections: argo_connection::Connections,
+    argo_highlighter: Option<gpui_kit::component::highlighter::SyntaxHighlighter>,
     argo_outcomes: std::collections::HashMap<String, argo_outcomes::Outcome>,
     /// Submissions still in flight when their detail closed. Dropping them
     /// would cancel the submit and lose its outcome.
@@ -353,6 +354,7 @@ impl Inspector {
             gitops: Default::default(),
             gitops_page: gitops_page::GitOpsPage::new(),
             argo_connections: argo_connection::Connections::new(window, cx),
+            argo_highlighter: None,
             argo_outcomes: Default::default(),
             argo_submissions: Vec::new(),
             helm_page: helm_page::HelmPage::new(window, cx),

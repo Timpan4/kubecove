@@ -109,6 +109,7 @@ impl Inspector {
                     return;
                 }
                 let view = result.map(|inspector| {
+                    let _span = crate::frame_profile::scope("argo", "prepare_view");
                     let view = Box::new(ArgoView::new(
                         &inspector,
                         &detail.data.summary,
@@ -119,16 +120,20 @@ impl Inspector {
                 if let Some(state) = detail.argo.as_mut() {
                     state.load = match view {
                         Ok((view, inspector)) => {
+                            let highlights_span = crate::frame_profile::scope("argo", "highlights");
                             state.highlights = view
                                 .changes
                                 .iter()
                                 .map(|change| {
                                     super::argo_highlight::lines(
+                                        &mut this.argo_highlighter,
                                         change.diff.as_deref().unwrap_or_default(),
                                         &gpui_kit::component::Theme::global(cx).highlight_theme,
                                     )
                                 })
                                 .collect();
+                            drop(highlights_span);
+                            let editors_span = crate::frame_profile::scope("argo", "editors");
                             use gpui_kit::{AppContext, component::input::EditorState};
                             state.editors = view
                                 .changes
@@ -149,6 +154,7 @@ impl Inspector {
                                     (desired, live)
                                 })
                                 .collect();
+                            drop(editors_span);
                             state.inspector = Some(inspector);
                             let options: Vec<super::argo_options::HistoryChoice> = state
                                 .inspector

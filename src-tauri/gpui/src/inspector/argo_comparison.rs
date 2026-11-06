@@ -58,7 +58,10 @@ impl Inspector {
         let task = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
-                let Some(state) = this.argo_tab_state() else {
+                let Detail::Ready(detail) = &mut this.detail else {
+                    return;
+                };
+                let Some(state) = detail.argo.as_mut() else {
                     return;
                 };
                 if !Rc::ptr_eq(&current, &state.comparison_request) {
@@ -88,6 +91,7 @@ impl Inspector {
                                 }),
                             );
                             state.highlights[index] = super::super::argo_highlight::lines(
+                                &mut this.argo_highlighter,
                                 change.diff.as_deref().unwrap_or_default(),
                                 &gpui_kit::component::Theme::global(cx).highlight_theme,
                             );

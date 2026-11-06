@@ -5,10 +5,11 @@ use std::ops::Range;
 pub(super) type Highlights = Vec<(Range<usize>, HighlightStyle)>;
 
 pub(super) fn lines(
+    parser: &mut Option<SyntaxHighlighter>,
     lines: &[DiffLine],
     theme: &gpui_kit::component::highlighter::HighlightTheme,
 ) -> Vec<Highlights> {
-    let mut parser = SyntaxHighlighter::new("yaml");
+    let parser = parser.get_or_insert_with(|| SyntaxHighlighter::new("yaml"));
     lines
         .iter()
         .map(|line| {
