@@ -1,4 +1,6 @@
-//! Namespace-owned custom-kind reads, matching the web's expanded namespace query.
+//! Custom-kind discovery for the sidebar: every discovered kind for the Custom Resources
+//! section (the web's `list_resource_kinds` query), and namespace-owned kinds for namespace
+//! branches (the web's expanded namespace query).
 use super::Inspector;
 use gpui_kit::{AnyElement, Context, Task, div, prelude::*, px};
 use kubecove_lib::models::DiscoveredResourceKind;
@@ -8,10 +10,17 @@ use std::{collections::HashMap, rc::Rc};
 pub(super) struct Discovery {
     context: String,
     reads: HashMap<String, Read>,
+    /// Cluster-wide discovered kinds, which list kinds even without objects.
+    cluster: Option<ClusterKinds>,
 }
 
 struct Read {
     request: Rc<()>,
+    task: Option<Task<()>>,
+    result: Option<Result<Vec<DiscoveredResourceKind>, String>>,
+}
+
+struct ClusterKinds {
     task: Option<Task<()>>,
     result: Option<Result<Vec<DiscoveredResourceKind>, String>>,
 }
@@ -21,6 +30,7 @@ impl Inspector {
         let state = &mut self.sidebar_tree.discovery;
         if state.context != self.scope.context {
             state.reads.clear();
+            state.cluster = None;
             state.context = self.scope.context.clone();
         }
         state.reads.retain(|ns, _| {
@@ -29,6 +39,24 @@ impl Inspector {
         if !self.persisted.preferences.show_custom_resources {
             return;
         }
+        if self.sidebar_tree.discovery.cluster.is_none() {
+            let read = self.backend.resource_kinds(self.scope.context.clone());
+            let task = cx.spawn(async move |this, cx| {
+                let result = read.await.map_err(|error| error.message);
+                let _ = this.update(cx, |this, cx| {
+                    if let Some(cluster) = this.sidebar_tree.discovery.cluster.as_mut() {
+                        cluster.result = Some(result);
+                        cluster.task.take();
+                        cx.notify();
+                    }
+                });
+            });
+            self.sidebar_tree.discovery.cluster = Some(ClusterKinds {
+                task: Some(task),
+                result: None,
+            });
+        }
+        let state = &mut self.sidebar_tree.discovery;
         for ns in &self.namespaces {
             if !self.sidebar_tree.open.contains(&ns.name)
                 || state.reads.contains_key(&ns.name)
@@ -70,6 +98,20 @@ impl Inspector {
                     result: None,
                 },
             );
+        }
+    }
+
+    /// Cluster-wide kinds for the Custom Resources section; empty until discovery succeeds.
+    pub(super) fn cluster_kinds(&self) -> &[DiscoveredResourceKind] {
+        match self
+            .sidebar_tree
+            .discovery
+            .cluster
+            .as_ref()
+            .and_then(|cluster| cluster.result.as_ref())
+        {
+            Some(Ok(kinds)) => kinds,
+            _ => &[],
         }
     }
 

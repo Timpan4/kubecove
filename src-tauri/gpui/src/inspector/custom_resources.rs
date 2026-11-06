@@ -63,8 +63,7 @@ impl Inspector {
             return Vec::new();
         }
         let mut groups = self
-            .live
-            .kinds
+            .cluster_kinds()
             .iter()
             .filter(|kind| self.custom_matches(kind, cx))
             .map(|kind| kind.group.clone())
@@ -134,8 +133,7 @@ impl Inspector {
     }
 
     fn kind_rows(&self, group: &str, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        self.live
-            .kinds
+        self.cluster_kinds()
             .iter()
             .filter(|kind| kind.group == group)
             .filter(|kind| self.custom_matches(kind, cx))
