@@ -42,7 +42,13 @@ pub(crate) struct PreparedRows {
     kinds: Vec<(String, usize)>,
     by_kind: Vec<Vec<usize>>,
     variants: Vec<usize>,
-    lanes: usize,
+    lanes: Vec<Lane>,
+    by_name: Vec<usize>,
+}
+
+struct Lane {
+    group: usize,
+    kind: usize,
 }
 
 impl std::ops::Deref for PreparedRows {
@@ -85,7 +91,8 @@ impl PreparedRows {
         let mut group_ids = HashMap::new();
         let mut kinds: Vec<(String, usize)> = Vec::new();
         let mut by_kind: Vec<Vec<usize>> = Vec::new();
-        let mut lanes = HashMap::new();
+        let mut lane_ids = HashMap::new();
+        let mut lanes = Vec::new();
         let mut variants = Vec::new();
         let mut variant_ids = HashMap::new();
         let keys = rows
@@ -118,7 +125,10 @@ impl PreparedRows {
                         id
                     });
                 let next_lane = lanes.len();
-                let lane = *lanes.entry((group, kind)).or_insert(next_lane);
+                let lane = *lane_ids.entry((group, kind)).or_insert_with(|| {
+                    lanes.push(Lane { group, kind });
+                    next_lane
+                });
                 RowKey {
                     search: crate::resource_search::haystack(row),
                     owner: super::gitops_owner_filter(row),
@@ -140,7 +150,8 @@ impl PreparedRows {
             kinds,
             by_kind,
             variants,
-            lanes: lanes.len(),
+            lanes,
+            by_name: sorted,
         }
     }
 }
@@ -151,8 +162,6 @@ struct OrderKey {
     group_first: usize,
     lane_rank: usize,
     lane_first: usize,
-    ordinary: bool,
-    name_rank: usize,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
@@ -175,7 +184,9 @@ pub struct Visible {
     source: Rc<PreparedRows>,
     indices: Vec<usize>,
     previous: Vec<usize>,
-    order: Vec<(OrderKey, usize)>,
+    order: Vec<usize>,
+    ordered_lanes: Vec<(OrderKey, usize)>,
+    lane_rows: Vec<Vec<usize>>,
     preferred: Vec<bool>,
     lane_order: Vec<usize>,
     allowed: Vec<bool>,
@@ -222,9 +233,7 @@ impl Visible {
         self.selected[index]
     }
     pub(super) fn ordered(&self) -> impl Iterator<Item = &ResourceSummary> {
-        self.order
-            .iter()
-            .map(|&(_, index)| &self.source.rows[index])
+        self.order.iter().map(|&index| &self.source.rows[index])
     }
 
     #[cfg(test)]
@@ -302,7 +311,7 @@ impl Visible {
             .resize(self.source.groups.len(), First::UNSEEN);
         self.group_first.fill(First::UNSEEN);
         self.lane_first.resize(
-            self.source.lanes.max(self.source.kinds.len()),
+            self.source.lanes.len().max(self.source.kinds.len()),
             First::UNSEEN,
         );
         self.lane_first.fill(First::UNSEEN);
@@ -320,16 +329,23 @@ impl Visible {
             self.group_first[group] = self.group_first[group].min(first);
             self.lane_first[lane] = self.lane_first[lane].min(first);
         }
-        self.order.clear();
-        self.order.extend(self.indices.iter().map(|&index| {
-            let preferred = self.preferred[index];
-            let key = &self.source.keys[index];
-            let (group, lane) = if self.grouped_by_gitops {
-                (key.group, key.lane)
+        self.ordered_lanes.clear();
+        let lane_count = if self.grouped_by_gitops {
+            self.source.lanes.len()
+        } else {
+            self.source.kinds.len()
+        };
+        for lane in 0..lane_count {
+            if self.lane_first[lane] == First::UNSEEN {
+                continue;
+            }
+            let (group, kind) = if self.grouped_by_gitops {
+                let lane = &self.source.lanes[lane];
+                (lane.group, lane.kind)
             } else {
-                (0, key.kind)
+                (0, lane)
             };
-            (
+            self.ordered_lanes.push((
                 OrderKey {
                     group_rank: if !self.grouped_by_gitops || !self.group_first[group].ordinary {
                         0
@@ -340,16 +356,44 @@ impl Visible {
                     lane_rank: if self.grouped_by_gitops && !self.lane_first[lane].ordinary {
                         0
                     } else {
-                        self.lane_order[key.kind] + 1
+                        self.lane_order[kind] + 1
                     },
                     lane_first: self.lane_first[lane].name_rank,
-                    ordinary: self.grouped_by_gitops && !preferred,
-                    name_rank: key.name_rank,
                 },
-                index,
-            )
-        }));
-        self.order.sort_unstable_by_key(|&(key, _)| key);
+                lane,
+            ));
+        }
+        self.ordered_lanes.sort_unstable_by_key(|&(key, _)| key);
+        self.lane_rows.resize_with(lane_count, Vec::new);
+        for rows in &mut self.lane_rows {
+            rows.clear();
+        }
+        // Rows within a lane share its sort prefix. Name order is immutable;
+        // only the preferred partition and the order of lanes can change.
+        for &index in &self.source.by_name {
+            if self.selected[index] {
+                let key = &self.source.keys[index];
+                let lane = if self.grouped_by_gitops {
+                    key.lane
+                } else {
+                    key.kind
+                };
+                self.lane_rows[lane].push(index);
+            }
+        }
+        self.order.clear();
+        let preferred = &self.preferred;
+        for &(_, lane) in &self.ordered_lanes {
+            let rows = &self.lane_rows[lane];
+            if self.grouped_by_gitops {
+                self.order
+                    .extend(rows.iter().copied().filter(|&index| preferred[index]));
+                self.order
+                    .extend(rows.iter().copied().filter(|&index| !preferred[index]));
+            } else {
+                self.order.extend_from_slice(rows);
+            }
+        }
         drop(order_span);
         self.health = HealthSummary::of(self.iter());
     }
