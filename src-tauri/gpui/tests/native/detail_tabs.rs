@@ -289,7 +289,11 @@ fn a_refused_yaml_dry_run_shows_its_error_and_blocks_apply(cx: &mut TestAppConte
     step(cx, handle, |window, cx| edit_draft(window, cx, DRAFT));
     step(cx, handle, |window, cx| window.click("yaml-dry-run", cx));
     step(cx, handle, |window, cx| {
-        assert!(window.find_by_label("Dry run failed").visible());
+        assert!(
+            window
+                .find_by_label("This field cannot be changed in place")
+                .visible()
+        );
         window.click("yaml-apply", cx);
     });
     assert_eq!(backend.detail.applied.load(Ordering::SeqCst), 0);

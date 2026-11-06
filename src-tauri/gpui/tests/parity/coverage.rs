@@ -102,7 +102,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
         "coverageText" => {
             let text = string(step, "text");
             if text == "Helm details unavailable" {
-                assert!(seek(window, cx, "helm-list", "surface-error"));
+                assert!(seek(window, cx, "helm-list", text));
             }
             if text == "Loading Helm release details..." {
                 assert!(seek(
