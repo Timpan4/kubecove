@@ -61,6 +61,21 @@
 			]
 		},
 		{
+			"id": "resources.graph-focus-pans-node-into-view",
+			"title": "Shift+Tab from the zoom controls reaches an offscreen node, and its keyboard focus pans it into view",
+			"steps": [
+				{ "action": "openResources" },
+				{ "action": "selectNamespace", "namespace": "payments" },
+				{ "action": "clickMapControl", "control": "Zoom In" },
+				{ "action": "panMap", "dx": 600, "dy": 0 },
+				{ "action": "clickMapControl", "control": "Zoom In" },
+				{ "action": "expectMapNodeInView", "id": "mock-dev:v1:Pod:payments:payments-api-7d9c9b7f8d-x4m8v", "inView": false },
+				{ "action": "mapKey", "key": "Shift+Tab" },
+				{ "action": "expectMapFocus", "id": "mock-dev:v1:Pod:payments:payments-api-7d9c9b7f8d-x4m8v" },
+				{ "action": "expectMapNodeInView", "id": "mock-dev:v1:Pod:payments:payments-api-7d9c9b7f8d-x4m8v", "inView": true }
+			]
+		},
+		{
 			"id": "resources.detail-size-per-layout",
 			"title": "The detail pane size resets when the page moves between GitOps and other pages",
 			"steps": [
