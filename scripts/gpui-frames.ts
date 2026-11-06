@@ -8,7 +8,8 @@
 import { createHash } from "node:crypto";
 import { existsSync, realpathSync } from "node:fs";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { cpus, getPriority, loadavg } from "node:os";
+import { cpus, loadavg } from "node:os";
+import { runFrameCommand } from "./gpui-frame-process";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { VIEWS } from "../e2e/parity/visual/views";
 import {
@@ -96,67 +97,8 @@ const out = resolve(
 );
 await mkdir(out, { recursive: true });
 
-async function run(
-	command: string[],
-	env: Record<string, string | undefined>,
-	log: string,
-) {
-	const child = Bun.spawn(command, {
-		env,
-		detached: process.platform !== "win32",
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-    let priority: number | null = null;
-    try { priority = getPriority(child.pid); } catch { /* Optional process metadata. */ }
-	const interrupt = () => {
-		if (process.platform === "win32") child.kill("SIGTERM");
-		else {
-			try {
-				process.kill(-child.pid, "SIGTERM");
-			} catch (error) {
-				if (
-					!(error instanceof Error && "code" in error && error.code === "ESRCH")
-				)
-					throw error;
-			}
-		}
-	};
-	process.once("SIGINT", interrupt);
-	process.once("SIGTERM", interrupt);
-	let code: number;
-	let stdout: string;
-	let stderr: string;
-	try {
-		const collect = async (
-			stream: ReadableStream<Uint8Array>,
-			echo: boolean,
-		) => {
-			const decoder = new TextDecoder();
-			let text = "";
-			for await (const chunk of stream) {
-				const part = decoder.decode(chunk, { stream: true });
-				text += part;
-				if (echo) process.stdout.write(part);
-			}
-			return text + decoder.decode();
-		};
-		[code, stdout, stderr] = await Promise.all([
-			child.exited,
-			collect(child.stdout, true),
-			collect(child.stderr, false),
-		]);
-	} finally {
-		process.removeListener("SIGINT", interrupt);
-		process.removeListener("SIGTERM", interrupt);
-	}
-	await writeFile(join(out, log), `${stdout}\n${stderr}`);
-	if (code !== 0)
-		throw new Error(
-			`${command.join(" ")} exited ${code}; see ${join(out, log)}`,
-		);
-	return { stderr, priority };
-}
+const run = (command: string[], env: Record<string, string | undefined>, log: string, guardParity = false) =>
+	runFrameCommand(command, env, join(out, log), guardParity);
 
 const fixture = join(out, "fixture.json");
 if (fixtureSource) {
@@ -260,6 +202,7 @@ for (let index = 0; index < runs; index += 1) {
 			KUBECOVE_FRAMES_CASES: cases,
 		},
 		`run-${index + 1}.log`,
+		true,
 	);
 	loads.push({ before, after: loadavg(), priority, uptime });
 	const measured: Run = JSON.parse(await readFile(report, "utf8"));
