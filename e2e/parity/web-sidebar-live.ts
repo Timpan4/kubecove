@@ -1,20 +1,53 @@
-import type { Page } from "playwright-core";
+import type { Locator, Page } from "playwright-core";
 import type { Step } from "./contract";
+
+/** The sidebar's scroll area, which wraps the Kubernetes resource tree. */
+function sidebarScrollArea(page: Page): Locator {
+	return page.getByRole("navigation", { name: "Kubernetes resource tree", exact: true })
+		.locator("xpath=ancestor::div[@data-slot='scroll-area'][1]");
+}
+
+/** The first row whose label matches each path segment, at that depth. */
+function sidebarRow(page: Page, path: string[]): Locator {
+	let list = page.getByRole("tree");
+	for (const [index, label] of path.entries()) {
+		const row = list.getByRole("treeitem").and(page.locator(`[data-depth="${index}"]`)).filter({ has: page.getByText(label, { exact: true }) }).first();
+		if (index === path.length - 1) return row;
+		list = row.locator("..").getByRole("group").first();
+	}
+	throw new Error("Empty sidebar path");
+}
 
 export async function sidebarLiveAction(page: Page, step: Step) {
     switch (step.action) {
         case "sidebarToggle": case "sidebarSelect": case "expectSidebarRow": {
-            let list = page.getByRole("tree");
-            for (const [index, label] of step.path.entries()) {
-                const row = list.getByRole("treeitem").and(page.locator(`[data-depth="${index}"]`)).filter({ has: page.getByText(label, { exact: true }) }).first();
-                if (index < step.path.length - 1) { list = row.locator("..").getByRole("group").first(); continue; }
-                if (step.action === "sidebarToggle") await row.getByRole("button").click();
-                else if (step.action === "sidebarSelect") await row.click();
-                else if (step.action === "expectSidebarRow") {
-                    await row.waitFor({ state: step.visible ? "visible" : "hidden" });
-                    if (step.visible && (await row.getAttribute("aria-selected") === "true") !== step.selected) throw new Error(`Wrong sidebar selection: ${step.path.join("/")}`);
-                }
+            const row = sidebarRow(page, step.path);
+            if (step.action === "sidebarToggle") await row.getByRole("button").click();
+            else if (step.action === "sidebarSelect") await row.click();
+            else if (step.action === "expectSidebarRow") {
+                await row.waitFor({ state: step.visible ? "visible" : "hidden" });
+                if (step.visible && (await row.getAttribute("aria-selected") === "true") !== step.selected) throw new Error(`Wrong sidebar selection: ${step.path.join("/")}`);
             }
+            break;
+        }
+        case "scrollSidebar": await sidebarScrollArea(page).evaluate((element, to) => { element.scrollTop = to === "bottom" ? element.scrollHeight : 0; }, step.to); break;
+        case "expectSidebarReveal": {
+            const row = sidebarRow(page, step.path);
+            if (step.visible || step.highlighted) await row.waitFor({ state: "attached" });
+            const rowHandle = (await row.count()) > 0 ? await row.elementHandle() : null;
+            const scrollHandle = await sidebarScrollArea(page).elementHandle();
+            // The reveal scrolls on the frame after the row paints, so poll the geometry and the label marker.
+            const state = { row: rowHandle, scroll: scrollHandle, visible: step.visible, highlighted: step.highlighted };
+            await page.waitForFunction((check: { row: Element | null; scroll: Element | null; visible: boolean; highlighted: boolean }) => {
+                if (!check.scroll) return false;
+                const viewport = check.scroll.getBoundingClientRect();
+                const rowVisible = check.row !== null && (() => {
+                    const box = check.row.getBoundingClientRect();
+                    return box.top >= viewport.top && box.bottom <= viewport.bottom;
+                })();
+                const marker = check.row?.querySelector("[aria-description]")?.getAttribute("aria-description");
+                return rowVisible === check.visible && (marker === "Contains the selected item") === check.highlighted;
+            }, state);
             break;
         }
         case "collapseSidebar": await page.getByRole("button", { name: "Collapse all sidebar sections", exact: true }).click(); break;

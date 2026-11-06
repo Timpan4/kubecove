@@ -20,6 +20,8 @@ export type Step =
     | { action: "expectSidebarRow"; path: string[]; visible: boolean; selected: boolean }
     | { action: "collapseSidebar" }
     | { action: "expectSidebarBranch"; page: string; expanded: boolean }
+    | { action: "scrollSidebar"; to: "top" | "bottom" }
+    | { action: "expectSidebarReveal"; path: string[]; visible: boolean; highlighted: boolean }
     | { action: "expectOverviewShortcuts"; labels: string[] }
     | { action: "overviewShortcut"; label: string }
     | { action: "expectOverviewScope"; labels: string[] }

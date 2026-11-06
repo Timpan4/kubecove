@@ -107,6 +107,7 @@ mod settings_page;
 mod settings_sections;
 mod sidebar;
 mod sidebar_discovery;
+mod sidebar_reveal;
 mod sidebar_tree;
 mod surface;
 mod table;

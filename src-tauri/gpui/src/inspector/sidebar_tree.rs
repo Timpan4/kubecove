@@ -7,6 +7,11 @@ use gpui_kit::{
 };
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
+
+/// The label a collapsed branch shows when the selection is inside it. Also
+/// the accessible description the web sets on the same label.
+pub(super) const CONTAINS_SELECTION: &str = "Contains the selected item";
 
 pub(super) const GROUPS: &[(&str, &[&str])] = &[
     (
@@ -51,6 +56,9 @@ pub(super) struct TreeState {
     /// Shared by the desktop sidebar and the drawer, which never render together,
     /// so the tree keeps its scroll position when the drawer closes.
     pub scroll: ScrollHandle,
+    /// A selection made outside the tree that still has to scroll into view.
+    /// Shared with the paint callback that performs the scroll.
+    pub(super) reveal: Rc<RefCell<Option<String>>>,
     /// One focus handle per row path, so keyboard focus survives re-renders.
     focus: RefCell<HashMap<String, FocusHandle>>,
 }
@@ -114,6 +122,7 @@ impl Inspector {
     /// Activates a row the way a click does. Enter and Space select without
     /// toggling, as the web's `selectNode` does.
     fn activate_row(&mut self, row: RowTarget, window: &mut Window, cx: &mut Context<Self>) {
+        self.sidebar_tree.cancel_reveal();
         if self.can_leave(cx) {
             self.navigation_open = false;
         }
@@ -309,6 +318,11 @@ impl Inspector {
         } else {
             format!("tree:{path}")
         };
+        let label_id = SharedString::from(format!("label:{id}"));
+        let reveal = self
+            .sidebar_tree
+            .reveals(&path, expanded)
+            .then(|| self.sidebar_tree.reveal_probe());
         let focus = self.sidebar_tree.focus_handle(&path, cx);
         let chevron = path.clone();
         let key_toggle = path.clone();
@@ -383,6 +397,8 @@ impl Inspector {
             ))
             .child(
                 ui::xs(label.clone())
+                    .id(label_id)
+                    .test_support()
                     .line_height(px(12.))
                     .flex_1()
                     .min_w_0()
@@ -390,8 +406,13 @@ impl Inspector {
                     .when(depth == 0 && !is_namespace, |text| {
                         text.font_weight(gpui_kit::FontWeight::MEDIUM)
                     })
-                    .when(hides_selection, |text| text.text_color(Tokens::primary())),
+                    .when(hides_selection, |text| {
+                        text.text_color(Tokens::primary())
+                            .role(gpui_kit::Role::Label)
+                            .aria_description(CONTAINS_SELECTION)
+                    }),
             )
+            .children(reveal)
             .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
                 this.activate_row(click_row.clone(), window, cx);
             }))

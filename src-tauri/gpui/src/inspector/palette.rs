@@ -214,6 +214,9 @@ impl Inspector {
                     self.select_namespace(None, window, cx);
                 }
                 self.palette.kind = kind;
+                if let Some(path) = kind.and_then(super::sidebar_reveal::tree_path) {
+                    self.sidebar_tree.select_external(path);
+                }
                 self.search
                     .update(cx, |input, cx| input.set_value("", window, cx));
                 self.filter(cx);

@@ -1,0 +1,36 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "sidebar-reveal.palette-kind-scrolls-into-view",
+      "title": "A kind chosen outside the sidebar highlights its collapsed branch and scrolls it into view",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "sidebarToggle", "path": ["default"] },
+        { "action": "sidebarToggle", "path": ["argocd"] },
+        { "action": "sidebarToggle", "path": ["payments"] },
+        { "action": "scrollSidebar", "to": "bottom" },
+        { "action": "expectSidebarReveal", "path": ["Workloads"], "visible": false, "highlighted": false },
+        { "action": "openPalette", "via": "button" },
+        { "action": "searchPalette", "value": "Workloads › Deployment" },
+        { "action": "choosePaletteEntry", "label": "Workloads › Deployment" },
+        { "action": "expectSidebarReveal", "path": ["Workloads"], "visible": true, "highlighted": true }
+      ]
+    },
+    {
+      "id": "sidebar-reveal.expanded-kind-selected",
+      "title": "A kind chosen outside the sidebar selects its open row without moving the tree",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "sidebarToggle", "path": ["Workloads"] },
+        { "action": "openPalette", "via": "button" },
+        { "action": "searchPalette", "value": "Workloads › Pod" },
+        { "action": "choosePaletteEntry", "label": "Workloads › Pod" },
+        { "action": "expectSidebarRow", "path": ["Workloads", "Pod"], "visible": true, "selected": true },
+        { "action": "expectSidebarReveal", "path": ["Workloads", "Pod"], "visible": true, "highlighted": false },
+        { "action": "expectSidebarReveal", "path": ["Workloads"], "visible": true, "highlighted": false }
+      ]
+    }
+  ]
+}

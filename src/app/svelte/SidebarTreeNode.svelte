@@ -168,6 +168,7 @@
 		/>
 		<span
 			class={cnfast("min-w-0 flex-1 truncate leading-none", hidesSelection && "text-primary")}
+			aria-description={hidesSelection ? "Contains the selected item" : undefined}
 			>{node.label}</span
 		>
 	</div>

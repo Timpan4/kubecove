@@ -40,7 +40,7 @@ export const ACTIONS = [
     "configureArgoMock", "argoControl", "focusArgoResource", "expectNoSavedArgoProfile", "copyArgoValue", "configureArgoInventory", "expandArgoDiff", "reconnectArgoProfile",
     "failWorkspaceContext", "expectWorkspaceReadWarning",
     "editSavedWorkspace", "expectNoSavedWorkspace", "saveWorkspace", "cancelWorkspaceEdit", "toggleWorkspaceContext", "expectOverviewHealth", "expectDetailContext",
-    "sidebarToggle", "sidebarSelect", "expectSidebarRow", "collapseSidebar", "expectSidebarBranch", "refreshPage",
+    "sidebarToggle", "sidebarSelect", "expectSidebarRow", "collapseSidebar", "expectSidebarBranch", "scrollSidebar", "expectSidebarReveal", "refreshPage",
     "replayPageReads", "focusStalePage", "expectPageText",
     "toggleDetailDisclosure", "expectNoPageText",
     "searchCustomKinds", "searchKindPicker", "expectCustomGroup", "toggleKind", "openKindPicker", "closeKindPicker", "selectAllKinds", "expectKindChecked",
@@ -121,6 +121,8 @@ function step(value: unknown): Step {
         case "expectSidebarRow": return { action: item.action, path: strings(item.path, false), visible: boolean(item.visible), selected: boolean(item.selected) };
         case "collapseSidebar": return { action: item.action };
         case "expectSidebarBranch": return { action: item.action, page: string(item.page), expanded: boolean(item.expanded) };
+        case "scrollSidebar": return { action: item.action, to: oneOf(["top", "bottom"], item.to, "a sidebar scroll target") };
+        case "expectSidebarReveal": return { action: item.action, path: strings(item.path, false), visible: boolean(item.visible), highlighted: boolean(item.highlighted) };
         case "expectEmptyLauncher": return { action: item.action };
         case "expectOverviewShortcuts": return { action: item.action, labels: strings(item.labels, true) };
         case "overviewShortcut": return { action: item.action, label: string(item.label) };

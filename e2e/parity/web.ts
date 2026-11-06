@@ -58,7 +58,7 @@ export async function action(page: Page, step: Step) {
             await workspaceAction(page, step); break;
         case "editSavedWorkspace": case "expectNoSavedWorkspace": case "saveWorkspace": case "cancelWorkspaceEdit": case "toggleWorkspaceContext": case "expectOverviewHealth": case "expectDetailContext":
             await workspaceAction(page, step); break;
-        case "sidebarToggle": case "sidebarSelect": case "expectSidebarRow": case "collapseSidebar": case "expectSidebarBranch": case "refreshPage": await sidebarLiveAction(page, step); break;
+        case "sidebarToggle": case "sidebarSelect": case "expectSidebarRow": case "collapseSidebar": case "expectSidebarBranch": case "scrollSidebar": case "expectSidebarReveal": case "refreshPage": await sidebarLiveAction(page, step); break;
         case "openNamespaceList": case "expectNamespaceRow": case "resizeViewport": case "openNavigationDrawer": case "expectNavigationDrawer": case "sidebarKey": await navigationAction(page, step); break;
         case "replayPageReads": case "focusStalePage": case "expectPageText": case "searchCustomKinds": case "searchKindPicker": case "expectCustomGroup": case "toggleKind": case "openKindPicker": case "closeKindPicker": case "selectAllKinds": case "expectKindChecked": await sidebarLiveAction(page, step); break;
         case "openNamespacePicker": case "closeNamespacePicker": case "searchNamespacePicker": case "selectAllNamespaces": case "toggleNamespace": case "expectNamespaceChecked": case "expectNamespaceTrigger": case "selectHealthFilter": case "expectHealthFilter": case "chooseGitOpsOwner": case "clearResourceFilters": case "setHistoricalReplicaSets": await resourceFilterAction(page, step); break;
