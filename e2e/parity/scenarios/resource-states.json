@@ -31,11 +31,10 @@
     },
     {
       "id": "resources.loading-state",
-      "title": "A held scope read shows the loading state until it is released",
+      "title": "A held initial scope read shows the loading state until it is released",
       "steps": [
-        { "action": "openResources" },
         { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_scope", "context": "mock-dev" } },
-        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "openResources" },
         { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_scope", "context": "mock-dev" } },
         { "action": "expectPageText", "text": "Loading resources" },
         { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_scope", "context": "mock-dev" } },
