@@ -95,6 +95,16 @@
         { "action": "deleteSavedWorkspace", "name": "Parity mock workspace" },
         { "action": "expectPageText", "text": "No saved workspaces yet" }
       ]
+    },
+    {
+      "id": "rbac.deleted-open-hides-controls",
+      "title": "After the open saved workspace is deleted, no RBAC navigation remains",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "deleteSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectSidebarRow", "path": ["RBAC"], "visible": false, "selected": false },
+        { "action": "expectPageText", "text": "No saved workspaces yet" }
+      ]
     }
   ]
 }

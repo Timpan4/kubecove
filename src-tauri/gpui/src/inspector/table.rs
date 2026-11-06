@@ -60,7 +60,10 @@ impl Inspector {
         if rows.iter().any(|row| gitops_owner(row).is_some()) {
             columns.push(Column::Owner);
         }
-        columns.extend([Column::Age, Column::Pin]);
+        columns.push(Column::Age);
+        if self.workspace_controls_allowed() {
+            columns.push(Column::Pin);
+        }
         columns
     }
 

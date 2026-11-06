@@ -177,6 +177,9 @@ impl Inspector {
         nodes
             .iter()
             .flat_map(|node| {
+                if node.target == Page::Rbac && !self.workspace_controls_allowed() {
+                    return vec![];
+                }
                 if node.expandable && node.label != "Custom Resources" {
                     return self.builtin_branch(node.label, None, cx);
                 }

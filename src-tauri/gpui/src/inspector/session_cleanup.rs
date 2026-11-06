@@ -35,9 +35,10 @@ fn stopped_notice(result: &LiveSessionCleanupResult) -> Option<String> {
 }
 
 impl Inspector {
-    /// Stops every live session after the open workspace is deleted. The read of the kubeconfig
-    /// source runs first, so the stop uses the same source as the sessions it cleans.
-    pub(super) fn stop_sessions_after_workspace_delete(&mut self, cx: &mut Context<Self>) {
+    /// Stops every live session when the open workspace clears: after its deletion, or when the
+    /// launcher opens over it. The read of the kubeconfig source runs first, so the stop uses the
+    /// same source as the sessions it cleans.
+    pub(super) fn stop_sessions_outside_workspace(&mut self, cx: &mut Context<Self>) {
         if self
             .persisted
             .preferences

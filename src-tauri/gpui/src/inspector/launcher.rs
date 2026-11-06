@@ -156,6 +156,11 @@ impl Inspector {
             self.close_palette(window, cx);
         }
         self.link_active_workspace();
+        // The web clears the selected workspace when the launcher opens, and that stops sessions
+        // outside it. A launcher opened with no workspace open has nothing to stop.
+        if self.launcher.active.is_some() {
+            self.stop_sessions_outside_workspace(cx);
+        }
         let state = &mut self.launcher;
         state.open = true;
         state.editing = None;
@@ -324,9 +329,15 @@ impl Inspector {
         self.navigation.forget(id);
         self.save_preferences(cx);
         if deleted_open {
-            self.stop_sessions_after_workspace_delete(cx);
+            self.stop_sessions_outside_workspace(cx);
         }
         cx.notify();
+    }
+
+    /// False after the open workspace is deleted. The web renders no shell then, so it has no RBAC
+    /// or Pin control. Native hides both until a workspace opens or is created.
+    pub(super) fn workspace_controls_allowed(&self) -> bool {
+        !self.launcher.deleted_open
     }
 
     /// The launcher and command palette, drawn over the workspace.

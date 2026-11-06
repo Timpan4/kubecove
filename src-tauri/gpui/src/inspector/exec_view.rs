@@ -212,9 +212,11 @@ impl Inspector {
                                 .id("exec-stop")
                                 .test_support()
                                 .aria_label("Stop session")
-                                .on_click(
-                                    cx.listener(move |this, _, _, cx| this.stop_exec_tab(key, cx)),
-                                )
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    // Stopping keeps the terminal's selection copyable from the keyboard.
+                                    window.focus(&this.exec.focus, cx);
+                                    this.stop_exec_tab(key, cx)
+                                }))
                         } else {
                             ui::ghost_icon("play", 28., 14.)
                                 .id("exec-restart")

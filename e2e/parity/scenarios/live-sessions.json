@@ -189,6 +189,47 @@
         { "action": "openPage", "page": "Port Forwards" },
         { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "stopped", "count": 0 }
       ]
+    },
+    {
+      "id": "live-sessions.launcher-open-stops-forwards",
+      "title": "Opening the launcher over a workspace stops its forwards and shows the cleanup notice when it reopens",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Forward" },
+        { "action": "configureForward", "remote": "9090", "local": "19090" },
+        { "action": "forwardControl", "operation": "start" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "listening", "count": 1 },
+        { "action": "closeDetail" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectPageText", "text": "Stopped 3 port forwards and 1 exec session outside this workspace." },
+        { "action": "openPage", "page": "Port Forwards" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "stopped", "count": 0 }
+      ]
+    },
+    {
+      "id": "live-sessions.launcher-open-keeps-when-enabled",
+      "title": "With keep live sessions on, opening the launcher leaves forwards running",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Live sessions" },
+        { "action": "toggleSetting", "setting": "Keep live sessions across workspace switches" },
+        { "action": "expectSetting", "setting": "Keep live sessions across workspace switches", "checked": true },
+        { "action": "closeSettings" },
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Forward" },
+        { "action": "configureForward", "remote": "9090", "local": "19090" },
+        { "action": "forwardControl", "operation": "start" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "listening", "count": 1 },
+        { "action": "closeDetail" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectNoPageText", "text": "outside this workspace." },
+        { "action": "openPage", "page": "Port Forwards" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "listening", "count": 1 }
+      ]
     }
   ]
 }
