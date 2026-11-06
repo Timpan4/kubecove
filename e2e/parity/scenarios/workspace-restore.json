@@ -1,0 +1,51 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "workspace-restore.health-and-owner",
+      "title": "Reopening a workspace restores its health filter and GitOps owner, and a new workspace starts unfiltered",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "selectHealthFilter", "label": "Needs attention" },
+        { "action": "chooseGitOpsOwner", "owner": "Owned by Argo CD: shop (partial evidence)" },
+        { "action": "expectHealthFilter", "label": "Needs attention", "pressed": true },
+        { "action": "expectResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "opensearch", "name": "opensearch-dashboards" },
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Restore check" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Restore check", "context": "mock-dev" },
+        { "action": "openResources" },
+        { "action": "expectHealthFilter", "label": "Total", "pressed": true },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "opensearch", "name": "opensearch-dashboards" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectHealthFilter", "label": "Needs attention", "pressed": true },
+        { "action": "expectResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "opensearch", "name": "opensearch-dashboards" }
+      ]
+    },
+    {
+      "id": "workspace-restore.sidebar-kind-node",
+      "title": "Reopening a workspace restores the selected sidebar kind but not its health filter, as the web keeps kind nodes unfiltered",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "sidebarToggle", "path": ["Workloads"] },
+        { "action": "sidebarSelect", "path": ["Workloads", "Pod"] },
+        { "action": "expectSidebarRow", "path": ["Workloads", "Pod"], "visible": true, "selected": true },
+        { "action": "selectHealthFilter", "label": "Needs attention" },
+        { "action": "expectHealthFilter", "label": "Needs attention", "pressed": true },
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Restore check" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Restore check", "context": "mock-dev" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectSidebarRow", "path": ["Workloads", "Pod"], "visible": true, "selected": true },
+        { "action": "expectHealthFilter", "label": "Total", "pressed": true },
+        { "action": "expectResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-x4m8v" }
+      ]
+    }
+  ]
+}

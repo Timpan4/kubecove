@@ -1,13 +1,16 @@
 //! Session-only navigation memory for open workspaces. Leaving a workspace keeps
-//! its page, search, kind and namespace filters and the open resource detail
-//! with its tab, and returning restores them. Nothing here reaches preferences
+//! its page, search, sidebar node, kind, namespace, health and GitOps owner
+//! filters and the open resource detail with its tab, and returning restores
+//! them. The health and owner filters stay at their defaults when the sidebar
+//! selected a single kind, as the web does. Nothing here reaches preferences
 //! or disk, so an app restart starts from the default view.
 
 use super::detail::{Detail, DetailTab};
+use super::resource_filters::HealthFilter;
 use super::{Inspector, Load, Page};
 use crate::backend::Scope;
 use gpui_kit::{Context, Window};
-use kubecove_lib::models::ResourceSummary;
+use kubecove_lib::models::{DiscoveredResourceKind, ResourceSummary};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Clone)]
@@ -17,6 +20,17 @@ struct Snapshot {
     search: String,
     namespace: Option<String>,
     kinds: Option<HashSet<String>>,
+    /// Whether the sidebar selected one kind. The web keeps the health and
+    /// GitOps filters out of such a restore (`fixedResourceKindScope`).
+    kind_node: bool,
+    health: HealthFilter,
+    gitops_owner: Option<String>,
+    /// The sidebar row path, as `WorkspaceNavigationState.selectedNode` on the web.
+    sidebar_node: Option<String>,
+    /// The custom kind a namespace's Custom Resources row selected, and whether
+    /// the kind is locked to that row.
+    custom_kind: Option<DiscoveredResourceKind>,
+    custom_kind_locked: bool,
     detail: Option<(ResourceSummary, DetailTab)>,
 }
 
@@ -41,6 +55,14 @@ fn same_resource(row: &ResourceSummary, target: &ResourceSummary) -> bool {
 }
 
 impl Inspector {
+    /// Whether the sidebar row selects one kind: a built-in or namespace kind
+    /// row sets `kind_selection.chosen`, and a custom kind row locks `live`.
+    fn sidebar_kind_node(&self) -> bool {
+        matches!(self.page, Page::Resources | Page::ClusterOverview)
+            && self.sidebar_tree.selected.is_some()
+            && (self.live.kind_locked || self.kind_selection.chosen.is_some())
+    }
+
     /// Records the active workspace before another workspace replaces it.
     pub(super) fn remember_workspace(&mut self, cx: &mut Context<Self>) {
         let Some(id) = self.launcher.active else {
@@ -60,6 +82,12 @@ impl Inspector {
             search: self.search.read(cx).value().to_string(),
             namespace: self.scope.namespace.clone(),
             kinds: self.kind_selection.chosen.clone(),
+            kind_node: self.sidebar_kind_node(),
+            health: self.filters.health,
+            gitops_owner: self.filters.gitops_owner.clone(),
+            sidebar_node: self.sidebar_tree.selected.clone(),
+            custom_kind: self.live.selected.clone(),
+            custom_kind_locked: self.live.kind_locked,
             detail,
         };
         self.navigation.workspaces.insert(id, snapshot);
@@ -86,6 +114,12 @@ impl Inspector {
             namespace: saved.as_ref().and_then(|saved| saved.namespace.clone()),
         };
         self.kind_selection.chosen = saved.as_ref().and_then(|saved| saved.kinds.clone());
+        let filters = saved.as_ref().filter(|saved| !saved.kind_node);
+        self.filters.health = filters.map_or(HealthFilter::All, |saved| saved.health);
+        self.filters.gitops_owner = filters.and_then(|saved| saved.gitops_owner.clone());
+        self.sidebar_tree.selected = saved.as_ref().and_then(|saved| saved.sidebar_node.clone());
+        self.live.selected = saved.as_ref().and_then(|saved| saved.custom_kind.clone());
+        self.live.kind_locked = saved.as_ref().is_some_and(|saved| saved.custom_kind_locked);
         let search = saved
             .as_ref()
             .map(|saved| saved.search.clone())
