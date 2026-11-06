@@ -221,6 +221,9 @@ pub struct Inspector {
     gitops_page: gitops_page::GitOpsPage,
     argo_connections: argo_connection::Connections,
     argo_outcomes: std::collections::HashMap<String, argo_outcomes::Outcome>,
+    /// Submissions still in flight when their detail closed. Dropping them
+    /// would cancel the submit and lose its outcome.
+    argo_submissions: Vec<Task<()>>,
     helm_page: helm_page::HelmPage,
     /// A tab `open_resource_on` asked the loading detail panel to show.
     detail_tab: Option<detail::DetailTab>,
@@ -351,6 +354,7 @@ impl Inspector {
             gitops_page: gitops_page::GitOpsPage::new(),
             argo_connections: argo_connection::Connections::new(window, cx),
             argo_outcomes: Default::default(),
+            argo_submissions: Vec::new(),
             helm_page: helm_page::HelmPage::new(window, cx),
             detail_tab: None,
             cluster: Default::default(),
@@ -499,6 +503,14 @@ impl Inspector {
         self.diff_task.take();
         self.detail_request = Rc::new(());
         self.exec.clear();
+        // Keep an in-flight submission alive so its outcome still reaches the observer.
+        if let Detail::Ready(detail) = &mut self.detail
+            && let Some(argo) = detail.argo.as_mut()
+            && matches!(argo.operation.phase, argo_operations::Phase::Submitting)
+            && let Some(task) = argo.operation.task.take()
+        {
+            self.argo_submissions.push(task);
+        }
         self.detail = Detail::Closed;
         self.notice = None;
         cx.notify();

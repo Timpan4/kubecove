@@ -16,6 +16,23 @@
         { "action": "showTab", "tab": "Details" },
         { "action": "expectNoPageText", "text": "Readiness probe failed" }
       ]
+    },
+    {
+      "id": "state.argo-submit-outcome-after-close",
+      "title": "An accepted operation is observed when its detail closes during submission",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test" },
+        { "action": "reviewArgoOperation", "operation": "Sync" },
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "run_argo_operation", "context": "" } },
+        { "action": "confirmArgoReview" },
+        { "action": "closeDetail" },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "run_argo_operation", "context": "" } },
+        { "action": "completeArgoOperation" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "expectArgoText", "text": "Argo CD confirmed completion" }
+      ]
     }
   ]
 }

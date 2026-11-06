@@ -25,7 +25,7 @@ pub(super) enum Phase {
 pub(super) struct Operation {
     pub phase: Phase,
     request: Rc<()>,
-    task: Option<Task<()>>,
+    pub(super) task: Option<Task<()>>,
     baseline: Option<kubecove_lib::models::ArgoApplicationInspector>,
     pub(super) last_request: Option<ArgoOperationRequest>,
 }
@@ -237,21 +237,21 @@ impl Inspector {
         let task = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
-                let Some(state) = this.argo_tab_state() else {
-                    return;
-                };
-                if !Rc::ptr_eq(&current, &state.operation.request) {
-                    return;
-                }
                 let accepted = result.as_ref().is_ok_and(|r| r.accepted);
-                state.operation.phase = match result {
-                    Ok(result) if result.accepted => Phase::Idle,
-                    Ok(result) => Phase::Failed(result.message),
-                    Err(error) => Phase::Unconfirmed(format!(
-                        "Outcome unconfirmed. Reload before retrying. {}",
-                        error.message
-                    )),
-                };
+                // A closed or reopened detail has no matching review to update, but an
+                // accepted submission is still observed, as the web tracker does.
+                if let Some(state) = this.argo_tab_state()
+                    && Rc::ptr_eq(&current, &state.operation.request)
+                {
+                    state.operation.phase = match result {
+                        Ok(result) if result.accepted => Phase::Idle,
+                        Ok(result) => Phase::Failed(result.message),
+                        Err(error) => Phase::Unconfirmed(format!(
+                            "Outcome unconfirmed. Reload before retrying. {}",
+                            error.message
+                        )),
+                    };
+                }
                 if accepted {
                     this.observe_argo_operation(observed_request, baseline, cx);
                 }

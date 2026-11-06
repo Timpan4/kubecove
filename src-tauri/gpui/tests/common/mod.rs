@@ -254,7 +254,9 @@ impl Backend for Fixture {
         &self,
         confirmation: kubecove_lib::models::ArgoOperationConfirmation,
     ) -> Read<kubecove_lib::models::ArgoOperationResult> {
-        self.argo.run(confirmation)
+        // The web mock routes this command through mockTiming with an empty context.
+        self.timing
+            .wrap("run_argo_operation", "", self.argo.run(confirmation))
     }
     fn reorder_kubeconfig_paths(&self, paths: Vec<String>) -> Read<KubeconfigSourcesSummary> {
         self.reorder_kubeconfig_read(paths)
