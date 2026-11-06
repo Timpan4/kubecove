@@ -390,7 +390,11 @@ impl Backend for Fixture {
                     && self.resources.iter().any(|row| {
                         row.kind == kind.kind
                             && row.api_version.as_ref() == Some(&kind.api_version)
-                            && row.namespace == scope.namespace
+                            // A cluster-wide scope has no namespace and reads every namespace.
+                            && scope
+                                .namespace
+                                .as_ref()
+                                .is_none_or(|namespace| row.namespace.as_ref() == Some(namespace))
                     })
             })
             .cloned()
