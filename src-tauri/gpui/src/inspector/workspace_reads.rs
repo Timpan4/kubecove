@@ -1,5 +1,6 @@
 //! Workspace context ownership for Overview reads, separate from the resource browser.
 use super::Inspector;
+use super::scope::SharedScopeReads;
 use crate::backend::{Read, Scope};
 use gpui_kit::{Context, Task};
 use std::rc::Rc;
@@ -49,6 +50,15 @@ impl Inspector {
         });
         cx.notify();
     }
+    /// True when the Overview read is the same request as the scope read: one
+    /// saved context, the current context, no namespace and no focused Application.
+    fn overview_matches_scope(&self) -> bool {
+        let contexts = self.workspace_contexts();
+        self.focused_application().is_none()
+            && self.scope.namespace.is_none()
+            && matches!(contexts.as_slice(), [only] if *only == self.scope.context)
+    }
+
     pub(super) fn workspace_contexts(&self) -> Vec<String> {
         self.launcher
             .active
@@ -86,7 +96,14 @@ impl Inspector {
 
     /// Every Overview visit reads the saved scope, as the web's workspace query
     /// does, so restore status and entry reconciliation never reuse a stale read.
-    pub(super) fn load_workspace_overview(&mut self, refresh: bool, cx: &mut Context<Self>) {
+    /// `shared` is the resource scope read that starts in the same pass. When the
+    /// Overview requests that exact scope, it joins that read instead of issuing its own.
+    pub(super) fn load_workspace_overview(
+        &mut self,
+        refresh: bool,
+        shared: Option<SharedScopeReads>,
+        cx: &mut Context<Self>,
+    ) {
         self.workspace_read = None;
         if self.page != super::Page::Overview {
             self.update_saved_overview();
@@ -94,7 +111,10 @@ impl Inspector {
         }
         self.load_restore_inventory(cx);
         let request = self.request.clone();
-        let read = self.workspace_resources_read(refresh, cx);
+        let read = match shared {
+            Some(shared) if self.overview_matches_scope() => shared.overview_read(),
+            _ => self.workspace_resources_read(refresh, cx),
+        };
         let task = cx.spawn(async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {

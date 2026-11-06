@@ -44,6 +44,7 @@ pub struct Scope {
     pub namespace: Option<String>,
 }
 
+#[derive(Clone)]
 pub struct ScopeResult {
     pub namespaces: Vec<NamespaceSummary>,
     pub resources: Vec<ResourceSummary>,

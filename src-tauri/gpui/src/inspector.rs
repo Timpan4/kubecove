@@ -413,7 +413,7 @@ impl Inspector {
                 self.load_topology(cx);
             }
             if page == Page::Overview {
-                self.load_workspace_overview(false, cx);
+                self.load_workspace_overview(false, None, cx);
             } else {
                 self.workspace_read = None;
             }

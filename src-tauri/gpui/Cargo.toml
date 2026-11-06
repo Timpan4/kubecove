@@ -18,6 +18,8 @@ dirs = "=7.0.0"
 reqwest = { version = "=0.13.5", default-features = false, features = ["json", "rustls-no-provider"] }
 semver = "=1.0.28"
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "sync", "time"] }
+# Shares one in-flight resource scope read between the Overview and the browser.
+futures-util = "=0.3.34"
 similar = "=3.2.1"
 # GPUI Kit has no VT terminal; parse remote output without starting a local PTY.
 vt100 = "=0.18.1"
@@ -35,7 +37,6 @@ serde_yaml = { package = "yaml_serde", version = "=0.10.7" }
 [dev-dependencies]
 rustls = { version = "=0.23.46", default-features = false, features = ["ring"] }
 tokio-tungstenite = "=0.30.0"
-futures-util = "=0.3.34"
 gpui-kit = { version = "=0.9.0", default-features = false, features = ["test-support"] }
 serde = { version = "=1.0.229", features = ["derive"] }
 

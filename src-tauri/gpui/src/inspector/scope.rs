@@ -2,14 +2,42 @@
 
 use super::custom_resources::CustomLoad;
 use super::{Inspector, Load, map};
+use crate::backend::Read;
 use crate::backend::ScopeResult;
 use crate::collate::collate;
 use crate::model::{HealthSummary, gitops_owner_filter};
+use futures_util::{FutureExt, future::Shared};
 use gpui_kit::component::select::SearchableVec;
 use gpui_kit::{Context, SharedString, Window};
 use kubecove_lib::models::ResourceSummary;
 use std::collections::BTreeMap;
 use std::rc::Rc;
+
+/// The builtin and custom reads of one resource scope, shareable while in flight.
+/// Dropping every clone cancels the reads, as dropping one owned read did.
+#[derive(Clone)]
+pub(super) struct SharedScopeReads {
+    builtin: Shared<Read<ScopeResult>>,
+    custom: Option<Shared<Read<ScopeResult>>>,
+}
+
+impl SharedScopeReads {
+    /// The Overview's read of this scope: built-ins, then custom kinds, merged as
+    /// the backend's combined read merges them.
+    pub(super) fn overview_read(&self) -> Read<ScopeResult> {
+        let builtin = self.builtin.clone();
+        let custom = self.custom.clone();
+        Box::pin(async move {
+            let mut result = builtin.await?;
+            if let Some(custom) = custom {
+                let custom = custom.await?;
+                result.resources.extend(custom.resources);
+                result.warnings.extend(custom.warnings);
+            }
+            Ok(result)
+        })
+    }
+}
 
 impl Inspector {
     pub(super) fn load_contexts(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -82,14 +110,33 @@ impl Inspector {
         self.close_detail(cx);
         self.request = Rc::new(());
         let request = self.request.clone();
-        self.load_workspace_overview(refresh, cx);
-        self.load = Load::Loading;
-        self.rows.clear();
-        self.warnings.clear();
+        let (builtin, custom) = self.scope_reads(refresh, cx);
+        // Shared, so the Overview's read of the same scope joins this request instead of issuing another.
+        let builtin = self
+            .timings
+            .measure("list_resource_scope", builtin)
+            .shared();
+        let custom = custom.map(FutureExt::shared);
+        self.load_workspace_overview(
+            refresh,
+            Some(SharedScopeReads {
+                builtin: builtin.clone(),
+                custom: custom.clone(),
+            }),
+            cx,
+        );
+        // As the web's keepPreviousData does, rows of the same context stay visible until the new read settles.
+        if !self
+            .rows
+            .first()
+            .is_some_and(|row| row.cluster == self.scope.context)
+        {
+            self.load = Load::Loading;
+            self.rows.clear();
+            self.warnings.clear();
+        }
         self.prepare_rows();
         self.filter(cx);
-        let (builtin, custom) = self.scope_reads(refresh, cx);
-        let builtin = self.timings.measure("list_resource_scope", builtin);
         self.custom_load = if custom.is_some() {
             CustomLoad::Loading
         } else {
@@ -115,6 +162,8 @@ impl Inspector {
                         this.live.refresh_error = Some(error.message.clone());
                         this.load = Load::Failed(error.message);
                         this.custom_load = CustomLoad::Idle;
+                        this.rows.clear();
+                        this.warnings.clear();
                         false
                     }
                 };

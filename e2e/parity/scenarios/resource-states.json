@@ -51,6 +51,20 @@
         { "action": "expectPageText", "text": "CrashLoopBackOff" },
         { "action": "expectResource", "kind": "Pod", "namespace": "operations", "name": "operations-crashloop-7f468cd8b8-lab01" }
       ]
+    },
+    {
+      "id": "resources.scope-change-keeps-rows",
+      "title": "A held namespace read keeps the previous rows visible until it settles",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "expectResource", "kind": "Pod", "namespace": "operations", "name": "operations-crashloop-7f468cd8b8-lab01" },
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_scope", "context": "mock-dev" } },
+        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_scope", "context": "mock-dev" } },
+        { "action": "expectResource", "kind": "Pod", "namespace": "operations", "name": "operations-crashloop-7f468cd8b8-lab01" },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_scope", "context": "mock-dev" } },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" }
+      ]
     }
   ]
 }
