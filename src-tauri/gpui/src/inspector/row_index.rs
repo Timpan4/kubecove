@@ -29,6 +29,7 @@ impl RowIndex {
         request: &Rc<()>,
         cluster_request: &Rc<()>,
     ) -> Rc<PreparedRows> {
+        let _profile = crate::frame_profile::scope("rows", "source");
         if cluster.is_empty() && !scope.iter().any(|row| row.owner_ref.is_some()) {
             self.0.take();
             return scope.clone();
@@ -47,7 +48,10 @@ impl RowIndex {
         // Completed reads replace immutable buffers before filtering. Cluster
         // loading drops its previous buffer earlier, so its separate read token
         // prevents allocator reuse from preserving a stale projection.
-        let mut rows = crate::model::inherit_gitops_owners(scope);
+        let mut rows = {
+            let _profile = crate::frame_profile::scope("rows", "inherit_owners");
+            crate::model::inherit_gitops_owners(scope)
+        };
         rows.extend_from_slice(cluster);
         let data = Rc::new(PreparedRows::new(rows));
         *current = Some(Snapshot {
@@ -63,6 +67,7 @@ impl RowIndex {
 
 impl Inspector {
     pub(super) fn filter_rows(&mut self, cx: &mut Context<Self>) {
+        let _profile = crate::frame_profile::scope("rows", "filter");
         let query = self.search.read(cx).value().trim().to_lowercase();
         let kinds = self.scope_kinds();
         let source = self.row_index.source(
@@ -72,6 +77,7 @@ impl Inspector {
             &self.cluster.request,
         );
         let mut visible = std::mem::take(&mut self.visible);
+        let summary_profile = crate::frame_profile::scope("rows", "summary");
         let mut owners = std::collections::BTreeMap::new();
         let mut summary = crate::model::HealthSummary::default();
         for row in source.iter() {
@@ -98,6 +104,7 @@ impl Inspector {
         owners.sort_by(|a, b| crate::collate::collate(&a.1, &b.1, false));
         self.filters.owners = owners;
         self.filters.summary = summary;
+        drop(summary_profile);
         visible.refilter_with(
             source,
             KindFilter {

@@ -606,8 +606,12 @@ impl Render for Inspector {
             div().into_any_element()
         };
         let overlays = self.overlays(window, cx);
-        let sidebar = (workspace && !compact)
-            .then(|| self.sidebar(cx, sidebar::WIDE_WIDTH).into_any_element());
+        let sidebar = (workspace && !compact).then(|| {
+            crate::frame_profile::element(
+                "sidebar",
+                self.sidebar(cx, sidebar::WIDE_WIDTH).into_any_element(),
+            )
+        });
         let drawer =
             (workspace && compact && self.navigation_open).then(|| self.navigation_drawer(cx));
         div()

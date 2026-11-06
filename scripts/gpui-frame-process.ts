@@ -4,14 +4,19 @@ import { getPriority } from "node:os";
 async function parityProcesses(): Promise<string[]> {
 	if (process.platform !== "linux") return [];
 	const child = Bun.spawn(["ps", "-eo", "pid=,stat=,comm="], { stdout: "pipe", stderr: "pipe" });
-	const [code, output, error] = await Promise.all([
+	const runners = Bun.spawn(["pgrep", "-f", "scripts/e2e-parity[.]ts"], { stdout: "pipe", stderr: "pipe" });
+	const [code, output, error, runnerCode, runnerIds, runnerError] = await Promise.all([
 		child.exited, new Response(child.stdout).text(), new Response(child.stderr).text(),
+		runners.exited, new Response(runners.stdout).text(), new Response(runners.stderr).text(),
 	]);
 	if (code !== 0) throw new Error(`Cannot verify parity isolation: ps exited ${code}: ${error}`);
-	return output.split("\n").filter(line => {
+	if (runnerCode !== 0 && runnerCode !== 1)
+		throw new Error(`Cannot verify parity isolation: pgrep exited ${runnerCode}: ${runnerError}`);
+	const processes = output.split("\n").filter(line => {
 		const [, state, name] = line.trim().split(/\s+/);
 		return !state?.startsWith("Z") && name?.startsWith("parity-");
 	});
+	return processes.concat(runnerIds.trim().split("\n").filter(Boolean).map(pid => `parity runner PID ${pid}`));
 }
 
 export async function runFrameCommand(

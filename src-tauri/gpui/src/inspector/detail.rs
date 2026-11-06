@@ -357,7 +357,10 @@ impl Inspector {
             // `ResourceInspector.svelte`: `bg-surface-1` (= card).
             .bg(Tokens::card())
             .child(self.detail_view(cx));
-        [handle.into_any_element(), aside.into_any_element()]
+        [
+            handle.into_any_element(),
+            crate::frame_profile::element("detail", aside.into_any_element()),
+        ]
     }
 
     pub(super) fn detail_view(&self, cx: &mut Context<Self>) -> AnyElement {
