@@ -1,0 +1,21 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "state.timeline-after-event-refresh",
+      "title": "A live event refresh replaces the Details timeline entries",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showTab", "tab": "Details" },
+        { "action": "expectPageText", "text": "Readiness probe failed" },
+        { "action": "showTab", "tab": "Events" },
+        { "action": "replayLiveData", "script": "events" },
+        { "action": "showTab", "tab": "Details" },
+        { "action": "expectNoPageText", "text": "Readiness probe failed" }
+      ]
+    }
+  ]
+}

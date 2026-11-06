@@ -318,15 +318,17 @@ fn entry(
                         .gap(px(8.))
                         .px(px(12.))
                         .py(px(6.))
-                        .child(
-                            ui::medium(ui::text(
-                                entries::timeline_title(item, resource_kind),
-                                12.,
-                                20.,
-                            ))
-                            .flex_1()
-                            .min_w_0(),
-                        )
+                        .child({
+                            let title = entries::timeline_title(item, resource_kind);
+                            ui::medium(ui::text(title.clone(), 12., 20.))
+                                .id(gpui_kit::SharedString::from(format!(
+                                    "timeline-title:{key}"
+                                )))
+                                .flex_1()
+                                .min_w_0()
+                                .test_support()
+                                .aria_label(title)
+                        })
                         .child(
                             ui::icon(
                                 if open {

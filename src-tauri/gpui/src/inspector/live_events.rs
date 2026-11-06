@@ -5,7 +5,7 @@ use super::{
     events::EventsLoad,
     live_data::{COALESCE, RECOVERY, WatchInput, receive_or_tick},
 };
-use crate::{backend::WatchTarget, incident};
+use crate::backend::WatchTarget;
 use gpui_kit::{Context, Window};
 use kubecove_lib::models::{StreamMessage, StreamStatus};
 use std::rc::Rc;
@@ -109,9 +109,8 @@ impl Inspector {
                                 }
                                 if let Detail::Ready(detail) = &mut this.detail {
                                     match result {
-                                        Ok(mut rows) => {
-                                            incident::sort_events(&mut rows);
-                                            detail.events.load = EventsLoad::Ready(rows);
+                                        Ok(rows) => {
+                                            detail.events.set_ready(rows);
                                             detail.events.watch_error = None;
                                         }
                                         Err(error) => {

@@ -75,6 +75,18 @@ impl EventsState {
         }
     }
 
+    /// Stores a complete read and the layout source the timeline cache compares.
+    /// Every path that writes `EventsLoad::Ready` goes through here.
+    pub fn set_ready(&mut self, mut events: Vec<ResourceEventSummary>) {
+        incident::sort_events(&mut events);
+        let source: Arc<[u8]> = serde_json::to_vec(&events)
+            .expect("event models serialize")
+            .into();
+        self.layout_key = row_id(&source);
+        self.layout_source = source;
+        self.load = EventsLoad::Ready(events);
+    }
+
     pub fn is_open(&self, key: &str) -> bool {
         self.overrides
             .get(key)
@@ -104,18 +116,10 @@ impl Inspector {
                 }
                 if let Detail::Ready(detail) = &mut this.detail {
                     detail.events.rows = Windowed::default();
-                    detail.events.load = match result {
-                        Ok(mut events) => {
-                            incident::sort_events(&mut events);
-                            let source: Arc<[u8]> = serde_json::to_vec(&events)
-                                .expect("event models serialize")
-                                .into();
-                            detail.events.layout_key = row_id(&source);
-                            detail.events.layout_source = source;
-                            EventsLoad::Ready(events)
-                        }
-                        Err(error) => EventsLoad::Failed(error.message),
-                    };
+                    match result {
+                        Ok(events) => detail.events.set_ready(events),
+                        Err(error) => detail.events.load = EventsLoad::Failed(error.message),
+                    }
                 }
                 cx.notify();
             });
