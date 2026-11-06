@@ -3,7 +3,8 @@ import { getPriority } from "node:os";
 import { basename } from "node:path";
 
 export function isParityProcess(executable: string, argv: string[]): boolean {
-	const name = basename(executable);
+	// procfs marks an unlinked executable while its process is still running.
+	const name = basename(executable).replace(/ \(deleted\)$/, "");
 	if (name.startsWith("parity-") && basename(argv[0] ?? "") === name) return true;
 	const script = argv[argv[1] === "run" ? 2 : 1];
 	return name === "bun" && script !== undefined &&
