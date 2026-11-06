@@ -37,7 +37,7 @@ export const ACTIONS = [
     "terminalFit",
     "openNamespaceList", "expectNamespaceRow", "resizeViewport", "openNavigationDrawer", "expectNavigationDrawer", "sidebarKey",
     "terminalOutput", "terminalSelect", "terminalCopy", "terminalPaste", "terminalScroll",
-    "configureArgoMock", "argoControl", "focusArgoResource", "expectNoSavedArgoProfile", "copyArgoValue", "configureArgoInventory", "expandArgoDiff", "reconnectArgoProfile",
+    "configureArgoMock", "argoControl", "focusArgoResource", "expectNoSavedArgoProfile", "copyArgoValue", "configureArgoInventory", "expandArgoDiff", "reconnectArgoProfile", "controlClock", "advanceClock",
     "failWorkspaceContext", "expectWorkspaceReadWarning",
     "editSavedWorkspace", "expectNoSavedWorkspace", "saveWorkspace", "cancelWorkspaceEdit", "toggleWorkspaceContext", "expectOverviewHealth", "expectDetailContext",
     "sidebarToggle", "sidebarSelect", "expectSidebarRow", "collapseSidebar", "expectSidebarBranch", "scrollSidebar", "expectSidebarReveal", "refreshPage",
@@ -200,6 +200,8 @@ function step(value: unknown): Step {
         case "expectPageText": return { action: item.action, text: string(item.text) };
         case "toggleDetailDisclosure": return { action: item.action, label: string(item.label) };
         case "expectNoPageText": return { action: item.action, text: string(item.text) };
+        case "controlClock": return { action: item.action };
+        case "advanceClock": return { action: item.action, ms: count(item.ms) };
         case "clickDetailControl": return { action: item.action, label: string(item.label) };
         case "fillMcpPort": return { action: item.action, value: string(item.value) };
         case "mcpControl": return { action: item.action, control: oneOf(["MCP server", "Submit port", "Save", "Copy token", "Copy Claude Code command", "Rotate token"], item.control, "an MCP control") };

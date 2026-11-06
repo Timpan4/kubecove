@@ -146,6 +146,10 @@ impl Inspector {
                                     }
                                 }
                                 job.saw_pending |= pending;
+                                // A successful read replaces an earlier read error, as the web tracker does on each read.
+                                if job.busy {
+                                    job.message = "Accepted; waiting for Argo CD to complete".into();
+                                }
                             }
                         }
                     }

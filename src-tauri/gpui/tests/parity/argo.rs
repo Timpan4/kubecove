@@ -64,6 +64,8 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             );
         }
         "configureArgoMock" => {}
+        // The parity hub owns the native executor clock, so both actions are handled there.
+        "controlClock" | "advanceClock" => {}
         "focusArgoResource" => {
             use gpui_kit::test::TestEventExt;
             use gpui_kit::{InputEvent, ScrollDelta, ScrollEvent, point, px};

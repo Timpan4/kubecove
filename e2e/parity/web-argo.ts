@@ -27,6 +27,12 @@ export async function argoAction(page: Page, step: Step) {
         case "configureArgoMock":
             await page.evaluate(`import('/src/lib/tauri-dev-mock-argo.ts').then(m => m.configureArgoMock(${JSON.stringify(step.script)}))`);
             break;
+        case "controlClock":
+            // Pausing holds the tracker's recovery tick until advanceClock runs it. Place this after the GitOps rows render,
+            // because paused timers also stop rendering.
+            await page.clock.pauseAt(new Date(Date.now() + 1000));
+            break;
+        case "advanceClock": await page.clock.runFor(step.ms); break;
         case "focusArgoResource":
             await page.getByRole("tabpanel").getByRole("button", { name: step.label, exact: false }).first().click();
             break;

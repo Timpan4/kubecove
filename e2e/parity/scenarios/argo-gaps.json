@@ -547,11 +547,18 @@
           "operation": "Sync"
         },
         {
+          "action": "controlClock"
+        },
+        {
           "action": "confirmArgoReview"
         },
         {
           "action": "configureArgoMock",
           "script": "snapshot-error"
+        },
+        {
+          "action": "advanceClock",
+          "ms": 15000
         },
         {
           "action": "expectArgoText",
@@ -569,8 +576,66 @@
           "action": "completeArgoOperation"
         },
         {
+          "action": "advanceClock",
+          "ms": 15000
+        },
+        {
           "action": "expectArgoText",
           "text": "Argo CD confirmed completion"
+        }
+      ]
+    },
+    {
+      "id": "argo-review.outcome-after-read-recovery",
+      "title": "A later successful observation replaces a read error with the accepted waiting message",
+      "steps": [
+        {
+          "action": "openPage",
+          "page": "GitOps"
+        },
+        {
+          "action": "openGitOpsDetails",
+          "kind": "Application",
+          "name": "tenant-ledger",
+          "namespace": "argocd"
+        },
+        {
+          "action": "connectArgoProfile",
+          "url": "https://argocd.example.test"
+        },
+        {
+          "action": "reviewArgoOperation",
+          "operation": "Sync"
+        },
+        {
+          "action": "controlClock"
+        },
+        {
+          "action": "confirmArgoReview"
+        },
+        {
+          "action": "configureArgoMock",
+          "script": "snapshot-error"
+        },
+        {
+          "action": "advanceClock",
+          "ms": 15000
+        },
+        {
+          "action": "expectArgoText",
+          "text": "current status unavailable"
+        },
+        {
+          "action": "configureArgoMock",
+          "script": "base"
+        },
+        {
+          "action": "advanceClock",
+          "ms": 15000
+        },
+        {
+          "action": "expectArgoText",
+          "text": "Accepted; waiting for Argo CD to complete"
         }
       ]
     }

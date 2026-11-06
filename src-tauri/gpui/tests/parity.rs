@@ -735,6 +735,12 @@ fn run_scenario(
         cx.update_window(handle, |_, window, cx| window.render_frame(cx))
             .unwrap();
         cx.run_until_parked();
+        if step["action"] == "advanceClock" {
+            // The tracker's tick updates the window, so advance outside the window update below.
+            cx.background_executor
+                .advance_clock(std::time::Duration::from_millis(number(step, "ms")));
+            cx.run_until_parked();
+        }
         if step["action"] == "replayLiveData" {
             // Advance the production web refresh throttle, not wall-clock sleeps.
             cx.background_executor

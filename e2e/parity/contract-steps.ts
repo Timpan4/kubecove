@@ -82,6 +82,8 @@ export type Step =
     | { action: "expectPageText"; text: string }
     | { action: "toggleDetailDisclosure"; label: string }
     | { action: "expectNoPageText"; text: string }
+    | { action: "controlClock" }
+    | { action: "advanceClock"; ms: number }
     | { action: "searchCustomKinds" | "searchKindPicker"; value: string }
     | { action: "expectCustomGroup"; group: string; visible: boolean }
     | { action: "toggleKind"; kind: string; checked: boolean }

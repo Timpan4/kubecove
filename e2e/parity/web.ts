@@ -71,7 +71,7 @@ export async function action(page: Page, step: Step) {
         case "connectArgoProfile": case "disconnectArgoProfile": case "reviewArgoOperation": case "confirmArgoReview": case "cancelArgoReview": case "expectArgoReview": case "expectArgoText": case "argoDocument":
         case "expectArgoPopover": case "dismissArgoPopover": case "expectArgoCheckbox": case "toggleArgoOption": case "expectNoArgoControl":
         case "selectArgoPreference": case "expectSavedArgoProfile": case "configureArgoSync": case "selectArgoHistory": case "expectArgoWorkspaceTransport": case "completeArgoOperation": case "confirmArgoTunnel":
-        case "expectArgoFocusInPopover": case "tabArgoPopover": case "expectArgoTriggerFocus": case "expectArgoOptionFocusable": case "expectArgoOperationState": case "selectArgoConnection":
+        case "expectArgoFocusInPopover": case "tabArgoPopover": case "expectArgoTriggerFocus": case "expectArgoOptionFocusable": case "expectArgoOperationState": case "controlClock": case "advanceClock": case "selectArgoConnection":
             await argoAction(page, step); break;
         case "expectYamlDiagnostic": case "expectNoYamlDiagnostic": case "expectYamlApplyDescription": case "expectNoYamlApplyDescription": case "expectActionLoadError": case "expectNoActionLoadError": case "retryActionPermission": case "expectActionLock":
             await yamlPermissionAction(page, step); break;
@@ -503,6 +503,8 @@ async function runScenario(browser: Browser, port: number, artifacts: string, sc
 	page.setDefaultTimeout(readinessTimeoutMs);
 	try {
 		signal.throwIfAborted();
+		// Fake timers must exist before the app loads: the Argo tracker's recovery timer starts with the workspace.
+		if (scenario.steps.some((step) => step.action === "controlClock")) await page.clock.install();
 		await page.goto(`http://127.0.0.1:${port}/`);
 		const prelude = scenario.steps.findIndex((step) => step.action !== "mockTiming" || step.control.operation !== "hold");
 		const startupSteps = prelude < 0 ? scenario.steps.length : prelude;
