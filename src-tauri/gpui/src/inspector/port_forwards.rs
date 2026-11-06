@@ -90,10 +90,9 @@ impl Inspector {
             .persisted
             .preferences
             .keep_live_sessions_on_workspace_switch;
+        // A failed read stays visible until the next read resolves, as the web's
+        // query keeps its error during a refetch. The 3 s poll must not show Loading.
         let state = &mut self.sessions;
-        if state.load.as_ref().is_some_and(Result::is_err) {
-            state.load = None;
-        }
         state.request = Rc::new(());
         let request = state.request.clone();
         let context = self.scope.context.clone();
