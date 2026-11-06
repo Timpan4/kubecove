@@ -1,4 +1,7 @@
 type Identity = { kind: string; name: string; namespace: string };
+/** Checkbox labels inside the Argo Sync options popover. */
+export const ARGO_OPTION_NAMES = ["Prune", "Dry run", "Force / replace"] as const;
+type ArgoOptionName = (typeof ARGO_OPTION_NAMES)[number];
 export const TABLE_COLUMNS = ["Name", "Status", "Namespace", "Kind", "Ready", "Restarts", "CPU", "Memory", "Owner", "Age"] as const;
 type TableColumn = (typeof TABLE_COLUMNS)[number];
 export const SORT_COLUMNS = ["Name", "Status", "Namespace", "Kind", "Ready", "Restarts", "CPU", "Memory", "Age"] as const;
@@ -100,12 +103,13 @@ export type Step =
     | { action: "configureArgoSync"; revision: string; name: string }
     | { action: "selectArgoHistory"; revision: string }
     | { action: "expectArgoWorkspaceTransport"; text: string }
-    | { action: "completeArgoOperation" | "confirmArgoTunnel" }
+    | { action: "completeArgoOperation" }
+    | { action: "confirmArgoTunnel"; failure?: string }
     | { action: "connectArgoProfile"; url: string; surface?: "page"; remember?: boolean; tunnel?: boolean; local?: boolean; insecure?: boolean; customCa?: string }
     | { action: "disconnectArgoProfile" | "confirmArgoReview" | "cancelArgoReview" }
     | { action: "reviewArgoOperation"; operation: "Refresh" | "Hard refresh" | "Sync" | "Rollback" }
     | { action: "configureArgoMock"; script: import("../../src/lib/tauri-dev-mock-argo").ArgoMockScript }
-    | { action: "argoControl"; control: "Open connection" | "Close connection" | "Forget" | "Retry" | "Confirm target again" | "Retry operation" | "Retry state refresh" | "Retry snapshot" | "Technical detail" | "Show diff" | "Show fewer lines" | "All changes" | "Sync options" | "Sync with these options"; url?: string }
+    | { action: "argoControl"; control: "Open connection" | "Close connection" | "Forget" | "Retry" | "Confirm target again" | "Retry operation" | "Retry state refresh" | "Retry snapshot" | "Technical detail" | "Show diff" | "Show fewer lines" | "All changes" | "Sync options" | "Sync with these options" | "Refresh options"; url?: string }
     | { action: "focusArgoResource"; key: string; label: string }
     | { action: "expectNoSavedArgoProfile"; url: string }
     | { action: "expandArgoDiff" }
@@ -114,6 +118,11 @@ export type Step =
     | { action: "copyArgoValue"; control: "source" | "revision" | "repository value" | "release value" | "cluster target value"; contains: string }
     | { action: "expectArgoReview"; operation: string; name: string; namespace: string; transport: string }
     | { action: "expectArgoText"; text: string }
+    | { action: "expectArgoPopover"; control: "Sync options" | "Refresh options"; open: boolean }
+    | { action: "dismissArgoPopover"; how: "Escape" | "outside click" }
+    | { action: "expectArgoCheckbox"; name: ArgoOptionName; checked: boolean }
+    | { action: "toggleArgoOption"; name: ArgoOptionName }
+    | { action: "expectNoArgoControl"; control: "Confirm target again" }
     | { action: "argoDocument"; view: "Desired" | "Live" | "Changes"; contains: string }
     | { action: "cancelYamlEdit" }
     | { action: "revealSecretValue" | "hideSecretValue" | "refreshLatencyReport" | "clearLatencyReport" | "expectLatencyEmpty" | "openDocumentation" }

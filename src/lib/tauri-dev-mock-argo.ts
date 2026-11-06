@@ -1,4 +1,4 @@
-import type { ArgoConnectionProfile } from "./gitops-types";
+import type { ArgoConnectionProfile, ArgoServerEndpoint } from "./gitops-types";
 import type { MockArgs, MockHandler } from "./tauri-dev-mock-contract";
 import { argoApps, argoManagedResourceRefs, fluxHelmKind, fluxKind, fluxResources, kinds, now, resources, source } from "./tauri-dev-mock-data";
 import type { ArgoApplicationDetails, ArgoApplicationSetDetails, ArgoApplicationSetSummary, ArgoAppProjectDetails, ArgoAppProjectSummary, ArgoManagedResource, DiscoveredResourceKind, FluxDetectionSummary, FluxResourceDetails, ResourceSummary } from "./types";
@@ -34,6 +34,11 @@ export type ArgoInventoryMode = "base" | "absent" | "empty" | "partial" | "unava
 let argoInventoryMode: ArgoInventoryMode = "base";
 export function configureArgoInventory(mode: ArgoInventoryMode) { argoInventoryMode = mode; }
 export function completeMockArgoOperation() { argoOutcomeComplete = true; }
+/** Mirrors the Rust endpoint model, which fills an absent tunnel TLS name when a profile is read. */
+function normalizedArgoEndpoint(endpoint: ArgoServerEndpoint): ArgoServerEndpoint {
+	if (endpoint.kind !== "serviceTunnel" || endpoint.tlsServerName) return endpoint;
+	return { ...endpoint, tlsServerName: `${endpoint.serviceName}.${endpoint.namespace}.svc` };
+}
 const argoConnections = new Map<string, ArgoConnectionProfile>();
 
 export function argoMockHandlers(genericYaml: YamlFactory) {
@@ -61,7 +66,7 @@ return {
 	connect_argo_server: (args) => {
         if (argoScript === "target-mismatch") throw new Error("Fixture tunnel target changed");
 		const serverUrl = args?.serverUrl ?? "https://argocd.example.test";
-		const endpoint = args?.endpoint ?? { kind: "externalHttps", url: serverUrl };
+		const endpoint = normalizedArgoEndpoint(args?.endpoint ?? { kind: "externalHttps", url: serverUrl });
 		const profile: ArgoConnectionProfile = { id: args?.id ?? "mock-profile", endpoint, url: serverUrl, clusterContext: args?.clusterContext ?? null, workspaceId: args?.workspaceId ?? null, kubeconfigSourceKey: args?.kubeconfigEnvVar ?? source.sourceKey, transport: "connected", rememberCredential: Boolean(args?.rememberCredential) };
 		argoConnections.set(profile.id, profile);
 		return { profile, connected: true, username: args?.username ?? "mock-user", unavailableReason: null, targetPod: "argocd-server-7d9f8b6c5-x2k4q", argoLabeled: true };

@@ -121,9 +121,28 @@ export async function argoAction(page: Page, step: Step) {
             await dialog.getByText("argocd-server-7d9f8b6c5-x2k4q", { exact: true }).waitFor();
             await dialog.getByText("SHA-256", { exact: false }).waitFor();
             await dialog.getByRole("button", { name: "Confirm and connect", exact: true }).click();
+            if (step.failure) { await dialog.getByText(step.failure, { exact: false }).first().waitFor(); break; }
             await dialog.getByRole("button", { name: "Disconnect", exact: true }).waitFor();
             await page.keyboard.press("Escape"); break;
         }
+        case "expectArgoPopover": {
+            const name = step.control === "Sync options" ? "Sync with these options" : "Hard refresh";
+            await page.locator("[data-slot=popover-content]").filter({ has: page.getByRole("button", { name, exact: true }) }).waitFor({ state: step.open ? "visible" : "hidden" });
+            break;
+        }
+        case "dismissArgoPopover":
+            if (step.how === "Escape") await page.keyboard.press("Escape");
+            else await page.getByText("These operations target the Argo CD Application", { exact: false }).first().click();
+            break;
+        case "expectArgoCheckbox":
+            await page.locator("[data-slot=popover-content]").getByRole("checkbox", { name: step.name, exact: true, checked: step.checked }).waitFor();
+            break;
+        case "toggleArgoOption":
+            await page.locator("[data-slot=popover-content]").getByRole("checkbox", { name: step.name, exact: true }).click();
+            break;
+        case "expectNoArgoControl":
+            await page.getByRole("button", { name: step.control, exact: true }).waitFor({ state: "detached" });
+            break;
         case "selectArgoPreference":
             await page.getByRole("combobox", { name: "Argo CD inspection preference", exact: true }).click();
             await page.getByRole("option", { name: step.preference === "Kubernetes" ? "Kubernetes" : "Automatic", exact: false }).click();

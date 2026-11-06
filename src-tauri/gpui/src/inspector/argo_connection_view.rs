@@ -402,16 +402,16 @@ impl Inspector {
                         cx.listener(|this, _, window, cx| this.cancel_argo_connection(window, cx)),
                     ),
             );
+        // As on the web, only a failed reconnect of a remembered tunnel profile offers a fresh
+        // preview of that profile's saved endpoint.
         if state.error.is_some()
-            && let Some(endpoint) = state
-                .preview_endpoint
-                .clone()
-                .or_else(|| state.editing.as_ref().map(|p| p.endpoint.clone()))
+            && let Some(profile) = state.editing.as_ref().filter(|p| p.remember_credential)
             && matches!(
-                endpoint,
+                profile.endpoint,
                 kubecove_lib::models::ArgoServerEndpoint::ServiceTunnel { .. }
             )
         {
+            let endpoint = profile.endpoint.clone();
             panel = panel.child(
                 button(Variant::Outline, 24., state.busy)
                     .id("argo-target-retry")

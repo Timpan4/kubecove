@@ -10,7 +10,7 @@ pub struct Argo {
     connections: Vec<Connection>,
     discovery: Vec<ArgoServerCapability>,
     target: Value,
-    preview: ArgoTunnelTargetPreview,
+    previews: Vec<Preview>,
     inspections: Vec<Inspection>,
     comparisons: Vec<Comparison>,
     #[serde(skip)]
@@ -26,6 +26,11 @@ pub struct Argo {
     reviewed: Mutex<bool>,
     #[serde(skip)]
     pub complete: std::sync::atomic::AtomicBool,
+}
+#[derive(Deserialize)]
+struct Preview {
+    request: Value,
+    result: ArgoTunnelTargetPreview,
 }
 #[derive(Deserialize)]
 struct Connection {
@@ -88,8 +93,13 @@ impl Argo {
         &self,
         request: kubecove_gpui::backend::ArgoTarget,
     ) -> Read<ArgoTunnelTargetPreview> {
-        assert_eq!(serde_json::to_value(request).unwrap(), self.target);
-        ready(self.preview.clone())
+        let request = serde_json::to_value(request).unwrap();
+        let preview = self
+            .previews
+            .iter()
+            .find(|p| p.request == request)
+            .unwrap_or_else(|| panic!("unexpected preview: {request}"));
+        ready(preview.result.clone())
     }
     pub fn disconnect(&self, id: String) -> Read<()> {
         assert!(

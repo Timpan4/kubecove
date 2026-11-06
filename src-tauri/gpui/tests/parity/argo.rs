@@ -130,6 +130,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 "Show diff" => "argo-removal::secret:argocd:argocd-secret",
                 "Show fewer lines" => "argo-diff-lines:0",
                 "Sync options" => "argo-sync-options",
+                "Refresh options" => "argo-refresh-options",
                 "Sync with these options" => "argo-sync-advanced",
                 other => panic!("unknown Argo control {other}"),
             };
@@ -264,7 +265,54 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 Some("argocd argocd-server argocd-server-7d9f8b6c5-x2k4q")
             );
             reveal(window, "detail-body", "argo-tunnel-confirm", cx);
+            // A rejected connect lands after this step. The following expectArgoText step
+            // checks the failure text, as it does for the reconnect failure.
             window.click("argo-tunnel-confirm", cx);
+        }
+        "expectArgoPopover" => {
+            let id = if string(step, "control") == "Sync options" {
+                "argo-sync-panel"
+            } else {
+                "argo-refresh-panel"
+            };
+            window.render_frame(cx);
+            assert_eq!(
+                window.try_find(id).is_some(),
+                step["open"].as_bool() == Some(true),
+                "popover {id} open state"
+            );
+        }
+        "dismissArgoPopover" => {
+            if string(step, "how") == "Escape" {
+                window.press("escape", cx);
+            } else {
+                reveal(window, "detail-body", "argo-operation-scope", cx);
+                window.click("argo-operation-scope", cx);
+            }
+            window.render_frame(cx);
+        }
+        "expectArgoCheckbox" => {
+            let id = format!("argo-sync:{}", string(step, "name"));
+            let expected = if step["checked"].as_bool() == Some(true) {
+                "checked"
+            } else {
+                "unchecked"
+            };
+            assert_eq!(window.find(id).description(), Some(expected));
+        }
+        "toggleArgoOption" => {
+            let id = format!("argo-sync:{}", string(step, "name"));
+            reveal(window, "detail-body", &id, cx);
+            window.click(id, cx);
+            window.render_frame(cx);
+        }
+        "expectNoArgoControl" => {
+            window.render_frame(cx);
+            assert!(
+                window.try_find("argo-target-retry").is_none(),
+                "{} is visible",
+                string(step, "control")
+            );
         }
         "expectArgoWorkspaceTransport" => assert_eq!(
             window.find("argo-workspace-transport").label(),

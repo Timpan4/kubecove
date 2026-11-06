@@ -105,6 +105,9 @@ fn choice(label: &'static str, checked: bool, cx: &mut Context<Inspector>) -> gp
     button(Variant::Outline, 24., false)
         .id(gpui_kit::SharedString::from(format!("argo-sync:{label}")))
         .test_support()
+        .role(gpui_kit::Role::CheckBox)
+        .aria_label(label)
+        .aria_description(if checked { "checked" } else { "unchecked" })
         .flex_1()
         .child(
             div()
@@ -270,7 +273,9 @@ impl Inspector {
     }
 }
 
-fn trigger(disabled: bool, cx: &mut Context<Inspector>) -> gpui_kit::AnyElement {
+/// Toggles from the open state the frame was drawn with. The panel's outside-press handler
+/// closes it first on the same press, so toggling the live state would reopen it.
+fn trigger(disabled: bool, open: bool, cx: &mut Context<Inspector>) -> gpui_kit::AnyElement {
     button(Variant::Default, 24., disabled)
         .id("argo-sync-options")
         .test_support()
@@ -280,17 +285,35 @@ fn trigger(disabled: bool, cx: &mut Context<Inspector>) -> gpui_kit::AnyElement 
             12.,
             crate::theme::Tokens::primary_foreground(),
         ))
-        .on_click(cx.listener(move |this, _, _, cx| {
-            if disabled {
-                return;
-            }
-            if let Some(s) = this.argo_tab_state() {
-                s.options.open = !s.options.open;
-                s.options.confirming = false;
-                cx.notify();
-            }
-        }))
+        .on_mouse_down(
+            gpui_kit::MouseButton::Left,
+            cx.listener(move |this, _, _, cx| {
+                if disabled {
+                    return;
+                }
+                if let Some(s) = this.argo_tab_state() {
+                    s.options.open = !open;
+                    s.options.confirming = false;
+                    cx.notify();
+                }
+            }),
+        )
         .into_any_element()
+}
+
+impl Inspector {
+    /// Escape closes an open Sync or Refresh options popover, as the web does.
+    /// Returns whether one was open, so the caller can stop the key there.
+    pub(super) fn close_argo_option_popovers(&mut self) -> bool {
+        let Some(state) = self.argo_tab_state() else {
+            return false;
+        };
+        let sync_open = state.options.open && !state.options.confirming;
+        let was_open = sync_open || state.refresh_options;
+        state.options.open = false;
+        state.refresh_options = false;
+        was_open
+    }
 }
 
 pub(super) fn controls(
@@ -316,6 +339,7 @@ pub(super) fn controls(
         .map(|request| request.action.as_str());
     let refreshing = operation_active && matches!(in_flight, Some("refresh" | "hardRefresh"));
     let syncing = operation_active && in_flight == Some("sync");
+    let refresh_open = state.refresh_options;
     let has_previous = state
         .inspector
         .as_ref()
@@ -361,16 +385,24 @@ pub(super) fn controls(
             .child(operation("Refresh", Variant::Outline, cx))
             .child(button(Variant::Outline, 24., busy).id("argo-refresh-options").test_support().aria_label("Refresh options")
                 .child(ui::icon("chevron-down", 12., Tokens::foreground()))
-                .on_click(cx.listener(move |this, _, _, cx| {
+                .on_mouse_down(gpui_kit::MouseButton::Left, cx.listener(move |this, _, _, cx| {
                     if busy { return; }
-                    if let Some(s) = this.argo_tab_state() { s.refresh_options = !s.refresh_options; cx.notify(); }
+                    if let Some(s) = this.argo_tab_state() { s.refresh_options = !refresh_open; cx.notify(); }
                 })))
-            .when(state.refresh_options, |group| group.child(gpui_kit::deferred(super::argo_panels::panel().occlude().absolute().top(px(28.)).right_0().w(px(256.)).shadow_lg()
+            .when(state.refresh_options, |group| group.child(gpui_kit::deferred(super::argo_panels::panel().id("argo-refresh-panel").test_support().occlude().absolute().top(px(28.)).right_0().w(px(256.)).shadow_lg()
+                .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                    if let Some(s) = this.argo_tab_state() { s.refresh_options = false; }
+                    cx.notify();
+                }))
                 .child(ui::sm("Refresh Application"))
                 .child(ui::muted(ui::xs("Normal refresh re-reads Application state. Hard refresh also invalidates Argo CD manifest and repository caches.")))
                 .child(operation("Hard refresh", Variant::Outline, cx))).with_priority(1))))
         .child(div().relative().flex()
             .child(operation("Sync", Variant::Default, cx))
-            .child(trigger(busy, cx))
-            .when(state.options.open && !state.options.confirming, |group| group.child(gpui_kit::deferred(panel(state, name, cx).occlude().absolute().top(px(28.)).right_0().w(px(320.)).shadow_lg()).with_priority(1))))
+            .child(trigger(busy, state.options.open, cx))
+            .when(state.options.open && !state.options.confirming, |group| group.child(gpui_kit::deferred(panel(state, name, cx).id("argo-sync-panel").test_support().occlude().absolute().top(px(28.)).right_0().w(px(320.)).shadow_lg()
+                .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                    if let Some(s) = this.argo_tab_state() { s.options.open = false; }
+                    cx.notify();
+                }))).with_priority(1))))
 }

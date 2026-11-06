@@ -1,0 +1,30 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "argo-review.option-popovers",
+      "title": "Sync and Refresh option popovers expose checkbox state and close on Escape or an outside press",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test" },
+        { "action": "argoControl", "control": "Sync options" },
+        { "action": "expectArgoPopover", "control": "Sync options", "open": true },
+        { "action": "expectArgoCheckbox", "name": "Prune", "checked": true },
+        { "action": "toggleArgoOption", "name": "Prune" },
+        { "action": "expectArgoCheckbox", "name": "Prune", "checked": false },
+        { "action": "dismissArgoPopover", "how": "Escape" },
+        { "action": "expectArgoPopover", "control": "Sync options", "open": false },
+        { "action": "argoControl", "control": "Sync options" },
+        { "action": "expectArgoPopover", "control": "Sync options", "open": true },
+        { "action": "dismissArgoPopover", "how": "outside click" },
+        { "action": "expectArgoPopover", "control": "Sync options", "open": false },
+        { "action": "argoControl", "control": "Refresh options" },
+        { "action": "expectArgoPopover", "control": "Refresh options", "open": true },
+        { "action": "dismissArgoPopover", "how": "Escape" },
+        { "action": "expectArgoPopover", "control": "Refresh options", "open": false }
+      ]
+    }
+  ]
+}

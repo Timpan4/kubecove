@@ -578,6 +578,9 @@ impl Render for Inspector {
                     this.navigation_open = false;
                     cx.stop_propagation();
                     cx.notify();
+                } else if this.close_argo_option_popovers() {
+                    cx.stop_propagation();
+                    cx.notify();
                 } else if this.sessions.popover || this.update_panel.open {
                     this.sessions.popover = false;
                     this.close_update_panel();

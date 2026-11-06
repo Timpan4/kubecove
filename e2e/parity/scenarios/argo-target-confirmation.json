@@ -1,0 +1,20 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "argo-connected.no-retry-after-fresh-tunnel-failure",
+      "title": "A failed first connection to a tunnel target does not offer Confirm target again",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "configureArgoMock", "script": "target-mismatch" },
+        { "action": "connectArgoProfile", "url": "https://argocd-server.argocd.svc", "tunnel": true },
+        { "action": "confirmArgoTunnel", "failure": "Fixture tunnel target changed" },
+        { "action": "expectArgoText", "text": "Fixture tunnel target changed" },
+        { "action": "expectNoArgoControl", "control": "Confirm target again" },
+        { "action": "configureArgoMock", "script": "base" }
+      ]
+    }
+  ]
+}

@@ -18,8 +18,17 @@ export async function exportArgo(client: TauriClient, applications: { details: R
     const tunnelId = argoProfileId(scope, tunnelEndpoint);
     const target = { context: "mock-dev", source: connected.profile?.kubeconfigSourceKey, endpoint: tunnelEndpoint };
     const preview = await client.invoke<{ namespace: string; serviceName: string; podName: string; certificateSha256: string }>("preview_argo_tunnel_target", { clusterContext: "mock-dev", endpoint: tunnelEndpoint });
+    // A reconfirm previews the saved profile endpoint, which the connect path normalizes (TLS name filled in).
+    const saved = await client.invoke<ArgoConnectionStatus>("connect_argo_server", { id: tunnelId, serverUrl: "https://argocd-server.argocd.svc", endpoint: tunnelEndpoint, clusterContext: "mock-dev", workspaceId: "native-session", kubeconfigEnvVar: connected.profile?.kubeconfigSourceKey, insecureTls: false, rememberCredential: true });
+    const savedEndpoint = saved.profile?.endpoint;
+    await client.invoke("disconnect_argo_server", { id: tunnelId });
+    if (savedEndpoint?.kind !== "serviceTunnel") throw new Error("Missing saved tunnel endpoint");
+    const reconfirmPreview = await client.invoke<{ namespace: string; serviceName: string; podName: string; certificateSha256: string }>("preview_argo_tunnel_target", { clusterContext: "mock-dev", endpoint: savedEndpoint });
+    const previews = [{ request: target, result: preview }, { request: { ...target, endpoint: savedEndpoint }, result: reconfirmPreview }];
     const variants = [
         connect,
+        // Confirm target again after a failed reconnect sends the saved endpoint, with its TLS name.
+        { ...connect, token: null, profile: { ...connect.profile, id: tunnelId, url: "https://argocd-server.argocd.svc", endpoint: savedEndpoint, rememberCredential: true }, confirmedTarget: preview },
         { ...connect, profile: { ...connect.profile, rememberCredential: true } },
         { ...connect, token: null, profile: { ...connect.profile, rememberCredential: true } },
         { ...connect, token: null, username: "fixture-user", password: "fixture-password", insecureTls: true, customCaPem: [...new TextEncoder().encode("parity fixture CA")] },
@@ -56,6 +65,7 @@ export async function exportArgo(client: TauriClient, applications: { details: R
                         operations.push({ request: selected, review: await client.invoke("preflight_argo_operation", { request: selected }) });
                     }
                     if (action === "sync") {
+                        // Prune starts checked from the automated Application; configureArgoSync unchecks it and checks the other two.
                         const advanced = { ...request, revision: "3d91a7b", prune: false, dryRun: true, force: true };
                         operations.push({ request: advanced, review: await client.invoke("preflight_argo_operation", { request: advanced }) });
                     }
@@ -66,7 +76,7 @@ export async function exportArgo(client: TauriClient, applications: { details: R
     const confirmation = { sessionId: "mock-session", confirmation: "mock-session" };
     const result = await client.invoke("run_argo_operation", { confirmation });
     await client.invoke("disconnect_argo_server", { id: profile.id });
-    return { connect, connected, connections, discovery, target, preview, inspections, comparisons, operations, confirmation, result };
+    return { connect, connected, connections, discovery, target, previews, inspections, comparisons, operations, confirmation, result };
 }
 function automatedPrune(policy: unknown): boolean {
     if (!policy || typeof policy !== "object" || !("automated" in policy)) return false;

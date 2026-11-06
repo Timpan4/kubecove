@@ -437,7 +437,9 @@ pub(super) fn argo_tab(
                             ui::muted(ui::xs(
                                 if view.is_some_and(|v| !v.kubernetes) { "Available. Connected Argo CD authorization is checked during operation review. These operations target the Argo CD Application, not a selected managed Kubernetes resource." } else { "Available. Kubernetes permission is checked during operation review. These operations target the Argo CD Application, not a selected managed Kubernetes resource." },
                             ))
-                            .font_family(crate::theme::SANS),
+                            .font_family(crate::theme::SANS)
+                            .id("argo-operation-scope")
+                            .test_support(),
                         ),
                 ),
         )
