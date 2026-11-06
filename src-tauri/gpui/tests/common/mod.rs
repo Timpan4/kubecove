@@ -8,6 +8,7 @@ mod delivery;
 mod detail_tabs;
 mod live_data;
 mod mcp;
+mod namespace_rbac;
 mod page_reads;
 mod resource_fixture;
 mod session_controls;
@@ -27,10 +28,10 @@ use kubecove_lib::models::{
     ClusterContext, ClusterOperationResult, DeploymentRevision, HelmReleaseDetails,
     HelmReleaseList, HelmReleaseReconciliation, HelmReleaseSummary, IncidentCockpitSummary,
     KubernetesYamlLintResult, NamespaceSummary, PodExecSessionSummary, PortForwardSessionSummary,
-    RbacAccessReviewRequest, RbacAccessReviewResult, RbacAccessReviewTarget, RbacInspectionSummary,
-    ResourceActionPreview, ResourceActionRequest, ResourceActionState, ResourceActionStateRequest,
-    ResourceDetailsFull, ResourceEventSummary, ResourceSummary, ResourceTopology, YamlApplyPreview,
-    YamlApplyRequest, YamlApplyResult, YamlViewMode,
+    RbacAccessReviewRequest, RbacAccessReviewResult, RbacInspectionSummary, ResourceActionPreview,
+    ResourceActionRequest, ResourceActionState, ResourceActionStateRequest, ResourceDetailsFull,
+    ResourceEventSummary, ResourceSummary, ResourceTopology, YamlApplyPreview, YamlApplyRequest,
+    YamlApplyResult, YamlViewMode,
 };
 use serde::Deserialize;
 use std::{collections::HashMap, path::Path, sync::Mutex};
@@ -690,72 +691,13 @@ impl Backend for Fixture {
         })
     }
     fn namespaces(&self, context: String) -> Read<Vec<NamespaceSummary>> {
-        if *self.shell_read_phase.lock().unwrap() == "namespaces-failed" {
-            return Box::pin(async {
-                Err(AppError::new(
-                    "Scripted namespaces read failure",
-                    AppErrorKind::Cluster,
-                ))
-            });
-        }
-        // Typed like the browser mock's `namespaces-credential-failed` phase.
-        if *self.shell_read_phase.lock().unwrap() == "namespaces-credential-failed" {
-            return Box::pin(async {
-                Err(AppError::new(
-                    "Scripted read: credentialUnavailable",
-                    AppErrorKind::CredentialUnavailable,
-                ))
-            });
-        }
-        let namespaces = if *self.shell_read_phase.lock().unwrap() == "namespaces-empty" {
-            Vec::new()
-        } else {
-            self.namespaces.clone()
-        };
-        self.timing.wrap(
-            "list_namespaces",
-            &context,
-            Box::pin(async move { Ok(namespaces) }),
-        )
+        self.namespaces_read(context)
     }
     fn rbac(&self, context: String) -> Read<RbacInspectionSummary> {
-        let found = self.rbac.get(&context).cloned();
-        self.coverage_read(
-            "list_rbac_inspection",
-            self.page_read(
-                "list_rbac_inspection",
-                self.timing.wrap(
-                    "list_rbac_inspection",
-                    &context,
-                    Box::pin(async move {
-                        found.ok_or_else(|| {
-                            AppError::new("No fixture RBAC inspection", AppErrorKind::NotFound)
-                        })
-                    }),
-                ),
-            ),
-        )
+        self.rbac_read(context)
     }
     fn review_rbac(&self, request: RbacAccessReviewRequest) -> Read<RbacAccessReviewResult> {
-        let verb = match &request.target {
-            RbacAccessReviewTarget::Resource { verb, .. }
-            | RbacAccessReviewTarget::NonResource { verb, .. } => verb.trim().to_lowercase(),
-        };
-        let found = self
-            .rbac_reviews
-            .iter()
-            .find(|review| review.verb == verb)
-            .map(|review| (review.result.clone(), review.error.clone()));
-        Box::pin(async move {
-            match found {
-                Some((Some(result), _)) => Ok(result),
-                Some((None, Some(error))) => Err(AppError::new(error, AppErrorKind::Cluster)),
-                _ => Err(AppError::new(
-                    format!("No fixture review for {verb}"),
-                    AppErrorKind::NotFound,
-                )),
-            }
-        })
+        self.review_rbac_read(request)
     }
     fn kubeconfig_sources(&self) -> Read<KubeconfigSourcesSummary> {
         self.kubeconfig_sources_read()
