@@ -31,7 +31,7 @@ Run new scenarios in each driver before the full suite. This catches missing nat
    cargo test --manifest-path src-tauri/gpui/Cargo.toml --test parity
    ```
 
-3. Run `bun run e2e:parity` without a filter for the completion gate. Focused reports prove only the scenarios they name.
+3. Run `bun run e2e:parity` without a filter once per batch of merges and before a PR, as the Verification tiers in `AGENTS.md` describe. Focused reports prove only the scenarios they name.
 
 `bun run e2e:parity` runs both drivers at the same time. The web driver runs several pages at once, and the GPUI driver builds the parity test once and splits the scenarios across processes (`KUBECOVE_PARITY_SHARD=<index>/<count>`), each writing `gpui-<index>.json`; the runner merges them into `gpui.json`. Optional variables:
 
@@ -39,7 +39,7 @@ Run new scenarios in each driver before the full suite. This catches missing nat
 - `PARITY_RERUN=last` (or an artifacts directory) runs only the scenarios that either driver did not pass in that run.
 - `PARITY_JOBS=<n>` sets the pages and processes per driver. The default is half the CPU count, because both drivers share the CPUs.
 
-Scenarios in one GPUI process share that process, so a scenario that passes alone can fail after another scenario leaves state behind. Treat such an order-dependent failure as a test isolation bug.
+Scenarios in one GPUI process share that process, so a scenario that passes alone can fail after another scenario leaves state behind. Treat such an order-dependent failure as a test isolation bug. To replay one shard of a run, give the parity test binary that run's files: `KUBECOVE_PARITY_SHARD=<index>/<count> KUBECOVE_PARITY_SCENARIO_IDS=<run>/scenarios.txt KUBECOVE_PARITY_FIXTURE=<run>/fixture.json KUBECOVE_E2E_ARTIFACTS=<new directory> <parity test binary> --nocapture`. The binary path is in the run's `gpui-build.log`. A file with two IDs in place of `scenarios.txt` checks one ordering.
 
 ## Equal-tests rule
 
@@ -66,6 +66,13 @@ The shared YAML editor scenario covers undo and redo, selection replacement and 
 
 [Scripted backend timing](mock-timing.md) records the asynchronous failure modes,
 release-gate contract, source-derived retry window and current model boundaries.
+
+When one web scenario fails, rerun that ID alone with `PARITY_PREFIX=<id> PARITY_JOBS=1 bun run e2e:parity`, and use `PARITY_RERUN=last bun run e2e:parity` for several failures or a Vite start timeout. Do not rerun the full suite to tell a flake from a real failure. A scenario that fails in the run and passes alone is a flake; record it below with its cause. A confirmed flake is still a bug in the scenario or driver.
+
+Confirmed flakes:
+
+- `argo-review.retry-accepted-state` (web, under parallel load): the app's own Argo CD state poll can succeed after the mock returns to `base` and before the driver clicks Retry state refresh, so the button disappears. The fix is to control page timers in the web driver, as the GPUI driver advances its test clock.
+- `argo-connected.saved-profile-and-preference` (web): failed once in a loaded full run and passed alone.
 
 Write acceptance scenarios before implementing the behavior they cover. The current scenarios target wrong-resource selection when kinds share a name, missing YAML identity, a detail panel that cannot close, an empty search that retains old rows, refresh that resets the search, event sort order and type filters, GitOps counts, cluster-scoped listings, an incident guide that ignores the signal filter, port forwards hidden by the source filter, aggregated log lines that lose their order, log filters and level toggles that hide the wrong lines, a log stream that survives a resource switch, a revision diff against the wrong comparison, a review that shows the wrong target or diff, a delete that executes without the typed name, a scale review with the wrong replica count, a dry run that skips the server, YAML apply offered for a Secret, RBAC risks that are not inherited from bindings and roles, a risk filter that keeps the wrong objects, an inspector or access check for the wrong subject, a workspace that opens or reopens with the wrong context or namespaces, kubeconfig settings that do not survive leaving Settings, settings search that keeps non-matching categories, and palette results or targets that ignore the query.
 
