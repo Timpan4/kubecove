@@ -26,9 +26,14 @@ export async function shellAction(page: Page, step: Step): Promise<void> {
             await page.keyboard.press("ControlOrMeta+K");
             if (await page.getByRole("dialog").count()) throw new Error("Palette opened without an open workspace");
             break;
-        case "openLauncher":
-            if (!await page.getByRole("button", { name: "Create workspace", exact: true }).isVisible()) await page.getByRole("button", { name: "Open workspaces", exact: true }).click();
+        case "openLauncher": {
+            // Wait for either view: a launcher that renders after a one-off visibility check is still the launcher.
+            const launcher = page.getByRole("button", { name: "Create workspace", exact: true });
+            const open = page.getByRole("button", { name: "Open workspaces", exact: true });
+            await launcher.or(open).first().waitFor();
+            if (!await launcher.isVisible()) await open.click();
             break;
+        }
         case "expectOverviewShortcuts": case "overviewShortcut": {
             const section = page.getByRole("heading", { name: "Shortcuts", exact: true }).locator("xpath=ancestor::section[1]");
             if (step.action === "overviewShortcut") await section.getByRole("button", { name: step.label, exact: true }).click();
