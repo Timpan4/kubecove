@@ -8,7 +8,10 @@ use gpui_kit::Hsla;
 use kubecove_lib::models::{HealthAssessmentSource, HealthAssessmentState, ResourceSummary};
 pub use rows::Visible;
 pub(crate) use rows::{KindFilter, ObservedNames, PreparedRows, reconcile};
-use std::collections::{HashMap, HashSet};
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+};
 
 /// `DEFAULT_WORKSPACE_KINDS` in `src/lib/workspace-model.ts`.
 pub const WORKSPACE_KINDS: &[&str] = &[
@@ -168,16 +171,16 @@ fn gitops_label(row: &ResourceSummary) -> Option<String> {
 /// A row without direct GitOps evidence takes the `gitOpsOwner` of its nearest
 /// `ownerRef` ancestor in the same namespace that has evidence. Parents match by
 /// namespace and name only, and the last row with a name wins, as in the web map.
-/// Callers run this once per data change and keep the result as the source for
-/// filtering and grouping, so frames never walk owner chains.
-pub fn inherit_gitops_owners(rows: &[ResourceSummary]) -> Vec<ResourceSummary> {
+/// Callers cache the result for filtering and grouping between data changes.
+/// Unresolved owner references keep the original buffer borrowed.
+pub fn inherit_gitops_owners(rows: &[ResourceSummary]) -> Cow<'_, [ResourceSummary]> {
     let namespace_key = |row: &ResourceSummary| row.namespace.clone().unwrap_or_default();
     let owner_keys: HashSet<(String, String)> = rows
         .iter()
         .filter_map(|row| Some((namespace_key(row), row.owner_ref.clone()?)))
         .collect();
     if owner_keys.is_empty() {
-        return rows.to_vec();
+        return Cow::Borrowed(rows);
     }
     let mut parents: HashMap<(String, String), usize> = HashMap::new();
     for (index, row) in rows.iter().enumerate() {
@@ -187,35 +190,38 @@ pub fn inherit_gitops_owners(rows: &[ResourceSummary]) -> Vec<ResourceSummary> {
         }
     }
     if parents.is_empty() {
-        return rows.to_vec();
+        return Cow::Borrowed(rows);
     }
-    rows.iter()
-        .enumerate()
-        .map(|(index, row)| {
-            if gitops_label(row).is_some() {
-                return row.clone();
-            }
-            let mut seen = HashSet::from([index]);
-            let mut current = row;
-            while let Some(owner_ref) = current.owner_ref.as_ref() {
-                let Some(&owner_index) = parents.get(&(namespace_key(current), owner_ref.clone()))
-                else {
-                    break;
-                };
-                if !seen.insert(owner_index) {
-                    break;
+    Cow::Owned(
+        rows.iter()
+            .enumerate()
+            .map(|(index, row)| {
+                if gitops_label(row).is_some() {
+                    return row.clone();
                 }
-                let owner = &rows[owner_index];
-                if gitops_label(owner).is_some() {
-                    let mut inherited = row.clone();
-                    inherited.git_ops_owner = owner.git_ops_owner.clone();
-                    return inherited;
+                let mut seen = HashSet::from([index]);
+                let mut current = row;
+                while let Some(owner_ref) = current.owner_ref.as_ref() {
+                    let Some(&owner_index) =
+                        parents.get(&(namespace_key(current), owner_ref.clone()))
+                    else {
+                        break;
+                    };
+                    if !seen.insert(owner_index) {
+                        break;
+                    }
+                    let owner = &rows[owner_index];
+                    if gitops_label(owner).is_some() {
+                        let mut inherited = row.clone();
+                        inherited.git_ops_owner = owner.git_ops_owner.clone();
+                        return inherited;
+                    }
+                    current = owner;
                 }
-                current = owner;
-            }
-            row.clone()
-        })
-        .collect()
+                row.clone()
+            })
+            .collect(),
+    )
 }
 
 /// `formatResourceTypeGroupLabel` in `src/features/resources/helpers.ts`.

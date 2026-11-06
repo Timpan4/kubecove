@@ -297,7 +297,8 @@ impl Inspector {
 
     /// Resolves cluster-row inheritance before the filter source joins it with scope rows.
     pub(super) fn prepare_rows(&mut self) {
-        self.cluster.prepared = crate::model::inherit_gitops_owners(&self.cluster.rows);
+        self.cluster.prepared =
+            crate::model::inherit_gitops_owners(&self.cluster.rows).into_owned();
     }
 
     /// The resource scope read in two stages: built-ins first, then custom kinds.

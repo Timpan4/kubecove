@@ -4,7 +4,7 @@ use super::Inspector;
 use crate::model::{KindFilter, PreparedRows};
 use gpui_kit::Context;
 use kubecove_lib::models::ResourceSummary;
-use std::{cell::RefCell, rc::Rc};
+use std::{borrow::Cow, cell::RefCell, rc::Rc};
 
 struct Snapshot {
     scope: Rc<PreparedRows>,
@@ -48,12 +48,18 @@ impl RowIndex {
         // Completed reads replace immutable buffers before filtering. Cluster
         // loading drops its previous buffer earlier, so its separate read token
         // prevents allocator reuse from preserving a stale projection.
-        let mut rows = {
+        let inherited = {
             let _profile = crate::frame_profile::scope("rows", "inherit_owners");
             crate::model::inherit_gitops_owners(scope)
         };
-        rows.extend_from_slice(cluster);
-        let data = Rc::new(PreparedRows::new(rows));
+        let data = match inherited {
+            Cow::Borrowed(_) if cluster.is_empty() => scope.clone(),
+            inherited => {
+                let mut rows = inherited.into_owned();
+                rows.extend_from_slice(cluster);
+                Rc::new(PreparedRows::new(rows))
+            }
+        };
         *current = Some(Snapshot {
             scope: scope.clone(),
             request: request.clone(),
