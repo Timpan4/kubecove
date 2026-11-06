@@ -386,6 +386,19 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
                 || (step["action"] == "expectPageText"
                     && step["text"] == "Scripted page refresh failure")
                 || (step["action"] == "expectLiveState" && step["label"] == "Refresh failed")
+                || (step["action"] == "coverageText"
+                    && matches!(
+                        step["text"].as_str(),
+                        Some(
+                            "Helm details unavailable"
+                                | "Helm releases unavailable"
+                                | "Incidents unavailable"
+                                | "Kubeconfig sources failed"
+                                | "Live sessions unavailable"
+                                | "RBAC inspection unavailable"
+                                | "Failed to load ownership map"
+                        )
+                    ))
                 || step["action"] == "expectLauncherRetry"
                 || step["action"] == "expectFriendlyError"
                 || step["action"] == "expectOverviewRetry"
