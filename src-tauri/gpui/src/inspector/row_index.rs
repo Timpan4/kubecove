@@ -86,9 +86,16 @@ impl Inspector {
         let summary_profile = crate::frame_profile::scope("rows", "summary");
         let mut owners = std::collections::BTreeMap::new();
         let mut summary = crate::model::HealthSummary::default();
+        let mut allowed = Vec::new();
+        source.fill_kind_mask(
+            &KindFilter {
+                kinds: &kinds,
+                selected: |kind: &str, api: Option<&str>| self.selected_kind(kind, api),
+            },
+            &mut allowed,
+        );
         for (row, prepared) in source.keyed_rows() {
-            if !(kinds.contains(&row.kind)
-                && self.selected_kind(&row.kind, row.api_version.as_deref())
+            if !(allowed[prepared.variant]
                 && self.row_scope_visible(row)
                 && self.filters.in_namespace(row))
             {

@@ -28,7 +28,7 @@ pub(crate) struct RowKey {
     group: usize,
     lane: usize,
     kind: usize,
-    variant: usize,
+    pub(crate) variant: usize,
     name_rank: usize,
     gitops: bool,
 }
@@ -53,6 +53,19 @@ impl std::ops::Deref for PreparedRows {
 }
 
 impl PreparedRows {
+    pub(crate) fn fill_kind_mask(
+        &self,
+        kinds: &KindFilter<'_, impl Fn(&str, Option<&str>) -> bool>,
+        allowed: &mut Vec<bool>,
+    ) {
+        allowed.clear();
+        allowed.extend(self.variants.iter().map(|&index| {
+            let row = &self.rows[index];
+            kinds.kinds.contains(&row.kind)
+                && (kinds.selected)(&row.kind, row.api_version.as_deref())
+        }));
+    }
+
     pub(crate) fn keyed_rows(&self) -> impl Iterator<Item = (&ResourceSummary, &RowKey)> {
         self.rows.iter().zip(&self.keys)
     }
@@ -239,12 +252,7 @@ impl Visible {
         lanes: &crate::preferences::KindLanes,
     ) {
         let _span = crate::frame_profile::scope("rows", "refilter");
-        self.allowed.clear();
-        self.allowed.extend(source.variants.iter().map(|&index| {
-            let row = &source.rows[index];
-            kinds.kinds.contains(&row.kind)
-                && (kinds.selected)(&row.kind, row.api_version.as_deref())
-        }));
+        source.fill_kind_mask(&kinds, &mut self.allowed);
         std::mem::swap(&mut self.previous, &mut self.indices);
         self.indices.clear();
         self.selected.resize(source.rows.len(), false);
