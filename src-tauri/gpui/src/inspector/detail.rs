@@ -295,6 +295,7 @@ impl Inspector {
             .track_focus(&self.detail_resize)
             .tab_stop(true)
             .role(gpui_kit::Role::Splitter)
+            .cursor_col_resize()
             .aria_label("Resize details panel")
             .aria_numeric_value(f64::from(super::resources::detail_percent(self).round()))
             // Mirrors the numeric value as text, the only value the parity driver can read.

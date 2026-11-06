@@ -38,6 +38,45 @@
 			]
 		},
 		{
+			"id": "resources.graph-keyboard-zoom-and-pan",
+			"title": "Zoom In takes Tab focus, and Enter zooms the map to its maximum zoom",
+			"steps": [
+				{ "action": "openResources" },
+				{ "action": "clickMapControl", "control": "Zoom In" },
+				{ "action": "expectMapControlFocus", "control": "Zoom In" },
+				{ "action": "mapKey", "key": "Enter" },
+				{ "action": "mapKey", "key": "Enter" },
+				{ "action": "mapKey", "key": "Enter" },
+				{ "action": "mapKey", "key": "Enter" },
+				{ "action": "mapKey", "key": "Enter" },
+				{ "action": "mapKey", "key": "Enter" },
+				{ "action": "mapKey", "key": "Enter" },
+				{ "action": "mapKey", "key": "Enter" },
+				{ "action": "mapKey", "key": "Enter" },
+				{ "action": "mapKey", "key": "Enter" },
+				{ "action": "mapKey", "key": "Enter" },
+				{ "action": "mapKey", "key": "Enter" },
+				{ "action": "mapKey", "key": "Enter" },
+				{ "action": "expectMapZoom", "zoom": 1.4 }
+			]
+		},
+		{
+			"id": "resources.detail-size-per-layout",
+			"title": "The detail pane size resets when the page moves between GitOps and other pages",
+			"steps": [
+				{ "action": "openResources" },
+				{ "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+				{ "action": "expectDetailResize", "value": 40 },
+				{ "action": "resizeDetail", "key": "ArrowLeft" },
+				{ "action": "expectDetailResize", "value": 42 },
+				{ "action": "openPage", "page": "GitOps" },
+				{ "action": "openPage", "page": "Workspace Overview" },
+				{ "action": "openResources" },
+				{ "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+				{ "action": "expectDetailResize", "value": 40 }
+			]
+		},
+		{
 			"id": "resources.detail-resize-keys",
 			"title": "The detail splitter resizes with the arrow, Home and End keys within the web's limits",
 			"steps": [

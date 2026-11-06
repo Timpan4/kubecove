@@ -2,6 +2,11 @@ import { isDeepStrictEqual } from "node:util";
 import type { Page } from "playwright-core";
 import { checkLogCoverage } from "./web-log-coverage";
 
+/** The ownerless StorageClass kind group on the Cluster Overview map. */
+function ownerlessStorageGroup(page: Page) {
+	return page.locator(".svelte-flow__node-standaloneKindGroup").filter({ has: page.getByTitle("Ownerless StorageClass", { exact: true }) });
+}
+
 export async function checkCoverage(page: Page, check: string) {
 	switch (check) {
 		case "event-summary": {
@@ -80,7 +85,7 @@ export async function checkCoverage(page: Page, check: string) {
 		}
 		case "map-groups": {
 			const nodes = page.locator(".svelte-flow__node-ownershipResource");
-			const group = page.locator(".svelte-flow__node-standaloneKindGroup").filter({ has: page.getByTitle("Ownerless StorageClass", { exact: true }) });
+			const group = ownerlessStorageGroup(page);
 			await group.waitFor();
 			const before = await nodes.count();
 			await group.click({ position: { x: 5, y: 5 } });
@@ -90,6 +95,13 @@ export async function checkCoverage(page: Page, check: string) {
 			await page.waitForFunction((count) => document.querySelectorAll(".svelte-flow__node-ownershipResource").length === count, before);
 			break;
 		}
+		case "map-group-expand":
+			await ownerlessStorageGroup(page).click({ position: { x: 5, y: 5 } });
+			await page.getByTitle("StorageClass/local-path", { exact: true }).waitFor();
+			break;
+		case "map-group-collapsed":
+			await page.getByTitle("StorageClass/local-path", { exact: true }).waitFor({ state: "detached" });
+			break;
 		case "map-focused":
 			await page.locator(".svelte-flow").scrollIntoViewIfNeeded();
 			await page.getByText(/^\d+ focused\s*\/\s*\d+ nodes\s*\/\s*\d+ edges$/).waitFor();

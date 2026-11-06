@@ -204,8 +204,8 @@ pub struct Inspector {
     /// The map panel's collapse choice. `None` follows "Show ownership map by default".
     map_open: Option<bool>,
     table_open: bool,
-    /// The detail pane's percent and whether the GitOps size key it was set under.
-    detail_size: Option<(bool, f32)>,
+    /// The detail pane's percent under the current size key (GitOps or not).
+    detail_size: Option<f32>,
     detail_dragging: bool,
     detail_resize: gpui_kit::FocusHandle,
     metrics: metrics::MetricsState,
@@ -396,7 +396,7 @@ impl Inspector {
             self.gitops_page.workspace = None;
             self.close_detail(cx);
             self.topology_task.take();
-            self.page = page;
+            self.set_page(page);
             if matches!(page, Page::Resources | Page::ClusterOverview) {
                 self.load_topology(cx);
             }
@@ -425,7 +425,7 @@ impl Inspector {
         // Resource navigation starts unfiltered, as `openResources` does on the web.
         self.filters.health = resource_filters::HealthFilter::All;
         self.gitops_page.workspace = None;
-        self.page = Page::Resources;
+        self.set_page(Page::Resources);
         self.sidebar_tree.selected = None;
         self.shortcut_owner = None;
         self.palette.kind = None;

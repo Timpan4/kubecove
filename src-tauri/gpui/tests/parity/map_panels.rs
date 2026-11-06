@@ -24,6 +24,17 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
             window.find(format!("map-node:{}", s("id"))).focused(),
             Some(true)
         ),
+        "clickMapControl" => window.click(map_control_id(s("control")), cx),
+        "expectMapControlFocus" => {
+            assert_eq!(
+                window.find(map_control_id(s("control"))).focused(),
+                Some(true)
+            );
+        }
+        "expectMapZoom" => {
+            let expected = format!("{:.2}", step["zoom"].as_f64().expect("number field"));
+            assert_eq!(window.find("map-viewport").value(), Some(expected.as_str()));
+        }
         "resizeDetail" => {
             window.click("detail-resize", cx);
             window.press(&s("key").replace("Arrow", "").to_lowercase(), cx);
@@ -38,4 +49,14 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
         _ => return false,
     }
     true
+}
+
+/// The test id of a zoom control, named by its xyflow label.
+fn map_control_id(label: &str) -> &'static str {
+    match label {
+        "Zoom In" => "map-zoom-in",
+        "Zoom Out" => "map-zoom-out",
+        "Fit View" => "map-fit",
+        other => panic!("unknown map control: {other}"),
+    }
 }

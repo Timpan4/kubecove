@@ -123,14 +123,10 @@ const DETAIL_MAX: f32 = 70.;
 /// `DETAIL_PANEL_RESIZE_STEP` from `detailPanelFrameModel.ts`.
 const DETAIL_RESIZE_STEP: f32 = 2.;
 
-/// The detail pane's percent of the frame. A size dragged under one key (GitOps
-/// or not) does not carry over to the other, as `DetailPanelFrame.svelte` resets
-/// its size when `sizeKey` changes.
+/// The detail pane's percent of the frame.
 pub(super) fn detail_percent(this: &Inspector) -> f32 {
-    match this.detail_size {
-        Some((gitops, size)) if gitops == (this.page == Page::GitOps) => size,
-        _ => detail_default(this.page),
-    }
+    this.detail_size
+        .unwrap_or_else(|| detail_default(this.page))
 }
 
 fn detail_share(this: &Inspector) -> f32 {
@@ -154,15 +150,33 @@ impl Inspector {
 
     pub(super) fn set_panel_open(&mut self, panel: Panel, open: bool) {
         match panel {
-            Panel::Map => self.map_open = Some(open),
+            Panel::Map => {
+                self.map_open = Some(open);
+                // The web unmounts `OwnershipMap.svelte` when it collapses, which
+                // forgets the kind groups the user expanded.
+                if !open {
+                    self.map.expanded.clear();
+                    self.rebuild_map();
+                }
+            }
             Panel::Table => self.table_open = open,
         }
+    }
+
+    /// Changes the page. The web's `DetailPanelFrame` resets its size whenever
+    /// `sizeKey` changes between GitOps and everything else, so a size dragged on
+    /// one never returns on the other.
+    pub(super) fn set_page(&mut self, page: Page) {
+        if (self.page == Page::GitOps) != (page == Page::GitOps) {
+            self.detail_size = None;
+        }
+        self.page = page;
     }
 
     /// Sets the detail pane's percent, clamped as `clampDetailPanelSize` does.
     pub(super) fn set_detail_percent(&mut self, percent: f32) {
         let size = percent.clamp(detail_min(self.page), DETAIL_MAX);
-        self.detail_size = Some((self.page == Page::GitOps, size));
+        self.detail_size = Some(size);
     }
 
     /// `detailPanelSizeFromPointer`: the frame's right edge sits at the window's
@@ -545,7 +559,7 @@ impl Inspector {
             self.live.error_open = false;
         }
         let stacked = !matches!(self.detail, Detail::Closed);
-        self.sync_map_focus(cx);
+        self.sync_map_focus(window, cx);
         let body: AnyElement = match self.empty_scope() {
             Some(empty) => empty,
             None => match self.page_load() {

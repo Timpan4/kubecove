@@ -4,13 +4,13 @@ use super::paint::{EdgePaint, paint_edges};
 use super::{HANDLE_HALF, Inspector, ZOOM_STEP};
 use crate::{
     theme::Tokens,
-    topology::{self, FlowItem, Viewport},
+    topology::{self, FlowItem, MAX_ZOOM, MIN_ZOOM, Viewport},
     ui,
 };
 use gpui_kit::TestSupportExt;
 use gpui_kit::{
-    AnyElement, Context, KeyDownEvent, MouseButton, SharedString, Window, canvas, div, prelude::*,
-    px,
+    AnyElement, Context, FocusHandle, KeyDownEvent, MouseButton, SharedString, Window, canvas, div,
+    prelude::*, px,
 };
 use std::rc::Rc;
 
@@ -25,18 +25,152 @@ pub(super) fn node_id(item: &FlowItem) -> SharedString {
     }
 }
 
+/// The zoom controls' actions, run by a click or by Enter or Space while focused.
+#[derive(Clone, Copy)]
+enum ControlAction {
+    ZoomIn,
+    ZoomOut,
+    Fit,
+}
+
+/// A zoom control: a focusable button labeled as xyflow labels its controls.
+/// A disabled control leaves Tab order, as a disabled `<button>` does on the web.
+fn zoom_control(
+    cx: &mut Context<Inspector>,
+    action: ControlAction,
+    (id, label, icon): (&'static str, &'static str, &'static str),
+    last: bool,
+    focus: Option<&FocusHandle>,
+    disabled: bool,
+) -> impl IntoElement {
+    let button = div()
+        .id(id)
+        .test_support()
+        .aria_label(label)
+        .role(gpui_kit::Role::Button)
+        .flex()
+        .items_center()
+        .justify_center()
+        .size(px(26.))
+        .when(!disabled, |button| button.cursor_pointer())
+        .when(disabled, |button| button.opacity(0.5))
+        .when(!last, |button| {
+            button.border_r_1().border_color(Tokens::border())
+        })
+        .hover(|button| button.bg(Tokens::muted()))
+        .child(ui::icon(icon, 12., Tokens::muted_foreground()));
+    let button = match focus {
+        Some(focus) if !disabled => button
+            .track_focus(focus)
+            .tab_stop(true)
+            .focus(|style| style.border_2().border_color(Tokens::ring())),
+        _ => button,
+    };
+    // A click focuses the control, as a `<button>` does on the web.
+    let clicked_focus = focus.filter(|_| !disabled).cloned();
+    button
+        .on_click(
+            cx.listener(move |this, _: &gpui_kit::ClickEvent, window, cx| {
+                if let Some(focus) = &clicked_focus {
+                    focus.focus(window, cx);
+                }
+                this.run_control(action, cx);
+            }),
+        )
+        .on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
+            if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                this.run_control(action, cx);
+                cx.stop_propagation();
+            }
+        }))
+}
+
 impl Inspector {
+    /// The fitted viewport and the viewport in use, which a pan or zoom may have adjusted.
+    fn map_viewports(&self, view: &topology::View) -> (Option<Viewport>, Option<Viewport>) {
+        let (width, height) = self.map.size.get();
+        let fit = topology::fit(&view.nodes, width, height);
+        let current = match (self.map.adjusted, fit) {
+            (Some((base, current)), Some(fit)) if base == fit => Some(current),
+            _ => fit,
+        };
+        (fit, current)
+    }
+
+    fn run_control(&mut self, action: ControlAction, cx: &mut Context<Self>) {
+        match action {
+            ControlAction::ZoomIn => self.zoom_map(ZOOM_STEP, cx),
+            ControlAction::ZoomOut => self.zoom_map(1. / ZOOM_STEP, cx),
+            ControlAction::Fit => {
+                self.map.adjusted = None;
+                cx.notify();
+            }
+        }
+    }
+
+    /// Zooms about the viewport's center, as `zoomIn` and `zoomOut` do.
+    fn zoom_map(&mut self, factor: f32, cx: &mut Context<Self>) {
+        let Some(view) = self.map.cache.clone() else {
+            return;
+        };
+        let (width, height) = self.map.size.get();
+        let (Some(fit), Some(current)) = self.map_viewports(&view) else {
+            return;
+        };
+        let zoom = Viewport::clamp_zoom(current.zoom * factor);
+        let (cx_, cy_) = (width / 2., height / 2.);
+        let ratio = zoom / current.zoom;
+        self.map.adjusted = Some((
+            fit,
+            Viewport {
+                x: cx_ - (cx_ - current.x) * ratio,
+                y: cy_ - (cy_ - current.y) * ratio,
+                zoom,
+            },
+        ));
+        cx.notify();
+    }
+
+    /// `autoPanOnNodeFocus`: a node that focus reaches while outside the viewport
+    /// is centered at the current zoom. Nodes that overlap the viewport stay put.
+    pub(super) fn pan_map_node_into_view(&mut self, key: &SharedString, cx: &mut Context<Self>) {
+        let Some(view) = self.map.cache.clone() else {
+            return;
+        };
+        let Some(node) = view.nodes.iter().find(|node| node_id(&node.item) == *key) else {
+            return;
+        };
+        let (width, height) = self.map.size.get();
+        let (Some(fit), Some(current)) = self.map_viewports(&view) else {
+            return;
+        };
+        let zoom = current.zoom;
+        let left = node.x * zoom + current.x;
+        let right = (node.x + node.width) * zoom + current.x;
+        let top = node.y * zoom + current.y;
+        let bottom = (node.y + node.height) * zoom + current.y;
+        if left <= width && right >= 0. && top <= height && bottom >= 0. {
+            return;
+        }
+        let (center_x, center_y) = (node.x + node.width / 2., node.y + node.height / 2.);
+        self.map.adjusted = Some((
+            fit,
+            Viewport {
+                x: width / 2. - center_x * zoom,
+                y: height / 2. - center_y * zoom,
+                zoom,
+            },
+        ));
+        cx.notify();
+    }
+
     pub(super) fn map_viewport(
         &self,
         view: &Rc<topology::View>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let (width, height) = self.map.size.get();
-        let fit = topology::fit(&view.nodes, width, height);
-        let viewport = match (self.map.adjusted, fit) {
-            (Some((base, current)), Some(fit)) if base == fit => Some(current),
-            _ => fit,
-        };
+        let (fit, viewport) = self.map_viewports(view);
         let cull = view.nodes.len() + view.edges.len() >= VISIBLE_ELEMENT_RENDER_THRESHOLD;
         let size = self.map.size.clone();
         let entity = cx.entity_id();
@@ -150,46 +284,15 @@ impl Inspector {
                     .collect()
             })
             .unwrap_or_default();
-        let control = |id: &'static str, icon: &'static str, last: bool| {
-            div()
-                .id(id)
-                .test_support()
-                .flex()
-                .items_center()
-                .justify_center()
-                .size(px(26.))
-                .cursor_pointer()
-                .when(!last, |button| {
-                    button.border_r_1().border_color(Tokens::border())
-                })
-                .hover(|button| button.bg(Tokens::muted()))
-                .child(ui::icon(icon, 12., Tokens::muted_foreground()))
-        };
-        let zoom = move |factor: f32| {
-            move |this: &mut Self,
-                  _: &gpui_kit::ClickEvent,
-                  _: &mut gpui_kit::Window,
-                  cx: &mut Context<Self>| {
-                let (Some(fit), Some(current)) = (fit, viewport) else {
-                    return;
-                };
-                let zoom = Viewport::clamp_zoom(current.zoom * factor);
-                let (cx_, cy_) = (width / 2., height / 2.);
-                let ratio = zoom / current.zoom;
-                this.map.adjusted = Some((
-                    fit,
-                    Viewport {
-                        x: cx_ - (cx_ - current.x) * ratio,
-                        y: cy_ - (cy_ - current.y) * ratio,
-                        zoom,
-                    },
-                ));
-                cx.notify();
-            }
-        };
+        let zoom_focus = self.map.zoom_focus.as_ref();
+        let focus_at = |index: usize| zoom_focus.map(|handles| &handles[index]);
         div()
             .id("map-viewport")
             .test_support()
+            // The zoom in use, to two decimals, as the parity driver reads it.
+            .aria_value(
+                viewport.map_or_else(String::new, |viewport| format!("{:.2}", viewport.zoom)),
+            )
             .relative()
             .flex_1()
             .min_h(px(320.))
@@ -223,20 +326,30 @@ impl Inspector {
                     .border_1()
                     .border_color(Tokens::border())
                     .bg(Tokens::card().opacity(0.92))
-                    .child(
-                        control("map-zoom-in", "plus", false)
-                            .on_click(cx.listener(zoom(ZOOM_STEP))),
-                    )
-                    .child(
-                        control("map-zoom-out", "minus", false)
-                            .on_click(cx.listener(zoom(1. / ZOOM_STEP))),
-                    )
-                    .child(control("map-fit", "scan", true).on_click(cx.listener(
-                        |this, _, _, cx| {
-                            this.map.adjusted = None;
-                            cx.notify();
-                        },
-                    ))),
+                    .child(zoom_control(
+                        cx,
+                        ControlAction::ZoomIn,
+                        ("map-zoom-in", "Zoom In", "plus"),
+                        false,
+                        focus_at(0),
+                        viewport.is_some_and(|viewport| viewport.zoom >= MAX_ZOOM),
+                    ))
+                    .child(zoom_control(
+                        cx,
+                        ControlAction::ZoomOut,
+                        ("map-zoom-out", "Zoom Out", "minus"),
+                        false,
+                        focus_at(1),
+                        viewport.is_some_and(|viewport| viewport.zoom <= MIN_ZOOM),
+                    ))
+                    .child(zoom_control(
+                        cx,
+                        ControlAction::Fit,
+                        ("map-fit", "Fit View", "scan"),
+                        true,
+                        focus_at(2),
+                        false,
+                    )),
             )
             .on_mouse_down(
                 MouseButton::Left,

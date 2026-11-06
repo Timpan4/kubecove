@@ -9,8 +9,9 @@ use kubecove_lib::models::{ResourceSummary, ResourceTopology, TopologyEdge, Topo
 use layout::{CANVAS_PADDING, Graph, NODE_HEIGHT, NODE_WIDTH, STANDALONE_NODE_WIDTH};
 use std::collections::{HashMap, HashSet};
 
-const MIN_ZOOM: f32 = 0.12;
-const MAX_ZOOM: f32 = 1.4;
+/// xyflow's `minZoom` and `maxZoom` for the ownership map. The zoom controls disable at these limits.
+pub const MIN_ZOOM: f32 = 0.12;
+pub const MAX_ZOOM: f32 = 1.4;
 const WIDTH_FIT_PADDING: f32 = 0.08;
 
 pub enum FlowItem {

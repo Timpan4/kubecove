@@ -95,6 +95,18 @@
 			]
 		},
 		{
+			"id": "coverage-map.group-reset-on-collapse",
+			"title": "Collapsing the ownership map forgets expanded kind groups when it reopens",
+			"steps": [
+				{ "action": "openResources" },
+				{ "action": "openPage", "page": "Cluster Overview" },
+				{ "action": "coverageCheck", "check": "map-group-expand" },
+				{ "action": "panelControl", "control": "Collapse ownership map" },
+				{ "action": "panelControl", "control": "Show ownership map" },
+				{ "action": "coverageCheck", "check": "map-group-collapsed" }
+			]
+		},
+		{
 			"id": "coverage-kubeconfig.failed-read",
 			"title": "A source read failure is visible in Kubeconfig settings",
 			"steps": [

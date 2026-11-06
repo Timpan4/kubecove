@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { ARGO_OPTION_NAMES, DETAIL_RESIZE_KEYS, LOG_LEVELS, MAP_KEYS, PANEL_CONTROLS, RBAC_CATEGORIES, RBAC_RISKS, SORT_COLUMNS, type Step, TABLE_COLUMNS, VERDICTS } from "./contract-steps";
+import { ARGO_OPTION_NAMES, DETAIL_RESIZE_KEYS, LOG_LEVELS, MAP_CONTROLS, MAP_KEYS, PANEL_CONTROLS, RBAC_CATEGORIES, RBAC_RISKS, SORT_COLUMNS, type Step, TABLE_COLUMNS, VERDICTS } from "./contract-steps";
 
 export type { Step } from "./contract-steps";
 
@@ -82,7 +82,7 @@ export const ACTIONS = [
     "sortResourceTable", "expectResourceOrder", "toggleResourceGroup", "expectResourceGroup", "openResourceRow", "expectResourceCell",
 	"clickDetailControl",
 	"openLiveSessionPopover", "expectLiveSessionRow", "liveSessionControl", "expectHealthTooltip", "expectTimestampTooltip", "expectEventTimeTooltip",
-    "panelControl", "expectPanelControl", "skipGraph", "mapKey", "expectMapFocus", "expectNoMapFocus", "resizeDetail", "expectDetailResize",
+    "panelControl", "expectPanelControl", "skipGraph", "mapKey", "expectMapFocus", "expectNoMapFocus", "clickMapControl", "expectMapControlFocus", "expectMapZoom", "resizeDetail", "expectDetailResize",
 	"expectYamlDiagnostic", "expectNoYamlDiagnostic", "expectYamlApplyDescription", "expectNoYamlApplyDescription", "expectActionLoadError", "expectNoActionLoadError", "retryActionPermission", "expectActionLock",
 ] as const satisfies readonly Step["action"][];
 type Missing = Exclude<Step["action"], (typeof ACTIONS)[number]>;
@@ -436,6 +436,11 @@ function step(value: unknown): Step {
 		case "skipGraph": return { action: item.action };
 		case "mapKey": return { action: item.action, key: oneOf(MAP_KEYS, item.key, "a graph key") };
 		case "expectMapFocus": case "expectNoMapFocus": return { action: item.action, id: string(item.id) };
+		case "clickMapControl": case "expectMapControlFocus": return { action: item.action, control: oneOf(MAP_CONTROLS, item.control, "a map control") };
+		case "expectMapZoom": {
+			if (typeof item.zoom !== "number" || !Number.isFinite(item.zoom) || item.zoom <= 0) throw new Error("Expected a positive zoom");
+			return { action: item.action, zoom: item.zoom };
+		}
 		case "resizeDetail": return { action: item.action, key: oneOf(DETAIL_RESIZE_KEYS, item.key, "a detail resize key") };
 		case "expectDetailResize": return { action: item.action, value: count(item.value) };
 		case "expandNav": return { action: item.action, page: string(item.page) };

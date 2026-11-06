@@ -51,7 +51,7 @@ export async function action(page: Page, step: Step) {
         case "coverageScript": await coverageAction(page, step); break;
         case "coverageCheck": await checkCoverage(page, step.check); break;
         case "coverageClick": case "coverageFill": case "coverageText": case "paletteKey": case "expectPaletteOpen": case "deleteSavedWorkspace": case "importDecision": case "cancelImport": case "searchEvents": await coverageAction(page, step); break;
-        case "panelControl": case "expectPanelControl": case "skipGraph": case "mapKey": case "expectMapFocus": case "expectNoMapFocus": case "resizeDetail": case "expectDetailResize": await panelAction(page, step); break;
+        case "panelControl": case "expectPanelControl": case "skipGraph": case "mapKey": case "expectMapFocus": case "expectNoMapFocus": case "clickMapControl": case "expectMapControlFocus": case "expectMapZoom": case "resizeDetail": case "expectDetailResize": await panelAction(page, step); break;
         case "terminalFit": case "terminalOutput": case "terminalSelect": case "terminalCopy": case "terminalPaste": case "terminalScroll":
             await terminalAction(page, step); break;
         case "failWorkspaceContext": case "expectWorkspaceReadWarning": case "expectContextUnavailable":

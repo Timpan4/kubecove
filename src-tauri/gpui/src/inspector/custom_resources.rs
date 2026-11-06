@@ -164,7 +164,7 @@ impl Inspector {
                         if this.scope.namespace.is_some() {
                             this.select_namespace(None, window, cx);
                         }
-                        this.page = Page::Resources;
+                        this.set_page(Page::Resources);
                         this.palette.kind = None;
                         this.live.selected = Some(kind.clone());
                         this.kind_selection.chosen = None;

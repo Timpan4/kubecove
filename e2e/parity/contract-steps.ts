@@ -271,6 +271,8 @@ export type Step =
     | { action: "skipGraph" }
     | { action: "mapKey"; key: MapKey }
     | { action: "expectMapFocus" | "expectNoMapFocus"; id: string }
+    | { action: "clickMapControl" | "expectMapControlFocus"; control: MapControl }
+    | { action: "expectMapZoom"; zoom: number }
     | { action: "resizeDetail"; key: DetailResizeKey }
     | { action: "expectDetailResize"; value: number }
     | { action: "expectYamlDiagnostic"; severity: "error" | "warning" | "info"; source: string; message: string; path: string }
@@ -286,6 +288,9 @@ export const PANEL_CONTROLS = [
 type PanelControl = (typeof PANEL_CONTROLS)[number];
 export const MAP_KEYS = ["Tab", "Shift+Tab", "Enter", "Space"] as const;
 type MapKey = (typeof MAP_KEYS)[number];
+/** The zoom controls, labeled as xyflow labels them on the web. */
+export const MAP_CONTROLS = ["Zoom In", "Zoom Out", "Fit View"] as const;
+type MapControl = (typeof MAP_CONTROLS)[number];
 export const DETAIL_RESIZE_KEYS = ["ArrowLeft", "ArrowRight", "Home", "End"] as const;
 type DetailResizeKey = (typeof DETAIL_RESIZE_KEYS)[number];
 export const RBAC_CATEGORIES = ["Namespace Access", "Roles", "Cluster Roles", "Bindings", "Service Accounts"] as const;

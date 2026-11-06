@@ -26,6 +26,19 @@ export async function panelAction(page: Page, step: Step): Promise<void> {
 			if (focused !== (step.action === "expectMapFocus")) throw new Error(`Graph node focus differs for ${step.id}`);
 			break;
 		}
+		case "clickMapControl":
+			await page.getByRole("button", { name: step.control, exact: true }).click();
+			break;
+		case "expectMapControlFocus": {
+			const focused = await page.getByRole("button", { name: step.control, exact: true }).evaluate((node) => node === document.activeElement);
+			if (!focused) throw new Error(`${step.control} is not focused`);
+			break;
+		}
+		case "expectMapZoom": {
+			const scale = await page.locator(".svelte-flow__viewport").evaluate((node) => new DOMMatrixReadOnly(getComputedStyle(node).transform).a);
+			if (scale.toFixed(2) !== step.zoom.toFixed(2)) throw new Error(`Map zoom is ${scale.toFixed(2)}, expected ${step.zoom.toFixed(2)}`);
+			break;
+		}
 		case "resizeDetail":
 			await page.getByRole("separator", DETAIL_SEPARATOR).focus();
 			await page.keyboard.press(step.key);

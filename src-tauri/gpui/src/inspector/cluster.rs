@@ -27,7 +27,7 @@ impl Inspector {
             return;
         }
         self.close_detail(cx);
-        self.page = Page::ClusterOverview;
+        self.set_page(Page::ClusterOverview);
         self.table_page = 0;
         // The section has no namespace; the web scope falls back to the
         // workspace namespaces, which are all namespaces here.

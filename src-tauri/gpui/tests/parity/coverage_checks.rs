@@ -167,6 +167,19 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             window.render_frame(cx);
             assert_eq!(nodes(window), before);
         }
+        "map-group-expand" => {
+            window.click("map-group:StorageClass", cx);
+            window.render_frame(cx);
+            window.find("map-node:mock-dev:storage.k8s.io/v1:StorageClass::local-path");
+        }
+        "map-group-collapsed" => {
+            window.render_frame(cx);
+            assert!(
+                window
+                    .try_find("map-node:mock-dev:storage.k8s.io/v1:StorageClass::local-path")
+                    .is_none()
+            );
+        }
         "map-focused" => {
             reveal(window, "page", "map-viewport", cx);
             assert!(

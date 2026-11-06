@@ -74,7 +74,7 @@ impl Inspector {
         self.close_detail(cx);
         self.search
             .update(cx, |search, cx| search.set_value("", window, cx));
-        self.page = Page::Resources;
+        self.set_page(Page::Resources);
         let mut namespaces: Vec<_> = app
             .resource_namespaces
             .iter()
