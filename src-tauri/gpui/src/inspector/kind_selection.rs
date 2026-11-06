@@ -167,8 +167,13 @@ impl Inspector {
         let backend = self.backend.clone();
         let read_scope = scope.clone();
         let read_key = key.clone();
-        let read = crate::read_retry::read(cx.background_executor().clone(), move || {
-            backend.kind_resources(read_scope.clone(), read_key.clone(), Vec::new())
+        let executor = cx.background_executor().clone();
+        // A backend can prepare a snapshot before returning its read future.
+        let read = cx.background_executor().spawn(async move {
+            crate::read_retry::read(executor, move || {
+                backend.kind_resources(read_scope.clone(), read_key.clone(), Vec::new())
+            })
+            .await
         });
         let selected = id.clone();
         self.kind_selection.reads.insert(
