@@ -112,6 +112,7 @@ mod sidebar_reveal;
 mod sidebar_tree;
 mod surface;
 mod table;
+mod table_columns;
 mod table_status;
 #[cfg(test)]
 #[path = "../tests/native/terminal_buffer.rs"]
