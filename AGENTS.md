@@ -88,7 +88,22 @@ Run through [docs/handbook/pr-checklist.md](docs/handbook/pr-checklist.md) befor
 - Prefer E2E tests (`e2e/specs/`, see `docs/development-workflow.md`) as the primary way to verify features. Each E2E run must end with a verifiable, repeatable artifact under `e2e/artifacts/` (WDIO spec report, cluster diagnostics, failure screenshots).
 - If a system must be tested in isolation (pure parsing, diff, topology, retry, or security-boundary logic), first write down every way it could fail, then write the code and tests against those failure modes.
 - Delete unit tests that would not catch a real bug the E2E suite misses.
-- Equal tests: the Svelte and GPUI clients share their UI acceptance tests in `e2e/parity/scenarios/`, so neither UI drifts from the other. A UI change in either client lands with a shared scenario that both drivers pass in `bun run e2e:parity`. Every view in `e2e/parity/visual/views.ts` needs a scenario whose ID starts with `<view>.`, and a new action needs a handler in both `e2e/parity/web.ts` and `src-tauri/gpui/tests/parity.rs`. `e2e/parity/contract.test.ts` enforces both. Native-only tests in `src-tauri/gpui/tests/native.rs` cover what the browser mocks cannot express, such as read errors, cancellation and stale reads. See `e2e/parity/README.md`.
+- Equal tests: the Svelte and GPUI clients share their UI acceptance tests in `e2e/parity/scenarios/`, so neither UI drifts from the other. A UI change in either client lands with a shared scenario that both drivers pass in `bun run e2e:parity`. Every view in `e2e/parity/visual/views.ts` needs a scenario whose ID starts with `<view>.`, and a new action needs a handler in both drivers, written in the area files described under GPUI work. `e2e/parity/contract.test.ts` enforces both. Native-only tests in `src-tauri/gpui/tests/native.rs` cover what the browser mocks cannot express, such as read errors, cancellation and stale reads. See `e2e/parity/README.md`.
+
+## GPUI work
+
+The native client lives in `src-tauri/gpui`. These rules come from parallel agent work on it.
+
+- Give every checkout its own build directories, from the checkout root: `CARGO_TARGET_DIR=$PWD/src-tauri/gpui/target CARGO_BUILD_BUILD_DIR=$PWD/src-tauri/gpui/build`. Path crates get the same artifact names in every checkout, so a shared directory lets one build overwrite another's crates ("multiple different versions of crate kubecove_kube").
+- On the shared workstation, run cargo as `CARGO_BUILD_JOBS=1 nice -n 10` with `RUSTC_WRAPPER=` empty, and wrap builds, tests and parity runs in `flock <coordinating checkout>/src-tauri/gpui/target/heavy.lock`. Child checkouts use the lock path from their brief, so every agent queues on one lock.
+- Cargo on that workstation resolves to the `mbx` shim, which shares compiled work across checkouts. A set `RUSTC_WRAPPER` bypasses it.
+- Keep build outputs, binary copies, logs and ledgers inside the checkout, under `src-tauri/gpui/target/` or `e2e/artifacts/`. Never put them in `/tmp`.
+- The parity work ledger is `src-tauri/gpui/target/plan.md` in the coordinating checkout. `target/` is ignored, so the ledger is not committed.
+- `bun scripts/gpui-visual.ts [--skip-web] [view,view]` captures web and GPUI views from the same mock data and writes stacked images and a per-view RMSE to `e2e/artifacts/gpui-visual-<id>/`. `bun scripts/gpui-fonts.ts` regenerates the bundled static font cuts.
+- To open the native client for the user, run `scripts/gpui-feel.sh`, and only when the user asks. It builds a release binary under the lock, copies it to `src-tauri/gpui/target/feel/`, and starts it with `systemd-run --user`, passing PATH and the display variables.
+- Parity actions go in area files: `e2e/parity/web-<area>.ts` and `src-tauri/gpui/tests/parity/<area>.rs`. The hub files `src-tauri/gpui/src/inspector.rs`, `src-tauri/gpui/tests/parity.rs`, `e2e/parity/web.ts`, `e2e/parity/contract.ts` and `src-tauri/gpui/tests/common/mod.rs` get only a dispatch or registration line, so parallel branches do not conflict there.
+- Resolve conflicts in `.rs` files by hand. Never union-merge them; keeping both sides duplicates items and breaks match arms.
+- When a merge would push a file over its line cap, split the file first in its own commit (see `docs/handbook/file-size-and-split.md`).
 
 ## Performance Defaults
 
@@ -149,6 +164,30 @@ Write an ADR before changing:
 - Kubernetes 1.34–1.37 is the tested rolling support window. ADR 0011 and the E2E/release workflow matrices are authoritative.
 - If a check cannot run, state the exact blocker and what remains unverified.
 - When completing scoped work, check off the corresponding items in `docs/milestones.md`.
+- The pre-commit credential scan blocks `client-key-data:`, `client-certificate-data:`, `certificate-authority-data:` and `current-context:` in any file, and `clusters:`, `contexts:` or `users:` anywhere in YAML and config files. In code files those three keys match only alone on a line, so typed fields such as `contexts: Vec<String>` pass.
+
+## Verification tiers
+
+Run the smallest tier that covers the change, from the checkout root with the build settings under GPUI work.
+
+1. Agent patch: `cargo check --manifest-path src-tauri/gpui/Cargo.toml --all-targets`, plus parity for the areas touched, such as `PARITY_PREFIX=topology.,map. bun run e2e:parity`. `PARITY_PREFIX` takes comma-separated scenario ID prefixes.
+2. Merge into the working branch: `cargo clippy --manifest-path src-tauri/gpui/Cargo.toml --all-targets -- -D warnings`, `cargo test --manifest-path src-tauri/gpui/Cargo.toml --lib --test native`, and `PARITY_PREFIX=<areas the diff touches> bun run e2e:parity`.
+3. After a fix: `PARITY_RERUN=last bun run e2e:parity` runs only the scenarios either driver did not pass in the newest run. Give an artifacts directory instead of `last` to use another run.
+4. Full suite: `bun run e2e:parity`, once per batch of merges and before a PR.
+
+Frontend changes in any tier also run `bun run typecheck`, `bun run lint` and `bun test e2e/parity/contract.test.ts`.
+
+The runner starts both drivers at once. It builds the parity test once and splits it across `PARITY_JOBS` processes (`KUBECOVE_PARITY_SHARD=<index>/<count>`), and the web driver runs as many pages. The default is half the CPU count. `e2e/parity/README.md` shows how to replay one native shard.
+
+## Delegation briefs
+
+Rules for agents that hand work to child agents, from observed failures.
+
+- Start each child from the current branch head. Before it reports, it rebases its own unpushed commits onto the latest head. Stale bases caused most merge conflicts.
+- Tell children to run builds and tests in the foreground, or to call `t3_background_wait` before ending a turn. Never end a turn with a job pending: a child that does is not woken when the job finishes, and its work sits uncommitted.
+- Every brief names a stop condition and a first report point, such as "report after the first measured run".
+- Give children the build settings and lock path from GPUI work and the verification tier their change needs.
+- When a child reports that it is waiting, check its worktree for finished commits before resuming it.
 
 ## Skill Backlog
 
