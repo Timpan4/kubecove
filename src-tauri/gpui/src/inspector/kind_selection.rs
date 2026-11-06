@@ -102,7 +102,7 @@ impl Inspector {
             })
             .collect();
         if self.persisted.preferences.show_custom_resources {
-            keys.extend(self.live.kinds.iter().map(|kind| {
+            keys.extend(self.live.catalog.iter().map(|kind| {
                 (
                     identity(kind),
                     kind.kind.clone(),

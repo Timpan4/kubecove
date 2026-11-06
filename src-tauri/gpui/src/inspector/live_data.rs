@@ -21,7 +21,10 @@ pub(super) const COALESCE: Duration = Duration::from_millis(250);
 #[derive(Default)]
 pub(super) struct LiveData {
     owner: String,
+    /// Custom kinds present in the selected namespace, for the sidebar.
     pub kinds: Vec<DiscoveredResourceKind>,
+    /// Every discovered kind in the cluster, for the kind picker as the web's `resourceKindsQuery` provides.
+    pub catalog: Vec<DiscoveredResourceKind>,
     pub custom_open: bool,
     pub groups: std::collections::HashSet<String>,
     pub picker_open: bool,
@@ -32,6 +35,7 @@ pub(super) struct LiveData {
     pub refresh_error: Option<String>,
     pub error_open: bool,
     discovery: Option<Task<()>>,
+    catalog_task: Option<Task<()>>,
     watches: HashMap<String, Registration>,
     pending: Vec<super::live_rows::Patch>,
 }
@@ -167,10 +171,33 @@ impl Inspector {
     /// namespace, as the web's `listPresentCustomResourceKinds` returns them.
     pub(super) fn discover_kinds(&mut self, cx: &mut Context<Self>) {
         self.live.kinds.clear();
+        self.live.catalog.clear();
         let scope = self.scope.clone();
         let context = scope.context.clone();
         let backend = self.backend.clone();
         let timings = self.timings.clone();
+        // The picker lists every discovered kind whatever the namespace, as the web's kind picker does.
+        let catalog_backend = self.backend.clone();
+        let catalog_context = context.clone();
+        self.live.catalog_task = Some(cx.spawn(async move |this, cx| {
+            let result = crate::read_retry::cancelled_read(
+                || catalog_backend.resource_kinds(catalog_context.clone()),
+                |delay| cx.background_executor().timer(delay),
+            )
+            .await;
+            let _ = this.update(cx, |this, cx| {
+                if this.scope.context != catalog_context {
+                    return;
+                }
+                match result {
+                    Ok(kinds) => this.live.catalog = kinds,
+                    Err(error) => this
+                        .warnings
+                        .push(format!("Custom Resources: {}", error.message)),
+                }
+                cx.notify();
+            });
+        }));
         self.live.discovery = Some(cx.spawn(async move |this, cx| {
             let result = crate::read_retry::cancelled_read(
                 || {
