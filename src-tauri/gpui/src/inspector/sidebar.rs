@@ -130,7 +130,7 @@ impl Inspector {
             .flex_none()
             .items_center()
             .gap(px(4.))
-            .h(px(26.))
+            .h(px(super::sidebar_tree::ROW_HEIGHT))
             .pl(px(8.))
             .pr(px(8.))
             .cursor_pointer()
@@ -282,9 +282,50 @@ impl Inspector {
             .into_any_element()
     }
 
-    pub(super) fn sidebar_contents(&self, cx: &mut Context<Self>, width: f32) -> impl IntoElement {
+    pub(super) fn sidebar_contents(
+        &self,
+        window: &gpui_kit::Window,
+        cx: &mut Context<Self>,
+        width: f32,
+    ) -> impl IntoElement {
         let _profile = crate::frame_profile::scope("sidebar", "build");
-        let namespaces = self.namespace_rows(cx);
+        let namespaces = if self.sidebar_tree.open.is_empty()
+            && self.sidebar_tree.reveal.borrow().is_none()
+            && self.sidebar_tree.focused(window, cx).is_none()
+        {
+            let names: Vec<_> = self
+                .namespaces
+                .iter()
+                .filter(|ns| self.launcher.shows_namespace(&ns.name))
+                .map(|ns| ns.name.clone())
+                .collect();
+            let tops = (0..=names.len())
+                .map(|i| i as f32 * super::sidebar_tree::ROW_HEIGHT)
+                .collect();
+            let owner = cx.entity().downgrade();
+            super::windowed::Windowed::fixed_rows(tops, move |index, _, cx| {
+                owner
+                    .update(cx, |owner, cx| {
+                        let name = names[index].clone();
+                        owner.builtin_row(
+                            name.clone(),
+                            name.clone().into(),
+                            Some(name),
+                            0,
+                            true,
+                            cx,
+                        )
+                    })
+                    .unwrap_or_else(|_| div().into_any_element())
+            })
+            .into_any_element()
+        } else {
+            div()
+                .flex()
+                .flex_col()
+                .children(self.namespace_rows(cx))
+                .into_any_element()
+        };
         div()
             .flex()
             .flex_col()
@@ -390,7 +431,7 @@ impl Inspector {
                             ),
                         ),
                     )
-                    .children(namespaces),
+                    .child(namespaces),
             )
     }
 }

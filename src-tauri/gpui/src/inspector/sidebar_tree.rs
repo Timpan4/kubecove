@@ -12,6 +12,7 @@ use std::rc::Rc;
 /// The label a collapsed branch shows when the selection is inside it. Also
 /// the accessible description the web sets on the same label.
 pub(super) const CONTAINS_SELECTION: &str = "Contains the selected item";
+pub(super) const ROW_HEIGHT: f32 = 26.;
 
 pub(super) const GROUPS: &[(&str, &[&str])] = &[
     (
@@ -356,7 +357,7 @@ impl Inspector {
             .flex_none()
             .items_center()
             .gap(px(4.))
-            .h(px(26.))
+            .h(px(ROW_HEIGHT))
             .pl(px(8. + 16. * depth as f32))
             .pr(px(8.))
             .cursor_pointer()

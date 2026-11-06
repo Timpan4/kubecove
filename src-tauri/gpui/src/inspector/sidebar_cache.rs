@@ -27,7 +27,7 @@ pub(super) struct SidebarCache {
 }
 
 impl Render for SidebarCache {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _span = crate::frame_profile::scope("sidebar", "child_render");
         let Some(inputs) = &self.inputs else {
             return div().into_any_element();
@@ -35,7 +35,7 @@ impl Render for SidebarCache {
         let width = inputs.width;
         self.owner
             .update(cx, |owner, cx| {
-                owner.sidebar_contents(cx, width).into_any_element()
+                owner.sidebar_contents(window, cx, width).into_any_element()
             })
             .unwrap_or_else(|_| div().into_any_element())
     }
@@ -58,7 +58,7 @@ impl Inspector {
             {
                 cache.update(cx, |cache, _| cache.inputs = None);
             }
-            return self.sidebar_contents(cx, width).into_any_element();
+            return self.sidebar_contents(window, cx, width).into_any_element();
         }
         let _span = crate::frame_profile::scope("sidebar", "cache_inputs");
         let inputs = Inputs {

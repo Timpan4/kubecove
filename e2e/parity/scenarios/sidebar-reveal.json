@@ -3,6 +3,25 @@
   "context": "mock-dev",
   "scenarios": [
     {
+      "id": "sidebar-reveal.closed-namespace-scroll",
+      "title": "Closed namespace rows remain selectable after scrolling away and back",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "collapseSidebar" },
+        { "action": "scrollSidebar", "to": "bottom" },
+        { "action": "expectSidebarReveal", "path": ["todo"], "visible": true, "highlighted": false },
+        { "action": "sidebarSelect", "path": ["todo"] },
+        { "action": "expectSidebarRow", "path": ["todo"], "visible": true, "selected": true },
+        { "action": "scrollSidebar", "to": "top" },
+        { "action": "scrollSidebar", "to": "bottom" },
+        { "action": "expectSidebarReveal", "path": ["todo"], "visible": true, "highlighted": false },
+        { "action": "sidebarKey", "path": ["todo"], "key": "ArrowRight" },
+        { "action": "expectSidebarRow", "path": ["todo", "Workloads"], "visible": true, "selected": false },
+        { "action": "sidebarKey", "path": ["todo"], "key": "ArrowLeft" },
+        { "action": "expectSidebarRow", "path": ["todo", "Workloads"], "visible": false, "selected": false }
+      ]
+    },
+    {
       "id": "sidebar-reveal.palette-kind-scrolls-into-view",
       "title": "A kind chosen outside the sidebar highlights its collapsed branch and scrolls it into view",
       "steps": [
