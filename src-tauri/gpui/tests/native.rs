@@ -202,7 +202,7 @@ impl Backend for Controlled {
     fn watch(&self, target: kubecove_gpui::backend::WatchTarget) -> Read<LogStream> {
         self.live.open(target)
     }
-    fn contexts(&self) -> Read<Vec<ClusterContext>> {
+    fn contexts(&self, _kubeconfig_source_key: Option<String>) -> Read<Vec<ClusterContext>> {
         Box::pin(async {
             Ok(vec![
                 ClusterContext {

@@ -15,20 +15,30 @@ impl Inspector {
             .expect("string tuple")
     }
 
+    /// Links the open startup view to the saved record with its name and context. Never creates a
+    /// record, so opening the launcher does not save a workspace the web would not save.
+    pub(super) fn link_active_workspace(&mut self) {
+        if self.launcher.active.is_some() || self.scope.context.is_empty() {
+            return;
+        }
+        if let Some(saved) = self.launcher.saved.iter().find(|s| {
+            s.name.as_str() == self.workspace_name.as_ref() && s.context == self.scope.context
+        }) {
+            self.launcher.active = Some(saved.id);
+            self.rbac.reviews = saved.reviews.clone();
+        }
+    }
+
+    /// Links the open startup view, or saves it when no workspace exists yet, before a write such
+    /// as an RBAC review or a pin attaches to it.
     pub(super) fn ensure_active_workspace(&mut self) {
-        if self.launcher.active.is_none() && !self.scope.context.is_empty() {
-            if let Some(saved) = self.launcher.saved.iter().find(|s| {
-                s.name.as_str() == self.workspace_name.as_ref() && s.context == self.scope.context
-            }) {
-                self.launcher.active = Some(saved.id);
-                self.rbac.reviews = saved.reviews.clone();
-                return;
-            }
-            // Saved records may have been renamed since the startup view was named.
-            // Opening the launcher must not recreate that old name.
-            if !self.launcher.saved.is_empty() {
-                return;
-            }
+        self.link_active_workspace();
+        // Saved records may have been renamed since the startup view was named.
+        // A write must not recreate that old name once records exist.
+        if self.launcher.active.is_none()
+            && self.launcher.saved.is_empty()
+            && !self.scope.context.is_empty()
+        {
             let id = self.launcher.next;
             self.launcher.next = self.launcher.next.saturating_add(1);
             self.launcher.saved.push(
@@ -42,6 +52,14 @@ impl Inspector {
                 .build(id, id),
             );
             self.launcher.active = Some(id);
+        }
+    }
+
+    /// Saves the startup workspace once the first context is known, when the parity harness asked
+    /// for it. The web driver saves its workspace through the launcher form before each scenario.
+    pub(super) fn seed_saved_workspace(&mut self) {
+        if std::mem::take(&mut self.launcher.seed_saved_workspace) {
+            self.ensure_active_workspace();
         }
     }
 

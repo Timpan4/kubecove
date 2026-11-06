@@ -103,7 +103,7 @@ fn switching_remote_endpoints_routes_reads_and_disconnect_clears_selection() {
             .await
             .unwrap();
         assert_eq!(
-            backend.contexts().await.unwrap()[0].name,
+            backend.contexts(None).await.unwrap()[0].name,
             "first-controlled-host"
         );
         assert!(
@@ -125,7 +125,7 @@ fn switching_remote_endpoints_routes_reads_and_disconnect_clears_selection() {
             .await
             .unwrap();
         assert_eq!(
-            backend.contexts().await.unwrap()[0].name,
+            backend.contexts(None).await.unwrap()[0].name,
             "second-controlled-host"
         );
         assert!(

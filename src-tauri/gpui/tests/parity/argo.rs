@@ -112,10 +112,17 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                     reveal(window, "detail-body", "argo-connect-open", cx);
                     window.click("argo-connect-open", cx);
                     window.render_frame(cx);
-                    let id = format!(
-                        "argo-forget:argo:native-session:mock-dev:kubeconfigSource=browser-mock:{}",
+                    // Profiles are keyed by the open workspace: its saved id, or
+                    // `native-session` before the startup workspace is saved.
+                    let target = format!(
+                        "mock-dev:kubeconfigSource=browser-mock:{}",
                         string(step, "url")
                     );
+                    let id = ["1", "native-session"]
+                        .map(|workspace| format!("argo-forget:argo:{workspace}:{target}"))
+                        .into_iter()
+                        .find(|id| window.try_find(id.clone()).is_some())
+                        .unwrap_or_else(|| panic!("no Forget control for {target}"));
                     reveal(window, "detail-body", &id, cx);
                     window.click(id, cx);
                     return true;

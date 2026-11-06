@@ -60,6 +60,7 @@ mod incident_guide;
 mod incident_queue;
 mod incidents;
 mod kind_selection;
+mod kubeconfig_reads;
 mod launcher;
 mod launcher_form;
 mod launcher_transfer;
@@ -379,9 +380,11 @@ impl Inspector {
         this
     }
 
-    /// Names the workspace shown in the sidebar header and overview.
-    pub fn with_workspace_name(mut self, name: impl Into<SharedString>) -> Self {
+    /// Names the startup workspace and saves it once its context is known. The web driver saves
+    /// its workspace through the launcher form, so this is the parity harness's setup seam.
+    pub fn with_saved_workspace(mut self, name: impl Into<SharedString>) -> Self {
         self.workspace_name = name.into();
+        self.launcher.seed_saved_workspace = true;
         self
     }
 

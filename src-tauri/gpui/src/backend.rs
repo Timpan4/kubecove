@@ -138,7 +138,8 @@ pub trait Backend: Send + Sync + 'static {
             ))
         })
     }
-    fn contexts(&self) -> Read<Vec<ClusterContext>>;
+    /// `list_kube_contexts` for the kubeconfig source key the web passes, or the default source.
+    fn contexts(&self, kubeconfig_source_key: Option<String>) -> Read<Vec<ClusterContext>>;
     fn resources(&self, scope: Scope, refresh: bool) -> Read<ScopeResult>;
     /// Built-in kinds and namespaces, read before custom resources so the table
     /// can render first. Defaults to the combined read.
@@ -506,8 +507,8 @@ impl Backend for NativeBackend {
         live_data::watch(self, target)
     }
 
-    fn contexts(&self) -> Read<Vec<ClusterContext>> {
-        self.read(async { commands::list_kube_contexts(None) })
+    fn contexts(&self, kubeconfig_source_key: Option<String>) -> Read<Vec<ClusterContext>> {
+        self.read(async move { commands::list_kube_contexts(kubeconfig_source_key) })
     }
 
     fn resources(&self, scope: Scope, refresh: bool) -> Read<ScopeResult> {

@@ -86,6 +86,15 @@
         { "action": "expectContextUnavailable", "name": "Unavailable scope" },
         { "action": "configureShellRead", "phase": "ready" }
       ]
+    },
+    {
+      "id": "launcher-errors.no-saved-workspaces",
+      "title": "Deleting the open saved workspace from the launcher shows the empty state",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "deleteSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectPageText", "text": "No saved workspaces yet" }
+      ]
     }
   ]
 }

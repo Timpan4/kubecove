@@ -357,7 +357,7 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
                 |window, cx| {
                     cx.new(|cx| {
                         Inspector::new(backend.clone(), window, cx)
-                            .with_workspace_name("Parity mock workspace")
+                            .with_saved_workspace("Parity mock workspace")
                     })
                 },
             )
@@ -513,7 +513,7 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
                         |window, cx| {
                             cx.new(|cx| {
                                 Inspector::new(backend.clone(), window, cx)
-                                    .with_workspace_name("Parity mock workspace")
+                                    .with_saved_workspace("Parity mock workspace")
                             })
                         },
                     )

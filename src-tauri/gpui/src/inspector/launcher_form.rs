@@ -139,7 +139,7 @@ impl Inspector {
                         .aria_label("Retry")
                         .child("Retry")
                         .on_click(cx.listener(|this, _, window, cx| {
-                            this.retry_launcher_contexts(window, cx)
+                            this.load_launcher_contexts(true, window, cx)
                         })),
                 )
             })

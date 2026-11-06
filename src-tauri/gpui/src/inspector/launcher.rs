@@ -35,6 +35,10 @@ pub(super) struct LauncherState {
     pub(super) contexts_load: Discovery,
     pub(super) context_error: Option<String>,
     pub(super) namespace_error: Option<String>,
+    /// Kubeconfig source and context reads kept while fresh, as the web's query cache keeps them.
+    pub(super) kubeconfig: super::kubeconfig_reads::KubeconfigReads,
+    /// Set by the parity harness: saves the startup workspace once its context is known.
+    pub(super) seed_saved_workspace: bool,
     tasks: [Option<Task<()>>; 2],
 }
 
@@ -58,6 +62,8 @@ impl LauncherState {
             contexts_load: Discovery::Loading,
             context_error: None,
             namespace_error: None,
+            kubeconfig: Default::default(),
+            seed_saved_workspace: false,
             tasks: [None, None],
         }
     }
@@ -145,7 +151,7 @@ impl Inspector {
         if self.palette.open {
             self.close_palette(window, cx);
         }
-        self.ensure_active_workspace();
+        self.link_active_workspace();
         let state = &mut self.launcher;
         state.open = true;
         state.editing = None;
@@ -156,26 +162,24 @@ impl Inspector {
         state
             .name
             .update(cx, |input, cx| input.set_value("", window, cx));
-        self.retry_launcher_contexts(window, cx);
+        self.load_launcher_contexts(false, window, cx);
     }
 
-    pub(super) fn retry_launcher_contexts(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Loads the launcher's contexts. `force` is Retry, which refetches the source and contexts.
+    pub(super) fn load_launcher_contexts(
+        &mut self,
+        force: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.launcher.contexts_load = Discovery::Loading;
         self.launcher.context_error = None;
         self.launcher.tasks[1] = None;
-        // Retry refetches the kubeconfig source and then the contexts, as the web's Retry does.
-        let executor = cx.background_executor().clone();
-        let backend = self.backend.clone();
-        let source =
-            crate::read_retry::read(executor.clone(), move || backend.kubeconfig_sources());
-        let backend = self.backend.clone();
-        let read = crate::read_retry::read(executor, move || backend.contexts());
-        let read = self.timings.measure("list_kube_contexts", read);
-        self.launcher.tasks[0] = Some(cx.spawn_in(window, async move |this, cx| {
-            // The web reports a failed source read ahead of a contexts failure.
-            let source_error = source.await.err().map(|error| error.message);
-            let result = read.await;
-            let _ = this.update_in(cx, |this, window, cx| {
+        let task = self.read_kubeconfig_contexts(
+            force,
+            window,
+            cx,
+            |this, result, source_error, window, cx| {
                 match result {
                     Ok(contexts) => {
                         this.launcher.context_choices = contexts
@@ -193,8 +197,9 @@ impl Inspector {
                     }
                 }
                 cx.notify();
-            });
-        }));
+            },
+        );
+        self.launcher.tasks[0] = Some(task);
         cx.notify();
     }
 
@@ -299,14 +304,17 @@ impl Inspector {
         }
     }
 
+    /// `deleteWorkspace` in the web's workspace store: removes the record, and clears the open
+    /// workspace when the deleted record is that one. The launcher stays open with no workspace.
     fn delete_workspace(&mut self, id: u64, cx: &mut Context<Self>) {
         let state = &mut self.launcher;
-        if state.active != Some(id) {
-            state.saved.retain(|saved| saved.id != id);
-            self.navigation.forget(id);
-            self.save_preferences(cx);
-            cx.notify();
+        state.saved.retain(|saved| saved.id != id);
+        if state.active == Some(id) {
+            state.active = None;
         }
+        self.navigation.forget(id);
+        self.save_preferences(cx);
+        cx.notify();
     }
 
     /// The launcher and command palette, drawn over the workspace.
@@ -477,7 +485,6 @@ impl Inspector {
                     .when(empty, |list| list.child(no_saved_workspaces()))
                     .children(saved.into_iter().map(|workspace| {
                         let id = workspace.id;
-                        let active = state.active == Some(id);
                         let unavailable = !state.context_choices.is_empty()
                             && !state
                                 .context_choices
@@ -563,14 +570,10 @@ impl Inspector {
                                             .id(("workspace-delete", id as usize))
                                             .test_support()
                                             .aria_label(format!("Delete {}", workspace.name))
-                                            .when(active, |delete| delete.opacity(0.5))
-                                            .when(!active, |delete| {
-                                                delete.cursor_pointer().on_click(cx.listener(
-                                                    move |this, _, _, cx| {
-                                                        this.delete_workspace(id, cx)
-                                                    },
-                                                ))
-                                            })
+                                            .cursor_pointer()
+                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                                this.delete_workspace(id, cx)
+                                            }))
                                             .child(
                                                 ui::ghost_icon("trash-2", 24., 14.)
                                                     .text_color(Tokens::muted_foreground()),

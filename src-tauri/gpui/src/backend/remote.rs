@@ -215,7 +215,11 @@ impl Backend for DesktopBackend {
             Ok(())
         })
     }
-    route!(contexts() -> Vec<ClusterContext>, "list_kube_contexts", json!({}));
+    route!(
+        contexts(kubeconfig_source_key: Option<String>) -> Vec<ClusterContext>,
+        "list_kube_contexts",
+        json!({"kubeconfigEnvVar": kubeconfig_source_key})
+    );
     route!(
         namespaces(context: String) -> Vec<NamespaceSummary>,
         "list_namespaces",

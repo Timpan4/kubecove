@@ -15,13 +15,11 @@ impl Inspector {
     pub(super) fn load_contexts(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.context_task.take();
         self.load = Load::Loading;
-        let backend = self.backend.clone();
-        let read =
-            crate::read_retry::read(cx.background_executor().clone(), move || backend.contexts());
-        let read = self.timings.measure("list_kube_contexts", read);
-        self.context_task = Some(cx.spawn_in(window, async move |this, cx| {
-            let result = read.await;
-            let _ = this.update_in(cx, |this, window, cx| {
+        let task = self.read_kubeconfig_contexts(
+            false,
+            window,
+            cx,
+            |this, result, _source_error, window, cx| {
                 match result {
                     Ok(contexts) if contexts.is_empty() => {
                         this.load = Load::Failed(
@@ -57,13 +55,15 @@ impl Inspector {
                             );
                         });
                         this.scope.context = selected;
+                        this.seed_saved_workspace();
                         this.load_scope(false, window, cx);
                     }
                     Err(error) => this.load = Load::Failed(error.message),
                 }
                 cx.notify();
-            });
-        }));
+            },
+        );
+        self.context_task = Some(task);
     }
 
     pub(super) fn load_scope(

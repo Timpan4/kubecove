@@ -412,7 +412,7 @@ impl Backend for Fixture {
     fn watch(&self, target: kubecove_gpui::backend::WatchTarget) -> Read<LogStream> {
         self.live_watch(target)
     }
-    fn contexts(&self) -> Read<Vec<ClusterContext>> {
+    fn contexts(&self, _kubeconfig_source_key: Option<String>) -> Read<Vec<ClusterContext>> {
         if *self.shell_read_phase.lock().unwrap() == "contexts-failed" {
             return Box::pin(async {
                 Err(AppError::new(
