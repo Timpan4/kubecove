@@ -1,27 +1,46 @@
 //! Session-only navigation memory for open workspaces. Leaving a workspace keeps
-//! its page, search, sidebar node, kind, namespace, health and GitOps owner
-//! filters and the open resource detail with its tab, and returning restores
-//! them. The health and owner filters stay at their defaults when the sidebar
-//! selected a single kind, as the web does. Nothing here reaches preferences
-//! or disk, so an app restart starts from the default view.
+//! its page, sidebar node, kind, namespace, expanded sidebar branches and the
+//! open resource detail with its tab, and returning restores them. The table,
+//! toolbar and panel state in `Browser` comes back only when the sidebar selects
+//! no single kind, and the health and owner filters follow the same rule, as the
+//! web does (`fixedResourceKindScope`). Nothing here reaches preferences or disk,
+//! so an app restart starts from the default view.
 
 use super::detail::{Detail, DetailTab};
 use super::resource_filters::HealthFilter;
 use super::{Inspector, Load, Page};
 use crate::backend::Scope;
+use crate::table_sort::Sort;
 use gpui_kit::{Context, Window};
 use kubecove_lib::models::{DiscoveredResourceKind, ResourceSummary};
 use std::collections::{HashMap, HashSet};
+
+/// The resource browser state the web keeps as `PathStateResourceBrowserState`.
+#[derive(Clone)]
+struct Browser {
+    search: String,
+    namespaces: Vec<String>,
+    sort: Sort,
+    page: usize,
+    collapsed: HashSet<String>,
+    /// The effective map and table panel states, so an unset map preference
+    /// restores as the value the user saw.
+    map_open: bool,
+    table_open: bool,
+    network: bool,
+}
 
 #[derive(Clone)]
 struct Snapshot {
     context: String,
     page: Page,
-    search: String,
+    browser: Browser,
+    /// The expanded sidebar branches, as `expandedSections` on the web.
+    sidebar_open: HashSet<String>,
     namespace: Option<String>,
     kinds: Option<HashSet<String>>,
-    /// Whether the sidebar selected one kind. The web keeps the health and
-    /// GitOps filters out of such a restore (`fixedResourceKindScope`).
+    /// Whether the sidebar selected one kind. The web keeps the browser state,
+    /// health and GitOps filters out of such a restore (`fixedResourceKindScope`).
     kind_node: bool,
     health: HealthFilter,
     gitops_owner: Option<String>,
@@ -76,10 +95,21 @@ impl Inspector {
             )),
             Detail::Closed | Detail::Failed(_) => None,
         };
+        let browser = Browser {
+            search: self.search.read(cx).value().to_string(),
+            namespaces: self.filters.namespaces.clone(),
+            sort: self.table_sort,
+            page: self.table_page,
+            collapsed: self.collapsed_groups.clone(),
+            map_open: self.map_is_open(),
+            table_open: self.table_open,
+            network: self.map.network,
+        };
         let snapshot = Snapshot {
             context: self.scope.context.clone(),
             page: self.page,
-            search: self.search.read(cx).value().to_string(),
+            browser,
+            sidebar_open: self.sidebar_tree.open.clone(),
             namespace: self.scope.namespace.clone(),
             kinds: self.kind_selection.chosen.clone(),
             kind_node: self.sidebar_kind_node(),
@@ -114,18 +144,35 @@ impl Inspector {
             namespace: saved.as_ref().and_then(|saved| saved.namespace.clone()),
         };
         self.kind_selection.chosen = saved.as_ref().and_then(|saved| saved.kinds.clone());
-        let filters = saved.as_ref().filter(|saved| !saved.kind_node);
-        self.filters.health = filters.map_or(HealthFilter::All, |saved| saved.health);
-        self.filters.gitops_owner = filters.and_then(|saved| saved.gitops_owner.clone());
+        // A single-kind sidebar node restores none of the browser state, as the
+        // web's `kindScopeLocked` drops its path state.
+        let restored = saved.as_ref().filter(|saved| !saved.kind_node);
+        self.filters.health = restored.map_or(HealthFilter::All, |saved| saved.health);
+        self.filters.gitops_owner = restored.and_then(|saved| saved.gitops_owner.clone());
+        let browser = restored.map(|saved| saved.browser.clone());
         self.sidebar_tree.selected = saved.as_ref().and_then(|saved| saved.sidebar_node.clone());
         self.live.selected = saved.as_ref().and_then(|saved| saved.custom_kind.clone());
         self.live.kind_locked = saved.as_ref().is_some_and(|saved| saved.custom_kind_locked);
-        let search = saved
+        self.sidebar_tree.open = saved
             .as_ref()
-            .map(|saved| saved.search.clone())
+            .map(|saved| saved.sidebar_open.clone())
             .unwrap_or_default();
+        let search = browser
+            .as_ref()
+            .map_or_else(String::new, |b| b.search.clone());
         self.search
             .update(cx, |input, cx| input.set_value(search, window, cx));
+        self.filters.namespaces = browser
+            .as_ref()
+            .map_or_else(Vec::new, |b| b.namespaces.clone());
+        self.table_sort = browser.as_ref().map_or_else(Sort::default, |b| b.sort);
+        self.table_page = browser.as_ref().map_or(0, |b| b.page);
+        self.collapsed_groups = browser
+            .as_ref()
+            .map_or_else(HashSet::new, |b| b.collapsed.clone());
+        self.map_open = browser.as_ref().map(|b| b.map_open);
+        self.table_open = browser.as_ref().is_none_or(|b| b.table_open);
+        self.map.network = browser.as_ref().is_some_and(|b| b.network);
         self.navigation.pending_detail = saved.and_then(|saved| saved.detail);
     }
 

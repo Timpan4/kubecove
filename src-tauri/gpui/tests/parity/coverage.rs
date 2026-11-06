@@ -66,6 +66,8 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 "Verify access" => ("rbac-verify", RBAC_TOP),
                 "Load 50 more" => ("rbac-more", RBAC_TOP),
                 "Open in Resources" => ("incident-open-resource", "incident-guide"),
+                "Next" => ("next-page", "resource-table"),
+                "Previous" => ("previous-page", "resource-table"),
                 other => panic!("unmapped coverage control {other}"),
             };
             reveal(window, anchor, id, cx);

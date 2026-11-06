@@ -757,6 +757,9 @@ impl Inspector {
                                     page_index + 1,
                                     page_count
                                 )))
+                                .id("table-page")
+                                .test_support()
+                                .aria_label(format!("Page {} of {}", page_index + 1, page_count))
                                 .flex_1()
                                 .flex()
                                 .justify_center(),
