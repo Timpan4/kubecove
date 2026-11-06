@@ -1,22 +1,38 @@
-import { writeFile } from "node:fs/promises";
+import { readFile, readlink, writeFile } from "node:fs/promises";
 import { getPriority } from "node:os";
+import { basename } from "node:path";
+
+export function isParityProcess(executable: string, argv: string[]): boolean {
+	const name = basename(executable);
+	if (name.startsWith("parity-") && basename(argv[0] ?? "") === name) return true;
+	return name === "bun" && argv.slice(1).some(arg =>
+		arg === "scripts/e2e-parity.ts" || arg.endsWith("/scripts/e2e-parity.ts"));
+}
 
 async function parityProcesses(): Promise<string[]> {
 	if (process.platform !== "linux") return [];
 	const child = Bun.spawn(["ps", "-eo", "pid=,stat=,comm="], { stdout: "pipe", stderr: "pipe" });
-	const runners = Bun.spawn(["pgrep", "-f", "scripts/e2e-parity[.]ts"], { stdout: "pipe", stderr: "pipe" });
-	const [code, output, error, runnerCode, runnerIds, runnerError] = await Promise.all([
+	const [code, output, error] = await Promise.all([
 		child.exited, new Response(child.stdout).text(), new Response(child.stderr).text(),
-		runners.exited, new Response(runners.stdout).text(), new Response(runners.stderr).text(),
 	]);
 	if (code !== 0) throw new Error(`Cannot verify parity isolation: ps exited ${code}: ${error}`);
-	if (runnerCode !== 0 && runnerCode !== 1)
-		throw new Error(`Cannot verify parity isolation: pgrep exited ${runnerCode}: ${runnerError}`);
-	const processes = output.split("\n").filter(line => {
-		const [, state, name] = line.trim().split(/\s+/);
-		return !state?.startsWith("Z") && name?.startsWith("parity-");
+	const candidates = output.split("\n").flatMap(line => {
+		const [pid, state, name] = line.trim().split(/\s+/);
+		return pid && !state?.startsWith("Z") && (name === "bun" || name?.startsWith("parity-")) ? [pid] : [];
 	});
-	return processes.concat(runnerIds.trim().split("\n").filter(Boolean).map(pid => `parity runner PID ${pid}`));
+	const processes = await Promise.all(candidates.map(async pid => {
+		try {
+			const [executable, command] = await Promise.all([
+				readlink(`/proc/${pid}/exe`), readFile(`/proc/${pid}/cmdline`, "utf8"),
+			]);
+			return isParityProcess(executable, command.split("\0")) ? [`parity process PID ${pid}`] : [];
+		} catch (error) {
+			// Processes may exit between the snapshot and their procfs reads.
+			if (error instanceof Error && "code" in error && (error.code === "ENOENT" || error.code === "ESRCH")) return [];
+			throw error;
+		}
+	}));
+	return processes.flat();
 }
 
 export async function runFrameCommand(
