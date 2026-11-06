@@ -109,7 +109,7 @@ fn changing_preferred_owner_reorders_the_same_rows() {
                 selected: |_: &str, _: Option<&str>| true,
             },
             "",
-            |_| true,
+            |_, _| true,
             |row| preferred == Some(row.name.as_str()),
             &lanes,
         );
@@ -156,7 +156,7 @@ fn kind_selection_distinguishes_api_versions_and_rechecks_selection() {
                 },
             },
             "",
-            |_| true,
+            |_, _| true,
             |_| false,
             &lanes,
         );
@@ -200,7 +200,7 @@ fn preferred_members_keep_owner_groups_and_kind_lanes_contiguous() {
             selected: |_: &str, _: Option<&str>| true,
         },
         "",
-        |_| true,
+        |_, _| true,
         |row| matches!(row.name.as_str(), "c" | "d" | "e"),
         &crate::preferences::KindLanes::default(),
     );

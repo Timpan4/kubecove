@@ -223,7 +223,7 @@ impl Visible {
                 selected: |_: &str, _: Option<&str>| true,
             },
             query,
-            |_| true,
+            |_, _| true,
             |_| false,
             &crate::preferences::KindLanes::default(),
         );
@@ -234,7 +234,7 @@ impl Visible {
         source: Rc<PreparedRows>,
         kinds: KindFilter<'_, impl Fn(&str, Option<&str>) -> bool>,
         query: &str,
-        included: impl Fn(&ResourceSummary) -> bool,
+        included: impl Fn(&ResourceSummary, Option<&str>) -> bool,
         preferred: impl Fn(&ResourceSummary) -> bool,
         lanes: &crate::preferences::KindLanes,
     ) {
@@ -251,7 +251,10 @@ impl Visible {
         self.selected.fill(false);
         for (index, key) in source.keys.iter().enumerate() {
             if self.allowed[key.variant]
-                && included(&source.rows[index])
+                && included(
+                    &source.rows[index],
+                    key.owner.as_ref().map(|(key, _)| key.as_str()),
+                )
                 && (query.is_empty() || key.search.contains(query))
             {
                 self.indices.push(index);
@@ -356,7 +359,7 @@ impl FromIterator<ResourceSummary> for Visible {
                 selected: |_: &str, _: Option<&str>| true,
             },
             "",
-            |_| true,
+            |_, _| true,
             |_| false,
             &crate::preferences::KindLanes::default(),
         );

@@ -121,14 +121,10 @@ impl Inspector {
                 selected: |kind: &str, api: Option<&str>| self.selected_kind(kind, api),
             },
             &query,
-            |row| {
+            |row, owner| {
                 self.row_scope_visible(row)
                     && self.filters.in_namespace(row)
-                    && self.filters.in_owner(
-                        crate::model::gitops_owner_filter(row)
-                            .as_ref()
-                            .map(|(key, _)| key.as_str()),
-                    )
+                    && self.filters.in_owner(owner)
                     && self.filters.health.matches(row)
             },
             |row| self.application_manages(row),
