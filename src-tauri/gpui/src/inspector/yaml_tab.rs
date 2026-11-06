@@ -633,12 +633,14 @@ pub(super) fn yaml_tab(
                 .border_1()
                 .border_color(Tokens::border())
                 .overflow_hidden()
-                .child(
+                .child(crate::frame_profile::element(
+                    "yaml.editor",
                     Editor::new(&detail.editor)
                         .aria_label("Resource YAML")
                         .readonly(!editing || applying)
-                        .size_full(),
-                )
+                        .size_full()
+                        .into_any_element(),
+                ))
                 .children(
                     detail
                         .lenses

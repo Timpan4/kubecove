@@ -214,6 +214,7 @@ impl FrameContext {
     pub fn tick(&mut self) -> (bool, bool) {
         let executor = self.app.update(|cx| cx.background_executor().clone());
         self.operation(false, |_| {
+            let _span = kubecove_gpui::frame_profile::scope("dispatcher", "drain");
             executor
                 .dispatcher()
                 .as_threaded()
@@ -243,6 +244,7 @@ impl FrameContext {
             }
             if !drew {
                 let (_, rendered, pending) = self.operation(false, |_| {
+                    let _span = kubecove_gpui::frame_profile::scope("dispatcher", "drain");
                     executor
                         .dispatcher()
                         .as_threaded()

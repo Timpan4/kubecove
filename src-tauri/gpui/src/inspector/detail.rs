@@ -537,6 +537,20 @@ impl Inspector {
                         yaml_tab(self, detail, &self.persisted.preferences, cx).into_any_element()
                     }
                 };
+                let content = crate::frame_profile::element(
+                    match detail.tab {
+                        DetailTab::Details => "detail.details",
+                        DetailTab::Forward => "detail.forward",
+                        DetailTab::Exec => "detail.exec",
+                        DetailTab::Events => "detail.events",
+                        DetailTab::Logs => "detail.logs",
+                        DetailTab::Revisions => "detail.revisions",
+                        DetailTab::Argo => "detail.argo",
+                        DetailTab::Actions => "detail.actions",
+                        DetailTab::Yaml => "detail.yaml",
+                    },
+                    content,
+                );
                 div()
                     .flex()
                     .flex_col()

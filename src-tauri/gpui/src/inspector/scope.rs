@@ -289,6 +289,7 @@ impl Inspector {
     }
 
     pub(super) fn filter(&mut self, cx: &mut Context<Self>) {
+        let _span = crate::frame_profile::scope("scope", "filter");
         self.update_saved_overview();
         self.filter_rows(cx);
         self.rebuild_map();

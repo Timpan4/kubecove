@@ -293,13 +293,14 @@ impl Inspector {
                 let mut lost = false;
                 let mut timer = Box::pin(cx.background_executor().timer(RECOVERY));
                 loop {
-                    let mut stream = match backend
-                        .watch(WatchTarget::Resource {
+                    let read = {
+                        let _span = crate::frame_profile::scope("watch", "open_factory");
+                        backend.watch(WatchTarget::Resource {
                             scope: scope.clone(),
                             key: key.clone(),
                         })
-                        .await
-                    {
+                    };
+                    let mut stream = match read.await {
                         Ok(stream) => stream,
                         Err(error) => {
                             lost = true;

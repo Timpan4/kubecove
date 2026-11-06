@@ -134,6 +134,7 @@ impl Inspector {
     }
 
     pub(super) fn toggle_kind(&mut self, key: String, cx: &mut Context<Self>) {
+        let _span = crate::frame_profile::scope("kinds", "toggle");
         if !self.can_leave(cx) {
             return;
         }
