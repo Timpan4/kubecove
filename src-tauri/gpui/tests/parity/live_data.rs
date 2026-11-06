@@ -29,6 +29,11 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
                 cx,
             );
             window.render_frame(cx);
+            if picker {
+                // As the web driver does, search the kind so its entry is in view.
+                super::replace_text(window, cx, "kind-search", string(step, "kind"));
+                window.render_frame(cx);
+            }
             if !picker {
                 window.click("custom-group:kustomize.toolkit.fluxcd.io", cx);
                 window.render_frame(cx);
