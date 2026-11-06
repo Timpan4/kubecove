@@ -16,7 +16,7 @@ use std::{
 /// resource-watch.ts::RESOURCE_RECOVERY_INTERVAL.
 pub(super) const RECOVERY: Duration = Duration::from_millis(15_000);
 /// live-view-refresh.ts::createWatchRefreshThrottle.
-pub(super) const COALESCE: Duration = Duration::from_millis(250);
+pub const COALESCE: Duration = Duration::from_millis(250);
 
 #[derive(Default)]
 pub(super) struct LiveData {
@@ -47,10 +47,17 @@ struct Registration {
     error: Option<String>,
     reload_error: Option<String>,
     catching_up: bool,
+    recycled: Vec<kubecove_lib::models::ResourceSummary>,
     _task: Task<()>,
 }
 
 impl LiveData {
+    fn take_buffer(&mut self, id: &str) -> Vec<kubecove_lib::models::ResourceSummary> {
+        self.watches
+            .get_mut(id)
+            .map(|watch| std::mem::take(&mut watch.recycled))
+            .unwrap_or_default()
+    }
     pub fn reset_scope(&mut self) {
         self.watches.clear();
         self.pending.clear();
@@ -226,6 +233,7 @@ impl Inspector {
 
     /// Reconciles before rendering: changed scopes drop their tasks and stream guards.
     pub(super) fn sync_live(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let _profile = crate::frame_profile::scope("live", "sync");
         self.sync_gitops_watches(window, cx);
         let owner = format!(
             "{:?}:{:?}:{}:{:?}:{:?}:{:?}",
@@ -306,14 +314,21 @@ impl Inspector {
                             });
                             timer.as_mut().await;
                             timer = Box::pin(cx.background_executor().timer(RECOVERY));
+                            let recycled = this
+                                .update(cx, |this, _| this.live.take_buffer(&id))
+                                .unwrap_or_default();
+                            let mut recycled = Some(recycled);
                             let retry_backend = backend.clone();
                             let retry_scope = scope.clone();
                             let retry_key = key.clone();
                             let rows = crate::read_retry::read(
                                 cx.background_executor().clone(),
                                 move || {
-                                    retry_backend
-                                        .kind_resources(retry_scope.clone(), retry_key.clone())
+                                    retry_backend.kind_resources(
+                                        retry_scope.clone(),
+                                        retry_key.clone(),
+                                        recycled.take().unwrap_or_default(),
+                                    )
                                 },
                             )
                             .await;
@@ -325,7 +340,16 @@ impl Inspector {
                                     match rows {
                                         Ok(rows) => {
                                             this.supersede_kind_read(&key);
-                                            this.patch_kind(&scope, &key, rows, None, cx);
+                                            this.queue_live_patch(
+                                                super::live_rows::Patch {
+                                                    scope: scope.clone(),
+                                                    key: key.clone(),
+                                                    rows,
+                                                    names: None,
+                                                    watch: Some(id.clone()),
+                                                },
+                                                cx,
+                                            );
                                         }
                                         Err(error) => {
                                             if let Some(w) = this.live.watches.get_mut(&id) {
@@ -347,6 +371,7 @@ impl Inspector {
                     loop {
                         let input = receive_or_tick(&mut stream, &mut timer).await;
                         let tick = matches!(input, WatchInput::Tick);
+                        let batch_profile = crate::frame_profile::scope("watch", "batch");
                         let closed = matches!(input, WatchInput::Closed);
                         if tick {
                             timer = Box::pin(cx.background_executor().timer(RECOVERY));
@@ -366,26 +391,29 @@ impl Inspector {
                             lost = true;
                         }
                         let mut reload = tick && (lost || forbidden || read_failed);
-                        let mut names = Some(std::collections::HashSet::new());
-                        for event in &batch {
+                        let mut names = Some(crate::model::ObservedNames::default());
+                        let mut transitions = Vec::new();
+                        for event in batch {
                             match event {
                                 StreamMessage::Status { status, .. } => {
-                                    forbidden = *status == StreamStatus::Forbidden;
-                                    if *status != StreamStatus::Connected {
+                                    forbidden = status == StreamStatus::Forbidden;
+                                    if status != StreamStatus::Connected {
                                         lost = true;
                                     } else if lost {
                                         reload = true;
                                         names = None;
                                         lost = false;
                                     }
+                                    transitions.push(event);
                                 }
                                 StreamMessage::Error { .. } | StreamMessage::Stopped { .. } => {
-                                    lost = true
+                                    lost = true;
+                                    transitions.push(event);
                                 }
                                 StreamMessage::ResourceChanged { target, .. } => {
                                     reload = true;
-                                    if let (Some(names), Some(name)) = (&mut names, &target.name) {
-                                        names.insert((target.namespace.clone(), name.clone()));
+                                    if let (Some(names), Some(name)) = (&mut names, target.name) {
+                                        names.insert((target.namespace, name));
                                     } else {
                                         names = None;
                                     }
@@ -396,6 +424,7 @@ impl Inspector {
                         if tick {
                             names = None;
                         }
+                        drop(batch_profile);
                         let valid = this
                             .update_in(cx, |this, _window, cx| {
                                 if this.live.owner != owner {
@@ -407,7 +436,7 @@ impl Inspector {
                                 if closed {
                                     w.connected = false;
                                 }
-                                for event in batch {
+                                for event in transitions {
                                     match event {
                                         StreamMessage::Status {
                                             status, message, ..
@@ -440,20 +469,27 @@ impl Inspector {
                         }
                         if reload {
                             let started = std::time::Instant::now();
+                            let recycled = this
+                                .update(cx, |this, _| this.live.take_buffer(&id))
+                                .unwrap_or_default();
+                            let mut recycled = Some(recycled);
                             let retry_backend = backend.clone();
                             let retry_scope = scope.clone();
                             let retry_key = key.clone();
                             let rows = crate::read_retry::read(
                                 cx.background_executor().clone(),
                                 move || {
-                                    retry_backend
-                                        .kind_resources(retry_scope.clone(), retry_key.clone())
+                                    retry_backend.kind_resources(
+                                        retry_scope.clone(),
+                                        retry_key.clone(),
+                                        recycled.take().unwrap_or_default(),
+                                    )
                                 },
                             )
                             .await;
                             read_failed = rows.is_err();
                             let valid = this
-                                .update_in(cx, |this, window, cx| {
+                                .update_in(cx, |this, _window, cx| {
                                     if this.live.owner != owner {
                                         return false;
                                     }
@@ -466,8 +502,8 @@ impl Inspector {
                                                     key: key.clone(),
                                                     rows,
                                                     names,
+                                                    watch: Some(id.clone()),
                                                 },
-                                                window,
                                                 cx,
                                             );
                                             if let Some(w) = this.live.watches.get_mut(&id) {
@@ -517,16 +553,16 @@ impl Inspector {
                     error: None,
                     reload_error: None,
                     catching_up: false,
+                    recycled: Vec::new(),
                     _task: task,
                 },
             );
         }
     }
 
-    fn queue_live_patch(
+    pub(super) fn queue_live_patch(
         &mut self,
         patch: super::live_rows::Patch,
-        _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.live.pending.push(patch);
@@ -534,17 +570,30 @@ impl Inspector {
     }
 
     pub(super) fn flush_live_patches(&mut self, cx: &mut Context<Self>) {
+        let _span = crate::frame_profile::scope("watch", "flush");
         if self.live.scope_loading {
             return;
         }
-        for patch in std::mem::take(&mut self.live.pending) {
-            self.patch_kind(
-                &patch.scope,
-                &patch.key,
-                patch.rows,
-                patch.names.as_ref(),
-                cx,
-            );
+        let mut pending = std::mem::take(&mut self.live.pending);
+        pending.retain(|patch| patch.scope == self.scope);
+        if pending.is_empty() {
+            return;
         }
+        self.visible.release_source();
+        self.row_index.invalidate();
+        for patch in pending {
+            let rows = self.patch_kind(&patch.scope, &patch.key, patch.rows, patch.names);
+            if let Some(watch) = patch
+                .watch
+                .as_deref()
+                .and_then(|id| self.live.watches.get_mut(id))
+            {
+                // The sequential read consumes this buffer on its next producer turn.
+                watch.recycled = rows;
+            }
+        }
+        self.prepare_rows();
+        self.filter(cx);
+        cx.notify();
     }
 }

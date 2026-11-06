@@ -2,10 +2,13 @@
 //! and `topology-standalone-groups.ts`. Nodes are addressed by their index in
 //! `Graph::nodes`.
 
-use crate::collate::collate;
+use crate::collate::{Key, collate};
+mod order;
 use kubecove_lib::models::{TopologyEdge, TopologyNode};
-use std::cmp::Ordering;
+pub(super) use order::{Scratch, order_keys};
+use std::cmp::{Ordering, Reverse};
 use std::collections::{HashMap, HashSet};
+use std::{borrow::Cow, ops::Deref};
 
 /// `SVELTE_TOPOLOGY_LAYOUT` in `topology-implementation.ts`.
 pub const NODE_WIDTH: f32 = 408.;
@@ -30,66 +33,190 @@ const GROUP_GAP: f32 = 24.;
 /// last value), edges limited to known endpoints.
 pub struct Graph<'a> {
     pub nodes: Vec<&'a TopologyNode>,
-    pub index: HashMap<&'a str, usize>,
     pub edges: Vec<&'a TopologyEdge>,
-    pub parents: Vec<Vec<usize>>,
-    pub children: Vec<Vec<usize>>,
-    /// Edge indices per node.
-    pub incoming: Vec<Vec<usize>>,
-    pub outgoing: Vec<Vec<usize>>,
+    data: Cow<'a, GraphData>,
 }
 
-fn dedup<'a, T>(items: impl Iterator<Item = &'a T>, id: impl Fn(&T) -> &str) -> Vec<&'a T> {
-    let mut position: HashMap<&str, usize> = HashMap::new();
-    let mut unique: Vec<&'a T> = Vec::new();
-    for item in items {
-        match position.get(id(item)) {
-            Some(&at) => unique[at] = item,
-            None => {
-                position.insert(id(item), unique.len());
-                unique.push(item);
-            }
-        }
+/// Selection-independent adjacency and sort ranks, retained with the layout.
+#[derive(Clone)]
+pub struct GraphData {
+    node_ranks: Vec<usize>,
+    pub source_nodes: Vec<usize>,
+    pub source_edges: Vec<usize>,
+    pub endpoints: Vec<(usize, usize)>,
+    pub index: NodeIndex,
+    pub parents: Adjacency,
+    pub children: Adjacency,
+    /// Edge indices per node.
+    pub incoming: Adjacency,
+    pub outgoing: Adjacency,
+}
+
+impl Deref for Graph<'_> {
+    type Target = GraphData;
+    fn deref(&self) -> &GraphData {
+        &self.data
     }
-    unique
+}
+
+#[derive(Clone)]
+pub struct NodeIndex {
+    source: std::sync::Arc<HashMap<String, usize>>,
+    positions: Vec<usize>,
+}
+
+impl NodeIndex {
+    pub(super) fn get(&self, id: &str) -> Option<&usize> {
+        let position = &self.positions[*self.source.get(id)?];
+        (*position != usize::MAX).then_some(position)
+    }
+}
+
+impl std::ops::Index<&str> for NodeIndex {
+    type Output = usize;
+    fn index(&self, id: &str) -> &usize {
+        self.get(id).expect("known graph endpoint")
+    }
+}
+
+/// Compressed adjacency preserves raw edge order without allocating a vector
+/// for every node. Node and edge adjacency share the same row boundaries.
+#[derive(Clone)]
+pub struct Adjacency {
+    offsets: std::sync::Arc<[usize]>,
+    entries: Vec<usize>,
+}
+
+impl Adjacency {
+    fn pair(count: usize, edges: &[(usize, usize)], incoming: bool) -> (Self, Self) {
+        let mut offsets = vec![0; count + 1];
+        for &(source, target) in edges {
+            offsets[if incoming { target } else { source } + 1] += 1;
+        }
+        for i in 1..offsets.len() {
+            offsets[i] += offsets[i - 1];
+        }
+        let mut next = offsets[..count].to_vec();
+        let mut nodes = vec![0; edges.len()];
+        let mut indices = vec![0; edges.len()];
+        for (edge, &(source, target)) in edges.iter().enumerate() {
+            let (node, other) = if incoming {
+                (target, source)
+            } else {
+                (source, target)
+            };
+            let at = next[node];
+            nodes[at] = other;
+            indices[at] = edge;
+            next[node] += 1;
+        }
+        let offsets: std::sync::Arc<[usize]> = offsets.into();
+        (
+            Self {
+                offsets: offsets.clone(),
+                entries: nodes,
+            },
+            Self {
+                offsets,
+                entries: indices,
+            },
+        )
+    }
+}
+
+impl std::ops::Index<usize> for Adjacency {
+    type Output = [usize];
+    fn index(&self, node: usize) -> &[usize] {
+        &self.entries[self.offsets[node]..self.offsets[node + 1]]
+    }
 }
 
 impl<'a> Graph<'a> {
-    pub fn new(
-        nodes: impl Iterator<Item = &'a TopologyNode>,
-        edges: impl Iterator<Item = &'a TopologyEdge>,
+    pub fn ranked(
+        nodes: impl Iterator<Item = (usize, &'a TopologyNode)>,
+        edges: impl Iterator<Item = (usize, &'a TopologyEdge)>,
+        source: &super::Source,
     ) -> Self {
-        let nodes = dedup(nodes, |node| &node.id);
-        let index: HashMap<&str, usize> = nodes
+        let mut index = NodeIndex {
+            source: source.index.clone(),
+            positions: vec![usize::MAX; source.locals.len()],
+        };
+        let mut unique = Vec::with_capacity(nodes.size_hint().0);
+        let mut source_nodes = Vec::with_capacity(nodes.size_hint().0);
+        let mut node_ranks = Vec::with_capacity(nodes.size_hint().0);
+        for (raw, node) in nodes {
+            let canonical = source.canonical[raw];
+            let position = &mut index.positions[canonical];
+            if *position == usize::MAX {
+                *position = unique.len();
+                unique.push(node);
+                source_nodes.push(raw);
+                node_ranks.push(source.rank(canonical));
+            } else {
+                unique[*position] = node;
+                source_nodes[*position] = raw;
+            }
+        }
+        let nodes = unique;
+        let mut seen = vec![usize::MAX; source.edge_count];
+        let mut unique = Vec::with_capacity(edges.size_hint().0);
+        for (raw, edge) in edges {
+            let position = &mut seen[source.edge_positions[raw]];
+            if *position == usize::MAX {
+                *position = unique.len();
+                unique.push((raw, edge));
+            } else {
+                unique[*position] = (raw, edge);
+            }
+        }
+        unique.retain(|(raw, _)| {
+            source.endpoints[*raw].is_some_and(|(source, target)| {
+                index.positions[source] != usize::MAX && index.positions[target] != usize::MAX
+            })
+        });
+        let source_edges = unique.iter().map(|(raw, _)| *raw).collect();
+        let endpoints: Vec<_> = unique
             .iter()
-            .enumerate()
-            .map(|(at, node)| (node.id.as_str(), at))
-            .collect();
-        let edges: Vec<_> = dedup(edges, |edge| &edge.id)
-            .into_iter()
-            .filter(|edge| {
-                index.contains_key(edge.source.as_str()) && index.contains_key(edge.target.as_str())
+            .map(|(raw, _)| {
+                let (source, target) = source.endpoints[*raw].expect("known endpoints");
+                (index.positions[source], index.positions[target])
             })
             .collect();
-        let count = nodes.len();
-        let mut graph = Graph {
-            nodes,
+        let edges: Vec<_> = unique.into_iter().map(|(_, edge)| edge).collect();
+        let (parents, incoming) = Adjacency::pair(nodes.len(), &endpoints, true);
+        let (children, outgoing) = Adjacency::pair(nodes.len(), &endpoints, false);
+        let data = GraphData {
+            node_ranks,
+            source_nodes,
+            source_edges,
+            endpoints,
             index,
-            edges,
-            parents: vec![Vec::new(); count],
-            children: vec![Vec::new(); count],
-            incoming: vec![Vec::new(); count],
-            outgoing: vec![Vec::new(); count],
+            parents,
+            children,
+            incoming,
+            outgoing,
         };
-        for (at, edge) in graph.edges.iter().enumerate() {
-            let source = graph.index[edge.source.as_str()];
-            let target = graph.index[edge.target.as_str()];
-            graph.parents[target].push(source);
-            graph.children[source].push(target);
-            graph.incoming[target].push(at);
-            graph.outgoing[source].push(at);
+        Graph {
+            nodes,
+            edges,
+            data: Cow::Owned(data),
         }
-        graph
+    }
+
+    pub fn prepared(
+        nodes: Vec<&'a TopologyNode>,
+        edges: Vec<&'a TopologyEdge>,
+        data: &'a GraphData,
+    ) -> Self {
+        Self {
+            nodes,
+            edges,
+            data: Cow::Borrowed(data),
+        }
+    }
+
+    pub fn into_data(self) -> GraphData {
+        self.data.into_owned()
     }
 }
 
@@ -111,26 +238,58 @@ fn created_at_ms(node: &TopologyNode) -> Option<i64> {
         .map(|time| time.timestamp_millis())
 }
 
-/// `sortTopologyNodes`.
-fn sort_nodes(a: &TopologyNode, b: &TopologyNode) -> Ordering {
-    kind_rank(&a.kind)
-        .cmp(&kind_rank(&b.kind))
-        .then_with(|| {
-            collate(
-                a.namespace.as_deref().unwrap_or(""),
-                b.namespace.as_deref().unwrap_or(""),
-                false,
-            )
-        })
-        .then_with(|| collate(&a.kind, &b.kind, false))
-        // Newest first; resources without a timestamp sort last.
-        .then_with(|| match (created_at_ms(a), created_at_ms(b)) {
-            (Some(a), Some(b)) => b.cmp(&a),
-            (Some(_), None) => Ordering::Less,
-            (None, Some(_)) => Ordering::Greater,
-            (None, None) => Ordering::Equal,
-        })
-        .then_with(|| collate(&a.name, &b.name, true))
+pub(super) fn node_ranks(nodes: &[TopologyNode]) -> Vec<usize> {
+    let keys: Vec<_> = nodes.iter().map(NodeKey::new).collect();
+    let mut sorted: Vec<_> = (0..nodes.len()).collect();
+    sorted.sort_unstable_by(|&a, &b| keys[a].cmp(&keys[b]));
+    let mut ranks = vec![0; nodes.len()];
+    let mut rank = 0;
+    for (at, &node) in sorted.iter().enumerate() {
+        if at > 0 && keys[sorted[at - 1]] != keys[node] {
+            rank += 1;
+        }
+        ranks[node] = rank;
+    }
+    ranks
+}
+
+pub(super) fn local_key(node: &TopologyNode) -> String {
+    let created = match created_at_ms(node) {
+        Some(ms) => format!("0:{:016}", 9_007_199_254_740_991_i64 - ms),
+        None => "1:".to_owned(),
+    };
+    [
+        format!("{:02}", kind_rank(&node.kind)),
+        node.namespace.clone().unwrap_or_default(),
+        node.kind.clone(),
+        created,
+        node.name.clone(),
+        node.id.clone(),
+    ]
+    .join("|")
+}
+
+/// `sortTopologyNodes`, with timestamps and collation decoded once per node.
+#[derive(Eq, PartialEq, Ord, PartialOrd)]
+struct NodeKey<'a> {
+    rank: i32,
+    namespace: Key<'a>,
+    kind: Key<'a>,
+    // Newest first; resources without a timestamp sort last.
+    created: Reverse<Option<i64>>,
+    name: Key<'a>,
+}
+
+impl<'a> NodeKey<'a> {
+    fn new(node: &'a TopologyNode) -> Self {
+        Self {
+            rank: kind_rank(&node.kind),
+            namespace: Key::new(node.namespace.as_deref().unwrap_or(""), false),
+            kind: Key::new(&node.kind, false),
+            created: Reverse(created_at_ms(node)),
+            name: Key::new(&node.name, true),
+        }
+    }
 }
 
 /// `topologyColumnDepth` followed by `compactDirectEdgeDepths`.
@@ -187,89 +346,16 @@ pub fn depths(graph: &Graph) -> Vec<i32> {
     compacted
 }
 
-/// `topologyLayoutOrder`: a key that keeps each subtree under its root.
-pub fn order_keys(graph: &Graph, depth: &[i32]) -> Vec<String> {
-    let count = graph.nodes.len();
-    let mut roots: Vec<usize> = (0..count)
-        .filter(|&node| graph.parents[node].is_empty())
-        .collect();
-    roots.sort_by(|&a, &b| sort_nodes(graph.nodes[a], graph.nodes[b]));
-    let mut root_order = vec![roots.len(); count];
-    for (at, &root) in roots.iter().enumerate() {
-        root_order[root] = at;
-    }
-    let local_key = |node: usize| {
-        let node = graph.nodes[node];
-        let created = match created_at_ms(node) {
-            Some(ms) => format!("0:{:016}", 9_007_199_254_740_991_i64 - ms),
-            None => "1:".to_owned(),
-        };
-        [
-            format!("{:02}", kind_rank(&node.kind)),
-            node.namespace.clone().unwrap_or_default(),
-            node.kind.clone(),
-            created,
-            node.name.clone(),
-            node.id.clone(),
-        ]
-        .join("|")
-    };
-    struct Resolver<'g, 'a, F> {
-        graph: &'g Graph<'a>,
-        depth: &'g [i32],
-        root_order: Vec<usize>,
-        local_key: F,
-        memo: Vec<Option<String>>,
-        visiting: Vec<bool>,
-    }
-    impl<F: Fn(usize) -> String> Resolver<'_, '_, F> {
-        fn resolve(&mut self, node: usize) -> String {
-            if let Some(cached) = &self.memo[node] {
-                return cached.clone();
-            }
-            if self.visiting[node] {
-                return (self.local_key)(node);
-            }
-            self.visiting[node] = true;
-            let mut parents = self.graph.parents[node].clone();
-            parents.sort_by(|&a, &b| sort_nodes(self.graph.nodes[a], self.graph.nodes[b]));
-            // JavaScript's default `sort()` orders the parent keys by code unit.
-            let parent_key = parents
-                .into_iter()
-                .map(|parent| self.resolve(parent))
-                .min()
-                .unwrap_or_else(|| format!("{:04}", self.root_order[node]));
-            let key = format!(
-                "{parent_key}>{:02}>{}",
-                self.depth[node],
-                (self.local_key)(node)
-            );
-            self.memo[node] = Some(key.clone());
-            self.visiting[node] = false;
-            key
-        }
-    }
-    let mut resolver = Resolver {
-        graph,
-        depth,
-        root_order,
-        local_key,
-        memo: vec![None; count],
-        visiting: vec![false; count],
-    };
-    (0..count).map(|node| resolver.resolve(node)).collect()
-}
-
 /// `compareNodesByLayoutOrder`.
-pub fn compare(graph: &Graph, depth: &[i32], order: &[String], a: usize, b: usize) -> Ordering {
+pub fn compare(graph: &Graph, depth: &[i32], order: &[usize], a: usize, b: usize) -> Ordering {
     depth[a]
         .cmp(&depth[b])
-        .then_with(|| collate(&order[a], &order[b], false))
-        .then_with(|| sort_nodes(graph.nodes[a], graph.nodes[b]))
+        .then_with(|| order[a].cmp(&order[b]))
+        .then_with(|| graph.node_ranks[a].cmp(&graph.node_ranks[b]))
 }
 
 /// `buildTopologyPositions`: each node's top-left corner.
-pub fn positions(graph: &Graph, depth: &[i32], order: &[String]) -> Vec<Option<(f32, f32)>> {
+pub fn positions(graph: &Graph, depth: &[i32], order: &[usize]) -> Vec<Option<(f32, f32)>> {
     let count = graph.nodes.len();
     let cmp = |a: &usize, b: &usize| compare(graph, depth, order, *a, *b);
     let mut primary_children: Vec<Vec<usize>> = vec![Vec::new(); count];

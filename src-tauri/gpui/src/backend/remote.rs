@@ -409,19 +409,28 @@ impl Backend for DesktopBackend {
         };
         self.call(command, args)
     }
-    fn kind_resources(&self, scope: Scope, key: WatchResourceKey) -> Read<Vec<ResourceSummary>> {
+    fn kind_resources(
+        &self,
+        scope: Scope,
+        key: WatchResourceKey,
+        recycled: Vec<ResourceSummary>,
+    ) -> Read<Vec<ResourceSummary>> {
         if !self.selected() {
-            return self.local.kind_resources(scope, key);
+            return self.local.kind_resources(scope, key, recycled);
         }
         let kind = key.resource_kind;
-        if kind.plural.is_some() {
+        let read: Read<Vec<ResourceSummary>> = if kind.plural.is_some() {
             self.call("list_dynamic_resources", json!({"clusterContext":scope.context,"resourceKind":kind,"namespace":key.namespace}))
         } else {
             self.call(
                 "list_resources",
                 json!({"clusterContext":scope.context,"kind":kind.kind,"namespace":key.namespace}),
             )
-        }
+        };
+        self.local.read(async move {
+            let rows = read.await?;
+            Ok(super::live_data::reuse_row_buffer(recycled, rows))
+        })
     }
     fn topology(&self, scope: Scope) -> Read<ResourceTopology> {
         if !self.selected() {

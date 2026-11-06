@@ -559,6 +559,7 @@ impl Inspector {
             self.live.error_open = false;
         }
         let stacked = !matches!(self.detail, Detail::Closed);
+        self.rebuild_map();
         self.sync_map_focus(window, cx);
         let body: AnyElement = match self.empty_scope() {
             Some(empty) => empty,

@@ -3,23 +3,30 @@
 //! `resourceBrowserModel.ts`. Rendering lives in `inspector/map.rs`.
 
 mod layout;
+mod source;
+pub use source::Source;
 pub mod node;
 
-use kubecove_lib::models::{ResourceSummary, ResourceTopology, TopologyEdge, TopologyNode};
+use kubecove_lib::models::{ResourceSummary, ResourceTopology, TopologyNode};
 use layout::{CANVAS_PADDING, Graph, NODE_HEIGHT, NODE_WIDTH, STANDALONE_NODE_WIDTH};
-use std::collections::{HashMap, HashSet};
+#[cfg(test)]
+use std::collections::HashMap;
+use std::collections::HashSet;
 
 /// xyflow's `minZoom` and `maxZoom` for the ownership map. The zoom controls disable at these limits.
 pub const MIN_ZOOM: f32 = 0.12;
 pub const MAX_ZOOM: f32 = 1.4;
 const WIDTH_FIT_PADDING: f32 = 0.08;
 
+/// Map entries refer to the topology by index, so a built view does not
+/// borrow it and can outlive the frame it was built for.
 pub enum FlowItem {
-    Resource(Box<TopologyNode>),
-    /// Ownerless resources of one kind; `members` are topology node ids.
+    /// An index into `ResourceTopology::nodes`.
+    Resource(usize),
+    /// Ownerless resources of one kind; `members` index the filtered graph.
     Group {
         kind: String,
-        members: Vec<String>,
+        members: Vec<usize>,
         expanded: bool,
     },
 }
@@ -81,10 +88,11 @@ fn loose_key(row: &ResourceSummary) -> (&str, &str, Option<&str>, &str) {
 /// `filterTopologyByTableRows`: matching resources plus every ancestor that
 /// explains their ownership. Historical ReplicaSets stay; the native table
 /// has no "Hide historical ReplicaSets" filter yet.
-fn filter_by_rows<'a>(
-    topology: &'a ResourceTopology,
-    rows: &[ResourceSummary],
-) -> (Vec<&'a TopologyNode>, Vec<&'a TopologyEdge>) {
+#[cfg(test)]
+fn filter_by_rows(
+    topology: &ResourceTopology,
+    rows: &crate::model::Visible,
+) -> (Vec<usize>, Vec<usize>) {
     let keys: HashSet<_> = rows.iter().map(loose_key).collect();
     let known: HashSet<&str> = topology.nodes.iter().map(|node| node.id.as_str()).collect();
     let mut incoming: HashMap<&str, Vec<&str>> = HashMap::new();
@@ -112,14 +120,18 @@ fn filter_by_rows<'a>(
         topology
             .nodes
             .iter()
-            .filter(|node| kept.contains(node.id.as_str()))
+            .enumerate()
+            .filter(|(_, node)| kept.contains(node.id.as_str()))
+            .map(|(index, _)| index)
             .collect(),
         topology
             .edges
             .iter()
-            .filter(|edge| {
+            .enumerate()
+            .filter(|(_, edge)| {
                 kept.contains(edge.source.as_str()) && kept.contains(edge.target.as_str())
             })
+            .map(|(index, _)| index)
             .collect(),
     )
 }
@@ -143,7 +155,7 @@ fn selected_path(graph: &Graph, selected: usize) -> (Vec<bool>, Vec<bool>) {
     let mut pending = vec![selected];
     while let Some(node) = pending.pop() {
         for &edge in &graph.incoming[node] {
-            let source = graph.index[graph.edges[edge].source.as_str()];
+            let source = graph.endpoints[edge].0;
             if !std::mem::replace(&mut edges[edge], true) && !nodes[source] {
                 nodes[source] = true;
                 pending.push(source);
@@ -153,7 +165,7 @@ fn selected_path(graph: &Graph, selected: usize) -> (Vec<bool>, Vec<bool>) {
     let mut pending = vec![selected];
     while let Some(node) = pending.pop() {
         for &edge in &graph.outgoing[node] {
-            let target = graph.index[graph.edges[edge].target.as_str()];
+            let target = graph.endpoints[edge].1;
             if !std::mem::replace(&mut edges[edge], true) && !nodes[target] {
                 nodes[target] = true;
                 pending.push(target);
@@ -176,7 +188,7 @@ fn root_subtree(graph: &Graph, selected: usize) -> (Vec<bool>, Vec<bool>) {
             roots.push(node);
         }
         for &edge in &graph.incoming[node] {
-            pending.push(graph.index[graph.edges[edge].source.as_str()]);
+            pending.push(graph.endpoints[edge].0);
         }
     }
     let mut nodes = vec![false; graph.nodes.len()];
@@ -187,7 +199,7 @@ fn root_subtree(graph: &Graph, selected: usize) -> (Vec<bool>, Vec<bool>) {
     let mut pending = roots;
     while let Some(node) = pending.pop() {
         for &edge in &graph.outgoing[node] {
-            let target = graph.index[graph.edges[edge].target.as_str()];
+            let target = graph.endpoints[edge].1;
             if !std::mem::replace(&mut edges[edge], true) && !nodes[target] {
                 nodes[target] = true;
                 pending.push(target);
@@ -197,37 +209,97 @@ fn root_subtree(graph: &Graph, selected: usize) -> (Vec<bool>, Vec<bool>) {
     (nodes, edges)
 }
 
-/// Builds the ownership map for the table's filtered `rows`, focused on
-/// `selected` when it is in the graph.
+/// Selection-independent layout. Indices refer to the source topology;
+/// changing selection never changes filtering, depths or tree placement.
+pub struct Prepared {
+    source_nodes: Vec<usize>,
+    source_edges: Vec<usize>,
+    depth: Vec<i32>,
+    order: Vec<usize>,
+    positions: Vec<Option<(f32, f32)>>,
+    graph: layout::GraphData,
+}
+
+pub fn prepare(
+    topology: &ResourceTopology,
+    rows: &crate::model::Visible,
+    source: &Source,
+) -> Prepared {
+    // The graph keeps the last node of a repeated id, so the index does too.
+    let (source_nodes, source_edges) = source.filter(rows);
+    let graph = Graph::ranked(
+        source_nodes
+            .iter()
+            .map(|&index| (index, &topology.nodes[index])),
+        source_edges
+            .iter()
+            .map(|&index| (index, &topology.edges[index])),
+        source,
+    );
+    let depth = layout::depths(&graph);
+    let order = layout::order_keys(
+        &graph,
+        &depth,
+        &graph.source_nodes,
+        &source.locals,
+        &mut source.layout.borrow_mut(),
+    );
+    let positions = layout::positions(&graph, &depth, &order);
+    Prepared {
+        source_nodes,
+        source_edges,
+        depth,
+        order,
+        positions,
+        graph: graph.into_data(),
+    }
+}
+
+/// Builds selection and standalone expansion from the prepared layout.
 pub fn view(
     topology: &ResourceTopology,
-    rows: &[ResourceSummary],
+    prepared: &Prepared,
     selected: Option<&ResourceSummary>,
     expanded_kinds: &HashSet<String>,
     network: bool,
 ) -> View {
-    let (nodes, edges) = filter_by_rows(topology, rows);
-    let topology_nodes = nodes.len();
-    let selected = selected.and_then(|resource| selected_id(&nodes, resource));
-    // `selectedStandaloneExpansionId`: an edgeless selection opens its group.
+    let nodes: Vec<_> = prepared
+        .graph
+        .source_nodes
+        .iter()
+        .map(|&index| &topology.nodes[index])
+        .collect();
+    let edges: Vec<_> = prepared
+        .graph
+        .source_edges
+        .iter()
+        .map(|&index| &topology.edges[index])
+        .collect();
+    let topology_nodes = prepared.source_nodes.len();
+    // Selection observes the original filtered entries before graph deduplication.
+    let selection_nodes: Vec<_> = prepared
+        .source_nodes
+        .iter()
+        .map(|&index| &topology.nodes[index])
+        .collect();
+    let selected = selected.and_then(|resource| selected_id(&selection_nodes, resource));
     let expansion = selected.filter(|&id| {
-        !edges
-            .iter()
-            .any(|edge| edge.source == id || edge.target == id)
+        !prepared.source_edges.iter().any(|&index| {
+            let edge = &topology.edges[index];
+            edge.source == id || edge.target == id
+        })
     });
-    let graph = Graph::new(nodes.into_iter(), edges.into_iter());
-    let depth = layout::depths(&graph);
-    let order = layout::order_keys(&graph, &depth);
-    let positions = layout::positions(&graph, &depth, &order);
-    let cmp = |a: usize, b: usize| layout::compare(&graph, &depth, &order, a, b);
+    let graph = Graph::prepared(nodes, edges, &prepared.graph);
+    let (depth, order, positions) = (&prepared.depth, &prepared.order, &prepared.positions);
+    let cmp = |a: usize, b: usize| layout::compare(&graph, depth, order, a, b);
     let standalone = if network {
         layout::Standalone {
             groups: Vec::new(),
             is_standalone: vec![false; graph.nodes.len()],
-            member_positions: HashMap::new(),
+            member_positions: std::collections::HashMap::new(),
         }
     } else {
-        layout::standalone_groups(&graph, &positions, cmp, expanded_kinds, expansion)
+        layout::standalone_groups(&graph, positions, cmp, expanded_kinds, expansion)
     };
 
     let mut flow: Vec<FlowNode> = standalone
@@ -236,11 +308,7 @@ pub fn view(
         .map(|group| FlowNode {
             item: FlowItem::Group {
                 kind: group.kind.clone(),
-                members: group
-                    .members
-                    .iter()
-                    .map(|&node| graph.nodes[node].id.clone())
-                    .collect(),
+                members: group.members.clone(),
                 expanded: group.expanded,
             },
             x: group.x,
@@ -268,7 +336,7 @@ pub fn view(
         flow_index[node] = Some(flow.len());
         graph_nodes.push(Some(node));
         flow.push(FlowNode {
-            item: FlowItem::Resource(Box::new(graph.nodes[node].clone())),
+            item: FlowItem::Resource(prepared.graph.source_nodes[node]),
             x,
             y,
             width: if member.is_some() {
@@ -286,9 +354,9 @@ pub fn view(
         .edges
         .iter()
         .enumerate()
-        .filter_map(|(at, edge)| {
-            let source = flow_index[graph.index[edge.source.as_str()]]?;
-            let target = flow_index[graph.index[edge.target.as_str()]]?;
+        .filter_map(|(at, _)| {
+            let source = flow_index[graph.endpoints[at].0]?;
+            let target = flow_index[graph.endpoints[at].1]?;
             Some((
                 at,
                 FlowEdge {
@@ -305,13 +373,12 @@ pub fn view(
     if let Some(selected) = selected {
         // `filterFlowTopologyToSelectedRoot`, then `applyFlowTopologySelectionWithIndex`.
         let (subtree, subtree_edges) = root_subtree(&graph, selected);
-        let in_subtree = |id: &str| graph.index.get(id).is_some_and(|&node| subtree[node]);
         let keep: Vec<bool> = flow
             .iter()
             .zip(&graph_nodes)
             .map(|(node, graph_node)| match (&node.item, graph_node) {
                 (FlowItem::Group { members, .. }, _) => {
-                    members.iter().any(|member| in_subtree(member))
+                    members.iter().any(|&member| subtree[member])
                 }
                 (FlowItem::Resource(_), Some(graph_node)) => subtree[*graph_node],
                 (FlowItem::Resource(_), None) => false,
@@ -344,11 +411,10 @@ pub fn view(
         focused = kept.len() < topology_nodes;
 
         let (path, path_edges) = selected_path(&graph, selected);
-        let on_path = |id: &str| graph.index.get(id).is_some_and(|&node| path[node]);
         for (node, graph_node) in kept.iter_mut().zip(&kept_graph) {
             match (&node.item, graph_node) {
                 (FlowItem::Group { members, .. }, _) => {
-                    node.dimmed = !members.iter().any(|member| on_path(member));
+                    node.dimmed = !members.iter().any(|&member| path[member]);
                 }
                 (FlowItem::Resource(_), Some(graph_node)) => {
                     node.selected = *graph_node == selected;

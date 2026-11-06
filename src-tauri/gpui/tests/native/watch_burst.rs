@@ -74,4 +74,9 @@ fn watch_burst_frame_time(cx: &mut TestAppContext) {
         );
     })
     .unwrap();
+    #[cfg(feature = "frame-profile")]
+    println!(
+        "watch phases {}",
+        serde_json::to_string(&kubecove_gpui::frame_profile::take()).unwrap()
+    );
 }

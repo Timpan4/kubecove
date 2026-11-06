@@ -6,6 +6,7 @@ export const TABLE_COLUMNS = ["Name", "Status", "Namespace", "Kind", "Ready", "R
 type TableColumn = (typeof TABLE_COLUMNS)[number];
 export const SORT_COLUMNS = ["Name", "Status", "Namespace", "Kind", "Ready", "Restarts", "CPU", "Memory", "Age"] as const;
 export type Step =
+    | { action: "expectDetailScroll"; view: "events" | "timeline" }
     | { action: "coverageSelect"; label: string; value: string }
     | { action: "coverageCopy"; label: string; text: string; match: "contains" | "exact" }
     | { action: "coverageScript"; script: "base" | "loading" | "failed" | "empty" | "partial" | "many" | "conflict" | "logs-empty" | "logs-failed" | "logs-options" | "logs-long" | "logs-stream" | "startup-failed" | "foreign" | "detail-loading" | "enrichment-failed" | "enrichment-loading" | "attention-only" | "stop-failed" }

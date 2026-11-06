@@ -1,11 +1,11 @@
 //! The incident signal queue and empty states, mirroring `IncidentQueue.svelte`.
 
 use super::{Inspector, incidents::severity_badge, surface};
-use crate::incidents;
+use crate::incidents::{self, Row};
 use crate::theme::{Palette, Tokens};
 use crate::ui;
 use gpui_kit::TestSupportExt;
-use gpui_kit::{AnyElement, ClipboardItem, Context, Hsla, SharedString, div, prelude::*, px};
+use gpui_kit::{AnyElement, ClipboardItem, Context, Hsla, SharedString, div, list, prelude::*, px};
 use kubecove_lib::models::{
     IncidentCockpitItem as Item, IncidentSeverity as Severity, IncidentSignalState as SignalState,
 };
@@ -165,27 +165,50 @@ impl Inspector {
             .into_any_element()
     }
 
+    /// Row `row` of the queue. The rows reproduce the scrolled column they
+    /// replace: 12px padding around it, 12px between groups and 8px between a
+    /// group's heading and items.
+    fn queue_row(&self, row: usize, selected: Option<&str>, cx: &mut Context<Self>) -> AnyElement {
+        let state = &self.incidents;
+        let Some(&kind) = state.queue.rows.get(row) else {
+            return div().into_any_element();
+        };
+        let content = match kind {
+            Row::Heading(group) => ui::caps(&state.queue.labels[group], 12.)
+                .line_height(px(16.))
+                .truncate()
+                .into_any_element(),
+            Row::Item(item) => {
+                let item = &state.items()[item];
+                let is_selected =
+                    selected.is_some_and(|key| incidents::is_key(&item.resource, key));
+                self.queue_card(item, is_selected, cx)
+            }
+        };
+        div()
+            .w_full()
+            .flex()
+            .flex_col()
+            .px(px(12.))
+            .pt(px(match kind {
+                Row::Heading(_) => 12.,
+                Row::Item(_) => 8.,
+            }))
+            .when(row + 1 == state.queue.rows.len(), |last| last.pb(px(12.)))
+            .child(content)
+            .into_any_element()
+    }
+
     pub(super) fn queue(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let state = &self.incidents;
-        let surface = incidents::surface_state(state.items(), state.filter, state.selected_key());
-        let selected = surface.selected.map(incidents::item_key);
-        let groups: Vec<AnyElement> = surface
-            .groups
-            .iter()
-            .map(|group| {
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(8.))
-                    .child(ui::caps(&group.label, 12.).line_height(px(16.)).truncate())
-                    .children(group.items.iter().map(|item| {
-                        let is_selected =
-                            selected.as_deref() == Some(incidents::item_key(item).as_str());
-                        self.queue_card(item, is_selected, cx)
-                    }))
-                    .into_any_element()
-            })
-            .collect();
+        let selected = state.selected_item().map(incidents::item_key);
+        let rows = list(
+            state.list.clone(),
+            cx.processor(move |this: &mut Inspector, row: usize, _, cx| {
+                this.queue_row(row, selected.as_deref(), cx)
+            }),
+        )
+        .size_full();
         div()
             .flex()
             .flex_col()
@@ -216,17 +239,9 @@ impl Inspector {
                                 .mt(px(4.)),
                             ),
                     )
-                    .child(surface::secondary_badge(surface.visible.to_string())),
+                    .child(surface::secondary_badge(state.queue.visible.to_string())),
             )
-            .child(
-                div()
-                    .id("incident-queue")
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_y_scroll()
-                    .p(px(12.))
-                    .child(div().flex().flex_col().gap(px(12.)).children(groups)),
-            )
+            .child(div().id("incident-queue").flex_1().min_h_0().child(rows))
     }
 
     pub(super) fn empty_state(

@@ -95,10 +95,10 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
         }
         // Expectations on rows mean rendered in the table, possibly scrolled out of
         // view, as Playwright's `visible` state does.
-        "expectResource" => assert!(window.try_find(row(step)).is_some()),
+        "expectResource" => assert!(reveal_resource(window, &row(step), cx)),
         "openResource" => {
             let row = row(step);
-            reveal(window, "resources", &row, cx);
+            assert!(reveal_resource(window, &row, cx));
             window.click(row, cx);
         }
         "expectDetail" => assert_eq!(
@@ -118,10 +118,10 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             assert_eq!(window.find(id).selected(), Some(true));
         }
         "expectClusterResource" => {
-            assert!(window.try_find(cluster_row(step)).is_some())
+            assert!(reveal_resource(window, &cluster_row(step), cx))
         }
         "expectNoClusterResource" => {
-            assert!(window.try_find(cluster_row(step)).is_none())
+            assert!(!reveal_resource(window, &cluster_row(step), cx))
         }
         "showYaml" => window.click("show-yaml", cx),
         "expectYaml" => {
@@ -156,6 +156,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             };
             window.click(id, cx);
         }
+        "expectDetailScroll" => super::detail_scroll::verify(window, cx, step),
         "expectEventCount" => {
             let count = number(step, "count");
             if let Some(last) = count.checked_sub(1) {
@@ -280,8 +281,53 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             assert!(window.try_find("edit-draft").is_some());
             assert!(window.try_find("yaml-dry-run").is_none());
         }
-        "expectNoResource" => assert!(window.try_find(row(step)).is_none()),
+        "expectNoResource" => assert!(!reveal_resource(window, &row(step), cx)),
         _ => return false,
     }
     true
+}
+
+/// Virtualized rows do not have test elements until the table scrolls to them.
+pub(super) fn reveal_resource(
+    window: &mut gpui_kit::Window,
+    target: &str,
+    cx: &mut gpui_kit::App,
+) -> bool {
+    use gpui_kit::test::TestEventExt;
+    use gpui_kit::{InputEvent, ScrollDelta, ScrollEvent, point};
+    // Beside an open detail the table is below the map in the page scroller.
+    // Reveal that viewport before scrolling its virtualized rows.
+    reveal(window, "resources", "resource-table", cx);
+    let id = gpui_kit::ElementId::Name(target.to_owned().into());
+    if window.try_find(id.clone()).is_some_and(|row| row.visible()) {
+        return true;
+    }
+    let table = window.find("resource-table").bounds();
+    let viewport = window.viewport_size();
+    let top = table.top().max(px(0.));
+    let bottom = table.bottom().min(viewport.height);
+    let position = point(table.left() + px(8.), (top + bottom) / 2.);
+    let height = table.size.height;
+    let scroll = |window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, delta| {
+        window.pointer_move(position, None, cx);
+        window.dispatch_event(
+            ScrollEvent {
+                position,
+                delta: ScrollDelta::Pixels(point(px(0.), delta)),
+                ..Default::default()
+            }
+            .to_platform_input(),
+            cx,
+        );
+        window.render_frame(cx);
+    };
+    // PAGE_SIZE bounds the current page. Reset its scroll before scanning it.
+    scroll(window, cx, height * kubecove_gpui::model::PAGE_SIZE as f32);
+    for _ in 0..kubecove_gpui::model::PAGE_SIZE {
+        if window.try_find(id.clone()).is_some_and(|row| row.visible()) {
+            return true;
+        }
+        scroll(window, cx, -height / 2.);
+    }
+    false
 }

@@ -14,6 +14,7 @@ use super::friendly_error;
 use super::logs_state::LogsState;
 use super::logs_tab::logs_tab;
 use super::revisions_tab::{RevisionsState, revisions_tab};
+use super::windowed::row_id;
 use super::yaml_apply::YamlApply;
 use super::yaml_marks::YamlMarks;
 use super::yaml_tab::yaml_tab;
@@ -23,9 +24,10 @@ use gpui_kit::TestSupportExt;
 use gpui_kit::component::input::{EditorState, InputEvent};
 use gpui_kit::{
     AnyElement, App, AppContext, Context, Entity, KeyDownEvent, MouseButton, MouseMoveEvent,
-    Subscription, Window, div, prelude::*, px,
+    ScrollHandle, Subscription, Window, div, prelude::*, px,
 };
 use kubecove_lib::models::{AppError, HealthAssessment, ResourceDetailsFull, ResourceSummary};
+use std::sync::Arc;
 
 pub(super) enum Detail {
     Closed,
@@ -102,6 +104,9 @@ fn available(tab: DetailTab, resource: &ResourceSummary) -> bool {
 
 pub(super) struct ResourceDetail {
     pub data: ResourceDetailsFull,
+    pub timeline_layout: u64,
+    pub timeline_source: Arc<[u8]>,
+    pub scroll: ScrollHandle,
     pub editor: Entity<EditorState>,
     pub marks: YamlMarks,
     pub lenses: Vec<super::yaml_lens::Lens>,
@@ -133,6 +138,15 @@ impl ResourceDetail {
         window: &mut Window,
         cx: &mut Context<Inspector>,
     ) -> Self {
+        let viewport = window.viewport_size();
+        let timeline_source: Arc<[u8]> = serde_json::to_vec(&data)
+            .expect("detail models serialize")
+            .into();
+        let timeline_layout = row_id((
+            &timeline_source,
+            f32::from(viewport.width).to_bits(),
+            f32::from(viewport.height).to_bits(),
+        ));
         let editor = cx.new(|cx| {
             EditorState::new(window, cx)
                 .language("yaml")
@@ -171,6 +185,9 @@ impl ResourceDetail {
             opened_health: data.summary.health_assessment.clone(),
             evidence_open: false,
             data,
+            timeline_layout,
+            timeline_source,
+            scroll: ScrollHandle::default(),
             editor,
             marks,
             tab: DetailTab::Details,
@@ -340,7 +357,10 @@ impl Inspector {
             // `ResourceInspector.svelte`: `bg-surface-1` (= card).
             .bg(Tokens::card())
             .child(self.detail_view(cx));
-        [handle.into_any_element(), aside.into_any_element()]
+        [
+            handle.into_any_element(),
+            crate::frame_profile::element("detail", aside.into_any_element()),
+        ]
     }
 
     pub(super) fn detail_view(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -481,10 +501,13 @@ impl Inspector {
                     summary.name
                 );
                 let content: AnyElement = match detail.tab {
-                    DetailTab::Details => {
-                        details_tab(detail, self.persisted.preferences.timestamp_timezone, cx)
-                            .into_any_element()
-                    }
+                    DetailTab::Details => details_tab(
+                        detail,
+                        &self.timeline,
+                        self.persisted.preferences.timestamp_timezone,
+                        cx,
+                    )
+                    .into_any_element(),
                     DetailTab::Forward => self.forward_tab(cx).into_any_element(),
                     DetailTab::Exec => self.exec_view(cx),
                     DetailTab::Events => {
@@ -522,7 +545,7 @@ impl Inspector {
                     .when(
                         matches!(
                             detail.tab,
-                            DetailTab::Details | DetailTab::Argo | DetailTab::Yaml
+                            DetailTab::Details | DetailTab::Events | DetailTab::Argo | DetailTab::Yaml
                         ),
                         |body| body.flex_none(),
                     )
@@ -550,6 +573,10 @@ impl Inspector {
                     .into_any_element()
             }
         };
+        let scroll = match &self.detail {
+            Detail::Ready(detail) => Some(&detail.scroll),
+            _ => None,
+        };
         div()
             .id("detail")
             .flex()
@@ -568,6 +595,7 @@ impl Inspector {
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()
+                    .when_some(scroll, |body, scroll| body.track_scroll(scroll))
                     // The web capture shows content 8px from the panel's right
                     // edge despite `p-4`; the rest of the inset is the panel frame.
                     .pt(px(16.))

@@ -4,13 +4,10 @@ use super::custom_resources::CustomLoad;
 use super::{Inspector, Load, map};
 use crate::backend::Read;
 use crate::backend::ScopeResult;
-use crate::collate::collate;
-use crate::model::{HealthSummary, gitops_owner_filter};
 use futures_util::{FutureExt, future::Shared};
 use gpui_kit::component::select::SearchableVec;
 use gpui_kit::{Context, SharedString, Window};
 use kubecove_lib::models::ResourceSummary;
-use std::collections::BTreeMap;
 use std::rc::Rc;
 
 /// The builtin and custom reads of one resource scope, shareable while in flight.
@@ -132,7 +129,7 @@ impl Inspector {
             .is_some_and(|row| row.cluster == self.scope.context)
         {
             self.load = Load::Loading;
-            self.rows.clear();
+            self.rows = Rc::default();
             self.warnings.clear();
         }
         self.prepare_rows();
@@ -153,7 +150,7 @@ impl Inspector {
                 let ready = match result {
                     Ok(result) => {
                         this.namespaces = result.namespaces;
-                        this.rows = result.resources;
+                        this.rows = Rc::new(crate::model::PreparedRows::new(result.resources));
                         this.warnings = result.warnings;
                         this.load = Load::Ready;
                         true
@@ -162,7 +159,7 @@ impl Inspector {
                         this.live.refresh_error = Some(error.message.clone());
                         this.load = Load::Failed(error.message);
                         this.custom_load = CustomLoad::Idle;
-                        this.rows.clear();
+                        this.rows = Rc::default();
                         this.warnings.clear();
                         false
                     }
@@ -216,7 +213,7 @@ impl Inspector {
             return;
         }
         self.map.cache.take();
-        self.map.topology = map::TopologyLoad::Loading;
+        self.map.replace_topology(map::TopologyLoad::Loading);
         let request = self.request.clone();
         let network = self.map.network;
         let backend = self.backend.clone();
@@ -239,10 +236,10 @@ impl Inspector {
                 if !Rc::ptr_eq(&this.request, &request) || this.map.network != network {
                     return;
                 }
-                this.map.topology = match result {
+                this.map.replace_topology(match result {
                     Ok(topology) => map::TopologyLoad::Ready(topology),
                     Err(error) => map::TopologyLoad::Failed(error),
-                };
+                });
                 this.rebuild_map();
                 cx.notify();
             });
@@ -271,7 +268,7 @@ impl Inspector {
                     this.live.scope_loading = false;
                     match result {
                         Ok(result) => {
-                            this.rows = result.resources;
+                            this.rows = Rc::new(crate::model::PreparedRows::new(result.resources));
                             this.namespaces = result.namespaces;
                             this.warnings = result.warnings;
                             this.load = Load::Ready;
@@ -293,46 +290,15 @@ impl Inspector {
 
     pub(super) fn filter(&mut self, cx: &mut Context<Self>) {
         self.update_saved_overview();
-        let search = self.search.read(cx).value().trim().to_lowercase();
-        let kinds = self.scope_kinds();
-        // One pass over the rows. Owner choices and health counts exclude the
-        // search and owner filters, as the web's table model does.
-        let mut owner_map = BTreeMap::new();
-        let mut summary = HealthSummary::default();
-        let mut visible = Vec::new();
-        for row in self.prepared.iter().chain(self.cluster_prepared()) {
-            if !(self.row_visible(row, "", &kinds) && self.filters.in_namespace(row)) {
-                continue;
-            }
-            let owner = gitops_owner_filter(row);
-            if let Some((key, label)) = &owner {
-                owner_map
-                    .entry(key.clone())
-                    .or_insert_with(|| label.clone());
-            }
-            let owner_key = owner.as_ref().map(|(key, _)| key.as_str());
-            if !(self.row_visible(row, &search, &kinds) && self.filters.in_owner(owner_key)) {
-                continue;
-            }
-            summary.add(row);
-            if self.filters.health.matches(row) {
-                visible.push(row.clone());
-            }
-        }
-        let mut owners: Vec<(String, String)> = owner_map.into_iter().collect();
-        owners.sort_by(|left, right| collate(&left.1, &right.1, false));
-        self.filters.summary = summary;
-        self.filters.owners = owners;
-        self.visible = visible;
+        self.filter_rows(cx);
         self.rebuild_map();
         cx.notify();
     }
 
-    /// Resolves inherited GitOps owners. Call once per change to `rows` or the
-    /// cluster rows; filtering, grouping and search then read the result.
+    /// Resolves cluster-row inheritance before the filter source joins it with scope rows.
     pub(super) fn prepare_rows(&mut self) {
-        self.prepared = crate::model::inherit_gitops_owners(&self.rows);
-        self.cluster.prepared = crate::model::inherit_gitops_owners(&self.cluster.rows);
+        self.cluster.prepared =
+            crate::model::inherit_gitops_owners(&self.cluster.rows).into_owned();
     }
 
     /// The resource scope read in two stages: built-ins first, then custom kinds.
@@ -375,7 +341,7 @@ impl Inspector {
     pub(super) fn workspace_rows(&self) -> impl Iterator<Item = &ResourceSummary> {
         self.workspace_read
             .as_ref()
-            .map_or(&self.rows, |state| &state.rows)
+            .map_or(&self.rows[..], |state| state.rows.as_slice())
             .iter()
             .filter(|row| self.launcher.overview_kind(&row.kind) && self.launcher.in_scope(row))
     }
@@ -397,7 +363,7 @@ impl Inspector {
         if !self.persisted.preferences.show_custom_resources {
             return kinds;
         }
-        for row in &self.rows {
+        for row in self.rows.iter() {
             if self.persisted.preferences.show_custom_resources
                 && row.dynamic == Some(true)
                 && !kinds.contains(&row.kind)

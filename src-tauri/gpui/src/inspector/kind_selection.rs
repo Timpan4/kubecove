@@ -6,7 +6,7 @@ use gpui_kit::{
     AnyElement, AppContext, Context, Entity, SharedString, Subscription, TestSupportExt, Window,
     div, prelude::*, px,
 };
-use kubecove_lib::models::{DiscoveredResourceKind, ResourceSummary, WatchResourceKey};
+use kubecove_lib::models::{DiscoveredResourceKind, WatchResourceKey};
 use std::collections::HashSet;
 
 pub(super) struct KindSelection {
@@ -60,6 +60,7 @@ impl Inspector {
     }
 
     pub(super) fn kind_selected(&self, key: &str) -> bool {
+        let _span = crate::frame_profile::scope("kinds", "selected");
         self.kind_selection.chosen.as_ref().map_or_else(
             || {
                 self.base_kinds().contains(&key)
@@ -75,15 +76,12 @@ impl Inspector {
         )
     }
 
-    pub(super) fn selected_row_kind(&self, row: &ResourceSummary) -> bool {
+    pub(super) fn selected_kind(&self, row_kind: &str, api_version: Option<&str>) -> bool {
         self.kind_selection.chosen.as_ref().is_none_or(|chosen| {
-            chosen.contains(&row.kind)
+            chosen.contains(row_kind)
                 || self.live.kinds.iter().any(|kind| {
-                    kind.kind == row.kind
-                        && row
-                            .api_version
-                            .as_ref()
-                            .is_none_or(|api| *api == kind.api_version)
+                    kind.kind == row_kind
+                        && api_version.is_none_or(|api| api == kind.api_version.as_str())
                         && chosen.contains(&identity(kind))
                 })
         })
@@ -170,7 +168,7 @@ impl Inspector {
         let read_scope = scope.clone();
         let read_key = key.clone();
         let read = crate::read_retry::read(cx.background_executor().clone(), move || {
-            backend.kind_resources(read_scope.clone(), read_key.clone())
+            backend.kind_resources(read_scope.clone(), read_key.clone(), Vec::new())
         });
         let selected = id.clone();
         self.kind_selection.reads.insert(
@@ -182,7 +180,16 @@ impl Inspector {
                         return;
                     }
                     match result {
-                        Ok(rows) => this.patch_kind(&scope, &key, rows, None, cx),
+                        Ok(rows) => this.queue_live_patch(
+                            super::live_rows::Patch {
+                                scope: scope.clone(),
+                                key: key.clone(),
+                                rows,
+                                names: None,
+                                watch: None,
+                            },
+                            cx,
+                        ),
                         Err(error) => this.live.refresh_error = Some(error.message),
                     }
                     cx.notify();

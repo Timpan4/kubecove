@@ -81,7 +81,6 @@ impl Inspector {
                     }
                 }
                 this.metrics.summary = Some(result.map_err(|error| error.message));
-                this.rebuild_map();
                 cx.notify();
             });
         }));

@@ -129,10 +129,15 @@ pub trait Backend: Send + Sync + 'static {
                 .collect())
         })
     }
-    fn kind_resources(&self, scope: Scope, key: WatchResourceKey) -> Read<Vec<ResourceSummary>> {
+    fn kind_resources(
+        &self,
+        scope: Scope,
+        key: WatchResourceKey,
+        recycled: Vec<ResourceSummary>,
+    ) -> Read<Vec<ResourceSummary>> {
         let read = self.resources(scope, false);
         Box::pin(async move {
-            Ok(read
+            let rows = read
                 .await?
                 .resources
                 .into_iter()
@@ -144,7 +149,8 @@ pub trait Backend: Send + Sync + 'static {
                             .as_ref()
                             .is_none_or(|api| row.api_version.as_ref() == Some(api))
                 })
-                .collect())
+                .collect();
+            Ok(live_data::reuse_row_buffer(recycled, rows))
         })
     }
     fn watch(&self, _target: WatchTarget) -> Read<LogStream> {

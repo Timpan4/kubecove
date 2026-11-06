@@ -317,8 +317,7 @@ impl Inspector {
 
     pub(super) fn incident_guide(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let state = &self.incidents;
-        let surface_state =
-            incidents::surface_state(state.items(), state.filter, state.selected_key());
+        let selected = state.selected_item();
         let container = div()
             .id("incident-guide")
             .test_support()
@@ -329,7 +328,7 @@ impl Inspector {
             .border_1()
             .border_color(Tokens::border())
             .bg(Tokens::card());
-        let Some(item) = surface_state.selected else {
+        let Some(item) = selected else {
             return container.child(
                 div()
                     .flex()

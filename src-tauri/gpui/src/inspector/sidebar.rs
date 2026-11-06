@@ -279,6 +279,7 @@ impl Inspector {
     }
 
     pub(super) fn sidebar(&self, cx: &mut Context<Self>, width: f32) -> impl IntoElement {
+        let _profile = crate::frame_profile::scope("sidebar", "build");
         let namespaces = self.namespace_rows(cx);
         div()
             .flex()

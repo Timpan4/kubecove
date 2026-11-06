@@ -15,6 +15,8 @@ mod coverage_checks;
 mod delivery;
 #[path = "parity/detail.rs"]
 mod detail;
+#[path = "parity/detail_scroll.rs"]
+mod detail_scroll;
 #[path = "parity/detail_status.rs"]
 mod detail_status;
 #[path = "parity/details_metadata.rs"]
@@ -74,6 +76,7 @@ use std::{
 };
 
 use common::Fixture;
+use detail::reveal_resource;
 use gpui_kit::test::{TestQueryExt, TestWindowExt};
 use gpui_kit::{
     AnyWindowHandle, AppContext, Bounds, TestAppContext, WindowBounds, WindowOptions, px, size,

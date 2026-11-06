@@ -4,9 +4,10 @@
 //! is multiplied by the zoom when the node is built.
 
 mod cards;
+mod focus;
 mod paint;
 mod viewport;
-use paint::EdgePaint;
+use paint::PreparedEdges;
 
 use super::Inspector;
 use super::resources::Panel;
@@ -15,12 +16,13 @@ use crate::topology::{self, Viewport};
 use crate::ui;
 use gpui_kit::TestSupportExt;
 use gpui_kit::{
-    AnyElement, Context, Div, FocusHandle, Pixels, Point, SharedString, Window, div, prelude::*, px,
+    AnyElement, Context, Div, FocusHandle, Pixels, Point, SharedString, WeakFocusHandle, div,
+    prelude::*, px,
 };
-use kubecove_lib::models::{AppError, AppErrorKind, ResourceTopology};
+use kubecove_lib::models::{AppError, AppErrorKind, ResourceSummary, ResourceTopology};
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 
 pub(super) enum TopologyLoad {
     Loading,
@@ -28,7 +30,7 @@ pub(super) enum TopologyLoad {
     Failed(AppError),
 }
 
-type CachedEdges = (Rc<topology::View>, Rc<Vec<EdgePaint>>);
+type CachedEdges = (Rc<topology::View>, Rc<PreparedEdges>);
 
 pub(super) struct MapState {
     pub topology: TopologyLoad,
@@ -43,16 +45,37 @@ pub(super) struct MapState {
     drag: Option<(Point<Pixels>, Viewport)>,
     /// Focus follows node identity when selection reorders the graph.
     pub node_focus: HashMap<SharedString, FocusHandle>,
-    /// The node that held focus at the last render. Focus moving onto a
-    /// different node pans that node into view.
-    focused_node: Option<SharedString>,
+    /// The window's focus at the last render. Focus moving onto a node pans
+    /// that node into view.
+    last_focus: Option<WeakFocusHandle>,
+    /// The immutable view whose node focus handles are synchronized.
+    focus_view: Weak<topology::View>,
     /// The zoom in, zoom out and fit controls, in Tab order.
     zoom_focus: Option<[FocusHandle; 3]>,
     /// Where "skip graph" moves focus: the element right after the graph.
     pub skip_target: Option<FocusHandle>,
+    /// The last built view and the inputs it was built from. Pan, zoom and
+    /// hover redraw the map without changing them.
+    built: RefCell<Option<(ViewInputs, Rc<topology::View>)>>,
+    prepared: RefCell<Option<PreparedMap>>,
+}
+
+struct PreparedMap {
+    rows: u64,
+    nodes: (usize, usize),
+    edges: (usize, usize),
+    request: Rc<()>,
+    source: topology::Source,
+    data: Rc<topology::Prepared>,
 }
 
 impl MapState {
+    pub(super) fn replace_topology(&mut self, topology: TopologyLoad) {
+        self.topology = topology;
+        self.prepared.take();
+        self.built.take();
+        self.edge_cache.take();
+    }
     pub fn new() -> Self {
         Self {
             topology: TopologyLoad::Loading,
@@ -64,10 +87,55 @@ impl MapState {
             adjusted: None,
             drag: None,
             node_focus: HashMap::new(),
-            focused_node: None,
+            last_focus: None,
+            focus_view: Weak::new(),
             zoom_focus: None,
             skip_target: None,
+            built: RefCell::default(),
+            prepared: RefCell::default(),
         }
+    }
+}
+
+/// Every input to the derived view is compared before reusing it.
+struct ViewInputs {
+    expanded: HashSet<String>,
+    network: bool,
+    data: Rc<topology::Prepared>,
+    selected: Option<SelectionIdentity>,
+}
+
+#[derive(PartialEq)]
+struct SelectionIdentity {
+    cluster: String,
+    kind: String,
+    namespace: Option<String>,
+    name: String,
+    api_version: Option<String>,
+}
+
+impl ViewInputs {
+    fn matches(
+        &self,
+        data: &Rc<topology::Prepared>,
+        selected: Option<&ResourceSummary>,
+        expanded: &HashSet<String>,
+        network: bool,
+    ) -> bool {
+        Rc::ptr_eq(&self.data, data)
+            && self.expanded == *expanded
+            && self.network == network
+            && match (&self.selected, selected) {
+                (None, None) => true,
+                (Some(identity), Some(resource)) => {
+                    identity.cluster == resource.cluster
+                        && identity.kind == resource.kind
+                        && identity.namespace == resource.namespace
+                        && identity.name == resource.name
+                        && identity.api_version == resource.api_version
+                }
+                _ => false,
+            }
     }
 }
 
@@ -77,24 +145,88 @@ const HANDLE_HALF: f32 = 3.;
 
 impl Inspector {
     pub(super) fn rebuild_map(&mut self) {
-        let view = match &self.map.topology {
-            TopologyLoad::Ready(topology) => Some(Rc::new(topology::view(
-                topology,
-                &self.visible,
-                if self.persisted.preferences.show_full_topology_on_selection {
-                    None
-                } else {
-                    self.detail.resource()
-                },
-                &self.map.expanded,
-                self.map.network,
-            ))),
+        let topology = match &self.map.topology {
+            TopologyLoad::Ready(topology) => Some(topology),
             _ => None,
         };
+        let view = topology.map(|topology| {
+            let _span = crate::frame_profile::scope("map", "prepare_view");
+            let rows = self.visible.generation();
+            let selected = if self.persisted.preferences.show_full_topology_on_selection {
+                None
+            } else {
+                self.detail.resource()
+            };
+            let nodes = (topology.nodes.as_ptr() as usize, topology.nodes.len());
+            let edges = (topology.edges.as_ptr() as usize, topology.edges.len());
+            let mut prepared = self.map.prepared.borrow_mut();
+            let same_source = prepared.as_ref().is_some_and(|previous| {
+                previous.nodes == nodes
+                    && previous.edges == edges
+                    && Rc::ptr_eq(&previous.request, &self.request)
+                    && previous.source.matches(&self.visible)
+            });
+            if !same_source || prepared.as_ref().unwrap().rows != rows {
+                if same_source {
+                    let prepared = prepared.as_mut().unwrap();
+                    prepared.data =
+                        Rc::new(topology::prepare(topology, &self.visible, &prepared.source));
+                    prepared.rows = rows;
+                } else {
+                    let source = topology::Source::new(topology, &self.visible);
+                    let data = Rc::new(topology::prepare(topology, &self.visible, &source));
+                    *prepared = Some(PreparedMap {
+                        rows,
+                        nodes,
+                        edges,
+                        request: self.request.clone(),
+                        source,
+                        data,
+                    });
+                }
+            }
+            let data = &prepared.as_ref().unwrap().data;
+            let mut built = self.map.built.borrow_mut();
+            match &*built {
+                Some((inputs, view))
+                    if inputs.matches(data, selected, &self.map.expanded, self.map.network) =>
+                {
+                    view.clone()
+                }
+                _ => {
+                    let view = Rc::new(topology::view(
+                        topology,
+                        data,
+                        selected,
+                        &self.map.expanded,
+                        self.map.network,
+                    ));
+                    let inputs = ViewInputs {
+                        expanded: self.map.expanded.clone(),
+                        network: self.map.network,
+                        data: data.clone(),
+                        selected: selected.map(|resource| SelectionIdentity {
+                            cluster: resource.cluster.clone(),
+                            kind: resource.kind.clone(),
+                            namespace: resource.namespace.clone(),
+                            name: resource.name.clone(),
+                            api_version: resource.api_version.clone(),
+                        }),
+                    };
+                    *built = Some((inputs, view.clone()));
+                    view
+                }
+            }
+        });
+        if topology.is_none() {
+            self.map.built.take();
+            self.map.prepared.take();
+        }
         self.map.cache = view;
     }
 
     pub(super) fn map_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let _profile = crate::frame_profile::scope("map", "build");
         let topology = match &self.map.topology {
             TopologyLoad::Ready(topology) => Some(topology),
             _ => None,
@@ -336,48 +468,5 @@ impl Inspector {
             .shadow_sm()
             .child(header)
             .children(body)
-    }
-
-    /// Keeps one focus handle per graph node and one for "skip graph". Called before
-    /// the page renders, so handles follow the cached view without rebuilding it.
-    ///
-    /// Node and zoom handles are tab stops on the handle itself: an element's
-    /// `tab_stop(true)` applies only to a handle the element creates, not to one it tracks.
-    ///
-    /// Focus moving onto a node pans it into view, as xyflow's `autoPanOnNodeFocus`
-    /// does. This reads focus here rather than through `on_focus_in`, because GPUI
-    /// sends focus events only while the window is active, and focus changes
-    /// re-render the window, so this runs in the frame that shows the new focus.
-    pub(super) fn sync_map_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let mut keys = HashSet::new();
-        if let Some(view) = &self.map.cache {
-            for node in &view.nodes {
-                let key = viewport::node_id(&node.item);
-                keys.insert(key.clone());
-                self.map
-                    .node_focus
-                    .entry(key)
-                    .or_insert_with(|| cx.focus_handle().tab_stop(true));
-            }
-        }
-        self.map.node_focus.retain(|key, _| keys.contains(key));
-        let focused = self
-            .map
-            .node_focus
-            .iter()
-            .find(|(_, handle)| handle.is_focused(window))
-            .map(|(key, _)| key.clone());
-        if let Some(key) = &focused
-            && self.map.focused_node.as_ref() != Some(key)
-        {
-            self.pan_map_node_into_view(key);
-        }
-        self.map.focused_node = focused;
-        if self.map.zoom_focus.is_none() {
-            self.map.zoom_focus = Some(std::array::from_fn(|_| cx.focus_handle().tab_stop(true)));
-        }
-        if self.map.skip_target.is_none() {
-            self.map.skip_target = Some(cx.focus_handle());
-        }
     }
 }

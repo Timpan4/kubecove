@@ -14,6 +14,7 @@ import { incidentDiagnosticsAction } from "./web-incident-diagnostics";
 import { kubeconfigSettingsAction } from "./web-kubeconfig-settings";
 import { liveSessionAction } from "./web-live-sessions";
 import { logRowAndRestoreAction } from "./web-logs-restore";
+import { expectDetailScroll, expectResourceEvent } from "./web-detail-scroll";
 import { mcpAction } from "./web-mcp";
 import { navigationAction } from "./web-navigation";
 import { panelAction } from "./web-panels";
@@ -210,13 +211,12 @@ export async function action(page: Page, step: Step) {
 		}
 		case "showTab": await page.getByRole("tab", { name: step.tab, exact: true }).click(); break;
 		case "filterEvents": await page.getByRole("radiogroup", { name: "Filter events by type" }).getByRole("radio", { name: step.filter, exact: true }).click(); break;
+        case "expectDetailScroll": await expectDetailScroll(page, step.view); break;
 		case "expectEventCount":
 			if (step.count) await eventRows(page).nth(step.count - 1).waitFor();
 			await eventRows(page).nth(step.count).waitFor({ state: "detached" });
 			break;
-		case "expectEvent":
-			await eventRows(page).nth(step.index).filter({ has: page.getByText(step.message, { exact: true }) }).filter({ has: page.getByText(step.reason, { exact: true }) }).waitFor();
-			break;
+		case "expectEvent": await expectResourceEvent(page, step); break;
 		case "expectLiveSessionCount": await page.getByRole("button", { name: `Open live sessions (${step.count} active)`, exact: true }).waitFor(); break;
 		case "filterIncidents": await page.locator('[aria-label="Filter incident signals"]').getByRole("button", { name: new RegExp(`^${literal(step.filter)} \\d+$`) }).click(); break;
 		case "expectIncidentGuide": await page.getByRole("heading", { level: 3, name: step.title, exact: true }).waitFor(); break;

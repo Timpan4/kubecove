@@ -1,15 +1,20 @@
 //! Incident signal cards from `DetailsTab.svelte` and the timeline from
 //! `ResourceTimeline.svelte`.
 
+mod model;
+pub(super) use model::State;
+
 use super::Inspector;
 use super::detail::ResourceDetail;
 use super::events::{EventsLoad, badge, tone_colors, tw};
+use super::windowed::Windowed;
 use crate::incident::{self, SignalTone};
 use crate::incident_timeline::{self as entries, TimelineItem};
 use crate::theme::{MONO, Tokens};
 use crate::ui;
 use gpui_kit::TestSupportExt;
 use gpui_kit::{Context, Div, FontWeight, Hsla, div, prelude::*, px};
+use std::hash::{DefaultHasher, Hash, Hasher};
 
 /// `incidentToneClass`: the `border-l-4` color and background.
 fn signal_accent(tone: SignalTone) -> (Hsla, Hsla) {
@@ -197,6 +202,8 @@ fn evidence(item: &TimelineItem) -> gpui_kit::base::ObservedElement<gpui_kit::St
         .child(list)
 }
 
+pub(super) const RAIL_EXTENSION: f32 = 10.;
+
 fn entry(
     item: &TimelineItem,
     time: String,
@@ -219,7 +226,7 @@ fn entry(
     // `before:` rail at `left-20`: from the first dot down, ending 28px into the last.
     let (top, bottom) = (
         if first { 28. } else { 0. },
-        if last { None } else { Some(-10.) },
+        if last { None } else { Some(-RAIL_EXTENSION) },
     );
     let rail = div()
         .absolute()
@@ -348,12 +355,28 @@ fn entry(
 }
 
 /// `ResourceTimeline.svelte`: `section px-1 py-2`.
-pub(super) fn timeline(detail: &ResourceDetail, cx: &mut Context<Inspector>) -> Div {
+pub(super) fn timeline(detail: &ResourceDetail, state: &State, cx: &mut Context<Inspector>) -> Div {
     let summary = &detail.data.summary;
-    let conditions = incident::condition_rows(detail.data.status.as_ref());
-    let items = entries::incident_timeline(summary, &conditions, detail.events.events());
-    let groups = entries::group_by_day(&items);
-    let hide_today = entries::hide_today_heading(&groups);
+    let model = state.model(detail);
+    let items = &model.items;
+    let groups = &model.groups;
+    let hide_today = entries::hide_today_heading(groups.iter().map(|group| group.key.as_deref()));
+    let geometry = if matches!(detail.events.load, EventsLoad::Pending) {
+        Windowed::default()
+    } else {
+        state.rows.clone()
+    };
+    geometry.truncate(groups.len());
+    let mut layout = DefaultHasher::new();
+    detail.timeline_layout.hash(&mut layout);
+    detail.events.layout_key.hash(&mut layout);
+    hide_today.hash(&mut layout);
+    for group in groups {
+        group.label.hash(&mut layout);
+        group.key.hash(&mut layout);
+    }
+    let layout = layout.finish();
+    let scroll = f32::from(detail.scroll.offset().y);
     let count = format!(
         "{} {}",
         items.len(),
@@ -420,7 +443,8 @@ pub(super) fn timeline(detail: &ResourceDetail, cx: &mut Context<Inspector>) -> 
             ui::muted(ui::xs("No incident timeline entries for this resource.")).py(px(16.)),
         ));
     }
-    for group in &groups {
+    let entity = cx.entity_id();
+    for (slot, group) in groups.iter().enumerate() {
         if !(hide_today && group.key.is_some()) {
             section = section.child(
                 div()
@@ -434,25 +458,31 @@ pub(super) fn timeline(detail: &ResourceDetail, cx: &mut Context<Inspector>) -> 
                     .child(div().h(px(1.)).flex_1().bg(Tokens::border().opacity(0.6))),
             );
         }
-        let last = group.items.len().saturating_sub(1);
-        let mut list = div().flex().flex_col().gap(px(10.));
-        for (index, item) in group.items.iter().enumerate() {
-            let time = if group.key.is_some() {
-                entries::timeline_time(item)
-            } else {
-                String::new()
-            };
-            let open = detail.events.is_open(&item.key());
-            list = list.child(entry(
-                item,
-                time,
-                index == 0,
-                index == last,
-                open,
-                &summary.kind,
-                cx,
-            ));
-        }
+        let last = group.rows.len().saturating_sub(1);
+        let ids = group
+            .rows
+            .iter()
+            .map(|row| row.ids[usize::from(detail.events.is_open(&row.key))])
+            .collect();
+        // `flex-col gap-2.5`, as padding above every entry after the first.
+        let list = geometry.scrolled_rows(slot, ids, layout, scroll, entity, |index| {
+            let row = &group.rows[index];
+            let open = detail.events.is_open(&row.key);
+            div()
+                .flex()
+                .flex_col()
+                .when(index > 0, |row| row.pt(px(10.)))
+                .child(entry(
+                    &items[row.item],
+                    row.time.clone(),
+                    index == 0,
+                    index == last,
+                    open,
+                    &summary.kind,
+                    cx,
+                ))
+                .into_any_element()
+        });
         section = section.child(list);
     }
     div().child(section)
@@ -464,11 +494,13 @@ impl Inspector {
         let super::detail::Detail::Ready(detail) = &self.detail else {
             return None;
         };
-        let conditions = incident::condition_rows(detail.data.status.as_ref());
         Some(
-            entries::incident_timeline(&detail.data.summary, &conditions, detail.events.events())
+            self.timeline
+                .model(detail)
+                .groups
                 .iter()
-                .map(TimelineItem::key)
+                .flat_map(|group| &group.rows)
+                .map(|row| row.key.clone())
                 .collect(),
         )
     }

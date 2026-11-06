@@ -18,6 +18,7 @@ mod argo_snapshot;
 mod argo_tab;
 mod argo_tunnel;
 mod argo_workspace;
+mod clipped;
 mod cluster;
 mod controls;
 mod copyable;
@@ -65,6 +66,7 @@ mod launcher;
 mod launcher_form;
 mod launcher_transfer;
 mod live_data;
+pub use live_data::COALESCE as RESOURCE_WATCH_COALESCE;
 mod live_events;
 mod live_rows;
 mod live_session_popover;
@@ -85,6 +87,7 @@ mod port_forward_rows;
 mod port_forwards;
 mod preference_controls;
 mod preferences;
+mod preset_table;
 mod rbac_inspector;
 mod rbac_page;
 mod rbac_queue;
@@ -97,6 +100,7 @@ mod resources;
 mod restore_inventory;
 mod restore_prompt;
 mod revisions_tab;
+mod row_index;
 mod saved_forward_form;
 mod scope;
 mod secret_data;
@@ -122,6 +126,7 @@ mod timeline;
 mod timestamp_text;
 mod update_panel;
 mod usage;
+mod windowed;
 mod workspace_editing;
 mod workspace_entries;
 mod workspace_reads;
@@ -189,16 +194,16 @@ pub struct Inspector {
     context_picker: Entity<Choices>,
     search: Entity<InputState>,
     namespaces: Vec<NamespaceSummary>,
-    rows: Vec<ResourceSummary>,
-    /// `rows` with inherited GitOps owners, rebuilt on each data change.
-    prepared: Vec<ResourceSummary>,
     custom_load: custom_resources::CustomLoad,
-    visible: Vec<ResourceSummary>,
-    /// Stat counts over the rows in scope before the health filter.
-    table_page: usize,
     table_sort: crate::table_sort::Sort,
     /// Group and kind-group keys the table has collapsed, as `collapsedGroups` on the web.
     collapsed_groups: std::collections::HashSet<String>,
+    rows: Rc<crate::model::PreparedRows>,
+    visible: crate::model::Visible,
+    row_index: row_index::RowIndex,
+    table_page: usize,
+    table_rows: windowed::Windowed,
+    timeline: timeline::State,
     load: Load,
     warnings: Vec<String>,
     detail: Detail,
@@ -322,13 +327,15 @@ impl Inspector {
             context_picker,
             search,
             namespaces: vec![],
-            rows: vec![],
-            prepared: vec![],
             custom_load: Default::default(),
-            visible: vec![],
-            table_page: 0,
             table_sort: Default::default(),
             collapsed_groups: Default::default(),
+            rows: Rc::default(),
+            visible: Default::default(),
+            row_index: Default::default(),
+            table_page: 0,
+            table_rows: windowed::Windowed::unwrapped(),
+            timeline: Default::default(),
             load: Load::Loading,
             warnings: vec![],
             detail: Detail::Closed,
@@ -493,7 +500,6 @@ impl Inspector {
         self.detail_request = Rc::new(());
         self.exec.clear();
         self.detail = Detail::Closed;
-        self.rebuild_map();
         self.notice = None;
         cx.notify();
     }
@@ -516,7 +522,6 @@ impl Inspector {
         self.close_detail(cx);
         self.visit_resource(&resource, cx);
         self.detail = Detail::Loading(Box::new(resource.clone()));
-        self.rebuild_map();
         let request = self.detail_request.clone();
         let read = self.backend.details(resource);
         let read = self.timings.measure("get_resource_details", read);
@@ -564,8 +569,23 @@ impl Inspector {
     }
 }
 
+#[cfg(feature = "frame-profile")]
+impl Inspector {
+    pub fn frame_scroll_profile(&self) -> serde_json::Value {
+        match &self.detail {
+            Detail::Ready(detail) => serde_json::json!({
+                "offset": f32::from(detail.scroll.offset().y),
+                "maximum": f32::from(detail.scroll.max_offset().y),
+                "bounds": format!("{:?}", detail.scroll.bounds()),
+                "events": detail.events.events().len(),
+            }),
+            _ => serde_json::Value::Null,
+        }
+    }
+}
 impl Render for Inspector {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let _profile = crate::frame_profile::scope("inspector", "render");
         self.sync_argo_scope(window, cx);
         self.sync_sidebar_discovery(cx);
         self.sync_live(window, cx);
@@ -586,8 +606,12 @@ impl Render for Inspector {
             div().into_any_element()
         };
         let overlays = self.overlays(window, cx);
-        let sidebar = (workspace && !compact)
-            .then(|| self.sidebar(cx, sidebar::WIDE_WIDTH).into_any_element());
+        let sidebar = (workspace && !compact).then(|| {
+            crate::frame_profile::element(
+                "sidebar",
+                self.sidebar(cx, sidebar::WIDE_WIDTH).into_any_element(),
+            )
+        });
         let drawer =
             (workspace && compact && self.navigation_open).then(|| self.navigation_drawer(cx));
         div()
@@ -673,7 +697,7 @@ impl Render for Inspector {
                                     .min_w_0()
                                     .h_full()
                                     .overflow_y_scroll()
-                                    .child(page),
+                                    .child(crate::frame_profile::element("page", page)),
                             )
                             .when(detail_open, |row| {
                                 row.on_mouse_move(cx.listener(
