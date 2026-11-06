@@ -187,6 +187,18 @@ export async function argoAction(page: Page, step: Step) {
         case "tabArgoPopover":
             for (let press = 0; press < step.presses; press += 1) await page.keyboard.press("Tab");
             break;
+        case "expectArgoOptionFocusable": {
+            const option = page.locator("[data-slot=popover-content]").getByRole("checkbox", { name: step.name, exact: true });
+            await option.waitFor();
+            if (!(await option.evaluate((node) => node.tabIndex >= 0 && !(node as HTMLButtonElement).disabled))) throw new Error(`${step.name} is not keyboard focusable`);
+            break;
+        }
+        case "expectArgoTriggerFocus": {
+            const trigger = page.getByRole("button", { name: step.control, exact: true });
+            await trigger.waitFor();
+            if (!(await trigger.evaluate((node) => node === document.activeElement))) throw new Error(`${step.control} trigger is not focused`);
+            break;
+        }
         case "expectArgoOperationState": {
             const locator = step.control === "Sync options" || step.control === "Refresh options"
                 ? page.getByRole("button", { name: step.control, exact: true })

@@ -577,24 +577,26 @@ impl Render for Inspector {
             .track_focus(&self.focus)
             .relative()
             .size_full()
-            .capture_key_down(cx.listener(|this, event: &gpui_kit::KeyDownEvent, _, cx| {
-                if event.keystroke.key != "escape" {
-                    return;
-                }
-                if this.navigation_open {
-                    this.navigation_open = false;
-                    cx.stop_propagation();
-                    cx.notify();
-                } else if this.close_argo_option_popovers() {
-                    cx.stop_propagation();
-                    cx.notify();
-                } else if this.sessions.popover || this.update_panel.open {
-                    this.sessions.popover = false;
-                    this.close_update_panel();
-                    cx.stop_propagation();
-                    cx.notify();
-                }
-            }))
+            .capture_key_down(
+                cx.listener(|this, event: &gpui_kit::KeyDownEvent, window, cx| {
+                    if event.keystroke.key != "escape" {
+                        return;
+                    }
+                    if this.navigation_open {
+                        this.navigation_open = false;
+                        cx.stop_propagation();
+                        cx.notify();
+                    } else if this.close_argo_option_popovers(window, cx) {
+                        cx.stop_propagation();
+                        cx.notify();
+                    } else if this.sessions.popover || this.update_panel.open {
+                        this.sessions.popover = false;
+                        this.close_update_panel();
+                        cx.stop_propagation();
+                        cx.notify();
+                    }
+                }),
+            )
             .flex()
             .gap(px(8.))
             .px(px(8.))

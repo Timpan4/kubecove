@@ -52,6 +52,14 @@ pub(super) struct Options {
     pub sync_focus: FocusHandle,
     /// Focused when the Refresh options popover opens. Its focus trap keeps Tab inside.
     pub refresh_focus: FocusHandle,
+    /// Keyboard focus targets for the Sync options checkboxes.
+    pub prune_focus: FocusHandle,
+    pub dry_run_focus: FocusHandle,
+    pub force_focus: FocusHandle,
+    /// Receives focus again when the Sync options popover closes with Escape.
+    pub sync_trigger: FocusHandle,
+    /// Receives focus again when the Refresh options popover closes with Escape.
+    pub refresh_trigger: FocusHandle,
     pub picker: Entity<
         gpui_kit::component::select::SelectState<
             gpui_kit::component::select::SearchableVec<HistoryChoice>,
@@ -96,6 +104,11 @@ impl Options {
             history: None,
             sync_focus: cx.focus_handle(),
             refresh_focus: cx.focus_handle(),
+            prune_focus: cx.focus_handle(),
+            dry_run_focus: cx.focus_handle(),
+            force_focus: cx.focus_handle(),
+            sync_trigger: cx.focus_handle(),
+            refresh_trigger: cx.focus_handle(),
         }
     }
 }
@@ -108,10 +121,16 @@ fn needs_confirmation(state: &ArgoTab, cx: &gpui_kit::App) -> bool {
         || !options.revision.read(cx).value().as_str().trim().is_empty()
 }
 
-fn choice(label: &'static str, checked: bool, cx: &mut Context<Inspector>) -> gpui_kit::AnyElement {
+fn choice(
+    label: &'static str,
+    checked: bool,
+    focus: FocusHandle,
+    cx: &mut Context<Inspector>,
+) -> gpui_kit::AnyElement {
     button(Variant::Outline, 24., false)
         .id(gpui_kit::SharedString::from(format!("argo-sync:{label}")))
         .test_support()
+        .track_focus(&focus)
         .role(gpui_kit::Role::CheckBox)
         .aria_label(label)
         .aria_description(if checked { "checked" } else { "unchecked" })
@@ -222,10 +241,25 @@ pub(super) fn panel(state: &ArgoTab, name: &str, cx: &mut Context<Inspector>) ->
             div()
                 .flex()
                 .gap(px(6.))
-                .child(choice("Prune", state.options.prune.unwrap_or(false), cx))
-                .child(choice("Dry run", state.options.dry_run, cx)),
+                .child(choice(
+                    "Prune",
+                    state.options.prune.unwrap_or(false),
+                    state.options.prune_focus.clone(),
+                    cx,
+                ))
+                .child(choice(
+                    "Dry run",
+                    state.options.dry_run,
+                    state.options.dry_run_focus.clone(),
+                    cx,
+                )),
         )
-        .child(choice("Force / replace", state.options.force, cx))
+        .child(choice(
+            "Force / replace",
+            state.options.force,
+            state.options.force_focus.clone(),
+            cx,
+        ))
         .child(
             button(Variant::Default, 24., false)
                 .id("argo-sync-advanced")
@@ -286,11 +320,13 @@ fn trigger(
     disabled: bool,
     open: bool,
     focus: FocusHandle,
+    trigger_focus: FocusHandle,
     cx: &mut Context<Inspector>,
 ) -> gpui_kit::AnyElement {
     button(Variant::Default, 24., disabled)
         .id("argo-sync-options")
         .test_support()
+        .track_focus(&trigger_focus)
         .aria_label("Sync options")
         .aria_description(if disabled { "disabled" } else { "enabled" })
         .child(crate::ui::icon(
@@ -308,7 +344,10 @@ fn trigger(
                     s.options.open = !open;
                     s.options.confirming = false;
                     if !open {
-                        focus.focus(window, cx);
+                        // The button's own press focus runs after this listener, so focus
+                        // the popover once the press has been handled.
+                        let focus = focus.clone();
+                        cx.defer_in(window, move |_, window, cx| focus.focus(window, cx));
                     }
                     cx.notify();
                 }
@@ -320,15 +359,30 @@ fn trigger(
 impl Inspector {
     /// Escape closes an open Sync or Refresh options popover, as the web does.
     /// Returns whether one was open, so the caller can stop the key there.
-    pub(super) fn close_argo_option_popovers(&mut self) -> bool {
+    pub(super) fn close_argo_option_popovers(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
         let Some(state) = self.argo_tab_state() else {
             return false;
         };
         let sync_open = state.options.open && !state.options.confirming;
-        let was_open = sync_open || state.refresh_options;
+        let refresh_open = state.refresh_options;
+        let trigger = if sync_open {
+            Some(state.options.sync_trigger.clone())
+        } else if refresh_open {
+            Some(state.options.refresh_trigger.clone())
+        } else {
+            None
+        };
         state.options.open = false;
         state.refresh_options = false;
-        was_open
+        let Some(trigger) = trigger else {
+            return false;
+        };
+        trigger.focus(window, cx);
+        true
     }
 }
 
@@ -361,8 +415,10 @@ pub(super) fn controls(
     let refresh_open = state.refresh_options;
     let refresh_focus = state.options.refresh_focus.clone();
     let refresh_focus_on_open = refresh_focus.clone();
+    let refresh_trigger = state.options.refresh_trigger.clone();
     let sync_focus = state.options.sync_focus.clone();
     let sync_focus_on_open = sync_focus.clone();
+    let sync_trigger = state.options.sync_trigger.clone();
     let has_previous = state
         .inspector
         .as_ref()
@@ -408,14 +464,17 @@ pub(super) fn controls(
         .child(operation("Rollback", Variant::Outline, cx))
         .child(div().relative().flex()
             .child(operation("Refresh", Variant::Outline, cx))
-            .child(button(Variant::Outline, 24., busy || unavailable).id("argo-refresh-options").test_support().aria_label("Refresh options")
+            .child(button(Variant::Outline, 24., busy || unavailable).id("argo-refresh-options").test_support().track_focus(&refresh_trigger).aria_label("Refresh options")
                 .aria_description(if busy || unavailable { "disabled" } else { "enabled" })
                 .child(ui::icon("chevron-down", 12., Tokens::foreground()))
                 .on_mouse_down(gpui_kit::MouseButton::Left, cx.listener(move |this, _, window, cx| {
                     if busy || unavailable { return; }
                     if let Some(s) = this.argo_tab_state() {
                         s.refresh_options = !refresh_open;
-                        if !refresh_open { refresh_focus_on_open.focus(window, cx); }
+                        if !refresh_open {
+                            let focus = refresh_focus_on_open.clone();
+                            cx.defer_in(window, move |_, window, cx| focus.focus(window, cx));
+                        }
                         cx.notify();
                     }
                 })))
@@ -430,7 +489,7 @@ pub(super) fn controls(
                 .focus_trap("argo-refresh-panel", &refresh_focus)).with_priority(1))))
         .child(div().relative().flex()
             .child(operation("Sync", Variant::Default, cx))
-            .child(trigger(busy || unavailable, state.options.open, sync_focus_on_open, cx))
+            .child(trigger(busy || unavailable, state.options.open, sync_focus_on_open, sync_trigger, cx))
             .when(state.options.open && !state.options.confirming, |group| group.child(gpui_kit::deferred(panel(state, name, cx).id("argo-sync-panel").test_support().occlude().absolute().top(px(28.)).right_0().w(px(320.)).shadow_lg()
                 .on_mouse_down_out(cx.listener(|this, _, _, cx| {
                     if let Some(s) = this.argo_tab_state() { s.options.open = false; }

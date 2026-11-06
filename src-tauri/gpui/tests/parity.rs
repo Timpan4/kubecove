@@ -391,7 +391,11 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
                 }
             }
             if step["action"] == "mockTiming" {
-                if step["control"]["operation"] == "expectRequests" {
+                // A cancelled kind discovery read retries after the first retry delay.
+                if step["control"]["operation"] == "expectRequests"
+                    || (step["control"]["operation"] == "expectNoError"
+                        && step["control"]["command"] == "list_resource_kinds")
+                {
                     cx.background_executor
                         .advance_clock(std::time::Duration::from_millis(1000));
                     cx.run_until_parked();

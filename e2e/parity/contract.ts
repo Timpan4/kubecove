@@ -48,7 +48,7 @@ export const ACTIONS = [
     "selectHealthFilter", "expectHealthFilter", "chooseGitOpsOwner", "setHistoricalReplicaSets",
     "fillMcpPort", "mcpControl", "expectMcpState", "expectMcpCopy", "expectMcpRequests",
     "selectArgoPreference", "expectSavedArgoProfile", "configureArgoSync", "selectArgoHistory", "expectArgoWorkspaceTransport", "completeArgoOperation", "confirmArgoTunnel",
-    "connectArgoProfile", "disconnectArgoProfile", "confirmArgoReview", "cancelArgoReview", "reviewArgoOperation", "expectArgoReview", "expectArgoText", "argoDocument", "expectArgoPopover", "dismissArgoPopover", "expectArgoCheckbox", "toggleArgoOption", "expectNoArgoControl", "expectArgoFocusInPopover", "tabArgoPopover", "expectArgoOperationState", "selectArgoConnection",
+    "connectArgoProfile", "disconnectArgoProfile", "confirmArgoReview", "cancelArgoReview", "reviewArgoOperation", "expectArgoReview", "expectArgoText", "argoDocument", "expectArgoPopover", "dismissArgoPopover", "expectArgoCheckbox", "toggleArgoOption", "expectNoArgoControl", "expectArgoFocusInPopover", "tabArgoPopover", "expectArgoTriggerFocus", "expectArgoOptionFocusable","expectArgoOperationState","selectArgoConnection",
     "cancelYamlEdit",
     "revealSecretValue", "hideSecretValue", "expectSecretValue", "expectYamlLens", "refreshLatencyReport", "clearLatencyReport", "expectLatencyEmpty", "expectLatencyTiming", "openDocumentation", "expectDocumentationRequest", "copyLatencyReport", "expectLatencyReportCopy", "updateStatusControl",
     "configurePreset", "presetControl",
@@ -237,6 +237,8 @@ function step(value: unknown): Step {
         case "expectNoArgoControl": return { action: item.action, control: oneOf(["Confirm target again"], item.control, "an Argo control") };
         case "expectArgoFocusInPopover": return { action: item.action, control: oneOf(["Sync options", "Refresh options"], item.control, "an Argo options popover") };
         case "tabArgoPopover": return { action: item.action, control: oneOf(["Sync options", "Refresh options"], item.control, "an Argo options popover"), presses: count(item.presses) };
+        case "expectArgoTriggerFocus": return { action: item.action, control: oneOf(["Sync options", "Refresh options"], item.control, "an Argo options trigger") };
+        case "expectArgoOptionFocusable": return { action: item.action, name: oneOf(["Prune", "Dry run", "Force / replace"], item.name, "an Argo sync option") };
         case "expectArgoOperationState": return { action: item.action, control: oneOf(["Sync", "Refresh", "Sync options", "Refresh options"], item.control, "an Argo operation control"), enabled: boolean(item.enabled) };
         case "selectArgoConnection": return { action: item.action, url: string(item.url) };
         case "argoDocument": return { action: item.action, view: oneOf(["Desired", "Live", "Changes"], item.view, "an Argo document"), contains: string(item.contains) };

@@ -63,3 +63,16 @@ pub fn click_label(window: &mut Window, area: &'static str, label: &str, cx: &mu
     let target = id(&window.within(area).find_by_label(label));
     click_in(window, area, target, cx);
 }
+
+/// Keyboard focus for an observed element: `Some(true)` when focused, `Some(false)` when not,
+/// and `None` when the element has no observed focus binding.
+///
+/// `ElementSnapshot::focused` panics on the binding-missed state, which the sidebar navigation
+/// reaches because it advertises focus without a tracked handle. Scenarios query focus across the
+/// whole tree, so this reads that exact state from the snapshot and reports it as `None`.
+pub fn focus_state(element: &ElementSnapshot) -> Option<bool> {
+    if format!("{element:?}").contains("focused: <binding missed>") {
+        return None;
+    }
+    element.focused()
+}

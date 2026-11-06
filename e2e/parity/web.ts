@@ -69,7 +69,7 @@ export async function action(page: Page, step: Step) {
         case "connectArgoProfile": case "disconnectArgoProfile": case "reviewArgoOperation": case "confirmArgoReview": case "cancelArgoReview": case "expectArgoReview": case "expectArgoText": case "argoDocument":
         case "expectArgoPopover": case "dismissArgoPopover": case "expectArgoCheckbox": case "toggleArgoOption": case "expectNoArgoControl":
         case "selectArgoPreference": case "expectSavedArgoProfile": case "configureArgoSync": case "selectArgoHistory": case "expectArgoWorkspaceTransport": case "completeArgoOperation": case "confirmArgoTunnel":
-        case "expectArgoFocusInPopover": case "tabArgoPopover": case "expectArgoOperationState": case "selectArgoConnection":
+        case "expectArgoFocusInPopover": case "tabArgoPopover": case "expectArgoTriggerFocus": case "expectArgoOptionFocusable": case "expectArgoOperationState": case "selectArgoConnection":
             await argoAction(page, step); break;
         case "expectYamlDiagnostic": case "expectNoYamlDiagnostic": case "expectYamlApplyDescription": case "expectNoYamlApplyDescription": case "expectActionLoadError": case "expectNoActionLoadError": case "retryActionPermission": case "expectActionLock":
             await yamlPermissionAction(page, step); break;

@@ -27,6 +27,32 @@
       ]
     },
     {
+      "id": "argo-review.popover-focus-trap",
+      "title": "Option popovers take focus on open, keep Tab inside, and return focus to their trigger on Escape",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test" },
+        { "action": "argoControl", "control": "Sync options" },
+        { "action": "expectArgoFocusInPopover", "control": "Sync options" },
+        { "action": "expectArgoOptionFocusable", "name": "Prune" },
+        { "action": "expectArgoOptionFocusable", "name": "Dry run" },
+        { "action": "expectArgoOptionFocusable", "name": "Force / replace" },
+        { "action": "tabArgoPopover", "control": "Sync options", "presses": 6 },
+        { "action": "expectArgoFocusInPopover", "control": "Sync options" },
+        { "action": "dismissArgoPopover", "how": "Escape" },
+        { "action": "expectArgoPopover", "control": "Sync options", "open": false },
+        { "action": "expectArgoTriggerFocus", "control": "Sync options" },
+        { "action": "argoControl", "control": "Refresh options" },
+        { "action": "expectArgoFocusInPopover", "control": "Refresh options" },
+        { "action": "tabArgoPopover", "control": "Refresh options", "presses": 3 },
+        { "action": "expectArgoFocusInPopover", "control": "Refresh options" },
+        { "action": "dismissArgoPopover", "how": "Escape" },
+        { "action": "expectArgoPopover", "control": "Refresh options", "open": false },
+        { "action": "expectArgoTriggerFocus", "control": "Refresh options" }
+      ]
+    },
+    {
       "id": "argo-review.unavailable-connection",
       "title": "A preferred connection that is no longer connected disables Sync and Refresh and their options",
       "steps": [

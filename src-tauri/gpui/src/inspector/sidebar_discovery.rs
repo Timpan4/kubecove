@@ -47,9 +47,18 @@ impl Inspector {
             return;
         }
         if self.sidebar_tree.discovery.cluster.is_none() {
-            let read = self.backend.resource_kinds(self.scope.context.clone());
+            // The Svelte sidebar opts this query into `cancelledQueryRetry`: only a superseded
+            // (cancelled) read retries, so a transport failure shows at once.
+            let backend = self.backend.clone();
+            let context = self.scope.context.clone();
+            let executor = cx.background_executor().clone();
             let task = cx.spawn(async move |this, cx| {
-                let result = read.await.map_err(|error| error.message);
+                let result = crate::read_retry::cancelled_read(
+                    move || backend.resource_kinds(context.clone()),
+                    move |delay| executor.timer(delay),
+                )
+                .await
+                .map_err(|error| error.message);
                 let _ = this.update(cx, |this, cx| {
                     if let Some(cluster) = this.sidebar_tree.discovery.cluster.as_mut() {
                         cluster.result = Some(result);

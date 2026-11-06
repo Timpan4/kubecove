@@ -396,17 +396,37 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 e.path()
                     .iter()
                     .any(|part| matches!(part, ElementId::Name(name) if name == id))
-                    && e.focused() == Some(true)
+                    && super::locate::focus_state(e) == Some(true)
             });
             if !focused {
                 let holders: Vec<_> = window
                     .elements()
                     .iter()
-                    .filter(|e| e.focused() == Some(true))
+                    .filter(|e| super::locate::focus_state(e) == Some(true))
                     .map(|e| format!("{:?}", e.path()))
                     .collect();
                 panic!("focus is outside {id}; focused: {holders:?}");
             }
+        }
+        "expectArgoOptionFocusable" => {
+            // A tracked focus binding makes the option a keyboard focus target.
+            let id = format!("argo-sync:{}", string(step, "name"));
+            assert!(
+                super::locate::focus_state(&window.find(id.clone())).is_some(),
+                "{id} has no focus binding"
+            );
+        }
+        "expectArgoTriggerFocus" => {
+            let id = match string(step, "control") {
+                "Sync options" => "argo-sync-options",
+                _ => "argo-refresh-options",
+            };
+            window.render_frame(cx);
+            assert_eq!(
+                super::locate::focus_state(&window.find(id)),
+                Some(true),
+                "focus is not on {id}"
+            );
         }
         "tabArgoPopover" => {
             let presses = step["presses"].as_u64().expect("tab presses");

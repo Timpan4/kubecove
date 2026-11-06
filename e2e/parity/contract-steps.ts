@@ -125,6 +125,8 @@ export type Step =
     | { action: "expectNoArgoControl"; control: "Confirm target again" }
     | { action: "expectArgoFocusInPopover"; control: "Sync options" | "Refresh options" }
     | { action: "tabArgoPopover"; control: "Sync options" | "Refresh options"; presses: number }
+    | { action: "expectArgoTriggerFocus"; control: "Sync options" | "Refresh options" }
+    | { action: "expectArgoOptionFocusable"; name: "Prune" | "Dry run" | "Force / replace" }
     | { action: "expectArgoOperationState"; control: "Sync" | "Refresh" | "Sync options" | "Refresh options"; enabled: boolean }
     | { action: "selectArgoConnection"; url: string }
     | { action: "argoDocument"; view: "Desired" | "Live" | "Changes"; contains: string }

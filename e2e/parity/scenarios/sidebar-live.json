@@ -87,6 +87,30 @@
         { "action": "expectPageText", "text": "Custom resource discovery unavailable" },
         { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_kinds", "context": "mock-dev" } }
       ]
+    },
+    {
+      "id": "sidebar.custom-discovery-retry-recovers",
+      "title": "Custom Resources retries a superseded kind discovery read and shows the recovered kinds",
+      "steps": [
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_kinds", "context": "mock-dev" } },
+        { "action": "searchCustomKinds", "value": "" },
+        { "action": "expectPageText", "text": "Loading custom resources..." },
+        { "action": "mockTiming", "control": { "operation": "failOnce", "command": "list_resource_kinds", "context": "mock-dev", "kind": "cancelled" } },
+        { "action": "mockTiming", "control": { "operation": "expectNoError", "command": "list_resource_kinds", "context": "mock-dev", "kind": "cancelled" } },
+        { "action": "expectCustomGroup", "group": "testing.example.io", "visible": true }
+      ]
+    },
+    {
+      "id": "sidebar.custom-discovery-transport-no-retry",
+      "title": "Custom Resources shows a transport kind discovery failure without retrying it",
+      "steps": [
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_kinds", "context": "mock-dev" } },
+        { "action": "searchCustomKinds", "value": "" },
+        { "action": "expectPageText", "text": "Loading custom resources..." },
+        { "action": "mockTiming", "control": { "operation": "failOnce", "command": "list_resource_kinds", "context": "mock-dev", "kind": "transport" } },
+        { "action": "expectPageText", "text": "Custom resource discovery unavailable" },
+        { "action": "mockTiming", "control": { "operation": "expectNoRetry", "command": "list_resource_kinds", "context": "mock-dev" } }
+      ]
     }
   ]
 }
