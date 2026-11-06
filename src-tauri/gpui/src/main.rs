@@ -7,6 +7,9 @@ use kubecove_gpui::{
 use std::sync::Arc;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // reqwest is built with `rustls-no-provider`, so a TLS client such as the update check
+    // panics unless a provider is installed first. Only the first installation takes effect.
+    let _ = rustls::crypto::ring::default_provider().install_default();
     let directory = config_directory()?;
     let legacy_sessions = directory
         .with_file_name("kubecove-gpui")
