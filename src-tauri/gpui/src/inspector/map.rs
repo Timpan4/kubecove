@@ -354,11 +354,10 @@ impl Inspector {
             for node in &view.nodes {
                 let key = viewport::node_id(&node.item);
                 keys.insert(key.clone());
-                if !self.map.node_focus.contains_key(&key) {
-                    self.map
-                        .node_focus
-                        .insert(key, cx.focus_handle().tab_stop(true));
-                }
+                self.map
+                    .node_focus
+                    .entry(key)
+                    .or_insert_with(|| cx.focus_handle().tab_stop(true));
             }
         }
         self.map.node_focus.retain(|key, _| keys.contains(key));
