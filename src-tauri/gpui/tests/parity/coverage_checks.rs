@@ -262,36 +262,39 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             );
         }
         "pagination" => {
-            let check_groups = |window: &gpui_kit::Window, count: usize| {
-                for suffix in [" resources on this page", " on this page"] {
-                    let counts: Vec<_> = window
-                        .elements()
-                        .iter()
-                        .filter_map(|element| {
-                            element
+            // Every row on the page, sorted, after checking that the group headers'
+            // page counts add up to it. The table mounts only rows near its viewport,
+            // so this scrolls through the page and keys each element by its path.
+            let rows = |window: &mut gpui_kit::Window, cx: &mut gpui_kit::App| {
+                let mut rows = std::collections::BTreeSet::new();
+                let suffixes = [" resources on this page", " on this page"];
+                let mut groups = suffixes.map(|_| std::collections::HashMap::new());
+                super::detail::scan_table(window, cx, |window| {
+                    for element in window.elements() {
+                        if let Some(ElementId::Name(name)) = element.path().last()
+                            && name.starts_with("resource:")
+                        {
+                            rows.insert(name.to_string());
+                        }
+                        for (suffix, counts) in suffixes.iter().zip(&mut groups) {
+                            if let Some(count) = element
                                 .label()
                                 .and_then(|label| label.strip_suffix(suffix))
                                 .and_then(|number| number.parse::<usize>().ok())
-                        })
-                        .collect();
-                    assert!(!counts.is_empty());
-                    assert_eq!(counts.iter().sum::<usize>(), count);
-                }
-            };
-            let rows = |window: &gpui_kit::Window| -> Vec<String> {
-                window
-                    .elements()
-                    .iter()
-                    .filter_map(|element| match element.path().last() {
-                        Some(ElementId::Name(name)) if name.starts_with("resource:") => {
-                            Some(name.to_string())
+                            {
+                                counts.insert(format!("{:?}", element.path()), count);
+                            }
                         }
-                        _ => None,
-                    })
-                    .collect()
+                    }
+                    false
+                });
+                for counts in groups {
+                    assert!(!counts.is_empty());
+                    assert_eq!(counts.values().sum::<usize>(), rows.len());
+                }
+                rows.into_iter().collect::<Vec<_>>()
             };
-            let first = rows(window);
-            check_groups(window, first.len());
+            let first = rows(window, cx);
             let total = window
                 .find("table-total")
                 .label()
@@ -304,8 +307,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             assert!(!first.is_empty());
             window.click("next-page", cx);
             window.render_frame(cx);
-            let second = rows(window);
-            check_groups(window, second.len());
+            let second = rows(window, cx);
             assert_eq!(first.len() + second.len(), total);
             assert_eq!(
                 first
@@ -320,7 +322,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             assert_ne!(first, second, "Next repeated page one");
             window.click("previous-page", cx);
             window.render_frame(cx);
-            assert_eq!(first, rows(window), "Previous did not restore page one");
+            assert_eq!(first, rows(window, cx), "Previous did not restore page one");
         }
         "yaml-undo" => {
             let editor = locate::id(&window.find_by_label("Resource YAML"));

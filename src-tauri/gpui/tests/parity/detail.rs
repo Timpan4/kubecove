@@ -293,13 +293,26 @@ pub(super) fn reveal_resource(
     target: &str,
     cx: &mut gpui_kit::App,
 ) -> bool {
+    let id = gpui_kit::ElementId::Name(target.to_owned().into());
+    scan_table(window, cx, |window| {
+        window.try_find(id.clone()).is_some_and(|row| row.visible())
+    })
+}
+
+/// Calls `visit` at each scroll position of the current table page, from the
+/// top down, until it returns true. Returns whether it did. The table mounts
+/// only the rows near its viewport.
+pub(super) fn scan_table(
+    window: &mut gpui_kit::Window,
+    cx: &mut gpui_kit::App,
+    mut visit: impl FnMut(&gpui_kit::Window) -> bool,
+) -> bool {
     use gpui_kit::test::TestEventExt;
     use gpui_kit::{InputEvent, ScrollDelta, ScrollEvent, point};
     // Beside an open detail the table is below the map in the page scroller.
     // Reveal that viewport before scrolling its virtualized rows.
     reveal(window, "resources", "resource-table", cx);
-    let id = gpui_kit::ElementId::Name(target.to_owned().into());
-    if window.try_find(id.clone()).is_some_and(|row| row.visible()) {
+    if visit(window) {
         return true;
     }
     let table = window.find("resource-table").bounds();
@@ -324,7 +337,7 @@ pub(super) fn reveal_resource(
     // PAGE_SIZE bounds the current page. Reset its scroll before scanning it.
     scroll(window, cx, height * kubecove_gpui::model::PAGE_SIZE as f32);
     for _ in 0..kubecove_gpui::model::PAGE_SIZE {
-        if window.try_find(id.clone()).is_some_and(|row| row.visible()) {
+        if visit(window) {
             return true;
         }
         scroll(window, cx, -height / 2.);
