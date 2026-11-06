@@ -19,14 +19,9 @@ const CULL_MARGIN: f32 = 2. + 3. * 10.;
 /// mounted so Tab reaches offscreen nodes. Larger graphs render visible nodes only.
 const VISIBLE_ELEMENT_RENDER_THRESHOLD: usize = 120;
 
-pub(super) fn node_id(item: &FlowItem, topology: &super::TopologyLoad) -> SharedString {
+pub(super) fn node_id(item: &FlowItem, map: &super::MapState) -> SharedString {
     match item {
-        FlowItem::Resource(index) => match topology {
-            super::TopologyLoad::Ready(topology) => {
-                format!("map-node:{}", topology.nodes[*index].id).into()
-            }
-            _ => unreachable!("nodes require loaded topology"),
-        },
+        FlowItem::Resource(index) => map.node_ids[*index].clone(),
         FlowItem::Group { kind, .. } => format!("map-group:{kind}").into(),
     }
 }
@@ -146,7 +141,7 @@ impl Inspector {
         let Some(node) = view
             .nodes
             .iter()
-            .find(|node| node_id(&node.item, &self.map.topology) == *key)
+            .find(|node| node_id(&node.item, &self.map) == *key)
         else {
             return;
         };
@@ -201,7 +196,12 @@ impl Inspector {
         };
         let size = self.map.size.clone();
         let entity = cx.entity_id();
-        let mut edge_cache = self.map.edge_cache.borrow_mut();
+        let cache = if view.focused {
+            &self.map.edge_cache
+        } else {
+            &self.map.unselected_edge_cache
+        };
+        let mut edge_cache = cache.borrow_mut();
         if edge_cache
             .as_ref()
             .is_none_or(|(cached, _)| !Rc::ptr_eq(cached, view))
@@ -291,7 +291,7 @@ impl Inspector {
                                 expanded,
                             } => group_card(kind, members.len(), *expanded, node.dimmed, z),
                         };
-                        let id = node_id(&node.item, &self.map.topology);
+                        let id = node_id(&node.item, &self.map);
                         div()
                             .id(id.clone())
                             .test_support()
@@ -439,11 +439,7 @@ impl Inspector {
         let Some(node) = view.nodes.get(index) else {
             return;
         };
-        if let Some(focus) = self
-            .map
-            .node_focus
-            .get(&node_id(&node.item, &self.map.topology))
-        {
+        if let Some(focus) = self.map.node_focus.get(&node_id(&node.item, &self.map)) {
             focus.focus(window, cx);
         }
         let super::TopologyLoad::Ready(topology) = &self.map.topology else {

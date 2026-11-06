@@ -3,7 +3,7 @@ use super::viewport;
 use crate::inspector::Inspector;
 use gpui_kit::{Context, FocusHandle, Window};
 use std::{
-    collections::HashSet,
+    collections::HashMap,
     rc::{Rc, Weak},
 };
 
@@ -26,18 +26,19 @@ impl Inspector {
                 .is_some_and(|previous| Rc::ptr_eq(&previous, view))
         });
         if !unchanged {
-            let mut keys = HashSet::new();
+            let mut previous = std::mem::take(&mut self.map.node_focus);
+            let mut handles =
+                HashMap::with_capacity(self.map.cache.as_ref().map_or(0, |view| view.nodes.len()));
             if let Some(view) = &self.map.cache {
                 for node in &view.nodes {
-                    let key = viewport::node_id(&node.item, &self.map.topology);
-                    keys.insert(key.clone());
-                    self.map
-                        .node_focus
-                        .entry(key)
-                        .or_insert_with(|| cx.focus_handle().tab_stop(true));
+                    let key = viewport::node_id(&node.item, &self.map);
+                    let handle = previous
+                        .remove(&key)
+                        .unwrap_or_else(|| cx.focus_handle().tab_stop(true));
+                    handles.insert(key, handle);
                 }
             }
-            self.map.node_focus.retain(|key, _| keys.contains(key));
+            self.map.node_focus = handles;
             if self.map.zoom_focus.is_none() {
                 self.map.zoom_focus =
                     Some(std::array::from_fn(|_| cx.focus_handle().tab_stop(true)));

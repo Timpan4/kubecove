@@ -34,10 +34,12 @@ type CachedEdges = (Rc<topology::View>, Rc<PreparedEdges>);
 
 pub(super) struct MapState {
     pub topology: TopologyLoad,
+    node_ids: Vec<SharedString>,
     pub(super) expanded: HashSet<String>,
     pub network: bool,
     pub cache: Option<Rc<topology::View>>,
     edge_cache: RefCell<Option<CachedEdges>>,
+    unselected_edge_cache: RefCell<Option<CachedEdges>>,
     /// The graph viewport's size, measured during prepaint.
     size: Rc<Cell<(f32, f32)>>,
     /// A pan or zoom, kept while the fitted viewport it started from is current.
@@ -57,6 +59,7 @@ pub(super) struct MapState {
     /// The last built view and the inputs it was built from. Pan, zoom and
     /// hover redraw the map without changing them.
     built: RefCell<Option<(ViewInputs, Rc<topology::View>)>>,
+    unselected_built: RefCell<Option<(ViewInputs, Rc<topology::View>)>>,
     prepared: RefCell<Option<PreparedMap>>,
 }
 
@@ -71,18 +74,30 @@ struct PreparedMap {
 
 impl MapState {
     pub(super) fn replace_topology(&mut self, topology: TopologyLoad) {
+        self.node_ids = match &topology {
+            TopologyLoad::Ready(topology) => topology
+                .nodes
+                .iter()
+                .map(|node| SharedString::from(format!("map-node:{}", node.id)))
+                .collect(),
+            _ => Vec::new(),
+        };
         self.topology = topology;
         self.prepared.take();
         self.built.take();
+        self.unselected_built.take();
         self.edge_cache.take();
+        self.unselected_edge_cache.take();
     }
     pub fn new() -> Self {
         Self {
             topology: TopologyLoad::Loading,
+            node_ids: Vec::new(),
             expanded: HashSet::new(),
             network: false,
             cache: None,
             edge_cache: RefCell::new(None),
+            unselected_edge_cache: RefCell::new(None),
             size: Rc::default(),
             adjusted: None,
             drag: None,
@@ -92,6 +107,7 @@ impl MapState {
             zoom_focus: None,
             skip_target: None,
             built: RefCell::default(),
+            unselected_built: RefCell::default(),
             prepared: RefCell::default(),
         }
     }
@@ -186,7 +202,13 @@ impl Inspector {
                 }
             }
             let data = &prepared.as_ref().unwrap().data;
-            let mut built = self.map.built.borrow_mut();
+            // Selection changes preserve the full graph for closing the detail pane.
+            let cache = if selected.is_none() {
+                &self.map.unselected_built
+            } else {
+                &self.map.built
+            };
+            let mut built = cache.borrow_mut();
             match &*built {
                 Some((inputs, view))
                     if inputs.matches(data, selected, &self.map.expanded, self.map.network) =>
@@ -220,6 +242,7 @@ impl Inspector {
         });
         if topology.is_none() {
             self.map.built.take();
+            self.map.unselected_built.take();
             self.map.prepared.take();
         }
         self.map.cache = view;
