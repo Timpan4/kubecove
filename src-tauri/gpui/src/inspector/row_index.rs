@@ -86,7 +86,7 @@ impl Inspector {
         let summary_profile = crate::frame_profile::scope("rows", "summary");
         let mut owners = std::collections::BTreeMap::new();
         let mut summary = crate::model::HealthSummary::default();
-        for row in source.iter() {
+        for (row, prepared) in source.keyed_rows() {
             if !(kinds.contains(&row.kind)
                 && self.selected_kind(&row.kind, row.api_version.as_deref())
                 && self.row_scope_visible(row)
@@ -94,19 +94,22 @@ impl Inspector {
             {
                 continue;
             }
-            let owner = crate::model::gitops_owner_filter(row);
+            let owner = &prepared.owner;
             if let Some((key, label)) = &owner {
-                owners.entry(key.clone()).or_insert_with(|| label.clone());
+                owners.entry(key.as_str()).or_insert(label.as_str());
             }
             if self
                 .filters
                 .in_owner(owner.as_ref().map(|(key, _)| key.as_str()))
-                && (query.is_empty() || crate::resource_search::haystack(row).contains(&query))
+                && (query.is_empty() || prepared.search.contains(&query))
             {
                 summary.add(row);
             }
         }
-        let mut owners: Vec<_> = owners.into_iter().collect();
+        let mut owners: Vec<_> = owners
+            .into_iter()
+            .map(|(key, label)| (key.to_owned(), label.to_owned()))
+            .collect();
         owners.sort_by(|a, b| crate::collate::collate(&a.1, &b.1, false));
         self.filters.owners = owners;
         self.filters.summary = summary;

@@ -22,8 +22,9 @@ pub(crate) struct KindFilter<'a, F> {
     pub selected: F,
 }
 
-struct RowKey {
-    search: String,
+pub(crate) struct RowKey {
+    pub(crate) search: String,
+    pub(crate) owner: Option<(String, String)>,
     group: usize,
     lane: usize,
     kind: usize,
@@ -52,6 +53,10 @@ impl std::ops::Deref for PreparedRows {
 }
 
 impl PreparedRows {
+    pub(crate) fn keyed_rows(&self) -> impl Iterator<Item = (&ResourceSummary, &RowKey)> {
+        self.rows.iter().zip(&self.keys)
+    }
+
     pub(crate) fn identity(&self) -> &Rc<()> {
         &self.identity
     }
@@ -103,6 +108,7 @@ impl PreparedRows {
                 let lane = *lanes.entry((group, kind)).or_insert(next_lane);
                 RowKey {
                     search: crate::resource_search::haystack(row),
+                    owner: super::gitops_owner_filter(row),
                     group,
                     lane,
                     kind,
