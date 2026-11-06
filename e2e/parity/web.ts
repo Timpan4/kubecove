@@ -491,14 +491,47 @@ async function containsLines(locator: Locator, lines: string[]) {
 	}, { element, expected: lines });
 }
 
-export async function runWeb(contract: Contract, artifacts: string, signal: AbortSignal) {
-	const results: { id: string; status: "passed" | "failed"; error?: string }[] = [];
+type WebResult = { id: string; status: "passed" | "failed"; error?: string };
+type Browser = Awaited<ReturnType<typeof chromium.launch>>;
+
+async function runScenario(browser: Browser, port: number, artifacts: string, scenarioIndex: number, scenario: Contract["scenarios"][number], signal: AbortSignal): Promise<WebResult> {
+	// Each page has its own browser context, so its storage and in-memory mocks stay isolated.
+	const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+	const browserLog: string[] = [];
+	page.on("console", (message) => browserLog.push(`${message.type()}: ${message.text()}`));
+	page.on("pageerror", (error) => browserLog.push(`pageerror: ${error.message}`));
+	page.setDefaultTimeout(readinessTimeoutMs);
+	try {
+		signal.throwIfAborted();
+		await page.goto(`http://127.0.0.1:${port}/`);
+		const prelude = scenario.steps.findIndex((step) => step.action !== "mockTiming" || step.control.operation !== "hold");
+		const startupSteps = prelude < 0 ? scenario.steps.length : prelude;
+		for (const step of scenario.steps.slice(0, startupSteps)) await action(page, step);
+		if (seedsWorkspace(scenario)) await seedWorkspace(page);
+		for (const [index, step] of scenario.steps.entries()) {
+			signal.throwIfAborted();
+			if (index >= startupSteps) await action(page, step);
+			await page.screenshot({ path: join(artifacts, `web-${scenarioIndex}-${index}.png`) });
+		}
+		return { id: scenario.id, status: "passed" };
+	} catch (error) {
+		await page.screenshot({ path: join(artifacts, `web-${scenarioIndex}-failure.png`) }).catch(() => {});
+		return { id: scenario.id, status: "failed", error: String(error) };
+	} finally {
+		await writeFile(join(artifacts, `web-${scenarioIndex}.log`), browserLog.join("\n"));
+		await page.close();
+	}
+}
+
+/** Runs scenarios on `jobs` pages at once; results keep the contract order. */
+export async function runWeb(contract: Contract, artifacts: string, signal: AbortSignal, jobs = 1) {
+	const results: WebResult[] = [];
 	const port = await freePort();
 	const env = { ...process.env }; delete env.KUBECONFIG; delete env.ARGV0;
 	const vite = Bun.spawn([process.execPath, join(process.cwd(), "node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", String(port), "--strictPort"], { cwd: process.cwd(), env, detached: true, stdout: "pipe", stderr: "pipe" });
 	const identity = startIdentity(vite.pid);
 	const logs = Promise.all([new Response(vite.stdout).text(), new Response(vite.stderr).text()]);
-	let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+	let browser: Browser | undefined;
 	const cancel = () => { void browser?.close(); };
 	signal.addEventListener("abort", cancel, { once: true });
 	try {
@@ -510,36 +543,20 @@ export async function runWeb(contract: Contract, artifacts: string, signal: Abor
 			]);
 		} finally { signal.removeEventListener("abort", abortReadiness); }
 		signal.throwIfAborted();
-		browser = await chromium.launch({ executablePath: chromeExecutable(), headless: true });
+		const launched = await chromium.launch({ executablePath: chromeExecutable(), headless: true });
+		browser = launched;
 		signal.throwIfAborted();
-		for (const [scenarioIndex, scenario] of contract.scenarios.entries()) {
-			const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-			const browserLog: string[] = [];
-			page.on("console", (message) => browserLog.push(`${message.type()}: ${message.text()}`));
-			page.on("pageerror", (error) => browserLog.push(`pageerror: ${error.message}`));
-			page.setDefaultTimeout(readinessTimeoutMs);
-			try {
-				signal.throwIfAborted();
-				await page.goto(`http://127.0.0.1:${port}/`);
-                const prelude = scenario.steps.findIndex((step) => step.action !== "mockTiming" || step.control.operation !== "hold");
-                const startupSteps = prelude < 0 ? scenario.steps.length : prelude;
-                for (const step of scenario.steps.slice(0, startupSteps)) await action(page, step);
-				if (seedsWorkspace(scenario)) await seedWorkspace(page);
-				for (const [index, step] of scenario.steps.entries()) {
-					signal.throwIfAborted();
-					if (index >= startupSteps) await action(page, step);
-					await page.screenshot({ path: join(artifacts, `web-${scenarioIndex}-${index}.png`) });
-				}
-				results.push({ id: scenario.id, status: "passed" });
-			} catch (error) {
-				await page.screenshot({ path: join(artifacts, `web-${scenarioIndex}-failure.png`) }).catch(() => {});
-				results.push({ id: scenario.id, status: "failed", error: String(error) });
-				if (signal.aborted) break;
-			} finally {
-				await writeFile(join(artifacts, `web-${scenarioIndex}.log`), browserLog.join("\n"));
-				await page.close();
+		const ordered: (WebResult | undefined)[] = [];
+		let next = 0;
+		const worker = async () => {
+			while (next < contract.scenarios.length && !signal.aborted) {
+				const scenarioIndex = next++;
+				const scenario = contract.scenarios[scenarioIndex];
+				if (scenario) ordered[scenarioIndex] = await runScenario(launched, port, artifacts, scenarioIndex, scenario, signal);
 			}
-		}
+		};
+		await Promise.all(Array.from({ length: Math.max(1, Math.min(jobs, contract.scenarios.length)) }, worker));
+		for (const result of ordered) if (result) results.push(result);
 	} finally {
 		signal.removeEventListener("abort", cancel);
 		await browser?.close();

@@ -172,8 +172,36 @@ fn cluster_row(step: &Value) -> String {
     )
 }
 
+/// `KUBECOVE_PARITY_SHARD=<index>/<count>`, set by `scripts/e2e-parity.ts` when it splits
+/// the native run across processes.
+fn shard() -> Option<(usize, usize)> {
+    let value = std::env::var("KUBECOVE_PARITY_SHARD").ok()?;
+    let parsed = value
+        .split_once('/')
+        .and_then(|(index, count)| Some((index.parse().ok()?, count.parse().ok()?)))
+        .filter(|(index, count)| index < count);
+    Some(parsed.unwrap_or_else(|| panic!("KUBECOVE_PARITY_SHARD must be <index>/<count>: {value}")))
+}
+
+/// Report and progress files carry the shard so parallel processes do not overwrite each other.
+fn artifact_name(stem: &str, extension: &str) -> String {
+    match shard() {
+        Some((index, _)) => format!("{stem}-{index}.{extension}"),
+        None => format!("{stem}.{extension}"),
+    }
+}
+
 /// Every scenario file in name order, as `loadContract` in `e2e/parity/contract.ts` reads them.
+/// `KUBECOVE_PARITY_SCENARIO_IDS` names a file with one scenario ID per line to run instead.
 fn scenarios() -> Vec<Value> {
+    let ids: Option<std::collections::HashSet<String>> =
+        std::env::var_os("KUBECOVE_PARITY_SCENARIO_IDS").map(|path| {
+            fs::read_to_string(&path)
+                .unwrap_or_else(|error| panic!("{} unreadable: {error}", path.display()))
+                .lines()
+                .map(str::to_owned)
+                .collect()
+        });
     let prefix = std::env::var("KUBECOVE_PARITY_SCENARIO_PREFIX").unwrap_or_default();
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../e2e/parity/scenarios");
     let mut files: Vec<PathBuf> = fs::read_dir(&dir)
@@ -191,6 +219,13 @@ fn scenarios() -> Vec<Value> {
             contract["scenarios"].as_array().unwrap().clone()
         })
         .filter(|scenario| string(scenario, "id").starts_with(&prefix))
+        .filter(|scenario| {
+            ids.as_ref()
+                .is_none_or(|ids| ids.contains(string(scenario, "id")))
+        })
+        .enumerate()
+        .filter(|(index, _)| shard().is_none_or(|(shard, count)| index % count == shard))
+        .map(|(_, scenario)| scenario)
         .collect()
 }
 
@@ -297,7 +332,7 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
         std::env::var_os("KUBECOVE_E2E_ARTIFACTS").expect("KUBECOVE_E2E_ARTIFACTS is required");
     let fixture = std::env::var_os("KUBECOVE_PARITY_FIXTURE")
         .expect("KUBECOVE_PARITY_FIXTURE is required; run `bun scripts/e2e-parity.ts`");
-    let report = Path::new(&artifacts).join("gpui.json");
+    let report = Path::new(&artifacts).join(artifact_name("gpui", "json"));
     fs::create_dir_all(&artifacts).unwrap();
     match fs::remove_file(&report) {
         Ok(()) => {}
@@ -305,7 +340,8 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
         Err(error) => panic!("cannot remove stale parity report: {error}"),
     }
     let scenarios = scenarios();
-    assert!(!scenarios.is_empty());
+    // A shard can be empty when there are fewer selected scenarios than shards.
+    assert!(shard().is_some() || !scenarios.is_empty());
     let mut passed = Vec::new();
     for scenario in &scenarios {
         let id = string(scenario, "id");
@@ -626,7 +662,7 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
             }
             println!("parity {id} step {index}: {}", string(step, "action"));
             fs::write(
-                Path::new(&artifacts).join("gpui-progress.txt"),
+                Path::new(&artifacts).join(artifact_name("gpui-progress", "txt")),
                 format!("{id} step {index}: {}\n", string(step, "action")),
             )
             .unwrap();

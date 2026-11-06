@@ -31,7 +31,15 @@ Run new scenarios in each driver before the full suite. This catches missing nat
    cargo test --manifest-path src-tauri/gpui/Cargo.toml --test parity
    ```
 
-3. Run `bun run e2e:parity` without the prefix filter for the completion gate. Focused reports prove only the scenarios they name.
+3. Run `bun run e2e:parity` without a filter for the completion gate. Focused reports prove only the scenarios they name.
+
+`bun run e2e:parity` runs both drivers at the same time. The web driver runs several pages at once, and the GPUI driver builds the parity test once and splits the scenarios across processes (`KUBECOVE_PARITY_SHARD=<index>/<count>`), each writing `gpui-<index>.json`; the runner merges them into `gpui.json`. Optional variables:
+
+- `PARITY_PREFIX=overview,launcher-errors.` runs scenarios whose IDs start with any listed prefix.
+- `PARITY_RERUN=last` (or an artifacts directory) runs only the scenarios that either driver did not pass in that run.
+- `PARITY_JOBS=<n>` sets the pages and processes per driver. The default is half the CPU count, because both drivers share the CPUs.
+
+Scenarios in one GPUI process share that process, so a scenario that passes alone can fail after another scenario leaves state behind. Treat such an order-dependent failure as a test isolation bug.
 
 ## Equal-tests rule
 
