@@ -14,12 +14,17 @@ import { runWeb } from "../e2e/parity/web";
 //   between the two drivers. Measured on 16 CPUs (2026-11-06): 16 per driver finished no
 //   sooner than 8 per driver and timed out more web scenarios.
 
-/** The newest earlier run directory, chosen before this run creates its own. */
+/**
+ * The newest earlier run that finished, by its result.json. A run that was interrupted or is
+ * still going has none, and its empty reports would select every scenario.
+ */
 async function lastRun(): Promise<string> {
 	const root = resolve("e2e/artifacts");
-	const runs = await Promise.all((await readdir(root)).filter((name) => name.startsWith("parity-")).map(async (name) => ({ path: join(root, name), time: (await stat(join(root, name))).mtimeMs })));
-	const newest = runs.sort((left, right) => right.time - left.time)[0];
-	if (!newest) throw new Error("PARITY_RERUN=last found no earlier parity run");
+	const runs = await Promise.all((await readdir(root)).filter((name) => name.startsWith("parity-")).map(async (name) => {
+		try { return { path: join(root, name), time: (await stat(join(root, name, "result.json"))).mtimeMs }; } catch { return undefined; }
+	}));
+	const newest = runs.flatMap((run) => run ? [run] : []).sort((left, right) => right.time - left.time)[0];
+	if (!newest) throw new Error("PARITY_RERUN=last found no finished parity run");
 	return newest.path;
 }
 
