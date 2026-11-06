@@ -46,7 +46,15 @@ if [ -n "$staged_files" ]; then
         ;;
     esac
 
-    if printf '%s\n' "$scan_content" | grep -Eiq '(^|[[:space:]])(client-key-data|client-certificate-data|certificate-authority-data|current-context|clusters|contexts|users):'; then
+    # Kubeconfig section keys match anywhere in YAML and config files. In other files they
+    # are usually typed fields such as `contexts: Vec<...>`, so there only a key with nothing
+    # after the colon matches, as a kubeconfig embedded in a string would have.
+    case "$file" in
+      *.yaml|*.yml|*config|*kubeconfig*) section_keys='(^|[[:space:]])(clusters|contexts|users):' ;;
+      *) section_keys='^[[:space:]]*(clusters|contexts|users):[[:space:]]*$' ;;
+    esac
+    if printf '%s\n' "$scan_content" | grep -Eiq '(^|[[:space:]])(client-key-data|client-certificate-data|certificate-authority-data|current-context):' \
+      || printf '%s\n' "$scan_content" | grep -Eiq "$section_keys"; then
       echo "pre-commit: possible kubeconfig or credential material staged in $file"
       echo "Move credentials out of the repo or add a narrow exception after review."
       exit 1
