@@ -70,36 +70,17 @@ read. Neither model reproduces completed-cache freshness or cache eviction.
 No expected-failure mechanism exists in the shared report contract. Known native
 failures remain failures and make the full parity check fail.
 
-## Focused results
+## Current results
 
-The focused web run passes all six scenarios. The native runs pass
-`mock-timing.late-topology`, `mock-timing.credentials`, and
-`mock-timing.context-switch`.
+Both drivers pass all six `mock-timing.` scenarios, checked with
+`PARITY_PREFIX=mock-timing. bun run e2e:parity`. The earlier native failures in
+`mock-timing.cancelled-topology`, `mock-timing.forbidden` and
+`mock-timing.list-watch-gap` no longer reproduce, so those notes were stale.
+Neither the fixture nor the app needed a change for them.
 
-Native failures remain in `mock-timing.cancelled-topology` (the recovered node
-never appears), `mock-timing.forbidden` (the no-retry count passes but the map
-error is absent), and `mock-timing.list-watch-gap` (the row remains Healthy
-instead of Degraded after watch opening and the refresh throttle). These are
-failed acceptance assertions, not expected-failure skips. Native production
-code is unchanged. No web product bug was proven in these focused scenarios.
-
-Repeatable commands and evidence are under `e2e/artifacts/mock-timing/` in this
-worktree. `web.json` records the six web results. Each `native-<case>/run.log`
-records the native run; successful native cases also emit `gpui.json`.
-
-The full `bun run e2e:parity` run records 163 passing web scenarios in
-`e2e/artifacts/parity-fb84cd09-ce6c-4f42-bdbe-9b28e0ffbf4c/web.json`.
-The native runner stops at `mock-timing.cancelled-topology`; its progress and
-panic are retained in that directory. It does not emit a complete `gpui.json`
-after a panic, so the full runner also reports the missing native report.
-
-Typecheck, Svelte check, Biome lint, contract and stylesheet tests, docs check,
-diff whitespace check, Rust formatting and Clippy pass. Native library tests
-pass 20 tests; the native integration suite passes 72 with one existing ignored
-test. Anti-slop exits unsuccessfully both before and after: 75 errors and one
-warning, with no new diagnostic messages. Biome formatting is disabled by the
-repository configuration. No native production changes, push or PR accompany
-this work. The changes remain uncommitted because the required parity check fails.
+Each run writes `web.json`, `gpui.json` and `gpui.log` to its own
+`e2e/artifacts/parity-<id>/` directory. The `mock-timing.`, `resources.` and
+`overview.` prefixes all pass in both drivers on the current tree.
 
 The model excludes real authentication, network transport, completed-cache
 freshness, cache eviction, and platform rendering. Permanent error scripting
