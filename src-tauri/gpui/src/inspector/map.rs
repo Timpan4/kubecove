@@ -4,6 +4,7 @@
 //! is multiplied by the zoom when the node is built.
 
 mod cards;
+mod focus;
 mod paint;
 mod viewport;
 use paint::PreparedEdges;
@@ -15,13 +16,13 @@ use crate::topology::{self, Viewport};
 use crate::ui;
 use gpui_kit::TestSupportExt;
 use gpui_kit::{
-    AnyElement, App, Context, Div, FocusHandle, Pixels, Point, SharedString, Subscription, Window,
-    div, prelude::*, px,
+    AnyElement, Context, Div, FocusHandle, Pixels, Point, SharedString, Subscription, div,
+    prelude::*, px,
 };
 use kubecove_lib::models::{AppError, AppErrorKind, ResourceSummary, ResourceTopology};
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 
 pub(super) enum TopologyLoad {
     Loading,
@@ -46,6 +47,8 @@ pub(super) struct MapState {
     pub node_focus: HashMap<SharedString, FocusHandle>,
     /// Keeps each node's focus listener, which pans the node into view.
     focus_pan: HashMap<SharedString, Subscription>,
+    /// The immutable view whose node focus handles are synchronized.
+    focus_view: Weak<topology::View>,
     /// The zoom in, zoom out and fit controls, in Tab order.
     zoom_focus: Option<[FocusHandle; 3]>,
     /// Where "skip graph" moves focus: the element right after the graph.
@@ -84,6 +87,7 @@ impl MapState {
             drag: None,
             node_focus: HashMap::new(),
             focus_pan: HashMap::new(),
+            focus_view: Weak::new(),
             zoom_focus: None,
             skip_target: None,
             built: RefCell::default(),
@@ -463,39 +467,5 @@ impl Inspector {
             .shadow_sm()
             .child(header)
             .children(body)
-    }
-
-    /// Keeps one focus handle per graph node and one for "skip graph". Called before
-    /// the page renders, so handles follow the cached view without rebuilding it.
-    /// A new node's focus pans it into view, as xyflow's `autoPanOnNodeFocus` does.
-    pub(super) fn sync_map_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let mut keys = HashSet::new();
-        if let Some(view) = &self.map.cache {
-            for node in &view.nodes {
-                let key = viewport::node_id(&node.item, &self.map.topology);
-                keys.insert(key.clone());
-                if self.map.node_focus.contains_key(&key) {
-                    continue;
-                }
-                let handle = cx.focus_handle();
-                let weak = cx.weak_entity();
-                let pan_key = key.clone();
-                let subscription =
-                    window.on_focus_in(&handle, cx, move |_window: &mut Window, cx: &mut App| {
-                        let _ =
-                            weak.update(cx, |this, cx| this.pan_map_node_into_view(&pan_key, cx));
-                    });
-                self.map.node_focus.insert(key.clone(), handle);
-                self.map.focus_pan.insert(key, subscription);
-            }
-        }
-        self.map.node_focus.retain(|key, _| keys.contains(key));
-        self.map.focus_pan.retain(|key, _| keys.contains(key));
-        if self.map.zoom_focus.is_none() {
-            self.map.zoom_focus = Some([cx.focus_handle(), cx.focus_handle(), cx.focus_handle()]);
-        }
-        if self.map.skip_target.is_none() {
-            self.map.skip_target = Some(cx.focus_handle());
-        }
     }
 }
