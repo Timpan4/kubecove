@@ -19,6 +19,9 @@ pub(super) struct LauncherState {
     pub(super) open: bool,
     pub(super) saved: Vec<SavedWorkspace>,
     pub(super) active: Option<u64>,
+    /// Set when deleting the open workspace clears `active`. The startup view must not be saved
+    /// again by a later write until a workspace opens or is created, as the web cannot reach one.
+    pub(super) deleted_open: bool,
     /// Ids and edit order for new records.
     pub(super) next: u64,
     pub(super) name: Entity<InputState>,
@@ -49,6 +52,7 @@ impl LauncherState {
             open: false,
             saved: vec![],
             active: None,
+            deleted_open: false,
             next: 1,
             name: cx.new(|cx| InputState::new(window, cx)),
             context_choices: vec![],
@@ -219,7 +223,7 @@ impl Inspector {
             cx.notify();
             return;
         }
-        let read = self.backend.namespaces(effective);
+        let read = crate::backend::namespaces_for_context(self.backend.clone(), effective);
         let read = self.timings.measure("namespaces", read);
         state.tasks[1] = Some(cx.spawn(async move |this, cx| {
             let result = read.await;
@@ -284,6 +288,7 @@ impl Inspector {
         self.workspace_name = workspace.name.clone().into();
         let context = workspace.context.clone();
         self.launcher.active = Some(id);
+        self.launcher.deleted_open = false;
         self.launcher.open = false;
         self.close_detail(cx);
         self.restore_workspace_memory(id, &context, window, cx);
@@ -306,14 +311,21 @@ impl Inspector {
 
     /// `deleteWorkspace` in the web's workspace store: removes the record, and clears the open
     /// workspace when the deleted record is that one. The launcher stays open with no workspace.
+    /// Deleting the open workspace also stops its live sessions, as the web's cleanup does when the
+    /// selected workspace clears.
     fn delete_workspace(&mut self, id: u64, cx: &mut Context<Self>) {
         let state = &mut self.launcher;
         state.saved.retain(|saved| saved.id != id);
-        if state.active == Some(id) {
+        let deleted_open = state.active == Some(id);
+        if deleted_open {
             state.active = None;
+            state.deleted_open = true;
         }
         self.navigation.forget(id);
         self.save_preferences(cx);
+        if deleted_open {
+            self.stop_sessions_after_workspace_delete(cx);
+        }
         cx.notify();
     }
 

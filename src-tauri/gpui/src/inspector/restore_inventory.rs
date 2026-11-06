@@ -30,7 +30,8 @@ impl Inspector {
             self.restore_inventory = None;
             return;
         };
-        let namespaces = self.backend.namespaces(context.clone());
+        let namespaces =
+            crate::backend::namespaces_for_context(self.backend.clone(), context.clone());
         let kinds = self.backend.resource_kinds(context.clone());
         let namespace_request = self.request.clone();
         let kind_request = self.request.clone();

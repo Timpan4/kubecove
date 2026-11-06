@@ -221,9 +221,9 @@ impl Backend for DesktopBackend {
         json!({"kubeconfigEnvVar": kubeconfig_source_key})
     );
     route!(
-        namespaces(context: String) -> Vec<NamespaceSummary>,
+        namespaces(context: String, kubeconfig_source_key: Option<String>) -> Vec<NamespaceSummary>,
         "list_namespaces",
-        json!({"clusterContext":context})
+        json!({"clusterContext":context,"kubeconfigEnvVar":kubeconfig_source_key})
     );
     route!(
         resource_kinds(context: String) -> Vec<DiscoveredResourceKind>,

@@ -168,6 +168,27 @@
         { "action": "openPage", "page": "Port Forwards" },
         { "action": "expectLiveSessionCount", "count": 3 }
       ]
+    },
+    {
+      "id": "live-sessions.workspace-delete-stops-forwards",
+      "title": "Deleting the open workspace stops its live forwards and shows the cleanup notice in the next workspace",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Forward" },
+        { "action": "configureForward", "remote": "9090", "local": "19090" },
+        { "action": "forwardControl", "operation": "start" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "listening", "count": 1 },
+        { "action": "closeDetail" },
+        { "action": "openLauncher" },
+        { "action": "deleteSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "nameWorkspace", "value": "After delete" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "After delete", "context": "mock-dev" },
+        { "action": "expectPageText", "text": "Stopped 3 port forwards and 1 exec session outside this workspace." },
+        { "action": "openPage", "page": "Port Forwards" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "stopped", "count": 0 }
+      ]
     }
   ]
 }

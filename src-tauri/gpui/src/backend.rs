@@ -22,6 +22,22 @@ use std::{future::Future, pin::Pin, sync::Arc};
 
 pub type Read<T> = Pin<Box<dyn Future<Output = Result<T, AppError>> + Send>>;
 
+/// `list_namespaces` for a context with the selected kubeconfig source, as the web passes it.
+/// A source that cannot be read falls back to the default source, as the contexts read does.
+pub fn namespaces_for_context(
+    backend: Arc<dyn Backend>,
+    context: String,
+) -> Read<Vec<NamespaceSummary>> {
+    Box::pin(async move {
+        let source = backend
+            .kubeconfig_sources()
+            .await
+            .ok()
+            .map(|sources| sources.source_key);
+        backend.namespaces(context, source).await
+    })
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Scope {
     pub context: String,
@@ -284,8 +300,12 @@ pub trait Backend: Send + Sync + 'static {
     fn apply_yaml(&self, request: YamlApplyRequest) -> Read<YamlApplyResult>;
     /// `lint_kubernetes_yaml`: parser and Kubernetes checks of an editor draft, with no cluster write.
     fn lint_yaml(&self, request: YamlApplyRequest) -> Read<KubernetesYamlLintResult>;
-    /// `list_namespaces` for a context the workspace launcher scopes.
-    fn namespaces(&self, context: String) -> Read<Vec<NamespaceSummary>>;
+    /// `list_namespaces` for a context, with the kubeconfig source the web passes to it.
+    fn namespaces(
+        &self,
+        context: String,
+        kubeconfig_source_key: Option<String>,
+    ) -> Read<Vec<NamespaceSummary>>;
     /// `list_rbac_inspection` for the RBAC Cockpit.
     fn rbac(&self, context: String) -> Read<RbacInspectionSummary>;
     /// `review_rbac_access`: one SubjectAccessReview, run only on an explicit user action.
@@ -679,10 +699,14 @@ impl Backend for NativeBackend {
         self.read(commands::lint_kubernetes_yaml(request))
     }
 
-    fn namespaces(&self, context: String) -> Read<Vec<NamespaceSummary>> {
+    fn namespaces(
+        &self,
+        context: String,
+        kubeconfig_source_key: Option<String>,
+    ) -> Read<Vec<NamespaceSummary>> {
         let store = self.store.clone();
         self.read(async move {
-            commands::list_namespaces(context, None, State::new(&store))
+            commands::list_namespaces(context, kubeconfig_source_key, State::new(&store))
                 .await
                 .map(Arc::unwrap_or_clone)
         })

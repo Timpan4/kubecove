@@ -415,7 +415,7 @@ impl Backend for Controlled {
     fn apply_yaml(&self, request: YamlApplyRequest) -> Read<YamlApplyResult> {
         self.detail.apply_yaml(request)
     }
-    fn namespaces(&self, _: String) -> Read<Vec<NamespaceSummary>> {
+    fn namespaces(&self, _: String, _: Option<String>) -> Read<Vec<NamespaceSummary>> {
         self.shell.namespaces()
     }
     fn rbac(&self, _: String) -> Read<RbacInspectionSummary> {

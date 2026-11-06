@@ -101,6 +101,7 @@ mod saved_forward_form;
 mod scope;
 mod secret_data;
 mod session_actions;
+mod session_cleanup;
 mod settings_integrations;
 mod settings_kubeconfig;
 mod settings_mcp;
@@ -240,6 +241,7 @@ pub struct Inspector {
     notice: Option<String>,
     feedback: feedback::Feedback,
     restore_prompt: restore_prompt::RestorePrompt,
+    session_cleanup: session_cleanup::SessionCleanup,
     request: Rc<()>,
     detail_request: Rc<()>,
     context_task: Option<Task<()>>,
@@ -365,6 +367,7 @@ impl Inspector {
             notice: None,
             feedback: Default::default(),
             restore_prompt: Default::default(),
+            session_cleanup: Default::default(),
             request: Rc::new(()),
             detail_request: Rc::new(()),
             context_task: None,
@@ -635,6 +638,7 @@ impl Render for Inspector {
                         },
                     )
                     .children(self.restore_prompt(cx))
+                    .children(self.session_cleanup_notice(cx))
                     .child(
                         div()
                             .flex()

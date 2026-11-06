@@ -32,6 +32,9 @@ impl Inspector {
     /// Links the open startup view, or saves it when no workspace exists yet, before a write such
     /// as an RBAC review or a pin attaches to it.
     pub(super) fn ensure_active_workspace(&mut self) {
+        if self.launcher.deleted_open {
+            return;
+        }
         self.link_active_workspace();
         // Saved records may have been renamed since the startup view was named.
         // A write must not recreate that old name once records exist.

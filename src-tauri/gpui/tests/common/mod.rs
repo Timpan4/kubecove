@@ -691,7 +691,11 @@ impl Backend for Fixture {
                 .await
         })
     }
-    fn namespaces(&self, context: String) -> Read<Vec<NamespaceSummary>> {
+    fn namespaces(
+        &self,
+        context: String,
+        _kubeconfig_source_key: Option<String>,
+    ) -> Read<Vec<NamespaceSummary>> {
         self.namespaces_read(context)
     }
     fn rbac(&self, context: String) -> Read<RbacInspectionSummary> {

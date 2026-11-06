@@ -45,7 +45,7 @@ impl Inspector {
             return;
         }
         self.namespace_list.read = NamespaceRead::Loading;
-        let read = self.backend.namespaces(context);
+        let read = crate::backend::namespaces_for_context(self.backend.clone(), context);
         let read = self.timings.measure("list_namespaces", read);
         self.namespace_list.task = Some(cx.spawn(async move |this, cx| {
             let result = read.await;
