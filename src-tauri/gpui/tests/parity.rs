@@ -15,6 +15,8 @@ mod coverage_checks;
 mod delivery;
 #[path = "parity/detail.rs"]
 mod detail;
+#[path = "parity/detail_scroll.rs"]
+mod detail_scroll;
 #[path = "parity/detail_status.rs"]
 mod detail_status;
 #[path = "parity/details_metadata.rs"]
@@ -71,8 +73,11 @@ use std::{
 };
 
 use common::Fixture;
-use gpui_kit::test::{TestQueryExt, TestWindowExt};
-use gpui_kit::{AppContext, Bounds, TestAppContext, WindowBounds, WindowOptions, px, size};
+use gpui_kit::test::{TestEventExt, TestQueryExt, TestWindowExt};
+use gpui_kit::{
+    AppContext, Bounds, InputEvent, ScrollDelta, ScrollEvent, TestAppContext, WindowBounds,
+    WindowOptions, point, px, size,
+};
 use kubecove_gpui::Inspector;
 use scroll::{reveal, seek};
 use serde_json::{Value, json};
@@ -117,6 +122,45 @@ fn helm_release(step: &Value) -> String {
 
 fn item_count(count: u64) -> String {
     format!("{count} item{}", if count == 1 { "" } else { "s" })
+}
+
+/// Virtualized rows do not have test elements until the table scrolls to them.
+fn reveal_resource(window: &mut gpui_kit::Window, target: &str, cx: &mut gpui_kit::App) -> bool {
+    // Beside an open detail the table is below the map in the page scroller.
+    // Reveal that viewport before scrolling its virtualized rows.
+    reveal(window, "resources", "resource-table", cx);
+    let id = gpui_kit::ElementId::Name(target.to_owned().into());
+    if window.try_find(id.clone()).is_some_and(|row| row.visible()) {
+        return true;
+    }
+    let table = window.find("resource-table").bounds();
+    let viewport = window.viewport_size();
+    let top = table.top().max(px(0.));
+    let bottom = table.bottom().min(viewport.height);
+    let position = point(table.left() + px(8.), (top + bottom) / 2.);
+    let height = table.size.height;
+    let scroll = |window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, delta| {
+        window.pointer_move(position, None, cx);
+        window.dispatch_event(
+            ScrollEvent {
+                position,
+                delta: ScrollDelta::Pixels(point(px(0.), delta)),
+                ..Default::default()
+            }
+            .to_platform_input(),
+            cx,
+        );
+        window.render_frame(cx);
+    };
+    // PAGE_SIZE bounds the current page. Reset its scroll before scanning it.
+    scroll(window, cx, height * kubecove_gpui::model::PAGE_SIZE as f32);
+    for _ in 0..kubecove_gpui::model::PAGE_SIZE {
+        if window.try_find(id.clone()).is_some_and(|row| row.visible()) {
+            return true;
+        }
+        scroll(window, cx, -height / 2.);
+    }
+    false
 }
 
 fn strings(step: &Value, key: &str) -> Vec<String> {

@@ -4,6 +4,7 @@
 
 use super::Inspector;
 use super::detail::Detail;
+use super::windowed::{Windowed, row_id};
 use crate::incident::{self, EventFilter, SignalTone};
 use crate::theme::{Tokens, oklch};
 use crate::ui;
@@ -15,6 +16,7 @@ use gpui_kit::{
 use kubecove_lib::models::ResourceEventSummary;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::Arc;
 
 pub(super) enum EventsLoad {
     Pending,
@@ -25,12 +27,16 @@ pub(super) enum EventsLoad {
 
 pub(super) struct EventsState {
     pub load: EventsLoad,
+    pub layout_key: u64,
+    pub layout_source: Arc<[u8]>,
     pub search: Entity<InputState>,
     pub filter: EventFilter,
     /// `ResourceTimeline.svelte` expansion: entries follow the default
     /// (`expandTimelineByDefault`, off) unless toggled.
     pub default_open: bool,
     pub overrides: HashMap<String, bool>,
+    /// The Events tab's rows.
+    pub rows: Windowed,
     task: Option<Task<()>>,
     pub watch: Option<Task<()>>,
     pub watch_error: Option<String>,
@@ -48,10 +54,13 @@ impl EventsState {
         });
         Self {
             load: EventsLoad::Pending,
+            layout_key: 0,
+            layout_source: Arc::default(),
             search,
             filter: EventFilter::All,
             default_open: false,
             overrides: HashMap::new(),
+            rows: Windowed::default(),
             task: None,
             watch: None,
             watch_error: None,
@@ -85,6 +94,8 @@ impl Inspector {
         let read = self.timings.measure("events", read);
         let request = self.detail_request.clone();
         detail.events.load = EventsLoad::Pending;
+        detail.events.layout_key = 0;
+        detail.events.layout_source = Arc::default();
         detail.events.task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
@@ -92,9 +103,15 @@ impl Inspector {
                     return;
                 }
                 if let Detail::Ready(detail) = &mut this.detail {
+                    detail.events.rows = Windowed::default();
                     detail.events.load = match result {
                         Ok(mut events) => {
                             incident::sort_events(&mut events);
+                            let source: Arc<[u8]> = serde_json::to_vec(&events)
+                                .expect("event models serialize")
+                                .into();
+                            detail.events.layout_key = row_id(&source);
+                            detail.events.layout_source = source;
                             EventsLoad::Ready(events)
                         }
                         Err(error) => EventsLoad::Failed(error.message),

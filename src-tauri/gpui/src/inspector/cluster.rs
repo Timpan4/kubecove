@@ -7,9 +7,12 @@ use super::{Inspector, Load, Page};
 use crate::backend::CLUSTER_KINDS;
 use gpui_kit::{Context, Task, Window};
 use kubecove_lib::models::ResourceSummary;
+use std::rc::Rc;
 
 #[derive(Default)]
 pub(super) struct ClusterState {
+    /// Replaced with the inventory before starting a new cluster read.
+    pub(super) request: Rc<()>,
     /// The context `rows` belong to.
     context: String,
     /// `None` until the page first opens for `context`.

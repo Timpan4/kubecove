@@ -50,6 +50,7 @@ pub(super) fn kind_resources(
     backend: &NativeBackend,
     scope: Scope,
     key: WatchResourceKey,
+    mut recycled: Vec<ResourceSummary>,
 ) -> Read<Vec<ResourceSummary>> {
     let store = backend.store.clone();
     backend.read(async move {
@@ -90,8 +91,26 @@ pub(super) fn kind_resources(
             )
             .await?
         };
-        Ok(Arc::unwrap_or_clone(rows))
+        match Arc::try_unwrap(rows) {
+            Ok(rows) => Ok(reuse_row_buffer(recycled, rows)),
+            Err(rows) => {
+                recycled.clone_from(rows.as_ref());
+                Ok(recycled)
+            }
+        }
     })
+}
+
+pub(super) fn reuse_row_buffer(
+    mut recycled: Vec<ResourceSummary>,
+    rows: Vec<ResourceSummary>,
+) -> Vec<ResourceSummary> {
+    if recycled.capacity() == 0 {
+        return rows;
+    }
+    recycled.clear();
+    recycled.extend(rows);
+    recycled
 }
 
 pub(super) fn watch(backend: &NativeBackend, target: WatchTarget) -> Read<LogStream> {

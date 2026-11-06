@@ -164,6 +164,7 @@ impl Inspector {
     }
 
     fn refresh_palette(&mut self, cx: &mut Context<Self>) {
+        let _span = crate::frame_profile::scope("palette", "filter");
         let state = &mut self.palette;
         let query = state.query.read(cx).value();
         state.namespace_hits = palette::filter_namespaces(&state.namespaces, &query)

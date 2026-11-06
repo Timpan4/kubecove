@@ -4,11 +4,13 @@
 
 use super::{Inspector, surface};
 use crate::backend::Scope;
-use crate::incidents::{self, Empty, Filter, guidance::Enrichment};
+use crate::incidents::{self, Empty, Filter, Queue, guidance::Enrichment};
 use crate::theme::{Palette, Tokens};
 use crate::ui::{self, Tone};
 use gpui_kit::TestSupportExt;
-use gpui_kit::{AnyElement, Context, SharedString, Task, Window, div, prelude::*, px};
+use gpui_kit::{
+    AnyElement, Context, ListAlignment, ListState, SharedString, Task, Window, div, prelude::*, px,
+};
 use kubecove_lib::models::{
     IncidentCockpitItem as Item, IncidentCockpitSummary, IncidentSeverity as Severity,
     ResourceDetailsFull, ResourceTopology,
@@ -17,11 +19,15 @@ use std::rc::Rc;
 
 pub(super) struct IncidentsState {
     /// `None` while the first read is pending.
-    pub(super) load: Option<Result<IncidentCockpitSummary, String>>,
+    load: Option<Result<IncidentCockpitSummary, String>>,
     fetching: bool,
     refresh_error: Option<String>,
     context: String,
-    pub(super) filter: Filter,
+    filter: Filter,
+    /// The filtered queue, rebuilt by `set_load` and `set_filter`.
+    pub(super) queue: Queue,
+    /// The queue's virtualized rows, one per entry of `queue.rows`.
+    pub(super) list: ListState,
     selected: Option<String>,
     enriched: Option<String>,
     pub(super) details: (Enrichment, Option<ResourceDetailsFull>),
@@ -40,6 +46,9 @@ impl IncidentsState {
             refresh_error: None,
             context: String::new(),
             filter: Filter::All,
+            queue: Queue::new(&[], Filter::All),
+            // The overdraw the log list uses.
+            list: ListState::new(0, ListAlignment::Top, px(400.)),
             selected: None,
             enriched: None,
             details: (Enrichment::Idle, None),
@@ -60,6 +69,37 @@ impl IncidentsState {
 
     pub(super) fn selected_key(&self) -> Option<&str> {
         self.selected.as_deref()
+    }
+
+    pub(super) fn selected_item(&self) -> Option<&Item> {
+        self.queue.selected(self.items(), self.selected_key())
+    }
+
+    fn set_load(&mut self, load: Result<IncidentCockpitSummary, String>) {
+        self.load = Some(load);
+        self.queue = Queue::new(self.items(), self.filter);
+        self.reset_rows();
+    }
+
+    fn set_filter(&mut self, filter: Filter) {
+        self.filter = filter;
+        let items = match &self.load {
+            Some(Ok(summary)) => &summary.items[..],
+            _ => &[],
+        };
+        self.queue.filter(items, filter);
+        self.reset_rows();
+    }
+
+    /// Resets the virtualized rows to the queue's, keeping the scroll position
+    /// on the same row so a refresh leaves the queue where it was.
+    fn reset_rows(&mut self) {
+        let top = self.list.logical_scroll_top();
+        let rows = self.queue.rows.len();
+        self.list.reset(rows);
+        if top.item_ix < rows {
+            self.list.scroll_to(top);
+        }
     }
 }
 
@@ -129,7 +169,7 @@ impl Inspector {
                 {
                     state.refresh_error = Some(error.clone());
                 } else {
-                    state.load = Some(result);
+                    state.set_load(result);
                 }
                 this.enrich_incident(cx);
                 if success {
@@ -153,9 +193,7 @@ impl Inspector {
     /// selected incident, like the web's detail and topology queries.
     fn enrich_incident(&mut self, cx: &mut Context<Self>) {
         let state = &mut self.incidents;
-        let surface =
-            incidents::surface_state(state.items(), state.filter, state.selected.as_deref());
-        let Some(item) = surface.selected else {
+        let Some(item) = state.selected_item() else {
             state.tasks[1] = None;
             state.tasks[2] = None;
             state.enriched = None;
@@ -230,13 +268,13 @@ impl Inspector {
     }
 
     fn set_incident_filter(&mut self, filter: Filter, cx: &mut Context<Self>) {
-        self.incidents.filter = filter;
+        self.incidents.set_filter(filter);
         self.enrich_incident(cx);
         cx.notify();
     }
 
     fn overview_section(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let counts = incidents::counts(self.incidents.items());
+        let counts = self.incidents.queue.counts;
         let metrics = [
             ("All", counts.total, Tokens::foreground()),
             ("Degraded", counts.degraded, Tokens::destructive()),
@@ -331,7 +369,7 @@ impl Inspector {
     }
 
     fn filter_buttons(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let counts = incidents::counts(self.incidents.items());
+        let counts = self.incidents.queue.counts;
         div()
             .flex()
             .flex_wrap()
@@ -375,13 +413,7 @@ impl Inspector {
             Some(Err(error)) => self.page_failure("Incidents unavailable", error.clone(), cx),
             Some(Ok(summary)) => {
                 let warnings = summary.warnings.join(" ");
-                let state = &self.incidents;
-                let empty = incidents::surface_state(
-                    &summary.items,
-                    state.filter,
-                    state.selected.as_deref(),
-                )
-                .empty;
+                let empty = self.incidents.queue.empty;
                 // `@5xl:h-[calc(100dvh-20rem)] @5xl:min-h-[32rem]`.
                 let height = (window.viewport_size().height - px(320.)).max(px(512.));
                 let content = match empty {

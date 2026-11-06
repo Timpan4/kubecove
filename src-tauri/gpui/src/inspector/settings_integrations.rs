@@ -160,9 +160,9 @@ impl Inspector {
         self.request = std::rc::Rc::new(());
         self.close_detail(cx);
         self.live.reset_scope();
-        self.rows.clear();
-        self.prepared.clear();
-        self.visible.clear();
+        self.rows = Default::default();
+        self.visible = Default::default();
+        self.row_index.invalidate();
         self.namespaces.clear();
         self.warnings.clear();
         self.scope = Default::default();

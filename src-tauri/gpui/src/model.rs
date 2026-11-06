@@ -1,10 +1,13 @@
 //! Presentation model shared by the overview and resource table. Each rule
 //! cites the Svelte module it mirrors so the two clients stay comparable.
 
+mod rows;
 use crate::table_sort::{self, Sort};
 use crate::theme::Tokens;
 use gpui_kit::Hsla;
 use kubecove_lib::models::{HealthAssessmentSource, HealthAssessmentState, ResourceSummary};
+pub use rows::Visible;
+pub(crate) use rows::{KindFilter, ObservedNames, PreparedRows, reconcile};
 use std::collections::{HashMap, HashSet};
 
 /// `DEFAULT_WORKSPACE_KINDS` in `src/lib/workspace-model.ts`.
@@ -348,6 +351,14 @@ pub fn table_page(
         });
         display.extend(kinds.into_iter().flat_map(|kind| kind.1));
     }
+    page_from_order(display, grouped_by_gitops, view)
+}
+
+fn page_from_order(
+    display: Vec<&ResourceSummary>,
+    grouped_by_gitops: bool,
+    view: &TableView<'_>,
+) -> TablePage {
     let total = display.len();
     let page_count = total.div_ceil(PAGE_SIZE).max(1);
     let page = view.page.min(page_count - 1);
@@ -424,6 +435,55 @@ pub fn table_page(
         total,
         page_count,
     }
+}
+
+/// Reuses the prepared display order for the default sort.
+pub fn indexed_table_page(
+    visible: &Visible,
+    view: &TableView<'_>,
+    preferred: impl Fn(&ResourceSummary) -> bool,
+    lanes: &crate::preferences::KindLanes,
+    usage: impl Fn(&ResourceSummary) -> table_sort::Usage,
+) -> TablePage {
+    if view.sort == Sort::default() {
+        page_from_order(visible.ordered().collect(), visible.grouped_by_gitops, view)
+    } else {
+        table_page(
+            &visible.iter().cloned().collect::<Vec<_>>(),
+            view,
+            preferred,
+            lanes,
+            usage,
+        )
+    }
+}
+
+#[cfg(test)]
+fn display_order(rows: &[ResourceSummary]) -> (Vec<usize>, bool) {
+    let grouped = rows.iter().any(|row| gitops_label(row).is_some());
+    let collapsed = HashSet::new();
+    let mut indices = Vec::new();
+    for page in 0..rows.len().div_ceil(PAGE_SIZE) {
+        let view = TableView {
+            page,
+            sort: Sort::default(),
+            collapsed: &collapsed,
+            selected: None,
+        };
+        let output = table_page(
+            rows,
+            &view,
+            |_| false,
+            &crate::preferences::KindLanes::default(),
+            |_| Default::default(),
+        );
+        indices.extend(output.rows.iter().map(|row| {
+            rows.iter()
+                .position(|candidate| same_resource(candidate, row))
+                .unwrap()
+        }));
+    }
+    (indices, grouped)
 }
 
 /// Icon and tone from `src/app/svelte/resourceVisuals.ts`.

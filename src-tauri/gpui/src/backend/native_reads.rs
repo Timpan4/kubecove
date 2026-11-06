@@ -73,8 +73,13 @@ impl Backend for NativeBackend {
     ) -> Read<Vec<kubecove_lib::models::DiscoveredResourceKind>> {
         live_data::namespace_custom_kinds(self, scope)
     }
-    fn kind_resources(&self, scope: Scope, key: WatchResourceKey) -> Read<Vec<ResourceSummary>> {
-        live_data::kind_resources(self, scope, key)
+    fn kind_resources(
+        &self,
+        scope: Scope,
+        key: WatchResourceKey,
+        recycled: Vec<ResourceSummary>,
+    ) -> Read<Vec<ResourceSummary>> {
+        live_data::kind_resources(self, scope, key, recycled)
     }
     fn watch(&self, target: WatchTarget) -> Read<LogStream> {
         live_data::watch(self, target)

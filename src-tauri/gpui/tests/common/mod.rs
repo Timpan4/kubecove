@@ -47,6 +47,8 @@ pub struct Fixture {
     coverage: HashMap<String, HashMap<String, serde_json::Value>>,
     #[serde(skip)]
     coverage_state: coverage::CoverageState,
+    #[serde(rename = "overflowEvents", default)]
+    overflow_events: Vec<ResourceEventSummary>,
     #[serde(rename = "pageReads", default)]
     page_reads: HashMap<String, serde_json::Value>,
     #[serde(skip)]
@@ -346,36 +348,27 @@ impl Backend for Fixture {
         &self,
         scope: Scope,
         key: kubecove_lib::models::WatchResourceKey,
+        mut recycled: Vec<ResourceSummary>,
     ) -> Read<Vec<ResourceSummary>> {
+        let _span = kubecove_gpui::frame_profile::scope("fixture", "kind_read");
         if self.live_failed() {
-            return Box::pin(async {
+            return Box::pin(async move {
+                drop(recycled);
                 Err(AppError::new(
                     "Scripted reload failure",
                     AppErrorKind::Cluster,
                 ))
             });
         }
-        let rows = self
-            .resources
-            .iter()
-            .filter(|row| row.kind == key.resource_kind.kind)
-            .filter(|row| {
-                key.resource_kind
-                    .api_version
-                    .as_ref()
-                    .is_none_or(|api| row.api_version.as_ref() == Some(api))
-            })
-            .filter(|row| {
-                key.namespace
-                    .as_ref()
-                    .is_none_or(|ns| row.namespace.as_ref() == Some(ns))
-            })
-            .map(|row| ResourceSummary {
-                cluster: scope.context.clone(),
-                ..row.clone()
-            })
-            .collect();
-        let rows = self.live_rows(rows);
+        let rows = if let Some(rows) = self.ready_kind_read(&scope, &key) {
+            self.defer_kind_buffer(recycled);
+            rows
+        } else {
+            let rows = self.kind_rows(&scope, &key);
+            recycled.clear();
+            recycled.extend(rows);
+            recycled
+        };
         Box::pin(async move { Ok(rows) })
     }
     fn namespace_custom_kinds(

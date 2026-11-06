@@ -6,7 +6,11 @@ use gpui_kit::test::TestEventExt;
 use gpui_kit::{InputEvent, ScrollDelta, ScrollEvent, point, px};
 
 fn reveal_cell(window: &mut gpui_kit::Window, id: &str, cx: &mut gpui_kit::App) {
-    reveal(window, "resources", id, cx);
+    reveal(window, "resources", "resource-table", cx);
+    assert!(
+        scroll::seek(window, cx, "resource-table", id),
+        "resource table did not render {id} after scrolling"
+    );
     let target = window.find(id.to_owned());
     if !target.visible() {
         let bounds = window.find("resource-table").bounds();
@@ -81,6 +85,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
         }
         "expectResourceCell" => {
             let cell = format!("cell:{}:{}", string(step, "column"), row(step));
+            reveal_cell(window, &cell, cx);
             assert_eq!(window.find(cell).label(), Some(string(step, "text")));
         }
         _ => return false,

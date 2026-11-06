@@ -95,10 +95,10 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
         }
         // Expectations on rows mean rendered in the table, possibly scrolled out of
         // view, as Playwright's `visible` state does.
-        "expectResource" => assert!(window.try_find(row(step)).is_some()),
+        "expectResource" => assert!(reveal_resource(window, &row(step), cx)),
         "openResource" => {
             let row = row(step);
-            reveal(window, "resources", &row, cx);
+            assert!(reveal_resource(window, &row, cx));
             window.click(row, cx);
         }
         "expectDetail" => assert_eq!(
@@ -118,10 +118,10 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             assert_eq!(window.find(id).selected(), Some(true));
         }
         "expectClusterResource" => {
-            assert!(window.try_find(cluster_row(step)).is_some())
+            assert!(reveal_resource(window, &cluster_row(step), cx))
         }
         "expectNoClusterResource" => {
-            assert!(window.try_find(cluster_row(step)).is_none())
+            assert!(!reveal_resource(window, &cluster_row(step), cx))
         }
         "showYaml" => window.click("show-yaml", cx),
         "expectYaml" => {
@@ -156,6 +156,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             };
             window.click(id, cx);
         }
+        "expectDetailScroll" => super::detail_scroll::verify(window, cx, step),
         "expectEventCount" => {
             let count = number(step, "count");
             if let Some(last) = count.checked_sub(1) {
@@ -280,7 +281,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             assert!(window.try_find("edit-draft").is_some());
             assert!(window.try_find("yaml-dry-run").is_none());
         }
-        "expectNoResource" => assert!(window.try_find(row(step)).is_none()),
+        "expectNoResource" => assert!(!reveal_resource(window, &row(step), cx)),
         _ => return false,
     }
     true

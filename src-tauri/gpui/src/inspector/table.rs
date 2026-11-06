@@ -9,7 +9,8 @@ use super::table_columns::{
 use super::table_status::{health_badge, lifecycle_status};
 use super::{Inspector, surface, timestamp_text};
 use crate::model::{
-    Entry, TableView, gitops_owner, gitops_owner_name, group_visual, kind_visual, table_page,
+    Entry, TableView, gitops_owner, gitops_owner_name, group_visual, indexed_table_page,
+    kind_visual,
 };
 use crate::table_sort::{self, Column as SortColumn};
 use crate::theme::Tokens;
@@ -415,6 +416,78 @@ impl Inspector {
             )
     }
 
+    fn table_entry(
+        &self,
+        page: &crate::model::TablePage,
+        columns: &[Column],
+        index: usize,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let entry = &page.entries[index];
+        match entry {
+            Entry::Group {
+                key,
+                label,
+                count,
+                collapsed,
+            } => self
+                .group_row(
+                    GroupRow {
+                        key: key.clone(),
+                        icon: group_visual(label),
+                        label: label.clone(),
+                        count: format!("{count} resources on this page"),
+                        inset: 12.,
+                        strong: true,
+                        collapsed: *collapsed,
+                    },
+                    cx,
+                )
+                .into_any_element(),
+            Entry::Type {
+                key,
+                label,
+                kind,
+                count,
+                collapsed,
+            } => self
+                .group_row(
+                    GroupRow {
+                        key: key.clone(),
+                        icon: kind_visual(kind),
+                        label: label.clone(),
+                        count: format!("{count} on this page"),
+                        inset: 24.,
+                        strong: false,
+                        collapsed: *collapsed,
+                    },
+                    cx,
+                )
+                .into_any_element(),
+            Entry::Row(index) => {
+                let row = &page.rows[*index];
+                let cells: Vec<AnyElement> = columns
+                    .iter()
+                    .map(|column| self.table_cell(*column, row, cx).into_any_element())
+                    .collect();
+                let resource = row.clone();
+                div()
+                    .id(SharedString::from(format!("row:{}", resource_id(row))))
+                    .test_support()
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.open_resource(resource.clone(), window, cx)
+                    }))
+                    .flex()
+                    .border_b_1()
+                    .border_color(Tokens::border())
+                    .hover(|row| row.bg(Tokens::muted().opacity(0.6)))
+                    .children(cells)
+                    .into_any_element()
+            }
+        }
+    }
+
     pub(super) fn table_panel(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let view = TableView {
             page: self.table_page,
@@ -422,13 +495,13 @@ impl Inspector {
             collapsed: &self.collapsed_groups,
             selected: self.detail.resource(),
         };
-        let page = table_page(
+        let page = std::rc::Rc::new(indexed_table_page(
             &self.visible,
             &view,
             |row| self.application_manages(row),
             &self.persisted.preferences.resource_kind_lanes,
             |row| self.usage(row),
-        );
+        ));
         self.table_page = self.table_page.min(page.page_count - 1);
         let columns = self.columns(&page.rows);
         let min_width: f32 = columns.iter().map(|column| column.width()).sum();
@@ -453,70 +526,29 @@ impl Inspector {
                     .into_any_element(),
             );
         }
-        for entry in &page.entries {
-            body.push(match entry {
-                Entry::Group {
-                    key,
-                    label,
-                    count,
-                    collapsed,
-                } => self
-                    .group_row(
-                        GroupRow {
-                            key: key.clone(),
-                            icon: group_visual(label),
-                            label: label.clone(),
-                            count: format!("{count} resources on this page"),
-                            inset: 12.,
-                            strong: true,
-                            collapsed: *collapsed,
-                        },
-                        cx,
-                    )
-                    .into_any_element(),
-                Entry::Type {
-                    key,
-                    label,
-                    kind,
-                    count,
-                    collapsed,
-                } => self
-                    .group_row(
-                        GroupRow {
-                            key: key.clone(),
-                            icon: kind_visual(kind),
-                            label: label.clone(),
-                            count: format!("{count} on this page"),
-                            inset: 24.,
-                            strong: false,
-                            collapsed: *collapsed,
-                        },
-                        cx,
-                    )
-                    .into_any_element(),
-                Entry::Row(index) => {
-                    let row = &page.rows[*index];
-                    let cells: Vec<AnyElement> = columns
-                        .iter()
-                        .map(|column| self.table_cell(*column, row, cx).into_any_element())
-                        .collect();
-                    let resource = row.clone();
-                    div()
-                        .id(SharedString::from(format!("row:{}", resource_id(row))))
-                        .test_support()
-                        .cursor_pointer()
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            this.open_resource(resource.clone(), window, cx)
-                        }))
-                        .flex()
-                        .border_b_1()
-                        .border_color(Tokens::border())
-                        .hover(|row| row.bg(Tokens::muted().opacity(0.6)))
-                        .children(cells)
-                        .into_any_element()
-                }
-            });
-        }
+        let body = if page.entries.is_empty() {
+            div().children(body).into_any_element()
+        } else {
+            let ids: Vec<u64> = page
+                .entries
+                .iter()
+                .map(|entry| super::windowed::row_id(std::mem::discriminant(entry)))
+                .collect();
+            if let Some(tops) = self.table_rows.fixed_tops(0, &ids) {
+                let owner = cx.entity();
+                let page = page.clone();
+                super::windowed::Windowed::fixed_rows(tops, move |index, _, app| {
+                    owner.update(app, |this, cx| this.table_entry(&page, &columns, index, cx))
+                })
+                .into_any_element()
+            } else {
+                self.table_rows
+                    .rows(0, ids, cx.entity_id(), |index| {
+                        self.table_entry(&page, &columns, index, cx)
+                    })
+                    .into_any_element()
+            }
+        };
         let page_index = self.table_page;
         let page_count = page.page_count;
         let pager_button = |id: &'static str, label: &'static str, enabled: bool| {
@@ -588,7 +620,7 @@ impl Inspector {
                             .flex()
                             .flex_col()
                             .child(header)
-                            .children(body),
+                            .child(body),
                     ),
             )
             .child(

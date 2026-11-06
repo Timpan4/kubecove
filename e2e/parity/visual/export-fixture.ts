@@ -4,6 +4,7 @@
 import { writeFile } from "node:fs/promises";
 import { mcpMockStatus } from "../../../src/lib/mcp-dev-mocks";
 import { LIVE_EVENTS } from "../../../src/lib/tauri-dev-mock-live";
+import { OVERFLOW_EVENTS } from "../../../src/lib/tauri-dev-mock-scroll";
 import { createDevMockTauriClient } from "../../../src/lib/tauri-dev-mocks";
 import type {
 	ArgoApplicationSummary,
@@ -134,5 +135,5 @@ for (const row of resources.filter((row) => row.kind === "Secret")) {
     const request = { clusterContext: row.cluster, name: row.name, namespace: row.namespace, key: "token" };
     secretReveals.push({ request, encoded: await client.invoke<string>("reveal_secret_data_value", request) });
 }
-await writeFile(output, JSON.stringify({ coverage, pageReads, mcp: mcpMockStatus(), argoConnected, secretReveals, sessionControls, liveEvents: LIVE_EVENTS, contexts, namespaces, kinds, contextResources, resources: resources.map(rustShape), details, events, topology: rustTopology, networkTopology, metrics, appUsage, namespaceTopologies, gitops, helm, incidents, liveSessions, detailTabs: { ...detailTabs, logs: { ...detailTabs.logs, cases: logCases } }, rbac, rbacReviews, kubeconfig: sources }, null, "\t"));
+await writeFile(output, JSON.stringify({ coverage, pageReads, mcp: mcpMockStatus(), argoConnected, secretReveals, sessionControls, liveEvents: LIVE_EVENTS, overflowEvents: OVERFLOW_EVENTS, contexts, namespaces, kinds, contextResources, resources: resources.map(rustShape), details, events, topology: rustTopology, networkTopology, metrics, appUsage, namespaceTopologies, gitops, helm, incidents, liveSessions, detailTabs: { ...detailTabs, logs: { ...detailTabs.logs, cases: logCases } }, rbac, rbacReviews, kubeconfig: sources }, null, "\t"));
 console.log(`fixture: ${resources.length} resources, ${details.length} details -> ${output}`);

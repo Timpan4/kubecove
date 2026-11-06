@@ -1,6 +1,6 @@
 //! Pan, zoom, viewport culling and node focus for `OwnershipMap.svelte`.
 use super::cards::{group_card, resource_card, selection_ring};
-use super::paint::{EdgePaint, paint_edges};
+use super::paint::{EdgePaint, PreparedEdges};
 use super::{HANDLE_HALF, Inspector, ZOOM_STEP};
 use crate::{
     theme::Tokens,
@@ -13,14 +13,20 @@ use gpui_kit::{
     prelude::*, px,
 };
 use std::rc::Rc;
-
+// Selection ring plus the shadow spread retained by the frame optimization.
+const CULL_MARGIN: f32 = 2. + 3. * 10.;
 /// `OwnershipMap.svelte`: graphs below this many nodes and edges stay fully
 /// mounted so Tab reaches offscreen nodes. Larger graphs render visible nodes only.
 const VISIBLE_ELEMENT_RENDER_THRESHOLD: usize = 120;
 
-pub(super) fn node_id(item: &FlowItem) -> SharedString {
+pub(super) fn node_id(item: &FlowItem, topology: &super::TopologyLoad) -> SharedString {
     match item {
-        FlowItem::Resource(resource) => format!("map-node:{}", resource.id).into(),
+        FlowItem::Resource(index) => match topology {
+            super::TopologyLoad::Ready(topology) => {
+                format!("map-node:{}", topology.nodes[*index].id).into()
+            }
+            _ => unreachable!("nodes require loaded topology"),
+        },
         FlowItem::Group { kind, .. } => format!("map-group:{kind}").into(),
     }
 }
@@ -137,7 +143,11 @@ impl Inspector {
         let Some(view) = self.map.cache.clone() else {
             return;
         };
-        let Some(node) = view.nodes.iter().find(|node| node_id(&node.item) == *key) else {
+        let Some(node) = view
+            .nodes
+            .iter()
+            .find(|node| node_id(&node.item, &self.map.topology) == *key)
+        else {
             return;
         };
         let (width, height) = self.map.size.get();
@@ -169,9 +179,27 @@ impl Inspector {
         view: &Rc<topology::View>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let super::TopologyLoad::Ready(topology) = &self.map.topology else {
+            return div().into_any_element();
+        };
         let (width, height) = self.map.size.get();
         let (fit, viewport) = self.map_viewports(view);
-        let cull = view.nodes.len() + view.edges.len() >= VISIBLE_ELEMENT_RENDER_THRESHOLD;
+        let cull = viewport
+            .filter(|_| view.nodes.len() + view.edges.len() >= VISIBLE_ELEMENT_RENDER_THRESHOLD)
+            .map(|viewport| {
+                let flow = |screen: f32, offset: f32| (screen - offset) / viewport.zoom;
+                (
+                    flow(0., viewport.x) - CULL_MARGIN,
+                    flow(0., viewport.y) - CULL_MARGIN,
+                    flow(width, viewport.x) + CULL_MARGIN,
+                    flow(height, viewport.y) + CULL_MARGIN,
+                )
+            });
+        let shown = |(left, top, right, bottom): (f32, f32, f32, f32)| {
+            cull.is_none_or(|(min_x, min_y, max_x, max_y)| {
+                right >= min_x && left <= max_x && bottom >= min_y && top <= max_y
+            })
+        };
         let size = self.map.size.clone();
         let entity = cx.entity_id();
         let mut edge_cache = self.map.edge_cache.borrow_mut();
@@ -196,10 +224,16 @@ impl Inspector {
                         ),
                         end,
                         state: edge.state,
+                        bounds: (
+                            source.x.min(target.x),
+                            source.y.min(target.y),
+                            (source.x + source.width).max(target.x + target.width),
+                            (source.y + source.height).max(target.y + target.height),
+                        ),
                     }
                 })
                 .collect();
-            *edge_cache = Some((view.clone(), Rc::new(edges)));
+            *edge_cache = Some((view.clone(), Rc::new(PreparedEdges::new(edges))));
         }
         let edges = edge_cache
             .as_ref()
@@ -207,6 +241,14 @@ impl Inspector {
             .1
             .clone();
         drop(edge_cache);
+        let visible_edges: Rc<[usize]> = edges
+            .source
+            .iter()
+            .enumerate()
+            .filter_map(|(index, edge)| shown(edge.bounds).then_some(index))
+            .collect::<Vec<_>>()
+            .into();
+        let painted_edges = visible_edges.clone();
         let edge_layer = canvas(
             move |bounds, window, _| {
                 let measured = (f32::from(bounds.size.width), f32::from(bounds.size.height));
@@ -217,7 +259,7 @@ impl Inspector {
             },
             move |bounds, (), window, _| {
                 if let Some(viewport) = viewport {
-                    paint_edges(bounds.origin, &edges, viewport, window);
+                    edges.paint(bounds.origin, &painted_edges, viewport, window);
                 }
             },
         )
@@ -230,28 +272,27 @@ impl Inspector {
                     .iter()
                     .enumerate()
                     .filter(|(_, node)| {
-                        !cull
-                            || (node.x * z + viewport.x <= width
-                                && (node.x + node.width) * z + viewport.x >= 0.
-                                && node.y * z + viewport.y <= height
-                                && (node.y + node.height) * z + viewport.y >= 0.)
+                        shown((node.x, node.y, node.x + node.width, node.y + node.height))
                     })
                     .map(|(index, node)| {
                         let content = match &node.item {
-                            FlowItem::Resource(resource) => resource_card(
-                                node,
-                                resource,
-                                z,
-                                self.map.network,
-                                self.resource_metric(&resource.summary),
-                            ),
+                            FlowItem::Resource(index) => {
+                                let resource = &topology.nodes[*index];
+                                resource_card(
+                                    node,
+                                    resource,
+                                    z,
+                                    self.map.network,
+                                    self.resource_metric(&resource.summary),
+                                )
+                            }
                             FlowItem::Group {
                                 kind,
                                 members,
                                 expanded,
                             } => group_card(kind, members.len(), *expanded, node.dimmed, z),
                         };
-                        let id = node_id(&node.item);
+                        let id = node_id(&node.item, &self.map.topology);
                         div()
                             .id(id.clone())
                             .test_support()
@@ -298,13 +339,14 @@ impl Inspector {
             .min_h(px(320.))
             .overflow_hidden()
             .child(edge_layer)
-            .children(view.edges.iter().map(|edge| {
+            .children(visible_edges.iter().map(|&index| {
+                let edge = &view.edges[index];
                 let source = match &view.nodes[edge.source].item {
-                    FlowItem::Resource(node) => &node.id,
+                    FlowItem::Resource(node) => &topology.nodes[*node].id,
                     _ => return div().into_any_element(),
                 };
                 let target = match &view.nodes[edge.target].item {
-                    FlowItem::Resource(node) => &node.id,
+                    FlowItem::Resource(node) => &topology.nodes[*node].id,
                     _ => return div().into_any_element(),
                 };
                 div()
@@ -399,12 +441,19 @@ impl Inspector {
         let Some(node) = view.nodes.get(index) else {
             return;
         };
-        if let Some(focus) = self.map.node_focus.get(&node_id(&node.item)) {
+        if let Some(focus) = self
+            .map
+            .node_focus
+            .get(&node_id(&node.item, &self.map.topology))
+        {
             focus.focus(window, cx);
         }
+        let super::TopologyLoad::Ready(topology) = &self.map.topology else {
+            return;
+        };
         match &node.item {
-            FlowItem::Resource(resource) if resource.selectable => {
-                self.open_resource(resource.summary.clone(), window, cx);
+            FlowItem::Resource(index) if topology.nodes[*index].selectable => {
+                self.open_resource(topology.nodes[*index].summary.clone(), window, cx);
             }
             FlowItem::Resource(_) => {}
             FlowItem::Group { kind, .. } => {

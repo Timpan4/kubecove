@@ -118,6 +118,7 @@ fn health(summary: &ResourceSummary) -> (Tone, &'static str) {
 
 pub(super) fn details_tab(
     detail: &ResourceDetail,
+    timeline_rows: &super::timeline::State,
     timezone: crate::preferences::TimestampTimezone,
     cx: &mut Context<Inspector>,
 ) -> Div {
@@ -176,7 +177,7 @@ pub(super) fn details_tab(
                 ),
         )
         .child(incident_summary(detail))
-        .child(timeline(detail, cx))
+        .child(timeline(detail, timeline_rows, cx))
         .when_some(
             details_status::conditions(detail, timezone),
             |column, section| column.child(section),

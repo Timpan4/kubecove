@@ -41,6 +41,7 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
             assert!(window.try_find(format!("map-node:{}", s("id"))).is_none())
         }
         "expectResourceMetrics" => {
+            assert!(super::reveal_resource(window, &super::row(step), cx));
             for (column, field) in [("CPU", "cpu"), ("Memory", "memory")] {
                 let id = format!(
                     "metric:{}:{}:{}:{column}",

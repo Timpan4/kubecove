@@ -137,12 +137,10 @@ pub fn group_by_day(items: &[TimelineItem]) -> Vec<DayGroup<'_>> {
 }
 
 /// The single dated group's heading is hidden when it is today.
-pub fn hide_today_heading(groups: &[DayGroup]) -> bool {
+pub fn hide_today_heading<'a>(groups: impl Iterator<Item = Option<&'a str>>) -> bool {
     let today = Local::now().format("%Y-%m-%d").to_string();
-    groups.iter().filter(|group| group.key.is_some()).count() == 1
-        && groups
-            .iter()
-            .any(|group| group.key.as_deref() == Some(&today))
+    let mut dated = groups.flatten();
+    dated.next().is_some_and(|key| key == today) && dated.next().is_none()
 }
 
 /// `incidentTimelineTime`.

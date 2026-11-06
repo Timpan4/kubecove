@@ -1,10 +1,10 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { LIVE_SCRIPTS } from "../../src/lib/tauri-dev-mock-live";
 
 import { ARGO_OPTION_NAMES, DETAIL_RESIZE_KEYS, LOG_LEVELS, MAP_CONTROLS, MAP_KEYS, PANEL_CONTROLS, RBAC_CATEGORIES, RBAC_RISKS, SORT_COLUMNS, type Step, TABLE_COLUMNS, VERDICTS } from "./contract-steps";
 
 export type { Step } from "./contract-steps";
-
 function oneOf<T extends string>(values: readonly T[], value: unknown, label: string): T {
 	const found = values.find((candidate) => candidate === value);
 	if (!found) throw new Error(`Expected ${label}`);
@@ -64,7 +64,7 @@ export const ACTIONS = [
 	"openActionEditor", "fillActionField", "chooseActionRevision", "selectYamlShape", "selectYamlEncoding", "replaceYamlDraft", "expectYamlDocument", "expectYamlPicker", "formatYaml",
 	"openResources", "showYaml", "closeDetail", "expectDetailClosed", "expectEmpty", "refresh", "search", "expectSearch",
 	"expectResource", "openResource", "expectDetail", "expectDetailTab", "expectClusterResource", "expectNoClusterResource", "expectYaml", "openPage", "showTab", "filterEvents",
-	"expectEvent", "expectEventCount", "expectLiveSessionCount", "filterIncidents", "expectIncidentGuide", "openIncidentResources", "expectGitOpsCount", "expectPortForward",
+	"expectDetailScroll", "expectEvent", "expectEventCount", "expectLiveSessionCount", "filterIncidents", "expectIncidentGuide", "openIncidentResources", "expectGitOpsCount", "expectPortForward",
 	"expectLogLines", "filterLogs", "toggleLogLevel", "expectLogsEmpty", "selectRevision", "expectRevisionDiff", "reviewAction", "editReplicas",
 	"toggleLogRow", "toggleLogExpandAll", "expectLogRowOpen", "copyLogLine", "expectRestorePrompt", "restorePromptControl",
 	"expectReview", "confirmDeletion", "executeReview", "closeReview", "expectNoReview", "expectActionResult", "expectNoActionResult",
@@ -297,7 +297,7 @@ function step(value: unknown): Step {
         }
         case "expectExecState": return { action: item.action, container: string(item.container), status: string(item.status), contains: typeof item.contains === "string" ? item.contains : "", ...(item.absent === undefined ? {} : { absent: string(item.absent) }), ...(item.command === undefined ? {} : { command: string(item.command) }) };
         case "expectLiveState": return { action: item.action, label: string(item.label), ...(item.notice === undefined ? {} : { notice: string(item.notice) }) };
-        case "replayLiveData": return { action: item.action, script: oneOf(["update", "delete", "reconnecting", "connected", "events", "forbidden", "failed"], item.script, "a live script") };
+        case "replayLiveData": return { action: item.action, script: oneOf(LIVE_SCRIPTS, item.script, "a live script") };
         case "expectResourceStatus": return { action: item.action, kind: string(item.kind), namespace: string(item.namespace), name: string(item.name), status: string(item.status) };
         case "openCustomKind": return { action: item.action, kind: string(item.kind), surface: oneOf(["sidebar", "picker"], item.surface, "a kind surface") };
         case "searchCustomKinds": case "searchKindPicker": return { action: item.action, value: item.value === "" ? "" : string(item.value) };
@@ -345,7 +345,11 @@ function step(value: unknown): Step {
 		case "filterEvents":
 			if (item.filter !== "All" && item.filter !== "Warnings" && item.filter !== "Normal") throw new Error("Expected an event filter");
 			return { action: item.action, filter: item.filter };
-		case "expectEvent": return { action: item.action, index: count(item.index), reason: string(item.reason), message: string(item.message) };
+		case "expectDetailScroll": {
+            if (item.view !== "events" && item.view !== "timeline") throw new Error("Expected event or timeline view");
+            return { action: item.action, view: item.view };
+        }
+        case "expectEvent": return { action: item.action, index: count(item.index), reason: string(item.reason), message: string(item.message) };
 		case "expectEventCount": case "expectLiveSessionCount": return { action: item.action, count: count(item.count) };
 		case "filterIncidents": return { action: item.action, filter: string(item.filter) };
 		case "expectIncidentGuide": return { action: item.action, title: string(item.title) };

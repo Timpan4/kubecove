@@ -3,6 +3,7 @@ mod argo_app;
 pub mod assets;
 pub mod backend;
 mod collate;
+pub mod frame_profile;
 pub mod gitops;
 mod gitops_surface;
 mod helm;

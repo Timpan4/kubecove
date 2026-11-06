@@ -40,6 +40,8 @@ Discovered resources read their YAML through the existing dynamic-details comman
 Editor entries use virtual lists. Skip-review, log-layout and global force-conflict
 settings remain disabled because native browser-local-storage persistence is absent.
 
+See [FRAME_TIMING.md](FRAME_TIMING.md) for the optimized frame harness and measurement boundaries.
+
 The workspace pins GPUI Kit 0.9.0 with components, assets and the YAML grammar.
 Test support is enabled only for development builds. The backend dependency
 uses the existing GUI-free configuration.

@@ -3,6 +3,7 @@
 
 use super::detail::ResourceDetail;
 use super::events::{EventsLoad, badge, outline, tw};
+use super::windowed::row_id;
 use super::{Inspector, timestamp_text};
 use crate::incident::{self, EventFilter};
 use crate::model::exact_timestamp;
@@ -303,6 +304,33 @@ pub(super) fn events_tab(
         .into_any_element()
     } else {
         let last = visible.len() - 1;
+        // The message and badges wrap; the time, dot and source columns are fixed.
+        let ids = visible
+            .iter()
+            .enumerate()
+            .map(|(index, event)| {
+                row_id((
+                    &event.message,
+                    &event.event_type,
+                    &event.reason,
+                    event.count,
+                    &event.source,
+                    &event.namespace,
+                    index == last,
+                ))
+            })
+            .collect();
+        let rows = state.rows.rows(0, ids, cx.entity_id(), |index| {
+            let event = visible[index];
+            event_row(event, index, timezone)
+                .id(SharedString::from(format!("event:{index}")))
+                .test_support()
+                .aria_label(format!("{} {}", event.reason, event.message))
+                .when(index < last, |row| {
+                    row.border_b_1().border_color(Tokens::border())
+                })
+                .into_any_element()
+        });
         div()
             .id("events-list")
             .test_support()
@@ -312,15 +340,7 @@ pub(super) fn events_tab(
             .border_1()
             .border_color(Tokens::border())
             .bg(Tokens::background().opacity(0.3))
-            .children(visible.iter().enumerate().map(|(index, event)| {
-                event_row(event, index, timezone)
-                    .id(SharedString::from(format!("event:{index}")))
-                    .test_support()
-                    .aria_label(format!("{} {}", event.reason, event.message))
-                    .when(index < last, |row| {
-                        row.border_b_1().border_color(Tokens::border())
-                    })
-            }))
+            .child(rows)
             .into_any_element()
     };
     div()
