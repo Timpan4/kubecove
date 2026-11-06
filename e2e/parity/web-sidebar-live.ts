@@ -66,7 +66,8 @@ export async function sidebarLiveAction(page: Page, step: Step) {
             await page.evaluate("import('/node_modules/.vite/deps/@tanstack_svelte-query.js').then(m => m.focusManager.setFocused(true))");
             break;
         case "expectPageText":
-            if (step.text === "Scripted page refresh failure") await page.getByText("Technical detail", { exact: true }).first().click();
+            // Open the disclosure only while it is closed, so repeated checks do not toggle it shut.
+            if (step.text === "Scripted page refresh failure" && !(await page.getByText(step.text, { exact: true }).first().isVisible())) await page.getByText("Technical detail", { exact: true }).first().click();
             await page.getByText(step.text, { exact: true }).first().waitFor();
             break;
         case "searchCustomKinds": {

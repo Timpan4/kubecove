@@ -194,8 +194,11 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
                 .into_iter()
                 .find(|title| window.try_find(*title).is_some())
                 .expect("refresh failure panel");
-                window.click(format!("{title}:detail"), cx);
-                window.render_frame(cx);
+                // Open the disclosure only while it is closed, so repeated checks do not toggle it shut.
+                if window.try_find(format!("{title}:technical")).is_none() {
+                    window.click(format!("{title}:detail"), cx);
+                    window.render_frame(cx);
+                }
                 assert_eq!(
                     window.find(format!("{title}:technical")).label(),
                     Some(string(step, "text"))

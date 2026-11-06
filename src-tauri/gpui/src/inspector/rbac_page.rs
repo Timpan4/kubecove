@@ -186,7 +186,7 @@ impl Inspector {
             state.observed = None;
         }
         state.context = self.scope.context.clone();
-        state.refresh_error = None;
+        // A failed refresh stays visible until the next read resolves.
         state.request = Rc::new(());
         let request = state.request.clone();
         let backend = self.backend.clone();
@@ -206,6 +206,7 @@ impl Inspector {
                     Ok(data) => {
                         this.rbac.load = RbacLoad::Ready(Box::new(data));
                         this.rbac.observed = None;
+                        this.rbac.refresh_error = None;
                     }
                     Err(error) => {
                         if matches!(this.rbac.load, RbacLoad::Ready(_)) {

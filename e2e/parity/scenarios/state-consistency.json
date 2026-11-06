@@ -6,32 +6,210 @@
       "id": "state.timeline-after-event-refresh",
       "title": "A live event refresh replaces the Details timeline entries",
       "steps": [
-        { "action": "openResources" },
-        { "action": "search", "value": "payments-api" },
-        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
-        { "action": "showTab", "tab": "Details" },
-        { "action": "expectPageText", "text": "Readiness probe failed" },
-        { "action": "showTab", "tab": "Events" },
-        { "action": "replayLiveData", "script": "events" },
-        { "action": "showTab", "tab": "Details" },
-        { "action": "expectNoPageText", "text": "Readiness probe failed" }
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "search",
+          "value": "payments-api"
+        },
+        {
+          "action": "openResource",
+          "kind": "Deployment",
+          "name": "payments-api",
+          "namespace": "payments"
+        },
+        {
+          "action": "showTab",
+          "tab": "Details"
+        },
+        {
+          "action": "expectPageText",
+          "text": "Readiness probe failed"
+        },
+        {
+          "action": "showTab",
+          "tab": "Events"
+        },
+        {
+          "action": "replayLiveData",
+          "script": "events"
+        },
+        {
+          "action": "showTab",
+          "tab": "Details"
+        },
+        {
+          "action": "expectNoPageText",
+          "text": "Readiness probe failed"
+        }
       ]
     },
     {
       "id": "state.argo-submit-outcome-after-close",
       "title": "An accepted operation is observed when its detail closes during submission",
       "steps": [
-        { "action": "openPage", "page": "GitOps" },
-        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
-        { "action": "connectArgoProfile", "url": "https://argocd.example.test" },
-        { "action": "reviewArgoOperation", "operation": "Sync" },
-        { "action": "mockTiming", "control": { "operation": "hold", "command": "run_argo_operation", "context": "" } },
-        { "action": "confirmArgoReview" },
-        { "action": "closeDetail" },
-        { "action": "mockTiming", "control": { "operation": "release", "command": "run_argo_operation", "context": "" } },
-        { "action": "completeArgoOperation" },
-        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
-        { "action": "expectArgoText", "text": "Argo CD confirmed completion" }
+        {
+          "action": "openPage",
+          "page": "GitOps"
+        },
+        {
+          "action": "openGitOpsDetails",
+          "kind": "Application",
+          "name": "tenant-ledger",
+          "namespace": "argocd"
+        },
+        {
+          "action": "connectArgoProfile",
+          "url": "https://argocd.example.test"
+        },
+        {
+          "action": "reviewArgoOperation",
+          "operation": "Sync"
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "operation": "hold",
+            "command": "run_argo_operation",
+            "context": ""
+          }
+        },
+        {
+          "action": "confirmArgoReview"
+        },
+        {
+          "action": "closeDetail"
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "operation": "release",
+            "command": "run_argo_operation",
+            "context": ""
+          }
+        },
+        {
+          "action": "completeArgoOperation"
+        },
+        {
+          "action": "openGitOpsDetails",
+          "kind": "Application",
+          "name": "tenant-ledger",
+          "namespace": "argocd"
+        },
+        {
+          "action": "expectArgoText",
+          "text": "Argo CD confirmed completion"
+        }
+      ]
+    },
+    {
+      "id": "state.incidents-refresh-error-while-pending",
+      "title": "A failed Incidents refresh stays visible while the next read is pending",
+      "steps": [
+        {
+          "action": "openPage",
+          "page": "Incidents"
+        },
+        {
+          "action": "expectPageText",
+          "text": "Pod/operations-crashloop-7f468cd8b8-lab01"
+        },
+        {
+          "action": "replayPageReads",
+          "phase": "failed"
+        },
+        {
+          "action": "refreshPage",
+          "page": "Incidents"
+        },
+        {
+          "action": "expectPageText",
+          "text": "Scripted page refresh failure"
+        },
+        {
+          "action": "replayPageReads",
+          "phase": "base"
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "operation": "hold",
+            "command": "list_incident_cockpit",
+            "context": "mock-dev"
+          }
+        },
+        {
+          "action": "refreshPage",
+          "page": "Incidents"
+        },
+        {
+          "action": "expectPageText",
+          "text": "Scripted page refresh failure"
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "operation": "release",
+            "command": "list_incident_cockpit",
+            "context": "mock-dev"
+          }
+        }
+      ]
+    },
+    {
+      "id": "state.rbac-refresh-error-while-pending",
+      "title": "A failed RBAC refresh stays visible while the next read is pending",
+      "steps": [
+        {
+          "action": "openPage",
+          "page": "RBAC"
+        },
+        {
+          "action": "selectRbacItem",
+          "title": "ServiceAccount/payments-api"
+        },
+        {
+          "action": "replayPageReads",
+          "phase": "failed"
+        },
+        {
+          "action": "refreshPage",
+          "page": "RBAC"
+        },
+        {
+          "action": "expectPageText",
+          "text": "Scripted page refresh failure"
+        },
+        {
+          "action": "replayPageReads",
+          "phase": "base"
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "operation": "hold",
+            "command": "list_rbac_inspection",
+            "context": "mock-dev"
+          }
+        },
+        {
+          "action": "refreshPage",
+          "page": "RBAC"
+        },
+        {
+          "action": "expectPageText",
+          "text": "Scripted page refresh failure"
+        },
+        {
+          "action": "mockTiming",
+          "control": {
+            "operation": "release",
+            "command": "list_rbac_inspection",
+            "context": "mock-dev"
+          }
+        }
       ]
     }
   ]

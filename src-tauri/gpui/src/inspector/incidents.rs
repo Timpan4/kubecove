@@ -137,7 +137,6 @@ impl Inspector {
         }
         state.request = Rc::new(());
         state.fetching = true;
-        state.refresh_error = None;
         state.enriched = None;
         let request = state.request.clone();
         let context = state.context.clone();
@@ -169,6 +168,8 @@ impl Inspector {
                 {
                     state.refresh_error = Some(error.clone());
                 } else {
+                    // The failed refresh stays visible until a read resolves.
+                    state.refresh_error = None;
                     state.set_load(result);
                 }
                 this.enrich_incident(cx);
