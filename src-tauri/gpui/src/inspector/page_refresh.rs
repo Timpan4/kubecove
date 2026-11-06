@@ -110,7 +110,13 @@ impl Inspector {
         if self.page != Page::Settings {
             self.settings.diagnostics_task.take();
         }
-        let owner = (self.page, self.scope.context.clone());
+        // Without an open workspace no workspace page is active, so its reads stop with it.
+        let page = if self.workspace_open() {
+            self.page
+        } else {
+            Page::Settings
+        };
+        let owner = (page, self.scope.context.clone());
         if self.page_refresh.owner.as_ref() == Some(&owner) {
             return;
         }
@@ -138,7 +144,7 @@ impl Inspector {
 
     pub(super) fn sync_gitops_watches(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.sync_page_reads(cx);
-        if self.page != Page::GitOps {
+        if self.page != Page::GitOps || !self.workspace_open() {
             return;
         }
         let Some(data) = self.gitops.inventory() else {

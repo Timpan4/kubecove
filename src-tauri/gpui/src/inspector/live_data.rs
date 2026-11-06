@@ -201,8 +201,9 @@ impl Inspector {
     pub(super) fn sync_live(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.sync_gitops_watches(window, cx);
         let owner = format!(
-            "{:?}:{}:{:?}:{:?}:{:?}",
+            "{:?}:{:?}:{}:{:?}:{:?}:{:?}",
             self.page as u8,
+            self.launcher.active,
             self.scope.context,
             self.scope.namespace,
             self.live
@@ -220,7 +221,8 @@ impl Inspector {
             self.live.pending.clear();
             self.live.owner = owner;
         }
-        if self.scope.context.is_empty()
+        if !self.workspace_open()
+            || self.scope.context.is_empty()
             || !matches!(
                 self.page,
                 Page::Resources | Page::ClusterOverview | Page::Overview

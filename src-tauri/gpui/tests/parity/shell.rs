@@ -94,6 +94,26 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             assert!(window.try_find("workspace-context:mock-dev").is_none());
             return true;
         }
+        "startWithoutWorkspace" => {
+            assert!(window.try_find("workspace-create").is_some());
+            assert!(window.try_find("workspace-title").is_none());
+            return true;
+        }
+        "expectNoWorkspaceShell" => {
+            for id in ["sidebar-tree", "workspace-title", "open-palette"] {
+                assert!(
+                    window.try_find(id).is_none(),
+                    "{id} is rendered without an open workspace"
+                );
+            }
+            return true;
+        }
+        "expectPaletteUnavailable" => {
+            window.press("secondary-k", cx);
+            window.render_frame(cx);
+            assert!(window.try_find("palette-dialog").is_none());
+            return true;
+        }
         "expectEntryCount" => {
             let id = format!("entries:{}", string(step, "panel"));
             assert!(seek(window, cx, "page", &id));

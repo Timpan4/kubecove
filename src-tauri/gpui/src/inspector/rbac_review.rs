@@ -42,7 +42,6 @@ impl Inspector {
 
     /// `RbacReviewPanel`'s `save`.
     fn save_rbac_review(&mut self, disposition: Disposition, cx: &mut Context<Self>) {
-        self.ensure_active_workspace();
         let state = &mut self.rbac;
         let (Some(data), Some(item)) = (state.data(), state.selected_item()) else {
             return;

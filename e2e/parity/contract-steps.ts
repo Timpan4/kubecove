@@ -32,6 +32,7 @@ export type Step =
     | { action: "retryOverview" | "expectOverviewRetry" }
     | { action: "dragKind"; kind: string; target: string }
     | { action: "expectEmptyLauncher" }
+    | { action: "startWithoutWorkspace" | "expectNoWorkspaceShell" | "expectPaletteUnavailable" }
     | { action: "expectEntryCount"; panel: "Pinned" | "Recent"; count: number }
     | { action: "copyErrorDetail"; error: "contexts" | "namespaces" | "details"; expected: string }
     | { action: "expectForegroundLoading"; active: boolean }

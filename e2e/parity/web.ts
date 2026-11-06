@@ -20,7 +20,7 @@ import { panelAction } from "./web-panels";
 import { resourceFilterAction } from "./web-resource-filters";
 import { resourceRow, resourceTableAction } from "./web-resource-table";
 import { sessionHealthAction } from "./web-session-health";
-import { shellAction } from "./web-shell";
+import { seedsWorkspace, seedWorkspace, shellAction } from "./web-shell";
 import { sidebarLiveAction } from "./web-sidebar-live";
 import { terminalAction } from "./web-terminal";
 import { timingAction } from "./web-timing";
@@ -38,6 +38,7 @@ export async function action(page: Page, step: Step) {
         case "retryOverview": case "expectOverviewRetry": await shellAction(page, step); break;
         case "dragKind": await shellAction(page, step); break;
         case "expectEmptyLauncher": case "expectEntryCount": await shellAction(page, step); break;
+        case "startWithoutWorkspace": case "expectNoWorkspaceShell": case "expectPaletteUnavailable": await shellAction(page, step); break;
         case "copyErrorDetail": await shellAction(page, step); break;
         case "expectForegroundLoading": case "expectFriendlyError": case "inspectRequiredPermission": case "expectPermissionTarget": case "returnToSource": case "copyResourceName": case "expectCopyToast": case "dismissCopyToast": await feedbackAction(page, step); break;
         case "toggleResourcePin": case "expectWorkspaceEntry": case "openWorkspaceEntry": await shellAction(page, step); break;
@@ -523,10 +524,7 @@ export async function runWeb(contract: Contract, artifacts: string, signal: Abor
                 const prelude = scenario.steps.findIndex((step) => step.action !== "mockTiming" || step.control.operation !== "hold");
                 const startupSteps = prelude < 0 ? scenario.steps.length : prelude;
                 for (const step of scenario.steps.slice(0, startupSteps)) await action(page, step);
-				await page.locator("#workspace-name").fill("Parity mock workspace");
-				await page.getByRole("button", { name: "Create workspace", exact: true }).click();
-				// Creating a workspace navigates to its overview; a dialog opened before that navigation lands is closed by it.
-				await page.waitForURL(/#\/workspace\/[^/]+\/overview$/);
+				if (seedsWorkspace(scenario)) await seedWorkspace(page);
 				for (const [index, step] of scenario.steps.entries()) {
 					signal.throwIfAborted();
 					if (index >= startupSteps) await action(page, step);

@@ -148,9 +148,12 @@ impl Inspector {
     }
     fn runtime_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.feedback = Default::default();
+        // The open workspace survives a runtime change, as the web's selected workspace does.
+        let active = self.launcher.active;
         self.launcher = super::launcher::LauncherState::new(window, cx);
         self.rbac = super::rbac_page::RbacState::new(window, cx);
         self.load_preferences(cx);
+        self.relink_active_workspace(active);
         self.context_task.take();
         self.scope_task.take();
         self.topology_task.take();

@@ -58,7 +58,6 @@ impl Inspector {
         resource: &ResourceSummary,
         cx: &mut Context<Self>,
     ) {
-        self.ensure_active_workspace();
         if let Some(id) = self.launcher.active {
             self.persisted
                 .workspace_entry_points

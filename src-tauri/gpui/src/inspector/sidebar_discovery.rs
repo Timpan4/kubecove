@@ -43,7 +43,7 @@ impl Inspector {
         state.reads.retain(|ns, _| {
             self.persisted.preferences.show_custom_resources && self.sidebar_tree.open.contains(ns)
         });
-        if !self.persisted.preferences.show_custom_resources {
+        if !self.persisted.preferences.show_custom_resources || !self.workspace_open() {
             return;
         }
         if self.sidebar_tree.discovery.cluster.is_none() {

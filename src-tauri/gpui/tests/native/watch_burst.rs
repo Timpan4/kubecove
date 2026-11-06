@@ -23,7 +23,15 @@ fn watch_burst_frame_time(cx: &mut TestAppContext) {
                 ..Default::default()
             },
             cx,
-            |window, cx| cx.new(|cx| Inspector::new(backend.clone(), window, cx)),
+            |window, cx| {
+                cx.new(|cx| {
+                    Inspector::new(backend.clone(), window, cx).with_saved_workspace(
+                        "Parity mock workspace",
+                        "mock-dev",
+                        cx,
+                    )
+                })
+            },
         )
         .unwrap()
     });

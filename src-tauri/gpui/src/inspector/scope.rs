@@ -55,8 +55,9 @@ impl Inspector {
                             );
                         });
                         this.scope.context = selected;
-                        this.seed_saved_workspace();
-                        this.load_scope(false, window, cx);
+                        if this.workspace_open() {
+                            this.load_scope(false, window, cx);
+                        }
                     }
                     Err(error) => this.load = Load::Failed(error.message),
                 }

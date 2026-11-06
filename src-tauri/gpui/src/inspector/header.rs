@@ -27,6 +27,8 @@ impl Inspector {
     pub(super) fn header(&self, cx: &mut Context<Self>, compact: bool) -> impl IntoElement {
         let dirty = self.dirty(cx);
         let location = self.shell_title();
+        // The web's search and settings controls belong to the shell, which needs an open workspace.
+        let workspace = self.workspace_open();
         div()
             .flex()
             .flex_none()
@@ -155,43 +157,47 @@ impl Inspector {
                                 cx.listener(|this, _, window, cx| this.open_launcher(window, cx)),
                             ),
                     )
-                    .child(
-                        ui::ghost_icon("settings", 28., 14.)
-                            .id("open-settings")
-                            .test_support()
-                            .aria_label("Open settings")
-                            .cursor_pointer()
-                            .on_click(
-                                cx.listener(|this, _, window, cx| this.open_settings(window, cx)),
-                            ),
-                    )
-                    .child(
-                        ui::outline_button()
-                            .id("open-palette")
-                            .test_support()
-                            .aria_label("Search views, namespaces, and resources")
-                            .cursor_pointer()
-                            .on_click(
-                                cx.listener(|this, _, window, cx| this.toggle_palette(window, cx)),
-                            )
-                            .h(px(24.))
-                            .px(px(12.))
-                            .gap(px(8.))
-                            .bg(Tokens::card())
-                            .child(ui::icon("search", 14., Tokens::muted_foreground()))
-                            .child(ui::muted(ui::xs("Search resources...")))
-                            .child(
-                                div()
-                                    .px(px(4.))
-                                    .rounded(px(4.))
-                                    .border_1()
-                                    .border_color(Tokens::border())
-                                    .bg(Tokens::muted())
-                                    .child(ui::muted(
-                                        ui::xs(super::palette::SHORTCUT_HINT).font_family(MONO),
-                                    )),
-                            ),
-                    ),
+                    .when(workspace, |row| {
+                        row.child(
+                            ui::ghost_icon("settings", 28., 14.)
+                                .id("open-settings")
+                                .test_support()
+                                .aria_label("Open settings")
+                                .cursor_pointer()
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.open_settings(window, cx)
+                                })),
+                        )
+                    })
+                    .when(workspace, |row| {
+                        row.child(
+                            ui::outline_button()
+                                .id("open-palette")
+                                .test_support()
+                                .aria_label("Search views, namespaces, and resources")
+                                .cursor_pointer()
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.toggle_palette(window, cx)
+                                }))
+                                .h(px(24.))
+                                .px(px(12.))
+                                .gap(px(8.))
+                                .bg(Tokens::card())
+                                .child(ui::icon("search", 14., Tokens::muted_foreground()))
+                                .child(ui::muted(ui::xs("Search resources...")))
+                                .child(
+                                    div()
+                                        .px(px(4.))
+                                        .rounded(px(4.))
+                                        .border_1()
+                                        .border_color(Tokens::border())
+                                        .bg(Tokens::muted())
+                                        .child(ui::muted(
+                                            ui::xs(super::palette::SHORTCUT_HINT).font_family(MONO),
+                                        )),
+                                ),
+                        )
+                    }),
             )
     }
 }

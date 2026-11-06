@@ -15,55 +15,60 @@ impl Inspector {
             .expect("string tuple")
     }
 
-    /// Links the open startup view to the saved record with its name and context. Never creates a
-    /// record, so opening the launcher does not save a workspace the web would not save.
-    pub(super) fn link_active_workspace(&mut self) {
-        if self.launcher.active.is_some() || self.scope.context.is_empty() {
-            return;
-        }
-        if let Some(saved) = self.launcher.saved.iter().find(|s| {
-            s.name.as_str() == self.workspace_name.as_ref() && s.context == self.scope.context
-        }) {
-            self.launcher.active = Some(saved.id);
+    /// Opens the parity harness's startup workspace on `context`. The record matches the web
+    /// driver's: the same name and context, saved once and reopened after a restart rather than
+    /// duplicated. It opens at construction, so a failed context read cannot leave the launcher
+    /// over the workspace the harness asked for.
+    pub(super) fn seed_saved_workspace(&mut self, context: String, cx: &mut Context<Self>) {
+        let name = self.workspace_name.clone();
+        let existing = self
+            .launcher
+            .saved
+            .iter()
+            .find(|saved| saved.name.as_str() == name.as_ref() && saved.context == context)
+            .map(|saved| saved.id);
+        let same_context = self
+            .launcher
+            .saved
+            .iter()
+            .find(|saved| saved.context == context)
+            .map(|saved| saved.id);
+        let id = match existing.or(same_context) {
+            Some(id) => id,
+            None => {
+                let id = self.launcher.next;
+                self.launcher.next = self.launcher.next.saturating_add(1);
+                self.launcher.saved.push(
+                    crate::workspaces::Draft {
+                        name: &name,
+                        effective: &context,
+                        group: &[],
+                        namespaces: &[],
+                        kinds: None,
+                    }
+                    .build(id, id),
+                );
+                self.save_preferences(cx);
+                id
+            }
+        };
+        if let Some(saved) = self.launcher.saved.iter().find(|saved| saved.id == id) {
             self.rbac.reviews = saved.reviews.clone();
         }
+        self.launcher.active = Some(id);
+        self.launcher.open = false;
+        self.scope.context = context;
     }
 
-    /// Links the open startup view, or saves it when no workspace exists yet, before a write such
-    /// as an RBAC review or a pin attaches to it.
-    pub(super) fn ensure_active_workspace(&mut self) {
-        if self.launcher.deleted_open {
+    /// Reopens `active` after the launcher state is rebuilt. Drops the link when its record is gone.
+    pub(super) fn relink_active_workspace(&mut self, active: Option<u64>) {
+        let Some(id) = active else { return };
+        let Some(saved) = self.launcher.saved.iter().find(|saved| saved.id == id) else {
             return;
-        }
-        self.link_active_workspace();
-        // Saved records may have been renamed since the startup view was named.
-        // A write must not recreate that old name once records exist.
-        if self.launcher.active.is_none()
-            && self.launcher.saved.is_empty()
-            && !self.scope.context.is_empty()
-        {
-            let id = self.launcher.next;
-            self.launcher.next = self.launcher.next.saturating_add(1);
-            self.launcher.saved.push(
-                crate::workspaces::Draft {
-                    name: &self.workspace_name,
-                    effective: &self.scope.context,
-                    group: &[],
-                    namespaces: &[],
-                    kinds: None,
-                }
-                .build(id, id),
-            );
-            self.launcher.active = Some(id);
-        }
-    }
-
-    /// Saves the startup workspace once the first context is known, when the parity harness asked
-    /// for it. The web driver saves its workspace through the launcher form before each scenario.
-    pub(super) fn seed_saved_workspace(&mut self) {
-        if std::mem::take(&mut self.launcher.seed_saved_workspace) {
-            self.ensure_active_workspace();
-        }
+        };
+        self.rbac.reviews = saved.reviews.clone();
+        self.launcher.active = Some(id);
+        self.launcher.open = false;
     }
 
     pub(super) fn timestamp_label(&self, relative: &str, value: Option<&str>) -> String {

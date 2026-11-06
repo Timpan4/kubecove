@@ -487,7 +487,15 @@ fn open(cx: &mut TestAppContext, backend: Arc<Controlled>) -> gpui_kit::AnyWindo
                 ..Default::default()
             },
             cx,
-            |window, cx| cx.new(|cx| Inspector::new(backend, window, cx)),
+            |window, cx| {
+                cx.new(|cx| {
+                    Inspector::new(backend, window, cx).with_saved_workspace(
+                        "Parity mock workspace",
+                        "mock-dev",
+                        cx,
+                    )
+                })
+            },
         )
         .unwrap()
     });

@@ -1,8 +1,31 @@
 import type { Page } from "playwright-core";
-import type { Step } from "./contract";
+import type { Scenario, Step } from "./contract";
+
+/** The web driver creates its workspace through the launcher unless a scenario starts without one. */
+export function seedsWorkspace(scenario: Scenario): boolean {
+    return scenario.steps[0]?.action !== "startWithoutWorkspace";
+}
+
+export async function seedWorkspace(page: Page): Promise<void> {
+    await page.locator("#workspace-name").fill("Parity mock workspace");
+    await page.getByRole("button", { name: "Create workspace", exact: true }).click();
+    // Creating a workspace navigates to its overview; a dialog opened before that navigation lands is closed by it.
+    await page.waitForURL(/#\/workspace\/[^/]+\/overview$/);
+}
 
 export async function shellAction(page: Page, step: Step): Promise<void> {
     switch (step.action) {
+        case "startWithoutWorkspace":
+            await page.getByRole("button", { name: "Create workspace", exact: true }).waitFor();
+            break;
+        case "expectNoWorkspaceShell":
+            await page.getByRole("button", { name: "Search views, namespaces, and resources", exact: true }).waitFor({ state: "detached" });
+            if (await page.getByRole("tree").count()) throw new Error("Sidebar rendered without an open workspace");
+            break;
+        case "expectPaletteUnavailable":
+            await page.keyboard.press("ControlOrMeta+K");
+            if (await page.getByRole("dialog").count()) throw new Error("Palette opened without an open workspace");
+            break;
         case "openLauncher":
             if (!await page.getByRole("button", { name: "Create workspace", exact: true }).isVisible()) await page.getByRole("button", { name: "Open workspaces", exact: true }).click();
             break;

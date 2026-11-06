@@ -314,6 +314,10 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
         // in-memory mock state.
         let backend = Arc::new(Fixture::load(Path::new(&fixture)));
         let steps = scenario["steps"].as_array().unwrap();
+        // A scenario that starts without a workspace leaves the launcher as the startup view.
+        let seeded = steps
+            .first()
+            .is_none_or(|step| step["action"] != "startWithoutWorkspace");
         // Leading phase and hold steps apply before the client starts, as the
         // web driver's first load does for shell reads.
         let startup_steps = steps
@@ -356,8 +360,12 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
                 cx,
                 |window, cx| {
                     cx.new(|cx| {
-                        Inspector::new(backend.clone(), window, cx)
-                            .with_saved_workspace("Parity mock workspace")
+                        let inspector = Inspector::new(backend.clone(), window, cx);
+                        if seeded {
+                            inspector.with_saved_workspace("Parity mock workspace", "mock-dev", cx)
+                        } else {
+                            inspector
+                        }
                     })
                 },
             )
@@ -516,8 +524,11 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
                         cx,
                         |window, cx| {
                             cx.new(|cx| {
-                                Inspector::new(backend.clone(), window, cx)
-                                    .with_saved_workspace("Parity mock workspace")
+                                Inspector::new(backend.clone(), window, cx).with_saved_workspace(
+                                    "Parity mock workspace",
+                                    "mock-dev",
+                                    cx,
+                                )
                             })
                         },
                     )

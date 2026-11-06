@@ -379,16 +379,24 @@ impl Inspector {
         };
         this.load_preferences(cx);
         this.load_contexts(window, cx);
+        // Without an open workspace the launcher is the startup view, so its own context and
+        // namespace reads start here rather than on the first open.
+        this.load_launcher_contexts(false, window, cx);
         // The web checks once at startup when updates are enabled (`scheduleAutomaticUpdateCheck`).
         this.check_settings_updates(window, cx);
         this
     }
 
-    /// Names the startup workspace and saves it once its context is known. The web driver saves
-    /// its workspace through the launcher form, so this is the parity harness's setup seam.
-    pub fn with_saved_workspace(mut self, name: impl Into<SharedString>) -> Self {
+    /// Opens a saved workspace named `name` on `context` at startup. The web driver creates its
+    /// workspace through the launcher form, so this is the parity harness's setup seam.
+    pub fn with_saved_workspace(
+        mut self,
+        name: impl Into<SharedString>,
+        context: impl Into<String>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         self.workspace_name = name.into();
-        self.launcher.seed_saved_workspace = true;
+        self.seed_saved_workspace(context.into(), cx);
         self
     }
 
@@ -569,10 +577,19 @@ impl Render for Inspector {
         }
         self.restore_remembered_detail(window, cx);
         let detail_open = !matches!(self.detail, Detail::Closed);
-        let page = self.page_view(window, cx);
+        // Without an open workspace the web renders the launcher and settings only, so the shell's
+        // sidebar, drawer and workspace pages stay out of the tree.
+        let workspace = self.workspace_open();
+        let page = if workspace || self.page == Page::Settings {
+            self.page_view(window, cx)
+        } else {
+            div().into_any_element()
+        };
         let overlays = self.overlays(window, cx);
-        let sidebar = (!compact).then(|| self.sidebar(cx, sidebar::WIDE_WIDTH).into_any_element());
-        let drawer = (compact && self.navigation_open).then(|| self.navigation_drawer(cx));
+        let sidebar = (workspace && !compact)
+            .then(|| self.sidebar(cx, sidebar::WIDE_WIDTH).into_any_element());
+        let drawer =
+            (workspace && compact && self.navigation_open).then(|| self.navigation_drawer(cx));
         div()
             .track_focus(&self.focus)
             .relative()

@@ -97,6 +97,26 @@
       ]
     },
     {
+      "id": "launcher-errors.startup-without-workspace",
+      "title": "With no saved workspace, startup shows only the launcher, with no shell, palette or RBAC",
+      "steps": [
+        { "action": "startWithoutWorkspace" },
+        { "action": "expectNoWorkspaceShell" },
+        { "action": "expectPageText", "text": "No saved workspaces yet" },
+        { "action": "expectPaletteUnavailable" }
+      ]
+    },
+    {
+      "id": "launcher-errors.startup-create-first-workspace",
+      "title": "A first workspace created from the startup launcher opens the shell",
+      "steps": [
+        { "action": "startWithoutWorkspace" },
+        { "action": "nameWorkspace", "value": "First workspace" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "First workspace", "context": "mock-dev" }
+      ]
+    },
+    {
       "id": "rbac.deleted-open-hides-controls",
       "title": "After the open saved workspace is deleted, no RBAC navigation remains",
       "steps": [

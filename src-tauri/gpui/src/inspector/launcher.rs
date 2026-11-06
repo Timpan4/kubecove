@@ -18,10 +18,9 @@ pub(super) struct LauncherState {
     pub(super) transfer: super::launcher_transfer::TransferState,
     pub(super) open: bool,
     pub(super) saved: Vec<SavedWorkspace>,
+    /// The open workspace. `None` leaves only the launcher and settings, as the web's shell is
+    /// absent without a selected workspace.
     pub(super) active: Option<u64>,
-    /// Set when deleting the open workspace clears `active`. The startup view must not be saved
-    /// again by a later write until a workspace opens or is created, as the web cannot reach one.
-    pub(super) deleted_open: bool,
     /// Ids and edit order for new records.
     pub(super) next: u64,
     pub(super) name: Entity<InputState>,
@@ -40,8 +39,6 @@ pub(super) struct LauncherState {
     pub(super) namespace_error: Option<String>,
     /// Kubeconfig source and context reads kept while fresh, as the web's query cache keeps them.
     pub(super) kubeconfig: super::kubeconfig_reads::KubeconfigReads,
-    /// Set by the parity harness: saves the startup workspace once its context is known.
-    pub(super) seed_saved_workspace: bool,
     tasks: [Option<Task<()>>; 2],
 }
 
@@ -49,10 +46,10 @@ impl LauncherState {
     pub(super) fn new(window: &mut Window, cx: &mut Context<Inspector>) -> Self {
         Self {
             transfer: Default::default(),
-            open: false,
+            // Startup has no open workspace, so the launcher is the first view, as in the web.
+            open: true,
             saved: vec![],
             active: None,
-            deleted_open: false,
             next: 1,
             name: cx.new(|cx| InputState::new(window, cx)),
             context_choices: vec![],
@@ -67,7 +64,6 @@ impl LauncherState {
             context_error: None,
             namespace_error: None,
             kubeconfig: Default::default(),
-            seed_saved_workspace: false,
             tasks: [None, None],
         }
     }
@@ -155,11 +151,14 @@ impl Inspector {
         if self.palette.open {
             self.close_palette(window, cx);
         }
-        self.link_active_workspace();
-        // The web clears the selected workspace when the launcher opens, and that stops sessions
-        // outside it. A launcher opened with no workspace open has nothing to stop.
-        if self.launcher.active.is_some() {
+        // The web clears the selected workspace when the launcher opens. Its shell, detail and
+        // live sessions go with it. The record keeps the view state that its next open restores.
+        if self.workspace_open() {
             self.stop_sessions_outside_workspace(cx);
+            self.remember_workspace(cx);
+            self.store_active_reviews();
+            self.close_detail(cx);
+            self.launcher.active = None;
         }
         let state = &mut self.launcher;
         state.open = true;
@@ -275,15 +274,7 @@ impl Inspector {
             return;
         }
         self.remember_workspace(cx);
-        if let Some(active) = self.launcher.active
-            && let Some(workspace) = self
-                .launcher
-                .saved
-                .iter_mut()
-                .find(|saved| saved.id == active)
-        {
-            workspace.reviews = std::mem::take(&mut self.rbac.reviews);
-        }
+        self.store_active_reviews();
         let Some(workspace) = self.launcher.saved.iter().find(|saved| saved.id == id) else {
             return;
         };
@@ -293,7 +284,6 @@ impl Inspector {
         self.workspace_name = workspace.name.clone().into();
         let context = workspace.context.clone();
         self.launcher.active = Some(id);
-        self.launcher.deleted_open = false;
         self.launcher.open = false;
         self.close_detail(cx);
         self.restore_workspace_memory(id, &context, window, cx);
@@ -324,7 +314,7 @@ impl Inspector {
         let deleted_open = state.active == Some(id);
         if deleted_open {
             state.active = None;
-            state.deleted_open = true;
+            state.open = true;
         }
         self.navigation.forget(id);
         self.save_preferences(cx);
@@ -334,10 +324,24 @@ impl Inspector {
         cx.notify();
     }
 
-    /// False after the open workspace is deleted. The web renders no shell then, so it has no RBAC
-    /// or Pin control. Native hides both until a workspace opens or is created.
-    pub(super) fn workspace_controls_allowed(&self) -> bool {
-        !self.launcher.deleted_open
+    /// Whether a workspace is open. The shell, its sidebar, palette and header controls, and every
+    /// workspace page exist only then. Without one, only the launcher and settings render.
+    pub(super) fn workspace_open(&self) -> bool {
+        self.launcher.active.is_some()
+    }
+
+    /// Copies the open workspace's RBAC reviews into its record before the record is replaced or
+    /// closed.
+    fn store_active_reviews(&mut self) {
+        if let Some(active) = self.launcher.active
+            && let Some(workspace) = self
+                .launcher
+                .saved
+                .iter_mut()
+                .find(|saved| saved.id == active)
+        {
+            workspace.reviews = std::mem::take(&mut self.rbac.reviews);
+        }
     }
 
     /// The launcher and command palette, drawn over the workspace.

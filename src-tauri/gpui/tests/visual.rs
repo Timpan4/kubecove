@@ -135,8 +135,11 @@ mod visual {
                         cx,
                         |window, cx| {
                             cx.new(|cx| {
-                                Inspector::new(backend.clone(), window, cx)
-                                    .with_saved_workspace("Parity mock workspace")
+                                Inspector::new(backend.clone(), window, cx).with_saved_workspace(
+                                    "Parity mock workspace",
+                                    "mock-dev",
+                                    cx,
+                                )
                             })
                         },
                     )

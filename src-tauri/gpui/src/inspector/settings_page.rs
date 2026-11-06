@@ -105,6 +105,13 @@ impl Inspector {
     }
 
     fn close_settings(&mut self, cx: &mut Context<Self>) {
+        // Without an open workspace the previous page does not exist, so Back returns to the
+        // launcher, as the web's settings view does.
+        if !self.workspace_open() {
+            self.launcher.open = true;
+            cx.notify();
+            return;
+        }
         let previous = self.settings.previous;
         self.open_page(previous, cx);
     }

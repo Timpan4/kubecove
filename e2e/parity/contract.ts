@@ -19,7 +19,7 @@ export const ACTIONS = [
     "expectOverviewScope", "expectCompareTotal",
     "retryOverview", "expectOverviewRetry",
     "dragKind",
-    "expectEmptyLauncher", "expectEntryCount",
+    "expectEmptyLauncher", "expectEntryCount", "startWithoutWorkspace", "expectNoWorkspaceShell", "expectPaletteUnavailable",
     "copyErrorDetail",
     "expectForegroundLoading", "expectFriendlyError", "inspectRequiredPermission", "expectPermissionTarget", "returnToSource",
     "copyResourceName", "expectCopyToast", "dismissCopyToast",
@@ -123,7 +123,7 @@ function step(value: unknown): Step {
         case "expectSidebarBranch": return { action: item.action, page: string(item.page), expanded: boolean(item.expanded) };
         case "scrollSidebar": return { action: item.action, to: oneOf(["top", "bottom"], item.to, "a sidebar scroll target") };
         case "expectSidebarReveal": return { action: item.action, path: strings(item.path, false), visible: boolean(item.visible), highlighted: boolean(item.highlighted) };
-        case "expectEmptyLauncher": return { action: item.action };
+        case "expectEmptyLauncher": case "startWithoutWorkspace": case "expectNoWorkspaceShell": case "expectPaletteUnavailable": return { action: item.action };
         case "expectOverviewShortcuts": return { action: item.action, labels: strings(item.labels, true) };
         case "overviewShortcut": return { action: item.action, label: string(item.label) };
         case "expectActivePage": return { action: item.action, page: string(item.page) };

@@ -112,6 +112,10 @@ impl Inspector {
             self.close_palette(window, cx);
             return;
         }
+        // The web's command palette mounts with the shell, so it is absent without a workspace.
+        if !self.workspace_open() {
+            return;
+        }
         let launcher = &self.launcher;
         let mut resources: Vec<_> = self
             .rows
