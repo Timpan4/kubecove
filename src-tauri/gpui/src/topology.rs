@@ -226,7 +226,10 @@ pub fn prepare(
     source: &Source,
 ) -> Prepared {
     // The graph keeps the last node of a repeated id, so the index does too.
+    let filter_span = crate::frame_profile::scope("topology", "filter");
     let (source_nodes, source_edges) = source.filter(rows);
+    drop(filter_span);
+    let graph_span = crate::frame_profile::scope("topology", "graph");
     let graph = Graph::ranked(
         source_nodes
             .iter()
@@ -236,15 +239,13 @@ pub fn prepare(
             .map(|&index| (index, &topology.edges[index])),
         source,
     );
-    let depth = layout::depths(&graph);
-    let order = layout::order_keys(
-        &graph,
-        &depth,
-        &graph.source_nodes,
-        &source.locals,
-        &mut source.layout.borrow_mut(),
-    );
+    drop(graph_span);
+    let layout_span = crate::frame_profile::scope("topology", "depth_and_order");
+    let (depth, order) = source.depth_and_order(&graph);
+    drop(layout_span);
+    let positions_span = crate::frame_profile::scope("topology", "positions");
     let positions = layout::positions(&graph, &depth, &order);
+    drop(positions_span);
     Prepared {
         source_nodes,
         source_edges,

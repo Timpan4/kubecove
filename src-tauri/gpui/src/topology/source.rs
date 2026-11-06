@@ -6,6 +6,8 @@ use kubecove_lib::models::ResourceTopology;
 use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 
 #[cfg(test)]
+mod layout_tests;
+#[cfg(test)]
 mod tests;
 
 pub struct Source {
@@ -20,7 +22,13 @@ pub struct Source {
     ranks: Vec<usize>,
     pub(super) locals: Vec<Encoded>,
     pub(super) layout: RefCell<layout::Scratch>,
+    stable_layout: Option<StableLayout>,
     filter: RefCell<Filter>,
+}
+
+struct StableLayout {
+    depth: Vec<i32>,
+    order: Vec<usize>,
 }
 
 #[derive(Default)]
@@ -75,7 +83,7 @@ impl Source {
                 Some((source, target))
             })
             .collect();
-        Self {
+        let mut source = Self {
             rows: rows.source().identity().clone(),
             ranks: layout::node_ranks(&topology.nodes),
             locals: topology
@@ -95,8 +103,14 @@ impl Source {
                 .collect(),
             edge_count: topology.edges.len(),
             layout: RefCell::default(),
+            stable_layout: None,
             filter: RefCell::default(),
+        };
+        // Raw duplicate edges can resolve to a different parent after filtering.
+        if edge_index.len() == topology.edges.len() {
+            source.stable_layout = StableLayout::new(topology, &source);
         }
+        source
     }
 
     pub fn matches(&self, rows: &Visible) -> bool {
@@ -104,6 +118,28 @@ impl Source {
     }
     pub(super) fn rank(&self, index: usize) -> usize {
         self.ranks[index]
+    }
+
+    pub(super) fn depth_and_order(&self, graph: &layout::Graph) -> (Vec<i32>, Vec<usize>) {
+        if let Some(stable) = &self.stable_layout {
+            return graph
+                .source_nodes
+                .iter()
+                .map(|&i| (stable.depth[i], stable.order[i]))
+                .unzip();
+        }
+        let depth_span = crate::frame_profile::scope("topology", "depth");
+        let depth = layout::depths(graph);
+        drop(depth_span);
+        let _order_span = crate::frame_profile::scope("topology", "order");
+        let order = layout::order_keys(
+            graph,
+            &depth,
+            &graph.source_nodes,
+            &self.locals,
+            &mut self.layout.borrow_mut(),
+        );
+        (depth, order)
     }
 
     pub(super) fn filter(&self, rows: &Visible) -> (Vec<usize>, Vec<usize>) {
@@ -140,5 +176,57 @@ impl Source {
                 .map(|(i, _)| i)
                 .collect(),
         )
+    }
+}
+
+impl StableLayout {
+    fn new(topology: &ResourceTopology, source: &Source) -> Option<Self> {
+        let graph = layout::Graph::ranked(
+            topology.nodes.iter().enumerate(),
+            topology.edges.iter().enumerate(),
+            source,
+        );
+        let mut incoming: Vec<_> = (0..graph.nodes.len())
+            .map(|i| graph.parents[i].len())
+            .collect();
+        let mut pending: Vec<_> = (0..graph.nodes.len())
+            .filter(|&i| incoming[i] == 0)
+            .collect();
+        let mut visited = 0;
+        while let Some(node) = pending.pop() {
+            visited += 1;
+            for &child in &graph.children[node] {
+                incoming[child] -= 1;
+                if incoming[child] == 0 {
+                    pending.push(child);
+                }
+            }
+        }
+        if visited != graph.nodes.len() {
+            return None;
+        }
+        // Ancestor-closed filtering leaves DAG depths and relative path order
+        // unchanged. Placement still depends on the remaining children.
+        let depth = layout::depths(&graph);
+        let mut scratch = source.layout.borrow_mut();
+        let order = layout::order_keys(
+            &graph,
+            &depth,
+            &graph.source_nodes,
+            &source.locals,
+            &mut scratch,
+        );
+        if !scratch.preserves_root_order() {
+            return None;
+        }
+        let mut stable = Self {
+            depth: vec![0; topology.nodes.len()],
+            order: vec![0; topology.nodes.len()],
+        };
+        for (i, &raw) in graph.source_nodes.iter().enumerate() {
+            stable.depth[raw] = depth[i];
+            stable.order[raw] = order[i];
+        }
+        Some(stable)
     }
 }

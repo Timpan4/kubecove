@@ -18,6 +18,14 @@ pub(crate) struct Scratch {
     sorted: Vec<usize>,
 }
 
+impl Scratch {
+    pub(crate) fn preserves_root_order(&self) -> bool {
+        self.prefixes[..=self.roots.len()]
+            .windows(2)
+            .all(|pair| pair[0].text < pair[1].text)
+    }
+}
+
 #[derive(Clone, Copy)]
 enum Reference {
     Local(usize),
