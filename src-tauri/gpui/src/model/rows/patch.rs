@@ -87,7 +87,7 @@ impl Coverage {
     }
 }
 
-fn same_keys(a: &ResourceSummary, b: &ResourceSummary) -> bool {
+fn same_projection(a: &ResourceSummary, b: &ResourceSummary) -> bool {
     let same_owner = match (&a.git_ops_owner, &b.git_ops_owner) {
         (None, None) => true,
         (Some(a), Some(b)) => {
@@ -101,19 +101,23 @@ fn same_keys(a: &ResourceSummary, b: &ResourceSummary) -> bool {
         }
         _ => false,
     };
-    a.name == b.name
-        && a.kind == b.kind
-        && a.namespace == b.namespace
-        && a.cluster == b.cluster
-        && a.api_version == b.api_version
-        && a.dynamic == b.dynamic
-        && a.plural == b.plural
+    a.plural == b.plural
         && a.group == b.group
         && a.owner_ref == b.owner_ref
         && a.argo_app == b.argo_app
         && a.helm_release == b.helm_release
         && a.git_ops_ownership_partial == b.git_ops_ownership_partial
         && same_owner
+}
+
+fn same_keys(a: &ResourceSummary, b: &ResourceSummary) -> bool {
+    a.name == b.name
+        && a.kind == b.kind
+        && a.namespace == b.namespace
+        && a.cluster == b.cluster
+        && a.api_version == b.api_version
+        && a.dynamic == b.dynamic
+        && same_projection(a, b)
 }
 
 pub(crate) fn reconcile(
@@ -178,65 +182,75 @@ impl PreparedRows {
         mut rows: Vec<ResourceSummary>,
         names: Option<ObservedNames>,
     ) -> Vec<ResourceSummary> {
-        let names = if let Some(kind) = self
-            .kinds
-            .iter()
-            .position(|(kind, _)| *kind == key.resource_kind.kind)
-        {
-            let members = &self.by_kind[kind];
-            let span = crate::frame_profile::scope("watch", "ordered_check");
-            let mut keys_changed = false;
-            let ordered = rows.len() == members.len()
-                && members.iter().zip(&rows).all(|(&index, row)| {
-                    let old = &self.rows[index];
-                    let matches = old.cluster == row.cluster
-                        && old.kind == row.kind
-                        && old.name == row.name
-                        && old.namespace == row.namespace
-                        && old.api_version == row.api_version
-                        && old.dynamic == row.dynamic
-                        && (key.resource_kind.api_version.is_some() || row.dynamic != Some(true))
-                        && key
-                            .resource_kind
-                            .api_version
-                            .as_ref()
-                            .is_none_or(|api| row.api_version.as_ref() == Some(api))
-                        && key
-                            .namespace
-                            .as_ref()
-                            .is_none_or(|ns| row.namespace.as_ref() == Some(ns));
-                    keys_changed |= matches && !same_keys(old, row);
-                    matches
-                });
-            let coverage = if ordered {
-                Coverage::of(names, &rows)
-            } else {
-                names.map_or(Coverage::All, |names| {
-                    Coverage::Named(NameIndex::from(names))
-                })
-            };
-            drop(span);
-            match coverage {
-                Coverage::All if ordered => {
-                    let _span = crate::frame_profile::scope("watch", "replace_rows");
-                    if members.len() == self.rows.len() {
-                        std::mem::swap(&mut self.rows, &mut rows);
-                    } else {
-                        for (&index, row) in members.iter().zip(&mut rows) {
-                            std::mem::swap(&mut self.rows[index], row);
+        let names =
+            if let Some(kind) = self
+                .kinds
+                .iter()
+                .position(|(kind, _)| *kind == key.resource_kind.kind)
+            {
+                let members = &self.by_kind[kind];
+                let span = crate::frame_profile::scope("watch", "ordered_check");
+                let mut keys_changed = false;
+                let ordered_names = names.as_ref().filter(|names| names.0.len() == rows.len());
+                let mut complete = names.is_none() || ordered_names.is_some();
+                let ordered =
+                    rows.len() == members.len()
+                        && members.iter().zip(&rows).enumerate().all(
+                            |(position, (&index, row))| {
+                                let old = &self.rows[index];
+                                let matches =
+                                    old.cluster == row.cluster
+                                        && old.kind == row.kind
+                                        && old.name == row.name
+                                        && old.namespace == row.namespace
+                                        && old.api_version == row.api_version
+                                        && old.dynamic == row.dynamic
+                                        && (key.resource_kind.api_version.is_some()
+                                            || row.dynamic != Some(true))
+                                        && key.resource_kind.api_version.as_ref().is_none_or(
+                                            |api| row.api_version.as_ref() == Some(api),
+                                        )
+                                        && key
+                                            .namespace
+                                            .as_ref()
+                                            .is_none_or(|ns| row.namespace.as_ref() == Some(ns));
+                                complete &= ordered_names
+                                    .is_none_or(|names| names.ordered_match(position, row));
+                                keys_changed |= matches && !same_projection(old, row);
+                                matches
+                            },
+                        );
+                let coverage = if ordered && complete {
+                    Coverage::All
+                } else if ordered {
+                    Coverage::of(names, &rows)
+                } else {
+                    names.map_or(Coverage::All, |names| {
+                        Coverage::Named(NameIndex::from(names))
+                    })
+                };
+                drop(span);
+                match coverage {
+                    Coverage::All if ordered => {
+                        let _span = crate::frame_profile::scope("watch", "replace_rows");
+                        if members.len() == self.rows.len() {
+                            std::mem::swap(&mut self.rows, &mut rows);
+                        } else {
+                            for (&index, row) in members.iter().zip(&mut rows) {
+                                std::mem::swap(&mut self.rows[index], row);
+                            }
                         }
+                        if keys_changed {
+                            *self = Self::new(std::mem::take(&mut self.rows));
+                        }
+                        return rows;
                     }
-                    if keys_changed {
-                        *self = Self::new(std::mem::take(&mut self.rows));
-                    }
-                    return rows;
+                    Coverage::All => None,
+                    Coverage::Named(names) => Some(names),
                 }
-                Coverage::All => None,
-                Coverage::Named(names) => Some(names),
-            }
-        } else {
-            names.map(NameIndex::from)
-        };
+            } else {
+                names.map(NameIndex::from)
+            };
         let _span = crate::frame_profile::scope("watch", "reconcile");
         if reconcile_indexed(&mut self.rows, key, rows, names.as_ref()) {
             *self = Self::new(std::mem::take(&mut self.rows));

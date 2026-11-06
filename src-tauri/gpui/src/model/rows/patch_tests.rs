@@ -93,3 +93,16 @@ fn replacement_patch_rebuilds_search_and_group_fields() {
         Some("a")
     );
 }
+
+#[test]
+fn ordered_patch_rebuilds_owner_search_without_changing_row_identity() {
+    let original = row("same", "ns");
+    let mut rows = PreparedRows::new(vec![original.clone()]);
+    let mut changed = original;
+    changed.argo_app = Some("new-owner".into());
+    rows.patch(&key(), vec![changed], None);
+    let mut visible = Visible::default();
+    visible.refilter(Rc::new(rows), &["Pod".into()], "new-owner");
+    assert_eq!(visible.len(), 1);
+    assert!(visible.grouped_by_gitops);
+}
