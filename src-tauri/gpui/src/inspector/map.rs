@@ -221,6 +221,7 @@ impl Inspector {
     }
 
     pub(super) fn map_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let _profile = crate::frame_profile::scope("map", "build");
         let topology = match &self.map.topology {
             TopologyLoad::Ready(topology) => Some(topology),
             _ => None,

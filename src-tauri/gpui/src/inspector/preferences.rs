@@ -139,6 +139,7 @@ impl Inspector {
     }
 
     pub(super) fn save_preferences(&mut self, cx: &mut Context<Self>) {
+        let _profile = crate::frame_profile::scope("preferences", "save");
         self.sync_workspace_reviews();
         self.persisted.workspaces = self.launcher.saved.clone();
         self.persisted

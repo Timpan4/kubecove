@@ -452,6 +452,7 @@ pub fn indexed_table_page(
     lanes: &crate::preferences::KindLanes,
     usage: impl Fn(&ResourceSummary) -> table_sort::Usage,
 ) -> TablePage {
+    let _profile = crate::frame_profile::scope("table", "project");
     if view.sort == Sort::default() {
         page_from_order(visible.ordered().collect(), visible.grouped_by_gitops, view)
     } else {

@@ -489,6 +489,7 @@ impl Inspector {
     }
 
     pub(super) fn table_panel(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let _profile = crate::frame_profile::scope("table", "build");
         let view = TableView {
             page: self.table_page,
             sort: self.table_sort,

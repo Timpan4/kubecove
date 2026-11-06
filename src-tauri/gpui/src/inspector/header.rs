@@ -25,6 +25,7 @@ impl Inspector {
 
     /// `compact` shows the menu button that opens the navigation drawer.
     pub(super) fn header(&self, cx: &mut Context<Self>, compact: bool) -> impl IntoElement {
+        let _profile = crate::frame_profile::scope("header", "build");
         let dirty = self.dirty(cx);
         let location = self.shell_title();
         // The web's search and settings controls belong to the shell, which needs an open workspace.

@@ -206,6 +206,7 @@ impl Inspector {
 
     /// Reconciles before rendering: changed scopes drop their tasks and stream guards.
     pub(super) fn sync_live(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let _profile = crate::frame_profile::scope("live", "sync");
         self.sync_gitops_watches(window, cx);
         let owner = format!(
             "{:?}:{:?}:{}:{:?}:{:?}:{:?}",

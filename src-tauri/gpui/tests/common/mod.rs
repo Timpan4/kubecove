@@ -433,6 +433,7 @@ impl Backend for Fixture {
         self.resource_fixture(scope)
     }
     fn details(&self, resource: ResourceSummary) -> Read<ResourceDetailsFull> {
+        let _profile = kubecove_gpui::frame_profile::scope("fixture", "details");
         let found = self
             .details
             .iter()
