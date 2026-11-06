@@ -278,6 +278,8 @@ export type Step =
     | { action: "skipGraph" }
     | { action: "mapKey"; key: MapKey }
     | { action: "expectMapFocus" | "expectNoMapFocus"; id: string }
+    | { action: "expectMapNodeInView"; id: string; inView: boolean }
+    | { action: "panMap"; dx: number; dy: number }
     | { action: "clickMapControl" | "expectMapControlFocus"; control: MapControl }
     | { action: "expectMapZoom"; zoom: number }
     | { action: "resizeDetail"; key: DetailResizeKey }

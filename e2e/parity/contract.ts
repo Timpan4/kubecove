@@ -82,7 +82,7 @@ export const ACTIONS = [
     "sortResourceTable", "expectResourceOrder", "toggleResourceGroup", "expectResourceGroup", "openResourceRow", "expectResourceCell",
 	"clickDetailControl",
 	"openLiveSessionPopover", "expectLiveSessionRow", "liveSessionControl", "expectHealthTooltip", "expectTimestampTooltip", "expectEventTimeTooltip",
-    "panelControl", "expectPanelControl", "skipGraph", "mapKey", "expectMapFocus", "expectNoMapFocus", "clickMapControl", "expectMapControlFocus", "expectMapZoom", "resizeDetail", "expectDetailResize",
+    "panelControl", "expectPanelControl", "skipGraph", "mapKey", "expectMapFocus", "expectNoMapFocus", "expectMapNodeInView", "panMap", "clickMapControl", "expectMapControlFocus", "expectMapZoom", "resizeDetail", "expectDetailResize",
 	"expectYamlDiagnostic", "expectNoYamlDiagnostic", "expectYamlApplyDescription", "expectNoYamlApplyDescription", "expectActionLoadError", "expectNoActionLoadError", "retryActionPermission", "expectActionLock",
 ] as const satisfies readonly Step["action"][];
 type Missing = Exclude<Step["action"], (typeof ACTIONS)[number]>;
@@ -442,6 +442,15 @@ function step(value: unknown): Step {
 		case "skipGraph": return { action: item.action };
 		case "mapKey": return { action: item.action, key: oneOf(MAP_KEYS, item.key, "a graph key") };
 		case "expectMapFocus": case "expectNoMapFocus": return { action: item.action, id: string(item.id) };
+		case "expectMapNodeInView": {
+			if (typeof item.inView !== "boolean") throw new Error("Expected a boolean inView");
+			return { action: item.action, id: string(item.id), inView: item.inView };
+		}
+		case "panMap": {
+			if (typeof item.dx !== "number" || !Number.isFinite(item.dx)) throw new Error("Expected a finite dx");
+			if (typeof item.dy !== "number" || !Number.isFinite(item.dy)) throw new Error("Expected a finite dy");
+			return { action: item.action, dx: item.dx, dy: item.dy };
+		}
 		case "clickMapControl": case "expectMapControlFocus": return { action: item.action, control: oneOf(MAP_CONTROLS, item.control, "a map control") };
 		case "expectMapZoom": {
 			if (typeof item.zoom !== "number" || !Number.isFinite(item.zoom) || item.zoom <= 0) throw new Error("Expected a positive zoom");
