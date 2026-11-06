@@ -103,7 +103,7 @@ export type Step =
     | { action: "disconnectArgoProfile" | "confirmArgoReview" | "cancelArgoReview" }
     | { action: "reviewArgoOperation"; operation: "Refresh" | "Hard refresh" | "Sync" | "Rollback" }
     | { action: "configureArgoMock"; script: import("../../src/lib/tauri-dev-mock-argo").ArgoMockScript }
-    | { action: "argoControl"; control: "Open connection" | "Close connection" | "Forget" | "Retry" | "Confirm target again" | "Retry operation" | "Retry state refresh" | "Retry snapshot" | "Show diff" | "Show fewer lines" | "All changes" | "Sync options" | "Sync with these options"; url?: string }
+    | { action: "argoControl"; control: "Open connection" | "Close connection" | "Forget" | "Retry" | "Confirm target again" | "Retry operation" | "Retry state refresh" | "Retry snapshot" | "Technical detail" | "Show diff" | "Show fewer lines" | "All changes" | "Sync options" | "Sync with these options"; url?: string }
     | { action: "focusArgoResource"; key: string; label: string }
     | { action: "expectNoSavedArgoProfile"; url: string }
     | { action: "expandArgoDiff" }

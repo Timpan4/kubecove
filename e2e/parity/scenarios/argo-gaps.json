@@ -160,6 +160,18 @@
         },
         {
           "action": "expectArgoText",
+          "text": "Kubernetes Application snapshot unavailable"
+        },
+        {
+          "action": "expectArgoText",
+          "text": "Copy the detail if this needs debugging."
+        },
+        {
+          "action": "argoControl",
+          "control": "Technical detail"
+        },
+        {
+          "action": "expectArgoText",
           "text": "Fixture snapshot unavailable"
         },
         {

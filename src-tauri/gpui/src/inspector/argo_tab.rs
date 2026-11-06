@@ -5,6 +5,7 @@ use super::argo_panels::{delivery, navigator};
 use super::argo_snapshot::{DiffView, snapshot};
 use super::controls::{self, Variant};
 use super::detail::{Detail, ResourceDetail};
+use super::feedback::Disclosure;
 use super::{Inspector, surface};
 use crate::argo_app::ArgoView;
 use crate::model::health_source;
@@ -12,7 +13,7 @@ use crate::theme::{MONO, Palette, Tokens};
 use crate::ui;
 use gpui_kit::TestSupportExt;
 use gpui_kit::{AnyElement, Context, Div, SharedString, Task, Window, div, prelude::*, px};
-use kubecove_lib::models::{ArgoApplicationInspector, ArgoApplicationRef};
+use kubecove_lib::models::{AppError, ArgoApplicationInspector, ArgoApplicationRef};
 use std::rc::Rc;
 
 #[path = "argo_comparison.rs"]
@@ -21,7 +22,7 @@ mod comparison;
 enum ArgoLoad {
     Loading,
     Ready(Box<ArgoView>),
-    Failed(String),
+    Failed(AppError),
 }
 
 pub(super) struct ArgoTab {
@@ -194,7 +195,7 @@ impl Inspector {
                             });
                             ArgoLoad::Ready(view)
                         }
-                        Err(error) => ArgoLoad::Failed(error.message),
+                        Err(error) => ArgoLoad::Failed(error),
                     };
                 }
                 cx.notify();
@@ -260,6 +261,8 @@ pub(super) fn argo_tab(
     timezone: crate::preferences::TimestampTimezone,
     connection: Div,
     pending: bool,
+    connected: bool,
+    disclosure: &Disclosure,
     cx: &mut Context<Inspector>,
 ) -> AnyElement {
     let Some(state) = detail.argo.as_ref() else {
@@ -487,9 +490,8 @@ pub(super) fn argo_tab(
         .child(connection);
     if let ArgoLoad::Failed(error) = &state.load {
         column = column
-            .child(surface::failed(
-                "Argo CD Application snapshot unavailable",
-                error.clone(),
+            .child(Inspector::argo_snapshot_failure(
+                error, connected, disclosure, cx,
             ))
             .child(
                 controls::button(Variant::Outline, 24., false)

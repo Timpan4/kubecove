@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { getArgoOperationTracker, argoTrackingKey } from "./argo-operation-tracker";
 	import { argoOperationProgress } from "./argo-operation-progress";
+	import FriendlyError from "@/components/FriendlyError.svelte";
 	import ArgoConnectionDialog from "./ArgoConnectionDialog.svelte";
 	import ArgoOperationProgress from "./ArgoOperationProgress.svelte";
 	import ArgoResourceDiff from "./ArgoResourceDiff.svelte";
@@ -770,10 +771,14 @@
 		</Alert>
 	{/if}
 	{#if dataError}
-		<Alert variant="destructive">
-			<AlertTitle>{transport === "connected" ? "Connected Argo CD snapshot unavailable" : "Kubernetes Application snapshot unavailable"}</AlertTitle>
-			<AlertDescription class="flex flex-wrap items-center justify-between gap-2"><span>{dataError instanceof Error ? dataError.message : String(dataError)}</span><Button type="button" size="sm" variant="outline" onclick={() => void inspection.refresh()}>Retry snapshot</Button></AlertDescription>
-		</Alert>
+		<FriendlyError
+			error={dataError}
+			context={{
+				operation: "detailsLoad",
+				fallbackTitle: transport === "connected" ? "Connected Argo CD snapshot unavailable" : "Kubernetes Application snapshot unavailable",
+			}}
+		/>
+		<Button type="button" size="sm" variant="outline" onclick={() => void inspection.refresh()}>Retry snapshot</Button>
 	{/if}
 
 	{#each conditionRows as condition}

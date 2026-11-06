@@ -1,4 +1,13 @@
 use super::*;
+use gpui_kit::ElementId;
+
+/// Whether any element in the window carries `expected` as its label or description.
+fn argo_text_present(window: &gpui_kit::Window, expected: &str) -> bool {
+    window.elements().iter().any(|e| {
+        e.label().is_some_and(|l| l.contains(expected))
+            || e.description().is_some_and(|l| l.contains(expected))
+    })
+}
 
 pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) -> bool {
     match string(step, "action") {
@@ -116,6 +125,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 "Retry operation" => "argo-operation-retry",
                 "Retry state refresh" => "argo-state-retry",
                 "Retry snapshot" => "argo-snapshot-retry",
+                "Technical detail" => "argo-snapshot-error:detail",
                 "All changes" => "argo-all-changes",
                 "Show diff" => "argo-removal::secret:argocd:argocd-secret",
                 "Show fewer lines" => "argo-diff-lines:0",
@@ -263,13 +273,34 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
         "completeArgoOperation" => {}
         "expectArgoText" => {
             let expected = string(step, "text");
+            // web-argo.ts opens the collapsed technical-detail disclosure that
+            // holds the text. Open error disclosures one at a time until it shows.
+            if !argo_text_present(window, expected) {
+                let toggles: Vec<ElementId> = window
+                    .elements()
+                    .iter()
+                    .filter(|e| {
+                        matches!(e.path().last(), Some(ElementId::Name(name)) if name.ends_with(":detail"))
+                    })
+                    .map(locate::id)
+                    .collect();
+                for toggle in toggles {
+                    locate::click_in(window, "root", toggle, cx);
+                    window.render_frame(cx);
+                    if argo_text_present(window, expected) {
+                        break;
+                    }
+                }
+            }
             assert!(
+                argo_text_present(window, expected),
+                "missing {expected}; unavailable labels: {:?}",
                 window
                     .elements()
                     .iter()
-                    .any(|e| e.label().is_some_and(|l| l.contains(expected))
-                        || e.description().is_some_and(|l| l.contains(expected))),
-                "missing {expected}"
+                    .filter_map(|e| e.label())
+                    .filter(|l| l.contains("unavailable"))
+                    .collect::<Vec<_>>()
             );
         }
         "argoDocument" => {

@@ -37,7 +37,9 @@ export async function argoAction(page: Page, step: Step) {
             break;
         }
         case "argoControl": {
-            if (step.control === "Open connection") {
+            if (step.control === "Technical detail") {
+                await page.getByText("Technical detail", { exact: true }).first().click();
+            } else if (step.control === "Open connection") {
                 await page.getByRole("tabpanel").getByRole("button", { name: /^(Manage connection|Connect Argo CD)$/ }).click();
                 await page.getByRole("dialog").getByRole("radio", { name: "Found in cluster", exact: true }).click();
             } else if (step.control === "Close connection") {

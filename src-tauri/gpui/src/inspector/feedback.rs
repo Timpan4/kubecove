@@ -36,6 +36,23 @@ pub(super) struct Permission {
     pub target: RbacAccessReviewTarget,
 }
 
+/// Technical-detail and copy state for every error panel, copied out of
+/// `Feedback` so renderers that cannot reach the inspector take it as input.
+#[derive(Clone, Default)]
+pub(super) struct Disclosure {
+    expanded: HashSet<&'static str>,
+    copied: Option<(&'static str, bool)>,
+}
+
+impl Feedback {
+    pub(super) fn disclosure(&self) -> Disclosure {
+        Disclosure {
+            expanded: self.expanded.clone(),
+            copied: self.copy,
+        }
+    }
+}
+
 struct Origin {
     page: Page,
     scope: Scope,
@@ -196,15 +213,62 @@ impl Inspector {
         permission: Option<Permission>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        Self::failure_panel(
+            id,
+            kind,
+            message,
+            context,
+            permission,
+            &self.feedback.disclosure(),
+            cx,
+        )
+    }
+
+    /// Records the Argo CD snapshot failure's presentation, using the web's
+    /// transport-specific title as the fallback for unclassified errors.
+    pub(super) fn argo_snapshot_failure(
+        error: &AppError,
+        connected: bool,
+        disclosure: &Disclosure,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let title = if connected {
+            "Connected Argo CD snapshot unavailable"
+        } else {
+            "Kubernetes Application snapshot unavailable"
+        };
+        Self::failure_panel(
+            "argo-snapshot-error",
+            Some(error.kind),
+            &error.message,
+            ErrorContext {
+                operation: Some(friendly_error::Operation::Details),
+                fallback_title: Some(title),
+                ..Default::default()
+            },
+            None,
+            disclosure,
+            cx,
+        )
+    }
+
+    fn failure_panel(
+        id: &'static str,
+        kind: Option<AppErrorKind>,
+        message: &str,
+        context: ErrorContext<'_>,
+        permission: Option<Permission>,
+        disclosure: &Disclosure,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let presentation = friendly_error::present(kind, message, &context);
         // `FriendlyError.svelte` compact mode hides the next step and the
         // "still works" note, but keeps the summary and technical detail.
         let compact = context.compact;
         let permission = permission.filter(|_| presentation.bucket == Bucket::ForbiddenRbac);
-        let expanded = self.feedback.expanded.contains(id);
-        let copied = self
-            .feedback
-            .copy
+        let expanded = disclosure.expanded.contains(id);
+        let copied = disclosure
+            .copied
             .filter(|(key, _)| *key == id)
             .map(|(_, ok)| ok);
         let technical = message.to_owned();
