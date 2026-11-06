@@ -174,6 +174,28 @@ export async function argoAction(page: Page, step: Step) {
             await page.evaluate("import('/src/lib/tauri-dev-mock-argo.ts').then(m => m.completeMockArgoOperation())");
             break;
 
+        case "selectArgoConnection":
+            await page.getByRole("combobox", { name: "Argo CD inspection preference", exact: true }).click();
+            await page.getByRole("option", { name: step.url, exact: true }).click();
+            break;
+        case "expectArgoFocusInPopover":
+            // The web moves focus into the popover on open, and Tab must not leave it.
+            await page.waitForFunction((label: string) => Array.from(document.querySelectorAll("[data-slot=popover-content]"))
+                .some((element) => element.textContent?.includes(label) && element.contains(document.activeElement)),
+                step.control === "Sync options" ? "Sync with these options" : "Hard refresh");
+            break;
+        case "tabArgoPopover":
+            for (let press = 0; press < step.presses; press += 1) await page.keyboard.press("Tab");
+            break;
+        case "expectArgoOperationState": {
+            const locator = step.control === "Sync options" || step.control === "Refresh options"
+                ? page.getByRole("button", { name: step.control, exact: true })
+                : page.getByRole("tabpanel").getByRole("button", { name: step.control, exact: true });
+            await locator.waitFor();
+            if ((await locator.isDisabled()) === step.enabled) throw new Error(`${step.control} enabled state is not ${step.enabled}`);
+            break;
+        }
+
         default: throw new Error(`Unknown Argo action ${step.action}`);
     }
 }

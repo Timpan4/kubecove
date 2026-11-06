@@ -27,7 +27,7 @@ export function presentCustomResourceKinds(namespaces: string[] = []): Discovere
 	);
 }
 let argoOutcomeComplete = false;
-export type ArgoMockScript = "base" | "discovery-error" | "target-mismatch" | "snapshot-error" | "operation-error" | "lazy" | "full-diff";
+export type ArgoMockScript = "base" | "discovery-error" | "target-mismatch" | "preview-error" | "snapshot-error" | "operation-error" | "lazy" | "full-diff";
 let argoScript: ArgoMockScript = "base";
 export function configureArgoMock(script: ArgoMockScript) { argoScript = script; }
 export type ArgoInventoryMode = "base" | "absent" | "empty" | "partial" | "unavailable";
@@ -55,6 +55,7 @@ return {
 		{ id: "service:argocd:external", name: "argocd-external", namespace: "argocd", url: null, transport: "serviceTunnel", endpoint: null, unavailableReason: "ExternalName Services cannot be port-forwarded", argoLabeled: false },
 	]; },
 	preview_argo_tunnel_target: (args) => {
+        if (argoScript === "preview-error") throw new Error("Fixture tunnel preview unavailable");
 		const endpoint = args?.endpoint?.kind === "serviceTunnel" ? args.endpoint : null;
 		return {
 			namespace: endpoint?.namespace ?? "argocd",
@@ -73,7 +74,7 @@ return {
 	},
 	get_argo_connection_status: (args) => {
 		const profile = args?.id ? argoConnections.get(args.id) ?? null : null;
-		return { profile, connected: profile !== null, username: profile ? "mock-user" : null, unavailableReason: profile ? null : "Profile is not connected" };
+		return { profile, connected: profile !== null, username: profile ? "mock-user" : null, unavailableReason: null };
 	},
 	disconnect_argo_server: (args) => {
 		if (args?.id) argoConnections.delete(args.id);

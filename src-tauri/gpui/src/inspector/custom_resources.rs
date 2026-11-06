@@ -1,5 +1,5 @@
 //! Discovered kinds retain their API identity even before they contain objects.
-use super::{Inspector, Page};
+use super::{Inspector, Page, sidebar_discovery::ClusterRead};
 use crate::backend::ScopeResult;
 use crate::{theme::Tokens, ui};
 use gpui_kit::{AnyElement, Context, SharedString, TestSupportExt, deferred, div, prelude::*, px};
@@ -57,10 +57,39 @@ impl Inspector {
     }
 }
 
+/// The disabled loading and error rows in the Custom Resources section, as the web's
+/// `SidebarTree` renders them. The web shows the discovery message as the row's tooltip, so
+/// the native row keeps it as its accessible description rather than as visible text.
+fn discovery_row(title: &'static str, description: Option<&str>) -> AnyElement {
+    div()
+        .pl(px(28.))
+        .py(px(4.))
+        .id(title)
+        .test_support()
+        .aria_label(title)
+        .when_some(description, |row, message| {
+            row.aria_description(message.to_owned())
+        })
+        .child(ui::xs(title))
+        .into_any_element()
+}
+
 impl Inspector {
     pub(super) fn custom_kind_rows(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
         if !self.persisted.preferences.show_custom_resources {
             return Vec::new();
+        }
+        match self.cluster_read() {
+            ClusterRead::Ready(_) => {}
+            ClusterRead::Loading => {
+                return vec![discovery_row("Loading custom resources...", None)];
+            }
+            ClusterRead::Failed(message) => {
+                return vec![discovery_row(
+                    "Custom resource discovery unavailable",
+                    Some(message),
+                )];
+            }
         }
         let mut groups = self
             .cluster_kinds()

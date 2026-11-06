@@ -502,7 +502,10 @@ impl Inspector {
                             .as_ref()
                             .and_then(|s| s.inspector.as_ref())
                             .is_some_and(|s| self.argo_operation_busy(&s.application)),
-                        self.argo_connection_id().is_some(),
+                        super::argo_tab::ArgoConnectionState {
+                            connected: self.argo_connection_id().is_some(),
+                            unavailable: self.argo_connection_unavailable(),
+                        },
                         &self.feedback.disclosure(),
                         cx,
                     ),

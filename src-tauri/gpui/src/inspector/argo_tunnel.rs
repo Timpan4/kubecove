@@ -49,6 +49,8 @@ impl Inspector {
         self.argo_connections.busy = true;
         self.argo_connections.preview = None;
         self.argo_connections.error = None;
+        // A preview that fails leaves no reconfirm offer, as on the web.
+        self.argo_connections.reconfirm = false;
         self.argo_connections.task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {

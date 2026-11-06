@@ -64,6 +64,29 @@
         { "action": "closeKindPicker" },
         { "action": "expectResource", "kind": "Deployment", "namespace": "monitoring", "name": "grafana" }
       ]
+    },
+    {
+      "id": "sidebar.custom-discovery-loading",
+      "title": "Custom Resources shows a loading row until cluster-wide kind discovery returns",
+      "steps": [
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_kinds", "context": "mock-dev" } },
+        { "action": "searchCustomKinds", "value": "" },
+        { "action": "expectPageText", "text": "Loading custom resources..." },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_kinds", "context": "mock-dev" } },
+        { "action": "expectCustomGroup", "group": "testing.example.io", "visible": true }
+      ]
+    },
+    {
+      "id": "sidebar.custom-discovery-failure",
+      "title": "Custom Resources shows a discovery failure in place of the kinds",
+      "steps": [
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_kinds", "context": "mock-dev" } },
+        { "action": "searchCustomKinds", "value": "" },
+        { "action": "expectPageText", "text": "Loading custom resources..." },
+        { "action": "mockTiming", "control": { "operation": "fail", "command": "list_resource_kinds", "context": "mock-dev", "kind": "transport" } },
+        { "action": "expectPageText", "text": "Custom resource discovery unavailable" },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_kinds", "context": "mock-dev" } }
+      ]
     }
   ]
 }

@@ -7,7 +7,8 @@ use super::{
 };
 use crate::ui;
 use gpui_kit::{
-    AppContext, Context, Div, Entity, TestSupportExt, Window,
+    AppContext, Context, Div, Entity, FocusHandle, TestSupportExt, Window,
+    base::FocusTrapElement,
     component::input::{Input, InputState},
     div,
     prelude::*,
@@ -47,6 +48,10 @@ pub(super) struct Options {
     pub dry_run: bool,
     pub force: bool,
     pub history: Option<i64>,
+    /// Focused when the Sync options popover opens. Its focus trap keeps Tab inside.
+    pub sync_focus: FocusHandle,
+    /// Focused when the Refresh options popover opens. Its focus trap keeps Tab inside.
+    pub refresh_focus: FocusHandle,
     pub picker: Entity<
         gpui_kit::component::select::SelectState<
             gpui_kit::component::select::SearchableVec<HistoryChoice>,
@@ -89,6 +94,8 @@ impl Options {
             dry_run: false,
             force: false,
             history: None,
+            sync_focus: cx.focus_handle(),
+            refresh_focus: cx.focus_handle(),
         }
     }
 }
@@ -275,11 +282,17 @@ impl Inspector {
 
 /// Toggles from the open state the frame was drawn with. The panel's outside-press handler
 /// closes it first on the same press, so toggling the live state would reopen it.
-fn trigger(disabled: bool, open: bool, cx: &mut Context<Inspector>) -> gpui_kit::AnyElement {
+fn trigger(
+    disabled: bool,
+    open: bool,
+    focus: FocusHandle,
+    cx: &mut Context<Inspector>,
+) -> gpui_kit::AnyElement {
     button(Variant::Default, 24., disabled)
         .id("argo-sync-options")
         .test_support()
         .aria_label("Sync options")
+        .aria_description(if disabled { "disabled" } else { "enabled" })
         .child(crate::ui::icon(
             "chevron-down",
             12.,
@@ -287,13 +300,16 @@ fn trigger(disabled: bool, open: bool, cx: &mut Context<Inspector>) -> gpui_kit:
         ))
         .on_mouse_down(
             gpui_kit::MouseButton::Left,
-            cx.listener(move |this, _, _, cx| {
+            cx.listener(move |this, _, window, cx| {
                 if disabled {
                     return;
                 }
                 if let Some(s) = this.argo_tab_state() {
                     s.options.open = !open;
                     s.options.confirming = false;
+                    if !open {
+                        focus.focus(window, cx);
+                    }
                     cx.notify();
                 }
             }),
@@ -316,10 +332,13 @@ impl Inspector {
     }
 }
 
+/// `unavailable` is the web's `argoOperationAvailability` failing for the selected connection.
+/// It disables Sync and Refresh and their option triggers; Rollback stays available, as on the web.
 pub(super) fn controls(
     state: &ArgoTab,
     name: &str,
     pending: bool,
+    unavailable: bool,
     cx: &mut Context<Inspector>,
 ) -> Div {
     use crate::theme::Tokens;
@@ -340,12 +359,17 @@ pub(super) fn controls(
     let refreshing = operation_active && matches!(in_flight, Some("refresh" | "hardRefresh"));
     let syncing = operation_active && in_flight == Some("sync");
     let refresh_open = state.refresh_options;
+    let refresh_focus = state.options.refresh_focus.clone();
+    let refresh_focus_on_open = refresh_focus.clone();
+    let sync_focus = state.options.sync_focus.clone();
+    let sync_focus_on_open = sync_focus.clone();
     let has_previous = state
         .inspector
         .as_ref()
         .is_some_and(|snapshot| snapshot.history.len() > 1);
     let operation = |label: &'static str, variant, cx: &mut Context<Inspector>| {
-        let disabled = busy || (label == "Rollback" && !has_previous);
+        let disabled =
+            busy || (label == "Rollback" && !has_previous) || (unavailable && label != "Rollback");
         let spinning = match label {
             "Refresh" | "Hard refresh" => refreshing,
             "Sync" => syncing,
@@ -354,6 +378,7 @@ pub(super) fn controls(
         button(variant, 24., disabled)
             .id(SharedString::from(format!("argo-operation:{label}")))
             .test_support()
+            .aria_description(if disabled { "disabled" } else { "enabled" })
             .when(label != "Rollback", |b| {
                 b.child(ui::icon(
                     if spinning {
@@ -383,11 +408,16 @@ pub(super) fn controls(
         .child(operation("Rollback", Variant::Outline, cx))
         .child(div().relative().flex()
             .child(operation("Refresh", Variant::Outline, cx))
-            .child(button(Variant::Outline, 24., busy).id("argo-refresh-options").test_support().aria_label("Refresh options")
+            .child(button(Variant::Outline, 24., busy || unavailable).id("argo-refresh-options").test_support().aria_label("Refresh options")
+                .aria_description(if busy || unavailable { "disabled" } else { "enabled" })
                 .child(ui::icon("chevron-down", 12., Tokens::foreground()))
-                .on_mouse_down(gpui_kit::MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                    if busy { return; }
-                    if let Some(s) = this.argo_tab_state() { s.refresh_options = !refresh_open; cx.notify(); }
+                .on_mouse_down(gpui_kit::MouseButton::Left, cx.listener(move |this, _, window, cx| {
+                    if busy || unavailable { return; }
+                    if let Some(s) = this.argo_tab_state() {
+                        s.refresh_options = !refresh_open;
+                        if !refresh_open { refresh_focus_on_open.focus(window, cx); }
+                        cx.notify();
+                    }
                 })))
             .when(state.refresh_options, |group| group.child(gpui_kit::deferred(super::argo_panels::panel().id("argo-refresh-panel").test_support().occlude().absolute().top(px(28.)).right_0().w(px(256.)).shadow_lg()
                 .on_mouse_down_out(cx.listener(|this, _, _, cx| {
@@ -396,13 +426,15 @@ pub(super) fn controls(
                 }))
                 .child(ui::sm("Refresh Application"))
                 .child(ui::muted(ui::xs("Normal refresh re-reads Application state. Hard refresh also invalidates Argo CD manifest and repository caches.")))
-                .child(operation("Hard refresh", Variant::Outline, cx))).with_priority(1))))
+                .child(operation("Hard refresh", Variant::Outline, cx))
+                .focus_trap("argo-refresh-panel", &refresh_focus)).with_priority(1))))
         .child(div().relative().flex()
             .child(operation("Sync", Variant::Default, cx))
-            .child(trigger(busy, state.options.open, cx))
+            .child(trigger(busy || unavailable, state.options.open, sync_focus_on_open, cx))
             .when(state.options.open && !state.options.confirming, |group| group.child(gpui_kit::deferred(panel(state, name, cx).id("argo-sync-panel").test_support().occlude().absolute().top(px(28.)).right_0().w(px(320.)).shadow_lg()
                 .on_mouse_down_out(cx.listener(|this, _, _, cx| {
                     if let Some(s) = this.argo_tab_state() { s.options.open = false; }
                     cx.notify();
-                }))).with_priority(1))))
+                }))
+                .focus_trap("argo-sync-panel", &sync_focus)).with_priority(1))))
 }

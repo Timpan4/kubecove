@@ -256,12 +256,19 @@ pub(super) fn raw(value: &serde_json::Value) -> String {
     }
 }
 
+/// The selected Argo CD connection as the Application operations see it.
+pub(super) struct ArgoConnectionState {
+    pub connected: bool,
+    /// The reason the web's `argoOperationAvailability` gives when operations are unavailable.
+    pub unavailable: Option<String>,
+}
+
 pub(super) fn argo_tab(
     detail: &ResourceDetail,
     timezone: crate::preferences::TimestampTimezone,
     connection: Div,
     pending: bool,
-    connected: bool,
+    selected: ArgoConnectionState,
     disclosure: &Disclosure,
     cx: &mut Context<Inspector>,
 ) -> AnyElement {
@@ -301,6 +308,14 @@ pub(super) fn argo_tab(
         format!("Kind: {}", summary.kind),
         format!("Resource: {}", summary.name),
     ];
+    // The web's OperationScopeCard description. Its reason is the same text the web shows.
+    let scope_description = match &selected.unavailable {
+        Some(reason) => format!(
+            "Unavailable, provider connection: {reason} These operations target the Argo CD Application, not a selected managed Kubernetes resource."
+        ),
+        None if view.is_some_and(|v| !v.kubernetes) => "Available. Connected Argo CD authorization is checked during operation review. These operations target the Argo CD Application, not a selected managed Kubernetes resource.".to_owned(),
+        None => "Available. Kubernetes permission is checked during operation review. These operations target the Argo CD Application, not a selected managed Kubernetes resource.".to_owned(),
+    };
     // `flex flex-wrap justify-between gap-3`: the scope card's long
     // description makes the left column wider than any pane, so the
     // operation buttons always wrap onto their own line.
@@ -354,7 +369,11 @@ pub(super) fn argo_tab(
                                 .items_center()
                                 .gap(px(4.))
                                 .child(ui::icon(
-                                    if state.evidence { "chevron-down" } else { "chevron-right" },
+                                    if state.evidence {
+                                        "chevron-down"
+                                    } else {
+                                        "chevron-right"
+                                    },
                                     12.,
                                     Tokens::foreground(),
                                 ))
@@ -376,7 +395,11 @@ pub(super) fn argo_tab(
                                             " {} \u{2014} {}{}",
                                             raw(&evidence.raw),
                                             evidence.reason,
-                                            if evidence.current { "" } else { " (historical)" }
+                                            if evidence.current {
+                                                ""
+                                            } else {
+                                                " (historical)"
+                                            }
                                         ))))
                                 }),
                             ))
@@ -395,9 +418,10 @@ pub(super) fn argo_tab(
                         .child(ui::muted(ui::xs("Raw Argo:")))
                         .child(ui::outline_badge(format!("Health {health}")))
                         .child(ui::outline_badge(format!("Sync {sync}")))
-                        .when_some(view.and_then(|view| view.operation_state.clone()), |row, state| {
-                            row.child(surface::secondary_badge(state))
-                        }),
+                        .when_some(
+                            view.and_then(|view| view.operation_state.clone()),
+                            |row, state| row.child(surface::secondary_badge(state)),
+                        ),
                 )
                 .child(
                     ui::muted(ui::text(
@@ -429,23 +453,30 @@ pub(super) fn argo_tab(
                         .flex_col()
                         .gap(px(4.))
                         .children(scope_rows.chunks(2).map(|pair| {
-                            div().flex().gap(px(4.)).children(
-                                pair.iter().map(|row| div().flex_1().flex_basis(px(0.)).min_w_0().child(row.clone())),
-                            )
+                            div().flex().gap(px(4.)).children(pair.iter().map(|row| {
+                                div()
+                                    .flex_1()
+                                    .flex_basis(px(0.))
+                                    .min_w_0()
+                                    .child(row.clone())
+                            }))
                         }))
                         .child(
-                            ui::muted(ui::xs(
-                                if view.is_some_and(|v| !v.kubernetes) { "Available. Connected Argo CD authorization is checked during operation review. These operations target the Argo CD Application, not a selected managed Kubernetes resource." } else { "Available. Kubernetes permission is checked during operation review. These operations target the Argo CD Application, not a selected managed Kubernetes resource." },
-                            ))
-                            .font_family(crate::theme::SANS)
-                            .id("argo-operation-scope")
-                            .test_support(),
+                            ui::muted(ui::xs(scope_description.clone()))
+                                .font_family(crate::theme::SANS)
+                                .id("argo-operation-scope")
+                                .test_support()
+                                .aria_label(scope_description),
                         ),
                 ),
         )
-        .child(
-            super::argo_options::controls(state, &summary.name, loading || pending, cx),
-        );
+        .child(super::argo_options::controls(
+            state,
+            &summary.name,
+            loading || pending,
+            selected.unavailable.is_some(),
+            cx,
+        ));
     let counts = view.map(|view| view.counts).unwrap_or_default();
     let signals = div()
         .mt(px(12.))
@@ -493,7 +524,10 @@ pub(super) fn argo_tab(
     if let ArgoLoad::Failed(error) = &state.load {
         column = column
             .child(Inspector::argo_snapshot_failure(
-                error, connected, disclosure, cx,
+                error,
+                selected.connected,
+                disclosure,
+                cx,
             ))
             .child(
                 controls::button(Variant::Outline, 24., false)

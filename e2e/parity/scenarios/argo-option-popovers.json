@@ -25,6 +25,22 @@
         { "action": "dismissArgoPopover", "how": "Escape" },
         { "action": "expectArgoPopover", "control": "Refresh options", "open": false }
       ]
+    },
+    {
+      "id": "argo-review.unavailable-connection",
+      "title": "A preferred connection that is no longer connected disables Sync and Refresh and their options",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test" },
+        { "action": "selectArgoConnection", "url": "https://argocd.example.test" },
+        { "action": "disconnectArgoProfile" },
+        { "action": "expectArgoOperationState", "control": "Sync", "enabled": false },
+        { "action": "expectArgoOperationState", "control": "Refresh", "enabled": false },
+        { "action": "expectArgoOperationState", "control": "Sync options", "enabled": false },
+        { "action": "expectArgoOperationState", "control": "Refresh options", "enabled": false },
+        { "action": "expectArgoText", "text": "Unavailable, provider connection: Selected Argo CD provider connection is unavailable." }
+      ]
     }
   ]
 }

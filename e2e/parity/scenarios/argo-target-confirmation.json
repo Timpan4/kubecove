@@ -15,6 +15,25 @@
         { "action": "expectNoArgoControl", "control": "Confirm target again" },
         { "action": "configureArgoMock", "script": "base" }
       ]
+    },
+    {
+      "id": "argo-connected.no-retry-after-failed-reconfirm",
+      "title": "A failed target preview after a failed reconnect offers no further Confirm target again",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd-server.argocd.svc", "tunnel": true, "remember": true },
+        { "action": "confirmArgoTunnel" },
+        { "action": "disconnectArgoProfile" },
+        { "action": "configureArgoMock", "script": "target-mismatch" },
+        { "action": "reconnectArgoProfile" },
+        { "action": "expectArgoText", "text": "Fixture tunnel target changed" },
+        { "action": "configureArgoMock", "script": "preview-error" },
+        { "action": "argoControl", "control": "Confirm target again" },
+        { "action": "expectArgoText", "text": "Fixture tunnel preview unavailable" },
+        { "action": "expectNoArgoControl", "control": "Confirm target again" },
+        { "action": "configureArgoMock", "script": "base" }
+      ]
     }
   ]
 }

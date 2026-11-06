@@ -405,6 +405,7 @@ impl Inspector {
         // As on the web, only a failed reconnect of a remembered tunnel profile offers a fresh
         // preview of that profile's saved endpoint.
         if state.error.is_some()
+            && state.reconfirm
             && let Some(profile) = state.editing.as_ref().filter(|p| p.remember_credential)
             && matches!(
                 profile.endpoint,

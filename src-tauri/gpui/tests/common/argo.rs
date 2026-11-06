@@ -93,6 +93,9 @@ impl Argo {
         &self,
         request: kubecove_gpui::backend::ArgoTarget,
     ) -> Read<ArgoTunnelTargetPreview> {
+        if *self.script.lock().unwrap() == "preview-error" {
+            return failed("Fixture tunnel preview unavailable");
+        }
         let request = serde_json::to_value(request).unwrap();
         let preview = self
             .previews

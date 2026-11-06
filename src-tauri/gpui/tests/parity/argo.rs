@@ -219,7 +219,11 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             reveal(window, "detail-body", "argo-inspection-preference", cx);
             window.click("argo-inspection-preference", cx);
             window.render_frame(cx);
-            window.press("up", cx);
+            // Home reaches Automatic whatever the current choice is, so the result does not depend on it.
+            window.press("home", cx);
+            if string(step, "preference") == "Kubernetes" {
+                window.press("down", cx);
+            }
         }
         "expectSavedArgoProfile" => {
             reveal(window, "detail-body", "argo-connect-open", cx);
@@ -371,6 +375,60 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                     .any(|e| e.label().is_some_and(|l| l.contains(expected))),
                 "missing document {expected}"
             );
+        }
+        "selectArgoConnection" => {
+            reveal(window, "detail-body", "argo-inspection-preference", cx);
+            window.click("argo-inspection-preference", cx);
+            window.render_frame(cx);
+            // Choices are Automatic, Kubernetes, then each matching profile.
+            window.press("down", cx);
+            window.press("down", cx);
+            window.press("enter", cx);
+        }
+        "expectArgoFocusInPopover" => {
+            let id = match string(step, "control") {
+                "Sync options" => "argo-sync-panel",
+                _ => "argo-refresh-panel",
+            };
+            window.render_frame(cx);
+            // Query focus only inside the popover: focus on an unobserved element panics.
+            let focused = window.elements().iter().any(|e| {
+                e.path()
+                    .iter()
+                    .any(|part| matches!(part, ElementId::Name(name) if name == id))
+                    && e.focused() == Some(true)
+            });
+            if !focused {
+                let holders: Vec<_> = window
+                    .elements()
+                    .iter()
+                    .filter(|e| e.focused() == Some(true))
+                    .map(|e| format!("{:?}", e.path()))
+                    .collect();
+                panic!("focus is outside {id}; focused: {holders:?}");
+            }
+        }
+        "tabArgoPopover" => {
+            let presses = step["presses"].as_u64().expect("tab presses");
+            for _ in 0..presses {
+                window.press("tab", cx);
+            }
+            window.render_frame(cx);
+        }
+        "expectArgoOperationState" => {
+            let id = match string(step, "control") {
+                "Sync options" => "argo-sync-options",
+                "Refresh options" => "argo-refresh-options",
+                "Sync" => "argo-operation:Sync",
+                _ => "argo-operation:Refresh",
+            };
+            let expected = if step["enabled"].as_bool() == Some(true) {
+                "enabled"
+            } else {
+                "disabled"
+            };
+            window.render_frame(cx);
+            assert_eq!(window.find(id).description(), Some(expected), "{id}");
         }
         _ => return false,
     }

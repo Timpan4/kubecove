@@ -123,6 +123,10 @@ export type Step =
     | { action: "expectArgoCheckbox"; name: ArgoOptionName; checked: boolean }
     | { action: "toggleArgoOption"; name: ArgoOptionName }
     | { action: "expectNoArgoControl"; control: "Confirm target again" }
+    | { action: "expectArgoFocusInPopover"; control: "Sync options" | "Refresh options" }
+    | { action: "tabArgoPopover"; control: "Sync options" | "Refresh options"; presses: number }
+    | { action: "expectArgoOperationState"; control: "Sync" | "Refresh" | "Sync options" | "Refresh options"; enabled: boolean }
+    | { action: "selectArgoConnection"; url: string }
     | { action: "argoDocument"; view: "Desired" | "Live" | "Changes"; contains: string }
     | { action: "cancelYamlEdit" }
     | { action: "revealSecretValue" | "hideSecretValue" | "refreshLatencyReport" | "clearLatencyReport" | "expectLatencyEmpty" | "openDocumentation" }

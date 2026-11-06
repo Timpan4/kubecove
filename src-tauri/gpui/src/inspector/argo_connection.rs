@@ -44,6 +44,8 @@ pub(super) struct Connections {
     pub discovery_error: Option<String>,
     pub forgetting: Option<Task<()>>,
     pub reconnecting: bool,
+    /// A failed connect offers a fresh tunnel preview for a remembered profile. A failed preview clears it.
+    pub reconfirm: bool,
     pub pending_reconnect: std::collections::VecDeque<ArgoConnectionProfile>,
     pub picker: Entity<
         gpui_kit::component::select::SelectState<
@@ -125,6 +127,7 @@ impl Connections {
             discovery_error: None,
             forgetting: None,
             reconnecting: false,
+            reconfirm: false,
             pending_reconnect: Default::default(),
         }
     }
@@ -316,9 +319,7 @@ impl Inspector {
                         } else {
                             this.argo_connections.profiles.push(status);
                         }
-                        if !this.argo_connections.reconnecting {
-                            this.argo_connections.selected = Preference::Connected(id);
-                        }
+                        // The web changes the inspection preference only when the user picks it.
                         this.argo_connections.reconnecting = false;
                         this.persist_argo_preferences(cx);
                         this.sync_argo_picker(window, cx);
@@ -332,9 +333,13 @@ impl Inspector {
                             status
                                 .unavailable_reason
                                 .unwrap_or_else(|| "Argo CD did not connect".into()),
-                        )
+                        );
+                        this.argo_connections.reconfirm = true;
                     }
-                    Err(error) => this.argo_connections.error = Some(error.message),
+                    Err(error) => {
+                        this.argo_connections.error = Some(error.message);
+                        this.argo_connections.reconfirm = true;
+                    }
                 }
                 if automatic {
                     this.reconnect_next_argo_profile(window, cx);
@@ -371,10 +376,12 @@ impl Inspector {
                                 status.connected = false;
                             }
                         }
-                        this.argo_connections.selected = Preference::Automatic;
-                        this.persist_argo_preferences(cx);
+                        // The saved preference stays, as on the web. A preferred profile that is
+                        // now disconnected is unavailable, and the snapshot stays until it reconnects.
                         this.sync_argo_picker(window, cx);
-                        this.reload_argo(window, cx);
+                        if this.argo_connection_unavailable().is_none() {
+                            this.reload_argo(window, cx);
+                        }
                     }
                     Err(error) => this.argo_connections.error = Some(error.message),
                 }

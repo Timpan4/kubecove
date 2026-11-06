@@ -25,6 +25,13 @@ struct ClusterKinds {
     result: Option<Result<Vec<DiscoveredResourceKind>, String>>,
 }
 
+/// The web's `resourceKindsPending`, `resourceKindsError` and kind list for the Custom Resources section.
+pub(super) enum ClusterRead<'a> {
+    Loading,
+    Failed(&'a str),
+    Ready(&'a [DiscoveredResourceKind]),
+}
+
 impl Inspector {
     pub(super) fn sync_sidebar_discovery(&mut self, cx: &mut Context<Self>) {
         let state = &mut self.sidebar_tree.discovery;
@@ -103,15 +110,24 @@ impl Inspector {
 
     /// Cluster-wide kinds for the Custom Resources section; empty until discovery succeeds.
     pub(super) fn cluster_kinds(&self) -> &[DiscoveredResourceKind] {
+        match self.cluster_read() {
+            ClusterRead::Ready(kinds) => kinds,
+            ClusterRead::Loading | ClusterRead::Failed(_) => &[],
+        }
+    }
+
+    /// The cluster-wide kind read the Custom Resources section shows as loading, failed or ready.
+    pub(super) fn cluster_read(&self) -> ClusterRead<'_> {
         match self
             .sidebar_tree
             .discovery
             .cluster
             .as_ref()
-            .and_then(|cluster| cluster.result.as_ref())
+            .map(|cluster| cluster.result.as_ref())
         {
-            Some(Ok(kinds)) => kinds,
-            _ => &[],
+            None | Some(None) => ClusterRead::Loading,
+            Some(Some(Err(message))) => ClusterRead::Failed(message),
+            Some(Some(Ok(kinds))) => ClusterRead::Ready(kinds),
         }
     }
 

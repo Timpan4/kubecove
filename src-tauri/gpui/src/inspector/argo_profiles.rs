@@ -259,6 +259,29 @@ impl Inspector {
             })
             .map(|p| p.id.clone())
     }
+    /// Why the selected connection cannot serve operations, as the web's
+    /// `argoOperationAvailability`. Only a saved preference for one profile can be unavailable.
+    pub(super) fn argo_connection_unavailable(&self) -> Option<String> {
+        const FALLBACK: &str = "Selected Argo CD provider connection is unavailable.";
+        let Preference::Connected(id) = &self.argo_connections.selected else {
+            return None;
+        };
+        let status = self
+            .argo_connections
+            .profiles
+            .iter()
+            .find(|s| s.profile.as_ref().is_some_and(|p| &p.id == id));
+        match status {
+            Some(status) if status.connected => None,
+            Some(status) => Some(
+                status
+                    .unavailable_reason
+                    .clone()
+                    .unwrap_or_else(|| FALLBACK.into()),
+            ),
+            None => Some(FALLBACK.into()),
+        }
+    }
     pub(super) fn argo_profile_matches(&self, p: &ArgoConnectionProfile) -> bool {
         p.cluster_context.as_deref() == Some(&self.scope.context)
             && p.workspace_id.as_deref() == Some(&self.argo_workspace_id())
