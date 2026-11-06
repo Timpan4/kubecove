@@ -16,6 +16,8 @@ kubecove-host = { path = "../crates/host", features = ["remote-client"] }
 rfd = "=0.17.2"
 dirs = "=7.0.0"
 reqwest = { version = "=0.13.5", default-features = false, features = ["json", "rustls-no-provider"] }
+# reqwest uses `rustls-no-provider`; `main` installs the ring provider before the update check.
+rustls = { version = "=0.23.46", default-features = false, features = ["ring"] }
 semver = "=1.0.28"
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "sync", "time"] }
 # Shares one in-flight resource scope read between the Overview and the browser.
@@ -35,7 +37,6 @@ serde = "=1.0.229"
 serde_yaml = { package = "yaml_serde", version = "=0.10.7" }
 
 [dev-dependencies]
-rustls = { version = "=0.23.46", default-features = false, features = ["ring"] }
 tokio-tungstenite = "=0.30.0"
 gpui-kit = { version = "=0.9.0", default-features = false, features = ["test-support"] }
 serde = { version = "=1.0.229", features = ["derive"] }
