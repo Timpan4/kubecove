@@ -174,17 +174,19 @@ fn gitops_label(row: &ResourceSummary) -> Option<String> {
 /// Callers cache the result for filtering and grouping between data changes.
 /// Unresolved owner references keep the original buffer borrowed.
 pub fn inherit_gitops_owners(rows: &[ResourceSummary]) -> Cow<'_, [ResourceSummary]> {
-    let namespace_key = |row: &ResourceSummary| row.namespace.clone().unwrap_or_default();
-    let owner_keys: HashSet<(String, String)> = rows
+    fn namespace_key(row: &ResourceSummary) -> &str {
+        row.namespace.as_deref().unwrap_or_default()
+    }
+    let owner_keys: HashSet<(&str, &str)> = rows
         .iter()
-        .filter_map(|row| Some((namespace_key(row), row.owner_ref.clone()?)))
+        .filter_map(|row| Some((namespace_key(row), row.owner_ref.as_deref()?)))
         .collect();
     if owner_keys.is_empty() {
         return Cow::Borrowed(rows);
     }
-    let mut parents: HashMap<(String, String), usize> = HashMap::new();
+    let mut parents: HashMap<(&str, &str), usize> = HashMap::new();
     for (index, row) in rows.iter().enumerate() {
-        let key = (namespace_key(row), row.name.clone());
+        let key = (namespace_key(row), row.name.as_str());
         if owner_keys.contains(&key) {
             parents.insert(key, index);
         }
@@ -201,9 +203,8 @@ pub fn inherit_gitops_owners(rows: &[ResourceSummary]) -> Cow<'_, [ResourceSumma
                 }
                 let mut seen = HashSet::from([index]);
                 let mut current = row;
-                while let Some(owner_ref) = current.owner_ref.as_ref() {
-                    let Some(&owner_index) =
-                        parents.get(&(namespace_key(current), owner_ref.clone()))
+                while let Some(owner_ref) = current.owner_ref.as_deref() {
+                    let Some(&owner_index) = parents.get(&(namespace_key(current), owner_ref))
                     else {
                         break;
                     };
