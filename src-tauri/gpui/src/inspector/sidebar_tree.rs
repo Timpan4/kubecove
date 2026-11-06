@@ -56,6 +56,7 @@ pub(super) struct TreeState {
     /// Shared by the desktop sidebar and the drawer, which never render together,
     /// so the tree keeps its scroll position when the drawer closes.
     pub scroll: ScrollHandle,
+    pub(super) cache: RefCell<Option<gpui_kit::Entity<super::sidebar_cache::SidebarCache>>>,
     /// A selection made outside the tree that still has to scroll into view.
     /// Shared with the paint callback that performs the scroll.
     pub(super) reveal: Rc<RefCell<Option<String>>>,
@@ -64,6 +65,15 @@ pub(super) struct TreeState {
 }
 
 impl TreeState {
+    pub(super) fn focused(&self, window: &Window, cx: &App) -> Option<FocusHandle> {
+        let focused = window.focused(cx)?;
+        self.focus
+            .borrow()
+            .values()
+            .any(|handle| *handle == focused)
+            .then_some(focused)
+    }
+
     pub(super) fn focus_handle(&self, path: &str, cx: &mut App) -> FocusHandle {
         self.focus
             .borrow_mut()

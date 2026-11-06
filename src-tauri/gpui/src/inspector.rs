@@ -112,6 +112,7 @@ mod settings_mcp;
 mod settings_page;
 mod settings_sections;
 mod sidebar;
+mod sidebar_cache;
 mod sidebar_discovery;
 mod sidebar_reveal;
 mod sidebar_tree;
@@ -623,11 +624,12 @@ impl Render for Inspector {
         let sidebar = (workspace && !compact).then(|| {
             crate::frame_profile::element(
                 "sidebar",
-                self.sidebar(cx, sidebar::WIDE_WIDTH).into_any_element(),
+                self.sidebar(window, cx, sidebar::WIDE_WIDTH)
+                    .into_any_element(),
             )
         });
-        let drawer =
-            (workspace && compact && self.navigation_open).then(|| self.navigation_drawer(cx));
+        let drawer = (workspace && compact && self.navigation_open)
+            .then(|| self.navigation_drawer(window, cx));
         div()
             .track_focus(&self.focus)
             .relative()

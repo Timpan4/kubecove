@@ -238,7 +238,11 @@ impl Inspector {
     }
 
     /// The compact-width drawer, `WorkspaceSidebar`'s `SheetContent`.
-    pub(super) fn navigation_drawer(&self, cx: &mut Context<Self>) -> AnyElement {
+    pub(super) fn navigation_drawer(
+        &self,
+        window: &gpui_kit::Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         div()
             .id("workspace-navigation")
             .occlude()
@@ -273,12 +277,12 @@ impl Inspector {
                     .relative()
                     .h_full()
                     .bg(Tokens::background())
-                    .child(self.sidebar(cx, DRAWER_WIDTH)),
+                    .child(self.sidebar(window, cx, DRAWER_WIDTH)),
             )
             .into_any_element()
     }
 
-    pub(super) fn sidebar(&self, cx: &mut Context<Self>, width: f32) -> impl IntoElement {
+    pub(super) fn sidebar_contents(&self, cx: &mut Context<Self>, width: f32) -> impl IntoElement {
         let _profile = crate::frame_profile::scope("sidebar", "build");
         let namespaces = self.namespace_rows(cx);
         div()
