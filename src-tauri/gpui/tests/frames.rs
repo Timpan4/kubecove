@@ -73,7 +73,13 @@ impl Driver {
         let (handle, _inspector) = cx
             .update(|cx| {
                 gpui_kit::open_window(window_options(), cx, |window, cx| {
-                    cx.new(|cx| Inspector::new(backend.clone(), window, cx))
+                    cx.new(|cx| {
+                        Inspector::new(backend.clone(), window, cx).with_saved_workspace(
+                            "Parity mock workspace",
+                            "mock-dev",
+                            cx,
+                        )
+                    })
                 })
             })
             .unwrap();

@@ -375,19 +375,21 @@ impl Backend for Fixture {
         &self,
         scope: Scope,
     ) -> Read<Vec<kubecove_lib::models::DiscoveredResourceKind>> {
-        let kinds = self
-            .kinds
-            .iter()
-            .filter(|kind| {
-                kind.namespaced
-                    && self.resources.iter().any(|row| {
-                        row.kind == kind.kind
-                            && row.api_version.as_ref() == Some(&kind.api_version)
-                            && row.namespace == scope.namespace
-                    })
-            })
-            .cloned()
-            .collect();
+        let kinds =
+            self.kinds
+                .iter()
+                .filter(|kind| {
+                    kind.namespaced
+                        && self.resources.iter().any(|row| {
+                            row.kind == kind.kind
+                                && row.api_version.as_ref() == Some(&kind.api_version)
+                                && scope.namespace.as_ref().is_none_or(|namespace| {
+                                    row.namespace.as_ref() == Some(namespace)
+                                })
+                        })
+                })
+                .cloned()
+                .collect();
         Box::pin(async move { Ok(kinds) })
     }
     fn resource_kinds(

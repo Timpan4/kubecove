@@ -551,6 +551,12 @@ impl Inspector {
         };
         let page_index = self.table_page;
         let page_count = page.page_count;
+        let summary = format!(
+            "{} resources · page {} of {}",
+            page.total,
+            page_index + 1,
+            page_count
+        );
         let pager_button = |id: &'static str, label: &'static str, enabled: bool| {
             ui::outline_button()
                 .id(id)
@@ -586,13 +592,11 @@ impl Inspector {
                                     .child(ui::semibold(ui::sm("Resource Table"))),
                             )
                             .child(
-                                ui::muted(ui::xs(format!(
-                                    "{} resources · page {} of {}",
-                                    page.total,
-                                    page_index + 1,
-                                    page_count
-                                )))
-                                .mt(px(2.)),
+                                ui::muted(ui::xs(summary.clone()))
+                                    .id("resource-table-summary")
+                                    .test_support()
+                                    .aria_label(summary)
+                                    .mt(px(2.)),
                             ),
                     )
                     .child(
