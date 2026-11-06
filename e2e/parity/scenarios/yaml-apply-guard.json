@@ -46,6 +46,30 @@
         { "action": "expectDryRun", "contains": ["+# dry-run: browser mock", "  force-conflicts: false"] },
         { "action": "expectNoYamlApplyDescription" }
       ]
+    },
+    {
+      "id": "yaml-apply.dry-run-failure",
+      "title": "A failed dry run shows its friendly error instead of the raw message, and a later dry run clears it",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showYaml" },
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "prepare_yaml_apply", "context": "mock-dev" } },
+        { "action": "editYaml" },
+        { "action": "dryRunYaml" },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "prepare_yaml_apply", "context": "mock-dev" } },
+        { "action": "mockTiming", "control": { "operation": "failOnce", "command": "prepare_yaml_apply", "context": "mock-dev", "kind": "transport" } },
+        {
+          "action": "expectFriendlyError",
+          "title": "KubeCove could not reach the Kubernetes API",
+          "next": "Check the selected context's API endpoint, network or VPN path, and TLS certificate trust, then retry."
+        },
+        { "action": "expectNoYamlNotice", "title": "Dry run failed" },
+        { "action": "dryRunYaml" },
+        { "action": "expectDryRun", "contains": ["+# dry-run: browser mock"] },
+        { "action": "expectNoYamlNotice", "title": "KubeCove could not reach the Kubernetes API" }
+      ]
     }
   ]
 }

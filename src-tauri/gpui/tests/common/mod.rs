@@ -664,7 +664,15 @@ impl Backend for Fixture {
                 ))
             });
         }
-        self.detail_tabs.prepare_yaml_apply(request)
+        // The dry run is a timed mock read, as lint_yaml is, so a scripted failure applies.
+        let context = request.cluster_context.clone();
+        let preview = self.detail_tabs.prepare_yaml_apply(request);
+        let timing = self.timing.clone();
+        Box::pin(async move {
+            timing
+                .read("prepare_yaml_apply", &context, "", preview.await?)
+                .await
+        })
     }
     fn apply_yaml(&self, request: YamlApplyRequest) -> Read<YamlApplyResult> {
         self.detail_tabs.apply_yaml(request)
@@ -687,6 +695,15 @@ impl Backend for Fixture {
                 Err(AppError::new(
                     "Scripted namespaces read failure",
                     AppErrorKind::Cluster,
+                ))
+            });
+        }
+        // Typed like the browser mock's `namespaces-credential-failed` phase.
+        if *self.shell_read_phase.lock().unwrap() == "namespaces-credential-failed" {
+            return Box::pin(async {
+                Err(AppError::new(
+                    "Scripted read: credentialUnavailable",
+                    AppErrorKind::CredentialUnavailable,
                 ))
             });
         }

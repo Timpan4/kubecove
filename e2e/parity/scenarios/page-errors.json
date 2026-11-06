@@ -145,6 +145,21 @@
           }
         }
       ]
+    },
+    {
+      "id": "page-errors.namespaces.failed-read",
+      "title": "A failed namespace read on the Namespaces list classifies by its credential kind, not its message",
+      "steps": [
+        { "action": "configureShellRead", "phase": "namespaces-credential-failed" },
+        { "action": "openResources" },
+        { "action": "openNamespaceList" },
+        {
+          "action": "expectFriendlyError",
+          "title": "Kubernetes authentication failed",
+          "next": "Sign in through the selected context's credential provider or refresh its credentials, then retry."
+        },
+        { "action": "configureShellRead", "phase": "ready" }
+      ]
     }
   ]
 }

@@ -152,7 +152,7 @@ function step(value: unknown): Step {
         case "expectRemoteHost": return { action: item.action, url: string(item.url) };
         case "expectRemoteHostTooltip": return { action: item.action, value: string(item.value) };
         case "expectNoRemoteHost": return { action: item.action };
-        case "configureShellRead": return { action: item.action, phase: oneOf(["ready", "contexts-failed", "contexts-empty", "namespaces-failed", "namespaces-empty", "resources-failed", "primary-context-missing", "kind-missing", "payments-api-removed"], item.phase, "a shell read phase") };
+        case "configureShellRead": return { action: item.action, phase: oneOf(["ready", "contexts-failed", "contexts-empty", "namespaces-failed", "namespaces-credential-failed", "namespaces-empty", "resources-failed", "primary-context-missing", "kind-missing", "payments-api-removed"], item.phase, "a shell read phase") };
         case "openNamespaceList": case "openNavigationDrawer": return { action: item.action };
         case "expectNamespaceRow": return { action: item.action, name: string(item.name), age: string(item.age) };
         case "resizeViewport": return { action: item.action, width: count(item.width), height: count(item.height) };

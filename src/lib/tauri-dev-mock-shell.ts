@@ -1,8 +1,8 @@
-export type ShellReadPhase = "ready" | "contexts-failed" | "contexts-empty" | "namespaces-failed" | "namespaces-empty" | "resources-failed" | "primary-context-missing" | "kind-missing" | "payments-api-removed";
+export type ShellReadPhase = "ready" | "contexts-failed" | "contexts-empty" | "namespaces-failed" | "namespaces-credential-failed" | "namespaces-empty" | "resources-failed" | "primary-context-missing" | "kind-missing" | "payments-api-removed";
 function initialPhase(): ShellReadPhase {
     const value = globalThis.sessionStorage?.getItem("parity-shell-read");
     switch (value) {
-        case "contexts-failed": case "contexts-empty": case "namespaces-empty": case "namespaces-failed": case "resources-failed":
+        case "contexts-failed": case "contexts-empty": case "namespaces-empty": case "namespaces-failed": case "namespaces-credential-failed": case "resources-failed":
         case "primary-context-missing": case "kind-missing": case "payments-api-removed": return value;
         default: return "ready";
     }
@@ -16,6 +16,8 @@ export function configureShellRead(next: ShellReadPhase): void {
 
 export function shellRead<Item>(read: "contexts" | "namespaces" | "resources" | "kinds", items: Item[]): Item[] {
     if (phase === `${read}-failed`) throw new Error(`Scripted ${read} read failure`);
+    // Typed like the timing mock's failures, so the friendly error classifies by kind.
+    if (read === "namespaces" && phase === "namespaces-credential-failed") throw Object.assign(new Error("Scripted read: credentialUnavailable"), { kind: "credentialUnavailable" });
     if ((read === "namespaces" && phase === "namespaces-empty") || (read === "contexts" && phase === "contexts-empty")) return [];
     // The saved primary context of the parity workspaces is mock-dev.
     if (read === "contexts" && phase === "primary-context-missing") return items.filter((item) => (item as { name?: string }).name !== "mock-dev");

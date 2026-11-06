@@ -579,10 +579,18 @@ pub(super) fn yaml_tab(
             |pane, error| {
                 let conflict =
                     error.kind == AppErrorKind::FieldManagerConflict && !state.force_for_resource;
-                pane.child(failure(
+                pane.child(inspector.friendly_failure(
                     "yaml-dry-run-error",
-                    "Dry run failed",
-                    error.message.clone(),
+                    Some(error.kind),
+                    &error.message,
+                    ErrorContext {
+                        operation: Some(Operation::YamlDryRun),
+                        fallback_title: Some("Dry run failed"),
+                        target: Some(path.as_str()),
+                        ..ErrorContext::default()
+                    },
+                    None,
+                    cx,
                 ))
                 .when(conflict, |pane| {
                     pane.child(

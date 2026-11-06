@@ -44,7 +44,7 @@ export type Step =
     | { action: "expectRemoteHost"; url: string }
     | { action: "expectRemoteHostTooltip"; value: string }
     | { action: "expectNoRemoteHost" }
-    | { action: "configureShellRead"; phase: "ready" | "contexts-failed" | "contexts-empty" | "namespaces-failed" | "namespaces-empty" | "resources-failed" | "primary-context-missing" | "kind-missing" | "payments-api-removed" }
+    | { action: "configureShellRead"; phase: "ready" | "contexts-failed" | "contexts-empty" | "namespaces-failed" | "namespaces-credential-failed" | "namespaces-empty" | "resources-failed" | "primary-context-missing" | "kind-missing" | "payments-api-removed" }
     | { action: "openNamespaceList" }
     | { action: "expectNamespaceRow"; name: string; age: string }
     | { action: "resizeViewport"; width: number; height: number }
