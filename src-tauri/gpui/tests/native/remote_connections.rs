@@ -2,7 +2,7 @@
 //! external server is contacted and no credential is written or printed.
 use futures_util::StreamExt;
 use kubecove_gpui::backend::{Backend, DesktopBackend, NativeBackend, Scope, WatchTarget};
-use kubecove_lib::models::{AppErrorKind, ArgoApplicationRef};
+use kubecove_lib::models::{AppErrorKind, ArgoApplicationRef, WatchResourceKey, WatchResourceKind};
 use serde_json::json;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -36,6 +36,17 @@ fn saved_sources(command: &str, arguments: &serde_json::Value) -> serde_json::Va
         json!(true)
     };
     json!({"kubeconfigEnvVar":env_var,"paths":paths,"sourceKey":"remote","sourceLabel":"Server","showSourceLabels":show,"warnings":[]})
+}
+/// The controlled `list_resource_scope` answer: no rows, and a version of 4242 for Pod lists
+/// only. Other kinds come back without a version, as a list the server did not version.
+fn scope_result(arguments: &serde_json::Value) -> serde_json::Value {
+    let requests = arguments["requests"].as_array().unwrap();
+    let resource_versions: Vec<_> = requests
+        .iter()
+        .filter(|request| request["kind"] == "Pod")
+        .map(|request| json!({"request": request, "resourceVersion": "4242"}))
+        .collect();
+    json!({"resources":[],"completedRequests":requests,"resourceVersions":resource_versions,"failures":[]})
 }
 async fn server(name: &'static str) -> (String, tokio::task::JoinHandle<()>, Requests) {
     let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
@@ -71,7 +82,8 @@ async fn server(name: &'static str) -> (String, tokio::task::JoinHandle<()>, Req
                 } else if matches!(command, Some("list_namespaces" | "list_resource_kinds" | "list_resources")) {
                     json!([])
                 } else if command == Some("start_resource_watch") { json!("controlled-stream") }
-                else if let Some(command @ ("set_kubeconfig_env_var" | "add_kubeconfig_paths" | "remove_kubeconfig_path" | "reorder_kubeconfig_paths" | "set_show_kubeconfig_source_labels")) = command {
+                else if command == Some("list_resource_scope") { scope_result(&serde_json::from_slice(&body).unwrap()) }
+                else if let Some(command @ ("set_kubeconfig_env_var"| "add_kubeconfig_paths" | "remove_kubeconfig_path" | "reorder_kubeconfig_paths" | "set_show_kubeconfig_source_labels")) = command {
                     saved_sources(command, &serde_json::from_slice(&body).unwrap())
                 }
                 else { json!(true) };
@@ -219,6 +231,40 @@ fn kubeconfig_env_var_and_server_path_save_on_the_connected_server() {
             "remove_kubeconfig_path".into(),
             json!({"path": "/srv/second.yaml"})
         )));
+        task.abort();
+        let _ = task.await;
+    });
+}
+
+#[test]
+fn remote_reads_carry_list_versions_to_watch_starts() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let backend = DesktopBackend::new(NativeBackend::new().unwrap());
+    runtime.block_on(async {
+        let (url, task, mut requests) = server("controlled-host").await;
+        backend.connect_remote(url, "controlled-test-credential".into()).await.unwrap();
+        let scope = Scope { context: "controlled-host".into(), namespace: Some("payments".into()) };
+        let kind = |name: &str| WatchResourceKey {
+            resource_kind: WatchResourceKind { kind: name.into(), group: None, version: None, api_version: None, plural: None, namespaced: Some(true) },
+            namespace: Some("payments".into()),
+        };
+        let scope_read = backend.resources(scope.clone(), false).await.unwrap();
+        let versions: Vec<_> = scope_read.versions.values().map(String::as_str).collect();
+        assert_eq!(versions, vec!["4242"], "the scope read must keep the Pod list version");
+        let pods = backend.kind_resources(scope.clone(), kind("Pod"), Vec::new()).await.unwrap();
+        assert_eq!(pods.resource_version.as_deref(), Some("4242"));
+        let deployments = backend.kind_resources(scope.clone(), kind("Deployment"), Vec::new()).await.unwrap();
+        assert_eq!(deployments.resource_version, None, "a list without a version must not get one");
+        let stream = backend.watch(WatchTarget::Resource { scope, key: Box::new(kind("Pod")), resource_version: pods.resource_version }).await.unwrap();
+        drop(stream);
+        loop {
+            let (command, args) = requests.recv().await.unwrap();
+            if command == "start_resource_watch" {
+                assert_eq!(args["keys"][0]["resourceVersion"], "4242");
+                break;
+            }
+        }
+        backend.disconnect_remote().await.unwrap();
         task.abort();
         let _ = task.await;
     });

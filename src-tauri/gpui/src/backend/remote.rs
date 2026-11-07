@@ -382,6 +382,7 @@ impl Backend for DesktopBackend {
                 )
                 .await?;
                 result.namespaces = next.namespaces;
+                result.versions.extend(next.versions);
                 for row in next.resources {
                     if !result.resources.iter().any(|old| {
                         old.kind == row.kind
@@ -419,22 +420,13 @@ impl Backend for DesktopBackend {
         if !self.selected() {
             return self.local.kind_resources(scope, key, recycled);
         }
-        let kind = key.resource_kind;
-        let read: Read<Vec<ResourceSummary>> = if kind.plural.is_some() {
-            self.call("list_dynamic_resources", json!({"clusterContext":scope.context,"resourceKind":kind,"namespace":key.namespace}))
-        } else {
-            self.call(
-                "list_resources",
-                json!({"clusterContext":scope.context,"kind":kind.kind,"namespace":key.namespace}),
-            )
-        };
-        // `list_resources` returns rows without their list version, so a
-        // remote watch of them starts at "0".
+        let remote = self.remote.clone();
+        let request = reads::key_request(&key);
         self.local.read(async move {
-            let rows = read.await?;
+            let list = reads::list_request(remote, &scope.context, request).await?;
             Ok(KindRows {
-                rows: super::live_data::reuse_row_buffer(recycled, rows),
-                resource_version: None,
+                rows: super::live_data::reuse_row_buffer(recycled, list.items),
+                resource_version: list.resource_version,
             })
         })
     }
