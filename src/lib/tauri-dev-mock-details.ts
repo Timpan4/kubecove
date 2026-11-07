@@ -5,6 +5,9 @@ import type { JsonObject, ResourceSummary } from "./types";
 // Open Helm release action resolves to a real Helm details card.
 const DETAILS_POD = "metrics-gateway-9f6d4f7c9-7j2p4";
 const OWNER = "metrics-gateway-9f6d4f7c9";
+// A multi-container Pod with long container names, for the Logs toolbar's container picker.
+const DEX_POD = "argocd-dex-server-6d7f9c5b8-q4w2n";
+const DEX_CONTAINERS = ["dex-server", "oidc-bridge-proxy-sidecar", "tls-certificate-rotator-sidecar"];
 const SAMPLED_AT = "2026-06-18T09:12:00Z";
 const EARLIER_AT = "2026-06-18T09:05:00Z";
 
@@ -56,6 +59,13 @@ export function detailStatusFor(summary: ResourceSummary): JsonObject {
 	const base = { phase: summary.status, ready: summary.ready, restarts: summary.restarts };
 	if (summary.kind === "Pod" && summary.namespace === "payments" && summary.name === "payments-api-7d9c9b7f8d-k2r9p") {
 		return { ...base, containerStatuses: ["app", "sidecar"].map((name) => ({ name, ready: true, restartCount: 0, state: { running: { startedAt: SAMPLED_AT } } })) };
+	}
+	if (summary.kind === "Pod" && summary.namespace === "argocd" && summary.name === DEX_POD) {
+		return {
+			...base,
+			initContainerStatuses: [{ name: "copy-dex-plugins", ready: true, restartCount: 0, state: { terminated: { reason: "Completed", exitCode: 0, startedAt: EARLIER_AT, finishedAt: EARLIER_AT } } }],
+			containerStatuses: DEX_CONTAINERS.map((name) => ({ name, ready: true, restartCount: 0, state: { running: { startedAt: SAMPLED_AT } } })),
+		};
 	}
 	if (!isDetailsPod(summary)) return base;
 	return {

@@ -121,6 +121,7 @@ export const kinds: DiscoveredResourceKind[] = [
 export const resources: ResourceSummary[] = [
 	res("Deployment", "argocd-server", "argocd", "healthy", "1/1", "Synced", 0, "argocd"),
 	res("Pod", "argocd-server-8c9869674-xj9p", "argocd", "healthy", "1/1", "Running", 0, "argocd"),
+	res("Pod", "argocd-dex-server-6d7f9c5b8-q4w2n", "argocd", "healthy", "3/3", "Running", 0, "argocd"),
 	res("Service", "argocd-server", "argocd", "healthy", undefined, "ClusterIP", 0, "argocd"),
 	res("ConfigMap", "argocd-cm", "argocd", "healthy", "true", "Active", 0, "argocd"),
 	res("Secret", "argocd-secret", "argocd", "unknown", undefined, "Redacted", 0, "argocd"),
