@@ -278,6 +278,8 @@ static VIEW_CASES: &[Case] = &[
     named_view!("network-flow"),
     named_view!("metrics"),
     named_view!("usage-footer"),
+    named_view!("logs.pod"),
+    named_view!("logs.pod-paused"),
     named_view!("actions-image"),
     named_view!("actions-environment"),
     named_view!("actions-resources"),

@@ -157,6 +157,20 @@ pub(super) fn setup(driver: &mut Driver, view: &str) {
         "incidents" => driver.act(|window, cx| window.click("nav:Incidents", cx)),
         "port-forwards" => driver.act(|window, cx| window.click("nav:Port Forwards", cx)),
         "resources" | "metrics" => driver.act(|window, cx| window.click("open-resources", cx)),
+        "logs.pod" | "logs.pod-paused" => {
+            driver.act(|window, cx| window.click("open-resources", cx));
+            driver.act(|window, cx| {
+                window.click("search", cx);
+                window.input("argocd-dex-server", cx);
+            });
+            driver.act(|window, cx| {
+                window.click("resource:Pod:argocd:argocd-dex-server-6d7f9c5b8-q4w2n", cx)
+            });
+            driver.act(|window, cx| window.click("show-logs", cx));
+            if view == "logs.pod-paused" {
+                driver.act(|window, cx| window.click("log-pause", cx));
+            }
+        }
         "network-flow" => {
             driver.act(|window, cx| window.click("open-resources", cx));
             driver.act(|window, cx| window.click("map-mode:Network Flow", cx));
