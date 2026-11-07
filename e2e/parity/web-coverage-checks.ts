@@ -138,7 +138,13 @@ export async function checkCoverage(page: Page, check: string) {
 			const initialWidth = (await node.boundingBox())?.width;
 			if (!initialWidth) throw new Error("Map nodes are missing");
 			await page.locator(".svelte-flow__controls-zoomin").click();
-			await step("zoom in", page.waitForFunction((before) => (document.querySelector(".svelte-flow__node-ownershipResource")?.getBoundingClientRect().width ?? 0) > before, initialWidth));
+			// The map fits itself two frames after its size settles. Under full-suite load that fit can
+			// land after the click and undo the zoom, so the wait presses zoom in again until it holds.
+			await step("zoom in", page.waitForFunction((before) => {
+				if ((document.querySelector(".svelte-flow__node-ownershipResource")?.getBoundingClientRect().width ?? 0) > before) return true;
+				document.querySelector<HTMLElement>(".svelte-flow__controls-zoomin")?.click();
+				return false;
+			}, initialWidth));
 			const zoomedWidth = (await node.boundingBox())?.width;
 			if (!zoomedWidth) throw new Error("Zoom removed map nodes");
 			await page.locator(".svelte-flow__controls-zoomout").click();

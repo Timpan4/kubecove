@@ -79,6 +79,8 @@ When one web scenario fails, rerun that ID alone with `PARITY_PREFIX=<id> PARITY
 
 Confirmed flakes:
 
+- `coverage-map.viewport` (web, full-suite load only): the zoom-in wait timed out. The failure capture showed the map at its fit zoom. The map fits itself two frames after its measured size changes, so a late fit could undo the driver's zoom click. The wait now presses zoom in again until the node grows. It never failed alone, so the fix is unproven until full runs stop showing it.
+
 - `argo-review.retry-accepted-state` (web, under parallel load), now fixed: the app's own Argo CD state poll could succeed after the mock returned to `base` and before the driver clicked Retry state refresh. The scenario now runs `controlClock` after the review opens, and `advanceClock` runs the recovery tick only when the scenario asks for it. The web driver passed it 5 of 5 runs in a row after the change. Its pre-change flake was not reproduced here.
 - `argo-connected.saved-profile-and-preference` (web): failed once in a loaded full run and passed alone.
 - `mock-timing.list-watch-gap` (web): failed once with "Execution context was destroyed" on the first run after a fresh `bun install`. `vite.log` shows Vite re-optimizing dependencies and reloading the page mid-scenario. It passed alone and in the next run of the same prefixes. The same reload later failed `mock-timing.forbidden` and `mock-timing.watch-start-version` in one first run after a fresh install; both passed in the next run. It also failed `argo-workspace.watch-start-version` once when the reload, after Vite optimized `@codemirror/commands`, dropped the focused Application; it passed on `PARITY_RERUN=last`.
