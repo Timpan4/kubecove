@@ -184,13 +184,16 @@ fn toolbar(logs: &LogsState, cx: &mut Context<Inspector>) -> Div {
         .items_center()
         .gap(px(6.))
         .when_some(logs.container_picker.as_ref(), |row, picker| {
+            // `Select` styles only its inner box; its root is `size_full`, and its title has no
+            // minimum width, so as a bare flex item it shrinks to the chevron. This wrapper is the
+            // flex item instead: as wide as the selected name, at most the web's `w-40`.
             row.child(
-                Select::new(picker)
-                    .id("log-container")
-                    .h(px(28.))
-                    .text_xs()
-                    .flex_none()
-                    .w(px(160.)),
+                div().flex_none().max_w(px(160.)).child(
+                    Select::new(picker)
+                        .id("log-container")
+                        .h(px(28.))
+                        .text_xs(),
+                ),
             )
         })
         .child(status)
