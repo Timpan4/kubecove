@@ -27,7 +27,7 @@ export const ACTIONS = [
     "reorderKindKey", "resetKindOrder", "expectRemoteHost", "expectRemoteHostTooltip", "expectNoRemoteHost",
     "configureShellRead", "retryLauncher", "expectLauncherRetry",
     "overviewOperation", "overviewIncident", "reviewIncidentAction",
-    "expectTopologyDenied",
+    "expectTopologyDenied", "expectWatchStart",
     "mockTiming",
     "coverageSelect",
     "coverageCopy",
@@ -165,6 +165,7 @@ function step(value: unknown): Step {
         case "overviewIncident": return { action: item.action, filter: oneOf(["Degraded", "Needs attention", "Restart evidence"], item.filter, "an incident shortcut") };
         case "reviewIncidentAction": return { action: item.action, index: count(item.index) };
         case "expectTopologyDenied": return { action: item.action };
+        case "expectWatchStart": return { action: item.action, kind: string(item.kind), resourceVersion: item.resourceVersion === null ? null : string(item.resourceVersion) };
         case "mockTiming": {
             const control = object(item.control);
             const timing: import("../../src/lib/tauri-dev-mock-timing").TimingControl = {
