@@ -160,6 +160,9 @@ impl Inspector {
                     Some(Page::Incidents) => {
                         this.open_incident_filter(crate::incidents::Filter::All, cx)
                     }
+                    // The workspace scope, not the namespace an earlier visit selected, as the
+                    // web's `openResources` intent does.
+                    Some(Page::Resources) => this.select_namespace(None, window, cx),
                     Some(page) => this.open_page(page, cx),
                     None => this.open_launcher(window, cx),
                 }))
