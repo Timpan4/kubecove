@@ -10,8 +10,9 @@ mod rbac_review;
 mod resource_actions;
 pub mod resources;
 
-// Reuse the topology list fan-out budget across inspection commands.
-pub(crate) const MAX_LIST_CONCURRENCY: usize = 16;
+// Reuse the topology list fan-out budget across inspection commands and the
+// native client's scope reads.
+pub const MAX_LIST_CONCURRENCY: usize = 16;
 
 pub(crate) use kubecove_kube::commands::{
     BackendCancellationRegistry, ClusterAccess, ClusterLiveStore, FiniteRead, builtin_kinds,

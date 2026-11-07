@@ -37,22 +37,8 @@ impl ClusterLiveStore {
             + self.resource_kinds.evict_where(|key| key == context_key)
             + self
                 .flux_ownership_indexes
-                .evict_where(|key| key == context_key);
-        for key in keys {
-            for kind in watch_kind_keys(&key.resource_kind) {
-                let kind_prefix = format!("{prefix}kind={kind}|namespace=");
-                cleared += self.resources.evict_where(|cached| {
-                    let Some(namespace) = cached.strip_prefix(&kind_prefix) else {
-                        return false;
-                    };
-                    key.namespace
-                        .as_deref()
-                        .is_none_or(|requested| requested.is_empty() || namespace == requested)
-                        || namespace == "<all>"
-                        || namespace == "<cluster>"
-                });
-            }
-        }
+                .evict_where(|key| key == context_key)
+            + self.refresh_resources(source, context, keys);
         let overlaps = |cached: &str| {
             cached.is_empty()
                 || namespaces.is_empty()
@@ -70,6 +56,35 @@ impl ClusterLiveStore {
             key.strip_prefix(&format!("{prefix}present_custom_resource_kinds="))
                 .is_some_and(overlaps)
         });
+        cleared
+    }
+
+    /// Evicts only the cached rows of `keys`. A watch reload re-lists one
+    /// kind; namespaces, kinds and topologies stay cached, so a map read in
+    /// flight is not cancelled.
+    pub fn refresh_resources(
+        &self,
+        source: &str,
+        context: &str,
+        keys: &[WatchResourceKey],
+    ) -> usize {
+        let prefix = format!("{}|", context_cache_key(source, context));
+        let mut cleared = 0;
+        for key in keys {
+            for kind in watch_kind_keys(&key.resource_kind) {
+                let kind_prefix = format!("{prefix}kind={kind}|namespace=");
+                cleared += self.resources.evict_where(|cached| {
+                    let Some(namespace) = cached.strip_prefix(&kind_prefix) else {
+                        return false;
+                    };
+                    key.namespace
+                        .as_deref()
+                        .is_none_or(|requested| requested.is_empty() || namespace == requested)
+                        || namespace == "<all>"
+                        || namespace == "<cluster>"
+                });
+            }
+        }
         cleared
     }
 }
@@ -136,6 +151,50 @@ mod tests {
         );
         assert!(!store.resources.has_key(&apps));
         assert!(store.resources.has_key(&other));
+    }
+
+    // Failure mode: a watch reload of one kind evicted every topology in the
+    // context, so the map read in flight was cancelled and retried after 1 s.
+    #[tokio::test]
+    async fn kind_refresh_keeps_a_topology_load_in_flight() {
+        let store = Arc::new(ClusterLiveStore::default());
+        let (started, wait_started) = tokio::sync::oneshot::channel();
+        let (finish, wait_finish) = tokio::sync::oneshot::channel::<()>();
+        let loading = store.clone();
+        let topology = tokio::spawn(async move {
+            loading
+                .topology(
+                    "source".into(),
+                    "dev".into(),
+                    vec!["apps".into()],
+                    "ownership".into(),
+                    || async move {
+                        started.send(()).unwrap();
+                        wait_finish.await.unwrap();
+                        Ok(crate::models::ResourceTopology {
+                            nodes: Vec::new(),
+                            edges: Vec::new(),
+                            warnings: Vec::new(),
+                        })
+                    },
+                )
+                .await
+        });
+        wait_started.await.unwrap();
+        let key = WatchResourceKey {
+            resource_kind: WatchResourceKind {
+                kind: "Pod".into(),
+                group: Some(String::new()),
+                version: Some("v1".into()),
+                api_version: Some("v1".into()),
+                plural: Some("pods".into()),
+                namespaced: Some(true),
+            },
+            namespace: Some("apps".into()),
+        };
+        store.refresh_resources("source", "dev", &[key]);
+        finish.send(()).unwrap();
+        assert!(topology.await.unwrap().is_ok());
     }
 
     #[tokio::test]

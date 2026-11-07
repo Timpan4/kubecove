@@ -1,7 +1,7 @@
 //! Typed discovery, list and watch commands for native live views.
 use super::{INSPECTION_KINDS, LogStream, NativeBackend, Read, Scope, ScopeResult};
 use kubecove_lib::{
-    commands::{self, ClusterAccess},
+    commands::{self, ClusterAccess, list_projection::bounded_join_all},
     models::{
         AppErrorKind, DiscoveredResourceKind, ResourceSummary, WatchResourceKey, WatchResourceKind,
     },
@@ -55,11 +55,10 @@ pub(super) fn kind_resources(
     let store = backend.store.clone();
     backend.read(async move {
         let access = ClusterAccess::resolve(None)?;
-        store.refresh_view(
+        store.refresh_resources(
             access.source_key(),
             &scope.context,
             std::slice::from_ref(&key),
-            &[],
         );
         let kind = key.resource_kind;
         let rows = if let (Some(group), Some(version), Some(api_version), Some(plural)) =
@@ -217,16 +216,23 @@ pub(super) fn builtin_resources(
             Err(error) => return Err(error),
         };
         let mut resources = Vec::new();
-        for kind in kinds {
-            match commands::list_resources(
-                scope.context.clone(),
-                kind.to_owned(),
-                scope.namespace.clone(),
-                None,
-                State::new(&store),
-            )
-            .await
-            {
+        // The web reads a scope in one `list_resource_scope` call, which lists
+        // up to MAX_LIST_CONCURRENCY kinds at once.
+        let reads: Vec<_> = kinds
+            .iter()
+            .map(|kind| {
+                commands::list_resources(
+                    scope.context.clone(),
+                    (*kind).to_owned(),
+                    scope.namespace.clone(),
+                    None,
+                    State::new(&store),
+                )
+            })
+            .collect();
+        let results = bounded_join_all(reads, commands::MAX_LIST_CONCURRENCY).await;
+        for (kind, result) in kinds.into_iter().zip(results) {
+            match result {
                 Ok(rows) => resources.extend(Arc::unwrap_or_clone(rows)),
                 Err(error) if error.kind == AppErrorKind::Forbidden => {
                     warnings.push(format!("{kind}: {}", error.message))
@@ -242,43 +248,56 @@ pub(super) fn builtin_resources(
     })
 }
 
-/// Discovered custom kinds and their rows, read after the built-in resources.
+/// Custom kinds present in the scope and their rows, read after the built-in
+/// resources. The web lists only present kinds (`presentCustomResourceKinds`
+/// in WorkspaceShell.svelte), so empty kinds cost one shared presence probe
+/// instead of a list each.
 pub(super) fn custom_resources(backend: &NativeBackend, scope: Scope) -> Read<ScopeResult> {
     let store = backend.store.clone();
     backend.read(async move {
         let mut warnings = Vec::new();
         let mut resources = Vec::new();
-        let discovered =
-            crate::read_retry::cancelled_read(
-                || {
-                    Box::pin({
-                        let store = store.clone();
-                        let context = scope.context.clone();
-                        async move {
-                            commands::list_resource_kinds(context, None, State::new(&store)).await
-                        }
-                    })
-                },
-                tokio::time::sleep,
-            )
-            .await;
+        let discovered = crate::read_retry::cancelled_read(
+            || {
+                Box::pin({
+                    let store = store.clone();
+                    let context = scope.context.clone();
+                    let namespaces = scope.namespace.iter().cloned().collect();
+                    async move {
+                        commands::list_present_custom_resource_kinds(
+                            context,
+                            namespaces,
+                            None,
+                            State::new(&store),
+                        )
+                        .await
+                    }
+                })
+            },
+            tokio::time::sleep,
+        )
+        .await;
         match discovered {
             Ok(discovered) => {
-                for kind in discovered.iter() {
-                    let namespace = if kind.namespaced {
-                        scope.namespace.clone()
-                    } else {
-                        None
-                    };
-                    match commands::list_dynamic_resources(
-                        scope.context.clone(),
-                        kind.clone(),
-                        namespace,
-                        None,
-                        State::new(&store),
-                    )
-                    .await
-                    {
+                let reads: Vec<_> = discovered
+                    .iter()
+                    .map(|kind| {
+                        commands::list_dynamic_resources(
+                            scope.context.clone(),
+                            kind.clone(),
+                            if kind.namespaced {
+                                scope.namespace.clone()
+                            } else {
+                                None
+                            },
+                            None,
+                            State::new(&store),
+                        )
+                    })
+                    .collect();
+                let results = bounded_join_all(reads, commands::MAX_LIST_CONCURRENCY).await;
+                for (kind, result) in discovered.iter().zip(results) {
+                    match result {
                         Ok(rows) => resources.extend(Arc::unwrap_or_clone(rows)),
                         Err(error) => warnings.push(format!("{}: {}", kind.kind, error.message)),
                     }
