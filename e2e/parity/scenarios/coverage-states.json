@@ -15,6 +15,10 @@
 					"page": "Helm"
 				},
 				{
+					"action": "advanceClock",
+					"ms": 300
+				},
+				{
 					"action": "coverageText",
 					"text": "Loading...",
 					"visible": true
@@ -22,6 +26,10 @@
 				{
 					"action": "coverageScript",
 					"script": "base"
+				},
+				{
+					"action": "advanceClock",
+					"ms": 300
 				},
 				{
 					"action": "coverageText",
@@ -100,6 +108,10 @@
 					"page": "RBAC"
 				},
 				{
+					"action": "advanceClock",
+					"ms": 300
+				},
+				{
 					"action": "coverageText",
 					"text": "Loading...",
 					"visible": true
@@ -107,6 +119,10 @@
 				{
 					"action": "coverageScript",
 					"script": "base"
+				},
+				{
+					"action": "advanceClock",
+					"ms": 300
 				},
 				{
 					"action": "coverageText",
@@ -189,6 +205,10 @@
 					"page": "Incidents"
 				},
 				{
+					"action": "advanceClock",
+					"ms": 300
+				},
+				{
 					"action": "coverageText",
 					"text": "Loading...",
 					"visible": true
@@ -196,6 +216,10 @@
 				{
 					"action": "coverageScript",
 					"script": "base"
+				},
+				{
+					"action": "advanceClock",
+					"ms": 300
 				},
 				{
 					"action": "coverageText",
@@ -271,6 +295,10 @@
 				},
 				{
 					"action": "openResources"
+				},
+				{
+					"action": "advanceClock",
+					"ms": 300
 				},
 				{
 					"action": "coverageText",

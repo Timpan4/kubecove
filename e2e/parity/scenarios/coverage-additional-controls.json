@@ -184,6 +184,10 @@
 					"namespace": "platform"
 				},
 				{
+					"action": "advanceClock",
+					"ms": 300
+				},
+				{
 					"action": "coverageText",
 					"text": "Loading Helm release details...",
 					"visible": true

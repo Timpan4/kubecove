@@ -505,8 +505,8 @@ async function runScenario(browser: Browser, port: number, artifacts: string, sc
 	page.setDefaultTimeout(readinessTimeoutMs);
 	try {
 		signal.throwIfAborted();
-		// Fake timers must exist before the app loads: the Argo tracker's recovery timer starts with the workspace.
-		if (scenario.steps.some((step) => step.action === "controlClock")) await page.clock.install();
+		// Fake timers must exist before the app loads: the Argo tracker's recovery timer and loading indicator delays start before later steps.
+		if (scenario.steps.some((step) => step.action === "controlClock" || step.action === "advanceClock")) await page.clock.install();
 		await page.goto(`http://127.0.0.1:${port}/`);
 		const prelude = scenario.steps.findIndex((step) => step.action !== "mockTiming" || step.control.operation !== "hold");
 		const startupSteps = prelude < 0 ? scenario.steps.length : prelude;

@@ -15,6 +15,10 @@
 					"page": "Port Forwards"
 				},
 				{
+					"action": "advanceClock",
+					"ms": 300
+				},
+				{
 					"action": "coverageText",
 					"text": "Loading...",
 					"visible": true
@@ -22,6 +26,10 @@
 				{
 					"action": "coverageScript",
 					"script": "base"
+				},
+				{
+					"action": "advanceClock",
+					"ms": 300
 				},
 				{
 					"action": "expectPortForward",

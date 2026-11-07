@@ -71,8 +71,10 @@
       "steps": [
         { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_kinds", "context": "mock-dev" } },
         { "action": "searchCustomKinds", "value": "" },
+        { "action": "advanceClock", "ms": 300 },
         { "action": "expectPageText", "text": "Loading custom resources..." },
         { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_kinds", "context": "mock-dev" } },
+        { "action": "advanceClock", "ms": 300 },
         { "action": "expectCustomGroup", "group": "testing.example.io", "visible": true }
       ]
     },
@@ -82,8 +84,10 @@
       "steps": [
         { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_kinds", "context": "mock-dev" } },
         { "action": "searchCustomKinds", "value": "" },
+        { "action": "advanceClock", "ms": 300 },
         { "action": "expectPageText", "text": "Loading custom resources..." },
         { "action": "mockTiming", "control": { "operation": "fail", "command": "list_resource_kinds", "context": "mock-dev", "kind": "transport" } },
+        { "action": "advanceClock", "ms": 300 },
         { "action": "expectPageText", "text": "Custom resource discovery unavailable" },
         { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_kinds", "context": "mock-dev" } }
       ]
@@ -94,6 +98,7 @@
       "steps": [
         { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_kinds", "context": "mock-dev" } },
         { "action": "searchCustomKinds", "value": "" },
+        { "action": "advanceClock", "ms": 300 },
         { "action": "expectPageText", "text": "Loading custom resources..." },
         { "action": "mockTiming", "control": { "operation": "failOnce", "command": "list_resource_kinds", "context": "mock-dev", "kind": "cancelled" } },
         { "action": "mockTiming", "control": { "operation": "expectNoError", "command": "list_resource_kinds", "context": "mock-dev", "kind": "cancelled" } },
@@ -106,8 +111,10 @@
       "steps": [
         { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_kinds", "context": "mock-dev" } },
         { "action": "searchCustomKinds", "value": "" },
+        { "action": "advanceClock", "ms": 300 },
         { "action": "expectPageText", "text": "Loading custom resources..." },
         { "action": "mockTiming", "control": { "operation": "failOnce", "command": "list_resource_kinds", "context": "mock-dev", "kind": "transport" } },
+        { "action": "advanceClock", "ms": 300 },
         { "action": "expectPageText", "text": "Custom resource discovery unavailable" },
         { "action": "mockTiming", "control": { "operation": "expectNoRetry", "command": "list_resource_kinds", "context": "mock-dev" } }
       ]

@@ -281,7 +281,10 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             assert!(window.try_find("edit-draft").is_some());
             assert!(window.try_find("yaml-dry-run").is_none());
         }
-        "expectNoResource" => assert!(!reveal_resource(window, &row(step), cx)),
+        // A page without a table, such as a held loading state, has no rows, as on the web.
+        "expectNoResource" => assert!(
+            window.try_find("resource-table").is_none() || !reveal_resource(window, &row(step), cx)
+        ),
         _ => return false,
     }
     true

@@ -36,8 +36,10 @@
         { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_scope", "context": "mock-dev" } },
         { "action": "openResources" },
         { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_scope", "context": "mock-dev" } },
+        { "action": "advanceClock", "ms": 300 },
         { "action": "expectPageText", "text": "Loading resources" },
         { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_scope", "context": "mock-dev" } },
+        { "action": "advanceClock", "ms": 300 },
         { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" }
       ]
     },

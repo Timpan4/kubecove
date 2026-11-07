@@ -89,6 +89,24 @@ create a new observer after the map is collapsed. `live-view-refresh.test.ts`
 covers that path instead: a new view's watch waits for its rows and starts at
 their list version.
 
+## Loading indicator timing
+
+Both clients show a read's loading indicator only after the read has been
+pending for 300 ms, and keep it for at least 300 ms once shown. The finished
+data waits until then. `src/lib/loading-delay.svelte.ts` and
+`src-tauri/gpui/src/inspector/loading.rs` hold the timing.
+
+A scenario that checks an indicator runs `advanceClock` 300 ms before the check,
+and again after the release before it checks the data. The native driver needs
+both steps because its clock moves only when a step advances it. The web driver
+installs its fake clock before load whenever a scenario uses `advanceClock`.
+Time still runs there unless the scenario also uses `controlClock`.
+
+The `loading-delay.` scenarios pause the web clock with `controlClock` before the
+resource table mounts, so both drivers measure the same intervals. The web mock
+waits 35 ms before it reaches a hold, so these scenarios advance the clock before
+`expectPending`.
+
 The retry observation window is 30,000 ms. Its source is
 the installed `@tanstack/query-core/src/retryer.ts`, `defaultRetryDelay`, which
 caps backoff at that duration. Both drivers advance a test clock for this check.

@@ -10,8 +10,10 @@
         { "action": "openResources" },
         { "action": "setTopologyMode", "mode": "Ownership", "pending": true },
         { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_topology", "context": "mock-dev" } },
+        { "action": "advanceClock", "ms": 300 },
         { "action": "expectForegroundLoading", "active": true },
         { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_topology", "context": "mock-dev" } },
+        { "action": "advanceClock", "ms": 300 },
         { "action": "expectForegroundLoading", "active": false }
       ]
     },
