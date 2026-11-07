@@ -23,6 +23,7 @@ import type {
 	ResourceEventSummary,
 	ResourceSummary,
 	ResourceTopology,
+	VersionedList,
 } from "../../../src/lib/types";
 import { exportArgo } from "./export-argo";
 import { exportCoverage, exportCoverageLogs } from "./export-coverage";
@@ -73,9 +74,9 @@ const networkTopology = rustGraph(await client.invoke<ResourceTopology>("list_re
 const appUsage = await client.invoke("get_app_usage_metrics");
 const metrics = await client.invoke("list_resource_metrics", { clusterContext, namespaces: [] });
 // The overview's GitOps inventory: provider lists when their CRDs are detected, else null.
-const argo = (await client.invoke<boolean>("detect_argocd", { clusterContext })) ? await client.invoke<ArgoApplicationSummary[]>("list_argocd_applications", { clusterContext }) : null;
+const argo = (await client.invoke<boolean>("detect_argocd", { clusterContext })) ? (await client.invoke<VersionedList<ArgoApplicationSummary>>("list_argocd_applications", { clusterContext })).items : null;
 const fluxDetection = await client.invoke<FluxDetectionSummary>("detect_flux", { clusterContext });
-const flux = fluxDetection.detected ? (await Promise.all(fluxDetection.kinds.map((resourceKind) => client.invoke<FluxResourceSummary[]>("list_flux_resources", { clusterContext, resourceKind })))).flat() : null;
+const flux = fluxDetection.detected ? (await Promise.all(fluxDetection.kinds.map(async (resourceKind) => (await client.invoke<VersionedList<FluxResourceSummary>>("list_flux_resources", { clusterContext, resourceKind })).items))).flat() : null;
 const gitops = { argo, flux, ...(await exportGitOpsPage(client, clusterContext, argo !== null)) };
 const helm = await exportHelm(client, clusterContext);
 // Mock incidents omit the states the Rust model requires; fill them as `incidentState` infers.
@@ -129,7 +130,8 @@ const sessionControls = await exportSessionControls(client, resources);
 const argoConnected = await exportArgo(client, gitops.applications);
 const coverage = await exportCoverage(client, { helm: helm.list, rbac: rbac[clusterContext ?? "mock-dev"], incidents, topology: rustTopology, sessions: liveSessions });
 const logCases = await exportCoverageLogs(client);
-const pageReads = exportPageReads({ list_flux_resources: gitops.flux, list_argocd_appsets: gitops.appSets, list_helm_releases: helm.list, list_rbac_inspection: rbac[clusterContext ?? "mock-dev"], list_incident_cockpit: incidents });
+// Page reads keep each command's response shape; GitOps lists are versioned lists.
+const pageReads = exportPageReads({ list_flux_resources: { items: gitops.flux ?? [] }, list_argocd_appsets: { items: gitops.appSets }, list_helm_releases: helm.list, list_rbac_inspection: rbac[clusterContext ?? "mock-dev"], list_incident_cockpit: incidents });
 const secretReveals = [];
 for (const row of resources.filter((row) => row.kind === "Secret")) {
     const request = { clusterContext: row.cluster, name: row.name, namespace: row.namespace, key: "token" };

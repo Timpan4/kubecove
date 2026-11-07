@@ -28,14 +28,11 @@ function appendRow(rows: unknown[], nested: boolean) {
 export function pageReadResult(command: string, value: unknown): unknown {
     if (!PAGE_COMMANDS.some((candidate) => candidate === command) || phase === "base") return value;
     if (phase === "failed") throw new Error("Scripted page refresh failure");
-    if (command === "list_argocd_appsets" || command === "list_flux_resources") {
-        if (!Array.isArray(value)) throw new Error("Expected ApplicationSets");
-        return appendRow(value, false);
-    }
     if (!record(value)) return value;
-    const field = command === "list_helm_releases" ? "releases" : command === "list_rbac_inspection" ? "serviceAccounts" : command === "list_incident_cockpit" ? "items" : null;
+    // ApplicationSet and Flux lists are versioned lists, which keep their rows in `items`.
+    const field = command === "list_argocd_appsets" || command === "list_flux_resources" ? "items" : command === "list_helm_releases" ? "releases" : command === "list_rbac_inspection" ? "serviceAccounts" : command === "list_incident_cockpit" ? "items" : null;
     if (!field) return value;
     const rows = value[field];
     if (!Array.isArray(rows)) throw new Error(`Missing page fixture ${field}`);
-    return { ...value, [field]: appendRow(rows, field === "items") };
+    return { ...value, [field]: appendRow(rows, command === "list_incident_cockpit") };
 }

@@ -38,7 +38,7 @@ pub async fn list_argocd_applications(arguments: args::ContextArgs) -> Result<Va
     let applications = argo_applications(cluster.clone(), None).await?;
     Ok(json!({
         "context": cluster,
-        "applications": applications.iter().map(application).collect::<Vec<_>>(),
+        "applications": applications.items.iter().map(application).collect::<Vec<_>>(),
     }))
 }
 

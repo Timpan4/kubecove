@@ -75,6 +75,18 @@
       ]
     },
     {
+      "id": "gitops.watch-start-version",
+      "title": "GitOps watches start at the list version of the Argo CD and Flux rows the page shows",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "expectGitOpsTable", "title": "Argo CD Applications", "count": 8 },
+        { "action": "expectWatchStart", "kind": "Application", "resourceVersion": "1" },
+        { "action": "expectWatchStart", "kind": "ApplicationSet", "resourceVersion": "1" },
+        { "action": "expectWatchStart", "kind": "AppProject", "resourceVersion": "1" },
+        { "action": "expectWatchStart", "kind": "Kustomization", "resourceVersion": "1" }
+      ]
+    },
+    {
       "id": "helm.stale-focus",
       "title": "Helm refetches stale data on focus and retains the search",
       "steps": [

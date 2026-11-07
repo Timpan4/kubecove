@@ -59,8 +59,10 @@ Each client starts a resource watch at the list version of the rows its view
 shows for that key, and omits the version when it has none
 (`streams/watch.rs` then starts at `"0"`, which replays every object). Both
 mocks model this with one list version: `"1"`, raised by one for each
-`replayLiveData` update or delete. Scope and kind reads report the version
-current when their rows were read, so a held read keeps its version.
+`replayLiveData` update or delete. Scope and kind reads, and the Argo CD and
+Flux lists of the GitOps page, report the version current when their rows were
+read, so a held read keeps its version. `gitops.watch-start-version` checks the
+GitOps watches.
 
 A watch start replays the scripted change only when its version is older than
 the version that first showed the change, or when it has no version. The

@@ -50,7 +50,7 @@ impl GitOps {
             flux: self.flux.clone(),
             app_sets: self.app_sets.clone(),
             projects: self.projects.clone(),
-            list_error: None,
+            ..Default::default()
         };
         Box::pin(async move { Ok(inventory) })
     }

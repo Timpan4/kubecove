@@ -6,8 +6,8 @@ use crate::commands::gitops_crd::{
 use crate::commands::helpers::k8s_creation_timestamp_to_rfc3339;
 use crate::models::AppErrorKind;
 use crate::models::{
-    AppError, ArgoAppProjectDetails, ArgoAppProjectSummary, HealthAssessmentInput, YamlEncoding,
-    YamlViewMode, evaluate_health,
+    AppError, ArgoAppProjectDetails, ArgoAppProjectSummary, HealthAssessmentInput, VersionedList,
+    YamlEncoding, YamlViewMode, evaluate_health,
 };
 use kube::core::DynamicObject;
 
@@ -92,24 +92,20 @@ pub async fn get_argocd_appproject_details(
 pub async fn list_argocd_appprojects(
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
-) -> Result<Vec<ArgoAppProjectSummary>, AppError> {
+) -> Result<VersionedList<ArgoAppProjectSummary>, AppError> {
     let client = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?
         .read_client(&cluster_context)
         .await?;
 
     let ar = match find_api_resource(&client, "argoproj.io", "AppProject").await? {
         Some(ar) => ar,
-        None => return Ok(vec![]),
+        None => return Ok(VersionedList::default()),
     };
 
-    let items = list_crd_objects(client.clone(), &ar).await?;
-
-    let summaries = items
-        .iter()
-        .filter_map(|obj| app_project_summary_from_object(&cluster_context, obj))
-        .collect();
-
-    Ok(summaries)
+    list_crd_objects(client, &ar, |obj| {
+        app_project_summary_from_object(&cluster_context, obj)
+    })
+    .await
 }
 
 #[cfg(test)]

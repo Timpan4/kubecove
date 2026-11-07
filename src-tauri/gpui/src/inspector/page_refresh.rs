@@ -152,16 +152,10 @@ impl Inspector {
         };
         let mut keys: Vec<WatchResourceKey> = Vec::new();
         if data.argo.is_some() {
-            for (kind, plural) in [
-                ("Application", "applications"),
-                ("ApplicationSet", "applicationsets"),
-                ("AppProject", "appprojects"),
-            ] {
-                let mut key = live_data::key(kind, None);
-                key.resource_kind.api_version = Some("argoproj.io/v1alpha1".into());
-                key.resource_kind.plural = Some(plural.into());
-                keys.push(key);
-            }
+            keys.extend(
+                crate::gitops::ARGO_KINDS
+                    .map(|(kind, plural)| crate::gitops::argo_watch_key(kind, plural)),
+            );
         }
         keys.extend(
             self.live
@@ -192,11 +186,21 @@ impl Inspector {
                 .watches
                 .push(cx.spawn_in(window, async move |this, cx| {
                     loop {
+                        // Each open, reconnects included, starts at the version of
+                        // the inventory rows the page shows for this kind.
+                        let resource_version = this
+                            .update(cx, |this, _| {
+                                this.gitops
+                                    .inventory()
+                                    .and_then(|inventory| inventory.version(&key))
+                            })
+                            .ok()
+                            .flatten();
                         let opened = backend
                             .watch(WatchTarget::Resource {
                                 scope: scope.clone(),
                                 key: Box::new(key.clone()),
-                                resource_version: None,
+                                resource_version,
                             })
                             .await;
                         let mut recovery = Box::pin(cx.background_executor().timer(RECOVERY));

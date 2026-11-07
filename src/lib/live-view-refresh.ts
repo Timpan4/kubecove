@@ -23,14 +23,27 @@ import { messageFromError } from "./error-redaction";
 export interface LiveRead {
 	keys: readonly WatchResourceKey[];
 	match: QueryMatch;
-	/** False marks the reads stale without refetching them, for reads the view is not showing. */
+	/**
+	 * False marks the reads stale without refetching them, for reads the view is
+	 * not showing or that another live view keeps fresh.
+	 */
 	refetch?: boolean;
 	/**
 	 * The list version of the rows this read shows, by watch key signature, so a
 	 * watch starts at those rows. Null while the rows load. A key without an
-	 * entry has no version.
+	 * entry has no version. Only a read whose rows the view shows declares
+	 * versions, so they apply even when another live view refetches it.
 	 */
 	versions?: ReadonlyMap<string, string | null>;
+}
+
+/** `versions` for a read of one versioned list: null while it loads, no entry when it reported none. */
+export function listReadVersions(
+	key: WatchResourceKey,
+	read: { isPending: boolean; data?: { resourceVersion?: string } },
+): Map<string, string | null> {
+	const version = read.isPending ? null : read.data?.resourceVersion;
+	return new Map(version === undefined ? [] : [[watchKeySignature(key), version]]);
 }
 
 export interface LiveView {
@@ -177,7 +190,7 @@ function watchKeyMatches(key: WatchResourceKey, candidate: WatchResourceKey): bo
 function startVersion(view: LiveView, key: WatchResourceKey): string | null | undefined {
 	const signature = watchKeySignature(key);
 	const shown = view.reads
-		.filter((read) => read.refetch !== false && read.keys.some((candidate) => watchKeyMatches(candidate, key)))
+		.filter((read) => (read.refetch !== false || read.versions) && read.keys.some((candidate) => watchKeyMatches(candidate, key)))
 		.map((read) => read.versions?.get(signature));
 	if (shown.includes(null)) return null;
 	const [first] = shown;

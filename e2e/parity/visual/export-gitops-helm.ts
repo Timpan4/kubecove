@@ -13,6 +13,7 @@ import type {
 	HelmReleaseReconciliation,
 	ResourceDetailsFull,
 	ResourceSummary,
+	VersionedList,
 } from "../../../src/lib/types";
 
 // The mocks omit the assessment the Rust ApplicationSet and AppProject models
@@ -34,9 +35,10 @@ const APPLICATION_KIND = { kind: "Application", apiVersion: "argoproj.io/v1alpha
 
 export async function exportGitOpsPage(client: TauriClient, clusterContext: string | undefined, argoDetected: boolean) {
 	if (!argoDetected) return { appSets: [], projects: [], applications: [] };
-	const appSets = (await client.invoke<ArgoApplicationSetSummary[]>("list_argocd_appsets", { clusterContext })).map(withAssessment);
-	const projects = (await client.invoke<ArgoAppProjectSummary[]>("list_argocd_appprojects", { clusterContext })).map(withAssessment);
-	const apps = await client.invoke<ArgoApplicationSummary[]>("list_argocd_applications", { clusterContext });
+	// The fixture keeps rows only; its reads report the mock list version themselves.
+	const appSets = (await client.invoke<VersionedList<ArgoApplicationSetSummary>>("list_argocd_appsets", { clusterContext })).items.map(withAssessment);
+	const projects = (await client.invoke<VersionedList<ArgoAppProjectSummary>>("list_argocd_appprojects", { clusterContext })).items.map(withAssessment);
+	const apps = (await client.invoke<VersionedList<ArgoApplicationSummary>>("list_argocd_applications", { clusterContext })).items;
 	const applications = [];
 	for (const app of apps) {
 		const details = await client.invoke<ResourceDetailsFull>("get_dynamic_resource_details", { clusterContext, resourceKind: APPLICATION_KIND, name: app.name, namespace: app.namespace });

@@ -18,3 +18,10 @@ export interface ResourceScopeResult {
 	resourceVersions: ResourceListVersion[];
 	failures: ResourceScopeFailure[];
 }
+
+/** One kind's list with the resourceVersion it came from. A view starts its watch of that kind at this version. */
+export interface VersionedList<T> {
+	items: T[];
+	/** Absent when no list ran, such as when the kind is not installed. */
+	resourceVersion?: string;
+}

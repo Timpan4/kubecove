@@ -3,6 +3,7 @@
 	import ResourceLiveStatusMenu from "@/components/ResourceLiveStatusMenu.svelte";
 	import { Button } from "@/components/ui/svelte";
 	import { ARGO_APPLICATION_API_VERSION, argoApplicationWatchKey } from "@/lib/argo-application-inspection";
+	import { listReadVersions } from "@/lib/live-view-refresh";
 	import { liveViewRefresh } from "@/lib/live-view-refresh.svelte";
 	import { createQueries, createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import type { HealthFilter } from "@/features/resources";
@@ -23,6 +24,7 @@
 		ArgoApplicationSummary,
 		ArgoAppProjectSummary,
 		ResourceSummary,
+		VersionedList,
 	} from "@/lib/types";
 	import type { TreeNodeId } from "@/lib/tree-nav";
 	import type { SavedWorkspace } from "@/lib/workspace-model";
@@ -109,41 +111,48 @@
 	const live = liveViewRefresh(client, () => {
 		if (!sourceReady) return null;
 		const argo = argoDetectionQuery.data === true;
+		const apps = argoApplicationWatchKey();
 		const appSets = argoKind("ApplicationSet", "applicationsets");
 		const projects = argoKind("AppProject", "appprojects");
-		const flux = (fluxDetectionQuery.data?.kinds ?? []).map((kind) => ({
-			keys: [{ resourceKind: kind }],
-			match: queryMatchers.exact(queryKeys.fluxResources(context, kind, kubeconfigSourceKey)),
-		}));
+		// Each watch starts at the list version of the rows the page shows for its kind.
+		const flux = (fluxDetectionQuery.data?.kinds ?? []).map((kind, index) => {
+			const key = { resourceKind: kind };
+			return {
+				keys: [key],
+				match: queryMatchers.exact(queryKeys.fluxResources(context, kind, kubeconfigSourceKey)),
+				versions: listReadVersions(key, fluxResourceQueries[index] ?? { isPending: true }),
+			};
+		});
 		return {
 			clusterContext: context,
 			kubeconfigSourceKey,
 			namespaces: [],
 			refreshScope: "view",
-			keys: [...(argo ? [argoApplicationWatchKey(), appSets, projects] : []), ...flux.flatMap((read) => read.keys)],
-			// The workspace Argo operation monitor keeps the Application list fresh across navigation.
+			keys: [...(argo ? [apps, appSets, projects] : []), ...flux.flatMap((read) => read.keys)],
 			reads: [
 				...(argo ? [
-					{ keys: [appSets], match: queryMatchers.exact(queryKeys.argoAppSets(context, kubeconfigSourceKey)) },
-					{ keys: [projects], match: queryMatchers.exact(queryKeys.argoAppProjects(context, kubeconfigSourceKey)) },
+					// The workspace Argo operation monitor keeps the Application list fresh across navigation.
+					{ keys: [apps], match: queryMatchers.exact(queryKeys.argoApps(context, kubeconfigSourceKey)), refetch: false, versions: listReadVersions(apps, argoAppsQuery) },
+					{ keys: [appSets], match: queryMatchers.exact(queryKeys.argoAppSets(context, kubeconfigSourceKey)), versions: listReadVersions(appSets, argoAppSetsQuery) },
+					{ keys: [projects], match: queryMatchers.exact(queryKeys.argoAppProjects(context, kubeconfigSourceKey)), versions: listReadVersions(projects, argoProjectsQuery) },
 				] : []),
 				...flux,
 			],
 		};
 	});
-	const argoAppsQuery = createQuery<ArgoApplicationSummary[]>(() => ({
+	const argoAppsQuery = createQuery<VersionedList<ArgoApplicationSummary>>(() => ({
 		queryKey: queryKeys.argoApps(context, kubeconfigSourceKey),
 		queryFn: () => listArgoApplications(client, context, kubeconfigSourceKey),
 		enabled: sourceReady && argoDetectionQuery.data === true,
 		staleTime: 15_000,
 	}));
-	const argoAppSetsQuery = createQuery<ArgoApplicationSetSummary[]>(() => ({
+	const argoAppSetsQuery = createQuery<VersionedList<ArgoApplicationSetSummary>>(() => ({
 		queryKey: queryKeys.argoAppSets(context, kubeconfigSourceKey),
 		queryFn: () => listArgoApplicationSets(client, context, kubeconfigSourceKey),
 		enabled: sourceReady && argoDetectionQuery.data === true,
 		staleTime: 15_000,
 	}));
-	const argoProjectsQuery = createQuery<ArgoAppProjectSummary[]>(() => ({
+	const argoProjectsQuery = createQuery<VersionedList<ArgoAppProjectSummary>>(() => ({
 		queryKey: queryKeys.argoAppProjects(context, kubeconfigSourceKey),
 		queryFn: () => listArgoAppProjects(client, context, kubeconfigSourceKey),
 		enabled: sourceReady && argoDetectionQuery.data === true,

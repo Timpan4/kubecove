@@ -81,8 +81,8 @@ pub use resource::{
     KubernetesYamlLintSeverity, KubernetesYamlLintStatusNote, OwnerReferenceSummary,
     ResourceDetailsFull, ResourceHealth, ResourceListRequest, ResourceListVersion,
     ResourceScopeFailure, ResourceScopeResult, ResourceSummary, ResourceTopology, TopologyEdge,
-    TopologyNode, TopologyRelation, YamlApplyPreview, YamlApplyRequest, YamlApplyResult,
-    YamlApplyTarget, YamlEncoding, YamlViewMode,
+    TopologyNode, TopologyRelation, VersionedList, YamlApplyPreview, YamlApplyRequest,
+    YamlApplyResult, YamlApplyTarget, YamlEncoding, YamlViewMode,
 };
 pub use resource_actions::{
     ResourceActionContainer, ResourceActionEdits, ResourceActionEnv, ResourceActionKind,

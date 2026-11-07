@@ -3,6 +3,7 @@ import type {
 	ArgoApplicationSummary,
 	ArgoAppProjectSummary,
 	FluxResourceSummary,
+	VersionedList,
 } from "@/lib/types";
 import type { GitOpsData } from "./surfaceModel";
 
@@ -15,7 +16,7 @@ type DetectionQuery<T> = {
 };
 
 type ListQuery<T> = {
-	data?: T;
+	data?: VersionedList<T>;
 	isPending: boolean;
 	error: unknown;
 };
@@ -23,10 +24,10 @@ type ListQuery<T> = {
 export interface GitOpsQuerySnapshots {
 	argoDetection: DetectionQuery<boolean>;
 	fluxDetection: DetectionQuery<{ detected: boolean }>;
-	argoApps: ListQuery<ArgoApplicationSummary[]>;
-	argoAppSets: ListQuery<ArgoApplicationSetSummary[]>;
-	argoProjects: ListQuery<ArgoAppProjectSummary[]>;
-	fluxResources: Array<ListQuery<FluxResourceSummary[]>>;
+	argoApps: ListQuery<ArgoApplicationSummary>;
+	argoAppSets: ListQuery<ArgoApplicationSetSummary>;
+	argoProjects: ListQuery<ArgoAppProjectSummary>;
+	fluxResources: Array<ListQuery<FluxResourceSummary>>;
 }
 
 export function buildGitOpsReadState(snapshots: GitOpsQuerySnapshots) {
@@ -50,10 +51,10 @@ export function buildGitOpsReadState(snapshots: GitOpsQuerySnapshots) {
 	const data: GitOpsData | undefined = detectionReady
 		? {
 				argoDetected: argoDetection.data === true,
-				apps: argoApps.data ?? [],
-				appSets: argoAppSets.data ?? [],
-				projects: argoProjects.data ?? [],
-				flux: fluxResources.flatMap((query) => query.data ?? []),
+				apps: argoApps.data?.items ?? [],
+				appSets: argoAppSets.data?.items ?? [],
+				projects: argoProjects.data?.items ?? [],
+				flux: fluxResources.flatMap((query) => query.data?.items ?? []),
 				fluxDetected: fluxDetection.data?.detected === true,
 			}
 		: undefined;

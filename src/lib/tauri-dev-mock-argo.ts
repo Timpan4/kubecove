@@ -2,7 +2,8 @@ import type { ArgoConnectionProfile, ArgoServerEndpoint } from "./gitops-types";
 import type { MockArgs, MockHandler } from "./tauri-dev-mock-contract";
 import { kinds, now, resources, source } from "./tauri-dev-mock-data";
 import { argoApps, argoManagedResourceRefs, fluxHelmKind, fluxKind, fluxResources } from "./tauri-dev-mock-gitops-data";
-import type { ArgoApplicationDetails, ArgoApplicationSetDetails, ArgoApplicationSetSummary, ArgoAppProjectDetails, ArgoAppProjectSummary, ArgoManagedResource, DiscoveredResourceKind, FluxDetectionSummary, FluxResourceDetails, ResourceSummary } from "./types";
+import { mockListVersion } from "./tauri-dev-mock-live";
+import type { ArgoApplicationDetails, ArgoApplicationSetDetails, ArgoApplicationSetSummary, ArgoAppProjectDetails, ArgoAppProjectSummary, ArgoManagedResource, DiscoveredResourceKind, FluxDetectionSummary, FluxResourceDetails, ResourceSummary, VersionedList } from "./types";
 
 type YamlFactory = (kind: string, name: string, namespace?: string | null, apiVersion?: string) => string;
 export function customResourceKinds(): DiscoveredResourceKind[] {
@@ -125,18 +126,18 @@ return {
 	run_argo_operation: () => ({ accepted: true, transport: "kubernetes", message: "Mock operation accepted", operation: null }),
 	list_argocd_applications: () => {
         if (argoInventoryMode === "partial") throw new Error("Fixture Argo inventory unavailable");
-        return argoInventoryMode === "empty" ? [] : argoApps;
+        return listed(argoInventoryMode === "empty" ? [] : argoApps);
     },
 	get_argocd_application_details: (args) => argoDetails(args),
-	list_argocd_appsets: () => appSets(),
-	list_argocd_appprojects: () => projects(),
+	list_argocd_appsets: () => listed(appSets()),
+	list_argocd_appprojects: () => listed(projects()),
 	get_argocd_appset_details: (args) => appSetDetails(args, genericYaml),
 	get_argocd_appproject_details: (args) => projectDetails(args, genericYaml),
 	detect_flux: () => {
         if (argoInventoryMode === "unavailable") throw new Error("Fixture provider detection unavailable");
         return { detected: argoInventoryMode !== "absent", kinds: argoInventoryMode === "absent" ? [] : [fluxKind, fluxHelmKind], missingKinds: [] } satisfies FluxDetectionSummary;
     },
-	list_flux_resources: (args) => fluxResources.filter((row) => row.resourceKind.kind === args?.resourceKind?.kind),
+	list_flux_resources: (args) => listed(fluxResources.filter((row) => row.resourceKind.kind === args?.resourceKind?.kind)),
 	get_flux_resource_details: (args) => fluxDetails(args, genericYaml),
 } satisfies Record<string, MockHandler>;
 }
@@ -231,6 +232,11 @@ function argoManifest(row: ResourceSummary, desired: boolean) {
 function argoDetails(args: MockArgs): ArgoApplicationDetails {
 	const summary = argoApps.find((app) => app.name === args?.name) ?? argoApps[0];
 	return { summary, yaml: argoApplicationYaml(summary), metadata: { labels: { "argocd.argoproj.io/instance": summary.name } }, status: { sync: { status: summary.syncStatus }, health: { status: summary.healthStatus } } };
+}
+
+/** One kind's list at the mock list version, as gitops_crd.rs reports it. */
+function listed<T>(items: T[]): VersionedList<T> {
+	return { items, resourceVersion: mockListVersion() };
 }
 
 function appSets(): ArgoApplicationSetSummary[] {

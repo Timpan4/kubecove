@@ -21,6 +21,7 @@ import type {
 	RbacAccessReviewResult,
 	RbacInspectionSummary,
 	ResourceListRequest,
+	VersionedList,
 	YamlEncoding,
 	YamlViewMode,
 } from "./types";
@@ -40,8 +41,8 @@ export async function listArgoApplications(
 	client: TauriClient,
 	clusterContext: string,
 	kubeconfigEnvVar?: string,
-): Promise<ArgoApplicationSummary[]> {
-	return client.invoke<ArgoApplicationSummary[]>("list_argocd_applications", {
+): Promise<VersionedList<ArgoApplicationSummary>> {
+	return client.invoke<VersionedList<ArgoApplicationSummary>>("list_argocd_applications", {
 		clusterContext,
 		...kubeconfigArg(kubeconfigEnvVar),
 	});
@@ -73,8 +74,8 @@ export async function listArgoApplicationSets(
 	client: TauriClient,
 	clusterContext: string,
 	kubeconfigEnvVar?: string,
-): Promise<ArgoApplicationSetSummary[]> {
-	return client.invoke<ArgoApplicationSetSummary[]>("list_argocd_appsets", {
+): Promise<VersionedList<ArgoApplicationSetSummary>> {
+	return client.invoke<VersionedList<ArgoApplicationSetSummary>>("list_argocd_appsets", {
 		clusterContext,
 		...kubeconfigArg(kubeconfigEnvVar),
 	});
@@ -84,8 +85,8 @@ export async function listArgoAppProjects(
 	client: TauriClient,
 	clusterContext: string,
 	kubeconfigEnvVar?: string,
-): Promise<ArgoAppProjectSummary[]> {
-	return client.invoke<ArgoAppProjectSummary[]>("list_argocd_appprojects", {
+): Promise<VersionedList<ArgoAppProjectSummary>> {
+	return client.invoke<VersionedList<ArgoAppProjectSummary>>("list_argocd_appprojects", {
 		clusterContext,
 		...kubeconfigArg(kubeconfigEnvVar),
 	});
@@ -145,8 +146,8 @@ export async function listFluxResources(
 	clusterContext: string,
 	resourceKind: FluxResourceKind,
 	kubeconfigEnvVar?: string,
-): Promise<FluxResourceSummary[]> {
-	return client.invoke<FluxResourceSummary[]>("list_flux_resources", {
+): Promise<VersionedList<FluxResourceSummary>> {
+	return client.invoke<VersionedList<FluxResourceSummary>>("list_flux_resources", {
 		clusterContext,
 		resourceKind,
 		...kubeconfigArg(kubeconfigEnvVar),

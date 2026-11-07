@@ -535,25 +535,27 @@ impl Backend for DesktopBackend {
             let mut inventory = GitOpsInventory::default();
             let detected: bool = invoke(remote.clone(), "detect_argocd", args.clone()).await?;
             if detected {
-                inventory.argo =
-                    Some(invoke(remote.clone(), "list_argocd_applications", args.clone()).await?);
-                inventory.app_sets =
-                    invoke(remote.clone(), "list_argocd_appsets", args.clone()).await?;
-                inventory.projects =
-                    invoke(remote.clone(), "list_argocd_appprojects", args.clone()).await?;
+                let [applications, app_sets, projects] = crate::gitops::ARGO_KINDS
+                    .map(|(kind, plural)| crate::gitops::argo_watch_key(kind, plural));
+                let list = invoke(remote.clone(), "list_argocd_applications", args.clone()).await?;
+                inventory.argo = Some(inventory.keep(&applications, list));
+                let list = invoke(remote.clone(), "list_argocd_appsets", args.clone()).await?;
+                inventory.app_sets = inventory.keep(&app_sets, list);
+                let list = invoke(remote.clone(), "list_argocd_appprojects", args.clone()).await?;
+                inventory.projects = inventory.keep(&projects, list);
             }
             let flux: FluxDetectionSummary = invoke(remote.clone(), "detect_flux", args).await?;
             if flux.detected {
                 let mut rows = Vec::new();
                 for kind in flux.kinds {
-                    rows.extend(
-                        invoke::<Vec<FluxResourceSummary>>(
-                            remote.clone(),
-                            "list_flux_resources",
-                            json!({"clusterContext":context,"resourceKind":kind}),
-                        )
-                        .await?,
-                    );
+                    let key = crate::gitops::flux_watch_key(&kind);
+                    let list: VersionedList<FluxResourceSummary> = invoke(
+                        remote.clone(),
+                        "list_flux_resources",
+                        json!({"clusterContext":context,"resourceKind":kind}),
+                    )
+                    .await?;
+                    rows.extend(inventory.keep(&key, list));
                 }
                 inventory.flux = Some(rows);
             }

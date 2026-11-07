@@ -30,6 +30,7 @@ import type {
 	PortForwardSessionSummary,
 	ResourceSummary,
 	StreamMessage,
+	VersionedList,
 	WatchResourceKey,
 	YamlApplyPreview,
 	YamlApplyRequest,
@@ -50,7 +51,7 @@ type CommandMap = {
 	stop_port_forward: { args: { sessionId: string }; result: boolean };
 	stop_pod_exec_session: { args: { sessionId: string }; result: boolean };
 	stop_stream: { args: { streamId: string }; result: boolean };
-	list_argocd_applications: { args: { clusterContext: string }; result: ArgoApplicationSummary[] };
+	list_argocd_applications: { args: { clusterContext: string }; result: VersionedList<ArgoApplicationSummary> };
 	discover_argo_servers: { args: { clusterContext: string; kubeconfigEnvVar?: string }; result: ArgoServerCapability[] };
 	connect_argo_server: { args: { id: string; serverUrl: string; endpoint: ArgoServerEndpoint; username?: string; password?: string; insecureTls: boolean; rememberCredential: boolean; clusterContext: string; kubeconfigEnvVar?: string; workspaceId: string; confirmedTarget?: ArgoConfirmedTarget }; result: ArgoConnectionStatus };
 	get_argo_connection_status: { args: { id: string }; result: ArgoConnectionStatus };
@@ -248,7 +249,8 @@ describe("native Kind command boundary", () => {
 	});
 
 	it("lists Argo objects and the installed Helm release", async () => {
-		const apps = await tauri.listArgoCdApplications(cluster);
+		const { items: apps, resourceVersion } = await tauri.listArgoCdApplications(cluster);
+		expect(resourceVersion).toBeTruthy();
 		const expectedNames = ["root-application", "platform-argocd", "platform-cilium", "platform-metrics", "platform-storage", "platform-ingress", "tenant-catalog", "tenant-ledger"];
 		for (const name of expectedNames) expect(apps.map((app) => app.name)).toContain(name);
 		for (const app of apps.filter(({ name }) => expectedNames.includes(name))) {

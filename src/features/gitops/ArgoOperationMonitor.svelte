@@ -2,6 +2,7 @@
 	import { untrack } from "svelte";
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import { argoApplicationWatchKey } from "@/lib/argo-application-inspection";
+	import { listReadVersions } from "@/lib/live-view-refresh";
 	import { liveViewRefresh } from "@/lib/live-view-refresh.svelte";
 	import { createTauriClient, detectArgoCD, listArgoApplications } from "@/lib/tauri";
 	import { queryKeys, queryMatchers } from "@/lib/queryKeys";
@@ -16,7 +17,7 @@
 		queryFn: () => detectArgoCD(client, context.clusterContext, context.kubeconfigSourceKey),
 		enabled: context.sourceReady,
 	}));
-	createQuery(() => ({
+	const applications = createQuery(() => ({
 		queryKey: queryKeys.argoApps(context.clusterContext, context.kubeconfigSourceKey),
 		queryFn: () => listArgoApplications(client, context.clusterContext, context.kubeconfigSourceKey),
 		enabled: context.sourceReady && detection.data === true,
@@ -24,14 +25,14 @@
 	// Keeps the Application list fresh across navigation; recovery rereads only that list.
 	liveViewRefresh(client, () => {
 		if (!context.sourceReady || detection.data !== true) return null;
-		const keys = [argoApplicationWatchKey()];
+		const key = argoApplicationWatchKey();
 		const match = queryMatchers.exact(queryKeys.argoApps(context.clusterContext, context.kubeconfigSourceKey));
 		return {
 			clusterContext: context.clusterContext,
 			kubeconfigSourceKey: context.kubeconfigSourceKey,
 			namespaces: [],
-			keys,
-			reads: [{ keys, match }],
+			keys: [key],
+			reads: [{ keys: [key], match, versions: listReadVersions(key, applications) }],
 			refreshScope: "reads",
 		};
 	});

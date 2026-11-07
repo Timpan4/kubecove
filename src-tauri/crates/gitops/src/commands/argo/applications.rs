@@ -7,7 +7,7 @@ use crate::commands::helpers::k8s_creation_timestamp_to_rfc3339;
 use crate::models::AppErrorKind;
 use crate::models::{
     AppError, ArgoApplicationDetails, ArgoApplicationSourceSummary, ArgoApplicationSummary,
-    YamlEncoding, YamlViewMode, argo_health_assessment,
+    VersionedList, YamlEncoding, YamlViewMode, argo_health_assessment,
 };
 use kube::core::DynamicObject;
 use std::collections::BTreeSet;
@@ -99,24 +99,20 @@ pub fn benchmark_application_summary_from_object(
 pub async fn list_argocd_applications(
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
-) -> Result<Vec<ArgoApplicationSummary>, AppError> {
+) -> Result<VersionedList<ArgoApplicationSummary>, AppError> {
     let client = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?
         .read_client(&cluster_context)
         .await?;
 
     let ar = match find_api_resource(&client, "argoproj.io", "Application").await? {
         Some(ar) => ar,
-        None => return Ok(vec![]),
+        None => return Ok(VersionedList::default()),
     };
 
-    let items = list_crd_objects(client.clone(), &ar).await?;
-
-    let summaries = items
-        .iter()
-        .filter_map(|obj| application_summary_from_object(&cluster_context, obj))
-        .collect();
-
-    Ok(summaries)
+    list_crd_objects(client, &ar, |obj| {
+        application_summary_from_object(&cluster_context, obj)
+    })
+    .await
 }
 
 /// The discovered Argo CD Application resource; an error when the CRD is not installed.

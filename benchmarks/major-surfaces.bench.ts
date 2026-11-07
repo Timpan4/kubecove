@@ -194,10 +194,10 @@ const gitOpsReadSnapshots = {
 		isPending: false,
 		error: null,
 	},
-	argoApps: { data: argoApps, isPending: false, error: null },
-	argoAppSets: { data: appSets, isPending: false, error: null },
-	argoProjects: { data: projects, isPending: false, error: null },
-	fluxResources: [{ data: flux, isPending: false, error: null }],
+	argoApps: { data: { items: argoApps }, isPending: false, error: null },
+	argoAppSets: { data: { items: appSets }, isPending: false, error: null },
+	argoProjects: { data: { items: projects }, isPending: false, error: null },
+	fluxResources: [{ data: { items: flux }, isPending: false, error: null }],
 };
 const argoNode = {
 	type: "kind" as const,
@@ -242,10 +242,10 @@ const selectedNodes: Array<{ node: TreeNodeId; rail: string; count: number }> =
 	];
 const detectedEmptySnapshots = {
 	...gitOpsReadSnapshots,
-	argoApps: { data: [], isPending: false, error: null },
-	argoAppSets: { data: [], isPending: false, error: null },
-	argoProjects: { data: [], isPending: false, error: null },
-	fluxResources: [{ data: [], isPending: false, error: null }],
+	argoApps: { data: { items: [] }, isPending: false, error: null },
+	argoAppSets: { data: { items: [] }, isPending: false, error: null },
+	argoProjects: { data: { items: [] }, isPending: false, error: null },
+	fluxResources: [{ data: { items: [] }, isPending: false, error: null }],
 };
 const emptyDetectedData = buildGitOpsReadState(detectedEmptySnapshots).query
 	.data;
@@ -393,10 +393,10 @@ describe("major frontend surfaces", () => {
 					...gitOpsReadSnapshots.fluxDetection,
 					data: { detected: false },
 				},
-				argoApps: { ...gitOpsReadSnapshots.argoApps, data: [] },
-				argoAppSets: { ...gitOpsReadSnapshots.argoAppSets, data: [] },
-				argoProjects: { ...gitOpsReadSnapshots.argoProjects, data: [] },
-				fluxResources: [{ data: [], isPending: false, error: null }],
+				argoApps: { ...gitOpsReadSnapshots.argoApps, data: { items: [] } },
+				argoAppSets: { ...gitOpsReadSnapshots.argoAppSets, data: { items: [] } },
+				argoProjects: { ...gitOpsReadSnapshots.argoProjects, data: { items: [] } },
+				fluxResources: [{ data: { items: [] }, isPending: false, error: null }],
 			});
 			if (unavailableState.query.data)
 				buildGitOpsRailItems(unavailableState.query.data);

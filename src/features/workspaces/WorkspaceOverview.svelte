@@ -216,12 +216,12 @@
 		})),
 	}));
 	const argoDrift = $derived(
-		(argoAppsQuery.data ?? []).filter((app) => app.syncStatus && app.syncStatus !== "Synced")
+		(argoAppsQuery.data?.items ?? []).filter((app) => app.syncStatus && app.syncStatus !== "Synced")
 			.length,
 	);
 	const fluxDetected = $derived(fluxDetectedQuery.data?.detected === true);
 	const fluxRows = $derived(
-		fluxResourceQueries.flatMap((query) => query.data ?? []),
+		fluxResourceQueries.flatMap((query) => query.data?.items ?? []),
 	);
 	const fluxPending = $derived(fluxResourceQueries.some((query) => query.isPending));
 	const fluxError = $derived(fluxResourceQueries.find((query) => query.isError)?.error ?? null);
@@ -481,7 +481,7 @@
 						{:else if argoDetectedQuery.data === true}
 							<div class="flex items-center justify-between py-2 text-xs">
 								<span class="text-muted-foreground">Applications</span>
-								<strong>{argoAppsQuery.data?.length ?? 0}</strong>
+								<strong>{argoAppsQuery.data?.items.length ?? 0}</strong>
 							</div>
 							<Separator />
 							<div class="flex items-center justify-between py-2 text-xs">

@@ -107,6 +107,26 @@ pub struct ResourceListVersion {
     pub resource_version: String,
 }
 
+/// One kind's list with the `metadata.resourceVersion` it came from. A view
+/// starts its watch of that kind at this version.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VersionedList<T> {
+    pub items: Vec<T>,
+    /// None when no list ran, such as when the kind is not installed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_version: Option<String>,
+}
+
+impl<T> Default for VersionedList<T> {
+    fn default() -> Self {
+        Self {
+            items: Vec::new(),
+            resource_version: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResourceScopeResult {

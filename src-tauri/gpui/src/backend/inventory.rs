@@ -2,7 +2,7 @@
 //! cluster-scoped kinds. Both use the Kubernetes API through the shared commands.
 
 use super::ScopeResult;
-use crate::gitops::GitOpsInventory;
+use crate::gitops::{ARGO_KINDS, GitOpsInventory, argo_watch_key, flux_watch_key};
 use kubecove_lib::{
     commands::{self, ClusterAccess, ClusterLiveStore},
     models::{AppError, AppErrorKind, WatchResourceKey, WatchResourceKind},
@@ -24,11 +24,13 @@ pub const CLUSTER_KINDS: &[&str] = &[
 pub(super) async fn gitops(context: String) -> Result<GitOpsInventory, AppError> {
     let mut inventory = GitOpsInventory::default();
     let mut errors = Vec::new();
+    let [applications, app_sets, projects] =
+        ARGO_KINDS.map(|(kind, plural)| argo_watch_key(kind, plural));
     match commands::detect_argocd(context.clone(), None).await {
         Ok(true) => {
             inventory.argo = Some(
                 match commands::list_argocd_applications(context.clone(), None).await {
-                    Ok(rows) => rows,
+                    Ok(list) => inventory.keep(&applications, list),
                     Err(error) => {
                         errors.push(error);
                         Vec::new()
@@ -36,11 +38,11 @@ pub(super) async fn gitops(context: String) -> Result<GitOpsInventory, AppError>
                 },
             );
             match commands::list_argocd_appsets(context.clone(), None).await {
-                Ok(rows) => inventory.app_sets = rows,
+                Ok(list) => inventory.app_sets = inventory.keep(&app_sets, list),
                 Err(error) => errors.push(error),
             }
             match commands::list_argocd_appprojects(context.clone(), None).await {
-                Ok(rows) => inventory.projects = rows,
+                Ok(list) => inventory.projects = inventory.keep(&projects, list),
                 Err(error) => errors.push(error),
             }
         }
@@ -51,8 +53,9 @@ pub(super) async fn gitops(context: String) -> Result<GitOpsInventory, AppError>
         Ok(detection) if detection.detected => {
             let mut rows = Vec::new();
             for kind in detection.kinds {
+                let key = flux_watch_key(&kind);
                 match commands::list_flux_resources(context.clone(), kind, None).await {
-                    Ok(resources) => rows.extend(resources),
+                    Ok(list) => rows.extend(inventory.keep(&key, list)),
                     Err(error) => errors.push(error),
                 }
             }

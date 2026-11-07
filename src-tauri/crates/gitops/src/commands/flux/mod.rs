@@ -8,7 +8,8 @@ use crate::models::AppErrorKind;
 use crate::models::{
     AppError, FluxDetectionSummary, FluxInventoryResource, FluxResourceDetails, FluxResourceKind,
     FluxResourceSummary, HealthAssessment, HealthAssessmentEvidence, HealthAssessmentInput,
-    HealthAssessmentSource, HealthAssessmentState, YamlEncoding, YamlViewMode, evaluate_health,
+    HealthAssessmentSource, HealthAssessmentState, VersionedList, YamlEncoding, YamlViewMode,
+    evaluate_health,
 };
 use kube::Client;
 use kube::api::{ApiResource, DynamicObject};
@@ -46,20 +47,18 @@ pub async fn list_flux_resources(
     cluster_context: String,
     resource_kind: FluxResourceKind,
     kubeconfig_env_var: Option<String>,
-) -> Result<Vec<FluxResourceSummary>, AppError> {
+) -> Result<VersionedList<FluxResourceSummary>, AppError> {
     let client = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?
         .read_client(&cluster_context)
         .await?;
     let Some(resource_kind) = installed_flux_kind(&client, &resource_kind).await? else {
-        return Ok(vec![]);
+        return Ok(VersionedList::default());
     };
     let api_resource = api_resource_from_flux_kind(&resource_kind);
-    let items = list_crd_objects(client, &api_resource).await?;
-
-    Ok(items
-        .iter()
-        .map(|object| flux_summary(&cluster_context, &resource_kind, object))
-        .collect())
+    list_crd_objects(client, &api_resource, |object| {
+        Some(flux_summary(&cluster_context, &resource_kind, object))
+    })
+    .await
 }
 
 pub async fn get_flux_resource_details(

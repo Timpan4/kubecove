@@ -12,7 +12,7 @@ use kube::{
 use kubecove_kube::commands::discover_resources;
 use serde_json::Value;
 
-use crate::models::{YamlEncoding, YamlViewMode};
+use crate::models::{VersionedList, YamlEncoding, YamlViewMode};
 
 /// Age of an Argo CD or Flux object; an unrepresentable creation timestamp reads as just created.
 pub(crate) fn object_age(metadata: &ObjectMeta) -> String {
@@ -70,16 +70,22 @@ pub(crate) async fn find_api_resource(
     Ok(find_discovered_api_resource(&resources, group, kind))
 }
 
-pub(crate) async fn list_crd_objects(
+/// Lists every object of `api_resource` and summarizes each with `summary`,
+/// keeping the list's resourceVersion for the view's watch.
+pub(crate) async fn list_crd_objects<T>(
     client: Client,
     api_resource: &ApiResource,
-) -> Result<Vec<DynamicObject>, AppError> {
+    summary: impl FnMut(&DynamicObject) -> Option<T>,
+) -> Result<VersionedList<T>, AppError> {
     crate::commands::helpers::validate_api_resource(api_resource)?;
-    Api::<DynamicObject>::all_with(client, api_resource)
+    let list = Api::<DynamicObject>::all_with(client, api_resource)
         .list(&list_params())
         .await
-        .map(|list| list.items)
-        .map_err(AppError::from)
+        .map_err(AppError::from)?;
+    Ok(VersionedList {
+        items: list.items.iter().filter_map(summary).collect(),
+        resource_version: list.metadata.resource_version,
+    })
 }
 
 pub(crate) async fn get_crd_object(

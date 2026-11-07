@@ -1,5 +1,6 @@
 use super::*;
-use kubecove_lib::models::{StreamMessage, WatchResourceTarget};
+use kubecove_gpui::backend::{discovered_key, watch_signature};
+use kubecove_lib::models::{StreamMessage, VersionedList, WatchResourceTarget};
 use serde::de::DeserializeOwned;
 
 impl Fixture {
@@ -38,6 +39,14 @@ impl Fixture {
         let appsets = self.page_reads.get("list_argocd_appsets").cloned();
         let flux = self.page_reads.get("list_flux_resources").cloned();
         let read = self.gitops.inventory();
+        // Every listed kind reports the mock list version, as tauri-dev-mock-argo.ts does.
+        let version = self.list_version();
+        let flux_keys: Vec<_> = self
+            .kinds
+            .iter()
+            .filter(|kind| kind.group.ends_with("toolkit.fluxcd.io"))
+            .map(|kind| discovered_key(kind, None))
+            .collect();
         Box::pin(async move {
             if phase == "failed" {
                 return Err(AppError::new(
@@ -46,15 +55,31 @@ impl Fixture {
                 ));
             }
             let mut data = read.await?;
+            let argo_keys = kubecove_gpui::gitops::ARGO_KINDS
+                .map(|(kind, plural)| kubecove_gpui::gitops::argo_watch_key(kind, plural));
+            let mut listed = Vec::new();
+            if data.argo.is_some() {
+                listed.extend(&argo_keys);
+            }
+            if data.flux.is_some() {
+                listed.extend(&flux_keys);
+            }
+            for key in listed {
+                data.versions.insert(watch_signature(key), version.clone());
+            }
             if phase == "updated"
                 && let Some(value) = appsets
             {
-                data.app_sets = serde_json::from_value(value).expect("exported ApplicationSets");
+                let list: VersionedList<_> =
+                    serde_json::from_value(value).expect("exported ApplicationSets");
+                data.app_sets = list.items;
             }
             if phase == "updated"
                 && let Some(value) = flux
             {
-                data.flux = Some(serde_json::from_value(value).expect("exported Flux resources"));
+                let list: VersionedList<_> =
+                    serde_json::from_value(value).expect("exported Flux resources");
+                data.flux = Some(list.items);
             }
             Ok(data)
         })
