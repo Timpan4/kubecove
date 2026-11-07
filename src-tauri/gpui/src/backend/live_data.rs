@@ -1,9 +1,12 @@
 //! Typed discovery, list and watch commands for native live views.
-use super::{INSPECTION_KINDS, LogStream, NativeBackend, Read, Scope, ScopeResult};
+use super::{
+    INSPECTION_KINDS, KindRows, ListVersions, LogStream, NativeBackend, Read, Scope, ScopeResult,
+};
 use kubecove_lib::{
     commands::{self, ClusterAccess, list_projection::bounded_join_all},
     models::{
-        AppErrorKind, DiscoveredResourceKind, ResourceSummary, WatchResourceKey, WatchResourceKind,
+        AppErrorKind, DiscoveredResourceKind, ResourceSummary, ResourceWatchStart,
+        WatchResourceKey, WatchResourceKind,
     },
     runtime::{Channel, ChannelClosed, State},
 };
@@ -13,8 +16,44 @@ use tokio::sync::mpsc;
 /// The owner determines the lifetime of a resource or selected-object event watch.
 #[derive(Clone)]
 pub enum WatchTarget {
-    Resource { scope: Scope, key: WatchResourceKey },
+    /// `resource_version` is the version of the rows the owner shows for `key`.
+    Resource {
+        scope: Scope,
+        key: Box<WatchResourceKey>,
+        resource_version: Option<String>,
+    },
     Events(Box<ResourceSummary>),
+}
+
+/// The identity of a watch key: kind, group version, plural and namespace.
+/// Views key their watches and their rows' list versions by it.
+pub fn watch_signature(key: &WatchResourceKey) -> String {
+    format!(
+        "{}:{}:{}:{}",
+        key.resource_kind.kind,
+        key.resource_kind.api_version.as_deref().unwrap_or(""),
+        key.resource_kind.plural.as_deref().unwrap_or(""),
+        key.namespace.as_deref().unwrap_or("")
+    )
+}
+
+/// The watch key of a discovered kind in `namespace`, or cluster-wide when the
+/// kind is cluster-scoped.
+pub fn discovered_key(
+    kind: &DiscoveredResourceKind,
+    namespace: Option<String>,
+) -> WatchResourceKey {
+    WatchResourceKey {
+        resource_kind: WatchResourceKind {
+            kind: kind.kind.clone(),
+            group: Some(kind.group.clone()),
+            version: Some(kind.version.clone()),
+            api_version: Some(kind.api_version.clone()),
+            plural: Some(kind.plural.clone()),
+            namespaced: Some(kind.namespaced),
+        },
+        namespace: if kind.namespaced { namespace } else { None },
+    }
 }
 
 pub(super) fn resource_kinds(
@@ -51,7 +90,7 @@ pub(super) fn kind_resources(
     scope: Scope,
     key: WatchResourceKey,
     mut recycled: Vec<ResourceSummary>,
-) -> Read<Vec<ResourceSummary>> {
+) -> Read<KindRows> {
     let store = backend.store.clone();
     backend.read(async move {
         let access = ClusterAccess::resolve(None)?;
@@ -61,10 +100,10 @@ pub(super) fn kind_resources(
             std::slice::from_ref(&key),
         );
         let kind = key.resource_kind;
-        let rows = if let (Some(group), Some(version), Some(api_version), Some(plural)) =
+        let snapshot = if let (Some(group), Some(version), Some(api_version), Some(plural)) =
             (kind.group, kind.version, kind.api_version, kind.plural)
         {
-            commands::list_dynamic_resources(
+            commands::list_dynamic_resource_snapshot(
                 scope.context,
                 DiscoveredResourceKind {
                     group,
@@ -81,7 +120,7 @@ pub(super) fn kind_resources(
             )
             .await?
         } else {
-            commands::list_resources(
+            commands::list_resource_snapshot(
                 scope.context,
                 kind.kind,
                 key.namespace,
@@ -90,13 +129,17 @@ pub(super) fn kind_resources(
             )
             .await?
         };
-        match Arc::try_unwrap(rows) {
-            Ok(rows) => Ok(reuse_row_buffer(recycled, rows)),
+        let rows = match Arc::try_unwrap(snapshot.rows) {
+            Ok(rows) => reuse_row_buffer(recycled, rows),
             Err(rows) => {
                 recycled.clone_from(rows.as_ref());
-                Ok(recycled)
+                recycled
             }
-        }
+        };
+        Ok(KindRows {
+            rows,
+            resource_version: snapshot.resource_version,
+        })
     })
 }
 
@@ -125,10 +168,17 @@ pub(super) fn watch(backend: &NativeBackend, target: WatchTarget) -> Read<LogStr
         let (sender, messages) = mpsc::unbounded_channel();
         let channel = Channel::new(move |message| sender.send(message).map_err(|_| ChannelClosed));
         let id = match target {
-            WatchTarget::Resource { scope, key } => {
+            WatchTarget::Resource {
+                scope,
+                key,
+                resource_version,
+            } => {
                 commands::start_resource_watch(
                     scope.context,
-                    vec![key],
+                    vec![ResourceWatchStart {
+                        key: *key,
+                        resource_version,
+                    }],
                     None,
                     channel,
                     State::new(&registry),
@@ -169,6 +219,7 @@ pub(super) fn resources(backend: &NativeBackend, scope: Scope, refresh: bool) ->
         let custom = custom.await?;
         result.resources.extend(custom.resources);
         result.warnings.extend(custom.warnings);
+        result.versions.extend(custom.versions);
         Ok(result)
     })
 }
@@ -181,22 +232,22 @@ pub(super) fn builtin_resources(
     let store = backend.store.clone();
     backend.read(async move {
         let kinds = INSPECTION_KINDS.to_vec();
+        let keys: Vec<_> = kinds
+            .iter()
+            .map(|kind| WatchResourceKey {
+                resource_kind: WatchResourceKind {
+                    kind: (*kind).to_owned(),
+                    group: None,
+                    version: None,
+                    api_version: None,
+                    plural: None,
+                    namespaced: Some(true),
+                },
+                namespace: scope.namespace.clone(),
+            })
+            .collect();
         if refresh {
             let access = ClusterAccess::resolve(None)?;
-            let keys: Vec<_> = kinds
-                .iter()
-                .map(|kind| WatchResourceKey {
-                    resource_kind: WatchResourceKind {
-                        kind: (*kind).to_owned(),
-                        group: None,
-                        version: None,
-                        api_version: None,
-                        plural: None,
-                        namespaced: Some(true),
-                    },
-                    namespace: scope.namespace.clone(),
-                })
-                .collect();
             let namespaces: Vec<_> = scope.namespace.iter().cloned().collect();
             store.refresh_view(access.source_key(), &scope.context, &keys, &namespaces);
         }
@@ -207,7 +258,7 @@ pub(super) fn builtin_resources(
         let reads: Vec<_> = kinds
             .iter()
             .map(|kind| {
-                commands::list_resources(
+                commands::list_resource_snapshot(
                     scope.context.clone(),
                     (*kind).to_owned(),
                     scope.namespace.clone(),
@@ -229,9 +280,15 @@ pub(super) fn builtin_resources(
             Err(error) => return Err(error),
         };
         let mut resources = Vec::new();
-        for (kind, result) in kinds.into_iter().zip(results) {
+        let mut versions = ListVersions::new();
+        for ((kind, key), result) in kinds.into_iter().zip(&keys).zip(results) {
             match result {
-                Ok(rows) => resources.extend(Arc::unwrap_or_clone(rows)),
+                Ok(snapshot) => {
+                    resources.extend(Arc::unwrap_or_clone(snapshot.rows));
+                    if let Some(version) = snapshot.resource_version {
+                        versions.insert(watch_signature(key), version);
+                    }
+                }
                 Err(error) if error.kind == AppErrorKind::Forbidden => {
                     warnings.push(format!("{kind}: {}", error.message))
                 }
@@ -242,6 +299,7 @@ pub(super) fn builtin_resources(
             namespaces,
             resources,
             warnings,
+            versions,
         })
     })
 }
@@ -255,6 +313,7 @@ pub(super) fn custom_resources(backend: &NativeBackend, scope: Scope) -> Read<Sc
     backend.read(async move {
         let mut warnings = Vec::new();
         let mut resources = Vec::new();
+        let mut versions = ListVersions::new();
         let discovered = crate::read_retry::cancelled_read(
             || {
                 Box::pin({
@@ -280,7 +339,7 @@ pub(super) fn custom_resources(backend: &NativeBackend, scope: Scope) -> Read<Sc
                 let reads: Vec<_> = discovered
                     .iter()
                     .map(|kind| {
-                        commands::list_dynamic_resources(
+                        commands::list_dynamic_resource_snapshot(
                             scope.context.clone(),
                             kind.clone(),
                             if kind.namespaced {
@@ -296,7 +355,15 @@ pub(super) fn custom_resources(backend: &NativeBackend, scope: Scope) -> Read<Sc
                 let results = bounded_join_all(reads, commands::MAX_LIST_CONCURRENCY).await;
                 for (kind, result) in discovered.iter().zip(results) {
                     match result {
-                        Ok(rows) => resources.extend(Arc::unwrap_or_clone(rows)),
+                        Ok(snapshot) => {
+                            resources.extend(Arc::unwrap_or_clone(snapshot.rows));
+                            if let Some(version) = snapshot.resource_version {
+                                versions.insert(
+                                    watch_signature(&discovered_key(kind, scope.namespace.clone())),
+                                    version,
+                                );
+                            }
+                        }
                         Err(error) => warnings.push(format!("{}: {}", kind.kind, error.message)),
                     }
                 }
@@ -307,6 +374,7 @@ pub(super) fn custom_resources(backend: &NativeBackend, scope: Scope) -> Read<Sc
             namespaces: Vec::new(),
             resources,
             warnings,
+            versions,
         })
     })
 }

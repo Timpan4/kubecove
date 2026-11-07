@@ -13,8 +13,25 @@ pub(super) struct KindSelection {
     pub sidebar: Entity<InputState>,
     pub search: Entity<InputState>,
     pub chosen: Option<HashSet<String>>,
-    pub reads: std::collections::HashMap<String, gpui_kit::Task<()>>,
+    pub reads: std::collections::HashMap<String, KindRead>,
     _subscriptions: Vec<Subscription>,
+}
+
+/// A newly checked kind's list read. Its watch waits until the rows land, so it
+/// starts at their version.
+pub(super) struct KindRead {
+    signature: String,
+    loading: bool,
+    _task: gpui_kit::Task<()>,
+}
+
+impl KindSelection {
+    /// Whether a checked kind's rows for the watch `signature` are still loading.
+    pub(super) fn loading(&self, signature: &str) -> bool {
+        self.reads
+            .values()
+            .any(|read| read.loading && read.signature == signature)
+    }
 }
 
 pub(super) fn identity(kind: &DiscoveredResourceKind) -> String {
@@ -104,7 +121,7 @@ impl Inspector {
                 (
                     identity(kind),
                     kind.kind.clone(),
-                    live_data::dynamic_key(kind, self.scope.namespace.clone()),
+                    crate::backend::discovered_key(kind, self.scope.namespace.clone()),
                 )
             }));
         }
@@ -177,39 +194,45 @@ impl Inspector {
             .await
         });
         let selected = id.clone();
+        let signature = crate::backend::watch_signature(&key);
+        let task = cx.spawn(async move |this, cx| {
+            let result = read.await;
+            let _ = this.update(cx, |this, cx| {
+                // The task is still in the map: removing an entry drops its task.
+                if let Some(read) = this.kind_selection.reads.get_mut(&selected) {
+                    read.loading = false;
+                }
+                if this.scope != scope || !this.kind_selected(&selected) {
+                    return;
+                }
+                match result {
+                    Ok(crate::backend::KindRows {
+                        rows,
+                        resource_version,
+                    }) => this.queue_live_patch(
+                        super::live_rows::Patch {
+                            scope: scope.clone(),
+                            key: key.clone(),
+                            rows,
+                            resource_version,
+                            names: None,
+                            watch: None,
+                        },
+                        cx,
+                    ),
+                    Err(error) => this.live.refresh_error = Some(error.message),
+                }
+                cx.notify();
+            });
+        });
         self.kind_selection.reads.insert(
             id,
-            cx.spawn(async move |this, cx| {
-                let result = read.await;
-                let _ = this.update(cx, |this, cx| {
-                    if this.scope != scope || !this.kind_selected(&selected) {
-                        return;
-                    }
-                    match result {
-                        Ok(rows) => this.queue_live_patch(
-                            super::live_rows::Patch {
-                                scope: scope.clone(),
-                                key: key.clone(),
-                                rows,
-                                names: None,
-                                watch: None,
-                            },
-                            cx,
-                        ),
-                        Err(error) => this.live.refresh_error = Some(error.message),
-                    }
-                    cx.notify();
-                });
-            }),
+            KindRead {
+                signature,
+                loading: true,
+                _task: task,
+            },
         );
-    }
-
-    pub(super) fn supersede_kind_read(&mut self, key: &WatchResourceKey) {
-        let id = match (&key.resource_kind.api_version, &key.resource_kind.plural) {
-            (Some(api), Some(plural)) => format!("{api}/{plural}/{}", key.resource_kind.kind),
-            _ => key.resource_kind.kind.clone(),
-        };
-        self.kind_selection.reads.remove(&id);
     }
 
     fn select_all_kinds(&mut self, cx: &mut Context<Self>) {

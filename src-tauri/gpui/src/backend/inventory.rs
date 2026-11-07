@@ -84,28 +84,29 @@ pub(super) async fn cluster_resources(
     refresh: bool,
     store: ClusterLiveStore,
 ) -> Result<ScopeResult, AppError> {
+    let keys: Vec<_> = CLUSTER_KINDS
+        .iter()
+        .map(|kind| WatchResourceKey {
+            resource_kind: WatchResourceKind {
+                kind: (*kind).to_owned(),
+                group: None,
+                version: None,
+                api_version: None,
+                plural: None,
+                namespaced: Some(false),
+            },
+            namespace: None,
+        })
+        .collect();
     if refresh {
         let access = ClusterAccess::resolve(None)?;
-        let keys: Vec<_> = CLUSTER_KINDS
-            .iter()
-            .map(|kind| WatchResourceKey {
-                resource_kind: WatchResourceKind {
-                    kind: (*kind).to_owned(),
-                    group: None,
-                    version: None,
-                    api_version: None,
-                    plural: None,
-                    namespaced: Some(false),
-                },
-                namespace: None,
-            })
-            .collect();
         store.refresh_view(access.source_key(), &context, &keys, &[]);
     }
     let mut resources = Vec::new();
     let mut warnings = Vec::new();
-    for kind in CLUSTER_KINDS {
-        match commands::list_resources(
+    let mut versions = super::ListVersions::new();
+    for (kind, key) in CLUSTER_KINDS.iter().zip(&keys) {
+        match commands::list_resource_snapshot(
             context.clone(),
             (*kind).to_owned(),
             None,
@@ -114,7 +115,12 @@ pub(super) async fn cluster_resources(
         )
         .await
         {
-            Ok(rows) => resources.extend(Arc::unwrap_or_clone(rows)),
+            Ok(snapshot) => {
+                resources.extend(Arc::unwrap_or_clone(snapshot.rows));
+                if let Some(version) = snapshot.resource_version {
+                    versions.insert(super::watch_signature(key), version);
+                }
+            }
             Err(error) if error.kind == AppErrorKind::Forbidden => {
                 warnings.push(format!("{kind}: {}", error.message))
             }
@@ -125,5 +131,6 @@ pub(super) async fn cluster_resources(
         namespaces: Vec::new(),
         resources,
         warnings,
+        versions,
     })
 }

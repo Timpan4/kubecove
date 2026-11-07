@@ -163,6 +163,17 @@ impl LiveControls {
             }
         }
     }
+    pub(super) fn open_watches(&self, kind: &str) -> usize {
+        self.streams
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(target, tx)| {
+                !tx.is_closed()
+                    && matches!(target, WatchTarget::Resource { key, .. } if key.resource_kind.kind == kind)
+            })
+            .count()
+    }
     fn active(&self) -> usize {
         self.streams
             .lock()

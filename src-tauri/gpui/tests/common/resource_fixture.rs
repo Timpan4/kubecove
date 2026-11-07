@@ -40,18 +40,21 @@ impl Fixture {
             .collect();
         let resources = self.with_removed_resource(resources);
         let namespaces = self.namespaces.clone();
+        // The version is read with the rows it describes.
+        let versions = self.list_versions(scope.namespace.as_deref());
         let read = self.timing.read(
             "list_resource_scope",
             &scope.context,
             scope.namespace.as_deref().unwrap_or_default(),
-            (namespaces, resources),
+            (namespaces, resources, versions),
         );
         Box::pin(async move {
-            let (namespaces, resources) = read.await?;
+            let (namespaces, resources, versions) = read.await?;
             Ok(ScopeResult {
                 namespaces,
                 resources,
                 warnings: vec![],
+                versions,
             })
         })
     }

@@ -78,7 +78,7 @@ impl Backend for NativeBackend {
         scope: Scope,
         key: WatchResourceKey,
         recycled: Vec<ResourceSummary>,
-    ) -> Read<Vec<ResourceSummary>> {
+    ) -> Read<KindRows> {
         live_data::kind_resources(self, scope, key, recycled)
     }
     fn watch(&self, target: WatchTarget) -> Read<LogStream> {

@@ -266,6 +266,7 @@ impl Backend for Controlled {
                     }]
                 },
                 warnings: vec![],
+                versions: Default::default(),
             })
         })
     }
@@ -320,6 +321,7 @@ impl Backend for Controlled {
                 namespaces: vec![],
                 resources: vec![serde_json::from_value(json!({"kind":"Node","cluster":context,"name":"dev-control-plane","namespace":null,"age":"9d"})).unwrap()],
                 warnings: vec![],
+                versions: Default::default(),
             })
         })
     }

@@ -29,6 +29,7 @@ pub fn resources(reads: Vec<(String, Read<ScopeResult>)>) -> Read<ScopeResult> {
             resources: vec![],
             namespaces: vec![],
             warnings: vec![],
+            versions: Default::default(),
         };
         let mut first_error = None;
         let mut succeeded = false;

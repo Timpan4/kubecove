@@ -83,6 +83,7 @@ pub(super) async fn inventory(
         namespaces,
         resources: vec![],
         warnings,
+        versions: Default::default(),
     };
     for kind in kinds {
         let namespace = if CLUSTER_KINDS.contains(kind) {

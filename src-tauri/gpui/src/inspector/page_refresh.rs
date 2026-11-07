@@ -168,7 +168,7 @@ impl Inspector {
                 .kinds
                 .iter()
                 .filter(|kind| kind.group.ends_with("toolkit.fluxcd.io"))
-                .map(|kind| live_data::dynamic_key(kind, None)),
+                .map(|kind| crate::backend::discovered_key(kind, None)),
         );
         let signatures: Vec<_> = keys
             .iter()
@@ -195,7 +195,8 @@ impl Inspector {
                         let opened = backend
                             .watch(WatchTarget::Resource {
                                 scope: scope.clone(),
-                                key: key.clone(),
+                                key: Box::new(key.clone()),
+                                resource_version: None,
                             })
                             .await;
                         let mut recovery = Box::pin(cx.background_executor().timer(RECOVERY));

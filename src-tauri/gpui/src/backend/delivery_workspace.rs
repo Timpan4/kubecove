@@ -154,5 +154,6 @@ pub async fn resources(
         namespaces,
         resources,
         warnings,
+        versions: Default::default(),
     })
 }

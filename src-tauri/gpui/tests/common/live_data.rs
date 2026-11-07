@@ -1,6 +1,6 @@
 //! Scripted messages and reads shared with tauri-dev-mock-live.ts.
 use super::*;
-use kubecove_gpui::backend::WatchTarget;
+use kubecove_gpui::backend::{ListVersions, WatchTarget, discovered_key, watch_signature};
 use kubecove_lib::models::{StreamMessage, StreamStatus, WatchResourceTarget};
 use tokio::sync::mpsc;
 
@@ -29,6 +29,12 @@ pub(super) struct ScriptState {
     changed: bool,
     deleted: bool,
     events: Option<EventSet>,
+    /// Scripted changes so far. The mock list version is one higher.
+    revision: u64,
+    /// The list version that first shows the scripted change.
+    changed_at: Option<u64>,
+    /// The kind and start version of each resource watch, in opening order.
+    starts: Vec<(String, Option<String>)>,
     pub(super) watches: Vec<(WatchTarget, mpsc::UnboundedSender<StreamMessage>)>,
 }
 #[derive(Clone, Copy)]
@@ -52,7 +58,7 @@ impl Fixture {
                 .watches
                 .iter()
                 .filter_map(|(watch, sender)| match watch {
-                    WatchTarget::Resource { scope, key }
+                    WatchTarget::Resource { scope, key, .. }
                         if self
                             .resources
                             .iter()
@@ -160,6 +166,60 @@ impl Fixture {
     pub(super) fn live_failed(&self) -> bool {
         self.live.state.lock().unwrap().failed
     }
+
+    /// The mock list version, shared with tauri-dev-mock-live.ts. A scripted
+    /// change raises it, as a cluster write does.
+    pub(super) fn list_version(&self) -> String {
+        (self.live.state.lock().unwrap().revision + 1).to_string()
+    }
+
+    /// The current list version under the watch signature of every kind a
+    /// view can watch in `namespace`.
+    pub(super) fn list_versions(&self, namespace: Option<&str>) -> ListVersions {
+        let version = self.list_version();
+        let mut versions = ListVersions::new();
+        for row in &self.resources {
+            let discovered = self.kinds.iter().find(|kind| {
+                kind.kind == row.kind && row.api_version.as_ref() == Some(&kind.api_version)
+            });
+            let key = match discovered {
+                Some(kind) => discovered_key(kind, namespace.map(str::to_owned)),
+                None => {
+                    let namespaced = !CLUSTER_KINDS.contains(&row.kind.as_str());
+                    kubecove_lib::models::WatchResourceKey {
+                        resource_kind: kubecove_lib::models::WatchResourceKind {
+                            kind: row.kind.clone(),
+                            group: None,
+                            version: None,
+                            api_version: None,
+                            plural: None,
+                            namespaced: Some(namespaced),
+                        },
+                        namespace: namespace.filter(|_| namespaced).map(str::to_owned),
+                    }
+                }
+            };
+            versions.insert(watch_signature(&key), version.clone());
+        }
+        versions
+    }
+
+    /// Asserts the version the newest `kind` watch started at.
+    #[allow(dead_code)] // Only the parity driver checks watch starts.
+    pub fn expect_watch_start(&self, kind: &str, resource_version: Option<&str>) {
+        let state = self.live.state.lock().unwrap();
+        let start = state
+            .starts
+            .iter()
+            .rev()
+            .find(|(started, _)| started == kind)
+            .unwrap_or_else(|| panic!("no {kind} watch started"));
+        assert_eq!(
+            start.1.as_deref(),
+            resource_version,
+            "{kind} watch start version"
+        );
+    }
     pub fn replay_live(&self, script: &str) {
         if matches!(script, "update" | "delete") {
             self.timing.invalidate("mock-dev");
@@ -170,8 +230,12 @@ impl Fixture {
             "burst" | "burst-reset" => state.burst = script == "burst",
             "failed" => state.failed = true,
             "connected" => state.failed = false,
-            "update" => state.changed = true,
-            "delete" => state.deleted = true,
+            "update" | "delete" => {
+                state.changed |= script == "update";
+                state.deleted |= script == "delete";
+                state.revision += 1;
+                state.changed_at = Some(state.revision + 1);
+            }
             "events" => state.events = Some(EventSet::Live),
             "events-overflow" => state.events = Some(EventSet::Overflow),
             _ => {}
@@ -189,7 +253,7 @@ impl Fixture {
         state.watches.retain(|(_, sender)| !sender.is_closed());
         for (watch, sender) in &state.watches {
             if matches!(script, "burst" | "burst-reset") {
-                if let WatchTarget::Resource { scope, key } = watch {
+                if let WatchTarget::Resource { scope, key, .. } = watch {
                     for row in self
                         .resources
                         .iter()
@@ -271,9 +335,28 @@ impl Fixture {
                 })
                 .unwrap();
             let mut state = live.lock().unwrap();
-            // The real stream opens at resourceVersion "0" in streams/watch.rs.
-            if (state.changed || state.deleted)
-                && matches!(&target, WatchTarget::Resource { key, .. } if key.resource_kind.kind == "Deployment")
+            let start = match &target {
+                WatchTarget::Resource {
+                    key,
+                    resource_version,
+                    ..
+                } => Some((key.resource_kind.kind.clone(), resource_version.clone())),
+                WatchTarget::Events(_) => None,
+            };
+            // streams/watch.rs starts at the given list version, or at "0",
+            // which replays every object. Either way it delivers a change made
+            // after that version.
+            let replays = |version: &Option<String>| {
+                state.changed_at.is_some_and(|changed| {
+                    version
+                        .as_deref()
+                        .and_then(|version| version.parse::<u64>().ok())
+                        .is_none_or(|version| version < changed)
+                })
+            };
+            if let Some((kind, version)) = &start
+                && kind == "Deployment"
+                && replays(version)
             {
                 let _ = sender.send(StreamMessage::ResourceChanged {
                     stream_id: "fixture".into(),
@@ -286,6 +369,7 @@ impl Fixture {
                     action: if state.deleted { "deleted" } else { "applied" }.into(),
                 });
             }
+            state.starts.extend(start);
             state.watches.push((target, sender.clone()));
             Ok(LogStream::new(receiver, sender))
         })
