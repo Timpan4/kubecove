@@ -4,6 +4,7 @@ pub mod forwarded_bearer;
 mod health;
 pub mod http_activity;
 mod metadata;
+pub(crate) mod read_stall;
 mod serialization;
 pub mod session_scope;
 mod time;

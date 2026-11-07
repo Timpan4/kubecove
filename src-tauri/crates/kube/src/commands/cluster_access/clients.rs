@@ -11,6 +11,7 @@ use crate::{
             client_cancellation::RequestCancellationLayer,
             forwarded_bearer::forwarded_bearer_layer,
             http_activity::{HTTP_ACTIVITY, HttpActivityLayer},
+            read_stall::ReadStallLayer,
         },
         kubeconfig::{Fallback, KubeconfigSource},
     },
@@ -107,10 +108,12 @@ pub(super) async fn client(
         if let Some(client) = path.lookup(source_key, cluster_context, fingerprint) {
             return Ok(client);
         }
+        // Only the desktop plugin-path step below changes the config.
+        #[cfg_attr(
+            not(all(feature = "desktop", any(target_os = "linux", target_os = "macos"))),
+            allow(unused_mut)
+        )]
         let mut config = source.config_for_context(cluster_context, fallback).await?;
-        if !matches!(path, ClientPath::Live) {
-            config.read_timeout = Some(REQUEST_READ_TIMEOUT);
-        }
         // Task locals do not propagate to blocking workers. Capture the bearer
         // layer and cache owner before crossing that boundary.
         let bearer = forwarded_bearer_layer()?;
@@ -130,15 +133,20 @@ pub(super) async fn client(
                 return Err(AppError::cancelled());
             }
             let builder = ClientBuilder::try_from(config).map_err(AppError::from)?;
+            // The stall limit is per request, not a socket read timeout, so
+            // idle pooled connections survive between bursts of reads.
+            let stall = ReadStallLayer::new(REQUEST_READ_TIMEOUT);
             let client = match &path {
                 // Only finite reads count toward load network time. Live watches
                 // stay open for minutes and would make the busy clock meaningless.
                 ClientPath::Finite(generation) => builder
+                    .with_layer(&stall)
                     .with_layer(&HttpActivityLayer::new(&HTTP_ACTIVITY))
                     .with_layer(&RequestCancellationLayer::new(generation.token.clone()))
                     .with_layer(&bearer)
                     .build(),
-                ClientPath::Operation | ClientPath::Live => builder.with_layer(&bearer).build(),
+                ClientPath::Operation => builder.with_layer(&stall).with_layer(&bearer).build(),
+                ClientPath::Live => builder.with_layer(&bearer).build(),
             };
             scope.run_sync(|| path.store(source_key, cluster_context, fingerprint, client))
         })
