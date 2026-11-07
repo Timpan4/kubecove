@@ -389,6 +389,25 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
     assert_eq!(failed, 0, "{failed} parity scenarios failed; see gpui.json");
 }
 
+/// Runs a step's checks in the window and re-raises their panic only after the update ends.
+/// A panic that unwinds through `update_window` skips GPUI's end-of-update bookkeeping, so
+/// effects stop flushing for the rest of the process and later scenarios fail on missing
+/// elements.
+fn check_in_window(
+    cx: &mut TestAppContext,
+    handle: AnyWindowHandle,
+    check: impl FnOnce(&mut gpui_kit::Window, &mut gpui_kit::App),
+) {
+    let outcome = cx
+        .update_window(handle, |_, window, cx| {
+            std::panic::catch_unwind(AssertUnwindSafe(|| check(window, cx)))
+        })
+        .unwrap();
+    if let Err(payload) = outcome {
+        std::panic::resume_unwind(payload);
+    }
+}
+
 /// The panic text, plus the last step the driver reached.
 fn failure_message(artifacts: &OsString, payload: Box<dyn Any + Send>) -> String {
     let panic = payload
@@ -538,7 +557,7 @@ fn run_scenario(
                 cx.run_until_parked();
             }
             if step["control"]["operation"] == "expectNoError" {
-                cx.update_window(handle, |_, window, cx| {
+                check_in_window(cx, handle, |window, cx| {
                     window.render_frame(cx);
                     for id in [
                         "surface-error",
@@ -551,8 +570,7 @@ fn run_scenario(
                             "Read error shown while retry is pending"
                         );
                     }
-                })
-                .unwrap();
+                });
             }
             backend.timing_control(&step["control"]);
             if step["control"]["operation"] == "contend" {
@@ -750,17 +768,15 @@ fn run_scenario(
                 .advance_clock(std::time::Duration::from_millis(250));
             cx.run_until_parked();
         }
-        cx.update_window(handle, |_, window, cx| {
+        check_in_window(cx, handle, |window, cx| {
             window.render_frame(cx);
             act(window, cx, step);
-        })
-        .unwrap();
+        });
         cx.run_until_parked();
-        cx.update_window(handle, |_, window, cx| {
+        check_in_window(cx, handle, |window, cx| {
             window.render_frame(cx);
             finish(window, cx, step);
-        })
-        .unwrap();
+        });
         cx.run_until_parked();
         if matches!(string(step, "action"), "editYaml" | "replaceYamlDraft") {
             // The editor lints a changed draft after its 450 ms delay.
