@@ -183,9 +183,12 @@ mod text_fit {
     }
 
     pub fn run() {
-        let fixture = std::env::var_os("KUBECOVE_PARITY_FIXTURE").expect(
-            "KUBECOVE_PARITY_FIXTURE is required; export it with `bun e2e/parity/visual/export-fixture.ts <path>`",
-        );
+        let Some(fixture) = std::env::var_os("KUBECOVE_PARITY_FIXTURE") else {
+            println!(
+                "text_fit: skipped; export a fixture with `bun e2e/parity/visual/export-fixture.ts <path>` and set KUBECOVE_PARITY_FIXTURE"
+            );
+            return;
+        };
         let fixture = Path::new(&fixture);
         deployment_kind_fits(fixture);
         println!("text_fit deployment-kind-fits: passed");
