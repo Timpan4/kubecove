@@ -265,6 +265,22 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
     if (!isSectionName(nodeId.section)) {
       return { section: null, namespace: null, group: null, kinds: [], clusterScoped: false, argoMode: false, helmMode: false, incidentMode: false, portForwardMode: false, rbacMode: false };
     }
+    // An "All namespaces" category, such as Network, selects its kinds in every workspace namespace.
+    const category = SECTIONS[nodeId.section].label;
+    if (isKindGroupName(category)) {
+      return {
+        section: nodeId.section,
+        namespace: null,
+        group: category,
+        kinds: [...KIND_GROUPS[category]],
+        clusterScoped: false,
+        argoMode: false,
+        helmMode: false,
+        incidentMode: false,
+        portForwardMode: false,
+        rbacMode: false,
+      };
+    }
     return {
       section: nodeId.section,
       namespace: null,

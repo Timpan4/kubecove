@@ -29,6 +29,8 @@ export interface ResourceBrowserScope {
 	canQuery: boolean;
 	namespaces: string[];
 	kinds: ResourceKindSelection[];
+	/** The kinds are a sidebar category's, so kinds discovered later, such as custom kinds, stay unselected. */
+	categoryKinds: boolean;
 }
 
 export interface WorkspaceNavigationModel {
@@ -78,7 +80,7 @@ function resourceBrowserScope(
 	state: NavigationScopeState,
 ): ResourceBrowserScope {
 	if (state.viewMode !== "resources" || isNamespaceListView(state)) {
-		return { canQuery: false, namespaces: [], kinds: [] };
+		return { canQuery: false, namespaces: [], kinds: [], categoryKinds: false };
 	}
 	const scope = resolveTreeScope(state.selectedNode);
 	if (
@@ -88,7 +90,7 @@ function resourceBrowserScope(
 		scope.portForwardMode ||
 		scope.rbacMode
 	) {
-		return { canQuery: false, namespaces: [], kinds: [] };
+		return { canQuery: false, namespaces: [], kinds: [], categoryKinds: false };
 	}
 	const kinds =
 		scope.kinds.length > 0 ? scope.kinds : [...workspace.scope.kinds];
@@ -98,7 +100,12 @@ function resourceBrowserScope(
 			: scope.section === "namespaces" || scope.clusterScoped
 				? []
 				: [...workspace.scope.namespaces]);
-	return { canQuery: kinds.length > 0, namespaces, kinds };
+	return {
+		canQuery: kinds.length > 0,
+		namespaces,
+		kinds,
+		categoryKinds: state.selectedNode?.type !== "kind" && scope.group !== null,
+	};
 }
 
 function workspaceTitle(

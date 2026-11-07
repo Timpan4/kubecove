@@ -139,6 +139,7 @@
 		initialKinds,
 		availableKinds = initialKinds,
 		kindScopeLocked = false,
+		selectAddedKinds = true,
 		customResourcesEnabled = true,
 		customResourcesStatus = null,
 		initialSearch = "",
@@ -162,6 +163,8 @@
 		initialKinds: ResourceKindSelection[];
 		availableKinds?: ResourceKindSelection[];
 		kindScopeLocked?: boolean;
+		/** Whether available kinds beyond the initial ones, such as discovered custom kinds, join the selection. */
+		selectAddedKinds?: boolean;
 		customResourcesEnabled?: boolean;
 		customResourcesStatus?: string | null;
 		initialSearch?: string;
@@ -260,7 +263,7 @@
 		selectedNamespaces = pathState ? [...pathState.selectedNamespaces] : [...initialNamespaces];
 		selectedKinds = pathState ? [...pathState.selectedKinds] : [...initialKinds];
 		appliedScopeKey = incomingScopeKey;
-		appliedAvailableKinds = initialKinds;
+		appliedAvailableKinds = selectAddedKinds ? initialKinds : availableKinds;
 		search = pathState?.search ?? initialSearch;
 		filterSearch = search;
 		gitOpsFilter = pathState?.gitOpsFilter ?? initialGitOpsFilter;
@@ -280,7 +283,9 @@
 	/** Selects kinds that became available since they were last applied. */
 	function selectNewlyAvailableKinds() {
 		if (sameKinds(appliedAvailableKinds, availableKinds)) return;
-		const additions = newlyAvailableKinds(availableKinds, appliedAvailableKinds, selectedKinds);
+		const additions = selectAddedKinds
+			? newlyAvailableKinds(availableKinds, appliedAvailableKinds, selectedKinds)
+			: [];
 		appliedAvailableKinds = availableKinds;
 		if (additions.length > 0) selectedKinds = [...selectedKinds, ...additions];
 	}

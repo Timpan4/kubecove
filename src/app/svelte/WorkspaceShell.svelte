@@ -629,6 +629,7 @@
 							initialKinds={resourceBrowserInitialKinds}
 							availableKinds={resourceBrowserKinds}
 							kindScopeLocked={fixedResourceKindScope}
+							selectAddedKinds={!resourceBrowserScope.categoryKinds}
 							customResourcesEnabled={showCustomResources}
 							{customResourcesStatus}
 							initialSearch={resourceInitialSearch}
