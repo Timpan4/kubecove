@@ -4,7 +4,7 @@
 	"scenarios": [
 		{
 			"id": "logs.pod.toolbar-live",
-			"title": "A multi-container Pod's live Logs toolbar keeps its status clear of the container picker and buttons",
+			"title": "A multi-container Pod's live Logs toolbar keeps its status clear of the container picker and buttons, and its buttons inside the detail panel",
 			"steps": [
 				{ "action": "openResources" },
 				{ "action": "search", "value": "argocd-dex-server" },
@@ -19,7 +19,7 @@
 		},
 		{
 			"id": "logs.pod-paused.toolbar-paused",
-			"title": "A paused multi-container Logs toolbar keeps its status clear of the container picker and buttons",
+			"title": "A paused multi-container Logs toolbar truncates its status, so the status stays clear of the container picker and buttons and the buttons stay inside the detail panel",
 			"steps": [
 				{ "action": "openResources" },
 				{ "action": "search", "value": "argocd-dex-server" },

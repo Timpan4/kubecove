@@ -59,10 +59,10 @@ export async function resourceTableAction(page: Page, step: Step) {
 				};
 			});
 			if (fit.text !== step.text) throw new Error(`${step.column} value was ${fit.text}`);
-				if (step.truncated && fit.title !== step.text) throw new Error(`${step.column} hover value was ${fit.title}`);
+			if (step.truncated && fit.title !== step.text) throw new Error(`${step.column} hover value was ${fit.title}`);
 			if (!fit.inside) throw new Error(`${step.column} value escapes its cell`);
 			if (fit.truncated !== step.truncated) throw new Error(`${step.column} value truncated was ${fit.truncated}, expected ${step.truncated}`);
-				if (step.truncated && !fit.ellipsis) throw new Error(`${step.column} value is not truncated with an ellipsis`);
+			if (step.truncated && !fit.ellipsis) throw new Error(`${step.column} value is not truncated with an ellipsis`);
 			break;
 		}
 		default:

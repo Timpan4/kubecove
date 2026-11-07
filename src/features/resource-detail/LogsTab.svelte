@@ -152,6 +152,7 @@
 		if (logStatus === "connected") return "Live";
 		return logStatus.charAt(0).toUpperCase() + logStatus.slice(1);
 	});
+	const statusTitle = $derived(`${statusLabel} · ${lineCount} lines`);
 	const statusDotClass = $derived(
 		logPaused
 			? "bg-amber-500"
@@ -239,20 +240,21 @@
 						</SelectContent>
 					</Select>
 				{/if}
-				<span class="inline-flex items-center gap-1.5 whitespace-nowrap text-xs" title={logMessage}>
+				<!-- The status gives way to the buttons: each part ends in an ellipsis, and the full text shows on hover. -->
+				<span class="inline-flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap text-xs" title={statusTitle}>
 					{#if connecting}
-						<Spinner class="size-3" />
+						<Spinner class="size-3 shrink-0" />
 					{:else}
 						<span class="size-[7px] shrink-0 rounded-full {statusDotClass}"></span>
 					{/if}
-					{statusLabel}
-					<span class="text-muted-foreground">· {lineCount} lines</span>
+					<span class="min-w-0 truncate">{statusLabel}</span>
+					<span class="min-w-0 truncate text-muted-foreground">· {lineCount} lines</span>
 				</span>
 				<span class="flex-1"></span>
 				<Popover bind:open={tailMenuOpen}>
 					<PopoverTrigger
 						type="button"
-						class={buttonClass({ variant: "outline", className: "font-normal" })}
+						class={buttonClass({ variant: "outline", className: "shrink-0 font-normal" })}
 						aria-label="Log tail and time window"
 					>
 						{tailLabel}
@@ -284,7 +286,7 @@
 						</div>
 					</PopoverContent>
 				</Popover>
-				<Button variant={logPaused ? "default" : "outline"} onclick={onTogglePause}>
+				<Button variant={logPaused ? "default" : "outline"} class="shrink-0" onclick={onTogglePause}>
 					{#if logPaused}
 						<Play data-icon="inline-start" />
 						Resume
