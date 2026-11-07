@@ -13,7 +13,7 @@ use crate::logs::LogLevel;
 use crate::preferences::LogLayout;
 use crate::theme::{MONO, Tokens};
 use crate::ui;
-use gpui_kit::component::{input::Input, select::Select};
+use gpui_kit::component::{input::Input, select::Select, tooltip::Tooltip};
 use gpui_kit::{
     AnyElement, Context, Div, FontWeight, Hsla, SharedString, Stateful, TestSupportExt, deferred,
     div, list, prelude::*, px,
@@ -118,9 +118,17 @@ fn tail_menu(logs: &LogsState, cx: &mut Context<Inspector>) -> Stateful<Div> {
 }
 
 fn toolbar(logs: &LogsState, cx: &mut Context<Inspector>) -> Div {
+    // The label shrinks and ends in an ellipsis, as the row runs out of width; the full text stays on hover.
+    let status_label = logs.status_label();
+    let status_title = format!("{status_label} · {} lines", logs.buffer.len());
     let status = div()
+        .id("log-status")
+        .test_support()
+        .aria_label(status_title.clone())
+        .tooltip(move |window, cx| Tooltip::new(status_title.clone()).build(window, cx))
         .flex()
-        .flex_none()
+        .min_w_0()
+        .overflow_hidden()
         .items_center()
         .gap(px(6.))
         .whitespace_nowrap()
@@ -134,8 +142,10 @@ fn toolbar(logs: &LogsState, cx: &mut Context<Inspector>) -> Div {
                 .bg(status_dot(logs))
                 .into_any_element()
         })
-        .child(ui::xs(logs.status_label()))
-        .child(ui::muted(ui::xs(format!("· {} lines", logs.buffer.len()))));
+        .child(ui::xs(status_label).min_w_0().truncate())
+        .child(ui::muted(
+            ui::xs(format!("· {} lines", logs.buffer.len())).min_w_0().truncate(),
+        ));
     let tail = div()
         .relative()
         .child(
@@ -167,9 +177,9 @@ fn toolbar(logs: &LogsState, cx: &mut Context<Inspector>) -> Div {
     } else {
         Tokens::foreground()
     };
+    // One line, as in `LogsTab.svelte`: the status label gives up width, so nothing draws over the controls.
     div()
         .flex()
-        .flex_wrap()
         .flex_none()
         .items_center()
         .gap(px(6.))
@@ -179,6 +189,7 @@ fn toolbar(logs: &LogsState, cx: &mut Context<Inspector>) -> Div {
                     .id("log-container")
                     .h(px(28.))
                     .text_xs()
+                    .flex_none()
                     .w(px(160.)),
             )
         })
