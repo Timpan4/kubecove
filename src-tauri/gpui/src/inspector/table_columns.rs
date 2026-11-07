@@ -3,7 +3,8 @@
 
 use crate::table_sort::Column as SortColumn;
 use crate::ui::{self, Tone};
-use gpui_kit::{Div, SharedString, div, prelude::*, px};
+use gpui_kit::component::tooltip::Tooltip;
+use gpui_kit::{Div, SharedString, TestSupportExt, div, prelude::*, px};
 use kubecove_lib::models::ResourceSummary;
 
 pub(super) const EMPTY: &str = "—";
@@ -119,8 +120,8 @@ pub(super) fn resource_id(row: &ResourceSummary) -> String {
         row.name
     )
 }
+/// Every cell clips to its column, so content cannot draw over a neighbour.
 pub(super) fn cell(column: Column, content: impl IntoElement) -> Div {
-    // Like the web's fixed table layout, only Name truncates; other cells may overflow.
     let cell = div()
         .flex()
         .items_center()
@@ -132,10 +133,32 @@ pub(super) fn cell(column: Column, content: impl IntoElement) -> Div {
             .flex_1()
             .min_w(px(Column::Name.width()))
             .overflow_hidden(),
-        _ => cell.w(px(column.width())).flex_none(),
+        _ => cell.w(px(column.width())).flex_none().overflow_hidden(),
     }
 }
 
+/// Text that truncates with an ellipsis inside its column.
 pub(super) fn text_cell(column: Column, value: impl Into<SharedString>) -> Div {
-    cell(column, ui::sm(value).whitespace_nowrap())
+    cell(
+        column,
+        div()
+            .min_w_0()
+            .child(ui::sm(value).whitespace_nowrap().truncate()),
+    )
+}
+
+/// A truncated text cell whose full value is its hover tooltip and accessible
+/// description, as `TimestampText` does for timestamps.
+pub(super) fn value_cell(column: Column, id: String, value: String) -> Div {
+    let tooltip = value.clone();
+    cell(
+        column,
+        div()
+            .id(SharedString::from(id))
+            .test_support()
+            .aria_description(value.clone())
+            .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
+            .min_w_0()
+            .child(ui::sm(value).whitespace_nowrap().truncate()),
+    )
 }

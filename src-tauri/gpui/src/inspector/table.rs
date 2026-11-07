@@ -4,7 +4,7 @@
 use super::resources::Panel;
 use super::table_columns::{
     Column, EMPTY, READINESS_NOT_REPORTED, RESTART_COUNT_NOT_REPORTED, cell, ready_chip,
-    ready_text, resource_id, restart_text, text_cell,
+    ready_text, resource_id, restart_text, text_cell, value_cell,
 };
 use super::table_status::{health_badge, lifecycle_status};
 use super::{Inspector, surface, timestamp_text};
@@ -163,9 +163,11 @@ impl Inspector {
                     };
                 cell(column, content)
             }
-            Column::Namespace | Column::Kind | Column::Owner => {
-                text_cell(column, self.cell_text(column, row))
-            }
+            Column::Namespace | Column::Kind | Column::Owner => value_cell(
+                column,
+                format!("value:{}:{}", column.label(), resource_id(row)),
+                self.cell_text(column, row),
+            ),
             Column::Ready => match ready_chip(row) {
                 Some((tone, label)) => cell(column, ui::status_badge(tone, label)),
                 None => text_cell(column, ready_text(row)),
