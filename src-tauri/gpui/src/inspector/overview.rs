@@ -121,7 +121,10 @@ fn entry_title(icon: &str, title: &str, description: &str) -> Div {
 impl Inspector {
     pub(super) fn overview(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let health = HealthSummary::of(self.workspace_rows());
-        let loading = matches!(self.overview_load(), Load::Loading);
+        let loading = self.loading.phase(
+            "overview-health",
+            matches!(self.overview_load(), Load::Loading),
+        );
         let operations = [
             (
                 "open-resources",
@@ -264,12 +267,16 @@ impl Inspector {
                             .child(metric("Unknown", health.unknown, None))
                             .child(metric("Not evaluated", health.not_evaluated, None)),
                     )
-                    .when(loading, |content| {
+                    .when(!loading.ready(), |content| {
                         content.child(
-                            ui::muted(ui::sm("Loading workspace health..."))
-                                .flex()
-                                .justify_center()
-                                .min_h(px(64.)),
+                            ui::muted(ui::sm(if loading.shown() {
+                                "Loading workspace health..."
+                            } else {
+                                ""
+                            }))
+                            .flex()
+                            .justify_center()
+                            .min_h(px(64.)),
                         )
                     })
                     .when(

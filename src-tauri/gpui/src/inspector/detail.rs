@@ -466,11 +466,16 @@ impl Inspector {
                                 }))
                         }),
                 );
+        let loading = self
+            .loading
+            .phase("detail", matches!(self.detail, Detail::Loading(_)));
         let body: AnyElement = match &self.detail {
             Detail::Closed => unreachable!("closed detail returned early"),
-            Detail::Loading(_) => {
+            _ if loading.shown() => {
                 ui::muted(ui::xs("Loading resource details...")).into_any_element()
             }
+            Detail::Loading(_) => div().into_any_element(),
+            _ if !loading.ready() => div().into_any_element(),
             Detail::Failed(failed) => {
                 let permission =
                     friendly_error::resource_permission(&failed.resource, "get").map(|target| {
@@ -505,16 +510,25 @@ impl Inspector {
                         detail,
                         &self.timeline,
                         self.persisted.preferences.timestamp_timezone,
+                        &self.loading,
                         cx,
                     )
                     .into_any_element(),
                     DetailTab::Forward => self.forward_tab(cx).into_any_element(),
                     DetailTab::Exec => self.exec_view(cx),
-                    DetailTab::Events => {
-                        events_tab(detail, self.persisted.preferences.timestamp_timezone, cx)
-                    }
-                    DetailTab::Logs => logs_tab(detail, self.persisted.preferences.log_layout, cx),
-                    DetailTab::Revisions => revisions_tab(detail, cx),
+                    DetailTab::Events => events_tab(
+                        detail,
+                        self.persisted.preferences.timestamp_timezone,
+                        &self.loading,
+                        cx,
+                    ),
+                    DetailTab::Logs => logs_tab(
+                        detail,
+                        self.persisted.preferences.log_layout,
+                        &self.loading,
+                        cx,
+                    ),
+                    DetailTab::Revisions => revisions_tab(detail, &self.loading, cx),
                     DetailTab::Argo => argo_tab(
                         detail,
                         self.persisted.preferences.timestamp_timezone,
@@ -530,9 +544,10 @@ impl Inspector {
                             unavailable: self.argo_connection_unavailable(),
                         },
                         &self.feedback.disclosure(),
+                        &self.loading,
                         cx,
                     ),
-                    DetailTab::Actions => actions_tab(detail, cx),
+                    DetailTab::Actions => actions_tab(detail, &self.loading, cx),
                     DetailTab::Yaml => {
                         yaml_tab(self, detail, &self.persisted.preferences, cx).into_any_element()
                     }

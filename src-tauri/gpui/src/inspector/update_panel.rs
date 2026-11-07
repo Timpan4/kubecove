@@ -58,9 +58,14 @@ impl Inspector {
         cx.notify();
     }
 
+    fn update_checking(&self) -> super::loading::Phase {
+        self.loading
+            .phase("update-check", self.settings.integrations.update_busy)
+    }
+
     fn update_tooltip(&self) -> &'static str {
         let state = &self.settings.integrations;
-        if state.update_busy {
+        if state.update_busy && self.update_checking().shown() {
             "Checking for updates"
         } else if state.update_error.is_some() {
             "Update check failed"
@@ -201,6 +206,9 @@ impl Inspector {
                 .child(labelled(ui::xs(error.clone()), error));
         }
         if state.update_busy {
+            if !self.update_checking().shown() {
+                return body;
+            }
             return body.child(labelled(
                 ui::muted(ui::sm("Checking for updates...")),
                 "Checking for updates...",

@@ -348,6 +348,9 @@ impl Inspector {
         let empty = self.palette.hits.is_empty();
         // `CommandGroup` is `overflow-hidden py-1`; its heading renders without
         // the dialog's heading styles and takes no visible space.
+        let search_loading = self
+            .loading
+            .phase("palette-search", self.palette.search.loading());
         let list = div()
             .id("palette-list")
             .max_h(px(320.))
@@ -358,7 +361,7 @@ impl Inspector {
                     .filter(|items| !items.is_empty())
                     .map(|items| div().py(px(4.)).children(items)),
             )
-            .when(empty && !self.palette.search.loading(), |list| {
+            .when(empty && search_loading.ready(), |list| {
                 list.child(
                     ui::muted(ui::xs("No results found."))
                         .id("palette-empty")
@@ -368,9 +371,17 @@ impl Inspector {
                         .text_center(),
                 )
             })
-            .when_some(self.palette.search.message(), |list, message| {
-                list.child(ui::muted(ui::xs(message)).p(px(12.)))
-            });
+            .when_some(
+                if search_loading.shown() {
+                    Some("Loading resources...".into())
+                } else {
+                    self.palette
+                        .search
+                        .message()
+                        .filter(|_| search_loading.ready())
+                },
+                |list, message| list.child(ui::muted(ui::xs(message)).p(px(12.))),
+            );
         div()
             .id("palette")
             .absolute()

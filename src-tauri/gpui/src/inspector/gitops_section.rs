@@ -171,8 +171,15 @@ impl Inspector {
 
     pub(super) fn gitops_body(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let body = div().id("gitops-inventory").test_support().p(px(12.));
+        let phase = self.loading.phase(
+            "overview-gitops",
+            matches!(self.gitops.load, GitOpsLoad::Detecting),
+        );
         let content: AnyElement = match &self.gitops.load {
-            GitOpsLoad::Detecting => pending("Detecting...").into_any_element(),
+            // WorkspaceOverview.svelte checks detection first.
+            _ if phase.shown() => pending("Detecting...").into_any_element(),
+            GitOpsLoad::Detecting => div().into_any_element(),
+            _ if !phase.ready() => div().into_any_element(),
             GitOpsLoad::Failed(error) => div()
                 .id("gitops-error")
                 .role(gpui_kit::Role::Alert)

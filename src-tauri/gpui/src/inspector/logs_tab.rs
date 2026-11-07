@@ -126,7 +126,7 @@ fn status_part(text: Div, id: &'static str, label: String) -> impl IntoElement {
         .aria_label(label)
 }
 
-fn toolbar(logs: &LogsState, cx: &mut Context<Inspector>) -> Div {
+fn toolbar(logs: &LogsState, connecting: bool, cx: &mut Context<Inspector>) -> Div {
     // The label shrinks and ends in an ellipsis, as the row runs out of width; the full text stays on hover.
     let status_label = logs.status_label();
     let status_title = format!("{status_label} · {} lines", logs.buffer.len());
@@ -141,7 +141,7 @@ fn toolbar(logs: &LogsState, cx: &mut Context<Inspector>) -> Div {
         .items_center()
         .gap(px(6.))
         .whitespace_nowrap()
-        .child(if logs.connecting() {
+        .child(if connecting {
             ui::icon("loader-circle", 12., Tokens::muted_foreground()).into_any_element()
         } else {
             div()
@@ -385,7 +385,7 @@ fn filters(logs: &LogsState, layout: LogLayout, cx: &mut Context<Inspector>) -> 
         )
 }
 
-fn viewport(logs: &LogsState, cx: &mut Context<Inspector>) -> impl IntoElement {
+fn viewport(logs: &LogsState, connecting: bool, cx: &mut Context<Inspector>) -> impl IntoElement {
     let frame = div()
         .id("log-viewport")
         .test_support()
@@ -415,7 +415,7 @@ fn viewport(logs: &LogsState, cx: &mut Context<Inspector>) -> impl IntoElement {
             .items_center()
             .gap(px(8.))
             .p(px(12.))
-            .when(logs.connecting(), |row| {
+            .when(connecting, |row| {
                 row.child(ui::icon("loader-circle", 14., Tokens::muted_foreground()))
             })
             .child(ui::muted(ui::sm(text)))
@@ -491,11 +491,13 @@ fn viewport(logs: &LogsState, cx: &mut Context<Inspector>) -> impl IntoElement {
 pub(super) fn logs_tab(
     detail: &ResourceDetail,
     layout: LogLayout,
+    loading: &super::loading::LoadingDelays,
     cx: &mut Context<Inspector>,
 ) -> AnyElement {
     let Some(logs) = detail.logs.as_ref() else {
         return div().into_any_element();
     };
+    let connecting = loading.phase("logs-connecting", logs.connecting()).shown();
     if detail.data.summary.kind == "Pod" && logs.containers.is_empty() {
         return empty(
             "No containers found",
@@ -529,9 +531,9 @@ pub(super) fn logs_tab(
         .flex_1()
         .min_h_0()
         .gap(px(6.))
-        .child(toolbar(logs, cx))
+        .child(toolbar(logs, connecting, cx))
         .child(filters(logs, layout, cx))
         .children(error)
-        .child(viewport(logs, cx))
+        .child(viewport(logs, connecting, cx))
         .into_any_element()
 }

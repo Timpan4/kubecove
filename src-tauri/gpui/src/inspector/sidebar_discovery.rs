@@ -177,8 +177,14 @@ impl Inspector {
         let Some(read) = self.sidebar_tree.discovery.reads.get(namespace) else {
             return vec![];
         };
+        let phase = self.loading.phase(
+            &format!("sidebar-namespace-kinds:{namespace}"),
+            read.result.is_none(),
+        );
         let message = match &read.result {
-            None => Some("Loading custom resources..."),
+            _ if phase.shown() => Some("Loading custom resources..."),
+            _ if !phase.ready() => return vec![],
+            None => return vec![],
             Some(Err(_)) => Some("Custom resources failed to load"),
             Some(Ok(_)) => None,
         };

@@ -7,6 +7,7 @@ pub(super) use model::State;
 use super::Inspector;
 use super::detail::ResourceDetail;
 use super::events::{EventsLoad, badge, tone_colors, tw};
+use super::loading::{LoadingDelays, Phase};
 use super::windowed::Windowed;
 use crate::incident::{self, SignalTone};
 use crate::incident_timeline::{self as entries, TimelineItem};
@@ -28,13 +29,21 @@ fn signal_accent(tone: SignalTone) -> (Hsla, Hsla) {
 }
 
 /// `mt-3 flex flex-col gap-2`: up to three signals, else the status line.
-pub(super) fn incident_signals(detail: &ResourceDetail) -> Div {
+pub(super) fn incident_signals(detail: &ResourceDetail, loading: &LoadingDelays) -> Div {
     let summary = &detail.data.summary;
     let conditions = incident::condition_rows(detail.data.status.as_ref());
     let signals = incident::incident_signals(summary, &conditions, detail.events.events());
     let list = div().mt(px(12.)).flex().flex_col().gap(px(8.));
+    let phase = loading.phase(
+        "detail-signals",
+        matches!(detail.events.load, EventsLoad::Pending),
+    );
+    if phase == Phase::Waiting {
+        return list;
+    }
     if signals.is_empty() {
         let message = match detail.events.load {
+            _ if phase.shown() => "Checking events and status signals...",
             EventsLoad::Pending => "Checking events and status signals...",
             EventsLoad::Failed(_) => "Status loaded; event signals are unavailable.",
             EventsLoad::Ready(_) => "No active incident signals for this resource.",

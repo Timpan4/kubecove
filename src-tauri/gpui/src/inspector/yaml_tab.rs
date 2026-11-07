@@ -449,9 +449,10 @@ pub(super) fn yaml_tab(
             .id("edit-draft")
             .test_support()
             .aria_label("Edit YAML")
-            .when(loading, |button| {
-                button.child(ui::icon("loader-circle", 14., Tokens::foreground()))
-            })
+            .when(
+                inspector.loading.phase("yaml-draft", loading).shown(),
+                |button| button.child(ui::icon("loader-circle", 14., Tokens::foreground())),
+            )
             .child(ui::icon("pencil", 14., Tokens::foreground()))
             .child("Edit YAML")
             .when(!blocked, |button| {

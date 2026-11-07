@@ -5,6 +5,7 @@
 
 use super::Inspector;
 use super::controls::{Variant, button};
+use super::loading::Phase;
 use super::settings_page::{Observed, settings_row, switch};
 use crate::backend::KubeconfigSourcesSummary;
 use crate::theme::Tokens;
@@ -247,6 +248,14 @@ impl Inspector {
                 false,
                 Some(error.clone()),
             ),
+        };
+        let loading = self
+            .loading
+            .phase("kubeconfig-sources", state.sources.is_none());
+        let description = match loading {
+            Phase::Shown => "Loading kubeconfig sources.".to_owned(),
+            Phase::Waiting => String::new(),
+            Phase::Ready => description,
         };
         let reason = |element: Observed, unavailable: Option<&'static str>| -> Observed {
             match unavailable {

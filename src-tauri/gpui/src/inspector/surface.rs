@@ -57,6 +57,17 @@ pub(super) fn frame(icon: &str, title: &str, wide: bool, body: impl IntoElement)
         .child(body)
 }
 
+/// `SurfaceFrame`'s loading slot, which precedes its error state: the
+/// indicator, an empty slot during the show delay, or `None` once the content
+/// may render.
+pub(super) fn pending_slot(phase: super::loading::Phase) -> Option<AnyElement> {
+    match phase {
+        super::loading::Phase::Shown => Some(loading()),
+        super::loading::Phase::Waiting => Some(div().into_any_element()),
+        super::loading::Phase::Ready => None,
+    }
+}
+
 /// `SurfaceFrame`'s pending and error states.
 pub(super) fn loading() -> AnyElement {
     div()

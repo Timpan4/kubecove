@@ -41,7 +41,13 @@ fn slot(page: Page) -> Option<(usize, Duration)> {
 impl Inspector {
     pub(super) fn live_label(&self) -> &'static str {
         if self.page != Page::GitOps {
-            return self.live.label();
+            // ResourceLiveStatusMenu.svelte delays and holds "Refreshing…" like other indicators.
+            let refreshing = self.loading.phase("live-refresh", self.live.refreshing);
+            return if refreshing.shown() {
+                "Refreshing…"
+            } else {
+                self.live.settled_label()
+            };
         }
         if self.gitops.error().is_some() {
             return "Refresh failed";

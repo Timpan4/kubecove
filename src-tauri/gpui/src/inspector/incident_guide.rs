@@ -347,8 +347,13 @@ impl Inspector {
         let topology_state = state.topology.0;
         let owners = guidance::resolve_owner(&item.resource, state.topology.1.as_ref());
         let guide = guidance::build(item, details, &owners, details_state, topology_state);
-        let enriching =
-            details_state == Enrichment::Loading || topology_state == Enrichment::Loading;
+        let enriching = self
+            .loading
+            .phase(
+                "incident-enrichment",
+                details_state == Enrichment::Loading || topology_state == Enrichment::Loading,
+            )
+            .shown();
         let failed = details_state == Enrichment::Error || topology_state == Enrichment::Error;
         let resource = item.resource.clone();
         let facts = guide.facts.iter().map(|fact| {

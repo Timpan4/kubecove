@@ -387,9 +387,17 @@ impl Inspector {
                 .gap(px(8.))
                 .child(content)
         };
+        let loading = self
+            .loading
+            .phase("map", matches!(self.map.topology, TopologyLoad::Loading));
         let body: Vec<AnyElement> = match (&self.map.topology, &view) {
-            (TopologyLoad::Loading, _) => {
-                vec![centered(ui::muted(ui::xs("Loading topology"))).id("map-loading").test_support().aria_label("Loading topology").into_any_element()]
+            // As in OwnershipMap.svelte, a held indicator precedes a failure.
+            _ if !loading.ready() => {
+                if loading.shown() {
+                    vec![centered(ui::muted(ui::xs("Loading topology"))).id("map-loading").test_support().aria_label("Loading topology").into_any_element()]
+                } else {
+                    vec![centered(div()).into_any_element()]
+                }
             }
             (TopologyLoad::Failed(error), _) => vec![
                 div()

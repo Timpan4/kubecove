@@ -61,17 +61,26 @@ impl Inspector {
     }
 
     pub(super) fn namespace_list_page(&self, cx: &mut Context<Self>) -> AnyElement {
+        let pending = !self.scope.context.is_empty()
+            && matches!(
+                self.namespace_list.read,
+                NamespaceRead::Idle | NamespaceRead::Loading
+            );
+        let phase = self.loading.phase("namespace-list", pending);
         let body = if self.scope.context.is_empty() {
             no_context()
         } else {
             match &self.namespace_list.read {
-                NamespaceRead::Idle | NamespaceRead::Loading => loading(),
+                // NamespaceList.svelte checks the error before the loading state.
                 NamespaceRead::Failed(error) => self.page_read_failure(
                     "Failed to load namespaces",
                     error,
                     Operation::Resources,
                     cx,
                 ),
+                _ if phase.shown() => loading(),
+                NamespaceRead::Idle | NamespaceRead::Loading => div().into_any_element(),
+                _ if !phase.ready() => div().into_any_element(),
                 NamespaceRead::Ready(namespaces) if namespaces.is_empty() => empty(),
                 NamespaceRead::Ready(namespaces) => {
                     self.namespace_table(namespaces).into_any_element()
@@ -79,7 +88,9 @@ impl Inspector {
             }
         };
         let count = match &self.namespace_list.read {
-            NamespaceRead::Ready(namespaces) if !namespaces.is_empty() => Some(namespaces.len()),
+            NamespaceRead::Ready(namespaces) if !namespaces.is_empty() && phase.ready() => {
+                Some(namespaces.len())
+            }
             _ => None,
         };
         div()

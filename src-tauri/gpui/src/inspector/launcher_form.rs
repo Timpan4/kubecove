@@ -2,6 +2,7 @@
 
 use super::Inspector;
 use super::controls::{Variant, button};
+use super::loading::Phase;
 use crate::theme::Tokens;
 use crate::ui;
 use crate::workspaces::{self, Discovery};
@@ -24,6 +25,7 @@ fn toggle(selection: &mut Vec<String>, name: &str) {
 impl Inspector {
     pub(super) fn workspace_form(&self, cx: &mut Context<Self>) -> Div {
         let state = &self.launcher;
+        let contexts_loading = self.launcher_contexts_loading().shown();
         let effective = state.effective().to_owned();
         let missing = !state
             .context_choices
@@ -106,7 +108,7 @@ impl Inspector {
             .w(px(360.))
             .p(px(12.))
             .gap(px(12.))
-            .when(state.contexts_load == Discovery::Loading, |form| {
+            .when(contexts_loading, |form| {
                 form.child(
                     ui::muted(ui::xs("Loading contexts..."))
                         .id("launcher-contexts-loading")
@@ -193,10 +195,7 @@ impl Inspector {
                                 .border_color(Tokens::input())
                                 .bg(Tokens::input().opacity(0.3))
                                 .cursor_pointer()
-                                .child(context_value(
-                                    &effective,
-                                    state.contexts_load == Discovery::Loading,
-                                ))
+                                .child(context_value(&effective, contexts_loading))
                                 .child(ui::icon("chevron-down", 14., Tokens::muted_foreground()))
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.launcher.context_menu = !this.launcher.context_menu;
@@ -261,9 +260,28 @@ impl Inspector {
     }
 
     /// The namespace list's notice for the web's loading, failed and empty states.
+    /// The launcher's context read indicator, shared by the notice, the select
+    /// placeholder and the saved-workspace empty state.
+    pub(super) fn launcher_contexts_loading(&self) -> Phase {
+        self.loading.phase(
+            "launcher-contexts",
+            self.launcher.contexts_load == Discovery::Loading,
+        )
+    }
+
     fn namespace_notice(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let state = &self.launcher;
+        let loading = self.loading.phase(
+            "launcher-namespaces",
+            state.discovery == Discovery::Loading && !state.effective().is_empty(),
+        );
         match state.discovery {
+            // WorkspaceLauncher.svelte shows the loading row only for a selected context.
+            _ if loading.shown() => Some(notice(
+                "launcher-namespaces-loading",
+                "Loading namespaces...",
+            )),
+            Discovery::Loading | Discovery::Ready if !loading.ready() => None,
             Discovery::Failed => Some(
                 div()
                     .flex()
@@ -303,11 +321,6 @@ impl Inspector {
                     )
                     .into_any_element(),
             ),
-            // The web shows the loading copy only for a selected context.
-            Discovery::Loading if !state.effective().is_empty() => Some(notice(
-                "launcher-namespaces-loading",
-                "Loading namespaces...",
-            )),
             Discovery::Loading | Discovery::Ready if state.discovered.is_empty() => {
                 Some(notice("launcher-namespaces-empty", "All namespaces"))
             }

@@ -144,12 +144,17 @@ impl Inspector {
     }
 
     pub(super) fn port_forwards_page(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        let body: AnyElement = match &self.sessions.load {
-            None => surface::loading(),
-            Some(Err(error)) => {
+        let pending = surface::pending_slot(
+            self.loading
+                .phase("surface-sessions", self.sessions.load.is_none()),
+        );
+        let body: AnyElement = match (&self.sessions.load, pending) {
+            (_, Some(slot)) => slot,
+            (None, None) => div().into_any_element(),
+            (Some(Err(error)), None) => {
                 self.page_read_failure("Live sessions unavailable", error, Operation::Surface, cx)
             }
-            Some(Ok(sessions)) => {
+            (Some(Ok(sessions)), None) => {
                 let (forwards, exec) = sessions.for_context(&self.scope.context);
                 let counts = (forwards.len(), exec.len());
                 let forward_rows = self.forward_rows(sessions, cx);

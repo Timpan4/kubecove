@@ -451,7 +451,7 @@ impl Inspector {
         let state = &self.launcher;
         let mut saved: Vec<&SavedWorkspace> = state.saved.iter().collect();
         saved.sort_by_key(|workspace| std::cmp::Reverse(workspace.updated));
-        let empty = saved.is_empty() && state.contexts_load != Discovery::Loading;
+        let empty = saved.is_empty() && self.launcher_contexts_loading().ready();
         div()
             .flex()
             .flex_col()

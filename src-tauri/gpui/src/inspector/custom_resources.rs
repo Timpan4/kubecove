@@ -23,9 +23,15 @@ impl Inspector {
         if !self.persisted.preferences.show_custom_resources {
             return Some("Custom Resources off");
         }
+        let phase = self.loading.phase(
+            "custom-resources-status",
+            matches!(self.custom_load, CustomLoad::Loading),
+        );
         match self.custom_load {
-            CustomLoad::Loading => Some("Loading Custom Resources"),
             CustomLoad::Failed => Some("Custom Resources unavailable"),
+            _ if phase.shown() => Some("Loading Custom Resources"),
+            _ if !phase.ready() => None,
+            CustomLoad::Loading => None,
             CustomLoad::Ready | CustomLoad::Idle if !self.live.kinds.is_empty() => {
                 Some("Custom Resources added")
             }
@@ -82,11 +88,17 @@ impl Inspector {
         if !self.persisted.preferences.show_custom_resources {
             return Vec::new();
         }
+        let phase = self.loading.phase(
+            "sidebar-custom-kinds",
+            matches!(self.cluster_read(), ClusterRead::Loading),
+        );
         match self.cluster_read() {
-            ClusterRead::Ready(_) => {}
-            ClusterRead::Loading => {
+            _ if phase.shown() => {
                 return vec![discovery_row("Loading custom resources...", None)];
             }
+            _ if !phase.ready() => return Vec::new(),
+            ClusterRead::Ready(_) => {}
+            ClusterRead::Loading => return Vec::new(),
             ClusterRead::Failed(message) => {
                 return vec![discovery_row(
                     "Custom resource discovery unavailable",

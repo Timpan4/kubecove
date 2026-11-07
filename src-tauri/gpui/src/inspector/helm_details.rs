@@ -182,6 +182,21 @@ impl Inspector {
         cx.notify();
     }
 
+    /// The details card renders as a list item after the frame, so the page
+    /// observes its loading phases during render.
+    pub(super) fn observe_helm_details_loading(&self) {
+        if self.helm_page.selected.is_none() {
+            return;
+        }
+        let details = &self.helm_page.details;
+        self.loading
+            .phase("helm-details", matches!(details.details, Load::Loading));
+        self.loading.phase(
+            "helm-reconciliation",
+            matches!(details.reconciliation, Load::Loading),
+        );
+    }
+
     pub(super) fn helm_details_card(&self, cx: &mut Context<Self>) -> Div {
         let page = &self.helm_page;
         let Some(release) = page.selected.and_then(|index| page.releases().get(index)) else {
@@ -247,8 +262,15 @@ impl Inspector {
                             ),
                     ),
             );
+        let phase = self.loading.phase(
+            "helm-details",
+            matches!(page.details.details, Load::Loading),
+        );
         let content = match &page.details.details {
-            Load::Loading => pending("Loading Helm release details..."),
+            // HelmView.svelte checks the loading state first.
+            _ if phase.shown() => pending("Loading Helm release details..."),
+            _ if !phase.ready() => div(),
+            Load::Loading => div(),
             Load::Failed(error) => div().child(self.page_read_failure(
                 "Helm details unavailable",
                 error,
@@ -443,8 +465,11 @@ impl Inspector {
 
     fn helm_reconciliation(&self, width: f32, cx: &mut Context<Self>) -> Div {
         let state = &self.helm_page.details.reconciliation;
+        let phase = self
+            .loading
+            .phase("helm-reconciliation", matches!(state, Load::Loading));
         let totals = match state {
-            Load::Ready(data) => Some(format!(
+            Load::Ready(data) if phase.ready() => Some(format!(
                 "{} tracked, {} missing, {} label-only",
                 data.totals.tracked, data.totals.missing, data.totals.label_only
             )),
@@ -466,7 +491,9 @@ impl Inspector {
                 )
             });
         let body = match state {
-            Load::Loading => pending("Loading reconciliation..."),
+            _ if phase.shown() => pending("Loading reconciliation..."),
+            _ if !phase.ready() => div(),
+            Load::Loading => div(),
             Load::Failed(error) => div().child(self.partial_read_failure(
                 "Helm reconciliation unavailable",
                 error,

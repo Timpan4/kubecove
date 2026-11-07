@@ -3,6 +3,7 @@
 
 use super::detail::ResourceDetail;
 use super::events::{EventsLoad, badge, outline, tw};
+use super::loading::LoadingDelays;
 use super::windowed::row_id;
 use super::{Inspector, timestamp_text};
 use crate::incident::{self, EventFilter};
@@ -196,21 +197,27 @@ fn event_row(event: &ResourceEventSummary, index: usize, timezone: TimestampTime
 pub(super) fn events_tab(
     detail: &ResourceDetail,
     timezone: TimestampTimezone,
+    loading: &LoadingDelays,
     cx: &mut Context<Inspector>,
 ) -> AnyElement {
     let state = &detail.events;
+    let phase = loading.phase("events", matches!(state.load, EventsLoad::Pending));
     let events = match &state.load {
-        EventsLoad::Pending => {
+        // EventsTab.svelte checks the loading state before the error.
+        _ if !phase.ready() => {
             return div()
                 .min_h(px(128.))
                 .flex()
                 .items_center()
                 .justify_center()
                 .gap(px(8.))
-                .child(ui::icon("loader-circle", 16., Tokens::muted_foreground()))
-                .child(ui::muted(ui::xs("Loading events")))
+                .when(phase.shown(), |slot| {
+                    slot.child(ui::icon("loader-circle", 16., Tokens::muted_foreground()))
+                        .child(ui::muted(ui::xs("Loading events")))
+                })
                 .into_any_element();
         }
+        EventsLoad::Pending => return div().into_any_element(),
         EventsLoad::Failed(error) => {
             return div()
                 .id("events-error")

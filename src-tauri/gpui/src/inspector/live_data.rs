@@ -74,6 +74,11 @@ impl LiveData {
         if self.refreshing {
             return "Refreshing…";
         }
+        self.settled_label()
+    }
+
+    /// The label without the pending refresh, for the delayed refresh indicator.
+    pub fn settled_label(&self) -> &'static str {
         if self.refresh_error.is_some() {
             return "Refresh failed";
         }

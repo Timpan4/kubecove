@@ -7,6 +7,7 @@ use super::actions_state::ActionsState;
 use super::controls::{Variant, button};
 use super::detail::ResourceDetail;
 use super::events::tw;
+use super::loading::LoadingDelays;
 use crate::actions::{self, ActionRow, RowId};
 use crate::theme::Tokens;
 use crate::ui;
@@ -28,7 +29,7 @@ fn chip(text: String) -> Div {
         .bg(Tokens::muted().opacity(0.3))
 }
 
-fn header(actions: &ActionsState) -> Div {
+fn header(actions: &ActionsState, permissions_loading: bool) -> Div {
     let state = actions.state.as_ref();
     let chips = div()
         .flex()
@@ -48,7 +49,7 @@ fn header(actions: &ActionsState) -> Div {
                 row.child(chip(format!("{count} revisions")))
             },
         )
-        .when(actions.loading, |row| {
+        .when(permissions_loading, |row| {
             row.child(
                 div()
                     .flex()
@@ -343,10 +344,15 @@ fn load_error(actions: &ActionsState, error: &str, cx: &mut Context<Inspector>) 
         .child(retry)
 }
 
-pub(super) fn actions_tab(detail: &ResourceDetail, cx: &mut Context<Inspector>) -> AnyElement {
+pub(super) fn actions_tab(
+    detail: &ResourceDetail,
+    loading: &LoadingDelays,
+    cx: &mut Context<Inspector>,
+) -> AnyElement {
     let Some(actions) = detail.actions.as_ref() else {
         return div().into_any_element();
     };
+    let permissions_loading = loading.phase("action-permissions", actions.loading).shown();
     let visible: Vec<&ActionRow> = actions
         .rows
         .iter()
@@ -368,7 +374,7 @@ pub(super) fn actions_tab(detail: &ResourceDetail, cx: &mut Context<Inspector>) 
         .flex_1()
         .min_h_0()
         .overflow_y_scroll()
-        .child(header(actions))
+        .child(header(actions, permissions_loading))
         .children(
             actions
                 .load_error

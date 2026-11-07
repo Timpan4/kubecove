@@ -7,6 +7,7 @@ use super::delivery_summary as summary_ui;
 use super::delivery_ui::{self as dui, Layout, ViewMode};
 use super::helm_card;
 use super::helm_details::HelmDetails;
+use super::loading::Phase;
 use super::{Inspector, friendly_error::Operation, surface};
 use crate::helm;
 use crate::theme::{Palette, Tokens};
@@ -73,6 +74,9 @@ pub(super) struct HelmPage {
     pub(super) details_columns: bool,
     list: ListState,
     shape: Option<(usize, ViewMode, Layout, bool)>,
+    /// The release list's loading phase. List items render after the frame,
+    /// so `helm_page_view` observes it during render.
+    status: Phase,
     pub(super) details: HelmDetails,
     _search_changed: Subscription,
 }
@@ -103,6 +107,7 @@ impl HelmPage {
             details_columns: false,
             list: ListState::new(0, ListAlignment::Top, px(400.)),
             shape: None,
+            status: Phase::Ready,
             details: HelmDetails::default(),
             _search_changed,
         }
@@ -132,7 +137,7 @@ impl HelmPage {
     /// Header, summary, top, rows, then the details card when one is selected.
     fn items(&self) -> usize {
         match self.load {
-            HelmLoad::Ready(_) => {
+            HelmLoad::Ready(_) if self.status.ready() => {
                 3 + self.row_count() - self.top_rows() + usize::from(self.selected.is_some())
             }
             _ => 2,
@@ -301,7 +306,13 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let frame = self.frame_width(window);
+        let status = self.loading.phase(
+            "surface-helm",
+            matches!(self.helm_page.load, HelmLoad::Loading),
+        );
+        self.observe_helm_details_loading();
         let page = &mut self.helm_page;
+        page.status = status;
         page.layout = Layout::new(frame, page.filtered.len());
         page.details_columns = window.viewport_size().width >= px(1024.);
         let shape = Some((
@@ -334,15 +345,21 @@ impl Inspector {
         let last = index + 1 == self.helm_page.items();
         let item = match self.helm_item(index) {
             Item::Header => dui::frame_header("package", "Helm", Vec::new()).pt(px(20.)),
-            Item::Status => div().pt(px(16.)).child(match &self.helm_page.load {
-                HelmLoad::Failed(error) => self.page_read_failure(
-                    "Helm releases unavailable",
-                    error,
-                    Operation::Surface,
-                    cx,
-                ),
-                _ => surface::loading(),
-            }),
+            Item::Status => div().pt(px(16.)).child(
+                match (
+                    surface::pending_slot(self.helm_page.status),
+                    &self.helm_page.load,
+                ) {
+                    (Some(slot), _) => slot,
+                    (None, HelmLoad::Failed(error)) => self.page_read_failure(
+                        "Helm releases unavailable",
+                        error,
+                        Operation::Surface,
+                        cx,
+                    ),
+                    (None, _) => div().into_any_element(),
+                },
+            ),
             Item::Summary => self.helm_summary(cx).pt(px(16.)),
             Item::Top => self.helm_top(cx).pt(px(16.)),
             Item::Rows(row) => self.helm_row(row, cx),

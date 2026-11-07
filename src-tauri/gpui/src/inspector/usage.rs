@@ -100,8 +100,13 @@ impl Inspector {
         if !self.usage.visible {
             return None;
         }
+        let loading = self
+            .loading
+            .phase("usage-footer", self.usage.sample.is_none());
         let label = match &self.usage.sample {
-            None => "Loading usage metrics...".into(),
+            _ if loading.shown() => "Loading usage metrics...".into(),
+            None => String::new(),
+            _ if !loading.ready() => String::new(),
             Some(Err(_)) => "Usage metrics unavailable".into(),
             Some(Ok(sample)) => format!(
                 "CPU {:.1}% · Memory {} · {}",

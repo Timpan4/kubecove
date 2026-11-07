@@ -6,6 +6,7 @@ use super::detail::ResourceDetail;
 use super::details_containers;
 use super::details_metadata;
 use super::details_status;
+use super::loading::LoadingDelays;
 use super::timeline::{incident_signals, timeline};
 use crate::model::health_source;
 use crate::theme::Tokens;
@@ -55,7 +56,7 @@ pub(super) fn metadata_card(title: &str, rows: Vec<Div>) -> Div {
 }
 
 /// Incident summary from `DetailsTab.svelte`; the signal cards are in `timeline`.
-fn incident_summary(detail: &ResourceDetail) -> Div {
+fn incident_summary(detail: &ResourceDetail, loading: &LoadingDelays) -> Div {
     let summary = &detail.data.summary;
     let resource_label = format!("{}/{}", summary.kind, summary.name);
     div()
@@ -103,7 +104,7 @@ fn incident_summary(detail: &ResourceDetail) -> Div {
                         }),
                 ),
         )
-        .child(incident_signals(detail))
+        .child(incident_signals(detail, loading))
 }
 
 fn health(summary: &ResourceSummary) -> (Tone, &'static str) {
@@ -120,6 +121,7 @@ pub(super) fn details_tab(
     detail: &ResourceDetail,
     timeline_rows: &super::timeline::State,
     timezone: crate::preferences::TimestampTimezone,
+    loading: &LoadingDelays,
     cx: &mut Context<Inspector>,
 ) -> Div {
     let summary = &detail.data.summary;
@@ -176,7 +178,7 @@ pub(super) fn details_tab(
                     |row, button| row.child(button),
                 ),
         )
-        .child(incident_summary(detail))
+        .child(incident_summary(detail, loading))
         .child(timeline(detail, timeline_rows, cx))
         .when_some(
             details_status::conditions(detail, timezone),

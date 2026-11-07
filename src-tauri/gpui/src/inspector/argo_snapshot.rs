@@ -8,6 +8,7 @@ use super::argo_panels::{caps, panel};
 use super::argo_tab::ArgoTab;
 use super::controls::{self, Variant};
 use super::delivery_ui as dui;
+use super::loading::Phase;
 use crate::argo_app::{ArgoView, Change, ChangeBadge};
 use crate::theme::{MONO, Palette, Tokens};
 use crate::ui::{self, Tone};
@@ -382,6 +383,7 @@ pub(super) fn snapshot(
     view: Option<&ArgoView>,
     state: &ArgoTab,
     failed: bool,
+    loading: Phase,
     cx: &mut Context<Inspector>,
 ) -> Div {
     let focused = state
@@ -448,13 +450,8 @@ pub(super) fn snapshot(
         );
     let body = div().mt(px(12.)).flex().flex_col().gap(px(16.));
     let body = match view {
-        None if failed => body.child(dui::empty(
-            "argo-snapshot-unavailable",
-            "Application snapshot unavailable",
-            "Retry Application data before evaluating reconciliation state.",
-            None,
-        )),
-        None => body.child(
+        // ArgoApplicationDetails.svelte checks the loading state first.
+        _ if loading.shown() => body.child(
             div()
                 .flex()
                 .items_center()
@@ -466,6 +463,14 @@ pub(super) fn snapshot(
                 .child(ui::icon("loader-circle", 16., Tokens::muted_foreground()))
                 .child(ui::muted(ui::xs("Loading Application snapshot"))),
         ),
+        _ if !loading.ready() => body,
+        None if failed => body.child(dui::empty(
+            "argo-snapshot-unavailable",
+            "Application snapshot unavailable",
+            "Retry Application data before evaluating reconciliation state.",
+            None,
+        )),
+        None => body,
         Some(view) => match state.focus.filter(|index| *index < view.changes.len()) {
             Some(index) => body.child(article(view, state, index, cx)),
             None => {

@@ -313,12 +313,17 @@ impl Inspector {
 
     pub(super) fn rbac_page(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         self.sync_rbac_review_note(window, cx);
-        let body = match &self.rbac.load {
-            RbacLoad::Loading => surface::loading(),
-            RbacLoad::Failed(error) => {
+        let pending = surface::pending_slot(
+            self.loading
+                .phase("surface-rbac", matches!(self.rbac.load, RbacLoad::Loading)),
+        );
+        let body = match (&self.rbac.load, pending) {
+            (_, Some(slot)) => slot,
+            (RbacLoad::Loading, None) => div().into_any_element(),
+            (RbacLoad::Failed(error), None) => {
                 self.page_read_failure("RBAC inspection unavailable", error, Operation::Surface, cx)
             }
-            RbacLoad::Ready(_) => self.rbac_body(cx).into_any_element(),
+            (RbacLoad::Ready(_), None) => self.rbac_body(cx).into_any_element(),
         };
         surface::frame(
             "key-round",

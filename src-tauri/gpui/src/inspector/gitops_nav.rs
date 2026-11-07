@@ -122,8 +122,12 @@ impl Inspector {
             Open::GitOps(Focus::Section),
         )];
         if self.nav_open("GitOps") {
+            let detecting = self.loading.phase(
+                "sidebar-gitops",
+                self.gitops.inventory().is_none() && self.gitops.error().is_none(),
+            );
             match self.gitops.inventory() {
-                Some(data) => {
+                Some(data) if detecting.ready() => {
                     if data.argo.is_some()
                         || self
                             .persisted
@@ -206,7 +210,7 @@ impl Inspector {
                         }
                     }
                 }
-                None if self.gitops.error().is_none() => rows.push(Row {
+                _ if detecting.shown() => rows.push(Row {
                     disabled: true,
                     ..row(
                         1,
@@ -217,7 +221,7 @@ impl Inspector {
                         Open::Nothing,
                     )
                 }),
-                None => {}
+                _ => {}
             }
         }
         rows.push(row(

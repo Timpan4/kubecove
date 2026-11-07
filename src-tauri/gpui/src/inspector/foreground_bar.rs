@@ -18,7 +18,10 @@ impl Inspector {
     /// Absolutely positioned over the shell's top padding, so the layout does
     /// not move when the bar appears.
     pub(super) fn foreground_bar(&self) -> impl IntoElement {
-        let active = self.foreground_loading();
+        let active = self
+            .loading
+            .phase("foreground", self.foreground_loading())
+            .shown();
         div()
             .id("foreground-loading-bar")
             .test_support()

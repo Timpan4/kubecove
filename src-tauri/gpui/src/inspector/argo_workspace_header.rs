@@ -68,8 +68,14 @@ impl Inspector {
         }
         .map(str::to_owned)
         .unwrap_or_else(|| format!("{} project", app.project.as_deref().unwrap_or("default")));
+        let loading = self.loading.phase(
+            "argo-workspace",
+            matches!(state.snapshot, Snapshot::Loading),
+        );
         let message = match &state.snapshot {
-            Snapshot::Loading => "Loading Application and managed resources…".to_owned(),
+            _ if loading.shown() => "Loading Application and managed resources…".to_owned(),
+            _ if !loading.ready() => String::new(),
+            Snapshot::Loading => String::new(),
             Snapshot::Failed(error) => format!("Argo data unavailable: {error}"),
             Snapshot::Ready(_) => status(&["reconciledAt"])
                 .and_then(|value| {

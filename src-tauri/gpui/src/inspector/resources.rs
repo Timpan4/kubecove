@@ -561,18 +561,26 @@ impl Inspector {
         let stacked = !matches!(self.detail, Detail::Closed);
         self.rebuild_map();
         self.sync_map_focus(window, cx);
+        let loading = self
+            .loading
+            .phase("resources", matches!(self.page_load(), Load::Loading));
         let body: AnyElement = match self.empty_scope() {
             Some(empty) => empty,
             None => match self.page_load() {
-                Load::Loading => div()
-                    .id("resources-loading")
-                    .test_support()
-                    .aria_label("Loading resources")
+                Load::Loading | Load::Ready if !loading.ready() => div()
                     .flex()
                     .min_h(px(208.))
                     .items_center()
                     .justify_center()
-                    .child(ui::muted(ui::xs("Loading resources")))
+                    .when(loading.shown(), |slot| {
+                        slot.child(
+                            div()
+                                .id("resources-loading")
+                                .test_support()
+                                .aria_label("Loading resources")
+                                .child(ui::muted(ui::xs("Loading resources"))),
+                        )
+                    })
                     .into_any_element(),
                 // The top bar stays so the Live menu's refresh can retry the read.
                 Load::Failed(error) => div()

@@ -298,6 +298,7 @@ impl Inspector {
                 )
         });
         let fetching = self.incidents.fetching;
+        let refreshing = self.loading.phase("incidents-refresh", fetching).shown();
         // The incident scope is the workspace (every namespace), not the
         // Resources page's namespace selection.
         let scanning = "Scanning all namespaces";
@@ -340,7 +341,7 @@ impl Inspector {
                     .gap(px(8.))
                     .child(
                         surface::small_button(
-                            Some(if fetching {
+                            Some(if refreshing {
                                 "loader-circle"
                             } else {
                                 "rotate-ccw"
@@ -409,10 +410,17 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let body: AnyElement = match &self.incidents.load {
-            None => surface::loading(),
-            Some(Err(error)) => self.page_failure("Incidents unavailable", error.clone(), cx),
-            Some(Ok(summary)) => {
+        let pending = surface::pending_slot(
+            self.loading
+                .phase("surface-incidents", self.incidents.load.is_none()),
+        );
+        let body: AnyElement = match (&self.incidents.load, pending) {
+            (_, Some(slot)) => slot,
+            (None, None) => div().into_any_element(),
+            (Some(Err(error)), None) => {
+                self.page_failure("Incidents unavailable", error.clone(), cx)
+            }
+            (Some(Ok(summary)), None) => {
                 let warnings = summary.warnings.join(" ");
                 let empty = self.incidents.queue.empty;
                 // `@5xl:h-[calc(100dvh-20rem)] @5xl:min-h-[32rem]`.

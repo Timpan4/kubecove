@@ -276,6 +276,7 @@ pub(super) fn argo_tab(
     pending: bool,
     selected: ArgoConnectionState,
     disclosure: &Disclosure,
+    loading_delays: &super::loading::LoadingDelays,
     cx: &mut Context<Inspector>,
 ) -> AnyElement {
     let Some(state) = detail.argo.as_ref() else {
@@ -287,6 +288,7 @@ pub(super) fn argo_tab(
         _ => None,
     };
     let loading = matches!(state.load, ArgoLoad::Loading);
+    let indicator = loading_delays.phase("argo-detail", loading);
     let assessment = &detail.opened_health;
     let health = view.map_or_else(
         || summary.status.clone().unwrap_or_else(|| "Unknown".into()),
@@ -431,8 +433,10 @@ pub(super) fn argo_tab(
                 )
                 .child(
                     ui::muted(ui::text(
-                        if loading {
+                        if indicator.shown() {
                             "Loading Application and managed resources…".to_owned()
+                        } else if !indicator.ready() {
+                            String::new()
                         } else {
                             format!(
                                 "Revision {}",
@@ -595,6 +599,6 @@ pub(super) fn argo_tab(
     }
     let failed = matches!(state.load, ArgoLoad::Failed(_));
     column
-        .child(snapshot(view, state, failed, cx))
+        .child(snapshot(view, state, failed, indicator, cx))
         .into_any_element()
 }

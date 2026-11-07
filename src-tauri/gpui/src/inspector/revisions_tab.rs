@@ -236,14 +236,22 @@ fn revision_button(
         }))
 }
 
-pub(super) fn revisions_tab(detail: &ResourceDetail, cx: &mut Context<Inspector>) -> AnyElement {
+pub(super) fn revisions_tab(
+    detail: &ResourceDetail,
+    loading: &super::loading::LoadingDelays,
+    cx: &mut Context<Inspector>,
+) -> AnyElement {
     let Some(state) = detail.revisions.as_ref() else {
         return div().into_any_element();
     };
+    let phase = loading.phase("revisions", matches!(state.load, RevisionsLoad::Pending));
     let revisions = match &state.load {
-        RevisionsLoad::Pending => {
+        // DeploymentRevisionsTab.svelte checks the loading state first.
+        _ if phase.shown() => {
             return ui::muted(note("Loading Deployment revisions…")).into_any_element();
         }
+        _ if !phase.ready() => return div().into_any_element(),
+        RevisionsLoad::Pending => return div().into_any_element(),
         RevisionsLoad::Failed => {
             return note("Unable to load Deployment revisions.")
                 .id("revisions-error")

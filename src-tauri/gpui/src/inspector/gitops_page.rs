@@ -8,6 +8,7 @@ use super::delivery_summary as summary_ui;
 use super::delivery_ui::{self as dui, Layout, ViewMode};
 use super::friendly_error::Operation;
 use super::gitops_card;
+use super::loading::Phase;
 use super::{Inspector, Page};
 use crate::gitops::GitOpsInventory;
 use crate::gitops_surface::{self as model, Focus, Provider, Row, Selection, Tone};
@@ -41,6 +42,9 @@ pub(super) struct GitOpsPage {
     pub target_application: Option<String>,
     /// The focused row's selection key, as `selectedGitOpsItem` in the web.
     pub selected: Option<String>,
+    /// The inventory's loading phase. List items render after the frame, so
+    /// `gitops_page_view` observes it during render.
+    status: Phase,
 }
 
 impl GitOpsPage {
@@ -58,6 +62,7 @@ impl GitOpsPage {
             nav_open: Vec::new(),
             target_application: None,
             selected: None,
+            status: Phase::Ready,
         }
     }
 
@@ -166,7 +171,8 @@ impl Inspector {
     fn gitops_items(&self) -> usize {
         match self.gitops.inventory() {
             Some(data)
-                if data.detected()
+                if self.gitops_page.status.ready()
+                    && data.detected()
                     && model::unavailable(data, self.gitops_page.focus).is_none() =>
             {
                 let page = &self.gitops_page;
@@ -192,6 +198,10 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        self.gitops_page.status = self.loading.phase(
+            "surface-gitops",
+            self.gitops.inventory().is_none() && self.gitops.error().is_none(),
+        );
         self.sync_gitops_rows();
         let items = self
             .gitops
@@ -285,6 +295,9 @@ impl Inspector {
     }
 
     fn gitops_status(&self, cx: &mut Context<Self>) -> Div {
+        if let Some(slot) = super::surface::pending_slot(self.gitops_page.status) {
+            return div().child(slot);
+        }
         let body = match (self.gitops.inventory(), self.gitops.error()) {
             // A failed detection read is the web's partial `providerDetection` warning.
             (None, Some(error)) => self.partial_read_failure(
@@ -296,7 +309,7 @@ impl Inspector {
             (Some(_), Some(error)) => {
                 self.page_read_failure("GitOps data unavailable", error, Operation::Surface, cx)
             }
-            (None, None) => super::surface::loading(),
+            (None, None) => div().into_any_element(),
             (Some(data), _) => match model::unavailable(data, self.gitops_page.focus) {
                 Some(unavailable) => dui::empty(
                     "gitops-unavailable",

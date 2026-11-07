@@ -72,6 +72,7 @@ mod live_rows;
 mod live_session_popover;
 mod live_status;
 mod load_trace;
+mod loading;
 mod log_row;
 mod logs_state;
 mod logs_tab;
@@ -184,6 +185,7 @@ pub struct Inspector {
     focus: gpui_kit::FocusHandle,
     backend: Arc<dyn Backend>,
     timings: crate::diagnostics::Timings,
+    loading: loading::LoadingDelays,
     persisted: crate::preferences::Document,
     persistence_error: Option<String>,
     workspace_name: SharedString,
@@ -322,6 +324,7 @@ impl Inspector {
         let mut this = Self {
             focus,
             timings: Default::default(),
+            loading: Default::default(),
             backend,
             persisted: Default::default(),
             persistence_error: None,
@@ -607,6 +610,7 @@ impl Render for Inspector {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _profile = crate::frame_profile::scope("inspector", "render");
         let started = std::time::Instant::now();
+        self.loading.begin_frame(cx.background_executor().now());
         self.sync_argo_scope(window, cx);
         self.sync_sidebar_discovery(cx);
         self.sync_live(window, cx);
@@ -739,6 +743,7 @@ impl Render for Inspector {
             .children(overlays)
             .children(drawer)
             .children(self.copy_toast(cx));
+        self.loading.end_frame(cx);
         self.record_load_frames(window, started.elapsed());
         view
     }
