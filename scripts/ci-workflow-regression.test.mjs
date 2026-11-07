@@ -13,8 +13,8 @@ const flags = (...selected) => Object.fromEntries(domains.map((key) => [key, Str
 const all = flags(...domains);
 
 // Extract the workflow's fixed-indentation blocks; execute its actual code.
-function job(name) {
-  const lines = workflow.split("\n");
+function job(name, text = workflow) {
+  const lines = text.split("\n");
   const start = lines.indexOf(`  ${name}:`);
   assert.notEqual(start, -1, `Missing job: ${name}`);
   let end = start + 1;
@@ -280,4 +280,38 @@ test("whitespace check rejects bad diffs even without an available base", () => 
       }
     }
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+// Failure modes: a matrix that misses a PARITY_SUITE_SHARD index silently drops that share of
+// the parity suite; a job that runs on the other event runs the suite twice or never; a shard
+// that fails without uploading its artifacts leaves nothing to inspect.
+test("parity jobs run every suite shard on pull requests and on main, and keep the artifacts", () => {
+  const read = (name) => readFileSync(new URL(`../.github/workflows/${name}`, import.meta.url), "utf8").replaceAll("\r\n", "\n");
+  const parity = read("parity.yml");
+  const suite = read("parity-suite.yml");
+  assert.deepEqual([...parity.slice(parity.indexOf("\njobs:\n")).matchAll(/^ {2}([\w-]+):$/gm)].map((match) => match[1]), ["pull-request", "main"]);
+  for (const name of ["pull-request", "main"]) {
+    const text = job(name, parity);
+    const matrices = [...text.matchAll(/^ {8}shard: \[([\d, ]+)\]$/gm)].map((match) => match[1].split(",").map(Number));
+    const count = Number(/^ {6}shards: (\d+)$/m.exec(text)?.[1]);
+    assert.equal(matrices.length, 1, name);
+    assert.ok(count > 0, name);
+    assert.deepEqual(matrices[0], Array.from({ length: count }, (_, index) => index), name);
+    assert.match(text, /^ {4}uses: \.\/\.github\/workflows\/parity-suite\.yml$/m, name);
+    assert.match(text, /^ {6}shard: \$\{\{ matrix\.shard \}\}$/m, name);
+    assert.match(text, /^ {6}fail-fast: false$/m, name);
+  }
+  const pullRequest = job("pull-request", parity);
+  assert.ok(pullRequest.includes("if: ${{ github.event_name == 'pull_request' && ("), "pull request job runs only on pull requests");
+  for (const condition of ["github.event.pull_request.head.repo.full_name != github.repository", "!startsWith(github.head_ref, 'release/app-v')", "!contains(github.event.pull_request.labels.*.name, 'release')"]) {
+    assert.ok(pullRequest.includes(condition), condition);
+  }
+  assert.ok(job("main", parity).includes("if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}"));
+  assert.match(suite, /^ {10}PARITY_SUITE_SHARD: \$\{\{ inputs\.shard \}\}\/\$\{\{ inputs\.shards \}\}$/m);
+  assert.match(suite, /^ {8}run: CARGO_BUILD_JOBS="\$\(nproc\)" bun run e2e:parity$/m);
+  assert.match(suite, /sudo apt-get install -y libfontconfig-dev pkg-config/);
+  assert.match(suite, /run: bunx playwright-core install --with-deps --no-shell chromium/);
+  const upload = suite.slice(suite.indexOf("- name: Upload parity artifacts"));
+  assert.match(upload, /^ {8}if: always\(\)$/m);
+  assert.match(upload, /^ {10}path: e2e\/artifacts\/parity-\*$/m);
+  assert.match(upload, /^ {10}name: .*\$\{\{ inputs\.shard \}\}.*\$\{\{ github\.run_attempt \}\}$/m);
 });

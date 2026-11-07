@@ -1,0 +1,45 @@
+name: Parity
+
+# The shared Svelte and GPUI acceptance scenarios (e2e/parity/README.md), split across
+# PARITY_SUITE_SHARD jobs. Each shard runs both drivers on its scenarios.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  pull-request:
+    name: Parity (pull request)
+    # Release PRs change only versions and changelogs, so they skip it as in ci.yml.
+    if: ${{ github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    # Selection hook: pull requests run the full suite for now. A changed-files filter
+    # in `selectScenarios` (scripts/e2e-parity.ts) will narrow it here.
+    uses: ./.github/workflows/parity-suite.yml
+    with:
+      shard: ${{ matrix.shard }}
+      shards: 4
+
+  main:
+    name: Parity (main)
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    uses: ./.github/workflows/parity-suite.yml
+    with:
+      shard: ${{ matrix.shard }}
+      shards: 4

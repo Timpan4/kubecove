@@ -1,0 +1,85 @@
+name: Parity suite
+
+# One shard of `bun run e2e:parity`, called by parity.yml.
+on:
+  workflow_call:
+    inputs:
+      shard:
+        description: This job's PARITY_SUITE_SHARD index.
+        required: true
+        type: number
+      shards:
+        description: The PARITY_SUITE_SHARD count.
+        required: true
+        type: number
+
+permissions:
+  contents: read
+
+jobs:
+  suite:
+    name: Shard ${{ inputs.shard }} of ${{ inputs.shards }}
+    runs-on: ubuntu-latest
+    # The same limit as the real Kubernetes suites in e2e.yml.
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # yeslogic-fontconfig-sys finds fontconfig through pkg-config at build time.
+      # GPUI loads Wayland at run time, and its test platform needs no display.
+      - name: Install GPUI build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfontconfig-dev pkg-config
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      # The GPUI crate is its own workspace. Runs on main seed the cache for pull requests.
+      - name: Cache Rust builds
+        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: kubecove-parity
+          workspaces: "./src-tauri/gpui -> target"
+          save-if: ${{ github.ref == 'refs/heads/main' && inputs.shard == 0 }}
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # The web driver launches the full Chromium build that playwright-core pins.
+      - name: Install Chromium
+        run: bunx playwright-core install --with-deps --no-shell chromium
+
+      # Build intermediates stay in the cached target directory. The runner's default
+      # CARGO_BUILD_JOBS of 1 is for the shared workstation; CI uses every CPU.
+      - name: Run parity suite
+        env:
+          PARITY_SUITE_SHARD: ${{ inputs.shard }}/${{ inputs.shards }}
+          CARGO_TARGET_DIR: ${{ github.workspace }}/src-tauri/gpui/target
+          CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/src-tauri/gpui/target
+        run: CARGO_BUILD_JOBS="$(nproc)" bun run e2e:parity
+
+      - name: Upload parity artifacts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: parity-${{ github.event_name }}-shard-${{ inputs.shard }}-of-${{ inputs.shards }}-attempt-${{ github.run_attempt }}
+          path: e2e/artifacts/parity-*
+          if-no-files-found: error
