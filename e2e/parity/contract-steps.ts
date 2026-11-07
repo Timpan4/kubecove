@@ -269,7 +269,8 @@ export type Step =
     | { action: "expectResourceGroup"; label: string; expanded: boolean }
     | ({ action: "openResourceRow"; column: TableColumn } & Identity)
     | ({ action: "expectResourceCell"; column: TableColumn; text: string } & Identity)
-    | ({ action: "expectResourceCellFits"; column: TableColumn; text: string } & Identity)
+    /** `truncated` defaults to true in the parser. `false` asserts the full value fits. */
+    | ({ action: "expectResourceCellFits"; column: TableColumn; text: string; truncated: boolean } & Identity)
     | { action: "setDeliveryView"; page: "GitOps" | "Helm"; mode: "Cards" | "List" }
     | { action: "clickDetailControl"; label: string }
     | { action: "openLiveSessionPopover" }

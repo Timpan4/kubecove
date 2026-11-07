@@ -48,6 +48,27 @@ fn visible_names(window: &mut gpui_kit::Window, expected: &[String]) -> Vec<Stri
         .collect()
 }
 
+/// The shaped width of `text` in the font and size that `ui::sm` renders with.
+fn shaped_text_width(window: &mut gpui_kit::Window, text: &str) -> gpui_kit::Pixels {
+    let run = gpui_kit::TextRun {
+        len: text.len(),
+        font: gpui_kit::font(kubecove_gpui::theme::SANS),
+        color: gpui_kit::black(),
+        background_color: None,
+        underline: None,
+        strikethrough: None,
+    };
+    window
+        .text_system()
+        .shape_line(
+            text.to_owned().into(),
+            px(kubecove_gpui::theme::SM_FONT_SIZE),
+            &[run],
+            None,
+        )
+        .width
+}
+
 pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) -> bool {
     match string(step, "action") {
         "sortResourceTable" => {
@@ -99,12 +120,18 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             assert_eq!(inner.description(), Some(string(step, "text")));
             let (cell_bounds, value_bounds) = (outer.bounds(), inner.bounds());
             assert!(
-                value_bounds.left() >= cell_bounds.left() && value_bounds.right() <= cell_bounds.right(),
+                value_bounds.left() >= cell_bounds.left()
+                    && value_bounds.right() <= cell_bounds.right(),
                 "{column} value escapes its cell"
             );
-            assert!(
-                value_bounds.size.width < cell_bounds.size.width,
-                "{column} value is not truncated inside its cell"
+            // The value box is as wide as its text, or as wide as the cell allows when the text is longer.
+            let shaped = shaped_text_width(window, string(step, "text"));
+            let truncated = shaped > value_bounds.size.width;
+            assert_eq!(
+                truncated,
+                step["truncated"] != false,
+                "{column} value is {shaped:?} wide in a {:?} box",
+                value_bounds.size.width
             );
         }
         _ => return false,

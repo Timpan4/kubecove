@@ -4,9 +4,13 @@
   "scenarios": [
     {
       "id": "resources.table-cell-overflow",
-      "title": "Long namespace, kind and owner values truncate inside their columns and show the full value on hover",
+      "title": "Long namespace, kind and owner values truncate inside their columns and show the full value on hover, while a short Deployment kind is not truncated",
       "steps": [
         { "action": "openResources" },
+        { "action": "search", "value": "argocd-server" },
+        { "action": "expectResource", "kind": "Deployment", "name": "argocd-server", "namespace": "argocd" },
+        { "action": "expectResourceCellFits", "kind": "Deployment", "name": "argocd-server", "namespace": "argocd", "column": "Kind", "text": "Deployment", "truncated": false },
+        { "action": "clearResourceFilters" },
         { "action": "openCustomKind", "kind": "PersistentVolumeClaim", "surface": "picker" },
         { "action": "search", "value": "checkout-media-cache" },
         { "action": "expectResource", "kind": "PersistentVolumeClaim", "name": "checkout-media-cache", "namespace": "payments-production-eu-west-2" },

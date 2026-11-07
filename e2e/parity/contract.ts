@@ -483,7 +483,7 @@ function step(value: unknown): Step {
 		case "expectResourceGroup": return { action: item.action, label: string(item.label), expanded: boolean(item.expanded) };
 		case "openResourceRow": return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), column: oneOf(TABLE_COLUMNS, item.column, "a table column") };
 		case "expectResourceCell": return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), column: oneOf(TABLE_COLUMNS, item.column, "a table column"), text: string(item.text) };
-		case "expectResourceCellFits": return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), column: oneOf(TABLE_COLUMNS, item.column, "a table column"), text: string(item.text) };
+		case "expectResourceCellFits": return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), column: oneOf(TABLE_COLUMNS, item.column, "a table column"), text: string(item.text), truncated: optionalBoolean(item.truncated) ?? true };
 		case "openLiveSessionPopover": return { action: item.action };
 		case "expectLiveSessionRow": return { action: item.action, target: string(item.target), status: string(item.status), controls: strings(item.controls, false) };
 		case "liveSessionControl": return { action: item.action, operation: oneOf(["Show", "Reconnect", "Copy", "Stop", "Manage"], item.operation, "a live-session control"), ...(item.target === undefined ? {} : { target: string(item.target) }) };
