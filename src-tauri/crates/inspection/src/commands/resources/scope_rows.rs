@@ -42,11 +42,13 @@ mod tests {
             let response = super::super::ResourceScopeResponse {
                 resources: shared,
                 completed_requests: Vec::new(),
+                resource_versions: Vec::new(),
                 failures: Vec::new(),
             };
             let expected_response = crate::models::ResourceScopeResult {
                 resources: expected,
                 completed_requests: Vec::new(),
+                resource_versions: Vec::new(),
                 failures: Vec::new(),
             };
             assert_eq!(

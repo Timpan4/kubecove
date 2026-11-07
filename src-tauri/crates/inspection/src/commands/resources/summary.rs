@@ -6,7 +6,7 @@ use crate::commands::{ClusterAccess, ClusterLiveStore, FiniteRead, diagnostic_fi
 use crate::models::AppErrorKind;
 use crate::models::{AppError, ResourceSummary};
 use crate::runtime::State;
-use kubecove_kube::commands::live_store::ListedResources;
+use kubecove_kube::commands::live_store::{ListSnapshot, ListedResources};
 use std::sync::Arc;
 
 pub async fn resources_summary_from(
@@ -54,6 +54,26 @@ pub async fn list_resources(
     kubeconfig_env_var: Option<String>,
     live_store: State<'_, ClusterLiveStore>,
 ) -> Result<Arc<Vec<ResourceSummary>>, AppError> {
+    Ok(list_resource_snapshot(
+        cluster_context,
+        kind,
+        namespace,
+        kubeconfig_env_var,
+        live_store,
+    )
+    .await?
+    .rows)
+}
+
+/// `list_resources` with the version of the list its rows came from, for a
+/// native view that starts its watch at that version.
+pub async fn list_resource_snapshot(
+    cluster_context: String,
+    kind: String,
+    namespace: Option<String>,
+    kubeconfig_env_var: Option<String>,
+    live_store: State<'_, ClusterLiveStore>,
+) -> Result<ListSnapshot, AppError> {
     FiniteRead::new("list_resources")
         .label("context", &cluster_context)
         .label("kind", &kind)
@@ -80,7 +100,7 @@ pub async fn list_resources(
             |rows| {
                 vec![
                     diagnostic_field("kind", &kind),
-                    diagnostic_field("rows", rows.len()),
+                    diagnostic_field("rows", rows.rows.len()),
                 ]
             },
         )

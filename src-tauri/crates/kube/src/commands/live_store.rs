@@ -1,8 +1,7 @@
 use crate::commands::builtin_kinds::builtin_kind;
 use crate::commands::helpers::FluxOwnershipIndex;
 use crate::models::{
-    AppError, DiscoveredResourceKind, NamespaceSummary, ResourceSummary, ResourceTopology,
-    WatchResourceKind,
+    AppError, DiscoveredResourceKind, NamespaceSummary, ResourceTopology, WatchResourceKind,
 };
 use futures_util::future::{BoxFuture, FutureExt, Shared};
 use std::{
@@ -36,10 +35,9 @@ mod refresh;
 mod cache_diagnostics;
 use cache_diagnostics::CacheCounters;
 
-#[path = "live_store_watch.rs"]
-mod watch;
-use watch::CachedList;
-pub use watch::ListedResources;
+#[path = "live_store_list.rs"]
+mod list;
+pub use list::{ListSnapshot, ListedResources};
 
 type SharedLoad<T> = Shared<BoxFuture<'static, Result<Arc<T>, AppError>>>;
 
@@ -403,7 +401,7 @@ pub struct ClusterLiveStore {
     namespaces: Arc<SharedCache<Vec<NamespaceSummary>>>,
     resource_kinds: Arc<SharedCache<Vec<DiscoveredResourceKind>>>,
     present_custom_resource_kinds: Arc<SharedCache<Vec<DiscoveredResourceKind>>>,
-    resources: Arc<SharedCache<CachedList>>,
+    resources: Arc<SharedCache<ListSnapshot>>,
     topologies: Arc<SharedCache<ResourceTopology>>,
     flux_ownership_indexes: Arc<SharedCache<FluxOwnershipIndex>>,
 }
@@ -531,7 +529,7 @@ impl ClusterLiveStore {
         kind: String,
         namespace: Option<String>,
         loader: F,
-    ) -> Result<Arc<Vec<ResourceSummary>>, AppError>
+    ) -> Result<ListSnapshot, AppError>
     where
         F: FnOnce() -> Fut + Send + 'static,
         Fut: Future<Output = Result<Listed, AppError>> + Send + 'static,
@@ -550,7 +548,7 @@ impl ClusterLiveStore {
         resource_kind: DiscoveredResourceKind,
         namespace: Option<String>,
         loader: F,
-    ) -> Result<Arc<Vec<ResourceSummary>>, AppError>
+    ) -> Result<ListSnapshot, AppError>
     where
         F: FnOnce() -> Fut + Send + 'static,
         Fut: Future<Output = Result<Listed, AppError>> + Send + 'static,
@@ -574,7 +572,7 @@ impl ClusterLiveStore {
         kind_key: String,
         namespace_key: ScopeNamespace,
         loader: F,
-    ) -> Result<Arc<Vec<ResourceSummary>>, AppError>
+    ) -> Result<ListSnapshot, AppError>
     where
         F: FnOnce() -> Fut + Send + 'static,
         Fut: Future<Output = Result<Listed, AppError>> + Send + 'static,
@@ -591,13 +589,16 @@ impl ClusterLiveStore {
                 .resources
                 .peek(&all_key, CacheMode::LiveFor(RESOURCE_FRESHNESS))
             {
-                return Ok(Arc::new(
-                    list.rows
-                        .iter()
-                        .filter(|row| row.namespace.as_deref() == Some(namespace.as_str()))
-                        .cloned()
-                        .collect(),
-                ));
+                return Ok(ListSnapshot {
+                    rows: Arc::new(
+                        list.rows
+                            .iter()
+                            .filter(|row| row.namespace.as_deref() == Some(namespace.as_str()))
+                            .cloned()
+                            .collect(),
+                    ),
+                    resource_version: list.resource_version.clone(),
+                });
             }
         }
 
@@ -606,10 +607,10 @@ impl ClusterLiveStore {
             .get_or_load(
                 resource_cache_key(&source_key, &cluster_context, &kind_key, &namespace_key),
                 CacheMode::LiveFor(RESOURCE_FRESHNESS),
-                move || async move { Ok(CachedList::from(loader().await?.into())) },
+                move || async move { Ok(ListSnapshot::from(loader().await?.into())) },
             )
             .await?;
-        Ok(Arc::clone(&list.rows))
+        Ok(ListSnapshot::clone(&list))
     }
 
     pub async fn topology<F, Fut>(

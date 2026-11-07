@@ -98,11 +98,23 @@ pub struct ResourceScopeFailure {
     pub error: AppError,
 }
 
+/// The `metadata.resourceVersion` of the list a completed request's rows came
+/// from. A view starts its watch of that kind and namespace at this version.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceListVersion {
+    pub request: ResourceListRequest,
+    pub resource_version: String,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResourceScopeResult {
     pub resources: Vec<ResourceSummary>,
     pub completed_requests: Vec<ResourceListRequest>,
+    /// One entry per completed request whose list reported a version.
+    #[serde(default)]
+    pub resource_versions: Vec<ResourceListVersion>,
     pub failures: Vec<ResourceScopeFailure>,
 }
 
