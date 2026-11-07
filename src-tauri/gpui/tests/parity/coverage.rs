@@ -4,9 +4,9 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
     match string(step, "action") {
         "coverageSelect" => {
             assert_eq!(string(step, "label"), "Log container");
+            // Only opens the menu; `finish` moves the highlight once from the confirmed item.
             reveal(window, "detail-body", "log-container", cx);
             window.click("log-container", cx);
-            window.press("down", cx);
         }
         "coverageCopy" => {
             cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(String::new()));
