@@ -125,6 +125,11 @@ export function mergeWatchKeys(...groups: WatchResourceKey[][]): WatchResourceKe
 	return Array.from(merged.values());
 }
 
+/** The watch key of the kind and namespace one list request read. */
+export function listRequestWatchKey(request: ResourceListRequest): WatchResourceKey {
+	return { resourceKind: watchKind(request.resourceKind ?? request.kind), namespace: request.namespace ?? undefined };
+}
+
 export function kindWatchKeys(keys: KindFetchKey[]): WatchResourceKey[] {
 	return mergeWatchKeys(keys.map(({ kind, namespace }) => ({ resourceKind: watchKind(kind), namespace })));
 }

@@ -30,6 +30,12 @@ export interface ResourceScopeHandlers {
 	onChange: (event: StreamMessage, key: WatchResourceKey) => void;
 	reload: (keys?: WatchResourceKey[]) => Promise<void> | Promise<string[]>;
 	readError?: () => string | null;
+	/**
+	 * The list version of the rows the view shows for `key`, read when its watch
+	 * starts. Null holds the watch until those rows load, so it never starts past
+	 * them. Undefined starts it without a version, which replays every object.
+	 */
+	startVersion?: (key: WatchResourceKey) => string | null | undefined;
 }
 
 export interface ResourceScopeObserver {
@@ -41,9 +47,11 @@ export interface ResourceScopeObserver {
 
 type WatchChannel = ReturnType<typeof createStreamChannel>;
 
-// The stream's lifecycle. Idle watches restart on the next recovery tick; closed is final.
+// The stream's lifecycle. Idle watches restart on the next recovery tick; waiting
+// watches start when the view's rows for their key load; closed is final.
 type WatchPhase =
 	| { kind: "idle" }
+	| { kind: "waiting" }
 	| { kind: "opening"; channel: WatchChannel }
 	| { kind: "running"; channel: WatchChannel; id: string }
 	| { kind: "closed" };
@@ -113,18 +121,21 @@ export function observeResourceScope({
 	function publish() {
 		if (disposed) return;
 		const available = watches.filter((watch) => !watch.permissionWarning);
-		const connected = available.every((watch) => watch.connected);
+		const disconnected = available.filter((watch) => !watch.connected);
+		const connected = disconnected.length === 0;
 		const warnings = [...new Set([
 			...watches.flatMap((watch) => watch.permissionWarning ? [watch.permissionWarning] : []),
 			...reloadWarnings,
 		])];
-		const status = !connected ? "reconnecting"
+		const status = !connected
+			? disconnected.every((watch) => watch.phase.kind === "waiting") ? "connecting" : "reconnecting"
 			: available.length === 0 ? "polling"
 			: warnings.length ? "partial" : "connected";
 		handlers.onState({
 			status,
 			catchingUp: needsCatchUp || reloading,
-			message: status === "polling" ? "Watch access is unavailable. Readable resources refresh periodically."
+			message: status === "connecting" ? "Starting live updates"
+				: status === "polling" ? "Watch access is unavailable. Readable resources refresh periodically."
 				: status === "partial" ? "Live updates connected for permitted resources. Readable resources without watch access refresh periodically."
 				: connected ? "Live updates connected" : "Reconnecting; periodically reloading this view",
 			error: watches.find((watch) => watch.error)?.error ?? null,
@@ -137,9 +148,14 @@ export function observeResourceScope({
 		}
 	}
 	function start(watch: WatchRegistration) {
-		if (disposed || watch.phase.kind !== "idle" || watch.permissionWarning) return;
+		if (disposed || (watch.phase.kind !== "idle" && watch.phase.kind !== "waiting") || watch.permissionWarning) return;
+		const resourceVersion = handlers.startVersion?.(watch.key);
+		if (resourceVersion === null) {
+			watch.phase = { kind: "waiting" };
+			return;
+		}
 		const channel = openChannel((event) => {
-			if (disposed || watch.phase.kind === "closed" || watch.phase.kind === "idle" || watch.phase.channel !== channel) return;
+			if (disposed || (watch.phase.kind !== "opening" && watch.phase.kind !== "running") || watch.phase.channel !== channel) return;
 			if (event.type === "status") {
 				watch.permissionWarning = event.status === "forbidden" ? event.message : null;
 				watch.connected = event.status === "connected";
@@ -165,7 +181,7 @@ export function observeResourceScope({
 		void startResourceWatch(
 			client,
 			clusterContext,
-			[watch.key],
+			[resourceVersion === undefined ? watch.key : { ...watch.key, resourceVersion }],
 			channel,
 			kubeconfigEnvVar,
 		)
@@ -189,7 +205,8 @@ export function observeResourceScope({
 	function tick() {
 		if (disposed) return;
 		for (const watch of watches) start(watch);
-		if (watches.some((watch) => !watch.connected && !watch.permissionWarning)) needsCatchUp = true;
+		// A waiting watch has lost nothing: its rows have not loaded yet.
+		if (watches.some((watch) => !watch.connected && !watch.permissionWarning && watch.phase.kind !== "waiting")) needsCatchUp = true;
 		const readError = handlers.readError?.();
 		if (needsCatchUp || reloadError || readError || watches.some((watch) => watch.permissionWarning)) {
 			const recoveryKeys = watches.filter((watch) => watch.permissionWarning).map((watch) => watch.key);
@@ -234,8 +251,9 @@ export function observeResourceScope({
 				reloadError = null;
 			}
 			watches = [...kept, ...added];
-			for (const watch of added) start(watch);
-			if (added.length === 0) {
+			const resumed = kept.filter((watch) => watch.phase.kind === "waiting");
+			for (const watch of [...resumed, ...added]) start(watch);
+			if (added.length === 0 && !resumed.some((watch) => watch.phase.kind === "opening")) {
 				publish();
 				return;
 			}

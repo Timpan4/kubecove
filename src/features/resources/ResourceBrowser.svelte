@@ -316,6 +316,10 @@
 			namespaces: selectedNamespaces,
 			mapPanelOpen,
 			focusedApplication: gitOpsFocusApplication,
+			// Placeholder rows belong to the previous scope, so their versions do not apply.
+			shownVersions: (resourcesQuery.isSuccess || resourcesQuery.isError) && !resourcesQuery.isPlaceholderData
+				? resourcesQuery.data?.resourceVersions ?? []
+				: null,
 		}),
 	);
 	const namespacesQuery = createQuery<NamespaceSummary[]>(() => ({

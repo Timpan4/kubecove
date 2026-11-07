@@ -24,7 +24,7 @@ import { withDetailStatusFixture } from "./tauri-dev-mock-detail-status";
 import { evictedWorkerName, evictedWorkerStatus } from "./tauri-dev-mock-incidents";
 import { addKubeconfigPathsMock, reorderKubeconfigPathsMock } from "./tauri-dev-mock-kubeconfig";
 import { lintMockYaml } from "./tauri-dev-mock-lint";
-import { liveEvents, liveResources, registerMockWatch, stopMockWatch } from "./tauri-dev-mock-live";
+import { liveEvents, liveResources, mockListVersion, registerMockWatch, stopMockWatch } from "./tauri-dev-mock-live";
 import { operationMockHandlers } from "./tauri-dev-mock-operations";
 import { pageReadResult } from "./tauri-dev-mock-pages";
 import { rbacInspectionMock, rbacReviewMock } from "./tauri-dev-mock-rbac";
@@ -141,6 +141,8 @@ const handlers = {
         return {
 		resources: shellWithoutRemoved(listScope(args?.requests, args?.clusterContext)),
 		completedRequests: args?.requests ?? [],
+		// Read with the rows it describes, so a held read keeps its version.
+		resourceVersions: (args?.requests ?? []).map((request) => ({ request, resourceVersion: mockListVersion() })),
 		failures: [],
 	}; },
 	get_resource_yaml: (args) => builtInYamlFor(args),

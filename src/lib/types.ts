@@ -62,7 +62,7 @@ export type ResourceListRequest =
 			kind?: never;
 	  };
 
-export type { ResourceScopeFailure, ResourceScopeResult } from "./resource-scope-types";
+export type { ResourceListVersion, ResourceScopeFailure, ResourceScopeResult } from "./resource-scope-types";
 
 export interface DeploymentRevision {
 	name: string;
@@ -271,6 +271,11 @@ export interface WatchResourceKind {
 export interface WatchResourceKey {
 	resourceKind: WatchResourceKind;
 	namespace?: string;
+}
+
+/** A watch key and the list version of the rows the view shows for it. Without a version the watch replays every object first. */
+export interface ResourceWatchStart extends WatchResourceKey {
+	resourceVersion?: string;
 }
 
 export interface PodLogStreamRequest {

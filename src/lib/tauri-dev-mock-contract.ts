@@ -28,7 +28,7 @@ export interface MockArgs {
 	requests?: ResourceListRequest[];
 	resource?: ArgoManagedResource;
 	resourceKind?: DiscoveredResourceKind | FluxResourceKind;
-    keys?: import("./types").WatchResourceKey[];
+    keys?: import("./types").ResourceWatchStart[];
 	serverUrl?: string;
 	show?: boolean;
 	storageName?: string;
