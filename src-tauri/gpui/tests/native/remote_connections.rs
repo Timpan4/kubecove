@@ -252,20 +252,53 @@ fn remote_reads_carry_list_versions_to_watch_starts() {
     let backend = DesktopBackend::new(NativeBackend::new().unwrap());
     runtime.block_on(async {
         let (url, task, mut requests) = server("controlled-host").await;
-        backend.connect_remote(url, "controlled-test-credential".into()).await.unwrap();
-        let scope = Scope { context: "controlled-host".into(), namespace: Some("payments".into()) };
+        backend
+            .connect_remote(url, "controlled-test-credential".into())
+            .await
+            .unwrap();
+        let scope = Scope {
+            context: "controlled-host".into(),
+            namespace: Some("payments".into()),
+        };
         let kind = |name: &str| WatchResourceKey {
-            resource_kind: WatchResourceKind { kind: name.into(), group: None, version: None, api_version: None, plural: None, namespaced: Some(true) },
+            resource_kind: WatchResourceKind {
+                kind: name.into(),
+                group: None,
+                version: None,
+                api_version: None,
+                plural: None,
+                namespaced: Some(true),
+            },
             namespace: Some("payments".into()),
         };
         let scope_read = backend.resources(scope.clone(), false).await.unwrap();
         let versions: Vec<_> = scope_read.versions.values().map(String::as_str).collect();
-        assert_eq!(versions, vec!["4242"], "the scope read must keep the Pod list version");
-        let pods = backend.kind_resources(scope.clone(), kind("Pod"), Vec::new()).await.unwrap();
+        assert_eq!(
+            versions,
+            vec!["4242"],
+            "the scope read must keep the Pod list version"
+        );
+        let pods = backend
+            .kind_resources(scope.clone(), kind("Pod"), Vec::new())
+            .await
+            .unwrap();
         assert_eq!(pods.resource_version.as_deref(), Some("4242"));
-        let deployments = backend.kind_resources(scope.clone(), kind("Deployment"), Vec::new()).await.unwrap();
-        assert_eq!(deployments.resource_version, None, "a list without a version must not get one");
-        let stream = backend.watch(WatchTarget::Resource { scope, key: Box::new(kind("Pod")), resource_version: pods.resource_version }).await.unwrap();
+        let deployments = backend
+            .kind_resources(scope.clone(), kind("Deployment"), Vec::new())
+            .await
+            .unwrap();
+        assert_eq!(
+            deployments.resource_version, None,
+            "a list without a version must not get one"
+        );
+        let stream = backend
+            .watch(WatchTarget::Resource {
+                scope,
+                key: Box::new(kind("Pod")),
+                resource_version: pods.resource_version,
+            })
+            .await
+            .unwrap();
         drop(stream);
         loop {
             let (command, args) = requests.recv().await.unwrap();
@@ -290,7 +323,10 @@ fn remote_application_read_keeps_the_first_cluster_list_version() {
     let backend = DesktopBackend::new(NativeBackend::new().unwrap());
     runtime.block_on(async {
         let (url, task, _requests) = server("controlled-host").await;
-        backend.connect_remote(url, "controlled-test-credential".into()).await.unwrap();
+        backend
+            .connect_remote(url, "controlled-test-credential".into())
+            .await
+            .unwrap();
         let application = serde_json::from_value(json!({
             "cluster": "controlled-host",
             "name": "spread",
@@ -301,13 +337,27 @@ fn remote_application_read_keeps_the_first_cluster_list_version() {
         }))
         .unwrap();
         let before = VOLUME_LISTS.load(std::sync::atomic::Ordering::SeqCst);
-        let read = backend.application_resources(application, false).await.unwrap();
+        let read = backend
+            .application_resources(application, false)
+            .await
+            .unwrap();
         let first = format!("pv-{}", before + 1);
         let volumes = kubecove_gpui::backend::watch_signature(&WatchResourceKey {
-            resource_kind: WatchResourceKind { kind: "PersistentVolume".into(), group: None, version: None, api_version: None, plural: None, namespaced: Some(false) },
+            resource_kind: WatchResourceKind {
+                kind: "PersistentVolume".into(),
+                group: None,
+                version: None,
+                api_version: None,
+                plural: None,
+                namespaced: Some(false),
+            },
             namespace: None,
         });
-        assert_eq!(read.versions.get(&volumes), Some(&first), "the PersistentVolume watch must start at the first list's version");
+        assert_eq!(
+            read.versions.get(&volumes),
+            Some(&first),
+            "the PersistentVolume watch must start at the first list's version"
+        );
         backend.disconnect_remote().await.unwrap();
         task.abort();
         let _ = task.await;
