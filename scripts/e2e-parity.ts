@@ -53,6 +53,10 @@ await mkdir(artifacts, { recursive: true });
 await writeFile(join(artifacts, "web.json"), JSON.stringify({ driver: "web", scenarios: [] }));
 await writeFile(join(artifacts, "vite.log"), "Web driver did not start.\n");
 await writeFile(join(artifacts, "gpui.log"), "Native driver did not start.\n");
+// Seconds from the start of the run to the end of each phase, recorded in result.json.
+const started = performance.now();
+const phases: Record<string, number> = {};
+const mark = (phase: string) => { phases[phase] = Math.round(performance.now() - started) / 1000; };
 const controller = new AbortController();
 const interrupt = () => controller.abort(new Error("Interrupted"));
 process.once("SIGINT", interrupt);
@@ -80,14 +84,14 @@ try {
 	await writeFile(join(artifacts, "scenarios.txt"), contract.scenarios.map((scenario) => scenario.id).join("\n"));
 	const jobs = Number(process.env.PARITY_JOBS ?? Math.max(1, Math.floor(availableParallelism() / 2)));
 	if (!Number.isInteger(jobs) || jobs < 1) throw new Error(`PARITY_JOBS must be a positive integer: ${process.env.PARITY_JOBS}`);
-	// The GPUI driver renders the same browser-mock responses the web driver reads.
+	// The GPUI test processes render the same browser-mock responses the web driver reads.
+	// Only they read the fixture, so the web driver and the GPUI build start during the export.
 	const fixture = join(artifacts, "fixture.json");
 	const exported = Bun.spawn(["bun", "e2e/parity/visual/export-fixture.ts", fixture], { stdout: "inherit", stderr: "inherit" });
-	if (await exported.exited !== 0) throw new Error("Fixture export failed");
-	// The drivers share only the exported fixture, so they run at the same time.
+	const exportExit = exported.exited.then((code) => { mark("fixture"); return code; });
 	await Promise.all([
-		runWeb(contract, artifacts, controller.signal, jobs).catch((error: unknown) => fail(`Web driver: ${String(error)}`)),
-		runGpui(contract, artifacts, fixture, jobs, controller.signal).then((problem) => { if (problem) fail(problem); }, (error: unknown) => fail(`GPUI driver: ${String(error)}`)),
+		runWeb(contract, artifacts, controller.signal, jobs).catch((error: unknown) => fail(`Web driver: ${String(error)}`)).finally(() => mark("web")),
+		runGpui(contract, artifacts, { path: fixture, exit: exportExit }, jobs, controller.signal, mark).then((problem) => { if (problem) fail(problem); }, (error: unknown) => fail(`GPUI driver: ${String(error)}`)),
 	]);
 	controller.signal.throwIfAborted();
 	const reports = await Promise.all(["web", "gpui"].map(async (driver) => JSON.parse(await readFile(join(artifacts, `${driver}.json`), "utf8"))));
@@ -100,7 +104,8 @@ try {
 } catch (error) { fail(String(error)); }
 finally {
 	process.removeListener("SIGINT", interrupt); process.removeListener("SIGTERM", interrupt);
-	await writeFile(join(artifacts, "result.json"), JSON.stringify({ level: "UI integration with mocks", status: failure ? "failed" : "passed", error: failure }, null, 2));
+	mark("total");
+	await writeFile(join(artifacts, "result.json"), JSON.stringify({ level: "UI integration with mocks", status: failure ? "failed" : "passed", error: failure, phases }, null, 2));
 	console.log(`Parity artifacts: ${artifacts}`);
 }
 if (failure) { console.error(failure); process.exitCode = 1; }
