@@ -51,6 +51,11 @@ serde = { version = "=1.0.229", features = ["derive"] }
 name = "visual"
 harness = false
 
+# Text-fit checks with the real text system; see the file's header.
+[[test]]
+name = "text_fit"
+harness = false
+
 # Frame timing, built with the release profile by `scripts/gpui-frames.ts`.
 [[test]]
 name = "frames"

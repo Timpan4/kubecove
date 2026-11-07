@@ -117,6 +117,15 @@ fn tail_menu(logs: &LogsState, cx: &mut Context<Inspector>) -> Stateful<Div> {
         )
 }
 
+/// One part of the toolbar status. It ends in an ellipsis when the row runs out of width.
+fn status_part(text: Div, id: &'static str, label: String) -> impl IntoElement {
+    text.min_w_0()
+        .truncate()
+        .id(id)
+        .test_support()
+        .aria_label(label)
+}
+
 fn toolbar(logs: &LogsState, cx: &mut Context<Inspector>) -> Div {
     // The label shrinks and ends in an ellipsis, as the row runs out of width; the full text stays on hover.
     let status_label = logs.status_label();
@@ -142,10 +151,15 @@ fn toolbar(logs: &LogsState, cx: &mut Context<Inspector>) -> Div {
                 .bg(status_dot(logs))
                 .into_any_element()
         })
-        .child(ui::xs(status_label).min_w_0().truncate())
-        .child(ui::muted(
-            ui::xs(format!("· {} lines", logs.buffer.len())).min_w_0().truncate(),
-        ));
+        .child(status_part(
+            ui::xs(status_label.clone()),
+            "log-status-state",
+            status_label,
+        ))
+        .child({
+            let count = format!("· {} lines", logs.buffer.len());
+            status_part(ui::muted(ui::xs(count.clone())), "log-status-count", count)
+        });
     let tail = div()
         .relative()
         .child(
@@ -188,12 +202,10 @@ fn toolbar(logs: &LogsState, cx: &mut Context<Inspector>) -> Div {
             // minimum width, so as a bare flex item it shrinks to the chevron. This wrapper is the
             // flex item instead: as wide as the selected name, at most the web's `w-40`.
             row.child(
-                div().flex_none().max_w(px(160.)).child(
-                    Select::new(picker)
-                        .id("log-container")
-                        .h(px(28.))
-                        .text_xs(),
-                ),
+                div()
+                    .flex_none()
+                    .max_w(px(160.))
+                    .child(Select::new(picker).id("log-container").h(px(28.)).text_xs()),
             )
         })
         .child(status)

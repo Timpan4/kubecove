@@ -209,7 +209,9 @@ impl Palette {
 pub const SANS: &str = "Inter";
 pub const HEADING: &str = "Geist";
 pub const MONO: &str = "Geist Mono";
-/// The `text-sm` font size in px, used by `ui::sm`. Parity tests measure shaped text at this size.
+/// The `text-xs` font size in px, used by `ui::xs`. The text-fit test shapes text at this size.
+pub const XS_FONT_SIZE: f32 = 12.;
+/// The `text-sm` font size in px, used by `ui::sm`. The text-fit test shapes text at this size.
 pub const SM_FONT_SIZE: f32 = 14.;
 
 /// Applies the web frontend's dark theme to GPUI Kit components.

@@ -52,6 +52,14 @@ An action names user-visible behavior, not a selector. Each driver maps it to it
 
 Native-only tests in `src-tauri/gpui/tests/native.rs` and `src-tauri/gpui/tests/native/` cover what the browser mocks cannot express: read errors, cancellation, stale asynchronous results after scope changes, sessions from other sources, dirty drafts that block closing, refused log streams and dry runs, failed guarded executions, log streams that outlive their detail, dry runs of a draft that changed before they finished, and kubeconfig settings that the native backend cannot save. Native preference tests additionally cover file-backed process restart, migration, corrupt or future documents, stale revisions and failed writes. Their paths stay in worktree-local temporary directories.
 
+The GPUI parity driver shapes text with GPUI's `NoopTextSystem`, where every glyph is 0.6 em wide, so its text widths say nothing about the bundled fonts. Parity steps check boxes only: a value stays inside its cell, and toolbar buttons stay inside the detail panel. Checks that need real glyph widths, such as "Deployment" fitting the Kind column or the live Logs status reading in full, live in `src-tauri/gpui/tests/text_fit.rs`. It renders the exported fixture with the platform text system and the bundled fonts, on Linux only, as `tests/visual.rs` does. Run it from the worktree root with the build settings in `AGENTS.md`:
+
+```sh
+bun e2e/parity/visual/export-fixture.ts e2e/artifacts/text-fit/fixture.json
+KUBECOVE_PARITY_FIXTURE="$PWD/e2e/artifacts/text-fit/fixture.json" \
+  cargo test --manifest-path src-tauri/gpui/Cargo.toml --test text_fit
+```
+
 `live-data.json` replays the same scripted watch messages in both drivers. It covers resource identity, deletion, reconnect catch-up, stale read failures, permission-limited polling, scope changes, event order, and discovered custom kinds in the sidebar and picker. Native stream tests also check cancellation while opening, dropped streams, and receivers that outlive their page, detail or context. The native client reuses the typed Rust watch commands, the web's 15,000 ms recovery interval from `resource-watch.ts`, and its 250 ms refresh throttle from `live-view-refresh.ts`. Pending row patches apply at rendering without rebuilding the table's filtered rows.
 
 The ignored `watch_burst_frame_time` native test measures a burst against the 10,000-row fixture from `visual/export-watch-burst.ts`. It reports offscreen debug CPU frame construction and executor drain time, not GPU presentation or a release frame rate. The measured frames exceed the 8.33 ms requirement. Live-data scenarios do not prove 120 fps.

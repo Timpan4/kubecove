@@ -1,7 +1,7 @@
 //! Presentation helpers mirroring the Svelte frontend's shadcn-svelte variants
 //! in `src/components/ui/svelte/classes.ts`. Sizes use the web's px values.
 
-use crate::theme::{HEADING, Palette, SANS, SM_FONT_SIZE, Tokens};
+use crate::theme::{HEADING, Palette, SANS, SM_FONT_SIZE, Tokens, XS_FONT_SIZE};
 use gpui_kit::{Div, FontWeight, Hsla, SharedString, Styled, Svg, div, prelude::*, px, svg};
 
 /// Text at a web font size (px) and line height (px).
@@ -15,7 +15,7 @@ pub fn text(content: impl Into<SharedString>, size: f32, line: f32) -> Div {
 
 /// `text-xs` (12px / 16px).
 pub fn xs(content: impl Into<SharedString>) -> Div {
-    text(content, 12., 16.)
+    text(content, XS_FONT_SIZE, 16.)
 }
 
 /// `text-sm` (14px / 20px).
