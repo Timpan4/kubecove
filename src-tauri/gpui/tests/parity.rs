@@ -35,6 +35,8 @@ mod live_sessions;
 mod locate;
 #[path = "parity/log_coverage.rs"]
 mod log_coverage;
+#[path = "parity/log_toolbar.rs"]
+mod log_toolbar;
 #[path = "parity/log_restore.rs"]
 mod log_restore;
 #[path = "parity/map_panels.rs"]
@@ -241,6 +243,7 @@ fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
     if !(shell::act(window, cx, step)
         || coverage_checks::act(window, cx, step)
         || coverage::act(window, cx, step)
+        || log_toolbar::act(window, cx, step)
         || argo::act(window, cx, step)
         || adapters::act(window, cx, step)
         || mcp::act(window, cx, step)

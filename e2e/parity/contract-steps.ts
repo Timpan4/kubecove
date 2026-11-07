@@ -190,6 +190,7 @@ export type Step =
     | { action: "expectPortForward"; title: string }
     | { action: "closeReview" | "expectNoReview" | "executeReview" | "expectNoActionResult" | "editYaml" | "applyYaml" | "dryRunYaml" | "expectYamlReadOnly" }
     | { action: "expectLogLines"; lines: string[] }
+    | { action: "expectLogToolbarFit"; state: "Live" | "Paused" }
     | { action: "filterLogs" | "confirmDeletion" | "editReplicas"; value: string }
     | { action: "toggleLogLevel"; level: LogLevel }
     | { action: "toggleLogRow"; line: string; key?: "Enter" | "Space" }

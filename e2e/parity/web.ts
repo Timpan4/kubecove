@@ -14,6 +14,7 @@ import { incidentDiagnosticsAction } from "./web-incident-diagnostics";
 import { kubeconfigSettingsAction } from "./web-kubeconfig-settings";
 import { liveSessionAction } from "./web-live-sessions";
 import { logRowAndRestoreAction } from "./web-logs-restore";
+import { expectLogToolbarFit } from "./web-logs-toolbar";
 import { expectDetailScroll, expectResourceEvent } from "./web-detail-scroll";
 import { mcpAction } from "./web-mcp";
 import { navigationAction } from "./web-navigation";
@@ -228,6 +229,7 @@ export async function action(page: Page, step: Step) {
 			// Headlines of the rendered rows, in display order.
 			await page.waitForFunction((lines) => JSON.stringify([...document.querySelectorAll("[data-log-row]")].map((row) => row.querySelector('span[class*="text-[12.5px]"]')?.textContent?.trim())) === JSON.stringify(lines), step.lines);
 			break;
+		case "expectLogToolbarFit": await expectLogToolbarFit(page, step.state); break;
 		case "filterLogs": await page.getByRole("textbox", { name: "Filter log lines" }).fill(step.value); break;
 		case "toggleLogLevel": await page.getByRole("group", { name: "Filter by level" }).getByRole("button", { name: new RegExp(`^${step.level} `) }).click(); break;
 		case "toggleLogRow": case "toggleLogExpandAll": case "expectLogRowOpen": case "copyLogLine": case "expectRestorePrompt": case "restorePromptControl": await logRowAndRestoreAction(page, step); break;

@@ -331,6 +331,22 @@ mod visual {
                         window.click("map-mode:Network Flow", cx)
                     });
                 }
+                "logs.pod" | "logs.pod-paused" => {
+                    act(&mut cx, handle, |window, cx| {
+                        window.click("open-resources", cx)
+                    });
+                    act(&mut cx, handle, |window, cx| {
+                        window.click("search", cx);
+                        window.input("argocd-dex-server", cx);
+                    });
+                    act(&mut cx, handle, |window, cx| {
+                        window.click("resource:Pod:argocd:argocd-dex-server-6d7f9c5b8-q4w2n", cx)
+                    });
+                    act(&mut cx, handle, |window, cx| window.click("show-logs", cx));
+                    if view == "logs.pod-paused" {
+                        act(&mut cx, handle, |window, cx| window.click("log-pause", cx));
+                    }
+                }
                 "detail"
                 | "yaml"
                 | "events"

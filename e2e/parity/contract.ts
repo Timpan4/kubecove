@@ -65,7 +65,7 @@ export const ACTIONS = [
 	"openResources", "showYaml", "closeDetail", "expectDetailClosed", "expectEmpty", "refresh", "search", "expectSearch",
 	"expectResource", "openResource", "expectDetail", "expectDetailTab", "expectClusterResource", "expectNoClusterResource", "expectYaml", "openPage", "showTab", "filterEvents",
 	"expectDetailScroll", "expectEvent", "expectEventCount", "expectLiveSessionCount", "filterIncidents", "expectIncidentGuide", "openIncidentResources", "expectGitOpsCount", "expectPortForward",
-	"expectLogLines", "filterLogs", "toggleLogLevel", "expectLogsEmpty", "selectRevision", "expectRevisionDiff", "reviewAction", "editReplicas",
+	"expectLogLines", "expectLogToolbarFit", "filterLogs", "toggleLogLevel", "expectLogsEmpty", "selectRevision", "expectRevisionDiff", "reviewAction", "editReplicas",
 	"toggleLogRow", "toggleLogExpandAll", "expectLogRowOpen", "copyLogLine", "expectRestorePrompt", "restorePromptControl",
 	"expectReview", "confirmDeletion", "executeReview", "closeReview", "expectNoReview", "expectActionResult", "expectNoActionResult",
 	"editYaml", "applyYaml", "dryRunYaml", "expectDryRun", "expectYamlNotice", "expectNoYamlNotice", "expectYamlReadOnly",
@@ -362,6 +362,7 @@ function step(value: unknown): Step {
 			return { action: item.action };
 		// An empty list asserts that no log row renders.
 		case "expectLogLines": return { action: item.action, lines: strings(item.lines, true) };
+		case "expectLogToolbarFit": return { action: item.action, state: oneOf(["Live", "Paused"], item.state, "a log toolbar state") };
 		case "filterLogs": return { action: item.action, value: item.value === "" ? "" : string(item.value) };
 		case "confirmDeletion": case "editReplicas": return { action: item.action, value: string(item.value) };
 		case "toggleLogLevel": {

@@ -1,0 +1,37 @@
+{
+	"fixture": "browser-mocks",
+	"context": "mock-dev",
+	"scenarios": [
+		{
+			"id": "logs.pod.toolbar-live",
+			"title": "A multi-container Pod's live Logs toolbar keeps its status clear of the container picker and buttons",
+			"steps": [
+				{ "action": "openResources" },
+				{ "action": "search", "value": "argocd-dex-server" },
+				{ "action": "openResource", "kind": "Pod", "namespace": "argocd", "name": "argocd-dex-server-6d7f9c5b8-q4w2n" },
+				{ "action": "showTab", "tab": "Logs" },
+				{
+					"action": "expectLogLines",
+					"lines": ["boot payments-api", "handled GET /healthz 200", "downstream retry budget at 82%"]
+				},
+				{ "action": "expectLogToolbarFit", "state": "Live" }
+			]
+		},
+		{
+			"id": "logs.pod-paused.toolbar-paused",
+			"title": "A paused multi-container Logs toolbar keeps its status clear of the container picker and buttons",
+			"steps": [
+				{ "action": "openResources" },
+				{ "action": "search", "value": "argocd-dex-server" },
+				{ "action": "openResource", "kind": "Pod", "namespace": "argocd", "name": "argocd-dex-server-6d7f9c5b8-q4w2n" },
+				{ "action": "showTab", "tab": "Logs" },
+				{
+					"action": "expectLogLines",
+					"lines": ["boot payments-api", "handled GET /healthz 200", "downstream retry budget at 82%"]
+				},
+				{ "action": "coverageClick", "label": "Pause" },
+				{ "action": "expectLogToolbarFit", "state": "Paused" }
+			]
+		}
+	]
+}

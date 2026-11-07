@@ -150,7 +150,23 @@ async function show(page: Page, view: View) {
 			await page.getByRole("treeitem").filter({ has: page.getByText("Incidents", { exact: true }) }).click();
 			await page.getByText("Guided investigation", { exact: true }).waitFor();
 			return;
-		case "port-forwards":
+		case "logs.pod": case "logs.pod-paused": {
+				// The multi-container Pod from the mocks, whose container picker and long names exercise the toolbar.
+				await page.getByRole("button", { name: "Resources", exact: true }).first().click();
+				await page.getByRole("textbox", { name: "Search resources" }).fill("argocd-dex-server");
+				await page.getByRole("button", { name: "Open resource argocd-dex-server-6d7f9c5b8-q4w2n", exact: true }).click();
+				await page.getByRole("button", { name: "Close resource details" }).waitFor();
+				await page.getByRole("tab", { name: "Details", exact: true }).waitFor();
+				await page.getByText("Loading resource details", { exact: false }).waitFor({ state: "hidden" });
+				await page.getByRole("tab", { name: "Logs", exact: true }).click();
+				await page.getByText("downstream retry budget at 82%", { exact: false }).waitFor();
+				if (view === "logs.pod-paused") {
+					await page.getByRole("button", { name: "Pause", exact: true }).click();
+					await page.getByRole("button", { name: "Resume", exact: true }).waitFor();
+				}
+				return;
+			}
+			case "port-forwards":
 			await page.getByRole("treeitem").filter({ has: page.getByText("Port Forwards", { exact: true }) }).click();
 			await page.getByText("Active local tunnels with guarded stop controls.", { exact: true }).waitFor();
 			return;
