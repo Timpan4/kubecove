@@ -31,7 +31,7 @@ Run new scenarios in each driver before the full suite. This catches missing nat
    cargo test --manifest-path src-tauri/gpui/Cargo.toml --test parity
    ```
 
-3. Run `bun run e2e:parity` without a filter once per batch of merges and before a PR, as the Verification tiers in `AGENTS.md` describe. Focused reports prove only the scenarios they name.
+3. Leave the unfiltered suite to CI: `.github/workflows/parity.yml` runs it on every PR and after each merge to main, split across `PARITY_SUITE_SHARD` jobs that each upload their `e2e/artifacts/parity-*` directory. The Verification tiers in `AGENTS.md` describe the local checks. Focused reports prove only the scenarios they name.
 
 `bun run e2e:parity` runs both drivers at the same time. The web driver runs several pages at once, and the GPUI driver builds the parity test once and runs it in several processes (`KUBECOVE_PARITY_SHARD=<index>/<count>`). The web driver starts at once, and the GPUI build runs while the runner exports `fixture.json`; only the GPUI test processes wait for the fixture. The GPUI processes take scenarios from a shared queue: each claims the next unclaimed scenario by creating `gpui-claims/<position in scenarios.txt>`, which holds its shard index. Each writes `gpui-<index>.json` and the runner merges them into `gpui.json`. Both reports record each scenario's `durationMs`, and `result.json` records the seconds from the start of the run to the end of each phase under `phases`. Optional variables:
 
