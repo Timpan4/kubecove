@@ -71,6 +71,15 @@ in `tests/common/live_data.rs`.
 `mock-timing.watch-start-version` collapses the ownership map first. The web
 map has no list version, so a key it shows starts without one.
 
+That scenario adds a kind to a view that already watches others, so the web
+starts the watch through `update` of the existing observer. The web creates the
+observer, and starts a view's first watches, while the ownership map is open by
+default, so those keys start without a version and a dropped version looks the
+same. The kind picker has no control that empties the selection, which would
+create a new observer after the map is collapsed. `live-view-refresh.test.ts`
+covers that path instead: a new view's watch waits for its rows and starts at
+their list version.
+
 The retry observation window is 30,000 ms. Its source is
 the installed `@tanstack/query-core/src/retryer.ts`, `defaultRetryDelay`, which
 caps backoff at that duration. Both drivers advance a test clock for this check.

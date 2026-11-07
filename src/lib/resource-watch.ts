@@ -70,11 +70,8 @@ export function observeResourceScope({
 	clusterContext,
 	keys,
 	kubeconfigEnvVar,
-	onState,
-	onChange,
-	reload,
-	readError,
 	openChannel = createStreamChannel,
+	...initialHandlers
 }: ResourceScopeHandlers & {
 	client: TauriClient;
 	clusterContext: string;
@@ -82,7 +79,7 @@ export function observeResourceScope({
 	kubeconfigEnvVar?: string;
 	openChannel?: typeof createStreamChannel;
 }): ResourceScopeObserver {
-	let handlers: ResourceScopeHandlers = { onState, onChange, reload, readError };
+	let handlers: ResourceScopeHandlers = initialHandlers;
 	let disposed = false;
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let reloading = false;
@@ -214,7 +211,7 @@ export function observeResourceScope({
 		}
 		timer = setTimeout(tick, RESOURCE_RECOVERY_INTERVAL);
 	}
-	onState({
+	handlers.onState({
 		status: "connecting",
 		catchingUp: false,
 		message: "Starting live updates",
