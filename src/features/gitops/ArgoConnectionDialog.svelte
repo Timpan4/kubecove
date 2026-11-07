@@ -25,6 +25,7 @@
 	import { messageFromError } from "@/lib/error-redaction";
 	import { argoConnectionStatusQueryOptions } from "@/lib/argo-application-inspection";
 	import { finiteRead } from "@/lib/finite-read-lifecycle";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import { queryKeys, queryMatchers } from "@/lib/queryKeys";
 	import type { SavedArgoProfile } from "@/lib/settings";
 	import { settingsStore } from "@/lib/settings-store";
@@ -78,6 +79,7 @@
 		enabled: open,
 		staleTime: 60_000,
 	}));
+	const discovering = loadingDelay(() => discovery.isPending);
 	const servers = $derived(connectableArgoServers(discovery.data));
 	const unavailableServers = $derived(discovery.data?.filter((server) => server.unavailableReason) ?? []);
 
@@ -283,8 +285,8 @@
 			</Field>
 
 			{#if source === "discovered"}
-				{#if discovery.isPending}
-					<p class="text-sm text-muted-foreground">Looking for Argo CD in this cluster…</p>
+				{#if discovering.active}
+					{#if discovering.shown}<p class="text-sm text-muted-foreground">Looking for Argo CD in this cluster…</p>{/if}
 				{:else if discovery.isError}
 					<Alert variant="destructive">
 						<AlertCircle />

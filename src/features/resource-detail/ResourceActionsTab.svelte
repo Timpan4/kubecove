@@ -12,6 +12,7 @@
 		Spinner,
 	} from "@/components/ui/svelte";
 	import { LockKeyhole, Search } from "lucide-svelte";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import type { TauriClient } from "@/lib/tauri";
 	import type { ResourceSummary } from "@/lib/types";
 	import { getSettingsSnapshot } from "@/lib/settings-store";
@@ -67,6 +68,7 @@
 		kubeconfigSourceKey?: string;
 	} = $props();
 
+	const permissionsLoading = loadingDelay(() => current.loading);
 	let filter = $state("");
 	let expanded = $state<ResourceActionRowId | null>(null);
 	let selectedRevision = $state<number | null>(null);
@@ -140,7 +142,7 @@
 			{#if actionState?.replicas !== undefined}<span class="rounded-full border bg-muted/30 px-2 py-1 tabular-nums">Desired {actionState.replicas}</span>{/if}
 			{#if actionState?.paused !== undefined}<span class="rounded-full border bg-muted/30 px-2 py-1">{actionState.paused ? "Paused" : "Running"}</span>{/if}
 			{#if actionState?.revisions.length}<span class="rounded-full border bg-muted/30 px-2 py-1">{actionState.revisions.length} revisions</span>{/if}
-			{#if current.loading}<span class="inline-flex items-center gap-2 text-muted-foreground"><Spinner />Loading action permissions</span>{/if}
+			{#if permissionsLoading.shown}<span class="inline-flex items-center gap-2 text-muted-foreground"><Spinner />Loading action permissions</span>{/if}
 		</div>
 		<label class="flex h-8 w-56 items-center gap-2 rounded-md border bg-muted/20 px-2 text-muted-foreground focus-within:ring-2 focus-within:ring-ring">
 			<Search class="size-3.5 shrink-0" aria-hidden="true" />

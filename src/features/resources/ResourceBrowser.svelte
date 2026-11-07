@@ -62,6 +62,7 @@
 	} from "./operational-data";
 	import { argoApplicationInspection } from "@/lib/argo-application-inspection.svelte";
 	import { diagnosticLog } from "@/lib/diagnostics";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import { STATUS_BADGE_STYLES } from "@/components/status-badge-styles";
 	import type { ChipVariant } from "@/features/argo/status";
 	import ArgoApplicationWorkspaceHeader from "@/features/gitops/ArgoApplicationWorkspaceHeader.svelte";
@@ -543,11 +544,13 @@
 			? "metrics API unavailable"
 			: describeMetricsAvailability(metricsQuery.data?.availability),
 	);
-	const loading = $derived(
-		Boolean(clusterContext) &&
+	const loading = loadingDelay(
+		() =>
+			Boolean(clusterContext) &&
 			fetchKeys.length > 0 &&
 			(!sourceReady || (resourcesQuery.isPending && !resourcesQuery.isPlaceholderData)),
 	);
+	const ownershipMapLoading = loadingDelay(() => !OwnershipMapComponent && !ownershipMapLoadError);
 	const resourceError = $derived(
 		workspaceReadContext.sourceError
 			? workspaceReadContext.sourceError
@@ -751,7 +754,7 @@
 	{#if resourcesQuery.isSuccess && !resourcesQuery.isPlaceholderData}
 		<ResourceScopeWarnings failures={resourcesQuery.data?.failures ?? []} />
 	{/if}
-	{#if !clusterContext || fetchKeys.length === 0 || resourceError || loading}
+	{#if !clusterContext || fetchKeys.length === 0 || resourceError || loading.active}
 		<div class="flex justify-end">{@render refreshControls()}</div>
 	{/if}
 	{#if gitOpsFocusApplication}
@@ -787,10 +790,12 @@
 			error={resourceError}
 			context={{ operation: "resourcesLoad", fallbackTitle: "Failed to load resources" }}
 		/>
-	{:else if loading}
+	{:else if loading.active}
 		<div class="flex min-h-52 items-center justify-center gap-2 text-xs text-muted-foreground">
-			<Spinner />
-			<span>Loading resources</span>
+			{#if loading.shown}
+				<Spinner />
+				<span>Loading resources</span>
+			{/if}
 		</div>
 	{:else}
 		<ResourceBrowserTopBar
@@ -862,7 +867,7 @@
 		>
 			{#if mapPanelOpen}
 				<div class="h-full min-h-[400px] min-w-0">
-					{#if OwnershipMapComponent}
+					{#if OwnershipMapComponent && !ownershipMapLoading.active}
 						<OwnershipMapComponent
 							topology={topologyWithMetrics}
 							{updatesCurrent}
@@ -887,8 +892,10 @@
 						</div>
 					{:else}
 						<div class="flex h-full items-center justify-center gap-2 text-xs text-muted-foreground">
-							<Spinner />
-							<span>Loading ownership map</span>
+							{#if ownershipMapLoading.shown}
+								<Spinner />
+								<span>Loading ownership map</span>
+							{/if}
 						</div>
 					{/if}
 				</div>

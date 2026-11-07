@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { cancelledQueryRetry } from "@/lib/query-retry";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import ArgoAutoReconnect from "@/features/gitops/ArgoAutoReconnect.svelte";
 	import ArgoOperationMonitor from "@/features/gitops/ArgoOperationMonitor.svelte";
 	import { markStartup } from "@/lib/startup-marks";
@@ -245,19 +246,24 @@
 				? (presentCustomResourceKindsQuery.data ?? workspaceCustomResourcePrewarmQuery.data ?? [])
 				: (workspaceCustomResourcePrewarmQuery.data ?? []),
 	);
+	const customResourcesLoading = loadingDelay(
+		() =>
+			workspaceCustomResourcePrewarmQuery.isPending ||
+			workspaceCustomResourcePrewarmQuery.isFetching ||
+			(includePresentCustomResources &&
+				(presentCustomResourceKindsQuery.isPending || presentCustomResourceKindsQuery.isFetching)),
+	);
 	const customResourcesStatus = $derived(
 		!showCustomResources
 			? "Custom Resources off"
 			: workspaceCustomResourcePrewarmQuery.isError ||
 				  (includePresentCustomResources && presentCustomResourceKindsQuery.isError)
 				? "Custom Resources unavailable"
-				: workspaceCustomResourcePrewarmQuery.isPending ||
-					  workspaceCustomResourcePrewarmQuery.isFetching ||
-					  (includePresentCustomResources &&
-							(presentCustomResourceKindsQuery.isPending ||
-								presentCustomResourceKindsQuery.isFetching))
+				: customResourcesLoading.shown
 					? "Loading Custom Resources"
-					: presentCustomResourceKinds.length > 0
+					: customResourcesLoading.active
+						? null
+						: presentCustomResourceKinds.length > 0
 						? "Custom Resources added"
 						: null,
 	);

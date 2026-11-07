@@ -16,6 +16,7 @@
 		TableHeader,
 		TableRow,
 	} from "@/components/ui/svelte";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import { queryKeys } from "@/lib/queryKeys";
 	import { createTauriClient, listNamespaces } from "@/lib/tauri";
 	import type { NamespaceSummary } from "@/lib/types";
@@ -42,7 +43,7 @@
 				? namespacesQuery.error
 				: null,
 	);
-	const loading = $derived(Boolean(clusterContext) && (!sourceReady || namespacesQuery.isPending));
+	const loading = loadingDelay(() => Boolean(clusterContext) && (!sourceReady || namespacesQuery.isPending));
 </script>
 
 {#if !clusterContext}
@@ -57,11 +58,13 @@
 		error={namespaceError}
 		context={{ operation: "resourcesLoad", fallbackTitle: "Failed to load namespaces" }}
 	/>
-{:else if loading}
-	<div class="flex min-h-40 items-center justify-center gap-2 text-xs text-muted-foreground">
-		<Spinner />
-		<span>Loading namespaces</span>
-	</div>
+{:else if loading.active}
+	{#if loading.shown}
+		<div class="flex min-h-40 items-center justify-center gap-2 text-xs text-muted-foreground">
+			<Spinner />
+			<span>Loading namespaces</span>
+		</div>
+	{/if}
 {:else if namespaces.length === 0}
 	<Empty class="min-h-40 border border-dashed">
 		<EmptyHeader>

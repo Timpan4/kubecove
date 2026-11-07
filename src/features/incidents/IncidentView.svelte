@@ -12,6 +12,7 @@
 		Spinner,
 	} from "@/components/ui/svelte";
 	import type { HealthFilter } from "@/features/resources";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import type { PathStateDetailTab } from "@/lib/path-state";
 	import type {
 		IncidentCockpitItem,
@@ -80,6 +81,7 @@
 		onResourceInspect: (resource: ResourceSummary, detailTab?: PathStateDetailTab) => void;
 		onResourceSelect: (resource: ResourceSummary) => void;
 	} = $props();
+	const refreshing = loadingDelay(() => incidentsQuery.isFetching);
 
 	const overviewMetrics = $derived([
 		{ label: "All", value: incidentCounts.total, tone: "" },
@@ -129,7 +131,7 @@
 					disabled={incidentsQuery.isFetching}
 					onclick={() => incidentsQuery.refetch()}
 				>
-					{#if incidentsQuery.isFetching}
+					{#if refreshing.shown}
 						<Spinner data-icon="inline-start" />
 					{:else}
 						<RotateCcw data-icon="inline-start" />

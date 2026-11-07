@@ -23,6 +23,7 @@
 		TooltipTrigger,
 	} from "@/components/ui/svelte";
 	import { diffLineClassName } from "./yamlTabDiff";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import {
 		yamlForceConflictsReview,
 		yamlForceConflictsSource,
@@ -70,14 +71,18 @@
 		kubernetesYamlDiagnostics,
 		clearYamlDraftFeedback,
 	} = $props();
+	const loading = loadingDelay(() => yamlQuery.isPending && !yamlText);
+	const draftLoading = loadingDelay(() => yamlLoadingDraft);
 </script>
 
 <TabsContent value="yaml" class="min-h-0">
-		{#if yamlQuery.isPending && !yamlText}
-			<div class="flex min-h-32 items-center justify-center gap-2 text-muted-foreground">
-				<Spinner />
-				<span>Loading YAML</span>
-			</div>
+		{#if loading.active}
+			{#if loading.shown}
+				<div class="flex min-h-32 items-center justify-center gap-2 text-muted-foreground">
+					<Spinner />
+					<span>Loading YAML</span>
+				</div>
+			{/if}
 		{:else if yamlQuery.isError}
 			<FriendlyError
 				error={yamlQuery.error}
@@ -146,7 +151,7 @@
 									disabled={Boolean(yamlApplyDisabledReason) || yamlLoadingDraft}
 									onclick={startYamlApplyEdit}
 								>
-									{#if yamlLoadingDraft}<Spinner data-icon="inline-start" />{/if}
+									{#if draftLoading.shown}<Spinner data-icon="inline-start" />{/if}
 									<Pencil data-icon="inline-start" />
 									Edit YAML
 								</Button>

@@ -160,7 +160,7 @@ export function buildSidebarTree({
 	argoDetected,
 	fluxDetection,
 	detectingGitOps,
-	resourceKindsPending,
+	resourceKindsLoading,
 	resourceKindsError,
 	showUnavailableGitOpsProviders,
 	showCustomResources = true,
@@ -171,7 +171,8 @@ export function buildSidebarTree({
 	argoDetected: boolean | undefined;
 	fluxDetection: FluxDetectionSummary | undefined;
 	detectingGitOps: boolean;
-	resourceKindsPending: boolean;
+	/** The kind discovery read's loading indicator, from `loadingDelay`. "waiting" renders no rows. */
+	resourceKindsLoading: "waiting" | "shown" | null;
 	resourceKindsError: string;
 	showUnavailableGitOpsProviders: boolean;
 	showCustomResources?: boolean;
@@ -180,7 +181,9 @@ export function buildSidebarTree({
 	const extraKinds = extraDiscoveredKinds(
 		filterCustomResourceKinds(resourceKinds, customResourceSearch),
 	);
-	const discoveredChildren: TreeNode[] = resourceKindsPending
+	const discoveredChildren: TreeNode[] = resourceKindsLoading === "waiting"
+		? []
+		: resourceKindsLoading === "shown"
 		? [
 				{
 					id: { type: "kind", section: "discovered", kind: "__loading" },

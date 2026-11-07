@@ -12,6 +12,7 @@
 		Spinner,
 		TabsContent,
 	} from "@/components/ui/svelte";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import type { ResourceEventSummary } from "@/lib/types";
 	import {
 		buildEventSummary,
@@ -37,6 +38,7 @@
 		formatEventExactTime: (event: ResourceEventSummary) => string;
 		formatEventCompactTime: (event: ResourceEventSummary) => string;
 	} = $props();
+	const loading = loadingDelay(() => eventsQuery.isPending);
 
 	let eventSearch = $state("");
 	let eventTypeFilter = $state<EventTypeFilter>("all");
@@ -68,11 +70,13 @@
 </script>
 
 <TabsContent value="events">
-	{#if eventsQuery.isPending}
-		<div class="flex min-h-32 items-center justify-center gap-2 text-muted-foreground">
-			<Spinner />
-			<span>Loading events</span>
-		</div>
+	{#if loading.active}
+		{#if loading.shown}
+			<div class="flex min-h-32 items-center justify-center gap-2 text-muted-foreground">
+				<Spinner />
+				<span>Loading events</span>
+			</div>
+		{/if}
 	{:else if eventsQuery.isError}
 		<FriendlyError
 			mode="compact"

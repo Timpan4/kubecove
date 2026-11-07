@@ -15,6 +15,7 @@
 		EmptyTitle,
 		Spinner,
 	} from "@/components/ui/svelte";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import type { ResourceSummary, ResourceTopology, TopologyMode } from "@/lib/types";
 	import {
 		buildFlowTopologyLayoutState,
@@ -61,6 +62,7 @@
 		updatesCurrent?: boolean;
 	} = $props();
 	setContext(RESOURCE_ACTIVITY_CURRENT, () => updatesCurrent);
+	const loading = loadingDelay(() => isLoading);
 
 	let viewportWidth = $state(0);
 	let viewportHeight = $state(0);
@@ -201,10 +203,12 @@
 		</div>
 	</div>
 
-	{#if isLoading}
+	{#if loading.active}
 		<div class="flex min-h-80 flex-1 items-center justify-center gap-2 text-xs text-muted-foreground">
-			<Spinner />
-			<span>Loading topology</span>
+			{#if loading.shown}
+				<Spinner />
+				<span>Loading topology</span>
+			{/if}
 		</div>
 	{:else if isError}
 		<div class="p-3">

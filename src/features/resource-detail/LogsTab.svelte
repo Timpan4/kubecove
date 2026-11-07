@@ -34,6 +34,7 @@
 		Spinner,
 		TabsContent,
 	} from "@/components/ui/svelte";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import type { LogLayout } from "@/lib/settings";
 	import LogEntry from "./LogEntry.svelte";
 	import type { LogStreamStatus, ParsedLogLine } from "./log-helpers";
@@ -162,8 +163,8 @@
 					? "bg-red-500"
 					: "bg-muted-foreground/50",
 	);
-	const connecting = $derived(
-		!logPaused && (logStatus === "connecting" || logStatus === "reconnecting"),
+	const connecting = loadingDelay(
+		() => !logPaused && (logStatus === "connecting" || logStatus === "reconnecting"),
 	);
 
 	function setSinceSeconds(value: SinceValue) {
@@ -242,7 +243,7 @@
 				{/if}
 				<!-- The status gives way to the buttons: each part ends in an ellipsis, and the full text shows on hover. -->
 				<span class="inline-flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap text-xs" title={statusTitle}>
-					{#if connecting}
+					{#if connecting.shown}
 						<Spinner class="size-3 shrink-0" />
 					{:else}
 						<span class="size-[7px] shrink-0 rounded-full {statusDotClass}"></span>
@@ -400,7 +401,7 @@
 				>
 					{#if lineCount === 0}
 						<div class="flex items-center gap-2 p-3 text-sm text-muted-foreground">
-							{#if connecting}<Spinner class="size-3.5" />{/if}
+							{#if connecting.shown}<Spinner class="size-3.5" />{/if}
 							<span>{logPaused ? "Paused. New lines are held until you resume." : logMessage || "Waiting for log lines..."}</span>
 						</div>
 					{:else if visibleLogLines.length === 0}

@@ -13,6 +13,7 @@
 		TableRow,
 		buttonClass,
 	} from "@/components/ui/svelte";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import { queryKeys } from "@/lib/queryKeys";
 	import { createTauriClient, getAppUsageMetrics } from "@/lib/tauri";
 	import {
@@ -38,12 +39,15 @@
 
 	const metrics = $derived(usageQuery.data);
 	const rows = $derived(flattenUsageMetricsBreakdown(metrics?.breakdown ?? []));
+	const loading = loadingDelay(() => !usageQuery.isError && !metrics);
 	const label = $derived(
-		usageQuery.isError
-			? "Usage metrics unavailable"
-			: metrics
-				? formatUsageMetrics(metrics)
-				: "Loading usage metrics...",
+		loading.shown
+			? "Loading usage metrics..."
+			: usageQuery.isError
+				? "Usage metrics unavailable"
+				: metrics
+					? formatUsageMetrics(metrics)
+					: "",
 	);
 
 	$effect(() => {

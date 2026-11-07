@@ -39,6 +39,7 @@
 		WorkspaceResourceLoadError,
 	} from "@/features/workspaces/query";
 	import { kindLabel } from "@/lib/kind-identity";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import { queryKeys } from "@/lib/queryKeys";
 	import {
 		createTauriClient,
@@ -227,7 +228,10 @@
 	const fluxError = $derived(fluxResourceQueries.find((query) => query.isError)?.error ?? null);
 	const gitOpsInventoryError = $derived(argoAppsQuery.error ?? fluxError);
 	const gitOpsDetected = $derived(argoDetectedQuery.data === true || fluxDetected);
-	const gitOpsDetecting = $derived(argoDetectedQuery.isPending || fluxDetectedQuery.isPending);
+	const gitOpsDetecting = loadingDelay(() => argoDetectedQuery.isPending || fluxDetectedQuery.isPending);
+	const healthLoading = loadingDelay(() => resourcesQuery.isPending);
+	const applicationsLoading = loadingDelay(() => argoAppsQuery.isPending);
+	const fluxLoading = loadingDelay(() => fluxPending);
 	const hasRestoreWarning = $derived(
 		contextsQuery.isSuccess &&
 			(!restoreStatus.clusterAvailable ||
@@ -318,9 +322,9 @@
 				{@render Metric("Not evaluated", health.notEvaluated)}
 			</div>
 
-			{#if resourcesQuery.isPending}
+			{#if healthLoading.active}
 				<div class="flex min-h-16 items-center justify-center gap-2 text-sm text-muted-foreground">
-					<Spinner class="size-4" /> Loading workspace health...
+					{#if healthLoading.shown}<Spinner class="size-4" /> Loading workspace health...{/if}
 				</div>
 			{:else if resourcesQuery.isError}
 				<div class="grid gap-2">
@@ -456,18 +460,22 @@
 					<p class="text-xs text-muted-foreground">Argo CD and Flux inventory.</p>
 				</header>
 				<div class="p-3">
-				{#if gitOpsDetecting}
-					<div class="inline-flex items-center gap-2 text-xs text-muted-foreground">
-						<Spinner class="size-4" /> Detecting...
-					</div>
+				{#if gitOpsDetecting.active}
+					{#if gitOpsDetecting.shown}
+						<div class="inline-flex items-center gap-2 text-xs text-muted-foreground">
+							<Spinner class="size-4" /> Detecting...
+						</div>
+					{/if}
 				{:else if !gitOpsDetected}
 					<div class="text-xs text-muted-foreground">Not detected</div>
 				{:else}
 					<div class="grid gap-2">
-						{#if argoDetectedQuery.data === true && argoAppsQuery.isPending}
-							<div class="inline-flex items-center gap-2 text-xs text-muted-foreground">
-								<Spinner class="size-4" /> Loading applications...
-							</div>
+						{#if argoDetectedQuery.data === true && applicationsLoading.active}
+							{#if applicationsLoading.shown}
+								<div class="inline-flex items-center gap-2 text-xs text-muted-foreground">
+									<Spinner class="size-4" /> Loading applications...
+								</div>
+							{/if}
 						{:else if gitOpsInventoryError}
 							<FriendlyError
 								mode="compact"
@@ -491,10 +499,12 @@
 							<Separator />
 						{/if}
 						{#if fluxDetected}
-							{#if fluxPending}
-								<div class="inline-flex items-center gap-2 text-xs text-muted-foreground">
-									<Spinner class="size-4" /> Loading Flux resources...
-								</div>
+							{#if fluxLoading.active}
+								{#if fluxLoading.shown}
+									<div class="inline-flex items-center gap-2 text-xs text-muted-foreground">
+										<Spinner class="size-4" /> Loading Flux resources...
+									</div>
+								{/if}
 							{:else}
 								<div class="flex items-center justify-between py-2 text-xs">
 									<span class="text-muted-foreground">Flux resources</span>

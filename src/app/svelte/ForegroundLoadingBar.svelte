@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { tick } from "svelte";
 	import { foregroundLoading } from "@/lib/foreground-loading-svelte";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import { cnfast } from "@/lib/utils";
 
-	const active = $derived($foregroundLoading > 0);
+	const loading = loadingDelay(() => $foregroundLoading > 0);
+	const active = $derived(loading.shown);
 	let animating = $state(false);
 	let host: HTMLDivElement;
 	$effect(() => {

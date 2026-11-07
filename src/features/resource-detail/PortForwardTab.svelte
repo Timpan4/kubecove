@@ -43,6 +43,7 @@
 	} from "@/features/live-sessions/portForwardLifecycle";
 	import { workspaceStore } from "@/features/workspaces/workspaceStore";
 	import { settingsStore } from "@/lib/settings-store";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import type { TauriClient } from "@/lib/tauri";
 	import type {
 		PortForwardSessionSummary,
@@ -88,6 +89,7 @@
 			refetchInterval: false,
 		}),
 	);
+	const sessionsLoading = loadingDelay(() => sessionsQuery.isFetching);
 	const sessions = $derived(
 		(sessionsQuery.data ?? []).filter((session) =>
 			isPortForwardForResource(session, resource, kubeconfigSourceKey),
@@ -313,7 +315,7 @@
 
 		<div class="flex items-center justify-between gap-2">
 			<div class="text-xs font-semibold uppercase text-muted-foreground">Active port-forwards</div>
-			{#if sessionsQuery.isFetching}<Spinner />{/if}
+			{#if sessionsLoading.shown}<Spinner />{/if}
 		</div>
 		{#if sessions.length === 0}
 			<Empty class="min-h-24 border border-dashed">

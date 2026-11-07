@@ -10,6 +10,7 @@
 		SelectTrigger,
 		SelectValue,
 	} from "@/components/ui/svelte";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import { queryKeys } from "@/lib/queryKeys";
 	import { settingsStore } from "@/lib/settings-store";
 	import { createTauriClient, listKubeContexts } from "@/lib/tauri";
@@ -31,6 +32,7 @@
 	}));
 
 	const contexts = $derived(contextsQuery.data ?? []);
+	const loading = loadingDelay(() => contextsQuery.isPending);
 	const preferredContextName = $derived(
 		contexts.find((context) => context.isCurrent)?.name ?? contexts[0]?.name ?? "",
 	);
@@ -42,10 +44,12 @@
 	});
 </script>
 
-{#if contextsQuery.isPending}
-	<div class="flex items-center gap-2 text-xs text-muted-foreground">
-		Loading contexts...
-	</div>
+{#if loading.active}
+	{#if loading.shown}
+		<div class="flex items-center gap-2 text-xs text-muted-foreground">
+			Loading contexts...
+		</div>
+	{/if}
 {:else if contextsQuery.isError}
 	<div class="flex flex-col gap-2">
 		<FriendlyError

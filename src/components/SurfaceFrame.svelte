@@ -2,6 +2,7 @@
 	import type { ComponentType, Snippet, SvelteComponent } from "svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
 	import { Spinner } from "@/components/ui/svelte";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 
 	type LucideComponent = ComponentType<SvelteComponent>;
 	type QueryLike = {
@@ -28,7 +29,7 @@
 		children: Snippet;
 		headerActions?: Snippet;
 	} = $props();
-
+	const loading = loadingDelay(() => query.isPending);
 </script>
 
 <section
@@ -43,10 +44,12 @@
 		</div>
 		{@render headerActions?.()}
 	</header>
-	{#if query.isPending}
-		<div class="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground">
-			<Spinner class="size-4" /> Loading...
-		</div>
+	{#if loading.active}
+		{#if loading.shown}
+			<div class="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground">
+				<Spinner class="size-4" /> Loading...
+			</div>
+		{/if}
 	{:else}
 		{#if query.isError}
 			<FriendlyError

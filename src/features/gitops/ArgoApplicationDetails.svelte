@@ -58,6 +58,7 @@
 	} from "./argo-resource-display";
 	import { finiteRead } from "@/lib/finite-read-lifecycle";
 	import { queryKeys } from "@/lib/queryKeys";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import { settingsStore } from "@/lib/settings-store";
 	import { argoApplicationRef } from "@/lib/argo-application-inspection";
 	import { argoApplicationInspection } from "@/lib/argo-application-inspection.svelte";
@@ -341,6 +342,7 @@
 			].filter(Boolean).join(" · "),
 	);
 	const loading = $derived(inspection.current.loading);
+	const loadingIndicator = loadingDelay(() => loading);
 	const dataError = $derived(inspection.current.error);
 	const snapshotFreshness = $derived(
 		snapshot?.connectedFallback
@@ -630,7 +632,7 @@
 						{#if operationStateMessage}<Badge variant="secondary">{operationStateMessage}</Badge>{/if}
 					</div>
 					<div class="mt-1 max-w-xl text-xs leading-relaxed text-muted-foreground">
-						{loading ? "Loading Application and managed resources…" : `Revision ${resolvedRevision}`}
+						{loadingIndicator.shown ? "Loading Application and managed resources…" : loadingIndicator.active ? "" : `Revision ${resolvedRevision}`}
 					</div>
 					<OperationScopeCard
 						class="mt-3"
@@ -833,8 +835,8 @@
 			<div class="flex max-w-full flex-wrap items-center gap-2">{#if selectedResource}<Button type="button" size="xs" variant="outline" onclick={showAllChanges}>All changes</Button>{/if}<SegmentedControl value={diffView} options={diffViewOptions} onChange={(value) => (diffView = value)} ariaLabel="Reconciliation document view" size="sm" /></div>
 		</div>
 		<div class="mt-3 space-y-4">
-			{#if loading}
-				<div class="flex items-center gap-2 rounded-lg border p-3 text-xs text-muted-foreground" role="status"><Spinner /> Loading Application snapshot</div>
+			{#if loadingIndicator.active}
+				{#if loadingIndicator.shown}<div class="flex items-center gap-2 rounded-lg border p-3 text-xs text-muted-foreground" role="status"><Spinner /> Loading Application snapshot</div>{/if}
 			{:else if dataError}
 				<Empty><EmptyHeader><EmptyTitle>Application snapshot unavailable</EmptyTitle><EmptyDescription>Retry Application data before evaluating reconciliation state.</EmptyDescription></EmptyHeader></Empty>
 			{:else}
