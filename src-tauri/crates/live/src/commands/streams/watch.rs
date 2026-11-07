@@ -157,7 +157,9 @@ pub(super) async fn run_resource_watch(
     };
     let namespaced = normalized_kind.namespaced.unwrap_or(true);
     let kind_label = normalized_kind.kind.clone();
-    let mut resource_version = "0".to_string();
+    // Chosen once, at the first connection: later connections resume from the
+    // last event, and a 410 resets to "0" rather than to the expired list.
+    let mut start_version = None;
 
     'watch: loop {
         let client = match access.stream_client(&cluster_context).await {
@@ -170,11 +172,28 @@ pub(super) async fn run_resource_watch(
                 continue;
             }
         };
+        // Looked up after the client exists, so the view's list has usually
+        // reached the store. Starting at that list's version skips the replay
+        // of every existing object that a watch at "0" sends first.
+        let resource_version = match &mut start_version {
+            Some(version) => version,
+            None => start_version.insert(
+                live_store
+                    .watch_start_version(
+                        access.source_key(),
+                        &cluster_context,
+                        &normalized_kind,
+                        key.namespace.as_deref(),
+                    )
+                    .await
+                    .unwrap_or_else(|| "0".to_string()),
+            ),
+        };
         let api = scoped_dynamic_api(client, &key, namespaced, &api_resource);
         let params = WatchParams::default().timeout(WATCH_TIMEOUT_SECS);
         let watch_started = Instant::now();
 
-        match api.watch(&params, &resource_version).await {
+        match api.watch(&params, resource_version).await {
             Ok(stream) => {
                 if !broadcaster.status(StreamStatus::Connected, format!("Watching {kind_label}")) {
                     return;
@@ -199,7 +218,7 @@ pub(super) async fn run_resource_watch(
                                 return;
                             }
                             if let Some(message) =
-                                reset_resource_version_for_error(&mut resource_version, &event)
+                                reset_resource_version_for_error(resource_version, &event)
                             {
                                 if !broadcaster.error(message) {
                                     return;
@@ -207,7 +226,7 @@ pub(super) async fn run_resource_watch(
                                 break;
                             }
                             if let Some(next_resource_version) = watch_resource_version(&event) {
-                                resource_version = next_resource_version;
+                                *resource_version = next_resource_version;
                             }
                             if matches!(event, WatchEvent::Bookmark(_)) {
                                 continue;
@@ -229,7 +248,7 @@ pub(super) async fn run_resource_watch(
                                 report_forbidden_watch(&broadcaster, &key, namespaced);
                                 return;
                             }
-                            reset_resource_version_for_api_error(&mut resource_version, &err);
+                            reset_resource_version_for_api_error(resource_version, &err);
                             if !broadcaster.error(err.to_string()) {
                                 return;
                             }
@@ -243,7 +262,7 @@ pub(super) async fn run_resource_watch(
                     report_forbidden_watch(&broadcaster, &key, namespaced);
                     return;
                 }
-                reset_resource_version_for_api_error(&mut resource_version, &err);
+                reset_resource_version_for_api_error(resource_version, &err);
                 if !broadcaster.error(err.to_string()) {
                     return;
                 }
@@ -372,6 +391,10 @@ pub(super) async fn run_event_watch(
 #[cfg(test)]
 #[path = "watch_renewal_tests.rs"]
 mod renewal_tests;
+
+#[cfg(test)]
+#[path = "watch_start_tests.rs"]
+mod start_tests;
 
 #[cfg(test)]
 mod tests {
