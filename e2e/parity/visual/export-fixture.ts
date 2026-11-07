@@ -41,7 +41,7 @@ function rustShape(row: ResourceSummary): ResourceSummary {
 
 const output = process.argv[2];
 if (!output) throw new Error("Usage: export-fixture.ts <output.json>");
-const client = createDevMockTauriClient();
+const client = createDevMockTauriClient({ latencyMs: 0 });
 const contexts = await client.invoke<ClusterContext[]>("list_kube_contexts");
 const clusterContext = contexts.find((context) => context.isCurrent)?.name ?? contexts[0]?.name;
 const namespaces = await client.invoke<NamespaceSummary[]>("list_namespaces", { clusterContext });

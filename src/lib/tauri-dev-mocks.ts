@@ -55,7 +55,11 @@ export function failWorkspaceContext(context: string) { failedWorkspaceContext =
 
 
 
-export function createDevMockTauriClient(): TauriClient {
+/**
+ * `latencyMs` simulates each command's round trip for the browser app. The parity fixture
+ * export passes 0: it reads every command in sequence and only needs the responses.
+ */
+export function createDevMockTauriClient({ latencyMs = 35 }: { latencyMs?: number } = {}): TauriClient {
 	return {
 		createChannel: (onMessage) => createMockChannel(onMessage),
 		invoke: async <T, Args extends object = object>(
@@ -63,7 +67,7 @@ export function createDevMockTauriClient(): TauriClient {
 			args?: Args,
 			options?: InvokeOptions,
 		): Promise<T> => {
-			await delay(35);
+			if (latencyMs > 0) await delay(latencyMs);
 			await beforeCoverageRead(cmd);
             // The same typed seam as the wrappers; live channels have a different message contract.
             const live = args as { request: import("./types").PortForwardRequest & import("./types").PodExecSessionRequest & import("./types").LiveSessionCleanupRequest; sessionId: string; data: string; size: import("./types").PodExecTerminalSize; channel: Pick<Channel<import("./types").PodExecSessionMessage>, "onmessage"> } | undefined;
