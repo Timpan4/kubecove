@@ -481,9 +481,9 @@ impl ClusterLiveStore {
         Fut: Future<Output = Result<Vec<DiscoveredResourceKind>, AppError>> + Send + 'static,
     {
         self.resource_kinds
-            .get_or_load(
+            .get_or_revalidate(
                 context_cache_key(&source_key, &cluster_context),
-                CacheMode::LiveFor(RESOURCE_FRESHNESS),
+                RESOURCE_FRESHNESS,
                 loader,
             )
             .await

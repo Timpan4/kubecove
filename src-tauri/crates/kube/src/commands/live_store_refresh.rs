@@ -1,5 +1,61 @@
-use super::{CacheEntry, ClusterLiveStore, SharedCache, context_cache_key, watch_kind_keys};
-use crate::models::WatchResourceKey;
+use super::{
+    CacheEntry, CacheMode, ClusterLiveStore, SharedCache, context_cache_key, watch_kind_keys,
+};
+use crate::models::{AppError, WatchResourceKey};
+use std::{sync::Arc, sync::atomic::Ordering, time::Duration};
+
+impl<T> SharedCache<T>
+where
+    T: Send + Sync + 'static,
+{
+    /// Serves a clean cached value at once, even past `freshness`, and reloads
+    /// an expired one in the background. `TanStack Query` does the same for the
+    /// web's kind catalog, so a namespace switch never waits on its refetch.
+    /// A dirty, evicted or never-loaded value still loads in the foreground.
+    pub(super) async fn get_or_revalidate<F, Fut>(
+        self: &Arc<Self>,
+        key: String,
+        freshness: Duration,
+        loader: F,
+    ) -> Result<Arc<T>, AppError>
+    where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: Future<Output = Result<T, AppError>> + Send + 'static,
+    {
+        let cached = {
+            let entries = self.entries.lock().expect("live store cache lock");
+            match entries.get(&key) {
+                Some(CacheEntry::Ready(ready)) if !ready.dirty => Some((
+                    Arc::clone(&ready.value),
+                    ready.completed_at.elapsed() > freshness,
+                )),
+                Some(CacheEntry::Loading {
+                    previous: Some(previous),
+                    dirty: false,
+                    ..
+                }) if !previous.dirty => Some((Arc::clone(&previous.value), false)),
+                _ => None,
+            }
+        };
+        let Some((value, expired)) = cached else {
+            return self
+                .get_or_load(key, CacheMode::LiveFor(freshness), loader)
+                .await;
+        };
+        self.counters.hits.fetch_add(1, Ordering::Relaxed);
+        if expired {
+            let cache = Arc::clone(self);
+            // A failed reload restores the previous value, so its error has no
+            // reader here; the next read starts another reload.
+            tokio::spawn(async move {
+                let _ = cache
+                    .get_or_load(key, CacheMode::LiveFor(freshness), loader)
+                    .await;
+            });
+        }
+        Ok(value)
+    }
+}
 
 impl<T> SharedCache<T> {
     fn evict_where(&self, mut matches: impl FnMut(&str) -> bool) -> usize {
@@ -252,6 +308,53 @@ mod tests {
         store.refresh_resources("source", "dev", &[key]);
         finish.send(()).unwrap();
         assert!(topology.await.unwrap().is_ok());
+    }
+
+    // Failure modes: a namespace switch waited about 360 ms on an expired kind
+    // catalog; a background reload that never lands keeps serving old kinds;
+    // a dirty catalog is served instead of reloaded.
+    #[tokio::test]
+    async fn expired_kind_catalog_is_served_while_it_reloads() {
+        let cache = Arc::new(SharedCache::new("test"));
+        let expired = std::time::Instant::now()
+            .checked_sub(Duration::from_secs(31))
+            .expect("cache age fixture");
+        cache.entries.lock().unwrap().insert(
+            "kinds".into(),
+            CacheEntry::Ready(super::super::ReadyValue {
+                value: Arc::new(1),
+                completed_at: expired,
+                dirty: false,
+            }),
+        );
+        let (finish, wait_finish) = tokio::sync::oneshot::channel::<()>();
+        let served = cache
+            .get_or_revalidate("kinds".into(), Duration::from_secs(30), || async move {
+                wait_finish.await.unwrap();
+                Ok(2)
+            })
+            .await
+            .unwrap();
+        assert_eq!(*served, 1);
+        finish.send(()).unwrap();
+        let reloaded = loop {
+            let value = cache
+                .get_or_revalidate("kinds".into(), Duration::from_secs(30), || async { Ok(3) })
+                .await
+                .unwrap();
+            if *value != 1 {
+                break value;
+            }
+            tokio::task::yield_now().await;
+        };
+        assert_eq!(*reloaded, 2);
+
+        cache.mark_dirty("kinds");
+        let dirty_read = cache
+            .get_or_revalidate("kinds".into(), Duration::from_secs(30), || async { Ok(4) })
+            .await
+            .unwrap();
+        assert_eq!(*dirty_read, 4);
     }
 
     #[tokio::test]
