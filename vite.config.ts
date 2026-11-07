@@ -31,6 +31,7 @@ export default defineConfig(({ command }) => {
 		optimizeDeps: {
 			include: [
 				...(runtime === "web" ? [] : ["@tauri-apps/plugin-opener"]),
+				"@codemirror/commands",
 				"@codemirror/lang-yaml",
 				"@codemirror/language",
 				"@codemirror/lint",
@@ -38,6 +39,8 @@ export default defineConfig(({ command }) => {
 				"@codemirror/view",
 				"@lezer/highlight",
 				"@tanstack/svelte-virtual",
+				"@xterm/addon-fit",
+				"@xterm/xterm",
 				"diff",
 				"yaml",
 			],
