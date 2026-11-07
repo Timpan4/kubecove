@@ -1062,8 +1062,12 @@
 												<TableCell>
 												<ResourceTableStatus resource={row} active={updatesCurrent} />
 												</TableCell>
-											<TableCell>{row.namespace ?? EMPTY_CELL}</TableCell>
-											<TableCell>{row.kind}</TableCell>
+											<TableCell>
+												<span class="block min-w-0 truncate" title={row.namespace ?? EMPTY_CELL}>{row.namespace ?? EMPTY_CELL}</span>
+											</TableCell>
+											<TableCell>
+												<span class="block min-w-0 truncate" title={row.kind}>{row.kind}</span>
+											</TableCell>
 												{#if tableModel.columnVisibility.ready}
 													<TableCell>
 														{@const ready = resourceReadyChip(row)}
@@ -1100,9 +1104,8 @@
 												{/if}
 												{#if tableModel.columnVisibility.gitOps}
 													<TableCell>
-														<span class="block min-w-0 truncate">
-															{gitOpsOwnership(row)?.ownerName ?? row.helmRelease ?? EMPTY_CELL}
-														</span>
+														{@const owner = gitOpsOwnership(row)?.ownerName ?? row.helmRelease ?? EMPTY_CELL}
+														<span class="block min-w-0 truncate" title={owner}>{owner}</span>
 													</TableCell>
 												{/if}
 												<TableCell><TimestampText value={row.createdAt} relative={row.age} /></TableCell>
