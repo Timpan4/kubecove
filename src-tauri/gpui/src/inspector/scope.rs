@@ -1,6 +1,7 @@
 //! Context and resource-scope reads, refresh, and visible resource filtering.
 
 use super::custom_resources::CustomLoad;
+use super::load_trace::{LoadKind, LoadTrace};
 use super::{Inspector, Load, map};
 use crate::backend::Read;
 use crate::backend::ScopeResult;
@@ -8,7 +9,7 @@ use futures_util::{FutureExt, future::Shared};
 use gpui_kit::component::select::SearchableVec;
 use gpui_kit::{Context, SharedString, Window};
 use kubecove_lib::models::ResourceSummary;
-use std::rc::Rc;
+use std::{rc::Rc, time::Instant};
 
 /// The builtin and custom reads of one resource scope, shareable while in flight.
 /// Dropping every clone cancels the reads, as dropping one owned read did.
@@ -98,6 +99,11 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.scope_trace = Some(LoadTrace::start(
+            LoadKind::Scope,
+            &self.scope.context,
+            self.scope.namespace.as_deref(),
+        ));
         self.scope_task.take();
         self.sync_page_reads(cx);
         self.kind_selection.reads.clear();
@@ -146,6 +152,8 @@ impl Inspector {
                 if !Rc::ptr_eq(&this.request, &request) {
                     return false;
                 }
+                let apply_started = Instant::now();
+                let awaits_custom = custom.is_some();
                 this.live.scope_loading = false;
                 let ready = match result {
                     Ok(result) => {
@@ -167,6 +175,9 @@ impl Inspector {
                 this.prepare_rows();
                 this.filter(cx);
                 cx.notify();
+                // A pending custom read still has to apply before the load is final.
+                let complete = !(ready && awaits_custom);
+                this.note_apply(LoadKind::Scope, apply_started.elapsed(), complete);
                 ready
             });
             let Some(custom) = custom else {
@@ -178,7 +189,9 @@ impl Inspector {
             let result = custom.await;
             let _ = this.update(cx, |this, cx| {
                 if Rc::ptr_eq(&this.request, &request) {
+                    let apply_started = Instant::now();
                     this.apply_custom_resources(result, cx);
+                    this.note_apply(LoadKind::Scope, apply_started.elapsed(), true);
                 }
             });
         }));
@@ -213,6 +226,11 @@ impl Inspector {
             return;
         }
         self.map.cache.take();
+        self.map_trace = Some(LoadTrace::start(
+            LoadKind::Map,
+            &self.scope.context,
+            self.scope.namespace.as_deref(),
+        ));
         self.map.replace_topology(map::TopologyLoad::Loading);
         let request = self.request.clone();
         let network = self.map.network;
@@ -236,12 +254,14 @@ impl Inspector {
                 if !Rc::ptr_eq(&this.request, &request) || this.map.network != network {
                     return;
                 }
+                let apply_started = Instant::now();
                 this.map.replace_topology(match result {
                     Ok(topology) => map::TopologyLoad::Ready(topology),
                     Err(error) => map::TopologyLoad::Failed(error),
                 });
                 this.rebuild_map();
                 cx.notify();
+                this.note_apply(LoadKind::Map, apply_started.elapsed(), true);
             });
         }));
         cx.notify();
@@ -255,6 +275,11 @@ impl Inspector {
             self.live.refreshing = true;
             self.live.scope_loading = true;
             self.live.refresh_error = None;
+            self.scope_trace = Some(LoadTrace::start(
+                LoadKind::Scope,
+                &self.scope.context,
+                self.scope.namespace.as_deref(),
+            ));
             let read = self.application_resources_read(true, cx);
             let read = self.timings.measure("list_resource_scope", read);
             let request = self.request.clone();
@@ -264,6 +289,7 @@ impl Inspector {
                     if !Rc::ptr_eq(&this.request, &request) {
                         return;
                     }
+                    let apply_started = Instant::now();
                     this.live.refreshing = false;
                     this.live.scope_loading = false;
                     match result {
@@ -279,6 +305,7 @@ impl Inspector {
                         Err(error) => this.live.refresh_error = Some(error.message),
                     }
                     cx.notify();
+                    this.note_apply(LoadKind::Scope, apply_started.elapsed(), true);
                 });
             }));
             self.load_topology(cx);

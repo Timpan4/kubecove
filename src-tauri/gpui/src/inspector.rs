@@ -71,6 +71,7 @@ mod live_events;
 mod live_rows;
 mod live_session_popover;
 mod live_status;
+mod load_trace;
 mod log_row;
 mod logs_state;
 mod logs_tab;
@@ -256,6 +257,8 @@ pub struct Inspector {
     detail_request: Rc<()>,
     context_task: Option<Task<()>>,
     scope_task: Option<Task<()>>,
+    scope_trace: Option<load_trace::LoadTrace>,
+    map_trace: Option<load_trace::LoadTrace>,
     topology_task: Option<Task<()>>,
     detail_task: Option<Task<()>>,
     diff_task: Option<Task<()>>,
@@ -386,6 +389,8 @@ impl Inspector {
             detail_request: Rc::new(()),
             context_task: None,
             scope_task: None,
+            scope_trace: None,
+            map_trace: None,
             topology_task: None,
             detail_task: None,
             diff_task: None,
@@ -601,6 +606,7 @@ impl Inspector {
 impl Render for Inspector {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _profile = crate::frame_profile::scope("inspector", "render");
+        let started = std::time::Instant::now();
         self.sync_argo_scope(window, cx);
         self.sync_sidebar_discovery(cx);
         self.sync_live(window, cx);
@@ -630,7 +636,7 @@ impl Render for Inspector {
         });
         let drawer = (workspace && compact && self.navigation_open)
             .then(|| self.navigation_drawer(window, cx));
-        div()
+        let view = div()
             .track_focus(&self.focus)
             .relative()
             .size_full()
@@ -732,6 +738,8 @@ impl Render for Inspector {
             )
             .children(overlays)
             .children(drawer)
-            .children(self.copy_toast(cx))
+            .children(self.copy_toast(cx));
+        self.record_load_frames(window, started.elapsed());
+        view
     }
 }
