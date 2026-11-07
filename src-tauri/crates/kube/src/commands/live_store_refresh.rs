@@ -38,7 +38,7 @@ impl ClusterLiveStore {
             + self
                 .flux_ownership_indexes
                 .evict_where(|key| key == context_key)
-            + self.refresh_resources(source, context, keys);
+            + self.resources.evict_where(covered_rows(&prefix, keys));
         let overlaps = |cached: &str| {
             cached.is_empty()
                 || namespaces.is_empty()
@@ -59,33 +59,40 @@ impl ClusterLiveStore {
         cleared
     }
 
-    /// Evicts only the cached rows of `keys`. A watch reload re-lists one
-    /// kind; namespaces, kinds and topologies stay cached, so a map read in
-    /// flight is not cancelled.
-    pub fn refresh_resources(
-        &self,
-        source: &str,
-        context: &str,
-        keys: &[WatchResourceKey],
-    ) -> usize {
+    /// Marks only the cached rows of `keys` stale. A watch reload re-lists one
+    /// kind, so its next read must not reuse or join an older snapshot. Loads
+    /// already in flight keep running for their waiters, and namespaces,
+    /// kinds and topologies stay cached.
+    pub fn refresh_resources(&self, source: &str, context: &str, keys: &[WatchResourceKey]) {
         let prefix = format!("{}|", context_cache_key(source, context));
-        let mut cleared = 0;
-        for key in keys {
-            for kind in watch_kind_keys(&key.resource_kind) {
-                let kind_prefix = format!("{prefix}kind={kind}|namespace=");
-                cleared += self.resources.evict_where(|cached| {
-                    let Some(namespace) = cached.strip_prefix(&kind_prefix) else {
-                        return false;
-                    };
+        self.resources.mark_dirty_where(covered_rows(&prefix, keys));
+    }
+}
+
+/// Matches cached row keys that a refresh of `keys` covers: the requested
+/// namespace plus the all-namespace and cluster-scoped reads of each kind.
+fn covered_rows<'a>(prefix: &str, keys: &'a [WatchResourceKey]) -> impl Fn(&str) -> bool + 'a {
+    let kinds: Vec<(String, Option<&'a str>)> = keys
+        .iter()
+        .flat_map(|key| {
+            watch_kind_keys(&key.resource_kind).into_iter().map(|kind| {
+                (
+                    format!("{prefix}kind={kind}|namespace="),
                     key.namespace
                         .as_deref()
-                        .is_none_or(|requested| requested.is_empty() || namespace == requested)
-                        || namespace == "<all>"
-                        || namespace == "<cluster>"
-                });
-            }
-        }
-        cleared
+                        .filter(|namespace| !namespace.is_empty()),
+                )
+            })
+        })
+        .collect();
+    move |cached| {
+        kinds.iter().any(|(kind_prefix, requested)| {
+            cached.strip_prefix(kind_prefix).is_some_and(|namespace| {
+                requested.is_none_or(|requested| namespace == requested)
+                    || namespace == "<all>"
+                    || namespace == "<cluster>"
+            })
+        })
     }
 }
 
@@ -151,6 +158,56 @@ mod tests {
         );
         assert!(!store.resources.has_key(&apps));
         assert!(store.resources.has_key(&other));
+    }
+
+    // Failure mode: a watch reload of one kind cancelled the same kind's read
+    // in flight, so the scope read waiting on it retried after 1 s.
+    #[tokio::test]
+    async fn kind_refresh_keeps_the_same_kind_read_in_flight() {
+        let store = Arc::new(ClusterLiveStore::default());
+        let (started, wait_started) = tokio::sync::oneshot::channel();
+        let (finish, wait_finish) = tokio::sync::oneshot::channel::<()>();
+        let loading = store.clone();
+        let scope_read = tokio::spawn(async move {
+            loading
+                .typed_resources(
+                    "source".into(),
+                    "dev".into(),
+                    "Pod".into(),
+                    None,
+                    || async move {
+                        started.send(()).unwrap();
+                        wait_finish.await.unwrap();
+                        Ok(vec![])
+                    },
+                )
+                .await
+        });
+        wait_started.await.unwrap();
+        let key = WatchResourceKey {
+            resource_kind: WatchResourceKind {
+                kind: "Pod".into(),
+                group: Some(String::new()),
+                version: Some("v1".into()),
+                api_version: Some("v1".into()),
+                plural: Some("pods".into()),
+                namespaced: Some(true),
+            },
+            namespace: None,
+        };
+        store.refresh_resources("source", "dev", &[key]);
+        let reload = store
+            .typed_resources(
+                "source".into(),
+                "dev".into(),
+                "Pod".into(),
+                None,
+                || async { Ok(vec![]) },
+            )
+            .await;
+        assert!(reload.is_ok());
+        finish.send(()).unwrap();
+        assert!(scope_read.await.unwrap().is_ok());
     }
 
     // Failure mode: a watch reload of one kind evicted every topology in the

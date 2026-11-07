@@ -194,20 +194,17 @@ where
                 }
                 _ => {
                     self.counters.misses.fetch_add(1, Ordering::Relaxed);
+                    // A dirty load is detached, not cancelled: its waiters still
+                    // get their read, and dropping the last of them ends it.
+                    // Cancelling it made every waiter retry after a second.
                     let previous = entries.remove(&key).and_then(|entry| match entry {
                         CacheEntry::Ready(ready) => Some(ready),
                         CacheEntry::Loading {
-                            previous,
-                            cancellation,
-                            dirty,
-                            ..
-                        } => {
-                            cancellation.cancel();
-                            previous.map(|mut ready| {
-                                ready.dirty |= dirty;
-                                ready
-                            })
-                        }
+                            previous, dirty, ..
+                        } => previous.map(|mut ready| {
+                            ready.dirty |= dirty;
+                            ready
+                        }),
                     });
                     let load_id = self.next_load_id.fetch_add(1, Ordering::Relaxed) + 1;
                     let cancellation = CancellationToken::new();
