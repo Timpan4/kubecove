@@ -20,6 +20,22 @@
       ]
     },
     {
+      "id": "argo-workspace.watch-start-version",
+      "title": "A focused Application's resource watches start at the list version of the rows the table shows",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "General" },
+        { "action": "toggleSetting", "setting": "Show ownership map by default" },
+        { "action": "expectSetting", "setting": "Show ownership map by default", "checked": false },
+        { "action": "closeSettings" },
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsResources", "kind": "Application", "name": "platform-argocd", "namespace": "argocd" },
+        { "action": "expectArgoWorkspace", "name": "platform-argocd" },
+        { "action": "expectResource", "kind": "Deployment", "name": "argocd-server", "namespace": "argocd" },
+        { "action": "expectWatchStart", "kind": "Deployment", "resourceVersion": "1" }
+      ]
+    },
+    {
       "id": "argo-workspace.storage-kinds",
       "title": "The Application workspace includes storage kinds outside the saved workspace defaults",
       "steps": [

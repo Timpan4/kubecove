@@ -466,15 +466,29 @@ impl Backend for Fixture {
             }),
         )
     }
-    fn application_resources(&self, _: ArgoApplicationSummary, _: bool) -> Read<ScopeResult> {
+    fn application_resources(&self, app: ArgoApplicationSummary, _: bool) -> Read<ScopeResult> {
         let resources = self.resources.clone();
         let namespaces = self.namespaces.clone();
+        // delivery_workspace::resources lists each kind once per target namespace
+        // and reports each list's version under that list's own watch key.
+        let mut targets = app.resource_namespaces;
+        if targets.is_empty() {
+            targets.extend(app.destination_namespace);
+        }
+        let versions = if targets.is_empty() {
+            self.list_versions(None)
+        } else {
+            targets
+                .iter()
+                .flat_map(|namespace| self.list_versions(Some(namespace)))
+                .collect()
+        };
         Box::pin(async move {
             Ok(ScopeResult {
                 namespaces,
                 resources,
                 warnings: vec![],
-                versions: Default::default(),
+                versions,
             })
         })
     }

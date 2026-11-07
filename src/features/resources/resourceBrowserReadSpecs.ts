@@ -136,7 +136,9 @@ export function resourceBrowserLiveView(
 		mapPanelOpen ? { keys: mapKeys, match: topology } : { keys, match: topology, refetch: false },
 	];
 	if (focusedApplication) {
-		reads.push({ keys: [...resourceKeys, ...argoKeys], match: argoApplicationReads(readContext, focusedApplication) });
+		// The inspection reads the Application, not lists of the kinds it manages,
+		// so those kinds' watches keep the table's list versions.
+		reads.push({ keys: argoKeys, refreshedBy: resourceKeys, match: argoApplicationReads(readContext, focusedApplication) });
 	}
 	return { ...view, keys, reads };
 }

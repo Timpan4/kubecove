@@ -64,6 +64,13 @@ Flux lists of the GitOps page, report the version current when their rows were
 read, so a held read keeps its version. `gitops.watch-start-version` checks the
 GitOps watches.
 
+`argo-workspace.watch-start-version` checks a focused Application's resource
+watches. Its inspection reads the Application, not lists of the kinds it
+manages, so those kinds keep the table's list version. The scenario turns off
+"Show ownership map by default" first, because the open map would start them
+without one. The GPUI fixture reports one version per target namespace list, as
+`delivery_workspace::resources` does.
+
 A watch start replays the scripted change only when its version is older than
 the version that first showed the change, or when it has no version. The
 `expectWatchStart` step checks the version the newest watch of a kind started

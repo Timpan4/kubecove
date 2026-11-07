@@ -22,6 +22,12 @@ import { messageFromError } from "./error-redaction";
 /** Reads that a change to one of `keys` makes stale, selected by a query catalog matcher. */
 export interface LiveRead {
 	keys: readonly WatchResourceKey[];
+	/**
+	 * Kinds whose changes also make this read stale although it shows no rows
+	 * read from them, such as the resources an Argo CD Application manages. Their
+	 * watches start at the versions of the reads that show their rows.
+	 */
+	refreshedBy?: readonly WatchResourceKey[];
 	match: QueryMatch;
 	/**
 	 * False marks the reads stale without refetching them, for reads the view is
@@ -185,7 +191,8 @@ function watchKeyMatches(key: WatchResourceKey, candidate: WatchResourceKey): bo
  * The version a watch on `key` starts at: the version every shown read it keeps
  * fresh lists, null while one of them loads, or undefined when they have none
  * or disagree. Starting at the oldest rows shown would need ordered versions,
- * which Kubernetes does not promise.
+ * which Kubernetes does not promise. A read that `key` only refreshes
+ * (`refreshedBy`) shows no rows of it, so it does not vote.
  */
 function startVersion(view: LiveView, key: WatchResourceKey): string | null | undefined {
 	const signature = watchKeySignature(key);
@@ -247,8 +254,10 @@ export function bindLiveView({
 	let observer: ResourceScopeObserver | null = null;
 	// Slots are kept by declared position. A changed read set re-points each slot.
 	const slots: ReturnType<typeof createReadSlot>[] = [];
-	const keptFreshBy = (read: LiveRead, key: WatchResourceKey) =>
-		read.keys.some((candidate) => watchKeyMatches(candidate, key));
+	const keptFreshBy = (read: LiveRead, key: WatchResourceKey) => {
+		const matches = (candidate: WatchResourceKey) => watchKeyMatches(candidate, key);
+		return read.keys.some(matches) || (read.refreshedBy?.some(matches) ?? false);
+	};
 	const refetched = () => current.reads.filter((read) => read.refetch !== false);
 	const viewReads = () => (current.refreshScope === "view" ? undefined : refetched().map((read) => read.match));
 	const reread = (keys: readonly WatchResourceKey[], matches: readonly QueryMatch[] | undefined, cancelRefetch: boolean) =>

@@ -1,7 +1,7 @@
 //! The scope in `workspaceShellModel.ts::GITOPS_RESOURCE_KINDS`, read through
 //! the existing typed commands. Partial permission failures preserve usable rows.
 
-use super::ScopeResult;
+use super::{ListVersions, ScopeResult};
 use kubecove_lib::{
     commands::{self, ClusterAccess, ClusterLiveStore},
     models::{AppError, AppErrorKind, ArgoApplicationSummary, WatchResourceKey, WatchResourceKind},
@@ -125,9 +125,17 @@ pub async fn resources(
         store.refresh_view(access.source_key(), &app.cluster, &keys, &targets);
     }
     let mut resources = Vec::new();
+    let mut versions = ListVersions::new();
     for (kind, namespace, dynamic) in requests {
+        // Each request lists one watch key, so its version backs exactly the rows
+        // a watch on that key shows. A view that watches every namespace of
+        // several listed ones finds no version under its key and starts without one.
+        let key = WatchResourceKey {
+            resource_kind: kind.clone(),
+            namespace: namespace.clone(),
+        };
         let result = if let Some(kind) = dynamic {
-            commands::list_dynamic_resources(
+            commands::list_dynamic_resource_snapshot(
                 app.cluster.clone(),
                 kind,
                 namespace,
@@ -136,7 +144,7 @@ pub async fn resources(
             )
             .await
         } else {
-            commands::list_resources(
+            commands::list_resource_snapshot(
                 app.cluster.clone(),
                 kind.kind.clone(),
                 namespace,
@@ -146,7 +154,12 @@ pub async fn resources(
             .await
         };
         match result {
-            Ok(rows) => resources.extend(Arc::unwrap_or_clone(rows)),
+            Ok(snapshot) => {
+                resources.extend(Arc::unwrap_or_clone(snapshot.rows));
+                if let Some(version) = snapshot.resource_version {
+                    versions.insert(super::watch_signature(&key), version);
+                }
+            }
             Err(error) => warnings.push(format!("{}: {}", kind.kind, error.message)),
         }
     }
@@ -154,6 +167,6 @@ pub async fn resources(
         namespaces,
         resources,
         warnings,
-        versions: Default::default(),
+        versions,
     })
 }
