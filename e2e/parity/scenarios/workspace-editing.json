@@ -112,7 +112,7 @@
       "steps": [
         {
           "action": "expectOverviewHealth",
-          "total": 55
+          "total": 56
         },
         {
           "action": "openLauncher"
@@ -134,7 +134,7 @@
         },
         {
           "action": "expectOverviewHealth",
-          "total": 110
+          "total": 112
         },
         {
           "action": "openResources"
@@ -187,7 +187,7 @@
         { "action": "openPage", "page": "Workspace Overview" },
         {
           "action": "expectOverviewHealth",
-          "total": 55
+          "total": 56
         }
       ]
     },
@@ -333,7 +333,7 @@
         },
         {
           "action": "expectOverviewHealth",
-          "total": 55
+          "total": 56
         },
         {
           "action": "expectWorkspaceReadWarning",
