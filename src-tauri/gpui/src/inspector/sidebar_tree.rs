@@ -91,7 +91,6 @@ struct RowTarget {
     label: SharedString,
     namespace: Option<String>,
     is_namespace: bool,
-    expandable: bool,
 }
 
 impl Inspector {
@@ -142,7 +141,6 @@ impl Inspector {
             label,
             namespace,
             is_namespace,
-            expandable,
         } = row;
         if is_namespace {
             self.select_namespace(namespace, window, cx);
@@ -173,10 +171,9 @@ impl Inspector {
             self.select_namespace(None, window, cx);
             self.open_cluster_overview(window, cx);
             self.sidebar_tree.selected = Some(target.clone());
-        } else if expandable && namespace.is_none() {
-            self.select_namespace(None, window, cx);
-            self.sidebar_tree.selected = Some(target.clone());
         } else {
+            // A category row, such as Network under "All namespaces", selects its kinds
+            // in every workspace namespace, as a kind row selects its one kind.
             let kinds = GROUPS
                 .iter()
                 .find(|(name, _)| *name == label.as_ref())
@@ -342,7 +339,6 @@ impl Inspector {
             label: label.clone(),
             namespace,
             is_namespace,
-            expandable,
         };
         let click_row = target;
         div()
