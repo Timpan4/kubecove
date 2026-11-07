@@ -498,7 +498,7 @@
 		250 +
 			130 +
 			105 +
-			95 +
+			100 +
 			(tableModel.columnVisibility.ready ? 70 : 0) +
 			(tableModel.columnVisibility.restarts ? 75 : 0) +
 			(tableModel.columnVisibility.cpu ? 65 : 0) +
@@ -946,7 +946,7 @@
 								<col />
 								<col style="width: 130px;" />
 								<col style="width: 105px;" />
-								<col style="width: 95px;" />
+								<col style="width: 100px;" />
 								{#if tableModel.columnVisibility.ready}<col style="width: 70px;" />{/if}
 								{#if tableModel.columnVisibility.restarts}<col style="width: 75px;" />{/if}
 								{#if tableModel.columnVisibility.cpu}<col style="width: 65px;" />{/if}

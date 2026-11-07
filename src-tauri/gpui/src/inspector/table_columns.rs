@@ -67,7 +67,9 @@ impl Column {
             Column::Name => 250.,
             Column::Status => 130.,
             Column::Namespace => 105.,
-            Column::Kind => 95.,
+            // Fits "Deployment", the widest default kind: 79.5 px of 14 px Inter
+            // plus 20 px cell padding, measured in both clients.
+            Column::Kind => 100.,
             Column::Ready => 70.,
             Column::Restarts => 75.,
             Column::Cpu => 65.,
