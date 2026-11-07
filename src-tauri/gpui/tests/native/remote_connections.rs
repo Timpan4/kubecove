@@ -420,3 +420,25 @@ fn remote_delivery_dynamic_refresh_and_stream_requests_follow_the_shared_contrac
         let _ = task.await;
     });
 }
+
+/// The app runs on `DesktopBackend`; without a remote its session controls are this host's.
+#[test]
+fn local_session_controls_reach_this_host() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let backend = DesktopBackend::new(NativeBackend::new().unwrap());
+    runtime.block_on(async {
+        let cleaned = backend
+            .cleanup_sessions(kubecove_lib::models::LiveSessionCleanupRequest {
+                allowed_cluster_contexts: vec![],
+                kubeconfig_source_key: "kubeconfigSource=active".into(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(cleaned.stopped_port_forwards, 0);
+        let stopped = backend
+            .stop_forward("no-such-forward".into())
+            .await
+            .unwrap();
+        assert!(!stopped);
+    });
+}

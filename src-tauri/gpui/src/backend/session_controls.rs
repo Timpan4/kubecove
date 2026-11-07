@@ -115,3 +115,32 @@ pub(super) fn cleanup(
         .await
     })
 }
+
+/// `DesktopBackend`'s session controls. The sessions belong to this host's `NativeBackend`;
+/// the remote server has no session commands, so they stay unavailable while it is selected.
+macro_rules! local {
+    () => {
+        super::session_controls::local! {
+            start_forward(request: kubecove_lib::models::PortForwardRequest)
+                -> kubecove_lib::models::PortForwardSessionSummary;
+            stop_forward(id: String) -> bool;
+            exec(request: kubecove_lib::models::PodExecSessionRequest)
+                -> super::session_controls::ExecStream;
+            exec_input(id: String, data: String) -> bool;
+            exec_resize(id: String, size: kubecove_lib::models::PodExecTerminalSize) -> bool;
+            stop_exec(id: String) -> bool;
+            cleanup_sessions(request: kubecove_lib::models::LiveSessionCleanupRequest)
+                -> kubecove_lib::models::LiveSessionCleanupResult;
+        }
+    };
+    ($($name:ident($($arg:ident: $ty:ty),*) -> $result:ty;)+) => {
+        $(fn $name(&self, $($arg: $ty),*) -> $crate::backend::Read<$result> {
+            if self.selected() {
+                super::session_controls::unavailable()
+            } else {
+                self.local.$name($($arg),*)
+            }
+        })+
+    };
+}
+pub(super) use local;
