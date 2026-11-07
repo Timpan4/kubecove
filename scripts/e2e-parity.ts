@@ -1,18 +1,45 @@
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { availableParallelism } from "node:os";
 import { join, resolve } from "node:path";
-import { loadContract, requireViewCoverage, validateReports } from "../e2e/parity/contract";
+import { type Contract, loadContract, requireViewCoverage, validateReports } from "../e2e/parity/contract";
 import { runGpui } from "../e2e/parity/gpui-run";
 import { VIEWS } from "../e2e/parity/visual/views";
 import { runWeb } from "../e2e/parity/web";
 
-// Selection, all optional:
-// - PARITY_PREFIX: comma-separated scenario ID prefixes.
-// - PARITY_RERUN: an earlier artifacts directory, or "last", to run only the scenarios
-//   that either driver did not pass there.
-// - PARITY_JOBS: parallel web pages and GPUI processes each. The default splits the CPUs
-//   between the two drivers. Measured on 16 CPUs (2026-11-06): 16 per driver finished no
-//   sooner than 8 per driver and timed out more web scenarios.
+// PARITY_JOBS: parallel web pages and GPUI processes each. The default splits the CPUs
+// between the two drivers. Measured on 16 CPUs (2026-11-06): 16 per driver finished no
+// sooner than 8 per driver and timed out more web scenarios. `selectScenarios` lists the
+// selection variables.
+
+type Scenario = Contract["scenarios"][number];
+
+/**
+ * The scenarios this run executes, in contract order. Each optional filter narrows the one
+ * before it; a filter by changed files belongs here too.
+ * - PARITY_PREFIX: comma-separated scenario ID prefixes.
+ * - PARITY_RERUN, resolved to `rerun`: only the scenarios either driver did not pass there.
+ * - PARITY_SUITE_SHARD=<index>/<count>: every `count`-th scenario from position `index`, so
+ *   separate CI jobs split one suite.
+ */
+async function selectScenarios(scenarios: Scenario[], rerun: string | undefined): Promise<Scenario[]> {
+	const prefixes = (process.env.PARITY_PREFIX ?? "").split(",").map((prefix) => prefix.trim()).filter(Boolean);
+	let selected = prefixes.length ? scenarios.filter((scenario) => prefixes.some((prefix) => scenario.id.startsWith(prefix))) : scenarios;
+	if (rerun) {
+		const [web, gpui] = await Promise.all([passedIn(rerun, "web"), passedIn(rerun, "gpui")]);
+		// Only the scenarios that run selected; a prefixed run never ran the others.
+		const earlier = new Set((await readFile(join(rerun, "scenarios.txt"), "utf8")).split("\n").filter(Boolean));
+		selected = selected.filter((scenario) => earlier.has(scenario.id) && (!web.has(scenario.id) || !gpui.has(scenario.id)));
+		console.log(`Rerunning ${selected.length} scenarios not passed in ${rerun}`);
+	}
+	const shard = process.env.PARITY_SUITE_SHARD;
+	if (shard) {
+		const match = /^(\d+)\/(\d+)$/.exec(shard);
+		const [index, count] = [Number(match?.[1]), Number(match?.[2])];
+		if (!match || index >= count) throw new Error(`PARITY_SUITE_SHARD must be <index>/<count>: ${shard}`);
+		selected = selected.filter((_, position) => position % count === index);
+	}
+	return selected;
+}
 
 /**
  * The newest earlier run that finished and recorded its selection. A run that is still going
@@ -66,20 +93,14 @@ const fail = (message: string) => { failure = failure ? `${failure}; ${message}`
 try {
 	const contract = await loadContract();
 	requireViewCoverage(contract, VIEWS);
-	const prefixes = (process.env.PARITY_PREFIX ?? "").split(",").map((prefix) => prefix.trim()).filter(Boolean);
-	if (prefixes.length) contract.scenarios = contract.scenarios.filter((scenario) => prefixes.some((prefix) => scenario.id.startsWith(prefix)));
-	if (rerun) {
-		const [web, gpui] = await Promise.all([passedIn(rerun, "web"), passedIn(rerun, "gpui")]);
-		// Only the scenarios that run selected; a prefixed run never ran the others.
-		const selected = new Set((await readFile(join(rerun, "scenarios.txt"), "utf8")).split("\n").filter(Boolean));
-		contract.scenarios = contract.scenarios.filter((scenario) => selected.has(scenario.id) && (!web.has(scenario.id) || !gpui.has(scenario.id)));
-		console.log(`Rerunning ${contract.scenarios.length} scenarios not passed in ${rerun}`);
-		if (!contract.scenarios.length) {
+	contract.scenarios = await selectScenarios(contract.scenarios, rerun);
+	if (!contract.scenarios.length) {
+		if (rerun) {
 			console.log("Nothing to rerun: both drivers passed every selected scenario.");
 			process.exit(0);
 		}
+		throw new Error("No parity scenarios selected");
 	}
-	if (!contract.scenarios.length) throw new Error("No parity scenarios selected");
 	// The selection is what PARITY_RERUN reads back, and the GPUI processes run exactly these IDs.
 	await writeFile(join(artifacts, "scenarios.txt"), contract.scenarios.map((scenario) => scenario.id).join("\n"));
 	const jobs = Number(process.env.PARITY_JOBS ?? Math.max(1, Math.floor(availableParallelism() / 2)));
