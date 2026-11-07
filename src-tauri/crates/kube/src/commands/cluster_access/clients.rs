@@ -7,8 +7,10 @@ use crate::commands::helpers::{client_cache::ClientGeneration, session_scope::Se
 use crate::{
     commands::{
         helpers::{
-            client_cache, client_cancellation::RequestCancellationLayer,
+            client_cache,
+            client_cancellation::RequestCancellationLayer,
             forwarded_bearer::forwarded_bearer_layer,
+            http_activity::{HTTP_ACTIVITY, HttpActivityLayer},
         },
         kubeconfig::{Fallback, KubeconfigSource},
     },
@@ -129,7 +131,10 @@ pub(super) async fn client(
             }
             let builder = ClientBuilder::try_from(config).map_err(AppError::from)?;
             let client = match &path {
+                // Only finite reads count toward load network time. Live watches
+                // stay open for minutes and would make the busy clock meaningless.
                 ClientPath::Finite(generation) => builder
+                    .with_layer(&HttpActivityLayer::new(&HTTP_ACTIVITY))
                     .with_layer(&RequestCancellationLayer::new(generation.token.clone()))
                     .with_layer(&bearer)
                     .build(),

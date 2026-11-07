@@ -2,6 +2,7 @@ pub mod client_cache;
 pub(crate) mod client_cancellation;
 pub mod forwarded_bearer;
 mod health;
+pub mod http_activity;
 mod metadata;
 mod serialization;
 pub mod session_scope;
