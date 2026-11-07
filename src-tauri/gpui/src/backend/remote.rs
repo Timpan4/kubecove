@@ -382,7 +382,12 @@ impl Backend for DesktopBackend {
                 )
                 .await?;
                 result.namespaces = next.namespaces;
-                result.versions.extend(next.versions);
+                // Each namespace's read lists the cluster-scoped kinds again, and the rows kept
+                // below are the first list's. Keeping that list's version too means the watch
+                // replays everything after it, so a later deletion still removes a kept row.
+                for (key, version) in next.versions {
+                    result.versions.entry(key).or_insert(version);
+                }
                 for row in next.resources {
                     if !result.resources.iter().any(|old| {
                         old.kind == row.kind

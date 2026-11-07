@@ -37,14 +37,24 @@ fn saved_sources(command: &str, arguments: &serde_json::Value) -> serde_json::Va
     };
     json!({"kubeconfigEnvVar":env_var,"paths":paths,"sourceKey":"remote","sourceLabel":"Server","showSourceLabels":show,"warnings":[]})
 }
-/// The controlled `list_resource_scope` answer: no rows, and a version of 4242 for Pod lists
-/// only. Other kinds come back without a version, as a list the server did not version.
+/// Counts PersistentVolume lists, so each one reports a newer snapshot.
+static VOLUME_LISTS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// The controlled `list_resource_scope` answer: no rows, a version of 4242 for Pod lists, and
+/// `pv-<n>` for the nth PersistentVolume list. Other kinds come back without a version, as a
+/// list the server did not version.
 fn scope_result(arguments: &serde_json::Value) -> serde_json::Value {
     let requests = arguments["requests"].as_array().unwrap();
     let resource_versions: Vec<_> = requests
         .iter()
-        .filter(|request| request["kind"] == "Pod")
-        .map(|request| json!({"request": request, "resourceVersion": "4242"}))
+        .filter_map(|request| match request["kind"].as_str() {
+            Some("Pod") => Some(json!({"request": request, "resourceVersion": "4242"})),
+            Some("PersistentVolume") => {
+                let list = VOLUME_LISTS.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                Some(json!({"request": request, "resourceVersion": format!("pv-{list}")}))
+            }
+            _ => None,
+        })
         .collect();
     json!({"resources":[],"completedRequests":requests,"resourceVersions":resource_versions,"failures":[]})
 }
@@ -264,6 +274,40 @@ fn remote_reads_carry_list_versions_to_watch_starts() {
                 break;
             }
         }
+        backend.disconnect_remote().await.unwrap();
+        task.abort();
+        let _ = task.await;
+    });
+}
+
+/// An Application across two namespaces lists each cluster-scoped kind once per namespace.
+/// The rows kept for that kind come from the first list, so its watch must start at the first
+/// list's version: a later version would skip a deletion between the two lists and leave a
+/// stale row.
+#[test]
+fn remote_application_read_keeps_the_first_cluster_list_version() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let backend = DesktopBackend::new(NativeBackend::new().unwrap());
+    runtime.block_on(async {
+        let (url, task, _requests) = server("controlled-host").await;
+        backend.connect_remote(url, "controlled-test-credential".into()).await.unwrap();
+        let application = serde_json::from_value(json!({
+            "cluster": "controlled-host",
+            "name": "spread",
+            "age": "1d",
+            "healthAssessment": kubecove_lib::models::HealthAssessment::default(),
+            "sources": [],
+            "resourceNamespaces": ["payments", "shop"],
+        }))
+        .unwrap();
+        let before = VOLUME_LISTS.load(std::sync::atomic::Ordering::SeqCst);
+        let read = backend.application_resources(application, false).await.unwrap();
+        let first = format!("pv-{}", before + 1);
+        let volumes = kubecove_gpui::backend::watch_signature(&WatchResourceKey {
+            resource_kind: WatchResourceKind { kind: "PersistentVolume".into(), group: None, version: None, api_version: None, plural: None, namespaced: Some(false) },
+            namespace: None,
+        });
+        assert_eq!(read.versions.get(&volumes), Some(&first), "the PersistentVolume watch must start at the first list's version");
         backend.disconnect_remote().await.unwrap();
         task.abort();
         let _ = task.await;
