@@ -187,16 +187,9 @@ mod text_fit {
             "KUBECOVE_PARITY_FIXTURE is required; export it with `bun e2e/parity/visual/export-fixture.ts <path>`",
         );
         let fixture = Path::new(&fixture);
-        let checks: [(&str, fn(&Path)); 2] = [
-            ("deployment-kind-fits", deployment_kind_fits),
-            (
-                "live-log-status-shows-in-full",
-                live_log_status_shows_in_full,
-            ),
-        ];
-        for (name, check) in checks {
-            check(fixture);
-            println!("text_fit {name}: passed");
-        }
+        deployment_kind_fits(fixture);
+        println!("text_fit deployment-kind-fits: passed");
+        live_log_status_shows_in_full(fixture);
+        println!("text_fit live-log-status-shows-in-full: passed");
     }
 }
