@@ -493,7 +493,7 @@ async function containsLines(locator: Locator, lines: string[]) {
 	}, { element, expected: lines });
 }
 
-type WebResult = { id: string; status: "passed" | "failed"; error?: string };
+type WebResult = { id: string; status: "passed" | "failed"; durationMs?: number; error?: string };
 type Browser = Awaited<ReturnType<typeof chromium.launch>>;
 
 async function runScenario(browser: Browser, port: number, artifacts: string, scenarioIndex: number, scenario: Contract["scenarios"][number], signal: AbortSignal): Promise<WebResult> {
@@ -556,7 +556,10 @@ export async function runWeb(contract: Contract, artifacts: string, signal: Abor
 			while (next < contract.scenarios.length && !signal.aborted) {
 				const scenarioIndex = next++;
 				const scenario = contract.scenarios[scenarioIndex];
-				if (scenario) ordered[scenarioIndex] = await runScenario(launched, port, artifacts, scenarioIndex, scenario, signal);
+				if (!scenario) continue;
+				const started = performance.now();
+				const result = await runScenario(launched, port, artifacts, scenarioIndex, scenario, signal);
+				ordered[scenarioIndex] = { ...result, durationMs: Math.round(performance.now() - started) };
 			}
 		};
 		await Promise.all(Array.from({ length: Math.max(1, Math.min(jobs, contract.scenarios.length)) }, worker));

@@ -33,8 +33,8 @@ async function buildParity(workspace: string, env: Record<string, string | undef
 }
 
 /**
- * Runs the selected scenarios in `shards` GPUI test processes. Each process takes every
- * `shards`-th scenario (`KUBECOVE_PARITY_SHARD` in tests/parity.rs) and writes its own report;
+ * Runs the selected scenarios in `shards` GPUI test processes. The processes take scenarios
+ * from a shared queue (`claim` in tests/parity/selection.rs) and each writes its own report;
  * this merges them into `gpui.json` in contract order.
  */
 export async function runGpui(contract: Contract, artifacts: string, fixture: { path: string; exit: Promise<number> }, shards: number, signal: AbortSignal, mark: (phase: string) => void): Promise<string | undefined> {

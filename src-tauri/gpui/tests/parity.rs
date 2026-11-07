@@ -70,7 +70,9 @@ mod workspace;
 #[path = "parity/workspace_editing.rs"]
 mod workspace_editing;
 
-use std::{any::Any, ffi::OsString, fs, panic::AssertUnwindSafe, path::Path, sync::Arc};
+use std::{
+    any::Any, ffi::OsString, fs, panic::AssertUnwindSafe, path::Path, sync::Arc, time::Instant,
+};
 
 use common::Fixture;
 use detail::reveal_resource;
@@ -80,7 +82,7 @@ use gpui_kit::{
 };
 use kubecove_gpui::Inspector;
 use scroll::{reveal, seek};
-use selection::{artifact_name, scenarios, shard};
+use selection::{artifact_name, claim, scenarios, shard};
 use serde_json::{Value, json};
 
 fn string<'a>(v: &'a Value, key: &str) -> &'a str {
@@ -293,16 +295,21 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
     // A shard can be empty when there are fewer selected scenarios than shards.
     assert!(shard().is_some() || !scenarios.is_empty());
     let mut results = Vec::new();
-    for scenario in &scenarios {
+    for (index, scenario) in scenarios.iter().enumerate() {
+        if !claim(&artifacts, index) {
+            continue;
+        }
         let id = string(scenario, "id");
+        let started = Instant::now();
         cx.update(gpui_kit::init);
         // As the web driver does, record a failing scenario and run the rest.
         let mut window = None;
         let outcome = std::panic::catch_unwind(AssertUnwindSafe(|| {
             run_scenario(cx, scenario, &artifacts, &fixture, &mut window)
         }));
+        let duration = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
         match outcome {
-            Ok(()) => results.push(json!({"id": id, "status": "passed"})),
+            Ok(()) => results.push(json!({"id": id, "status": "passed", "durationMs": duration})),
             Err(payload) => {
                 // Close the failed scenario's window so it cannot affect the next one.
                 if let Some(open) = window.take() {
@@ -310,7 +317,7 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
                     cx.run_until_parked();
                 }
                 results.push(
-                    json!({"id": id, "status": "failed", "error": failure_message(&artifacts, payload)}),
+                    json!({"id": id, "status": "failed", "durationMs": duration, "error": failure_message(&artifacts, payload)}),
                 );
             }
         }

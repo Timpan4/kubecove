@@ -1,7 +1,9 @@
 //! Which scenarios this run executes, and the shard-specific artifact names it writes.
 
 use std::{
+    ffi::OsStr,
     fs,
+    io::{ErrorKind, Write},
     path::{Path, PathBuf},
 };
 
@@ -10,7 +12,7 @@ use serde_json::Value;
 use super::string;
 
 /// `KUBECOVE_PARITY_SHARD=<index>/<count>`, set by `scripts/e2e-parity.ts` when it splits
-/// the native run across processes.
+/// the native run across processes. See [`claim`] for how they divide the scenarios.
 pub(crate) fn shard() -> Option<(usize, usize)> {
     let value = std::env::var("KUBECOVE_PARITY_SHARD").ok()?;
     let parsed = value
@@ -60,8 +62,30 @@ pub(crate) fn scenarios() -> Vec<Value> {
             ids.as_ref()
                 .is_none_or(|ids| ids.contains(string(scenario, "id")))
         })
-        .enumerate()
-        .filter(|(index, _)| shard().is_none_or(|(shard, count)| index % count == shard))
-        .map(|(_, scenario)| scenario)
         .collect()
+}
+
+/// Whether this process runs the `index`-th selected scenario. Without a shard it runs them
+/// all. With one, the processes share a queue: each takes the next scenario that no other
+/// process has claimed, so no process is left with a share of slow scenarios. A claim is a file
+/// in `<artifacts>/gpui-claims/` that only one process can create; it holds the claiming shard's
+/// index, and each shard's report lists its scenarios in the order it ran them.
+pub(crate) fn claim(artifacts: &OsStr, index: usize) -> bool {
+    let Some((shard, _)) = shard() else {
+        return true;
+    };
+    let dir = Path::new(artifacts).join("gpui-claims");
+    fs::create_dir_all(&dir).unwrap();
+    match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(dir.join(index.to_string()))
+    {
+        Ok(mut file) => {
+            file.write_all(shard.to_string().as_bytes()).unwrap();
+            true
+        }
+        Err(error) if error.kind() == ErrorKind::AlreadyExists => false,
+        Err(error) => panic!("cannot claim parity scenario {index}: {error}"),
+    }
 }

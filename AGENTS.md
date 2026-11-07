@@ -181,7 +181,7 @@ Frontend changes in any tier also run `bun run typecheck`, `bun run lint` and `b
 
 GPUI changes to column widths, toolbars or text sizes also run `src-tauri/gpui/tests/text_fit.rs`, which checks text against the bundled fonts. The parity driver cannot, because every glyph there is 0.6 em wide. Its header gives the command.
 
-The runner starts both drivers at once. It builds the parity test once and splits it across `PARITY_JOBS` processes (`KUBECOVE_PARITY_SHARD=<index>/<count>`), and the web driver runs as many pages. The default is half the CPU count. `e2e/parity/README.md` shows how to replay one native shard.
+The runner starts both drivers at once. It builds the parity test once and runs it in `PARITY_JOBS` processes (`KUBECOVE_PARITY_SHARD=<index>/<count>`) that take scenarios from a shared queue, and the web driver runs as many pages. The default is half the CPU count. `e2e/parity/README.md` shows how to replay one native shard.
 
 ## Delegation briefs
 
