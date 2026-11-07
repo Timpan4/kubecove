@@ -128,17 +128,21 @@ export async function checkCoverage(page: Page, check: string) {
 			}
 			break;
 		case "map-viewport": {
+			// Name the wait that timed out: full-suite runs failed here with a bare 30 s timeout.
+			const step = <T>(name: string, wait: Promise<T>) => wait.catch((error: unknown) => {
+				throw new Error(`map-viewport ${name}: ${error instanceof Error ? error.message : String(error)}`);
+			});
 			await page.locator(".svelte-flow").scrollIntoViewIfNeeded();
 			const viewport = page.locator(".svelte-flow__viewport");
 			const node = page.locator(".svelte-flow__node-ownershipResource").first();
 			const initialWidth = (await node.boundingBox())?.width;
 			if (!initialWidth) throw new Error("Map nodes are missing");
 			await page.locator(".svelte-flow__controls-zoomin").click();
-			await page.waitForFunction((before) => (document.querySelector(".svelte-flow__node-ownershipResource")?.getBoundingClientRect().width ?? 0) > before, initialWidth);
+			await step("zoom in", page.waitForFunction((before) => (document.querySelector(".svelte-flow__node-ownershipResource")?.getBoundingClientRect().width ?? 0) > before, initialWidth));
 			const zoomedWidth = (await node.boundingBox())?.width;
 			if (!zoomedWidth) throw new Error("Zoom removed map nodes");
 			await page.locator(".svelte-flow__controls-zoomout").click();
-			await page.waitForFunction((before) => (document.querySelector(".svelte-flow__node-ownershipResource")?.getBoundingClientRect().width ?? before) < before, zoomedWidth);
+			await step("zoom out", page.waitForFunction((before) => (document.querySelector(".svelte-flow__node-ownershipResource")?.getBoundingClientRect().width ?? before) < before, zoomedWidth));
 			const pane = page.locator(".svelte-flow__pane");
 			const bounds = await pane.boundingBox();
 			if (!bounds) throw new Error("Map viewport unavailable");
@@ -153,12 +157,12 @@ export async function checkCoverage(page: Page, check: string) {
 			if (!beforeNode || !afterNode || afterNode.x <= beforeNode.x || afterNode.y <= beforeNode.y) throw new Error("Map panned opposite the drag");
 			const afterPan = await viewport.getAttribute("style");
 			await page.locator(".svelte-flow__controls-fitview").click();
-			await page.waitForFunction((before) => document.querySelector(".svelte-flow__viewport")?.getAttribute("style") !== before, afterPan);
-			await page.waitForFunction(() => {
+			await step("fit view moves", page.waitForFunction((before) => document.querySelector(".svelte-flow__viewport")?.getAttribute("style") !== before, afterPan));
+			await step("fit view contains nodes", page.waitForFunction(() => {
 				const pane = document.querySelector(".svelte-flow__pane")?.getBoundingClientRect();
 				const nodes = document.querySelectorAll(".svelte-flow__node-ownershipResource");
 				return pane && nodes.length > 0 && Array.from(nodes).every((node) => { const box = node.getBoundingClientRect(); return box.left >= pane.left && box.right <= pane.right && box.top >= pane.top && box.bottom <= pane.bottom; });
-			});
+			}));
 			break;
 		}
 		case "pagination": {
