@@ -43,6 +43,10 @@
 	const isSelected = $derived(selectedKey === id);
 	const isExpanded = $derived(expandedSections.includes(id));
 	const hidesSelection = $derived(!isExpanded && selectedAncestorIds.has(id));
+	// Svelte's element types do not list the ARIA 1.3 `aria-description` attribute yet, so it is spread.
+	const selectionHint = $derived<Record<string, string>>(
+		hidesSelection ? { "aria-description": "Contains the selected item" } : {},
+	);
 	const hasChildren = $derived(
 		node.id.type === "namespace" || Boolean(node.children?.length),
 	);
@@ -168,7 +172,7 @@
 		/>
 		<span
 			class={cnfast("min-w-0 flex-1 truncate leading-none", hidesSelection && "text-primary")}
-			aria-description={hidesSelection ? "Contains the selected item" : undefined}
+			{...selectionHint}
 			>{node.label}</span
 		>
 	</div>
