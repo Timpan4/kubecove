@@ -16,6 +16,7 @@ pub use kubecove_kube::commands::dynamic_projection::dynamic_resource_summaries_
 pub(crate) use kubecove_kube::commands::dynamic_projection::{
     api_resource_from_discovered, dynamic_resource_summary, dynamic_resource_summary_at,
 };
+use kubecove_kube::commands::live_store::ListedResources;
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -68,7 +69,7 @@ pub async fn dynamic_resources_summary_from(
     cluster_context: String,
     resource_kind: DiscoveredResourceKind,
     namespace: Option<String>,
-) -> Result<Vec<ResourceSummary>, AppError> {
+) -> Result<ListedResources, AppError> {
     crate::commands::helpers::validate_namespace(namespace.as_deref())?;
     let client = access.read_client(&cluster_context).await?;
     let api_resource = api_resource_from_discovered(&resource_kind)?;
@@ -88,11 +89,9 @@ pub async fn dynamic_resources_summary_from(
     >(api, &list_params())
     .await
     .map_err(AppError::from)?;
-    Ok(objects
-        .items
-        .into_iter()
-        .map(|object| dynamic_resource_summary(&cluster_context, &resource_kind, &object.into()))
-        .collect())
+    Ok(ListedResources::from_list(objects, |object| {
+        dynamic_resource_summary(&cluster_context, &resource_kind, &object.into())
+    }))
 }
 
 pub async fn list_dynamic_resources(

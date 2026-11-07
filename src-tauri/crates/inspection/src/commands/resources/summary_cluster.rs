@@ -7,6 +7,7 @@ use k8s_openapi::api::core::v1::{Node, PersistentVolume};
 use k8s_openapi::api::storage::v1::StorageClass;
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
 use kube::{Client, api::Api};
+use kubecove_kube::commands::live_store::ListedResources;
 use serde_json::Value;
 
 impl BuiltinSummary for Node {
@@ -95,7 +96,7 @@ pub(super) async fn cluster_resource_summaries(
     client: Client,
     cluster_context: &str,
     kind: &str,
-) -> Result<Option<Vec<ResourceSummary>>, AppError> {
+) -> Result<Option<ListedResources>, AppError> {
     let now = Utc::now();
     let summaries = match kind {
         "Node" => list_summaries::<Node>(client, cluster_context, now).await?,
@@ -116,7 +117,7 @@ async fn list_summaries<K>(
     client: Client,
     cluster_context: &str,
     now: DateTime<Utc>,
-) -> Result<Vec<ResourceSummary>, AppError>
+) -> Result<ListedResources, AppError>
 where
     K: BuiltinSummary
         + kube::Resource<DynamicType = (), Scope = k8s_openapi::ClusterResourceScope>
@@ -125,11 +126,8 @@ where
         + serde::de::DeserializeOwned,
 {
     let api: Api<K> = Api::all(client);
-    Ok(api
-        .list(&list_params())
-        .await
-        .map_err(AppError::from)?
-        .iter()
-        .map(|object| builtin_summary(cluster_context, object, now))
-        .collect())
+    let list = api.list(&list_params()).await.map_err(AppError::from)?;
+    Ok(ListedResources::from_list(list, |object| {
+        builtin_summary(cluster_context, &object, now)
+    }))
 }

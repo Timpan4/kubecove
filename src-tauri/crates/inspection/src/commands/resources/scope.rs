@@ -15,6 +15,7 @@ use crate::{
     },
 };
 use futures_util::future::join_all;
+use kubecove_kube::commands::live_store::ListedResources;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
@@ -304,7 +305,7 @@ async fn resource_scope_result_from(
     })
 }
 
-async fn cached_scope_resources<F, Fut>(
+async fn cached_scope_resources<F, Fut, Listed>(
     live_store: &ClusterLiveStore,
     permits: Arc<Semaphore>,
     source_key: String,
@@ -315,7 +316,8 @@ async fn cached_scope_resources<F, Fut>(
 ) -> Result<Arc<Vec<ResourceSummary>>, AppError>
 where
     F: FnOnce() -> Fut + Send + 'static,
-    Fut: std::future::Future<Output = Result<Vec<ResourceSummary>, AppError>> + Send + 'static,
+    Fut: std::future::Future<Output = Result<Listed, AppError>> + Send + 'static,
+    Listed: Into<ListedResources>,
 {
     let _permit = permits.acquire().await.expect("scope semaphore stays open");
     match kind {
@@ -522,7 +524,9 @@ mod tests {
                 "test".into(),
                 "Pod".into(),
                 Some("b".into()),
-                || async { panic!("completed cache load must be reused") },
+                || -> std::future::Ready<Result<ListedResources, AppError>> {
+                    panic!("completed cache load must be reused")
+                },
             )
             .await
             .expect("completed cache load");

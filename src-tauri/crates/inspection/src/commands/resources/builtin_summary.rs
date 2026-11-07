@@ -9,6 +9,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use k8s_openapi::NamespaceResourceScope;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::{Api, Client};
+use kubecove_kube::commands::live_store::ListedResources;
 use serde_json::Value;
 
 /// One namespace when given, otherwise every namespace.
@@ -27,7 +28,7 @@ pub(super) async fn list_namespaced_summaries<K>(
     cluster_context: &str,
     namespace: Option<&str>,
     now: DateTime<Utc>,
-) -> Result<Vec<ResourceSummary>, AppError>
+) -> Result<ListedResources, AppError>
 where
     K: BuiltinSummary
         + kube::Resource<DynamicType = (), Scope = NamespaceResourceScope>
@@ -35,13 +36,13 @@ where
         + std::fmt::Debug
         + serde::de::DeserializeOwned,
 {
-    Ok(namespace_or_all::<K>(client, namespace)
+    let list = namespace_or_all::<K>(client, namespace)
         .list(&list_params())
         .await
-        .map_err(AppError::from)?
-        .iter()
-        .map(|object| builtin_summary(cluster_context, object, now))
-        .collect())
+        .map_err(AppError::from)?;
+    Ok(ListedResources::from_list(list, |object| {
+        builtin_summary(cluster_context, &object, now)
+    }))
 }
 
 /// Status, readiness and restarts read from one object, with the Kubernetes health they imply.

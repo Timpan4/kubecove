@@ -2,7 +2,7 @@ use super::builtin_summary::{
     BuiltinSummary, KindStatus, builtin_summary, list_namespaced_summaries, namespace_or_all,
 };
 use crate::commands::helpers::{Readiness, kubernetes_health, list_params};
-use crate::models::{AppError, ResourceHealth, ResourceSummary};
+use crate::models::{AppError, ResourceHealth};
 use chrono::{DateTime, Utc};
 use k8s_openapi::api::apps::v1::{
     DaemonSet, Deployment, DeploymentStatus, ReplicaSet, StatefulSet,
@@ -10,6 +10,7 @@ use k8s_openapi::api::apps::v1::{
 use k8s_openapi::api::batch::v1::{CronJob, Job};
 use k8s_openapi::api::networking::v1::Ingress;
 use kube::Client;
+use kubecove_kube::commands::live_store::ListedResources;
 use serde_json::Value;
 
 fn replica_health(ready: i32, desired: i32) -> ResourceHealth {
@@ -203,7 +204,7 @@ pub(super) async fn workload_resource_summaries(
     cluster_context: &str,
     kind: &str,
     namespace: Option<&str>,
-) -> Result<Option<Vec<ResourceSummary>>, AppError> {
+) -> Result<Option<ListedResources>, AppError> {
     let now = Utc::now();
     let summaries = match kind {
         "Deployment" => deployment_summaries(client, cluster_context, namespace, now).await?,
@@ -233,8 +234,8 @@ async fn deployment_summaries(
     cluster_context: &str,
     namespace: Option<&str>,
     now: DateTime<Utc>,
-) -> Result<Vec<ResourceSummary>, AppError> {
-    Ok(kubecove_kube::commands::list_projection::list::<
+) -> Result<ListedResources, AppError> {
+    let list = kubecove_kube::commands::list_projection::list::<
         _,
         super::summary_projection::DeploymentProjection,
     >(
@@ -242,10 +243,10 @@ async fn deployment_summaries(
         &list_params(),
     )
     .await
-    .map_err(AppError::from)?
-    .into_iter()
-    .map(|deploy| builtin_summary(cluster_context, &deploy.into_resource(), now))
-    .collect())
+    .map_err(AppError::from)?;
+    Ok(ListedResources::from_list(list, |deploy| {
+        builtin_summary(cluster_context, &deploy.into_resource(), now)
+    }))
 }
 
 async fn replicaset_summaries(
@@ -253,8 +254,8 @@ async fn replicaset_summaries(
     cluster_context: &str,
     namespace: Option<&str>,
     now: DateTime<Utc>,
-) -> Result<Vec<ResourceSummary>, AppError> {
-    Ok(kubecove_kube::commands::list_projection::list::<
+) -> Result<ListedResources, AppError> {
+    let list = kubecove_kube::commands::list_projection::list::<
         _,
         super::summary_projection::ReplicaSetProjection,
     >(
@@ -262,10 +263,10 @@ async fn replicaset_summaries(
         &list_params(),
     )
     .await
-    .map_err(AppError::from)?
-    .into_iter()
-    .map(|rs| builtin_summary(cluster_context, &rs.into_resource(), now))
-    .collect())
+    .map_err(AppError::from)?;
+    Ok(ListedResources::from_list(list, |rs| {
+        builtin_summary(cluster_context, &rs.into_resource(), now)
+    }))
 }
 
 async fn job_summaries(
@@ -273,14 +274,14 @@ async fn job_summaries(
     cluster_context: &str,
     namespace: Option<&str>,
     now: DateTime<Utc>,
-) -> Result<Vec<ResourceSummary>, AppError> {
-    Ok(kubecove_kube::commands::list_projection::list::<
+) -> Result<ListedResources, AppError> {
+    let list = kubecove_kube::commands::list_projection::list::<
         _,
         super::summary_projection::JobProjection,
     >(namespace_or_all::<Job>(client, namespace), &list_params())
     .await
-    .map_err(AppError::from)?
-    .into_iter()
-    .map(|job| builtin_summary(cluster_context, &job.into_resource(), now))
-    .collect())
+    .map_err(AppError::from)?;
+    Ok(ListedResources::from_list(list, |job| {
+        builtin_summary(cluster_context, &job.into_resource(), now)
+    }))
 }

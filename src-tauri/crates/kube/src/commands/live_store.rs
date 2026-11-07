@@ -36,6 +36,11 @@ mod refresh;
 mod cache_diagnostics;
 use cache_diagnostics::CacheCounters;
 
+#[path = "live_store_watch.rs"]
+mod watch;
+use watch::CachedList;
+pub use watch::ListedResources;
+
 type SharedLoad<T> = Shared<BoxFuture<'static, Result<Arc<T>, AppError>>>;
 
 #[derive(Clone, Copy)]
@@ -398,7 +403,7 @@ pub struct ClusterLiveStore {
     namespaces: Arc<SharedCache<Vec<NamespaceSummary>>>,
     resource_kinds: Arc<SharedCache<Vec<DiscoveredResourceKind>>>,
     present_custom_resource_kinds: Arc<SharedCache<Vec<DiscoveredResourceKind>>>,
-    resources: Arc<SharedCache<Vec<ResourceSummary>>>,
+    resources: Arc<SharedCache<CachedList>>,
     topologies: Arc<SharedCache<ResourceTopology>>,
     flux_ownership_indexes: Arc<SharedCache<FluxOwnershipIndex>>,
 }
@@ -519,7 +524,7 @@ impl ClusterLiveStore {
         )
     }
 
-    pub async fn typed_resources<F, Fut>(
+    pub async fn typed_resources<F, Fut, Listed>(
         &self,
         source_key: String,
         cluster_context: String,
@@ -529,7 +534,8 @@ impl ClusterLiveStore {
     ) -> Result<Arc<Vec<ResourceSummary>>, AppError>
     where
         F: FnOnce() -> Fut + Send + 'static,
-        Fut: Future<Output = Result<Vec<ResourceSummary>, AppError>> + Send + 'static,
+        Fut: Future<Output = Result<Listed, AppError>> + Send + 'static,
+        Listed: Into<ListedResources>,
     {
         let kind_key = typed_kind_key(&kind);
         let namespace_key = namespace_key_for_typed(&kind, namespace.as_deref());
@@ -537,7 +543,7 @@ impl ClusterLiveStore {
             .await
     }
 
-    pub async fn dynamic_resources<F, Fut>(
+    pub async fn dynamic_resources<F, Fut, Listed>(
         &self,
         source_key: String,
         cluster_context: String,
@@ -547,7 +553,8 @@ impl ClusterLiveStore {
     ) -> Result<Arc<Vec<ResourceSummary>>, AppError>
     where
         F: FnOnce() -> Fut + Send + 'static,
-        Fut: Future<Output = Result<Vec<ResourceSummary>, AppError>> + Send + 'static,
+        Fut: Future<Output = Result<Listed, AppError>> + Send + 'static,
+        Listed: Into<ListedResources>,
     {
         let kind_key = dynamic_kind_key(
             &resource_kind.api_version,
@@ -560,7 +567,7 @@ impl ClusterLiveStore {
             .await
     }
 
-    async fn resources_for_scope<F, Fut>(
+    async fn resources_for_scope<F, Fut, Listed>(
         &self,
         source_key: String,
         cluster_context: String,
@@ -570,7 +577,8 @@ impl ClusterLiveStore {
     ) -> Result<Arc<Vec<ResourceSummary>>, AppError>
     where
         F: FnOnce() -> Fut + Send + 'static,
-        Fut: Future<Output = Result<Vec<ResourceSummary>, AppError>> + Send + 'static,
+        Fut: Future<Output = Result<Listed, AppError>> + Send + 'static,
+        Listed: Into<ListedResources>,
     {
         if let ScopeNamespace::Named(namespace) = &namespace_key {
             let all_key = resource_cache_key(
@@ -579,12 +587,13 @@ impl ClusterLiveStore {
                 &kind_key,
                 &ScopeNamespace::All,
             );
-            if let Some(rows) = self
+            if let Some(list) = self
                 .resources
                 .peek(&all_key, CacheMode::LiveFor(RESOURCE_FRESHNESS))
             {
                 return Ok(Arc::new(
-                    rows.iter()
+                    list.rows
+                        .iter()
                         .filter(|row| row.namespace.as_deref() == Some(namespace.as_str()))
                         .cloned()
                         .collect(),
@@ -592,13 +601,15 @@ impl ClusterLiveStore {
             }
         }
 
-        self.resources
+        let list = self
+            .resources
             .get_or_load(
                 resource_cache_key(&source_key, &cluster_context, &kind_key, &namespace_key),
                 CacheMode::LiveFor(RESOURCE_FRESHNESS),
-                loader,
+                move || async move { Ok(CachedList::from(loader().await?.into())) },
             )
-            .await
+            .await?;
+        Ok(Arc::clone(&list.rows))
     }
 
     pub async fn topology<F, Fut>(

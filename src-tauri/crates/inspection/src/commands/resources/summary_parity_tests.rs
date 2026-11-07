@@ -246,7 +246,8 @@ async fn list_details_and_topology_share_one_summary_per_builtin_kind() {
 
         let rows = resources_summary_from(&access, CONTEXT.into(), kind.clone(), namespace.clone())
             .await
-            .unwrap_or_else(|error| panic!("{label}: list failed: {}", error.message));
+            .unwrap_or_else(|error| panic!("{label}: list failed: {}", error.message))
+            .rows;
         let [list] = rows.as_slice() else {
             panic!("{label}: expected one list row, got {}", rows.len());
         };

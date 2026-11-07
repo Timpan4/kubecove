@@ -3,11 +3,12 @@ use super::builtin_summary::{
     namespace_or_all,
 };
 use crate::commands::helpers::{Readiness, kubernetes_health, list_params, pod_restarts};
-use crate::models::{AppError, ResourceHealth, ResourceSummary};
+use crate::models::{AppError, ResourceHealth};
 use chrono::Utc;
 use k8s_openapi::api::core::v1::{ConfigMap, PersistentVolumeClaim, Pod, Secret, Service};
 use k8s_openapi::api::discovery::v1::EndpointSlice;
 use kube::Client;
+use kubecove_kube::commands::live_store::ListedResources;
 use serde_json::Value;
 
 impl BuiltinSummary for Pod {
@@ -114,35 +115,41 @@ pub(super) async fn core_resource_summaries(
     cluster_context: &str,
     kind: &str,
     namespace: Option<&str>,
-) -> Result<Option<Vec<ResourceSummary>>, AppError> {
+) -> Result<Option<ListedResources>, AppError> {
     let now = Utc::now();
     let summaries = match kind {
-        "Pod" => kubecove_kube::commands::list_projection::list::<
-            _,
-            super::summary_projection::PodProjection,
-        >(namespace_or_all::<Pod>(client, namespace), &list_params())
-        .await
-        .map_err(AppError::from)?
-        .into_iter()
-        .map(|pod| builtin_summary(cluster_context, &pod.into_resource(), now))
-        .collect(),
+        "Pod" => {
+            let list = kubecove_kube::commands::list_projection::list::<
+                _,
+                super::summary_projection::PodProjection,
+            >(namespace_or_all::<Pod>(client, namespace), &list_params())
+            .await
+            .map_err(AppError::from)?;
+            ListedResources::from_list(list, |pod| {
+                builtin_summary(cluster_context, &pod.into_resource(), now)
+            })
+        }
         "Service" => {
             list_namespaced_summaries::<Service>(client, cluster_context, namespace, now).await?
         }
-        "ConfigMap" => namespace_or_all::<ConfigMap>(client, namespace)
-            .list_metadata(&list_params())
-            .await
-            .map_err(AppError::from)?
-            .iter()
-            .map(|cm| metadata_summary::<ConfigMap>(cluster_context, &cm.metadata, now))
-            .collect(),
-        "Secret" => namespace_or_all::<Secret>(client, namespace)
-            .list_metadata(&list_params())
-            .await
-            .map_err(AppError::from)?
-            .iter()
-            .map(|sec| metadata_summary::<Secret>(cluster_context, &sec.metadata, now))
-            .collect(),
+        "ConfigMap" => {
+            let list = namespace_or_all::<ConfigMap>(client, namespace)
+                .list_metadata(&list_params())
+                .await
+                .map_err(AppError::from)?;
+            ListedResources::from_list(list, |cm| {
+                metadata_summary::<ConfigMap>(cluster_context, &cm.metadata, now)
+            })
+        }
+        "Secret" => {
+            let list = namespace_or_all::<Secret>(client, namespace)
+                .list_metadata(&list_params())
+                .await
+                .map_err(AppError::from)?;
+            ListedResources::from_list(list, |sec| {
+                metadata_summary::<Secret>(cluster_context, &sec.metadata, now)
+            })
+        }
         "PersistentVolumeClaim" => {
             list_namespaced_summaries::<PersistentVolumeClaim>(
                 client,

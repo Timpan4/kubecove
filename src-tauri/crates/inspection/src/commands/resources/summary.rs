@@ -6,6 +6,7 @@ use crate::commands::{ClusterAccess, ClusterLiveStore, FiniteRead, diagnostic_fi
 use crate::models::AppErrorKind;
 use crate::models::{AppError, ResourceSummary};
 use crate::runtime::State;
+use kubecove_kube::commands::live_store::ListedResources;
 use std::sync::Arc;
 
 pub async fn resources_summary_from(
@@ -13,7 +14,7 @@ pub async fn resources_summary_from(
     cluster_context: String,
     kind: String,
     namespace: Option<String>,
-) -> Result<Vec<ResourceSummary>, AppError> {
+) -> Result<ListedResources, AppError> {
     crate::commands::helpers::validate_namespace(namespace.as_deref())?;
     let client = access.read_client(&cluster_context).await?;
     if let Some(rows) = core_resource_summaries(
