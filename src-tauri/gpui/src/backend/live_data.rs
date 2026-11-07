@@ -201,23 +201,9 @@ pub(super) fn builtin_resources(
             store.refresh_view(access.source_key(), &scope.context, &keys, &namespaces);
         }
         let mut warnings = Vec::new();
-        let namespaces = match commands::list_namespaces(
-            scope.context.clone(),
-            None,
-            State::new(&store),
-        )
-        .await
-        {
-            Ok(rows) => Arc::unwrap_or_clone(rows),
-            Err(error) if error.kind == AppErrorKind::Forbidden => {
-                warnings.push(format!("Namespaces: {}", error.message));
-                Vec::new()
-            }
-            Err(error) => return Err(error),
-        };
-        let mut resources = Vec::new();
         // The web reads a scope in one `list_resource_scope` call, which lists
-        // up to MAX_LIST_CONCURRENCY kinds at once.
+        // up to MAX_LIST_CONCURRENCY kinds at once. The namespace list does not
+        // feed those reads, so it runs beside them.
         let reads: Vec<_> = kinds
             .iter()
             .map(|kind| {
@@ -230,7 +216,19 @@ pub(super) fn builtin_resources(
                 )
             })
             .collect();
-        let results = bounded_join_all(reads, commands::MAX_LIST_CONCURRENCY).await;
+        let (namespaces, results) = futures_util::join!(
+            commands::list_namespaces(scope.context.clone(), None, State::new(&store)),
+            bounded_join_all(reads, commands::MAX_LIST_CONCURRENCY),
+        );
+        let namespaces = match namespaces {
+            Ok(rows) => Arc::unwrap_or_clone(rows),
+            Err(error) if error.kind == AppErrorKind::Forbidden => {
+                warnings.push(format!("Namespaces: {}", error.message));
+                Vec::new()
+            }
+            Err(error) => return Err(error),
+        };
+        let mut resources = Vec::new();
         for (kind, result) in kinds.into_iter().zip(results) {
             match result {
                 Ok(rows) => resources.extend(Arc::unwrap_or_clone(rows)),
