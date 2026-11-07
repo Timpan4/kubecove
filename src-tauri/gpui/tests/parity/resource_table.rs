@@ -88,6 +88,25 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             reveal_cell(window, &cell, cx);
             assert_eq!(window.find(cell).label(), Some(string(step, "text")));
         }
+        "expectResourceCellFits" => {
+            let column = string(step, "column");
+            let cell = format!("cell:{column}:{}", row(step));
+            let value = format!("value:{column}:{}", row(step));
+            reveal_cell(window, &cell, cx);
+            let outer = window.find(cell);
+            let inner = window.find(value);
+            assert_eq!(outer.label(), Some(string(step, "text")));
+            assert_eq!(inner.description(), Some(string(step, "text")));
+            let (cell_bounds, value_bounds) = (outer.bounds(), inner.bounds());
+            assert!(
+                value_bounds.left() >= cell_bounds.left() && value_bounds.right() <= cell_bounds.right(),
+                "{column} value escapes its cell"
+            );
+            assert!(
+                value_bounds.size.width < cell_bounds.size.width,
+                "{column} value is not truncated inside its cell"
+            );
+        }
         _ => return false,
     }
     true

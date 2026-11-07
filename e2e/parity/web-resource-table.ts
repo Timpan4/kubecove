@@ -44,6 +44,25 @@ export async function resourceTableAction(page: Page, step: Step) {
 			if (actual !== step.text) throw new Error(`${step.column} cell was ${actual ?? "missing"}`);
 			break;
 		}
+		case "expectResourceCellFits": {
+			const value = (await cellFor(page, step)).locator("[title]");
+			if (await value.count() !== 1) throw new Error(`${step.column} value has no hover title`);
+			const fit = await value.evaluate((element) => {
+				const cellBox = element.closest("td")?.getBoundingClientRect();
+				const box = element.getBoundingClientRect();
+				return {
+					title: element.getAttribute("title") ?? "",
+					text: element.textContent?.trim() ?? "",
+					inside: cellBox !== undefined && box.left >= cellBox.left - 0.5 && box.right <= cellBox.right + 0.5,
+					truncated: element.scrollWidth > element.clientWidth,
+					ellipsis: getComputedStyle(element).textOverflow === "ellipsis",
+				};
+			});
+			if (fit.title !== step.text || fit.text !== step.text) throw new Error(`${step.column} value was ${fit.text}, hover value ${fit.title}`);
+			if (!fit.inside) throw new Error(`${step.column} value escapes its cell`);
+			if (!fit.truncated || !fit.ellipsis) throw new Error(`${step.column} value is not truncated with an ellipsis`);
+			break;
+		}
 		default:
 			throw new Error(`Unhandled resource table action ${step.action}`);
 	}

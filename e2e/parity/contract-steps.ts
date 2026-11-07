@@ -268,6 +268,7 @@ export type Step =
     | { action: "expectResourceGroup"; label: string; expanded: boolean }
     | ({ action: "openResourceRow"; column: TableColumn } & Identity)
     | ({ action: "expectResourceCell"; column: TableColumn; text: string } & Identity)
+    | ({ action: "expectResourceCellFits"; column: TableColumn; text: string } & Identity)
     | { action: "setDeliveryView"; page: "GitOps" | "Helm"; mode: "Cards" | "List" }
     | { action: "clickDetailControl"; label: string }
     | { action: "openLiveSessionPopover" }

@@ -159,6 +159,7 @@ export const resources: ResourceSummary[] = [
 	res("Service", "payments-api", "payments", "healthy", undefined, "ClusterIP", 0, "shop"),
 	res("Ingress", "payments-api", "payments", "degraded", undefined, "MissingBackend", 0, "shop", { apiVersion: "networking.k8s.io/v1" }),
 	res("ConfigMap", "payments-api-config", "payments", "healthy", undefined, "Active", 0, "shop"),
+	res("PersistentVolumeClaim", "checkout-media-cache", "payments-production-eu-west-2", "healthy", "Bound", "Bound", 0, "argocd", { gitOpsOwner: { provider: "argo", kind: "Application", name: "payments-production-eu-west-2-checkout-media", namespace: "argocd", confidence: "metadata" } }),
 	res("Secret", "payments-api-secrets", "payments", "unknown", undefined, "Redacted", 0, "shop"),
 	res("Deployment", "checkout-worker", "payments", "restarted", "2/2", "Synced", 4, "shop"),
 	res("Pod", "checkout-worker-6bfbd7d5dd-9qj2f", "payments", "restarted", "1/1", "Running", 4, "shop"),
