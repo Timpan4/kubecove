@@ -263,10 +263,13 @@ fn remote_delivery_dynamic_refresh_and_stream_requests_follow_the_shared_contrac
         assert!(!args["keys"].as_array().unwrap().is_empty());
         assert_eq!(args["namespaces"], json!(["payments"]));
         let key = serde_json::from_value(json!({"resourceKind":{"kind":"Deployment","namespaced":true},"namespace":"payments"})).unwrap();
-        let stream = backend.watch(WatchTarget::Resource { scope, key }).await.unwrap();
+        let stream = backend.watch(WatchTarget::Resource { scope, key: Box::new(key), resource_version: Some("7".into()) }).await.unwrap();
         drop(stream);
         loop {
             let (command, args) = requests.recv().await.unwrap();
+            if command == "start_resource_watch" {
+                assert_eq!(args["keys"][0]["resourceVersion"], "7");
+            }
             if command == "stop_stream" {
                 assert_eq!(args["streamId"], "controlled-stream");
                 break;

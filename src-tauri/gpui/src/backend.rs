@@ -44,11 +44,23 @@ pub struct Scope {
     pub namespace: Option<String>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ScopeResult {
     pub namespaces: Vec<NamespaceSummary>,
     pub resources: Vec<ResourceSummary>,
     pub warnings: Vec<String>,
+    /// The list version of each kind's rows, by `live_data::watch_signature` of its
+    /// watch key. A view starts that watch at this version.
+    pub versions: ListVersions,
+}
+
+pub type ListVersions = std::collections::HashMap<String, String>;
+
+/// One kind's rows and the version of the list they came from.
+#[derive(Default)]
+pub struct KindRows {
+    pub rows: Vec<ResourceSummary>,
+    pub resource_version: Option<String>,
 }
 
 /// Both production commands and controlled UI-test responses use this seam.
@@ -134,11 +146,12 @@ pub trait Backend: Send + Sync + 'static {
         scope: Scope,
         key: WatchResourceKey,
         recycled: Vec<ResourceSummary>,
-    ) -> Read<Vec<ResourceSummary>> {
+    ) -> Read<KindRows> {
         let read = self.resources(scope, false);
         Box::pin(async move {
-            let rows = read
-                .await?
+            let mut result = read.await?;
+            let resource_version = result.versions.remove(&watch_signature(&key));
+            let rows = result
                 .resources
                 .into_iter()
                 .filter(|row| {
@@ -150,7 +163,10 @@ pub trait Backend: Send + Sync + 'static {
                             .is_none_or(|api| row.api_version.as_ref() == Some(api))
                 })
                 .collect();
-            Ok(live_data::reuse_row_buffer(recycled, rows))
+            Ok(KindRows {
+                rows: live_data::reuse_row_buffer(recycled, rows),
+                resource_version,
+            })
         })
     }
     fn watch(&self, _target: WatchTarget) -> Read<LogStream> {
@@ -343,7 +359,7 @@ pub mod adapters;
 mod argo;
 mod live_data;
 pub use argo::{ArgoConnect, ArgoInspection, ArgoTarget};
-pub use live_data::WatchTarget;
+pub use live_data::{WatchTarget, discovered_key, watch_signature};
 mod delivery;
 mod delivery_workspace;
 pub use delivery_workspace::APPLICATION_KINDS;

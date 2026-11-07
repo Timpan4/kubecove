@@ -30,6 +30,7 @@ impl WorkspaceControls {
                 resources: vec![resource(&context)],
                 namespaces: vec![],
                 warnings: vec![],
+                versions: Default::default(),
             })
         }))
     }

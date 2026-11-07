@@ -1,6 +1,6 @@
 //! View-owned streams. Recovery follows resource-watch.ts; Rust owns transport backoff.
 use super::{Inspector, Page};
-use crate::backend::{LogStream, WatchTarget};
+use crate::backend::{KindRows, LogStream, WatchTarget};
 use gpui_kit::{Context, Task, Window};
 use kubecove_lib::models::{
     DiscoveredResourceKind, StreamMessage, StreamStatus, WatchResourceKey, WatchResourceKind,
@@ -38,8 +38,11 @@ pub(super) struct LiveData {
     catalog_task: Option<Task<()>>,
     watches: HashMap<String, Registration>,
     pending: Vec<super::live_rows::Patch>,
+    /// The list version of each kind in the scope rows, by watch signature.
+    pub versions: crate::backend::ListVersions,
 }
 
+#[derive(Default)]
 struct Registration {
     seen_status: bool,
     connected: bool,
@@ -48,7 +51,8 @@ struct Registration {
     reload_error: Option<String>,
     catching_up: bool,
     recycled: Vec<kubecove_lib::models::ResourceSummary>,
-    _task: Task<()>,
+    /// `None` until the rows for the key settle, so the watch starts at their version.
+    task: Option<Task<()>>,
 }
 
 impl LiveData {
@@ -61,6 +65,7 @@ impl LiveData {
     pub fn reset_scope(&mut self) {
         self.watches.clear();
         self.pending.clear();
+        self.versions.clear();
         self.owner.clear();
         self.refreshing = false;
         self.refresh_error = None;
@@ -130,23 +135,6 @@ pub(super) fn key(kind: &str, namespace: Option<String>) -> WatchResourceKey {
             namespaced: Some(namespaced),
         },
         namespace: if namespaced { namespace } else { None },
-    }
-}
-
-pub(super) fn dynamic_key(
-    kind: &DiscoveredResourceKind,
-    namespace: Option<String>,
-) -> WatchResourceKey {
-    WatchResourceKey {
-        resource_kind: WatchResourceKind {
-            kind: kind.kind.clone(),
-            group: Some(kind.group.clone()),
-            version: Some(kind.version.clone()),
-            api_version: Some(kind.api_version.clone()),
-            plural: Some(kind.plural.clone()),
-            namespaced: Some(kind.namespaced),
-        },
-        namespace: if kind.namespaced { namespace } else { None },
     }
 }
 
@@ -272,17 +260,25 @@ impl Inspector {
             .map(|(_, _, key)| key)
             .collect();
         if let Some(kind) = &self.live.selected {
-            keys = vec![dynamic_key(kind, self.scope.namespace.clone())];
+            keys = vec![crate::backend::discovered_key(
+                kind,
+                self.scope.namespace.clone(),
+            )];
         }
         for key in keys {
-            let signature = format!(
-                "{}:{}:{}:{}",
-                key.resource_kind.kind,
-                key.resource_kind.api_version.as_deref().unwrap_or(""),
-                key.resource_kind.plural.as_deref().unwrap_or(""),
-                key.namespace.as_deref().unwrap_or("")
-            );
-            if self.live.watches.contains_key(&signature) {
+            let signature = crate::backend::watch_signature(&key);
+            if self
+                .live
+                .watches
+                .get(&signature)
+                .is_some_and(|watch| watch.task.is_some())
+            {
+                continue;
+            }
+            // A watch starts at the version of the rows the view shows, so it
+            // waits until they settle. Until then it reports as connecting.
+            if !self.rows_settled(&key) {
+                self.live.watches.entry(signature).or_default();
                 continue;
             }
             let scope = self.scope.clone();
@@ -293,11 +289,16 @@ impl Inspector {
                 let mut lost = false;
                 let mut timer = Box::pin(cx.background_executor().timer(RECOVERY));
                 loop {
+                    let resource_version = this
+                        .update(cx, |this, _| this.shown_version(&key))
+                        .ok()
+                        .flatten();
                     let read = {
                         let _span = crate::frame_profile::scope("watch", "open_factory");
                         backend.watch(WatchTarget::Resource {
                             scope: scope.clone(),
-                            key: key.clone(),
+                            key: Box::new(key.clone()),
+                            resource_version,
                         })
                     };
                     let mut stream = match read.await {
@@ -339,13 +340,16 @@ impl Inspector {
                                         return false;
                                     }
                                     match rows {
-                                        Ok(rows) => {
-                                            this.supersede_kind_read(&key);
+                                        Ok(KindRows {
+                                            rows,
+                                            resource_version,
+                                        }) => {
                                             this.queue_live_patch(
                                                 super::live_rows::Patch {
                                                     scope: scope.clone(),
                                                     key: key.clone(),
                                                     rows,
+                                                    resource_version,
                                                     names: None,
                                                     watch: Some(id.clone()),
                                                 },
@@ -495,13 +499,16 @@ impl Inspector {
                                         return false;
                                     }
                                     match rows {
-                                        Ok(rows) => {
-                                            this.supersede_kind_read(&key);
+                                        Ok(KindRows {
+                                            rows,
+                                            resource_version,
+                                        }) => {
                                             this.queue_live_patch(
                                                 super::live_rows::Patch {
                                                     scope: scope.clone(),
                                                     key: key.clone(),
                                                     rows,
+                                                    resource_version,
                                                     names,
                                                     watch: Some(id.clone()),
                                                 },
@@ -545,19 +552,7 @@ impl Inspector {
                     timer = Box::pin(cx.background_executor().timer(RECOVERY));
                 }
             });
-            self.live.watches.insert(
-                signature,
-                Registration {
-                    seen_status: false,
-                    connected: false,
-                    forbidden: None,
-                    error: None,
-                    reload_error: None,
-                    catching_up: false,
-                    recycled: Vec::new(),
-                    _task: task,
-                },
-            );
+            self.live.watches.entry(signature).or_default().task = Some(task);
         }
     }
 
@@ -583,7 +578,13 @@ impl Inspector {
         self.visible.release_source();
         self.row_index.invalidate();
         for patch in pending {
-            let rows = self.patch_kind(&patch.scope, &patch.key, patch.rows, patch.names);
+            let rows = self.patch_kind(
+                &patch.scope,
+                &patch.key,
+                patch.rows,
+                patch.resource_version,
+                patch.names,
+            );
             if let Some(watch) = patch
                 .watch
                 .as_deref()

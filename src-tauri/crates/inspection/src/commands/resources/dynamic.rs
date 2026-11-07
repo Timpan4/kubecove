@@ -16,7 +16,7 @@ pub use kubecove_kube::commands::dynamic_projection::dynamic_resource_summaries_
 pub(crate) use kubecove_kube::commands::dynamic_projection::{
     api_resource_from_discovered, dynamic_resource_summary, dynamic_resource_summary_at,
 };
-use kubecove_kube::commands::live_store::ListedResources;
+use kubecove_kube::commands::live_store::{ListSnapshot, ListedResources};
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -101,6 +101,26 @@ pub async fn list_dynamic_resources(
     kubeconfig_env_var: Option<String>,
     live_store: State<'_, ClusterLiveStore>,
 ) -> Result<Arc<Vec<ResourceSummary>>, AppError> {
+    Ok(list_dynamic_resource_snapshot(
+        cluster_context,
+        resource_kind,
+        namespace,
+        kubeconfig_env_var,
+        live_store,
+    )
+    .await?
+    .rows)
+}
+
+/// `list_dynamic_resources` with the version of the list its rows came from,
+/// for a native view that starts its watch at that version.
+pub async fn list_dynamic_resource_snapshot(
+    cluster_context: String,
+    resource_kind: DiscoveredResourceKind,
+    namespace: Option<String>,
+    kubeconfig_env_var: Option<String>,
+    live_store: State<'_, ClusterLiveStore>,
+) -> Result<ListSnapshot, AppError> {
     FiniteRead::new("list_dynamic_resources")
         .label("context", &cluster_context)
         .label("kind", &resource_kind.kind)
@@ -135,7 +155,7 @@ pub async fn list_dynamic_resources(
             |rows| {
                 vec![
                     diagnostic_field("kind", &resource_kind.kind),
-                    diagnostic_field("rows", rows.len()),
+                    diagnostic_field("rows", rows.rows.len()),
                 ]
             },
         )

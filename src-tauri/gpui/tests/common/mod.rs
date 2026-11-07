@@ -351,8 +351,9 @@ impl Backend for Fixture {
         scope: Scope,
         key: kubecove_lib::models::WatchResourceKey,
         mut recycled: Vec<ResourceSummary>,
-    ) -> Read<Vec<ResourceSummary>> {
+    ) -> Read<kubecove_gpui::backend::KindRows> {
         let _span = kubecove_gpui::frame_profile::scope("fixture", "kind_read");
+        let resource_version = Some(self.list_version());
         if self.live_failed() {
             return Box::pin(async move {
                 drop(recycled);
@@ -371,7 +372,12 @@ impl Backend for Fixture {
             recycled.extend(rows);
             recycled
         };
-        Box::pin(async move { Ok(rows) })
+        Box::pin(async move {
+            Ok(kubecove_gpui::backend::KindRows {
+                rows,
+                resource_version,
+            })
+        })
     }
     fn namespace_custom_kinds(
         &self,
@@ -468,6 +474,7 @@ impl Backend for Fixture {
                 namespaces,
                 resources,
                 warnings: vec![],
+                versions: Default::default(),
             })
         })
     }
@@ -556,11 +563,13 @@ impl Backend for Fixture {
             .filter(|row| CLUSTER_KINDS.contains(&row.kind.as_str()))
             .cloned()
             .collect();
+        let versions = self.list_versions(None);
         Box::pin(async move {
             Ok(ScopeResult {
                 namespaces: vec![],
                 resources,
                 warnings: vec![],
+                versions,
             })
         })
     }

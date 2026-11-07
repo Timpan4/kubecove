@@ -20,6 +20,8 @@ pub(super) struct ClusterState {
     pub(super) rows: Vec<ResourceSummary>,
     /// `rows` with inherited GitOps owners, rebuilt by `prepare_rows`.
     pub(super) prepared: Vec<ResourceSummary>,
+    /// The list version of each kind in `rows`, by watch signature.
+    pub(super) versions: crate::backend::ListVersions,
     warnings: Vec<String>,
     task: Option<Task<()>>,
 }
@@ -73,6 +75,7 @@ impl Inspector {
                 match result {
                     Ok(result) => {
                         this.cluster.rows = result.resources;
+                        this.cluster.versions = result.versions;
                         this.cluster.warnings = result.warnings;
                         this.cluster.load = Some(Load::Ready);
                     }
@@ -111,6 +114,12 @@ impl Inspector {
         } else {
             &[]
         }
+    }
+
+    /// Whether a cluster-row read is still loading, so a cluster kind's watch
+    /// waits for the version of the rows it will show.
+    pub(super) fn cluster_loading(&self) -> bool {
+        matches!(self.cluster.load, Some(Load::Loading))
     }
 
     fn wants_cluster_rows(&self) -> bool {

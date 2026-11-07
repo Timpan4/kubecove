@@ -252,6 +252,7 @@ impl ResourceCacheFixture {
                 ))
             },
         ))
+        .map(|list| list.rows)
     }
 
     pub fn named_scope_from_all_hit(&self) -> Result<Arc<Vec<ResourceSummary>>, AppError> {
@@ -267,6 +268,7 @@ impl ResourceCacheFixture {
                 ))
             },
         ))
+        .map(|list| list.rows)
     }
 
     pub fn topology_hit(&self) -> Result<Arc<crate::models::ResourceTopology>, AppError> {
@@ -317,6 +319,7 @@ impl ResourceCacheFixture {
             None,
             move || async move { Ok::<_, AppError>(replacement) },
         ))
+        .map(|list| list.rows)
     }
 
     pub fn expected_rows(&self) -> &[ResourceSummary] {

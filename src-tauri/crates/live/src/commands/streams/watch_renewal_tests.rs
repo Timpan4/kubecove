@@ -44,7 +44,7 @@ async fn normal_watch_expiry_renews_without_recovery_and_preserves_version() {
         // Close the consumer at the first actual disconnect, ending the watch task.
         if reconnecting { Err(()) } else { Ok(()) }
     });
-    let key: WatchResourceKey =
+    let key: ResourceWatchStart =
         serde_json::from_value(json!({ "resourceKind": { "kind": "Pod" } })).unwrap();
     let registry = StreamRegistry::default();
     let (_, broadcaster, _) = registry.subscribe_resource("test", "source", "dev", &key, channel);
@@ -110,7 +110,7 @@ async fn forbidden_watch_stops_and_replays_permission_status_to_new_subscribers(
             // Old behavior exits through this callback so the regression cannot hang.
             if reconnecting { Err(()) } else { Ok(()) }
         });
-        let key: WatchResourceKey = serde_json::from_value(
+        let key: ResourceWatchStart = serde_json::from_value(
             json!({ "resourceKind": { "kind": "Secret" }, "namespace": "cert-manager" }),
         )
         .unwrap();

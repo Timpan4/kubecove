@@ -48,7 +48,7 @@ export async function action(page: Page, step: Step) {
         case "configureShellRead": case "retryLauncher": case "expectLauncherRetry": await shellAction(page, step); break;
         case "expectActivePage": case "expectGitOpsSelection": await shellAction(page, step); break;
         case "overviewOperation": case "overviewIncident": case "reviewIncidentAction": case "expectDetailTab": await shellAction(page, step); break;
-        case "expectTopologyDenied": case "mockTiming": await timingAction(page, step); break;
+        case "expectTopologyDenied": case "mockTiming": case "expectWatchStart": await timingAction(page, step); break;
         case "coverageSelect": await coverageAction(page, step); break;
         case "coverageCopy": await coverageAction(page, step); break;
         case "coverageScript": await coverageAction(page, step); break;

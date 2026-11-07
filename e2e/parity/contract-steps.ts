@@ -62,6 +62,7 @@ export type Step =
     | { action: "overviewIncident"; filter: "Degraded" | "Needs attention" | "Restart evidence" }
     | { action: "reviewIncidentAction"; index: number }
     | { action: "expectTopologyDenied" }
+    | { action: "expectWatchStart"; kind: string; resourceVersion: string | null }
     | { action: "mockTiming"; control: import("../../src/lib/tauri-dev-mock-timing").TimingControl }
     | { action: "terminalFit"; width: number; height: number }
     | { action: "terminalOutput"; data: string; container: string }

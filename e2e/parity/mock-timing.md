@@ -53,6 +53,24 @@ fixture reads use dropped futures as their cancellation boundary.
 `setTopologyMode` accepts `pending: true` to start the interaction without waiting
 for completion. Ordinary scenarios keep their existing wait.
 
+## Watch start versions
+
+Each client starts a resource watch at the list version of the rows its view
+shows for that key, and omits the version when it has none
+(`streams/watch.rs` then starts at `"0"`, which replays every object). Both
+mocks model this with one list version: `"1"`, raised by one for each
+`replayLiveData` update or delete. Scope and kind reads report the version
+current when their rows were read, so a held read keeps its version.
+
+A watch start replays the scripted change only when its version is older than
+the version that first showed the change, or when it has no version. The
+`expectWatchStart` step checks the version the newest watch of a kind started
+at, from `lastWatchStart` in `tauri-dev-mock-live.ts` and `expect_watch_start`
+in `tests/common/live_data.rs`.
+
+`mock-timing.watch-start-version` collapses the ownership map first. The web
+map has no list version, so a key it shows starts without one.
+
 The retry observation window is 30,000 ms. Its source is
 the installed `@tanstack/query-core/src/retryer.ts`, `defaultRetryDelay`, which
 caps backoff at that duration. Both drivers advance a test clock for this check.
@@ -72,7 +90,7 @@ failures remain failures and make the full parity check fail.
 
 ## Current results
 
-Both drivers pass all six `mock-timing.` scenarios, checked with
+Both drivers pass all seven `mock-timing.` scenarios, checked with
 `PARITY_PREFIX=mock-timing. bun run e2e:parity`. The earlier native failures in
 `mock-timing.cancelled-topology`, `mock-timing.forbidden` and
 `mock-timing.list-watch-gap` no longer reproduce, so those notes were stale.

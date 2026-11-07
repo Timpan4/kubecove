@@ -1,7 +1,7 @@
 import type { Channel } from "@tauri-apps/api/core";
 import { mockTiming } from "./tauri-dev-mock-timing";
 import { OVERFLOW_EVENTS } from "./tauri-dev-mock-scroll";
-import type { ResourceEventSummary, ResourceSummary, StreamMessage, WatchResourceKey } from "./types";
+import type { ResourceEventSummary, ResourceSummary, ResourceWatchStart, StreamMessage } from "./types";
 
 export const LIVE_EVENTS: ResourceEventSummary[] = [
     { eventType: "Normal", reason: "LiveOlder", message: "Older scripted event", count: 1, lastSeen: "2m", lastSeenAt: "2026-06-29T10:01:00Z", source: "parity", namespace: "payments" },
@@ -9,24 +9,40 @@ export const LIVE_EVENTS: ResourceEventSummary[] = [
 ];
 export const LIVE_SCRIPTS = ["update", "delete", "reconnecting", "connected", "events", "events-overflow", "forbidden", "failed"] as const;
 export type LiveScript = typeof LIVE_SCRIPTS[number];
-type Watch = { id: string; channel: Pick<Channel<StreamMessage>, "onmessage">; context: string; keys?: WatchResourceKey[]; kind?: string; name?: string; namespace?: string | null };
+type Watch = { id: string; channel: Pick<Channel<StreamMessage>, "onmessage">; context: string; keys?: ResourceWatchStart[]; kind?: string; name?: string; namespace?: string | null };
 const watches = new Map<string, Watch>();
+const watchStarts: ResourceWatchStart[] = [];
 let serial = 0;
 let changed = false;
 let deleted = false;
 let events: ResourceEventSummary[] | undefined;
 let failed = false;
+// Scripted changes so far; the mock list version is one higher, as in tests/common/live_data.rs.
+let revision = 0;
+// The list version that first shows the scripted change.
+let changedAt: number | undefined;
+
+/** The mock list version. A scripted change raises it, as a cluster write does. */
+export function mockListVersion(): string { return String(revision + 1); }
+
+/** The version the newest `kind` watch started at, or null when none started. */
+export function lastWatchStart(kind: string): { resourceVersion?: string } | null {
+    return watchStarts.findLast((start) => start.resourceKind.kind === kind) ?? null;
+}
 
 export function registerMockWatch(args: Omit<Watch, "id" | "channel"> & { channel?: Pick<Channel<StreamMessage>, "onmessage"> }): string {
     if (!args.channel) throw new Error("Mock watch requires a channel");
     const channel = args.channel;
     const id = `mock-live-${++serial}`;
     watches.set(id, { ...args, channel, id });
+    watchStarts.push(...args.keys ?? []);
+    // streams/watch.rs starts at the given list version, or at "0", which replays
+    // every object. Either way it delivers a change made after that version.
+    const replays = (start: ResourceWatchStart) => changedAt !== undefined
+        && (start.resourceVersion === undefined || Number(start.resourceVersion) < changedAt);
     queueMicrotask(() => {
         channel.onmessage({ type: "status", streamId: id, status: "connected", message: "Live updates connected" });
-        // streams/watch.rs opens from resourceVersion "0", then forwards object
-        // events. A new watch observes the current object, including gap changes.
-        if ((changed || deleted) && args.keys?.some((key) => key.resourceKind.kind === "Deployment")) {
+        if ((changed || deleted) && args.keys?.some((key) => key.resourceKind.kind === "Deployment" && replays(key))) {
             channel.onmessage({ type: "resourceChanged", streamId: id, target: { cluster: args.context, kind: "Deployment", name: "payments-api", namespace: "payments" }, action: deleted ? "deleted" : "applied" });
         }
     });
@@ -54,6 +70,10 @@ export function replayLiveData(script: LiveScript): void {
     if (script === "connected") failed = false;
     if (script === "update") changed = true;
     if (script === "delete") deleted = true;
+    if (script === "update" || script === "delete") {
+        revision += 1;
+        changedAt = revision + 1;
+    }
     if (script === "events") events = LIVE_EVENTS;
     if (script === "events-overflow") events = OVERFLOW_EVENTS;
     for (const watch of watches.values()) {

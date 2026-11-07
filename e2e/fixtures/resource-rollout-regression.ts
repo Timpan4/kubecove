@@ -53,7 +53,7 @@ export async function mountResourceRollout() {
 		list_resource_scope: async ({ requests }: { requests: ResourceListRequest[] }) => {
 			await readGate;
 			if (failing) throw new Error("Rollout list temporarily unavailable");
-			return { resources: snapshot(), completedRequests: requests, failures: [] };
+			return { resources: snapshot(), completedRequests: requests, resourceVersions: [], failures: [] };
 		},
 		list_resource_topology: async () => {
 			await readGate;

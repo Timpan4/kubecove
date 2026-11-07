@@ -159,6 +159,7 @@ impl Inspector {
                     Ok(result) => {
                         this.namespaces = result.namespaces;
                         this.rows = Rc::new(crate::model::PreparedRows::new(result.resources));
+                        this.live.versions = result.versions;
                         this.warnings = result.warnings;
                         this.load = Load::Ready;
                         true
@@ -295,6 +296,7 @@ impl Inspector {
                     match result {
                         Ok(result) => {
                             this.rows = Rc::new(crate::model::PreparedRows::new(result.resources));
+                            this.live.versions = result.versions;
                             this.namespaces = result.namespaces;
                             this.warnings = result.warnings;
                             this.load = Load::Ready;

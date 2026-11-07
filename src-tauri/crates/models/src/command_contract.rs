@@ -263,7 +263,7 @@ macro_rules! command_contract {
             ) with State<BackendCancellationRegistry>;
             both async fn start_resource_watch(
                 clusterContext: String,
-                keys: Vec<WatchResourceKey>,
+                keys: Vec<ResourceWatchStart>,
                 kubeconfigEnvVar: Option<String>,
             ) with Channel, State<StreamRegistry>, State<ClusterLiveStore>;
             both async fn refresh_resource_cache(

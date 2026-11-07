@@ -100,6 +100,27 @@
         { "action": "mockTiming", "control": { "operation": "release", "command": "start_resource_watch", "context": "mock-dev" } },
         { "action": "expectResourceStatus", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "status": "Degraded" }
       ]
+    },
+    {
+      "id": "mock-timing.watch-start-version",
+      "title": "A newly checked kind's watch starts at the list version of its rows and delivers a change made before it opened",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "panelControl", "control": "Collapse ownership map" },
+        { "action": "openKindPicker" },
+        { "action": "searchKindPicker", "value": "Deployment" },
+        { "action": "toggleKind", "kind": "Deployment", "checked": false },
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "start_resource_watch", "context": "mock-dev" } },
+        { "action": "toggleKind", "kind": "Deployment", "checked": true },
+        { "action": "closeKindPicker" },
+        { "action": "expectResourceStatus", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "status": "Healthy" },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "start_resource_watch", "context": "mock-dev" } },
+        { "action": "replayLiveData", "script": "update" },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "start_resource_watch", "context": "mock-dev" } },
+        { "action": "expectWatchStart", "kind": "Deployment", "resourceVersion": "1" },
+        { "action": "expectResourceStatus", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "status": "Degraded" }
+      ]
     }
   ]
 }

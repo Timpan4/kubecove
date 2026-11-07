@@ -79,10 +79,10 @@ pub use rbac::{
 pub use resource::{
     DeploymentRevision, GitOpsOwnerSummary, KubernetesYamlLintDiagnostic, KubernetesYamlLintResult,
     KubernetesYamlLintSeverity, KubernetesYamlLintStatusNote, OwnerReferenceSummary,
-    ResourceDetailsFull, ResourceHealth, ResourceListRequest, ResourceScopeFailure,
-    ResourceScopeResult, ResourceSummary, ResourceTopology, TopologyEdge, TopologyNode,
-    TopologyRelation, YamlApplyPreview, YamlApplyRequest, YamlApplyResult, YamlApplyTarget,
-    YamlEncoding, YamlViewMode,
+    ResourceDetailsFull, ResourceHealth, ResourceListRequest, ResourceListVersion,
+    ResourceScopeFailure, ResourceScopeResult, ResourceSummary, ResourceTopology, TopologyEdge,
+    TopologyNode, TopologyRelation, YamlApplyPreview, YamlApplyRequest, YamlApplyResult,
+    YamlApplyTarget, YamlEncoding, YamlViewMode,
 };
 pub use resource_actions::{
     ResourceActionContainer, ResourceActionEdits, ResourceActionEnv, ResourceActionKind,
@@ -96,8 +96,9 @@ pub use sessions::{
 };
 pub use streams::{
     AggregatedLogStreamRequest, CHANNEL_MESSAGE_ENVELOPE_BYTES, LogLineSource,
-    MAX_WEBSOCKET_MESSAGE_BYTES, PodLogStreamRequest, ResourceCacheRefreshResult, StreamMessage,
-    StreamStatus, WatchResourceKey, WatchResourceKind, WatchResourceTarget,
+    MAX_WEBSOCKET_MESSAGE_BYTES, PodLogStreamRequest, ResourceCacheRefreshResult,
+    ResourceWatchStart, StreamMessage, StreamStatus, WatchResourceKey, WatchResourceKind,
+    WatchResourceTarget,
 };
 pub use tunnel::{
     MAX_TUNNEL_FRAME_BYTES, MAX_TUNNEL_PAYLOAD_BYTES, decode_tunnel_frame, encode_tunnel_frame,

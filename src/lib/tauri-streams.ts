@@ -12,8 +12,8 @@ import type {
 	PodLogStreamRequest,
 	PortForwardRequest,
 	PortForwardSessionSummary,
+	ResourceWatchStart,
 	StreamMessage,
-	WatchResourceKey,
 } from "./types";
 
 export function createStreamChannel(
@@ -72,7 +72,7 @@ export function closePodExecChannel(
 export async function startResourceWatch(
 	client: TauriClient,
 	clusterContext: string,
-	keys: WatchResourceKey[],
+	keys: ResourceWatchStart[],
 	channel: Channel<StreamMessage>,
 	kubeconfigEnvVar?: string,
 ): Promise<string> {

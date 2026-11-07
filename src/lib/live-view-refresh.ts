@@ -7,6 +7,7 @@ import {
 	type ResourceScopeHandlers,
 	type ResourceScopeObserver,
 	type ResourceWatchState,
+	watchKeySignature,
 } from "./resource-watch";
 import type { TauriClient } from "./tauri-runtime";
 import type { createStreamChannel } from "./tauri-streams";
@@ -24,6 +25,12 @@ export interface LiveRead {
 	match: QueryMatch;
 	/** False marks the reads stale without refetching them, for reads the view is not showing. */
 	refetch?: boolean;
+	/**
+	 * The list version of the rows this read shows, by watch key signature, so a
+	 * watch starts at those rows. Null while the rows load. A key without an
+	 * entry has no version.
+	 */
+	versions?: ReadonlyMap<string, string | null>;
 }
 
 export interface LiveView {
@@ -161,6 +168,22 @@ function watchKeyMatches(key: WatchResourceKey, candidate: WatchResourceKey): bo
 	);
 }
 
+/**
+ * The version a watch on `key` starts at: the version every shown read it keeps
+ * fresh lists, null while one of them loads, or undefined when they have none
+ * or disagree. Starting at the oldest rows shown would need ordered versions,
+ * which Kubernetes does not promise.
+ */
+function startVersion(view: LiveView, key: WatchResourceKey): string | null | undefined {
+	const signature = watchKeySignature(key);
+	const shown = view.reads
+		.filter((read) => read.refetch !== false && read.keys.some((candidate) => watchKeyMatches(candidate, key)))
+		.map((read) => read.versions?.get(signature));
+	if (shown.includes(null)) return null;
+	const [first] = shown;
+	return shown.every((version) => version === first) ? first : undefined;
+}
+
 function watchGroup(key: WatchResourceKey): string {
 	const { group, apiVersion } = key.resourceKind;
 	return group ?? (apiVersion?.includes("/") ? apiVersion.slice(0, apiVersion.indexOf("/")) : "");
@@ -236,6 +259,7 @@ export function bindLiveView({
 			return failed ? messageFromError(failed.state.error) : null;
 		},
 		onState: (state) => onState({ ...state, reloadError: state.reloadError ?? null, warnings: state.warnings ?? [] }),
+		startVersion: (key) => startVersion(current, key),
 		onChange: (_event, key) => {
 			for (const slot of slots) if (keptFreshBy(slot.read, key)) slot.notify();
 		},

@@ -1,15 +1,22 @@
 //! Where a new resource watch starts. Failure modes, written before the code:
-//! 1. With no cached list the watch must still converge, so it starts at "0".
-//! 2. An event between the view's list and the watch start is lost unless the
-//!    watch starts at that list's version.
-//! 3. A 410 for the cached version must reset to "0" once, never retry the
-//!    expired cached version.
-//! 4. A dirty, evicted or dirtied-while-loading list must not hand its older
-//!    version to a new watch.
-//! 5. A watch must not start past the rows the view shows: while the view's
-//!    list loads, the watch waits for that load instead of a later one, and a
-//!    cancelled load starts the watch at "0".
+//! 1. Another reader refreshes the view's list key at a newer version, and the
+//!    view's watch starts there, skipping changes between the two lists.
+//! 2. A named namespace served from an all-namespace list reports a version
+//!    other than that list's.
+//! 3. A view without a version starts anywhere but "0".
+//! 4. A 410 at the view's version retries that expired version instead of
+//!    resetting to "0" once.
+//! 5. A view joins a shared watch that has already sent changes past the
+//!    view's rows, and those changes never reach it.
+//! 6. An empty start version reaches the API server.
+//!
+//! The watch starts at whatever version the caller passes, so modes 1 and 2
+//! are covered by reading through the store and starting at the version the
+//! read returned. A custom kind named like a built-in one is covered where the
+//! scope read pairs versions with requests, in `inspection` scope tests.
 use super::*;
+use crate::models::StreamMessage;
+use crate::runtime::Channel;
 use crate::{
     commands::{FixedClusterAccess, streams::StreamRegistry},
     test_support::stream_channel,
@@ -17,12 +24,11 @@ use crate::{
 use http::{Request, Response};
 use kube::client::Body;
 use kubecove_kube::commands::live_store::ListedResources;
-use serde_json::json;
+use serde_json::{Value, json};
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
 };
-use tokio::sync::oneshot;
 
 const CONTEXT: &str = "dev";
 
@@ -50,6 +56,19 @@ fn expired() -> Response<Body> {
         .unwrap()
 }
 
+fn modified_at(version: &str) -> Response<Body> {
+    let event = json!({
+        "type": "MODIFIED",
+        "object": {
+            "kind": "Pod", "apiVersion": "v1",
+            "metadata": { "name": "api", "namespace": "apps", "resourceVersion": version }
+        }
+    });
+    Response::builder()
+        .body(Body::from(format!("{event}\n").into_bytes()))
+        .unwrap()
+}
+
 fn requested_version(request: &Request<Body>) -> String {
     request
         .uri()
@@ -61,18 +80,51 @@ fn requested_version(request: &Request<Body>) -> String {
         .to_string()
 }
 
+fn pod_start(namespace: Option<&str>, version: Option<&str>) -> ResourceWatchStart {
+    serde_json::from_value(json!({
+        "resourceKind": { "kind": "Pod" },
+        "namespace": namespace,
+        "resourceVersion": version,
+    }))
+    .unwrap()
+}
+
+type Messages = Arc<Mutex<Vec<Value>>>;
+
+fn recording_channel(messages: &Messages) -> Channel<StreamMessage> {
+    let messages = Arc::clone(messages);
+    stream_channel(move |message| {
+        messages.lock().unwrap().push(message);
+        Ok(())
+    })
+}
+
+/// A Pod watch whose API server answers request `index` with `respond(index)`.
 struct PodWatch {
+    registry: StreamRegistry,
     versions: Arc<Mutex<Vec<String>>>,
     run: tokio::task::JoinHandle<()>,
 }
 
 impl PodWatch {
-    /// Starts a Pod watch whose API server answers each request with
-    /// `respond(index)`. The watch ends at its `reconnects`-th reconnect.
+    /// The watch ends at its `reconnects`-th reconnect.
     fn start(
-        store: &ClusterLiveStore,
-        namespace: Option<&str>,
+        start: ResourceWatchStart,
         reconnects: usize,
+        respond: fn(usize) -> Response<Body>,
+    ) -> Self {
+        let reconnected = AtomicUsize::new(0);
+        let channel = stream_channel(move |message| {
+            let ended = message["status"] == "reconnecting"
+                && reconnected.fetch_add(1, Ordering::SeqCst) + 1 == reconnects;
+            if ended { Err(()) } else { Ok(()) }
+        });
+        Self::with_channel(start, channel, respond)
+    }
+
+    fn with_channel(
+        start: ResourceWatchStart,
+        channel: Channel<StreamMessage>,
         respond: fn(usize) -> Response<Body>,
     ) -> Self {
         let versions = Arc::new(Mutex::new(Vec::new()));
@@ -83,28 +135,23 @@ impl PodWatch {
             let response = respond(versions.len() - 1);
             std::future::ready(Ok::<_, std::convert::Infallible>(response))
         });
-        let reconnected = AtomicUsize::new(0);
-        let channel = stream_channel(move |message| {
-            let ended = message["status"] == "reconnecting"
-                && reconnected.fetch_add(1, Ordering::SeqCst) + 1 == reconnects;
-            if ended { Err(()) } else { Ok(()) }
-        });
-        let key: WatchResourceKey = serde_json::from_value(
-            json!({ "resourceKind": { "kind": "Pod" }, "namespace": namespace }),
-        )
-        .unwrap();
         let registry = StreamRegistry::default();
-        let (_, broadcaster, _) =
-            registry.subscribe_resource("test", "source", CONTEXT, &key, channel);
+        let (_, broadcaster, started) =
+            registry.subscribe_resource("first", "source", CONTEXT, &start, channel);
+        assert!(started);
         let access = FixedClusterAccess::new(Client::new(service, "default")).access();
         let run = tokio::spawn(run_resource_watch(
             access,
             CONTEXT.into(),
-            key,
+            start,
             broadcaster,
-            store.clone(),
+            ClusterLiveStore::default(),
         ));
-        Self { versions, run }
+        Self {
+            registry,
+            versions,
+            run,
+        }
     }
 
     async fn versions(self) -> Vec<String> {
@@ -116,18 +163,6 @@ impl PodWatch {
     }
 }
 
-fn source_key() -> String {
-    let (service, _) = tower_test::mock::pair::<Request<Body>, Response<Body>>();
-    FixedClusterAccess::new(Client::new(service, "default"))
-        .access()
-        .source_key()
-        .to_string()
-}
-
-fn pod_kind() -> crate::models::WatchResourceKind {
-    serde_json::from_value(json!({ "kind": "Pod" })).unwrap()
-}
-
 fn listed(version: &str) -> ListedResources {
     ListedResources {
         rows: Vec::new(),
@@ -135,74 +170,55 @@ fn listed(version: &str) -> ListedResources {
     }
 }
 
-async fn cache_pods(store: &ClusterLiveStore, namespace: Option<&str>, version: &str) {
+/// Reads Pods through the store as a view does and returns the version of the
+/// rows the read was served. A fresh `version` list is loaded on a miss.
+async fn read_pods(store: &ClusterLiveStore, namespace: Option<&str>, version: &str) -> String {
     let list = listed(version);
     store
         .typed_resources(
-            source_key(),
+            "source".into(),
             CONTEXT.into(),
             "Pod".into(),
             namespace.map(Into::into),
             move || async move { Ok(list) },
         )
         .await
-        .unwrap();
+        .unwrap()
+        .resource_version
+        .expect("listed version")
 }
 
 #[tokio::test]
-async fn watch_starts_at_the_list_the_view_was_served() {
-    // (cached scope, watched namespace, expected start)
-    let cases = [
-        (None, Some("apps"), "0"),
-        (Some(Some("apps")), Some("apps"), "100"),
-        // A named namespace is served from a fresh all-namespace list.
-        (Some(None), Some("apps"), "100"),
-        (Some(None), None, "100"),
-        (Some(Some("other")), Some("apps"), "0"),
-    ];
-    for (cached, watched, expected) in cases {
-        let store = ClusterLiveStore::default();
-        if let Some(namespace) = cached {
-            cache_pods(&store, namespace, "100").await;
-        }
-        let versions = PodWatch::start(&store, watched, 1, |_| unavailable())
-            .versions()
-            .await;
-        assert_eq!(
-            versions,
-            [expected],
-            "cached {cached:?}, watched {watched:?}"
-        );
-    }
-}
+async fn watch_starts_at_the_version_of_the_rows_the_view_shows() {
+    let store = ClusterLiveStore::default();
+    let shown = read_pods(&store, Some("apps"), "100").await;
+    // Another reader's refresh replaces the same list key with a newer list.
+    store.mark_watch_resource_dirty(
+        "source",
+        CONTEXT,
+        &pod_start(None, None).key.resource_kind,
+        Some("apps"),
+    );
+    assert_eq!(read_pods(&store, Some("apps"), "200").await, "200");
+    // A named namespace is served from a fresh all-namespace list and carries its version.
+    let all = read_pods(&store, None, "300").await;
+    assert_eq!(read_pods(&store, Some("other"), "unused").await, all);
 
-#[tokio::test]
-async fn stale_lists_do_not_seed_a_watch() {
-    for evict in [false, true] {
-        let store = ClusterLiveStore::default();
-        cache_pods(&store, Some("apps"), "100").await;
-        let kind = pod_kind();
-        if evict {
-            let key = WatchResourceKey {
-                resource_kind: kind,
-                namespace: Some("apps".into()),
-            };
-            store.refresh_view(&source_key(), CONTEXT, &[key], &["apps".into()]);
-        } else {
-            store.mark_watch_resource_dirty(&source_key(), CONTEXT, &kind, Some("apps"));
-        }
-        let versions = PodWatch::start(&store, Some("apps"), 1, |_| unavailable())
+    for (start, expected) in [
+        (pod_start(Some("apps"), Some(&shown)), "100"),
+        (pod_start(Some("other"), Some(&all)), "300"),
+        (pod_start(Some("apps"), None), "0"),
+    ] {
+        let versions = PodWatch::start(start, 1, |_| unavailable())
             .versions()
             .await;
-        assert_eq!(versions, ["0"], "evict {evict}");
+        assert_eq!(versions, [expected]);
     }
 }
 
 #[tokio::test(start_paused = true)]
-async fn expired_cached_version_restarts_from_zero_once() {
-    let store = ClusterLiveStore::default();
-    cache_pods(&store, Some("apps"), "100").await;
-    let versions = PodWatch::start(&store, Some("apps"), 2, |index| {
+async fn expired_start_version_restarts_from_zero_once() {
+    let versions = PodWatch::start(pod_start(Some("apps"), Some("100")), 2, |index| {
         if index == 0 { expired() } else { unavailable() }
     })
     .versions()
@@ -210,58 +226,82 @@ async fn expired_cached_version_restarts_from_zero_once() {
     assert_eq!(versions, ["100", "0"]);
 }
 
-/// A view's list that is still loading when its watch starts.
-struct PendingList {
-    release: oneshot::Sender<()>,
-    read: tokio::task::JoinHandle<()>,
+fn resyncs(messages: &Messages) -> usize {
+    messages
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|message| message["action"] == "resync")
+        .count()
 }
 
-impl PendingList {
-    async fn start(store: &ClusterLiveStore, version: &'static str) -> Self {
-        let (release, gate) = oneshot::channel::<()>();
-        let reader = store.clone();
-        let read = tokio::spawn(async move {
-            let _ = reader
-                .typed_resources(
-                    source_key(),
-                    CONTEXT.into(),
-                    "Pod".into(),
-                    Some("apps".into()),
-                    move || async move {
-                        gate.await.unwrap();
-                        Ok(listed(version))
-                    },
-                )
-                .await;
-        });
-        // Let the read register its load before the watch looks it up.
-        tokio::task::yield_now().await;
-        Self { release, read }
-    }
+/// Starts a watch at "100" and waits until its first view receives a message
+/// of `kind`, so later joiners see the position that message left.
+async fn watch_until(kind: &'static str, respond: fn(usize) -> Response<Body>) -> PodWatch {
+    let (seen, wait_seen) = tokio::sync::oneshot::channel();
+    let seen = Mutex::new(Some(seen));
+    let channel = stream_channel(move |message| {
+        if message["type"] == kind {
+            seen.lock().unwrap().take().map(|sender| sender.send(()));
+        }
+        assert_ne!(
+            message["action"], "resync",
+            "the starting view is at the watch's version"
+        );
+        Ok(())
+    });
+    let watch = PodWatch::with_channel(pod_start(Some("apps"), Some("100")), channel, respond);
+    wait_seen.await.unwrap();
+    watch
+}
+
+fn join(watch: &PodWatch, stream: &str, version: Option<&str>) -> usize {
+    let messages: Messages = Arc::default();
+    let (_, _, started) = watch.registry.subscribe_resource(
+        stream,
+        "source",
+        CONTEXT,
+        &pod_start(Some("apps"), version),
+        recording_channel(&messages),
+    );
+    assert!(!started, "{stream} joins the running watch");
+    resyncs(&messages)
 }
 
 #[tokio::test]
-async fn watch_waits_for_the_list_in_flight() {
-    // How the in-flight list ends: released clean, dirtied first, or abandoned.
-    for (outcome, expected) in [("clean", "300"), ("dirty", "0"), ("abandoned", "0")] {
-        let store = ClusterLiveStore::default();
-        let list = PendingList::start(&store, "300").await;
-        let watch = PodWatch::start(&store, Some("apps"), 1, |_| unavailable());
-        for _ in 0..3 {
-            tokio::task::yield_now().await;
+async fn a_view_joining_a_watch_past_its_rows_relists_once() {
+    let watch = watch_until("resourceChanged", |index| {
+        if index == 0 {
+            modified_at("150")
+        } else {
+            unavailable()
         }
-        assert!(
-            watch.versions.lock().unwrap().is_empty(),
-            "watch must wait for the list"
-        );
-        match outcome {
-            "dirty" => {
-                store.mark_watch_resource_dirty(&source_key(), CONTEXT, &pod_kind(), Some("apps"));
-                list.release.send(()).unwrap();
-            }
-            "abandoned" => list.read.abort(),
-            _ => list.release.send(()).unwrap(),
-        }
-        assert_eq!(watch.versions().await, [expected], "{outcome}");
-    }
+    })
+    .await;
+    assert_eq!(join(&watch, "behind", Some("100")), 1);
+    assert_eq!(join(&watch, "current", Some("150")), 0);
+    assert_eq!(join(&watch, "unversioned", None), 0);
+    watch.run.abort();
+}
+
+#[tokio::test]
+async fn after_a_410_reset_every_versioned_joiner_relists() {
+    let watch = watch_until(
+        "error",
+        |index| {
+            if index == 0 { expired() } else { unavailable() }
+        },
+    )
+    .await;
+    // The reset replayed objects to the first view only.
+    assert_eq!(join(&watch, "same-start", Some("100")), 1);
+    watch.run.abort();
+}
+
+#[test]
+fn empty_start_version_is_rejected() {
+    let error =
+        super::super::validate_resource_watch_scope(CONTEXT, &[pod_start(Some("apps"), Some(" "))])
+            .unwrap_err();
+    assert_eq!(error.kind, crate::models::AppErrorKind::Validation);
 }

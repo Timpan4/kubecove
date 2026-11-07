@@ -10,12 +10,12 @@ use crate::{
         BackendCancellationRegistry, ClusterAccess, ClusterLiveStore, FiniteRead, diagnostic_field,
     },
     models::{
-        AppError, DiscoveredResourceKind, ResourceListRequest, ResourceScopeFailure,
-        ResourceSummary,
+        AppError, DiscoveredResourceKind, ResourceListRequest, ResourceListVersion,
+        ResourceScopeFailure, ResourceSummary,
     },
 };
 use futures_util::future::join_all;
-use kubecove_kube::commands::live_store::ListedResources;
+use kubecove_kube::commands::live_store::{ListSnapshot, ListedResources};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
@@ -29,6 +29,7 @@ use rows::SharedRows;
 pub struct ResourceScopeResponse {
     resources: SharedRows,
     completed_requests: Vec<ResourceListRequest>,
+    resource_versions: Vec<ResourceListVersion>,
     failures: Vec<ResourceScopeFailure>,
 }
 
@@ -273,11 +274,21 @@ async fn resource_scope_result_from(
     let results = join_all(futures).await;
     let mut batches = Vec::new();
     let mut completed_requests = Vec::new();
+    let mut resource_versions = Vec::new();
     let mut failures = Vec::new();
     for (request, fetched) in results {
         match fetched {
-            Ok(rows) => {
+            Ok(ListSnapshot {
+                rows,
+                resource_version,
+            }) => {
                 batches.push(rows);
+                if let Some(resource_version) = resource_version {
+                    resource_versions.push(ResourceListVersion {
+                        request: request.clone(),
+                        resource_version,
+                    });
+                }
                 completed_requests.push(request);
             }
             Err(error) if error.kind == AppErrorKind::Forbidden => {
@@ -301,6 +312,7 @@ async fn resource_scope_result_from(
     Ok(ResourceScopeResponse {
         resources: SharedRows::new(batches, &index),
         completed_requests,
+        resource_versions,
         failures,
     })
 }
@@ -313,7 +325,7 @@ async fn cached_scope_resources<F, Fut, Listed>(
     kind: ResourceScopeKind,
     namespace: Option<String>,
     loader: F,
-) -> Result<Arc<Vec<ResourceSummary>>, AppError>
+) -> Result<ListSnapshot, AppError>
 where
     F: FnOnce() -> Fut + Send + 'static,
     Fut: std::future::Future<Output = Result<Listed, AppError>> + Send + 'static,
@@ -464,7 +476,7 @@ mod tests {
             .await
             .expect("cancelled scope must not block a later request")
             .unwrap();
-            assert!(rows.is_empty());
+            assert!(rows.rows.is_empty());
         }
     }
 
@@ -530,6 +542,100 @@ mod tests {
             )
             .await
             .expect("completed cache load");
+    }
+
+    // Failure modes: a custom kind named like a built-in kind reports the
+    // built-in list's version; a named namespace served from an all-namespace
+    // list reports another version than that list's.
+    #[tokio::test]
+    async fn each_request_reports_the_version_of_the_list_its_rows_came_from() {
+        let custom = DiscoveredResourceKind {
+            group: "example.com".into(),
+            version: "v1".into(),
+            api_version: "example.com/v1".into(),
+            kind: "Deployment".into(),
+            plural: "deployments".into(),
+            namespaced: true,
+            short_names: Vec::new(),
+        };
+        let store = ClusterLiveStore::default();
+        let listed = |version: &str| ListedResources {
+            rows: Vec::new(),
+            resource_version: Some(version.into()),
+        };
+        let (typed, all, dynamic) = (listed("100"), listed("200"), listed("300"));
+        let source = FIXED_SOURCE_KEY.to_string();
+        store
+            .typed_resources(
+                source.clone(),
+                "test".into(),
+                "Deployment".into(),
+                Some("apps".into()),
+                || async { Ok(typed) },
+            )
+            .await
+            .unwrap();
+        store
+            .typed_resources(
+                source.clone(),
+                "test".into(),
+                "Pod".into(),
+                None,
+                || async { Ok(all) },
+            )
+            .await
+            .unwrap();
+        store
+            .dynamic_resources(
+                source.clone(),
+                "test".into(),
+                custom.clone(),
+                Some("apps".into()),
+                || async { Ok(dynamic) },
+            )
+            .await
+            .unwrap();
+        store
+            .flux_ownership_index(source, "test".into(), || async {
+                Ok(crate::commands::helpers::FluxOwnershipIndex::default())
+            })
+            .await
+            .unwrap();
+        let custom_request = ResourceListRequest {
+            kind: None,
+            resource_kind: Some(custom),
+            namespace: Some("apps".into()),
+        };
+        let response = resource_scope_result_from(
+            &unused_cluster().access(),
+            "test".into(),
+            vec![pod_request(Some("apps")), custom_request],
+            store,
+        )
+        .await
+        .unwrap();
+        let mut versions: Vec<_> = response
+            .resource_versions
+            .iter()
+            .map(|entry| {
+                let kind = entry.request.kind.clone().or_else(|| {
+                    entry
+                        .request
+                        .resource_kind
+                        .as_ref()
+                        .map(|kind| kind.api_version.clone())
+                });
+                (kind.unwrap(), entry.resource_version.as_str())
+            })
+            .collect();
+        versions.sort();
+        assert_eq!(
+            versions,
+            [
+                ("Pod".to_string(), "200"),
+                ("example.com/v1".to_string(), "300")
+            ]
+        );
     }
 
     #[tokio::test]

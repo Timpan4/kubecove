@@ -688,6 +688,9 @@ fn run_scenario(
         if step["action"] == "replayLiveData" {
             backend.replay_live(string(step, "script"));
         }
+        if step["action"] == "expectWatchStart" {
+            backend.expect_watch_start(string(step, "kind"), step["resourceVersion"].as_str());
+        }
         if step["action"] == "replayPageReads" {
             backend.replay_page_reads(string(step, "phase"));
             cx.run_until_parked();

@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{
     commands::{ClusterAccess, ClusterLiveStore},
-    models::{StreamStatus, WatchResourceKey, WatchResourceTarget},
+    models::{ResourceWatchStart, StreamStatus, WatchResourceKey, WatchResourceTarget},
 };
 use futures_util::StreamExt;
 use k8s_openapi::api::core::v1::Event;
@@ -87,6 +87,14 @@ fn reset_resource_version_for_api_error(resource_version: &mut String, error: &k
     }
 }
 
+/// A watch reset to "0" replays every object to its current subscribers, so a
+/// later subscriber can no longer rely on its own version.
+fn forget_position_after_reset(broadcaster: &StreamBroadcaster, resource_version: &str) {
+    if resource_version == "0" {
+        broadcaster.forget_position();
+    }
+}
+
 fn dynamic_event_target(
     cluster_context: &str,
     kind: &str,
@@ -137,10 +145,14 @@ fn scoped_dynamic_api(
 pub(super) async fn run_resource_watch(
     access: ClusterAccess,
     cluster_context: String,
-    key: WatchResourceKey,
+    start: ResourceWatchStart,
     broadcaster: StreamBroadcaster,
     live_store: ClusterLiveStore,
 ) {
+    let ResourceWatchStart {
+        key,
+        resource_version,
+    } = start;
     let normalized_kind = match normalize_resource_kind(&key.resource_kind) {
         Ok(kind) => kind,
         Err(err) => {
@@ -157,9 +169,11 @@ pub(super) async fn run_resource_watch(
     };
     let namespaced = normalized_kind.namespaced.unwrap_or(true);
     let kind_label = normalized_kind.kind.clone();
-    // Chosen once, at the first connection: later connections resume from the
-    // last event, and a 410 resets to "0" rather than to the expired list.
-    let mut start_version = None;
+    // The first connection starts at the version of the rows the caller shows,
+    // so it delivers every change after them and replays nothing. Later
+    // connections resume from the last event, and a 410 resets to "0".
+    let mut resource_version = resource_version.unwrap_or_else(|| "0".to_string());
+    let resource_version = &mut resource_version;
 
     'watch: loop {
         let client = match access.stream_client(&cluster_context).await {
@@ -171,23 +185,6 @@ pub(super) async fn run_resource_watch(
                 tokio::time::sleep(Duration::from_secs(5)).await;
                 continue;
             }
-        };
-        // Looked up after the client exists, so the view's list has usually
-        // reached the store. Starting at that list's version skips the replay
-        // of every existing object that a watch at "0" sends first.
-        let resource_version = match &mut start_version {
-            Some(version) => version,
-            None => start_version.insert(
-                live_store
-                    .watch_start_version(
-                        access.source_key(),
-                        &cluster_context,
-                        &normalized_kind,
-                        key.namespace.as_deref(),
-                    )
-                    .await
-                    .unwrap_or_else(|| "0".to_string()),
-            ),
         };
         let api = scoped_dynamic_api(client, &key, namespaced, &api_resource);
         let params = WatchParams::default().timeout(WATCH_TIMEOUT_SECS);
@@ -220,15 +217,18 @@ pub(super) async fn run_resource_watch(
                             if let Some(message) =
                                 reset_resource_version_for_error(resource_version, &event)
                             {
+                                forget_position_after_reset(&broadcaster, resource_version);
                                 if !broadcaster.error(message) {
                                     return;
                                 }
                                 break;
                             }
-                            if let Some(next_resource_version) = watch_resource_version(&event) {
-                                *resource_version = next_resource_version;
+                            let event_version = watch_resource_version(&event);
+                            if let Some(next_resource_version) = &event_version {
+                                resource_version.clone_from(next_resource_version);
                             }
                             if matches!(event, WatchEvent::Bookmark(_)) {
+                                broadcaster.advance(event_version);
                                 continue;
                             }
                             let target =
@@ -239,7 +239,11 @@ pub(super) async fn run_resource_watch(
                                 &normalized_kind,
                                 target.namespace.as_deref(),
                             );
-                            if !broadcaster.resource_changed(target, event_action(&event)) {
+                            if !broadcaster.resource_changed(
+                                target,
+                                event_action(&event),
+                                event_version,
+                            ) {
                                 return;
                             }
                         }
@@ -249,6 +253,7 @@ pub(super) async fn run_resource_watch(
                                 return;
                             }
                             reset_resource_version_for_api_error(resource_version, &err);
+                            forget_position_after_reset(&broadcaster, resource_version);
                             if !broadcaster.error(err.to_string()) {
                                 return;
                             }
@@ -263,6 +268,7 @@ pub(super) async fn run_resource_watch(
                     return;
                 }
                 reset_resource_version_for_api_error(resource_version, &err);
+                forget_position_after_reset(&broadcaster, resource_version);
                 if !broadcaster.error(err.to_string()) {
                     return;
                 }

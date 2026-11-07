@@ -10,6 +10,13 @@ declare global {
 export async function timingAction(page: Page, step: Step) {
     switch (step.action) {
         case "expectTopologyDenied": await page.getByRole("alert").getByText("KubeCove does not have permission for this", { exact: true }).waitFor(); break;
+        case "expectWatchStart": {
+            const started = () => page.evaluate(`import('/src/lib/tauri-dev-mock-live.ts').then(m => m.lastWatchStart(${JSON.stringify(step.kind)}))`) as Promise<{ resourceVersion?: string } | null>;
+            await waitFor(`${step.kind} watch start`, async () => (await started()) !== null);
+            const version = (await started())?.resourceVersion ?? null;
+            if (version !== step.resourceVersion) throw new Error(`${step.kind} watch started at ${version}, expected ${step.resourceVersion}`);
+            break;
+        }
         case "mockTiming":
             await page.evaluate("import('/src/lib/tauri-dev-mock-timing.ts').then(m => { globalThis.__kubecoveTiming = m.mockTiming; })");
             if (step.control.operation === "fail" && step.control.kind === "forbidden") await page.clock.install();

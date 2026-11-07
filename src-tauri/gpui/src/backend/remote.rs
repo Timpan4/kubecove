@@ -368,6 +368,7 @@ impl Backend for DesktopBackend {
                 namespaces: vec![],
                 resources: vec![],
                 warnings: vec![],
+                versions: Default::default(),
             };
             for namespace in scopes {
                 let next = inventory(
@@ -414,7 +415,7 @@ impl Backend for DesktopBackend {
         scope: Scope,
         key: WatchResourceKey,
         recycled: Vec<ResourceSummary>,
-    ) -> Read<Vec<ResourceSummary>> {
+    ) -> Read<KindRows> {
         if !self.selected() {
             return self.local.kind_resources(scope, key, recycled);
         }
@@ -427,9 +428,14 @@ impl Backend for DesktopBackend {
                 json!({"clusterContext":scope.context,"kind":kind.kind,"namespace":key.namespace}),
             )
         };
+        // `list_resources` returns rows without their list version, so a
+        // remote watch of them starts at "0".
         self.local.read(async move {
             let rows = read.await?;
-            Ok(super::live_data::reuse_row_buffer(recycled, rows))
+            Ok(KindRows {
+                rows: super::live_data::reuse_row_buffer(recycled, rows),
+                resource_version: None,
+            })
         })
     }
     fn topology(&self, scope: Scope) -> Read<ResourceTopology> {
@@ -477,9 +483,13 @@ impl Backend for DesktopBackend {
             return self.local.watch(target);
         }
         match target {
-            WatchTarget::Resource { scope, key } => self.stream(
+            WatchTarget::Resource {
+                scope,
+                key,
+                resource_version,
+            } => self.stream(
                 "start_resource_watch",
-                json!({"clusterContext":scope.context,"keys":[key]}),
+                json!({"clusterContext":scope.context,"keys":[ResourceWatchStart { key: *key, resource_version }]}),
             ),
             WatchTarget::Events(resource) => {
                 self.stream("start_resource_event_watch", resource_args(&resource))
