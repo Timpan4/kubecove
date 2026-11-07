@@ -5,10 +5,8 @@ import { argoApplicationSummary, argoApplicationYaml, argoMockHandlers, customRe
 import { type MockArgs, type MockHandler, type MockResult, readMockArgs } from "./tauri-dev-mock-contract";
 import { beforeCoverageRead, coverageHelm, coverageIncidents, coverageLogs, coverageRbac, coverageSessions, coverageStopForward, coverageTopology, coverageYamlPreview, registerCoverageLogStream } from "./tauri-dev-mock-coverage";
 import {
-	argoApps,
 	deploymentRevisions,
 	dockerResources,
-	helmReleases,
 	mockContexts,
 	namespaces,
 	networkIngressTargets,
@@ -20,6 +18,7 @@ import {
 	resources,
 	source,
 } from "./tauri-dev-mock-data";
+import { argoApps, helmReleases } from "./tauri-dev-mock-gitops-data";
 import { withDetailStatusFixture } from "./tauri-dev-mock-detail-status";
 import { evictedWorkerName, evictedWorkerStatus } from "./tauri-dev-mock-incidents";
 import { addKubeconfigPathsMock, reorderKubeconfigPathsMock } from "./tauri-dev-mock-kubeconfig";

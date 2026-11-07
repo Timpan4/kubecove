@@ -1,6 +1,7 @@
 import type { ArgoConnectionProfile, ArgoServerEndpoint } from "./gitops-types";
 import type { MockArgs, MockHandler } from "./tauri-dev-mock-contract";
-import { argoApps, argoManagedResourceRefs, fluxHelmKind, fluxKind, fluxResources, kinds, now, resources, source } from "./tauri-dev-mock-data";
+import { kinds, now, resources, source } from "./tauri-dev-mock-data";
+import { argoApps, argoManagedResourceRefs, fluxHelmKind, fluxKind, fluxResources } from "./tauri-dev-mock-gitops-data";
 import type { ArgoApplicationDetails, ArgoApplicationSetDetails, ArgoApplicationSetSummary, ArgoAppProjectDetails, ArgoAppProjectSummary, ArgoManagedResource, DiscoveredResourceKind, FluxDetectionSummary, FluxResourceDetails, ResourceSummary } from "./types";
 
 type YamlFactory = (kind: string, name: string, namespace?: string | null, apiVersion?: string) => string;
