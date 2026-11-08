@@ -147,6 +147,13 @@
 			{Math.round(graph.layoutMs)} ms / {viewportMode} viewport / {nodeDetail}
 			nodes / {edgeMode} {edgeType} edges
 		</span>
+		<button
+			type="button"
+			class="topology-spike-run"
+			onclick={() => void window.__topologySpikeRun?.()}
+		>
+			Run benchmark
+		</button>
 	</div>
 	<div class="topology-spike-canvas">
 		<SvelteFlow

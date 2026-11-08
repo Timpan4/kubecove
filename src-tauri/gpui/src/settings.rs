@@ -49,10 +49,6 @@ pub enum Control {
     Section,
 }
 
-/// Why a row is disabled in the native client.
-const BROWSER_TOOL: &str =
-    "Measures the web frontend's DOM. It does not apply to the native client.";
-
 pub struct Row {
     pub category: Category,
     pub title: &'static str,
@@ -285,9 +281,9 @@ pub const ROWS: &[Row] = &[
     row(
         C::Diagnostics,
         "Topology spike",
-        "Opens the Svelte topology benchmark harness with synthetic 4,000-node data.",
+        "Opens the native topology benchmark harness with synthetic 4,000-node data.",
         Button("Open 4k LOD"),
-        Some(BROWSER_TOOL),
+        None,
     ),
     row(
         C::Diagnostics,

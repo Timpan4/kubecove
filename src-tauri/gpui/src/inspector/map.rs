@@ -7,6 +7,7 @@ mod cards;
 mod focus;
 mod links;
 mod paint;
+pub(super) mod spike;
 mod viewport;
 use paint::PreparedEdges;
 

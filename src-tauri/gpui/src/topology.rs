@@ -6,6 +6,7 @@ mod layout;
 mod source;
 pub use source::Source;
 pub mod node;
+pub mod synthetic;
 
 use kubecove_lib::models::{ResourceSummary, ResourceTopology, TopologyNode};
 use layout::{CANVAS_PADDING, Graph, NODE_HEIGHT, NODE_WIDTH, STANDALONE_NODE_WIDTH};

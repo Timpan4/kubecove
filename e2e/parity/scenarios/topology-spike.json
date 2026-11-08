@@ -1,0 +1,25 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "settings-diagnostics.topology-spike-harness",
+      "title": "The developer topology harness opens the synthetic 4,000-node graph with the 4k LOD options and reports a benchmark run",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Diagnostics" },
+        { "action": "clickSettingsButton", "label": "Open 4k LOD" },
+        { "action": "expectTopologySpikeText", "value": "4000 nodes / 3200 edges / layout " },
+        { "action": "expectTopologySpikeText", "value": " ms / focused viewport / compact nodes / selected straight edges" },
+        { "action": "runTopologySpike" },
+        { "action": "expectTopologySpikeText", "value": "\"nodeCount\": 4000" },
+        { "action": "expectTopologySpikeText", "value": "\"edgeCount\": 3200" },
+        { "action": "expectTopologySpikeText", "value": "\"selectionChurnMs\": " },
+        { "action": "expectTopologySpikeText", "value": "\"viewportOpsMs\": " },
+        { "action": "expectTopologySpikeText", "value": "\"fitViewMs\": " },
+        { "action": "expectTopologySpikeText", "value": "\"renderedNodeCount\": " },
+        { "action": "expectTopologySpikeText", "value": "\"renderedEdgeCount\": 0" }
+      ]
+    }
+  ]
+}

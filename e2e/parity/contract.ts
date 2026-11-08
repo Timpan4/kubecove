@@ -52,6 +52,7 @@ export const ACTIONS = [
     "cancelYamlEdit",
     "revealSecretValue", "hideSecretValue", "expectSecretValue", "expectYamlLens", "refreshLatencyReport", "clearLatencyReport", "expectLatencyEmpty", "expectLatencyTiming", "openDocumentation", "expectDocumentationRequest", "copyLatencyReport", "expectLatencyReportCopy", "updateStatusControl", "expectUpdateControl",
     "expectViewTiming", "copyInteractions", "clearInteractions", "expectInteractionCopy", "typeSettingsField",
+    "runTopologySpike", "expectTopologySpikeText",
     "configurePreset", "presetControl",
     "replaySessions", "confirmExecLeave",
     "configureForward", "forwardControl", "expectForwardState", "execControl", "expectExecState",
@@ -269,6 +270,8 @@ function step(value: unknown): Step {
         case "expectLatencyReportCopy": return { action: item.action, contains: string(item.contains) };
         case "expectViewTiming": return { action: item.action, view: oneOf(["resources"], item.view, "a timed view") };
         case "copyInteractions": case "clearInteractions": return { action: item.action };
+        case "runTopologySpike": return { action: item.action };
+        case "expectTopologySpikeText": return { action: item.action, value: string(item.value) };
         case "expectInteractionCopy":
             if (item.contains === undefined && item.excludes === undefined) throw new Error("Expected contains or excludes");
             return {

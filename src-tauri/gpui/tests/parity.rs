@@ -71,6 +71,8 @@ mod sidebar_live;
 mod terminal;
 #[path = "parity/topology_metrics.rs"]
 mod topology_metrics;
+#[path = "parity/topology_spike.rs"]
+mod topology_spike;
 #[path = "parity/workspace.rs"]
 mod workspace;
 #[path = "parity/workspace_editing.rs"]
@@ -217,6 +219,7 @@ fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
         || feedback::act(window, cx, step)
         || incident_diagnostics::act(window, cx, step)
         || diagnostics::act(window, cx, step)
+        || topology_spike::act(window, cx, step)
         || delivery::act(window, cx, step)
         || yaml_folds::act(window, cx, step))
     {

@@ -216,6 +216,8 @@ pub struct Inspector {
     warnings: Vec<String>,
     detail: Detail,
     map: map::MapState,
+    /// The developer topology harness, while open.
+    spike: Option<Box<map::spike::Spike>>,
     /// The map panel's collapse choice. `None` follows "Show ownership map by default".
     map_open: Option<bool>,
     table_open: bool,
@@ -361,6 +363,7 @@ impl Inspector {
             warnings: vec![],
             detail: Detail::Closed,
             map: map::MapState::new(),
+            spike: None,
             map_open: None,
             table_open: true,
             detail_size: None,
@@ -619,6 +622,9 @@ impl Inspector {
 impl Render for Inspector {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _profile = crate::frame_profile::scope("inspector", "render");
+        if let Some(spike) = self.topology_spike_view(cx) {
+            return spike;
+        }
         let started = std::time::Instant::now();
         self.loading.begin_frame(cx.background_executor().now());
         self.sync_argo_scope(window, cx);

@@ -18,15 +18,15 @@ const CULL_MARGIN: f32 = 2. + 3. * 10.;
 /// xyflow's node click distance, `nodeClickDistance = 1` in
 /// `node_modules/@xyflow/svelte/dist/lib/container/SvelteFlow/SvelteFlow.svelte`.
 /// A press that moves farther than this is a pan, not a click.
-const NODE_CLICK_DISTANCE: f32 = 1.;
+pub(super) const NODE_CLICK_DISTANCE: f32 = 1.;
 /// Zoom per pixel of wheel delta, from `wheelDelta` in
 /// `node_modules/@xyflow/system/dist/esm/index.js`: `-deltaY * 0.002`, applied as `2 ** delta`
 /// by d3-zoom. A wheel reports positive `delta.y` when it turns up, so the sign is kept.
-const WHEEL_PIXEL_RATE: f32 = 0.002;
+pub(super) const WHEEL_PIXEL_RATE: f32 = 0.002;
 /// The same `wheelDelta` branch for `deltaMode === 1`, where the delta counts lines.
-const WHEEL_LINE_RATE: f32 = 0.05;
+pub(super) const WHEEL_LINE_RATE: f32 = 0.05;
 /// The same `wheelDelta` factor for Ctrl with the wheel on macOS.
-const MAC_CTRL_WHEEL_FACTOR: f32 = 10.;
+pub(super) const MAC_CTRL_WHEEL_FACTOR: f32 = 10.;
 /// `OwnershipMap.svelte`: graphs below this many nodes and edges stay fully
 /// mounted so Tab reaches offscreen nodes. Larger graphs render visible nodes only.
 const VISIBLE_ELEMENT_RENDER_THRESHOLD: usize = 120;

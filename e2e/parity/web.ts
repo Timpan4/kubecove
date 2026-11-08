@@ -11,6 +11,7 @@ import { startCodeCoverage } from "./web-coverage-map";
 import { detailStatusAction } from "./web-detail-status";
 import { detailsAction } from "./web-details";
 import { diagnosticsAction } from "./web-diagnostics";
+import { topologySpikeAction } from "./web-topology-spike";
 import { feedbackAction } from "./web-feedback";
 import { incidentDiagnosticsAction } from "./web-incident-diagnostics";
 import { kubeconfigSettingsAction } from "./web-kubeconfig-settings";
@@ -84,6 +85,7 @@ export async function action(page: Page, step: Step) {
             await incidentDiagnosticsAction(page, step); break;
         case "expectViewTiming": case "copyInteractions": case "clearInteractions": case "expectInteractionCopy": case "typeSettingsField":
             await diagnosticsAction(page, step); break;
+        case "runTopologySpike": case "expectTopologySpikeText": await topologySpikeAction(page, step); break;
         case "expectWorkspaceExport": {
             await loadSettingsMocks(page);
             const content = await (await page.waitForFunction(() => window.paritySettingsMocks.workspaceExportMock())).jsonValue();

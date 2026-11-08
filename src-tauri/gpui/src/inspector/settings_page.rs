@@ -279,6 +279,8 @@ impl Inspector {
                     self.interaction_switch(row, cx)
                 } else if row.title == "Interaction report" {
                     self.interaction_report(row, cx)
+                } else if row.title == "Topology spike" {
+                    self.topology_spike_control(row, cx)
                 } else if row.unavailable.is_none() && row.control != Control::Section {
                     self.preference_control(row, cx)
                 } else if row.title == "Resource group order" {

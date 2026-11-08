@@ -150,6 +150,8 @@ export type Step =
     | { action: "copyInteractions" | "clearInteractions" }
     | { action: "expectInteractionCopy"; contains?: string; excludes?: string }
     | { action: "typeSettingsField"; field: "Server token"; value: string }
+    | { action: "runTopologySpike" }
+    | { action: "expectTopologySpikeText"; value: string }
     | { action: "updateStatusControl"; control: "Open" | "Check" | "Later" | "Escape" }
     | { action: "expectUpdateControl"; label: UpdateControlLabel }
     | { action: "configurePreset"; label: string; context: string; namespace: string; service: string; remote: string; local: string }
