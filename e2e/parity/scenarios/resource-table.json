@@ -55,6 +55,28 @@
       ]
     },
     {
+      "id": "resources.ownerref-inherited-owner",
+      "title": "A row owned only through its ownerRef groups and filters under its parent's GitOps owner, and follows a live owner change",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "checkout-worker" },
+        { "action": "expectResourceGroup", "label": "Owned by Argo CD: shop (partial evidence)", "expanded": true },
+        { "action": "expectResource", "kind": "Pod", "name": "checkout-worker-6bfbd7d5dd-9qj2f", "namespace": "payments" },
+        { "action": "expectResourceCell", "kind": "Pod", "name": "checkout-worker-6bfbd7d5dd-9qj2f", "namespace": "payments", "column": "Owner", "text": "shop" },
+        { "action": "chooseGitOpsOwner", "owner": "Owned by Argo CD: shop (partial evidence)" },
+        { "action": "expectResource", "kind": "Pod", "name": "checkout-worker-6bfbd7d5dd-9qj2f", "namespace": "payments" },
+        { "action": "chooseGitOpsOwner", "owner": "All GitOps owners" },
+        { "action": "replayLiveData", "script": "ownership" },
+        { "action": "expectResourceGroup", "label": "Owned by Flux Kustomization: flux-system/platform", "expanded": true },
+        { "action": "expectResourceCell", "kind": "Pod", "name": "checkout-worker-6bfbd7d5dd-9qj2f", "namespace": "payments", "column": "Owner", "text": "flux-system/platform" },
+        { "action": "chooseGitOpsOwner", "owner": "Owned by Argo CD: shop (partial evidence)" },
+        { "action": "expectNoResource", "kind": "Pod", "name": "checkout-worker-6bfbd7d5dd-9qj2f", "namespace": "payments" },
+        { "action": "chooseGitOpsOwner", "owner": "Owned by Flux Kustomization: flux-system/platform" },
+        { "action": "expectResource", "kind": "Pod", "name": "checkout-worker-6bfbd7d5dd-9qj2f", "namespace": "payments" },
+        { "action": "chooseGitOpsOwner", "owner": "All GitOps owners" }
+      ]
+    },
+    {
       "id": "resources.table-row-open",
       "title": "Clicking any cell of a resource row opens its detail",
       "steps": [

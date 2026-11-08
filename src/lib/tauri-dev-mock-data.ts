@@ -159,7 +159,9 @@ export const resources: ResourceSummary[] = [
 	res("PersistentVolumeClaim", "checkout-media-cache", "payments-production-eu-west-2", "healthy", "Bound", "Bound", 0, "argocd", { gitOpsOwner: { provider: "argo", kind: "Application", name: "payments-production-eu-west-2-checkout-media", namespace: "argocd", confidence: "metadata" } }),
 	res("Secret", "payments-api-secrets", "payments", "unknown", undefined, "Redacted", 0, "shop"),
 	res("Deployment", "checkout-worker", "payments", "restarted", "2/2", "Synced", 4, "shop"),
-	res("Pod", "checkout-worker-6bfbd7d5dd-9qj2f", "payments", "restarted", "1/1", "Running", 4, "shop"),
+	// No GitOps evidence of its own: it inherits checkout-worker's owner through ownerRef.
+	// No other payments row is named checkout-worker, so the reference resolves to the Deployment.
+	res("Pod", "checkout-worker-6bfbd7d5dd-9qj2f", "payments", "restarted", "1/1", "Running", 4, "none", { ownerRef: "checkout-worker" }),
 	res("Deployment", "todo-web", "todo", "healthy", "1/1", "Synced", 0, "todo"),
 	res("Pod", "todo-web-54b7f7bdbc-5g7dz", "todo", "healthy", "1/1", "Running", 0, "todo"),
 	res("Service", "todo-web", "todo", "healthy", undefined, "ClusterIP", 0, "todo"),

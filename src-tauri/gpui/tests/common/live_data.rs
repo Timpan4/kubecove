@@ -30,6 +30,8 @@ pub(super) struct ScriptState {
     /// A scripted rollout gives payments-api the "Rolling out" lifecycle, which shows activity.
     rolling: bool,
     deleted: bool,
+    /// The "ownership" script moves checkout-worker to a Flux owner. Its ownerRef-only Pod follows it.
+    reowned: bool,
     events: Option<EventSet>,
     /// Scripted changes so far. The mock list version is one higher.
     revision: u64,
@@ -39,6 +41,8 @@ pub(super) struct ScriptState {
     starts: Vec<(String, Option<String>)>,
     pub(super) watches: Vec<(WatchTarget, mpsc::UnboundedSender<StreamMessage>)>,
 }
+/// The Deployment the "ownership" script moves to another GitOps owner.
+const REOWNED: &str = "checkout-worker";
 #[derive(Clone, Copy)]
 enum EventSet {
     Live,
@@ -223,7 +227,7 @@ impl Fixture {
         );
     }
     pub fn replay_live(&self, script: &str) {
-        if matches!(script, "update" | "rollout" | "delete") {
+        if matches!(script, "update" | "rollout" | "delete" | "ownership") {
             self.timing.invalidate("mock-dev");
         }
         let _span = kubecove_gpui::frame_profile::scope("fixture", "send");
@@ -232,10 +236,11 @@ impl Fixture {
             "burst" | "burst-reset" => state.burst = script == "burst",
             "failed" => state.failed = true,
             "connected" => state.failed = false,
-            "update" | "rollout" | "delete" => {
+            "update" | "rollout" | "delete" | "ownership" => {
                 state.changed |= script == "update";
                 state.rolling |= script == "rollout";
                 state.deleted |= script == "delete";
+                state.reowned |= script == "ownership";
                 state.revision += 1;
                 state.changed_at = Some(state.revision + 1);
             }
@@ -280,7 +285,14 @@ impl Fixture {
                 cluster: "mock-dev".into(),
                 kind: "Deployment".into(),
                 namespace: Some("payments".into()),
-                name: Some("payments-api".into()),
+                name: Some(
+                    if script == "ownership" {
+                        REOWNED
+                    } else {
+                        "payments-api"
+                    }
+                    .into(),
+                ),
             };
             let message = match script {
                 "connected" | "reconnecting" | "forbidden" => StreamMessage::Status {
@@ -301,7 +313,7 @@ impl Fixture {
                         action: "applied".into(),
                     }
                 }
-                "update" | "rollout" | "delete" | "failed" if matches!(watch, WatchTarget::Resource { key, .. } if key.resource_kind.kind == "Deployment") => {
+                "update" | "rollout" | "delete" | "ownership" | "failed" if matches!(watch, WatchTarget::Resource { key, .. } if key.resource_kind.kind == "Deployment") => {
                     StreamMessage::ResourceChanged {
                         stream_id: "fixture".into(),
                         target,
@@ -361,16 +373,25 @@ impl Fixture {
                 && kind == "Deployment"
                 && replays(version)
             {
-                let _ = sender.send(StreamMessage::ResourceChanged {
-                    stream_id: "fixture".into(),
-                    target: WatchResourceTarget {
-                        cluster: context,
-                        kind: "Deployment".into(),
-                        namespace: Some("payments".into()),
-                        name: Some("payments-api".into()),
-                    },
-                    action: if state.deleted { "deleted" } else { "applied" }.into(),
-                });
+                let changed = [
+                    (state.changed || state.rolling || state.deleted).then_some((
+                        "payments-api",
+                        if state.deleted { "deleted" } else { "applied" },
+                    )),
+                    state.reowned.then_some((REOWNED, "applied")),
+                ];
+                for (name, action) in changed.into_iter().flatten() {
+                    let _ = sender.send(StreamMessage::ResourceChanged {
+                        stream_id: "fixture".into(),
+                        target: WatchResourceTarget {
+                            cluster: context.clone(),
+                            kind: "Deployment".into(),
+                            namespace: Some("payments".into()),
+                            name: Some(name.into()),
+                        },
+                        action: action.into(),
+                    });
+                }
             }
             state.starts.extend(start);
             state.watches.push((target, sender.clone()));
@@ -384,6 +405,21 @@ impl Fixture {
                 if state.burst {
                     row.health_assessment.state =
                         kubecove_lib::models::HealthAssessmentState::Degraded;
+                }
+                if state.reowned
+                    && row.kind == "Deployment"
+                    && row.namespace.as_deref() == Some("payments")
+                    && row.name == REOWNED
+                {
+                    row.git_ops_owner = Some(kubecove_lib::models::GitOpsOwnerSummary {
+                        provider: "flux".into(),
+                        kind: "Kustomization".into(),
+                        name: "platform".into(),
+                        namespace: Some("flux-system".into()),
+                        confidence: "inventory".into(),
+                        provenance: "flux-kustomization-inventory".into(),
+                        partial: false,
+                    });
                 }
                 if row.kind == "Deployment"
                     && row.namespace.as_deref() == Some("payments")

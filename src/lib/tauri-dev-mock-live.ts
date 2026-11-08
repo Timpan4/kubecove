@@ -7,7 +7,7 @@ export const LIVE_EVENTS: ResourceEventSummary[] = [
     { eventType: "Normal", reason: "LiveOlder", message: "Older scripted event", count: 1, lastSeen: "2m", lastSeenAt: "2026-06-29T10:01:00Z", source: "parity", namespace: "payments" },
     { eventType: "Normal", reason: "LiveNewest", message: "Newest scripted event", count: 1, lastSeen: "1m", lastSeenAt: "2026-06-29T10:02:00Z", source: "parity", namespace: "payments" },
 ];
-export const LIVE_SCRIPTS = ["update", "rollout", "delete", "reconnecting", "connected", "events", "events-overflow", "forbidden", "failed"] as const;
+export const LIVE_SCRIPTS = ["update", "rollout", "delete", "ownership", "reconnecting", "connected", "events", "events-overflow", "forbidden", "failed"] as const;
 export type LiveScript = typeof LIVE_SCRIPTS[number];
 type Watch = { id: string; channel: Pick<Channel<StreamMessage>, "onmessage">; context: string; keys?: ResourceWatchStart[]; kind?: string; name?: string; namespace?: string | null };
 const watches = new Map<string, Watch>();
@@ -17,6 +17,10 @@ let changed = false;
 let deleted = false;
 // A scripted rollout gives payments-api the "Rolling out" lifecycle, which shows activity.
 let rolling = false;
+// The "ownership" script moves checkout-worker to a Flux owner. Its ownerRef-only Pod follows it.
+let reowned = false;
+const REOWNED = "checkout-worker";
+const FLUX_OWNER = { provider: "flux", kind: "Kustomization", name: "platform", namespace: "flux-system", confidence: "inventory", provenance: "flux-kustomization-inventory", partial: false };
 let events: ResourceEventSummary[] | undefined;
 let failed = false;
 // Scripted changes so far; the mock list version is one higher, as in tests/common/live_data.rs.
@@ -44,8 +48,12 @@ export function registerMockWatch(args: Omit<Watch, "id" | "channel"> & { channe
         && (start.resourceVersion === undefined || Number(start.resourceVersion) < changedAt);
     queueMicrotask(() => {
         channel.onmessage({ type: "status", streamId: id, status: "connected", message: "Live updates connected" });
-        if ((changed || rolling || deleted) && args.keys?.some((key) => key.resourceKind.kind === "Deployment" && replays(key))) {
+        if (!args.keys?.some((key) => key.resourceKind.kind === "Deployment" && replays(key))) return;
+        if (changed || rolling || deleted) {
             channel.onmessage({ type: "resourceChanged", streamId: id, target: { cluster: args.context, kind: "Deployment", name: "payments-api", namespace: "payments" }, action: deleted ? "deleted" : "applied" });
+        }
+        if (reowned) {
+            channel.onmessage({ type: "resourceChanged", streamId: id, target: { cluster: args.context, kind: "Deployment", name: REOWNED, namespace: "payments" }, action: "applied" });
         }
     });
     return id;
@@ -61,6 +69,7 @@ export function emitMockKindChange(kind: string): void {
 export function liveResources(rows: ResourceSummary[]): ResourceSummary[] {
     if (failed) throw new Error("Scripted reload failure");
     return rows.filter((row) => !(deleted && target(row))).map((row) => {
+        if (reowned && row.kind === "Deployment" && row.namespace === "payments" && row.name === REOWNED) return { ...row, gitOpsOwner: FLUX_OWNER };
         if (!target(row)) return row;
         if (rolling) return { ...row, status: "Rolling out" };
         return changed && row.healthAssessment ? { ...row, status: "Progressing", healthAssessment: { ...row.healthAssessment, state: "degraded" } } : row;
@@ -71,8 +80,9 @@ export function liveEvents(kind?: string, name?: string): ResourceEventSummary[]
     return kind === "Deployment" && name === "payments-api" ? events : undefined;
 }
 export function replayLiveData(script: LiveScript): void {
-    const rowChange = script === "update" || script === "rollout" || script === "delete";
+    const rowChange = script === "update" || script === "rollout" || script === "delete" || script === "ownership";
     if (rowChange) mockTiming.invalidate("mock-dev");
+    if (script === "ownership") reowned = true;
     if (script === "failed") failed = true;
     if (script === "connected") failed = false;
     if (script === "update") changed = true;
@@ -92,7 +102,7 @@ export function replayLiveData(script: LiveScript): void {
         } else if ((script === "events" || script === "events-overflow") && watch.name === "payments-api" && watch.kind === "Deployment") {
             watch.channel.onmessage({ type: "resourceEventsChanged", streamId, target: { cluster: watch.context, kind: "Deployment", name: watch.name, namespace: watch.namespace }, action: "applied" });
         } else if (script !== "events" && script !== "events-overflow" && watch.keys?.some((key) => key.resourceKind.kind === "Deployment" && (!key.namespace || key.namespace === "payments"))) {
-            watch.channel.onmessage({ type: "resourceChanged", streamId, target: { cluster: watch.context, kind: "Deployment", name: "payments-api", namespace: "payments" }, action: script === "delete" ? "deleted" : "applied" });
+            watch.channel.onmessage({ type: "resourceChanged", streamId, target: { cluster: watch.context, kind: "Deployment", name: script === "ownership" ? REOWNED : "payments-api", namespace: "payments" }, action: script === "delete" ? "deleted" : "applied" });
         }
     }
 }
