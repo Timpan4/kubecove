@@ -7,6 +7,8 @@ type LoadResult = Result<serde_json::Value, AppError>;
 #[derive(Clone, Default)]
 pub(super) struct Timing {
     rules: std::sync::Arc<Mutex<HashMap<(String, String), Rule>>>,
+    /// Fails every read, as the desktop backend's remote route does once the selected server drops.
+    refusal: std::sync::Arc<Mutex<Option<AppError>>>,
 }
 
 #[derive(Default)]
@@ -37,6 +39,9 @@ impl Timing {
             gate.await?;
             read.await
         })
+    }
+    pub(super) fn refuse(&self, error: AppError) {
+        *self.refusal.lock().unwrap() = Some(error);
     }
     pub(super) fn invalidate(&self, context: &str) {
         for ((command, rule_context), rule) in self.rules.lock().unwrap().iter_mut() {
@@ -124,6 +129,9 @@ impl Timing {
         key: &str,
         result: T,
     ) -> Read<T> {
+        if let Some(error) = self.refusal.lock().unwrap().clone() {
+            return Box::pin(async move { Err(error) });
+        }
         let credential = self.gate("credential", context, "", ());
         let timing = self.clone();
         let command = command.to_owned();

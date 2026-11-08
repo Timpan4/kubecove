@@ -146,6 +146,11 @@ impl Fixture {
     pub fn drop_remote_connection(&self) {
         if let Some(remote) = self.settings.remote.lock().unwrap().as_mut() {
             remote.connected = false;
+            // kubecove_host::remote's refusal for a connection that is no longer active.
+            self.timing.refuse(AppError::new(
+                "connect to a remote KubeCove server first",
+                AppErrorKind::Session,
+            ));
         }
     }
     #[allow(dead_code)]

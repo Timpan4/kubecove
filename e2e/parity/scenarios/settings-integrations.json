@@ -198,6 +198,29 @@
       ]
     },
     {
+      "id": "settings-remote.disconnected-selected-resources",
+      "title": "Resources re-read after a selected remote drops shows the read error instead of the rows from before the drop",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "expectResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "fillSettingsField", "field": "Server token", "value": "parity-controlled-credential" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "expectSettingsText", "value": "Connected to http://127.0.0.1:43117." },
+        { "action": "closeSettings" },
+        { "action": "dropRemoteConnection" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "expectSettingsText", "value": "http://127.0.0.1:43117 is selected but disconnected. Cluster commands will not fall back to this laptop." },
+        { "action": "closeSettings" },
+        { "action": "openResources" },
+        { "action": "expectFriendlyError", "title": "Failed to load resources", "summary": "The original technical error is still available below.", "next": "Copy the detail if this needs debugging." },
+        { "action": "expectNoResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" }
+      ]
+    },
+    {
       "id": "settings-updates.startup-dismissal-and-recheck",
       "title": "Startup offers a new version once, a dismissed version stays dismissed after client recreation, and Check again updates the status",
       "steps": [
