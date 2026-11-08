@@ -118,6 +118,13 @@ function subscribe<T>(onMessage: (message: T) => void): Channel<T> {
 	return channel;
 }
 
+const DISCONNECTED_REMOTE = "The selected remote KubeCove server is disconnected. Reconnect or explicitly disconnect to use a local cluster.";
+
+/** Refuses a command while the selected remote is disconnected, as the remote client does, so nothing falls back to this laptop. */
+export function assertSelectedRemoteConnected(): void {
+	if (desktopRemoteSummary && !desktopRemoteSummary.connected) throw new Error(DISCONNECTED_REMOTE);
+}
+
 const desktopRemoteClient: TauriClient = {
 	createChannel: subscribe,
 	invoke: async <Result, Args extends object = object>(
@@ -126,7 +133,7 @@ const desktopRemoteClient: TauriClient = {
 		_options?: InvokeOptions,
 	): Promise<Result> => {
 		if (!desktopRemoteSummary?.connected) {
-			throw new Error("The selected remote KubeCove server is disconnected. Reconnect or explicitly disconnect to use a local cluster.");
+			throw new Error(DISCONNECTED_REMOTE);
 		}
 		if (command === "save_workspace_export_json" || command === "pick_workspace_import_json") {
 			if (!args) return invoke<Result>(command);
