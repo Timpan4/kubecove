@@ -8,6 +8,7 @@ use kubecove_lib::models::{
 
 /// The host's sessions and the kubeconfig source they must come from to be
 /// shown, like the web's `settings.kubeconfigSourceKey`.
+#[derive(PartialEq)]
 pub struct LiveSessions {
     pub port_forwards: Vec<PortForwardSessionSummary>,
     pub exec_sessions: Vec<PodExecSessionSummary>,

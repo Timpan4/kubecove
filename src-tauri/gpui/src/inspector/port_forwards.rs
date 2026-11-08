@@ -136,8 +136,19 @@ impl Inspector {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
                 if Rc::ptr_eq(&this.sessions.request, &request) {
+                    // The 3 s poll usually reads the same list. Redrawing the window for it
+                    // costs a full Inspector render, which at 10k rows dominates idle CPU.
+                    let unchanged = match (&this.sessions.load, &result) {
+                        (Some(Ok(old)), Ok(new)) => old == new,
+                        (Some(Err(old)), Err(new)) => {
+                            old.kind == new.kind && old.message == new.message
+                        }
+                        _ => false,
+                    };
                     this.sessions.load = Some(result);
-                    cx.notify();
+                    if !unchanged {
+                        cx.notify();
+                    }
                 }
             });
         }));

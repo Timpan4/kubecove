@@ -30,7 +30,7 @@ pub enum PortForwardSessionStatus {
     Stopped,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PortForwardSessionSummary {
     pub id: String,
@@ -105,7 +105,7 @@ impl PodExecSessionStatus {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PodExecSessionSummary {
     pub id: String,
