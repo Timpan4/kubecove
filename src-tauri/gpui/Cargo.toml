@@ -12,6 +12,10 @@ publish = false
 [features]
 frame-profile = []
 
+# `scripts/e2e-parity.ts` sets this cfg with -C instrument-coverage when PARITY_COVERAGE=1.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kubecove_coverage)"] }
+
 [dependencies]
 gpui-kit = { version = "=0.9.0", default-features = false, features = ["component", "assets", "tree-sitter-yaml"] }
 kubecove = { path = "..", default-features = false, features = ["mcp-host"] }

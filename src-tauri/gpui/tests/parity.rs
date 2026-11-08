@@ -6,6 +6,8 @@
 mod adapters;
 #[path = "parity/argo.rs"]
 mod argo;
+#[path = "parity/code_coverage.rs"]
+mod code_coverage;
 mod common;
 #[path = "parity/coverage.rs"]
 mod coverage;
@@ -306,9 +308,11 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
         cx.update(gpui_kit::init);
         // As the web driver does, record a failing scenario and run the rest.
         let mut window = None;
+        code_coverage::reset();
         let outcome = std::panic::catch_unwind(AssertUnwindSafe(|| {
             run_scenario(cx, scenario, &artifacts, &fixture, &mut window)
         }));
+        code_coverage::write(&artifacts, index);
         let duration = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
         match outcome {
             Ok(()) => results.push(json!({"id": id, "status": "passed", "durationMs": duration})),
