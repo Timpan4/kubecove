@@ -14,6 +14,7 @@ mod page_reads;
 mod resource_fixture;
 mod session_controls;
 mod settings_integrations;
+mod settings_remote;
 mod timing;
 
 use detail_tabs::DetailTabs;
@@ -283,12 +284,30 @@ impl Backend for Fixture {
     fn connect_remote(
         &self,
         url: String,
-        _token: String,
+        token: String,
     ) -> Read<kubecove_gpui::backend::RemoteConnectionSummary> {
-        self.connect_remote_read(url)
+        self.connect_remote_read(url, token)
     }
     fn disconnect_remote(&self) -> Read<()> {
         self.disconnect_remote_read()
+    }
+    fn remote_sign_in(&self) -> Read<Option<kubecove_gpui::backend::RemoteConnectionSummary>> {
+        self.remote_sign_in_read()
+    }
+    fn remote_cancel_sign_in(&self) -> Read<()> {
+        self.remote_cancel_sign_in_read()
+    }
+    fn remote_sign_in_link(&self) -> Read<Option<String>> {
+        self.remote_sign_in_link_read()
+    }
+    fn remote_start_new_session(&self) -> Read<kubecove_gpui::backend::RemoteConnectionSummary> {
+        self.remote_start_new_session_read()
+    }
+    fn remote_sign_out(&self) -> Read<kubecove_gpui::backend::RemoteConnectionSummary> {
+        self.remote_sign_out_read()
+    }
+    fn remote_failures(&self) -> u64 {
+        self.remote_failures_read()
     }
     fn pick_kubeconfig_paths(&self) -> Read<KubeconfigSourcesSummary> {
         self.pick_kubeconfig_read()

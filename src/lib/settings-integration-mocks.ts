@@ -5,18 +5,22 @@ import applicationWorkspace from "./overview-application-workspace.json";
 import compareWorkspace from "./overview-compare-workspace.json";
 import unavailableWorkspace from "./overview-unavailable-workspace.json";
 import { setAppUpdatesEnabledForTests } from "./release-channel";
-import type { RemoteConnectionSummary } from "./remote-runtime";
+import type { RemoteAuthMode, RemoteConnectionSummary, RemoteSessionState } from "./remote-runtime";
 import workspace from "./settings-integration-workspace.json";
 
-export type SettingsScript = "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "choose-application-workspace" | "choose-compare-workspace" | "choose-last-export" | "cancel-dialog" | "no-update" | "invalid-signature" | "update-available";
+export type SettingsScript = "oidc-server" | "oidc-browser-waits" | "oidc-memory-only" | "access-server" | "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "choose-application-workspace" | "choose-compare-workspace" | "choose-last-export" | "cancel-dialog" | "no-update" | "invalid-signature" | "update-available";
 type UpdateScript = "no-update" | "invalid-signature" | "update-available";
 /** Page-session storage, so a reloaded page keeps the update script its scenario configured. */
 const UPDATE_SCRIPT_KEY = "kubecove-parity-update-script";
 let selected: RemoteConnectionSummary | null = null;
+let remoteScript: SettingsScript | null = null;
+/** Servers this app holds an OIDC sign-in for. */
+const signIns = new Set<string>();
 let dialogPath: string | null = null;
 let workspaceFile: string | null = null;
 let exportedWorkspace = "";
 export function configureSettingsMock(script: SettingsScript): void {
+	remoteScript = script;
 	if (script === "choose-kubeconfig") dialogPath = "/controlled/parity.config";
 	if (script === "cancel-dialog") dialogPath = null;
     workspaceFile = script === "choose-workspace" ? JSON.stringify(workspace) : null;
@@ -64,14 +68,61 @@ export function saveWorkspaceMock(content: string): boolean { exportedWorkspace 
 export function workspaceExportMock(): string { return exportedWorkspace; }
 export function selectedDialogPath(): string | null { return dialogPath; }
 export function remoteMockStatus(): RemoteConnectionSummary | null { return selected; }
-export function connectRemoteMock(serverUrl: string): RemoteConnectionSummary {
-	selected = { serverUrl, serverVersion: "0.13.0", sessionGraceSeconds: 300, connected: true, credentialStore: "encryptedFile" };
+function liveSummary(serverUrl: string, authMode: RemoteAuthMode): RemoteConnectionSummary {
+	return { serverUrl, serverVersion: "0.13.0", sessionGraceSeconds: 300, connected: true, credentialStore: "encryptedFile", authMode, sessionState: "connected", signInMemoryOnly: false };
+}
+/** An empty token selects the server by the sign-in mode the configured script gives it (ADR 0031). */
+export function connectRemoteMock(serverUrl: string, token = ""): RemoteConnectionSummary {
+	if (token.trim()) {
+		selected = liveSummary(serverUrl, "token");
+		return selected;
+	}
+	if (remoteScript === "access-server") throw new Error("Desktop sign-in for Cloudflare Access is not available yet.");
+	if (!remoteScript?.startsWith("oidc-")) throw new Error("This server uses a server token. Enter the token to connect.");
+	const held = signIns.has(serverUrl);
+	selected = held
+		? { ...liveSummary(serverUrl, "oidc"), signInMemoryOnly: remoteScript === "oidc-memory-only" }
+		: { ...liveSummary(serverUrl, "oidc"), connected: false, credentialStore: null, sessionState: "signInRequired" };
 	return selected;
 }
 export function disconnectRemoteMock(): undefined { selected = null; }
-/** The selected server stops answering: it stays selected, and its commands fail as disconnected. */
+export function signInRemoteMock(): RemoteConnectionSummary | null {
+	if (!selected) return null;
+	if (remoteScript === "oidc-browser-waits") {
+		selected = { ...selected, connected: false, sessionState: "waitingForBrowser" };
+	} else {
+		signIns.add(selected.serverUrl);
+		selected = { ...selected, connected: true, sessionState: "connected", signInMemoryOnly: remoteScript === "oidc-memory-only" };
+	}
+	return selected;
+}
+export function cancelSignInRemoteMock(): undefined {
+	if (selected?.sessionState === "waitingForBrowser") selected = { ...selected, sessionState: "signInRequired" };
+}
+export function signInLinkRemoteMock(): string | null {
+	return selected?.sessionState === "waitingForBrowser" ? "http://127.0.0.1:43117/api/v1/oidc/native/start?redirect_uri=http%3A%2F%2F127.0.0.1%3A49152%2Fkubecove%2Fcallback" : null;
+}
+export function startNewSessionRemoteMock(): RemoteConnectionSummary {
+	if (!selected) throw new Error("Select a remote KubeCove server first.");
+	const held = selected.authMode === "token" || signIns.has(selected.serverUrl);
+	selected = { ...selected, connected: held, sessionState: held ? "connected" : "signInExpired" };
+	return selected;
+}
+export function signOutRemoteMock(): RemoteConnectionSummary {
+	if (!selected) throw new Error("Select a server that uses single sign-on first.");
+	signIns.delete(selected.serverUrl);
+	selected = { ...selected, connected: false, sessionState: "signInRequired", signInMemoryOnly: false };
+	return selected;
+}
+/** The state a server signal leaves the selected remote in. Commands fail unless it is still reconnecting. */
+export function remoteSignalMock(sessionState: RemoteSessionState): void {
+	if (!selected) return;
+	if (sessionState === "signInExpired") signIns.delete(selected.serverUrl);
+	selected = { ...selected, connected: sessionState === "reconnecting", sessionState };
+}
+/** The selected server stops answering: it stays selected, its commands fail as disconnected, and the grace window has elapsed. */
 export function dropRemoteConnectionMock(): void {
-	if (selected) selected = { ...selected, connected: false };
+	remoteSignalMock("sessionExpired");
 }
 // The dev entry awaits this module before mounting the app, so a reloaded page's startup check sees the stored update API.
 const storedScript = storedUpdateScript();

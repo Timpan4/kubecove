@@ -103,6 +103,27 @@ pub trait Backend: Send + Sync + 'static {
     fn connect_remote(&self, _url: String, _token: String) -> Read<RemoteConnectionSummary> {
         settings_integrations::unavailable("Remote host adapter unavailable")
     }
+    /// Signs in to the selected OIDC server through the system browser (ADR 0031).
+    fn remote_sign_in(&self) -> Read<Option<RemoteConnectionSummary>> {
+        settings_integrations::unavailable("Remote host adapter unavailable")
+    }
+    fn remote_cancel_sign_in(&self) -> Read<()> {
+        Box::pin(async { Ok(()) })
+    }
+    fn remote_sign_in_link(&self) -> Read<Option<String>> {
+        Box::pin(async { Ok(None) })
+    }
+    fn remote_start_new_session(&self) -> Read<RemoteConnectionSummary> {
+        settings_integrations::unavailable("Remote host adapter unavailable")
+    }
+    fn remote_sign_out(&self) -> Read<RemoteConnectionSummary> {
+        settings_integrations::unavailable("Remote host adapter unavailable")
+    }
+    /// Changes whenever a remote call fails, so the client reads the session
+    /// state again and shows its notice.
+    fn remote_failures(&self) -> u64 {
+        0
+    }
     fn disconnect_remote(&self) -> Read<()> {
         Box::pin(async { Ok(()) })
     }

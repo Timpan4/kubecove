@@ -1,6 +1,7 @@
 mod client;
 mod http;
 mod models;
+mod notice;
 mod session;
 mod sign_in;
 mod store;
@@ -13,6 +14,7 @@ mod session_tests;
 mod test_server;
 
 pub use models::{RemoteAuthMode, RemoteConnectionSummary, RemoteSessionState};
+pub use notice::{RemoteNotice, RemoteNoticeAction, SIGN_IN_MEMORY_ONLY};
 pub use sign_in::BrowserLauncher;
 pub use store::RemoteConnectionStore;
 

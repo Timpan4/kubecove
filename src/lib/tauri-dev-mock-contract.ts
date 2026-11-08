@@ -30,6 +30,7 @@ export interface MockArgs {
 	resourceKind?: DiscoveredResourceKind | FluxResourceKind;
     keys?: import("./types").ResourceWatchStart[];
 	serverUrl?: string;
+	token?: string;
 	show?: boolean;
 	storageName?: string;
     path?: string;

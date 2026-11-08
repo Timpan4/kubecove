@@ -11,6 +11,20 @@ async function invoke<T>(command: string, args?: InvokeArgs): Promise<T> {
 	return nativeInvoke<T>(command, args);
 }
 
+/** How the selected server authenticates this desktop (ADR 0031). */
+export type RemoteAuthMode = "token" | "oidc";
+
+/** The selected remote's session state, mirroring `kubecove_host::remote::RemoteSessionState`. */
+export type RemoteSessionState =
+	| "connected"
+	| "signInRequired"
+	| "connecting"
+	| "waitingForBrowser"
+	| "reconnecting"
+	| "sessionEnded"
+	| "signInExpired"
+	| "sessionExpired";
+
 export interface RemoteConnectionSummary {
 	serverUrl: string;
 	serverVersion: string;
@@ -18,6 +32,10 @@ export interface RemoteConnectionSummary {
 	connected: boolean;
 	/** The server's credential store kind, or null when the server does not report one. */
 	credentialStore: string | null;
+	authMode: RemoteAuthMode;
+	sessionState: RemoteSessionState;
+	/** Native credential storage is unavailable, so the sign-in lasts until the app closes. */
+	signInMemoryOnly: boolean;
 }
 
 type RemoteChannel = {
@@ -41,6 +59,47 @@ export async function connectDesktopRemote(
 		token,
 	});
 	setRemoteState(summary);
+	return summary;
+}
+
+/**
+ * Signs in through the system browser. The call returns when the sign-in finishes or is
+ * cancelled, so the notice shows the wait until then.
+ */
+export async function signInDesktopRemote(): Promise<RemoteConnectionSummary | null> {
+	if (desktopRemoteSummary) setRemoteState({ ...desktopRemoteSummary, sessionState: "waitingForBrowser", connected: false });
+	try {
+		const summary = await invoke<RemoteConnectionSummary | null>("remote_sign_in");
+		if (summary) setRemoteState(summary);
+		else clearRemoteState();
+		return summary;
+	} catch (error) {
+		await initializeDesktopRemote().catch(() => null);
+		throw error;
+	}
+}
+
+export async function cancelDesktopRemoteSignIn(): Promise<void> {
+	await invoke("remote_cancel_sign_in");
+	await initializeDesktopRemote();
+}
+
+/** The pending sign-in's browser link. It carries no secret. */
+export async function desktopRemoteSignInLink(): Promise<string | null> {
+	return invoke<string | null>("remote_sign_in_link");
+}
+
+export async function startNewDesktopRemoteSession(): Promise<RemoteConnectionSummary> {
+	const summary = await invoke<RemoteConnectionSummary>("remote_start_new_session");
+	setRemoteState(summary);
+	return summary;
+}
+
+/** Revokes the sign-in at the server and forgets it here. The server stays selected. */
+export async function signOutDesktopRemote(): Promise<RemoteConnectionSummary> {
+	const summary = await invoke<RemoteConnectionSummary>("remote_sign_out");
+	setRemoteState(summary);
+	if (!summary.connected) clearRemoteChannels();
 	return summary;
 }
 

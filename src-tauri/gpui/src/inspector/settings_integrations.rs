@@ -1,4 +1,5 @@
 //! Remote sign-in and update status use only the typed host seam.
+use super::remote_notice;
 use super::{
     Inspector, Page,
     controls::{Variant, button},
@@ -12,15 +13,21 @@ use crate::{
 };
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::{Context, Div, Entity, SharedString, Task, Window, div, prelude::*, px};
+use kubecove_host::remote::{RemoteAuthMode, SIGN_IN_MEMORY_ONLY};
 
 pub(super) struct Integrations {
     _subscriptions: Vec<gpui_kit::Subscription>,
     url: Entity<InputState>,
     token: Entity<InputState>,
     pub(super) remote: Option<RemoteConnectionSummary>,
-    remote_error: Option<String>,
-    remote_busy: bool,
-    remote_task: Option<Task<()>>,
+    pub(super) remote_error: Option<String>,
+    pub(super) remote_busy: bool,
+    pub(super) remote_task: Option<Task<()>>,
+    /// The browser sign-in, which runs until it finishes or is cancelled.
+    pub(super) sign_in_task: Option<Task<()>>,
+    pub(super) status_task: Option<Task<()>>,
+    /// The backend's failed remote calls when the status was last read.
+    pub(super) failures_seen: u64,
     /// Set by a runtime change. The web resets every query then, and its Resources query reads
     /// again only when the page next mounts. The scope read that the change starts also feeds
     /// the sidebar here, so Resources reads again on its next entry instead of keeping rows a
@@ -54,6 +61,9 @@ impl Integrations {
             remote_error: None,
             remote_busy: false,
             remote_task: None,
+            sign_in_task: None,
+            status_task: None,
+            failures_seen: 0,
             scope_reread: false,
             update: UpdateStatus::Idle,
             checked_at: None,
@@ -99,7 +109,8 @@ impl Inspector {
         let state = &mut self.settings.integrations;
         let url = state.url.read(cx).value().to_string();
         let token = state.token.read(cx).value().to_string();
-        if url.trim().is_empty() || token.trim().is_empty() {
+        // An empty token selects the server by its sign-in mode (ADR 0031).
+        if url.trim().is_empty() {
             return;
         }
         let read = self.backend.connect_remote(url, token);
@@ -126,7 +137,11 @@ impl Inspector {
         }));
         cx.notify();
     }
-    fn disconnect_settings_remote(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn disconnect_settings_remote(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.settings.integrations.remote_busy || !self.can_leave(cx) {
             return;
         }
@@ -151,7 +166,7 @@ impl Inspector {
         }));
         cx.notify();
     }
-    fn runtime_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn runtime_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.feedback = Default::default();
         // The open workspace survives a runtime change, as the web's selected workspace does.
         let active = self.launcher.active;
@@ -195,7 +210,8 @@ impl Inspector {
         let state = &self.settings.integrations;
         let mut body = div().flex().flex_col().gap(px(12.)).w(px(436.));
         if let Some(remote) = &state.remote {
-            let status = if remote.connected {
+            let live = remote_notice::is_live(remote);
+            let status = if live {
                 format!("Connected to {}.", remote.server_url)
             } else {
                 format!(
@@ -210,7 +226,7 @@ impl Inspector {
                     .aria_label(status),
             );
             // The web shows the forwarding note and server details only while connected.
-            if remote.connected {
+            if live {
                 body = body
                     .child(ui::muted(ui::xs("Kubernetes requests and port forwards run through this server. Forwarded ports listen only on 127.0.0.1 on this laptop.")).id("remote-forward-explanation").test_support().aria_label("Forwarded ports listen only on 127.0.0.1 on this laptop."))
                     .child(ui::muted(ui::xs(format!(
@@ -218,11 +234,39 @@ impl Inspector {
                         remote.server_version, remote.session_grace_seconds
                     ))).id("remote-server-session").test_support().aria_label(format!("Server {}. Session grace: {} seconds.", remote.server_version, remote.session_grace_seconds)));
             }
-            body = body.child(action("Disconnect", state.remote_busy).on_click(
-                cx.listener(|this, _, window, cx| this.disconnect_settings_remote(window, cx)),
-            ));
+            if let Some(notice) = remote.notice() {
+                body = body.child(self.remote_notice(
+                    &notice,
+                    remote.sign_in_memory_only,
+                    remote_notice::NoticePlace::Settings,
+                    cx,
+                ));
+            } else {
+                if remote.sign_in_memory_only {
+                    body = body.child(
+                        ui::muted(ui::xs(SIGN_IN_MEMORY_ONLY))
+                            .id("settings-memory-only")
+                            .test_support()
+                            .aria_label(SIGN_IN_MEMORY_ONLY),
+                    );
+                }
+                let mut actions = div().flex().gap(px(8.));
+                if remote.auth_mode == RemoteAuthMode::Oidc {
+                    actions =
+                        actions.child(action("Sign out", state.remote_busy).on_click(cx.listener(
+                            |this, _, window, cx| this.sign_out_settings_remote(window, cx),
+                        )));
+                }
+                body = body.child(
+                    actions.child(
+                        action("Disconnect", state.remote_busy).on_click(cx.listener(
+                            |this, _, window, cx| this.disconnect_settings_remote(window, cx),
+                        )),
+                    ),
+                );
+            }
         }
-        if !state.remote.as_ref().is_some_and(|remote| remote.connected) {
+        if remote_notice::needs_token(state.remote.as_ref()) {
             body = body
                 .child(field(
                     "Server URL",
@@ -241,9 +285,7 @@ impl Inspector {
                         button(
                             Variant::Default,
                             28.,
-                            state.remote_busy
-                                || state.url.read(cx).value().trim().is_empty()
-                                || state.token.read(cx).value().trim().is_empty(),
+                            state.remote_busy || state.url.read(cx).value().trim().is_empty(),
                         )
                         .id("settings-button:Connect")
                         .test_support()
@@ -375,6 +417,9 @@ impl Inspector {
     }
 }
 
+const SSO_NOTE: &str =
+    "Leave the token empty to sign in to a single sign-on server through your browser.";
+
 fn action(label: &'static str, disabled: bool) -> super::settings_page::Observed {
     button(Variant::Outline, 32., disabled)
         .id(SharedString::from(format!("settings-button:{label}")))
@@ -406,6 +451,12 @@ fn field(label: &'static str, id: &'static str, input: &Entity<InputState>, disa
                 .aria_label(
                     "The token stays in native Rust memory until you disconnect or close the app.",
                 ),
+            )
+            .child(
+                ui::muted(ui::xs(SSO_NOTE))
+                    .id("remote-token-sso-note")
+                    .test_support()
+                    .aria_label(SSO_NOTE),
             )
         })
 }

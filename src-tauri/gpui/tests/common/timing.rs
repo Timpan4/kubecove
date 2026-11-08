@@ -40,8 +40,8 @@ impl Timing {
             read.await
         })
     }
-    pub(super) fn refuse(&self, error: AppError) {
-        *self.refusal.lock().unwrap() = Some(error);
+    pub(super) fn refuse(&self, error: Option<AppError>) {
+        *self.refusal.lock().unwrap() = error;
     }
     pub(super) fn invalidate(&self, context: &str) {
         for ((command, rule_context), rule) in self.rules.lock().unwrap().iter_mut() {

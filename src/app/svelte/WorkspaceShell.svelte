@@ -77,6 +77,9 @@
 	import { gitOpsSelectionResource } from "@/lib/gitops-resource";
 	import { workspaceStore } from "@/features/workspaces/workspaceStore";
 	import AppSurfaces from "./AppSurfaces.svelte";
+	import RemoteWorkspaceNotice from "@/features/remote-connection/RemoteWorkspaceNotice.svelte";
+	import { remoteNotice } from "@/lib/remote-notice";
+	import { desktopRemoteConnection } from "@/lib/remote-runtime";
 	import AppUsageFooter from "./AppUsageFooter.svelte";
 	import CommandPalette from "./CommandPalette.svelte";
 	import DetailPanelFrame from "./DetailPanelFrame.svelte";
@@ -210,6 +213,7 @@
 	const placeholder = $derived(navigationModel.placeholder);
 	const scopeSummary = $derived(summarizeWorkspaceScope(workspace.scope));
 	const isOverview = $derived(navigationModel.isOverview);
+	const remoteNoticeShown = $derived(viewMode !== "settings" && $desktopRemoteConnection !== null && remoteNotice($desktopRemoteConnection) !== null);
 	const isNamespaceList = $derived(navigationModel.isNamespaceList);
 	const resourceBrowserScope = $derived(navigationModel.resourceBrowserScope);
 	const resourceBrowserNamespaces = $derived(resourceBrowserScope.namespaces);
@@ -614,7 +618,9 @@
 					{/if}
 				{/snippet}
 			<ScrollArea class="h-full">
-				{#if isOverview}
+				{#if remoteNoticeShown}
+					<RemoteWorkspaceNotice />
+				{:else if isOverview}
 					<WorkspaceOverview
 						{workspace}
 						{workspaceReadContext}

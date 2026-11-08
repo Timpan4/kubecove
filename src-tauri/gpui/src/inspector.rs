@@ -97,6 +97,7 @@ mod rbac_page;
 mod rbac_queue;
 mod rbac_review;
 mod rbac_verify;
+mod remote_notice;
 mod resource_filter_controls;
 mod resource_filters;
 mod resource_order;
@@ -589,6 +590,9 @@ impl Inspector {
     }
 
     fn page_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> gpui_kit::AnyElement {
+        if let Some(notice) = self.remote_content_notice(cx) {
+            return notice;
+        }
         match self.page {
             Page::Overview => self.overview(cx).into_any_element(),
             Page::Resources | Page::ClusterOverview => {
@@ -629,6 +633,7 @@ impl Render for Inspector {
         self.loading.begin_frame(cx.background_executor().now());
         self.sync_argo_scope(window, cx);
         self.sync_scope_reread(window, cx);
+        self.sync_remote_status(window, cx);
         self.sync_sidebar_discovery(cx);
         self.sync_live(window, cx);
         self.flush_live_patches(cx);

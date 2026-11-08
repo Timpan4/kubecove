@@ -7,8 +7,11 @@ use std::sync::Mutex;
 
 #[derive(Default)]
 pub(super) struct SettingsIntegrations {
-    remote: Mutex<Option<RemoteConnectionSummary>>,
-    script: Mutex<String>,
+    pub(super) remote: Mutex<Option<RemoteConnectionSummary>>,
+    pub(super) script: Mutex<String>,
+    /// Servers this app holds an OIDC sign-in for.
+    pub(super) sign_ins: Mutex<std::collections::HashSet<String>>,
+    pub(super) remote_failures: std::sync::atomic::AtomicU64,
     exported: Mutex<String>,
 }
 
@@ -140,46 +143,6 @@ impl Fixture {
     #[allow(dead_code)]
     pub fn settings_script(&self, script: &str) {
         *self.settings.script.lock().unwrap() = script.to_owned();
-    }
-    // The fixture also compiles into native and visual tests without parity actions.
-    #[allow(dead_code)]
-    pub fn drop_remote_connection(&self) {
-        if let Some(remote) = self.settings.remote.lock().unwrap().as_mut() {
-            remote.connected = false;
-            // kubecove_host::remote's refusal for a connection that is no longer active.
-            self.timing.refuse(AppError::new(
-                "connect to a remote KubeCove server first",
-                AppErrorKind::Session,
-            ));
-        }
-    }
-    #[allow(dead_code)]
-    pub fn runtime_endpoint(&self) -> String {
-        self.settings
-            .remote
-            .lock()
-            .unwrap()
-            .as_ref()
-            .map_or_else(|| "local".to_owned(), |remote| remote.server_url.clone())
-    }
-    pub(super) fn remote_status_read(&self) -> Read<Option<RemoteConnectionSummary>> {
-        let summary = self.settings.remote.lock().unwrap().clone();
-        Box::pin(async move { Ok(summary) })
-    }
-    pub(super) fn connect_remote_read(&self, url: String) -> Read<RemoteConnectionSummary> {
-        let summary = RemoteConnectionSummary {
-            server_url: url,
-            server_version: "0.13.0".into(),
-            session_grace_seconds: 300,
-            connected: true,
-            credential_store: Some("encryptedFile".into()),
-        };
-        *self.settings.remote.lock().unwrap() = Some(summary.clone());
-        Box::pin(async move { Ok(summary) })
-    }
-    pub(super) fn disconnect_remote_read(&self) -> Read<()> {
-        self.settings.remote.lock().unwrap().take();
-        Box::pin(async { Ok(()) })
     }
     pub(super) fn pick_kubeconfig_read(&self) -> Read<KubeconfigSourcesSummary> {
         let mut sources = self.kubeconfig.lock().unwrap();

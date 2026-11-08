@@ -323,6 +323,11 @@ macro_rules! command_contract {
                 with State<RemoteConnectionStore>;
             desktop_only async fn remote_disconnect() with State<RemoteConnectionStore>;
             desktop_only async fn remote_connection_status() with State<RemoteConnectionStore>;
+            desktop_only async fn remote_sign_in() with State<RemoteConnectionStore>;
+            desktop_only async fn remote_cancel_sign_in() with State<RemoteConnectionStore>;
+            desktop_only async fn remote_sign_in_link() with State<RemoteConnectionStore>;
+            desktop_only async fn remote_start_new_session() with State<RemoteConnectionStore>;
+            desktop_only async fn remote_sign_out() with State<RemoteConnectionStore>;
             desktop_only async fn remote_invoke(command: String, args: Value)
                 with State<RemoteConnectionStore>;
             desktop_only async fn remote_subscribe_channel(channelId: u64)

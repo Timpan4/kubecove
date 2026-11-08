@@ -1,6 +1,6 @@
 import type { Channel, InvokeOptions } from "@tauri-apps/api/core";
 import { stringify } from "yaml";
-import { connectRemoteMock, disconnectRemoteMock, remoteMockStatus, saveWorkspaceMock, selectedDialogPath, selectedWorkspaceFile } from "./settings-integration-mocks";
+import { cancelSignInRemoteMock, connectRemoteMock, disconnectRemoteMock, remoteMockStatus, saveWorkspaceMock, selectedDialogPath, selectedWorkspaceFile, signInLinkRemoteMock, signInRemoteMock, signOutRemoteMock, startNewSessionRemoteMock } from "./settings-integration-mocks";
 import { argoApplicationSummary, argoApplicationYaml, argoMockHandlers, customResourceKinds, presentCustomResourceKinds } from "./tauri-dev-mock-argo";
 import { type MockArgs, type MockHandler, type MockResult, readMockArgs } from "./tauri-dev-mock-contract";
 import { beforeCoverageRead, coverageHelm, coverageIncidents, coverageLogs, coverageRbac, coverageSessions, coverageStopForward, coverageTopology, coverageYamlPreview, registerCoverageLogStream } from "./tauri-dev-mock-coverage";
@@ -94,8 +94,13 @@ export function restoreMockKubeconfigSources(sources: KubeconfigSourcesSummary):
 }
 
 const handlers = {
-	remote_connect: (args) => connectRemoteMock(args.serverUrl ?? ""),
+	remote_connect: (args) => connectRemoteMock(args.serverUrl ?? "", args.token ?? ""),
 	remote_disconnect: disconnectRemoteMock,
+	remote_sign_in: signInRemoteMock,
+	remote_cancel_sign_in: cancelSignInRemoteMock,
+	remote_sign_in_link: signInLinkRemoteMock,
+	remote_start_new_session: startNewSessionRemoteMock,
+	remote_sign_out: signOutRemoteMock,
 	remote_connection_status: remoteMockStatus,
 	remote_invoke: (args): MockResult | Promise<MockResult> => {
 		if (!remoteMockStatus()?.connected) throw new Error("Selected remote server is disconnected");

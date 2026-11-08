@@ -10,8 +10,9 @@ pub use crate::mcp::{
 pub use kubecove_gitops::commands::*;
 #[cfg(feature = "desktop")]
 pub use kubecove_host::remote::{
-    RemoteConnectionStore, remote_connect, remote_connection_status, remote_disconnect,
-    remote_invoke, remote_subscribe_channel, remote_unsubscribe_channel,
+    RemoteConnectionStore, remote_cancel_sign_in, remote_connect, remote_connection_status,
+    remote_disconnect, remote_invoke, remote_sign_in, remote_sign_in_link, remote_sign_out,
+    remote_start_new_session, remote_subscribe_channel, remote_unsubscribe_channel,
 };
 #[cfg(feature = "bench-support")]
 pub(crate) use kubecove_host::usage;
