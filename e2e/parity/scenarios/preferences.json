@@ -597,6 +597,30 @@
       ]
     },
     {
+      "id": "workspaces.replace-import-keeps-review",
+      "title": "Replacing a saved workspace from its exported file keeps its RBAC review for contexts still in scope",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Durable review" },
+        { "action": "createWorkspace" },
+        { "action": "openPage", "page": "RBAC" },
+        { "action": "selectRbacItem", "title": "ServiceAccount/payments-api" },
+        { "action": "editRbacReviewNote", "value": "Payments owner reviewed this access" },
+        { "action": "saveRbacReview", "disposition": "expected" },
+        { "action": "openLauncher" },
+        { "action": "exportSavedWorkspace", "name": "Durable review" },
+        { "action": "configureSettingsMock", "script": "choose-last-export" },
+        { "action": "clickSettingsButton", "label": "Import" },
+        { "action": "importDecision", "choice": "Replace" },
+        { "action": "clickSettingsButton", "label": "Apply import" },
+        { "action": "openSavedWorkspace", "name": "Durable review" },
+        { "action": "openPage", "page": "RBAC" },
+        { "action": "selectRbacItem", "title": "ServiceAccount/payments-api" },
+        { "action": "expectRbacReview", "label": "Expected" },
+        { "action": "expectRbacReviewNote", "value": "Payments owner reviewed this access" }
+      ]
+    },
+    {
       "id": "settings-appearance.saved-kind-order",
       "title": "Resource group order survives restart",
       "steps": [

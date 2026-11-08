@@ -166,7 +166,7 @@ impl Inspector {
                     suffix += 1;
                 }
             }
-            let workspace = SavedWorkspace {
+            let mut workspace = SavedWorkspace {
                 id,
                 name,
                 context: item.context,
@@ -177,6 +177,18 @@ impl Inspector {
                 updated: next,
                 reviews: vec![],
             };
+            // `workspace-sharing.ts`: Replace keeps the reviews whose context
+            // is still in the workspace's scope.
+            if let Some(index) = existing {
+                let contexts = workspace.contexts();
+                let kept = self.launcher.saved[index]
+                    .reviews
+                    .iter()
+                    .filter(|review| contexts.contains(&review.cluster_context.as_str()))
+                    .cloned()
+                    .collect();
+                workspace.reviews = kept;
+            }
             self.launcher.transfer.documents.insert(id, item.document);
             if let Some(index) = existing {
                 self.launcher.saved[index] = workspace;
