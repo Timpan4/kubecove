@@ -249,6 +249,87 @@ fn scale_topology(fixture: &mut Value) -> usize {
     target
 }
 
+/// Pods of one ReplicaSet in the fan-out workload, from the memory profile's
+/// large fixture, which perf-map.md measured at 60 to 120 ms per map redraw.
+pub const FAN_OUT_PODS: (usize, &str) = (
+    10_000,
+    "e2e/harness/memory-fixture.ts (`large`: 10_000 Pods owned by one ReplicaSet)",
+);
+
+/// The scaled fixture plus [`FAN_OUT_PODS`] copies of the export's first
+/// ReplicaSet-owned Pod, in its namespace, each with a row and an owner edge.
+/// Every edge's culling box holds the ReplicaSet card, so the map draws them
+/// all wherever that card is on screen, as the large memory fixture does.
+pub fn fan_out(scaled: &Value) -> Value {
+    let mut fixture = scaled.clone();
+    let topology = &fixture["topology"];
+    let node = |id: &str| {
+        topology["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .find(|node| text(node, "id").as_deref() == Some(id))
+            .expect("edge node")
+    };
+    let (owner, pod) = topology["edges"]
+        .as_array()
+        .expect("edges")
+        .iter()
+        .map(|edge| {
+            (
+                node(edge["source"].as_str().unwrap()),
+                node(edge["target"].as_str().unwrap()),
+            )
+        })
+        .find(|(source, target)| source["kind"] == "ReplicaSet" && target["kind"] == "Pod")
+        .expect("a ReplicaSet owns a Pod");
+    let (owner, pod) = (text(owner, "id").unwrap(), pod.clone());
+    let (namespace, name) = (
+        text(&pod, "namespace").unwrap(),
+        text(&pod, "name").unwrap(),
+    );
+    let pod_id = text(&pod, "id").unwrap();
+    let prefix = pod_id
+        .strip_suffix(&format!(":{namespace}:{name}"))
+        .expect("pod id ends with its namespace and name");
+    let row = fixture["resources"]
+        .as_array()
+        .expect("resource rows")
+        .iter()
+        .find(|row| row["kind"] == "Pod" && row["namespace"] == namespace && row["name"] == name)
+        .expect("the pod has a row")
+        .clone();
+    let renamed = |object: &Value, copy: &str| {
+        let mut object = object.clone();
+        object["name"] = json!(copy);
+        if let Some(metrics) = object.get_mut("metrics").filter(|value| value.is_object()) {
+            metrics["name"] = json!(copy);
+        }
+        object
+    };
+    let (mut nodes, mut edges, mut rows) = (Vec::new(), Vec::new(), Vec::new());
+    for index in 0..FAN_OUT_PODS.0 {
+        let copy = format!("{name}-fan-{index}");
+        let id = format!("{prefix}:{namespace}:{copy}");
+        let mut node = renamed(&pod, &copy);
+        node["id"] = json!(id);
+        node["summary"] = renamed(&pod["summary"], &copy);
+        nodes.push(node);
+        edges.push(json!({
+            "id": format!("{owner}->{id}"),
+            "source": owner,
+            "target": id,
+            "relation": "owns",
+        }));
+        rows.push(renamed(&row, &copy));
+    }
+    array(&mut fixture, &["topology", "nodes"]).extend(nodes);
+    array(&mut fixture, &["topology", "edges"]).extend(edges);
+    array(&mut fixture, &["contextResources"]).extend(rows.iter().cloned());
+    array(&mut fixture, &["resources"]).extend(rows);
+    fixture
+}
+
 /// The opened Deployment's events, alternating its Warning and Normal event.
 fn scale_events(fixture: &mut Value) -> usize {
     let target = size("events of the opened resource");

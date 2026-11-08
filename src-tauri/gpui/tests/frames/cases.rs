@@ -11,6 +11,8 @@ mod controls;
 mod extra;
 #[path = "cases/interactions.rs"]
 mod interactions;
+#[path = "cases/map.rs"]
+mod map;
 #[path = "cases/navigation.rs"]
 mod navigation;
 #[path = "cases/topology_spike.rs"]
@@ -27,6 +29,7 @@ pub fn all_cases() -> impl Iterator<Item = &'static Case> {
         .chain(navigation::CASES)
         .chain(controls::CASES)
         .chain(topology_spike::CASES)
+        .chain(map::CASES)
 }
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{

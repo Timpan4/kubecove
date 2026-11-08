@@ -171,7 +171,12 @@ fn main() {
         .map(|value| value.split(',').map(str::to_owned).collect());
     let mut exported: Value =
         serde_json::from_slice(&std::fs::read(&fixture).expect("fixture readable")).unwrap();
-    let sizes = fixture::scale(&mut exported);
+    let mut sizes = fixture::scale(&mut exported);
+    let (pods, source) = fixture::FAN_OUT_PODS;
+    sizes.insert(
+        "fan-out map pods".to_owned(),
+        serde_json::json!({"count": pods, "source": source}),
+    );
     let detail_page = fixture::detail_page(&exported);
     let report = PathBuf::from(report);
     let directory = report.parent().unwrap_or(Path::new(".")).to_owned();
@@ -179,6 +184,11 @@ fn main() {
     // The scaled fixture stays beside the report as the measured input.
     let scaled = directory.join("fixture-scaled.json");
     std::fs::write(&scaled, serde_json::to_vec(&exported).unwrap()).unwrap();
+    std::fs::write(
+        directory.join("fixture-fan-out.json"),
+        serde_json::to_vec(&fixture::fan_out(&exported)).unwrap(),
+    )
+    .unwrap();
     let burst = exported["detailTabs"]["logs"]["pod"]
         .as_array()
         .expect("pod log fixture")
