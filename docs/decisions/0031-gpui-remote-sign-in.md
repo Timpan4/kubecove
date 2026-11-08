@@ -2,10 +2,10 @@
 
 ## Status
 
-Accepted 2026-11-08 for OIDC servers. The Access section stays proposed until one manual check against a real Access application confirms the four facts it lists. The product owner's answers on 2026-11-08:
+Accepted 2026-11-08 for OIDC servers. The product owner dropped desktop Access sign-in on 2026-11-08, so the Access section below is a rejected design kept for reference. The product owner's answers on 2026-11-08:
 
 1. Both desktop clients, GPUI and Tauri, get the sign-in and the session notices, with shared parity scenarios.
-2. OIDC ships first. Access follows after the manual check.
+2. OIDC only. Desktop clients do not sign in to Access servers and say so.
 3. Desktop sign-ins are stored in native credential storage, so they survive an app restart.
 4. Disconnect keeps the sign-in. Only Sign out revokes it.
 5. Notice text is the browser's, with "This browser's" changed to "This app's".
@@ -62,7 +62,7 @@ The desktop uses [Cloudflare Access Managed OAuth](https://developers.cloudflare
 
 The operator must enable Managed OAuth and "Allow loopback clients" on the Access application. Without them the desktop shows "This Cloudflare Access application does not allow desktop sign-in. Ask the operator to enable Managed OAuth." The startup-token and service-token paths are not substitutes, because a service token has no user identity and `cloudflared` is not a core data path.
 
-This path depends on four facts that Cloudflare's documentation does not state. Verify them against an Access application before implementing (see "Remaining open item"):
+This path depends on four facts that Cloudflare's documentation does not state. They would need checking against an Access application before any implementation (see "Access servers"):
 
 - the access token header that Access expects, and whether Access forwards an `Authorization` header to the origin;
 - that the forwarded assertion has the same `sub`, `type: "app"` and `aud` as a browser sign-in for the same user, so resume binding and identity-namespaced Argo CD credentials match;
@@ -128,7 +128,7 @@ Callback errors, logs and observability events never include codes, verifiers, s
 
 ## Consequences
 
-The desktop clients can use every server authentication mode. OIDC needs no identity-provider change and keeps all provider tokens on the server. Access needs an operator setting on the Access application, and its path stays unverified until the facts listed above are checked. Desktop sign-ins appear in server logs and metrics as OIDC or Access sign-ins, like browser sign-ins. Desktop users keep their sign-in across app restarts and Disconnect, and sign in again after a server restart or the sign-in's server-side expiry. A stored desktop credential in the OS credential store is valid on the server until that expiry, so anyone who can read the user's credential store can use it until then. Sign out removes it.
+The desktop clients can use token and OIDC servers. Access servers stay browser-only. OIDC needs no identity-provider change and keeps all provider tokens on the server. Desktop sign-ins appear in server logs and metrics as OIDC sign-ins, like browser sign-ins. Desktop users keep their sign-in across app restarts and Disconnect, and sign in again after a server restart or the sign-in's server-side expiry. A stored desktop credential in the OS credential store is valid on the server until that expiry, so anyone who can read the user's credential store can use it until then. Sign out removes it.
 
 ## Verification
 
@@ -138,9 +138,9 @@ Host crate tests against a local fake server: loopback listener state mismatch, 
 
 Shared parity scenarios in `e2e/parity/scenarios/` drive each notice and action through both drivers with mocked responses. GPUI native tests in `src-tauri/gpui/tests/native.rs` cover what the mocks cannot express, such as revocation arriving during a read. No test contacts a real identity provider, Cloudflare, cluster or server, or reads the user's settings, keyring or kubeconfig.
 
-## Remaining open item
+## Access servers
 
-Access: one manual check against a real Access application, for the four facts listed under "Authenticated session for Access servers". Until it passes, desktop clients show "Desktop sign-in for Cloudflare Access is not available yet." for an Access server.
+Desktop clients do not sign in to Access servers. They show "Desktop sign-in for Cloudflare Access is not supported. Use a token or OIDC server." Reopening this needs a new decision and the manual check of the four facts listed under "Authenticated session for Access servers".
 
 ## Sources
 

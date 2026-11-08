@@ -105,7 +105,7 @@ impl Fixture {
         let script = self.settings.script.lock().unwrap().clone();
         if script == "access-server" {
             return ready(Err(AppError::new(
-                "Desktop sign-in for Cloudflare Access is not available yet.",
+                "Desktop sign-in for Cloudflare Access is not supported. Use a token or OIDC server.",
                 AppErrorKind::UnsupportedOperation,
             )));
         }

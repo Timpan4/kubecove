@@ -29,7 +29,7 @@ const UNVERIFIED_PAGE: &str = "<!doctype html><html lang=\"en\"><meta charset=\"
 
 pub(super) const NOT_COMPLETED: &str = "Sign-in was not completed.";
 pub(super) const ACCESS_UNAVAILABLE: &str =
-    "Desktop sign-in for Cloudflare Access is not available yet.";
+    "Desktop sign-in for Cloudflare Access is not supported. Use a token or OIDC server.";
 pub(super) const NATIVE_SIGN_IN_UNSUPPORTED: &str =
     "This server does not support desktop sign-in. Update the server.";
 

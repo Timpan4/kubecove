@@ -77,7 +77,7 @@ export function connectRemoteMock(serverUrl: string, token = ""): RemoteConnecti
 		selected = liveSummary(serverUrl, "token");
 		return selected;
 	}
-	if (remoteScript === "access-server") throw new Error("Desktop sign-in for Cloudflare Access is not available yet.");
+	if (remoteScript === "access-server") throw new Error("Desktop sign-in for Cloudflare Access is not supported. Use a token or OIDC server.");
 	if (!remoteScript?.startsWith("oidc-")) throw new Error("This server uses a server token. Enter the token to connect.");
 	const held = signIns.has(serverUrl);
 	selected = held

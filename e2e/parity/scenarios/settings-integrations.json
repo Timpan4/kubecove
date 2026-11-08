@@ -318,7 +318,7 @@
         { "action": "configureSettingsMock", "script": "access-server" },
         { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43118" },
         { "action": "clickSettingsButton", "label": "Connect" },
-        { "action": "expectSettingsText", "value": "Desktop sign-in for Cloudflare Access is not available yet." },
+        { "action": "expectSettingsText", "value": "Desktop sign-in for Cloudflare Access is not supported. Use a token or OIDC server." },
         { "action": "expectRuntimeEndpoint", "value": "local" }
       ]
     },
