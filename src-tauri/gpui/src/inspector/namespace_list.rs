@@ -3,11 +3,10 @@
 //! loading states.
 
 use super::{Inspector, Page, friendly_error::Operation};
+use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui;
-use gpui_kit::{
-    AnyElement, Context, Div, FontWeight, SharedString, Task, TestSupportExt, div, prelude::*, px,
-};
+use gpui_kit::{AnyElement, Context, Div, FontWeight, SharedString, Task, div, prelude::*, px};
 use kubecove_lib::models::{AppError, NamespaceSummary};
 
 #[derive(Default)]

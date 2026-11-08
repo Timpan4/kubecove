@@ -6,9 +6,9 @@ use super::controls::{Variant, button};
 use super::{Inspector, Page};
 use crate::backend::KubeconfigSourcesSummary;
 use crate::settings::{self, Category, Control, Row};
+use crate::targets::TestSupportExt;
 use crate::theme::{HEADING, Tokens};
 use crate::ui;
-use gpui_kit::TestSupportExt;
 use gpui_kit::component::input::{Input, InputEvent, InputState, TextareaState};
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
@@ -16,7 +16,7 @@ use gpui_kit::{
     Window, div, prelude::*, px,
 };
 
-pub(super) type Observed = gpui_kit::base::ObservedElement<Stateful<Div>>;
+pub(super) type Observed = crate::targets::ObservedElement<Stateful<Div>>;
 
 pub(super) struct SettingsState {
     pub(super) kind_focus: std::collections::HashMap<String, gpui_kit::FocusHandle>,
@@ -260,6 +260,10 @@ impl Inspector {
                     self.documentation_control(row, cx)
                 } else if row.title == "Latency report" {
                     self.latency_report(row, cx)
+                } else if row.title == "Record interactions" {
+                    self.interaction_switch(row, cx)
+                } else if row.title == "Interaction report" {
+                    self.interaction_report(row, cx)
                 } else if row.unavailable.is_none() && row.control != Control::Section {
                     self.preference_control(row, cx)
                 } else if row.title == "Resource group order" {

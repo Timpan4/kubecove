@@ -2,9 +2,9 @@
 
 use super::{Inspector, Load, Page};
 use crate::model::HealthSummary;
+use crate::targets::TestSupportExt;
 use crate::theme::{Palette, Tokens};
 use crate::ui;
-use gpui_kit::TestSupportExt;
 use gpui_kit::{AnyElement, Context, Div, FontWeight, Hsla, div, prelude::*, px};
 
 /// `Card size="sm"` with a bordered header and its content.

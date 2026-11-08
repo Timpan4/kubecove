@@ -2,11 +2,11 @@
 //! out as `ResourceBrowserTopBar.svelte` lays them out.
 use super::Inspector;
 use super::resource_filters::{HealthFilter, namespace_label, next_namespace_selection};
+use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
 use gpui_kit::component::input::Input;
 use gpui_kit::{
-    AnyElement, Context, Div, FontWeight, Hsla, SharedString, TestSupportExt, Window, deferred,
-    div, prelude::*, px,
+    AnyElement, Context, Div, FontWeight, Hsla, SharedString, Window, deferred, div, prelude::*, px,
 };
 
 fn check_box(checked: bool) -> Div {

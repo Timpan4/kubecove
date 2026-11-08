@@ -13,9 +13,9 @@ use crate::model::{
     kind_visual,
 };
 use crate::table_sort::{self, Column as SortColumn};
+use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui::{self, Tone};
-use gpui_kit::TestSupportExt;
 use gpui_kit::{AnyElement, Context, Div, FontWeight, SharedString, div, prelude::*, px};
 use kubecove_lib::models::ResourceSummary;
 

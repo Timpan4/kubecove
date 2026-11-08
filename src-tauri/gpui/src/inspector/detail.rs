@@ -18,9 +18,9 @@ use super::windowed::row_id;
 use super::yaml_apply::YamlApply;
 use super::yaml_marks::YamlMarks;
 use super::yaml_tab::yaml_tab;
+use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui;
-use gpui_kit::TestSupportExt;
 use gpui_kit::component::input::{EditorState, InputEvent};
 use gpui_kit::{
     AnyElement, App, AppContext, Context, Entity, KeyDownEvent, MouseButton, MouseMoveEvent,
@@ -212,6 +212,7 @@ impl ResourceDetail {
 
 impl Inspector {
     fn set_tab(&mut self, tab: DetailTab, window: &mut Window, cx: &mut Context<Self>) {
+        self.request_view();
         if let Detail::Ready(detail) = &mut self.detail {
             detail.secrets = Default::default();
             detail.tab = tab;

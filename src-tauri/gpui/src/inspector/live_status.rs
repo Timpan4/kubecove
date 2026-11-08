@@ -1,7 +1,8 @@
 //! ResourceBrowser.svelte's stale-data notice and expandable refresh error.
 use super::Inspector;
+use crate::targets::TestSupportExt;
 use crate::{theme::Palette, ui};
-use gpui_kit::{AnyElement, Context, TestSupportExt, div, prelude::*, px};
+use gpui_kit::{AnyElement, Context, div, prelude::*, px};
 
 impl Inspector {
     pub(super) fn live_notice(&self, cx: &mut Context<Self>) -> Option<AnyElement> {

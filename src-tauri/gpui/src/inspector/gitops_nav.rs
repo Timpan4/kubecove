@@ -5,9 +5,9 @@
 
 use super::{Inspector, Page};
 use crate::gitops_surface::{ARGO_KINDS, FLUX_FAMILIES, Focus};
+use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui;
-use gpui_kit::TestSupportExt;
 use gpui_kit::{
     AnyElement, ClickEvent, Context, FontWeight, Hsla, SharedString, div, prelude::*, px,
 };

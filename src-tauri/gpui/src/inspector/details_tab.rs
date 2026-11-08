@@ -9,9 +9,10 @@ use super::details_status;
 use super::loading::LoadingDelays;
 use super::timeline::{incident_signals, timeline};
 use crate::model::health_source;
+use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui::{self, Tone};
-use gpui_kit::{Context, Div, SharedString, TestSupportExt, div, prelude::*, px};
+use gpui_kit::{Context, Div, SharedString, div, prelude::*, px};
 use kubecove_lib::models::{HealthAssessmentCompleteness, HealthAssessmentState, ResourceSummary};
 
 /// `grid grid-cols-[7rem_minmax(0,1fr)] gap-2 py-1.5`; `metadata_card` adds the row borders.

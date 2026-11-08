@@ -1,11 +1,12 @@
 //! Entry-point interface shared by table, detail and workspace surfaces.
 use super::{Inspector, Load, Page};
+use crate::targets::TestSupportExt;
 use crate::{
     gitops_surface::Focus,
     ui,
     workspaces::entries::{Entries, Entry, EntryKind},
 };
-use gpui_kit::{AnyElement, Context, SharedString, TestSupportExt, Window, div, prelude::*, px};
+use gpui_kit::{AnyElement, Context, SharedString, Window, div, prelude::*, px};
 use kubecove_lib::models::ResourceSummary;
 
 impl Inspector {

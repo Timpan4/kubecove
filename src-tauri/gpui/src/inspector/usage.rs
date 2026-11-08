@@ -1,7 +1,7 @@
 //! `AppUsageFooter.svelte`: h-7 border-t bg-sidebar px-4, refreshed every 2s.
 use super::Inspector;
+use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
-use gpui_kit::TestSupportExt;
 use gpui_kit::{AnyElement, Context, Div, SharedString, Task, div, prelude::*, px};
 use kubecove_lib::models::{AppUsageMetrics, AppUsageMetricsBreakdown};
 use std::time::Duration;

@@ -5,11 +5,10 @@
 use super::Inspector;
 use super::controls::{Variant, button};
 use crate::backend::{INSTALL_UNAVAILABLE, UpdateStatus};
+use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui;
-use gpui_kit::{
-    AnyElement, Context, Div, SharedString, TestSupportExt, deferred, div, prelude::*, px,
-};
+use gpui_kit::{AnyElement, Context, Div, SharedString, deferred, div, prelude::*, px};
 
 /// Whether the popover is open, and the version it last opened for. As on the
 /// web, a version opens the popover once, and closing it keeps it closed.

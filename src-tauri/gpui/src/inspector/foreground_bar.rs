@@ -2,8 +2,9 @@
 //! read runs. The web counts `withForegroundLoad` calls. Native derives the
 //! same state from the resource list, topology and detail reads it owns.
 use super::{Inspector, Load, Page, detail::Detail, map::TopologyLoad};
+use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
-use gpui_kit::{IntoElement, TestSupportExt, div, prelude::*, px};
+use gpui_kit::{IntoElement, div, prelude::*, px};
 
 impl Inspector {
     fn foreground_loading(&self) -> bool {

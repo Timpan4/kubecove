@@ -7,15 +7,13 @@ use super::controls::{Variant, button, diff_lines};
 use super::detail::ResourceDetail;
 use super::friendly_error::{Context as ErrorContext, Operation};
 use super::yaml_apply::{Feedback, Phase, Review, YamlApply, disabled_reason};
+use crate::targets::ObservedElement;
+use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui;
-use gpui_kit::base::ObservedElement;
 use gpui_kit::component::input::Editor;
 use gpui_kit::component::tooltip::Tooltip;
-use gpui_kit::{
-    AnyElement, Context, Div, FontWeight, SharedString, Stateful, TestSupportExt, div, prelude::*,
-    px,
-};
+use gpui_kit::{AnyElement, Context, Div, FontWeight, SharedString, Stateful, div, prelude::*, px};
 use kubecove_lib::models::{
     AppErrorKind, KubernetesYamlLintDiagnostic, KubernetesYamlLintSeverity,
     KubernetesYamlLintStatusNote, ResourceSummary,

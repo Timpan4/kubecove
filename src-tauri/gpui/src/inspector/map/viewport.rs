@@ -2,12 +2,12 @@
 use super::cards::{group_card, resource_card, selection_ring};
 use super::paint::{EdgePaint, PreparedEdges};
 use super::{HANDLE_HALF, Inspector, ZOOM_STEP};
+use crate::targets::TestSupportExt;
 use crate::{
     theme::Tokens,
     topology::{self, FlowItem, MAX_ZOOM, MIN_ZOOM, Viewport},
     ui,
 };
-use gpui_kit::TestSupportExt;
 use gpui_kit::{
     AnyElement, Context, FocusHandle, KeyDownEvent, MouseButton, SharedString, Window, canvas, div,
     prelude::*, px,

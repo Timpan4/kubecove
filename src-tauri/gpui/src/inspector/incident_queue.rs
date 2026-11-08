@@ -2,9 +2,9 @@
 
 use super::{Inspector, incidents::severity_badge, surface};
 use crate::incidents::{self, Row};
+use crate::targets::TestSupportExt;
 use crate::theme::{Palette, Tokens};
 use crate::ui;
-use gpui_kit::TestSupportExt;
 use gpui_kit::{AnyElement, ClipboardItem, Context, Hsla, SharedString, div, list, prelude::*, px};
 use kubecove_lib::models::{
     IncidentCockpitItem as Item, IncidentSeverity as Severity, IncidentSignalState as SignalState,

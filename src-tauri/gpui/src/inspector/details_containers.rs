@@ -5,9 +5,10 @@
 use super::detail::ResourceDetail;
 use crate::model::exact_timestamp;
 use crate::preferences::TimestampTimezone;
+use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui::{self, Tone};
-use gpui_kit::{Div, TestSupportExt, div, prelude::*, px};
+use gpui_kit::{Div, div, prelude::*, px};
 use serde_json::{Map, Value};
 
 /// The Containers table; `None` when the Pod status lists no containers.

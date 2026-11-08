@@ -3,8 +3,9 @@ use super::{
     Inspector, Page,
     controls::{Variant, button},
 };
+use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
-use gpui_kit::{AnyElement, Context, TestSupportExt, div, prelude::*, px};
+use gpui_kit::{AnyElement, Context, div, prelude::*, px};
 use kubecove_lib::models::ResourceSummary;
 
 pub(super) enum LeaveIntent {

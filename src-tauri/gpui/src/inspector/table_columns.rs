@@ -2,9 +2,10 @@
 //! `src/features/resources/helpers.ts`.
 
 use crate::table_sort::Column as SortColumn;
+use crate::targets::TestSupportExt;
 use crate::ui::{self, Tone};
 use gpui_kit::component::tooltip::Tooltip;
-use gpui_kit::{Div, SharedString, TestSupportExt, div, prelude::*, px};
+use gpui_kit::{Div, SharedString, div, prelude::*, px};
 use kubecove_lib::models::ResourceSummary;
 
 pub(super) const EMPTY: &str = "—";

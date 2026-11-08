@@ -6,9 +6,9 @@ use super::helm_card::{self, alert, table};
 use super::{Inspector, friendly_error::Operation, surface};
 use crate::gitops_surface::status_label;
 use crate::helm;
+use crate::targets::TestSupportExt;
 use crate::theme::{HEADING, MONO, Tokens};
 use crate::ui;
-use gpui_kit::TestSupportExt;
 use gpui_kit::{Context, Div, FontWeight, SharedString, Task, div, prelude::*, px};
 use kubecove_lib::models::{AppError, HelmReleaseDetails, HelmReleaseReconciliation};
 use std::{

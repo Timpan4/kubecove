@@ -5,14 +5,15 @@
 use super::Inspector;
 use super::controls::diff_pre;
 use super::detail::{Detail, ResourceDetail};
+use crate::targets::ObservedElement;
+use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui;
 use crate::unified_diff::{self, DiffLine};
-use gpui_kit::base::ObservedElement;
 use gpui_kit::component::select::{SearchableVec, Select, SelectEvent, SelectState};
 use gpui_kit::{
     AnyElement, AppContext, Context, Div, Entity, SharedString, Stateful, Subscription, Task,
-    TestSupportExt, Window, div, prelude::*, px,
+    Window, div, prelude::*, px,
 };
 use kubecove_lib::models::DeploymentRevision;
 

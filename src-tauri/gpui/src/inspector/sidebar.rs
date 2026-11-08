@@ -2,9 +2,9 @@
 //! and `SidebarTreeNode.svelte`.
 
 use super::{Inspector, Page};
+use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui;
-use gpui_kit::TestSupportExt;
 use gpui_kit::{
     AnyElement, Context, ElementId, FontWeight, Hsla, SharedString, div, prelude::*, px,
 };

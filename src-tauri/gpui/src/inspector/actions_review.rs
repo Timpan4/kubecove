@@ -7,12 +7,11 @@ use super::actions_state::{Review, ReviewStatus};
 use super::controls::{Variant, button, diff_pre};
 use super::detail::Detail;
 use crate::actions;
+use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui;
 use gpui_kit::component::{WindowExt, input::Input};
-use gpui_kit::{
-    App, Context, Div, Entity, FontWeight, TestSupportExt, Window, div, prelude::*, px,
-};
+use gpui_kit::{App, Context, Div, Entity, FontWeight, Window, div, prelude::*, px};
 use kubecove_lib::models::ResourceActionKind;
 
 /// `DialogDescription` for the review's current status.

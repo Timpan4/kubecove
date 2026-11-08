@@ -7,9 +7,9 @@ use super::detail::DetailTab;
 use super::gitops_tooltip;
 use super::{Inspector, surface};
 use crate::gitops_surface::{Selection, SourceMode};
+use crate::targets::TestSupportExt;
 use crate::theme::{HEADING, Palette, Tokens};
 use crate::ui::{self, Tone};
-use gpui_kit::TestSupportExt;
 use gpui_kit::{ClipboardItem, Context, Div, FontWeight, Hsla, SharedString, div, prelude::*, px};
 use kubecove_lib::models::HealthAssessmentState;
 

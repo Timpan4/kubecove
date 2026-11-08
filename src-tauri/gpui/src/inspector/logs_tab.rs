@@ -11,12 +11,13 @@ use super::log_row::{chip_colors, log_row, red500};
 use super::logs_state::{LogStatus, LogsState, SINCE};
 use crate::logs::LogLevel;
 use crate::preferences::LogLayout;
+use crate::targets::TestSupportExt;
 use crate::theme::{MONO, Tokens};
 use crate::ui;
 use gpui_kit::component::{input::Input, select::Select, tooltip::Tooltip};
 use gpui_kit::{
-    AnyElement, Context, Div, FontWeight, Hsla, SharedString, Stateful, TestSupportExt, deferred,
-    div, list, prelude::*, px,
+    AnyElement, Context, Div, FontWeight, Hsla, SharedString, Stateful, deferred, div, list,
+    prelude::*, px,
 };
 
 fn status_dot(logs: &LogsState) -> Hsla {

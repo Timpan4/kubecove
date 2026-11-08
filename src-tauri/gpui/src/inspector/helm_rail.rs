@@ -1,7 +1,8 @@
 //! The namespace rail in `HelmView.svelte`.
 use crate::inspector::{Inspector, delivery_ui as dui};
+use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
-use gpui_kit::{Context, Div, SharedString, TestSupportExt, Window, prelude::*};
+use gpui_kit::{Context, Div, SharedString, Window, prelude::*};
 
 impl Inspector {
     pub(super) fn clear_helm_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {

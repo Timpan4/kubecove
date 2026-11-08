@@ -4,15 +4,14 @@ use super::{
     controls::{Variant, button},
     settings_page::settings_row,
 };
+use crate::targets::TestSupportExt;
 use crate::{
     backend::{INSTALL_UNAVAILABLE, RemoteConnectionSummary, UpdateStatus},
     theme::Tokens,
     ui,
 };
 use gpui_kit::component::input::{Input, InputState};
-use gpui_kit::{
-    Context, Div, Entity, SharedString, Task, TestSupportExt, Window, div, prelude::*, px,
-};
+use gpui_kit::{Context, Div, Entity, SharedString, Task, Window, div, prelude::*, px};
 
 pub(super) struct Integrations {
     _subscriptions: Vec<gpui_kit::Subscription>,

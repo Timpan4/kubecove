@@ -5,11 +5,12 @@ use super::{
     controls::{Variant, button},
     detail::Detail,
 };
+use crate::targets::TestSupportExt;
 use crate::{
     theme::{MONO, Tokens},
     ui,
 };
-use gpui_kit::{AnyElement, Context, SharedString, TestSupportExt, div, prelude::*, px, rgb};
+use gpui_kit::{AnyElement, Context, SharedString, div, prelude::*, px, rgb};
 
 fn status_dot(status: &str) -> gpui_kit::Div {
     let color = match status {

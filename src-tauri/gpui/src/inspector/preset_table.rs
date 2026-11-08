@@ -3,7 +3,8 @@ use super::{
     Inspector,
     port_forward_rows::{table_row, text, xs_button},
 };
-use gpui_kit::{Context, Div, SharedString, TestSupportExt, div, prelude::*, px};
+use crate::targets::TestSupportExt;
+use gpui_kit::{Context, Div, SharedString, div, prelude::*, px};
 impl Inspector {
     pub(super) fn preset_table_rows(&self, cx: &mut Context<Self>) -> Option<Div> {
         let rows: Vec<Vec<gpui_kit::AnyElement>> = self

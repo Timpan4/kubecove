@@ -8,9 +8,9 @@ use super::{
     surface,
 };
 use crate::backend::LiveSessions;
+use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui;
-use gpui_kit::TestSupportExt;
 use gpui_kit::{AnyElement, Context, Task, div, prelude::*, px};
 use kubecove_lib::models::AppError;
 use std::rc::Rc;

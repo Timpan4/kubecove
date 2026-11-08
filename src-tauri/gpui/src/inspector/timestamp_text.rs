@@ -1,8 +1,9 @@
 //! `TimestampText.svelte`: the timestamp's full value is the hover text and
 //! accessible description of the label it decorates.
 
+use crate::targets::TestSupportExt;
 use gpui_kit::component::tooltip::Tooltip;
-use gpui_kit::{AnyElement, IntoElement, SharedString, TestSupportExt, div, prelude::*};
+use gpui_kit::{AnyElement, IntoElement, SharedString, div, prelude::*};
 
 /// Wraps `content` with a hover tooltip. Without tooltip text the content
 /// renders as it is.

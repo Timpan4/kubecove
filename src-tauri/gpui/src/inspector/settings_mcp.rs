@@ -4,6 +4,7 @@ use super::{
     controls::{Variant, button},
     settings_page::{Observed, settings_row, switch},
 };
+use crate::targets::TestSupportExt;
 use crate::{
     backend::Read,
     settings::{self, Category},
@@ -12,8 +13,8 @@ use crate::{
 };
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::{
-    ClipboardItem, Context, Div, Entity, SharedString, Subscription, Task, TestSupportExt, Window,
-    div, prelude::*, px,
+    ClipboardItem, Context, Div, Entity, SharedString, Subscription, Task, Window, div, prelude::*,
+    px,
 };
 use kubecove_lib::models::McpStatus;
 

@@ -3,9 +3,9 @@
 
 use super::Inspector;
 use crate::gitops::GitOpsInventory;
+use crate::targets::TestSupportExt;
 use crate::theme::{Palette, Tokens};
 use crate::ui;
-use gpui_kit::TestSupportExt;
 use gpui_kit::{
     AnyElement, Context, Div, FontWeight, Hsla, SharedString, Task, div, prelude::*, px,
 };

@@ -6,13 +6,14 @@ use crate::inspector::{
     detail::DetailTab,
     surface,
 };
+use crate::targets::TestSupportExt;
 use crate::{
     gitops_surface::Selection,
     model::exact_timestamp,
     theme::{Palette, Tokens},
     ui,
 };
-use gpui_kit::{Context, Div, TestSupportExt, div, prelude::*, px};
+use gpui_kit::{Context, Div, div, prelude::*, px};
 
 impl Inspector {
     pub(in crate::inspector) fn application_workspace_header(

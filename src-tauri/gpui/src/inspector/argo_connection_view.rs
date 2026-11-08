@@ -4,9 +4,10 @@ use super::{
     argo_connection::Preference,
     controls::{Variant, button},
 };
+use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
 use gpui_kit::{
-    Context, Div, TestSupportExt, Window,
+    Context, Div, Window,
     base::FocusTrapElement,
     component::input::{Input, Textarea},
     div,

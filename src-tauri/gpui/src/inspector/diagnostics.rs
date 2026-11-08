@@ -1,17 +1,17 @@
-//! Settings diagnostics for native command round trips and backend timings,
-//! mirroring the latency report in `DiagnosticsSettings.svelte`. The web's
-//! frontend spans and render counters have no native counterpart: native command
-//! round trips take the frontend table's place.
+//! Settings diagnostics mirroring the latency report in `DiagnosticsSettings.svelte`.
+//! The report's `frontend` fields hold the native client's own timings: command
+//! round trips, `<view>.present` spans and `*.render` counters, which
+//! `presentation.rs` defines. Command round trips stand where the web logs
+//! invoke and fetch spans.
 use super::{
     Inspector,
     controls::{Variant, button},
     launcher_form::check_row,
     settings_page::settings_row,
 };
+use crate::targets::TestSupportExt;
 use crate::{settings::Row, theme::Tokens, ui};
-use gpui_kit::{
-    AnyElement, ClipboardItem, Context, Div, SharedString, TestSupportExt, div, prelude::*, px,
-};
+use gpui_kit::{AnyElement, ClipboardItem, Context, Div, SharedString, div, prelude::*, px};
 use kubecove_lib::models::{BackendCacheDiagnosticSnapshot, BackendDiagnosticEvent};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -62,6 +62,7 @@ fn summary_json(summary: &Summary) -> Value {
 /// and replaces cache labels with aliases.
 fn latency_report_json(
     timings: &[crate::diagnostics::Timing],
+    counters: &BTreeMap<&'static str, u64>,
     backend_events: &[BackendDiagnosticEvent],
     caches: &[BackendCacheDiagnosticSnapshot],
     include_identifiers: bool,
@@ -130,7 +131,7 @@ fn latency_report_json(
         "redacted": !include_identifiers,
         "frontend": {
             "summaries": native.iter().map(summary_json).collect::<Vec<_>>(),
-            "counters": {},
+            "counters": counters,
             "events": frontend_events,
         },
         "backend": {
@@ -202,6 +203,60 @@ fn timing_table(
     table
 }
 
+// `diagnosticCounterRows` shows this many counters.
+const MAX_COUNTER_ROWS: usize = 8;
+
+/// `diagnosticCounterRows`: render counters, most first.
+fn counter_table(counters: &BTreeMap<&'static str, u64>) -> Div {
+    let mut rows: Vec<_> = counters
+        .iter()
+        .filter(|(name, _)| name.ends_with(".render"))
+        .collect();
+    rows.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+    let mut table = div()
+        .p(px(12.))
+        .rounded(px(8.))
+        .border_1()
+        .border_color(Tokens::border())
+        .child(
+            div()
+                .flex()
+                .py(px(8.))
+                .border_b_1()
+                .border_color(Tokens::border())
+                .children(
+                    ["NAME", "COUNT"]
+                        .map(|label| ui::semibold(ui::muted(ui::xs(label))).flex_1().px(px(12.))),
+                ),
+        );
+    if rows.is_empty() {
+        let empty = "No render counts yet.";
+        table = table.child(
+            ui::muted(ui::sm(empty))
+                .py(px(32.))
+                .text_center()
+                .id("render-counters-empty")
+                .test_support()
+                .aria_label(empty),
+        );
+    }
+    for (name, count) in rows.into_iter().take(MAX_COUNTER_ROWS) {
+        table = table.child(
+            div()
+                .flex()
+                .py(px(8.))
+                .id(SharedString::from(format!("render-counter:{name}")))
+                .test_support()
+                .aria_label(format!("{name} · {count}"))
+                .children(
+                    [name.to_string(), count.to_string()]
+                        .map(|value| ui::xs(value).flex_1().min_w_0().truncate().px(px(12.))),
+                ),
+        );
+    }
+    table
+}
+
 impl Inspector {
     pub(super) fn refresh_diagnostics(&mut self, clear: bool, cx: &mut Context<Self>) {
         self.read_diagnostics(clear, None, cx);
@@ -251,6 +306,7 @@ impl Inspector {
         let timings = self.timings.snapshot();
         let text = latency_report_json(
             &timings,
+            &self.timings.counters(),
             &self.settings.diagnostics.events,
             &self.settings.diagnostics.caches,
             include_identifiers,
@@ -371,9 +427,11 @@ impl Inspector {
             .child(timing_table(
                 "latency-command",
                 "latency-empty",
-                "No timed native commands yet.",
+                "No native timings yet.",
                 &native,
             ))
+            .child(ui::medium(ui::xs("Render counters")))
+            .child(counter_table(&self.timings.counters()))
             .child(ui::medium(ui::xs("Backend timings")))
             .child(timing_table(
                 "backend-command",

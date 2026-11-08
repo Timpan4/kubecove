@@ -4,9 +4,10 @@ use super::{
     actions_state::ActionsState,
     controls::{Variant, button},
 };
+use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
 use gpui_kit::component::{Sizable, Size, radio::Radio};
-use gpui_kit::{Context, Div, SharedString, TestSupportExt, div, prelude::*, px};
+use gpui_kit::{Context, Div, SharedString, div, prelude::*, px};
 use kubecove_lib::models::ResourceActionRevision;
 
 pub(super) struct Revision {

@@ -8,12 +8,12 @@ use super::{
     surface,
 };
 use crate::live_sessions::{exec_command, exec_status, forward_status, forward_title, local_url};
+use crate::targets::ObservedElement;
+use crate::targets::TestSupportExt;
 use crate::theme::{MONO, Tokens};
 use crate::ui::{self, Tone};
-use gpui_kit::base::ObservedElement;
 use gpui_kit::{
-    AnyElement, ClipboardItem, Context, Div, SharedString, Stateful, TestSupportExt, deferred, div,
-    prelude::*, px,
+    AnyElement, ClipboardItem, Context, Div, SharedString, Stateful, deferred, div, prelude::*, px,
 };
 use kubecove_lib::models::{
     PodExecSessionStatus, PodExecSessionSummary, PortForwardSessionSummary,

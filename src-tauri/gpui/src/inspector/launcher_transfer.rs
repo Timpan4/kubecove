@@ -3,6 +3,7 @@ use super::{
     Inspector,
     controls::{Variant, button},
 };
+use crate::targets::TestSupportExt;
 use crate::{
     theme::Tokens,
     ui,
@@ -11,7 +12,7 @@ use crate::{
         transfer::{self, ImportedWorkspace},
     },
 };
-use gpui_kit::{Context, Div, SharedString, Task, TestSupportExt, Window, div, prelude::*, px};
+use gpui_kit::{Context, Div, SharedString, Task, Window, div, prelude::*, px};
 use std::collections::HashMap;
 
 #[derive(Default)]

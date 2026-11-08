@@ -1,7 +1,8 @@
 //! Accepted submissions remain owned by the workspace after their detail closes.
 use super::{Inspector, detail::ResourceDetail};
+use crate::targets::TestSupportExt;
 use crate::{backend::ArgoInspection, ui};
-use gpui_kit::{Context, Div, Task, TestSupportExt, div, prelude::*};
+use gpui_kit::{Context, Div, Task, div, prelude::*};
 use kubecove_lib::models::{ArgoApplicationInspector, ArgoApplicationRef, ArgoOperationRequest};
 use std::{rc::Rc, time::Duration};
 

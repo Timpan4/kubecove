@@ -10,9 +10,9 @@ use super::helm_details::HelmDetails;
 use super::loading::Phase;
 use super::{Inspector, friendly_error::Operation, surface};
 use crate::helm;
+use crate::targets::TestSupportExt;
 use crate::theme::{Palette, Tokens};
 use crate::ui;
-use gpui_kit::TestSupportExt;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::{
     AnyElement, AppContext, Context, Div, Entity, ListAlignment, ListState, ScrollHandle,

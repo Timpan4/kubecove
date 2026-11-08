@@ -3,9 +3,10 @@
 //! presets and auto-start is off.
 use super::controls::{Variant, button};
 use super::{Inspector, Page};
+use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui;
-use gpui_kit::{AnyElement, Context, TestSupportExt, Window, div, prelude::*, px};
+use gpui_kit::{AnyElement, Context, Window, div, prelude::*, px};
 
 #[derive(Default)]
 pub(super) struct RestorePrompt {

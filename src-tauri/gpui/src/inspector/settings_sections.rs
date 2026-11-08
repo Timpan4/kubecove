@@ -1,140 +1,16 @@
-//! Disabled host-specific sections retain the controls and evidence layout in
-//! `ResourceKindOrderSettings`, `DiagnosticsSettings`, `McpServerSettings`,
-//! `RemoteConnectionSettings` and `UpdatesSettings.svelte`.
+//! Disabled host-specific sections keep their row and the reason the native
+//! host cannot back them.
 
-use super::controls::{Variant, button};
-use super::settings_page::{Observed, settings_row, unavailable_control};
+use super::settings_page::{settings_row, unavailable_control};
 use crate::settings::Row;
-use crate::theme::Tokens;
-use crate::ui;
-use gpui_kit::TestSupportExt;
-use gpui_kit::{AnyElement, Div, SharedString, div, prelude::*, px};
+use gpui_kit::{AnyElement, SharedString, div, prelude::*};
 
-fn disabled(row: &'static Row, widget: impl IntoElement) -> AnyElement {
-    unavailable_control(
+pub(super) fn section(row: &'static Row) -> AnyElement {
+    let control = unavailable_control(
         SharedString::from(format!("setting-control:{}", row.title)),
         row.unavailable
             .expect("host sections have an unavailable reason"),
-        widget,
-    )
-}
-
-fn panel(row: &'static Row) -> Observed {
-    div()
-        .id(SharedString::from(format!("setting-row:{}", row.title)))
-        .test_support()
-        .p(px(12.))
-        .rounded(px(8.))
-        .border_1()
-        .border_color(Tokens::border())
-        .bg(Tokens::card())
-}
-
-fn actions(labels: &[&'static str]) -> Div {
-    div().flex().gap(px(8.)).children(
-        labels
-            .iter()
-            .map(|label| button(Variant::Outline, 24., true).child(*label)),
-    )
-}
-
-pub(super) fn section(row: &'static Row) -> AnyElement {
-    match row.title {
-        "Interaction report" => report(row, true),
-        "Latency report" => report(row, false),
-        _ => {
-            settings_row(row.title, row.description.into(), disabled(row, div())).into_any_element()
-        }
-    }
-}
-
-fn table(headers: &[&'static str], empty: &'static str) -> Div {
-    div()
-        .py(px(12.))
-        .px(px(12.))
-        .rounded(px(8.))
-        .border_1()
-        .border_color(Tokens::border())
-        .overflow_hidden()
-        .child(
-            div()
-                .flex()
-                .gap(px(8.))
-                .px(px(12.))
-                .py(px(8.))
-                .border_b_1()
-                .border_color(Tokens::border())
-                .children(
-                    headers.iter().map(|header| {
-                        ui::semibold(ui::muted(ui::xs(header.to_uppercase()))).flex_1()
-                    }),
-                ),
-        )
-        .child(ui::muted(ui::sm(empty)).py(px(32.)).text_center())
-}
-
-fn report(row: &'static Row, interactions: bool) -> AnyElement {
-    let mut body = div().flex().flex_col().gap(px(16.)).mt(px(16.));
-    if interactions {
-        body = body
-            .child(ui::muted(ui::xs("0 interactions recorded.")))
-            .child(table(
-                &[
-                    "Time",
-                    "Kind",
-                    "Target",
-                    "Dropped",
-                    "Max frame",
-                    "To paint",
-                    "DOM",
-                    "Top source",
-                ],
-                "No interactions with dropped frames yet.",
-            ));
-    } else {
-        body = body.child(ui::muted(ui::xs("Frontend 0 events, backend 0 events.")));
-        for (label, headers, empty) in [
-            (
-                "Frontend timings",
-                &["Name", "Count", "p50", "p95", "Max"][..],
-                "No timed frontend spans yet.",
-            ),
-            (
-                "Render counters",
-                &["Name", "Count"][..],
-                "No render counts yet.",
-            ),
-            (
-                "Backend timings",
-                &["Name", "Count", "p50", "p95", "Max"][..],
-                "No backend timings yet.",
-            ),
-        ] {
-            body = body.child(
-                div()
-                    .child(ui::medium(ui::xs(label)).mb(px(8.)))
-                    .child(table(headers, empty)),
-            );
-        }
-        body =
-            body.child(div().child(ui::medium(ui::xs("Backend caches"))).child(
-                ui::muted(ui::xs("Enable diagnostics to inspect backend caches.")).mt(px(8.)),
-            ));
-    }
-    panel(row)
-        .child(
-            div()
-                .child(ui::medium(ui::sm(row.title)))
-                .child(ui::muted(ui::xs(row.description)).mt(px(4.))),
-        )
-        .child(div().mt(px(12.)).child(disabled(
-            row,
-            actions(if interactions {
-                &["Clear", "Copy"]
-            } else {
-                &["Refresh", "Clear", "Copy"]
-            }),
-        )))
-        .child(body)
-        .into_any_element()
+        div(),
+    );
+    settings_row(row.title, row.description.into(), control).into_any_element()
 }

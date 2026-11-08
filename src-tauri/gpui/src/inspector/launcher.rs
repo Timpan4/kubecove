@@ -4,10 +4,10 @@
 
 use super::Inspector;
 use super::controls::{Variant, button};
+use crate::targets::TestSupportExt;
 use crate::theme::{Palette, Tokens};
 use crate::ui;
 use crate::workspaces::{self, Discovery, SavedWorkspace};
-use gpui_kit::TestSupportExt;
 use gpui_kit::component::input::InputState;
 use gpui_kit::{
     AnyElement, Context, Div, Entity, SharedString, Stateful, Task, Window, div, prelude::*, px,
@@ -104,7 +104,7 @@ impl LauncherState {
 }
 
 /// The web's "No saved workspaces yet" empty state.
-fn no_saved_workspaces() -> gpui_kit::base::ObservedElement<Stateful<Div>> {
+fn no_saved_workspaces() -> crate::targets::ObservedElement<Stateful<Div>> {
     div()
         .id("workspaces-empty")
         .test_support()
@@ -131,7 +131,7 @@ fn no_saved_workspaces() -> gpui_kit::base::ObservedElement<Stateful<Div>> {
 }
 
 /// The web's "Context unavailable" badge for a saved workspace whose context is missing.
-fn context_unavailable(name: &str) -> gpui_kit::base::ObservedElement<Stateful<Div>> {
+fn context_unavailable(name: &str) -> crate::targets::ObservedElement<Stateful<Div>> {
     div()
         .id(SharedString::from(format!("workspace-unavailable:{name}")))
         .test_support()

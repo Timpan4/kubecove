@@ -3,13 +3,14 @@ use super::{
     Inspector,
     controls::{Variant, button},
 };
+use crate::targets::TestSupportExt;
 use crate::{
     backend::Read,
     live_sessions::{forward_status, forward_title},
     theme::Tokens,
     ui,
 };
-use gpui_kit::{Context, SharedString, TestSupportExt, Window, div, prelude::*, px};
+use gpui_kit::{Context, SharedString, Window, div, prelude::*, px};
 use kubecove_lib::models::{AppError, AppErrorKind, PortForwardRequest, PortForwardSessionSummary};
 
 impl Inspector {

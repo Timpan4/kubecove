@@ -9,9 +9,10 @@ use super::details_tab::{row, value};
 use crate::incident::{self, ConditionRow};
 use crate::model::{exact_timestamp, health_source};
 use crate::preferences::TimestampTimezone;
+use crate::targets::TestSupportExt;
 use crate::theme::{MONO, Tokens};
 use crate::ui::{self, Tone};
-use gpui_kit::{AnyElement, Context, Div, ElementId, TestSupportExt, div, prelude::*, px};
+use gpui_kit::{AnyElement, Context, Div, ElementId, div, prelude::*, px};
 use kubecove_lib::models::{HealthAssessmentEvidence, ResourceSummary};
 use serde_json::Value;
 

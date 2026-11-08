@@ -6,14 +6,13 @@ use super::{
     detail::{Detail, DetailTab},
     friendly_error::{self, Bucket, Context as ErrorContext, Presentation},
 };
+use crate::targets::TestSupportExt;
 use crate::{
     backend::Scope,
     theme::{Palette, Tokens},
     ui,
 };
-use gpui_kit::{
-    AnyElement, ClipboardItem, Context, SharedString, Task, TestSupportExt, Window, prelude::*, px,
-};
+use gpui_kit::{AnyElement, ClipboardItem, Context, SharedString, Task, Window, prelude::*, px};
 use kubecove_lib::models::{AppError, AppErrorKind, RbacAccessReviewTarget, ResourceSummary};
 use std::{collections::HashSet, time::Duration};
 

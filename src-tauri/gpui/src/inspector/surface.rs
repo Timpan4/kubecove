@@ -3,11 +3,11 @@
 
 use super::{Inspector, Page};
 use crate::model::health_source;
+use crate::targets::TestSupportExt;
 use crate::theme::{Palette, Tokens};
 use crate::ui::{self, Tone};
 use gpui_kit::{
-    AnyElement, Context, Div, FontWeight, Hsla, SharedString, Styled, TestSupportExt, div,
-    prelude::*, px,
+    AnyElement, Context, Div, FontWeight, Hsla, SharedString, Styled, div, prelude::*, px,
 };
 use kubecove_lib::models::{HealthAssessment, HealthAssessmentCompleteness, HealthAssessmentState};
 

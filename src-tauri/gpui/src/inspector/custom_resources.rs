@@ -1,8 +1,9 @@
 //! Discovered kinds retain their API identity even before they contain objects.
 use super::{Inspector, Page, sidebar_discovery::ClusterRead};
 use crate::backend::ScopeResult;
+use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
-use gpui_kit::{AnyElement, Context, SharedString, TestSupportExt, deferred, div, prelude::*, px};
+use gpui_kit::{AnyElement, Context, SharedString, deferred, div, prelude::*, px};
 use kubecove_lib::models::AppError;
 
 /// The custom-resource read that follows the built-in resource read.

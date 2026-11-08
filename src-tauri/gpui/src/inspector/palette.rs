@@ -8,9 +8,9 @@ mod search;
 use super::{Inspector, Page};
 use crate::backend::CLUSTER_KINDS;
 use crate::palette::{self, Destination, NavEntry};
+use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui;
-use gpui_kit::TestSupportExt;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::{
     AnyElement, App, Context, Div, Entity, KeyDownEvent, SharedString, Subscription, Window, div,

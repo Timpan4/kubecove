@@ -7,9 +7,9 @@ use crate::incidents::{
     guidance::{self, Enrichment, Evidence, Tone},
     resource_label,
 };
+use crate::targets::TestSupportExt;
 use crate::theme::{Palette, Tokens};
 use crate::ui;
-use gpui_kit::TestSupportExt;
 use gpui_kit::{AnyElement, Context, Div, Hsla, SharedString, div, prelude::*, px};
 use kubecove_lib::models::ResourceSummary;
 

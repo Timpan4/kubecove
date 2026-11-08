@@ -67,6 +67,7 @@ mod launcher_form;
 mod launcher_transfer;
 mod live_data;
 pub use live_data::COALESCE as RESOURCE_WATCH_COALESCE;
+mod interaction_report;
 mod live_events;
 mod live_rows;
 mod live_session_popover;
@@ -89,6 +90,7 @@ mod port_forward_rows;
 mod port_forwards;
 mod preference_controls;
 mod preferences;
+mod presentation;
 mod preset_table;
 mod rbac_inspector;
 mod rbac_page;
@@ -142,10 +144,10 @@ mod yaml_tab;
 mod yaml_view;
 
 use crate::backend::{Backend, Scope};
+use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui;
 use detail::Detail;
-use gpui_kit::TestSupportExt;
 use gpui_kit::component::{
     IconName, IndexPath,
     input::{Input, InputEvent, InputState},
@@ -186,6 +188,7 @@ pub struct Inspector {
     focus: gpui_kit::FocusHandle,
     backend: Arc<dyn Backend>,
     timings: crate::diagnostics::Timings,
+    presentation: presentation::Presentation,
     loading: loading::LoadingDelays,
     persisted: crate::preferences::Document,
     persistence_error: Option<String>,
@@ -330,6 +333,7 @@ impl Inspector {
         let mut this = Self {
             focus,
             timings: Default::default(),
+            presentation: Default::default(),
             loading: Default::default(),
             backend,
             persisted: Default::default(),
@@ -647,12 +651,14 @@ impl Render for Inspector {
         });
         let drawer = (workspace && compact && self.navigation_open)
             .then(|| self.navigation_drawer(window, cx));
+        let probe = self.presentation_frame(started);
         let view = div()
             .track_focus(&self.focus)
             .relative()
             .size_full()
             .capture_key_down(
                 cx.listener(|this, event: &gpui_kit::KeyDownEvent, window, cx| {
+                    this.record_key(event, window, cx);
                     if event.keystroke.key != "escape" {
                         return;
                     }
@@ -749,7 +755,8 @@ impl Render for Inspector {
             )
             .children(overlays)
             .children(drawer)
-            .children(self.copy_toast(cx));
+            .children(self.copy_toast(cx))
+            .children(probe);
         self.loading.end_frame(cx);
         self.record_load_frames(window, started.elapsed());
         view

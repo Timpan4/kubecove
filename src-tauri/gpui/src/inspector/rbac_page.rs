@@ -9,13 +9,11 @@ use super::{Inspector, Page, friendly_error::Operation, surface};
 use crate::rbac::permissions::{Identity, IdentityKind, Observed, observed};
 use crate::rbac::review::ReviewRecord;
 use crate::rbac::{self, Bucket, CockpitItem, ObjectRef, RbacView};
+use crate::targets::TestSupportExt;
 use crate::theme::{Palette, Tokens};
 use crate::ui;
 use gpui_kit::component::input::{InputEvent, InputState};
-use gpui_kit::{
-    Context, Div, Entity, FontWeight, Subscription, Task, TestSupportExt, Window, div, prelude::*,
-    px,
-};
+use gpui_kit::{Context, Div, Entity, FontWeight, Subscription, Task, Window, div, prelude::*, px};
 use kubecove_lib::models::{AppError, RbacCoverageStatus, RbacInspectionSummary, RbacRiskLevel};
 use std::rc::Rc;
 

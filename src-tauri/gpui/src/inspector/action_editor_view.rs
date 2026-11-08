@@ -1,9 +1,10 @@
 //! Rendering for the cached Actions row editors in ResourceActionsTab.svelte.
 use super::controls::{Variant, button};
 use super::{Inspector, action_fields::*, actions_state::ActionsState};
+use crate::targets::TestSupportExt;
 use crate::{actions::RowId, theme::Tokens, ui};
 use gpui_kit::component::input::Input;
-use gpui_kit::{Context, Div, TestSupportExt, div, prelude::*, px};
+use gpui_kit::{Context, Div, div, prelude::*, px};
 
 pub(super) fn render(a: &ActionsState, cx: &mut Context<Inspector>) -> Div {
     let mut body = div()

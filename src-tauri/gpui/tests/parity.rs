@@ -23,6 +23,8 @@ mod detail_scroll;
 mod detail_status;
 #[path = "parity/details_metadata.rs"]
 mod details_metadata;
+#[path = "parity/diagnostics.rs"]
+mod diagnostics;
 #[path = "parity/feedback.rs"]
 mod feedback;
 #[path = "parity/incident_diagnostics.rs"]
@@ -214,6 +216,7 @@ fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
         || workspace_editing::act(window, cx, step)
         || feedback::act(window, cx, step)
         || incident_diagnostics::act(window, cx, step)
+        || diagnostics::act(window, cx, step)
         || delivery::act(window, cx, step)
         || yaml_folds::act(window, cx, step))
     {

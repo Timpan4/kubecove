@@ -1,6 +1,7 @@
 use super::{Inspector, Page};
+use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui, workspaces::shortcuts::Target};
-use gpui_kit::{Context, SharedString, TestSupportExt, div, prelude::*, px};
+use gpui_kit::{Context, SharedString, div, prelude::*, px};
 
 impl Inspector {
     pub(super) fn saved_shortcuts(&self, cx: &mut Context<Self>) -> impl IntoElement {

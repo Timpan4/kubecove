@@ -1,7 +1,7 @@
 //! Resource metrics card and async reads from `ResourceBrowser.svelte`.
 use super::Inspector;
+use crate::targets::TestSupportExt;
 use crate::{metrics, ui};
-use gpui_kit::TestSupportExt;
 use gpui_kit::{Context, Div, Task, Window, prelude::*, px};
 use kubecove_lib::models::{ResourceMetricSummary, ResourceMetricsSummary, ResourceSummary};
 use std::{collections::HashMap, rc::Rc};

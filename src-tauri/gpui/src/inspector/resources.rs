@@ -5,9 +5,9 @@
 use super::detail::Detail;
 use super::resource_filters::HealthFilter;
 use super::{Inspector, Load, Page};
+use crate::targets::TestSupportExt;
 use crate::theme::{Palette, Tokens};
 use crate::ui;
-use gpui_kit::TestSupportExt;
 use gpui_kit::{AnyElement, Context, Div, SharedString, Window, div, prelude::*, px};
 
 const SIDEBAR: f32 = 260.;
@@ -170,6 +170,7 @@ impl Inspector {
         if (self.page == Page::GitOps) != (page == Page::GitOps) {
             self.detail_size = None;
         }
+        self.request_view();
         self.page = page;
     }
 

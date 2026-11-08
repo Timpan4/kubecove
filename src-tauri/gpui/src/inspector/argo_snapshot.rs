@@ -10,10 +10,10 @@ use super::controls::{self, Variant};
 use super::delivery_ui as dui;
 use super::loading::Phase;
 use crate::argo_app::{ArgoView, Change, ChangeBadge};
+use crate::targets::TestSupportExt;
 use crate::theme::{MONO, Palette, Tokens};
 use crate::ui::{self, Tone};
 use crate::unified_diff::{DiffLine, DiffLineKind};
-use gpui_kit::TestSupportExt;
 use gpui_kit::{AnyElement, Context, Div, FontWeight, SharedString, div, prelude::*, px};
 
 /// `ArgoResourceDiff` shows this many lines until expanded.

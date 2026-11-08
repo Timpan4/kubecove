@@ -9,9 +9,10 @@ use super::detail::{Detail, ResourceDetail};
 use super::details_containers::{cell, row_of, table_body};
 use super::details_tab::metadata_card;
 use super::helm_page::HelmTarget;
+use crate::targets::TestSupportExt;
 use crate::theme::{MONO, Tokens};
 use crate::ui;
-use gpui_kit::{Context, Div, FontWeight, Hsla, TestSupportExt, div, prelude::*, px};
+use gpui_kit::{Context, Div, FontWeight, Hsla, div, prelude::*, px};
 use kubecove_lib::models::{GitOpsOwnerSummary, ResourceSummary};
 use serde_json::Value;
 

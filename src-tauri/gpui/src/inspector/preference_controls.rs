@@ -3,13 +3,14 @@ use super::{
     controls::{Variant, button},
     settings_page::{settings_row, switch},
 };
+use crate::targets::TestSupportExt;
 use crate::{
     preferences::*,
     settings::{Control, Row},
     theme::Tokens,
     ui,
 };
-use gpui_kit::{AnyElement, Context, SharedString, TestSupportExt, div, prelude::*, px};
+use gpui_kit::{AnyElement, Context, SharedString, div, prelude::*, px};
 
 impl Inspector {
     pub(super) fn preference_control(

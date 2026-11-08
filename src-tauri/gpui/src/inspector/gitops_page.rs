@@ -12,9 +12,9 @@ use super::loading::Phase;
 use super::{Inspector, Page};
 use crate::gitops::GitOpsInventory;
 use crate::gitops_surface::{self as model, Focus, Provider, Row, Selection, Tone};
+use crate::targets::TestSupportExt;
 use crate::theme::{Palette, Tokens};
 use crate::ui;
-use gpui_kit::TestSupportExt;
 use gpui_kit::{
     AnyElement, Context, Div, ListAlignment, ListState, ScrollHandle, SharedString, Window, div,
     list, prelude::*, px,

@@ -11,9 +11,9 @@ use super::loading::{LoadingDelays, Phase};
 use super::windowed::Windowed;
 use crate::incident::{self, SignalTone};
 use crate::incident_timeline::{self as entries, TimelineItem};
+use crate::targets::TestSupportExt;
 use crate::theme::{MONO, Tokens};
 use crate::ui;
-use gpui_kit::TestSupportExt;
 use gpui_kit::{Context, Div, FontWeight, Hsla, div, prelude::*, px};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
@@ -149,7 +149,7 @@ fn ghost_button(
         .on_click(on_click)
 }
 
-fn evidence(item: &TimelineItem) -> gpui_kit::base::ObservedElement<gpui_kit::Stateful<Div>> {
+fn evidence(item: &TimelineItem) -> crate::targets::ObservedElement<gpui_kit::Stateful<Div>> {
     let row = |label: &str, value: String, mono: bool| {
         [
             ui::text(label.to_owned(), 11., 16.).text_color(Tokens::foreground().opacity(0.65)),

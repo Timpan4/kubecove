@@ -1,9 +1,9 @@
 //! Workspace header, mirroring `WorkspaceHeader.svelte` and `ClusterSelector.svelte`.
 
 use super::{Inspector, Page};
+use crate::targets::TestSupportExt;
 use crate::theme::{MONO, Palette, Tokens};
 use crate::ui;
-use gpui_kit::TestSupportExt;
 use gpui_kit::component::select::Select;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{Context, FontWeight, div, prelude::*, px};

@@ -3,10 +3,11 @@
 //! `YamlCodeEditor.svelte` does. Parser errors come first, then lint results.
 //! `info` findings are marked but never get a lens.
 use super::{Inspector, detail::Detail};
+use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
 use gpui_kit::base::input::{Diagnostic, DiagnosticSeverity};
 use gpui_kit::component::input::{EditorState, Position};
-use gpui_kit::{Context, Div, TestSupportExt, div, prelude::*, px};
+use gpui_kit::{Context, Div, div, prelude::*, px};
 use kubecove_lib::models::{KubernetesYamlLintDiagnostic, KubernetesYamlLintSeverity};
 
 pub(super) struct Lens {

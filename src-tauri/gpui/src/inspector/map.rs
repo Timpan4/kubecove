@@ -12,10 +12,10 @@ use paint::PreparedEdges;
 
 use super::Inspector;
 use super::resources::Panel;
+use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::topology::{self, Viewport};
 use crate::ui;
-use gpui_kit::TestSupportExt;
 use gpui_kit::{
     AnyElement, Context, Div, FocusHandle, Pixels, Point, SharedString, WeakFocusHandle, div,
     prelude::*, px,

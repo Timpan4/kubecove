@@ -3,14 +3,14 @@
 use super::Inspector;
 use super::controls::{Variant, button};
 use super::loading::Phase;
+use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui;
 use crate::workspaces::{self, Discovery};
-use gpui_kit::TestSupportExt;
 use gpui_kit::component::input::Input;
 use gpui_kit::{AnyElement, Context, Div, FontWeight, SharedString, Stateful, div, prelude::*, px};
 
-type Observed = gpui_kit::base::ObservedElement<Stateful<Div>>;
+type Observed = crate::targets::ObservedElement<Stateful<Div>>;
 
 /// Adds `name` to a checkbox selection, or removes it when present.
 fn toggle(selection: &mut Vec<String>, name: &str) {

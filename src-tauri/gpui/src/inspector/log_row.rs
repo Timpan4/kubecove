@@ -9,12 +9,13 @@ use super::timestamp_text;
 use crate::logs::{LogLevel, ParsedLogLine, highlight_ranges, time_label};
 use crate::model::exact_timestamp;
 use crate::preferences::TimestampTimezone;
+use crate::targets::ObservedElement;
+use crate::targets::TestSupportExt;
 use crate::theme::{MONO, Tokens, oklch};
 use crate::ui;
-use gpui_kit::base::ObservedElement;
 use gpui_kit::{
     ClipboardItem, Context, Div, FontWeight, HighlightStyle, Hsla, SharedString, Stateful,
-    StyledText, TestSupportExt, div, prelude::*, px, relative,
+    StyledText, div, prelude::*, px, relative,
 };
 
 fn red400(alpha: f32) -> Hsla {

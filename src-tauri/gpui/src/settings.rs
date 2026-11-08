@@ -262,16 +262,16 @@ pub const ROWS: &[Row] = &[
     row(
         C::Diagnostics,
         "Record interactions",
-        "Measures input-to-paint time, dropped frames, and DOM changes for each click, drag, key, and scroll.",
+        "Measures input-to-paint time, dropped frames, and renders for each click, drag, key, scroll, and navigation. Adds overhead while on. Data stays in memory.",
         Switch(false),
-        Some(BROWSER_TOOL),
+        None,
     ),
     row(
         C::Diagnostics,
         "Interaction report",
-        "Interactions with dropped frames, worst first. Enable diagnostics to include Tauri command timings. Copy outputs JSON lines for bun run perf:interactions.",
+        "Interactions with dropped frames, worst first. Enable diagnostics to include command timings. Copy outputs JSON lines for bun run perf:interactions.",
         Section,
-        Some(BROWSER_TOOL),
+        None,
     ),
     #[cfg(debug_assertions)]
     row(

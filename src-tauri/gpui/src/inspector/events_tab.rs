@@ -9,12 +9,13 @@ use super::{Inspector, timestamp_text};
 use crate::incident::{self, EventFilter};
 use crate::model::exact_timestamp;
 use crate::preferences::TimestampTimezone;
+use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui;
 use gpui_kit::component::input::Input;
 use gpui_kit::{
-    AnyElement, Context, Div, FontWeight, HighlightStyle, SharedString, StyledText, TestSupportExt,
-    div, prelude::*, px,
+    AnyElement, Context, Div, FontWeight, HighlightStyle, SharedString, StyledText, div,
+    prelude::*, px,
 };
 use kubecove_lib::models::ResourceEventSummary;
 
@@ -54,7 +55,7 @@ pub(super) fn empty(
     title: &str,
     description: &str,
     height: f32,
-) -> gpui_kit::base::ObservedElement<gpui_kit::Stateful<Div>> {
+) -> crate::targets::ObservedElement<gpui_kit::Stateful<Div>> {
     div()
         .id(SharedString::from(format!("empty:{title}")))
         .test_support()

@@ -5,9 +5,9 @@
 use super::{Inspector, surface};
 use crate::backend::Scope;
 use crate::incidents::{self, Empty, Filter, Queue, guidance::Enrichment};
+use crate::targets::TestSupportExt;
 use crate::theme::{Palette, Tokens};
 use crate::ui::{self, Tone};
-use gpui_kit::TestSupportExt;
 use gpui_kit::{
     AnyElement, Context, ListAlignment, ListState, SharedString, Task, Window, div, prelude::*, px,
 };

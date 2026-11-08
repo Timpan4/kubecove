@@ -3,9 +3,9 @@
 //! `@container` breakpoints use the frame width derived from the window.
 
 use super::{Inspector, controls, resources};
+use crate::targets::TestSupportExt;
 use crate::theme::{HEADING, Palette, Tokens};
 use crate::ui;
-use gpui_kit::TestSupportExt;
 use gpui_kit::{
     AnyElement, Context, Div, FontWeight, Hsla, ScrollHandle, SharedString, Window, div,
     prelude::*, px,

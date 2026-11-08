@@ -7,9 +7,9 @@ use super::rbac_queue::{review_badge, risk_badge, risk_rail};
 use super::surface;
 use crate::rbac::permissions::{Identity, IdentityKind};
 use crate::rbac::{self, CockpitItem, ObjectRef, RbacView};
+use crate::targets::TestSupportExt;
 use crate::theme::{MONO, Palette, Tokens};
 use crate::ui;
-use gpui_kit::TestSupportExt;
 use gpui_kit::{ClipboardItem, Context, Div, SharedString, div, prelude::*, px};
 use kubecove_lib::models::RbacInspectionSummary;
 

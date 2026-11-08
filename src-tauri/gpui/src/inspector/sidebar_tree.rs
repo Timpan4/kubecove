@@ -1,9 +1,10 @@
 //! Built-in sidebar branches. Descendants are constructed only for open parents.
 use super::{Inspector, Page};
+use crate::targets::TestSupportExt;
 use crate::{model, rbac::RbacView, theme::Tokens, ui};
 use gpui_kit::{
     AnyElement, App, ClickEvent, Context, FocusHandle, KeyDownEvent, ScrollHandle, SharedString,
-    TestSupportExt, Window, div, prelude::*, px,
+    Window, div, prelude::*, px,
 };
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};

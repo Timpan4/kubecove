@@ -4,6 +4,7 @@ use super::{
     controls::{Variant, button},
     detail::Detail,
 };
+use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
 use gpui_kit::component::{
     IndexPath,
@@ -11,8 +12,8 @@ use gpui_kit::component::{
     select::{SearchableVec, Select, SelectEvent, SelectState},
 };
 use gpui_kit::{
-    AnyElement, AppContext, Context, Entity, Focusable, SharedString, Subscription, TestSupportExt,
-    Window, div, prelude::*, px,
+    AnyElement, AppContext, Context, Entity, Focusable, SharedString, Subscription, Window, div,
+    prelude::*, px,
 };
 
 pub(super) struct ExecCustomForm {

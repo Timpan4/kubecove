@@ -5,13 +5,14 @@ use super::{
     controls::{Variant, button},
     detail::Detail,
 };
+use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{
     IndexPath,
     select::{SearchableVec, Select, SelectEvent, SelectState},
 };
-use gpui_kit::{AppContext, Context, Div, Entity, TestSupportExt, Window, div, prelude::*, px};
+use gpui_kit::{AppContext, Context, Div, Entity, Window, div, prelude::*, px};
 use kubecove_lib::models::PortForwardRequest;
 
 pub(super) struct ForwardForm {

@@ -1,10 +1,9 @@
 //! `CopyableText.svelte`: a copy icon beside a value. Each copy writes the
 //! clipboard and shows `Copied {label}: {value}` in the shared copy toast.
 use super::Inspector;
+use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
-use gpui_kit::{
-    ClipboardItem, Context, IntoElement, SharedString, Styled, TestSupportExt, div, prelude::*, px,
-};
+use gpui_kit::{ClipboardItem, Context, IntoElement, SharedString, Styled, div, prelude::*, px};
 
 impl Inspector {
     pub(super) fn copy_labeled(&mut self, label: &str, value: String, cx: &mut Context<Self>) {

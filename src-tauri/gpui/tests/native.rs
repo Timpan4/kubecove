@@ -18,6 +18,8 @@ mod page_reads;
 mod preferences;
 #[path = "native/preferences_migration.rs"]
 mod preferences_migration;
+#[path = "native/presentation.rs"]
+mod presentation;
 #[path = "native/read_retry.rs"]
 mod read_retry;
 #[path = "native/remote_connections.rs"]

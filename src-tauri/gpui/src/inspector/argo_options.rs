@@ -5,9 +5,10 @@ use super::{
     argo_tab::ArgoTab,
     controls::{Variant, button},
 };
+use crate::targets::TestSupportExt;
 use crate::ui;
 use gpui_kit::{
-    AppContext, Context, Div, Entity, FocusHandle, TestSupportExt, Window,
+    AppContext, Context, Div, Entity, FocusHandle, Window,
     base::FocusTrapElement,
     component::input::{Input, InputState},
     div,

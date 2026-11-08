@@ -1,6 +1,7 @@
 //! `LiveSessionsView.svelte`: table cells, row controls, and small cards.
 use super::Inspector;
 use super::windowed::row_id;
+use crate::targets::TestSupportExt;
 use crate::{
     backend::LiveSessions,
     live_sessions::*,
@@ -8,8 +9,7 @@ use crate::{
     ui::{self, Tone},
 };
 use gpui_kit::{
-    AnyElement, ClipboardItem, Context, Div, FontWeight, SharedString, TestSupportExt, div,
-    prelude::*, px,
+    AnyElement, ClipboardItem, Context, Div, FontWeight, SharedString, div, prelude::*, px,
 };
 /// `Card size="sm"`: `rounded-lg border bg-surface-1 py-3 gap-3`.
 pub(super) fn card() -> Div {

@@ -1,10 +1,11 @@
 //! Sidebar discovery search and resource-kind checkbox scope.
 use super::{Inspector, live_data};
+use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::{
-    AnyElement, AppContext, Context, Entity, SharedString, Subscription, TestSupportExt, Window,
-    div, prelude::*, px,
+    AnyElement, AppContext, Context, Entity, SharedString, Subscription, Window, div, prelude::*,
+    px,
 };
 use kubecove_lib::models::{DiscoveredResourceKind, WatchResourceKey};
 use std::collections::HashSet;

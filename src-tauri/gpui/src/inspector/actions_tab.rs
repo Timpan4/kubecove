@@ -9,13 +9,12 @@ use super::detail::ResourceDetail;
 use super::events::tw;
 use super::loading::LoadingDelays;
 use crate::actions::{self, ActionRow, RowId};
+use crate::targets::ObservedElement;
+use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui;
-use gpui_kit::base::ObservedElement;
 use gpui_kit::component::input::Input;
-use gpui_kit::{
-    AnyElement, Context, Div, SharedString, Stateful, TestSupportExt, div, prelude::*, px,
-};
+use gpui_kit::{AnyElement, Context, Div, SharedString, Stateful, div, prelude::*, px};
 use kubecove_lib::models::ResourceActionKind;
 
 /// `rounded-full border bg-muted/30 px-2 py-1` state chip.

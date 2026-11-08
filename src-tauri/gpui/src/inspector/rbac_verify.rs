@@ -6,9 +6,9 @@ use super::controls::{Variant, button};
 use super::rbac_inspector::caps;
 use super::rbac_page::IdentitySource;
 use crate::rbac::permissions::{Identity, IdentityKind, identity_defaults, unique_groups};
+use crate::targets::TestSupportExt;
 use crate::theme::{Palette, Tokens};
 use crate::ui;
-use gpui_kit::TestSupportExt;
 use gpui_kit::component::input::{Input, InputEvent, InputState, TextareaState};
 use gpui_kit::{
     AnyElement, App, Context, Div, Entity, Subscription, Task, Window, div, prelude::*, px,

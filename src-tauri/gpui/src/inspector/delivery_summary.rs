@@ -2,9 +2,9 @@
 //! (`GitOpsView.svelte` and `HelmView.svelte`).
 
 use super::delivery_ui::badge;
+use crate::targets::TestSupportExt;
 use crate::theme::{HEADING, Palette, Tokens};
 use crate::ui;
-use gpui_kit::TestSupportExt;
 use gpui_kit::{Div, FontWeight, Hsla, SharedString, div, prelude::*, px};
 
 /// One summary fact: a `text-[0.62rem]` caps label over a semibold value.

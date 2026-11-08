@@ -6,9 +6,9 @@ use super::argo_tab::ArgoTab;
 use super::controls::{self, Variant};
 use crate::argo_app::ArgoView;
 use crate::model::exact_timestamp;
+use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui::{self, Tone};
-use gpui_kit::TestSupportExt;
 use gpui_kit::{Context, Div, SharedString, div, prelude::*, px};
 
 /// `rounded-lg border bg-surface-1 p-3`.

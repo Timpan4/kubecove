@@ -1,11 +1,12 @@
 //! Saved scope and comparison projections are rebuilt on reads, never per frame.
 use super::{Inspector, overview::titled_card};
+use crate::targets::TestSupportExt;
 use crate::{
     model::{HealthSummary, WORKSPACE_KINDS},
     ui,
     workspaces::shortcuts::{CompareKind, compare_entries},
 };
-use gpui_kit::{AnyElement, SharedString, TestSupportExt, div, prelude::*, px};
+use gpui_kit::{AnyElement, SharedString, div, prelude::*, px};
 
 #[derive(Default)]
 pub(super) struct SavedOverview {

@@ -51,6 +51,7 @@ export const ACTIONS = [
     "connectArgoProfile", "disconnectArgoProfile", "confirmArgoReview", "cancelArgoReview", "reviewArgoOperation", "expectArgoReview", "expectArgoText", "argoDocument", "expectArgoPopover", "dismissArgoPopover", "expectArgoCheckbox", "toggleArgoOption", "expectNoArgoControl", "expectArgoFocusInPopover", "tabArgoPopover", "expectArgoTriggerFocus", "expectArgoOptionFocusable","expectArgoOperationState","selectArgoConnection","argoConnectionDialog",
     "cancelYamlEdit",
     "revealSecretValue", "hideSecretValue", "expectSecretValue", "expectYamlLens", "refreshLatencyReport", "clearLatencyReport", "expectLatencyEmpty", "expectLatencyTiming", "openDocumentation", "expectDocumentationRequest", "copyLatencyReport", "expectLatencyReportCopy", "updateStatusControl", "expectUpdateControl",
+    "expectViewTiming", "copyInteractions", "clearInteractions", "expectInteractionCopy", "typeSettingsField",
     "configurePreset", "presetControl",
     "replaySessions", "confirmExecLeave",
     "configureForward", "forwardControl", "expectForwardState", "execControl", "expectExecState",
@@ -266,6 +267,16 @@ function step(value: unknown): Step {
         case "expectLatencyTiming": return { action: item.action, command: string(item.command) };
         case "copyLatencyReport": return { action: item.action };
         case "expectLatencyReportCopy": return { action: item.action, contains: string(item.contains) };
+        case "expectViewTiming": return { action: item.action, view: oneOf(["resources"], item.view, "a timed view") };
+        case "copyInteractions": case "clearInteractions": return { action: item.action };
+        case "expectInteractionCopy":
+            if (item.contains === undefined && item.excludes === undefined) throw new Error("Expected contains or excludes");
+            return {
+                action: item.action,
+                ...(item.contains === undefined ? {} : { contains: string(item.contains) }),
+                ...(item.excludes === undefined ? {} : { excludes: string(item.excludes) }),
+            };
+        case "typeSettingsField": return { action: item.action, field: oneOf(["Server token"], item.field, "a typed settings field"), value: string(item.value) };
         case "expectUpdateControl": return { action: item.action, label: oneOf(["Check for updates", "Update available", "Checking for updates", "Update check failed"] as const, item.label, "an update control label") };
         case "updateStatusControl": return { action: item.action, control: oneOf(["Open", "Check", "Later", "Escape"], item.control, "an update control") };
         case "expectDocumentationRequest": return { action: item.action, url: string(item.url) };

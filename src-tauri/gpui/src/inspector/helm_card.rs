@@ -6,9 +6,9 @@ use super::controls::Variant;
 use super::delivery_ui::{self as dui, CARD_GAP, CARD_HEIGHT};
 use crate::gitops_surface::status_label;
 use crate::helm::{self, Tone};
+use crate::targets::TestSupportExt;
 use crate::theme::{HEADING, Palette, Tokens};
 use crate::ui;
-use gpui_kit::TestSupportExt;
 use gpui_kit::{Context, Div, FontWeight, Hsla, ScrollHandle, SharedString, div, prelude::*, px};
 use kubecove_lib::models::HelmReleaseSummary;
 

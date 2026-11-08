@@ -3,11 +3,10 @@ use super::{
     Inspector,
     controls::{Variant, button},
 };
+use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
 use gpui_kit::component::input::{Input, InputState};
-use gpui_kit::{
-    AnyElement, AppContext, Context, Entity, TestSupportExt, Window, div, prelude::*, px,
-};
+use gpui_kit::{AnyElement, AppContext, Context, Entity, Window, div, prelude::*, px};
 use kubecove_lib::models::PortForwardRequest;
 
 pub(super) struct PresetForm {

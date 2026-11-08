@@ -3,9 +3,9 @@
 
 use super::controls::{self, Variant};
 use super::{Inspector, Page};
+use crate::targets::TestSupportExt;
 use crate::theme::{Palette, Tokens};
 use crate::ui;
-use gpui_kit::TestSupportExt;
 use gpui_kit::{Context, Div, SharedString, Task, Window, div, prelude::*, px};
 use kubecove_lib::models::{
     ArgoApplicationInspector, ArgoApplicationRef, ArgoApplicationSummary, ResourceSummary,
