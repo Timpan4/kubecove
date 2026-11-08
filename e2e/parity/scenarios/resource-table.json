@@ -34,6 +34,20 @@
       ]
     },
     {
+      "id": "resources.table-sort-live-patch",
+      "title": "A watch patch that changes the sorted Status re-sorts the rows",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "expectLiveState", "label": "Live" },
+        { "action": "search", "value": "apps/v1" },
+        { "action": "sortResourceTable", "column": "Status" },
+        { "action": "expectResourceOrder", "names": ["checkout-worker", "payments-api"] },
+        { "action": "replayLiveData", "script": "update" },
+        { "action": "expectResourceStatus", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "status": "Degraded" },
+        { "action": "expectResourceOrder", "names": ["payments-api", "checkout-worker"] }
+      ]
+    },
+    {
       "id": "resources.table-groups",
       "title": "Ownership and kind group rows collapse and expand their rows",
       "steps": [
