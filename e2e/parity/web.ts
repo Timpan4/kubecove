@@ -20,6 +20,7 @@ import { logRowAndRestoreAction } from "./web-logs-restore";
 import { expectLogToolbarFit } from "./web-logs-toolbar";
 import { expectDetailScroll, expectResourceEvent } from "./web-detail-scroll";
 import { mcpAction } from "./web-mcp";
+import { remoteAction } from "./web-remote";
 import { navigationAction } from "./web-navigation";
 import { panelAction } from "./web-panels";
 import { resourceFilterAction } from "./web-resource-filters";
@@ -48,6 +49,7 @@ export async function action(page: Page, step: Step) {
         case "expectForegroundLoading": case "expectFriendlyError": case "inspectRequiredPermission": case "expectPermissionTarget": case "returnToSource": case "copyResourceName": case "expectCopyToast": case "dismissCopyToast": await feedbackAction(page, step); break;
         case "toggleResourcePin": case "expectWorkspaceEntry": case "openWorkspaceEntry": await shellAction(page, step); break;
         case "reorderKindKey": case "resetKindOrder": case "expectRemoteHost": case "expectRemoteHostTooltip": case "expectNoRemoteHost": case "dropRemoteConnection": await shellAction(page, step); break;
+        case "remoteSessionSignal": case "expectRemoteNotice": case "expectNoRemoteNotice": case "clickRemoteNoticeButton": await remoteAction(page, step); break;
         case "configureShellRead": case "retryLauncher": case "expectLauncherRetry": await shellAction(page, step); break;
         case "expectActivePage": case "expectGitOpsSelection": await shellAction(page, step); break;
         case "overviewOperation": case "overviewIncident": case "reviewIncidentAction": case "expectDetailTab": await shellAction(page, step); break;

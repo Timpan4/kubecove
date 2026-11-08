@@ -194,12 +194,13 @@
         { "action": "expectNoSettingsText", "value": "Connected to http://127.0.0.1:43117." },
         { "action": "closeSettings" },
         { "action": "expectRemoteHost", "url": "http://127.0.0.1:43117", "disconnected": true },
-        { "action": "expectRemoteHostTooltip", "value": "This remote host remains selected, but is disconnected" }
+        { "action": "expectRemoteHostTooltip", "value": "This remote host remains selected, but is disconnected" },
+        { "action": "expectRemoteNotice", "value": "The server session expired. Reconnect with the server token." }
       ]
     },
     {
       "id": "settings-remote.disconnected-selected-resources",
-      "title": "Resources re-read after a selected remote drops shows the read error instead of the rows from before the drop",
+      "title": "Resources after a selected remote drops show the session notice instead of the rows from before the drop",
       "steps": [
         { "action": "openResources" },
         { "action": "expectResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
@@ -215,9 +216,110 @@
         { "action": "showSettingsSection", "section": "Remote server" },
         { "action": "expectSettingsText", "value": "http://127.0.0.1:43117 is selected but disconnected. Cluster commands will not fall back to this laptop." },
         { "action": "closeSettings" },
-        { "action": "openResources" },
-        { "action": "expectFriendlyError", "title": "Failed to load resources", "summary": "The original technical error is still available below.", "next": "Copy the detail if this needs debugging." },
+        { "action": "expectRemoteNotice", "value": "The server session expired. Reconnect with the server token." },
         { "action": "expectNoResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" }
+      ]
+    },
+    {
+      "id": "settings-remote.oidc-sign-in-disconnect-and-sign-out",
+      "title": "An OIDC server signs in through the browser, Disconnect keeps the sign-in for the next connect, and Sign out forgets it",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "oidc-server" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "expectSettingsText", "value": "Sign in to KubeCove" },
+        { "action": "expectSettingsText", "value": "Sign in through your browser to use this server." },
+        { "action": "expectNoSettingsText", "value": "The token stays in native Rust memory" },
+        { "action": "expectRuntimeEndpoint", "value": "http://127.0.0.1:43117" },
+        { "action": "clickSettingsButton", "label": "Sign in" },
+        { "action": "expectSettingsText", "value": "Connected to http://127.0.0.1:43117." },
+        { "action": "clickSettingsButton", "label": "Disconnect" },
+        { "action": "expectRuntimeEndpoint", "value": "local" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "expectSettingsText", "value": "Connected to http://127.0.0.1:43117." },
+        { "action": "clickSettingsButton", "label": "Sign out" },
+        { "action": "expectSettingsText", "value": "Sign in through your browser to use this server." },
+        { "action": "expectSettingsText", "value": "http://127.0.0.1:43117 is selected but disconnected. Cluster commands will not fall back to this laptop." }
+      ]
+    },
+    {
+      "id": "settings-remote.oidc-waiting-copy-and-cancel",
+      "title": "A pending browser sign-in shows in the workspace, copies its link, and Cancel keeps the server selected",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "oidc-browser-waits" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "clickSettingsButton", "label": "Sign in" },
+        { "action": "expectSettingsText", "value": "Finish signing in in your browser." },
+        { "action": "closeSettings" },
+        { "action": "expectRemoteNotice", "value": "Finish signing in in your browser." },
+        { "action": "clickRemoteNoticeButton", "label": "Copy sign-in link" },
+        { "action": "expectCopyToast", "text": "Copied sign-in link." },
+        { "action": "clickRemoteNoticeButton", "label": "Cancel" },
+        { "action": "expectRemoteNotice", "value": "Sign in through your browser to use this server." },
+        { "action": "expectRemoteHost", "url": "http://127.0.0.1:43117", "disconnected": true }
+      ]
+    },
+    {
+      "id": "settings-remote.oidc-session-notices",
+      "title": "Server signals show their notice in Settings and in place of the workspace, and each notice action recovers the session",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "oidc-server" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "clickSettingsButton", "label": "Sign in" },
+        { "action": "expectSettingsText", "value": "Connected to http://127.0.0.1:43117." },
+        { "action": "closeSettings" },
+        { "action": "expectNoRemoteNotice" },
+        { "action": "remoteSessionSignal", "state": "sessionEnded" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "expectSettingsText", "value": "This app's server session closed or expired. Start a new session to continue. Other sessions on the server are not affected." },
+        { "action": "closeSettings" },
+        { "action": "expectRemoteNotice", "value": "Session ended" },
+        { "action": "clickRemoteNoticeButton", "label": "Start a new session" },
+        { "action": "expectNoRemoteNotice" },
+        { "action": "remoteSessionSignal", "state": "reconnecting" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "expectSettingsText", "value": "Connection interrupted. Reconnecting to the current session." },
+        { "action": "closeSettings" },
+        { "action": "expectRemoteNotice", "value": "Connection interrupted. Reconnecting to the current session." },
+        { "action": "remoteSessionSignal", "state": "signInExpired" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "expectSettingsText", "value": "Your sign-in has expired. Sign in again." },
+        { "action": "closeSettings" },
+        { "action": "expectRemoteNotice", "value": "Your sign-in has expired. Sign in again." },
+        { "action": "clickRemoteNoticeButton", "label": "Sign in" },
+        { "action": "expectNoRemoteNotice" },
+        { "action": "expectRemoteHost", "url": "http://127.0.0.1:43117" }
+      ]
+    },
+    {
+      "id": "settings-remote.oidc-memory-only-and-access",
+      "title": "A sign-in without a credential store says it lasts until the app closes, and a Cloudflare Access server is refused with its reason",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "oidc-memory-only" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "clickSettingsButton", "label": "Sign in" },
+        { "action": "expectSettingsText", "value": "This computer's credential store is unavailable, so the sign-in lasts only until KubeCove closes." },
+        { "action": "clickSettingsButton", "label": "Disconnect" },
+        { "action": "configureSettingsMock", "script": "access-server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43118" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "expectSettingsText", "value": "Desktop sign-in for Cloudflare Access is not available yet." },
+        { "action": "expectRuntimeEndpoint", "value": "local" }
       ]
     },
     {

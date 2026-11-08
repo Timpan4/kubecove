@@ -97,8 +97,12 @@ async fn server(name: &'static str) -> (String, tokio::task::JoinHandle<()>, Req
                     saved_sources(command, &serde_json::from_slice(&body).unwrap())
                 }
                 else { json!(true) };
+                // A server that revoked the sign-in refuses the next read.
+                let (status, response) = if name == "revoking-host" && command == Some("list_resource_kinds") {
+                    ("401 Unauthorized", json!({"message":"Sign in again.","kind":"unauthenticated"}))
+                } else { ("200 OK", response) };
                 let body = response.to_string();
-                let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",body.len());
+                let response = format!("HTTP/1.1 {status}\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",body.len());
                 stream.write_all(response.as_bytes()).await.unwrap();
                 stream.shutdown().await.unwrap();
             });
@@ -440,5 +444,39 @@ fn local_session_controls_reach_this_host() {
             .await
             .unwrap();
         assert!(!stopped);
+    });
+}
+
+#[test]
+fn a_sign_in_revoked_during_a_read_ends_the_session_without_local_fallback() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let backend = DesktopBackend::new(NativeBackend::new().unwrap());
+    runtime.block_on(async {
+        let (url, task, _) = server("revoking-host").await;
+        backend
+            .connect_remote(url, "controlled-test-credential".into())
+            .await
+            .unwrap();
+        let failures = backend.remote_failures();
+        let error = backend
+            .resource_kinds("revoking-host".into())
+            .await
+            .unwrap_err();
+        assert!(!error.message.contains("controlled-test-credential"));
+        // The inspector reads the status again when the failure count changes.
+        assert_ne!(backend.remote_failures(), failures);
+        let status = backend.remote_status().await.unwrap().unwrap();
+        assert!(!status.connected);
+        assert_eq!(
+            status.session_state,
+            kubecove_host::remote::RemoteSessionState::SignInExpired
+        );
+        assert!(status.notice().is_some());
+        // Later reads fail instead of reaching this laptop's kubeconfig.
+        let error = backend.contexts(None).await.unwrap_err();
+        assert_eq!(error.kind, AppErrorKind::Session);
+        backend.disconnect_remote().await.unwrap();
+        task.abort();
+        let _ = task.await;
     });
 }

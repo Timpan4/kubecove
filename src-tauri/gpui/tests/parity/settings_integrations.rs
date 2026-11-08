@@ -83,7 +83,35 @@ pub fn act(window: &mut Window, cx: &mut App, step: &Value) -> bool {
         | "expectRuntimeEndpoint"
         | "expectWorkspaceExport"
         | "expectExportedShortcut"
-        | "dropRemoteConnection" => {}
+        | "dropRemoteConnection"
+        | "remoteSessionSignal" => {}
+        "expectRemoteNotice" => {
+            let texts: Vec<String> = [
+                "remote-content-notice-title",
+                "remote-content-notice-message",
+            ]
+            .into_iter()
+            .filter_map(|id| {
+                window
+                    .try_find(id)
+                    .and_then(|element| element.label().map(str::to_owned))
+            })
+            .collect();
+            assert!(
+                texts
+                    .iter()
+                    .any(|text| text.contains(string(step, "value"))),
+                "Missing remote notice {:?}; notice: {texts:?}",
+                string(step, "value")
+            );
+        }
+        "expectNoRemoteNotice" => {
+            assert!(window.try_find("remote-content-notice-message").is_none());
+        }
+        "clickRemoteNoticeButton" => window.click(
+            format!("remote-content-notice-button:{}", string(step, "label")),
+            cx,
+        ),
         "reopenStoredSettings" => {
             window.click("settings-back", cx);
         }

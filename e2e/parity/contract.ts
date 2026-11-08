@@ -25,6 +25,7 @@ export const ACTIONS = [
     "copyResourceName", "expectCopyToast", "dismissCopyToast",
     "toggleResourcePin", "expectWorkspaceEntry", "openWorkspaceEntry",
     "reorderKindKey", "resetKindOrder", "expectRemoteHost", "expectRemoteHostTooltip", "expectNoRemoteHost", "dropRemoteConnection",
+    "remoteSessionSignal", "expectRemoteNotice", "expectNoRemoteNotice", "clickRemoteNoticeButton",
     "configureShellRead", "retryLauncher", "expectLauncherRetry",
     "overviewOperation", "overviewIncident", "reviewIncidentAction",
     "expectTopologyDenied", "expectWatchStart",
@@ -154,6 +155,10 @@ function step(value: unknown): Step {
         case "expectRemoteHost": return { action: item.action, url: string(item.url), disconnected: optionalBoolean(item.disconnected) };
         case "expectRemoteHostTooltip": return { action: item.action, value: string(item.value) };
         case "expectNoRemoteHost": case "dropRemoteConnection": return { action: item.action };
+        case "remoteSessionSignal": return { action: item.action, state: oneOf(["reconnecting", "sessionEnded", "signInExpired", "sessionExpired"], item.state, "a remote session signal") };
+        case "expectRemoteNotice": return { action: item.action, value: string(item.value) };
+        case "expectNoRemoteNotice": return { action: item.action };
+        case "clickRemoteNoticeButton": return { action: item.action, label: oneOf(["Sign in", "Copy sign-in link", "Cancel", "Start a new session", "Disconnect"], item.label, "a remote notice button") };
         case "configureShellRead": return { action: item.action, phase: oneOf(["ready", "contexts-failed", "contexts-empty", "namespaces-failed", "namespaces-credential-failed", "namespaces-empty", "resources-failed", "primary-context-missing", "kind-missing", "payments-api-removed", "payments-deployments-forbidden", "payments-ingress-version-changed", "sources-failed"], item.phase, "a shell read phase") };
         case "openNamespaceList": case "openNavigationDrawer": return { action: item.action };
         case "expectNamespaceRow": return { action: item.action, name: string(item.name), age: string(item.age) };
@@ -289,7 +294,7 @@ function step(value: unknown): Step {
         case "expectKubeconfigPathBefore": return { action: item.action, value: string(item.value), other: string(item.other) };
         case "expectSettingsText": case "expectNoSettingsText": case "expectRuntimeEndpoint": return { action: item.action, value: string(item.value) };
         case "expectMaskedToken": case "reopenStoredSettings": case "attemptUnverifiedUpdate": return { action: item.action };
-        case "configureSettingsMock": return { action: item.action, script: oneOf(["choose-kubeconfig", "choose-workspace", "choose-unavailable-workspace", "choose-application-workspace", "choose-compare-workspace", "choose-last-export", "cancel-dialog", "no-update", "invalid-signature", "update-available"], item.script, "a settings script") };
+        case "configureSettingsMock": return { action: item.action, script: oneOf(["oidc-server", "oidc-browser-waits", "oidc-memory-only", "access-server", "choose-kubeconfig", "choose-workspace", "choose-unavailable-workspace", "choose-application-workspace", "choose-compare-workspace", "choose-last-export", "cancel-dialog", "no-update", "invalid-signature", "update-available"], item.script, "a settings script") };
         case "terminalFit": return { action: item.action, width: count(item.width), height: count(item.height) };
         case "terminalOutput": return { action: item.action, data: string(item.data), container: string(item.container) };
         case "terminalSelect": return { action: item.action, row: count(item.row), col: count(item.col), endRow: count(item.endRow), endCol: count(item.endCol), word: optionalBoolean(item.word) ?? false };

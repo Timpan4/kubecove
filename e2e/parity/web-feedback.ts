@@ -1,7 +1,7 @@
 import type { Page } from "playwright-core";
 import type { Step } from "./contract";
 
-const clipboardRecorder = `Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (value) => { document.documentElement.dataset.copyValue = value; } } })`;
+export const clipboardRecorder = `Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (value) => { document.documentElement.dataset.copyValue = value; } } })`;
 
 export async function feedbackAction(page: Page, step: Step): Promise<void> {
     switch (step.action) {
