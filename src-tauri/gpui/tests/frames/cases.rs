@@ -365,6 +365,20 @@ pub static CASES: &[Case] = &[
         probe: None,
     },
     Case {
+        id: "table-scroll-sorted",
+        description: "Wheel-scroll the resource table sorted by Age, 40px per frame, 30 frames each way",
+        setup: |d| {
+            open_resources(d);
+            d.act(|w, cx| w.click("sort:Age", cx));
+        },
+        prepare: None,
+        aim: table_point,
+        step: Some(|w, cx, i, at| wheel(w, cx, at, back_and_forth(i, 30, 40.))),
+        fixture: None,
+        replay: None,
+        probe: None,
+    },
+    Case {
         id: "log-scroll",
         description: "Wheel-scroll the log list 40px per frame, 30 frames each way",
         setup: |d| open_tab(d, "show-logs"),
