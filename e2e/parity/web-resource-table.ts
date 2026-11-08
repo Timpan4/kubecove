@@ -65,6 +65,19 @@ export async function resourceTableAction(page: Page, step: Step) {
 			if (step.truncated && !fit.ellipsis) throw new Error(`${step.column} value is not truncated with an ellipsis`);
 			break;
 		}
+		case "expectResourceColumns": {
+			// The resource table is the one with the Name sort header; the pin column's header is screen-reader text.
+			const header = page.locator("table").filter({ has: page.getByRole("button", { name: "Sort by Name", exact: true }) }).locator("thead th");
+			const labels = async () => (await header.allTextContents()).map((label) => label.trim()).filter((label) => label && label !== "Pin");
+			await page.waitForFunction((want) => {
+				const table = Array.from(document.querySelectorAll("table")).find((candidate) => candidate.querySelector('button[aria-label="Sort by Name"]'));
+				const found = Array.from(table?.querySelectorAll("thead th") ?? [], (head) => head.textContent?.trim() ?? "").filter((label) => label && label !== "Pin");
+				return JSON.stringify(found) === want;
+			}, JSON.stringify(step.columns)).catch(async () => {
+				throw new Error(`Resource table columns were ${(await labels()).join(", ")}`);
+			});
+			break;
+		}
 		case "expectResourceActivity":
 			await resourceRow(page, step).locator(`canvas[data-resource-progress="${step.state}"]`).waitFor();
 			break;

@@ -70,9 +70,16 @@
     },
     {
       "id": "resources.table-cells",
-      "title": "Readiness, restart and GitOps owner cells show the reported values",
+      "title": "Each page admits the columns its rows report, Helm-only rows admit no Owner column, and cells show the reported values",
       "steps": [
         { "action": "openResources" },
+        { "action": "expectResourceColumns", "columns": ["Name", "Status", "Namespace", "Kind", "Ready", "Restarts", "CPU", "Memory", "Owner", "Age"] },
+        { "action": "coverageClick", "label": "Next" },
+        { "action": "expectResourceColumns", "columns": ["Name", "Status", "Namespace", "Kind", "Ready", "Restarts", "CPU", "Memory", "Age"] },
+        { "action": "coverageClick", "label": "Previous" },
+        { "action": "search", "value": "cert-manager" },
+        { "action": "expectResourceCell", "kind": "Deployment", "name": "cert-manager", "namespace": "cert-manager", "column": "Kind", "text": "Deployment" },
+        { "action": "expectResourceColumns", "columns": ["Name", "Status", "Namespace", "Kind", "Ready", "Restarts", "CPU", "Memory", "Age"] },
         { "action": "search", "value": "argocd" },
         { "action": "expectResourceCell", "kind": "ConfigMap", "name": "argocd-cm", "namespace": "argocd", "column": "Ready", "text": "Ready" },
         { "action": "expectResourceCell", "kind": "ConfigMap", "name": "kube-root-ca.crt", "namespace": "argocd", "column": "Ready", "text": "Not ready" },

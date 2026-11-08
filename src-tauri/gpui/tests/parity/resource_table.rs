@@ -1,5 +1,5 @@
 //! Resource table steps: sortable headers, collapsible group rows, whole-row
-//! opening, the text each cell shows and row activity.
+//! opening, the columns a page admits, the text each cell shows and row activity.
 
 use super::*;
 use gpui_kit::test::TestEventExt;
@@ -110,6 +110,25 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             // `truncated` is not checked here. This driver shapes text with GPUI's
             // `NoopTextSystem`, where every glyph is 0.6 em wide, so its widths say nothing about
             // the bundled fonts. `tests/text_fit.rs` checks truncation with the real text system.
+        }
+        "expectResourceColumns" => {
+            reveal(window, "resources", "resource-table", cx);
+            // Sortable headers are `sort:<label>` buttons; the others are `head:<label>`.
+            let mut headers: Vec<_> = window
+                .within("resource-table")
+                .elements()
+                .iter()
+                .filter_map(|element| {
+                    let id = locate::id(element).to_string();
+                    let label = id
+                        .strip_prefix("sort:")
+                        .or_else(|| id.strip_prefix("head:"))?;
+                    (!label.is_empty()).then(|| (element.bounds().left(), label.to_owned()))
+                })
+                .collect();
+            headers.sort_by(|a, b| a.0.partial_cmp(&b.0).expect("header positions are finite"));
+            let labels: Vec<String> = headers.into_iter().map(|(_, label)| label).collect();
+            assert_eq!(labels, strings(step, "columns"));
         }
         "expectResourceActivity" => {
             let id = format!(

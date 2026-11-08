@@ -312,6 +312,9 @@ impl Inspector {
             return cell(
                 column,
                 div()
+                    .id(SharedString::from(format!("head:{label}")))
+                    .test_support()
+                    .aria_label(label)
                     .flex()
                     .items_center()
                     .gap(px(4.))
