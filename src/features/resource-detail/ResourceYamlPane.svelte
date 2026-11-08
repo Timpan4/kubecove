@@ -32,6 +32,7 @@
 	import { readResourceYaml } from "./resourceDetailReadSpec";
 	import SecretDataViewer from "./SecretDataViewer.svelte";
 	import YamlTab from "./YamlTab.svelte";
+	import { clearYamlDraftNotice, registerYamlDraft } from "./yamlDraftGuard.svelte";
 	import {
 		buildYamlDryRunDiff,
 	} from "./yamlTabDiff";
@@ -98,6 +99,8 @@ import { mapKubernetesYamlDiagnostics } from "./yamlLintDiagnostics";
 	let phase = $state.raw<YamlApplyPhase>({ kind: "viewing" });
 	let feedback = $state.raw<YamlApplyFeedback>({ kind: "none" });
 	let yamlDraft = $state("");
+	// The loaded draft. The draft has unsaved changes while editing once the text differs from it.
+	let yamlDraftBase = "";
 	let yamlForceConflictsForResource = $state(false);
 	let yamlLintDiagnostics = $state<KubernetesYamlLintDiagnostic[]>([]);
 	let yamlLintNotes = $state<KubernetesYamlLintStatusNote[]>([]);
@@ -241,10 +244,14 @@ import { mapKubernetesYamlDiagnostics } from "./yamlLintDiagnostics";
 		yamlLintError = "";
 	}
 
+	$effect(() => registerYamlDraft(() => yamlEditing && yamlDraft !== yamlDraftBase));
+
 	function resetYamlApply() {
 		phase = { kind: "viewing" };
 		feedback = { kind: "none" };
 		yamlDraft = "";
+		yamlDraftBase = "";
+		clearYamlDraftNotice();
 		yamlForceConflictsForResource = false;
 		clearYamlLint();
 		yamlShowFullDiff = false;
@@ -276,6 +283,7 @@ import { mapKubernetesYamlDiagnostics } from "./yamlLintDiagnostics";
 				cancellable: createFiniteReadRequest(finiteReadScope(yamlQueryKey), "yaml-draft"),
 			});
 			if (phase !== loading) return;
+			yamlDraftBase = draft;
 			yamlDraft = draft;
 			phase = { kind: "editing" };
 		} catch (error) {

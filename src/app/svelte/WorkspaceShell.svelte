@@ -62,6 +62,8 @@
 		confirmStoppingExecSessions,
 		hasOpenExecSessions,
 	} from "@/features/live-sessions/openExecSessions.svelte";
+	import { canLeaveYamlDraft } from "@/features/resource-detail/yamlDraftGuard.svelte";
+	import YamlDraftNotice from "@/features/resource-detail/YamlDraftNotice.svelte";
 	import NamespaceList from "@/features/resources/NamespaceList.svelte";
 	import ResourceBrowser from "@/features/resources/ResourceBrowser.svelte";
 	import type { HealthFilter } from "@/features/resources/helpers";
@@ -341,6 +343,7 @@
 		const next = navigateWorkspace(navigation, intent).focusedResource;
 		const leavesFocusedResource =
 			current !== null && (next === null || resourceKey(next) !== resourceKey(current));
+		if (leavesFocusedResource && !canLeaveYamlDraft()) return;
 		if (!leavesFocusedResource || !hasOpenExecSessions()) {
 			commitWorkspaceNavigation(intent, revealSidebar);
 			return;
@@ -358,6 +361,7 @@
 	}
 
 	function openLauncher() {
+		if (!canLeaveYamlDraft()) return;
 		void confirmStoppingExecSessions().then((stop) => {
 			if (!stop) return;
 			rememberWorkspacePath(currentPathState());
@@ -366,7 +370,7 @@
 	}
 
 	function changeClusterContext(clusterContext: string) {
-		if (clusterContext === workspace.scope.clusterContext) return;
+		if (clusterContext === workspace.scope.clusterContext || !canLeaveYamlDraft()) return;
 		onChangeClusterContext(workspace.id, {
 			name: workspace.name,
 			clusterContext,
@@ -571,6 +575,7 @@
 			onOpenSearch={() => (commandOpen = true)}
 		/>
 
+		<YamlDraftNotice />
 		{#if liveSessionCleanupMessage}
 			<Alert class="shrink-0 rounded-none border-x-0 border-t-0">
 				<AlertTitle>Live sessions updated</AlertTitle>
@@ -658,6 +663,7 @@
 							onPathStateChange={(pathState) =>
 								applyWorkspaceNavigation({ type: "updateResourceBrowserPath", pathState })}
 							onResourceSelect={focusResource}
+							canCloseResource={canLeaveYamlDraft}
 							onResourcePinToggle={togglePinnedResource}
 							onResourceClose={() =>
 								applyWorkspaceNavigation({ type: "clearResource" })}

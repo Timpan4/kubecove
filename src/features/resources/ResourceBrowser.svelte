@@ -157,6 +157,7 @@
 		onResourceSelect = () => {},
 		onResourcePinToggle = () => {},
 		onResourceClose = () => {},
+		canCloseResource = () => true,
 		onArgoApplicationInspect = () => {},
 		onPathStateChange = () => {},
 	}: {
@@ -184,6 +185,8 @@
 		onResourceSelect?: (resource: ResourceSummary, source?: "explicit" | "restore") => void;
 		onResourcePinToggle?: (resource: ResourceSummary) => void;
 		onResourceClose?: () => void;
+		/** False keeps the selection and the scope, such as while the open YAML draft has unsaved changes. */
+		canCloseResource?: () => boolean;
 		onArgoApplicationInspect?: (app: ArgoApplicationSummary) => void;
 		onPathStateChange?: (state: PathStateResourceBrowserState) => void;
 	} = $props();
@@ -644,6 +647,7 @@
 	});
 
 	function toggleNamespace(namespace: string, checked: boolean) {
+		if (!canCloseResource()) return;
 		selectedNamespaces = nextNamespaceSelection(
 			selectedNamespaces,
 			namespaceOptions.map((option) => option.name),
@@ -656,6 +660,7 @@
 	}
 
 	function toggleKind(kind: ResourceKindSelection, checked: boolean) {
+		if (!canCloseResource()) return;
 		const key = kindKey(kind);
 		selectedKinds = checked
 			? [...selectedKinds, kind]
@@ -823,12 +828,14 @@
 			{customResourcesStatus}
 			{refreshControls}
 			onAllNamespacesSelect={() => {
+				if (!canCloseResource()) return;
 				selectedNamespaces = [];
 				pageIndex = 0;
 				onResourceClose();
 				selectedTopologyNodeId = null;
 			}}
 			onAllKindsSelect={() => {
+				if (!canCloseResource()) return;
 				selectedKinds = [...kindOptions];
 				pageIndex = 0;
 				onResourceClose();
