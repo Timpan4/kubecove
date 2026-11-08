@@ -456,7 +456,12 @@ impl Backend for Fixture {
             .filter(|context| !(missing && context.name == "mock-dev"))
             .cloned()
             .collect();
-        Box::pin(async move { Ok(available) })
+        // The web mock keys `list_kube_contexts` without a cluster context.
+        self.timing.wrap(
+            "list_kube_contexts",
+            "",
+            Box::pin(async move { Ok(available) }),
+        )
     }
     fn resources(&self, scope: Scope, _: bool) -> Read<ScopeResult> {
         self.resource_fixture(scope)

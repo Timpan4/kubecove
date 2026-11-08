@@ -31,15 +31,73 @@ pub(super) struct LauncherState {
     pub(super) editing: Option<u64>,
     pub(super) context_menu: bool,
     pub(super) group: Vec<String>,
+    /// The namespaces chosen in the form.
     pub(super) namespaces: Vec<String>,
-    pub(super) discovered: Vec<String>,
-    pub(super) discovery: Discovery,
-    pub(super) contexts_load: Discovery,
-    pub(super) context_error: Option<String>,
-    pub(super) namespace_error: Option<String>,
+    /// The kubeconfig source and context read that fills `context_choices`.
+    pub(super) contexts: Fetch<ContextsRead>,
+    /// Namespace discovery for the form's effective context.
+    pub(super) discovery: Fetch<Vec<String>>,
     /// Kubeconfig source and context reads kept while fresh, as the web's query cache keeps them.
     pub(super) kubeconfig: super::kubeconfig_reads::KubeconfigReads,
-    tasks: [Option<Task<()>>; 2],
+}
+
+/// One launcher read. `Loading` owns the read, so replacing the state cancels
+/// it, and a state can only be `Loading` while its read is running.
+pub(super) enum Fetch<T> {
+    /// No read has started.
+    Idle,
+    Loading {
+        _read: Task<()>,
+    },
+    Ready(T),
+    Failed(String),
+}
+
+impl<T> Fetch<T> {
+    pub(super) fn loading(&self) -> bool {
+        matches!(self, Fetch::Loading { .. })
+    }
+
+    pub(super) fn failure(&self) -> Option<&str> {
+        match self {
+            Fetch::Failed(message) => Some(message),
+            _ => None,
+        }
+    }
+}
+
+/// A settled context read. The source warning is set when the kubeconfig source
+/// read failed and the default contexts were read instead.
+pub(super) struct ContextsRead {
+    pub source_warning: Option<String>,
+}
+
+impl LauncherState {
+    /// The context read's failure, or the source warning of a read that succeeded.
+    pub(super) fn context_error(&self) -> Option<&str> {
+        match &self.contexts {
+            Fetch::Ready(read) => read.source_warning.as_deref(),
+            contexts => contexts.failure(),
+        }
+    }
+
+    /// The web's `NamespaceDiscoveryStatus`; a read that has not started counts as loading,
+    /// as the web's disabled namespace query does.
+    pub(super) fn discovery_status(&self) -> Discovery {
+        match &self.discovery {
+            Fetch::Idle | Fetch::Loading { .. } => Discovery::Loading,
+            Fetch::Ready(_) => Discovery::Ready,
+            Fetch::Failed(_) => Discovery::Failed,
+        }
+    }
+
+    /// Discovered namespaces; empty until discovery succeeds.
+    pub(super) fn discovered(&self) -> &[String] {
+        match &self.discovery {
+            Fetch::Ready(namespaces) => namespaces,
+            _ => &[],
+        }
+    }
 }
 
 impl LauncherState {
@@ -58,13 +116,9 @@ impl LauncherState {
             context_menu: false,
             group: vec![],
             namespaces: vec![],
-            discovered: vec![],
-            discovery: Discovery::Loading,
-            contexts_load: Discovery::Loading,
-            context_error: None,
-            namespace_error: None,
+            contexts: Fetch::Idle,
+            discovery: Fetch::Idle,
             kubeconfig: Default::default(),
-            tasks: [None, None],
         }
     }
 
@@ -178,40 +232,38 @@ impl Inspector {
     }
 
     /// Loads the launcher's contexts. `force` is Retry, which refetches the source and contexts.
+    /// A namespace read in flight keeps running: a successful context read restarts discovery,
+    /// and a failed one leaves the effective context, and so that read, unchanged.
     pub(super) fn load_launcher_contexts(
         &mut self,
         force: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.launcher.contexts_load = Discovery::Loading;
-        self.launcher.context_error = None;
-        self.launcher.tasks[1] = None;
-        let task = self.read_kubeconfig_contexts(
+        let read = self.read_kubeconfig_contexts(
             force,
             window,
             cx,
-            |this, result, source_error, window, cx| {
+            |this, result, source_warning, window, cx| {
                 match result {
                     Ok(contexts) => {
                         this.launcher.context_choices = contexts
                             .into_iter()
                             .map(|context| (context.name, context.is_current))
                             .collect();
-                        this.launcher.contexts_load = Discovery::Ready;
-                        this.launcher.context_error = source_error;
+                        this.launcher.contexts = Fetch::Ready(ContextsRead { source_warning });
                         this.discover_namespaces(window, cx);
                         this.update_saved_overview();
                     }
                     Err(error) => {
-                        this.launcher.contexts_load = Discovery::Failed;
-                        this.launcher.context_error = Some(source_error.unwrap_or(error.message));
+                        this.launcher.contexts =
+                            Fetch::Failed(source_warning.unwrap_or(error.message));
                     }
                 }
                 cx.notify();
             },
         );
-        self.launcher.tasks[0] = Some(task);
+        self.launcher.contexts = Fetch::Loading { _read: read };
         cx.notify();
     }
 
@@ -222,34 +274,26 @@ impl Inspector {
         state.name.update(cx, |input, cx| {
             input.set_placeholder(effective.clone(), window, cx)
         });
-        state.discovery = Discovery::Loading;
-        state.namespace_error = None;
-        state.discovered.clear();
         if effective.is_empty() {
-            state.tasks[1] = None;
-            state.discovery = Discovery::Ready;
+            state.discovery = Fetch::Ready(Vec::new());
             cx.notify();
             return;
         }
         let read = crate::backend::namespaces_for_context(self.backend.clone(), effective);
         let read = self.timings.measure("namespaces", read);
-        state.tasks[1] = Some(cx.spawn(async move |this, cx| {
+        let read = cx.spawn(async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
-                let state = &mut this.launcher;
-                match result {
+                this.launcher.discovery = match result {
                     Ok(namespaces) => {
-                        state.discovered = namespaces.into_iter().map(|ns| ns.name).collect();
-                        state.discovery = Discovery::Ready;
+                        Fetch::Ready(namespaces.into_iter().map(|ns| ns.name).collect())
                     }
-                    Err(error) => {
-                        state.discovery = Discovery::Failed;
-                        state.namespace_error = Some(error.message);
-                    }
-                }
+                    Err(error) => Fetch::Failed(error.message),
+                };
                 cx.notify();
             });
-        }));
+        });
+        self.launcher.discovery = Fetch::Loading { _read: read };
         cx.notify();
     }
 

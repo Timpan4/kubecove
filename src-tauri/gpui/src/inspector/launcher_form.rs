@@ -2,6 +2,7 @@
 
 use super::Inspector;
 use super::controls::{Variant, button};
+use super::launcher::Fetch;
 use super::loading::Phase;
 use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
@@ -31,7 +32,7 @@ impl Inspector {
             .context_choices
             .iter()
             .any(|(name, _)| *name == effective);
-        let blocked = workspaces::availability(&effective, missing, state.discovery).err();
+        let blocked = workspaces::availability(&effective, missing, state.discovery_status()).err();
         let contexts = state
             .context_choices
             .iter()
@@ -54,7 +55,7 @@ impl Inspector {
             })
             .collect::<Vec<_>>();
         let namespaces: Vec<_> = state
-            .discovered
+            .discovered()
             .iter()
             .map(|name| {
                 let checked = state.namespaces.contains(name);
@@ -116,24 +117,19 @@ impl Inspector {
                         .aria_label("Loading contexts..."),
                 )
             })
-            .when(state.context_error.is_some(), |form| {
-                form.child(
-                    self.friendly_failure(
-                        "launcher-context-error",
-                        None,
-                        state
-                            .context_error
-                            .as_deref()
-                            .unwrap_or("Context read failed"),
-                        super::friendly_error::Context {
-                            operation: Some(super::friendly_error::Operation::Contexts),
-                            fallback_title: Some("Failed to load contexts"),
-                            ..Default::default()
-                        },
-                        None,
-                        cx,
-                    ),
-                )
+            .when_some(state.context_error(), |form, error| {
+                form.child(self.friendly_failure(
+                    "launcher-context-error",
+                    None,
+                    error,
+                    super::friendly_error::Context {
+                        operation: Some(super::friendly_error::Operation::Contexts),
+                        fallback_title: Some("Failed to load contexts"),
+                        ..Default::default()
+                    },
+                    None,
+                    cx,
+                ))
                 .child(
                     ui::outline_button()
                         .id("retry-launcher-contexts")
@@ -263,26 +259,23 @@ impl Inspector {
     /// The launcher's context read indicator, shared by the notice, the select
     /// placeholder and the saved-workspace empty state.
     pub(super) fn launcher_contexts_loading(&self) -> Phase {
-        self.loading.phase(
-            "launcher-contexts",
-            self.launcher.contexts_load == Discovery::Loading,
-        )
+        self.loading
+            .phase("launcher-contexts", self.launcher.contexts.loading())
     }
 
     fn namespace_notice(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let state = &self.launcher;
         let loading = self.loading.phase(
             "launcher-namespaces",
-            state.discovery == Discovery::Loading && !state.effective().is_empty(),
+            state.discovery_status() == Discovery::Loading && !state.effective().is_empty(),
         );
-        match state.discovery {
+        match &state.discovery {
             // WorkspaceLauncher.svelte shows the loading row only for a selected context.
             _ if loading.shown() => Some(notice(
                 "launcher-namespaces-loading",
                 "Loading namespaces...",
             )),
-            Discovery::Loading | Discovery::Ready if !loading.ready() => None,
-            Discovery::Failed => Some(
+            Fetch::Failed(error) => Some(
                 div()
                     .flex()
                     .flex_col()
@@ -290,25 +283,20 @@ impl Inspector {
                     .gap(px(8.))
                     .px(px(8.))
                     .py(px(6.))
-                    .child(
-                        self.friendly_failure(
-                            "launcher-namespace-error",
-                            None,
-                            state
-                                .namespace_error
-                                .as_deref()
-                                .unwrap_or("Namespace read failed"),
-                            super::friendly_error::Context {
-                                operation: Some(super::friendly_error::Operation::Resources),
-                                fallback_title: Some("Failed to load namespaces"),
-                                partial: true,
-                                compact: true,
-                                ..Default::default()
-                            },
-                            None,
-                            cx,
-                        ),
-                    )
+                    .child(self.friendly_failure(
+                        "launcher-namespace-error",
+                        None,
+                        error,
+                        super::friendly_error::Context {
+                            operation: Some(super::friendly_error::Operation::Resources),
+                            fallback_title: Some("Failed to load namespaces"),
+                            partial: true,
+                            compact: true,
+                            ..Default::default()
+                        },
+                        None,
+                        cx,
+                    ))
                     .child(
                         ui::outline_button()
                             .id("retry-launcher-namespaces")
@@ -321,10 +309,11 @@ impl Inspector {
                     )
                     .into_any_element(),
             ),
-            Discovery::Loading | Discovery::Ready if state.discovered.is_empty() => {
+            _ if !loading.ready() => None,
+            _ if state.discovered().is_empty() => {
                 Some(notice("launcher-namespaces-empty", "All namespaces"))
             }
-            Discovery::Loading | Discovery::Ready => None,
+            _ => None,
         }
     }
 }

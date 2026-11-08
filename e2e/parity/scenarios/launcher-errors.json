@@ -3,6 +3,27 @@
   "context": "mock-dev",
   "scenarios": [
     {
+      "id": "launcher-errors.contexts-retry-failure-keeps-namespaces",
+      "title": "A failed context Retry leaves the pending namespace read running, so its namespaces still arrive",
+      "steps": [
+        { "action": "configureShellRead", "phase": "sources-failed" },
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "list_namespaces", "context": "mock-dev" } },
+        { "action": "openLauncher" },
+        { "action": "expectLauncherRetry", "read": "contexts" },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_namespaces", "context": "mock-dev" } },
+        { "action": "mockTiming", "control": { "operation": "fail", "command": "list_kube_contexts", "context": "", "kind": "forbidden" } },
+        { "action": "retryLauncher", "read": "contexts" },
+        { "action": "expectLauncherRetry", "read": "contexts" },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "list_namespaces", "context": "mock-dev" } },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "list_kube_contexts", "context": "" } },
+        { "action": "configureShellRead", "phase": "ready" },
+        { "action": "nameWorkspace", "value": "Contexts retry" },
+        { "action": "toggleWorkspaceNamespace", "namespace": "payments" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Contexts retry", "context": "mock-dev" }
+      ]
+    },
+    {
       "id": "launcher-errors.contexts-failure",
       "title": "A failed context read shows its retry and blocks creation without listing namespaces",
       "steps": [

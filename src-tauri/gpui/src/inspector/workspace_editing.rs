@@ -49,7 +49,7 @@ impl Inspector {
             .context_choices
             .iter()
             .any(|(name, _)| *name == effective);
-        if workspaces::availability(&effective, missing, state.discovery).is_err() {
+        if workspaces::availability(&effective, missing, state.discovery_status()).is_err() {
             return;
         }
         let name = state.name.read(cx).value();
