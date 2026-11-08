@@ -43,9 +43,14 @@ pub(super) struct MapState {
     unselected_edge_cache: RefCell<Option<CachedEdges>>,
     /// The graph viewport's size, measured during prepaint.
     size: Rc<Cell<(f32, f32)>>,
+    /// The graph viewport's origin in window coordinates, measured with its size.
+    origin: Rc<Cell<(f32, f32)>>,
     /// A pan or zoom, kept while the fitted viewport it started from is current.
     adjusted: Option<(Viewport, Viewport)>,
     drag: Option<(Point<Pixels>, Viewport)>,
+    /// Set once a press on the map moves past `NODE_CLICK_DISTANCE`. The node under
+    /// the release then gets no click, so a pan does not select a node.
+    pan_moved: bool,
     /// Focus follows node identity when selection reorders the graph.
     resource_focus: Vec<Option<FocusHandle>>,
     group_focus: HashMap<SharedString, FocusHandle>,
@@ -116,8 +121,10 @@ impl MapState {
             edge_cache: RefCell::new(None),
             unselected_edge_cache: RefCell::new(None),
             size: Rc::default(),
+            origin: Rc::default(),
             adjusted: None,
             drag: None,
+            pan_moved: false,
             resource_focus: Vec::new(),
             group_focus: HashMap::new(),
             last_focus: None,
@@ -458,7 +465,7 @@ impl Inspector {
                         .border_b_1()
                         .border_color(Tokens::border())
                         .child(ui::muted(ui::text(
-                            "Drag to pan. Use controls to zoom. Press Tab to reach graph nodes, or\u{a0}",
+                            "Drag to pan. Scroll or use controls to zoom. Press Tab to reach graph nodes, or\u{a0}",
                             11.,
                             16.,
                         )))

@@ -226,7 +226,7 @@
 		</Empty>
 	{:else}
 		<p class="border-b px-3 py-1.5 text-[0.6875rem] text-muted-foreground">
-			Drag to pan. Use controls to zoom. Press Tab to reach graph nodes, or
+			Drag to pan. Scroll or use controls to zoom. Press Tab to reach graph nodes, or
 			<Button
 				variant="link"
 				size="xs"
@@ -252,10 +252,10 @@
 					nodesConnectable={false}
 					panOnDrag={true}
 					panOnScroll={false}
-					preventScrolling={false}
+					preventScrolling={true}
 					edgesFocusable={false}
 					zoomOnDoubleClick={false}
-					zoomOnScroll={false}
+					zoomOnScroll={true}
 					{onlyRenderVisibleElements}
 					proOptions={{ hideAttribution: true }}
 					onnodeclick={handleNodeClick}

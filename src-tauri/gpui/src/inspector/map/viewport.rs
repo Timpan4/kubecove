@@ -15,6 +15,18 @@ use gpui_kit::{
 use std::rc::Rc;
 // Selection ring plus the shadow spread retained by the frame optimization.
 const CULL_MARGIN: f32 = 2. + 3. * 10.;
+/// xyflow's node click distance, `nodeClickDistance = 1` in
+/// `node_modules/@xyflow/svelte/dist/lib/container/SvelteFlow/SvelteFlow.svelte`.
+/// A press that moves farther than this is a pan, not a click.
+const NODE_CLICK_DISTANCE: f32 = 1.;
+/// Zoom per pixel of wheel delta, from `wheelDelta` in
+/// `node_modules/@xyflow/system/dist/esm/index.js`: `-deltaY * 0.002`, applied as `2 ** delta`
+/// by d3-zoom. A wheel reports positive `delta.y` when it turns up, so the sign is kept.
+const WHEEL_PIXEL_RATE: f32 = 0.002;
+/// The same `wheelDelta` branch for `deltaMode === 1`, where the delta counts lines.
+const WHEEL_LINE_RATE: f32 = 0.05;
+/// The same `wheelDelta` factor for Ctrl with the wheel on macOS.
+const MAC_CTRL_WHEEL_FACTOR: f32 = 10.;
 /// `OwnershipMap.svelte`: graphs below this many nodes and edges stay fully
 /// mounted so Tab reaches offscreen nodes. Larger graphs render visible nodes only.
 const VISIBLE_ELEMENT_RENDER_THRESHOLD: usize = 120;
@@ -110,21 +122,27 @@ impl Inspector {
 
     /// Zooms about the viewport's center, as `zoomIn` and `zoomOut` do.
     fn zoom_map(&mut self, factor: f32, cx: &mut Context<Self>) {
+        let (width, height) = self.map.size.get();
+        self.zoom_map_about(factor, (width / 2., height / 2.), cx);
+    }
+
+    /// Zooms by `factor` about `anchor`, a point in viewport coordinates, so the graph
+    /// point under it stays under it. d3-zoom's `scaleBy` does the same.
+    fn zoom_map_about(&mut self, factor: f32, anchor: (f32, f32), cx: &mut Context<Self>) {
         let Some(view) = self.map.cache.clone() else {
             return;
         };
-        let (width, height) = self.map.size.get();
         let (Some(fit), Some(current)) = self.map_viewports(&view) else {
             return;
         };
         let zoom = Viewport::clamp_zoom(current.zoom * factor);
-        let (cx_, cy_) = (width / 2., height / 2.);
+        let (anchor_x, anchor_y) = anchor;
         let ratio = zoom / current.zoom;
         self.map.adjusted = Some((
             fit,
             Viewport {
-                x: cx_ - (cx_ - current.x) * ratio,
-                y: cy_ - (cy_ - current.y) * ratio,
+                x: anchor_x - (anchor_x - current.x) * ratio,
+                y: anchor_y - (anchor_y - current.y) * ratio,
                 zoom,
             },
         ));
@@ -195,6 +213,7 @@ impl Inspector {
             })
         };
         let size = self.map.size.clone();
+        let origin = self.map.origin.clone();
         let entity = cx.entity_id();
         let cache = if view.focused {
             &self.map.edge_cache
@@ -250,6 +269,7 @@ impl Inspector {
         let painted_edges = visible_edges.clone();
         let edge_layer = canvas(
             move |bounds, window, _| {
+                origin.set((f32::from(bounds.origin.x), f32::from(bounds.origin.y)));
                 let measured = (f32::from(bounds.size.width), f32::from(bounds.size.height));
                 if size.get() != measured {
                     size.set(measured);
@@ -308,7 +328,10 @@ impl Inspector {
                             .children(selection_ring(node, z))
                             .child(content)
                             .on_click(cx.listener(move |this, _, window, cx| {
-                                this.activate_map_node(index, window, cx);
+                                // The release of a pan lands on the node that moved under the pointer.
+                                if !this.map.pan_moved {
+                                    this.activate_map_node(index, window, cx);
+                                }
                             }))
                             .on_key_down(cx.listener(
                                 move |this, event: &KeyDownEvent, window, cx| {
@@ -395,6 +418,7 @@ impl Inspector {
                 MouseButton::Left,
                 cx.listener(move |this, event: &gpui_kit::MouseDownEvent, _, _| {
                     this.map.drag = viewport.map(|viewport| (event.position, viewport));
+                    this.map.pan_moved = false;
                 }),
             )
             .on_mouse_move(
@@ -407,11 +431,15 @@ impl Inspector {
                         return;
                     }
                     let delta = event.position - start;
+                    let (dx, dy) = (f32::from(delta.x), f32::from(delta.y));
+                    if dx * dx + dy * dy > NODE_CLICK_DISTANCE * NODE_CLICK_DISTANCE {
+                        this.map.pan_moved = true;
+                    }
                     this.map.adjusted = Some((
                         fit,
                         Viewport {
-                            x: base.x + f32::from(delta.x),
-                            y: base.y + f32::from(delta.y),
+                            x: base.x + dx,
+                            y: base.y + dy,
                             zoom: base.zoom,
                         },
                     ));
@@ -422,6 +450,27 @@ impl Inspector {
                 MouseButton::Left,
                 cx.listener(|this, _, _, _| this.map.drag = None),
             )
+            .on_scroll(cx.listener(
+                move |this, event: &gpui_kit::ScrollEvent, _, cx| {
+                    // A wheel turn up reports positive `delta.y`, the opposite sign of the web's `deltaY`.
+                    let (delta, rate) = match event.delta {
+                        gpui_kit::ScrollDelta::Pixels(delta) => (f32::from(delta.y), WHEEL_PIXEL_RATE),
+                        gpui_kit::ScrollDelta::Lines(delta) => (delta.y, WHEEL_LINE_RATE),
+                    };
+                    let factor = if cfg!(target_os = "macos") && event.modifiers.control {
+                        MAC_CTRL_WHEEL_FACTOR
+                    } else {
+                        1.
+                    };
+                    let (origin_x, origin_y) = this.map.origin.get();
+                    let anchor = (
+                        f32::from(event.position.x) - origin_x,
+                        f32::from(event.position.y) - origin_y,
+                    );
+                    this.zoom_map_about(2f32.powf(delta * rate * factor), anchor, cx);
+                    cx.stop_propagation();
+                },
+            ))
             .into_any_element()
     }
 
