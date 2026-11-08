@@ -176,25 +176,6 @@
 	let rbacVerifierReturnLabel = $state<string | undefined>();
 	const kubeconfigSourceKey = $derived($settingsStore.kubeconfigSourceKey);
 	const showCustomResources = $derived($settingsStore.showCustomResources);
-
-	const navigationWorkspaceName = $derived(workspace.name);
-	const navigationWorkspaceScope = $derived(workspace.scope);
-	const navigationModel = $derived(
-		buildWorkspaceNavigationModel(
-			{ name: navigationWorkspaceName, scope: navigationWorkspaceScope },
-			{ selectedNode, viewMode, resourceNamespaceOverride },
-		),
-	);
-	const title = $derived(navigationModel.title);
-	const placeholder = $derived(navigationModel.placeholder);
-	const scopeSummary = $derived(summarizeWorkspaceScope(workspace.scope));
-	const isOverview = $derived(navigationModel.isOverview);
-	const isNamespaceList = $derived(navigationModel.isNamespaceList);
-	const resourceBrowserScope = $derived(navigationModel.resourceBrowserScope);
-	const resourceBrowserNamespaces = $derived(resourceBrowserScope.namespaces);
-	const fixedResourceKindScope = $derived(
-		selectedNode?.type === "kind",
-	);
 	const workspaceCustomResourcePrewarmQuery = createQuery<DiscoveredResourceKind[]>(() => ({
 		queryKey: queryKeys.presentCustomResourceKinds(
 			workspace.scope.clusterContext,
@@ -212,6 +193,27 @@
 		staleTime: 30_000,
 		retry: cancelledQueryRetry,
 	}));
+
+	const navigationWorkspaceName = $derived(workspace.name);
+	const navigationWorkspaceScope = $derived(workspace.scope);
+	const navigationModel = $derived(
+		buildWorkspaceNavigationModel(
+			{ name: navigationWorkspaceName, scope: navigationWorkspaceScope },
+			{ selectedNode, viewMode, resourceNamespaceOverride },
+			// The workspace-wide read, as the Custom Resources section spans every workspace namespace.
+			showCustomResources ? (workspaceCustomResourcePrewarmQuery.data ?? []) : [],
+		),
+	);
+	const title = $derived(navigationModel.title);
+	const placeholder = $derived(navigationModel.placeholder);
+	const scopeSummary = $derived(summarizeWorkspaceScope(workspace.scope));
+	const isOverview = $derived(navigationModel.isOverview);
+	const isNamespaceList = $derived(navigationModel.isNamespaceList);
+	const resourceBrowserScope = $derived(navigationModel.resourceBrowserScope);
+	const resourceBrowserNamespaces = $derived(resourceBrowserScope.namespaces);
+	const fixedResourceKindScope = $derived(
+		selectedNode?.type === "kind",
+	);
 	const includePresentCustomResources = $derived(
 		resourceBrowserScope.canQuery &&
 			(resourceGitOpsFocusApplication !== null ||
@@ -479,6 +481,11 @@
 				workspace.scope.clusterContext,
 				nodeId.namespace,
 			);
+		}
+		// Selecting Custom Resources also lists its kinds.
+		const key = nodeIdToString(nodeId);
+		if (nodeId.type === "section" && nodeId.section === "discovered" && !expandedSections.includes(key)) {
+			expandedSections = [...expandedSections, key];
 		}
 		applyWorkspaceNavigation({ type: "selectNode", node: nodeId }, revealSidebar);
 	}

@@ -22,7 +22,7 @@ import {
 	type SectionName,
 	type TreeNodeId,
 } from "@/lib/tree-nav";
-import type { ResourceKindSelection, ResourceSummary } from "@/lib/types";
+import type { DiscoveredResourceKind, ResourceKindSelection, ResourceSummary } from "@/lib/types";
 import type { SavedWorkspace } from "@/lib/workspace-model";
 
 export interface ResourceBrowserScope {
@@ -78,6 +78,7 @@ function isNamespaceListView(state: NavigationScopeState): boolean {
 function resourceBrowserScope(
 	workspace: NavigationWorkspace,
 	state: NavigationScopeState,
+	customResourceKinds: DiscoveredResourceKind[],
 ): ResourceBrowserScope {
 	if (state.viewMode !== "resources" || isNamespaceListView(state)) {
 		return { canQuery: false, namespaces: [], kinds: [], categoryKinds: false };
@@ -92,8 +93,13 @@ function resourceBrowserScope(
 	) {
 		return { canQuery: false, namespaces: [], kinds: [], categoryKinds: false };
 	}
-	const kinds =
-		scope.kinds.length > 0 ? scope.kinds : [...workspace.scope.kinds];
+	// The "All namespaces" Custom Resources section selects the custom kinds present in the workspace.
+	const customSection = state.selectedNode?.type === "section" && scope.section === "discovered";
+	const kinds = customSection
+		? [...customResourceKinds]
+		: scope.kinds.length > 0
+			? scope.kinds
+			: [...workspace.scope.kinds];
 	const namespaces = state.resourceNamespaceOverride ??
 		(scope.namespace
 			? [scope.namespace]
@@ -104,7 +110,7 @@ function resourceBrowserScope(
 		canQuery: kinds.length > 0,
 		namespaces,
 		kinds,
-		categoryKinds: state.selectedNode?.type !== "kind" && scope.group !== null,
+		categoryKinds: customSection || (state.selectedNode?.type !== "kind" && scope.group !== null),
 	};
 }
 
@@ -167,6 +173,7 @@ function workspacePlaceholder(state: NavigationScopeState): string {
 export function buildWorkspaceNavigationModel(
 	workspace: NavigationWorkspace,
 	state: NavigationScopeState,
+	customResourceKinds: DiscoveredResourceKind[] = [],
 ): WorkspaceNavigationModel {
 	return {
 		activeSurface: state.viewMode,
@@ -174,7 +181,7 @@ export function buildWorkspaceNavigationModel(
 		placeholder: workspacePlaceholder(state),
 		isOverview: state.viewMode === "overview",
 		isNamespaceList: isNamespaceListView(state),
-		resourceBrowserScope: resourceBrowserScope(workspace, state),
+		resourceBrowserScope: resourceBrowserScope(workspace, state, customResourceKinds),
 	};
 }
 
