@@ -57,8 +57,8 @@ Redirect successful callbacks to `/` to remove protocol parameters from the page
 Keep Host/Origin checks, exact-origin CSP, no-referrer and no-store responses.
 
 OIDC mode initially supports the browser client. Native desktop remote connections
-continue to use token-mode servers. Native OIDC requires a separate external-browser
-flow and is outside this decision.
+continue to use token-mode servers. Native OIDC uses the external-browser flow in
+[ADR 0031](0031-gpui-remote-sign-in.md).
 
 ## Amendment: forwarded Kubernetes credentials
 

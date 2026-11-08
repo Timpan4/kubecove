@@ -37,7 +37,7 @@ Resolve user and session from authenticated request context before dispatch. A r
 
 Reconnect grace continues to apply independently to each session, using the existing configured policy. Ending or expiring one session cleans up only its resources. OIDC logout revokes the current sign-in, clears its bound bearer slots, and closes the session identified by a matching resume token. Other sockets using that credential close and follow the disconnect grace policy. Browser tabs sharing the same cookie share its revocation; a separate sign-in remains valid, including one for the same subject. Preserve this contract when adding persistence. Closing a workspace or switching scope cancels only that client's finite reads under ADR 0009. Confirmed mutations retain their existing non-cancellable execution semantics and visible outcomes.
 
-Proposed token-mode compatibility: treat the shared startup token as one stable local application user, with concurrent sessions and a durable profile independent of the token value. Token holders share that user's data and cannot claim separate private profiles. OIDC or Access supplies distinct users. Keep native desktop token support; native OIDC/Access sign-in needs a separate client-flow decision before those clients can access identity-backed profiles.
+Proposed token-mode compatibility: treat the shared startup token as one stable local application user, with concurrent sessions and a durable profile independent of the token value. Token holders share that user's data and cannot claim separate private profiles. OIDC or Access supplies distinct users. Keep native desktop token support; native OIDC/Access sign-in follows [ADR 0031](0031-gpui-remote-sign-in.md).
 
 ### Kubernetes credentials and operator policy
 

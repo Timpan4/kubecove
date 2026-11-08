@@ -2,7 +2,14 @@
 
 ## Status
 
-Proposed 2026-11-08. The product owner decided on 2026-11-08 to port OIDC and Access sign-in to the GPUI remote client. This record covers the design only. Nothing is implemented until the owner accepts it and answers the open questions below.
+Accepted 2026-11-08 for OIDC servers. The Access section stays proposed until one manual check against a real Access application confirms the four facts it lists. The product owner's answers on 2026-11-08:
+
+1. Both desktop clients, GPUI and Tauri, get the sign-in and the session notices, with shared parity scenarios.
+2. OIDC ships first. Access follows after the manual check.
+3. Desktop sign-ins are stored in native credential storage, so they survive an app restart.
+4. Disconnect keeps the sign-in. Only Sign out revokes it.
+5. Notice text is the browser's, with "This browser's" changed to "This app's".
+6. Notices show in the workspace content area and in Settings > Remote.
 
 Extends [ADR 0020](0020-headless-server-mode.md), [ADR 0022](0022-oidc-server-sign-in.md) and [ADR 0029](0029-gpui-native-client-and-feature-parity.md). It answers the client-flow decision that ADR 0022 ("Native OIDC requires a separate external-browser flow") and [ADR 0023](0023-multi-user-sessions-and-persistence.md) ("native OIDC/Access sign-in needs a separate client-flow decision") left open. On acceptance, those two sentences are amended to point here. Gap audit row N20 tracks the missing behavior.
 
@@ -55,7 +62,7 @@ The desktop uses [Cloudflare Access Managed OAuth](https://developers.cloudflare
 
 The operator must enable Managed OAuth and "Allow loopback clients" on the Access application. Without them the desktop shows "This Cloudflare Access application does not allow desktop sign-in. Ask the operator to enable Managed OAuth." The startup-token and service-token paths are not substitutes, because a service token has no user identity and `cloudflared` is not a core data path.
 
-This path depends on four facts that Cloudflare's documentation does not state. Verify them against an Access application before implementing (open question 2):
+This path depends on four facts that Cloudflare's documentation does not state. Verify them against an Access application before implementing (see "Remaining open item"):
 
 - the access token header that Access expects, and whether Access forwards an `Authorization` header to the origin;
 - that the forwarded assertion has the same `sub`, `type: "app"` and `aud` as a browser sign-in for the same user, so resume binding and identity-namespaced Argo CD credentials match;
@@ -70,15 +77,17 @@ The Origin check protects requests that a browser authenticates with a cookie. A
 
 The sign-in credential, the resume token, the Access access and refresh tokens, the PKCE verifier and the state value live only in Rust memory inside `kubecove_host::remote`, in the connection's `RemoteCredentials` and in the pending sign-in. They are never copied into GPUI view state, Svelte state, Tauri command results, preference documents (ADR 0030), logs, diagnostics or error messages. Error text keeps the existing redaction. `RemoteConnectionSummary` gains only typed, non-secret fields: the authentication mode and the session state below.
 
-They are not persisted. An app restart needs a new sign-in, as token mode needs the token again. The server keeps sign-ins only in memory, so a persisted desktop credential would stop working at every server restart anyway. If the owner wants sign-in to survive an app restart (open question 3), the credential goes through the existing `SecureStore` adapter (`src-tauri/crates/gitops/src/commands/argo/credential_store.rs`), keyed by the normalized server URL under a new service name. The desktop keeps ADR 0013's rule: native credential storage or nothing, with no file fallback. ADR 0021's file store stays server-only.
+The sign-in credential is persisted so it survives an app restart. It goes through the existing `SecureStore` adapter (`src-tauri/crates/gitops/src/commands/argo/credential_store.rs`), keyed by the normalized server URL under a new service name. The resume token, PKCE verifier and state value are never persisted. The desktop keeps ADR 0013's rule: native credential storage or nothing, with no file fallback. When native storage is unavailable, the credential stays in memory only and the client says so. ADR 0021's file store stays server-only.
+
+The server keeps sign-ins only in memory, so a stored credential stops working at every server restart and at its server-side expiry. The client then shows "Sign-in expired" and deletes the stored credential. A stored credential is read only when the client connects to that server URL, and it is deleted on Sign out and on revocation.
 
 ### Logout and revocation
 
 - Sign out posts `/api/v1/oidc/logout` with the bearer and `X-Kubecove-Session`. The server revokes that sign-in, clears its Kubernetes bearer slots, closes the session that the resume token names, and closes other sockets using the credential, exactly as it does for a browser logout. It does not log the user out of the identity provider.
 - In Access mode, sign out revokes the Access token at Access's revocation endpoint, then closes the session with `/api/v1/session/close`.
-- Because the credential is memory-only, Disconnect in OIDC and Access modes also signs out (open question 4). A credential the desktop no longer holds should not stay valid on the server until it expires. Token-mode Disconnect stays as it is.
-- On app exit the client attempts the same sign-out within the existing session-close bound, which is the session grace window. If the process ends first, the server credential lapses at its own expiry and the session at the end of its grace window.
-- The desktop drops every credential from memory when it signs out, disconnects or receives a revocation, whether or not the server call succeeds.
+- Disconnect closes the session but keeps the sign-in, in memory and in native storage. Reconnecting to the same server URL reuses it. Token-mode Disconnect stays as it is.
+- On app exit the client closes the session within the existing session-close bound, which is the session grace window, and keeps the sign-in.
+- Sign out and a received revocation drop the credential from memory and from native storage, whether or not the server call succeeds.
 
 ### Session notices in the native UI
 
@@ -93,7 +102,7 @@ The host crate reports a typed session state, and both desktop clients render it
 | Sign-in expired | HTTP 401 on invoke or upgrade, or `/api/v1/auth` reporting `authenticated:false` after a socket close | "Your sign-in has expired. Sign in again." | Sign in, Disconnect |
 | Session expired | Grace window elapsed without a reconnect | Token mode: "The server session expired. Reconnect with the server token." OIDC: "Your sign-in has expired. Sign in again." Access: "The server session expired. Sign in again through Cloudflare Access." | Token entry or Sign in, Disconnect |
 
-"Start a new session" posts `/api/v1/session` without a resume token, using the credential the desktop still holds, as the browser's `takeOverBrowserSession` does. A 401 there moves to "Sign-in expired". The copy matches the browser's text, with "This browser's" changed to "This app's" and "Reload" replaced by an action, because the desktop has no page to reload (open question 5).
+"Start a new session" posts `/api/v1/session` without a resume token, using the credential the desktop still holds, as the browser's `takeOverBrowserSession` does. A 401 there moves to "Sign-in expired". The copy matches the browser's text, with "This browser's" changed to "This app's" and "Reload" replaced by an action, because the desktop has no page to reload.
 
 While a selected remote is not connected, the workspace content area shows these notices in place of cluster views, as the browser gate does. Settings > Remote shows the same state. Disconnect stays available everywhere and is still the only way back to the local backend. Cluster commands never fall back to local credentials.
 
@@ -111,14 +120,14 @@ Callback errors, logs and observability events never include codes, verifiers, s
 
 ### Client implementation notes
 
-- The sign-in flow lives in `kubecove_host::remote`, so the GPUI client and the Tauri desktop client share it (open question 1). Each client keeps its own view code.
+- The sign-in flow lives in `kubecove_host::remote`, so the GPUI client and the Tauri desktop client share it. Each client keeps its own view code.
 - The loopback listener uses an HTTP server implementation already in the dependency tree. It does not parse HTTP by hand. Any new dependency follows the project's dependency rules.
 - Opening the browser must pass the URL as one argument without a shell. The current `open_documentation` adapter runs `cmd /C start "" <url>` on Windows, where `&` in a query string is a command separator. The sign-in URL needs a launcher that does not go through `cmd`.
 - The server redirects from an HTTPS page to an `http://127.0.0.1` top-level navigation. Verify in each supported browser that local-network access restrictions do not block this navigation.
 
 ## Consequences
 
-The desktop clients can use every server authentication mode. OIDC needs no identity-provider change and keeps all provider tokens on the server. Access needs an operator setting on the Access application, and its path stays unverified until the facts listed above are checked. Desktop sign-ins appear in server logs and metrics as OIDC or Access sign-ins, like browser sign-ins. Desktop users sign in again after every app restart and every server restart.
+The desktop clients can use every server authentication mode. OIDC needs no identity-provider change and keeps all provider tokens on the server. Access needs an operator setting on the Access application, and its path stays unverified until the facts listed above are checked. Desktop sign-ins appear in server logs and metrics as OIDC or Access sign-ins, like browser sign-ins. Desktop users keep their sign-in across app restarts and Disconnect, and sign in again after a server restart or the sign-in's server-side expiry. A stored desktop credential in the OS credential store is valid on the server until that expiry, so anyone who can read the user's credential store can use it until then. Sign out removes it.
 
 ## Verification
 
@@ -128,14 +137,9 @@ Host crate tests against a local fake server: loopback listener state mismatch, 
 
 Shared parity scenarios in `e2e/parity/scenarios/` drive each notice and action through both drivers with mocked responses. GPUI native tests in `src-tauri/gpui/tests/native.rs` cover what the mocks cannot express, such as revocation arriving during a read. No test contacts a real identity provider, Cloudflare, cluster or server, or reads the user's settings, keyring or kubeconfig.
 
-## Open questions for the owner
+## Remaining open item
 
-1. Scope: the remote client crate is shared with the Tauri desktop client, and AGENTS.md requires shared parity scenarios that both drivers pass. Should the Tauri desktop client gain the same sign-in and notices? Recommendation: yes. The alternative is a recorded parity exemption.
-2. Access: accept a dependency on Cloudflare Managed OAuth, which operators must enable, and authorize one manual verification against a real Access application for the four facts above? Recommendation: ship OIDC first, and implement Access only after that verification passes. The alternative is to leave desktop Access unsupported, with a clear message.
-3. Persistence: keep desktop sign-ins memory-only, or store them in native credential storage so they survive an app restart within the server-side lifetime? Recommendation: memory-only.
-4. Disconnect: should Disconnect in OIDC and Access modes also sign out? Recommendation: yes, while sign-ins are memory-only.
-5. Copy: reuse the browser's notice text with "This app's" in place of "This browser's", or require identical text? Recommendation: the adapted text in the table.
-6. Placement: show the notices in the workspace content area as the browser gate does, or only in Settings > Remote? Recommendation: the workspace content area, plus Settings > Remote.
+Access: one manual check against a real Access application, for the four facts listed under "Authenticated session for Access servers". Until it passes, desktop clients show "Desktop sign-in for Cloudflare Access is not available yet." for an Access server.
 
 ## Sources
 
