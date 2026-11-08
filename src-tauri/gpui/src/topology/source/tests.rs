@@ -44,7 +44,7 @@ fn indexed_filter_matches_raw_ancestor_closure() {
     for query in ["", "b", "d", "a", "absent", "c", ""] {
         rows.refilter(data.clone(), &["Pod".into()], query);
         assert_eq!(
-            source.filter(&rows),
+            source.filter(&rows, None),
             super::super::filter_by_rows(&topology, &rows)
         );
     }

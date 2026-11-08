@@ -321,6 +321,7 @@ impl Inspector {
         let _span = crate::frame_profile::scope("scope", "filter");
         self.update_saved_overview();
         self.filter_rows(cx);
+        self.map.links_stale = true;
         self.rebuild_map();
         cx.notify();
     }

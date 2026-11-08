@@ -220,14 +220,17 @@ pub struct Prepared {
     graph: layout::GraphData,
 }
 
+/// `links` marks the topology nodes whose kind is outside a narrowed kind
+/// selection; see `Source::filter`.
 pub fn prepare(
     topology: &ResourceTopology,
     rows: &crate::model::Visible,
     source: &Source,
+    links: Option<&[bool]>,
 ) -> Prepared {
     // The graph keeps the last node of a repeated id, so the index does too.
     let filter_span = crate::frame_profile::scope("topology", "filter");
-    let (source_nodes, source_edges) = source.filter(rows);
+    let (source_nodes, source_edges) = source.filter(rows, links);
     drop(filter_span);
     let graph_span = crate::frame_profile::scope("topology", "graph");
     let graph = Graph::ranked(
@@ -241,7 +244,7 @@ pub fn prepare(
     );
     drop(graph_span);
     let layout_span = crate::frame_profile::scope("topology", "depth_and_order");
-    let (depth, order) = source.depth_and_order(&graph);
+    let (depth, order) = source.depth_and_order(&graph, links.is_none());
     drop(layout_span);
     let positions_span = crate::frame_profile::scope("topology", "positions");
     let positions = layout::positions(&graph, &depth, &order);

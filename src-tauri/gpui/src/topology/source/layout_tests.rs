@@ -18,7 +18,7 @@ fn edge(id: &str, source: &str, target: &str) -> TopologyEdge {
 }
 
 fn check_layout(topology: &ResourceTopology, source: &Source, rows: &Visible) {
-    let (nodes, edges) = source.filter(rows);
+    let (nodes, edges) = source.filter(rows, None);
     let graph = layout::Graph::ranked(
         nodes.iter().map(|&i| (i, &topology.nodes[i])),
         edges.iter().map(|&i| (i, &topology.edges[i])),
@@ -32,7 +32,7 @@ fn check_layout(topology: &ResourceTopology, source: &Source, rows: &Visible) {
         &source.locals,
         &mut layout::Scratch::default(),
     );
-    let (depth, order) = source.depth_and_order(&graph);
+    let (depth, order) = source.depth_and_order(&graph, true);
     assert_eq!(depth, expected_depth);
     for a in 0..graph.nodes.len() {
         for b in 0..graph.nodes.len() {

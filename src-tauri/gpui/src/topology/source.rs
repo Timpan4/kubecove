@@ -34,6 +34,7 @@ struct StableLayout {
 #[derive(Default)]
 struct Filter {
     kept: Vec<bool>,
+    matched: Vec<bool>,
     pending: Vec<usize>,
 }
 
@@ -120,8 +121,14 @@ impl Source {
         self.ranks[index]
     }
 
-    pub(super) fn depth_and_order(&self, graph: &layout::Graph) -> (Vec<i32>, Vec<usize>) {
-        if let Some(stable) = &self.stable_layout {
+    /// `ancestor_closed` says every kept node's parents were kept, which the
+    /// precomputed layout needs.
+    pub(super) fn depth_and_order(
+        &self,
+        graph: &layout::Graph,
+        ancestor_closed: bool,
+    ) -> (Vec<i32>, Vec<usize>) {
+        if let Some(stable) = self.stable_layout.as_ref().filter(|_| ancestor_closed) {
             return graph
                 .source_nodes
                 .iter()
@@ -142,36 +149,57 @@ impl Source {
         (depth, order)
     }
 
-    pub(super) fn filter(&self, rows: &Visible) -> (Vec<usize>, Vec<usize>) {
+    /// Nodes matching `rows` and their ancestors. With `links`, a per-node mask
+    /// of kinds outside a narrowed kind selection, it keeps the matching nodes
+    /// and the masked nodes one edge from them instead, as
+    /// `filterTopologyByTableRows` does on the web.
+    pub(super) fn filter(
+        &self,
+        rows: &Visible,
+        links: Option<&[bool]>,
+    ) -> (Vec<usize>, Vec<usize>) {
         let mut scratch = self.filter.borrow_mut();
-        scratch.kept.resize(self.canonical.len(), false);
-        scratch.kept.fill(false);
-        scratch.pending.clear();
+        let Filter {
+            kept,
+            matched,
+            pending,
+        } = &mut *scratch;
+        kept.resize(self.canonical.len(), false);
+        kept.fill(false);
+        matched.resize(self.canonical.len(), false);
+        matched.fill(false);
+        pending.clear();
         for (i, matches) in self.matches.iter().enumerate() {
             let canonical = self.canonical[i];
-            if !scratch.kept[canonical] && matches.iter().any(|&row| rows.contains_index(row)) {
-                scratch.kept[canonical] = true;
-                scratch.pending.push(canonical);
+            if !kept[canonical] && matches.iter().any(|&row| rows.contains_index(row)) {
+                kept[canonical] = true;
+                matched[canonical] = true;
+                pending.push(canonical);
             }
         }
-        while let Some(node) = scratch.pending.pop() {
-            for &parent in &self.parents[node] {
-                if !std::mem::replace(&mut scratch.kept[parent], true) {
-                    scratch.pending.push(parent);
+        if let Some(links) = links {
+            for &(source, target) in self.endpoints.iter().flatten() {
+                kept[target] |= matched[source] && links[target];
+                kept[source] |= matched[target] && links[source];
+            }
+        } else {
+            while let Some(node) = pending.pop() {
+                for &parent in &self.parents[node] {
+                    if !std::mem::replace(&mut kept[parent], true) {
+                        pending.push(parent);
+                    }
                 }
             }
         }
         (
             (0..self.canonical.len())
-                .filter(|&i| scratch.kept[self.canonical[i]])
+                .filter(|&i| kept[self.canonical[i]])
                 .collect(),
             self.endpoints
                 .iter()
                 .enumerate()
                 .filter(|(_, ends)| {
-                    ends.is_some_and(|(source, target)| {
-                        scratch.kept[source] && scratch.kept[target]
-                    })
+                    ends.is_some_and(|(source, target)| kept[source] && kept[target])
                 })
                 .map(|(i, _)| i)
                 .collect(),

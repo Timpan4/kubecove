@@ -5,6 +5,7 @@
 
 mod cards;
 mod focus;
+mod links;
 mod paint;
 mod viewport;
 use paint::PreparedEdges;
@@ -62,10 +63,14 @@ pub(super) struct MapState {
     built: RefCell<Option<(ViewInputs, Rc<topology::View>)>>,
     unselected_built: RefCell<Option<(ViewInputs, Rc<topology::View>)>>,
     prepared: RefCell<Option<PreparedMap>>,
+    /// Set when the kind selection may have changed, so the next rebuild
+    /// recomputes which nodes join as links.
+    pub(super) links_stale: bool,
 }
 
 struct PreparedMap {
     rows: u64,
+    links: Option<Vec<bool>>,
     nodes: (usize, usize),
     edges: (usize, usize),
     request: Rc<()>,
@@ -122,6 +127,7 @@ impl MapState {
             built: RefCell::default(),
             unselected_built: RefCell::default(),
             prepared: RefCell::default(),
+            links_stale: false,
         }
     }
 }
@@ -174,6 +180,7 @@ const HANDLE_HALF: f32 = 3.;
 
 impl Inspector {
     pub(super) fn rebuild_map(&mut self) {
+        let links_stale = std::mem::take(&mut self.map.links_stale);
         let topology = match &self.map.topology {
             TopologyLoad::Ready(topology) => Some(topology),
             _ => None,
@@ -195,17 +202,34 @@ impl Inspector {
                     && Rc::ptr_eq(&previous.request, &self.request)
                     && previous.source.matches(&self.visible)
             });
-            if !same_source || prepared.as_ref().unwrap().rows != rows {
+            let current = same_source && prepared.as_ref().unwrap().rows == rows;
+            // The link mask follows the kind selection, so it is recomputed only
+            // when the rows, the graph or the selection change, not every frame.
+            if !current || links_stale {
+                let links = self.map_links(topology);
                 if same_source {
                     let prepared = prepared.as_mut().unwrap();
-                    prepared.data =
-                        Rc::new(topology::prepare(topology, &self.visible, &prepared.source));
-                    prepared.rows = rows;
+                    if !current || prepared.links != links {
+                        prepared.data = Rc::new(topology::prepare(
+                            topology,
+                            &self.visible,
+                            &prepared.source,
+                            links.as_deref(),
+                        ));
+                        prepared.rows = rows;
+                        prepared.links = links;
+                    }
                 } else {
                     let source = topology::Source::new(topology, &self.visible);
-                    let data = Rc::new(topology::prepare(topology, &self.visible, &source));
+                    let data = Rc::new(topology::prepare(
+                        topology,
+                        &self.visible,
+                        &source,
+                        links.as_deref(),
+                    ));
                     *prepared = Some(PreparedMap {
                         rows,
+                        links,
                         nodes,
                         edges,
                         request: self.request.clone(),
