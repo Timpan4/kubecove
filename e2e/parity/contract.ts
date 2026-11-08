@@ -37,7 +37,7 @@ export const ACTIONS = [
     "coverageClick", "coverageFill", "coverageText", "paletteKey", "expectPaletteOpen", "deleteSavedWorkspace", "importDecision", "cancelImport", "searchEvents",
     "terminalFit",
     "openNamespaceList", "expectNamespaceRow", "resizeViewport", "openNavigationDrawer", "expectNavigationDrawer", "sidebarKey",
-    "terminalOutput", "terminalSelect", "terminalCopy", "terminalPaste", "terminalScroll",
+    "terminalOutput", "terminalSelect", "terminalCopy", "terminalPaste", "terminalScroll", "terminalPrimaryPaste", "terminalDragOutside", "terminalRelease", "terminalFocus", "expectTerminalCursor",
     "configureArgoMock", "argoControl", "focusArgoResource", "expectNoSavedArgoProfile", "copyArgoValue", "configureArgoInventory", "expandArgoDiff", "reconnectArgoProfile", "controlClock", "advanceClock",
     "failWorkspaceContext", "expectWorkspaceReadWarning",
     "editSavedWorkspace", "expectNoSavedWorkspace", "saveWorkspace", "cancelWorkspaceEdit", "toggleWorkspaceContext", "expectOverviewHealth", "expectDetailContext",
@@ -297,9 +297,14 @@ function step(value: unknown): Step {
         case "configureSettingsMock": return { action: item.action, script: oneOf(["oidc-server", "oidc-browser-waits", "oidc-memory-only", "oidc-store-keeps-sign-in", "access-server", "choose-kubeconfig", "choose-workspace", "choose-unavailable-workspace", "choose-application-workspace", "choose-compare-workspace", "choose-last-export", "cancel-dialog", "no-update", "invalid-signature", "update-available"], item.script, "a settings script") };
         case "terminalFit": return { action: item.action, width: count(item.width), height: count(item.height) };
         case "terminalOutput": return { action: item.action, data: string(item.data), container: string(item.container) };
-        case "terminalSelect": return { action: item.action, row: count(item.row), col: count(item.col), endRow: count(item.endRow), endCol: count(item.endCol), word: optionalBoolean(item.word) ?? false };
+        case "terminalSelect": return { action: item.action, row: count(item.row), col: count(item.col), endRow: count(item.endRow), endCol: count(item.endCol), word: optionalBoolean(item.word) ?? false, line: optionalBoolean(item.line) ?? false, alt: optionalBoolean(item.alt) ?? false };
         case "terminalCopy": case "terminalPaste": return { action: item.action, text: item.text === "" ? "" : string(item.text) };
+        case "terminalPrimaryPaste": return { action: item.action, text: string(item.text) };
         case "terminalScroll": return { action: item.action, rows: count(item.rows) };
+        case "terminalDragOutside": return { action: item.action, row: count(item.row), col: count(item.col), edge: oneOf(["above", "below"], item.edge, "a terminal edge") };
+        case "terminalRelease": return { action: item.action, ms: count(item.ms) };
+        case "terminalFocus": return { action: item.action, focused: boolean(item.focused) };
+        case "expectTerminalCursor": return { action: item.action, cursor: oneOf(["block", "block blink", "bar", "bar blink", "underline", "underline blink", "outline"], item.cursor, "a cursor paint"), ...(item.row == null ? {} : { row: count(item.row) }), ...(item.col == null ? {} : { col: count(item.col) }) };
         case "expectWorkspaceExport": case "exportSavedWorkspace": return { action: item.action, name: string(item.name) };
         case "expectExportedShortcut": return { action: item.action, name: string(item.name), shortcut: object(item.shortcut) };
         case "configurePreset": return { action: item.action, label: string(item.label), context: string(item.context), namespace: string(item.namespace), service: string(item.service), remote: string(item.remote), local: string(item.local) };

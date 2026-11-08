@@ -72,9 +72,16 @@ export type Step =
     | { action: "mockTiming"; control: import("../../src/lib/tauri-dev-mock-timing").TimingControl }
     | { action: "terminalFit"; width: number; height: number }
     | { action: "terminalOutput"; data: string; container: string }
-    | { action: "terminalSelect"; row: number; col: number; endRow: number; endCol: number; word: boolean }
-    | { action: "terminalCopy" | "terminalPaste"; text: string }
+    // `word` double-clicks, `line` triple-clicks; `alt` drags a rectangle or, for a click, moves the cursor.
+    | { action: "terminalSelect"; row: number; col: number; endRow: number; endCol: number; word: boolean; line: boolean; alt: boolean }
+    | { action: "terminalCopy" | "terminalPaste" | "terminalPrimaryPaste"; text: string }
     | { action: "terminalScroll"; rows: number }
+    // Press at a cell and hold the pointer past the rows' top or bottom edge; `terminalRelease` lets go after `ms`.
+    | { action: "terminalDragOutside"; row: number; col: number; edge: "above" | "below" }
+    | { action: "terminalRelease"; ms: number }
+    | { action: "terminalFocus"; focused: boolean }
+    // `cursor` is the shape with " blink" when it blinks, or "outline" without focus.
+    | { action: "expectTerminalCursor"; cursor: string; row?: number; col?: number }
     | { action: "failWorkspaceContext" | "expectWorkspaceReadWarning"; context: string }
     | { action: "editSavedWorkspace" | "expectNoSavedWorkspace"; name: string }
     | { action: "saveWorkspace" | "cancelWorkspaceEdit" }

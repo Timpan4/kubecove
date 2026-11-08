@@ -35,9 +35,11 @@ mod events;
 mod events_tab;
 mod exec_buffer;
 mod exec_custom;
+mod exec_drag;
 mod exec_input;
 mod exec_keys;
 mod exec_leave;
+mod exec_move;
 mod exec_reflow;
 mod exec_resize;
 mod exec_selection;
@@ -383,7 +385,7 @@ impl Inspector {
             cluster: Default::default(),
             incidents: incidents::IncidentsState::new(),
             sessions: port_forwards::SessionsState::new(),
-            exec: exec_state::ExecState::new(cx),
+            exec: exec_state::ExecState::new(window, cx),
             rbac: rbac_page::RbacState::new(window, cx),
             settings: settings_page::SettingsState::new(window, cx),
             launcher: launcher::LauncherState::new(window, cx),

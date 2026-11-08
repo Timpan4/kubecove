@@ -269,6 +269,17 @@ pub(super) fn resize(parser: &mut Parser, rows: NonZeroU16, cols: NonZeroU16) {
     if screen.hide_cursor() {
         next.process(b"\x1b[?25l");
     }
+    // DECSCUSR lives on the replaced screen.
+    let style = match screen.cursor_style() {
+        vt100::CursorStyle::Default => 0,
+        vt100::CursorStyle::BlinkBlock => 1,
+        vt100::CursorStyle::SteadyBlock => 2,
+        vt100::CursorStyle::BlinkUnderline => 3,
+        vt100::CursorStyle::SteadyUnderline => 4,
+        vt100::CursorStyle::BlinkVerticalBar => 5,
+        vt100::CursorStyle::SteadyVerticalBar => 6,
+    };
+    next.process(format!("\x1b[{style} q").as_bytes());
     // Preserve the VTE decoder, including an incomplete UTF-8 or escape sequence.
     *parser.screen_mut() = next.screen().clone();
     let discarded = next.callbacks().discarded;

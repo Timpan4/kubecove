@@ -109,8 +109,8 @@ fn eviction_clears_selection_instead_of_copying_replacement_rows() {
     let mut tab = tab();
     tab.parser.process(b"selected\r\n");
     tab.selection = Some(super::exec_selection::Selection {
-        anchor: (0, 0),
         end: (0, 8),
+        ..super::exec_selection::Selection::at((0, 0), false)
     });
     for _ in 0..tab.parser.screen().scrollback_capacity()
         + usize::from(tab.parser.screen().size().0.get())
@@ -126,8 +126,8 @@ fn copy_keeps_explicit_spaces_and_complete_unicode_cells() {
     let mut tab = tab();
     tab.parser.process("界e\u{301}   x\r\nhard\r\n".as_bytes());
     tab.selection = Some(super::exec_selection::Selection {
-        anchor: (0, 0),
         end: (1, 4),
+        ..super::exec_selection::Selection::at((0, 0), false)
     });
     assert_eq!(
         tab.selected_text().unwrap(),
@@ -146,8 +146,8 @@ fn erasing_a_wide_wrap_cannot_join_new_hard_lines() {
     tab.parser.process(b"\x1b[2");
     tab.parser.process(b"J\x1b[Hfirst\r\nsecond\r\n");
     tab.selection = Some(super::exec_selection::Selection {
-        anchor: (0, 0),
         end: (1, 6),
+        ..super::exec_selection::Selection::at((0, 0), false)
     });
     assert_eq!(
         tab.selected_text().unwrap(),

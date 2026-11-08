@@ -56,13 +56,16 @@ impl Inspector {
             {
                 let screen = tab.parser.screen();
                 tab.selection = Some(super::exec_selection::Selection {
-                    anchor: (tab.parser.callbacks().discarded, 0),
                     end: (
                         tab.parser.callbacks().discarded
                             + screen.scrollback_len()
                             + usize::from(screen.size().0.get() - 1),
                         screen.size().1.get(),
                     ),
+                    ..super::exec_selection::Selection::at(
+                        (tab.parser.callbacks().discarded, 0),
+                        false,
+                    )
                 });
                 tab.refresh_view();
                 cx.notify();

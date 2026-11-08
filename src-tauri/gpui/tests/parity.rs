@@ -735,6 +735,9 @@ fn run_scenario(
                 .advance_clock(std::time::Duration::from_millis(number(step, "ms")));
             cx.run_until_parked();
         }
+        if step["action"] == "terminalRelease" {
+            terminal::advance_drag_scroll(cx, number(step, "ms"));
+        }
         if step["action"] == "replayLiveData" {
             // Advance the production web refresh throttle, not wall-clock sleeps.
             cx.background_executor

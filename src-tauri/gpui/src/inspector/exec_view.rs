@@ -152,6 +152,7 @@ impl Inspector {
         let active_key = self.exec.active;
         let current_size = active.map(|t| t.parser.screen().size());
         let pending_start = active.is_some_and(|t| t.pending_start.is_some());
+        let dragging = self.exec.drag.is_some();
         div()
             .relative()
             .flex()
@@ -265,11 +266,13 @@ impl Inspector {
                         gpui_kit::MouseButton::Left,
                         cx.listener(|this, event, window, cx| this.select_exec(event, window, cx)),
                     )
-                    .on_mouse_move(cx.listener(|this, event, _, cx| this.drag_exec(event, cx)))
+                    .map(|terminal| super::exec_drag::middle_paste(terminal, cx))
+                    .on_mouse_move(
+                        cx.listener(|this, event, _, cx| this.report_exec_motion(event, cx)),
+                    )
                     .on_mouse_up(
                         gpui_kit::MouseButton::Left,
                         cx.listener(|this, event: &gpui_kit::MouseUpEvent, _, cx| {
-                            this.exec.selecting = false;
                             if !event.modifiers.shift
                                 && let Some(cell) = this.exec_cell(event.position)
                             {
@@ -312,17 +315,19 @@ impl Inspector {
                         }
                     }))
                     .on_key_down(cx.listener(|this, event, _, cx| this.exec_key(event, cx)))
-                    .children(
-                        active
-                            .into_iter()
-                            .flat_map(|t| t.rendered.iter())
-                            .map(|line| {
-                                div().h(px(14.)).whitespace_nowrap().child(
-                                    gpui_kit::StyledText::new(line.text.clone())
-                                        .with_highlights(line.highlights.iter().cloned()),
-                                )
-                            }),
-                    )
+                    .children(active.into_iter().flat_map(|tab| {
+                        let (shape, blink) =
+                            super::exec_buffer::cursor_shape(tab.parser.screen().cursor_style());
+                        let paint = super::exec_buffer::CursorPaint {
+                            shape,
+                            focused: self.exec.focused,
+                            blink,
+                            phase: tab.cursor_visible,
+                        };
+                        tab.rendered
+                            .iter()
+                            .map(move |row| super::exec_buffer::row_element(row, paint))
+                    }))
                     .child(
                         gpui_kit::canvas(
                             |_, _, _| (),
@@ -351,6 +356,32 @@ impl Inspector {
                                     }
                                 }
                                 entity.update(cx, |this, _| this.exec.bounds = Some(bounds));
+                                if dragging {
+                                    // xterm listens on the document so a drag outside
+                                    // the terminal still selects and autoscrolls.
+                                    let owner = entity.clone();
+                                    window.on_mouse_event(
+                                        move |event: &gpui_kit::MouseMoveEvent, phase, _, cx| {
+                                            if phase == gpui_kit::DispatchPhase::Capture {
+                                                owner.update(cx, |this, cx| {
+                                                    this.drag_exec(event, cx)
+                                                });
+                                            }
+                                        },
+                                    );
+                                    let owner = entity.clone();
+                                    window.on_mouse_event(
+                                        move |event: &gpui_kit::MouseUpEvent, phase, _, cx| {
+                                            if phase == gpui_kit::DispatchPhase::Capture
+                                                && event.button == gpui_kit::MouseButton::Left
+                                            {
+                                                owner.update(cx, |this, cx| {
+                                                    this.end_exec_drag(event, cx)
+                                                });
+                                            }
+                                        },
+                                    );
+                                }
                                 window.handle_input(
                                     &focus,
                                     gpui_kit::ElementInputHandler::new(bounds, entity.clone()),

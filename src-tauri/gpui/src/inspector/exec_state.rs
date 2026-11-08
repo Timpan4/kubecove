@@ -42,31 +42,47 @@ pub(super) struct ExecState {
     pub leave_error: Option<String>,
     pub stopping: bool,
     pub bounds: Option<gpui_kit::Bounds<gpui_kit::Pixels>>,
-    pub selecting: bool,
+    pub drag: Option<super::exec_drag::Drag>,
     pub blink_task: Option<Task<()>>,
+    /// Selects the cursor paint; xterm draws `cursorInactiveStyle` without focus.
+    pub focused: bool,
+    _focus: [gpui_kit::Subscription; 2],
 }
 impl ExecState {
-    pub fn new(cx: &mut Context<Inspector>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Inspector>) -> Self {
+        let focus = cx.focus_handle();
+        let focus_changed = |focused| {
+            move |this: &mut Inspector, _: &mut Window, cx: &mut Context<Inspector>| {
+                this.exec.focused = focused;
+                cx.notify();
+            }
+        };
         Self {
             custom: None,
             tabs: vec![],
             active: None,
             next: 0,
-            focus: cx.focus_handle(),
+            _focus: [
+                cx.on_focus_in(&focus, window, focus_changed(true)),
+                cx.on_blur(&focus, window, focus_changed(false)),
+            ],
+            focus,
             menu: false,
             composition: None,
             leave: None,
             leave_error: None,
             stopping: false,
             bounds: None,
-            selecting: false,
+            drag: None,
             blink_task: None,
+            focused: false,
         }
     }
     pub fn active(&self) -> Option<&ExecTab> {
         self.tabs.iter().find(|t| Some(t.key) == self.active)
     }
     pub fn clear(&mut self) {
+        self.drag = None;
         self.blink_task = None;
         self.custom = None;
         self.tabs.clear();
@@ -85,7 +101,6 @@ impl ExecTab {
             self.parser.screen(),
             self.selection,
             self.viewport_start(),
-            self.cursor_visible,
         );
         self.lines = self.rendered.iter().map(|row| row.text.clone()).collect();
         self.accessible = self
@@ -253,7 +268,6 @@ impl Inspector {
                                 .find(|t| Some(t.key) == this.exec.active)
                             {
                                 tab.cursor_visible = !tab.cursor_visible;
-                                tab.refresh_view();
                                 cx.notify();
                             }
                             true
