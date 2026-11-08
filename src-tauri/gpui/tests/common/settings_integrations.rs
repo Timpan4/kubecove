@@ -172,6 +172,7 @@ impl Fixture {
             server_version: "0.13.0".into(),
             session_grace_seconds: 300,
             connected: true,
+            credential_store: Some("encryptedFile".into()),
         };
         *self.settings.remote.lock().unwrap() = Some(summary.clone());
         Box::pin(async move { Ok(summary) })

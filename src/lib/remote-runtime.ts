@@ -16,6 +16,8 @@ export interface RemoteConnectionSummary {
 	serverVersion: string;
 	sessionGraceSeconds: number;
 	connected: boolean;
+	/** The server's credential store kind, or null when the server does not report one. */
+	credentialStore: string | null;
 }
 
 type RemoteChannel = {

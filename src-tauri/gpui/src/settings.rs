@@ -90,6 +90,14 @@ pub const ROWS: &[Row] = &[
         Button("Open Wiki"),
         None,
     ),
+    // Listed only while a server backs the client; see `listed`.
+    row(
+        C::General,
+        SERVER_INFORMATION,
+        "KubeCove server version and active credential storage on this host.",
+        Section,
+        None,
+    ),
     row(
         C::General,
         "Show exact timestamps",
@@ -333,21 +341,32 @@ pub fn matches(query: &str, row: &Row) -> bool {
         || row.description.to_lowercase().contains(&needle)
 }
 
+/// The General row with the connected server's version and credential store.
+pub const SERVER_INFORMATION: &str = "Server information";
+
+/// Whether the catalog lists `row`. The web lists Server information while a
+/// server backs the client: always in the browser runtime, and on a desktop
+/// while it is connected to a remote. `server` says whether one does.
+fn listed(row: &Row, server: bool) -> bool {
+    server || row.title != SERVER_INFORMATION
+}
+
 /// `showCategory`: the active category, or while searching every category
 /// with a matching row. The web then shows the whole category.
-pub fn shown(query: &str, active: Category, category: Category) -> bool {
+pub fn shown(query: &str, active: Category, category: Category, server: bool) -> bool {
     if query.trim().is_empty() {
         return category == active;
     }
-    ROWS.iter()
-        .any(|row| row.category == category && matches(query, row))
+    rows(category, server).any(|row| matches(query, row))
 }
 
 /// `hasMatches`.
-pub fn has_matches(query: &str) -> bool {
-    ROWS.iter().any(|row| matches(query, row))
+pub fn has_matches(query: &str, server: bool) -> bool {
+    ROWS.iter()
+        .any(|row| listed(row, server) && matches(query, row))
 }
 
-pub fn rows(category: Category) -> impl Iterator<Item = &'static Row> {
-    ROWS.iter().filter(move |row| row.category == category)
+pub fn rows(category: Category, server: bool) -> impl Iterator<Item = &'static Row> {
+    ROWS.iter()
+        .filter(move |row| row.category == category && listed(row, server))
 }

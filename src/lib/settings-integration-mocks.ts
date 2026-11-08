@@ -65,7 +65,7 @@ export function workspaceExportMock(): string { return exportedWorkspace; }
 export function selectedDialogPath(): string | null { return dialogPath; }
 export function remoteMockStatus(): RemoteConnectionSummary | null { return selected; }
 export function connectRemoteMock(serverUrl: string): RemoteConnectionSummary {
-	selected = { serverUrl, serverVersion: "0.13.0", sessionGraceSeconds: 300, connected: true };
+	selected = { serverUrl, serverVersion: "0.13.0", sessionGraceSeconds: 300, connected: true, credentialStore: "encryptedFile" };
 	return selected;
 }
 export function disconnectRemoteMock(): undefined { selected = null; }

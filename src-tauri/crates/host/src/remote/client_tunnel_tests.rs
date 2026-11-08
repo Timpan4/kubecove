@@ -53,6 +53,7 @@ async fn fake_server(invoke_response: Value) -> FakeServer {
             server_version: "test".to_string(),
             session_grace_seconds: 30,
             connected: true,
+            credential_store: None,
         },
         outgoing,
         channels: Mutex::default(),

@@ -160,7 +160,7 @@ impl Inspector {
         let ready = state.ready();
         let enabled = state.status.as_ref().is_some_and(|status| status.enabled);
         let running = state.status.as_ref().is_some_and(|status| status.running);
-        let rows: Vec<_> = settings::rows(Category::Agents).collect();
+        let rows: Vec<_> = settings::rows(Category::Agents, false).collect();
         let description = state
             .status
             .as_ref()

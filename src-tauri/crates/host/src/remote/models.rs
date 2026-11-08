@@ -7,6 +7,9 @@ pub struct RemoteConnectionSummary {
     pub server_version: String,
     pub session_grace_seconds: u64,
     pub connected: bool,
+    /// The server's credential store kind, such as `native` or `encryptedFile`.
+    /// `None` when the server does not report one.
+    pub credential_store: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -15,6 +18,8 @@ pub struct ServerSession {
     pub resume_token: String,
     pub session_grace_seconds: u64,
     pub server_version: String,
+    #[serde(default)]
+    pub credential_store: Option<String>,
 }
 
 impl std::fmt::Debug for ServerSession {
@@ -24,6 +29,7 @@ impl std::fmt::Debug for ServerSession {
             .field("resume_token", &"[REDACTED]")
             .field("session_grace_seconds", &self.session_grace_seconds)
             .field("server_version", &self.server_version)
+            .field("credential_store", &self.credential_store)
             .finish()
     }
 }

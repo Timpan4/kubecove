@@ -110,6 +110,15 @@ impl Inspector {
         self.open_page(Page::Overview, cx);
     }
 
+    /// The remote this client is connected to. Its server backs Server information.
+    fn connected_remote(&self) -> Option<&crate::backend::RemoteConnectionSummary> {
+        self.settings
+            .integrations
+            .remote
+            .as_ref()
+            .filter(|remote| remote.connected)
+    }
+
     pub(super) fn settings_page(&self, cx: &mut Context<Self>) -> Div {
         let state = &self.settings;
         let query = state.search.read(cx).value().trim().to_owned();
@@ -119,8 +128,9 @@ impl Inspector {
         } else {
             state.category.label()
         };
+        let server = self.connected_remote().is_some();
         let mut sections = div().flex().flex_col().gap(px(16.));
-        if searching && !settings::has_matches(&query) {
+        if searching && !settings::has_matches(&query, server) {
             let empty = format!("No settings match \"{query}\".");
             sections = sections.child(
                 ui::muted(ui::sm(empty.clone()))
@@ -135,7 +145,7 @@ impl Inspector {
             );
         }
         for (category, ..) in Category::ALL {
-            if settings::shown(&query, state.category, category) {
+            if settings::shown(&query, state.category, category, server) {
                 sections = sections.child(self.settings_category(category, cx));
             }
         }
@@ -251,13 +261,16 @@ impl Inspector {
         if category == Category::Kubeconfig {
             return self.kubeconfig_section(cx).into_any_element();
         }
+        let remote = self.connected_remote();
         div()
             .flex()
             .flex_col()
             .gap(px(16.))
-            .children(settings::rows(category).map(|row| {
+            .children(settings::rows(category, remote.is_some()).map(|row| {
                 if row.title == "KubeCove documentation" {
                     self.documentation_control(row, cx)
+                } else if let Some(remote) = remote.filter(|_| row.title == settings::SERVER_INFORMATION) {
+                    super::settings_sections::server_information(row, remote)
                 } else if row.title == "Latency report" {
                     self.latency_report(row, cx)
                 } else if row.title == "Record interactions" {

@@ -240,6 +240,33 @@
         { "action": "expectSettingsText", "value": "KubeCove is up to date." },
         { "action": "expectUpdateControl", "label": "Check for updates" }
       ]
+    },
+    {
+      "id": "settings.server-information-while-connected",
+      "title": "General shows the connected server's version and credential storage, as the browser runtime does, and hides them on the local runtime",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "expectNoSettingRow", "title": "Server information" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "fillSettingsField", "field": "Server token", "value": "parity-controlled-credential" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "expectRemoteHost", "url": "http://127.0.0.1:43117" },
+        { "action": "showSettingsSection", "section": "General" },
+        { "action": "expectSettingRow", "title": "Server information" },
+        { "action": "expectSettingsText", "value": "Server 0.13.0" },
+        { "action": "expectSettingsText", "value": "Encrypted file storage" },
+        { "action": "searchSettings", "value": "credential storage" },
+        { "action": "expectSettingRow", "title": "Server information" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "clickSettingsButton", "label": "Disconnect" },
+        { "action": "expectRuntimeEndpoint", "value": "local" },
+        { "action": "showSettingsSection", "section": "General" },
+        { "action": "expectNoSettingRow", "title": "Server information" },
+        { "action": "expectNoSettingsText", "value": "Encrypted file storage" },
+        { "action": "searchSettings", "value": "credential storage" },
+        { "action": "expectSettingsEmpty", "value": "credential storage" }
+      ]
     }
   ]
 }

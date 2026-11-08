@@ -306,6 +306,7 @@ pub async fn connect(
         server_version: session.server_version,
         session_grace_seconds: session.session_grace_seconds,
         connected: true,
+        credential_store: session.credential_store,
     };
     let socket = connect_websocket(&credentials).await?;
     let (outgoing, receiver) = mpsc::channel(32);

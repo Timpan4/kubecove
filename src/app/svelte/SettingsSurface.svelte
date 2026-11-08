@@ -30,6 +30,7 @@
 		subscribeBrowserSession,
 		type BrowserSessionState,
 	} from "@/lib/browser-runtime";
+	import { desktopRemoteConnection } from "@/lib/remote-runtime";
 	import type { YamlEncoding, YamlViewMode } from "@/lib/types";
 	import RemoteConnectionSettings from "./RemoteConnectionSettings.svelte";
 	import McpServerSettings from "./McpServerSettings.svelte";
@@ -238,10 +239,24 @@
 		DIAGNOSTICS_ROWS.push(topologySpike);
 	}
 
-	const categoryRows = {
+	const browserRuntime = isBrowserRuntime();
+	let browserSession = $state<BrowserSessionState>(getBrowserSessionState());
+	// The browser runtime always talks to a server. A desktop does while it is connected to a remote.
+	const serverInformation = $derived(
+		browserRuntime
+			? { version: browserSession.serverVersion, credentialStore: browserSession.credentialStore }
+			: $desktopRemoteConnection?.connected
+				? {
+						version: $desktopRemoteConnection.serverVersion,
+						credentialStore: $desktopRemoteConnection.credentialStore,
+					}
+				: null,
+	);
+
+	const categoryRows = $derived({
 		general: [
 			...Object.values(GENERAL_ROWS),
-			...(isBrowserRuntime() ? [SERVER_INFO_ROW] : []),
+			...(serverInformation ? [SERVER_INFO_ROW] : []),
 		],
 		appearance: Object.values(APPEARANCE_ROWS),
 		sessions: Object.values(SESSION_ROWS),
@@ -254,7 +269,7 @@
 			? [{ title: "Remote KubeCove server", description: "Connect this desktop to a headless KubeCove host." }]
 			: [],
 		agents: !isBrowserRuntime() && (isTauriRuntime() || isBrowserDevMockMode()) ? Object.values(MCP_ROWS) : [],
-	} satisfies Record<SettingsCategoryId, SettingsRowMeta[]>;
+	} satisfies Record<SettingsCategoryId, SettingsRowMeta[]>);
 
 	const categories: Array<{ id: SettingsCategoryId; label: string }> = [
 		{ id: "general", label: "General" },
@@ -270,8 +285,6 @@
 	];
 
 	let activeCategory = $state<SettingsCategoryId>("general");
-	const browserRuntime = isBrowserRuntime();
-	let browserSession = $state<BrowserSessionState>(getBrowserSessionState());
 	let query = $state("");
 	let documentationError = $state<unknown>(null);
 	let { onBack }: { onBack?: () => void } = $props();
@@ -286,7 +299,7 @@
 	);
 
 	const credentialStoreLabel = $derived.by(() => {
-		const store = browserSession.credentialStore;
+		const store = serverInformation?.credentialStore;
 		if (!store) return "Not reported";
 		const normalized = store.toLowerCase();
 		if (normalized.includes("encrypted") || normalized.includes("file")) {
@@ -422,9 +435,9 @@
 					context={{ fallbackTitle: "KubeCove could not open the documentation" }}
 				/>
 			{/if}
-			{#if browserRuntime}
+			{#if serverInformation}
 				<SettingsRow {...SERVER_INFO_ROW}>
-					<Badge variant="outline">Server {browserSession.serverVersion ?? "Unknown"}</Badge>
+					<Badge variant="outline">Server {serverInformation.version ?? "Unknown"}</Badge>
 					<Badge variant="secondary">{credentialStoreLabel}</Badge>
 				</SettingsRow>
 			{/if}
