@@ -1,9 +1,26 @@
 import type { Page } from "playwright-core";
+import { STARTUP_HOLDS_KEY, type TimingControl } from "../../src/lib/tauri-dev-mock-timing";
 import type { Scenario, Step } from "./contract";
 
 /** The web driver creates its workspace through the launcher unless a scenario starts without one. */
 export function seedsWorkspace(scenario: Scenario): boolean {
     return scenario.steps[0]?.action !== "startWithoutWorkspace";
+}
+
+/**
+ * A shell phase other than ready reloads the page, and the reloaded app reads at once. The holds
+ * that follow the phase step are stored for the timing mock to apply before those reads, as the
+ * native driver applies leading phase and hold steps before its client starts.
+ */
+export async function storeReloadHolds(page: Page, steps: Step[], index: number): Promise<void> {
+    const step = steps[index];
+    if (step?.action !== "configureShellRead" || step.phase === "ready") return;
+    const holds: TimingControl[] = [];
+    for (const next of steps.slice(index + 1)) {
+        if (next.action !== "mockTiming" || next.control.operation !== "hold") break;
+        holds.push(next.control);
+    }
+    if (holds.length) await page.evaluate(([key, value]) => sessionStorage.setItem(key, value), [STARTUP_HOLDS_KEY, JSON.stringify(holds)]);
 }
 
 export async function seedWorkspace(page: Page): Promise<void> {
@@ -133,8 +150,7 @@ export async function shellAction(page: Page, step: Step): Promise<void> {
             break;
         case "configureShellRead":
             await page.evaluate(`import('/src/lib/tauri-dev-mock-shell.ts').then(m => m.configureShellRead(${JSON.stringify(step.phase)}))`);
-            if (step.phase !== "ready") await page.reload();
-            break;
+            if (step.phase !== "ready") await page.reload();            break;
         case "retryLauncher":
             await page.getByRole("button", { name: "Retry", exact: true }).click();
             break;

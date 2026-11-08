@@ -26,7 +26,7 @@ import { panelAction } from "./web-panels";
 import { resourceFilterAction } from "./web-resource-filters";
 import { resourceRow, resourceTableAction } from "./web-resource-table";
 import { sessionHealthAction } from "./web-session-health";
-import { seedsWorkspace, seedWorkspace, shellAction } from "./web-shell";
+import { seedsWorkspace, seedWorkspace, shellAction, storeReloadHolds } from "./web-shell";
 import { sidebarLiveAction } from "./web-sidebar-live";
 import { terminalAction } from "./web-terminal";
 import { timingAction } from "./web-timing";
@@ -517,7 +517,7 @@ async function runScenario(browser: Browser, port: number, artifacts: string, sc
 		if (seedsWorkspace(scenario)) await seedWorkspace(page);
 		for (const [index, step] of scenario.steps.entries()) {
 			signal.throwIfAborted();
-			if (index >= startupSteps) await action(page, step);
+			if (index >= startupSteps) { await storeReloadHolds(page, scenario.steps, index); await action(page, step); }
 			await page.screenshot({ path: join(artifacts, `web-${scenarioIndex}-${index}.png`) });
 		}
 		await coverage?.save(artifacts, scenarioIndex, scenario.id);

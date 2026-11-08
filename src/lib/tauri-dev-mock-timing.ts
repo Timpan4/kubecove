@@ -192,3 +192,11 @@ export class MockTiming {
 }
 
 export const mockTiming = new MockTiming();
+
+/** Holds the parity web driver stored before a reload, applied before the reloaded app's first read. */
+export const STARTUP_HOLDS_KEY = "parity-startup-holds";
+const startupHolds = globalThis.sessionStorage?.getItem(STARTUP_HOLDS_KEY);
+if (startupHolds) {
+    globalThis.sessionStorage.removeItem(STARTUP_HOLDS_KEY);
+    for (const control of JSON.parse(startupHolds) as TimingControl[]) if (control.operation === "hold") mockTiming.control(control);
+}
