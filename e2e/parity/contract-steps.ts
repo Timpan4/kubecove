@@ -127,7 +127,7 @@ export type Step =
     | { action: "disconnectArgoProfile" | "confirmArgoReview" | "cancelArgoReview" }
     | { action: "reviewArgoOperation"; operation: "Refresh" | "Hard refresh" | "Sync" | "Rollback" }
     | { action: "configureArgoMock"; script: import("../../src/lib/tauri-dev-mock-argo").ArgoMockScript }
-    | { action: "argoControl"; control: "Open connection" | "Close connection" | "Forget" | "Retry" | "Confirm target again" | "Retry operation" | "Retry state refresh" | "Retry snapshot" | "Technical detail" | "Show diff" | "Show fewer lines" | "All changes" | "Sync options" | "Sync with these options" | "Refresh options"; url?: string }
+    | { action: "argoControl"; control: "Open connection" | "Close connection" | "Disconnect" | "Forget" | "Retry" | "Confirm target again" | "Retry operation" | "Retry state refresh" | "Retry snapshot" | "Technical detail" | "Show diff" | "Show fewer lines" | "All changes" | "Sync options" | "Sync with these options" | "Refresh options"; url?: string }
     | { action: "focusArgoResource"; key: string; label: string }
     | { action: "expectNoSavedArgoProfile"; url: string }
     | { action: "expandArgoDiff" }
@@ -140,7 +140,7 @@ export type Step =
     | { action: "dismissArgoPopover"; how: "Escape" | "outside click" }
     | { action: "expectArgoCheckbox"; name: ArgoOptionName; checked: boolean }
     | { action: "toggleArgoOption"; name: ArgoOptionName }
-    | { action: "expectNoArgoControl"; control: "Confirm target again" }
+    | { action: "expectNoArgoControl"; control: "Confirm target again" | "Reconnect" }
     | { action: "expectArgoFocusInPopover"; control: "Sync options" | "Refresh options" }
     | { action: "tabArgoPopover"; control: "Sync options" | "Refresh options"; presses: number }
     | { action: "argoConnectionDialog"; operation: "open" | "expectFocusIn" | "tab" | "shiftTab" | "escape" | "outsideClick" | "expectOpen"; presses: number; open: boolean }

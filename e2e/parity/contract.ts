@@ -229,8 +229,8 @@ function step(value: unknown): Step {
         case "completeArgoOperation": return { action: item.action };
         case "connectArgoProfile": return { action: item.action, url: string(item.url), remember: optionalBoolean(item.remember), tunnel: optionalBoolean(item.tunnel), local: optionalBoolean(item.local), insecure: optionalBoolean(item.insecure), customCa: item.customCa == null ? undefined : string(item.customCa), surface: item.surface == null ? undefined : oneOf<"page">(["page"], item.surface, "an Argo connection surface") };
         case "disconnectArgoProfile": case "confirmArgoReview": case "cancelArgoReview": return { action: item.action };
-        case "configureArgoMock": return { action: item.action, script: oneOf(["base", "discovery-error", "target-mismatch", "preview-error", "snapshot-error", "operation-error", "lazy", "full-diff"], item.script, "an Argo fixture script") };
-        case "argoControl": return { action: item.action, control: oneOf(["Open connection", "Close connection", "Forget", "Retry", "Confirm target again", "Retry operation", "Retry state refresh", "Retry snapshot", "Technical detail", "Show diff", "Show fewer lines", "All changes", "Sync options", "Sync with these options", "Refresh options"], item.control, "an Argo control"), url: item.url == null ? undefined : string(item.url) };
+        case "configureArgoMock": return { action: item.action, script: oneOf(["base", "discovery-error", "target-mismatch", "preview-error", "snapshot-error", "operation-error", "lazy", "full-diff", "connect-pending", "disconnect-pending"], item.script, "an Argo fixture script") };
+        case "argoControl": return { action: item.action, control: oneOf(["Open connection", "Close connection", "Disconnect", "Forget", "Retry", "Confirm target again", "Retry operation", "Retry state refresh", "Retry snapshot", "Technical detail", "Show diff", "Show fewer lines", "All changes", "Sync options", "Sync with these options", "Refresh options"], item.control, "an Argo control"), url: item.url == null ? undefined : string(item.url) };
         case "focusArgoResource": return { action: item.action, key: string(item.key), label: string(item.label) };
         case "expectNoSavedArgoProfile": return { action: item.action, url: string(item.url) };
         case "expandArgoDiff": return { action: item.action };
@@ -244,7 +244,7 @@ function step(value: unknown): Step {
         case "dismissArgoPopover": return { action: item.action, how: oneOf(["Escape", "outside click"], item.how, "a popover dismissal") };
         case "expectArgoCheckbox": return { action: item.action, name: oneOf(ARGO_OPTION_NAMES, item.name, "an Argo option"), checked: boolean(item.checked) };
         case "toggleArgoOption": return { action: item.action, name: oneOf(ARGO_OPTION_NAMES, item.name, "an Argo option") };
-        case "expectNoArgoControl": return { action: item.action, control: oneOf(["Confirm target again"], item.control, "an Argo control") };
+        case "expectNoArgoControl": return { action: item.action, control: oneOf(["Confirm target again", "Reconnect"], item.control, "an Argo control") };
         case "expectArgoFocusInPopover": return { action: item.action, control: oneOf(["Sync options", "Refresh options"], item.control, "an Argo options popover") };
         case "argoConnectionDialog": return { action: item.action, operation: oneOf(["open", "expectFocusIn", "tab", "shiftTab", "escape", "outsideClick", "expectOpen"], item.operation, "an Argo connection dialog operation"), presses: item.presses === undefined ? 0 : count(item.presses), open: optionalBoolean(item.open) === true };
         case "tabArgoPopover": return { action: item.action, control: oneOf(["Sync options", "Refresh options"], item.control, "an Argo options popover"), presses: count(item.presses) };

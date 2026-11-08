@@ -19,6 +19,48 @@
         { "action": "argoConnectionDialog", "operation": "outsideClick" },
         { "action": "argoConnectionDialog", "operation": "expectOpen", "open": false }
       ]
+    },
+    {
+      "id": "argo-connection.close-keeps-disconnect",
+      "title": "Closing the connection dialog during a disconnect lets the disconnect finish",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test" },
+        { "action": "expectArgoText", "text": "Connected Argo CD API" },
+        { "action": "configureArgoMock", "script": "disconnect-pending" },
+        { "action": "argoControl", "control": "Open connection" },
+        { "action": "argoControl", "control": "Disconnect" },
+        { "action": "argoControl", "control": "Close connection" },
+        { "action": "configureArgoMock", "script": "base" },
+        { "action": "expectArgoText", "text": "Kubernetes Application status" }
+      ]
+    },
+    {
+      "id": "argo-connection.close-keeps-auto-reconnect",
+      "title": "Closing the connection dialog during automatic reconnects lets every remembered profile reconnect",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test", "remember": true },
+        { "action": "restartClient" },
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "expectArgoText", "text": "Connected Argo CD API" },
+        { "action": "connectArgoProfile", "url": "https://argocd-server.argocd.svc", "tunnel": true, "remember": true },
+        { "action": "confirmArgoTunnel" },
+        { "action": "configureArgoMock", "script": "connect-pending" },
+        { "action": "restartClient" },
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "argoControl", "control": "Open connection" },
+        { "action": "argoControl", "control": "Close connection" },
+        { "action": "configureArgoMock", "script": "base" },
+        { "action": "expectArgoText", "text": "Connected Argo CD API" },
+        { "action": "argoControl", "control": "Open connection" },
+        { "action": "expectNoArgoControl", "control": "Reconnect" },
+        { "action": "argoControl", "control": "Close connection" }
+      ]
     }
   ]
 }

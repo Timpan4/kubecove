@@ -565,7 +565,7 @@ fn run_scenario(
             *backend.argo.inventory_mode.lock().unwrap() = string(step, "mode").into();
         }
         if step["action"] == "configureArgoMock" {
-            *backend.argo.script.lock().unwrap() = string(step, "script").into();
+            backend.argo.configure(string(step, "script"));
             if step["script"] == "snapshot-error" {
                 cx.background_executor
                     .advance_clock(std::time::Duration::from_millis(15_000));

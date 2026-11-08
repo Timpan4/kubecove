@@ -1,8 +1,14 @@
 //! Only endpoint metadata and the inspection choice enter ADR 0030 storage.
-use super::{Inspector, argo_connection::Preference};
+use super::{
+    Inspector,
+    argo_connection::{ConnectStep, Preference, Reconnect, connected},
+};
+use crate::backend::ArgoConnect;
 use crate::preferences::{ArgoProfile, ConnectionPreference, Endpoint};
 use gpui_kit::{Context, Window};
-use kubecove_lib::models::{ArgoConnectionProfile, ArgoConnectionStatus, ArgoServerEndpoint};
+use kubecove_lib::models::{
+    ArgoConfirmedTarget, ArgoConnectionProfile, ArgoConnectionStatus, ArgoServerEndpoint,
+};
 
 pub(super) fn endpoint_label(endpoint: &ArgoServerEndpoint) -> String {
     match endpoint {
@@ -112,7 +118,7 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.argo_connections.busy {
+        if self.argo_connections.busy() {
             return;
         }
         let Some(profile) = self
@@ -136,7 +142,7 @@ impl Inspector {
         match self.backend.save_preferences(document) {
             Ok(document) => self.persisted = document,
             Err(error) => {
-                self.argo_connections.error = Some(format!(
+                self.argo_connections.step = ConnectStep::failed(format!(
                     "Forget stopped before credential deletion. {}",
                     error.message
                 ));
@@ -144,9 +150,7 @@ impl Inspector {
                 return;
             }
         }
-        self.argo_connections
-            .pending_reconnect
-            .retain(|p| p.id != id);
+        self.argo_connections.reconnect.queue.retain(|p| p.id != id);
         for p in self
             .argo_connections
             .profiles
@@ -162,14 +166,12 @@ impl Inspector {
             backend.disconnect_argo(profile.id.clone()).await?;
             backend.forget_argo(profile).await
         };
-        self.argo_connections.busy = true;
-        self.argo_connections.error = None;
         // Forget is not cancelled by closing the form. Its credential and metadata
-        // cleanup must finish together; the task is retained separately from login.
-        self.argo_connections.forgetting = Some(cx.spawn_in(window, async move |this, cx| {
+        // cleanup must finish together.
+        let task = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
-                this.argo_connections.busy = false;
+                this.argo_connections.profile_action = None;
                 for s in &mut this.argo_connections.profiles {
                     if s.profile.as_ref().is_some_and(|p| p.id == id) { s.connected = false; }
                 }
@@ -187,15 +189,16 @@ impl Inspector {
                         if matches!(&this.argo_connections.selected, Preference::Connected(p) if p == &id) {
                             this.argo_connections.selected = Preference::Automatic;
                         }
-                        this.argo_connections.error = None;
                     }
-                    Err(error) => this.argo_connections.error = Some(format!("Forget incomplete. Automatic reconnect is disabled. Retry Forget. {}", error.message)),
+                    Err(error) => this.argo_connections.step = ConnectStep::failed(format!("Forget incomplete. Automatic reconnect is disabled. Retry Forget. {}", error.message)),
                 }
                 this.sync_argo_picker(window, cx);
                 this.reload_argo(window, cx);
                 cx.notify();
             });
-        }));
+        });
+        self.argo_connections.step = ConnectStep::Idle;
+        self.argo_connections.profile_action = Some(task.into());
         cx.notify();
     }
     pub(super) fn sync_argo_scope(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -210,19 +213,22 @@ impl Inspector {
             self.argo_connections.discovery.take();
             self.argo_connections.servers.clear();
             self.argo_connections.scope = scope;
-            self.argo_connections.error = None;
+            self.argo_connections.step = ConnectStep::Idle;
             self.restore_argo_preferences();
             self.sync_argo_picker(window, cx);
             self.argo_outcomes.clear();
-            self.argo_connections.pending_reconnect = self
-                .argo_connections
-                .profiles
-                .iter()
-                .filter(|s| !s.connected)
-                .filter_map(|s| s.profile.as_ref())
-                .filter(|p| p.remember_credential && self.argo_profile_matches(p))
-                .cloned()
-                .collect();
+            self.argo_connections.reconnect = Reconnect {
+                queue: self
+                    .argo_connections
+                    .profiles
+                    .iter()
+                    .filter(|s| !s.connected)
+                    .filter_map(|s| s.profile.as_ref())
+                    .filter(|p| p.remember_credential && self.argo_profile_matches(p))
+                    .cloned()
+                    .collect(),
+                current: None,
+            };
             self.reconnect_next_argo_profile(window, cx);
         }
     }
@@ -288,31 +294,57 @@ impl Inspector {
             && p.kubeconfig_source_key.as_deref() == self.argo_source_key()
     }
 
-    pub(super) fn reconnect_next_argo_profile(
-        &mut self,
-        window: &mut gpui_kit::Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.argo_connections.reconnecting = false;
-        let Some(profile) = self.argo_connections.pending_reconnect.pop_front() else {
+    /// Reconnects the next remembered profile, as the web's `reconnectRememberedArgoProfile`.
+    /// It leaves the dialog alone, and a failed attempt waits silently for a manual reconnect.
+    fn reconnect_next_argo_profile(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(saved) = self.argo_connections.reconnect.queue.pop_front() else {
+            self.argo_connections.reconnect.current = None;
             return;
         };
-        self.argo_connections.reconnecting = true;
-        self.argo_connections.editing = Some(profile.clone());
-        let confirmed = match profile.endpoint {
+        let confirmed_target = match &saved.endpoint {
             ArgoServerEndpoint::ServiceTunnel {
                 namespace,
                 service_name,
                 ..
-            } => Some(kubecove_lib::models::ArgoConfirmedTarget {
-                namespace,
-                service_name,
+            } => Some(ArgoConfirmedTarget {
+                namespace: namespace.clone(),
+                service_name: service_name.clone(),
                 pod_name: None,
                 certificate_sha256: None,
             }),
             _ => None,
         };
-        self.connect_argo_profile(confirmed, window, cx);
+        let profile = ArgoConnectionProfile {
+            url: endpoint_url(&saved.endpoint),
+            id: saved.id,
+            endpoint: saved.endpoint,
+            cluster_context: Some(self.scope.context.clone()),
+            workspace_id: Some(self.argo_workspace_id()),
+            kubeconfig_source_key: self.argo_source_key().map(str::to_owned),
+            transport: "connected".into(),
+            remember_credential: true,
+        };
+        let read = self.backend.connect_argo(ArgoConnect {
+            profile,
+            token: None,
+            username: None,
+            password: None,
+            insecure_tls: false,
+            custom_ca_pem: None,
+            confirmed_target,
+        });
+        let task = cx.spawn_in(window, async move |this, cx| {
+            let result = read.await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                if let Ok(status) = connected(result) {
+                    this.record_argo_status(status, window, cx);
+                    this.reload_argo(window, cx);
+                }
+                this.reconnect_next_argo_profile(window, cx);
+                cx.notify();
+            });
+        });
+        self.argo_connections.reconnect.current = Some(task.into());
     }
     pub(super) fn sync_argo_picker(
         &mut self,

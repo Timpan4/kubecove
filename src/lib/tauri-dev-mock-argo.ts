@@ -29,9 +29,17 @@ export function presentCustomResourceKinds(namespaces: string[] = []): Discovere
 	);
 }
 let argoOutcomeComplete = false;
-export type ArgoMockScript = "base" | "discovery-error" | "target-mismatch" | "preview-error" | "snapshot-error" | "operation-error" | "lazy" | "full-diff";
-let argoScript: ArgoMockScript = "base";
-export function configureArgoMock(script: ArgoMockScript) { argoScript = script; }
+export type ArgoMockScript = "base" | "discovery-error" | "target-mismatch" | "preview-error" | "snapshot-error" | "operation-error" | "lazy" | "full-diff" | "connect-pending" | "disconnect-pending";
+declare global { var __kubecoveParityArgo: ArgoMockScript | undefined; }
+// The parity driver sets the global before a reload, so a held script also covers startup reads.
+let argoScript: ArgoMockScript = globalThis.__kubecoveParityArgo ?? "base";
+// "connect-pending" and "disconnect-pending" hold those commands until the next script.
+const heldArgo: (() => void)[] = [];
+const holdArgo = (script: ArgoMockScript) => argoScript === script ? new Promise<void>((resolve) => heldArgo.push(resolve)) : undefined;
+export function configureArgoMock(script: ArgoMockScript) {
+	argoScript = script;
+	for (const release of heldArgo.splice(0)) release();
+}
 export type ArgoInventoryMode = "base" | "absent" | "empty" | "partial" | "unavailable";
 let argoInventoryMode: ArgoInventoryMode = "base";
 export function configureArgoInventory(mode: ArgoInventoryMode) { argoInventoryMode = mode; }
@@ -66,8 +74,9 @@ return {
 			certificateSha256: endpoint?.scheme === "http" ? null : "3f".repeat(32),
 		};
 	},
-	connect_argo_server: (args) => {
+	connect_argo_server: async (args) => {
         if (argoScript === "target-mismatch") throw new Error("Fixture tunnel target changed");
+		await holdArgo("connect-pending");
 		const serverUrl = args?.serverUrl ?? "https://argocd.example.test";
 		const endpoint = normalizedArgoEndpoint(args?.endpoint ?? { kind: "externalHttps", url: serverUrl });
 		const profile: ArgoConnectionProfile = { id: args?.id ?? "mock-profile", endpoint, url: serverUrl, clusterContext: args?.clusterContext ?? null, workspaceId: args?.workspaceId ?? null, kubeconfigSourceKey: args?.kubeconfigEnvVar ?? source.sourceKey, transport: "connected", rememberCredential: Boolean(args?.rememberCredential) };
@@ -78,7 +87,8 @@ return {
 		const profile = args?.id ? argoConnections.get(args.id) ?? null : null;
 		return { profile, connected: profile !== null, username: profile ? "mock-user" : null, unavailableReason: null };
 	},
-	disconnect_argo_server: (args) => {
+	disconnect_argo_server: async (args) => {
+		await holdArgo("disconnect-pending");
 		if (args?.id) argoConnections.delete(args.id);
 	},
 	forget_argo_credential: () => undefined,

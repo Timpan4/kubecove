@@ -25,6 +25,8 @@ export async function argoAction(page: Page, step: Step) {
             break;
         }
         case "configureArgoMock":
+            // `restartClient` reloads the page; the script then applies to startup reads, as the native fixture's does.
+            await page.addInitScript((script) => { (globalThis as { __kubecoveParityArgo?: string }).__kubecoveParityArgo = script; }, step.script);
             await page.evaluate(`import('/src/lib/tauri-dev-mock-argo.ts').then(m => m.configureArgoMock(${JSON.stringify(step.script)}))`);
             break;
         case "controlClock":
@@ -60,7 +62,7 @@ export async function argoAction(page: Page, step: Step) {
             break;
         }
         case "connectArgoProfile": {
-            await (step.surface === "page" ? page.getByRole("button", { name: "Argo CD connection", exact: true }) : page.getByRole("tabpanel").getByRole("button", { name: "Connect Argo CD", exact: true })).click();
+            await (step.surface === "page" ? page.getByRole("button", { name: "Argo CD connection", exact: true }) : page.getByRole("tabpanel").getByRole("button", { name: /^(Manage connection|Connect Argo CD)$/ })).click();
             const dialog = page.getByRole("dialog", { name: "Argo CD connection" });
             if (step.tunnel) {
                 await dialog.getByRole("radio", { name: "Found in cluster", exact: true }).click();
@@ -126,9 +128,12 @@ export async function argoAction(page: Page, step: Step) {
             const dialog = page.getByRole("dialog", { name: "Argo CD connection" });
             await dialog.getByText("argocd-server-7d9f8b6c5-x2k4q", { exact: true }).waitFor();
             await dialog.getByText("SHA-256", { exact: false }).waitFor();
+            // Another saved profile may already show Disconnect, so wait for one more.
+            const disconnects = dialog.getByRole("button", { name: "Disconnect", exact: true });
+            const connected = await disconnects.count();
             await dialog.getByRole("button", { name: "Confirm and connect", exact: true }).click();
             if (step.failure) { await dialog.getByText(step.failure, { exact: false }).first().waitFor(); break; }
-            await dialog.getByRole("button", { name: "Disconnect", exact: true }).waitFor();
+            await disconnects.nth(connected).waitFor();
             await page.keyboard.press("Escape"); break;
         }
         case "expectArgoPopover": {

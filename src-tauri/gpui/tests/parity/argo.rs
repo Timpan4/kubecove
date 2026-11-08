@@ -110,6 +110,10 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             let id = match string(step, "control") {
                 "Open connection" => "argo-connect-open",
                 "Close connection" => "argo-connection-close",
+                "Disconnect" => {
+                    locate::click_label(window, "root", "Disconnect", cx);
+                    return true;
+                }
                 "Forget" => {
                     reveal(window, "detail-body", "argo-connect-open", cx);
                     window.click("argo-connect-open", cx);
@@ -321,11 +325,15 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
         }
         "expectNoArgoControl" => {
             window.render_frame(cx);
-            assert!(
-                window.try_find("argo-target-retry").is_none(),
-                "{} is visible",
-                string(step, "control")
-            );
+            let control = string(step, "control");
+            let visible = match control {
+                "Reconnect" => window
+                    .elements()
+                    .iter()
+                    .any(|e| e.label().is_some_and(|l| l == control)),
+                _ => window.try_find("argo-target-retry").is_some(),
+            };
+            assert!(!visible, "{control} is visible");
         }
         "expectArgoWorkspaceTransport" => assert_eq!(
             window.find("argo-workspace-transport").label(),

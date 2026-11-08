@@ -1,12 +1,11 @@
 //! Workspace-scoped connection state. Credentials live only in masked inputs until submission.
-use super::{Inspector, detail::Detail};
+use super::{Inspector, detail::Detail, request::InFlight};
 use crate::backend::ArgoConnect;
 use gpui_kit::{
-    AppContext, Context, Entity, FocusHandle, Task, Window,
+    AppContext, Context, Entity, FocusHandle, Window,
     component::input::{InputState, TextareaState},
 };
 use kubecove_lib::models::*;
-use std::rc::Rc;
 
 #[derive(Default)]
 pub(super) enum Preference {
@@ -14,6 +13,52 @@ pub(super) enum Preference {
     Automatic,
     Kubernetes,
     Connected(String),
+}
+/// The dialog's connect flow, as the web's `ConnectStep`. Closing the dialog cancels a
+/// `Busy` read. Disconnect and Forget run in `Connections::profile_action` and automatic
+/// reconnects in `Connections::reconnect`, so closing the dialog leaves them running.
+pub(super) enum ConnectStep {
+    Idle,
+    /// A tunnel preview or a connect read. Replacing the step cancels it.
+    Busy { _read: InFlight },
+    /// A previewed tunnel target that waits for the user's confirmation.
+    ConfirmTarget {
+        endpoint: ArgoServerEndpoint,
+        preview: ArgoTunnelTargetPreview,
+    },
+    /// `reconfirm` is the remembered tunnel profile whose reconnect failed. Only it
+    /// offers a fresh preview of its saved target, as on the web.
+    Failed {
+        message: String,
+        reconfirm: Option<ArgoConnectionProfile>,
+    },
+}
+impl ConnectStep {
+    pub fn failed(message: impl Into<String>) -> Self {
+        Self::Failed {
+            message: message.into(),
+            reconfirm: None,
+        }
+    }
+    pub fn error(&self) -> Option<&str> {
+        match self {
+            Self::Failed { message, .. } => Some(message),
+            _ => None,
+        }
+    }
+    /// Drops a previewed target after the endpoint choice changes.
+    pub fn clear_preview(&mut self) {
+        if matches!(self, Self::ConfirmTarget { .. }) {
+            *self = Self::Idle;
+        }
+    }
+}
+/// Remembered profiles that reconnect one at a time after the workspace scope changes.
+/// Only a scope change replaces it.
+#[derive(Default)]
+pub(super) struct Reconnect {
+    pub queue: std::collections::VecDeque<ArgoConnectionProfile>,
+    pub current: Option<InFlight>,
 }
 pub(super) struct Connections {
     pub open: bool,
@@ -34,19 +79,12 @@ pub(super) struct Connections {
     pub remember: bool,
     pub servers: Vec<ArgoServerCapability>,
     pub endpoint: Option<ArgoServerEndpoint>,
-    pub preview: Option<ArgoTunnelTargetPreview>,
-    pub preview_endpoint: Option<ArgoServerEndpoint>,
-    pub error: Option<String>,
-    pub busy: bool,
-    pub request: Rc<()>,
-    pub task: Option<Task<()>>,
-    pub discovery: Option<Task<()>>,
+    pub step: ConnectStep,
+    /// A running Disconnect or Forget.
+    pub profile_action: Option<InFlight>,
+    pub reconnect: Reconnect,
+    pub discovery: Option<gpui_kit::Task<()>>,
     pub discovery_error: Option<String>,
-    pub forgetting: Option<Task<()>>,
-    pub reconnecting: bool,
-    /// A failed connect offers a fresh tunnel preview for a remembered profile. A failed preview clears it.
-    pub reconfirm: bool,
-    pub pending_reconnect: std::collections::VecDeque<ArgoConnectionProfile>,
     pub picker: Entity<
         gpui_kit::component::select::SelectState<
             gpui_kit::component::select::SearchableVec<gpui_kit::SharedString>,
@@ -121,19 +159,28 @@ impl Connections {
             remember: false,
             servers: vec![],
             endpoint: None,
-            preview: None,
-            preview_endpoint: None,
-            error: None,
-            busy: false,
-            request: Rc::new(()),
-            task: None,
+            step: ConnectStep::Idle,
+            profile_action: None,
+            reconnect: Reconnect::default(),
             discovery: None,
             discovery_error: None,
-            forgetting: None,
-            reconnecting: false,
-            reconfirm: false,
-            pending_reconnect: Default::default(),
         }
+    }
+    /// The dialog blocks new connects and profile actions while one runs.
+    pub fn busy(&self) -> bool {
+        matches!(self.step, ConnectStep::Busy { .. }) || self.profile_action.is_some()
+    }
+}
+/// A connect result as the status to record, or the message to show.
+pub(super) fn connected(
+    result: Result<ArgoConnectionStatus, AppError>,
+) -> Result<ArgoConnectionStatus, String> {
+    match result {
+        Ok(status) if status.connected && status.profile.is_some() => Ok(status),
+        Ok(status) => Err(status
+            .unavailable_reason
+            .unwrap_or_else(|| "Argo CD did not connect".into())),
+        Err(error) => Err(error.message),
     }
 }
 impl Inspector {
@@ -156,24 +203,41 @@ impl Inspector {
             field.update(cx, |input, cx| input.set_value("", window, cx));
         }
     }
+    /// Closes the dialog and cancels its preview or connect. A failure stays visible.
     pub(super) fn cancel_argo_connection(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.argo_connections.request = Rc::new(());
-        self.argo_connections.task.take();
-        self.argo_connections.discovery.take();
-        self.argo_connections.busy = self
-            .argo_connections
-            .forgetting
-            .as_ref()
-            .is_some_and(|t| !t.is_ready());
-        self.argo_connections.open = false;
-        self.argo_connections.dialog = false;
-        self.argo_connections.editing = None;
-        self.argo_connections.reconnecting = false;
-        self.argo_connections.preview = None;
-        self.argo_connections.preview_endpoint = None;
-        self.argo_connections.insecure = false;
+        let state = &mut self.argo_connections;
+        if !matches!(state.step, ConnectStep::Failed { .. }) {
+            state.step = ConnectStep::Idle;
+        }
+        state.discovery.take();
+        state.open = false;
+        state.dialog = false;
+        state.editing = None;
+        state.insecure = false;
         self.clear_argo_secrets(window, cx);
         cx.notify();
+    }
+    /// Records a connected profile and saves it, as the web's connection status cache does.
+    pub(super) fn record_argo_status(
+        &mut self,
+        status: ArgoConnectionStatus,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let id = status.profile.as_ref().map(|p| p.id.clone());
+        if let Some(existing) = self
+            .argo_connections
+            .profiles
+            .iter_mut()
+            .find(|s| s.profile.as_ref().map(|p| &p.id) == id.as_ref())
+        {
+            *existing = status;
+        } else {
+            self.argo_connections.profiles.push(status);
+        }
+        // The web changes the inspection preference only when the user picks it.
+        self.persist_argo_preferences(cx);
+        self.sync_argo_picker(window, cx);
     }
     pub(super) fn connect_argo_profile(
         &mut self,
@@ -181,7 +245,7 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.argo_connections.busy {
+        if self.argo_connections.busy() {
             return;
         }
         let state = &self.argo_connections;
@@ -196,26 +260,27 @@ impl Inspector {
             !state.token.read(cx).value().is_empty()
         };
         if !credential && !remembered {
-            self.argo_connections.error =
-                Some("Enter a token or local username and password before connecting.".into());
+            self.argo_connections.step = ConnectStep::failed(
+                "Enter a token or local username and password before connecting.",
+            );
             cx.notify();
             return;
         }
-        let mut endpoint = if confirmed_target.is_some() && !state.reconnecting {
-            state.preview_endpoint.clone()
-        } else {
-            None
-        }
-        .or_else(|| {
-            state
-                .editing
-                .as_ref()
-                .map(|p| p.endpoint.clone())
-                .or_else(|| state.endpoint.clone())
-        })
-        .unwrap_or_else(|| ArgoServerEndpoint::ExternalHttps {
-            url: state.url.read(cx).value().trim().to_owned(),
-        });
+        let previewed = match (&confirmed_target, &state.step) {
+            (Some(_), ConnectStep::ConfirmTarget { endpoint, .. }) => Some(endpoint.clone()),
+            _ => None,
+        };
+        let mut endpoint = previewed
+            .or_else(|| {
+                state
+                    .editing
+                    .as_ref()
+                    .map(|p| p.endpoint.clone())
+                    .or_else(|| state.endpoint.clone())
+            })
+            .unwrap_or_else(|| ArgoServerEndpoint::ExternalHttps {
+                url: state.url.read(cx).value().trim().to_owned(),
+            });
         if confirmed_target.is_none()
             && state.editing.is_none()
             && let ArgoServerEndpoint::ServiceTunnel {
@@ -296,61 +361,30 @@ impl Inspector {
             },
             confirmed_target,
         });
+        let reconfirm = state.editing.clone().filter(|p| {
+            p.remember_credential && matches!(p.endpoint, ArgoServerEndpoint::ServiceTunnel { .. })
+        });
         self.clear_argo_secrets(window, cx);
-        self.argo_connections.preview = None;
-        self.argo_connections.request = Rc::new(());
-        let request = self.argo_connections.request.clone();
-        self.argo_connections.busy = true;
-        self.argo_connections.error = None;
-        self.argo_connections.task = Some(cx.spawn_in(window, async move |this, cx| {
+        let task = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
-                if !Rc::ptr_eq(&request, &this.argo_connections.request) {
-                    return;
-                }
-                this.argo_connections.busy = false;
-                let automatic = this.argo_connections.reconnecting;
-                match result {
-                    Ok(status) if status.connected && status.profile.is_some() => {
-                        let id = status.profile.as_ref().unwrap().id.clone();
-                        if let Some(existing) = this
-                            .argo_connections
-                            .profiles
-                            .iter_mut()
-                            .find(|s| s.profile.as_ref().is_some_and(|p| p.id == id))
-                        {
-                            *existing = status;
-                        } else {
-                            this.argo_connections.profiles.push(status);
-                        }
-                        // The web changes the inspection preference only when the user picks it.
-                        this.argo_connections.reconnecting = false;
-                        this.persist_argo_preferences(cx);
-                        this.sync_argo_picker(window, cx);
+                match connected(result) {
+                    Ok(status) => {
+                        this.argo_connections.step = ConnectStep::Idle;
+                        this.record_argo_status(status, window, cx);
                         this.argo_connections.open = false;
                         this.argo_connections.dialog = false;
                         this.argo_connections.insecure = false;
                         this.reload_argo(window, cx);
                     }
-                    Ok(status) => {
-                        this.argo_connections.error = Some(
-                            status
-                                .unavailable_reason
-                                .unwrap_or_else(|| "Argo CD did not connect".into()),
-                        );
-                        this.argo_connections.reconfirm = true;
+                    Err(message) => {
+                        this.argo_connections.step = ConnectStep::Failed { message, reconfirm }
                     }
-                    Err(error) => {
-                        this.argo_connections.error = Some(error.message);
-                        this.argo_connections.reconfirm = true;
-                    }
-                }
-                if automatic {
-                    this.reconnect_next_argo_profile(window, cx);
                 }
                 cx.notify();
             });
-        }));
+        });
+        self.argo_connections.step = ConnectStep::Busy { _read: task.into() };
         cx.notify();
     }
     pub(super) fn disconnect_argo_profile(
@@ -359,20 +393,14 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.argo_connections.busy {
+        if self.argo_connections.busy() {
             return;
         }
-        self.argo_connections.busy = true;
         let read = self.backend.disconnect_argo(id.clone());
-        self.argo_connections.request = Rc::new(());
-        let request = self.argo_connections.request.clone();
-        self.argo_connections.task = Some(cx.spawn_in(window, async move |this, cx| {
+        let task = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
-                if !Rc::ptr_eq(&request, &this.argo_connections.request) {
-                    return;
-                }
-                this.argo_connections.busy = false;
+                this.argo_connections.profile_action = None;
                 match result {
                     Ok(()) => {
                         for status in &mut this.argo_connections.profiles {
@@ -387,10 +415,13 @@ impl Inspector {
                             this.reload_argo(window, cx);
                         }
                     }
-                    Err(error) => this.argo_connections.error = Some(error.message),
+                    Err(error) => this.argo_connections.step = ConnectStep::failed(error.message),
                 }
                 cx.notify();
             });
-        }));
+        });
+        self.argo_connections.step = ConnectStep::Idle;
+        self.argo_connections.profile_action = Some(task.into());
+        cx.notify();
     }
 }

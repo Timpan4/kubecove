@@ -1,9 +1,8 @@
 //! Discovery and preview finish before any credential leaves the connection form.
-use super::Inspector;
+use super::{Inspector, argo_connection::ConnectStep};
 use crate::backend::ArgoTarget;
 use gpui_kit::{Context, Window};
 use kubecove_lib::models::ArgoServerEndpoint;
-use std::rc::Rc;
 
 impl Inspector {
     pub(super) fn discover_argo_servers(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -38,32 +37,23 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.argo_connections.preview_endpoint = Some(endpoint.clone());
         let read = self.backend.preview_argo(ArgoTarget {
             context: self.scope.context.clone(),
             source: self.argo_source_key().map(str::to_owned),
-            endpoint: Some(endpoint),
+            endpoint: Some(endpoint.clone()),
         });
-        self.argo_connections.request = Rc::new(());
-        let request = self.argo_connections.request.clone();
-        self.argo_connections.busy = true;
-        self.argo_connections.preview = None;
-        self.argo_connections.error = None;
-        // A preview that fails leaves no reconfirm offer, as on the web.
-        self.argo_connections.reconfirm = false;
-        self.argo_connections.task = Some(cx.spawn_in(window, async move |this, cx| {
+        let task = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
-                if !Rc::ptr_eq(&request, &this.argo_connections.request) {
-                    return;
-                }
-                this.argo_connections.busy = false;
-                match result {
-                    Ok(preview) => this.argo_connections.preview = Some(preview),
-                    Err(error) => this.argo_connections.error = Some(error.message),
-                }
+                // A preview that fails leaves no reconfirm offer, as on the web.
+                this.argo_connections.step = match result {
+                    Ok(preview) => ConnectStep::ConfirmTarget { endpoint, preview },
+                    Err(error) => ConnectStep::failed(error.message),
+                };
                 cx.notify();
             });
-        }));
+        });
+        self.argo_connections.step = ConnectStep::Busy { _read: task.into() };
+        cx.notify();
     }
 }

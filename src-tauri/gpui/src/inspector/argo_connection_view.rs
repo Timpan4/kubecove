@@ -1,7 +1,7 @@
 //! Native controls for the same connection choices exposed by the Svelte dialog.
 use super::{
     Inspector,
-    argo_connection::Preference,
+    argo_connection::{ConnectStep, Preference},
     controls::{Variant, button},
 };
 use crate::targets::TestSupportExt;
@@ -20,7 +20,7 @@ impl Inspector {
     pub(super) fn open_argo_connection(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.argo_connections.editing = None;
         self.argo_connections.endpoint = None;
-        self.argo_connections.preview = None;
+        self.argo_connections.step.clear_preview();
         self.argo_connections.remember = false;
         self.argo_connections.local = false;
         self.argo_connections.insecure = false;
@@ -159,7 +159,7 @@ impl Inspector {
                     ))
                     .child(ui::xs(p.url.clone()))
                     .child(
-                        button(Variant::Outline, 24., state.busy)
+                        button(Variant::Outline, 24., state.busy())
                             .id(gpui_kit::SharedString::from(format!("argo-profile:{id}")))
                             .test_support()
                             .aria_label(if status.connected {
@@ -182,6 +182,7 @@ impl Inspector {
                                         input.set_value(saved.url.clone(), window, cx)
                                     });
                                     this.argo_connections.editing = Some(saved.clone());
+                                    this.argo_connections.step.clear_preview();
                                     let confirmed = if saved.remember_credential {
                                         match &saved.endpoint {
                                             kubecove_lib::models::ArgoServerEndpoint::ServiceTunnel { namespace, service_name, .. } => Some(ArgoConfirmedTarget { namespace: namespace.clone(), service_name: service_name.clone(), pod_name: None, certificate_sha256: None }),
@@ -193,7 +194,7 @@ impl Inspector {
                             })),
                     )
                     .child(
-                        button(Variant::Outline, 24., state.busy)
+                        button(Variant::Outline, 24., state.busy())
                             .id(gpui_kit::SharedString::from(format!(
                                 "argo-forget:{forget_id}"
                             )))
@@ -254,7 +255,7 @@ impl Inspector {
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.argo_connections.endpoint = None;
                     this.argo_connections.editing = None;
-                    this.argo_connections.preview = None;
+                    this.argo_connections.step.clear_preview();
                     cx.notify();
                 })),
         );
@@ -286,7 +287,7 @@ impl Inspector {
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.argo_connections.endpoint = Some(endpoint.clone());
                         this.argo_connections.editing = None;
-                        this.argo_connections.preview = None;
+                        this.argo_connections.step.clear_preview();
                         cx.notify();
                     })),
             );
@@ -331,10 +332,10 @@ impl Inspector {
         }
         if state.endpoint.is_some() {
             panel = panel.child(div().flex().gap(px(8.)).children(["https", "http"].map(|scheme| {
-                button(Variant::Outline, 24., state.busy).id(gpui_kit::SharedString::from(format!("argo-protocol:{scheme}"))).test_support().child(scheme.to_uppercase())
+                button(Variant::Outline, 24., state.busy()).id(gpui_kit::SharedString::from(format!("argo-protocol:{scheme}"))).test_support().child(scheme.to_uppercase())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         if let Some(kubecove_lib::models::ArgoServerEndpoint::ServiceTunnel { scheme: value, .. }) = this.argo_connections.endpoint.as_mut() { *value = scheme.into(); }
-                        this.argo_connections.preview = None;
+                        this.argo_connections.step.clear_preview();
                         cx.notify();
                     }))
             })))
@@ -389,7 +390,7 @@ impl Inspector {
                     cx.notify();
                 })),
         );
-        if let Some(preview) = &state.preview {
+        if let ConnectStep::ConfirmTarget { preview, .. } = &state.step {
             let target = ArgoConfirmedTarget {
                 namespace: preview.namespace.clone(),
                 service_name: preview.service_name.clone(),
@@ -401,15 +402,15 @@ impl Inspector {
                 .child(ui::xs(format!("Namespace {} · Service {} · Pod {}", preview.namespace, preview.service_name, preview.pod_name)).id("argo-tunnel-target").test_support().aria_label(format!("{} {} {}", preview.namespace, preview.service_name, preview.pod_name)))
                 .when_some(preview.certificate_sha256.clone(), |p, sha| p.child(ui::xs(format!("SHA-256 {sha}. Only this certificate is accepted later. If Argo CD replaces it, you confirm again."))))
                 .child(ui::xs("Continue only if you recognise this workload as your Argo CD server."))
-                .child(button(Variant::Default, 24., state.busy).id("argo-tunnel-confirm").test_support().child("Confirm and connect")
+                .child(button(Variant::Default, 24., state.busy()).id("argo-tunnel-confirm").test_support().child("Confirm and connect")
                     .on_click(cx.listener(move |this, _, window, cx| this.connect_argo_profile(Some(target.clone()), window, cx))));
         }
         panel = panel
             .child(
-                button(Variant::Default, 24., state.busy)
+                button(Variant::Default, 24., state.busy())
                     .id("argo-connect-submit")
                     .test_support()
-                    .child(if state.busy {
+                    .child(if state.busy() {
                         "Connecting…"
                     } else {
                         "Connect"
@@ -427,28 +428,24 @@ impl Inspector {
                         cx.listener(|this, _, window, cx| this.cancel_argo_connection(window, cx)),
                     ),
             );
-        // As on the web, only a failed reconnect of a remembered tunnel profile offers a fresh
-        // preview of that profile's saved endpoint.
-        if state.error.is_some()
-            && state.reconfirm
-            && let Some(profile) = state.editing.as_ref().filter(|p| p.remember_credential)
-            && matches!(
-                profile.endpoint,
-                kubecove_lib::models::ArgoServerEndpoint::ServiceTunnel { .. }
-            )
+        if let ConnectStep::Failed {
+            reconfirm: Some(profile),
+            ..
+        } = &state.step
         {
-            let endpoint = profile.endpoint.clone();
+            let profile = profile.clone();
             panel = panel.child(
-                button(Variant::Outline, 24., state.busy)
+                button(Variant::Outline, 24., state.busy())
                     .id("argo-target-retry")
                     .test_support()
                     .child("Confirm target again")
                     .on_click(cx.listener(move |this, _, window, cx| {
-                        this.preview_argo_target(endpoint.clone(), window, cx)
+                        this.argo_connections.editing = Some(profile.clone());
+                        this.preview_argo_target(profile.endpoint.clone(), window, cx)
                     })),
             );
         }
-        panel.when_some(state.error.clone(), |p, error| {
+        panel.when_some(state.step.error().map(str::to_owned), |p, error| {
             p.child(
                 ui::xs(error.clone())
                     .id("argo-connection-error")

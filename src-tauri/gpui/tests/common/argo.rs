@@ -3,7 +3,8 @@ use kubecove_gpui::backend::{ArgoConnect, ArgoInspection, Read};
 use kubecove_lib::models::*;
 use serde::Deserialize;
 use serde_json::Value;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use tokio::sync::oneshot;
 
 #[derive(Deserialize)]
 pub struct Argo {
@@ -21,7 +22,10 @@ pub struct Argo {
     confirmation: Value,
     result: ArgoOperationResult,
     #[serde(skip)]
-    active: Mutex<bool>,
+    active: Arc<Mutex<bool>>,
+    /// Commands that "connect-pending" or "disconnect-pending" hold until the next script.
+    #[serde(skip)]
+    held: Mutex<Vec<oneshot::Sender<()>>>,
     #[serde(skip)]
     reviewed: Mutex<bool>,
     #[serde(skip)]
@@ -61,6 +65,24 @@ fn ready<T: Send + 'static>(value: T) -> Read<T> {
     Box::pin(async move { Ok(value) })
 }
 impl Argo {
+    /// `configureArgoMock`: sets the script and releases held commands.
+    // Only the parity harness configures Argo scripts.
+    #[allow(dead_code)]
+    pub fn configure(&self, script: &str) {
+        *self.script.lock().unwrap() = script.into();
+        for release in self.held.lock().unwrap().drain(..) {
+            let _ = release.send(());
+        }
+    }
+    /// Waits for the next script when `script` is the current one.
+    fn hold(&self, script: &str) -> Option<oneshot::Receiver<()>> {
+        if *self.script.lock().unwrap() != script {
+            return None;
+        }
+        let (sender, receiver) = oneshot::channel();
+        self.held.lock().unwrap().push(sender);
+        Some(receiver)
+    }
     pub fn connect(&self, request: ArgoConnect) -> Read<ArgoConnectionStatus> {
         if *self.script.lock().unwrap() == "target-mismatch" {
             return failed("Fixture tunnel target changed");
@@ -70,9 +92,18 @@ impl Argo {
             .connections
             .iter()
             .find(|r| r.request == request)
-            .unwrap_or_else(|| panic!("unexpected connection: {request}"));
-        *self.active.lock().unwrap() = true;
-        ready(status.result.clone())
+            .unwrap_or_else(|| panic!("unexpected connection: {request}"))
+            .result
+            .clone();
+        let held = self.hold("connect-pending");
+        let active = self.active.clone();
+        Box::pin(async move {
+            if let Some(held) = held {
+                let _ = held.await;
+            }
+            *active.lock().unwrap() = true;
+            Ok(status)
+        })
     }
     pub fn discover(
         &self,
@@ -110,8 +141,15 @@ impl Argo {
                 .iter()
                 .any(|c| c.result.profile.as_ref().is_some_and(|p| p.id == id))
         );
-        *self.active.lock().unwrap() = false;
-        ready(())
+        let held = self.hold("disconnect-pending");
+        let active = self.active.clone();
+        Box::pin(async move {
+            if let Some(held) = held {
+                let _ = held.await;
+            }
+            *active.lock().unwrap() = false;
+            Ok(())
+        })
     }
     pub fn inspect(&self, request: ArgoInspection) -> Read<ArgoApplicationInspector> {
         if *self.script.lock().unwrap() == "snapshot-error" {
