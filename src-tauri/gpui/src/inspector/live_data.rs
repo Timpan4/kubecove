@@ -406,6 +406,10 @@ impl Inspector {
                             lost = true;
                         }
                         let mut reload = tick && (lost || forbidden || read_failed);
+                        // A recovery tick with nothing to recover leaves the view as it is.
+                        if tick && batch.is_empty() && !reload {
+                            continue;
+                        }
                         let mut names = Some(crate::model::ObservedNames::default());
                         let mut transitions = Vec::new();
                         for event in batch {

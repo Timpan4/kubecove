@@ -89,7 +89,10 @@ impl Inspector {
                                     detail.events.watch_error = Some(error);
                                 }
                             }
-                            cx.notify();
+                            // A recovery tick changes nothing shown unless it refreshes.
+                            if !tick || refresh {
+                                cx.notify();
+                            }
                             true
                         })
                         .unwrap_or(false);
