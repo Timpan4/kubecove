@@ -54,6 +54,9 @@ async fn fake_server(invoke_response: Value) -> FakeServer {
             session_grace_seconds: 30,
             connected: true,
             credential_store: None,
+            auth_mode: crate::remote::RemoteAuthMode::Token,
+            session_state: crate::remote::RemoteSessionState::Connected,
+            sign_in_memory_only: false,
         },
         outgoing,
         channels: Mutex::default(),
@@ -62,6 +65,7 @@ async fn fake_server(invoke_response: Value) -> FakeServer {
         tunnels: Arc::new(RemoteTunnelRegistry::default()),
         active: AtomicBool::new(true),
         socket_task: Mutex::new(None),
+        status: super::ConnectionStatus::default(),
     });
     let unregistered = Arc::default();
     tokio::spawn(answer_controls(

@@ -17,13 +17,25 @@ desktop = [
     "kubecove-kube/desktop",
     "remote-client",
 ]
-remote-client = ["dep:tokio-tungstenite", "dep:rustls", "dep:kubecove-live"]
+remote-client = [
+    "dep:tokio-tungstenite",
+    "dep:rustls",
+    "dep:kubecove-live",
+    "dep:kubecove-gitops",
+    "dep:axum",
+    "dep:base64",
+    "dep:getrandom",
+    "dep:open",
+    "dep:ring",
+    "dep:subtle",
+]
 bench-support = ["desktop"]
 
 [dependencies]
 kubecove-models = { path = "../models" }
 kubecove-kube = { path = "../kube", default-features = false }
 kubecove-live = { path = "../live", optional = true }
+kubecove-gitops = { path = "../gitops", optional = true }
 chrono = { workspace = true }
 futures-util = { workspace = true }
 reqwest = { workspace = true }
@@ -36,6 +48,12 @@ tauri = { workspace = true, optional = true }
 tauri-plugin-dialog = { workspace = true, optional = true }
 tokio-tungstenite = { workspace = true, optional = true }
 rustls = { workspace = true, optional = true }
+axum = { workspace = true, optional = true, features = ["query"] }
+base64 = { workspace = true, optional = true }
+getrandom = { workspace = true, optional = true }
+open = { workspace = true, optional = true }
+ring = { workspace = true, optional = true }
+subtle = { workspace = true, optional = true }
 
 [lints]
 workspace = true

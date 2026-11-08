@@ -298,8 +298,10 @@ mod tests {
             &std::env::var("KUBECOVE_REMOTE_TEST_URL").expect("fixture URL"),
             &std::env::var("KUBECOVE_REMOTE_TEST_TOKEN").expect("fixture token"),
             None,
+            crate::remote::RemoteAuthMode::Token,
         )
         .await
+        .map_err(|failure| failure.error)
         .expect("connect native client");
         let mut request: PortForwardRequest = serde_json::from_value(json!({
             "clusterContext": "fixture", "namespace": "default",

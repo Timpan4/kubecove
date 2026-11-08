@@ -46,6 +46,9 @@ async fn close_marks_connection_inactive_before_waiting_for_server() {
             session_grace_seconds: 30,
             connected: true,
             credential_store: None,
+            auth_mode: crate::remote::RemoteAuthMode::Token,
+            session_state: crate::remote::RemoteSessionState::Connected,
+            sign_in_memory_only: false,
         },
         outgoing,
         channels: Mutex::new(std::collections::HashMap::default()),
@@ -54,6 +57,7 @@ async fn close_marks_connection_inactive_before_waiting_for_server() {
         tunnels: Arc::new(RemoteTunnelRegistry::default()),
         active: AtomicBool::new(true),
         socket_task: Mutex::new(None),
+        status: super::ConnectionStatus::default(),
     });
     let closing = {
         let connection = Arc::clone(&connection);
@@ -91,6 +95,9 @@ fn tunnel_error_removes_download_sender_and_reaches_control_waiter() {
             session_grace_seconds: 30,
             connected: true,
             credential_store: None,
+            auth_mode: crate::remote::RemoteAuthMode::Token,
+            session_state: crate::remote::RemoteSessionState::Connected,
+            sign_in_memory_only: false,
         },
         outgoing,
         channels: Mutex::new(std::collections::HashMap::default()),
@@ -99,6 +106,7 @@ fn tunnel_error_removes_download_sender_and_reaches_control_waiter() {
         tunnels: Arc::new(RemoteTunnelRegistry::default()),
         active: AtomicBool::new(true),
         socket_task: Mutex::new(None),
+        status: super::ConnectionStatus::default(),
     };
     let connection_id = "550e8400-e29b-41d4-a716-446655440000";
     let (tunnel_sender, _tunnel_receiver) = mpsc::channel(1);

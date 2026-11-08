@@ -19,7 +19,9 @@ const FILE_STORE_KIND: &str = "encryptedFile";
 #[cfg(not(feature = "desktop"))]
 const NATIVE_STORE_KIND: &str = "native";
 
-pub(crate) trait SecureStore: Send + Sync {
+/// Native credential storage. The desktop remote client also stores its
+/// sign-ins here (ADR 0031).
+pub trait SecureStore: Send + Sync {
     fn read(&self, service: &str, id: &str) -> Result<Option<String>, AppError>;
     fn write(&self, service: &str, id: &str, value: &str) -> Result<(), AppError>;
     fn delete(&self, service: &str, id: &str) -> Result<(), AppError>;
@@ -61,7 +63,7 @@ fn credential_io_error(error: impl std::error::Error + Send + Sync + 'static) ->
 }
 
 #[derive(Default)]
-pub(crate) struct KeyringStore;
+pub struct KeyringStore;
 
 impl SecureStore for KeyringStore {
     fn read(&self, service: &str, id: &str) -> Result<Option<String>, AppError> {
