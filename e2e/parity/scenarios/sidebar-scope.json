@@ -27,6 +27,25 @@
       ]
     },
     {
+      "id": "sidebar.custom-resources-scope",
+      "title": "All namespaces Custom Resources selects only the present custom kinds across all namespaces and lists them",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "sidebarSelect", "path": ["Custom Resources"] },
+        { "action": "expectSidebarBranch", "page": "Custom Resources", "expanded": true },
+        { "action": "expectSidebarRow", "path": ["Custom Resources"], "visible": true, "selected": true },
+        { "action": "expectResource", "kind": "Kustomization", "namespace": "flux-system", "name": "platform" },
+        { "action": "expectResource", "kind": "HelmRelease", "namespace": "flux-system", "name": "metrics-gateway" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "openKindPicker" },
+        { "action": "expectKindChecked", "kind": "Kustomization", "checked": true },
+        { "action": "expectKindChecked", "kind": "Deployment", "checked": false },
+        { "action": "closeKindPicker" },
+        { "action": "expectSidebarRow", "path": ["payments"], "visible": true, "selected": false }
+      ]
+    },
+    {
       "id": "sidebar.scope-after-overview",
       "title": "Opening Resources from Workspace Overview after a namespace shows the workspace scope, not that namespace",
       "steps": [
