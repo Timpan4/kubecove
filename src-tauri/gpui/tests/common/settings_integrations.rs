@@ -24,9 +24,9 @@ impl Fixture {
             "choose-application-workspace" => Some(
                 include_str!("../../../../src/lib/overview-application-workspace.json").to_owned(),
             ),
-            "choose-compare-workspace" => Some(
-                include_str!("../../../../src/lib/overview-compare-workspace.json").to_owned(),
-            ),
+            "choose-compare-workspace" => {
+                Some(include_str!("../../../../src/lib/overview-compare-workspace.json").to_owned())
+            }
             // Reimports the file the last export saved.
             "choose-last-export" => Some(self.settings.exported.lock().unwrap().clone()),
             _ => None,

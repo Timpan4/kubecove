@@ -146,12 +146,11 @@ impl Inspector {
             // differs from its scope does not change them.
             for entry in compare_entries(saved) {
                 let sides = [entry.left_label, entry.right_label].map(|label| {
-                    let health = HealthSummary::of(self.workspace_rows().filter(|row| {
-                        match entry.kind {
+                    let health =
+                        HealthSummary::of(self.workspace_rows().filter(|row| match entry.kind {
                             CompareKind::Contexts => row.cluster == label,
                             CompareKind::Namespaces => row.namespace.as_ref() == Some(&label),
-                        }
-                    }));
+                        }));
                     (label, health)
                 });
                 projection.comparisons.push(Comparison {

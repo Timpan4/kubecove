@@ -46,7 +46,10 @@ mod runtime {
             __llvm_profile_set_filename(exit.as_ptr());
             status
         };
-        assert_eq!(status, 0, "cannot write coverage for parity scenario {index}");
+        assert_eq!(
+            status, 0,
+            "cannot write coverage for parity scenario {index}"
+        );
     }
 }
 

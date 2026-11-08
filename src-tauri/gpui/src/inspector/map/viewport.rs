@@ -450,11 +450,13 @@ impl Inspector {
                 MouseButton::Left,
                 cx.listener(|this, _, _, _| this.map.drag = None),
             )
-            .on_scroll(cx.listener(
-                move |this, event: &gpui_kit::ScrollEvent, _, cx| {
+            .on_scroll(
+                cx.listener(move |this, event: &gpui_kit::ScrollEvent, _, cx| {
                     // A wheel turn up reports positive `delta.y`, the opposite sign of the web's `deltaY`.
                     let (delta, rate) = match event.delta {
-                        gpui_kit::ScrollDelta::Pixels(delta) => (f32::from(delta.y), WHEEL_PIXEL_RATE),
+                        gpui_kit::ScrollDelta::Pixels(delta) => {
+                            (f32::from(delta.y), WHEEL_PIXEL_RATE)
+                        }
                         gpui_kit::ScrollDelta::Lines(delta) => (delta.y, WHEEL_LINE_RATE),
                     };
                     let factor = if cfg!(target_os = "macos") && event.modifiers.control {
@@ -469,8 +471,8 @@ impl Inspector {
                     );
                     this.zoom_map_about(2f32.powf(delta * rate * factor), anchor, cx);
                     cx.stop_propagation();
-                },
-            ))
+                }),
+            )
             .into_any_element()
     }
 

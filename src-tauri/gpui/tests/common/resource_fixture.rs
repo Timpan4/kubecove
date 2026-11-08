@@ -27,7 +27,8 @@ impl Fixture {
             });
         }
         // The Deployment list is refused, as `shellScopeRequests` refuses it in the browser mocks.
-        let forbidden = |kind: &str| phase == "payments-deployments-forbidden" && kind == "Deployment";
+        let forbidden =
+            |kind: &str| phase == "payments-deployments-forbidden" && kind == "Deployment";
         // Cluster-scoped kinds come from `cluster_resources`, as in the native backend.
         // Each context has the exact rows exported by the browser mocks.
         let resources: Vec<_> = self

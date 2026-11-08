@@ -131,7 +131,8 @@ fn wheel_at_node(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App) {
     let after = window.find(node).bounds();
     let step = 2f32.powf(WHEEL_PIXELS * 0.002);
     assert!(
-        (f32::from(after.size.width) - f32::from(before.size.width) * step).abs() <= LAYOUT_ROUNDING,
+        (f32::from(after.size.width) - f32::from(before.size.width) * step).abs()
+            <= LAYOUT_ROUNDING,
         "Wheel zoom did not apply one wheel step"
     );
     let moved = after.center();
