@@ -7,6 +7,7 @@ use super::{
 use crate::{theme::Tokens, ui};
 use gpui_kit::{
     Context, Div, TestSupportExt, Window,
+    base::FocusTrapElement,
     component::input::{Input, Textarea},
     div,
     prelude::*,
@@ -25,8 +26,15 @@ impl Inspector {
         self.clear_argo_secrets(window, cx);
         self.argo_connections.open = true;
         self.argo_connections.dialog = true;
+        self.focus_argo_connection_dialog(window, cx);
         self.discover_argo_servers(window, cx);
         cx.notify();
+    }
+    /// Moves focus into the connection dialog once it is rendered, so its
+    /// focus trap governs Tab from the first press.
+    pub(super) fn focus_argo_connection_dialog(&self, window: &mut Window, cx: &mut Context<Self>) {
+        let focus = self.argo_connections.dialog_focus.clone();
+        cx.defer_in(window, move |_, window, cx| focus.focus(window, cx));
     }
     pub(super) fn argo_connection_panel(&self, cx: &mut Context<Self>) -> Div {
         if self.argo_connections.dialog {
@@ -38,8 +46,9 @@ impl Inspector {
         &self,
         cx: &mut Context<Self>,
     ) -> Option<gpui_kit::AnyElement> {
+        let dialog_focus = self.argo_connections.dialog_focus.clone();
         self.argo_connections.dialog.then(|| {
-            div()
+            let overlay = div()
                 .absolute()
                 .inset_0()
                 .flex()
@@ -55,9 +64,21 @@ impl Inspector {
                         .test_support()
                         .role(gpui_kit::Role::Dialog)
                         .aria_label("Argo CD connection")
+                        .track_focus(&dialog_focus)
                         .w(px(672.))
                         .max_h(relative(0.9))
                         .overflow_y_scroll()
+                        .on_key_down(cx.listener(
+                            |this, event: &gpui_kit::KeyDownEvent, window, cx| {
+                                if event.keystroke.key == "escape" {
+                                    this.cancel_argo_connection(window, cx);
+                                    cx.stop_propagation();
+                                }
+                            },
+                        ))
+                        .on_mouse_down_out(cx.listener(|this, _, window, cx| {
+                            this.cancel_argo_connection(window, cx)
+                        }))
                         .child(self.argo_connection_content(cx))
                         .child(
                             button(Variant::Outline, 24., false)
@@ -68,7 +89,10 @@ impl Inspector {
                                     this.cancel_argo_connection(window, cx)
                                 })),
                         ),
-                )
+                );
+            overlay
+                .id("argo-connection-overlay")
+                .focus_trap("argo-connection-dialog", &dialog_focus)
                 .into_any_element()
         })
     }

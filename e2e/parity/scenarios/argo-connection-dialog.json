@@ -1,0 +1,24 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "argo-connection.dialog-focus-dismiss",
+      "title": "The Argo CD connection dialog keeps Tab and Shift-Tab inside, closes on Escape, and closes on an outside press",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "argoConnectionDialog", "operation": "open" },
+        { "action": "argoConnectionDialog", "operation": "expectFocusIn" },
+        { "action": "argoConnectionDialog", "operation": "tab", "presses": 60 },
+        { "action": "argoConnectionDialog", "operation": "expectFocusIn" },
+        { "action": "argoConnectionDialog", "operation": "shiftTab", "presses": 60 },
+        { "action": "argoConnectionDialog", "operation": "expectFocusIn" },
+        { "action": "argoConnectionDialog", "operation": "escape" },
+        { "action": "argoConnectionDialog", "operation": "expectOpen", "open": false },
+        { "action": "argoConnectionDialog", "operation": "open" },
+        { "action": "argoConnectionDialog", "operation": "outsideClick" },
+        { "action": "argoConnectionDialog", "operation": "expectOpen", "open": false }
+      ]
+    }
+  ]
+}

@@ -430,6 +430,52 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 "focus is not on {id}"
             );
         }
+        "argoConnectionDialog" => match string(step, "operation") {
+            "open" => {
+                assert!(seek(window, cx, "gitops-list", "argo-connect-toolbar"));
+                window.click("argo-connect-toolbar", cx);
+                window.render_frame(cx);
+            }
+            "expectFocusIn" => {
+                window.render_frame(cx);
+                // Query focus only inside the dialog: focus on an unobserved element panics.
+                let focused = window.elements().iter().any(|e| {
+                    e.path()
+                        .iter()
+                        .any(|part| matches!(part, ElementId::Name(name) if name == "argo-connection-dialog"))
+                        && super::locate::focus_state(e) == Some(true)
+                });
+                assert!(focused, "focus is outside the Argo CD connection dialog");
+            }
+            "tab" | "shiftTab" => {
+                let key = if string(step, "operation") == "tab" {
+                    "tab"
+                } else {
+                    "shift-tab"
+                };
+                for _ in 0..number(step, "presses") {
+                    window.press(key, cx);
+                }
+                window.render_frame(cx);
+            }
+            "escape" => {
+                window.press("escape", cx);
+                window.render_frame(cx);
+            }
+            "outsideClick" => {
+                window.click("argo-connect-toolbar", cx);
+                window.render_frame(cx);
+            }
+            "expectOpen" => {
+                window.render_frame(cx);
+                assert_eq!(
+                    window.try_find("argo-connection-dialog").is_some(),
+                    step["open"].as_bool() == Some(true),
+                    "Argo CD connection dialog open state"
+                );
+            }
+            operation => panic!("unknown Argo connection dialog operation {operation}"),
+        },
         "tabArgoPopover" => {
             let presses = step["presses"].as_u64().expect("tab presses");
             for _ in 0..presses {

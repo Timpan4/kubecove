@@ -283,8 +283,9 @@ impl Inspector {
                 super::surface::small_button(Some("link-2"), "Argo CD connection")
                     .id("argo-connect-toolbar")
                     .test_support()
-                    .on_click(cx.listener(|this, _, _, cx| {
+                    .on_click(cx.listener(|this, _, window, cx| {
                         this.argo_connections.dialog = true;
+                        this.focus_argo_connection_dialog(window, cx);
                         cx.notify();
                     }))
                     .h(px(28.))

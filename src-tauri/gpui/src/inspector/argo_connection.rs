@@ -2,7 +2,7 @@
 use super::{Inspector, detail::Detail};
 use crate::backend::ArgoConnect;
 use gpui_kit::{
-    AppContext, Context, Entity, Task, Window,
+    AppContext, Context, Entity, FocusHandle, Task, Window,
     component::input::{InputState, TextareaState},
 };
 use kubecove_lib::models::*;
@@ -52,6 +52,9 @@ pub(super) struct Connections {
             gpui_kit::component::select::SearchableVec<gpui_kit::SharedString>,
         >,
     >,
+    /// Focus container of the connection dialog. Its focus trap keeps Tab and
+    /// Shift-Tab inside the dialog, as the web's dialog does.
+    pub dialog_focus: FocusHandle,
     pub _subscription: gpui_kit::Subscription,
 }
 impl Connections {
@@ -97,6 +100,7 @@ impl Connections {
         });
         Self {
             picker,
+            dialog_focus: cx.focus_handle(),
             _subscription: subscription,
             open: false,
             dialog: false,

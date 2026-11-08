@@ -190,6 +190,37 @@ export async function argoAction(page: Page, step: Step) {
                 .some((element) => element.textContent?.includes(label) && element.contains(document.activeElement)),
                 step.control === "Sync options" ? "Sync with these options" : "Hard refresh");
             break;
+        case "argoConnectionDialog": {
+            // The Bits dialog keeps Tab inside itself, closes on Escape and on an outside press.
+            const dialog = page.getByRole("dialog", { name: "Argo CD connection" });
+            switch (step.operation) {
+                case "open":
+                    await page.getByRole("button", { name: "Argo CD connection", exact: true }).click();
+                    await dialog.waitFor();
+                    break;
+                case "expectFocusIn":
+                    if (!(await dialog.evaluate((node) => node.contains(document.activeElement)))) throw new Error("Focus is outside the Argo CD connection dialog");
+                    break;
+                case "tab":
+                    for (let press = 0; press < step.presses; press += 1) await page.keyboard.press("Tab");
+                    break;
+                case "shiftTab":
+                    for (let press = 0; press < step.presses; press += 1) await page.keyboard.press("Shift+Tab");
+                    break;
+                case "escape":
+                    await page.keyboard.press("Escape");
+                    await dialog.waitFor({ state: "hidden" });
+                    break;
+                case "outsideClick":
+                    await page.mouse.click(4, 4);
+                    await dialog.waitFor({ state: "hidden" });
+                    break;
+                case "expectOpen":
+                    await dialog.waitFor({ state: step.open ? "visible" : "hidden" });
+                    break;
+            }
+            break;
+        }
         case "tabArgoPopover":
             for (let press = 0; press < step.presses; press += 1) await page.keyboard.press("Tab");
             break;
