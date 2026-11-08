@@ -17,7 +17,12 @@ pub(super) enum LeaveIntent {
     Workspace(u64),
 }
 impl Inspector {
+    /// Returns true when the caller must not leave now: an unsaved YAML draft refuses first,
+    /// so exec sessions are never stopped for a navigation the draft then blocks.
     pub(super) fn defer_exec_leave(&mut self, intent: LeaveIntent, cx: &mut Context<Self>) -> bool {
+        if !self.can_leave(cx) {
+            return true;
+        }
         if self
             .exec
             .tabs

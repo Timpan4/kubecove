@@ -148,6 +148,10 @@ fn context_unavailable(name: &str) -> gpui_kit::base::ObservedElement<Stateful<D
 
 impl Inspector {
     pub(super) fn open_launcher(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // Opening the launcher closes the workspace, which would drop an unsaved draft.
+        if self.workspace_open() && !self.can_leave(cx) {
+            return;
+        }
         if self.palette.open {
             self.close_palette(window, cx);
         }

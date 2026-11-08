@@ -90,6 +90,8 @@
         { "action": "expectDetail", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
         { "action": "selectNamespace", "namespace": "platform" },
         { "action": "expectDetail", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "openLauncher" },
+        { "action": "expectDetail", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
         { "action": "expectYamlNotice", "title": "This local draft has unsaved changes. Discard the local draft before changing target or closing." },
         { "action": "expectYamlDocument", "value": "{\"apiVersion\":\"apps/v1\",\"kind\":\"Deployment\",\"metadata\":{\"name\":\"payments-api\",\"namespace\":\"payments\",\"labels\":{\"draft\":\"kept\"}}}" },
         { "action": "cancelYamlEdit" },

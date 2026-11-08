@@ -304,6 +304,11 @@ impl Inspector {
                     if this
                         .defer_exec_leave(exec_leave::LeaveIntent::Context(context.to_string()), cx)
                     {
+                        // Show the context the view still uses.
+                        let current = SharedString::from(this.scope.context.clone());
+                        this.context_picker.update(cx, |picker, cx| {
+                            picker.set_selected_value(&current, window, cx)
+                        });
                         return;
                     }
                     this.scope = Scope {
