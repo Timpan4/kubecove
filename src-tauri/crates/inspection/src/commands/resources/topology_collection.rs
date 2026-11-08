@@ -247,7 +247,7 @@ pub(super) async fn collect_topology_inputs(
     custom_resource_kinds: Vec<DiscoveredResourceKind>,
     custom_resource_kinds_are_present: bool,
 ) -> Result<TopologyInputCollection, AppError> {
-    let (mut workload_inputs, mut support_inputs, mut custom_inputs) = futures_util::try_join!(
+    let (mut workload_inputs, mut support_inputs, mut custom_inputs, index) = futures_util::try_join!(
         collect_workload_topology_inputs(client.clone(), cluster_context, namespaces),
         collect_support_topology_inputs(client.clone(), cluster_context, namespaces),
         collect_custom_topology_inputs(
@@ -257,6 +257,7 @@ pub(super) async fn collect_topology_inputs(
             custom_resource_kinds,
             custom_resource_kinds_are_present,
         ),
+        read_flux_ownership_index(client, namespaces),
     )?;
 
     workload_inputs
@@ -269,7 +270,6 @@ pub(super) async fn collect_topology_inputs(
         .warnings
         .append(&mut support_inputs.warnings);
     workload_inputs.warnings.append(&mut custom_inputs.warnings);
-    let index = read_flux_ownership_index(client, namespaces).await?;
     workload_inputs.resources =
         topology_inputs_with_flux_ownership(workload_inputs.resources, &index, namespaces);
     Ok(workload_inputs)

@@ -16,6 +16,7 @@ use crate::models::{
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use flate2::read::GzDecoder;
+use futures_util::FutureExt;
 use k8s_openapi::NamespaceResourceScope;
 use k8s_openapi::api::core::v1::{ConfigMap, Namespace, Secret};
 use kube::{
@@ -84,22 +85,25 @@ pub async fn list_helm_releases(
     let client = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?
         .read_client(&cluster_context)
         .await?;
-    let (fallback_namespaces, namespaces_discovered) =
-        helm_fallback_namespaces(client.clone(), client.default_namespace()).await;
-    let secrets = list_releases::<Secret>(
-        client.clone(),
-        &cluster_context,
-        &fallback_namespaces,
-        secret_list_record,
-    )
-    .await;
-    let configmaps = list_releases::<ConfigMap>(
-        client,
-        &cluster_context,
-        &fallback_namespaces,
-        configmap_list_record,
-    )
-    .await;
+    // Both storage kinds and the namespace list are read together. Only a
+    // per-namespace fallback waits for the namespaces. The boxes keep this
+    // future small while it holds both listings.
+    let fallback = helm_fallback_namespaces(client.clone(), client.default_namespace()).shared();
+    let (secrets, configmaps, (fallback_namespaces, namespaces_discovered)) = futures_util::join!(
+        Box::pin(list_releases::<Secret>(
+            client.clone(),
+            &cluster_context,
+            fallback.clone(),
+            secret_list_record,
+        )),
+        Box::pin(list_releases::<ConfigMap>(
+            client.clone(),
+            &cluster_context,
+            fallback.clone(),
+            configmap_list_record,
+        )),
+        fallback,
+    );
     let mut records = Vec::new();
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
@@ -302,11 +306,12 @@ type StorageListing = (Vec<HelmStorageRecord>, Option<Vec<String>>);
 /// Builds a list record from one Helm storage object, a Secret or a `ConfigMap`.
 type StorageRecordFn<K> = fn(&str, &K) -> Result<HelmStorageRecord, AppError>;
 
-/// Lists one storage kind cluster-wide, falling back to the given namespaces when that fails.
+/// Lists one storage kind cluster-wide, falling back to the namespaces from
+/// `fallback` when that fails.
 async fn list_releases<K>(
     client: Client,
     cluster_context: &str,
-    fallback_namespaces: &[String],
+    fallback: impl Future<Output = (Vec<String>, bool)>,
     to_record: StorageRecordFn<K>,
 ) -> Result<StorageListing, AppError>
 where
@@ -320,13 +325,14 @@ where
     let items = match api.list(&params).await {
         Ok(items) => items,
         Err(all_error) => {
+            let (fallback_namespaces, _) = fallback.await;
             if fallback_namespaces.is_empty() {
                 return Err(AppError::from(all_error));
             }
             return list_releases_by_namespace(
                 client,
                 cluster_context,
-                fallback_namespaces,
+                &fallback_namespaces,
                 to_record,
             )
             .await

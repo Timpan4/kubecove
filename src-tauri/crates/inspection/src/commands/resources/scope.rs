@@ -271,7 +271,17 @@ async fn resource_scope_result_from(
             (request, result)
         }
     });
-    let results = join_all(futures).await;
+    // The Flux owner index does not depend on the lists, so it loads beside
+    // them. A failed list still wins over an index error.
+    let index = async {
+        let client = access.read_client(&cluster_context).await?;
+        live_store
+            .flux_ownership_index(source_key.clone(), cluster_context.clone(), move || {
+                fetch_flux_ownership_index(client)
+            })
+            .await
+    };
+    let (results, index) = futures_util::join!(join_all(futures), index);
     let mut batches = Vec::new();
     let mut completed_requests = Vec::new();
     let mut resource_versions = Vec::new();
@@ -301,14 +311,7 @@ async fn resource_scope_result_from(
             Err(error) => return Err(error),
         }
     }
-    let client = access.read_client(&cluster_context).await?;
-    let index = live_store
-        .flux_ownership_index(source_key, cluster_context.clone(), {
-            let client = client.clone();
-            move || fetch_flux_ownership_index(client)
-        })
-        .await?;
-    let index = filter_flux_ownership_index(Arc::unwrap_or_clone(index), &requested_namespaces);
+    let index = filter_flux_ownership_index(Arc::unwrap_or_clone(index?), &requested_namespaces);
     Ok(ResourceScopeResponse {
         resources: SharedRows::new(batches, &index),
         completed_requests,
