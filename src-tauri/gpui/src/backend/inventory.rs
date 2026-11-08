@@ -26,42 +26,74 @@ pub(super) async fn gitops(context: String) -> Result<GitOpsInventory, AppError>
     let mut errors = Vec::new();
     let [applications, app_sets, projects] =
         ARGO_KINDS.map(|(kind, plural)| argo_watch_key(kind, plural));
-    match commands::detect_argocd(context.clone(), None).await {
-        Ok(true) => {
-            inventory.argo = Some(
-                match commands::list_argocd_applications(context.clone(), None).await {
-                    Ok(list) => inventory.keep(&applications, list),
-                    Err(error) => {
-                        errors.push(error);
-                        Vec::new()
-                    }
-                },
-            );
-            match commands::list_argocd_appsets(context.clone(), None).await {
+    // Both providers, and each provider's lists, are read side by side. The
+    // results are applied in the old order (Argo CD lists, then Flux kinds), so
+    // errors keep their order.
+    let argo = async {
+        match commands::detect_argocd(context.clone(), None).await {
+            Ok(true) => Ok(Some(futures_util::join!(
+                commands::list_argocd_applications(context.clone(), None),
+                commands::list_argocd_appsets(context.clone(), None),
+                commands::list_argocd_appprojects(context.clone(), None),
+            ))),
+            Ok(false) => Ok(None),
+            Err(error) => Err(error),
+        }
+    };
+    let flux = async {
+        match commands::detect_flux(context.clone(), None).await {
+            Ok(detection) if detection.detected => {
+                let reads: Vec<_> = detection
+                    .kinds
+                    .into_iter()
+                    .map(|kind| {
+                        let key = flux_watch_key(&kind);
+                        let read = commands::list_flux_resources(context.clone(), kind, None);
+                        async move { (key, read.await) }
+                    })
+                    .collect();
+                Ok(Some(
+                    bounded_join_all(reads, commands::MAX_LIST_CONCURRENCY).await,
+                ))
+            }
+            Ok(_) => Ok(None),
+            Err(error) => Err(error),
+        }
+    };
+    let (argo, flux) = futures_util::join!(argo, flux);
+    match argo {
+        Ok(Some((application_list, app_set_list, project_list))) => {
+            inventory.argo = Some(match application_list {
+                Ok(list) => inventory.keep(&applications, list),
+                Err(error) => {
+                    errors.push(error);
+                    Vec::new()
+                }
+            });
+            match app_set_list {
                 Ok(list) => inventory.app_sets = inventory.keep(&app_sets, list),
                 Err(error) => errors.push(error),
             }
-            match commands::list_argocd_appprojects(context.clone(), None).await {
+            match project_list {
                 Ok(list) => inventory.projects = inventory.keep(&projects, list),
                 Err(error) => errors.push(error),
             }
         }
-        Ok(false) => {}
+        Ok(None) => {}
         Err(error) => errors.push(error),
     }
-    match commands::detect_flux(context.clone(), None).await {
-        Ok(detection) if detection.detected => {
+    match flux {
+        Ok(Some(lists)) => {
             let mut rows = Vec::new();
-            for kind in detection.kinds {
-                let key = flux_watch_key(&kind);
-                match commands::list_flux_resources(context.clone(), kind, None).await {
+            for (key, list) in lists {
+                match list {
                     Ok(list) => rows.extend(inventory.keep(&key, list)),
                     Err(error) => errors.push(error),
                 }
             }
             inventory.flux = Some(rows);
         }
-        Ok(_) => {}
+        Ok(None) => {}
         Err(error) => errors.push(error),
     }
     if !inventory.detected() {
