@@ -31,16 +31,50 @@ Run new scenarios in each driver before the full suite. This catches missing nat
    cargo test --manifest-path src-tauri/gpui/Cargo.toml --test parity
    ```
 
-3. Leave the unfiltered suite to CI: `.github/workflows/parity.yml` runs it on every PR and after each merge to main, split across `PARITY_SUITE_SHARD` jobs that each upload their `e2e/artifacts/parity-*` directory. The Verification tiers in `AGENTS.md` describe the local checks. Focused reports prove only the scenarios they name.
+3. Leave the unfiltered suite to CI: `.github/workflows/parity.yml` runs it after each merge to main and runs the changed-file selection (below) on every PR, split across `PARITY_SUITE_SHARD` jobs that each upload their `e2e/artifacts/parity-*` directory. The Verification tiers in `AGENTS.md` describe the local checks. Focused reports prove only the scenarios they name.
 
 `bun run e2e:parity` runs both drivers at the same time. The web driver runs several pages at once, and the GPUI driver builds the parity test once and runs it in several processes (`KUBECOVE_PARITY_SHARD=<index>/<count>`). The web driver starts at once, and the GPUI build runs while the runner exports `fixture.json`; only the GPUI test processes wait for the fixture. The GPUI processes take scenarios from a shared queue: each claims the next unclaimed scenario by creating `gpui-claims/<position in scenarios.txt>`, which holds its shard index. Each writes `gpui-<index>.json` and the runner merges them into `gpui.json`. Both reports record each scenario's `durationMs`, and `result.json` records the seconds from the start of the run to the end of each phase under `phases`. Optional variables:
 
 - `PARITY_PREFIX=overview,launcher-errors.` runs scenarios whose IDs start with any listed prefix.
+- `PARITY_CHANGED=<base ref>` runs the scenarios that the changes since the merge base with that ref can affect, including uncommitted and untracked files. See "Change-based selection". `PARITY_COVERAGE_MAP=<path>` reads another map than `e2e/artifacts/parity-coverage-map.json`.
+- `PARITY_COVERAGE=1` records the coverage map that `PARITY_CHANGED` reads. See "Change-based selection".
 - `PARITY_RERUN=last` (or an artifacts directory) runs only the scenarios that either driver did not pass in that run.
 - `PARITY_SUITE_SHARD=<index>/<count>` runs every `count`-th selected scenario from position `index`, so separate CI jobs split one suite. It applies after the other filters.
 - `PARITY_JOBS=<n>` sets the pages and processes per driver. The default is half the CPU count, because both drivers share the CPUs.
 
 Scenarios in one GPUI process share that process, so a scenario that passes alone can fail after another scenario leaves state behind. Treat such an order-dependent failure as a test isolation bug. To replay one shard of a run, write the IDs from that run's `gpui-<index>.json` to a file, one per line, and give the parity test binary that file without `KUBECOVE_PARITY_SHARD`: `KUBECOVE_PARITY_SCENARIO_IDS=<file> KUBECOVE_PARITY_FIXTURE=<run>/fixture.json KUBECOVE_E2E_ARTIFACTS=<new directory> <parity test binary> --nocapture`. A shard claims scenarios in `scenarios.txt` order, so the replay runs them in the same order. If the shard stopped before writing its report, the claim files that hold its index name its scenarios. The binary path is in the run's `gpui-build.log`. A file with two IDs checks one ordering.
+
+## Change-based selection
+
+A `PARITY_COVERAGE=1` run records which source lines each scenario executed and writes `coverage-map.json` to its artifacts directory. An unfiltered run also copies the map to `e2e/artifacts/parity-coverage-map.json`, where `PARITY_CHANGED` reads it. Coverage is off in normal runs.
+
+- Web: Chromium block coverage through Playwright, per page, mapped to source lines through the inline source maps Vite serves (`web-coverage-map.ts`).
+- GPUI: the parity test is built with `-C instrument-coverage --cfg kubecove_coverage` in `<CARGO_TARGET_DIR>/coverage`, so the normal build stays. Each scenario resets the counters and writes its own profile (`tests/parity/code_coverage.rs`), which `llvm-profdata` and `llvm-cov export` turn into lines (`gpui-coverage-map.ts`). The tools come from `LLVM_PROFDATA` and `LLVM_COV`, else the rustup `llvm-tools` component, else `PATH`. Cargo dep-info lists every repository file the binary compiled.
+
+Only scenarios that both drivers passed enter the map. `PARITY_CHANGED` diffs the merge base against the working tree and selects (`changed-scenarios.ts`):
+
+- the full suite when the map is missing, its commit is not in the clone, or a file changed that coverage cannot see: `package.json`, `bun.lock`, `Cargo.toml` and `Cargo.lock` files, `build.rs`, `vite.config.ts` and the scripts it imports, tsconfig files, `index.html`, `public/`, everything under `e2e/parity/` except scenario files and Markdown, `scripts/e2e-parity.ts` and the process helper it imports, `src-tauri/gpui/tests/parity.rs`, `tests/parity/` and `tests/common/`, the parity workflows, a non-Rust file the GPUI binary compiles in (such as an `include_bytes!` asset), or a non-code file under `src/` that no scenario loaded;
+- every scenario in a changed scenario file, and every scenario the map does not hold;
+- for other files, the scenarios that executed the changed lines. Changed lines are translated to the map's commit first, so a map from an older main commit still applies.
+
+Lines need care by file kind:
+
+- TypeScript: line level. A module's top-level code runs for every scenario that imports it, so changes there select all of those scenarios.
+- Svelte: line level inside `<script>`; a markup or style change selects the scenarios that rendered the component.
+- Rust: line level inside coverage regions. Changes outside them, such as constants, types and imports, select the scenarios that executed any code in that file or in a file naming a changed item.
+- Comment-only and blank-line changes in Rust and TypeScript select nothing.
+
+Mock data (`src/lib/tauri-dev-mock*.ts`, `src/lib/mcp-dev-mocks.ts`) is selected through the web driver's coverage of the same scenario. The GPUI driver reads the mocks only through the exported fixture, which runs every mock at once, so a scenario whose GPUI run reads a mock response that its web run never requests is not selected for that change. Both drivers run the same steps against the same data, so this has not been seen; the fixture exporter itself is a full-suite file.
+
+CI: the main job runs the full suite with `PARITY_COVERAGE=1`, and the `coverage-map` job merges the shard maps (`bun e2e/parity/coverage-map.ts merge <out> <shard maps>`) and saves the result with `actions/cache` under `parity-coverage-map-<sha>`. Pull request jobs restore the map of their base commit, or else the newest one, because caches saved on the default branch are readable from pull requests ([GitHub docs](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#restrictions-for-accessing-a-cache)). The merged map is also uploaded as the `parity-coverage-map` artifact. To use it locally:
+
+```sh
+run=$(gh run list --repo Timpan4/kubecove --workflow parity.yml --branch main --event push --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+gh run download "$run" --repo Timpan4/kubecove --name parity-coverage-map --dir e2e/artifacts
+PARITY_CHANGED=origin/main bun run e2e:parity
+```
+
+`bun e2e/parity/changed-scenarios.ts <base> [<head>] [--map <path>]` prints a selection and its causes without running it.
 
 ## Equal-tests rule
 
