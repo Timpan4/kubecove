@@ -174,6 +174,28 @@
         { "action": "attemptUnverifiedUpdate" },
         { "action": "expectNoSettingsText", "value": "Relaunch required" }
       ]
+    },
+    {
+      "id": "settings-remote.disconnected-selected",
+      "title": "A selected remote that drops shows a disconnected header, tooltip and Settings status",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "fillSettingsField", "field": "Server token", "value": "parity-controlled-credential" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "expectSettingsText", "value": "Connected to http://127.0.0.1:43117." },
+        { "action": "closeSettings" },
+        { "action": "expectRemoteHost", "url": "http://127.0.0.1:43117" },
+        { "action": "dropRemoteConnection" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "expectSettingsText", "value": "http://127.0.0.1:43117 is selected but disconnected. Cluster commands will not fall back to this laptop." },
+        { "action": "expectNoSettingsText", "value": "Connected to http://127.0.0.1:43117." },
+        { "action": "closeSettings" },
+        { "action": "expectRemoteHost", "url": "http://127.0.0.1:43117", "disconnected": true },
+        { "action": "expectRemoteHostTooltip", "value": "This remote host remains selected, but is disconnected" }
+      ]
     }
   ]
 }

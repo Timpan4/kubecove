@@ -24,6 +24,12 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             };
             window.click(id, cx);
         }
+        "expectUpdateControl" => {
+            assert_eq!(
+                window.find("header-update").label(),
+                Some(string(step, "label"))
+            );
+        }
         "copyLatencyReport" => {
             reveal(window, "settings-heading", "latency-copy", cx);
             window.click("latency-copy", cx);

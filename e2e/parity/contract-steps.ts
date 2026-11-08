@@ -5,6 +5,7 @@ type ArgoOptionName = (typeof ARGO_OPTION_NAMES)[number];
 export const TABLE_COLUMNS = ["Name", "Status", "Namespace", "Kind", "Ready", "Restarts", "CPU", "Memory", "Owner", "Age"] as const;
 type TableColumn = (typeof TABLE_COLUMNS)[number];
 export const SORT_COLUMNS = ["Name", "Status", "Namespace", "Kind", "Ready", "Restarts", "CPU", "Memory", "Age"] as const;
+export type UpdateControlLabel = "Check for updates" | "Update available" | "Checking for updates" | "Update check failed";
 export type Step =
     | { action: "expectDetailScroll"; view: "events" | "timeline" }
     | { action: "coverageSelect"; label: string; value: string }
@@ -46,9 +47,10 @@ export type Step =
     | { action: "expectWorkspaceEntry" | "openWorkspaceEntry"; panel: "Pinned" | "Recent"; label: string; index: number; count: number }
     | { action: "reorderKindKey"; kind: string; key: "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" }
     | { action: "resetKindOrder" }
-    | { action: "expectRemoteHost"; url: string }
+    | { action: "expectRemoteHost"; url: string; disconnected?: boolean }
     | { action: "expectRemoteHostTooltip"; value: string }
     | { action: "expectNoRemoteHost" }
+    | { action: "dropRemoteConnection" }
     | { action: "configureShellRead"; phase: "ready" | "contexts-failed" | "contexts-empty" | "namespaces-failed" | "namespaces-credential-failed" | "namespaces-empty" | "resources-failed" | "primary-context-missing" | "kind-missing" | "payments-api-removed" | "payments-deployments-forbidden" | "payments-ingress-version-changed" | "sources-failed" }
     | { action: "openNamespaceList" }
     | { action: "expectNamespaceRow"; name: string; age: string }
@@ -145,6 +147,7 @@ export type Step =
     | { action: "copyLatencyReport" }
     | { action: "expectLatencyReportCopy"; contains: string }
     | { action: "updateStatusControl"; control: "Open" | "Check" | "Later" | "Escape" }
+    | { action: "expectUpdateControl"; label: UpdateControlLabel }
     | { action: "configurePreset"; label: string; context: string; namespace: string; service: string; remote: string; local: string }
     | { action: "presetControl"; operation: "add" | "save" | "edit" | "start" | "remove" | "absent"; label?: string }
     | { action: "replaySessions"; script: "reconnecting" | "failed" | "foreign-output" }

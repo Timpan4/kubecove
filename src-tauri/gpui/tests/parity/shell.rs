@@ -201,9 +201,14 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             return true;
         }
         "expectRemoteHost" => {
+            let status = if step["disconnected"] == true {
+                " (disconnected)"
+            } else {
+                ""
+            };
             assert_eq!(
                 window.find("remote-host-scope").label(),
-                Some(format!("Remote host: {}", string(step, "url")).as_str())
+                Some(format!("Remote host: {}{status}", string(step, "url")).as_str())
             );
             return true;
         }

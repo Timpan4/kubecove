@@ -25,6 +25,10 @@ export async function incidentDiagnosticsAction(page: Page, step: Step): Promise
             }
             break;
         }
+        case "expectUpdateControl":
+            // The header control is named by its state tooltip, as the GPUI trigger's label is.
+            await page.getByRole("button", { name: step.label, exact: true }).waitFor();
+            break;
         case "copyLatencyReport":
             await page.evaluate(() => {
                 Object.defineProperty(navigator, "clipboard", { configurable: true, value: {

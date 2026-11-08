@@ -45,7 +45,7 @@ export async function action(page: Page, step: Step) {
         case "copyErrorDetail": await shellAction(page, step); break;
         case "expectForegroundLoading": case "expectFriendlyError": case "inspectRequiredPermission": case "expectPermissionTarget": case "returnToSource": case "copyResourceName": case "expectCopyToast": case "dismissCopyToast": await feedbackAction(page, step); break;
         case "toggleResourcePin": case "expectWorkspaceEntry": case "openWorkspaceEntry": await shellAction(page, step); break;
-        case "reorderKindKey": case "resetKindOrder": case "expectRemoteHost": case "expectRemoteHostTooltip": case "expectNoRemoteHost": await shellAction(page, step); break;
+        case "reorderKindKey": case "resetKindOrder": case "expectRemoteHost": case "expectRemoteHostTooltip": case "expectNoRemoteHost": case "dropRemoteConnection": await shellAction(page, step); break;
         case "configureShellRead": case "retryLauncher": case "expectLauncherRetry": await shellAction(page, step); break;
         case "expectActivePage": case "expectGitOpsSelection": await shellAction(page, step); break;
         case "overviewOperation": case "overviewIncident": case "reviewIncidentAction": case "expectDetailTab": await shellAction(page, step); break;
@@ -79,7 +79,7 @@ export async function action(page: Page, step: Step) {
             await yamlPermissionAction(page, step); break;
         case "cancelYamlEdit": case "revealSecretValue": case "hideSecretValue": case "expectSecretValue": case "expectYamlLens": case "refreshLatencyReport": case "clearLatencyReport": case "expectLatencyEmpty": case "expectLatencyTiming": case "openDocumentation": case "expectDocumentationRequest":
             await adapterAction(page, step); break;
-        case "openIncidentResources": case "updateStatusControl": case "copyLatencyReport": case "expectLatencyReportCopy":
+        case "openIncidentResources": case "updateStatusControl": case "expectUpdateControl": case "copyLatencyReport": case "expectLatencyReportCopy":
             await incidentDiagnosticsAction(page, step); break;
         case "expectWorkspaceExport": {
             await loadSettingsMocks(page);

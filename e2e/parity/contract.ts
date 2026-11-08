@@ -24,7 +24,7 @@ export const ACTIONS = [
     "expectForegroundLoading", "expectFriendlyError", "inspectRequiredPermission", "expectPermissionTarget", "returnToSource",
     "copyResourceName", "expectCopyToast", "dismissCopyToast",
     "toggleResourcePin", "expectWorkspaceEntry", "openWorkspaceEntry",
-    "reorderKindKey", "resetKindOrder", "expectRemoteHost", "expectRemoteHostTooltip", "expectNoRemoteHost",
+    "reorderKindKey", "resetKindOrder", "expectRemoteHost", "expectRemoteHostTooltip", "expectNoRemoteHost", "dropRemoteConnection",
     "configureShellRead", "retryLauncher", "expectLauncherRetry",
     "overviewOperation", "overviewIncident", "reviewIncidentAction",
     "expectTopologyDenied", "expectWatchStart",
@@ -50,7 +50,7 @@ export const ACTIONS = [
     "selectArgoPreference", "expectSavedArgoProfile", "configureArgoSync", "selectArgoHistory", "expectArgoWorkspaceTransport", "completeArgoOperation", "confirmArgoTunnel",
     "connectArgoProfile", "disconnectArgoProfile", "confirmArgoReview", "cancelArgoReview", "reviewArgoOperation", "expectArgoReview", "expectArgoText", "argoDocument", "expectArgoPopover", "dismissArgoPopover", "expectArgoCheckbox", "toggleArgoOption", "expectNoArgoControl", "expectArgoFocusInPopover", "tabArgoPopover", "expectArgoTriggerFocus", "expectArgoOptionFocusable","expectArgoOperationState","selectArgoConnection","argoConnectionDialog",
     "cancelYamlEdit",
-    "revealSecretValue", "hideSecretValue", "expectSecretValue", "expectYamlLens", "refreshLatencyReport", "clearLatencyReport", "expectLatencyEmpty", "expectLatencyTiming", "openDocumentation", "expectDocumentationRequest", "copyLatencyReport", "expectLatencyReportCopy", "updateStatusControl",
+    "revealSecretValue", "hideSecretValue", "expectSecretValue", "expectYamlLens", "refreshLatencyReport", "clearLatencyReport", "expectLatencyEmpty", "expectLatencyTiming", "openDocumentation", "expectDocumentationRequest", "copyLatencyReport", "expectLatencyReportCopy", "updateStatusControl", "expectUpdateControl",
     "configurePreset", "presetControl",
     "replaySessions", "confirmExecLeave",
     "configureForward", "forwardControl", "expectForwardState", "execControl", "expectExecState",
@@ -149,9 +149,9 @@ function step(value: unknown): Step {
         case "expectWorkspaceEntry": case "openWorkspaceEntry": return { action: item.action, panel: oneOf(["Pinned", "Recent"], item.panel, "an entry panel"), label: string(item.label), index: count(item.index), count: count(item.count) };
         case "reorderKindKey": return { action: item.action, kind: string(item.kind), key: oneOf(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"], item.key, "a reorder key") };
         case "resetKindOrder": return { action: item.action };
-        case "expectRemoteHost": return { action: item.action, url: string(item.url) };
+        case "expectRemoteHost": return { action: item.action, url: string(item.url), disconnected: optionalBoolean(item.disconnected) };
         case "expectRemoteHostTooltip": return { action: item.action, value: string(item.value) };
-        case "expectNoRemoteHost": return { action: item.action };
+        case "expectNoRemoteHost": case "dropRemoteConnection": return { action: item.action };
         case "configureShellRead": return { action: item.action, phase: oneOf(["ready", "contexts-failed", "contexts-empty", "namespaces-failed", "namespaces-credential-failed", "namespaces-empty", "resources-failed", "primary-context-missing", "kind-missing", "payments-api-removed", "payments-deployments-forbidden", "payments-ingress-version-changed", "sources-failed"], item.phase, "a shell read phase") };
         case "openNamespaceList": case "openNavigationDrawer": return { action: item.action };
         case "expectNamespaceRow": return { action: item.action, name: string(item.name), age: string(item.age) };
@@ -266,6 +266,7 @@ function step(value: unknown): Step {
         case "expectLatencyTiming": return { action: item.action, command: string(item.command) };
         case "copyLatencyReport": return { action: item.action };
         case "expectLatencyReportCopy": return { action: item.action, contains: string(item.contains) };
+        case "expectUpdateControl": return { action: item.action, label: oneOf(["Check for updates", "Update available", "Checking for updates", "Update check failed"] as const, item.label, "an update control label") };
         case "updateStatusControl": return { action: item.action, control: oneOf(["Open", "Check", "Later", "Escape"], item.control, "an update control") };
         case "expectDocumentationRequest": return { action: item.action, url: string(item.url) };
         case "fillSettingsField": return { action: item.action, field: oneOf(["Server URL", "Server token"], item.field, "a remote field"), value: string(item.value) };

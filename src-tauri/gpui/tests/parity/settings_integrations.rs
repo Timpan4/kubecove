@@ -82,7 +82,8 @@ pub fn act(window: &mut Window, cx: &mut App, step: &Value) -> bool {
         "configureSettingsMock"
         | "expectRuntimeEndpoint"
         | "expectWorkspaceExport"
-        | "expectExportedShortcut" => {}
+        | "expectExportedShortcut"
+        | "dropRemoteConnection" => {}
         "reopenStoredSettings" => {
             window.click("settings-back", cx);
         }

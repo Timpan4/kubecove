@@ -119,7 +119,10 @@ export async function shellAction(page: Page, step: Step): Promise<void> {
             await page.getByRole("button", { name: "Reset", exact: true }).click();
             break;
         case "expectRemoteHost":
-            await page.getByText(`Remote host: ${step.url}`, { exact: true }).waitFor();
+            await page.getByText(`Remote host: ${step.url}${step.disconnected ? " (disconnected)" : ""}`, { exact: true }).waitFor();
+            break;
+        case "dropRemoteConnection":
+            await page.evaluate("import('/src/lib/settings-integration-mocks.ts').then(m => m.dropRemoteConnectionMock())");
             break;
         case "expectRemoteHostTooltip":
             await page.getByTitle(step.value, { exact: true }).waitFor();

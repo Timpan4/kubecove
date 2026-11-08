@@ -31,3 +31,7 @@ export function connectRemoteMock(serverUrl: string): RemoteConnectionSummary {
 	return selected;
 }
 export function disconnectRemoteMock(): undefined { selected = null; }
+/** The selected server stops answering: it stays selected, and its commands fail as disconnected. */
+export function dropRemoteConnectionMock(): void {
+	if (selected) selected = { ...selected, connected: false };
+}

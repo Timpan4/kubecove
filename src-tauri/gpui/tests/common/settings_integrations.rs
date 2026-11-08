@@ -141,6 +141,13 @@ impl Fixture {
     pub fn settings_script(&self, script: &str) {
         *self.settings.script.lock().unwrap() = script.to_owned();
     }
+    // The fixture also compiles into native and visual tests without parity actions.
+    #[allow(dead_code)]
+    pub fn drop_remote_connection(&self) {
+        if let Some(remote) = self.settings.remote.lock().unwrap().as_mut() {
+            remote.connected = false;
+        }
+    }
     #[allow(dead_code)]
     pub fn runtime_endpoint(&self) -> String {
         self.settings

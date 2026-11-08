@@ -631,6 +631,9 @@ fn run_scenario(
         if step["action"] == "configureSettingsMock" {
             backend.settings_script(string(step, "script"));
         }
+        if step["action"] == "dropRemoteConnection" {
+            backend.drop_remote_connection();
+        }
         if step["action"] == "expectRuntimeEndpoint" {
             assert_eq!(backend.runtime_endpoint(), string(step, "value"));
         }
