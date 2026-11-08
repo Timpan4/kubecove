@@ -332,6 +332,40 @@
 					"check": "map-viewport"
 				}
 			]
+		},
+		{
+			"id": "coverage-map.drag-from-node",
+			"title": "Dragging the map from a node pans it without selecting that node",
+			"steps": [
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "selectNamespace",
+					"namespace": "payments"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "map-drag-node"
+				}
+			]
+		},
+		{
+			"id": "coverage-map.wheel-zoom",
+			"title": "Scrolling over a map node zooms one wheel step about the cursor",
+			"steps": [
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "selectNamespace",
+					"namespace": "payments"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "map-wheel"
+				}
+			]
 		}
 	]
 }

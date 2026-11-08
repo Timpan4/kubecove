@@ -39,6 +39,8 @@ mod log_coverage;
 mod log_restore;
 #[path = "parity/log_toolbar.rs"]
 mod log_toolbar;
+#[path = "parity/map_gestures.rs"]
+mod map_gestures;
 #[path = "parity/map_panels.rs"]
 mod map_panels;
 #[path = "parity/mcp.rs"]

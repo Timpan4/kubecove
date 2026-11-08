@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import type { Page } from "playwright-core";
 import { checkLogCoverage } from "./web-log-coverage";
+import { checkMapGesture } from "./web-map-gestures";
 
 /** The ownerless StorageClass kind group on the Cluster Overview map. */
 function ownerlessStorageGroup(page: Page) {
@@ -126,6 +127,9 @@ export async function checkCoverage(page: Page, check: string) {
 					});
 				});
 			}
+			break;
+		case "map-drag-node": case "map-wheel":
+			await checkMapGesture(page, check);
 			break;
 		case "map-viewport": {
 			// Name the wait that timed out: full-suite runs failed here with a bare 30 s timeout.

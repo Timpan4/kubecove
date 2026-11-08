@@ -214,6 +214,9 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 assert!(window.elements().iter().any(|element| element.visible() && matches!(element.path().last(), Some(ElementId::Name(name)) if name.starts_with("map-node:") && !name.contains(":payments:"))));
             }
         }
+        "map-drag-node" | "map-wheel" => {
+            map_gestures::check(window, cx, string(step, "check"));
+        }
         "map-viewport" => {
             reveal(window, "page", "map-viewport", cx);
             let node = window.elements().iter().find(|element| matches!(element.path().last(), Some(ElementId::Name(name)) if name.starts_with("map-node:"))).map(locate::id).unwrap();
