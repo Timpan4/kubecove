@@ -42,6 +42,9 @@ serde = "=1.0.229"
 # The backend's YAML crate, which the Argo CD tab uses to read the Application
 # spec and print comparison documents, as `yaml` does in the web.
 serde_yaml = { package = "yaml_serde", version = "=0.10.7" }
+# GPUI Kit's tree-sitter feature already uses this version. The YAML editor
+# walks the syntax tree that GPUI Kit's `SyntaxHighlighter` returns.
+tree-sitter = "=0.26.13"
 
 [dev-dependencies]
 tokio-tungstenite = "=0.30.0"

@@ -148,12 +148,14 @@ impl ResourceDetail {
             f32::from(viewport.height).to_bits(),
         ));
         let editor = cx.new(|cx| {
-            EditorState::new(window, cx)
+            let mut editor = EditorState::new(window, cx)
                 .language("yaml")
                 .line_number(true)
                 // The web marks indentation with tints instead of guide lines.
                 .indent_guides(false)
-                .default_value(data.yaml.clone())
+                .default_value(data.yaml.clone());
+            editor.set_highlighter_factory(super::yaml_folds::factory(), cx);
+            editor
         });
         let marks = YamlMarks::new(&editor, cx);
         let editor_changed = cx.observe(&editor, |_, _, cx| cx.notify());

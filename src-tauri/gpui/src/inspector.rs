@@ -134,6 +134,7 @@ mod workspace_editing;
 mod workspace_entries;
 mod workspace_reads;
 mod yaml_apply;
+mod yaml_folds;
 mod yaml_lens;
 mod yaml_lint;
 mod yaml_marks;
