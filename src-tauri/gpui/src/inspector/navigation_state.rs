@@ -101,9 +101,9 @@ impl Inspector {
         };
         let detail = match &self.detail {
             Detail::Ready(detail) => Some((detail.data.summary.clone(), detail.tab)),
-            Detail::Loading(resource) => Some((
-                (**resource).clone(),
-                self.detail_tab.unwrap_or(DetailTab::Details),
+            Detail::Loading(loading) => Some((
+                loading.resource.clone(),
+                loading.tab.unwrap_or(DetailTab::Details),
             )),
             Detail::Closed | Detail::Failed(_) => None,
         };

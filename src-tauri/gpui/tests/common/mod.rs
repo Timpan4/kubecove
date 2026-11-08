@@ -474,9 +474,13 @@ impl Backend for Fixture {
             })
             .cloned()
             .or_else(|| self.gitops.application_details(&resource));
-        let read = self
-            .timing
-            .read("get_resource_details", &resource.cluster, "", found);
+        // Named after the command the native and web clients call for this resource.
+        let command = if resource.dynamic == Some(true) {
+            "get_dynamic_resource_details"
+        } else {
+            "get_resource_details"
+        };
+        let read = self.timing.read(command, &resource.cluster, "", found);
         self.coverage_read(
             "get_resource_details",
             Box::pin(async move {

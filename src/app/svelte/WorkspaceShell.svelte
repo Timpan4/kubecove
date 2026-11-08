@@ -359,6 +359,8 @@
 
 	function commitWorkspaceNavigation(intent: WorkspaceNavigationIntent, revealSidebar: boolean) {
 		navigation = navigateWorkspace(navigation, intent);
+		// A closed detail's tab must not carry over to the next resource opened without one.
+		if (intent.type === "clearResource") resourceDetailPathState = null;
 		if (revealSidebar && ["selectNode", "selectResource", "openResources", "openHelmRelease", "openArgo", "openIncidents", "openPortForwards"].includes(intent.type)) {
 			sidebarNavigationRevision += 1;
 		}

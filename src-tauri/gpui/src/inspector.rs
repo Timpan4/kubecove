@@ -239,8 +239,6 @@ pub struct Inspector {
     /// would cancel the submit and lose its outcome.
     argo_submissions: Vec<Task<()>>,
     helm_page: helm_page::HelmPage,
-    /// A tab `open_resource_on` asked the loading detail panel to show.
-    detail_tab: Option<detail::DetailTab>,
     cluster: cluster::ClusterState,
     incidents: incidents::IncidentsState,
     sessions: port_forwards::SessionsState,
@@ -271,7 +269,6 @@ pub struct Inspector {
     scope_trace: Option<load_trace::LoadTrace>,
     map_trace: Option<load_trace::LoadTrace>,
     topology_task: Option<Task<()>>,
-    detail_task: Option<Task<()>>,
     diff_task: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
@@ -381,7 +378,6 @@ impl Inspector {
             argo_outcomes: Default::default(),
             argo_submissions: Vec::new(),
             helm_page: helm_page::HelmPage::new(window, cx),
-            detail_tab: None,
             cluster: Default::default(),
             incidents: incidents::IncidentsState::new(),
             sessions: port_forwards::SessionsState::new(),
@@ -411,7 +407,6 @@ impl Inspector {
             scope_trace: None,
             map_trace: None,
             topology_task: None,
-            detail_task: None,
             diff_task: None,
             _subscriptions: subscriptions,
         };
@@ -526,7 +521,6 @@ impl Inspector {
         if !self.can_leave(cx) {
             return;
         }
-        self.detail_task.take();
         self.diff_task.take();
         self.detail_request = Rc::new(());
         self.exec.clear();
@@ -549,32 +543,7 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.defer_exec_leave(
-            exec_leave::LeaveIntent::Resource(Box::new(resource.clone())),
-            cx,
-        ) {
-            return;
-        }
-        if !self.can_leave(cx) {
-            return;
-        }
-        self.close_detail(cx);
-        self.visit_resource(&resource, cx);
-        self.detail = Detail::Loading(Box::new(resource.clone()));
-        let request = self.detail_request.clone();
-        let read = self.backend.details(resource);
-        let read = self.timings.measure("get_resource_details", read);
-        self.detail_task = Some(cx.spawn_in(window, async move |this, cx| {
-            let result = read.await;
-            let _ = this.update_in(cx, |this, window, cx| {
-                if !Rc::ptr_eq(&this.detail_request, &request) {
-                    return;
-                }
-                this.settle_detail(result, window, cx);
-                cx.notify();
-            });
-        }));
-        cx.notify();
+        self.open_resource_on(resource, None, window, cx);
     }
 
     fn search_input(&self) -> impl IntoElement {

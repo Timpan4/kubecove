@@ -3,6 +3,29 @@
   "context": "mock-dev",
   "scenarios": [
     {
+      "id": "detail-tabs.close-during-load-resets-tab",
+      "title": "Closing a detail that was opening on a tab drops that tab, so the next resource opens on Details",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "get_dynamic_resource_details", "context": "mock-dev" } },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "get_dynamic_resource_details", "context": "mock-dev" } },
+        { "action": "closeDetail" },
+        { "action": "expectDetailClosed" },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "get_dynamic_resource_details", "context": "mock-dev" } },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "openResources" },
+        { "action": "collapseSidebar" },
+        { "action": "sidebarToggle", "path": ["argocd"] },
+        { "action": "sidebarToggle", "path": ["argocd", "Custom Resources"] },
+        { "action": "sidebarToggle", "path": ["argocd", "Custom Resources", "argoproj.io"] },
+        { "action": "sidebarSelect", "path": ["argocd", "Custom Resources", "argoproj.io", "Application"] },
+        { "action": "openResource", "kind": "Application", "name": "shop", "namespace": "argocd" },
+        { "action": "expectDetail", "kind": "Application", "name": "shop", "namespace": "argocd" },
+        { "action": "expectDetailTab", "tab": "Details" }
+      ]
+    },
+    {
       "id": "logs.aggregate-stream",
       "title": "A Deployment's Logs tab streams its Pods' lines in arrival order",
       "steps": [

@@ -24,16 +24,25 @@ use crate::ui;
 use gpui_kit::component::input::{EditorState, InputEvent};
 use gpui_kit::{
     AnyElement, App, AppContext, Context, Entity, KeyDownEvent, MouseButton, MouseMoveEvent,
-    ScrollHandle, Subscription, Window, div, prelude::*, px,
+    ScrollHandle, Subscription, Task, Window, div, prelude::*, px,
 };
 use kubecove_lib::models::{AppError, HealthAssessment, ResourceDetailsFull, ResourceSummary};
 use std::sync::Arc;
 
 pub(super) enum Detail {
     Closed,
-    Loading(Box<ResourceSummary>),
+    Loading(Box<LoadingDetail>),
     Failed(Box<FailedDetail>),
     Ready(Box<ResourceDetail>),
+}
+
+/// A details read in flight. Leaving this state drops the read, which cancels it,
+/// and drops `tab`, so a closed panel's tab never reaches the next resource.
+pub(super) struct LoadingDetail {
+    pub resource: ResourceSummary,
+    /// The tab `open_resource_on` asked for, shown once the read succeeds.
+    pub tab: Option<DetailTab>,
+    _read: Task<()>,
 }
 
 /// A details read that failed. It keeps the resource so the failure can offer
@@ -47,7 +56,7 @@ impl Detail {
     /// The resource the panel is open for, which the ownership map selects.
     pub(super) fn resource(&self) -> Option<&ResourceSummary> {
         match self {
-            Detail::Loading(resource) => Some(resource),
+            Detail::Loading(loading) => Some(&loading.resource),
             Detail::Ready(detail) => Some(&detail.data.summary),
             Detail::Failed(failed) => Some(&failed.resource),
             Detail::Closed => None,
@@ -237,47 +246,63 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.open_resource(resource, window, cx);
-        if matches!(self.detail, Detail::Loading(_)) {
-            self.detail_tab = tab;
+        if self.defer_exec_leave(
+            super::exec_leave::LeaveIntent::Resource(Box::new(resource.clone())),
+            cx,
+        ) {
+            return;
         }
+        if !self.can_leave(cx) {
+            return;
+        }
+        self.close_detail(cx);
+        self.visit_resource(&resource, cx);
+        let read = self.backend.details(resource.clone());
+        let read = self.timings.measure("get_resource_details", read);
+        let read = cx.spawn_in(window, async move |this, cx| {
+            let result = read.await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                this.settle_detail(result, window, cx);
+                cx.notify();
+            });
+        });
+        self.detail = Detail::Loading(Box::new(LoadingDetail {
+            resource,
+            tab,
+            _read: read,
+        }));
+        cx.notify();
     }
 
     /// Replaces the loading panel with the read's result, then loads events and
-    /// applies a tab `open_resource_on` requested, if the loaded resource shows it.
-    pub(super) fn settle_detail(
+    /// applies the tab `open_resource_on` requested, if the loaded resource shows it.
+    fn settle_detail(
         &mut self,
         result: Result<ResourceDetailsFull, AppError>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let loading = match std::mem::replace(&mut self.detail, Detail::Closed) {
-            Detail::Loading(resource) => Some(*resource),
-            _ => None,
+            Detail::Loading(loading) => *loading,
+            other => {
+                self.detail = other;
+                return;
+            }
         };
-        self.detail = match (result, loading) {
-            (Ok(data), loading) => {
+        let LoadingDetail { resource, tab, .. } = loading;
+        self.detail = match result {
+            Ok(data) => {
                 let mut detail = ResourceDetail::new(data, window, cx);
-                if let Some(resource) = loading {
-                    detail.opened_health = resource.health_assessment;
-                }
+                detail.opened_health = resource.health_assessment;
+                detail.events.default_open = self.persisted.preferences.expand_timeline_by_default;
                 Detail::Ready(Box::new(detail))
             }
-            (Err(error), Some(resource)) => {
-                Detail::Failed(Box::new(FailedDetail { resource, error }))
-            }
-            // Settling only follows a Loading state; without one there is no panel to show.
-            (Err(_), None) => Detail::Closed,
+            Err(error) => Detail::Failed(Box::new(FailedDetail { resource, error })),
         };
-        if let Detail::Ready(detail) = &mut self.detail {
-            detail.events.default_open = self.persisted.preferences.expand_timeline_by_default;
-        }
         self.apply_yaml_defaults(cx, window);
         self.load_events(window, cx);
-        let Some(tab) = self.detail_tab.take() else {
-            return;
-        };
-        if let Detail::Ready(detail) = &self.detail
+        if let Some(tab) = tab
+            && let Detail::Ready(detail) = &self.detail
             && available(tab, &detail.data.summary)
         {
             self.set_tab(tab, window, cx);
@@ -369,7 +394,9 @@ impl Inspector {
     pub(super) fn detail_view(&self, cx: &mut Context<Self>) -> AnyElement {
         let (name, subtitle) = match &self.detail {
             Detail::Closed => return div().into_any_element(),
-            Detail::Loading(summary) => (summary.name.clone(), summary.kind.clone()),
+            Detail::Loading(loading) => {
+                (loading.resource.name.clone(), loading.resource.kind.clone())
+            }
             Detail::Ready(detail) => {
                 let summary = &detail.data.summary;
                 (
