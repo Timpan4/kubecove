@@ -176,7 +176,19 @@ const binarySha256 = createHash("sha256").update(await readFile(executable)).dig
 const harness = [executable];
 
 const reports: Run[] = [];
-const loads: { before: number[]; after: number[]; priority: number | null; uptime: string | null }[] = [];
+const loads: { before: number[]; after: number[]; priority: number | null; uptime: string | null; power: string | null }[] = [];
+/** The power-profiles-daemon profile, or null where it is not installed. Desktop idle tools
+ * can switch to power-saver while nobody is at the machine, which slows every case alike. */
+async function powerProfile(): Promise<string | null> {
+	if (process.platform !== "linux") return null;
+	try {
+		const child = Bun.spawn(["powerprofilesctl", "get"], { stdout: "pipe", stderr: "ignore" });
+		const [code, output] = await Promise.all([child.exited, new Response(child.stdout).text()]);
+		return code === 0 ? output.trim() : null;
+	} catch {
+		return null;
+	}
+}
 for (let index = 0; index < runs; index += 1) {
 	const report = join(out, `run-${index + 1}.json`);
 	let uptime: string | null = null;
@@ -189,6 +201,8 @@ for (let index = 0; index < runs; index += 1) {
 		uptime = output.trim();
 		console.log(`Run ${index + 1}: ${uptime}`);
 	}
+	const power = await powerProfile();
+	if (power === "power-saver") console.warn(`Run ${index + 1}: CPU power profile is power-saver; timings are not comparable with other profiles`);
 	const before = loadavg();
 	const { priority } = await run(
 		harness,
@@ -204,7 +218,7 @@ for (let index = 0; index < runs; index += 1) {
 		`run-${index + 1}.log`,
 		true,
 	);
-	loads.push({ before, after: loadavg(), priority, uptime });
+	loads.push({ before, after: loadavg(), priority, uptime, power });
 	const measured: Run = JSON.parse(await readFile(report, "utf8"));
 	if (measured.measurementVersion !== 2 || measured.mode !== "Production")
 		throw new Error("Per-frame acceptance requires the production-mode version 2 harness");
@@ -396,7 +410,7 @@ const lines = [
 	"",
 	`Budget: p95 at most ${BUDGET_MS.toFixed(2)} ms per frame (120 fps). Window ${result.window.width}x${result.window.height} logical pixels, release profile, ${runs} runs of ${frames} measured samples after ${warmup} warm-up samples per case. An interaction sample includes one input and every frame it produces. Case percentiles are medians across runs; max is the largest sample in any run. The p95 spread is the lowest and highest run. CPU samples are wall time around CPU work, including waits and descheduling.`,
 	"",
-	`CPU: ${result.cpu} (${result.cores} threads). Load averages (1/5/15 min) before and after each run: ${loads.map((load) => `${load.before.map((value) => value.toFixed(2)).join("/")} -> ${load.after.map((value) => value.toFixed(2)).join("/")} (process priority ${load.priority ?? "unavailable"})`).join(", ")}. Release build peak RSS: ${Number.isFinite(result.buildPeakRssMb) ? `${ms(result.buildPeakRssMb)} MiB` : "not recorded"}.`,
+	`CPU: ${result.cpu} (${result.cores} threads). Load averages (1/5/15 min) before and after each run: ${loads.map((load) => `${load.before.map((value) => value.toFixed(2)).join("/")} -> ${load.after.map((value) => value.toFixed(2)).join("/")} (process priority ${load.priority ?? "unavailable"}, power profile ${load.power ?? "unavailable"})`).join(", ")}. Release build peak RSS: ${Number.isFinite(result.buildPeakRssMb) ? `${ms(result.buildPeakRssMb)} MiB` : "not recorded"}.`,
 	`Build provenance: ${JSON.stringify(result.build)}. Executable SHA-256: ${binarySha256}.`,
 	"",
 	result.measurementVersion === 2
