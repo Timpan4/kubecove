@@ -70,6 +70,35 @@
         { "action": "expectDryRun", "contains": ["+# dry-run: browser mock"] },
         { "action": "expectNoYamlNotice", "title": "KubeCove could not reach the Kubernetes API" }
       ]
+    },
+    {
+      "id": "yaml-apply.unsaved-draft-guard",
+      "title": "A changed YAML draft refuses closing, opening another resource and changing scope until the draft is discarded",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showYaml" },
+        { "action": "editYaml" },
+        { "action": "replaceYamlDraft", "value": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: payments-api\n  namespace: payments\n  labels:\n    draft: kept\n" },
+        { "action": "closeDetail" },
+        { "action": "expectYamlNotice", "title": "This local draft has unsaved changes. Discard the local draft before changing target or closing." },
+        { "action": "expectDetail", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "openResource", "kind": "Service", "name": "payments-api", "namespace": "payments" },
+        { "action": "expectDetail", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "openPage", "page": "Helm" },
+        { "action": "expectDetail", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "selectNamespace", "namespace": "platform" },
+        { "action": "expectDetail", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "expectYamlNotice", "title": "This local draft has unsaved changes. Discard the local draft before changing target or closing." },
+        { "action": "expectYamlDocument", "value": "{\"apiVersion\":\"apps/v1\",\"kind\":\"Deployment\",\"metadata\":{\"name\":\"payments-api\",\"namespace\":\"payments\",\"labels\":{\"draft\":\"kept\"}}}" },
+        { "action": "cancelYamlEdit" },
+        { "action": "expectNoYamlNotice", "title": "This local draft has unsaved changes. Discard the local draft before changing target or closing." },
+        { "action": "closeDetail" },
+        { "action": "expectDetailClosed" },
+        { "action": "openPage", "page": "Helm" },
+        { "action": "expectHelmRelease", "name": "grafana", "namespace": "monitoring" }
+      ]
     }
   ]
 }
