@@ -634,6 +634,7 @@
 							initialNamespaces={resourceBrowserNamespaces}
 							initialKinds={resourceBrowserInitialKinds}
 							availableKinds={resourceBrowserKinds}
+							defaultKinds={resourceGitOpsFocusApplication ? GITOPS_RESOURCE_KINDS : workspace.scope.kinds}
 							kindScopeLocked={fixedResourceKindScope}
 							selectAddedKinds={!resourceBrowserScope.categoryKinds}
 							customResourcesEnabled={showCustomResources}

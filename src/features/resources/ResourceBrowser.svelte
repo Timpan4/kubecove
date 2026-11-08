@@ -120,6 +120,7 @@
 		nextNamespaceSelection,
 		shouldLoadOwnershipMap,
 		syncedTopologyNodeId as resolveSyncedTopologyNodeId,
+		topologyLinkKinds,
 	} from "./resourceBrowserModel";
 	import { buildResourceBrowserReadSpecs, resourceBrowserLiveView } from "./resourceBrowserReadSpecs";
 	import {
@@ -139,6 +140,7 @@
 		initialNamespaces,
 		initialKinds,
 		availableKinds = initialKinds,
+		defaultKinds = initialKinds,
 		kindScopeLocked = false,
 		selectAddedKinds = true,
 		customResourcesEnabled = true,
@@ -163,6 +165,8 @@
 		initialNamespaces: string[];
 		initialKinds: ResourceKindSelection[];
 		availableKinds?: ResourceKindSelection[];
+		/** The workspace's default kinds. A selection that leaves one out also maps resources one edge from the selected kinds. */
+		defaultKinds?: ResourceKindSelection[];
 		kindScopeLocked?: boolean;
 		/** Whether available kinds beyond the initial ones, such as discovered custom kinds, join the selection. */
 		selectAddedKinds?: boolean;
@@ -490,6 +494,7 @@
 				topologyQuery.data,
 				tableDisplay.filteredRows,
 				hideHistoricalReplicaSets,
+				topologyLinkKinds(selectedKinds, defaultKinds),
 			),
 			metricsQuery.data,
 			metricsIndex,
