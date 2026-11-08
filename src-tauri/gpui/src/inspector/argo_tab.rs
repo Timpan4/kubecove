@@ -267,13 +267,14 @@ pub(super) struct ArgoConnectionState {
     pub connected: bool,
     /// The reason the web's `argoOperationAvailability` gives when operations are unavailable.
     pub unavailable: Option<String>,
+    /// An operation on this Application is still running.
+    pub busy: bool,
 }
 
 pub(super) fn argo_tab(
     detail: &ResourceDetail,
     timezone: crate::preferences::TimestampTimezone,
     connection: Div,
-    pending: bool,
     selected: ArgoConnectionState,
     disclosure: &Disclosure,
     loading_delays: &super::loading::LoadingDelays,
@@ -483,7 +484,7 @@ pub(super) fn argo_tab(
         .child(super::argo_options::controls(
             state,
             &summary.name,
-            loading || pending,
+            loading || selected.busy,
             selected.unavailable.is_some(),
             cx,
         ));

@@ -534,14 +534,14 @@ impl Inspector {
                         self.persisted.preferences.timestamp_timezone,
                         self.argo_connection_panel(cx)
                             .children(self.argo_outcome_panel(detail, cx)),
-                        detail
-                            .argo
-                            .as_ref()
-                            .and_then(|s| s.inspector.as_ref())
-                            .is_some_and(|s| self.argo_operation_busy(&s.application)),
                         super::argo_tab::ArgoConnectionState {
                             connected: self.argo_connection_id().is_some(),
                             unavailable: self.argo_connection_unavailable(),
+                            busy: detail
+                                .argo
+                                .as_ref()
+                                .and_then(|s| s.inspector.as_ref())
+                                .is_some_and(|s| self.argo_operation_busy(&s.application)),
                         },
                         &self.feedback.disclosure(),
                         &self.loading,
