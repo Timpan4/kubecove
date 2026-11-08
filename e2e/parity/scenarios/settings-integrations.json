@@ -196,6 +196,27 @@
         { "action": "expectRemoteHost", "url": "http://127.0.0.1:43117", "disconnected": true },
         { "action": "expectRemoteHostTooltip", "value": "This remote host remains selected, but is disconnected" }
       ]
+    },
+    {
+      "id": "settings-updates.startup-dismissal-and-recheck",
+      "title": "Startup offers a new version once, a dismissed version stays dismissed after client recreation, and Check again updates the status",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "update-available" },
+        { "action": "restartClient" },
+        { "action": "expectSettingsText", "value": "KubeCove 0.14.0 is available." },
+        { "action": "expectSettingsText", "value": "Fixes topology edges." },
+        { "action": "updateStatusControl", "control": "Later" },
+        { "action": "expectNoSettingsText", "value": "KubeCove 0.14.0 is available." },
+        { "action": "restartClient" },
+        { "action": "expectUpdateControl", "label": "Update available" },
+        { "action": "expectNoSettingsText", "value": "KubeCove 0.14.0 is available." },
+        { "action": "updateStatusControl", "control": "Open" },
+        { "action": "expectSettingsText", "value": "KubeCove 0.14.0 is available." },
+        { "action": "configureSettingsMock", "script": "no-update" },
+        { "action": "updateStatusControl", "control": "Check" },
+        { "action": "expectSettingsText", "value": "KubeCove is up to date." },
+        { "action": "expectUpdateControl", "label": "Check for updates" }
+      ]
     }
   ]
 }

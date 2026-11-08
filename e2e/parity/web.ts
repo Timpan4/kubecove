@@ -121,12 +121,6 @@ export async function action(page: Page, step: Step) {
             break;
         case "configureSettingsMock":
             await page.evaluate(`import('/src/lib/settings-integration-mocks.ts').then(m => m.configureSettingsMock(${JSON.stringify(step.script)}))`);
-            if (step.script === "no-update" || step.script === "invalid-signature" || step.script === "update-available") {
-                await page.evaluate(`Promise.all([import('/src/features/app-updates/store.ts'), import('/src/lib/release-channel.ts')]).then(([m, channel]) => {
-                    channel.setAppUpdatesEnabledForTests(true);
-                    m.setAppUpdateApiForTests({ check: async () => ${step.script === "no-update" ? "null" : `({ currentVersion: '0.13.0', version: '0.14.0', ${step.script === "update-available" ? "body: 'Fixes topology edges.', " : ""}downloadAndInstall: async () => { throw new Error('Invalid update signature'); } })`}, relaunch: async () => { throw new Error('Tests cannot relaunch'); } });
-                })`);
-            }
             break;
         case "attemptUnverifiedUpdate":
             await page.getByRole("button", { name: "Install", exact: true }).click();
