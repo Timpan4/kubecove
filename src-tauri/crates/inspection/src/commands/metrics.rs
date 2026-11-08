@@ -15,6 +15,7 @@ use k8s_openapi::api::core::v1::Pod;
 use kube::{
     Client, Error,
     api::{Api, ApiResource, DynamicObject},
+    core::PartialObjectMeta,
     discovery::verbs,
 };
 use kubecove_kube::commands::discover_resources;
@@ -212,9 +213,13 @@ async fn list_node_metric_objects(client: Client) -> Result<Vec<DynamicObject>, 
         .map_err(|error| classify_metrics_error(&error))
 }
 
-/// Lists every namespace when none are given; otherwise the named namespaces, failing on the
-/// first error in namespace order.
-async fn list_in_namespaces<K>(client: Client, namespaces: &[String]) -> Result<Vec<K>, AppError>
+/// Lists object metadata in every namespace when none are given; otherwise in the named
+/// namespaces, failing on the first error in namespace order. Owner rollup reads only
+/// names and owner references, so the specs and statuses are never fetched.
+async fn list_metadata_in_namespaces<K>(
+    client: Client,
+    namespaces: &[String],
+) -> Result<Vec<PartialObjectMeta<K>>, AppError>
 where
     K: kube::Resource<DynamicType = (), Scope = NamespaceResourceScope>
         + Clone
@@ -224,7 +229,7 @@ where
     if namespaces.is_empty() {
         let api: Api<K> = Api::all(client);
         return api
-            .list(&list_params())
+            .list_metadata(&list_params())
             .await
             .map(|list| list.items)
             .map_err(AppError::from);
@@ -233,7 +238,7 @@ where
     let outcomes = stream::iter(namespaces.to_vec())
         .map(|namespace| {
             let api: Api<K> = Api::namespaced(client.clone(), &namespace);
-            async move { api.list(&list_params()).await }
+            async move { api.list_metadata(&list_params()).await }
         })
         .buffered(MAX_LIST_CONCURRENCY)
         .collect::<Vec<_>>()
@@ -303,10 +308,12 @@ fn add_workload_metric<'a>(
     entry.summary.source_pods.push(pod_name.to_string());
 }
 
+/// `pods` and `replicasets` are typed objects or their metadata; only the
+/// metadata is read.
 pub(crate) fn aggregate_workload_metrics(
     cluster_context: &str,
-    pods: &[Pod],
-    replicasets: &[ReplicaSet],
+    pods: &[impl kube::Resource],
+    replicasets: &[impl kube::Resource],
     pod_metrics: &[ResourceMetricSummary],
 ) -> Vec<ResourceMetricSummary> {
     let metric_by_pod: HashMap<(&str, &str), &ResourceMetricSummary> = pod_metrics
@@ -316,9 +323,10 @@ pub(crate) fn aggregate_workload_metrics(
     let replicaset_owner_by_key: BTreeMap<WorkloadKey<'_>, WorkloadKey<'_>> = replicasets
         .iter()
         .filter_map(|replicaset| {
-            let namespace = replicaset.metadata.namespace.as_deref()?;
-            let name = replicaset.metadata.name.as_deref()?;
-            let owner = controller_owner(replicaset.metadata.owner_references.as_deref()?)?;
+            let metadata = replicaset.meta();
+            let namespace = metadata.namespace.as_deref()?;
+            let name = metadata.name.as_deref()?;
+            let owner = controller_owner(metadata.owner_references.as_deref()?)?;
             Some((
                 ("ReplicaSet", namespace, name),
                 (owner.kind.as_str(), namespace, owner.name.as_str()),
@@ -328,13 +336,13 @@ pub(crate) fn aggregate_workload_metrics(
     let mut by_workload: BTreeMap<WorkloadKey<'_>, WorkloadMetric> = BTreeMap::new();
 
     for pod in pods {
-        let namespace = pod.metadata.namespace.as_deref().unwrap_or_default();
-        let name = pod.metadata.name.as_deref().unwrap_or_default();
+        let metadata = pod.meta();
+        let namespace = metadata.namespace.as_deref().unwrap_or_default();
+        let name = metadata.name.as_deref().unwrap_or_default();
         let Some(metric) = metric_by_pod.get(&(namespace, name)) else {
             continue;
         };
-        let Some(owner) = pod
-            .metadata
+        let Some(owner) = metadata
             .owner_references
             .as_deref()
             .and_then(controller_owner)
@@ -369,8 +377,8 @@ pub fn resource_metrics_projection(
     cluster_context: &str,
     pod_metric_objects: &[DynamicObject],
     node_metric_objects: &[DynamicObject],
-    pod_objects: &[Pod],
-    replicasets: &[ReplicaSet],
+    pod_objects: &[impl kube::Resource],
+    replicasets: &[impl kube::Resource],
     warnings: Vec<String>,
     had_forbidden_error: bool,
     had_unavailable_error: bool,
@@ -460,8 +468,21 @@ pub async fn resource_metrics_from(
         }
     }
 
-    let pod_result = list_pod_metric_objects(client.clone(), &namespaces).await;
-    let node_result = list_node_metric_objects(client.clone()).await;
+    // The metrics and the owner lists for the workload rollup are read
+    // together; their results are applied in the old order, so warnings keep
+    // their order. The boxes keep this future small while it holds all four.
+    let (pod_result, node_result, pod_owners, replicaset_owners) = futures_util::join!(
+        Box::pin(list_pod_metric_objects(client.clone(), &namespaces)),
+        Box::pin(list_node_metric_objects(client.clone())),
+        Box::pin(list_metadata_in_namespaces::<Pod>(
+            client.clone(),
+            &namespaces
+        )),
+        Box::pin(list_metadata_in_namespaces::<ReplicaSet>(
+            client,
+            &namespaces
+        )),
+    );
     let mut warnings = Vec::new();
     let mut had_unavailable_error = false;
     let mut had_forbidden_error = pod_result.failures.contains(&MetricsListStatus::Forbidden);
@@ -489,23 +510,22 @@ pub async fn resource_metrics_from(
             Vec::new()
         }
     };
-    let (pod_objects, replicasets) =
-        match list_in_namespaces::<Pod>(client.clone(), &namespaces).await {
-            Ok(pod_objects) => match list_in_namespaces::<ReplicaSet>(client, &namespaces).await {
-                Ok(replicasets) => (pod_objects, replicasets),
-                Err(err) => {
-                    warnings.push(format!(
-                        "Workload owner rollup unavailable: {}",
-                        err.message
-                    ));
-                    (pod_objects, Vec::new())
-                }
-            },
+    let (pod_objects, replicasets) = match pod_owners {
+        Ok(pod_objects) => match replicaset_owners {
+            Ok(replicasets) => (pod_objects, replicasets),
             Err(err) => {
-                warnings.push(format!("Workload metrics unavailable: {}", err.message));
-                (Vec::new(), Vec::new())
+                warnings.push(format!(
+                    "Workload owner rollup unavailable: {}",
+                    err.message
+                ));
+                (pod_objects, Vec::new())
             }
-        };
+        },
+        Err(err) => {
+            warnings.push(format!("Workload metrics unavailable: {}", err.message));
+            (Vec::new(), Vec::new())
+        }
+    };
 
     Ok(resource_metrics_projection(
         &cluster_context,
