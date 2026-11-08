@@ -179,6 +179,8 @@ export type Step =
     | { action: "selectYamlShape" | "selectYamlEncoding" | "replaceYamlDraft" | "expectYamlDocument"; value: string }
     | { action: "expectYamlPicker"; label: string; value: string }
     | { action: "formatYaml" }
+    | { action: "foldYamlLine"; line: number }
+    | { action: "expectYamlVisibleLines"; lines: number[] }
     | { action: "openResources" | "showYaml" | "closeDetail" | "expectDetailClosed" | "expectEmpty" | "refresh" }
     | { action: "search" | "expectSearch"; value: string }
     | ({ action: "expectResource" | "openResource" | "expectDetail" } & Identity)

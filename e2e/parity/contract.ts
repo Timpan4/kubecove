@@ -61,7 +61,7 @@ export const ACTIONS = [
 	"expectYamlAbsent",
 	"clickActionEntry",
 	"fillContainerImage",
-	"openActionEditor", "fillActionField", "chooseActionRevision", "selectYamlShape", "selectYamlEncoding", "replaceYamlDraft", "expectYamlDocument", "expectYamlPicker", "formatYaml",
+	"openActionEditor", "fillActionField", "chooseActionRevision", "selectYamlShape", "selectYamlEncoding", "replaceYamlDraft", "expectYamlDocument", "expectYamlPicker", "formatYaml", "foldYamlLine", "expectYamlVisibleLines",
 	"openResources", "showYaml", "closeDetail", "expectDetailClosed", "expectEmpty", "refresh", "search", "expectSearch",
 	"expectResource", "openResource", "expectDetail", "expectDetailTab", "expectClusterResource", "expectNoClusterResource", "expectYaml", "openPage", "showTab", "filterEvents",
 	"expectDetailScroll", "expectEvent", "expectEventCount", "expectLiveSessionCount", "filterIncidents", "expectIncidentGuide", "openIncidentResources", "expectGitOpsCount", "expectPortForward",
@@ -338,6 +338,10 @@ function step(value: unknown): Step {
 		case "chooseActionRevision": return { action: item.action, revision: count(item.revision) };
 		case "selectYamlShape": case "selectYamlEncoding": case "replaceYamlDraft": case "expectYamlDocument": return { action: item.action, value: string(item.value) };
 		case "formatYaml": return { action: item.action };
+		case "foldYamlLine": return { action: item.action, line: count(item.line) };
+		case "expectYamlVisibleLines":
+			if (!Array.isArray(item.lines)) throw new Error("Expected visible line numbers");
+			return { action: item.action, lines: item.lines.map(count) };
 		case "openResources": case "showYaml": case "closeDetail": case "expectDetailClosed": case "expectEmpty": case "refresh":
 			return { action: item.action };
 		case "search": case "expectSearch": return { action: item.action, value: item.value === "" ? "" : string(item.value) };

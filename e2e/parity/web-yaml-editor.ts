@@ -29,6 +29,27 @@ export async function yamlEditorAction(page: Page, step: Step) {
 			if (!isDeepStrictEqual(parse(text), JSON.parse(step.value))) throw new Error("Formatting changed YAML content");
 			break;
 		}
+		case "foldYamlLine": {
+			// The fold gutter marks a line at the same height as its line number.
+			const number = page.locator(".cm-lineNumbers .cm-gutterElement").filter({ visible: true }).getByText(String(step.line), { exact: true });
+			const box = await number.boundingBox();
+			if (!box) throw new Error(`YAML line ${step.line} is not shown`);
+			const markers = page.locator(".cm-foldGutter .cm-gutterElement").filter({ visible: true });
+			for (const marker of await markers.all()) {
+				const markerBox = await marker.boundingBox();
+				if (markerBox && Math.abs(markerBox.y - box.y) < 1) {
+					await marker.locator("span").click();
+					return;
+				}
+			}
+			throw new Error(`YAML line ${step.line} has no fold marker`);
+		}
+		case "expectYamlVisibleLines": {
+			const numbers = await page.locator(".cm-lineNumbers .cm-gutterElement").filter({ visible: true }).allTextContents();
+			const visible = numbers.map(Number);
+			if (!isDeepStrictEqual(visible, step.lines)) throw new Error(`Visible YAML lines ${visible.join(",")}, expected ${step.lines.join(",")}`);
+			break;
+		}
 		default:
 			throw new Error(`unhandled YAML editor action: ${step.action}`);
 	}

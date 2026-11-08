@@ -73,6 +73,8 @@ mod topology_metrics;
 mod workspace;
 #[path = "parity/workspace_editing.rs"]
 mod workspace_editing;
+#[path = "parity/yaml_folds.rs"]
+mod yaml_folds;
 
 use std::{
     any::Any, ffi::OsString, fs, panic::AssertUnwindSafe, path::Path, sync::Arc, time::Instant,
@@ -212,7 +214,8 @@ fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
         || workspace_editing::act(window, cx, step)
         || feedback::act(window, cx, step)
         || incident_diagnostics::act(window, cx, step)
-        || delivery::act(window, cx, step))
+        || delivery::act(window, cx, step)
+        || yaml_folds::act(window, cx, step))
     {
         panic!("unknown parity action: {}", string(step, "action"));
     }
