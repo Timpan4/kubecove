@@ -123,7 +123,6 @@ impl Inspector {
         (icon, tone): (&'static str, Hsla),
         expandable: bool,
         selected: bool,
-        medium: bool,
         cx: &mut Context<Self>,
     ) -> gpui_kit::Stateful<gpui_kit::Div> {
         let toggle = format!("nav-toggle:{label}");
@@ -182,14 +181,14 @@ impl Inspector {
                             }))
                     }),
             )
-            .child(ui::icon(icon, if medium { 12. } else { 14. }, tone))
+            .child(ui::icon(icon, 12., tone))
             .child(
                 ui::xs(label)
                     .line_height(px(12.))
                     .flex_1()
                     .min_w_0()
                     .truncate()
-                    .when(medium, |text| text.font_weight(FontWeight::MEDIUM)),
+                    .font_weight(FontWeight::MEDIUM),
             )
     }
 
@@ -218,7 +217,6 @@ impl Inspector {
                         (node.icon, (node.tone)()),
                         node.expandable,
                         selected,
-                        true,
                         cx,
                     )
                     .track_focus(&focus)
