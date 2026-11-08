@@ -288,7 +288,7 @@ test("parity jobs run every suite shard on pull requests and on main, and keep t
   const read = (name) => readFileSync(new URL(`../.github/workflows/${name}`, import.meta.url), "utf8").replaceAll("\r\n", "\n");
   const parity = read("parity.yml");
   const suite = read("parity-suite.yml");
-  assert.deepEqual([...parity.slice(parity.indexOf("\njobs:\n")).matchAll(/^ {2}([\w-]+):$/gm)].map((match) => match[1]), ["pull-request", "main"]);
+  assert.deepEqual([...parity.slice(parity.indexOf("\njobs:\n")).matchAll(/^ {2}([\w-]+):$/gm)].map((match) => match[1]), ["pull-request", "main", "main-build-cache", "coverage-map"]);
   for (const name of ["pull-request", "main"]) {
     const text = job(name, parity);
     const matrices = [...text.matchAll(/^ {8}shard: \[([\d, ]+)\]$/gm)].map((match) => match[1].split(",").map(Number));
@@ -311,7 +311,77 @@ test("parity jobs run every suite shard on pull requests and on main, and keep t
   assert.match(suite, /sudo apt-get install -y libfontconfig-dev pkg-config/);
   assert.match(suite, /run: bunx playwright-core install --with-deps --no-shell chromium/);
   const upload = suite.slice(suite.indexOf("- name: Upload parity artifacts"));
-  assert.match(upload, /^ {8}if: always\(\)$/m);
+  assert.match(upload, /^ {8}if: \$\{\{ always\(\) && !inputs\.build-only \}\}$/m);
   assert.match(upload, /^ {10}path: e2e\/artifacts\/parity-\*$/m);
   assert.match(upload, /^ {10}name: .*\$\{\{ inputs\.shard \}\}.*\$\{\{ github\.run_attempt \}\}$/m);
+});
+
+// Failure modes: change selection on main narrows the full suite that must run after every
+// merge; a main run without PARITY_COVERAGE records no map; a shallow pull request checkout
+// has no merge base; a cache key, path or artifact name that differs between the jobs keeps
+// the map from pull requests, which then silently run the full suite; the instrumented build
+// saved under the pull request cache key makes every pull request rebuild from scratch.
+test("main records the parity coverage map and pull requests select scenarios from it", () => {
+  const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8").replaceAll("\r\n", "\n");
+  const parity = read(".github/workflows/parity.yml");
+  const suite = read(".github/workflows/parity-suite.yml");
+  const expression = (text, key) => {
+    const match = new RegExp(`^ +${key}: \\$\\{\\{ (.+) \\}\\}$`, "m").exec(text);
+    assert.ok(match, `Missing ${key} expression`);
+    return match[1];
+  };
+  const step = (name) => {
+    const start = suite.indexOf(`- name: ${name}\n`);
+    assert.notEqual(start, -1, `Missing step: ${name}`);
+    const end = suite.indexOf("\n      - name: ", start + 1);
+    return suite.slice(start, end < 0 ? undefined : end);
+  };
+  // GitHub expressions here use only operators that JavaScript evaluates the same way.
+  const evaluate = (source, inputs, event) => {
+    const github = event === "pull_request"
+      ? { event_name: event, ref: "refs/pull/7/merge", event: { pull_request: { base: { sha: base } } } }
+      : { event_name: event, ref: "refs/heads/main", event: { pull_request: { base: {} } } };
+    return new Function("inputs", "github", "always", "cancelled", `return (${source.replaceAll("build-only", "buildOnly").replaceAll(/'([^']*)'/g, "\"$1\"")});`)(inputs, github, () => true, () => false);
+  };
+  const modes = {
+    pullRequest: [{ coverage: false, buildOnly: false }, "pull_request"],
+    main: [{ coverage: true, buildOnly: false }, "push"],
+    buildCache: [{ coverage: false, buildOnly: true }, "push"],
+  };
+  const run = step("Run parity suite");
+  const restore = step("Restore parity coverage map");
+  const results = Object.fromEntries(Object.entries(modes).map(([mode, [inputs, event]]) => [mode, {
+    fetchDepth: evaluate(expression(step("Checkout"), "fetch-depth"), inputs, event),
+    changed: evaluate(expression(run, "PARITY_CHANGED"), inputs, event),
+    coverage: evaluate(expression(run, "PARITY_COVERAGE"), inputs, event),
+    restores: evaluate(expression(restore, "if"), inputs, event),
+    cacheKey: `kubecove-parity${evaluate(/shared-key: kubecove-parity\$\{\{ (.+) \}\}/.exec(step("Cache Rust builds"))?.[1] ?? "''", inputs, event)}`,
+    runs: evaluate(expression(run, "if"), inputs, event),
+  }]));
+  assert.deepEqual(results.pullRequest, { fetchDepth: 0, changed: base, coverage: "0", restores: true, cacheKey: "kubecove-parity", runs: true });
+  assert.deepEqual(results.main, { fetchDepth: 1, changed: "", coverage: "1", restores: false, cacheKey: "kubecove-parity-coverage", runs: true });
+  assert.equal(results.buildCache.runs, false);
+  assert.equal(results.buildCache.cacheKey, "kubecove-parity");
+  assert.match(step("Build parity test"), /cargo test --manifest-path src-tauri\/gpui\/Cargo\.toml --test parity --no-run/);
+  assert.match(step("Cache Rust builds"), /save-if: \$\{\{ github\.ref == 'refs\/heads\/main' && inputs\.shard == 0 \}\}/);
+  assert.match(step("Install LLVM tools"), /if: \$\{\{ inputs\.coverage \}\}\n {8}run: rustup component add llvm-tools/);
+  // The jobs that call the suite on main pass the inputs these modes assume.
+  assert.match(job("main", parity), /^ {6}coverage: true$/m);
+  assert.doesNotMatch(job("pull-request", parity), /coverage:|build-only:/);
+  const buildCache = job("main-build-cache", parity);
+  assert.match(buildCache, /^ {6}build-only: true$/m);
+  assert.ok(buildCache.includes("if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}"));
+  // One map path and key family from the shard uploads through the merge to the pull request restore.
+  const merge = job("coverage-map", parity);
+  const mapPath = /^export const DEFAULT_MAP = "(.+)";$/m.exec(read("e2e/parity/changed-scenarios.ts"))?.[1];
+  assert.equal(mapPath, "e2e/artifacts/parity-coverage-map.json");
+  assert.match(merge, /^ {4}needs: main$/m);
+  assert.ok(merge.includes("if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}"));
+  const shardArtifact = /name: (parity-coverage-shard-)\$\{\{/.exec(step("Upload shard coverage map"))?.[1];
+  assert.ok(shardArtifact && merge.includes(`pattern: ${shardArtifact}*`), "merge downloads the shard maps the suite uploads");
+  assert.match(step("Upload shard coverage map"), /path: e2e\/artifacts\/parity-\*\/coverage-map\.json/);
+  assert.ok(merge.includes(`run: bun e2e/parity/coverage-map.ts merge ${mapPath} shard-maps/*/*/coverage-map.json`));
+  const saved = merge.slice(merge.indexOf("- name: Save coverage map"));
+  assert.ok(saved.includes(`path: ${mapPath}`) && saved.includes("key: parity-coverage-map-${{ github.sha }}"));
+  assert.ok(restore.includes(`path: ${mapPath}`) && restore.includes("key: parity-coverage-map-${{ github.event.pull_request.base.sha }}") && restore.includes("parity-coverage-map-\n"));
 });
