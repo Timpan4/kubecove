@@ -5,9 +5,14 @@ import {
 	useAppUpdateStore,
 } from "@/features/app-updates/store";
 
+// The readable's first value is captured at module load. A component that subscribes later must
+// receive the current state, or it keeps a status from before the startup check finished.
 export const appUpdateStore = readable<AppUpdateState>(
 	useAppUpdateStore.getState(),
-	(set) => useAppUpdateStore.subscribe(set),
+	(set) => {
+		set(useAppUpdateStore.getState());
+		return useAppUpdateStore.subscribe(set);
+	},
 );
 
 export const appUpdateActions = {
