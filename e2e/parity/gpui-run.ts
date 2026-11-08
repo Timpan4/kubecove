@@ -1,7 +1,8 @@
-import { readFile, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { readFile, rm, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import { startIdentity, stopGroup } from "../../.agents/skills/verify-kubecove/scripts/processes";
 import type { Contract } from "./contract";
+import { COVERAGE_RUSTFLAGS, recordGpuiCoverage } from "./gpui-coverage-map";
 
 type Spawned = { code: number; output: string };
 
@@ -35,15 +36,24 @@ async function buildParity(workspace: string, env: Record<string, string | undef
 /**
  * Runs the selected scenarios in `shards` GPUI test processes. The processes take scenarios
  * from a shared queue (`claim` in tests/parity/selection.rs) and each writes its own report;
- * this merges them into `gpui.json` in contract order.
+ * this merges them into `gpui.json` in contract order. With `coverage`, the binary is
+ * instrumented in its own `<target>/coverage` directory, so it never evicts the normal build.
  */
-export async function runGpui(contract: Contract, artifacts: string, fixture: { path: string; exit: Promise<number> }, shards: number, signal: AbortSignal, mark: (phase: string) => void): Promise<string | undefined> {
+export async function runGpui(contract: Contract, artifacts: string, fixture: { path: string; exit: Promise<number> }, shards: number, signal: AbortSignal, mark: (phase: string) => void, coverage = false): Promise<string | undefined> {
 	const workspace = resolve("src-tauri/gpui");
 	// scripts/e2e-parity.ts writes the selected IDs here before either driver starts.
 	const ids = join(artifacts, "scenarios.txt");
 	// Keep path-crate artifacts specific to this worktree, including environment overrides.
 	const env: Record<string, string | undefined> = { ...process.env, CARGO_TARGET_DIR: process.env.CARGO_TARGET_DIR ?? join(workspace, "target"), CARGO_BUILD_BUILD_DIR: process.env.CARGO_BUILD_BUILD_DIR ?? join(workspace, "build"), KUBECOVE_E2E_ARTIFACTS: artifacts, KUBECOVE_PARITY_FIXTURE: fixture.path, KUBECOVE_PARITY_SCENARIO_IDS: ids, CARGO_BUILD_JOBS: process.env.CARGO_BUILD_JOBS ?? "1" };
 	delete env.ARGV0; delete env.KUBECONFIG; delete env.KUBECOVE_PARITY_SCENARIO_PREFIX;
+	const strayProfiles = join(env.CARGO_TARGET_DIR ?? "", "coverage", "profraw");
+	if (coverage) {
+		const target = join(env.CARGO_TARGET_DIR ?? "", "coverage");
+		// RUSTFLAGS replaces `build.rustflags` from cargo config; this repository sets none.
+		// Instrumented build scripts and proc macros write profiles into their working
+		// directory, and the test processes write one at exit; all go to `strayProfiles`.
+		Object.assign(env, { CARGO_TARGET_DIR: target, CARGO_BUILD_BUILD_DIR: target, RUSTFLAGS: `${env.RUSTFLAGS ?? ""} ${COVERAGE_RUSTFLAGS}`.trim(), LLVM_PROFILE_FILE: join(strayProfiles, "%p-%m.profraw") });
+	}
 	const executable = await buildParity(workspace, env, artifacts, signal);
 	mark("gpuiBuild");
 	if (await fixture.exit !== 0) throw new Error("Fixture export failed");
@@ -67,5 +77,10 @@ export async function runGpui(contract: Contract, artifacts: string, fixture: { 
 	}
 	const scenarios = contract.scenarios.flatMap((scenario) => results.has(scenario.id) ? [results.get(scenario.id)] : []);
 	await writeFile(join(artifacts, "gpui.json"), JSON.stringify({ driver: "gpui", scenarios }, null, 2));
+	if (coverage) {
+		await recordGpuiCoverage(artifacts, executable, [join(env.CARGO_TARGET_DIR ?? "", "debug", "deps"), dirname(executable)], contract.scenarios.map((scenario) => scenario.id), shards, signal);
+		await rm(strayProfiles, { recursive: true, force: true });
+		mark("gpuiCoverage");
+	}
 	return problems.length ? problems.join("; ") : undefined;
 }

@@ -1,7 +1,9 @@
-import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { availableParallelism } from "node:os";
 import { join, resolve } from "node:path";
+import { changedScenarios, DEFAULT_MAP } from "../e2e/parity/changed-scenarios";
 import { type Contract, loadContract, requireViewCoverage, validateReports } from "../e2e/parity/contract";
+import { writeRunMap } from "../e2e/parity/coverage-map";
 import { runGpui } from "../e2e/parity/gpui-run";
 import { VIEWS } from "../e2e/parity/visual/views";
 import { runWeb } from "../e2e/parity/web";
@@ -15,8 +17,10 @@ type Scenario = Contract["scenarios"][number];
 
 /**
  * The scenarios this run executes, in contract order. Each optional filter narrows the one
- * before it; a filter by changed files belongs here too.
+ * before it.
  * - PARITY_PREFIX: comma-separated scenario ID prefixes.
+ * - PARITY_CHANGED=<base ref>: the scenarios the changes since the merge base with that ref can
+ *   affect, from the coverage map at PARITY_COVERAGE_MAP (e2e/parity/changed-scenarios.ts).
  * - PARITY_RERUN, resolved to `rerun`: only the scenarios either driver did not pass there.
  * - PARITY_SUITE_SHARD=<index>/<count>: every `count`-th scenario from position `index`, so
  *   separate CI jobs split one suite.
@@ -24,6 +28,13 @@ type Scenario = Contract["scenarios"][number];
 async function selectScenarios(scenarios: Scenario[], rerun: string | undefined): Promise<Scenario[]> {
 	const prefixes = (process.env.PARITY_PREFIX ?? "").split(",").map((prefix) => prefix.trim()).filter(Boolean);
 	let selected = prefixes.length ? scenarios.filter((scenario) => prefixes.some((prefix) => scenario.id.startsWith(prefix))) : scenarios;
+	const base = process.env.PARITY_CHANGED;
+	if (base) {
+		const selection = await changedScenarios(base, selected.map((scenario) => scenario.id), process.env.PARITY_COVERAGE_MAP || DEFAULT_MAP);
+		await writeFile(join(artifacts, "selection.json"), JSON.stringify({ base, all: selection.all, because: selection.because }, null, 2));
+		console.log(selection.all ? `Changes since ${base}: full suite (${selection.all})` : `Changes since ${base} select ${selection.ids.size} of ${selected.length} scenarios`);
+		selected = selected.filter((scenario) => selection.ids.has(scenario.id));
+	}
 	if (rerun) {
 		const [web, gpui] = await Promise.all([passedIn(rerun, "web"), passedIn(rerun, "gpui")]);
 		// Only the scenarios that run selected; a prefixed run never ran the others.
@@ -75,6 +86,8 @@ function notPassed(driver: string, ids: string[], report: { scenarios?: { id: st
 }
 
 const rerun = process.env.PARITY_RERUN === "last" ? await lastRun() : process.env.PARITY_RERUN;
+// PARITY_COVERAGE=1 records the coverage map (e2e/parity/README.md); normal runs leave it off.
+const coverage = process.env.PARITY_COVERAGE === "1";
 const artifacts = resolve("e2e/artifacts", `parity-${crypto.randomUUID()}`);
 await mkdir(artifacts, { recursive: true });
 await writeFile(join(artifacts, "web.json"), JSON.stringify({ driver: "web", scenarios: [] }));
@@ -99,6 +112,11 @@ try {
 			console.log("Nothing to rerun: both drivers passed every selected scenario.");
 			process.exit(0);
 		}
+		// A change no scenario can observe, or a CI shard with no share of a small selection.
+		if (process.env.PARITY_CHANGED) {
+			console.log("No parity scenarios selected by the changes.");
+			process.exit(0);
+		}
 		throw new Error("No parity scenarios selected");
 	}
 	// The selection is what PARITY_RERUN reads back, and the GPUI processes run exactly these IDs.
@@ -112,7 +130,7 @@ try {
 	const exportExit = exported.exited.then((code) => { mark("fixture"); return code; });
 	await Promise.all([
 		runWeb(contract, artifacts, controller.signal, jobs).catch((error: unknown) => fail(`Web driver: ${String(error)}`)).finally(() => mark("web")),
-		runGpui(contract, artifacts, { path: fixture, exit: exportExit }, jobs, controller.signal, mark).then((problem) => { if (problem) fail(problem); }, (error: unknown) => fail(`GPUI driver: ${String(error)}`)),
+		runGpui(contract, artifacts, { path: fixture, exit: exportExit }, jobs, controller.signal, mark, coverage).then((problem) => { if (problem) fail(problem); }, (error: unknown) => fail(`GPUI driver: ${String(error)}`)),
 	]);
 	controller.signal.throwIfAborted();
 	const reports = await Promise.all(["web", "gpui"].map(async (driver) => JSON.parse(await readFile(join(artifacts, `${driver}.json`), "utf8"))));
@@ -122,6 +140,14 @@ try {
 		if (problem) fail(problem);
 	}
 	if (!failure) validateReports(contract, reports);
+	if (coverage) {
+		// Scenarios that failed stay out of the map, so selection always runs them.
+		const map = await writeRunMap(artifacts, join(artifacts, "coverage-map.json"));
+		mark("coverageMap");
+		console.log(`Coverage map: ${map.scenarios.length} scenarios, ${Object.keys(map.files).length} files`);
+		const narrowed = ["PARITY_PREFIX", "PARITY_CHANGED", "PARITY_RERUN", "PARITY_SUITE_SHARD"].some((name) => process.env[name]);
+		if (!narrowed) await copyFile(join(artifacts, "coverage-map.json"), resolve(DEFAULT_MAP));
+	}
 } catch (error) { fail(String(error)); }
 finally {
 	process.removeListener("SIGINT", interrupt); process.removeListener("SIGTERM", interrupt);

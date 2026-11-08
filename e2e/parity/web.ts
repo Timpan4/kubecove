@@ -7,6 +7,7 @@ import { adapterAction } from "./web-adapters";
 import { argoAction } from "./web-argo";
 import { coverageAction } from "./web-coverage";
 import { checkCoverage } from "./web-coverage-checks";
+import { startCodeCoverage } from "./web-coverage-map";
 import { detailStatusAction } from "./web-detail-status";
 import { detailsAction } from "./web-details";
 import { feedbackAction } from "./web-feedback";
@@ -507,6 +508,7 @@ async function runScenario(browser: Browser, port: number, artifacts: string, sc
 		signal.throwIfAborted();
 		// Fake timers must exist before the app loads: the Argo tracker's recovery timer and loading indicator delays start before later steps.
 		if (scenario.steps.some((step) => step.action === "controlClock" || step.action === "advanceClock")) await page.clock.install();
+		const coverage = await startCodeCoverage(page);
 		await page.goto(`http://127.0.0.1:${port}/`);
 		const prelude = scenario.steps.findIndex((step) => step.action !== "mockTiming" || step.control.operation !== "hold");
 		const startupSteps = prelude < 0 ? scenario.steps.length : prelude;
@@ -517,6 +519,7 @@ async function runScenario(browser: Browser, port: number, artifacts: string, sc
 			if (index >= startupSteps) await action(page, step);
 			await page.screenshot({ path: join(artifacts, `web-${scenarioIndex}-${index}.png`) });
 		}
+		await coverage?.save(artifacts, scenarioIndex, scenario.id);
 		return { id: scenario.id, status: "passed" };
 	} catch (error) {
 		await page.screenshot({ path: join(artifacts, `web-${scenarioIndex}-failure.png`) }).catch(() => {});
