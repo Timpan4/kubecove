@@ -329,13 +329,23 @@ pub struct SortedOrder {
     /// Visible generation and sort the order was built for.
     key: Option<(u64, Sort)>,
     order: Vec<usize>,
+    /// Source rows patched in place since then. Only they move.
+    patched: Vec<usize>,
 }
 
 impl SortedOrder {
-    /// Drops the order when sorted values change without a new visible
-    /// generation: rows patched in place, or new usage metrics.
+    /// Drops the order when sorted values may change anywhere without a new
+    /// visible generation, as new usage metrics do.
     pub fn invalidate(&mut self) {
         self.key = None;
+        self.patched.clear();
+    }
+
+    /// Source rows replaced in place, whose sorted values may have changed.
+    pub fn patched(&mut self, rows: &[usize]) {
+        if self.key.is_some() {
+            self.patched.extend_from_slice(rows);
+        }
     }
 }
 
@@ -488,6 +498,16 @@ pub fn indexed_table_page(
     if sorted.key != Some(key) {
         sorted.order = table_sort::order(&rows, view.sort, usage);
         sorted.key = Some(key);
+        sorted.patched.clear();
+    } else if !sorted.patched.is_empty() {
+        let mut moved: Vec<usize> = sorted
+            .patched
+            .drain(..)
+            .filter_map(|index| visible.position(index))
+            .collect();
+        moved.sort_unstable();
+        moved.dedup();
+        table_sort::reposition(&mut sorted.order, &rows, view.sort, usage, &moved);
     }
     let rows = sorted.order.iter().map(|&index| rows[index]).collect();
     grouped_page(rows, view, preferred, lanes)

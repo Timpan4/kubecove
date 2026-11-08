@@ -148,3 +148,73 @@ fn watch_patches_keep_inherited_owners_in_step_with_their_parents() {
     let pod = backend.iter().find(|row| row.kind == "Pod").unwrap();
     assert_eq!(pod.git_ops_owner, None);
 }
+
+// A named read holds only the rows its notices name. Failure modes: a named row
+// missing from the read lingers; a named row new in the read is not added; a
+// row of another kind with the same name is replaced; an in-place update
+// reports another row as changed or rebuilds the rows.
+#[test]
+fn named_reads_replace_add_and_delete_only_their_rows() {
+    let service = |name: &str| {
+        let mut row = row(name, "ns");
+        row.kind = "Service".into();
+        row
+    };
+    let degraded = |name: &str| {
+        let mut row = row(name, "ns");
+        row.health_assessment.state = HealthAssessmentState::Degraded;
+        row
+    };
+    let names = |names: &[&str]| {
+        names
+            .iter()
+            .map(|name| (Some("ns".into()), (*name).into()))
+            .collect()
+    };
+    let mut rows = PreparedRows::new(vec![
+        row("a", "ns"),
+        row("b", "ns"),
+        row("c", "ns"),
+        service("a"),
+    ]);
+    let patched = rows.patch(
+        &key(),
+        vec![degraded("a"), row("d", "ns")],
+        Some(names(&["a", "b", "d"])),
+    );
+    assert!(
+        patched.changed.is_none(),
+        "an add or delete must prepare the rows again"
+    );
+    let state = |rows: &PreparedRows, kind: &str, name: &str| {
+        rows.iter()
+            .find(|row| row.kind == kind && row.name == name)
+            .map(|row| row.health_assessment.state)
+    };
+    assert_eq!(
+        state(&rows, "Pod", "a"),
+        Some(HealthAssessmentState::Degraded)
+    );
+    assert_eq!(state(&rows, "Pod", "b"), None);
+    assert!(state(&rows, "Pod", "d").is_some());
+    assert_ne!(
+        state(&rows, "Service", "a"),
+        Some(HealthAssessmentState::Degraded)
+    );
+
+    let identity = rows.identity().clone();
+    let patched = rows.patch(&key(), vec![degraded("c")], Some(names(&["c"])));
+    let c = rows
+        .iter()
+        .position(|row| row.kind == "Pod" && row.name == "c");
+    assert_eq!(patched.changed, Some(vec![c.unwrap()]));
+    assert!(Rc::ptr_eq(rows.identity(), &identity));
+    assert_eq!(
+        state(&rows, "Pod", "c"),
+        Some(HealthAssessmentState::Degraded)
+    );
+    assert_eq!(
+        state(&rows, "Pod", "a"),
+        Some(HealthAssessmentState::Degraded)
+    );
+}

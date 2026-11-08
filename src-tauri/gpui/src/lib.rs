@@ -2,6 +2,7 @@ mod actions;
 mod argo_app;
 pub mod assets;
 pub mod backend;
+mod bits;
 mod collate;
 pub mod frame_profile;
 pub mod gitops;

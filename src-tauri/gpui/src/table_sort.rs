@@ -151,3 +151,107 @@ pub fn order(
     });
     indices
 }
+
+/// Moves the rows at `moved` (positions in `rows`, ascending and unique) to
+/// where [`order`] would put them after their values changed. Every other
+/// row's value must be the one `order` sorted by. Ties fall back to the
+/// position, as the stable sort in `order` leaves them.
+pub fn reposition(
+    order: &mut Vec<usize>,
+    rows: &[&ResourceSummary],
+    sort: Sort,
+    usage: impl Fn(&ResourceSummary) -> Usage,
+    moved: &[usize],
+) {
+    if moved.is_empty() {
+        return;
+    }
+    // Keys are built on first use, so a few moved rows build a few keys.
+    let mut keys: Vec<Option<(Value<'_>, Key<'_>)>> = Vec::new();
+    keys.resize_with(rows.len(), || None);
+    let mut before = |left: usize, right: usize| {
+        for index in [left, right] {
+            if keys[index].is_none() {
+                let row = rows[index];
+                keys[index] = Some((
+                    value(row, sort.column, usage(row)),
+                    Key::new(&row.name, false),
+                ));
+            }
+        }
+        let (Some((left_value, left_name)), Some((right_value, right_name))) =
+            (&keys[left], &keys[right])
+        else {
+            unreachable!("both keys were built above");
+        };
+        let ordering = compare(left_value, right_value);
+        let ordering = if sort.desc {
+            ordering.reverse()
+        } else {
+            ordering
+        };
+        ordering
+            .then_with(|| left_name.full_cmp(right_name))
+            .then(left.cmp(&right))
+    };
+    let mut is_moved = crate::bits::Bits::new(rows.len());
+    for &position in moved {
+        is_moved.insert(position);
+    }
+    let kept: Vec<usize> = order
+        .iter()
+        .copied()
+        .filter(|&position| !is_moved.contains(position))
+        .collect();
+    let mut moved = moved.to_vec();
+    moved.sort_by(|&left, &right| before(left, right));
+    order.clear();
+    let mut start = 0;
+    for position in moved {
+        let at = start + kept[start..].partition_point(|&row| before(row, position).is_lt());
+        order.extend_from_slice(&kept[start..at]);
+        order.push(position);
+        start = at;
+    }
+    order.extend_from_slice(&kept[start..]);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn row(name: &str, restarts: i32) -> ResourceSummary {
+        serde_json::from_value(json!({
+            "name": name, "kind": "Pod", "cluster": "test", "namespace": "a",
+            "age": "1d", "restarts": restarts
+        }))
+        .unwrap()
+    }
+
+    // Failure modes: a moved row lands at its old place; rows tied on the
+    // sorted value and the name leave position order; a descending sort
+    // inserts in ascending order; several moved rows reorder among themselves;
+    // a row moved to either end is dropped or duplicated.
+    #[test]
+    fn repositioned_rows_match_a_full_sort() {
+        let mut rows: Vec<ResourceSummary> = (0..40)
+            .map(|index| row(&format!("pod-{}", index % 7), index % 5))
+            .collect();
+        for desc in [false, true] {
+            let sort = Sort {
+                column: Column::Restarts,
+                desc,
+            };
+            let refs: Vec<&ResourceSummary> = rows.iter().collect();
+            let mut order = super::order(&refs, sort, |_| Usage::default());
+            let moved = [0, 3, 17, 18, 39];
+            for (step, &position) in moved.iter().enumerate() {
+                rows[position].restarts = Some([-1, 9, 2, 2, 0][step]);
+            }
+            let refs: Vec<&ResourceSummary> = rows.iter().collect();
+            reposition(&mut order, &refs, sort, |_| Usage::default(), &moved);
+            assert_eq!(order, super::order(&refs, sort, |_| Usage::default()));
+        }
+    }
+}

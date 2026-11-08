@@ -50,6 +50,9 @@ pub(crate) struct PreparedRows {
     /// with the owner the backend sent. `swap_owners` exchanges the two, so a
     /// watch patch compares and replaces backend rows.
     inherited: Vec<(usize, Option<GitOpsOwnerSummary>)>,
+    /// Row indices sorted by a hash of kind, namespace and name, built by the
+    /// first named watch patch. Patches in place keep every row's index.
+    slots: Option<Vec<(u64, u32)>>,
 }
 
 struct Lane {
@@ -195,6 +198,7 @@ impl PreparedRows {
             lanes,
             by_name: sorted,
             inherited: Vec::new(),
+            slots: None,
         }
     }
 }
@@ -272,6 +276,11 @@ impl Visible {
     }
     pub(crate) fn all_rows(&self) -> &[ResourceSummary] {
         &self.source.rows
+    }
+    /// The visible position of source row `index`, if it is visible.
+    pub(crate) fn position(&self, index: usize) -> Option<usize> {
+        // `refilter_with` keeps visible indices in source order.
+        self.indices.binary_search(&index).ok()
     }
     pub(crate) fn contains_index(&self, index: usize) -> bool {
         self.selected[index]
