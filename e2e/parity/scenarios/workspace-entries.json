@@ -20,6 +20,24 @@
         { "action": "openWorkspaceEntry", "panel": "Pinned", "label": "Deployment / payments-api", "index": 0, "count": 1 },
         { "action": "expectDetail", "kind": "Deployment", "namespace": "payments", "name": "payments-api" }
       ]
+    },
+    {
+      "id": "overview.recent-order",
+      "title": "A revisited resource moves to the front of Recent without a duplicate, ahead of older visits of any kind",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "closeDetail" },
+        { "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "checkout-worker" },
+        { "action": "closeDetail" },
+        { "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "closeDetail" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectWorkspaceEntry", "panel": "Recent", "label": "Deployment / payments-api", "index": 0, "count": 3 },
+        { "action": "expectWorkspaceEntry", "panel": "Recent", "label": "Deployment / checkout-worker", "index": 1, "count": 3 },
+        { "action": "expectWorkspaceEntry", "panel": "Recent", "label": "Namespace / payments", "index": 2, "count": 3 }
+      ]
     }
   ]
 }

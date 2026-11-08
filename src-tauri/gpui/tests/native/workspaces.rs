@@ -31,6 +31,7 @@ impl WorkspaceControls {
                 namespaces: vec![],
                 warnings: vec![],
                 versions: Default::default(),
+                listed: vec![],
             })
         }))
     }

@@ -370,6 +370,7 @@ impl Backend for DesktopBackend {
                 resources: vec![],
                 warnings: vec![],
                 versions: Default::default(),
+                listed: vec![],
             };
             for namespace in scopes {
                 let next = inventory(

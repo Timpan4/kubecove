@@ -52,6 +52,17 @@ pub struct ScopeResult {
     /// The list version of each kind's rows, by `live_data::watch_signature` of its
     /// watch key. A view starts that watch at this version.
     pub versions: ListVersions,
+    /// The lists this read completed. A row missing from a completed list is
+    /// gone; one missing from a failed or unread list may still exist.
+    pub listed: Vec<Listed>,
+}
+
+/// One completed list, as the web's `ResourceEntryPointCoverage` request: a
+/// built-in key has no API version and covers every version of its kind.
+#[derive(Clone)]
+pub struct Listed {
+    pub context: String,
+    pub key: WatchResourceKey,
 }
 
 pub type ListVersions = std::collections::HashMap<String, String>;

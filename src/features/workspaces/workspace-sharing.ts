@@ -177,6 +177,9 @@ function sharedToSavedWorkspace(
 		rbacReviews: (replace?.rbacReviews ?? []).filter((review) =>
 			clusterContexts.includes(review.clusterContext),
 		),
+		// Shared files carry no pins or visits, so a replaced workspace keeps its own;
+		// reconciliation drops entries that the next Overview read no longer finds.
+		entryPoints: replace?.entryPoints ?? base.entryPoints,
 		portForwards: reconcileSavedPortForwardsForScope(
 			workspace.portForwards
 				.filter(

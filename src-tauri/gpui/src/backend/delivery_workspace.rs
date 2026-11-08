@@ -168,5 +168,6 @@ pub async fn resources(
         resources,
         warnings,
         versions,
+        listed: Vec::new(),
     })
 }

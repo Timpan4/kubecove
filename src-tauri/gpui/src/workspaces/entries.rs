@@ -35,6 +35,34 @@ impl Entry {
         }
     }
 
+    /// `entryPointKey` equality with a live row, API version included.
+    pub fn identifies(&self, row: &ResourceSummary) -> bool {
+        self.kind == EntryKind::Resource
+            && self.cluster_context == row.cluster
+            && self.namespace == row.namespace
+            && self.name == row.name
+            && self.resource_kind.as_ref() == Some(&row.kind)
+            && self.api_version == row.api_version
+    }
+
+    /// `resourceRequestCoversEntry`: a completed list in this entry's context
+    /// and namespace would have returned it. A built-in list covers every API
+    /// version of its kind; a discovered list covers its own version.
+    pub fn listed_by(&self, listed: &crate::backend::Listed) -> bool {
+        let kind = &listed.key.resource_kind;
+        self.kind == EntryKind::Resource
+            && self.cluster_context == listed.context
+            && self.resource_kind.as_ref() == Some(&kind.kind)
+            && listed
+                .key
+                .namespace
+                .as_ref()
+                .is_none_or(|namespace| self.namespace.as_ref() == Some(namespace))
+            && (kind.api_version.is_none()
+                || self.api_version.is_none()
+                || self.api_version == kind.api_version)
+    }
+
     pub fn same_target(&self, other: &Self) -> bool {
         self.kind == other.kind
             && self.cluster_context == other.cluster_context

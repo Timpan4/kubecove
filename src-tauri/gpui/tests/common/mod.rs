@@ -489,6 +489,7 @@ impl Backend for Fixture {
                 resources,
                 warnings: vec![],
                 versions,
+                listed: vec![],
             })
         })
     }
@@ -584,6 +585,7 @@ impl Backend for Fixture {
                 resources,
                 warnings: vec![],
                 versions,
+                listed: vec![],
             })
         })
     }

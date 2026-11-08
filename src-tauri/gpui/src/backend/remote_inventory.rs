@@ -60,6 +60,7 @@ pub(super) async fn inventory(
         resources: vec![],
         warnings,
         versions: Default::default(),
+        listed: vec![],
     };
     for kind in kinds {
         let namespace = typed_namespace(kind, &scope);
@@ -72,12 +73,16 @@ pub(super) async fn inventory(
         {
             Ok(list) => {
                 result.resources.extend(list.items);
+                let key = typed_watch_key(kind, namespace);
                 if let Some(version) = list.resource_version {
-                    let key = typed_watch_key(kind, namespace);
                     result
                         .versions
                         .insert(crate::backend::live_data::watch_signature(&key), version);
                 }
+                result.listed.push(crate::backend::Listed {
+                    context: scope.context.clone(),
+                    key,
+                });
             }
             Err(error) if error.kind == AppErrorKind::Forbidden => {
                 result.warnings.push(format!("{kind}: {}", error.message))
@@ -96,12 +101,16 @@ pub(super) async fn inventory(
         {
             Ok(list) => {
                 result.resources.extend(list.items);
+                let key = discovered_watch_key(&kind, namespace);
                 if let Some(version) = list.resource_version {
-                    let key = discovered_watch_key(&kind, namespace);
                     result
                         .versions
                         .insert(crate::backend::live_data::watch_signature(&key), version);
                 }
+                result.listed.push(crate::backend::Listed {
+                    context: scope.context.clone(),
+                    key,
+                });
             }
             Err(error) => result
                 .warnings

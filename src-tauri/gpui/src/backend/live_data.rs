@@ -1,6 +1,7 @@
 //! Typed discovery, list and watch commands for native live views.
 use super::{
-    INSPECTION_KINDS, KindRows, ListVersions, LogStream, NativeBackend, Read, Scope, ScopeResult,
+    INSPECTION_KINDS, KindRows, ListVersions, Listed, LogStream, NativeBackend, Read, Scope,
+    ScopeResult,
 };
 use kubecove_lib::{
     commands::{self, ClusterAccess, list_projection::bounded_join_all},
@@ -220,6 +221,7 @@ pub(super) fn resources(backend: &NativeBackend, scope: Scope, refresh: bool) ->
         result.resources.extend(custom.resources);
         result.warnings.extend(custom.warnings);
         result.versions.extend(custom.versions);
+        result.listed.extend(custom.listed);
         Ok(result)
     })
 }
@@ -281,6 +283,7 @@ pub(super) fn builtin_resources(
         };
         let mut resources = Vec::new();
         let mut versions = ListVersions::new();
+        let mut listed = Vec::new();
         for ((kind, key), result) in kinds.into_iter().zip(&keys).zip(results) {
             match result {
                 Ok(snapshot) => {
@@ -288,6 +291,10 @@ pub(super) fn builtin_resources(
                     if let Some(version) = snapshot.resource_version {
                         versions.insert(watch_signature(key), version);
                     }
+                    listed.push(Listed {
+                        context: scope.context.clone(),
+                        key: key.clone(),
+                    });
                 }
                 Err(error) if error.kind == AppErrorKind::Forbidden => {
                     warnings.push(format!("{kind}: {}", error.message))
@@ -300,6 +307,7 @@ pub(super) fn builtin_resources(
             resources,
             warnings,
             versions,
+            listed,
         })
     })
 }
@@ -314,6 +322,7 @@ pub(super) fn custom_resources(backend: &NativeBackend, scope: Scope) -> Read<Sc
         let mut warnings = Vec::new();
         let mut resources = Vec::new();
         let mut versions = ListVersions::new();
+        let mut listed = Vec::new();
         let discovered = crate::read_retry::cancelled_read(
             || {
                 Box::pin({
@@ -357,12 +366,14 @@ pub(super) fn custom_resources(backend: &NativeBackend, scope: Scope) -> Read<Sc
                     match result {
                         Ok(snapshot) => {
                             resources.extend(Arc::unwrap_or_clone(snapshot.rows));
+                            let key = discovered_key(kind, scope.namespace.clone());
                             if let Some(version) = snapshot.resource_version {
-                                versions.insert(
-                                    watch_signature(&discovered_key(kind, scope.namespace.clone())),
-                                    version,
-                                );
+                                versions.insert(watch_signature(&key), version);
                             }
+                            listed.push(Listed {
+                                context: scope.context.clone(),
+                                key,
+                            });
                         }
                         Err(error) => warnings.push(format!("{}: {}", kind.kind, error.message)),
                     }
@@ -375,6 +386,7 @@ pub(super) fn custom_resources(backend: &NativeBackend, scope: Scope) -> Read<Sc
             resources,
             warnings,
             versions,
+            listed,
         })
     })
 }

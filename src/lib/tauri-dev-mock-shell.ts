@@ -1,9 +1,9 @@
-export type ShellReadPhase = "ready" | "contexts-failed" | "contexts-empty" | "namespaces-failed" | "namespaces-credential-failed" | "namespaces-empty" | "resources-failed" | "primary-context-missing" | "kind-missing" | "payments-api-removed" | "sources-failed";
+export type ShellReadPhase = "ready" | "contexts-failed" | "contexts-empty" | "namespaces-failed" | "namespaces-credential-failed" | "namespaces-empty" | "resources-failed" | "primary-context-missing" | "kind-missing" | "payments-api-removed" | "payments-deployments-forbidden" | "payments-ingress-version-changed" | "sources-failed";
 function initialPhase(): ShellReadPhase {
     const value = globalThis.sessionStorage?.getItem("parity-shell-read");
     switch (value) {
         case "contexts-failed": case "contexts-empty": case "namespaces-empty": case "namespaces-failed": case "namespaces-credential-failed": case "resources-failed":
-        case "primary-context-missing": case "kind-missing": case "payments-api-removed": case "sources-failed": return value;
+        case "primary-context-missing": case "kind-missing": case "payments-api-removed": case "payments-deployments-forbidden": case "payments-ingress-version-changed": case "sources-failed": return value;
         default: return "ready";
     }
 }
@@ -31,8 +31,16 @@ export function shellKubeconfigSourcesRead<Sources>(sources: Sources): Sources {
     return sources;
 }
 
-/** Removes the scripted Deployment from scope reads, as if it were deleted from the cluster. */
-export function shellWithoutRemoved<Row extends { kind: string; namespace?: string | null; name: string }>(rows: Row[]): Row[] {
+/** Splits scope requests into lists that complete and the Deployment lists the phase refuses. */
+export function shellScopeRequests<Request extends { kind?: string }>(requests: Request[]): { completed: Request[]; forbidden: Request[] } {
+    const refused = (request: Request) => phase === "payments-deployments-forbidden" && request.kind === "Deployment";
+    return { completed: requests.filter((request) => !refused(request)), forbidden: requests.filter(refused) };
+}
+
+/** Applies the scripted cluster changes after a resource was pinned: a deleted Deployment, or an Ingress served at another API version. */
+export function shellWithoutRemoved<Row extends { kind: string; namespace?: string | null; name: string; apiVersion?: string }>(rows: Row[]): Row[] {
+    const payments = (row: Row, kind: string) => row.kind === kind && row.namespace === "payments" && row.name === "payments-api";
+    if (phase === "payments-ingress-version-changed") return rows.map((row) => (payments(row, "Ingress") ? { ...row, apiVersion: "networking.k8s.io/v1beta1" } : row));
     if (phase !== "payments-api-removed") return rows;
-    return rows.filter((row) => !(row.kind === "Deployment" && row.namespace === "payments" && row.name === "payments-api"));
+    return rows.filter((row) => !payments(row, "Deployment"));
 }

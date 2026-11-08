@@ -31,6 +31,7 @@ impl SharedScopeReads {
                 let custom = custom.await?;
                 result.resources.extend(custom.resources);
                 result.warnings.extend(custom.warnings);
+                result.listed.extend(custom.listed);
             }
             Ok(result)
         })

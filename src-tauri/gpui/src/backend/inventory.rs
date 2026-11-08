@@ -135,5 +135,6 @@ pub(super) async fn cluster_resources(
         resources,
         warnings,
         versions,
+        listed: Vec::new(),
     })
 }

@@ -7,6 +7,8 @@ use std::rc::Rc;
 
 pub(super) struct OverviewRead {
     pub rows: Vec<kubecove_lib::models::ResourceSummary>,
+    /// The lists behind `rows`, so entry reconciliation drops only what a list missed.
+    pub listed: Vec<crate::backend::Listed>,
     pub load: super::Load,
     pub warnings: Vec<String>,
     pub retried: bool,
@@ -30,6 +32,7 @@ impl Inspector {
                 match result {
                     Ok(result) => {
                         state.rows = result.resources;
+                        state.listed = result.listed;
                         state.warnings = result.warnings;
                         state.load = super::Load::Ready;
                         state.retried = true;
@@ -43,6 +46,7 @@ impl Inspector {
         });
         self.workspace_read = Some(OverviewRead {
             rows,
+            listed: vec![],
             warnings: vec![],
             load: super::Load::Loading,
             retried: false,
@@ -127,6 +131,7 @@ impl Inspector {
                 match result {
                     Ok(result) => {
                         state.rows = result.resources;
+                        state.listed = result.listed;
                         state.warnings = result.warnings;
                         state.load = super::Load::Ready;
                     }
@@ -140,6 +145,7 @@ impl Inspector {
         self.workspace_read = Some(OverviewRead {
             retried: false,
             rows: vec![],
+            listed: vec![],
             warnings: vec![],
             load: super::Load::Loading,
             _task: task,

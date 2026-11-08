@@ -2,7 +2,6 @@
 use super::{Inspector, Load, Page};
 use crate::{
     gitops_surface::Focus,
-    model::WORKSPACE_KINDS,
     ui,
     workspaces::entries::{Entries, Entry, EntryKind},
 };
@@ -150,23 +149,23 @@ impl Inspector {
         else {
             return;
         };
-        let contexts = self.workspace_contexts();
+        let launcher = &self.launcher;
         let Some(entries) = self.persisted.workspace_entry_points.get_mut(&id) else {
             return;
         };
-        // The overview read lists every namespace of its contexts for the workspace kinds.
+        // The web requests the saved kinds in the saved namespaces, so only
+        // those count as covered, even where the native read lists more.
         let changed = entries.drop_missing(|entry| {
-            let Some(kind) = entry.resource_kind.as_deref() else {
-                return false;
-            };
-            contexts.contains(&entry.cluster_context)
-                && WORKSPACE_KINDS.contains(&kind)
-                && !read.rows.iter().any(|row| {
-                    row.cluster == entry.cluster_context
-                        && row.namespace == entry.namespace
-                        && row.name == entry.name
-                        && row.kind == kind
-                })
+            entry
+                .resource_kind
+                .as_deref()
+                .is_some_and(|kind| launcher.overview_kind(kind))
+                && entry
+                    .namespace
+                    .as_deref()
+                    .is_none_or(|namespace| launcher.shows_namespace(namespace))
+                && read.listed.iter().any(|listed| entry.listed_by(listed))
+                && !read.rows.iter().any(|row| entry.identifies(row))
         });
         if changed {
             self.save_preferences(cx);

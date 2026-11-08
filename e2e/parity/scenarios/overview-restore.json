@@ -97,12 +97,67 @@
         { "action": "toggleResourcePin", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
         { "action": "openPage", "page": "Workspace Overview" },
         { "action": "expectWorkspaceEntry", "panel": "Pinned", "label": "Deployment / payments-api", "index": 0, "count": 1 },
+        { "action": "configureShellRead", "phase": "payments-deployments-forbidden" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectWorkspaceEntry", "panel": "Pinned", "label": "Deployment / payments-api", "index": 0, "count": 1 },
         { "action": "configureShellRead", "phase": "payments-api-removed" },
         { "action": "openLauncher" },
         { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
         { "action": "openPage", "page": "Workspace Overview" },
         { "action": "expectEntryCount", "panel": "Pinned", "count": 0 },
         { "action": "configureShellRead", "phase": "ready" }
+      ]
+    },
+    {
+      "id": "overview.pinned-resource-version",
+      "title": "A pinned resource leaves Pinned once a completed list serves it only at another API version",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openResources" },
+        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "toggleResourcePin", "kind": "Ingress", "namespace": "payments", "name": "payments-api" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectWorkspaceEntry", "panel": "Pinned", "label": "Ingress / payments-api", "index": 0, "count": 1 },
+        { "action": "configureShellRead", "phase": "payments-ingress-version-changed" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectEntryCount", "panel": "Pinned", "count": 0 },
+        { "action": "configureShellRead", "phase": "ready" }
+      ]
+    },
+    {
+      "id": "overview.imported-entry-state",
+      "title": "Replacing a workspace from a file keeps its pins, and a copy added from the file starts without pins",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "choose-compare-workspace" },
+        { "action": "openLauncher" },
+        { "action": "clickSettingsButton", "label": "Import" },
+        { "action": "clickSettingsButton", "label": "Apply import" },
+        { "action": "openSavedWorkspace", "name": "Imported compare" },
+        { "action": "openResources" },
+        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "toggleResourcePin", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectWorkspaceEntry", "panel": "Pinned", "label": "Deployment / payments-api", "index": 0, "count": 1 },
+        { "action": "openLauncher" },
+        { "action": "clickSettingsButton", "label": "Import" },
+        { "action": "importDecision", "choice": "Replace" },
+        { "action": "clickSettingsButton", "label": "Apply import" },
+        { "action": "openSavedWorkspace", "name": "Imported compare" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectWorkspaceEntry", "panel": "Pinned", "label": "Deployment / payments-api", "index": 0, "count": 1 },
+        { "action": "openLauncher" },
+        { "action": "clickSettingsButton", "label": "Import" },
+        { "action": "importDecision", "choice": "Add as new" },
+        { "action": "clickSettingsButton", "label": "Apply import" },
+        { "action": "openSavedWorkspace", "name": "Imported compare (2)" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectEntryCount", "panel": "Pinned", "count": 0 }
       ]
     }
   ]

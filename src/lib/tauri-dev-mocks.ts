@@ -23,7 +23,7 @@ import { operationMockHandlers } from "./tauri-dev-mock-operations";
 import { pageReadResult } from "./tauri-dev-mock-pages";
 import { rbacInspectionMock, rbacReviewMock } from "./tauri-dev-mock-rbac";
 import { cleanupMockSessions, listMockExecs, listMockForwards, mockExecInput, resizeMockExec, startMockExec, startMockForward, stopMockExec, stopMockForward } from "./tauri-dev-mock-session-controls";
-import { shellKubeconfigSourcesRead, shellRead, shellWithoutRemoved } from "./tauri-dev-mock-shell";
+import { shellKubeconfigSourcesRead, shellRead, shellScopeRequests, shellWithoutRemoved } from "./tauri-dev-mock-shell";
 import { mockTiming } from "./tauri-dev-mock-timing";
 import { networkTopology, ownershipTopology } from "./tauri-dev-mock-topology";
 import { createMockChannel, type TauriClient } from "./tauri-runtime";
@@ -137,12 +137,13 @@ const handlers = {
 	list_resource_scope: (args) => {
         shellRead("resources", []);
         if (failedWorkspaceContext && args.clusterContext === failedWorkspaceContext) throw new Error("Context unavailable");
+        const { completed, forbidden } = shellScopeRequests<ResourceListRequest>(args?.requests ?? []);
         return {
-		resources: shellWithoutRemoved(listScope(args?.requests, args?.clusterContext)),
-		completedRequests: args?.requests ?? [],
+		resources: shellWithoutRemoved(listScope(completed, args?.clusterContext)),
+		completedRequests: completed,
 		// Read with the rows it describes, so a held read keeps its version.
-		resourceVersions: (args?.requests ?? []).map((request) => ({ request, resourceVersion: mockListVersion() })),
-		failures: [],
+		resourceVersions: completed.map((request) => ({ request, resourceVersion: mockListVersion() })),
+		failures: forbidden.map((request) => ({ clusterContext: args?.clusterContext ?? "mock-dev", request, error: { kind: "forbidden", message: "deployments.apps is forbidden" } })),
 	}; },
 	get_resource_yaml: (args) => builtInYamlFor(args),
 	get_resource_details: (args) => withDetailStatusFixture(detailsFor(args)),

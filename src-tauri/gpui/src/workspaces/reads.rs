@@ -30,6 +30,7 @@ pub fn resources(reads: Vec<(String, Read<ScopeResult>)>) -> Read<ScopeResult> {
             namespaces: vec![],
             warnings: vec![],
             versions: Default::default(),
+            listed: vec![],
         };
         let mut first_error = None;
         let mut succeeded = false;
@@ -38,6 +39,7 @@ pub fn resources(reads: Vec<(String, Read<ScopeResult>)>) -> Read<ScopeResult> {
                 Ok(result) => {
                     succeeded = true;
                     merged.resources.extend(result.resources);
+                    merged.listed.extend(result.listed);
                     for ns in result.namespaces {
                         if !merged.namespaces.iter().any(|other| other.name == ns.name) {
                             merged.namespaces.push(ns);
