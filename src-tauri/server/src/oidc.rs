@@ -36,15 +36,21 @@ mod refresh;
 
 #[path = "oidc_validate.rs"]
 mod validate;
+pub(crate) use validate::validate_public_origin;
 #[cfg(test)]
 use validate::{test_metadata, test_origin};
-pub(crate) use validate::validate_public_origin;
 use validate::{validate_issuer, validate_metadata};
+
+#[path = "oidc_native.rs"]
+mod native;
+use native::{NativeCodes, NativeRequest};
+pub use native::{NativeStart, NativeToken};
 
 #[path = "oidc_cookies.rs"]
 mod cookies;
 pub use cookies::clear_cookie_header;
-use cookies::{auth_cookie, cookie_header, cookie_value, transaction_cookie};
+pub use cookies::names_cookie;
+use cookies::{auth_cookie, cookie_header, cookie_value, presented_credential, transaction_cookie};
 
 type OidcClient = CoreClient<
     EndpointSet,
@@ -133,6 +139,8 @@ pub struct Oidc {
     metadata: CoreProviderMetadata,
     transaction_key: [u8; 32],
     credentials: Mutex<HashMap<String, Credential>>,
+    /// Desktop authorization codes (ADR 0031). Lock after `credentials`.
+    codes: Mutex<NativeCodes>,
     /// The open sessions, each with the sign-in whose ID token its
     /// Kubernetes requests carry.
     bound: Mutex<Vec<Binding>>,
@@ -167,6 +175,8 @@ struct Verified {
     subject: String,
     exp: u64,
     tokens: Option<Tokens>,
+    /// The desktop request and its deadline, for a native transaction.
+    native: Option<(NativeRequest, u64)>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -176,6 +186,8 @@ struct Transaction {
     verifier: String,
     #[serde(rename = "exp")]
     expires_at: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    native: Option<NativeRequest>,
 }
 
 #[derive(Clone, Deserialize)]
@@ -192,6 +204,8 @@ struct TransactionClaims {
     verifier: String,
     #[serde(rename = "exp")]
     exp: u64,
+    #[serde(default)]
+    native: Option<NativeRequest>,
 }
 
 impl Oidc {
@@ -222,12 +236,34 @@ impl Oidc {
             metadata,
             transaction_key,
             credentials: Mutex::new(HashMap::new()),
+            codes: Mutex::default(),
             bound: Mutex::new(Vec::new()),
             allow_http_test: false,
         })
     }
 
     pub fn start(&self) -> Result<Response, ApiError> {
+        let (auth_url, signed) = self.begin(None)?;
+        let mut response = (
+            StatusCode::OK,
+            Json(serde_json::json!({ "authorizationUrl": auth_url.as_str() })),
+        )
+            .into_response();
+        response.headers_mut().append(
+            header::SET_COOKIE,
+            cookie_header(&transaction_cookie(&signed))?,
+        );
+        response
+            .headers_mut()
+            .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+        Ok(response)
+    }
+
+    /// The provider authorization URL and the signed transaction cookie value.
+    fn begin(
+        &self,
+        native: Option<NativeRequest>,
+    ) -> Result<(openidconnect::url::Url, String), ApiError> {
         let client = self
             .client(&self.metadata)
             .map_err(|_| oidc_unavailable())?;
@@ -248,22 +284,11 @@ impl Oidc {
             nonce: nonce.secret().to_owned(),
             verifier: verifier.secret().to_owned(),
             expires_at,
+            native,
         };
         let signed = sign_transaction(&transaction, &self.transaction_key)
             .map_err(|_| oidc_unavailable())?;
-        let mut response = (
-            StatusCode::OK,
-            Json(serde_json::json!({ "authorizationUrl": auth_url.as_str() })),
-        )
-            .into_response();
-        response.headers_mut().append(
-            header::SET_COOKIE,
-            cookie_header(&transaction_cookie(&signed))?,
-        );
-        response
-            .headers_mut()
-            .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-        Ok(response)
+        Ok((auth_url, signed))
     }
 
     pub async fn callback(
@@ -271,6 +296,12 @@ impl Oidc {
         headers: &HeaderMap,
         query: Callback,
     ) -> Result<Response, ApiError> {
+        if query.error.is_some()
+            && let Some(response) = self.native_denial(headers, query.state.as_deref())
+        {
+            observe::oidc_callback_failed(StatusCode::SEE_OTHER);
+            return Ok(response);
+        }
         let verified = match self.callback_inner(headers, query).await {
             Ok(verified) => verified,
             Err(error) => {
@@ -292,6 +323,7 @@ impl Oidc {
             subject,
             exp,
             tokens,
+            native,
         } = verified;
         let issuer = &self.config.issuer;
         // Without a refresh token the session ends with the ID token, as it
@@ -330,10 +362,15 @@ impl Oidc {
         let mut credentials = self.credentials.lock().map_err(|_| oidc_unavailable())?;
         self.prune_expired(&mut credentials);
         credentials.insert(opaque.clone(), credential);
-        let mut response = Redirect::to("/").into_response();
-        response
-            .headers_mut()
-            .append(header::SET_COOKIE, cookie_header(&auth_cookie(&opaque))?);
+        let response = match native {
+            Some((request, deadline)) => self.issue_code(&opaque, request, deadline),
+            None => browser_sign_in(&opaque),
+        };
+        if response.is_err() {
+            credentials.remove(&opaque);
+        }
+        drop(credentials);
+        let mut response = response?;
         response.headers_mut().append(
             header::SET_COOKIE,
             cookie_header(&clear_cookie_header(TRANSACTION_COOKIE))?,
@@ -412,6 +449,7 @@ impl Oidc {
             subject,
             exp,
             tokens,
+            native: transaction.native.map(|request| (request, transaction.exp)),
         })
     }
 
@@ -497,6 +535,7 @@ impl Oidc {
             metadata,
             transaction_key: key,
             credentials: Mutex::new(HashMap::new()),
+            codes: Mutex::default(),
             bound: Mutex::new(Vec::new()),
             allow_http_test: true,
         })
@@ -628,6 +667,14 @@ fn timeout_seconds_ceil(timeout: Duration) -> u64 {
     timeout
         .as_secs()
         .saturating_add(u64::from(timeout.subsec_nanos() > 0))
+}
+
+fn browser_sign_in(credential: &str) -> Result<Response, ApiError> {
+    let mut response = Redirect::to("/").into_response();
+    response
+        .headers_mut()
+        .append(header::SET_COOKIE, cookie_header(&auth_cookie(credential))?);
+    Ok(response)
 }
 
 fn callback_failure(denied: bool) -> Response {

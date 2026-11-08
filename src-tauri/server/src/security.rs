@@ -47,6 +47,17 @@ pub fn authenticated(headers: &HeaderMap, token: &str) -> bool {
     })
 }
 
+/// What lets a POST or WebSocket upgrade omit its Origin header.
+#[derive(Clone, Copy)]
+pub enum MissingOrigin<'a> {
+    /// Token mode: a bearer equal to the startup token.
+    StartupToken(&'a str),
+    /// OIDC mode: an `Authorization` header and no `Cookie` header (ADR 0031).
+    HeaderCredential,
+    /// Every request needs an allowed Origin.
+    Refused,
+}
+
 #[derive(Clone)]
 pub struct NetworkPolicy {
     pub hosts: Vec<String>,
@@ -66,7 +77,7 @@ impl NetworkPolicy {
         &self,
         headers: &HeaderMap,
         check_origin: bool,
-        token: &str,
+        missing_origin: MissingOrigin<'_>,
     ) -> Result<(), RequestRefusal> {
         let mut hosts = headers.get_all(header::HOST).iter();
         let Some(host) = hosts.next().and_then(|host| host.to_str().ok()) else {
@@ -87,7 +98,18 @@ impl NetworkPolicy {
                         .is_ok_and(|origin| self.origins.iter().any(|allowed| allowed == origin))
             }
             // Native clients cannot use a browser cookie to bypass Origin checks.
-            None => bearer(headers).is_some_and(|value| equal_secret(value, token)),
+            // A browser cannot attach a header credential cross-site without a
+            // CORS preflight, which this server never grants (ADR 0031).
+            None => match missing_origin {
+                MissingOrigin::StartupToken(token) => {
+                    bearer(headers).is_some_and(|value| equal_secret(value, token))
+                }
+                MissingOrigin::HeaderCredential => {
+                    headers.contains_key(header::AUTHORIZATION)
+                        && !headers.contains_key(header::COOKIE)
+                }
+                MissingOrigin::Refused => false,
+            },
         };
         if allowed {
             Ok(())
@@ -138,27 +160,30 @@ mod tests {
     #[test]
     fn host_rebinding_duplicate_hosts_and_cross_origin_are_rejected() {
         let mut headers = browser_headers();
-        assert_eq!(policy().check(&headers, true, "secret"), Ok(()));
+        assert_eq!(
+            policy().check(&headers, true, MissingOrigin::StartupToken("secret")),
+            Ok(())
+        );
         headers.insert(header::HOST, "evil.example:1234".parse().unwrap());
         assert_eq!(
-            policy().check(&headers, true, "secret"),
+            policy().check(&headers, true, MissingOrigin::StartupToken("secret")),
             Err(RequestRefusal::Host)
         );
         headers = browser_headers();
         headers.append(header::HOST, "localhost:1234".parse().unwrap());
         assert_eq!(
-            policy().check(&headers, true, "secret"),
+            policy().check(&headers, true, MissingOrigin::StartupToken("secret")),
             Err(RequestRefusal::Host)
         );
         headers = browser_headers();
         headers.insert(header::ORIGIN, "http://evil.example".parse().unwrap());
         assert_eq!(
-            policy().check(&headers, true, "secret"),
+            policy().check(&headers, true, MissingOrigin::StartupToken("secret")),
             Err(RequestRefusal::Origin)
         );
         headers.insert(header::AUTHORIZATION, "Bearer secret".parse().unwrap());
         assert_eq!(
-            policy().check(&headers, true, "secret"),
+            policy().check(&headers, true, MissingOrigin::StartupToken("secret")),
             Err(RequestRefusal::Origin)
         );
     }
@@ -169,11 +194,40 @@ mod tests {
         headers.remove(header::ORIGIN);
         headers.insert(header::COOKIE, "kubecove_session=secret".parse().unwrap());
         assert_eq!(
-            policy().check(&headers, true, "secret"),
+            policy().check(&headers, true, MissingOrigin::StartupToken("secret")),
             Err(RequestRefusal::Origin)
         );
         headers.insert(header::AUTHORIZATION, "Bearer secret".parse().unwrap());
-        assert_eq!(policy().check(&headers, true, "secret"), Ok(()));
+        assert_eq!(
+            policy().check(&headers, true, MissingOrigin::StartupToken("secret")),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn header_credentials_omit_origin_only_without_cookies() {
+        let mut headers = browser_headers();
+        headers.remove(header::ORIGIN);
+        assert_eq!(
+            policy().check(&headers, true, MissingOrigin::HeaderCredential),
+            Err(RequestRefusal::Origin)
+        );
+        headers.insert(header::AUTHORIZATION, "Bearer sign-in".parse().unwrap());
+        assert_eq!(
+            policy().check(&headers, true, MissingOrigin::HeaderCredential),
+            Ok(())
+        );
+        headers.insert(header::COOKIE, "__Host-kubecove_oidc=x".parse().unwrap());
+        assert_eq!(
+            policy().check(&headers, true, MissingOrigin::HeaderCredential),
+            Err(RequestRefusal::Origin)
+        );
+        headers.remove(header::COOKIE);
+        headers.insert(header::ORIGIN, "https://evil.example".parse().unwrap());
+        assert_eq!(
+            policy().check(&headers, true, MissingOrigin::HeaderCredential),
+            Err(RequestRefusal::Origin)
+        );
     }
 
     #[test]
