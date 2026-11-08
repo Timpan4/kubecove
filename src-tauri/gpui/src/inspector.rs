@@ -612,6 +612,7 @@ impl Render for Inspector {
         let started = std::time::Instant::now();
         self.loading.begin_frame(cx.background_executor().now());
         self.sync_argo_scope(window, cx);
+        self.sync_scope_reread(window, cx);
         self.sync_sidebar_discovery(cx);
         self.sync_live(window, cx);
         self.flush_live_patches(cx);

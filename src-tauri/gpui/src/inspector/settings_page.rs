@@ -30,8 +30,6 @@ pub(super) struct SettingsState {
     pub(super) confirming_skip_review: bool,
     pub(super) integrations: super::settings_integrations::Integrations,
     pub(super) mcp: super::settings_mcp::McpState,
-    /// The page "Back to app" returns to.
-    previous: Page,
     category: Category,
     search: Entity<InputState>,
     pub(super) env_var: Entity<InputState>,
@@ -70,7 +68,6 @@ impl SettingsState {
             confirming_skip_review: false,
             integrations: super::settings_integrations::Integrations::new(window, cx),
             mcp: super::settings_mcp::McpState::new(window, cx),
-            previous: Page::Overview,
             category: Category::General,
             search,
             env_var,
@@ -86,9 +83,6 @@ impl SettingsState {
 
 impl Inspector {
     pub(super) fn open_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.page != Page::Settings {
-            self.settings.previous = self.page;
-        }
         self.settings.category = Category::General;
         self.settings
             .search
@@ -105,15 +99,15 @@ impl Inspector {
     }
 
     fn close_settings(&mut self, cx: &mut Context<Self>) {
-        // Without an open workspace the previous page does not exist, so Back returns to the
+        // Without an open workspace there is no Workspace Overview, so Back returns to the
         // launcher, as the web's settings view does.
         if !self.workspace_open() {
             self.launcher.open = true;
             cx.notify();
             return;
         }
-        let previous = self.settings.previous;
-        self.open_page(previous, cx);
+        // The web's closeSettings lands on the Workspace Overview, whatever page opened Settings.
+        self.open_page(Page::Overview, cx);
     }
 
     pub(super) fn settings_page(&self, cx: &mut Context<Self>) -> Div {

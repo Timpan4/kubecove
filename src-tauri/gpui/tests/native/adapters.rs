@@ -38,6 +38,8 @@ fn secret_detail(cx: &mut TestAppContext, backend: Arc<Controlled>) -> gpui_kit:
         "open-settings",
         "setting:Redact secrets",
         "settings-back",
+        // Back lands on the Workspace Overview.
+        "open-resources",
         "resource:Secret:payments:payments-api",
         "show-yaml",
     ] {

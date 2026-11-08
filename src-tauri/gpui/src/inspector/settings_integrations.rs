@@ -1,6 +1,6 @@
 //! Remote sign-in and update status use only the typed host seam.
 use super::{
-    Inspector,
+    Inspector, Page,
     controls::{Variant, button},
     settings_page::settings_row,
 };
@@ -22,6 +22,11 @@ pub(super) struct Integrations {
     remote_error: Option<String>,
     remote_busy: bool,
     remote_task: Option<Task<()>>,
+    /// Set by a runtime change. The web resets every query then, and its Resources query reads
+    /// again only when the page next mounts. The scope read that the change starts also feeds
+    /// the sidebar here, so Resources reads again on its next entry instead of keeping rows a
+    /// later remote drop would make stale.
+    scope_reread: bool,
     pub(super) update: UpdateStatus,
     pub(super) checked_at: Option<String>,
     pub(super) update_error: Option<String>,
@@ -50,6 +55,7 @@ impl Integrations {
             remote_error: None,
             remote_busy: false,
             remote_task: None,
+            scope_reread: false,
             update: UpdateStatus::Idle,
             checked_at: None,
             update_error: None,
@@ -167,9 +173,24 @@ impl Inspector {
         self.warnings.clear();
         self.scope = Default::default();
         self.settings.sources = None;
+        self.settings.integrations.scope_reread = true;
         let sources = self.kubeconfig_sources_read(cx);
         self.run_kubeconfig(sources, window, cx);
         self.load_contexts(window, cx);
+    }
+    /// Reads the scope again when a page showing its rows opens after a runtime change.
+    pub(super) fn sync_scope_reread(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.settings.integrations.scope_reread
+            || !matches!(self.page, Page::Resources | Page::ClusterOverview)
+        {
+            return;
+        }
+        self.settings.integrations.scope_reread = false;
+        // Without a context the contexts read is still running, and the scope read it starts is
+        // this page's read.
+        if self.workspace_open() && !self.scope.context.is_empty() {
+            self.load_scope(false, window, cx);
+        }
     }
     pub(super) fn remote_settings_section(&self, cx: &mut Context<Self>) -> Div {
         let state = &self.settings.integrations;
