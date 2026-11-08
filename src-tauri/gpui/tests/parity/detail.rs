@@ -315,9 +315,6 @@ pub(super) fn scan_table(
     // Beside an open detail the table is below the map in the page scroller.
     // Reveal that viewport before scrolling its virtualized rows.
     reveal(window, "resources", "resource-table", cx);
-    if visit(window) {
-        return true;
-    }
     let table = window.find("resource-table").bounds();
     let viewport = window.viewport_size();
     let top = table.top().max(px(0.));
@@ -329,7 +326,7 @@ pub(super) fn scan_table(
         window.dispatch_event(
             ScrollEvent {
                 position,
-                delta: ScrollDelta::Pixels(point(px(0.), delta)),
+                delta: ScrollDelta::Pixels(delta),
                 ..Default::default()
             }
             .to_platform_input(),
@@ -337,13 +334,32 @@ pub(super) fn scan_table(
         );
         window.render_frame(cx);
     };
+    // A cell expectation can leave the table scrolled sideways, which clips the
+    // Name column. A row counts as rendered at any horizontal scroll, as in
+    // Playwright, so bring the Name column back before looking.
+    if let Some(name) = window.try_find("sort:Name")
+        && name.bounds().left() < table.left()
+    {
+        scroll(
+            window,
+            cx,
+            point(table.left() - name.bounds().left(), px(0.)),
+        );
+    }
+    if visit(window) {
+        return true;
+    }
     // PAGE_SIZE bounds the current page. Reset its scroll before scanning it.
-    scroll(window, cx, height * kubecove_gpui::model::PAGE_SIZE as f32);
+    scroll(
+        window,
+        cx,
+        point(px(0.), height * kubecove_gpui::model::PAGE_SIZE as f32),
+    );
     for _ in 0..kubecove_gpui::model::PAGE_SIZE {
         if visit(window) {
             return true;
         }
-        scroll(window, cx, -height / 2.);
+        scroll(window, cx, point(px(0.), -height / 2.));
     }
     false
 }
