@@ -326,15 +326,15 @@ impl Inspector {
         namespace: &str,
         cx: &mut Context<Self>,
     ) {
-        let Some(index) = self
+        let Some(tab) = self
             .exec
             .tabs
             .iter()
-            .position(|tab| tab.session_id() == Some(session_id))
+            .find(|tab| tab.session_id() == Some(session_id))
         else {
             return;
         };
-        self.exec.active = Some(index);
+        self.exec.active = Some(tab.key);
         self.sessions.popover = false;
         if let Detail::Ready(detail) = &mut self.detail
             && detail.data.summary.kind == "Pod"

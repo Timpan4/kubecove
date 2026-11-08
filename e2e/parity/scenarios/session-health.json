@@ -21,6 +21,28 @@
       ]
     },
     {
+      "id": "live-session-header.exec-show-after-close",
+      "title": "Show brings back the session's own Exec tab after an earlier tab closed",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "start", "container": "sidecar", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "sidecar", "status": "running", "contains": "Controlled exec sidecar" },
+        { "action": "execControl", "operation": "start", "container": "app", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "execControl", "operation": "close", "container": "sidecar", "tab": 0 },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "openLiveSessionPopover" },
+        { "action": "expectLiveSessionRow", "target": "payments/Pod/payments-api-7d9c9b7f8d-k2r9p", "status": "running", "controls": ["Show", "Stop"] },
+        { "action": "liveSessionControl", "operation": "Show", "target": "payments/Pod/payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app", "absent": "Controlled exec sidecar" },
+        { "action": "execControl", "operation": "close", "container": "app", "tab": 1 },
+        { "action": "expectExecState", "container": "app", "status": "closed", "contains": "" },
+        { "action": "closeDetail" }
+      ]
+    },
+    {
       "id": "live-session-header.forward-controls",
       "title": "The header popover reconnects and stops a Pod port-forward row",
       "steps": [
