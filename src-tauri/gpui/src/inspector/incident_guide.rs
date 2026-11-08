@@ -345,7 +345,7 @@ impl Inspector {
         };
         let (details_state, details) = (state.details.0, state.details.1.as_ref());
         let topology_state = state.topology.0;
-        let owners = guidance::resolve_owner(&item.resource, state.topology.1.as_ref());
+        let owners = guidance::resolve_owner(&item.resource, state.topology.1.as_deref());
         let guide = guidance::build(item, details, &owners, details_state, topology_state);
         let enriching = self
             .loading

@@ -288,7 +288,7 @@ impl Backend for Controlled {
             })
         })
     }
-    fn topology(&self, scope: Scope) -> Read<ResourceTopology> {
+    fn topology(&self, scope: Scope) -> Read<Arc<ResourceTopology>> {
         self.retry.calls.fetch_add(1, Ordering::SeqCst);
         let error = self.retry.errors.lock().unwrap().pop_front();
         let gate = self.retry.gate.lock().unwrap().take();
@@ -299,12 +299,12 @@ impl Backend for Controlled {
             if let Some(kind) = error {
                 return Err(AppError::new("scripted topology failure", kind));
             }
-            Ok(serde_json::from_value(json!({
+            Ok(Arc::new(serde_json::from_value(json!({
                 "nodes": [{"id": MAP_NODE, "kind": "Deployment", "name": "payments-api", "namespace": "payments", "status": "Available", "health": "healthy", "selectable": true, "summary": resource(&scope.context)}],
                 "edges": [],
                 "warnings": [],
             }))
-            .unwrap())
+            .unwrap()))
         })
     }
     fn gitops(&self, _: String) -> Read<GitOpsInventory> {

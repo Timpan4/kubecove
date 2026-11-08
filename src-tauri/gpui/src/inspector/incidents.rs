@@ -31,7 +31,7 @@ pub(super) struct IncidentsState {
     selected: Option<String>,
     enriched: Option<String>,
     pub(super) details: (Enrichment, Option<ResourceDetailsFull>),
-    pub(super) topology: (Enrichment, Option<ResourceTopology>),
+    pub(super) topology: (Enrichment, Option<std::sync::Arc<ResourceTopology>>),
     pub(super) copied: Option<(String, bool)>,
     pub(super) show_step_context: bool,
     request: Rc<()>,

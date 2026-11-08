@@ -473,21 +473,23 @@ impl Backend for DesktopBackend {
             })
         })
     }
-    fn topology(&self, scope: Scope) -> Read<ResourceTopology> {
+    fn topology(&self, scope: Scope) -> Read<Arc<ResourceTopology>> {
         if !self.selected() {
             return self.local.topology(scope);
         }
         let mut args = scope_args(scope);
         args["mode"] = json!("ownership");
-        self.call("list_resource_topology", args)
+        let read = self.call::<ResourceTopology>("list_resource_topology", args);
+        Box::pin(async move { read.await.map(Arc::new) })
     }
-    fn network_topology(&self, scope: Scope) -> Read<ResourceTopology> {
+    fn network_topology(&self, scope: Scope) -> Read<Arc<ResourceTopology>> {
         if !self.selected() {
             return self.local.network_topology(scope);
         }
         let mut args = scope_args(scope);
         args["mode"] = json!("networkFlow");
-        self.call("list_resource_topology", args)
+        let read = self.call::<ResourceTopology>("list_resource_topology", args);
+        Box::pin(async move { read.await.map(Arc::new) })
     }
     fn resource_yaml(&self, resource: ResourceSummary, mode: YamlViewMode) -> Read<String> {
         self.resource_yaml_encoded(resource, mode, YamlEncoding::Yaml)

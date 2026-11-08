@@ -136,11 +136,11 @@ impl Backend for NativeBackend {
         ))
     }
 
-    fn topology(&self, scope: Scope) -> Read<ResourceTopology> {
+    fn topology(&self, scope: Scope) -> Read<Arc<ResourceTopology>> {
         topology_metrics::topology(self, scope, "ownership")
     }
 
-    fn network_topology(&self, scope: Scope) -> Read<ResourceTopology> {
+    fn network_topology(&self, scope: Scope) -> Read<Arc<ResourceTopology>> {
         topology_metrics::topology(self, scope, "networkFlow")
     }
 

@@ -25,10 +25,11 @@ use kubecove_lib::models::{AppError, AppErrorKind, ResourceSummary, ResourceTopo
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::{Rc, Weak};
+use std::sync::Arc;
 
 pub(super) enum TopologyLoad {
     Loading,
-    Ready(ResourceTopology),
+    Ready(Arc<ResourceTopology>),
     Failed(AppError),
 }
 

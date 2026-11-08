@@ -11,7 +11,7 @@ pub(super) fn topology(
     backend: &NativeBackend,
     scope: Scope,
     mode: &'static str,
-) -> Read<ResourceTopology> {
+) -> Read<Arc<ResourceTopology>> {
     let store = backend.store.clone();
     let cancellations = backend.cancellations.clone();
     backend.read(async move {
@@ -26,7 +26,6 @@ pub(super) fn topology(
             State::new(&cancellations),
         )
         .await
-        .map(Arc::unwrap_or_clone)
     })
 }
 

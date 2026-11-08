@@ -513,21 +513,23 @@ impl Backend for Fixture {
         })
     }
     /// The all-namespaces graph, or a namespace's graph the fixture exported.
-    fn topology(&self, scope: Scope) -> Read<ResourceTopology> {
+    fn topology(&self, scope: Scope) -> Read<std::sync::Arc<ResourceTopology>> {
         let context = scope.context.clone();
         let key = scope.namespace.clone().unwrap_or_default();
-        let topology = scope
-            .namespace
-            .and_then(|namespace| self.namespace_topologies.get(&namespace))
-            .unwrap_or(&self.topology)
-            .clone();
+        let topology = std::sync::Arc::new(
+            scope
+                .namespace
+                .and_then(|namespace| self.namespace_topologies.get(&namespace))
+                .unwrap_or(&self.topology)
+                .clone(),
+        );
         self.coverage_read(
             "list_resource_topology",
             self.timing
                 .read("list_resource_topology", &context, &key, topology),
         )
     }
-    fn network_topology(&self, scope: Scope) -> Read<ResourceTopology> {
+    fn network_topology(&self, scope: Scope) -> Read<std::sync::Arc<ResourceTopology>> {
         let mut graph = self.network_topology.clone();
         if let Some(namespace) = &scope.namespace {
             graph
@@ -539,7 +541,7 @@ impl Backend for Fixture {
                 .edges
                 .retain(|edge| ids.contains(&edge.source) && ids.contains(&edge.target));
         }
-        Box::pin(async move { Ok(graph) })
+        Box::pin(async move { Ok(std::sync::Arc::new(graph)) })
     }
     fn app_usage(&self) -> Read<kubecove_lib::models::AppUsageMetrics> {
         let usage = self.app_usage.clone();

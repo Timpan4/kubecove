@@ -237,9 +237,10 @@ pub trait Backend: Send + Sync + 'static {
         )
     }
     fn details(&self, resource: ResourceSummary) -> Read<ResourceDetailsFull>;
-    /// The ownership graph for the scope's namespaces (all when unscoped).
-    fn topology(&self, scope: Scope) -> Read<ResourceTopology>;
-    fn network_topology(&self, _scope: Scope) -> Read<ResourceTopology> {
+    /// The ownership graph for the scope's namespaces (all when unscoped). It is
+    /// shared with the backend's topology cache rather than copied.
+    fn topology(&self, scope: Scope) -> Read<Arc<ResourceTopology>>;
+    fn network_topology(&self, _scope: Scope) -> Read<Arc<ResourceTopology>> {
         Box::pin(async {
             Err(AppError::new(
                 "Network Flow unavailable",
