@@ -214,7 +214,12 @@ impl Inspector {
                     return;
                 }
                 match result {
-                    Ok(kinds) => this.live.kinds = kinds,
+                    Ok(kinds) => {
+                        this.live.kinds = kinds;
+                        if this.fill_custom_selection() {
+                            this.filter(cx);
+                        }
+                    }
                     Err(error) => this
                         .warnings
                         .push(format!("Custom Resources: {}", error.message)),

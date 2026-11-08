@@ -24,7 +24,7 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
                 if picker {
                     "kinds-picker"
                 } else {
-                    "nav:Custom Resources"
+                    "nav-toggle:Custom Resources"
                 },
                 cx,
             );

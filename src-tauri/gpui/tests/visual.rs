@@ -285,7 +285,7 @@ mod visual {
                 }
                 "custom-search" => {
                     act(&mut cx, handle, |window, cx| {
-                        window.click("nav:Custom Resources", cx)
+                        window.click("nav-toggle:Custom Resources", cx)
                     });
                     act(&mut cx, handle, |window, cx| {
                         window.click("custom-resource-search", cx);
@@ -294,7 +294,7 @@ mod visual {
                 }
                 "custom-resources" => {
                     act(&mut cx, handle, |window, cx| {
-                        window.click("nav:Custom Resources", cx)
+                        window.click("nav-toggle:Custom Resources", cx)
                     });
                     act(&mut cx, handle, |window, cx| {
                         window.click("custom-group:kustomize.toolkit.fluxcd.io", cx)

@@ -134,14 +134,14 @@ pub(super) fn setup(driver: &mut Driver, view: &str) {
             });
         }
         "custom-search" => {
-            driver.act(|window, cx| window.click("nav:Custom Resources", cx));
+            driver.act(|window, cx| window.click("nav-toggle:Custom Resources", cx));
             driver.act(|window, cx| {
                 window.click("custom-resource-search", cx);
                 window.input("kustom", cx);
             });
         }
         "custom-resources" => {
-            driver.act(|window, cx| window.click("nav:Custom Resources", cx));
+            driver.act(|window, cx| window.click("nav-toggle:Custom Resources", cx));
             driver.act(|window, cx| window.click("custom-group:kustomize.toolkit.fluxcd.io", cx));
             driver.act(|window, cx| {
                 window.click(

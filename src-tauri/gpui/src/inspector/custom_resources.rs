@@ -64,7 +64,45 @@ impl Inspector {
         self.filter(cx);
         cx.notify();
     }
+
+    /// The "All namespaces" Custom Resources row selects the custom kinds present
+    /// in the workspace across every namespace, as a category row selects its
+    /// kinds, and lists the kinds below it.
+    pub(super) fn select_custom_resources(
+        &mut self,
+        window: &mut gpui_kit::Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.can_leave(cx) {
+            return;
+        }
+        self.live.custom_open = true;
+        // Leaving a namespace rediscovers the present kinds; `fill_custom_selection` runs when they land.
+        self.select_namespace(None, window, cx);
+        self.search
+            .update(cx, |input, cx| input.set_value("", window, cx));
+        self.kind_selection.chosen = Some(Default::default());
+        self.sidebar_tree.selected = Some(CUSTOM_RESOURCES.to_owned());
+        self.fill_custom_selection();
+        self.close_detail(cx);
+        self.filter(cx);
+    }
+
+    /// Checks the present custom kinds while the Custom Resources selection is
+    /// still waiting for them. Returns whether it checked any.
+    pub(super) fn fill_custom_selection(&mut self) -> bool {
+        if self.sidebar_tree.selected.as_deref() == Some(CUSTOM_RESOURCES)
+            && let Some(chosen) = &mut self.kind_selection.chosen
+            && chosen.is_empty()
+        {
+            chosen.extend(self.live.kinds.iter().map(super::kind_selection::identity));
+            return !chosen.is_empty();
+        }
+        false
+    }
 }
+
+const CUSTOM_RESOURCES: &str = "Custom Resources";
 
 /// The disabled loading and error rows in the Custom Resources section, as the web's
 /// `SidebarTree` renders them. The web shows the discovery message as the row's tooltip, so

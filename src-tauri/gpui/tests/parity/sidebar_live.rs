@@ -14,6 +14,7 @@ pub(super) fn sidebar_row_id(path: &[&str]) -> String {
         "Storage",
         "RBAC",
         "Cluster Overview",
+        "Custom Resources",
     ]
     .contains(&path[0]);
     if path.len() > 1 {
@@ -209,8 +210,8 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
         }
         "searchCustomKinds" => {
             if window.try_find("custom-resource-search").is_none() {
-                reveal(window, "sidebar-tree", "nav:Custom Resources", cx);
-                window.click("nav:Custom Resources", cx);
+                reveal(window, "sidebar-tree", "nav-toggle:Custom Resources", cx);
+                window.click("nav-toggle:Custom Resources", cx);
                 window.render_frame(cx);
             }
             replace_text(window, cx, "custom-resource-search", string(step, "value"));

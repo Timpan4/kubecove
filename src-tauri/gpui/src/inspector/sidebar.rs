@@ -114,6 +114,8 @@ impl Inspector {
             .children(trailing)
     }
 
+    /// `expandable` rows are Custom Resources, the only branch built here: its
+    /// chevron opens and closes the kind list, as the web's "Expand" button does.
     fn tree_row(
         &self,
         id: impl Into<ElementId>,
@@ -122,7 +124,9 @@ impl Inspector {
         expandable: bool,
         selected: bool,
         medium: bool,
+        cx: &mut Context<Self>,
     ) -> gpui_kit::Stateful<gpui_kit::Div> {
+        let toggle = format!("nav-toggle:{label}");
         div()
             .id(id)
             .relative()
@@ -154,12 +158,28 @@ impl Inspector {
             .hover(|row| row.bg(Tokens::card()))
             .child(
                 div()
+                    .id(SharedString::from(toggle))
+                    .test_support()
                     .flex()
                     .items_center()
                     .justify_center()
                     .size(px(18.))
                     .when(expandable, |chevron| {
-                        chevron.child(ui::icon("chevron-right", 12., Tokens::muted_foreground()))
+                        chevron
+                            .child(ui::icon(
+                                if self.live.custom_open {
+                                    "chevron-down"
+                                } else {
+                                    "chevron-right"
+                                },
+                                12.,
+                                Tokens::muted_foreground(),
+                            ))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                cx.stop_propagation();
+                                this.live.custom_open = !this.live.custom_open;
+                                cx.notify();
+                            }))
                     }),
             )
             .child(ui::icon(icon, if medium { 12. } else { 14. }, tone))
@@ -180,10 +200,16 @@ impl Inspector {
                 if node.expandable && node.label != "Custom Resources" {
                     return self.builtin_branch(node.label, None, cx);
                 }
-                // Resources pages select their namespace or kind rows instead.
-                let selected = node.target == self.page && node.target != Page::Resources;
-                let target = node.target;
                 let custom = node.label == "Custom Resources";
+                // Resources pages select their namespace or kind rows instead,
+                // and Custom Resources selects its kinds.
+                let selected = if custom {
+                    self.page == Page::Resources
+                        && self.sidebar_tree.selected.as_deref() == Some(node.label)
+                } else {
+                    node.target == self.page && node.target != Page::Resources
+                };
+                let target = node.target;
                 let focus = self.sidebar_tree.focus_handle(node.label, cx);
                 vec![
                     self.tree_row(
@@ -193,6 +219,7 @@ impl Inspector {
                         node.expandable,
                         selected,
                         true,
+                        cx,
                     )
                     .track_focus(&focus)
                     .tab_index(0)
@@ -208,6 +235,7 @@ impl Inspector {
                         this.activate_navigation(target, custom, window, cx);
                     }))
                     .test_support()
+                    .aria_description(if selected { "selected" } else { "unselected" })
                     .into_any_element(),
                 ]
             })
@@ -221,13 +249,12 @@ impl Inspector {
         window: &mut gpui_kit::Window,
         cx: &mut Context<Self>,
     ) {
-        if custom {
-            self.live.custom_open = !self.live.custom_open;
-            cx.notify();
-            return;
-        }
         if self.can_leave(cx) {
             self.navigation_open = false;
+        }
+        if custom {
+            self.select_custom_resources(window, cx);
+            return;
         }
         match target {
             Page::Resources => self.select_namespace(None, window, cx),
