@@ -23,6 +23,17 @@ export const REMOTE_NOTICE_LABELS: Record<RemoteNoticeAction, string> = {
 
 export const SIGN_IN_MEMORY_ONLY = "This computer's credential store is unavailable, so the sign-in lasts only until KubeCove closes.";
 
+export const SIGN_IN_NOT_DELETED =
+	'This computer\'s credential store could not delete the sign-in, so it may still be stored. KubeCove will not use it while it runs. Remove any "KubeCove remote sign-in" entry for this server from the credential store.';
+
+/** Notes on how this computer keeps the sign-in, shown under a remote's status or notice. */
+export function signInNotes(summary: RemoteConnectionSummary): string[] {
+	const notes: string[] = [];
+	if (summary.signInMemoryOnly) notes.push(SIGN_IN_MEMORY_ONLY);
+	if (summary.signInNotDeleted) notes.push(SIGN_IN_NOT_DELETED);
+	return notes;
+}
+
 const SIGN_IN_AGAIN = "Your sign-in has expired. Sign in again.";
 
 /** The notice for the summary's state, or null while the session is connected. */

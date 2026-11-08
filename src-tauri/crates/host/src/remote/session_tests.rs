@@ -11,14 +11,14 @@ use super::*;
 use serde_json::json;
 use std::{sync::atomic::Ordering, time::Duration};
 
-struct Harness {
-    server: FakeServer,
-    store: Arc<RemoteConnectionStore>,
-    secure: Arc<MemoryStore>,
-    browser: Arc<FakeBrowser>,
+pub(super) struct Harness {
+    pub server: FakeServer,
+    pub store: Arc<RemoteConnectionStore>,
+    pub secure: Arc<MemoryStore>,
+    pub browser: Arc<FakeBrowser>,
 }
 
-async fn harness(behavior: Browser) -> Harness {
+pub(super) async fn harness(behavior: Browser) -> Harness {
     let server = FakeServer::oidc().await;
     let secure = Arc::new(MemoryStore::default());
     let browser = FakeBrowser::new(&server, behavior);
@@ -35,11 +35,11 @@ async fn harness(behavior: Browser) -> Harness {
 }
 
 impl Harness {
-    async fn status(&self) -> Option<RemoteConnectionSummary> {
+    pub(super) async fn status(&self) -> Option<RemoteConnectionSummary> {
         self.store.summary().await
     }
 
-    async fn state(&self) -> Option<RemoteSessionState> {
+    pub(super) async fn state(&self) -> Option<RemoteSessionState> {
         self.status().await.map(|summary| summary.session_state)
     }
 
@@ -55,15 +55,15 @@ impl Harness {
         }
     }
 
-    async fn select(&self) -> Result<RemoteConnectionSummary, AppError> {
+    pub(super) async fn select(&self) -> Result<RemoteConnectionSummary, AppError> {
         connect(self.server.url.clone(), String::new(), &self.store).await
     }
 
-    async fn sign_in(&self) -> Result<Option<RemoteConnectionSummary>, AppError> {
+    pub(super) async fn sign_in(&self) -> Result<Option<RemoteConnectionSummary>, AppError> {
         session::sign_in(&self.store).await
     }
 
-    fn stored(&self) -> Option<String> {
+    pub(super) fn stored(&self) -> Option<String> {
         self.secure
             .values
             .lock()
@@ -72,14 +72,14 @@ impl Harness {
             .cloned()
     }
 
-    fn store_sign_in(&self) {
+    pub(super) fn store_sign_in(&self) {
         self.secure.values.lock().unwrap().insert(
             (SIGN_IN_SERVICE.to_owned(), self.server.url.clone()),
             CREDENTIAL.to_owned(),
         );
     }
 
-    async fn signed_in(&self) {
+    pub(super) async fn signed_in(&self) {
         assert_eq!(
             self.select().await.unwrap().session_state,
             RemoteSessionState::SignInRequired
@@ -108,7 +108,7 @@ impl Harness {
         secrets
     }
 
-    fn assert_redacted(&self, text: &str) {
+    pub(super) fn assert_redacted(&self, text: &str) {
         for secret in self.secrets() {
             assert!(!text.contains(&secret), "leaked a secret in {text}");
         }

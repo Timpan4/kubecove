@@ -175,7 +175,7 @@ export type Step =
     | { action: "expectKubeconfigPathBefore"; value: string; other: string }
     | { action: "expectSettingsText" | "expectNoSettingsText" | "expectRuntimeEndpoint"; value: string }
     | { action: "expectMaskedToken" | "reopenStoredSettings" | "attemptUnverifiedUpdate" }
-    | { action: "configureSettingsMock"; script: "oidc-server" | "oidc-browser-waits" | "oidc-memory-only" | "access-server" | "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "choose-application-workspace" | "choose-compare-workspace" | "choose-last-export" | "cancel-dialog" | "no-update" | "invalid-signature" | "update-available" }
+    | { action: "configureSettingsMock"; script: "oidc-server" | "oidc-browser-waits" | "oidc-memory-only" | "oidc-store-keeps-sign-in" | "access-server" | "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "choose-application-workspace" | "choose-compare-workspace" | "choose-last-export" | "cancel-dialog" | "no-update" | "invalid-signature" | "update-available" }
     | { action: "expectLiveState"; label: string; notice?: string }
     | { action: "replayLiveData"; script: import("../../src/lib/tauri-dev-mock-live").LiveScript }
     | ({ action: "expectResourceStatus"; status: string } & Identity)

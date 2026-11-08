@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { remoteNotice } from "@/lib/remote-notice";
+	import { remoteNotice, signInNotes } from "@/lib/remote-notice";
 	import { desktopRemoteConnection } from "@/lib/remote-runtime";
 	import RemoteSessionNotice from "./RemoteSessionNotice.svelte";
 
@@ -11,7 +11,7 @@
 {#if notice && $desktopRemoteConnection}
 	<section class="flex h-full w-full items-center justify-center p-6">
 		<div role="region" aria-label="Remote server notice" class="flex w-full max-w-md flex-col gap-3 rounded-lg border p-4">
-			<RemoteSessionNotice {notice} memoryOnly={$desktopRemoteConnection.signInMemoryOnly} onError={(message) => (error = message)} />
+			<RemoteSessionNotice {notice} notes={signInNotes($desktopRemoteConnection)} onError={(message) => (error = message)} />
 			{#if error}<p role="alert" class="text-sm text-destructive">{error}</p>{/if}
 		</div>
 	</section>

@@ -41,6 +41,10 @@ pub struct RemoteNotice {
 
 pub const SIGN_IN_MEMORY_ONLY: &str = "This computer's credential store is unavailable, so the sign-in lasts only until KubeCove closes.";
 
+/// Shown with `RemoteConnectionSummary::sign_in_not_deleted`, in place of a
+/// sign-out that only looks complete.
+pub const SIGN_IN_NOT_DELETED: &str = "This computer's credential store could not delete the sign-in, so it may still be stored. KubeCove will not use it while it runs. Remove any \"KubeCove remote sign-in\" entry for this server from the credential store.";
+
 const SIGN_IN_AGAIN: &str = "Your sign-in has expired. Sign in again.";
 
 impl RemoteConnectionSummary {

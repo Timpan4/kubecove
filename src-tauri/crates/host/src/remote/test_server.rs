@@ -45,6 +45,15 @@ pub(super) struct FakeState {
     pub stall_sessions: AtomicBool,
     pub session_requested: Notify,
     pub release_sessions: Notify,
+    /// The token endpoint waits for `release_tokens` while set.
+    pub stall_tokens: AtomicBool,
+    pub token_requested: Notify,
+    pub release_tokens: Notify,
+    /// The logout endpoint never answers while set.
+    pub stall_logouts: AtomicBool,
+    pub logout_requested: Notify,
+    /// The logout endpoint fails without revoking while set.
+    pub refuse_logouts: AtomicBool,
     sockets: Mutex<Vec<mpsc::UnboundedSender<Option<String>>>>,
 }
 
@@ -126,7 +135,17 @@ async fn handle(stream: TcpStream, state: Arc<FakeState>) {
         .get("authorization")
         .and_then(|value| value.strip_prefix("Bearer "))
         .map(str::to_owned);
-    let (status, body) = route(&state, &method, &path, bearer, &body).await;
+    let (status, body) = if path == "/api/v1/invoke/echo_credentials" {
+        // A server whose error text quotes the request's credentials.
+        let message = format!(
+            "refused bearer {} session {}",
+            bearer.unwrap_or_default(),
+            headers.get("x-kubecove-session").map_or("", String::as_str)
+        );
+        refusal(500, &message, "internal")
+    } else {
+        route(&state, &method, &path, bearer, &body).await
+    };
     let response = format!(
         "HTTP/1.1 {status} Fake\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len()
@@ -154,6 +173,10 @@ async fn route(
     match (method, path) {
         ("GET", "/api/v1/auth") => (200, state.auth.lock().unwrap().to_string()),
         ("POST", "/api/v1/oidc/native/token") => {
+            if state.stall_tokens.load(Ordering::Acquire) {
+                state.token_requested.notify_one();
+                state.release_tokens.notified().await;
+            }
             let request: Value = serde_json::from_slice(body).unwrap();
             let verifier = request["codeVerifier"].as_str().unwrap_or_default();
             state.verifiers.lock().unwrap().push(verifier.to_owned());
@@ -190,6 +213,13 @@ async fn route(
             )
         }
         ("POST", "/api/v1/oidc/logout") => {
+            if state.stall_logouts.load(Ordering::Acquire) {
+                state.logout_requested.notify_one();
+                std::future::pending::<()>().await;
+            }
+            if state.refuse_logouts.load(Ordering::Acquire) {
+                return refusal(503, "logout is unavailable", "network");
+            }
             if let Some(bearer) = bearer {
                 state.valid.lock().unwrap().remove(&bearer);
                 state.logouts.lock().unwrap().push(bearer);
@@ -325,11 +355,13 @@ impl BrowserLauncher for FakeBrowser {
     }
 }
 
-/// Native credential storage in memory. `refuse` makes it unavailable.
+/// Native credential storage in memory. `refuse` makes it unavailable;
+/// `refuse_delete` makes only deletion fail.
 #[derive(Default)]
 pub(super) struct MemoryStore {
     pub values: Mutex<HashMap<(String, String), String>>,
     pub refuse: AtomicBool,
+    pub refuse_delete: AtomicBool,
 }
 
 impl SecureStore for MemoryStore {
@@ -355,6 +387,12 @@ impl SecureStore for MemoryStore {
         Ok(())
     }
     fn delete(&self, service: &str, id: &str) -> Result<(), AppError> {
+        if self.refuse_delete.load(Ordering::Acquire) {
+            return Err(AppError::new(
+                "native credential storage could not delete the entry",
+                AppErrorKind::CredentialUnavailable,
+            ));
+        }
         self.values
             .lock()
             .unwrap()

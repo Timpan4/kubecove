@@ -99,6 +99,17 @@ pub(super) fn session_error(message: &str) -> AppError {
     AppError::new(message, AppErrorKind::Session)
 }
 
+/// Removes `secrets` from a server's error text, which may quote what the
+/// request carried, before the error reaches a client (ADR 0031).
+pub(super) fn redact(mut error: AppError, secrets: &[&str]) -> AppError {
+    for secret in secrets.iter().filter(|secret| !secret.is_empty()) {
+        if error.message.contains(secret) {
+            error.message = error.message.replace(secret, "[redacted]");
+        }
+    }
+    error
+}
+
 /// No redirects: a redirect from a sign-in endpoint is never followed here.
 pub(super) fn http_client() -> Result<reqwest::Client, AppError> {
     reqwest::Client::builder()

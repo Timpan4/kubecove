@@ -323,6 +323,25 @@
       ]
     },
     {
+      "id": "settings-remote.oidc-sign-out-not-deleted",
+      "title": "Sign out says so when the credential store could not delete the sign-in, and a new sign-in clears the note",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "oidc-store-keeps-sign-in" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "clickSettingsButton", "label": "Sign in" },
+        { "action": "expectSettingsText", "value": "Connected to http://127.0.0.1:43117." },
+        { "action": "clickSettingsButton", "label": "Sign out" },
+        { "action": "expectSettingsText", "value": "Sign in through your browser to use this server." },
+        { "action": "expectSettingsText", "value": "This computer's credential store could not delete the sign-in, so it may still be stored. KubeCove will not use it while it runs. Remove any \"KubeCove remote sign-in\" entry for this server from the credential store." },
+        { "action": "clickSettingsButton", "label": "Sign in" },
+        { "action": "expectSettingsText", "value": "Connected to http://127.0.0.1:43117." },
+        { "action": "expectNoSettingsText", "value": "could not delete the sign-in" }
+      ]
+    },
+    {
       "id": "settings-updates.startup-dismissal-and-recheck",
       "title": "Startup offers a new version once, a dismissed version stays dismissed after client recreation, and Check again updates the status",
       "steps": [

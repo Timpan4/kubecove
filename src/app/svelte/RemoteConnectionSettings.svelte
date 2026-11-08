@@ -3,7 +3,7 @@
 	import { Button, Input, Label } from "@/components/ui/svelte";
 	import RemoteSessionNotice from "@/features/remote-connection/RemoteSessionNotice.svelte";
 	import { messageFromError } from "@/lib/error-redaction";
-	import { isRemoteLive, remoteNotice, SIGN_IN_MEMORY_ONLY } from "@/lib/remote-notice";
+	import { isRemoteLive, remoteNotice, signInNotes } from "@/lib/remote-notice";
 	import {
 		connectDesktopRemote,
 		desktopRemoteConnection,
@@ -56,7 +56,7 @@
 			<p>Connected to <span class="font-medium">{$desktopRemoteConnection.serverUrl}</span>.</p>
 			<p class="text-muted-foreground">Kubernetes requests and port forwards run through this server. Forwarded ports listen only on 127.0.0.1 on this laptop.</p>
 			<p class="text-muted-foreground">Server {$desktopRemoteConnection.serverVersion}. Session grace: {$desktopRemoteConnection.sessionGraceSeconds} seconds.</p>
-			{#if $desktopRemoteConnection.signInMemoryOnly}<p class="text-xs text-muted-foreground">{SIGN_IN_MEMORY_ONLY}</p>{/if}
+			{#each signInNotes($desktopRemoteConnection) as note (note)}<p class="text-xs text-muted-foreground">{note}</p>{/each}
 			<div class="flex gap-2">
 				{#if $desktopRemoteConnection.authMode === "oidc"}
 					<Button type="button" variant="outline" disabled={pending} onclick={signOut}>Sign out</Button>
@@ -66,7 +66,7 @@
 		{:else}
 			<p class="text-muted-foreground">{$desktopRemoteConnection.serverUrl} is selected but disconnected. Cluster commands will not fall back to this laptop.</p>
 			{#if notice}
-				<RemoteSessionNotice {notice} memoryOnly={$desktopRemoteConnection.signInMemoryOnly} onError={(message) => (error = message)} />
+				<RemoteSessionNotice {notice} notes={signInNotes($desktopRemoteConnection)} onError={(message) => (error = message)} />
 			{/if}
 		{/if}
 	</div>

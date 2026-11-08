@@ -294,7 +294,7 @@ function step(value: unknown): Step {
         case "expectKubeconfigPathBefore": return { action: item.action, value: string(item.value), other: string(item.other) };
         case "expectSettingsText": case "expectNoSettingsText": case "expectRuntimeEndpoint": return { action: item.action, value: string(item.value) };
         case "expectMaskedToken": case "reopenStoredSettings": case "attemptUnverifiedUpdate": return { action: item.action };
-        case "configureSettingsMock": return { action: item.action, script: oneOf(["oidc-server", "oidc-browser-waits", "oidc-memory-only", "access-server", "choose-kubeconfig", "choose-workspace", "choose-unavailable-workspace", "choose-application-workspace", "choose-compare-workspace", "choose-last-export", "cancel-dialog", "no-update", "invalid-signature", "update-available"], item.script, "a settings script") };
+        case "configureSettingsMock": return { action: item.action, script: oneOf(["oidc-server", "oidc-browser-waits", "oidc-memory-only", "oidc-store-keeps-sign-in", "access-server", "choose-kubeconfig", "choose-workspace", "choose-unavailable-workspace", "choose-application-workspace", "choose-compare-workspace", "choose-last-export", "cancel-dialog", "no-update", "invalid-signature", "update-available"], item.script, "a settings script") };
         case "terminalFit": return { action: item.action, width: count(item.width), height: count(item.height) };
         case "terminalOutput": return { action: item.action, data: string(item.data), container: string(item.container) };
         case "terminalSelect": return { action: item.action, row: count(item.row), col: count(item.col), endRow: count(item.endRow), endCol: count(item.endCol), word: optionalBoolean(item.word) ?? false };

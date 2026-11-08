@@ -1,6 +1,6 @@
 use super::http::{
-    api_url, http_client, install_tls_provider, network_error, normalize_server_url, response_json,
-    response_value, session_error, validation_error,
+    api_url, http_client, install_tls_provider, network_error, normalize_server_url, redact,
+    response_json, response_value, session_error, validation_error,
 };
 use super::models::{
     RemoteAuthMode, RemoteConnectionSummary, RemoteCredentials, RemoteSessionState, ServerSession,
@@ -96,11 +96,23 @@ impl RemoteConnection {
             .await
             .map_err(network_error)?;
         let status = response.status();
-        let result = response_value(response).await;
+        let result = response_value(response)
+            .await
+            .map_err(|error| self.redact(error));
         if let Err(error) = &result {
             self.observe_refusal(status, error);
         }
         result
+    }
+
+    fn redact(&self, error: AppError) -> AppError {
+        redact(
+            error,
+            &[
+                &self.credentials.bearer_token,
+                &self.credentials.resume_token,
+            ],
+        )
     }
 
     pub fn subscribe(
@@ -142,6 +154,7 @@ impl RemoteConnection {
             .map_err(network_error)?;
         let status = response.status();
         if let Err(error) = response_value(response).await {
+            let error = self.redact(error);
             self.observe_refusal(status, &error);
             return Err(error);
         }
@@ -173,10 +186,10 @@ impl RemoteConnection {
             .await
             .map_err(|_| session_error("remote server WebSocket is closed"))?;
         if response.get("type").and_then(Value::as_str) == Some("tunnel_error") {
-            return Err(serde_json::from_value(
-                response.get("error").cloned().unwrap_or(Value::Null),
-            )
-            .unwrap_or_else(|_| session_error("remote tunnel request failed")));
+            return Err(self.redact(
+                serde_json::from_value(response.get("error").cloned().unwrap_or(Value::Null))
+                    .unwrap_or_else(|_| session_error("remote tunnel request failed")),
+            ));
         }
         Ok(response)
     }
@@ -380,7 +393,7 @@ pub(super) async fn connect(
     let session: ServerSession = response_json(response)
         .await
         .map_err(|error| ConnectFailure {
-            error,
+            error: redact(error, &[bearer_token, resume_token.unwrap_or_default()]),
             unauthorized,
         })?;
     let credentials = RemoteCredentials {
@@ -397,6 +410,7 @@ pub(super) async fn connect(
         auth_mode,
         session_state: RemoteSessionState::Connected,
         sign_in_memory_only: false,
+        sign_in_not_deleted: false,
     };
     let socket = connect_websocket(&credentials)
         .await

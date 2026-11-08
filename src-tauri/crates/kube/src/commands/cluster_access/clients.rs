@@ -21,7 +21,9 @@ use kube::{Client, client::ClientBuilder};
 use std::{future::Future, time::Duration};
 use tokio_util::sync::CancellationToken;
 
-pub(super) const REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(30);
+/// How long a request in flight may wait on a stalled server. The desktop
+/// remote client also bounds its sign-in revocation with it.
+pub const REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
 enum ClientPath {
     Finite(ClientGeneration),

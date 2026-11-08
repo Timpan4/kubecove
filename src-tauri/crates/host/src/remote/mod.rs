@@ -8,13 +8,16 @@ mod store;
 mod tunnels;
 
 #[cfg(test)]
+#[path = "revocation_tests.rs"]
+mod revocation_tests;
+#[cfg(test)]
 #[path = "session_tests.rs"]
 mod session_tests;
 #[cfg(test)]
 mod test_server;
 
 pub use models::{RemoteAuthMode, RemoteConnectionSummary, RemoteSessionState};
-pub use notice::{RemoteNotice, RemoteNoticeAction, SIGN_IN_MEMORY_ONLY};
+pub use notice::{RemoteNotice, RemoteNoticeAction, SIGN_IN_MEMORY_ONLY, SIGN_IN_NOT_DELETED};
 pub use sign_in::BrowserLauncher;
 pub use store::RemoteConnectionStore;
 

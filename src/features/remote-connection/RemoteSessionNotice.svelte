@@ -3,7 +3,7 @@
 	import { copyToast } from "@/components/CopyToast.svelte";
 	import { Button } from "@/components/ui/svelte";
 	import { messageFromError } from "@/lib/error-redaction";
-	import { type RemoteNotice, type RemoteNoticeAction, REMOTE_NOTICE_LABELS, SIGN_IN_MEMORY_ONLY } from "@/lib/remote-notice";
+	import { type RemoteNotice, type RemoteNoticeAction, REMOTE_NOTICE_LABELS } from "@/lib/remote-notice";
 	import {
 		cancelDesktopRemoteSignIn,
 		desktopRemoteSignInLink,
@@ -14,9 +14,9 @@
 
 	let {
 		notice,
-		memoryOnly,
+		notes,
 		onError,
-	}: { notice: RemoteNotice; memoryOnly: boolean; onError: (message: string | null) => void } = $props();
+	}: { notice: RemoteNotice; notes: readonly string[]; onError: (message: string | null) => void } = $props();
 	let busy = $state(false);
 
 	async function run(action: RemoteNoticeAction) {
@@ -45,7 +45,7 @@
 <div class="flex flex-col gap-2 text-sm">
 	{#if notice.title}<p class="font-medium">{notice.title}</p>{/if}
 	<p>{notice.message}</p>
-	{#if memoryOnly}<p class="text-xs text-muted-foreground">{SIGN_IN_MEMORY_ONLY}</p>{/if}
+	{#each notes as note (note)}<p class="text-xs text-muted-foreground">{note}</p>{/each}
 	<div class="flex flex-wrap gap-2">
 		{#each notice.actions as action, index (action)}
 			<Button

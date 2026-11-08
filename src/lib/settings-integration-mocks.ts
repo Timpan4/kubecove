@@ -8,7 +8,7 @@ import { setAppUpdatesEnabledForTests } from "./release-channel";
 import type { RemoteAuthMode, RemoteConnectionSummary, RemoteSessionState } from "./remote-runtime";
 import workspace from "./settings-integration-workspace.json";
 
-export type SettingsScript = "oidc-server" | "oidc-browser-waits" | "oidc-memory-only" | "access-server" | "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "choose-application-workspace" | "choose-compare-workspace" | "choose-last-export" | "cancel-dialog" | "no-update" | "invalid-signature" | "update-available";
+export type SettingsScript = "oidc-server" | "oidc-browser-waits" | "oidc-memory-only" | "oidc-store-keeps-sign-in" | "access-server" | "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "choose-application-workspace" | "choose-compare-workspace" | "choose-last-export" | "cancel-dialog" | "no-update" | "invalid-signature" | "update-available";
 type UpdateScript = "no-update" | "invalid-signature" | "update-available";
 /** Page-session storage, so a reloaded page keeps the update script its scenario configured. */
 const UPDATE_SCRIPT_KEY = "kubecove-parity-update-script";
@@ -69,7 +69,7 @@ export function workspaceExportMock(): string { return exportedWorkspace; }
 export function selectedDialogPath(): string | null { return dialogPath; }
 export function remoteMockStatus(): RemoteConnectionSummary | null { return selected; }
 function liveSummary(serverUrl: string, authMode: RemoteAuthMode): RemoteConnectionSummary {
-	return { serverUrl, serverVersion: "0.13.0", sessionGraceSeconds: 300, connected: true, credentialStore: "encryptedFile", authMode, sessionState: "connected", signInMemoryOnly: false };
+	return { serverUrl, serverVersion: "0.13.0", sessionGraceSeconds: 300, connected: true, credentialStore: "encryptedFile", authMode, sessionState: "connected", signInMemoryOnly: false, signInNotDeleted: false };
 }
 /** An empty token selects the server by the sign-in mode the configured script gives it (ADR 0031). */
 export function connectRemoteMock(serverUrl: string, token = ""): RemoteConnectionSummary {
@@ -92,7 +92,7 @@ export function signInRemoteMock(): RemoteConnectionSummary | null {
 		selected = { ...selected, connected: false, sessionState: "waitingForBrowser" };
 	} else {
 		signIns.add(selected.serverUrl);
-		selected = { ...selected, connected: true, sessionState: "connected", signInMemoryOnly: remoteScript === "oidc-memory-only" };
+		selected = { ...selected, connected: true, sessionState: "connected", signInMemoryOnly: remoteScript === "oidc-memory-only", signInNotDeleted: false };
 	}
 	return selected;
 }
@@ -111,7 +111,9 @@ export function startNewSessionRemoteMock(): RemoteConnectionSummary {
 export function signOutRemoteMock(): RemoteConnectionSummary {
 	if (!selected) throw new Error("Select a server that uses single sign-on first.");
 	signIns.delete(selected.serverUrl);
-	selected = { ...selected, connected: false, sessionState: "signInRequired", signInMemoryOnly: false };
+	// The credential store refuses to delete the sign-in.
+	const signInNotDeleted = remoteScript === "oidc-store-keeps-sign-in";
+	selected = { ...selected, connected: false, sessionState: "signInRequired", signInMemoryOnly: false, signInNotDeleted };
 	return selected;
 }
 /** The state a server signal leaves the selected remote in. Commands fail unless it is still reconnecting. */

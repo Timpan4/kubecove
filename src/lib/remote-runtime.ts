@@ -36,6 +36,8 @@ export interface RemoteConnectionSummary {
 	sessionState: RemoteSessionState;
 	/** Native credential storage is unavailable, so the sign-in lasts until the app closes. */
 	signInMemoryOnly: boolean;
+	/** Native credential storage could not delete an ended sign-in; the app does not use it again until a new sign-in replaces it. */
+	signInNotDeleted: boolean;
 }
 
 type RemoteChannel = {

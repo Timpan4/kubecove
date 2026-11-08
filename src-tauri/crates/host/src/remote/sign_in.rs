@@ -43,9 +43,10 @@ pub struct SystemBrowser;
 
 impl BrowserLauncher for SystemBrowser {
     fn open(&self, url: &str) -> Result<(), AppError> {
-        // The URL is one argument and never passes through `cmd`, where `&`
-        // separates commands (ADR 0031). The source is dropped because an
-        // opener error may quote the URL.
+        // The URL never passes through `cmd`, where `&` separates commands.
+        // On Windows the crate hands it to a fixed PowerShell script in an
+        // environment variable; elsewhere it is one launcher argument (ADR
+        // 0031). The source is dropped because an opener error may quote the URL.
         open::that_detached(url)
             .map_err(|_| AppError::new("Could not open the system browser", AppErrorKind::Io))
     }
@@ -215,12 +216,14 @@ async fn callback(
 
 impl PreparedSignIn {
     /// Waits for the browser's redirect until it arrives or `cancel` fires,
-    /// then exchanges the code. The listener stops in either case.
+    /// then exchanges the code. The listener stops in either case. A cancel
+    /// during the exchange returns at once; a credential the server issues
+    /// after that is revoked, because nobody may hold it.
     pub(super) async fn finish(
         self,
         http: &HttpClient,
         server_url: &str,
-        cancel: oneshot::Receiver<()>,
+        mut cancel: oneshot::Receiver<()>,
     ) -> Result<Result<String, SignInFailure>, AppError> {
         let (sender, receiver) = oneshot::channel();
         let app = Router::new()
@@ -239,32 +242,61 @@ impl PreparedSignIn {
         });
         let outcome = tokio::select! {
             outcome = receiver => outcome.unwrap_or(Err(SignInFailure::Cancelled)),
-            _ = cancel => Err(SignInFailure::Cancelled),
+            _ = &mut cancel => Err(SignInFailure::Cancelled),
         };
         let _ = stop.send(());
         let code = match outcome {
             Ok(code) => code,
             Err(failure) => return Ok(Err(failure)),
         };
-        exchange(http, server_url, &code, &self.verifier, &self.redirect_uri)
-            .await
-            .map(Ok)
+        let mut exchanging = Box::pin(exchange(
+            http.clone(),
+            server_url.to_owned(),
+            code,
+            self.verifier,
+            self.redirect_uri,
+        ));
+        tokio::select! {
+            issued = &mut exchanging => issued.map(Ok),
+            _ = cancel => {
+                let (http, server_url) = (http.clone(), server_url.to_owned());
+                tokio::spawn(async move {
+                    if let Ok(credential) = exchanging.await {
+                        revoke(http, server_url, credential).await;
+                    }
+                });
+                Ok(Err(SignInFailure::Cancelled))
+            }
+        }
     }
 }
 
+/// Revokes `credential` at the server. Failures are dropped: the caller has
+/// already forgotten the credential, and the server ends it at its expiry.
+/// The wait is bounded by the per-request stall limit the Kubernetes clients
+/// use (`kubecove_kube::REQUEST_READ_TIMEOUT`), so a silent server cannot
+/// hold the task.
+pub(super) async fn revoke(http: HttpClient, server_url: String, credential: String) {
+    let Ok(url) = api_url(&server_url, "oidc/logout") else {
+        return;
+    };
+    let request = http.post(url).bearer_auth(&credential).send();
+    let _ = tokio::time::timeout(kubecove_kube::REQUEST_READ_TIMEOUT, request).await;
+}
+
 async fn exchange(
-    http: &HttpClient,
-    server_url: &str,
-    code: &str,
-    verifier: &str,
-    redirect_uri: &str,
+    http: HttpClient,
+    server_url: String,
+    code: String,
+    verifier: String,
+    redirect_uri: String,
 ) -> Result<String, AppError> {
     #[derive(Deserialize)]
     struct Issued {
         credential: String,
     }
     let response = http
-        .post(api_url(server_url, "oidc/native/token")?)
+        .post(api_url(&server_url, "oidc/native/token")?)
         .json(&json!({"code": code, "codeVerifier": verifier, "redirectUri": redirect_uri}))
         .send()
         .await

@@ -18,6 +18,7 @@ fn summary(server_url: String, auth_mode: RemoteAuthMode) -> RemoteConnectionSum
         auth_mode,
         session_state: RemoteSessionState::Connected,
         sign_in_memory_only: false,
+        sign_in_not_deleted: false,
     }
 }
 
@@ -150,6 +151,7 @@ impl Fixture {
             selected.session_state = RemoteSessionState::Connected;
             selected.connected = true;
             selected.sign_in_memory_only = script == "oidc-memory-only";
+            selected.sign_in_not_deleted = false;
         }
         ready(Ok(self.set_remote(Some(selected))))
     }
@@ -208,6 +210,9 @@ impl Fixture {
         selected.connected = false;
         selected.session_state = RemoteSessionState::SignInRequired;
         selected.sign_in_memory_only = false;
+        // The credential store refuses to delete the sign-in.
+        selected.sign_in_not_deleted =
+            *self.settings.script.lock().unwrap() == "oidc-store-keeps-sign-in";
         ready(Ok(self.set_remote(Some(selected)).unwrap()))
     }
 }

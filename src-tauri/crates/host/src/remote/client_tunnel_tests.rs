@@ -57,6 +57,7 @@ async fn fake_server(invoke_response: Value) -> FakeServer {
             auth_mode: crate::remote::RemoteAuthMode::Token,
             session_state: crate::remote::RemoteSessionState::Connected,
             sign_in_memory_only: false,
+            sign_in_not_deleted: false,
         },
         outgoing,
         channels: Mutex::default(),

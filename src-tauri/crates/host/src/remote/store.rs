@@ -6,7 +6,7 @@ use super::models::{RemoteAuthMode, RemoteConnectionSummary, RemoteSessionState}
 use super::sign_in::{BrowserLauncher, SystemBrowser};
 use kubecove_gitops::commands::argo::{KeyringStore, SecureStore};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
 };
 use tokio::sync::{RwLock, oneshot};
@@ -37,6 +37,7 @@ impl RemoteConnectionStore {
             sign_ins: SignIns {
                 secure,
                 memory: Mutex::new(HashMap::new()),
+                undeleted: Mutex::new(HashSet::new()),
             },
             browser,
         }
@@ -95,6 +96,7 @@ impl RemoteConnectionStore {
         {
             self.sign_ins.forget_refused(&summary.server_url);
         }
+        summary.sign_in_not_deleted = self.sign_ins.undeleted(&summary.server_url);
         Some(summary)
     }
 }
@@ -132,25 +134,46 @@ pub(super) struct PendingSignIn {
 }
 
 impl PendingSignIn {
+    /// Ends the sign-in: Cancel, Disconnect, Sign out and a new selection all
+    /// call this before they act on the held sign-in.
     pub(super) fn cancel(&self) {
         if let Some(cancel) = self.cancel.lock().expect("sign-in cancel lock").take() {
             let _ = cancel.send(());
         }
+    }
+
+    pub(super) fn is_cancelled(&self) -> bool {
+        self.cancel.lock().expect("sign-in cancel lock").is_none()
+    }
+
+    /// Runs `publish` unless the sign-in has ended. `cancel` waits while it
+    /// runs, so what `publish` stores is in place before the caller of
+    /// `cancel` forgets it.
+    pub(super) fn unless_cancelled<T>(&self, publish: impl FnOnce() -> T) -> Option<T> {
+        let cancel = self.cancel.lock().expect("sign-in cancel lock");
+        cancel.is_some().then(publish)
     }
 }
 
 pub(super) struct SignIns {
     secure: Arc<dyn SecureStore>,
     memory: Mutex<HashMap<String, String>>,
+    /// Servers whose stored sign-in native storage could not delete. The
+    /// entry is not read again in this process until a new sign-in for that
+    /// server is stored over it. Lock after `memory`.
+    undeleted: Mutex<HashSet<String>>,
 }
 
 impl SignIns {
     /// The held sign-in for `server_url`, read from native storage only when
-    /// memory has none.
+    /// memory has none and the stored entry was not meant to be deleted.
     pub(super) fn get(&self, server_url: &str) -> Option<String> {
         let mut memory = self.memory.lock().expect("remote sign-in lock");
         if let Some(credential) = memory.get(server_url) {
             return Some(credential.clone());
+        }
+        if self.undeleted(server_url) {
+            return None;
         }
         let stored = self
             .secure
@@ -164,39 +187,56 @@ impl SignIns {
     /// Keeps the sign-in and returns whether it is in memory only, because
     /// native storage refused it.
     pub(super) fn put(&self, server_url: &str, credential: String) -> bool {
+        let mut memory = self.memory.lock().expect("remote sign-in lock");
         let memory_only = self
             .secure
             .write(SIGN_IN_SERVICE, server_url, &credential)
             .is_err();
-        self.memory
-            .lock()
-            .expect("remote sign-in lock")
-            .insert(server_url.to_owned(), credential);
+        if !memory_only {
+            self.undeleted
+                .lock()
+                .expect("remote sign-in lock")
+                .remove(server_url);
+        }
+        memory.insert(server_url.to_owned(), credential);
         memory_only
     }
 
     /// Drops the sign-in from memory and native storage, whether or not the
-    /// server call that ended it succeeded.
+    /// server call that ended it succeeded. A failed deletion is recorded:
+    /// the entry is not used again, and the summary reports it.
     pub(super) fn forget(&self, server_url: &str) {
-        self.memory
-            .lock()
-            .expect("remote sign-in lock")
-            .remove(server_url);
-        let _ = self.secure.delete(SIGN_IN_SERVICE, server_url);
+        let mut memory = self.memory.lock().expect("remote sign-in lock");
+        memory.remove(server_url);
+        self.delete_stored(server_url);
     }
 
     /// Forgets a sign-in the server refused. Native storage is asked only
     /// when memory held it, so repeated status reads stay local.
     pub(super) fn forget_refused(&self, server_url: &str) {
-        let held = self
-            .memory
+        let mut memory = self.memory.lock().expect("remote sign-in lock");
+        if memory.remove(server_url).is_some() {
+            self.delete_stored(server_url);
+        }
+    }
+
+    /// Callers hold `memory`, so no read restores the entry meanwhile.
+    fn delete_stored(&self, server_url: &str) {
+        let deleted = self.secure.delete(SIGN_IN_SERVICE, server_url).is_ok();
+        let mut undeleted = self.undeleted.lock().expect("remote sign-in lock");
+        if deleted {
+            undeleted.remove(server_url);
+        } else {
+            undeleted.insert(server_url.to_owned());
+        }
+    }
+
+    /// Whether native storage still holds a sign-in it could not delete.
+    pub(super) fn undeleted(&self, server_url: &str) -> bool {
+        self.undeleted
             .lock()
             .expect("remote sign-in lock")
-            .remove(server_url)
-            .is_some();
-        if held {
-            let _ = self.secure.delete(SIGN_IN_SERVICE, server_url);
-        }
+            .contains(server_url)
     }
 
     #[cfg(test)]

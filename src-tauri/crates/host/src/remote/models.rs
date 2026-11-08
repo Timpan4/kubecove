@@ -45,6 +45,10 @@ pub struct RemoteConnectionSummary {
     /// The sign-in lasts only until the app closes, because native credential
     /// storage is unavailable.
     pub sign_in_memory_only: bool,
+    /// Native credential storage could not delete an ended sign-in for this
+    /// server. This app does not use it again until a new sign-in replaces it.
+    #[serde(default)]
+    pub sign_in_not_deleted: bool,
 }
 
 impl RemoteConnectionSummary {
@@ -63,6 +67,7 @@ impl RemoteConnectionSummary {
             auth_mode,
             session_state,
             sign_in_memory_only: false,
+            sign_in_not_deleted: false,
         }
     }
 }

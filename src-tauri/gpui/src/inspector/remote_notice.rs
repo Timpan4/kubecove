@@ -10,7 +10,38 @@ use crate::{backend::RemoteConnectionSummary, theme::Tokens, ui};
 use gpui_kit::{ClipboardItem, Context, Div, SharedString, Window, div, prelude::*, px};
 use kubecove_host::remote::{
     RemoteAuthMode, RemoteNotice, RemoteNoticeAction, RemoteSessionState, SIGN_IN_MEMORY_ONLY,
+    SIGN_IN_NOT_DELETED,
 };
+
+/// Notes on how this computer keeps the sign-in, shown under a remote's
+/// status or notice.
+pub(super) fn sign_in_notes(
+    remote: &RemoteConnectionSummary,
+    prefix: &str,
+) -> Vec<gpui_kit::AnyElement> {
+    [
+        (
+            remote.sign_in_memory_only,
+            "memory-only",
+            SIGN_IN_MEMORY_ONLY,
+        ),
+        (
+            remote.sign_in_not_deleted,
+            "not-deleted",
+            SIGN_IN_NOT_DELETED,
+        ),
+    ]
+    .into_iter()
+    .filter(|(shown, _, _)| *shown)
+    .map(|(_, id, text)| {
+        ui::muted(ui::xs(text))
+            .id(SharedString::from(format!("{prefix}-{id}")))
+            .test_support()
+            .aria_label(text)
+            .into_any_element()
+    })
+    .collect()
+}
 
 /// Where a notice renders. Each place has its own element ids, so parity
 /// steps can click a Settings button or a content-area button.
@@ -208,7 +239,6 @@ impl Inspector {
         }
         let remote = self.settings.integrations.remote.as_ref()?;
         let notice = remote.notice()?;
-        let memory_only = remote.sign_in_memory_only;
         Some(
             div()
                 .flex()
@@ -226,7 +256,7 @@ impl Inspector {
                         .rounded(px(10.))
                         .border_1()
                         .border_color(Tokens::border())
-                        .child(self.remote_notice(&notice, memory_only, NoticePlace::Content, cx)),
+                        .child(self.remote_notice(&notice, remote, NoticePlace::Content, cx)),
                 )
                 .into_any_element(),
         )
@@ -235,7 +265,7 @@ impl Inspector {
     pub(super) fn remote_notice(
         &self,
         notice: &RemoteNotice,
-        memory_only: bool,
+        remote: &RemoteConnectionSummary,
         place: NoticePlace,
         cx: &mut Context<Self>,
     ) -> Div {
@@ -256,14 +286,7 @@ impl Inspector {
                 .test_support()
                 .aria_label(notice.message),
         );
-        if memory_only {
-            body = body.child(
-                ui::muted(ui::xs(SIGN_IN_MEMORY_ONLY))
-                    .id(SharedString::from(format!("{prefix}-memory-only")))
-                    .test_support()
-                    .aria_label(SIGN_IN_MEMORY_ONLY),
-            );
-        }
+        body = body.children(sign_in_notes(remote, prefix));
         let mut actions = div().flex().flex_wrap().gap(px(8.));
         for (index, action) in notice.actions.iter().copied().enumerate() {
             let label = action.label();

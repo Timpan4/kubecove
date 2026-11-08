@@ -13,7 +13,7 @@ use crate::{
 };
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::{Context, Div, Entity, SharedString, Task, Window, div, prelude::*, px};
-use kubecove_host::remote::{RemoteAuthMode, SIGN_IN_MEMORY_ONLY};
+use kubecove_host::remote::RemoteAuthMode;
 
 pub(super) struct Integrations {
     _subscriptions: Vec<gpui_kit::Subscription>,
@@ -237,19 +237,12 @@ impl Inspector {
             if let Some(notice) = remote.notice() {
                 body = body.child(self.remote_notice(
                     &notice,
-                    remote.sign_in_memory_only,
+                    remote,
                     remote_notice::NoticePlace::Settings,
                     cx,
                 ));
             } else {
-                if remote.sign_in_memory_only {
-                    body = body.child(
-                        ui::muted(ui::xs(SIGN_IN_MEMORY_ONLY))
-                            .id("settings-memory-only")
-                            .test_support()
-                            .aria_label(SIGN_IN_MEMORY_ONLY),
-                    );
-                }
+                body = body.children(remote_notice::sign_in_notes(remote, "settings"));
                 let mut actions = div().flex().gap(px(8.));
                 if remote.auth_mode == RemoteAuthMode::Oidc {
                     actions =
