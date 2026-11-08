@@ -227,7 +227,10 @@ impl Fixture {
         );
     }
     pub fn replay_live(&self, script: &str) {
-        if matches!(script, "update" | "rollout" | "delete" | "ownership") {
+        if matches!(
+            script,
+            "update" | "rollout" | "delete" | "ownership" | "missed-delete"
+        ) {
             self.timing.invalidate("mock-dev");
         }
         let _span = kubecove_gpui::frame_profile::scope("fixture", "send");
@@ -236,6 +239,13 @@ impl Fixture {
             "burst" | "burst-reset" => state.burst = script == "burst",
             "failed" => state.failed = true,
             "connected" => state.failed = false,
+            // Deletes payments-api without a notification, as an event a lost watch never delivered.
+            "missed-delete" => {
+                state.deleted = true;
+                state.revision += 1;
+                state.changed_at = Some(state.revision + 1);
+                return;
+            }
             "update" | "rollout" | "delete" | "ownership" => {
                 state.changed |= script == "update";
                 state.rolling |= script == "rollout";

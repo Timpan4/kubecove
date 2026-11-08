@@ -7,7 +7,7 @@ export const LIVE_EVENTS: ResourceEventSummary[] = [
     { eventType: "Normal", reason: "LiveOlder", message: "Older scripted event", count: 1, lastSeen: "2m", lastSeenAt: "2026-06-29T10:01:00Z", source: "parity", namespace: "payments" },
     { eventType: "Normal", reason: "LiveNewest", message: "Newest scripted event", count: 1, lastSeen: "1m", lastSeenAt: "2026-06-29T10:02:00Z", source: "parity", namespace: "payments" },
 ];
-export const LIVE_SCRIPTS = ["update", "rollout", "delete", "ownership", "reconnecting", "connected", "events", "events-overflow", "forbidden", "failed"] as const;
+export const LIVE_SCRIPTS = ["update", "rollout", "delete", "ownership", "reconnecting", "connected", "events", "events-overflow", "forbidden", "failed", "missed-delete"] as const;
 export type LiveScript = typeof LIVE_SCRIPTS[number];
 type Watch = { id: string; channel: Pick<Channel<StreamMessage>, "onmessage">; context: string; keys?: ResourceWatchStart[]; kind?: string; name?: string; namespace?: string | null };
 const watches = new Map<string, Watch>();
@@ -80,14 +80,21 @@ export function liveEvents(kind?: string, name?: string): ResourceEventSummary[]
     return kind === "Deployment" && name === "payments-api" ? events : undefined;
 }
 export function replayLiveData(script: LiveScript): void {
-    const rowChange = script === "update" || script === "rollout" || script === "delete" || script === "ownership";
+    // "missed-delete" deletes payments-api without a notification, as an event a lost watch never delivered.
+    const missed = script === "missed-delete";
+    const rowChange = script === "update" || script === "rollout" || script === "delete" || script === "ownership" || missed;
     if (rowChange) mockTiming.invalidate("mock-dev");
     if (script === "ownership") reowned = true;
     if (script === "failed") failed = true;
     if (script === "connected") failed = false;
     if (script === "update") changed = true;
     if (script === "rollout") rolling = true;
-    if (script === "delete") deleted = true;
+    if (script === "delete" || missed) deleted = true;
+    if (missed) {
+        revision += 1;
+        changedAt = revision + 1;
+        return;
+    }
     if (rowChange) {
         revision += 1;
         changedAt = revision + 1;

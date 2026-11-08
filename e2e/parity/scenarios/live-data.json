@@ -51,6 +51,22 @@
       ]
     },
     {
+      "id": "live-reconnecting.relist",
+      "title": "A reconnected watch re-lists and drops a row deleted while it was lost",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "expectLiveState", "label": "Live" },
+        { "action": "replayLiveData", "script": "reconnecting" },
+        { "action": "expectLiveState", "label": "Reconnecting", "notice": "Showing last observed state. Activity indicators are paused until live updates recover." },
+        { "action": "replayLiveData", "script": "missed-delete" },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "replayLiveData", "script": "connected" },
+        { "action": "expectLiveState", "label": "Live" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectResource", "kind": "Service", "namespace": "payments", "name": "payments-api" }
+      ]
+    },
+    {
       "id": "live-data.rows",
       "title": "Watch updates preserve identity and remove deleted rows",
       "steps": [
