@@ -170,7 +170,7 @@ Write an ADR before changing:
 
 Run the smallest tier that covers the change, from the checkout root with the build settings under GPUI work. Pick the checks that would fail if the change broke, and stop there.
 
-1. Agent patch: `cargo check --manifest-path src-tauri/gpui/Cargo.toml --all-targets`, plus parity for the areas touched, such as `PARITY_PREFIX=topology.,map. bun run e2e:parity`. `PARITY_PREFIX` takes comma-separated scenario ID prefixes.
+1. Agent patch: `cargo clippy --manifest-path src-tauri/gpui/Cargo.toml --all-targets -- -D warnings` (it checks as `cargo check` does and catches the lints that tier 2 fails on), plus parity for the areas touched, such as `PARITY_PREFIX=topology.,map. bun run e2e:parity`. `PARITY_PREFIX` takes comma-separated scenario ID prefixes.
 2. Merge into the working branch: `cargo clippy --manifest-path src-tauri/gpui/Cargo.toml --all-targets -- -D warnings`, `cargo test --manifest-path src-tauri/gpui/Cargo.toml --lib --test native`, and `PARITY_PREFIX=<areas the diff touches> bun run e2e:parity`.
 3. After a fix: `PARITY_RERUN=last bun run e2e:parity` runs only the scenarios either driver did not pass in the newest run. Give an artifacts directory instead of `last` to use another run.
 4. Full suite: the full parity suite runs in CI on the PR (`.github/workflows/parity.yml`), so developers and agents run tiers 1 to 3 locally. Run `bun scripts/gpui-frames.ts --runs 3` only before a PR.
