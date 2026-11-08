@@ -25,6 +25,28 @@ impl Fixture {
         }
     }
 
+    /// `coverageStopExec`: "stop-failed" refuses exec stops and "stop-pending" holds
+    /// them until the next script.
+    pub(super) fn coverage_stop_exec(&self, base: Read<bool>) -> Read<bool> {
+        match self.coverage_script().as_str() {
+            "stop-failed" => Box::pin(async {
+                Err(AppError::new(
+                    "Controlled stop failure",
+                    AppErrorKind::Cluster,
+                ))
+            }),
+            "stop-pending" => {
+                let (sender, receiver) = tokio::sync::oneshot::channel();
+                self.coverage_state.pending.lock().unwrap().push(sender);
+                Box::pin(async move {
+                    let _ = receiver.await;
+                    base.await
+                })
+            }
+            _ => base,
+        }
+    }
+
     pub(super) fn coverage_read<T: DeserializeOwned + Send + 'static>(
         &self,
         command: &str,

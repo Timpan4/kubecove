@@ -76,3 +76,8 @@ export function coverageStopForward(id: string, sessions: { id: string }[]): voi
 	if (!sessions.some((session) => session.id === id)) throw new Error("Unknown controlled forward");
 	throw new Error("Controlled stop failure");
 }
+/** "stop-failed" refuses exec stops and "stop-pending" holds them until the next script. */
+export async function coverageStopExec(): Promise<void> {
+	if (script === "stop-failed") throw new Error("Controlled stop failure");
+	if (script === "stop-pending") await new Promise<void>((resolve) => pending.push(resolve));
+}

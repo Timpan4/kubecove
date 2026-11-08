@@ -184,6 +184,43 @@
       ]
     },
     {
+      "id": "exec-session.leave-stop-failure",
+      "title": "A failed stop closes the leave dialog and keeps the Pod open with the error in its terminal, and the next leave stops it",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "start", "container": "app", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "coverageScript", "script": "stop-failed" },
+        { "action": "closeDetail" },
+        { "action": "confirmExecLeave", "choice": "stop" },
+        { "action": "expectNoPageText", "text": "Stop 1 exec session?" },
+        { "action": "expectExecState", "container": "app", "status": "error", "contains": "stop failed" },
+        { "action": "coverageScript", "script": "base" },
+        { "action": "closeDetail" },
+        { "action": "confirmExecLeave", "choice": "stop" },
+        { "action": "expectDetailClosed" }
+      ]
+    },
+    {
+      "id": "exec-session.leave-during-stop",
+      "title": "Stop and leave closes the dialog while the stops run, and leaves once they finish",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "start", "container": "app", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "coverageScript", "script": "stop-pending" },
+        { "action": "closeDetail" },
+        { "action": "confirmExecLeave", "choice": "stop" },
+        { "action": "expectNoPageText", "text": "Stop 1 exec session?" },
+        { "action": "coverageScript", "script": "base" },
+        { "action": "expectDetailClosed" }
+      ]
+    },
+    {
       "id": "live-sessions.workspace-delete-stops-forwards",
       "title": "Deleting the open workspace stops its live forwards and shows the cleanup notice in the next workspace",
       "steps": [

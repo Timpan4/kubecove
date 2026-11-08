@@ -246,11 +246,15 @@ impl SessionControls {
             .unwrap();
         Box::pin(async { Ok(true) })
     }
+    /// Stops when awaited, so a coverage script can hold or refuse the stop first.
     pub fn stop_exec(&self, id: String) -> Read<bool> {
-        let mut state = self.state.lock().unwrap();
-        state.stopped.push(id.clone());
-        state.execs.retain(|(s, _)| s.id != id);
-        Box::pin(async { Ok(true) })
+        let state = self.state.clone();
+        Box::pin(async move {
+            let mut state = state.lock().unwrap();
+            state.stopped.push(id.clone());
+            state.execs.retain(|(s, _)| s.id != id);
+            Ok(true)
+        })
     }
     pub fn resize(&self, id: String, size: PodExecTerminalSize) -> Read<bool> {
         // Same terminal-size contract as the browser's podExecHelpers.ts.

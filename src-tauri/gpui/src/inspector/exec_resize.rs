@@ -1,8 +1,14 @@
 //! Terminal fit calls the same narrow resize command as `ExecSessionTerminal.svelte`.
-use super::Inspector;
+use super::{Inspector, exec_state::ExecPhase, request::InFlight};
 use gpui_kit::Context;
 use kubecove_lib::models::PodExecTerminalSize;
 use std::num::NonZeroU16;
+
+/// A live session's size updates. One task sends the latest size at a time.
+pub(super) struct ExecResize {
+    sender: tokio::sync::watch::Sender<PodExecTerminalSize>,
+    _task: InFlight,
+}
 
 pub(super) fn terminal_columns(width: f32, window: &mut gpui_kit::Window) -> Option<u16> {
     let font = window
@@ -48,17 +54,17 @@ impl Inspector {
             cols: cols.get(),
             rows: rows.get(),
         };
-        let Some(id) = tab.id.clone() else {
+        let ExecPhase::Live(live) = &mut tab.phase else {
             return;
         };
-        if let Some(sender) = &tab.resize_sender {
-            sender.send_replace(size);
+        if let Some(resize) = &live.resize {
+            resize.sender.send_replace(size);
             return;
         }
+        let id = live.id.clone();
         let (sender, mut receiver) = tokio::sync::watch::channel(size);
-        tab.resize_sender = Some(sender);
         let backend = self.backend.clone();
-        tab.resize_task = Some(cx.spawn(async move |this, cx| {
+        let task = cx.spawn(async move |this, cx| {
             loop {
                 let size = receiver.borrow_and_update().clone();
                 let result = backend.exec_resize(id.clone(), size).await;
@@ -67,7 +73,7 @@ impl Inspector {
                         .exec
                         .tabs
                         .iter_mut()
-                        .find(|t| t.key == key && t.id.as_ref() == Some(&id))
+                        .find(|t| t.key == key && t.session_id() == Some(id.as_str()))
                     {
                         match result {
                             Ok(true) => {}
@@ -81,6 +87,10 @@ impl Inspector {
                     break;
                 }
             }
-        }));
+        });
+        live.resize = Some(ExecResize {
+            sender,
+            _task: task.into(),
+        });
     }
 }

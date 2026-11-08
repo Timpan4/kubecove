@@ -124,9 +124,9 @@ impl Inspector {
                             "{} · {}, {}",
                             tab.command[0].rsplit('/').next().unwrap_or_default(),
                             tab.container,
-                            tab.status
+                            tab.status_label()
                         ))
-                        .child(status_dot(&tab.status))
+                        .child(status_dot(tab.status_label()))
                         .child(ui::xs(format!(
                             "{} · {}",
                             tab.command[0].rsplit('/').next().unwrap_or_default(),
@@ -151,7 +151,8 @@ impl Inspector {
         let focus = self.exec.focus.clone();
         let active_key = self.exec.active;
         let current_size = active.map(|t| t.parser.screen().size());
-        let pending_start = active.is_some_and(|t| t.pending_start.is_some());
+        let pending_start =
+            active.is_some_and(|t| matches!(t.phase, super::exec_state::ExecPhase::Pending(_)));
         let dragging = self.exec.drag.is_some();
         div()
             .relative()
@@ -189,8 +190,8 @@ impl Inspector {
                                 .flex()
                                 .items_center()
                                 .gap(px(6.))
-                                .child(status_dot(&tab.status))
-                                .child(ui::xs(tab.status.clone())),
+                                .child(status_dot(tab.status_label()))
+                                .child(ui::xs(tab.status_label())),
                         )
                         .child(
                             ui::ghost_icon("rotate-ccw", 28., 14.)
@@ -208,7 +209,7 @@ impl Inspector {
                                     cx.notify();
                                 })),
                         )
-                        .child(if tab.id.is_some() {
+                        .child(if tab.session_id().is_some() {
                             button(Variant::Ghost, 28., false)
                                 .child(ui::icon("square", 14., Tokens::destructive()))
                                 .id("exec-stop")

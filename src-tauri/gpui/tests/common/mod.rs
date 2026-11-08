@@ -356,7 +356,7 @@ impl Backend for Fixture {
         self.session_controls.input(id, data)
     }
     fn stop_exec(&self, id: String) -> Read<bool> {
-        self.session_controls.stop_exec(id)
+        self.coverage_stop_exec(self.session_controls.stop_exec(id))
     }
     fn exec_resize(
         &self,

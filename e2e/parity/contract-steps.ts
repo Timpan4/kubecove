@@ -10,7 +10,7 @@ export type Step =
     | { action: "expectDetailScroll"; view: "events" | "timeline" }
     | { action: "coverageSelect"; label: string; value: string }
     | { action: "coverageCopy"; label: string; text: string; match: "contains" | "exact" }
-    | { action: "coverageScript"; script: "base" | "loading" | "failed" | "empty" | "partial" | "many" | "conflict" | "logs-empty" | "logs-failed" | "logs-options" | "logs-long" | "logs-stream" | "startup-failed" | "foreign" | "detail-loading" | "enrichment-failed" | "enrichment-loading" | "attention-only" | "stop-failed" }
+    | { action: "coverageScript"; script: "base" | "loading" | "failed" | "empty" | "partial" | "many" | "conflict" | "logs-empty" | "logs-failed" | "logs-options" | "logs-long" | "logs-stream" | "startup-failed" | "foreign" | "detail-loading" | "enrichment-failed" | "enrichment-loading" | "attention-only" | "stop-failed" | "stop-pending" }
     | { action: "coverageCheck"; check: string }
     | { action: "coverageClick"; label: string }
     | { action: "coverageFill"; label: string; value: string }

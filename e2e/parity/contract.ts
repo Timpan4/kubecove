@@ -186,7 +186,7 @@ function step(value: unknown): Step {
         }
         case "coverageSelect": return { action: item.action, label: string(item.label), value: string(item.value) };
         case "coverageCopy": return { action: item.action, label: string(item.label), text: string(item.text), match: oneOf(["contains", "exact"], item.match, "a clipboard match") };
-        case "coverageScript": return { action: item.action, script: oneOf(["base", "loading", "failed", "empty", "partial", "many", "conflict", "logs-empty", "logs-failed", "logs-options", "logs-long", "logs-stream", "startup-failed", "foreign", "detail-loading", "enrichment-failed", "enrichment-loading", "attention-only", "stop-failed"], item.script, "a coverage script") };
+        case "coverageScript": return { action: item.action, script: oneOf(["base", "loading", "failed", "empty", "partial", "many", "conflict", "logs-empty", "logs-failed", "logs-options", "logs-long", "logs-stream", "startup-failed", "foreign", "detail-loading", "enrichment-failed", "enrichment-loading", "attention-only", "stop-failed", "stop-pending"], item.script, "a coverage script") };
         case "coverageCheck": return { action: item.action, check: string(item.check) };
         case "coverageClick": return { action: item.action, label: string(item.label) };
         case "coverageFill": return { action: item.action, label: string(item.label), value: item.value === "" ? "" : string(item.value) };

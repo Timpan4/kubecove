@@ -169,7 +169,7 @@ impl Inspector {
             .exec
             .tabs
             .iter()
-            .any(|tab| tab.id.as_deref() == Some(session.id.as_str()));
+            .any(|tab| tab.session_id() == Some(session.id.as_str()));
         let (session_id, pod, namespace) = (
             session.id.clone(),
             session.pod_name.clone(),
@@ -330,7 +330,7 @@ impl Inspector {
             .exec
             .tabs
             .iter()
-            .position(|tab| tab.id.as_deref() == Some(session_id))
+            .position(|tab| tab.session_id() == Some(session_id))
         else {
             return;
         };

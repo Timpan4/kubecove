@@ -1,5 +1,5 @@
 //! `ExecSessionTerminal.svelte`: each terminal owns its stream, identity and task.
-use super::{Inspector, detail::Detail};
+use super::{Inspector, detail::Detail, exec_leave::LeaveDialog, request::InFlight};
 use gpui_kit::{Context, FocusHandle, SharedString, Task, Window};
 use kubecove_lib::models::*;
 use std::num::NonZeroU16;
@@ -12,24 +12,52 @@ const SCROLLBACK: usize = 1000;
 
 pub(super) struct ExecTab {
     pub key: usize,
-    pub id: Option<String>,
     pub container: String,
     pub command: Vec<String>,
-    pub status: String,
+    pub phase: ExecPhase,
+    /// Starts the session, then reads its messages until the channel closes. Dropping it
+    /// drops the stream, which ends the session. `None` before the start and after Stop.
+    pub stream: Option<InFlight>,
     pub error: Option<String>,
     pub parser: super::exec_reflow::Parser,
     pub selection: Option<super::exec_selection::Selection>,
     pub lines: Vec<SharedString>,
     pub rendered: Vec<super::exec_buffer::TerminalRow>,
     pub accessible: SharedString,
-    pub task: Option<Task<()>>,
-    pub stdin: Option<tokio::sync::mpsc::UnboundedSender<String>>,
-    pub input_task: Option<Task<()>>,
-    pub resize_task: Option<Task<()>>,
-    pub resize_sender: Option<tokio::sync::watch::Sender<PodExecTerminalSize>>,
-    pub pending_start: Option<PodExecSessionRequest>,
     pub cursor_visible: bool,
 }
+
+/// The session behind one terminal. `ExecSessionTerminal.svelte` keeps the same
+/// states as `sessionId` plus `PodExecSessionStatus | "stopped"`.
+pub(super) enum ExecPhase {
+    /// Waiting for the first layout to size the terminal.
+    Pending(Box<PodExecSessionRequest>),
+    /// The start request runs; the backend has not named the session yet.
+    Starting,
+    Live(LiveExec),
+    Ended(ExecEnd),
+}
+
+pub(super) struct LiveExec {
+    pub id: String,
+    pub status: PodExecSessionStatus,
+    pub input: Option<ExecInput>,
+    pub resize: Option<super::exec_resize::ExecResize>,
+}
+
+/// Guarded stdin: keystrokes queue here and one task writes them in order.
+pub(super) struct ExecInput {
+    sender: tokio::sync::mpsc::UnboundedSender<String>,
+    _task: InFlight,
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum ExecEnd {
+    Exited,
+    Stopped,
+    Error,
+}
+
 pub(super) struct ExecState {
     pub custom: Option<super::exec_custom::ExecCustomForm>,
     pub tabs: Vec<ExecTab>,
@@ -38,9 +66,7 @@ pub(super) struct ExecState {
     pub focus: FocusHandle,
     pub menu: bool,
     pub composition: Option<String>,
-    pub leave: Option<super::exec_leave::LeaveIntent>,
-    pub leave_error: Option<String>,
-    pub stopping: bool,
+    pub leave: LeaveDialog,
     pub bounds: Option<gpui_kit::Bounds<gpui_kit::Pixels>>,
     pub drag: Option<super::exec_drag::Drag>,
     pub blink_task: Option<Task<()>>,
@@ -69,9 +95,7 @@ impl ExecState {
             focus,
             menu: false,
             composition: None,
-            leave: None,
-            leave_error: None,
-            stopping: false,
+            leave: LeaveDialog::Closed,
             bounds: None,
             drag: None,
             blink_task: None,
@@ -87,9 +111,44 @@ impl ExecState {
         self.custom = None;
         self.tabs.clear();
         self.active = None;
+        self.leave = LeaveDialog::Closed;
     }
 }
 impl ExecTab {
+    pub(super) fn session_id(&self) -> Option<&str> {
+        match &self.phase {
+            ExecPhase::Live(live) => Some(&live.id),
+            _ => None,
+        }
+    }
+    /// Whether leaving the view must stop this terminal first. The web asks only for
+    /// tabs with a session id; a start in flight counts here too, so leaving never
+    /// orphans the session it is about to name.
+    pub(super) fn blocks_leave(&self) -> bool {
+        !matches!(self.phase, ExecPhase::Ended(_))
+    }
+    /// The status text and dot of `ExecTab.svelte`.
+    pub(super) fn status_label(&self) -> &'static str {
+        match &self.phase {
+            ExecPhase::Pending(_) | ExecPhase::Starting => "starting",
+            ExecPhase::Live(live) => crate::live_sessions::exec_status(live.status),
+            ExecPhase::Ended(ExecEnd::Exited) => "exited",
+            ExecPhase::Ended(ExecEnd::Stopped) => "stopped",
+            ExecPhase::Ended(ExecEnd::Error) => "error",
+        }
+    }
+    pub(super) fn stopped(&mut self) {
+        self.stream = None;
+        self.phase = ExecPhase::Ended(ExecEnd::Stopped);
+    }
+    /// `stopBackendSession`'s failure: the session may still run, so it stays tracked.
+    pub(super) fn stop_failed(&mut self, message: String) {
+        if let ExecPhase::Live(live) = &mut self.phase {
+            live.status = PodExecSessionStatus::Error;
+        }
+        self.error = Some(message);
+        self.output("\r\n\x1b[2m[stop failed; the session may still be running]\x1b[0m\r\n");
+    }
     pub(super) fn refresh_view(&mut self) {
         if self
             .selection
@@ -137,29 +196,39 @@ impl ExecTab {
             | PodExecSessionMessage::Exited { session_id, .. }
             | PodExecSessionMessage::Stopped { session_id } => session_id,
         };
-        if self.id.as_ref() != Some(id) {
+        if self.session_id() != Some(id.as_str()) {
             return;
         }
+        if let PodExecSessionMessage::Output { data, .. } = &event {
+            self.output(data);
+            return;
+        }
+        let ExecPhase::Live(live) = &mut self.phase else {
+            return;
+        };
         match event {
-            PodExecSessionMessage::Started { summary, .. } => {
-                self.status = crate::live_sessions::exec_status(summary.status).into()
-            }
-            PodExecSessionMessage::Status { status, .. } => {
-                self.status = crate::live_sessions::exec_status(status).into()
-            }
-            PodExecSessionMessage::Output { data, .. } => self.output(&data),
+            PodExecSessionMessage::Started { summary, .. } => live.status = summary.status,
+            PodExecSessionMessage::Status { status, .. } => live.status = status,
             PodExecSessionMessage::Error { message, .. } => {
-                self.status = "error".into();
+                live.status = PodExecSessionStatus::Error;
                 self.error = Some(message);
             }
-            PodExecSessionMessage::Exited { .. } => {
-                self.status = "exited".into();
-                self.id = None;
-            }
+            PodExecSessionMessage::Exited { .. } => self.phase = ExecPhase::Ended(ExecEnd::Exited),
             PodExecSessionMessage::Stopped { .. } => {
-                self.status = "stopped".into();
-                self.id = None;
+                self.phase = ExecPhase::Ended(ExecEnd::Stopped)
             }
+            PodExecSessionMessage::Output { .. } => {}
+        }
+    }
+    /// The stream closed without a final message.
+    fn stream_closed(&mut self) {
+        self.stream = None;
+        if let ExecPhase::Live(live) = &self.phase {
+            self.phase = ExecPhase::Ended(match live.status {
+                PodExecSessionStatus::Error => ExecEnd::Error,
+                PodExecSessionStatus::Exited => ExecEnd::Exited,
+                _ => ExecEnd::Stopped,
+            });
         }
     }
 }
@@ -219,10 +288,10 @@ impl Inspector {
         self.exec.menu = false;
         let mut tab = ExecTab {
             key,
-            id: None,
             container,
             command,
-            status: "starting".into(),
+            phase: ExecPhase::Ended(ExecEnd::Stopped),
+            stream: None,
             error: None,
             parser: super::exec_reflow::Parser::new_with_callbacks(
                 NonZeroU16::new(ROWS).unwrap(),
@@ -234,12 +303,6 @@ impl Inspector {
             lines: vec![],
             rendered: vec![],
             accessible: "".into(),
-            task: None,
-            stdin: None,
-            input_task: None,
-            resize_task: None,
-            resize_sender: None,
-            pending_start: None,
             cursor_visible: true,
         };
         tab.output(&format!(
@@ -247,7 +310,7 @@ impl Inspector {
             tab.command.join(" "),
             request.confirmation.target
         ));
-        tab.pending_start = Some(request);
+        tab.phase = ExecPhase::Pending(Box::new(request));
         self.exec.tabs.push(tab);
         if self.exec.blink_task.is_none() {
             self.exec.blink_task = Some(cx.spawn(async move |this, cx| {
@@ -287,16 +350,20 @@ impl Inspector {
         let Some(tab) = self.exec.tabs.iter_mut().find(|t| t.key == key) else {
             return;
         };
-        let Some(mut request) = tab.pending_start.take() else {
-            return;
+        let mut request = match std::mem::replace(&mut tab.phase, ExecPhase::Starting) {
+            ExecPhase::Pending(request) => request,
+            phase => {
+                tab.phase = phase;
+                return;
+            }
         };
         let (rows, cols) = tab.parser.screen().size();
         request.terminal_size = PodExecTerminalSize {
             cols: cols.get(),
             rows: rows.get(),
         };
-        let read = self.backend.exec(request);
-        tab.task = Some(cx.spawn(async move |this, cx| match read.await {
+        let read = self.backend.exec(*request);
+        let stream = cx.spawn(async move |this, cx| match read.await {
             Ok(mut stream) => {
                 let id = stream.summary.id.clone();
                 let alive = this
@@ -304,9 +371,12 @@ impl Inspector {
                         let Some(tab) = this.exec.tabs.iter_mut().find(|t| t.key == key) else {
                             return false;
                         };
-                        tab.id = Some(id);
-                        tab.status =
-                            crate::live_sessions::exec_status(stream.summary.status).into();
+                        tab.phase = ExecPhase::Live(LiveExec {
+                            id,
+                            status: stream.summary.status,
+                            input: None,
+                            resize: None,
+                        });
                         this.open_exec_input(key, cx);
                         this.send_exec_resize(key, cx);
                         this.load_sessions(cx);
@@ -336,12 +406,7 @@ impl Inspector {
                 }
                 let _ = this.update(cx, |this, cx| {
                     if let Some(tab) = this.exec.tabs.iter_mut().find(|t| t.key == key) {
-                        tab.id = None;
-                        tab.stdin = None;
-                        tab.input_task = None;
-                        if matches!(tab.status.as_str(), "starting" | "connecting" | "running") {
-                            tab.status = "stopped".into();
-                        }
+                        tab.stream_closed();
                     }
                     this.load_sessions(cx);
                     cx.notify();
@@ -350,46 +415,49 @@ impl Inspector {
             Err(error) => {
                 let _ = this.update(cx, |this, cx| {
                     if let Some(tab) = this.exec.tabs.iter_mut().find(|t| t.key == key) {
-                        tab.status = "error".into();
+                        tab.stream = None;
+                        tab.phase = ExecPhase::Ended(ExecEnd::Error);
                         tab.error = Some(error.message);
                     }
                     cx.notify();
                 });
             }
-        }));
+        });
+        tab.stream = Some(stream.into());
         cx.notify();
     }
 
     pub(super) fn exec_input(&mut self, data: String, cx: &mut Context<Self>) {
-        let Some(tab) = self.exec.active() else {
-            return;
-        };
-        if let Some(sender) = &tab.stdin {
-            let _ = sender.send(data);
-        }
-        if let Some(tab) = self
+        let Some(tab) = self
             .exec
             .tabs
             .iter_mut()
             .find(|t| Some(t.key) == self.exec.active)
+        else {
+            return;
+        };
+        if let ExecPhase::Live(LiveExec {
+            input: Some(input), ..
+        }) = &tab.phase
         {
-            tab.parser.screen_mut().set_scrollback(0);
-            tab.selection = None;
-            tab.refresh_view();
+            let _ = input.sender.send(data);
         }
+        tab.parser.screen_mut().set_scrollback(0);
+        tab.selection = None;
+        tab.refresh_view();
         cx.notify();
     }
     fn open_exec_input(&mut self, key: usize, cx: &mut Context<Self>) {
         let Some(tab) = self.exec.tabs.iter_mut().find(|t| t.key == key) else {
             return;
         };
-        let Some(id) = tab.id.clone() else {
+        let ExecPhase::Live(live) = &mut tab.phase else {
             return;
         };
+        let id = live.id.clone();
         let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
-        tab.stdin = Some(sender);
         let backend = self.backend.clone();
-        tab.input_task = Some(cx.spawn(async move |this, cx| {
+        let task = cx.spawn(async move |this, cx| {
             while let Some(data) = receiver.recv().await {
                 if let Err(error) = backend.exec_input(id.clone(), data).await {
                     let _ = this.update(cx, |this, cx| {
@@ -401,7 +469,11 @@ impl Inspector {
                     break;
                 }
             }
-        }));
+        });
+        live.input = Some(ExecInput {
+            sender,
+            _task: task.into(),
+        });
     }
     pub(super) fn stop_exec_tab(&mut self, key: usize, cx: &mut Context<Self>) {
         let Some(id) = self
@@ -409,7 +481,8 @@ impl Inspector {
             .tabs
             .iter()
             .find(|t| t.key == key)
-            .and_then(|t| t.id.clone())
+            .and_then(|t| t.session_id())
+            .map(str::to_owned)
         else {
             return;
         };
@@ -419,13 +492,7 @@ impl Inspector {
             let _ = this.update(cx, |this, cx| {
                 if let Some(tab) = this.exec.tabs.iter_mut().find(|t| t.key == key) {
                     match result {
-                        Ok(true) => {
-                            tab.task.take();
-                            tab.input_task.take();
-                            tab.stdin.take();
-                            tab.id = None;
-                            tab.status = "stopped".into();
-                        }
+                        Ok(true) => tab.stopped(),
                         Ok(false) => {
                             tab.error = Some("Stop failed; the session may still be running".into())
                         }

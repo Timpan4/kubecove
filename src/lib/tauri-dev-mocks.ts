@@ -3,7 +3,7 @@ import { stringify } from "yaml";
 import { cancelSignInRemoteMock, connectRemoteMock, disconnectRemoteMock, remoteMockStatus, saveWorkspaceMock, selectedDialogPath, selectedWorkspaceFile, signInLinkRemoteMock, signInRemoteMock, signOutRemoteMock, startNewSessionRemoteMock } from "./settings-integration-mocks";
 import { argoApplicationSummary, argoApplicationYaml, argoMockHandlers, customResourceKinds, presentCustomResourceKinds } from "./tauri-dev-mock-argo";
 import { type MockArgs, type MockHandler, type MockResult, readMockArgs } from "./tauri-dev-mock-contract";
-import { beforeCoverageRead, coverageHelm, coverageIncidents, coverageLogs, coverageRbac, coverageSessions, coverageStopForward, coverageTopology, coverageYamlPreview, registerCoverageLogStream } from "./tauri-dev-mock-coverage";
+import { beforeCoverageRead, coverageHelm, coverageIncidents, coverageLogs, coverageRbac, coverageSessions, coverageStopExec, coverageStopForward, coverageTopology, coverageYamlPreview, registerCoverageLogStream } from "./tauri-dev-mock-coverage";
 import {
 	deploymentRevisions,
 	dockerResources,
@@ -75,7 +75,7 @@ export function createDevMockTauriClient({ latencyMs = 35 }: { latencyMs?: numbe
             if (cmd === "start_pod_exec_session" && live) return startMockExec(live.request, live.channel) as T;
             if (cmd === "write_pod_exec_stdin" && live) return mockExecInput(live.sessionId, live.data) as T;
             if (cmd === "resize_pod_exec_terminal" && live) return resizeMockExec(live.sessionId, live.size) as T;
-            if (cmd === "stop_pod_exec_session" && live) return stopMockExec(live.sessionId) as T;
+            if (cmd === "stop_pod_exec_session" && live) { await coverageStopExec(); return stopMockExec(live.sessionId) as T; }
             if (cmd === "stop_port_forward" && live) { coverageStopForward(live.sessionId, listMockForwards()); return stopMockForward(live.sessionId) as T; }
             if (cmd === "stop_live_sessions_outside_scope" && live) return cleanupMockSessions(live.request) as T;
 			const handler = findMockHandler(cmd);

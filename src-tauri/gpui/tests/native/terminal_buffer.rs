@@ -85,22 +85,16 @@ fn alternate_screen_does_not_enter_normal_scrollback() {
 fn tab() -> super::exec_state::ExecTab {
     super::exec_state::ExecTab {
         key: 0,
-        id: None,
         container: "app".into(),
         command: vec!["/bin/sh".into()],
-        status: "stopped".into(),
+        phase: super::exec_state::ExecPhase::Ended(super::exec_state::ExecEnd::Stopped),
+        stream: None,
         error: None,
         parser: parser(3, 8),
         selection: None,
         lines: vec![],
         rendered: vec![],
         accessible: "".into(),
-        task: None,
-        stdin: None,
-        input_task: None,
-        resize_task: None,
-        resize_sender: None,
-        pending_start: None,
         cursor_visible: true,
     }
 }
