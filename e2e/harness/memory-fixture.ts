@@ -9,7 +9,12 @@ export const MEMORY_FIXTURE_ROWS = {
 } as const;
 export type MemoryFixture = keyof typeof MEMORY_FIXTURE_ROWS;
 
-export async function startMemoryFixture(size: MemoryFixture, directory: string) {
+/** Measurement options. `latencyMs` delays every response, as a cluster round trip would. */
+export type MemoryFixtureOptions = { latencyMs?: number };
+/** One served request, for counting the reads a client action makes. */
+export type FixtureRequest = { epochMs: number; method: string; path: string; watch: boolean };
+
+export async function startMemoryFixture(size: MemoryFixture, directory: string, { latencyMs = 0 }: MemoryFixtureOptions = {}) {
 	const key = join(directory, "key.pem");
 	const cert = join(directory, "cert.pem");
 	const certificate = Bun.spawn(["openssl", "req", "-x509", "-newkey", "rsa", "-nodes", "-keyout", key, "-out", cert, "-subj", "/CN=localhost", "-addext", "subjectAltName=IP:127.0.0.1", "-addext", "basicConstraints=critical,CA:FALSE"], { stdout: "ignore", stderr: "pipe" });
@@ -58,21 +63,35 @@ export async function startMemoryFixture(size: MemoryFixture, directory: string)
 		"/api": [aggregatedGroup("", "v1", [apiResource("pods", "Pod", true), apiResource("services", "Service", true), apiResource("namespaces", "Namespace", false), apiResource("nodes", "Node", false)])],
 		"/apis": [aggregatedGroup("apps", "v1", [apiResource("deployments", "Deployment", true), apiResource("replicasets", "ReplicaSet", true)]), aggregatedGroup("metrics.k8s.io", "v1beta1", [apiResource("pods", "PodMetrics", true), apiResource("nodes", "NodeMetrics", false)])],
 	};
+	// Open Pod watch streams. They stay idle unless a benchmark calls `burst`.
+	const podWatches = new Set<ReadableStreamDefaultController<Uint8Array>>();
+	let resourceVersion = 1;
+	const requests: FixtureRequest[] = [];
 	const server = Bun.serve({
 		hostname: "127.0.0.1", port: 0,
 		// Watches intentionally remain idle until the owned fixture is stopped.
 		idleTimeout: 0,
 		tls: { key: Bun.file(key), cert: Bun.file(cert) },
-		fetch(request) {
-			if (request.method !== "GET") return Response.json({ kind: "Status", status: "Failure", reason: "MethodNotAllowed", code: 405 }, { status: 405 });
+		async fetch(request) {
 			const url = new URL(request.url);
+			requests.push({ epochMs: Date.now(), method: request.method, path: `${url.pathname}${url.search}`, watch: url.searchParams.get("watch") === "true" });
+			if (latencyMs > 0) await Bun.sleep(latencyMs);
+			if (request.method !== "GET") return Response.json({ kind: "Status", status: "Failure", reason: "MethodNotAllowed", code: 405 }, { status: 405 });
 			const aggregatedDiscovery = request.headers.get("accept")?.split(",").some((media) => media.split(";").some((parameter) => parameter.trim() === "g=apidiscovery.k8s.io"));
 			if ((url.pathname === "/api" || url.pathname === "/apis") && aggregatedDiscovery) return Response.json({ apiVersion: "apidiscovery.k8s.io/v2", kind: "APIGroupDiscoveryList", metadata: {}, items: aggregated[url.pathname] });
 			const apiDiscovery = discovery.get(url.pathname);
 			if (apiDiscovery) return Response.json(apiDiscovery);
 			if (url.searchParams.get("watch") === "true") {
-				// Keep the read-only watch idle; no synthetic events alter the loaded fixture.
-				return new Response(new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode(`${JSON.stringify({ type: "BOOKMARK", object: { apiVersion: "v1", kind: "Pod", metadata: { resourceVersion: "1" } } })}\n`)); } }), { headers: { "content-type": "application/json" } });
+				// The watch stays idle unless `burst` is called; the loaded fixture never changes otherwise.
+				const podWatch = !url.pathname.includes("/metrics.k8s.io/") && url.pathname.split("/").filter(Boolean).at(-1) === "pods";
+				let owned: ReadableStreamDefaultController<Uint8Array> | undefined;
+				return new Response(new ReadableStream<Uint8Array>({
+					start(controller) {
+						controller.enqueue(new TextEncoder().encode(`${JSON.stringify({ type: "BOOKMARK", object: { apiVersion: "v1", kind: "Pod", metadata: { resourceVersion: "1" } } })}\n`));
+						if (podWatch) { owned = controller; podWatches.add(controller); }
+					},
+					cancel() { if (owned) podWatches.delete(owned); },
+				}), { headers: { "content-type": "application/json" } });
 			}
 			const segments = url.pathname.split("/").filter(Boolean);
 			const last = segments.at(-1) ?? "";
@@ -87,5 +106,15 @@ export async function startMemoryFixture(size: MemoryFixture, directory: string)
 			return Response.json({ apiVersion: "v1", kind: "List", metadata: { resourceVersion: "1" }, items });
 		},
 	});
-	return { url: `https://127.0.0.1:${server.port}`, authority, rows: count, stop: () => server.stop(true) };
+	/** Sends `events` MODIFIED Pod events (at most one per Pod), with `restarts` as the restart count, to every open Pod watch. */
+	function burst(restarts: number, events = pods.length) {
+		resourceVersion += 1;
+		const lines = pods.slice(0, events).map((pod) => JSON.stringify({ type: "MODIFIED", object: { ...pod, metadata: { ...pod.metadata, resourceVersion: String(resourceVersion) }, status: { ...pod.status, containerStatuses: pod.status.containerStatuses.map((status) => ({ ...status, restartCount: restarts })) } } }));
+		const chunk = new TextEncoder().encode(`${lines.join("\n")}\n`);
+		for (const controller of podWatches) {
+			try { controller.enqueue(chunk); } catch { podWatches.delete(controller); }
+		}
+		return { watches: podWatches.size, events: lines.length };
+	}
+	return { url: `https://127.0.0.1:${server.port}`, authority, rows: count, burst, requests, stop: () => server.stop(true) };
 }

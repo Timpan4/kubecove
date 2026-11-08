@@ -75,3 +75,8 @@ debug = false
 
 [profile.dev.package.kubecove]
 debug = true
+
+# Action-to-settled latency on the real backend, run by `scripts/perf-gpui-speed.ts`.
+[[test]]
+name = "speed"
+harness = false
