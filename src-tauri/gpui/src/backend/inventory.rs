@@ -4,7 +4,7 @@
 use super::ScopeResult;
 use crate::gitops::{ARGO_KINDS, GitOpsInventory, argo_watch_key, flux_watch_key};
 use kubecove_lib::{
-    commands::{self, ClusterAccess, ClusterLiveStore},
+    commands::{self, ClusterAccess, ClusterLiveStore, list_projection::bounded_join_all},
     models::{AppError, AppErrorKind, WatchResourceKey, WatchResourceKind},
     runtime::State,
 };
@@ -108,16 +108,23 @@ pub(super) async fn cluster_resources(
     let mut resources = Vec::new();
     let mut warnings = Vec::new();
     let mut versions = super::ListVersions::new();
-    for (kind, key) in CLUSTER_KINDS.iter().zip(&keys) {
-        match commands::list_resource_snapshot(
-            context.clone(),
-            (*kind).to_owned(),
-            None,
-            None,
-            State::new(&store),
-        )
-        .await
-        {
+    // The kinds are listed together; results are read in kind order, so the
+    // first failing kind still decides the error.
+    let reads: Vec<_> = CLUSTER_KINDS
+        .iter()
+        .map(|kind| {
+            commands::list_resource_snapshot(
+                context.clone(),
+                (*kind).to_owned(),
+                None,
+                None,
+                State::new(&store),
+            )
+        })
+        .collect();
+    let results = bounded_join_all(reads, commands::MAX_LIST_CONCURRENCY).await;
+    for ((kind, key), result) in CLUSTER_KINDS.iter().zip(&keys).zip(results) {
+        match result {
             Ok(snapshot) => {
                 resources.extend(Arc::unwrap_or_clone(snapshot.rows));
                 if let Some(version) = snapshot.resource_version {
