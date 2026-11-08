@@ -74,12 +74,24 @@ fn same_resource(row: &ResourceSummary, target: &ResourceSummary) -> bool {
 }
 
 impl Inspector {
-    /// Whether the sidebar row selects one kind: a built-in or namespace kind
-    /// row sets `kind_selection.chosen`, and a custom kind row locks `live`.
+    /// Whether the sidebar row selects one kind, as the web's
+    /// `selectedNode.type === "kind"`: a built-in kind row, whose path ends in
+    /// its kind, or a custom kind row, which locks `live`. Category rows such as
+    /// Workloads also set `kind_selection.chosen` but keep the browser state.
     fn sidebar_kind_node(&self) -> bool {
+        let kind_row = self
+            .sidebar_tree
+            .selected
+            .as_deref()
+            .and_then(|path| path.rsplit('/').next())
+            .is_some_and(|leaf| {
+                super::sidebar_tree::GROUPS
+                    .iter()
+                    .any(|(_, kinds)| kinds.contains(&leaf))
+            });
         matches!(self.page, Page::Resources | Page::ClusterOverview)
             && self.sidebar_tree.selected.is_some()
-            && (self.live.kind_locked || self.kind_selection.chosen.is_some())
+            && (self.live.kind_locked || (kind_row && self.kind_selection.chosen.is_some()))
     }
 
     /// Records the active workspace before another workspace replaces it.
