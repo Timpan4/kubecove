@@ -56,5 +56,10 @@ pub(super) fn server_information(
                 .test_support()
                 .aria_label(store),
         );
-    settings_row(row.title, row.description.into(), control.into_any_element()).into_any_element()
+    settings_row(
+        row.title,
+        row.description.into(),
+        control.into_any_element(),
+    )
+    .into_any_element()
 }

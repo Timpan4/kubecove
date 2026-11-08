@@ -269,7 +269,9 @@ impl Inspector {
             .children(settings::rows(category, remote.is_some()).map(|row| {
                 if row.title == "KubeCove documentation" {
                     self.documentation_control(row, cx)
-                } else if let Some(remote) = remote.filter(|_| row.title == settings::SERVER_INFORMATION) {
+                } else if let Some(remote) =
+                    remote.filter(|_| row.title == settings::SERVER_INFORMATION)
+                {
                     super::settings_sections::server_information(row, remote)
                 } else if row.title == "Latency report" {
                     self.latency_report(row, cx)
