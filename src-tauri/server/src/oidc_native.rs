@@ -58,9 +58,10 @@ struct PendingCode {
 #[derive(Default)]
 pub(super) struct NativeCodes {
     pending: HashMap<String, PendingCode>,
-    /// Exchanged codes and the credential each produced, kept until the code's
-    /// deadline so a replay can revoke that credential (RFC 9700 4.2.4).
-    consumed: HashMap<String, (String, u64)>,
+    /// Exchanged codes and the credential each produced, kept until that
+    /// credential expires or is revoked, so a replay at any time while it is
+    /// usable revokes it (RFC 9700 4.2.4).
+    consumed: HashMap<String, String>,
 }
 
 impl NativeStart {
@@ -189,7 +190,7 @@ impl Oidc {
         let Some(pending) = codes.pending.remove(&request.code) else {
             let replayed = codes.consumed.remove(&request.code);
             drop(codes);
-            if let Some((credential, _)) = replayed {
+            if let Some(credential) = replayed {
                 self.revoke_entry(&mut credentials, &credential);
             }
             return Err(refused_code());
@@ -212,17 +213,26 @@ impl Oidc {
         }
         codes
             .consumed
-            .insert(request.code, (pending.credential.clone(), pending.deadline));
+            .insert(request.code, pending.credential.clone());
         Ok(Json(serde_json::json!({ "credential": pending.credential })).into_response())
     }
 
-    /// Drops expired codes and returns the credentials of codes that were
-    /// never exchanged, which the caller revokes.
-    pub(super) fn prune_codes(&self, now: u64) -> Vec<String> {
+    /// Drops expired codes and the records of exchanged codes whose credential
+    /// is gone or expired. Returns the credentials of codes that were never
+    /// exchanged, which the caller revokes.
+    pub(super) fn prune_codes(
+        &self,
+        now: u64,
+        credentials: &HashMap<String, Credential>,
+    ) -> Vec<String> {
         let Ok(mut codes) = self.codes.lock() else {
             return Vec::new();
         };
-        codes.consumed.retain(|_, (_, deadline)| *deadline > now);
+        codes.consumed.retain(|_, credential| {
+            credentials
+                .get(credential)
+                .is_some_and(|entry| entry.expires_unix > now)
+        });
         let expired = codes
             .pending
             .iter()

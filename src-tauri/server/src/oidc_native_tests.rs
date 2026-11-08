@@ -215,6 +215,25 @@ async fn code_is_single_use_and_replay_revokes_its_credential() {
 }
 
 #[tokio::test]
+async fn replay_after_the_login_deadline_still_revokes_its_credential() {
+    let (mut oidc, _provider) = mock::fixture("http://localhost:43165").await.unwrap();
+    // A short deadline, so the test can pass it. Two seconds leaves the
+    // exchange below at least one whole second before the deadline.
+    oidc.config.login_timeout = std::time::Duration::from_secs(2);
+    let started = unix_now();
+    let code = native_code(&oidc).await;
+    let credential = exchange(&oidc, &code, VERIFIER, REDIRECT).await.unwrap();
+    let session = oidc.verify(&bearer(&credential)).unwrap();
+    // The deadline is at most `started + 1 + 2`.
+    while unix_now() < started + 3 {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert!(exchange(&oidc, &code, VERIFIER, REDIRECT).await.is_err());
+    assert!(session.revoked.is_cancelled());
+    assert!(oidc.verify(&bearer(&credential)).is_err());
+}
+
+#[tokio::test]
 async fn wrong_verifier_or_redirect_consumes_the_code() {
     let (oidc, _provider) = mock::fixture("http://localhost:43162").await.unwrap();
     let wrong_verifier = "x".repeat(43);

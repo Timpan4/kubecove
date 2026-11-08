@@ -299,7 +299,7 @@ impl Oidc {
             .filter(|(_, credential)| credential.expires_unix <= now)
             .map(|(key, _)| key.clone())
             .collect::<Vec<_>>();
-        expired.extend(self.prune_codes(now));
+        expired.extend(self.prune_codes(now, credentials));
         for key in expired {
             if let Some(credential) = credentials.remove(&key) {
                 credential.revoked.cancel();
