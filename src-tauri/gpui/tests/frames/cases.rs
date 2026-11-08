@@ -366,10 +366,11 @@ pub static CASES: &[Case] = &[
     },
     Case {
         id: "table-scroll-sorted",
-        description: "Wheel-scroll the resource table sorted by Age, 40px per frame, 30 frames each way",
+        description: "Wheel-scroll the resource table sorted by Name descending, 40px per frame, 30 frames each way",
+        // Age and the usage columns sit past the frame window's right edge.
         setup: |d| {
             open_resources(d);
-            d.act(|w, cx| w.click("sort:Age", cx));
+            d.act(|w, cx| w.click("sort:Name", cx));
         },
         prepare: None,
         aim: table_point,
