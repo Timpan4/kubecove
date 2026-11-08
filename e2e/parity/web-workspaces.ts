@@ -36,6 +36,17 @@ export async function workspaceAction(page: Page, step: Step): Promise<void> {
             await card.getByText("Total", { exact: true }).locator("..").locator("strong").filter({ hasText: new RegExp(`^${step.total}$`) }).waitFor();
             break;
         }
+        case "exportSavedWorkspace":
+            await page.getByRole("button", { name: `Export ${step.name}`, exact: true }).click();
+            await page.getByText(`Exported ${step.name}.`, { exact: true }).waitFor(); break;
+        case "expectExportedShortcut": {
+            const content = String(await page.evaluate("import('/src/lib/settings-integration-mocks.ts').then(m => m.workspaceExportMock())"));
+            const document = JSON.parse(content);
+            const items: { spec: { displayName: string; shortcuts: unknown[] } }[] = document.kind === "WorkspaceList" ? document.items : [document];
+            const shortcuts = items.find((item) => item.spec.displayName === step.name)?.spec.shortcuts ?? [];
+            if (!shortcuts.some((shortcut) => isDeepStrictEqual(shortcut, step.shortcut))) throw new Error(`Export of ${step.name} lacks shortcut ${JSON.stringify(step.shortcut)}: ${JSON.stringify(shortcuts)}`);
+            break;
+        }
         case "expectDetailContext":
             await page.getByRole("tab", { name: "YAML", exact: true }).click();
             await page.getByRole("button", { name: "Edit YAML", exact: true }).click();

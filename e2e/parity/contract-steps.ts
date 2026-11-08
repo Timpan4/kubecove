@@ -49,7 +49,7 @@ export type Step =
     | { action: "expectRemoteHost"; url: string }
     | { action: "expectRemoteHostTooltip"; value: string }
     | { action: "expectNoRemoteHost" }
-    | { action: "configureShellRead"; phase: "ready" | "contexts-failed" | "contexts-empty" | "namespaces-failed" | "namespaces-credential-failed" | "namespaces-empty" | "resources-failed" | "primary-context-missing" | "kind-missing" | "payments-api-removed" | "sources-failed" }
+    | { action: "configureShellRead"; phase: "ready" | "contexts-failed" | "contexts-empty" | "namespaces-failed" | "namespaces-credential-failed" | "namespaces-empty" | "resources-failed" | "primary-context-missing" | "kind-missing" | "payments-api-removed" | "payments-deployments-forbidden" | "payments-ingress-version-changed" | "sources-failed" }
     | { action: "openNamespaceList" }
     | { action: "expectNamespaceRow"; name: string; age: string }
     | { action: "resizeViewport"; width: number; height: number }
@@ -154,14 +154,15 @@ export type Step =
     | { action: "expectForwardState"; target: string; local: string; status: string; resolved?: string; count: number }
     | { action: "execControl"; operation: "start" | "input" | "close" | "stop" | "select" | "custom" | "arguments" | "shortcut" | "run"; container?: string; command?: string; data?: string; tab?: number }
     | { action: "expectExecState"; container: string; status: string; contains: string; absent?: string; command?: string }
-    | { action: "expectWorkspaceExport"; name: string }
+    | { action: "expectWorkspaceExport" | "exportSavedWorkspace"; name: string }
+    | { action: "expectExportedShortcut"; name: string; shortcut: Record<string, unknown> }
     | { action: "fillSettingsField"; field: "Server URL" | "Server token"; value: string }
     | { action: "clickSettingsButton"; label: string }
     | { action: "clickKubeconfigPathButton"; value: string; label: string }
     | { action: "expectKubeconfigPathBefore"; value: string; other: string }
     | { action: "expectSettingsText" | "expectNoSettingsText" | "expectRuntimeEndpoint"; value: string }
     | { action: "expectMaskedToken" | "reopenStoredSettings" | "attemptUnverifiedUpdate" }
-    | { action: "configureSettingsMock"; script: "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "choose-application-workspace" | "cancel-dialog" | "no-update" | "invalid-signature" | "update-available" }
+    | { action: "configureSettingsMock"; script: "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "choose-application-workspace" | "choose-compare-workspace" | "choose-last-export" | "cancel-dialog" | "no-update" | "invalid-signature" | "update-available" }
     | { action: "expectLiveState"; label: string; notice?: string }
     | { action: "replayLiveData"; script: import("../../src/lib/tauri-dev-mock-live").LiveScript }
     | ({ action: "expectResourceStatus"; status: string } & Identity)

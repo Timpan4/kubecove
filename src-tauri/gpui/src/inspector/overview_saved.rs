@@ -3,6 +3,7 @@ use super::{Inspector, overview::titled_card};
 use crate::{
     model::{HealthSummary, WORKSPACE_KINDS},
     ui,
+    workspaces::shortcuts::{CompareKind, compare_entries},
 };
 use gpui_kit::{AnyElement, SharedString, TestSupportExt, div, prelude::*, px};
 
@@ -14,7 +15,7 @@ pub(super) struct SavedOverview {
     comparisons: Vec<Comparison>,
 }
 struct Comparison {
-    title: &'static str,
+    title: String,
     sides: [(String, HealthSummary); 2],
 }
 
@@ -140,32 +141,22 @@ impl Inspector {
                         .push(format!("Kinds: {}", missing.join(", ")));
                 }
             }
-            let contexts = saved.contexts();
-            if let [left, right, ..] = contexts.as_slice() {
-                projection.comparisons.push(Comparison {
-                    title: "Compare contexts",
-                    sides: [*left, *right].map(|context| {
-                        (
-                            context.to_owned(),
-                            HealthSummary::of(
-                                self.workspace_rows().filter(|row| row.cluster == context),
-                            ),
-                        )
-                    }),
+            // The web derives these cards from the saved scope, not from the
+            // Compare shortcut's own metadata, so an imported shortcut that
+            // differs from its scope does not change them.
+            for entry in compare_entries(saved) {
+                let sides = [entry.left_label, entry.right_label].map(|label| {
+                    let health = HealthSummary::of(self.workspace_rows().filter(|row| {
+                        match entry.kind {
+                            CompareKind::Contexts => row.cluster == label,
+                            CompareKind::Namespaces => row.namespace.as_ref() == Some(&label),
+                        }
+                    }));
+                    (label, health)
                 });
-            }
-            if let [left, right, ..] = saved.namespaces.as_slice() {
                 projection.comparisons.push(Comparison {
-                    title: "Compare namespaces",
-                    sides: [left, right].map(|namespace| {
-                        (
-                            namespace.clone(),
-                            HealthSummary::of(
-                                self.workspace_rows()
-                                    .filter(|row| row.namespace.as_ref() == Some(namespace)),
-                            ),
-                        )
-                    }),
+                    title: entry.label,
+                    sides,
                 });
             }
         }
@@ -222,7 +213,7 @@ impl Inspector {
                         ui::panel()
                             .flex_1()
                             .p(px(12.))
-                            .child(ui::sm(comparison.title))
+                            .child(ui::sm(comparison.title.clone()))
                             .child(
                                 div()
                                     .flex()

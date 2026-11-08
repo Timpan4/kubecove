@@ -177,7 +177,9 @@ pub fn export(workspaces: &[(&SavedWorkspace, Option<&Value>)]) -> String {
         let mut document = original.map(|value| (*value).clone()).unwrap_or_else(|| {
             let mut scope = json!({"clusterContext":workspace.context,"namespaces":workspace.namespaces,"kinds":workspace.kinds,"layout":"overview","argoAppFilter":""});
             if !workspace.group.is_empty() { scope["clusterGroup"] = json!({"id":format!("group:{}",workspace.id),"name":workspace.group_name,"members":workspace.contexts()}); }
-            json!({"apiVersion":API_VERSION,"kind":"Workspace","metadata":{},"spec":{"scope":scope,"shortcuts":[],"portForwards":[]}})
+            // A local workspace exports the shortcuts it shows, as the web's record does.
+            let shortcuts = super::shortcuts::generated(workspace, None);
+            json!({"apiVersion":API_VERSION,"kind":"Workspace","metadata":{},"spec":{"scope":scope,"shortcuts":shortcuts,"portForwards":[]}})
         });
         document["metadata"]["name"] = json!(key);
         document["spec"]["displayName"] = json!(workspace.name);

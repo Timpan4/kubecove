@@ -32,7 +32,57 @@ pub enum Target {
     Compare {
         #[serde(skip_serializing_if = "Option::is_none")]
         namespace: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        compare: Option<CompareEntry>,
     },
+}
+
+/// `WorkspaceCompareEntry`: the two sides a Compare shortcut was generated for.
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompareEntry {
+    pub id: String,
+    pub kind: CompareKind,
+    pub label: String,
+    pub left_label: String,
+    pub right_label: String,
+    pub cluster_contexts: Vec<String>,
+    pub namespaces: Vec<String>,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CompareKind {
+    Contexts,
+    Namespaces,
+}
+
+/// `buildWorkspaceCompareEntries`: the first two contexts, then the first two namespaces.
+pub fn compare_entries(saved: &SavedWorkspace) -> Vec<CompareEntry> {
+    let contexts: Vec<String> = saved.contexts().into_iter().map(str::to_owned).collect();
+    let mut entries = vec![];
+    if let [left, right, ..] = contexts.as_slice() {
+        entries.push(CompareEntry {
+            id: format!("ctx:{left}:{right}"),
+            kind: CompareKind::Contexts,
+            label: "Compare contexts".into(),
+            left_label: left.clone(),
+            right_label: right.clone(),
+            cluster_contexts: vec![left.clone(), right.clone()],
+            namespaces: saved.namespaces.clone(),
+        });
+    }
+    if let [left, right, ..] = saved.namespaces.as_slice() {
+        entries.push(CompareEntry {
+            id: format!("namespaces:{left}:{right}"),
+            kind: CompareKind::Namespaces,
+            label: "Compare namespaces".into(),
+            left_label: left.clone(),
+            right_label: right.clone(),
+            cluster_contexts: contexts.clone(),
+            namespaces: vec![left.clone(), right.clone()],
+        });
+    }
+    entries
 }
 
 pub fn for_workspace(
@@ -70,11 +120,16 @@ pub fn generated(saved: &SavedWorkspace, document: Option<&serde_json::Value>) -
             },
         }));
     }
-    if enabled("includeCompare") && (saved.contexts().len() >= 2 || saved.namespaces.len() >= 2) {
+    if enabled("includeCompare")
+        && let Some(compare) = compare_entries(saved).into_iter().next()
+    {
         shortcuts.push(Shortcut {
-            id: "compare".into(),
+            id: format!("compare:{}", compare.id),
             label: "Compare".into(),
-            target: Target::Compare { namespace: None },
+            target: Target::Compare {
+                namespace: None,
+                compare: Some(compare),
+            },
         });
     }
     shortcuts

@@ -60,7 +60,7 @@ export async function action(page: Page, step: Step) {
             await terminalAction(page, step); break;
         case "failWorkspaceContext": case "expectWorkspaceReadWarning": case "expectContextUnavailable":
             await workspaceAction(page, step); break;
-        case "editSavedWorkspace": case "expectNoSavedWorkspace": case "saveWorkspace": case "cancelWorkspaceEdit": case "toggleWorkspaceContext": case "expectOverviewHealth": case "expectDetailContext":
+        case "editSavedWorkspace": case "expectNoSavedWorkspace": case "saveWorkspace": case "cancelWorkspaceEdit": case "toggleWorkspaceContext": case "expectOverviewHealth": case "expectDetailContext": case "exportSavedWorkspace": case "expectExportedShortcut":
             await workspaceAction(page, step); break;
         case "sidebarToggle": case "sidebarSelect": case "expectSidebarRow": case "collapseSidebar": case "expectSidebarBranch": case "scrollSidebar": case "expectSidebarReveal": case "refreshPage": await sidebarLiveAction(page, step); break;
         case "openNamespaceList": case "expectNamespaceRow": case "resizeViewport": case "openNavigationDrawer": case "expectNavigationDrawer": case "sidebarKey": await navigationAction(page, step); break;

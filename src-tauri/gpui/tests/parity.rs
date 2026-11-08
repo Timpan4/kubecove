@@ -637,6 +637,9 @@ fn run_scenario(
         if step["action"] == "expectWorkspaceExport" {
             backend.expect_workspace_export(string(step, "name"));
         }
+        if step["action"] == "expectExportedShortcut" {
+            backend.expect_exported_shortcut(string(step, "name"), &step["shortcut"]);
+        }
         if step["action"] == "replayLiveData" {
             backend.replay_live(string(step, "script"));
         }

@@ -20,6 +20,12 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 .try_find_by_label(&format!("Open {}", string(step, "name")))
                 .is_none()
         ),
+        "exportSavedWorkspace" => locate::click_label(
+            window,
+            "launcher-body",
+            &format!("Export {}", string(step, "name")),
+            cx,
+        ),
         "saveWorkspace" => window.click("workspace-create", cx),
         "cancelWorkspaceEdit" => window.click("workspace-cancel-edit", cx),
         "toggleWorkspaceContext" => locate::click_in(

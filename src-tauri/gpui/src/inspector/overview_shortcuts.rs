@@ -54,7 +54,7 @@ impl Inspector {
                         },
                         Target::Resources { namespace }
                         | Target::Namespace { namespace }
-                        | Target::Compare { namespace } => {
+                        | Target::Compare { namespace, .. } => {
                             this.select_namespace(namespace.clone(), window, cx);
                             this.shortcut_owner = this.launcher.active.and_then(|id| {
                                 let scope =

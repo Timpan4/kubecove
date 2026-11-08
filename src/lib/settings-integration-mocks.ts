@@ -1,11 +1,12 @@
 //! Controlled host responses for the development browser and shared UI tests.
 
 import applicationWorkspace from "./overview-application-workspace.json";
+import compareWorkspace from "./overview-compare-workspace.json";
 import unavailableWorkspace from "./overview-unavailable-workspace.json";
 import type { RemoteConnectionSummary } from "./remote-runtime";
 import workspace from "./settings-integration-workspace.json";
 
-export type SettingsScript = "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "choose-application-workspace" | "cancel-dialog" | "no-update" | "invalid-signature" | "update-available";
+export type SettingsScript = "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "choose-application-workspace" | "choose-compare-workspace" | "choose-last-export" | "cancel-dialog" | "no-update" | "invalid-signature" | "update-available";
 let selected: RemoteConnectionSummary | null = null;
 let dialogPath: string | null = null;
 let workspaceFile: string | null = null;
@@ -16,6 +17,9 @@ export function configureSettingsMock(script: SettingsScript): void {
     workspaceFile = script === "choose-workspace" ? JSON.stringify(workspace) : null;
     if (script === "choose-unavailable-workspace") workspaceFile = JSON.stringify(unavailableWorkspace);
     if (script === "choose-application-workspace") workspaceFile = JSON.stringify(applicationWorkspace);
+    if (script === "choose-compare-workspace") workspaceFile = JSON.stringify(compareWorkspace);
+    // Reimports the file the last export saved.
+    if (script === "choose-last-export") workspaceFile = exportedWorkspace;
 }
 export function selectedWorkspaceFile(): string | null { return workspaceFile; }
 export function saveWorkspaceMock(content: string): boolean { exportedWorkspace = content; return true; }

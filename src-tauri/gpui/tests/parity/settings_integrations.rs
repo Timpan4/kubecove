@@ -79,7 +79,10 @@ pub fn act(window: &mut Window, cx: &mut App, step: &Value) -> bool {
                     .is_some_and(|text| text.contains("parity-controlled-credential"))
             }));
         }
-        "configureSettingsMock" | "expectRuntimeEndpoint" | "expectWorkspaceExport" => {}
+        "configureSettingsMock"
+        | "expectRuntimeEndpoint"
+        | "expectWorkspaceExport"
+        | "expectExportedShortcut" => {}
         "reopenStoredSettings" => {
             window.click("settings-back", cx);
         }

@@ -24,6 +24,11 @@ impl Fixture {
             "choose-application-workspace" => Some(
                 include_str!("../../../../src/lib/overview-application-workspace.json").to_owned(),
             ),
+            "choose-compare-workspace" => Some(
+                include_str!("../../../../src/lib/overview-compare-workspace.json").to_owned(),
+            ),
+            // Reimports the file the last export saved.
+            "choose-last-export" => Some(self.settings.exported.lock().unwrap().clone()),
             _ => None,
         };
         Box::pin(async move { Ok(content) })
@@ -31,6 +36,29 @@ impl Fixture {
     pub(super) fn export_workspace_read(&self, content: String) -> Read<bool> {
         *self.settings.exported.lock().unwrap() = content;
         Box::pin(async { Ok(true) })
+    }
+    /// The last export holds `shortcut`, field for field, on the workspace named `name`.
+    // The visual fixture does not inspect a completed export.
+    #[allow(dead_code)]
+    pub fn expect_exported_shortcut(&self, name: &str, shortcut: &serde_json::Value) {
+        let document: serde_json::Value =
+            serde_json::from_str(&self.settings.exported.lock().unwrap()).unwrap();
+        let items = if document["kind"] == "WorkspaceList" {
+            document["items"].as_array().unwrap().clone()
+        } else {
+            vec![document]
+        };
+        let shortcuts = items
+            .iter()
+            .find(|item| item["spec"]["displayName"] == name)
+            .map(|item| item["spec"]["shortcuts"].clone())
+            .unwrap_or_default();
+        assert!(
+            shortcuts
+                .as_array()
+                .is_some_and(|shortcuts| shortcuts.contains(shortcut)),
+            "Export of {name} lacks shortcut {shortcut}: {shortcuts}"
+        );
     }
     // The visual fixture does not inspect a completed export.
     #[allow(dead_code)]

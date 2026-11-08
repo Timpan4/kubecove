@@ -89,7 +89,39 @@
         { "action": "selectNamespace", "namespace": "payments" },
         { "action": "openPage", "page": "Workspace Overview" },
         { "action": "expectOverviewScope", "labels": ["Compare scope group (2)", "1 namespaces", "Pod, Deployment, ReplicaSet, Job, CronJob, Service, Ingress, ConfigMap, Secret"] },
-        { "action": "expectCompareTotal", "title": "Compare contexts", "side": "mock-dev", "total": 9 }
+        { "action": "expectCompareTotal", "title": "Compare contexts", "side": "mock-dev", "total": 9 },
+        { "action": "openLauncher" },
+        { "action": "exportSavedWorkspace", "name": "Compare scope" },
+        { "action": "expectExportedShortcut", "name": "Compare scope", "shortcut": { "id": "compare:ctx:mock-dev:admin@solid-k8s", "label": "Compare", "kind": "compare", "compare": { "id": "ctx:mock-dev:admin@solid-k8s", "kind": "contexts", "label": "Compare contexts", "leftLabel": "mock-dev", "rightLabel": "admin@solid-k8s", "clusterContexts": ["mock-dev", "admin@solid-k8s"], "namespaces": ["payments"] } } }
+      ]
+    },
+    {
+      "id": "overview.compare-shortcut-roundtrip",
+      "title": "An imported Compare shortcut keeps its metadata through export, regenerates from scope on edit and survives reimport, while the cards follow the saved scope",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "choose-compare-workspace" },
+        { "action": "openLauncher" },
+        { "action": "clickSettingsButton", "label": "Import" },
+        { "action": "clickSettingsButton", "label": "Apply import" },
+        { "action": "openSavedWorkspace", "name": "Imported compare" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectOverviewShortcuts", "labels": ["Compare"] },
+        { "action": "expectCompareTotal", "title": "Compare contexts", "side": "mock-dev", "total": 9 },
+        { "action": "expectCompareTotal", "title": "Compare contexts", "side": "admin@solid-k8s", "total": 9 },
+        { "action": "openLauncher" },
+        { "action": "exportSavedWorkspace", "name": "Imported compare" },
+        { "action": "expectExportedShortcut", "name": "Imported compare", "shortcut": { "id": "compare:namespaces:kube-system:payments", "label": "Compare", "kind": "compare", "compare": { "id": "namespaces:kube-system:payments", "kind": "namespaces", "label": "Compare namespaces", "leftLabel": "kube-system", "rightLabel": "payments", "clusterContexts": ["mock-dev"], "namespaces": ["kube-system", "payments"] } } },
+        { "action": "editSavedWorkspace", "name": "Imported compare" },
+        { "action": "toggleWorkspaceNamespace", "namespace": "kube-system" },
+        { "action": "saveWorkspace" },
+        { "action": "exportSavedWorkspace", "name": "Imported compare" },
+        { "action": "expectExportedShortcut", "name": "Imported compare", "shortcut": { "id": "compare:ctx:mock-dev:admin@solid-k8s", "label": "Compare", "kind": "compare", "compare": { "id": "ctx:mock-dev:admin@solid-k8s", "kind": "contexts", "label": "Compare contexts", "leftLabel": "mock-dev", "rightLabel": "admin@solid-k8s", "clusterContexts": ["mock-dev", "admin@solid-k8s"], "namespaces": ["kube-system", "payments"] } } },
+        { "action": "configureSettingsMock", "script": "choose-last-export" },
+        { "action": "clickSettingsButton", "label": "Import" },
+        { "action": "importDecision", "choice": "Replace" },
+        { "action": "clickSettingsButton", "label": "Apply import" },
+        { "action": "exportSavedWorkspace", "name": "Imported compare" },
+        { "action": "expectExportedShortcut", "name": "Imported compare", "shortcut": { "id": "compare:ctx:mock-dev:admin@solid-k8s", "label": "Compare", "kind": "compare", "compare": { "id": "ctx:mock-dev:admin@solid-k8s", "kind": "contexts", "label": "Compare contexts", "leftLabel": "mock-dev", "rightLabel": "admin@solid-k8s", "clusterContexts": ["mock-dev", "admin@solid-k8s"], "namespaces": ["kube-system", "payments"] } } }
       ]
     },
     {
