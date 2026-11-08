@@ -2,6 +2,7 @@
 use super::{
     Inspector,
     controls::{Variant, button},
+    port_forwards::{ActionFeedback, SessionAction},
 };
 use crate::targets::TestSupportExt;
 use crate::{
@@ -21,11 +22,10 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.sessions.busy {
+        if self.sessions.action.running() {
             return;
         }
-        self.sessions.busy = true;
-        self.sessions.error = None;
+        self.sessions.action = SessionAction::Running;
         let context = self.scope.context.clone();
         let source = self
             .sessions
@@ -73,20 +73,17 @@ impl Inspector {
                         .local
                         .update(cx, |input, cx| input.set_value("", window, cx));
                 }
-                this.sessions.busy = false;
-                this.sessions.error = match result {
-                    Err(error) => Some(error.message),
-                    Ok(results) => {
-                        let errors: Vec<_> = results
-                            .into_iter()
-                            .filter_map(Result::err)
-                            .map(|e| e.message)
-                            .collect();
-                        (!errors.is_empty()).then(|| errors.join("\n"))
-                    }
+                let errors = match result {
+                    Err(error) => vec![error.message],
+                    Ok(results) => results
+                        .into_iter()
+                        .filter_map(Result::err)
+                        .map(|e| e.message)
+                        .collect(),
                 };
+                this.sessions.action = SessionAction::finished(errors);
                 this.restore_prompt
-                    .finish_start(this.sessions.error.clone());
+                    .finish_start(this.sessions.action.failure().map(str::to_owned));
                 this.load_sessions(cx);
                 cx.notify();
             });
@@ -105,16 +102,15 @@ impl Inspector {
             .map(str::to_owned)
     }
     pub(super) fn run_session_action(&mut self, read: Read<()>, cx: &mut Context<Self>) {
-        if self.sessions.busy {
+        if self.sessions.action.running() {
             return;
         }
-        self.sessions.busy = true;
-        self.sessions.error = None;
+        self.sessions.action = SessionAction::Running;
         cx.spawn(async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
-                this.sessions.busy = false;
-                this.sessions.error = result.err().map(|e| e.message);
+                this.sessions.action =
+                    SessionAction::finished(result.err().map(|e| e.message).into_iter().collect());
                 this.load_sessions(cx);
                 cx.notify();
             });
@@ -128,7 +124,7 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.sessions.busy {
+        if self.sessions.action.running() {
             return;
         }
         let read = self.backend.start_forward(request);
@@ -141,7 +137,7 @@ impl Inspector {
         );
     }
     pub(super) fn stop_forward_id(&mut self, id: String, cx: &mut Context<Self>) {
-        if self.sessions.busy {
+        if self.sessions.action.running() {
             return;
         }
         let read = self.backend.stop_forward(id);
@@ -161,7 +157,7 @@ impl Inspector {
         );
     }
     pub(super) fn stop_exec_id(&mut self, id: String, cx: &mut Context<Self>) {
-        if self.sessions.busy {
+        if self.sessions.action.running() {
             return;
         }
         let read = self.backend.stop_exec(id);
@@ -185,7 +181,7 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.sessions.busy {
+        if self.sessions.action.running() {
             return;
         }
         let backend = self.backend.clone();
@@ -295,7 +291,7 @@ impl Inspector {
                             }))
                     })
                     .child(
-                        button(Variant::Outline, 24., self.sessions.busy)
+                        button(Variant::Outline, 24., self.sessions.action.running())
                             .id(SharedString::from(format!(
                                 "stop-forward:{}",
                                 forward_title(session)
@@ -318,23 +314,28 @@ impl Inspector {
                     .saved_forward_presets
                     .entry(preset_key)
                     .or_default();
-                if !presets.iter().any(|p| {
+                let duplicate = presets.iter().any(|p| {
                     serde_json::to_value(&p.request).ok() == serde_json::to_value(&request).ok()
-                }) {
+                });
+                // Wording from `saveServicePreset` in `PortForwardTab.svelte`.
+                let message = if duplicate {
+                    "Preset already saved for this Service."
+                } else {
                     presets.push(crate::preferences::SavedForward {
                         request,
                         label: String::new(),
                     });
-                }
-                self.sessions.error = Some("Saved Service forward to this workspace.".into());
-                self.save_preferences(cx);
+                    self.save_preferences(cx);
+                    "Saved Service forward to this workspace."
+                };
+                self.sessions.action = SessionAction::Done(ActionFeedback::Info(message.into()));
             }
-            Err(error) => self.sessions.error = Some(error),
+            Err(error) => self.sessions.action = SessionAction::Done(ActionFeedback::Failed(error)),
         }
         cx.notify();
     }
     pub(super) fn restore_forwards(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.sessions.busy {
+        if self.sessions.action.running() {
             return;
         }
         let requests = self
@@ -351,7 +352,7 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.sessions.busy {
+        if self.sessions.action.running() {
             return;
         }
         let Some(saved) = self

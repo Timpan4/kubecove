@@ -56,7 +56,7 @@ export const ACTIONS = [
     "runTopologySpike", "expectTopologySpikeText",
     "configurePreset", "presetControl",
     "replaySessions", "confirmExecLeave",
-    "configureForward", "forwardControl", "expectForwardState", "execControl", "expectExecState",
+    "configureForward", "forwardControl", "expectForwardState", "expectForwardNotice","execControl", "expectExecState",
     "expectWorkspaceExport", "exportSavedWorkspace", "expectExportedShortcut",
     "fillSettingsField", "clickSettingsButton", "clickKubeconfigPathButton", "expectKubeconfigPathBefore", "expectSettingsText", "expectNoSettingsText", "expectRuntimeEndpoint", "expectMaskedToken", "reopenStoredSettings", "attemptUnverifiedUpdate", "configureSettingsMock",
 	"expectLiveState", "replayLiveData", "expectResourceStatus", "openCustomKind",
@@ -314,6 +314,7 @@ function step(value: unknown): Step {
         case "configureForward": return { action: item.action, remote: string(item.remote), local: typeof item.local === "string" ? item.local : "" };
         case "forwardControl": return { action: item.action, operation: oneOf(["start", "save", "restore", "stop", "reconnect"], item.operation, "a forward control"), ...(item.target === undefined ? {} : { target: string(item.target) }) };
         case "expectForwardState": return { action: item.action, target: string(item.target), local: string(item.local), status: string(item.status), count: count(item.count), ...(item.resolved === undefined ? {} : { resolved: string(item.resolved) }) };
+        case "expectForwardNotice": return { action: item.action, title: string(item.title), text: string(item.text) };
         case "execControl": {
             const control: Extract<Step, { action: "execControl" }> = {
                 action: item.action,

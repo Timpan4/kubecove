@@ -17,6 +17,20 @@
       ]
     },
     {
+      "id": "forward-save.preset-notice",
+      "title": "Saving a Service preset reports success as a neutral notice, and saving it again says it is already saved",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Service", "namespace": "payments", "name": "payments-api" },
+        { "action": "showTab", "tab": "Forward" },
+        { "action": "configureForward", "remote": "80", "local": "18083" },
+        { "action": "forwardControl", "operation": "save" },
+        { "action": "expectForwardNotice", "title": "Service preset", "text": "Saved Service forward to this workspace." },
+        { "action": "forwardControl", "operation": "save" },
+        { "action": "expectForwardNotice", "title": "Service preset", "text": "Preset already saved for this Service." }
+      ]
+    },
+    {
       "id": "forward-active.service-reconnect-preset",
       "title": "A saved Service forward preserves ports, resolves its selector and reconnects without duplication",
       "steps": [

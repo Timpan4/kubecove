@@ -4,6 +4,7 @@ use super::{
     Inspector,
     controls::{Variant, button},
     detail::Detail,
+    port_forwards::{ActionFeedback, SessionAction},
 };
 use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
@@ -233,12 +234,12 @@ impl Inspector {
                     .items_center()
                     .gap(px(8.))
                     .child(
-                        button(Variant::Default, 28., self.sessions.busy)
+                        button(Variant::Default, 28., self.sessions.action.running())
                             .id("forward-start")
                             .test_support()
                             .aria_label("Start")
                             .child(ui::icon("play", 14., Tokens::primary_foreground()))
-                            .child(ui::xs(if self.sessions.busy {
+                            .child(ui::xs(if self.sessions.action.running() {
                                 "Starting..."
                             } else {
                                 "Start"
@@ -246,7 +247,10 @@ impl Inspector {
                             .on_click(cx.listener(|this, _, window, cx| {
                                 match this.forward_request(cx) {
                                     Ok(request) => this.start_forward_request(request, window, cx),
-                                    Err(e) => this.sessions.error = Some(e),
+                                    Err(e) => {
+                                        this.sessions.action =
+                                            SessionAction::Done(ActionFeedback::Failed(e))
+                                    }
                                 }
                             })),
                     )
@@ -263,15 +267,22 @@ impl Inspector {
                     })
                     .child(ui::muted(ui::xs("Local URL appears after session starts."))),
             )
-            .when_some(self.sessions.error.clone(), |body, error| {
-                body.child(
-                    div()
-                        .id("forward-error")
-                        .test_support()
-                        .aria_label(error.clone())
-                        .child(ui::xs(error).text_color(Tokens::destructive())),
-                )
-            })
+            .when_some(
+                self.sessions.action.failure().map(str::to_owned),
+                |body, error| {
+                    body.child(
+                        div()
+                            .id("forward-error")
+                            .test_support()
+                            .aria_label(error.clone())
+                            .child(ui::xs(error).text_color(Tokens::destructive())),
+                    )
+                },
+            )
+            .when_some(
+                self.sessions.action.info().map(str::to_owned),
+                |body, message| body.child(preset_notice(message)),
+            )
             .child(ui::muted(ui::semibold(ui::xs("ACTIVE PORT-FORWARDS"))))
             .when(sessions.is_empty(), |body| {
                 body.child(
@@ -290,4 +301,22 @@ impl Inspector {
             })
             .children(sessions.into_iter().map(|s| self.forward_card(s, cx)))
     }
+}
+
+/// The neutral `Alert` titled "Service preset" that `PortForwardTab.svelte` shows after a save.
+fn preset_notice(message: String) -> impl IntoElement {
+    const TITLE: &str = "Service preset";
+    div()
+        .id("forward-notice")
+        .test_support()
+        .aria_label(message.clone())
+        .aria_description(TITLE)
+        .px(px(8.))
+        .py(px(6.))
+        .rounded(px(10.))
+        .border_1()
+        .border_color(Tokens::border())
+        .bg(Tokens::card())
+        .child(ui::medium(ui::xs(TITLE)))
+        .child(ui::muted(ui::xs(message)))
 }

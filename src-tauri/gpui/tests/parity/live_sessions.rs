@@ -64,6 +64,18 @@ pub fn apply(window: &mut Window, cx: &mut App, step: &Value) -> bool {
                 _ => panic!("unknown forward operation"),
             }
         }
+        "expectForwardNotice" => {
+            assert!(
+                window.try_find("forward-error").is_none(),
+                "Forward tab shows an error: {:?}",
+                window
+                    .try_find("forward-error")
+                    .and_then(|node| node.label().map(str::to_owned))
+            );
+            let notice = window.find("forward-notice");
+            assert_eq!(notice.label(), Some(string(step, "text")));
+            assert_eq!(notice.description(), Some(string(step, "title")));
+        }
         "expectForwardState" => {
             let target = string(step, "target");
             let mut matches = window.find_all_by_label(target);

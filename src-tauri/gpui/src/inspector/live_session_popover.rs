@@ -133,14 +133,17 @@ impl Inspector {
                             })),
                     ),
             )
-            .when_some(self.sessions.error.clone(), |panel, error| {
-                panel.child(
-                    ui::xs(error)
-                        .text_color(Tokens::destructive())
-                        .id("live-session-popover-error")
-                        .test_support(),
-                )
-            })
+            .when_some(
+                self.sessions.action.failure().map(str::to_owned),
+                |panel, error| {
+                    panel.child(
+                        ui::xs(error)
+                            .text_color(Tokens::destructive())
+                            .id("live-session-popover-error")
+                            .test_support(),
+                    )
+                },
+            )
             .child(div().h(px(1.)).w_full().bg(Tokens::border()))
             .child(
                 div()

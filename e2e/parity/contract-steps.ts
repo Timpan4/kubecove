@@ -172,6 +172,8 @@ export type Step =
     | { action: "configureForward"; remote: string; local: string }
     | { action: "forwardControl"; operation: "start" | "save" | "restore" | "stop" | "reconnect"; target?: string }
     | { action: "expectForwardState"; target: string; local: string; status: string; resolved?: string; count: number }
+    /** The Forward tab shows one neutral notice with this title and text, and no error. */
+    | { action: "expectForwardNotice"; title: string; text: string }
     | { action: "execControl"; operation: "start" | "input" | "close" | "stop" | "select" | "custom" | "arguments" | "shortcut" | "run"; container?: string; command?: string; data?: string; tab?: number }
     | { action: "expectExecState"; container: string; status: string; contains: string; absent?: string; command?: string }
     | { action: "expectWorkspaceExport" | "exportSavedWorkspace"; name: string }

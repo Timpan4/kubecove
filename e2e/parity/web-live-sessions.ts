@@ -38,6 +38,13 @@ export async function liveSessionAction(page: Page, step: Step): Promise<void> {
             else if (step.operation === "restore") await page.getByRole("button", { name: "Start saved", exact: true }).first().click();
             else await forwardRows(page, step.target ?? "").getByRole("button", { name: step.operation === "stop" ? "Stop" : "Reconnect", exact: true }).click();
             break;
+        case "expectForwardNotice": {
+            const alerts = page.getByRole("tabpanel").locator('[data-slot="alert"]');
+            const alert = alerts.filter({ has: page.locator('[data-slot="alert-title"]', { hasText: step.title }) }).filter({ hasText: step.text });
+            await alert.waitFor();
+            if (await alerts.and(page.locator(".text-destructive")).count()) throw new Error("Forward tab shows an error");
+            break;
+        }
         case "expectForwardState": {
             const rows = forwardRows(page, step.target);
             if (step.count === 0) await rows.waitFor({ state: "hidden" });

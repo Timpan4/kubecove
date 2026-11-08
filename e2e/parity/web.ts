@@ -133,7 +133,7 @@ export async function action(page: Page, step: Step) {
             await page.getByRole("button", { name: "Install", exact: true }).click();
             await page.getByText("Invalid update signature", { exact: true }).waitFor();
             break;
-        case "configureForward": case "forwardControl": case "expectForwardState": case "execControl": case "expectExecState": case "replaySessions": case "confirmExecLeave": case "configurePreset": case "presetControl": await liveSessionAction(page, step); break;
+        case "configureForward": case "forwardControl": case "expectForwardState": case "expectForwardNotice":case "execControl": case "expectExecState": case "replaySessions": case "confirmExecLeave": case "configurePreset": case "presetControl": await liveSessionAction(page, step); break;
         case "openLiveSessionPopover": case "expectLiveSessionRow": case "liveSessionControl": case "expectHealthTooltip": case "expectTimestampTooltip": case "expectEventTimeTooltip": await sessionHealthAction(page, step); break;
         case "expectLiveState":
             await page.getByRole("button", { name: "Live updates and refresh options" }).first().getByText(step.label, { exact: true }).waitFor();

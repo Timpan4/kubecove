@@ -18,8 +18,7 @@ use std::rc::Rc;
 pub(super) struct SessionsState {
     pub(super) form: Option<super::saved_forward_form::PresetForm>,
     pub(super) load: Option<Result<LiveSessions, AppError>>,
-    pub(super) busy: bool,
-    pub(super) error: Option<String>,
+    pub(super) action: SessionAction,
     pub(super) scope_context: Option<String>,
     /// `ActiveLiveSessionsButton`'s popover, open from the header count.
     pub(super) popover: bool,
@@ -34,14 +33,57 @@ impl SessionsState {
         Self {
             form: None,
             load: None,
-            busy: false,
-            error: None,
+            action: SessionAction::Idle,
             scope_context: None,
             popover: false,
             request: Rc::new(()),
             task: None,
             poll: None,
             rows: Default::default(),
+        }
+    }
+}
+
+/// The latest start, stop or save of a session. One runs at a time, as the
+/// web disables its controls while a start is pending.
+pub(super) enum SessionAction {
+    Idle,
+    Running,
+    Done(ActionFeedback),
+}
+
+/// What a finished action reports. `PortForwardTab.svelte` shows a saved
+/// preset as a neutral `Alert` and failures as `FriendlyError`s.
+pub(super) enum ActionFeedback {
+    Info(String),
+    Failed(String),
+}
+
+impl SessionAction {
+    pub(super) fn running(&self) -> bool {
+        matches!(self, SessionAction::Running)
+    }
+
+    pub(super) fn failure(&self) -> Option<&str> {
+        match self {
+            SessionAction::Done(ActionFeedback::Failed(message)) => Some(message),
+            _ => None,
+        }
+    }
+
+    pub(super) fn info(&self) -> Option<&str> {
+        match self {
+            SessionAction::Done(ActionFeedback::Info(message)) => Some(message),
+            _ => None,
+        }
+    }
+
+    /// `Idle` without errors, else the errors joined one per line.
+    pub(super) fn finished(errors: Vec<String>) -> Self {
+        if errors.is_empty() {
+            SessionAction::Idle
+        } else {
+            SessionAction::Done(ActionFeedback::Failed(errors.join("\n")))
         }
     }
 }
@@ -174,7 +216,7 @@ impl Inspector {
                     .flex()
                     .flex_col()
                     .gap(px(16.))
-                    .when_some(self.sessions.error.clone(), |body, error| body.child(
+                    .when_some(self.sessions.action.failure().map(str::to_owned), |body, error| body.child(
                         div().id("session-action-message").test_support().aria_label(error.clone())
                             .child(ui::xs(error).text_color(Tokens::destructive()))
                     ))

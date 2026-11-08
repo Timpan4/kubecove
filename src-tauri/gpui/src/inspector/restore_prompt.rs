@@ -88,7 +88,7 @@ impl Inspector {
                     .child(ui::muted(ui::xs("Auto-start"))),
             )
             .child(
-                button(Variant::Default, 28., self.sessions.busy)
+                button(Variant::Default, 28., self.sessions.action.running())
                     .id("restore-prompt-start")
                     .test_support()
                     .aria_label("Start saved")
@@ -166,7 +166,7 @@ impl Inspector {
         let Some(id) = self.launcher.active else {
             return;
         };
-        if self.sessions.busy {
+        if self.sessions.action.running() {
             return;
         }
         self.restore_prompt.error = None;
