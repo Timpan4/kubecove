@@ -5,7 +5,10 @@ use super::Inspector;
 use super::controls::{Variant, button, red300};
 use super::events::tw;
 use super::logs_state::LogsState;
-use crate::logs::{LogLevel, ParsedLogLine, highlight_ranges};
+use super::timestamp_text;
+use crate::logs::{LogLevel, ParsedLogLine, highlight_ranges, time_label};
+use crate::model::exact_timestamp;
+use crate::preferences::TimestampTimezone;
 use crate::theme::{MONO, Tokens, oklch};
 use crate::ui;
 use gpui_kit::base::ObservedElement;
@@ -72,6 +75,24 @@ fn field_pair(key: &SharedString, value: &SharedString, term: &str) -> Div {
         .child(highlighted(value, term))
 }
 
+/// The row's time of day in the saved timezone. Its hover text is the exact
+/// timestamp in the same timezone, as `LogEntry.svelte`'s `<time>` title is.
+fn time_text(
+    line: &ParsedLogLine,
+    position: usize,
+    timezone: TimestampTimezone,
+) -> gpui_kit::AnyElement {
+    let exact = line
+        .timestamp
+        .as_deref()
+        .and_then(|value| exact_timestamp(value, timezone));
+    timestamp_text::with_tooltip(
+        format!("log-time:{position}"),
+        exact,
+        div().child(time_label(line.timestamp.as_deref(), timezone)),
+    )
+}
+
 /// `LogEntry.svelte`'s `oneLine` row. The summary line toggles the row. An
 /// open row drops the inline error and fields for a block with the error,
 /// the field chips and Copy line.
@@ -79,6 +100,7 @@ fn one_line_row(
     line: &ParsedLogLine,
     logs: &LogsState,
     position: usize,
+    timezone: TimestampTimezone,
     cx: &mut Context<Inspector>,
 ) -> ObservedElement<Stateful<Div>> {
     let structure = &line.structure;
@@ -99,7 +121,7 @@ fn one_line_row(
         .min_w_0()
         .font_family(MONO)
         .text_size(px(12.))
-        .child(line.time.clone())
+        .child(time_text(line, position, timezone))
         .children(structure.level.map(|level| ui::xs(level.label())))
         .children(
             (logs.is_aggregate() && !line.source_label.is_empty())
@@ -217,11 +239,12 @@ pub(super) fn log_row(
     logs: &LogsState,
     position: usize,
     layout: crate::preferences::LogLayout,
+    timezone: TimestampTimezone,
     cx: &mut Context<Inspector>,
 ) -> ObservedElement<Stateful<Div>> {
     let structure = &line.structure;
     if layout == crate::preferences::LogLayout::OneLine {
-        return one_line_row(line, logs, position, cx);
+        return one_line_row(line, logs, position, timezone, cx);
     }
     let term = logs.term.as_str();
     let wrap = logs.wrap;
@@ -241,7 +264,7 @@ pub(super) fn log_row(
             .text_size(px(11.))
             .line_height(px(17.))
             .text_color(Tokens::muted_foreground())
-            .child(line.time.clone()),
+            .child(time_text(line, position, timezone)),
     );
     if logs.buffer.has_levels() {
         let (background, foreground) = structure.level.map_or(

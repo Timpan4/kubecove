@@ -432,6 +432,7 @@ fn viewport(logs: &LogsState, connecting: bool, cx: &mut Context<Inspector>) -> 
             logs.list.clone(),
             cx.processor(|this: &mut Inspector, position: usize, _, cx| {
                 let layout = this.persisted.preferences.log_layout;
+                let timezone = this.persisted.preferences.timestamp_timezone;
                 let Some(logs) = this.logs_state() else {
                     return div().into_any_element();
                 };
@@ -440,7 +441,9 @@ fn viewport(logs: &LogsState, connecting: bool, cx: &mut Context<Inspector>) -> 
                     .get(position)
                     .and_then(|index| logs.buffer.line(*index));
                 match line {
-                    Some(line) => log_row(line, logs, position, layout, cx).into_any_element(),
+                    Some(line) => {
+                        log_row(line, logs, position, layout, timezone, cx).into_any_element()
+                    }
                     None => div().into_any_element(),
                 }
             }),

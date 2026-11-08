@@ -66,7 +66,7 @@ export const ACTIONS = [
 	"expectResource", "openResource", "expectDetail", "expectDetailTab", "expectClusterResource", "expectNoClusterResource", "expectYaml", "openPage", "showTab", "filterEvents",
 	"expectDetailScroll", "expectEvent", "expectEventCount", "expectLiveSessionCount", "filterIncidents", "expectIncidentGuide", "openIncidentResources", "expectGitOpsCount", "expectPortForward",
 	"expectLogLines", "expectLogToolbarFit", "filterLogs", "toggleLogLevel", "expectLogsEmpty", "selectRevision", "expectRevisionDiff", "reviewAction", "editReplicas",
-	"toggleLogRow", "toggleLogExpandAll", "expectLogRowOpen", "copyLogLine", "expectRestorePrompt", "restorePromptControl",
+	"toggleLogRow", "toggleLogExpandAll", "expectLogRowOpen", "copyLogLine", "expectLogTimestampTooltip", "expectRestorePrompt", "restorePromptControl",
 	"expectReview", "confirmDeletion", "executeReview", "closeReview", "expectNoReview", "expectActionResult", "expectNoActionResult",
 	"editYaml", "applyYaml", "dryRunYaml", "expectDryRun", "expectYamlNotice", "expectNoYamlNotice", "expectYamlReadOnly",
 	"expectNoResource", "openLauncher", "openSavedWorkspace", "expectSavedWorkspace", "expectContextUnavailable", "nameWorkspace", "selectWorkspaceContext", "toggleWorkspaceNamespace",
@@ -381,6 +381,7 @@ function step(value: unknown): Step {
 		case "toggleLogExpandAll": return { action: item.action };
 		case "expectLogRowOpen": return { action: item.action, line: string(item.line), open: boolean(item.open) };
 		case "copyLogLine": return { action: item.action, line: string(item.line), contains: string(item.contains) };
+		case "expectLogTimestampTooltip": return { action: item.action, line: string(item.line), value: string(item.value) };
 		case "expectRestorePrompt": return { action: item.action, visible: boolean(item.visible), ...(item.count === undefined ? {} : { count: count(item.count) }) };
 		case "restorePromptControl": return { action: item.action, control: oneOf(["Start saved", "Review", "Skip", "Auto-start"], item.control, "a restore prompt control") };
 		case "selectRevision": case "reviewAction": return { action: item.action, label: string(item.label) };

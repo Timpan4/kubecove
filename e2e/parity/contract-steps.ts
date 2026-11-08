@@ -199,6 +199,7 @@ export type Step =
     | { action: "toggleLogExpandAll" }
     | { action: "expectLogRowOpen"; line: string; open: boolean }
     | { action: "copyLogLine"; line: string; contains: string }
+    | { action: "expectLogTimestampTooltip"; line: string; value: string }
     | { action: "expectRestorePrompt"; visible: boolean; count?: number }
     | { action: "restorePromptControl"; control: "Start saved" | "Review" | "Skip" | "Auto-start" }
     | { action: "expectLogsEmpty" | "expectYamlNotice" | "expectNoYamlNotice"; title: string }

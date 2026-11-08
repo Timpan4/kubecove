@@ -233,7 +233,7 @@ export async function action(page: Page, step: Step) {
 		case "expectLogToolbarFit": await expectLogToolbarFit(page, step.state); break;
 		case "filterLogs": await page.getByRole("textbox", { name: "Filter log lines" }).fill(step.value); break;
 		case "toggleLogLevel": await page.getByRole("group", { name: "Filter by level" }).getByRole("button", { name: new RegExp(`^${step.level} `) }).click(); break;
-		case "toggleLogRow": case "toggleLogExpandAll": case "expectLogRowOpen": case "copyLogLine": case "expectRestorePrompt": case "restorePromptControl": await logRowAndRestoreAction(page, step); break;
+		case "toggleLogRow": case "toggleLogExpandAll": case "expectLogRowOpen": case "copyLogLine": case "expectLogTimestampTooltip": case "expectRestorePrompt": case "restorePromptControl": await logRowAndRestoreAction(page, step); break;
 		case "expectLogsEmpty": await page.getByText(step.title, { exact: true }).waitFor(); break;
 		case "selectRevision": await revisionButton(page, step.label).click(); break;
 		case "expectRevisionDiff": {

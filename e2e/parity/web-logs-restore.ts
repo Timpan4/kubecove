@@ -30,6 +30,14 @@ export async function logRowAndRestoreAction(page: Page, step: Step): Promise<vo
             await logRow(page, step.line).getByRole("button", { name: "Copy line", exact: true }).click();
             if (!(await page.locator("html").getAttribute("data-log-copy"))?.includes(step.contains)) throw new Error("Wrong log clipboard value");
             break;
+        case "expectLogTimestampTooltip": {
+            // Every layout keeps the time in a `<time>` inside its `[data-log-row]`, titled with the exact timestamp.
+            const row = page.locator("[data-log-row]").filter({ has: page.getByText(step.line, { exact: true }) });
+            await row.waitFor();
+            const title = await row.locator("time").first().getAttribute("title");
+            if (title !== step.value) throw new Error(`Log timestamp tooltip was ${title ?? "missing"}`);
+            break;
+        }
         case "expectRestorePrompt": {
             const prompt = restorePrompt(page);
             if (!step.visible) {

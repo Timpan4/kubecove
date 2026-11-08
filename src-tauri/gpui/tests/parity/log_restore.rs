@@ -42,6 +42,15 @@ pub fn apply(window: &mut Window, cx: &mut App, step: &Value) -> bool {
                 string(step, "line")
             );
         }
+        "expectLogTimestampTooltip" => {
+            let position = row_position(window, string(step, "line"));
+            assert_eq!(
+                window.find(format!("log-time:{position}")).description(),
+                Some(string(step, "value")),
+                "timestamp tooltip of {}",
+                string(step, "line")
+            );
+        }
         "expectRestorePrompt" => {
             let visible = step["visible"].as_bool().expect("visible flag");
             let prompt = window.try_find("restore-prompt");

@@ -69,8 +69,9 @@ pub struct ParsedLogLine {
     pub structure: LogStructure,
     /// `line.raw`: the line as streamed, copied by the expanded row's Copy line.
     pub raw: SharedString,
-    /// `formatLogTime`: local time of day with milliseconds, or `-`.
-    pub time: SharedString,
+    /// The line's RFC 3339 timestamp. The row formats it for the timezone
+    /// preference when it renders, both as the time label and as its exact tooltip.
+    pub timestamp: Option<SharedString>,
     /// `LogEntry`'s `sourceLabel`: `pod/container`, the Pod alone, or empty.
     pub source_label: SharedString,
     /// `logLineSearchText`: raw text, Pod and container, lowercased.
@@ -298,16 +299,28 @@ pub fn parse_structure(message: &str) -> LogStructure {
     finish(level, headline, message, error, fields)
 }
 
-/// `formatExactTimeOnly(..., "local", "millisecond") ?? "-"`.
-fn time_label(timestamp: Option<&str>) -> SharedString {
-    timestamp
-        .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
-        .map_or(SharedString::new_static("-"), |time| {
-            time.with_timezone(&chrono::Local)
-                .format("%H:%M:%S%.3f")
-                .to_string()
-                .into()
-        })
+/// `formatExactTimeOnly(..., timezone, "millisecond") ?? "-"`: the time of day
+/// in the saved timezone.
+pub fn time_label(
+    timestamp: Option<&str>,
+    timezone: crate::preferences::TimestampTimezone,
+) -> SharedString {
+    let Some(time) = timestamp.and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+    else {
+        return SharedString::new_static("-");
+    };
+    match timezone {
+        crate::preferences::TimestampTimezone::Local => time
+            .with_timezone(&chrono::Local)
+            .format("%H:%M:%S%.3f")
+            .to_string()
+            .into(),
+        crate::preferences::TimestampTimezone::Utc => time
+            .with_timezone(&chrono::Utc)
+            .format("%H:%M:%S%.3f")
+            .to_string()
+            .into(),
+    }
 }
 
 /// `parseLogLine`.
@@ -347,7 +360,7 @@ pub fn parse_line(line: &str, source: Option<&LogLineSource>, index: u64) -> Par
     ParsedLogLine {
         index,
         raw: line.into(),
-        time: time_label(timestamp),
+        timestamp: timestamp.map(SharedString::from),
         source_label,
         structure,
         search,

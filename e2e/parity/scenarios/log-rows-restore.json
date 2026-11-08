@@ -50,6 +50,57 @@
       ]
     },
     {
+      "id": "logs.timestamp-tooltip-stacked",
+      "title": "A stacked log row titles its time with the exact timestamp in the saved timezone",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "General" },
+        { "action": "selectSettingOption", "setting": "Timestamp timezone", "value": "UTC" },
+        { "action": "showSettingsSection", "section": "Appearance" },
+        { "action": "selectSettingOption", "setting": "Log layout", "value": "Stacked" },
+        { "action": "closeSettings" },
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showTab", "tab": "Logs" },
+        { "action": "expectLogTimestampTooltip", "line": "handled GET /healthz 200", "value": "2026-06-29 10:00:02.000 UTC" }
+      ]
+    },
+    {
+      "id": "logs.timestamp-tooltip-gutter",
+      "title": "A gutter log row titles its time with the exact timestamp in the saved timezone",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "General" },
+        { "action": "selectSettingOption", "setting": "Timestamp timezone", "value": "UTC" },
+        { "action": "showSettingsSection", "section": "Appearance" },
+        { "action": "selectSettingOption", "setting": "Log layout", "value": "Gutter" },
+        { "action": "closeSettings" },
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showTab", "tab": "Logs" },
+        { "action": "expectLogTimestampTooltip", "line": "handled GET /healthz 200", "value": "2026-06-29 10:00:02.000 UTC" }
+      ]
+    },
+    {
+      "id": "logs.timestamp-tooltip-one-line",
+      "title": "A one-line log row titles its time with the exact timestamp in the saved timezone",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "General" },
+        { "action": "selectSettingOption", "setting": "Timestamp timezone", "value": "UTC" },
+        { "action": "showSettingsSection", "section": "Appearance" },
+        { "action": "selectSettingOption", "setting": "Log layout", "value": "One line" },
+        { "action": "closeSettings" },
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showTab", "tab": "Logs" },
+        { "action": "expectLogTimestampTooltip", "line": "handled GET /healthz 200", "value": "2026-06-29 10:00:02.000 UTC" }
+      ]
+    },
+    {
       "id": "exec-custom.shortcut-run",
       "title": "Cmd or Ctrl with Enter in the custom command runs it in the chosen container",
       "steps": [
