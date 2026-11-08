@@ -274,6 +274,8 @@ export type Step =
     | ({ action: "expectResourceCell"; column: TableColumn; text: string } & Identity)
     /** `truncated` defaults to true in the parser. `false` asserts the full value fits. */
     | ({ action: "expectResourceCellFits"; column: TableColumn; text: string; truncated: boolean } & Identity)
+    /** A progress lifecycle's activity icon: `active` animates, `paused` holds the last observed state. */
+    | ({ action: "expectResourceActivity"; state: "active" | "paused" } & Identity)
     | { action: "setDeliveryView"; page: "GitOps" | "Helm"; mode: "Cards" | "List" }
     | { action: "clickDetailControl"; label: string }
     | { action: "openLiveSessionPopover" }

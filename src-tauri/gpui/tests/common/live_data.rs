@@ -27,6 +27,8 @@ pub(super) struct ScriptState {
     failed: bool,
     burst: bool,
     changed: bool,
+    /// A scripted rollout gives payments-api the "Rolling out" lifecycle, which shows activity.
+    rolling: bool,
     deleted: bool,
     events: Option<EventSet>,
     /// Scripted changes so far. The mock list version is one higher.
@@ -221,7 +223,7 @@ impl Fixture {
         );
     }
     pub fn replay_live(&self, script: &str) {
-        if matches!(script, "update" | "delete") {
+        if matches!(script, "update" | "rollout" | "delete") {
             self.timing.invalidate("mock-dev");
         }
         let _span = kubecove_gpui::frame_profile::scope("fixture", "send");
@@ -230,8 +232,9 @@ impl Fixture {
             "burst" | "burst-reset" => state.burst = script == "burst",
             "failed" => state.failed = true,
             "connected" => state.failed = false,
-            "update" | "delete" => {
+            "update" | "rollout" | "delete" => {
                 state.changed |= script == "update";
+                state.rolling |= script == "rollout";
                 state.deleted |= script == "delete";
                 state.revision += 1;
                 state.changed_at = Some(state.revision + 1);
@@ -298,7 +301,7 @@ impl Fixture {
                         action: "applied".into(),
                     }
                 }
-                "update" | "delete" | "failed" if matches!(watch, WatchTarget::Resource { key, .. } if key.resource_kind.kind == "Deployment") => {
+                "update" | "rollout" | "delete" | "failed" if matches!(watch, WatchTarget::Resource { key, .. } if key.resource_kind.kind == "Deployment") => {
                     StreamMessage::ResourceChanged {
                         stream_id: "fixture".into(),
                         target,
@@ -389,7 +392,9 @@ impl Fixture {
                     if state.deleted {
                         return None;
                     }
-                    if state.changed {
+                    if state.rolling {
+                        row.status = Some("Rolling out".into());
+                    } else if state.changed {
                         row.status = Some("Progressing".into());
                         row.health_assessment.state =
                             kubecove_lib::models::HealthAssessmentState::Degraded;

@@ -66,6 +66,26 @@
       ]
     },
     {
+      "id": "live-data.activity",
+      "title": "A rolling-out row animates while live, pauses while reconnecting and leaves when its watch deletes it",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "expectLiveState", "label": "Live" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "replayLiveData", "script": "rollout" },
+        { "action": "expectResourceActivity", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "state": "active" },
+        { "action": "replayLiveData", "script": "reconnecting" },
+        { "action": "expectLiveState", "label": "Reconnecting" },
+        { "action": "expectResourceActivity", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "state": "paused" },
+        { "action": "replayLiveData", "script": "connected" },
+        { "action": "expectLiveState", "label": "Live" },
+        { "action": "expectResourceActivity", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "state": "active" },
+        { "action": "replayLiveData", "script": "delete" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectResource", "kind": "Service", "namespace": "payments", "name": "payments-api" }
+      ]
+    },
+    {
       "id": "live-data.events",
       "title": "Event watches reload and sort newest first",
       "steps": [

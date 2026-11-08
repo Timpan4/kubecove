@@ -65,6 +65,9 @@ export async function resourceTableAction(page: Page, step: Step) {
 			if (step.truncated && !fit.ellipsis) throw new Error(`${step.column} value is not truncated with an ellipsis`);
 			break;
 		}
+		case "expectResourceActivity":
+			await resourceRow(page, step).locator(`canvas[data-resource-progress="${step.state}"]`).waitFor();
+			break;
 		default:
 			throw new Error(`Unhandled resource table action ${step.action}`);
 	}

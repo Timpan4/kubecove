@@ -1,5 +1,5 @@
 //! Resource table steps: sortable headers, collapsible group rows, whole-row
-//! opening and the text each cell shows.
+//! opening, the text each cell shows and row activity.
 
 use super::*;
 use gpui_kit::test::TestEventExt;
@@ -110,6 +110,26 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             // `truncated` is not checked here. This driver shapes text with GPUI's
             // `NoopTextSystem`, where every glyph is 0.6 em wide, so its widths say nothing about
             // the bundled fonts. `tests/text_fit.rs` checks truncation with the real text system.
+        }
+        "expectResourceActivity" => {
+            let id = format!(
+                "activity:status:{}:{}:{}",
+                string(step, "kind"),
+                string(step, "namespace"),
+                string(step, "name")
+            );
+            let state = string(step, "state");
+            assert_eq!(window.find(id.clone()).description(), Some(state));
+            // An active arc asks for the next frame; a paused one leaves the window idle.
+            window.render_frame(cx);
+            window.simulate_next_frame(cx);
+            window.render_frame(cx);
+            let scheduled = window.simulate_next_frame(cx);
+            if state == "active" {
+                assert!(scheduled > 0, "active activity scheduled no frame");
+            } else {
+                assert_eq!(scheduled, 0, "paused activity scheduled frames");
+            }
         }
         _ => return false,
     }
