@@ -130,7 +130,7 @@ fn compare(left: &Value<'_>, right: &Value<'_>) -> Ordering {
 /// Indices of `rows` in the table's sort order. Ties keep ascending name order,
 /// as `nameCollator` breaks them on the web, even when the sort is descending.
 pub fn order(
-    rows: &[ResourceSummary],
+    rows: &[&ResourceSummary],
     sort: Sort,
     usage: impl Fn(&ResourceSummary) -> Usage,
 ) -> Vec<usize> {

@@ -207,6 +207,7 @@ pub struct Inspector {
     namespaces: Vec<NamespaceSummary>,
     custom_load: custom_resources::CustomLoad,
     table_sort: crate::table_sort::Sort,
+    table_order: crate::model::SortedOrder,
     /// Group and kind-group keys the table has collapsed, as `collapsedGroups` on the web.
     collapsed_groups: std::collections::HashSet<String>,
     rows: Rc<crate::model::PreparedRows>,
@@ -352,6 +353,7 @@ impl Inspector {
             namespaces: vec![],
             custom_load: Default::default(),
             table_sort: Default::default(),
+            table_order: Default::default(),
             collapsed_groups: Default::default(),
             rows: Rc::default(),
             visible: Default::default(),

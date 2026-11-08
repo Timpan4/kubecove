@@ -53,6 +53,7 @@ impl Inspector {
         self.metrics.task.take();
         self.metrics.summary = None;
         self.metrics.index.clear();
+        self.table_order.invalidate();
         let request = self.request.clone();
         let read = self.backend.metrics(self.scope.clone());
         let read = self.timings.measure("metrics", read);
@@ -80,6 +81,7 @@ impl Inspector {
                         );
                     }
                 }
+                this.table_order.invalidate();
                 this.metrics.summary = Some(result.map_err(|error| error.message));
                 cx.notify();
             });

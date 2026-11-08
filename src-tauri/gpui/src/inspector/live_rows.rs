@@ -41,6 +41,9 @@ impl Inspector {
             Some(version) => versions.insert(signature, version),
             None => versions.remove(&signature),
         };
+        // A patch can change sorted values in place, which the visible
+        // generation does not show.
+        self.table_order.invalidate();
         let retired = if cluster_rows {
             crate::model::reconcile(&mut self.cluster.rows, key, rows, names);
             Vec::new()

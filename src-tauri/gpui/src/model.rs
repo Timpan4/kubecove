@@ -321,18 +321,33 @@ pub struct TablePage {
     pub page_count: usize,
 }
 
-/// Rows sorted by the table's column, grouped by ownership, then kind lane, as
-/// `buildResourceTableDisplay` and `buildResourceTableEntries` do. Only the
-/// current page's rows are cloned.
-pub fn table_page(
-    rows: &[ResourceSummary],
+/// The visible rows' positions under a non-default sort. The order is kept
+/// until the visible rows or the sort change, so frames between those changes
+/// do not sort again.
+#[derive(Default)]
+pub struct SortedOrder {
+    /// Visible generation and sort the order was built for.
+    key: Option<(u64, Sort)>,
+    order: Vec<usize>,
+}
+
+impl SortedOrder {
+    /// Drops the order when sorted values change without a new visible
+    /// generation: rows patched in place, or new usage metrics.
+    pub fn invalidate(&mut self) {
+        self.key = None;
+    }
+}
+
+/// Rows already in the table's sort order, grouped by ownership, then kind
+/// lane, as `buildResourceTableDisplay` and `buildResourceTableEntries` do.
+/// Only the current page's rows are cloned.
+fn grouped_page(
+    mut sorted: Vec<&ResourceSummary>,
     view: &TableView<'_>,
     preferred: impl Fn(&ResourceSummary) -> bool,
     lanes: &crate::preferences::KindLanes,
-    usage: impl Fn(&ResourceSummary) -> table_sort::Usage,
 ) -> TablePage {
-    let order = table_sort::order(rows, view.sort, usage);
-    let mut sorted: Vec<&ResourceSummary> = order.into_iter().map(|index| &rows[index]).collect();
     let grouped_by_gitops = sorted.iter().any(|row| gitops_label(row).is_some());
     if grouped_by_gitops {
         sorted.sort_by_key(|row| !preferred(row));
@@ -454,26 +469,28 @@ fn page_from_order(
     }
 }
 
-/// Reuses the prepared display order for the default sort.
+/// Reuses the prepared display order for the default sort, and `sorted` for
+/// any other sort.
 pub fn indexed_table_page(
     visible: &Visible,
     view: &TableView<'_>,
+    sorted: &mut SortedOrder,
     preferred: impl Fn(&ResourceSummary) -> bool,
     lanes: &crate::preferences::KindLanes,
     usage: impl Fn(&ResourceSummary) -> table_sort::Usage,
 ) -> TablePage {
     let _profile = crate::frame_profile::scope("table", "project");
     if view.sort == Sort::default() {
-        page_from_order(visible.ordered().collect(), visible.grouped_by_gitops, view)
-    } else {
-        table_page(
-            &visible.iter().cloned().collect::<Vec<_>>(),
-            view,
-            preferred,
-            lanes,
-            usage,
-        )
+        return page_from_order(visible.ordered().collect(), visible.grouped_by_gitops, view);
     }
+    let rows: Vec<&ResourceSummary> = visible.iter().collect();
+    let key = (visible.generation(), view.sort);
+    if sorted.key != Some(key) {
+        sorted.order = table_sort::order(&rows, view.sort, usage);
+        sorted.key = Some(key);
+    }
+    let rows = sorted.order.iter().map(|&index| rows[index]).collect();
+    grouped_page(rows, view, preferred, lanes)
 }
 
 #[cfg(test)]
@@ -488,12 +505,13 @@ fn display_order(rows: &[ResourceSummary]) -> (Vec<usize>, bool) {
             collapsed: &collapsed,
             selected: None,
         };
-        let output = table_page(
-            rows,
+        let refs: Vec<&ResourceSummary> = rows.iter().collect();
+        let order = table_sort::order(&refs, view.sort, |_| Default::default());
+        let output = grouped_page(
+            order.into_iter().map(|index| refs[index]).collect(),
             &view,
             |_| false,
             &crate::preferences::KindLanes::default(),
-            |_| Default::default(),
         );
         indices.extend(output.rows.iter().map(|row| {
             rows.iter()
