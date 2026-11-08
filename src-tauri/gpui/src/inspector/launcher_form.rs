@@ -2,8 +2,8 @@
 
 use super::Inspector;
 use super::controls::{Variant, button};
-use super::launcher::Fetch;
 use super::loading::Phase;
+use super::request::Fetch;
 use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui;

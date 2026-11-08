@@ -103,6 +103,7 @@ mod remote_notice;
 mod resource_filter_controls;
 mod resource_filters;
 mod resource_order;
+mod request;
 mod resources;
 mod restore_inventory;
 mod restore_prompt;

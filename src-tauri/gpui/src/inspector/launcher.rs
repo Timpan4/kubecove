@@ -4,13 +4,14 @@
 
 use super::Inspector;
 use super::controls::{Variant, button};
+use super::request::Fetch;
 use crate::targets::TestSupportExt;
 use crate::theme::{Palette, Tokens};
 use crate::ui;
 use crate::workspaces::{self, Discovery, SavedWorkspace};
 use gpui_kit::component::input::InputState;
 use gpui_kit::{
-    AnyElement, Context, Div, Entity, SharedString, Stateful, Task, Window, div, prelude::*, px,
+    AnyElement, Context, Div, Entity, SharedString, Stateful, Window, div, prelude::*, px,
 };
 use kubecove_lib::models::ResourceSummary;
 
@@ -39,31 +40,6 @@ pub(super) struct LauncherState {
     pub(super) discovery: Fetch<Vec<String>>,
     /// Kubeconfig source and context reads kept while fresh, as the web's query cache keeps them.
     pub(super) kubeconfig: super::kubeconfig_reads::KubeconfigReads,
-}
-
-/// One launcher read. `Loading` owns the read, so replacing the state cancels
-/// it, and a state can only be `Loading` while its read is running.
-pub(super) enum Fetch<T> {
-    /// No read has started.
-    Idle,
-    Loading {
-        _read: Task<()>,
-    },
-    Ready(T),
-    Failed(String),
-}
-
-impl<T> Fetch<T> {
-    pub(super) fn loading(&self) -> bool {
-        matches!(self, Fetch::Loading { .. })
-    }
-
-    pub(super) fn failure(&self) -> Option<&str> {
-        match self {
-            Fetch::Failed(message) => Some(message),
-            _ => None,
-        }
-    }
 }
 
 /// A settled context read. The source warning is set when the kubeconfig source
@@ -263,7 +239,7 @@ impl Inspector {
                 cx.notify();
             },
         );
-        self.launcher.contexts = Fetch::Loading { _read: read };
+        self.launcher.contexts = Fetch::start(read);
         cx.notify();
     }
 
@@ -293,7 +269,7 @@ impl Inspector {
                 cx.notify();
             });
         });
-        self.launcher.discovery = Fetch::Loading { _read: read };
+        self.launcher.discovery = Fetch::start(read);
         cx.notify();
     }
 
