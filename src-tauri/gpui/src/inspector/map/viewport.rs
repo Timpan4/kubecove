@@ -1,7 +1,7 @@
 //! Pan, zoom, viewport culling and node focus for `OwnershipMap.svelte`.
 use super::cards::{group_card, resource_card, selection_ring};
-use super::paint::{EdgePaint, PreparedEdges};
-use super::{HANDLE_HALF, Inspector, ZOOM_STEP};
+use super::paint::{PreparedEdges, edge_bounds};
+use super::{Inspector, ZOOM_STEP};
 use crate::targets::TestSupportExt;
 use crate::{
     theme::Tokens,
@@ -186,16 +186,15 @@ impl Inspector {
         ));
     }
 
-    pub(super) fn map_viewport(
+    /// Whether a flow-space box `(left, top, right, bottom)` is drawn. Graphs
+    /// at `VISIBLE_ELEMENT_RENDER_THRESHOLD` or above draw only boxes that reach
+    /// the visible area.
+    fn map_cull(
         &self,
-        view: &Rc<topology::View>,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let super::TopologyLoad::Ready(topology) = &self.map.topology else {
-            return div().into_any_element();
-        };
+        view: &topology::View,
+        viewport: Option<Viewport>,
+    ) -> impl Fn((f32, f32, f32, f32)) -> bool + use<> {
         let (width, height) = self.map.size.get();
-        let (fit, viewport) = self.map_viewports(view);
         let cull = viewport
             .filter(|_| view.nodes.len() + view.edges.len() >= VISIBLE_ELEMENT_RENDER_THRESHOLD)
             .map(|viewport| {
@@ -207,11 +206,47 @@ impl Inspector {
                     flow(height, viewport.y) + CULL_MARGIN,
                 )
             });
-        let shown = |(left, top, right, bottom): (f32, f32, f32, f32)| {
+        move |(left, top, right, bottom)| {
             cull.is_none_or(|(min_x, min_y, max_x, max_y)| {
                 right >= min_x && left <= max_x && bottom >= min_y && top <= max_y
             })
+        }
+    }
+
+    /// Whether the map draws the edge from the topology node `source` to
+    /// `target`. Edges are painted, not elements, so UI tests ask here.
+    #[doc(hidden)]
+    pub fn map_draws_edge(&self, source: &str, target: &str) -> bool {
+        let (Some(view), super::TopologyLoad::Ready(topology)) =
+            (&self.map.cache, &self.map.topology)
+        else {
+            return false;
         };
+        let id = |index: usize| match &view.nodes[index].item {
+            FlowItem::Resource(node) => Some(topology.nodes[*node].id.as_str()),
+            FlowItem::Group { .. } => None,
+        };
+        let shown = self.map_cull(view, self.map_viewports(view).1);
+        view.edges.iter().any(|edge| {
+            id(edge.source) == Some(source)
+                && id(edge.target) == Some(target)
+                && shown(edge_bounds(
+                    &view.nodes[edge.source],
+                    &view.nodes[edge.target],
+                ))
+        })
+    }
+
+    pub(super) fn map_viewport(
+        &self,
+        view: &Rc<topology::View>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let super::TopologyLoad::Ready(topology) = &self.map.topology else {
+            return div().into_any_element();
+        };
+        let (fit, viewport) = self.map_viewports(view);
+        let shown = self.map_cull(view, viewport);
         let size = self.map.size.clone();
         let origin = self.map.origin.clone();
         let entity = cx.entity_id();
@@ -225,33 +260,7 @@ impl Inspector {
             .as_ref()
             .is_none_or(|(cached, _)| !Rc::ptr_eq(cached, view))
         {
-            let edges: Vec<EdgePaint> = view
-                .edges
-                .iter()
-                .map(|edge| {
-                    let source = &view.nodes[edge.source];
-                    let target = &view.nodes[edge.target];
-                    let end = (target.x - HANDLE_HALF, target.y + target.height / 2.);
-                    EdgePaint {
-                        segments: topology::edge_path(
-                            (
-                                source.x + source.width + HANDLE_HALF,
-                                source.y + source.height / 2.,
-                            ),
-                            end,
-                        ),
-                        end,
-                        state: edge.state,
-                        bounds: (
-                            source.x.min(target.x),
-                            source.y.min(target.y),
-                            (source.x + source.width).max(target.x + target.width),
-                            (source.y + source.height).max(target.y + target.height),
-                        ),
-                    }
-                })
-                .collect();
-            *edge_cache = Some((view.clone(), Rc::new(PreparedEdges::new(edges))));
+            *edge_cache = Some((view.clone(), Rc::new(PreparedEdges::new(view))));
         }
         let edges = edge_cache
             .as_ref()
@@ -259,14 +268,7 @@ impl Inspector {
             .1
             .clone();
         drop(edge_cache);
-        let visible_edges: Rc<[usize]> = edges
-            .source
-            .iter()
-            .enumerate()
-            .filter_map(|(index, edge)| shown(edge.bounds).then_some(index))
-            .collect::<Vec<_>>()
-            .into();
-        let painted_edges = visible_edges.clone();
+        let visible_edges = edges.visible(&shown);
         let edge_layer = canvas(
             move |bounds, window, _| {
                 origin.set((f32::from(bounds.origin.x), f32::from(bounds.origin.y)));
@@ -278,7 +280,7 @@ impl Inspector {
             },
             move |bounds, (), window, _| {
                 if let Some(viewport) = viewport {
-                    edges.paint(bounds.origin, &painted_edges, viewport, window);
+                    edges.paint(bounds.origin, &visible_edges, viewport, window);
                 }
             },
         )
@@ -360,23 +362,6 @@ impl Inspector {
             .min_h(px(320.))
             .overflow_hidden()
             .child(edge_layer)
-            .children(visible_edges.iter().map(|&index| {
-                let edge = &view.edges[index];
-                let source = match &view.nodes[edge.source].item {
-                    FlowItem::Resource(node) => &topology.nodes[*node].id,
-                    _ => return div().into_any_element(),
-                };
-                let target = match &view.nodes[edge.target].item {
-                    FlowItem::Resource(node) => &topology.nodes[*node].id,
-                    _ => return div().into_any_element(),
-                };
-                div()
-                    .id(SharedString::from(format!("map-edge:{source}->{target}")))
-                    .test_support()
-                    .aria_label(format!("{source} to {target}"))
-                    .absolute()
-                    .into_any_element()
-            }))
             .children(nodes)
             .child(
                 div()

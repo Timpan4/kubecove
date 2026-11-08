@@ -30,11 +30,15 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
             window.find("map-counts").label(),
             Some(format!("{} nodes / {} edges", step["nodes"], step["edges"]).as_str())
         ),
-        "expectTopologyEdge" => assert!(
-            window
-                .try_find(format!("map-edge:{}->{}", s("source"), s("target")))
-                .is_some()
-        ),
+        // Edges are painted, not elements; the Inspector answers for its map.
+        "expectTopologyEdge" => {
+            let inspector = gpui_kit::base::Root::read(window, cx)
+                .view()
+                .clone()
+                .downcast::<kubecove_gpui::Inspector>()
+                .expect("the Inspector is the window's content");
+            assert!(inspector.read(cx).map_draws_edge(s("source"), s("target")));
+        }
         "selectTopologyNode" => window.click(format!("map-node:{}", s("id")), cx),
         "expectTopologyEmpty" => assert_eq!(window.find("map-empty").label(), Some(s("title"))),
         "expectNoTopologyNode" => {
