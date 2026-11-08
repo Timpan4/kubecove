@@ -182,6 +182,9 @@ impl PreparedRows {
         mut rows: Vec<ResourceSummary>,
         names: Option<ObservedNames>,
     ) -> Vec<ResourceSummary> {
+        // Watch rows carry the backend's owners, so compare them with those. If no
+        // key changes, the rows keep their positions and the same inherited owners.
+        self.swap_owners();
         let names =
             if let Some(kind) = self
                 .kinds
@@ -241,7 +244,9 @@ impl PreparedRows {
                             }
                         }
                         if keys_changed {
-                            *self = Self::new(std::mem::take(&mut self.rows));
+                            self.rebuild();
+                        } else {
+                            self.swap_owners();
                         }
                         return rows;
                     }
@@ -253,7 +258,9 @@ impl PreparedRows {
             };
         let _span = crate::frame_profile::scope("watch", "reconcile");
         if reconcile_indexed(&mut self.rows, key, rows, names.as_ref()) {
-            *self = Self::new(std::mem::take(&mut self.rows));
+            self.rebuild();
+        } else {
+            self.swap_owners();
         }
         Vec::new()
     }

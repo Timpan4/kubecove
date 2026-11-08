@@ -4,7 +4,7 @@ use super::Inspector;
 use crate::model::{KindFilter, PreparedRows};
 use gpui_kit::Context;
 use kubecove_lib::models::ResourceSummary;
-use std::{borrow::Cow, cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
 struct Snapshot {
     scope: Rc<PreparedRows>,
@@ -30,7 +30,8 @@ impl RowIndex {
         cluster_request: &Rc<()>,
     ) -> Rc<PreparedRows> {
         let _profile = crate::frame_profile::scope("rows", "source");
-        if cluster.is_empty() && !scope.iter().any(|row| row.owner_ref.is_some()) {
+        // Scope rows already show inherited owners (`PreparedRows::with_inherited_owners`).
+        if cluster.is_empty() {
             self.0.take();
             return scope.clone();
         }
@@ -48,18 +49,10 @@ impl RowIndex {
         // Completed reads replace immutable buffers before filtering. Cluster
         // loading drops its previous buffer earlier, so its separate read token
         // prevents allocator reuse from preserving a stale projection.
-        let inherited = {
-            let _profile = crate::frame_profile::scope("rows", "inherit_owners");
-            crate::model::inherit_gitops_owners(scope)
-        };
-        let data = match inherited {
-            Cow::Borrowed(_) if cluster.is_empty() => scope.clone(),
-            inherited => {
-                let mut rows = inherited.into_owned();
-                rows.extend_from_slice(cluster);
-                Rc::new(PreparedRows::new(rows))
-            }
-        };
+        let mut rows = Vec::with_capacity(scope.len() + cluster.len());
+        rows.extend_from_slice(scope);
+        rows.extend_from_slice(cluster);
+        let data = Rc::new(PreparedRows::new(rows));
         *current = Some(Snapshot {
             scope: scope.clone(),
             request: request.clone(),

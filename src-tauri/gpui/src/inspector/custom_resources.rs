@@ -48,9 +48,10 @@ impl Inspector {
     ) {
         match result {
             Ok(result) => {
-                let mut rows = self.rows.to_vec();
+                let mut rows = self.rows.backend_rows();
                 rows.extend(result.resources);
-                self.rows = std::rc::Rc::new(crate::model::PreparedRows::new(rows));
+                self.rows =
+                    std::rc::Rc::new(crate::model::PreparedRows::with_inherited_owners(rows));
                 self.live.versions.extend(result.versions);
                 self.warnings.extend(result.warnings);
                 self.custom_load = CustomLoad::Ready;

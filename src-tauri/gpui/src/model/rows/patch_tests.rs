@@ -106,3 +106,45 @@ fn ordered_patch_rebuilds_owner_search_without_changing_row_identity() {
     assert_eq!(visible.len(), 1);
     assert!(visible.grouped_by_gitops);
 }
+
+// Inherited owners live in the rows, but watch rows carry the backend's owners.
+// Failure modes: an unchanged watch read drops a Pod's inherited owner or counts
+// as a key change; a parent's new owner does not reach its Pods; rows taken back
+// for a new read keep inherited owners as if the backend sent them.
+#[test]
+fn watch_patches_keep_inherited_owners_in_step_with_their_parents() {
+    let parent = |app: &str| -> ResourceSummary {
+        serde_json::from_value(json!({
+            "name":"rs", "kind":"ReplicaSet", "cluster":"test", "namespace":"ns", "age":"1d",
+            "gitOpsOwner":{"provider":"argo", "kind":"Application", "name":app,
+                "confidence":"label", "provenance":"tracking-id", "partial":false}
+        }))
+        .unwrap()
+    };
+    let mut pod = row("pod", "ns");
+    pod.owner_ref = Some("rs".into());
+    let owner = |rows: &PreparedRows| {
+        let pod = rows.iter().find(|row| row.kind == "Pod").unwrap();
+        pod.git_ops_owner.as_ref().map(|owner| owner.name.clone())
+    };
+    let mut rows = PreparedRows::with_inherited_owners(vec![parent("app"), pod.clone()]);
+    assert_eq!(owner(&rows), Some("app".into()));
+
+    let identity = rows.identity().clone();
+    rows.patch(&key(), vec![pod.clone()], None);
+    assert_eq!(owner(&rows), Some("app".into()));
+    assert!(
+        Rc::ptr_eq(rows.identity(), &identity),
+        "unchanged read rebuilt the rows"
+    );
+
+    let replica_sets: WatchResourceKey =
+        serde_json::from_value(json!({"resourceKind":{"kind":"ReplicaSet"}, "namespace":null}))
+            .unwrap();
+    rows.patch(&replica_sets, vec![parent("other")], None);
+    assert_eq!(owner(&rows), Some("other".into()));
+
+    let backend = rows.backend_rows();
+    let pod = backend.iter().find(|row| row.kind == "Pod").unwrap();
+    assert_eq!(pod.git_ops_owner, None);
+}

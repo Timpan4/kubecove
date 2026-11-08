@@ -144,6 +144,15 @@ pub(super) fn kind_resources(
     })
 }
 
+/// Appends a snapshot's rows. The list cache usually shares them, so they are
+/// copied straight into `resources` rather than through a cloned `Vec`.
+fn extend_rows(resources: &mut Vec<ResourceSummary>, rows: Arc<Vec<ResourceSummary>>) {
+    match Arc::try_unwrap(rows) {
+        Ok(rows) => resources.extend(rows),
+        Err(rows) => resources.extend_from_slice(&rows),
+    }
+}
+
 pub(super) fn reuse_row_buffer(
     mut recycled: Vec<ResourceSummary>,
     rows: Vec<ResourceSummary>,
@@ -281,13 +290,18 @@ pub(super) fn builtin_resources(
             }
             Err(error) => return Err(error),
         };
-        let mut resources = Vec::new();
+        let mut resources = Vec::with_capacity(
+            results
+                .iter()
+                .filter_map(|result| Some(result.as_ref().ok()?.rows.len()))
+                .sum(),
+        );
         let mut versions = ListVersions::new();
         let mut listed = Vec::new();
         for ((kind, key), result) in kinds.into_iter().zip(&keys).zip(results) {
             match result {
                 Ok(snapshot) => {
-                    resources.extend(Arc::unwrap_or_clone(snapshot.rows));
+                    extend_rows(&mut resources, snapshot.rows);
                     if let Some(version) = snapshot.resource_version {
                         versions.insert(watch_signature(key), version);
                     }
@@ -362,10 +376,16 @@ pub(super) fn custom_resources(backend: &NativeBackend, scope: Scope) -> Read<Sc
                     })
                     .collect();
                 let results = bounded_join_all(reads, commands::MAX_LIST_CONCURRENCY).await;
+                resources.reserve_exact(
+                    results
+                        .iter()
+                        .filter_map(|result| Some(result.as_ref().ok()?.rows.len()))
+                        .sum(),
+                );
                 for (kind, result) in discovered.iter().zip(results) {
                     match result {
                         Ok(snapshot) => {
-                            resources.extend(Arc::unwrap_or_clone(snapshot.rows));
+                            extend_rows(&mut resources, snapshot.rows);
                             let key = discovered_key(kind, scope.namespace.clone());
                             if let Some(version) = snapshot.resource_version {
                                 versions.insert(watch_signature(&key), version);

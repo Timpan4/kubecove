@@ -159,7 +159,9 @@ impl Inspector {
                 let ready = match result {
                     Ok(result) => {
                         this.namespaces = result.namespaces;
-                        this.rows = Rc::new(crate::model::PreparedRows::new(result.resources));
+                        this.rows = Rc::new(crate::model::PreparedRows::with_inherited_owners(
+                            result.resources,
+                        ));
                         this.live.versions = result.versions;
                         this.warnings = result.warnings;
                         this.load = Load::Ready;
@@ -296,7 +298,9 @@ impl Inspector {
                     this.live.scope_loading = false;
                     match result {
                         Ok(result) => {
-                            this.rows = Rc::new(crate::model::PreparedRows::new(result.resources));
+                            this.rows = Rc::new(crate::model::PreparedRows::with_inherited_owners(
+                                result.resources,
+                            ));
                             this.live.versions = result.versions;
                             this.namespaces = result.namespaces;
                             this.warnings = result.warnings;
@@ -329,8 +333,9 @@ impl Inspector {
 
     /// Resolves cluster-row inheritance before the filter source joins it with scope rows.
     pub(super) fn prepare_rows(&mut self) {
-        self.cluster.prepared =
-            crate::model::inherit_gitops_owners(&self.cluster.rows).into_owned();
+        let mut prepared = self.cluster.rows.clone();
+        crate::model::inherit_gitops_owners(&mut prepared);
+        self.cluster.prepared = prepared;
     }
 
     /// The resource scope read in two stages: built-ins first, then custom kinds.

@@ -4,7 +4,7 @@
 use super::{HealthSummary, gitops_label, ownership_group};
 mod patch;
 use crate::collate::Key;
-use kubecove_lib::models::ResourceSummary;
+use kubecove_lib::models::{GitOpsOwnerSummary, ResourceSummary};
 pub(crate) use patch::{ObservedNames, reconcile};
 use std::{
     collections::HashMap,
@@ -44,6 +44,10 @@ pub(crate) struct PreparedRows {
     variants: Vec<usize>,
     lanes: Vec<Lane>,
     by_name: Vec<usize>,
+    /// Set by `with_inherited_owners`: each row whose GitOps owner it inherited,
+    /// with the owner the backend sent. `swap_owners` exchanges the two, so a
+    /// watch patch compares and replaces backend rows.
+    inherited: Vec<(usize, Option<GitOpsOwnerSummary>)>,
 }
 
 struct Lane {
@@ -79,6 +83,40 @@ impl PreparedRows {
     pub(crate) fn identity(&self) -> &Rc<()> {
         &self.identity
     }
+
+    /// The resource view's rows, with GitOps owners inherited in place as the
+    /// filter, table and detail pane show them.
+    pub(crate) fn with_inherited_owners(mut rows: Vec<ResourceSummary>) -> Self {
+        let inherited = {
+            let _profile = crate::frame_profile::scope("rows", "inherit_owners");
+            super::inherit_gitops_owners(&mut rows)
+        };
+        Self {
+            inherited,
+            ..Self::new(rows)
+        }
+    }
+
+    /// The rows with the GitOps owners the backend sent.
+    pub(crate) fn backend_rows(&self) -> Vec<ResourceSummary> {
+        let mut rows = self.rows.clone();
+        for (index, owner) in &self.inherited {
+            rows[*index].git_ops_owner = owner.clone();
+        }
+        rows
+    }
+
+    fn swap_owners(&mut self) {
+        for (index, owner) in &mut self.inherited {
+            std::mem::swap(&mut self.rows[*index].git_ops_owner, owner);
+        }
+    }
+
+    /// Prepares patched rows again. Only the resource view's rows are patched.
+    fn rebuild(&mut self) {
+        *self = Self::with_inherited_owners(std::mem::take(&mut self.rows));
+    }
+
     pub(crate) fn new(rows: Vec<ResourceSummary>) -> Self {
         let _span = crate::frame_profile::scope("rows", "prepare");
         let mut sorted: Vec<_> = (0..rows.len()).collect();
@@ -152,6 +190,7 @@ impl PreparedRows {
             variants,
             lanes,
             by_name: sorted,
+            inherited: Vec::new(),
         }
     }
 }

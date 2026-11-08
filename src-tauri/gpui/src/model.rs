@@ -5,13 +5,12 @@ mod rows;
 use crate::table_sort::{self, Sort};
 use crate::theme::Tokens;
 use gpui_kit::Hsla;
-use kubecove_lib::models::{HealthAssessmentSource, HealthAssessmentState, ResourceSummary};
+use kubecove_lib::models::{
+    GitOpsOwnerSummary, HealthAssessmentSource, HealthAssessmentState, ResourceSummary,
+};
 pub use rows::Visible;
 pub(crate) use rows::{KindFilter, ObservedNames, PreparedRows, reconcile};
-use std::{
-    borrow::Cow,
-    collections::{HashMap, HashSet},
-};
+use std::collections::{HashMap, HashSet};
 
 /// `DEFAULT_WORKSPACE_KINDS` in `src/lib/workspace-model.ts`.
 pub const WORKSPACE_KINDS: &[&str] = &[
@@ -171,58 +170,69 @@ fn gitops_label(row: &ResourceSummary) -> Option<String> {
 /// A row without direct GitOps evidence takes the `gitOpsOwner` of its nearest
 /// `ownerRef` ancestor in the same namespace that has evidence. Parents match by
 /// namespace and name only, and the last row with a name wins, as in the web map.
-/// Callers cache the result for filtering and grouping between data changes.
-/// Unresolved owner references keep the original buffer borrowed.
-pub fn inherit_gitops_owners(rows: &[ResourceSummary]) -> Cow<'_, [ResourceSummary]> {
+/// The rows change in place, so the table, search and detail pane read the
+/// inherited owner from the row itself without a second copy of every row.
+/// Returns each changed row's index with the owner it had before.
+pub fn inherit_gitops_owners(
+    rows: &mut [ResourceSummary],
+) -> Vec<(usize, Option<GitOpsOwnerSummary>)> {
     fn namespace_key(row: &ResourceSummary) -> &str {
         row.namespace.as_deref().unwrap_or_default()
     }
-    let owner_keys: HashSet<(&str, &str)> = rows
-        .iter()
-        .filter_map(|row| Some((namespace_key(row), row.owner_ref.as_deref()?)))
-        .collect();
-    if owner_keys.is_empty() {
-        return Cow::Borrowed(rows);
-    }
-    let mut parents: HashMap<(&str, &str), usize> = HashMap::new();
-    for (index, row) in rows.iter().enumerate() {
-        let key = (namespace_key(row), row.name.as_str());
-        if owner_keys.contains(&key) {
-            parents.insert(key, index);
+    let inherited: Vec<(usize, usize)> = {
+        let rows = &*rows;
+        let owner_keys: HashSet<(&str, &str)> = rows
+            .iter()
+            .filter_map(|row| Some((namespace_key(row), row.owner_ref.as_deref()?)))
+            .collect();
+        if owner_keys.is_empty() {
+            return Vec::new();
         }
-    }
-    if parents.is_empty() {
-        return Cow::Borrowed(rows);
-    }
-    Cow::Owned(
+        let mut parents: HashMap<(&str, &str), usize> = HashMap::new();
+        for (index, row) in rows.iter().enumerate() {
+            let key = (namespace_key(row), row.name.as_str());
+            if owner_keys.contains(&key) {
+                parents.insert(key, index);
+            }
+        }
+        if parents.is_empty() {
+            return Vec::new();
+        }
         rows.iter()
             .enumerate()
-            .map(|(index, row)| {
+            .filter_map(|(index, row)| {
                 if gitops_label(row).is_some() {
-                    return row.clone();
+                    return None;
                 }
                 let mut seen = HashSet::from([index]);
                 let mut current = row;
                 while let Some(owner_ref) = current.owner_ref.as_deref() {
-                    let Some(&owner_index) = parents.get(&(namespace_key(current), owner_ref))
-                    else {
-                        break;
-                    };
+                    let &owner_index = parents.get(&(namespace_key(current), owner_ref))?;
                     if !seen.insert(owner_index) {
-                        break;
+                        return None;
                     }
                     let owner = &rows[owner_index];
                     if gitops_label(owner).is_some() {
-                        let mut inherited = row.clone();
-                        inherited.git_ops_owner = owner.git_ops_owner.clone();
-                        return inherited;
+                        return Some((index, owner_index));
                     }
                     current = owner;
                 }
-                row.clone()
+                None
             })
-            .collect(),
-    )
+            .collect()
+    };
+    // An owner row has its own label, so it is never itself in `inherited` and
+    // still holds its own owner while the rows below it copy from it.
+    inherited
+        .into_iter()
+        .map(|(index, owner_index)| {
+            let owner = rows[owner_index].git_ops_owner.clone();
+            (
+                index,
+                std::mem::replace(&mut rows[index].git_ops_owner, owner),
+            )
+        })
+        .collect()
 }
 
 /// `formatResourceTypeGroupLabel` in `src/features/resources/helpers.ts`.
