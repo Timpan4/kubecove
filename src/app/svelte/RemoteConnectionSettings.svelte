@@ -31,7 +31,7 @@
 		});
 	});
 
-	async function run(action: () => Promise<unknown>) {
+	async function run<Result>(action: () => Promise<Result>) {
 		pending = true;
 		error = null;
 		try {

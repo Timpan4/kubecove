@@ -83,11 +83,14 @@ export function loadingDelay(pending: () => boolean): LoadingIndicator {
 	};
 }
 
-/** `loadingDelay` for a set of keyed reads, such as one per namespace. */
-export function loadingDelays(pending: () => ReadonlySet<string>): {
+/** Per-key `LoadingIndicator` fields for a set of keyed reads. */
+export interface KeyedLoadingIndicator {
 	shown(key: string): boolean;
 	active(key: string): boolean;
-} {
+}
+
+/** `loadingDelay` for a set of keyed reads, such as one per namespace. */
+export function loadingDelays(pending: () => ReadonlySet<string>): KeyedLoadingIndicator {
 	let version = $state(0);
 	const timers = new Map<string, LoadingTimer>();
 	$effect(() => {

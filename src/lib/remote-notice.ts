@@ -12,14 +12,14 @@ export interface RemoteNotice {
 	actions: readonly RemoteNoticeAction[];
 }
 
-export const REMOTE_NOTICE_LABELS: Record<RemoteNoticeAction, string> = {
+export const REMOTE_NOTICE_LABELS = {
 	signIn: "Sign in",
 	copySignInLink: "Copy sign-in link",
 	cancelSignIn: "Cancel",
 	startNewSession: "Start a new session",
 	cancelConnecting: "Cancel",
 	disconnect: "Disconnect",
-};
+} satisfies Record<RemoteNoticeAction, string>;
 
 export const SIGN_IN_MEMORY_ONLY = "This computer's credential store is unavailable, so the sign-in lasts only until KubeCove closes.";
 
