@@ -5,6 +5,7 @@ use super::{
     Inspector,
     friendly_error::Operation,
     port_forward_rows::{card, card_title, stat, table},
+    request::Query,
     surface,
 };
 use crate::backend::LiveSessions;
@@ -12,18 +13,14 @@ use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui;
 use gpui_kit::{AnyElement, Context, Task, div, prelude::*, px};
-use kubecove_lib::models::AppError;
-use std::rc::Rc;
 
 pub(super) struct SessionsState {
     pub(super) form: Option<super::saved_forward_form::PresetForm>,
-    pub(super) load: Option<Result<LiveSessions, AppError>>,
+    pub(super) load: Query<LiveSessions>,
     pub(super) action: SessionAction,
     pub(super) scope_context: Option<String>,
     /// `ActiveLiveSessionsButton`'s popover, open from the header count.
     pub(super) popover: bool,
-    request: Rc<()>,
-    task: Option<Task<()>>,
     poll: Option<Task<()>>,
     pub(super) rows: super::windowed::Windowed,
 }
@@ -32,12 +29,10 @@ impl SessionsState {
     pub(super) fn new() -> Self {
         Self {
             form: None,
-            load: None,
+            load: Query::default(),
             action: SessionAction::Idle,
             scope_context: None,
             popover: false,
-            request: Rc::new(()),
-            task: None,
             poll: None,
             rows: Default::default(),
         }
@@ -92,22 +87,14 @@ impl Inspector {
     /// `ActiveLiveSessionsButton`'s count: every port forward and exec session
     /// on the host, without the workspace filter the page applies.
     pub(super) fn live_session_count(&self) -> Option<usize> {
-        match &self.sessions.load {
-            Some(Ok(sessions)) => {
-                let (forwards, execs) = sessions.for_context(&self.scope.context);
-                Some(forwards.len() + execs.len())
-            }
-            _ => None,
-        }
+        let sessions = self.sessions.load.data()?;
+        let (forwards, execs) = sessions.for_context(&self.scope.context);
+        Some(forwards.len() + execs.len())
     }
 
     pub(super) fn ensure_sessions(&mut self, cx: &mut Context<Self>) {
         if self.sessions.scope_context.as_deref() != Some(&self.scope.context)
-            || self
-                .sessions
-                .task
-                .as_ref()
-                .is_none_or(|task| task.is_ready())
+            || !self.sessions.load.fetching()
         {
             self.load_sessions(cx);
         }
@@ -137,8 +124,6 @@ impl Inspector {
         // A failed read stays visible until the next read resolves, as the web's
         // query keeps its error during a refetch. The 3 s poll must not show Loading.
         let state = &mut self.sessions;
-        state.request = Rc::new(());
-        let request = state.request.clone();
         let context = self.scope.context.clone();
         let changed = state
             .scope_context
@@ -148,8 +133,7 @@ impl Inspector {
         let cleanup = changed && !keep;
         let previous_source = state
             .load
-            .as_ref()
-            .and_then(|r| r.as_ref().ok())
+            .data()
             .and_then(|s| s.source_key.clone());
         let backend = self.backend.clone();
         let executor = cx.background_executor().clone();
@@ -174,23 +158,22 @@ impl Inspector {
             }
             Ok(sessions)
         };
-        state.task = Some(cx.spawn(async move |this, cx| {
+        state.load.start(cx.spawn(async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
-                if Rc::ptr_eq(&this.sessions.request, &request) {
-                    // The 3 s poll usually reads the same list. Redrawing the window for it
-                    // costs a full Inspector render, which at 10k rows dominates idle CPU.
-                    let unchanged = match (&this.sessions.load, &result) {
-                        (Some(Ok(old)), Ok(new)) => old == new,
-                        (Some(Err(old)), Err(new)) => {
-                            old.kind == new.kind && old.message == new.message
-                        }
-                        _ => false,
-                    };
-                    this.sessions.load = Some(result);
-                    if !unchanged {
-                        cx.notify();
-                    }
+                // The 3 s poll usually reads the same list. Redrawing the window for it
+                // costs a full Inspector render, which at 10k rows dominates idle CPU.
+                let load = &this.sessions.load;
+                let unchanged = match &result {
+                    Ok(new) => load.data() == Some(new) && load.refresh_error().is_none(),
+                    Err(new) => load
+                        .refresh_error()
+                        .or(load.failure())
+                        .is_some_and(|old| old.kind == new.kind && old.message == new.message),
+                };
+                this.sessions.load.settle(result);
+                if !unchanged {
+                    cx.notify();
                 }
             });
         }));
@@ -199,9 +182,9 @@ impl Inspector {
     pub(super) fn port_forwards_page(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let pending = surface::pending_slot(
             self.loading
-                .phase("surface-sessions", self.sessions.load.is_none()),
+                .phase("surface-sessions", self.sessions.load.pending()),
         );
-        let body: AnyElement = match (&self.sessions.load, pending) {
+        let body: AnyElement = match (self.sessions.load.settled(), pending) {
             (_, Some(slot)) => slot,
             (None, None) => div().into_any_element(),
             (Some(Err(error)), None) => {
@@ -216,6 +199,15 @@ impl Inspector {
                     .flex()
                     .flex_col()
                     .gap(px(16.))
+                    // `SurfaceFrame` shows a failed refetch above the data it keeps.
+                    .when_some(self.sessions.load.refresh_error().cloned(), |body, error| {
+                        body.child(self.page_read_failure(
+                            "Live sessions unavailable",
+                            &error,
+                            Operation::Surface,
+                            cx,
+                        ))
+                    })
                     .when_some(self.sessions.action.failure().map(str::to_owned), |body, error| body.child(
                         div().id("session-action-message").test_support().aria_label(error.clone())
                             .child(ui::xs(error).text_color(Tokens::destructive()))

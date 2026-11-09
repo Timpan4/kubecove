@@ -1,7 +1,12 @@
 //! Guided investigation pane, mirroring `IncidentGuide.svelte`. Steps open the
 //! resource in the detail pane. Guarded actions hand off to the Actions tab.
 
-use super::{Inspector, Page, detail::DetailTab, incidents::severity_badge, surface};
+use super::{
+    Inspector, Page,
+    detail::DetailTab,
+    incidents::{enrichment, severity_badge},
+    surface,
+};
 use crate::incidents::{
     self,
     guidance::{self, Enrichment, Evidence, Tone},
@@ -343,9 +348,10 @@ impl Inspector {
                     ))),
             );
         };
-        let (details_state, details) = (state.details.0, state.details.1.as_ref());
-        let topology_state = state.topology.0;
-        let owners = guidance::resolve_owner(&item.resource, state.topology.1.as_deref());
+        let (details_state, details) = (enrichment(&state.details), state.details.ready());
+        let topology_state = enrichment(&state.topology);
+        let topology = state.topology.ready().map(|topology| &**topology);
+        let owners = guidance::resolve_owner(&item.resource, topology);
         let guide = guidance::build(item, details, &owners, details_state, topology_state);
         let enriching = self
             .loading

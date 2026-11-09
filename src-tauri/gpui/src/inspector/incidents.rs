@@ -2,6 +2,7 @@
 //! and the filters. The queue lives in `incident_queue.rs` and guided
 //! investigation in `incident_guide.rs`.
 
+use super::request::{Fetch, Query};
 use super::{Inspector, surface};
 use crate::backend::Scope;
 use crate::incidents::{self, Empty, Filter, Queue, guidance::Enrichment};
@@ -9,41 +10,34 @@ use crate::targets::TestSupportExt;
 use crate::theme::{Palette, Tokens};
 use crate::ui::{self, Tone};
 use gpui_kit::{
-    AnyElement, Context, ListAlignment, ListState, SharedString, Task, Window, div, prelude::*, px,
+    AnyElement, Context, ListAlignment, ListState, SharedString, Window, div, prelude::*, px,
 };
 use kubecove_lib::models::{
     IncidentCockpitItem as Item, IncidentCockpitSummary, IncidentSeverity as Severity,
     ResourceDetailsFull, ResourceTopology,
 };
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub(super) struct IncidentsState {
-    /// `None` while the first read is pending.
-    load: Option<Result<IncidentCockpitSummary, String>>,
-    fetching: bool,
-    refresh_error: Option<String>,
+    load: Query<IncidentCockpitSummary, String>,
     context: String,
     filter: Filter,
-    /// The filtered queue, rebuilt by `set_load` and `set_filter`.
+    /// The filtered queue, rebuilt by `settle` and `set_filter`.
     pub(super) queue: Queue,
     /// The queue's virtualized rows, one per entry of `queue.rows`.
     pub(super) list: ListState,
     selected: Option<String>,
     enriched: Option<String>,
-    pub(super) details: (Enrichment, Option<ResourceDetailsFull>),
-    pub(super) topology: (Enrichment, Option<std::sync::Arc<ResourceTopology>>),
+    pub(super) details: Fetch<ResourceDetailsFull>,
+    pub(super) topology: Fetch<Arc<ResourceTopology>>,
     pub(super) copied: Option<(String, bool)>,
     pub(super) show_step_context: bool,
-    request: Rc<()>,
-    tasks: [Option<Task<()>>; 3],
 }
 
 impl IncidentsState {
     pub(super) fn new() -> Self {
         Self {
-            load: None,
-            fetching: false,
-            refresh_error: None,
+            load: Query::default(),
             context: String::new(),
             filter: Filter::All,
             queue: Queue::new(&[], Filter::All),
@@ -51,19 +45,17 @@ impl IncidentsState {
             list: ListState::new(0, ListAlignment::Top, px(400.)),
             selected: None,
             enriched: None,
-            details: (Enrichment::Idle, None),
-            topology: (Enrichment::Idle, None),
+            details: Fetch::Idle,
+            topology: Fetch::Idle,
             copied: None,
             show_step_context: false,
-            request: Rc::new(()),
-            tasks: [None, None, None],
         }
     }
 
     pub(super) fn items(&self) -> &[Item] {
-        match &self.load {
-            Some(Ok(summary)) => &summary.items,
-            _ => &[],
+        match self.load.data() {
+            Some(summary) => &summary.items,
+            None => &[],
         }
     }
 
@@ -75,17 +67,21 @@ impl IncidentsState {
         self.queue.selected(self.items(), self.selected_key())
     }
 
-    fn set_load(&mut self, load: Result<IncidentCockpitSummary, String>) {
-        self.load = Some(load);
-        self.queue = Queue::new(self.items(), self.filter);
-        self.reset_rows();
+    /// Applies a read and rebuilds the queue when the shown summary changed.
+    fn settle(&mut self, result: Result<IncidentCockpitSummary, String>) {
+        let replaces = result.is_ok() || self.load.data().is_none();
+        self.load.settle(result);
+        if replaces {
+            self.queue = Queue::new(self.items(), self.filter);
+            self.reset_rows();
+        }
     }
 
     fn set_filter(&mut self, filter: Filter) {
         self.filter = filter;
-        let items = match &self.load {
-            Some(Ok(summary)) => &summary.items[..],
-            _ => &[],
+        let items = match self.load.data() {
+            Some(summary) => &summary.items[..],
+            None => &[],
         };
         self.queue.filter(items, filter);
         self.reset_rows();
@@ -100,6 +96,16 @@ impl IncidentsState {
         if top.item_ix < rows {
             self.list.scroll_to(top);
         }
+    }
+}
+
+/// `IncidentEnrichmentState` for one enrichment read.
+pub(super) fn enrichment<T>(read: &Fetch<T>) -> Enrichment {
+    match read {
+        Fetch::Idle => Enrichment::Idle,
+        Fetch::Loading { .. } => Enrichment::Loading,
+        Fetch::Ready(_) => Enrichment::Ready,
+        Fetch::Failed(_) => Enrichment::Error,
     }
 }
 
@@ -135,24 +141,17 @@ impl Inspector {
             *state = IncidentsState::new();
             state.context = self.scope.context.clone();
         }
-        state.request = Rc::new(());
-        state.fetching = true;
+        // An enrichment read that settles before this read ignores its result.
         state.enriched = None;
-        let request = state.request.clone();
         let context = state.context.clone();
         let backend = self.backend.clone();
         let read_context = context.clone();
         let read = crate::read_retry::read(cx.background_executor().clone(), move || {
             backend.incidents(read_context.clone())
         });
-        state.tasks[0] = Some(cx.spawn(async move |this, cx| {
+        state.load.start(cx.spawn(async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
-                let state = &mut this.incidents;
-                if !Rc::ptr_eq(&state.request, &request) {
-                    return;
-                }
-                state.fetching = false;
                 // `loadIncidents` prefixes each warning with its cluster.
                 let result = result
                     .map(|mut summary| {
@@ -163,15 +162,7 @@ impl Inspector {
                     })
                     .map_err(|error| error.message);
                 let success = result.is_ok();
-                if let Err(error) = &result
-                    && matches!(state.load, Some(Ok(_)))
-                {
-                    state.refresh_error = Some(error.clone());
-                } else {
-                    // The failed refresh stays visible until a read resolves.
-                    state.refresh_error = None;
-                    state.set_load(result);
-                }
+                this.incidents.settle(result);
                 this.enrich_incident(cx);
                 if success {
                     this.page_read_finished(super::Page::Incidents, cx);
@@ -185,9 +176,14 @@ impl Inspector {
     }
 
     pub(super) fn cancel_incident_reads(&mut self) {
-        self.incidents.tasks = [None, None, None];
-        self.incidents.request = Rc::new(());
-        self.incidents.fetching = false;
+        let state = &mut self.incidents;
+        state.load.cancel();
+        // Dropping an enrichment read cancels it, so the next selection reads it again.
+        if state.details.loading() || state.topology.loading() {
+            state.enriched = None;
+            state.details = Fetch::Idle;
+            state.topology = Fetch::Idle;
+        }
     }
 
     /// Loads details and, for Pods, the namespace's ownership graph for the
@@ -195,11 +191,9 @@ impl Inspector {
     fn enrich_incident(&mut self, cx: &mut Context<Self>) {
         let state = &mut self.incidents;
         let Some(item) = state.selected_item() else {
-            state.tasks[1] = None;
-            state.tasks[2] = None;
             state.enriched = None;
-            state.details = (Enrichment::Idle, None);
-            state.topology = (Enrichment::Idle, None);
+            state.details = Fetch::Idle;
+            state.topology = Fetch::Idle;
             return;
         };
         let key = incidents::item_key(item);
@@ -209,18 +203,16 @@ impl Inspector {
         let resource = item.resource.clone();
         state.selected = Some(key.clone());
         state.enriched = Some(key);
-        let request = state.request.clone();
-        state.details = (Enrichment::Loading, None);
         let read = self.backend.details(resource.clone());
         let selected = state.enriched.clone();
-        state.tasks[1] = Some(cx.spawn(async move |this, cx| {
+        state.details = Fetch::start(cx.spawn(async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
                 let state = &mut this.incidents;
-                if Rc::ptr_eq(&state.request, &request) && state.enriched == selected {
+                if state.enriched == selected {
                     state.details = match result {
-                        Ok(details) => (Enrichment::Ready, Some(details)),
-                        Err(_) => (Enrichment::Error, None),
+                        Ok(details) => Fetch::Ready(details),
+                        Err(error) => Fetch::Failed(error.message),
                     };
                     cx.notify();
                 }
@@ -231,19 +223,16 @@ impl Inspector {
             .clone()
             .filter(|_| resource.kind == "Pod")
         else {
-            state.topology = (Enrichment::Idle, None);
-            state.tasks[2] = None;
+            state.topology = Fetch::Idle;
             return;
         };
-        state.topology = (Enrichment::Loading, None);
-        let request = state.request.clone();
         let backend = self.backend.clone();
         let scope = Scope {
             context: resource.cluster.clone(),
             namespace: Some(namespace),
         };
         let selected = state.enriched.clone();
-        state.tasks[2] = Some(cx.spawn(async move |this, cx| {
+        state.topology = Fetch::start(cx.spawn(async move |this, cx| {
             let result = crate::read_retry::cancelled_read(
                 || backend.topology(scope.clone()),
                 |delay| cx.background_executor().timer(delay),
@@ -251,10 +240,10 @@ impl Inspector {
             .await;
             let _ = this.update(cx, |this, cx| {
                 let state = &mut this.incidents;
-                if Rc::ptr_eq(&state.request, &request) && state.enriched == selected {
+                if state.enriched == selected {
                     state.topology = match result {
-                        Ok(topology) => (Enrichment::Ready, Some(topology)),
-                        Err(_) => (Enrichment::Error, None),
+                        Ok(topology) => Fetch::Ready(topology),
+                        Err(error) => Fetch::Failed(error.message),
                     };
                     cx.notify();
                 }
@@ -297,7 +286,7 @@ impl Inspector {
                         .text_color(tone),
                 )
         });
-        let fetching = self.incidents.fetching;
+        let fetching = self.incidents.load.fetching();
         let refreshing = self.loading.phase("incidents-refresh", fetching).shown();
         // The incident scope is the workspace (every namespace), not the
         // Resources page's namespace selection.
@@ -412,9 +401,9 @@ impl Inspector {
     ) -> impl IntoElement {
         let pending = surface::pending_slot(
             self.loading
-                .phase("surface-incidents", self.incidents.load.is_none()),
+                .phase("surface-incidents", self.incidents.load.pending()),
         );
-        let body: AnyElement = match (&self.incidents.load, pending) {
+        let body: AnyElement = match (self.incidents.load.settled(), pending) {
             (_, Some(slot)) => slot,
             (None, None) => div().into_any_element(),
             (Some(Err(error)), None) => {
@@ -467,7 +456,7 @@ impl Inspector {
                     .min_w_0()
                     .gap(px(12.))
                     .child(self.overview_section(cx))
-                    .when_some(self.incidents.refresh_error.clone(), |body, error| {
+                    .when_some(self.incidents.load.refresh_error().cloned(), |body, error| {
                         body.child(self.page_failure("Incident refresh failed", error, cx))
                     })
                     .when(!warnings.is_empty(), |body| {

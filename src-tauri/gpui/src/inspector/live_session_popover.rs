@@ -67,7 +67,7 @@ impl Inspector {
 
     fn live_session_panel(&self, cx: &mut Context<Self>) -> ObservedElement<Stateful<Div>> {
         let mut rows: Vec<AnyElement> = Vec::new();
-        if let Some(Ok(sessions)) = &self.sessions.load {
+        if let Some(sessions) = self.sessions.load.data() {
             let (forwards, execs) = sessions.for_context(&self.scope.context);
             let show_labels = sessions.show_source_labels;
             for session in execs {

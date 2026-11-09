@@ -1,55 +1,38 @@
 //! The overview's GitOps inventory: its read and the body of the GitOps
 //! `<section>` in `src/features/workspaces/WorkspaceOverview.svelte`.
 
-use super::Inspector;
+use super::{Inspector, request::Query};
 use crate::gitops::GitOpsInventory;
 use crate::targets::TestSupportExt;
 use crate::theme::{Palette, Tokens};
 use crate::ui;
-use gpui_kit::{
-    AnyElement, Context, Div, FontWeight, Hsla, SharedString, Task, div, prelude::*, px,
-};
+use gpui_kit::{AnyElement, Context, Div, FontWeight, Hsla, SharedString, div, prelude::*, px};
 use kubecove_lib::models::AppError;
+use std::time::Duration;
 
 #[derive(Default)]
 pub(super) struct GitOpsState {
     /// The context `load` belongs to; empty before the first read.
     context: String,
-    load: GitOpsLoad,
+    load: Query<GitOpsInventory>,
     /// Bumped whenever `load` changes, so the GitOps page knows to rebuild its rows.
     pub(super) revision: u64,
-    task: Option<Task<()>>,
-    request: std::rc::Rc<()>,
-    pub(super) fetching: bool,
+    /// A refresh asked for while a read ran; it reads again once that read settles.
     trailing: bool,
-    refresh_error: Option<AppError>,
 }
 
 impl GitOpsState {
     pub(super) fn inventory(&self) -> Option<&GitOpsInventory> {
-        match &self.load {
-            GitOpsLoad::Ready(inventory) => Some(inventory),
-            _ => None,
-        }
+        self.load.data()
     }
 
     pub(super) fn error(&self) -> Option<&AppError> {
-        if let Some(error) = &self.refresh_error {
-            return Some(error);
-        }
-        match &self.load {
-            GitOpsLoad::Failed(error) => Some(error),
-            _ => None,
-        }
+        self.load.refresh_error().or(self.load.failure())
     }
-}
 
-#[derive(Default)]
-enum GitOpsLoad {
-    #[default]
-    Detecting,
-    Ready(GitOpsInventory),
-    Failed(AppError),
+    pub(super) fn fetching(&self) -> bool {
+        self.load.fetching()
+    }
 }
 
 /// `flex items-center justify-between py-2 text-xs` with a `<strong>` count.
@@ -87,12 +70,12 @@ fn pending(label: &str) -> Div {
 
 impl Inspector {
     /// Reads the inventory once per context, and again on refresh. Replacing
-    /// the task drops, and so cancels, a read for the previous context.
+    /// the read drops, and so cancels, a read for the previous context.
     pub(super) fn load_gitops(&mut self, refresh: bool, cx: &mut Context<Self>) {
         if self.scope.context.is_empty() {
             return;
         }
-        if self.gitops.context == self.scope.context && self.gitops.fetching {
+        if self.gitops.context == self.scope.context && self.gitops.load.fetching() {
             self.gitops.trailing |= refresh;
             return;
         }
@@ -100,87 +83,70 @@ impl Inspector {
             return;
         }
         if self.gitops.context != self.scope.context {
-            self.cancel_gitops_read();
-            self.gitops.load = GitOpsLoad::Detecting;
+            self.gitops.load = Query::default();
+            self.gitops.trailing = false;
         }
         self.gitops.context = self.scope.context.clone();
-        self.gitops.fetching = true;
-        self.gitops.refresh_error = None;
+        // A watch event retries while an error shows, so the error hides during the read.
+        self.gitops.load.clear_refresh_error();
         self.gitops.revision += 1;
+        self.start_gitops_read(None, cx);
+    }
+
+    /// Starts one inventory read, after `delay` when a trailing refresh coalesces.
+    fn start_gitops_read(&mut self, delay: Option<Duration>, cx: &mut Context<Self>) {
         let backend = self.backend.clone();
         let context = self.scope.context.clone();
-        let request = self.gitops.request.clone();
-        self.gitops.task = Some(cx.spawn(async move |this, cx| {
-            loop {
-                let retry_backend = backend.clone();
-                let retry_context = context.clone();
-                let result = crate::read_retry::read(cx.background_executor().clone(), move || {
-                    retry_backend.gitops(retry_context.clone())
-                })
-                .await;
-                let again = this
-                    .update(cx, |this, cx| {
-                        if !std::rc::Rc::ptr_eq(&this.gitops.request, &request)
-                            || this.scope.context != context
-                        {
-                            return false;
-                        }
-                        match result {
-                            Ok(inventory)
-                                if inventory.list_error.is_some()
-                                    && this.gitops.inventory().is_some() =>
-                            {
-                                this.gitops.refresh_error = inventory.list_error;
-                            }
-                            Ok(inventory) => {
-                                this.gitops.load = GitOpsLoad::Ready(inventory);
-                                this.gitops.refresh_error = None;
-                                this.page_read_finished(super::Page::GitOps, cx);
-                            }
-                            Err(error) => {
-                                if this.gitops.inventory().is_some() {
-                                    this.gitops.refresh_error = Some(error);
-                                } else {
-                                    this.gitops.load = GitOpsLoad::Failed(error);
-                                }
-                            }
-                        }
-                        this.gitops.revision += 1;
-                        let again = std::mem::take(&mut this.gitops.trailing);
-                        this.gitops.fetching = again;
-                        cx.notify();
-                        again
-                    })
-                    .unwrap_or(false);
-                if !again {
-                    break;
-                }
-                cx.background_executor()
-                    .timer(super::live_data::COALESCE)
-                    .await;
+        self.gitops.load.start(cx.spawn(async move |this, cx| {
+            if let Some(delay) = delay {
+                cx.background_executor().timer(delay).await;
             }
+            let result = crate::read_retry::read(cx.background_executor().clone(), move || {
+                backend.gitops(context.clone())
+            })
+            .await;
+            let _ = this.update(cx, |this, cx| {
+                if this.scope.context != this.gitops.context {
+                    return;
+                }
+                // A partial inventory after a full one keeps the full one and reports the list error.
+                let shown = this.gitops.inventory().is_some();
+                let result = result.and_then(|inventory| {
+                    match inventory.list_error.clone().filter(|_| shown) {
+                        Some(error) => Err(error),
+                        None => Ok(inventory),
+                    }
+                });
+                let finished = result.is_ok();
+                this.gitops.load.settle(result);
+                if finished {
+                    this.page_read_finished(super::Page::GitOps, cx);
+                }
+                this.gitops.revision += 1;
+                if std::mem::take(&mut this.gitops.trailing) {
+                    this.start_gitops_read(Some(super::live_data::COALESCE), cx);
+                }
+                cx.notify();
+            });
         }));
     }
 
     pub(super) fn cancel_gitops_read(&mut self) {
-        self.gitops.task.take();
-        self.gitops.request = std::rc::Rc::new(());
-        self.gitops.fetching = false;
+        self.gitops.load.cancel();
         self.gitops.trailing = false;
     }
 
     pub(super) fn gitops_body(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let body = div().id("gitops-inventory").test_support().p(px(12.));
-        let phase = self.loading.phase(
-            "overview-gitops",
-            matches!(self.gitops.load, GitOpsLoad::Detecting),
-        );
-        let content: AnyElement = match &self.gitops.load {
+        let phase = self
+            .loading
+            .phase("overview-gitops", self.gitops.load.pending());
+        let content: AnyElement = match self.gitops.load.settled() {
             // WorkspaceOverview.svelte checks detection first.
             _ if phase.shown() => pending("Detecting...").into_any_element(),
-            GitOpsLoad::Detecting => div().into_any_element(),
+            None => div().into_any_element(),
             _ if !phase.ready() => div().into_any_element(),
-            GitOpsLoad::Failed(error) => div()
+            Some(Err(error)) => div()
                 .id("gitops-error")
                 .role(gpui_kit::Role::Alert)
                 .flex()
@@ -196,10 +162,10 @@ impl Inspector {
                 )
                 .child(ui::muted(ui::xs(error.message.clone())))
                 .into_any_element(),
-            GitOpsLoad::Ready(inventory) if !inventory.detected() => {
+            Some(Ok(inventory)) if !inventory.detected() => {
                 ui::muted(ui::xs("Not detected")).into_any_element()
             }
-            GitOpsLoad::Ready(inventory) => div()
+            Some(Ok(inventory)) => div()
                 .flex()
                 .flex_col()
                 .gap(px(8.))

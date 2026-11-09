@@ -8,7 +8,7 @@ use super::delivery_ui::{self as dui, Layout, ViewMode};
 use super::helm_card;
 use super::helm_details::HelmDetails;
 use super::loading::Phase;
-use super::{Inspector, friendly_error::Operation, surface};
+use super::{Inspector, friendly_error::Operation, request::Query, surface};
 use crate::helm;
 use crate::targets::TestSupportExt;
 use crate::theme::{Palette, Tokens};
@@ -16,22 +16,15 @@ use crate::ui;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::{
     AnyElement, AppContext, Context, Div, Entity, ListAlignment, ListState, ScrollHandle,
-    Subscription, Task, Window, div, list, prelude::*, px,
+    Subscription, Window, div, list, prelude::*, px,
 };
-use kubecove_lib::models::{AppError, HelmReleaseList, HelmReleaseSummary};
-use std::rc::Rc;
+use kubecove_lib::models::{HelmReleaseList, HelmReleaseSummary};
 
 #[path = "helm_rail.rs"]
 mod rail;
 
 /// List rows the table puts in the top item beside the rail.
 const TOP_ROWS: [usize; 2] = [1, 4];
-
-enum HelmLoad {
-    Loading,
-    Ready(HelmReleaseList),
-    Failed(AppError),
-}
 
 /// A release opened from another page, such as a resource's Open Helm release
 /// action. The page selects it after the next successful list read.
@@ -56,10 +49,7 @@ pub(super) struct HelmPage {
     context: String,
     /// Set by `open_helm_release`; consumed by the next successful list read.
     pub(super) target: Option<HelmTarget>,
-    load: HelmLoad,
-    request: Rc<()>,
-    task: Option<Task<()>>,
-    refresh_error: Option<AppError>,
+    load: Query<HelmReleaseList>,
     /// `helmNamespace`; `None` is All releases.
     namespace: Option<String>,
     search: Entity<InputState>,
@@ -92,10 +82,7 @@ impl HelmPage {
         Self {
             context: String::new(),
             target: None,
-            load: HelmLoad::Loading,
-            request: Rc::new(()),
-            task: None,
-            refresh_error: None,
+            load: Query::default(),
             namespace: None,
             search,
             filtered: Vec::new(),
@@ -114,9 +101,9 @@ impl HelmPage {
     }
 
     pub(super) fn releases(&self) -> &[HelmReleaseSummary] {
-        match &self.load {
-            HelmLoad::Ready(list) => &list.releases,
-            _ => &[],
+        match self.load.data() {
+            Some(list) => &list.releases,
+            None => &[],
         }
     }
 
@@ -136,8 +123,8 @@ impl HelmPage {
 
     /// Header, summary, top, rows, then the details card when one is selected.
     fn items(&self) -> usize {
-        match self.load {
-            HelmLoad::Ready(_) if self.status.ready() => {
+        match self.load.data() {
+            Some(_) if self.status.ready() => {
                 3 + self.row_count() - self.top_rows() + usize::from(self.selected.is_some())
             }
             _ => 2,
@@ -164,42 +151,28 @@ impl Inspector {
         let page = &mut self.helm_page;
         if page.context != self.scope.context {
             page.context = self.scope.context.clone();
-            page.load = HelmLoad::Loading;
+            page.load = Query::default();
             page.namespace = None;
             page.selected = None;
             page.details = HelmDetails::default();
             page.filtered.clear();
         }
-        page.request = Rc::new(());
-        page.refresh_error = None;
-        let request = page.request.clone();
+        page.load.clear_refresh_error();
         let backend = self.backend.clone();
         let context = page.context.clone();
         let read = crate::read_retry::read(cx.background_executor().clone(), move || {
             backend.helm_releases(context.clone())
         });
         let read = self.timings.measure("helm_releases", read);
-        page.task = Some(cx.spawn(async move |this, cx| {
+        page.load.start(cx.spawn(async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
                 let page = &mut this.helm_page;
-                if !Rc::ptr_eq(&page.request, &request) {
-                    return;
-                }
                 let previous = page
                     .selected
                     .and_then(|index| page.releases().get(index).cloned());
                 let success = result.is_ok();
-                match result {
-                    Ok(list) => page.load = HelmLoad::Ready(list),
-                    Err(error) => {
-                        if matches!(page.load, HelmLoad::Ready(_)) {
-                            page.refresh_error = Some(error);
-                        } else {
-                            page.load = HelmLoad::Failed(error);
-                        }
-                    }
-                }
+                page.load.settle(result);
                 page.namespace_counts = helm::groups(page.releases())
                     .into_iter()
                     .map(|group| (group.namespace.to_owned(), group.count))
@@ -243,8 +216,7 @@ impl Inspector {
     }
 
     pub(super) fn cancel_helm_reads(&mut self) {
-        self.helm_page.task.take();
-        self.helm_page.request = Rc::new(());
+        self.helm_page.load.cancel();
         self.helm_page.details.cancel();
     }
 
@@ -306,10 +278,9 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let frame = self.frame_width(window);
-        let status = self.loading.phase(
-            "surface-helm",
-            matches!(self.helm_page.load, HelmLoad::Loading),
-        );
+        let status = self
+            .loading
+            .phase("surface-helm", self.helm_page.load.pending());
         self.observe_helm_details_loading();
         let page = &mut self.helm_page;
         page.status = status;
@@ -348,10 +319,10 @@ impl Inspector {
             Item::Status => div().pt(px(16.)).child(
                 match (
                     surface::pending_slot(self.helm_page.status),
-                    &self.helm_page.load,
+                    self.helm_page.load.failure(),
                 ) {
                     (Some(slot), _) => slot,
-                    (None, HelmLoad::Failed(error)) => self.page_read_failure(
+                    (None, Some(error)) => self.page_read_failure(
                         "Helm releases unavailable",
                         error,
                         Operation::Surface,
@@ -373,7 +344,7 @@ impl Inspector {
 
     fn helm_summary(&self, cx: &mut Context<Self>) -> Div {
         let page = &self.helm_page;
-        let HelmLoad::Ready(data) = &page.load else {
+        let Some(data) = page.load.data() else {
             return div();
         };
         let counts = helm::counts(&data.releases);
@@ -408,7 +379,7 @@ impl Inspector {
                 &facts,
                 page.layout.summary_columns,
             ))
-            .when_some(page.refresh_error.clone(), |column, error| {
+            .when_some(page.load.refresh_error().cloned(), |column, error| {
                 column.child(self.page_read_failure(
                     "Helm refresh failed",
                     &error,

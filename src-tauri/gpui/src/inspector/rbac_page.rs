@@ -5,7 +5,7 @@
 use super::controls::{Variant, button};
 use super::rbac_queue::{has_level, tinted_badge};
 use super::rbac_verify::Verifier;
-use super::{Inspector, Page, friendly_error::Operation, surface};
+use super::{Inspector, Page, friendly_error::Operation, request::Query, surface};
 use crate::rbac::permissions::{Identity, IdentityKind, Observed, observed};
 use crate::rbac::review::ReviewRecord;
 use crate::rbac::{self, Bucket, CockpitItem, ObjectRef, RbacView};
@@ -13,18 +13,11 @@ use crate::targets::TestSupportExt;
 use crate::theme::{Palette, Tokens};
 use crate::ui;
 use gpui_kit::component::input::{InputEvent, InputState};
-use gpui_kit::{Context, Div, Entity, FontWeight, Subscription, Task, Window, div, prelude::*, px};
-use kubecove_lib::models::{AppError, RbacCoverageStatus, RbacInspectionSummary, RbacRiskLevel};
-use std::rc::Rc;
+use gpui_kit::{Context, Div, Entity, FontWeight, Subscription, Window, div, prelude::*, px};
+use kubecove_lib::models::{RbacCoverageStatus, RbacInspectionSummary, RbacRiskLevel};
 
 /// `visible` in `RbacView.svelte`: the queue renders 50 cards and 50 more per click.
 pub(super) const PAGE: usize = 50;
-
-pub(super) enum RbacLoad {
-    Loading,
-    Ready(Box<RbacInspectionSummary>),
-    Failed(AppError),
-}
 
 /// `IdentitySource`: which identity the inspector and verifier use.
 #[derive(Clone)]
@@ -36,7 +29,7 @@ pub(super) enum IdentitySource {
 
 pub(super) struct RbacState {
     context: String,
-    pub(super) load: RbacLoad,
+    load: Query<Box<RbacInspectionSummary>>,
     pub(super) view: RbacView,
     /// Opened on a kind child, which the header names instead of "RBAC".
     pub(super) kind_location: bool,
@@ -54,9 +47,6 @@ pub(super) struct RbacState {
     pub(super) review_editor_key: Option<(String, String, Option<String>)>,
     /// Observed grants for the identity they were computed for.
     observed: Option<(Identity, Observed)>,
-    request: Rc<()>,
-    task: Option<Task<()>>,
-    refresh_error: Option<AppError>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -74,7 +64,7 @@ impl RbacState {
         let verifier = Verifier::new(window, cx, &mut subscriptions);
         Self {
             context: String::new(),
-            load: RbacLoad::Loading,
+            load: Query::default(),
             view: RbacView::ServiceAccounts,
             kind_location: false,
             bucket: Bucket::All,
@@ -89,9 +79,6 @@ impl RbacState {
             reviews: vec![],
             review_editor_key: None,
             observed: None,
-            request: Rc::new(()),
-            task: None,
-            refresh_error: None,
             _subscriptions: subscriptions,
         }
     }
@@ -105,10 +92,7 @@ impl RbacState {
     }
 
     pub(super) fn data(&self) -> Option<&RbacInspectionSummary> {
-        match &self.load {
-            RbacLoad::Ready(data) => Some(data),
-            _ => None,
-        }
+        self.load.data().map(|data| &**data)
     }
 
     /// `selectedCockpitItem`: the selected key among the filtered items, or the first.
@@ -171,49 +155,30 @@ impl Inspector {
         }
         let stale = self.page_read_stale(Page::Rbac, cx);
         let state = &mut self.rbac;
-        if state.context == self.scope.context
-            && !matches!(state.load, RbacLoad::Failed(_))
-            && !stale
-        {
+        if state.context == self.scope.context && state.load.failure().is_none() && !stale {
             return;
         }
         if state.context != self.scope.context {
-            state.load = RbacLoad::Loading;
+            state.load = Query::default();
             state.selected = None;
             state.identity = IdentitySource::Selection;
             state.observed = None;
         }
         state.context = self.scope.context.clone();
-        // A failed refresh stays visible until the next read resolves.
-        state.request = Rc::new(());
-        let request = state.request.clone();
         let backend = self.backend.clone();
         let context = state.context.clone();
         let read = crate::read_retry::read(cx.background_executor().clone(), move || {
             backend.rbac(context.clone())
         });
         let read = self.timings.measure("rbac", read);
-        state.task = Some(cx.spawn(async move |this, cx| {
+        state.load.start(cx.spawn(async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
-                if !Rc::ptr_eq(&this.rbac.request, &request) {
-                    return;
-                }
                 let success = result.is_ok();
-                match result {
-                    Ok(data) => {
-                        this.rbac.load = RbacLoad::Ready(Box::new(data));
-                        this.rbac.observed = None;
-                        this.rbac.refresh_error = None;
-                    }
-                    Err(error) => {
-                        if matches!(this.rbac.load, RbacLoad::Ready(_)) {
-                            this.rbac.refresh_error = Some(error);
-                        } else {
-                            this.rbac.load = RbacLoad::Failed(error);
-                        }
-                    }
+                if success {
+                    this.rbac.observed = None;
                 }
+                this.rbac.load.settle(result.map(Box::new));
                 if success {
                     this.page_read_finished(Page::Rbac, cx);
                 } else {
@@ -231,8 +196,7 @@ impl Inspector {
     }
 
     pub(super) fn cancel_rbac_read(&mut self) {
-        self.rbac.task.take();
-        self.rbac.request = Rc::new(());
+        self.rbac.load.cancel();
     }
 
     /// `setView`: clears the search, selection and subject.
@@ -259,9 +223,9 @@ impl Inspector {
 
     fn rebuild_rbac_items(&mut self, cx: &mut Context<Self>) {
         let state = &mut self.rbac;
-        state.items = match &state.load {
-            RbacLoad::Ready(data) => rbac::cockpit_items(data, state.view),
-            _ => vec![],
+        state.items = match state.load.data() {
+            Some(data) => rbac::cockpit_items(data, state.view),
+            None => vec![],
         };
         state.counts = rbac::bucket_counts(&state.items);
         self.refilter_rbac(cx);
@@ -312,16 +276,15 @@ impl Inspector {
     pub(super) fn rbac_page(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         self.sync_rbac_review_note(window, cx);
         let pending = surface::pending_slot(
-            self.loading
-                .phase("surface-rbac", matches!(self.rbac.load, RbacLoad::Loading)),
+            self.loading.phase("surface-rbac", self.rbac.load.pending()),
         );
-        let body = match (&self.rbac.load, pending) {
+        let body = match (self.rbac.load.settled(), pending) {
             (_, Some(slot)) => slot,
-            (RbacLoad::Loading, None) => div().into_any_element(),
-            (RbacLoad::Failed(error), None) => {
+            (None, None) => div().into_any_element(),
+            (Some(Err(error)), None) => {
                 self.page_read_failure("RBAC inspection unavailable", error, Operation::Surface, cx)
             }
-            (RbacLoad::Ready(_), None) => self.rbac_body(cx).into_any_element(),
+            (Some(Ok(_)), None) => self.rbac_body(cx).into_any_element(),
         };
         surface::frame(
             "key-round",
@@ -331,7 +294,7 @@ impl Inspector {
                 .flex()
                 .flex_col()
                 .gap(px(12.))
-                .when_some(self.rbac.refresh_error.clone(), |body, error| {
+                .when_some(self.rbac.load.refresh_error().cloned(), |body, error| {
                     body.child(self.page_read_failure(
                         "RBAC refresh failed",
                         &error,

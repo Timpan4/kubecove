@@ -71,7 +71,7 @@ impl Inspector {
         }
         if self.page_read_stale(self.page, cx) {
             match self.page {
-                Page::GitOps if !self.gitops.fetching => self.load_gitops(true, cx),
+                Page::GitOps if !self.gitops.fetching() => self.load_gitops(true, cx),
                 Page::Helm => self.load_helm(cx),
                 Page::Rbac => self.refresh_rbac(cx),
                 Page::Incidents => self.load_incidents(cx),

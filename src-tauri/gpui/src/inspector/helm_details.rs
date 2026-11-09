@@ -3,26 +3,15 @@
 
 use super::delivery_ui as dui;
 use super::helm_card::{self, alert, table};
-use super::{Inspector, friendly_error::Operation, surface};
+use super::{Inspector, friendly_error::Operation, request::Query, surface};
 use crate::gitops_surface::status_label;
 use crate::helm;
 use crate::targets::TestSupportExt;
 use crate::theme::{HEADING, MONO, Tokens};
 use crate::ui;
-use gpui_kit::{Context, Div, FontWeight, SharedString, Task, div, prelude::*, px};
-use kubecove_lib::models::{AppError, HelmReleaseDetails, HelmReleaseReconciliation};
-use std::{
-    rc::Rc,
-    time::{Duration, Instant},
-};
-
-#[derive(Default)]
-enum Load<T> {
-    #[default]
-    Loading,
-    Ready(T),
-    Failed(AppError),
-}
+use gpui_kit::{Context, Div, FontWeight, SharedString, div, prelude::*, px};
+use kubecove_lib::models::{HelmReleaseDetails, HelmReleaseReconciliation};
+use std::time::{Duration, Instant};
 
 /// The details read, with its YAML kept as shared text for rendering.
 struct Details {
@@ -30,24 +19,53 @@ struct Details {
     yaml: SharedString,
 }
 
+impl Details {
+    fn new(data: HelmReleaseDetails) -> Box<Self> {
+        let yaml = if data.yaml.is_empty() {
+            "No YAML returned".into()
+        } else {
+            // The web's `<pre>` does not add a final empty line.
+            data.yaml
+                .strip_suffix('\n')
+                .unwrap_or(&data.yaml)
+                .to_owned()
+                .into()
+        };
+        Box::new(Self { data, yaml })
+    }
+}
+
+/// The selected release's two reads. Replacing the value drops, and so
+/// cancels, both reads.
 #[derive(Default)]
 pub(super) struct HelmDetails {
-    details: Load<Box<Details>>,
+    details: Query<Box<Details>>,
+    /// When `details` last read successfully, for its stale time.
+    details_read_at: Option<Instant>,
     /// Resources sorted by `sortHelmReconciliationResources` when read.
-    reconciliation: Load<Box<HelmReleaseReconciliation>>,
-    request: Option<Rc<()>>,
-    tasks: [Option<Task<()>>; 2],
-    read_at: [Option<Instant>; 2],
-    errors: [Option<AppError>; 2],
-    fetching: [bool; 2],
+    reconciliation: Query<Box<HelmReleaseReconciliation>>,
+    reconciliation_read_at: Option<Instant>,
 }
 
 impl HelmDetails {
     pub(super) fn cancel(&mut self) {
-        self.tasks = [None, None];
-        self.request = None;
-        self.fetching = [false; 2];
+        self.details.cancel();
+        self.reconciliation.cancel();
     }
+}
+
+/// Whether a read with no read in flight that last succeeded `at` is older
+/// than its stale time.
+fn stale<T>(query: &Query<T>, at: Option<Instant>, stale_time: Duration, now: Instant) -> bool {
+    !query.fetching() && at.is_none_or(|at| now.duration_since(at) >= stale_time)
+}
+
+/// Starts a read in `query`; a failed first read shows pending again, as the
+/// web's query without data does.
+fn restart<T>(query: &mut Query<T>, read: gpui_kit::Task<()>) {
+    query.clear_failure();
+    query.clear_refresh_error();
+    query.start(read);
 }
 
 impl Inspector {
@@ -69,115 +87,59 @@ impl Inspector {
             return;
         };
         let now = cx.background_executor().now();
+        let state = &page.details;
         // HelmSurface.svelte: details staleTime 15_000, reconciliation 30_000.
-        let stale = [15_000, 30_000].map(Duration::from_millis);
-        let refresh = [0, 1].map(|index| {
-            !page.details.fetching[index]
-                && page.details.read_at[index]
-                    .is_none_or(|at| now.duration_since(at) >= stale[index])
-        });
-        let request = page
-            .details
-            .request
-            .get_or_insert_with(|| Rc::new(()))
-            .clone();
-        let details = refresh[0].then(|| {
+        let read_details = stale(
+            &state.details,
+            state.details_read_at,
+            Duration::from_millis(15_000),
+            now,
+        );
+        let read_reconciliation = stale(
+            &state.reconciliation,
+            state.reconciliation_read_at,
+            Duration::from_millis(30_000),
+            now,
+        );
+        if read_details {
             let backend = self.backend.clone();
             let release = release.clone();
-            crate::read_retry::read(cx.background_executor().clone(), move || {
+            let read = crate::read_retry::read(cx.background_executor().clone(), move || {
                 backend.helm_release(release.clone())
-            })
-        });
-        let reconciliation = refresh[1].then(|| {
-            let backend = self.backend.clone();
-            crate::read_retry::read(cx.background_executor().clone(), move || {
-                backend.helm_reconciliation(release.clone())
-            })
-        });
-        let current = move |this: &Inspector| {
-            this.helm_page
-                .details
-                .request
-                .as_ref()
-                .is_some_and(|current| Rc::ptr_eq(current, &request))
-        };
-        let current_too = current.clone();
-        if let Some(details) = details {
-            self.helm_page.details.errors[0] = None;
-            if matches!(self.helm_page.details.details, Load::Failed(_)) {
-                self.helm_page.details.details = Load::Loading;
-            }
-            self.helm_page.details.fetching[0] = true;
-            self.helm_page.details.tasks[0] = Some(cx.spawn(async move |this, cx| {
-                let result = details.await;
+            });
+            let task = cx.spawn(async move |this, cx| {
+                let result = read.await;
                 let _ = this.update(cx, |this, cx| {
-                    if !current(this) {
-                        return;
-                    }
                     let state = &mut this.helm_page.details;
-                    state.fetching[0] = false;
-                    if let Err(error) = &result
-                        && matches!(state.details, Load::Ready(_))
-                    {
-                        state.errors[0] = Some(error.clone());
-                        cx.notify();
-                        return;
+                    if result.is_ok() {
+                        state.details_read_at = Some(cx.background_executor().now());
                     }
-                    state.errors[0] = None;
-                    state.read_at[0] = result.is_ok().then(|| cx.background_executor().now());
-                    state.details = match result {
-                        Ok(data) => Load::Ready(Box::new(Details {
-                            yaml: if data.yaml.is_empty() {
-                                "No YAML returned".into()
-                            } else {
-                                // The web's `<pre>` does not add a final empty line.
-                                data.yaml
-                                    .strip_suffix('\n')
-                                    .unwrap_or(&data.yaml)
-                                    .to_owned()
-                                    .into()
-                            },
-                            data,
-                        })),
-                        Err(error) => Load::Failed(error),
-                    };
+                    state.details.settle(result.map(Details::new));
                     cx.notify();
                 });
-            }));
+            });
+            restart(&mut self.helm_page.details.details, task);
         }
-        if let Some(reconciliation) = reconciliation {
-            self.helm_page.details.errors[1] = None;
-            if matches!(self.helm_page.details.reconciliation, Load::Failed(_)) {
-                self.helm_page.details.reconciliation = Load::Loading;
-            }
-            self.helm_page.details.fetching[1] = true;
-            self.helm_page.details.tasks[1] = Some(cx.spawn(async move |this, cx| {
-                let result = reconciliation.await;
+        if read_reconciliation {
+            let backend = self.backend.clone();
+            let read = crate::read_retry::read(cx.background_executor().clone(), move || {
+                backend.helm_reconciliation(release.clone())
+            });
+            let task = cx.spawn(async move |this, cx| {
+                let result = read.await;
                 let _ = this.update(cx, |this, cx| {
-                    if !current_too(this) {
-                        return;
-                    }
                     let state = &mut this.helm_page.details;
-                    state.fetching[1] = false;
-                    if let Err(error) = &result
-                        && matches!(state.reconciliation, Load::Ready(_))
-                    {
-                        state.errors[1] = Some(error.clone());
-                        cx.notify();
-                        return;
+                    if result.is_ok() {
+                        state.reconciliation_read_at = Some(cx.background_executor().now());
                     }
-                    state.errors[1] = None;
-                    state.read_at[1] = result.is_ok().then(|| cx.background_executor().now());
-                    state.reconciliation = match result {
-                        Ok(mut data) => {
-                            helm::sort_reconciliation(&mut data.resources);
-                            Load::Ready(Box::new(data))
-                        }
-                        Err(error) => Load::Failed(error),
-                    };
+                    state.reconciliation.settle(result.map(|mut data| {
+                        helm::sort_reconciliation(&mut data.resources);
+                        Box::new(data)
+                    }));
                     cx.notify();
                 });
-            }));
+            });
+            restart(&mut self.helm_page.details.reconciliation, task);
         }
         cx.notify();
     }
@@ -189,12 +151,9 @@ impl Inspector {
             return;
         }
         let details = &self.helm_page.details;
+        self.loading.phase("helm-details", details.details.pending());
         self.loading
-            .phase("helm-details", matches!(details.details, Load::Loading));
-        self.loading.phase(
-            "helm-reconciliation",
-            matches!(details.reconciliation, Load::Loading),
-        );
+            .phase("helm-reconciliation", details.reconciliation.pending());
     }
 
     pub(super) fn helm_details_card(&self, cx: &mut Context<Self>) -> Div {
@@ -262,26 +221,33 @@ impl Inspector {
                             ),
                     ),
             );
-        let phase = self.loading.phase(
-            "helm-details",
-            matches!(page.details.details, Load::Loading),
-        );
-        let content = match &page.details.details {
+        let phase = self
+            .loading
+            .phase("helm-details", page.details.details.pending());
+        let content = match page.details.details.settled() {
             // HelmView.svelte checks the loading state first.
             _ if phase.shown() => pending("Loading Helm release details..."),
             _ if !phase.ready() => div(),
-            Load::Loading => div(),
-            Load::Failed(error) => div().child(self.page_read_failure(
+            None => div(),
+            Some(Err(error)) => div().child(self.page_read_failure(
                 "Helm details unavailable",
                 error,
                 Operation::Details,
                 cx,
             )),
-            Load::Ready(details) => self.helm_details_body(details, cx),
+            Some(Ok(details)) => self.helm_details_body(details, cx),
         }
-        .children(page.details.errors.iter().flatten().map(|error| {
-            self.page_read_failure("Helm refresh failed", error, Operation::Details, cx)
-        }));
+        .children(
+            [
+                page.details.details.refresh_error(),
+                page.details.reconciliation.refresh_error(),
+            ]
+            .into_iter()
+            .flatten()
+            .map(|error| {
+                self.page_read_failure("Helm refresh failed", error, Operation::Details, cx)
+            }),
+        );
         div().child(
             div()
                 .id("helm-release-details")
@@ -467,9 +433,9 @@ impl Inspector {
         let state = &self.helm_page.details.reconciliation;
         let phase = self
             .loading
-            .phase("helm-reconciliation", matches!(state, Load::Loading));
-        let totals = match state {
-            Load::Ready(data) if phase.ready() => Some(format!(
+            .phase("helm-reconciliation", state.pending());
+        let totals = match state.settled() {
+            Some(Ok(data)) if phase.ready() => Some(format!(
                 "{} tracked, {} missing, {} label-only",
                 data.totals.tracked, data.totals.missing, data.totals.label_only
             )),
@@ -490,17 +456,17 @@ impl Inspector {
                         .aria_label(totals),
                 )
             });
-        let body = match state {
+        let body = match state.settled() {
             _ if phase.shown() => pending("Loading reconciliation..."),
             _ if !phase.ready() => div(),
-            Load::Loading => div(),
-            Load::Failed(error) => div().child(self.partial_read_failure(
+            None => div(),
+            Some(Err(error)) => div().child(self.partial_read_failure(
                 "Helm reconciliation unavailable",
                 error,
                 Operation::Resources,
                 cx,
             )),
-            Load::Ready(data) => {
+            Some(Ok(data)) => {
                 let rows = data
                     .resources
                     .iter()
