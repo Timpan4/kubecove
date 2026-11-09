@@ -3,6 +3,7 @@
 //! Svelte client does in the visual comparison and the parity scenarios.
 
 mod argo;
+mod context_topology;
 mod coverage;
 mod delivery;
 mod detail_tabs;
@@ -88,6 +89,8 @@ pub struct Fixture {
     topology: ResourceTopology,
     #[serde(rename = "networkTopology")]
     network_topology: ResourceTopology,
+    #[serde(rename = "contextTopologies", default)]
+    context_topologies: HashMap<String, context_topology::ContextTopology>,
     metrics: kubecove_lib::models::ResourceMetricsSummary,
     #[serde(rename = "appUsage")]
     app_usage: kubecove_lib::models::AppUsageMetrics,
@@ -501,13 +504,13 @@ impl Backend for Fixture {
     fn topology(&self, scope: Scope) -> Read<std::sync::Arc<ResourceTopology>> {
         let context = scope.context.clone();
         let key = scope.namespace.clone().unwrap_or_default();
-        let topology = std::sync::Arc::new(
+        let topology = std::sync::Arc::new(self.context_topology(&scope).unwrap_or_else(|| {
             scope
                 .namespace
                 .and_then(|namespace| self.namespace_topologies.get(&namespace))
                 .unwrap_or(&self.topology)
-                .clone(),
-        );
+                .clone()
+        }));
         self.coverage_read(
             "list_resource_topology",
             self.timing

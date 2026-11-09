@@ -71,6 +71,18 @@ const topology = await client.invoke<ResourceTopology>("list_resource_topology",
 const rustGraph = (graph: ResourceTopology) => ({ ...graph, nodes: graph.nodes.map((node) => ({ ...node, summary: rustShape(node.summary) })) });
 const rustTopology = rustGraph(topology);
 const networkTopology = rustGraph(await client.invoke<ResourceTopology>("list_resource_topology", { clusterContext, namespaces: [], mode: "networkFlow" }));
+// The ownership map's "Map context" select reads another workspace context's graph,
+// for all namespaces or for the namespace the sidebar scopes.
+const contextTopologies: Record<string, { all: ReturnType<typeof rustGraph>; namespaces: Record<string, ReturnType<typeof rustGraph>> }> = {};
+for (const context of contexts) {
+	if (context.name === clusterContext) continue;
+	const all = rustGraph(await client.invoke<ResourceTopology>("list_resource_topology", { clusterContext: context.name, namespaces: [], mode: "ownership" }));
+	const byNamespace: Record<string, ReturnType<typeof rustGraph>> = {};
+	for (const namespace of await client.invoke<NamespaceSummary[]>("list_namespaces", { clusterContext: context.name })) {
+		byNamespace[namespace.name] = rustGraph(await client.invoke<ResourceTopology>("list_resource_topology", { clusterContext: context.name, namespaces: [namespace.name], mode: "ownership" }));
+	}
+	contextTopologies[context.name] = { all, namespaces: byNamespace };
+}
 const appUsage = await client.invoke("get_app_usage_metrics");
 const metrics = await client.invoke("list_resource_metrics", { clusterContext, namespaces: [] });
 // The overview's GitOps inventory: provider lists when their CRDs are detected, else null.
@@ -137,5 +149,5 @@ for (const row of resources.filter((row) => row.kind === "Secret")) {
     const request = { clusterContext: row.cluster, name: row.name, namespace: row.namespace, key: "token" };
     secretReveals.push({ request, encoded: await client.invoke<string>("reveal_secret_data_value", request) });
 }
-await writeFile(output, JSON.stringify({ coverage, pageReads, mcp: mcpMockStatus(), argoConnected, secretReveals, sessionControls, liveEvents: LIVE_EVENTS, overflowEvents: OVERFLOW_EVENTS, contexts, namespaces, kinds, contextResources, resources: resources.map(rustShape), details, events, topology: rustTopology, networkTopology, metrics, appUsage, namespaceTopologies, gitops, helm, incidents, liveSessions, detailTabs: { ...detailTabs, logs: { ...detailTabs.logs, cases: logCases } }, rbac, rbacReviews, kubeconfig: sources }, null, "\t"));
+await writeFile(output, JSON.stringify({ coverage, pageReads, mcp: mcpMockStatus(), argoConnected, secretReveals, sessionControls, liveEvents: LIVE_EVENTS, overflowEvents: OVERFLOW_EVENTS, contexts, namespaces, kinds, contextResources, resources: resources.map(rustShape), details, events, topology: rustTopology, networkTopology, contextTopologies, metrics, appUsage, namespaceTopologies, gitops, helm, incidents, liveSessions, detailTabs: { ...detailTabs, logs: { ...detailTabs.logs, cases: logCases } }, rbac, rbacReviews, kubeconfig: sources }, null, "\t"));
 console.log(`fixture: ${resources.length} resources, ${details.length} details -> ${output}`);

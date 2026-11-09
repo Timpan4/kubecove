@@ -90,6 +90,12 @@ export async function exportDetailTabs(client: TauriClient, resources: ResourceS
 		}
 		if (request.action !== "delete") await review({ ...target(focus), action: "delete", confirmed: false });
 	}
+	// Multi-context scenarios review the replica edit of the same Deployment in another context.
+	const sameObject = (row: ResourceSummary) => row.cluster !== focus.cluster && row.kind === focus.kind && row.name === focus.name && row.namespace === focus.namespace;
+	for (const row of resources.filter(sameObject)) {
+		const request: ResourceActionRequest = { ...target(row), action: "edit", edits: { replicas: 3 }, confirmed: false };
+		previews.push({ request, preview: await client.invoke<ResourceActionPreview>("preview_resource_action", { request }) });
+	}
 	const draft = await client.invoke<string>("get_resource_yaml", { clusterContext, kind: focus.kind, name: focus.name, namespace: focus.namespace, yamlViewMode: "applyClean" });
 	const yamlRequest = buildYamlApplyRequest({ resource: focus, yaml: draft, yamlEncoding: "yaml", forceConflicts: false });
 	const preview = await client.invoke<YamlApplyPreview>("prepare_yaml_apply", { request: yamlRequest });

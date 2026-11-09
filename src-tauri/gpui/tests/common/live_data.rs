@@ -30,6 +30,9 @@ pub(super) struct ScriptState {
     /// A scripted rollout gives payments-api the "Rolling out" lifecycle, which shows activity.
     rolling: bool,
     deleted: bool,
+    /// The "delete-mock-dev" script deletes payments-api from mock-dev only;
+    /// other contexts keep theirs.
+    deleted_in_mock_dev: bool,
     /// The "add" script lists a copy of payments-api named `ADDED`.
     added: bool,
     /// The "ownership" script moves checkout-worker to a Flux owner. Its ownerRef-only Pod follows it.
@@ -296,7 +299,13 @@ impl Fixture {
     pub fn replay_live(&self, script: &str) {
         if matches!(
             script,
-            "update" | "rollout" | "delete" | "add" | "ownership" | "missed-delete"
+            "update"
+                | "rollout"
+                | "delete"
+                | "delete-mock-dev"
+                | "add"
+                | "ownership"
+                | "missed-delete"
         ) {
             self.timing.invalidate("mock-dev");
         }
@@ -313,10 +322,11 @@ impl Fixture {
                 state.changed_at = Some(state.revision + 1);
                 return;
             }
-            "update" | "rollout" | "delete" | "add" | "ownership" => {
+            "update" | "rollout" | "delete" | "delete-mock-dev" | "add" | "ownership" => {
                 state.changed |= script == "update";
                 state.rolling |= script == "rollout";
                 state.deleted |= script == "delete";
+                state.deleted_in_mock_dev |= script == "delete-mock-dev";
                 state.added |= script == "add";
                 state.reowned |= script == "ownership";
                 state.revision += 1;
@@ -391,6 +401,13 @@ impl Fixture {
                         action: "applied".into(),
                     }
                 }
+                "delete-mock-dev" if matches!(watch, WatchTarget::Resource { scope, key, .. } if scope.context == "mock-dev" && key.resource_kind.kind == "Deployment") => {
+                    StreamMessage::ResourceChanged {
+                        stream_id: "fixture".into(),
+                        target,
+                        action: "deleted".into(),
+                    }
+                }
                 "update" | "rollout" | "delete" | "add" | "ownership" | "failed" if matches!(watch, WatchTarget::Resource { key, .. } if key.resource_kind.kind == "Deployment") => {
                     StreamMessage::ResourceChanged {
                         stream_id: "fixture".into(),
@@ -451,10 +468,11 @@ impl Fixture {
                 && kind == "Deployment"
                 && replays(version)
             {
+                let deleted = state.deleted || (state.deleted_in_mock_dev && context == "mock-dev");
                 let changed = [
-                    (state.changed || state.rolling || state.deleted).then_some((
+                    (state.changed || state.rolling || deleted).then_some((
                         "payments-api",
-                        if state.deleted { "deleted" } else { "applied" },
+                        if deleted { "deleted" } else { "applied" },
                     )),
                     state.reowned.then_some((REOWNED, "applied")),
                 ];
@@ -508,7 +526,7 @@ impl Fixture {
                     });
                 }
                 if scripted_target(&row) {
-                    if state.deleted {
+                    if state.deleted || (state.deleted_in_mock_dev && row.cluster == "mock-dev") {
                         return None;
                     }
                     if state.rolling {
