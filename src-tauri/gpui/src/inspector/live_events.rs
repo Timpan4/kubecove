@@ -8,7 +8,6 @@ use super::{
 use crate::backend::WatchTarget;
 use gpui_kit::{Context, Window};
 use kubecove_lib::models::{StreamMessage, StreamStatus};
-use std::rc::Rc;
 
 impl Inspector {
     pub(super) fn watch_events(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -17,8 +16,8 @@ impl Inspector {
         };
         let resource = detail.data.summary.clone();
         let uid = detail.data.metadata["uid"].as_str().map(str::to_owned);
-        let request = self.detail_request.clone();
         let backend = self.backend.clone();
+        // The detail owns this watch, so it only writes into the detail that started it.
         detail.events.watch = Some(cx.spawn_in(window, async move |this, cx| {
             let mut catch_up = false;
             let mut timer = Box::pin(cx.background_executor().timer(RECOVERY));
@@ -30,9 +29,7 @@ impl Inspector {
                     Ok(stream) => stream,
                     Err(error) => {
                         let _ = this.update(cx, |this, cx| {
-                            if Rc::ptr_eq(&this.detail_request, &request)
-                                && let Detail::Ready(detail) = &mut this.detail
-                            {
+                            if let Detail::Ready(detail) = &mut this.detail {
                                 detail.events.watch_error = Some(error.message);
                             }
                             cx.notify();
@@ -74,29 +71,22 @@ impl Inspector {
                         Some(StreamMessage::Status { .. }) => catch_up = true,
                         _ => {}
                     }
-                    let valid = this
-                        .update(cx, |this, cx| {
-                            if !Rc::ptr_eq(&this.detail_request, &request) {
-                                return false;
+                    let updated = this.update(cx, |this, cx| {
+                        if let Detail::Ready(detail) = &mut this.detail {
+                            refresh |= tick && matches!(detail.events.load, EventsLoad::Failed(_));
+                            if clear_error {
+                                detail.events.watch_error = None;
                             }
-                            if let Detail::Ready(detail) = &mut this.detail {
-                                refresh |=
-                                    tick && matches!(detail.events.load, EventsLoad::Failed(_));
-                                if clear_error {
-                                    detail.events.watch_error = None;
-                                }
-                                if let Some(error) = error {
-                                    detail.events.watch_error = Some(error);
-                                }
+                            if let Some(error) = error {
+                                detail.events.watch_error = Some(error);
                             }
-                            // A recovery tick changes nothing shown unless it refreshes.
-                            if !tick || refresh {
-                                cx.notify();
-                            }
-                            true
-                        })
-                        .unwrap_or(false);
-                    if !valid {
+                        }
+                        // A recovery tick changes nothing shown unless it refreshes.
+                        if !tick || refresh {
+                            cx.notify();
+                        }
+                    });
+                    if updated.is_err() {
                         return;
                     }
                     if refresh {
@@ -105,27 +95,19 @@ impl Inspector {
                         if result.is_err() {
                             catch_up = true;
                         }
-                        let valid = this
-                            .update(cx, |this, cx| {
-                                if !Rc::ptr_eq(&this.detail_request, &request) {
-                                    return false;
-                                }
-                                if let Detail::Ready(detail) = &mut this.detail {
-                                    match result {
-                                        Ok(rows) => {
-                                            detail.events.set_ready(rows);
-                                            detail.events.watch_error = None;
-                                        }
-                                        Err(error) => {
-                                            detail.events.watch_error = Some(error.message)
-                                        }
+                        let updated = this.update(cx, |this, cx| {
+                            if let Detail::Ready(detail) = &mut this.detail {
+                                match result {
+                                    Ok(rows) => {
+                                        detail.events.set_ready(rows);
+                                        detail.events.watch_error = None;
                                     }
+                                    Err(error) => detail.events.watch_error = Some(error.message),
                                 }
-                                cx.notify();
-                                true
-                            })
-                            .unwrap_or(false);
-                        if !valid {
+                            }
+                            cx.notify();
+                        });
+                        if updated.is_err() {
                             return;
                         }
                         cx.background_executor()

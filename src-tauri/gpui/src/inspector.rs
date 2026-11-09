@@ -274,7 +274,6 @@ pub struct Inspector {
     restore_prompt: restore_prompt::RestorePrompt,
     session_cleanup: session_cleanup::SessionCleanup,
     request: Rc<()>,
-    detail_request: Rc<()>,
     context_task: Option<Task<()>>,
     scope_trace: Option<load_trace::LoadTrace>,
     map_trace: Option<load_trace::LoadTrace>,
@@ -410,7 +409,6 @@ impl Inspector {
             restore_prompt: Default::default(),
             session_cleanup: Default::default(),
             request: Rc::new(()),
-            detail_request: Rc::new(()),
             context_task: None,
             scope_trace: None,
             map_trace: None,
@@ -531,7 +529,6 @@ impl Inspector {
         if !self.can_leave(cx) {
             return;
         }
-        self.detail_request = Rc::new(());
         self.exec.clear();
         // Keep an in-flight submission alive so its outcome still reaches the observer.
         if let Detail::Ready(detail) = &mut self.detail

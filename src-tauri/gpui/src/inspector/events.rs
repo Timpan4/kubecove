@@ -15,7 +15,6 @@ use gpui_kit::{
 };
 use kubecove_lib::models::ResourceEventSummary;
 use std::collections::HashMap;
-use std::rc::Rc;
 use std::sync::Arc;
 
 pub(super) enum EventsLoad {
@@ -104,16 +103,13 @@ impl Inspector {
         let uid = detail.data.metadata["uid"].as_str().map(str::to_owned);
         let read = self.backend.events(detail.data.summary.clone(), uid);
         let read = self.timings.measure("events", read);
-        let request = self.detail_request.clone();
         detail.events.load = EventsLoad::Pending;
         detail.events.layout_key = 0;
         detail.events.layout_source = Arc::default();
+        // The detail owns this read, so it only settles into the detail that started it.
         detail.events.task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
-                if !Rc::ptr_eq(&this.detail_request, &request) {
-                    return;
-                }
                 if let Detail::Ready(detail) = &mut this.detail {
                     detail.events.rows = Windowed::default();
                     match result {

@@ -131,15 +131,13 @@ impl Inspector {
         };
         detail.secrets.errors.remove(&id);
         let read = self.backend.reveal_secret(detail.data.summary.clone(), key);
-        let request = self.detail_request.clone();
         let target = id.clone();
+        // The detail owns this task, so it only settles into the detail that started it.
         let task = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let shown = this
                 .update(cx, |this, cx| {
-                    if !std::rc::Rc::ptr_eq(&request, &this.detail_request)
-                        || this.persisted.preferences.redact_secrets
-                    {
+                    if this.persisted.preferences.redact_secrets {
                         return false;
                     }
                     let Detail::Ready(detail) = &mut this.detail else {
@@ -172,12 +170,10 @@ impl Inspector {
                     .timer(std::time::Duration::from_secs(60))
                     .await;
                 let _ = this.update(cx, |this, cx| {
-                    if std::rc::Rc::ptr_eq(&request, &this.detail_request) {
-                        if let Detail::Ready(detail) = &mut this.detail {
-                            detail.secrets.values.remove(&target);
-                        }
-                        cx.notify();
+                    if let Detail::Ready(detail) = &mut this.detail {
+                        detail.secrets.values.remove(&target);
                     }
+                    cx.notify();
                 });
             }
         });
