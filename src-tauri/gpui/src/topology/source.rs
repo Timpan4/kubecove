@@ -58,13 +58,21 @@ impl Source {
             .collect();
         // A refresh rebuilds this for every row of every workspace context, while
         // the graph has one context's nodes. Index the nodes and stream the rows
-        // once, so a row costs a lookup and allocates nothing.
+        // once, so a row costs a lookup and allocates nothing. The key starts with
+        // the cluster, so a row from a cluster without nodes skips the hash.
         let mut node_keys: HashMap<_, Vec<usize>> = HashMap::with_capacity(topology.nodes.len());
+        let mut clusters: Vec<&str> = Vec::new();
         for (i, node) in topology.nodes.iter().enumerate() {
             node_keys.entry(loose_key(&node.summary)).or_default().push(i);
+            if !clusters.contains(&node.summary.cluster.as_str()) {
+                clusters.push(&node.summary.cluster);
+            }
         }
         let mut matches: Vec<Vec<usize>> = vec![Vec::new(); topology.nodes.len()];
         for (i, row) in rows.all_rows().iter().enumerate() {
+            if !clusters.contains(&row.cluster.as_str()) {
+                continue;
+            }
             if let Some(nodes) = node_keys.get(&loose_key(row)) {
                 for &node in nodes {
                     matches[node].push(i);
