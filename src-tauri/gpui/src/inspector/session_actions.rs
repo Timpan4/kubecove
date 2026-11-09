@@ -381,7 +381,7 @@ impl Inspector {
                         }
                     };
                     let previous = sessions
-                        .for_context(&request.cluster_context)
+                        .for_contexts(std::slice::from_ref(&request.cluster_context))
                         .0
                         .into_iter()
                         .find(|s| {

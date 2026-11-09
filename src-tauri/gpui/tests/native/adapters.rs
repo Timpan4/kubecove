@@ -40,7 +40,7 @@ fn secret_detail(cx: &mut TestAppContext, backend: Arc<Controlled>) -> gpui_kit:
         "settings-back",
         // Back lands on the Workspace Overview.
         "open-resources",
-        "resource:Secret:payments:payments-api",
+        "resource:Secret:payments:payments-api:mock-dev",
         "show-yaml",
     ] {
         cx.update_window(handle, |_, window, cx| {

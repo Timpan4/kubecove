@@ -33,13 +33,14 @@ struct GroupRow {
 }
 
 impl Inspector {
-    fn columns(&self, rows: &[ResourceSummary]) -> Vec<Column> {
-        let mut columns = vec![
-            Column::Name,
-            Column::Status,
-            Column::Namespace,
-            Column::Kind,
-        ];
+    /// The table's columns. `multi_context` comes from the workspace, not the
+    /// rows, so the Context column stays while a context fails or lists nothing.
+    fn columns(&self, rows: &[ResourceSummary], multi_context: bool) -> Vec<Column> {
+        let mut columns = vec![Column::Name, Column::Status];
+        if multi_context {
+            columns.push(Column::Context);
+        }
+        columns.extend([Column::Namespace, Column::Kind]);
         if rows.iter().any(|row| row.ready.is_some()) {
             columns.push(Column::Ready);
         }
@@ -80,6 +81,7 @@ impl Inspector {
         match column {
             Column::Name => row.name.clone(),
             Column::Status => surface::health_state_label(row.health_assessment.state).into(),
+            Column::Context => row.cluster.clone(),
             Column::Namespace => row.namespace.clone().unwrap_or_else(|| EMPTY.into()),
             Column::Kind => row.kind.clone(),
             Column::Ready => ready_text(row),
@@ -156,10 +158,11 @@ impl Inspector {
                 )
                 .child(super::copyable::copy_button(
                     format!(
-                        "resource-copy:{}:{}:{}",
+                        "resource-copy:{}:{}:{}:{}",
                         row.kind,
                         row.namespace.as_deref().unwrap_or(""),
-                        row.name
+                        row.name,
+                        row.cluster
                     ),
                     "resource name",
                     row.name.clone(),
@@ -192,7 +195,7 @@ impl Inspector {
                     };
                 cell(column, content)
             }
-            Column::Namespace | Column::Kind | Column::Owner => value_cell(
+            Column::Context | Column::Namespace | Column::Kind | Column::Owner => value_cell(
                 column,
                 format!("value:{}:{}", column.label(), resource_id(row)),
                 self.cell_text(column, row),
@@ -537,7 +540,8 @@ impl Inspector {
         // Drop the focus handles of rows that left the page.
         let live: std::collections::HashSet<String> = page.rows.iter().map(resource_id).collect();
         self.table_focus.get_mut().retain(|id, _| live.contains(id));
-        let columns = self.columns(&page.rows);
+        let contexts = self.workspace_contexts().len();
+        let columns = self.columns(&page.rows, contexts > 1);
         let min_width: f32 = columns.iter().map(|column| column.width()).sum();
         let header = div()
             .flex()
@@ -585,8 +589,13 @@ impl Inspector {
         };
         let page_index = self.table_page;
         let page_count = page.page_count;
+        let context_count = if contexts > 1 {
+            format!(" · {contexts} contexts")
+        } else {
+            String::new()
+        };
         let summary = format!(
-            "{} resources · page {} of {}",
+            "{} resources{context_count} · page {} of {}",
             page.total,
             page_index + 1,
             page_count

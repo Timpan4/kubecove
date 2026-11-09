@@ -57,7 +57,7 @@ pub struct Case {
     pub probe: Option<fn(&Window) -> String>,
 }
 
-const DETAIL_ROW: &str = "resource:Deployment:payments:payments-api";
+const DETAIL_ROW: &str = "resource:Deployment:payments:payments-api:mock-dev";
 
 fn id(name: &str) -> ElementId {
     ElementId::Name(name.to_owned().into())

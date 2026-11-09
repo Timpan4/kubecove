@@ -18,6 +18,8 @@ pub(super) const RESTART_COUNT_NOT_REPORTED: &str = "Restart count not reported"
 pub(super) enum Column {
     Name,
     Status,
+    /// The row's Kubernetes context, shown when the workspace has several.
+    Context,
     Namespace,
     Kind,
     Ready,
@@ -34,6 +36,7 @@ impl Column {
         match self {
             Column::Name => "Name",
             Column::Status => "Status",
+            Column::Context => "Context",
             Column::Namespace => "Namespace",
             Column::Kind => "Kind",
             Column::Ready => "Ready",
@@ -51,6 +54,7 @@ impl Column {
         Some(match self {
             Column::Name => SortColumn::Name,
             Column::Status => SortColumn::Status,
+            Column::Context => SortColumn::Context,
             Column::Namespace => SortColumn::Namespace,
             Column::Kind => SortColumn::Kind,
             Column::Ready => SortColumn::Ready,
@@ -67,6 +71,9 @@ impl Column {
         match self {
             Column::Name => 250.,
             Column::Status => 130.,
+            // Sized for "admin@solid-k8s", the longest fixture context name;
+            // `tests/text_fit.rs` checks that it shows without an ellipsis.
+            Column::Context => 150.,
             Column::Namespace => 105.,
             // Fits "Deployment", the widest default kind: 79.5 px of 14 px Inter
             // plus 20 px cell padding, measured in both clients.
@@ -114,13 +121,16 @@ pub(super) fn restart_text(row: &ResourceSummary) -> String {
         .map_or_else(|| EMPTY.into(), |count| count.to_string())
 }
 
-/// The element ID that identifies a row's resource in the table.
+/// The element ID that identifies a row's resource in the table. The context
+/// comes last, so the same object in two contexts has two IDs and an ID
+/// without its context is a prefix of every context's ID.
 pub(super) fn resource_id(row: &ResourceSummary) -> String {
     format!(
-        "resource:{}:{}:{}",
+        "resource:{}:{}:{}:{}",
         row.kind,
         row.namespace.as_deref().unwrap_or(""),
-        row.name
+        row.name,
+        row.cluster
     )
 }
 /// Every cell clips to its column, so content cannot draw over a neighbour.

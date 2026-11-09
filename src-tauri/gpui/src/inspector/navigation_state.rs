@@ -20,6 +20,7 @@ use std::collections::{HashMap, HashSet};
 struct Browser {
     search: String,
     namespaces: Vec<String>,
+    contexts: Vec<String>,
     sort: Sort,
     page: usize,
     collapsed: HashSet<String>,
@@ -110,6 +111,7 @@ impl Inspector {
         let browser = Browser {
             search: self.search.read(cx).value().to_string(),
             namespaces: self.filters.namespaces.clone(),
+            contexts: self.filters.contexts.clone(),
             sort: self.table_sort,
             page: self.table_page,
             collapsed: self.collapsed_groups.clone(),
@@ -177,6 +179,9 @@ impl Inspector {
         self.filters.namespaces = browser
             .as_ref()
             .map_or_else(Vec::new, |b| b.namespaces.clone());
+        self.filters.contexts = browser
+            .as_ref()
+            .map_or_else(Vec::new, |b| b.contexts.clone());
         self.table_sort = browser.as_ref().map_or_else(Sort::default, |b| b.sort);
         self.table_page = browser.as_ref().map_or(0, |b| b.page);
         self.collapsed_groups = browser

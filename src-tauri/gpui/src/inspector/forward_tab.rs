@@ -150,7 +150,7 @@ impl Inspector {
             .data()
             .map(|sessions| {
                 sessions
-                    .for_context(&self.scope.context)
+                    .for_contexts(std::slice::from_ref(&resource.cluster))
                     .0
                     .into_iter()
                     .filter(|s| {

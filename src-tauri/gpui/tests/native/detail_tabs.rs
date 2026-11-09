@@ -163,7 +163,7 @@ fn open_tab(
     let handle = open(cx, backend);
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
-        window.click("resource:Deployment:payments:payments-api", cx);
+        window.click("resource:Deployment:payments:payments-api:mock-dev", cx);
     })
     .unwrap();
     cx.run_until_parked();

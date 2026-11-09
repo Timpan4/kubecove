@@ -73,7 +73,7 @@ fn deterministic_resource_read_errors_wait_for_manual_refresh(cx: &mut TestAppCo
         window.render_frame(cx);
         assert!(
             window
-                .try_find("resource:Deployment:payments:payments-api")
+                .try_find("resource:Deployment:payments:payments-api:mock-dev")
                 .is_none()
         );
     })
@@ -84,7 +84,7 @@ fn deterministic_resource_read_errors_wait_for_manual_refresh(cx: &mut TestAppCo
         window.render_frame(cx);
         assert!(
             window
-                .try_find("resource:Deployment:payments:payments-api")
+                .try_find("resource:Deployment:payments:payments-api:mock-dev")
                 .is_some()
         );
         assert_eq!(window.find("live-label").label(), Some("Live"));
@@ -99,7 +99,7 @@ fn initial_event_read_errors_recover_on_the_web_tick(cx: &mut TestAppContext) {
     let handle = open(cx, backend.clone());
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
-        window.click("resource:Deployment:payments:payments-api", cx);
+        window.click("resource:Deployment:payments:payments-api:mock-dev", cx);
     })
     .unwrap();
     cx.run_until_parked();
@@ -198,7 +198,7 @@ fn stream_errors_preserve_rows_and_connected_clears_stale(cx: &mut TestAppContex
         assert_eq!(window.find("live-label").label(), Some("Reconnecting"));
         assert!(
             window
-                .try_find("resource:Deployment:payments:payments-api")
+                .try_find("resource:Deployment:payments:payments-api:mock-dev")
                 .is_some()
         );
     })
@@ -223,7 +223,7 @@ fn streams_cannot_outlive_their_page_or_detail(cx: &mut TestAppContext) {
     assert!(backend.live.active() > 0);
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
-        window.click("resource:Deployment:payments:payments-api", cx);
+        window.click("resource:Deployment:payments:payments-api:mock-dev", cx);
     })
     .unwrap();
     cx.run_until_parked();

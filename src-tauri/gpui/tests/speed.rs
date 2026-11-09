@@ -601,7 +601,11 @@ fn ui_actions(contexts: &[String], control: &str) -> Vec<Value> {
     driver.measure("search type 'profile-pod-0'", local, |d| {
         d.input("profile-pod-0")
     });
-    driver.step("detail open Pod", net, "resource:Pod:profile:profile-pod-0");
+    driver.step(
+        "detail open Pod",
+        net,
+        &format!("resource:Pod:profile:profile-pod-0:{first}"),
+    );
     driver.step("detail YAML tab", net, "show-yaml");
     driver.step("detail Events tab", net, "show-events");
     driver.step("detail Logs tab", net, "show-logs");

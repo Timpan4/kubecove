@@ -230,7 +230,7 @@ mod visual {
                         window.input("payments-api-7d9c9b7f8d-k2r9p", cx);
                     });
                     act(&mut cx, handle, |window, cx| {
-                        window.click("resource:Pod:payments:payments-api-7d9c9b7f8d-k2r9p", cx)
+                        window.click("resource:Pod:payments:payments-api-7d9c9b7f8d-k2r9p:mock-dev", cx)
                     });
                     act(&mut cx, handle, |window, cx| {
                         window.click(
@@ -340,7 +340,7 @@ mod visual {
                         window.input("argocd-dex-server", cx);
                     });
                     act(&mut cx, handle, |window, cx| {
-                        window.click("resource:Pod:argocd:argocd-dex-server-6d7f9c5b8-q4w2n", cx)
+                        window.click("resource:Pod:argocd:argocd-dex-server-6d7f9c5b8-q4w2n:mock-dev", cx)
                     });
                     act(&mut cx, handle, |window, cx| window.click("show-logs", cx));
                     if view == "logs.pod-paused" {
@@ -369,7 +369,7 @@ mod visual {
                         window.input("payments-api", cx);
                     });
                     act(&mut cx, handle, |window, cx| {
-                        window.click("resource:Deployment:payments:payments-api", cx)
+                        window.click("resource:Deployment:payments:payments-api:mock-dev", cx)
                     });
                     if view != "detail" {
                         let tab = format!("show-{}", view.split('-').next().unwrap());

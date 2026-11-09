@@ -35,16 +35,17 @@ fn active_source(source: Option<&str>) -> String {
 }
 
 impl LiveSessions {
-    /// `buildLiveSessionReadModel` for a single-context workspace: sessions in
-    /// `context` from the active source, oldest first.
-    pub fn for_context(
+    /// `buildLiveSessionReadModel`: sessions in any of `contexts`, the
+    /// workspace's contexts, from the active source, oldest first.
+    pub fn for_contexts(
         &self,
-        context: &str,
+        contexts: &[String],
     ) -> (Vec<&PortForwardSessionSummary>, Vec<&PodExecSessionSummary>) {
         let source = active_source(self.source_key.as_deref());
         // ADR 0003's 2026-10-22 amendment excludes sessions without a source key.
         let visible = |cluster: &str, key: Option<&String>| {
-            cluster == context && key.is_some_and(|key| *key == source)
+            contexts.iter().any(|context| context == cluster)
+                && key.is_some_and(|key| *key == source)
         };
         let mut forwards: Vec<_> = self
             .port_forwards

@@ -232,7 +232,7 @@ pub(super) fn open_argo(
     backend.argo.enabled.store(true, Ordering::SeqCst);
     let handle = open(cx, backend);
     step(cx, handle, |w, cx| {
-        w.click("resource:Application:payments:payments-api", cx)
+        w.click("resource:Application:payments:payments-api:mock-dev", cx)
     });
     step(cx, handle, |w, cx| w.click("show-argo", cx));
     handle
@@ -306,9 +306,9 @@ fn changing_application_drops_old_inspection(cx: &mut TestAppContext) {
             w,
             cx,
             "search",
-            "resource:Application:payments:other-app"
+            "resource:Application:payments:other-app:mock-dev"
         ));
-        w.click("resource:Application:payments:other-app", cx)
+        w.click("resource:Application:payments:other-app:mock-dev", cx)
     });
     assert!(
         send.send(()).is_err(),

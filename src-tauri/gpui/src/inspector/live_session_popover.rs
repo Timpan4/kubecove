@@ -1,5 +1,5 @@
 //! `ActiveLiveSessionsButton.svelte`: the header's live-session count opens a
-//! popover listing every session in the workspace's context, with Show,
+//! popover listing every session in the workspace's contexts, with Show,
 //! Reconnect, Copy and Stop row controls and a Manage button for the page.
 
 use super::{
@@ -18,6 +18,21 @@ use gpui_kit::{
 use kubecove_lib::models::{
     PodExecSessionStatus, PodExecSessionSummary, PortForwardSessionSummary,
 };
+
+/// The optional lines a session row adds under its title.
+#[derive(Clone, Copy)]
+pub(super) struct RowLabels {
+    /// The kubeconfig source label, when the setting shows it.
+    pub(super) source: bool,
+    /// The session's context, when the workspace has several.
+    pub(super) context: bool,
+}
+
+impl RowLabels {
+    pub(super) fn context(self, cluster: &str) -> Option<String> {
+        self.context.then(|| format!("Context: {cluster}"))
+    }
+}
 
 /// `Button size="sm"` row control with its test id and accessible name.
 fn row_button(id: String, icon: &str, label: &str) -> ObservedElement<Stateful<Div>> {
@@ -68,17 +83,18 @@ impl Inspector {
     fn live_session_panel(&self, cx: &mut Context<Self>) -> ObservedElement<Stateful<Div>> {
         let mut rows: Vec<AnyElement> = Vec::new();
         if let Some(sessions) = self.sessions.load.data() {
-            let (forwards, execs) = sessions.for_context(&self.scope.context);
-            let show_labels = sessions.show_source_labels;
+            let contexts = self.workspace_contexts();
+            let (forwards, execs) = sessions.for_contexts(&contexts);
+            let labels = RowLabels {
+                source: sessions.show_source_labels,
+                context: contexts.len() > 1,
+            };
             for session in execs {
-                rows.push(
-                    self.exec_control_row(session, show_labels, cx)
-                        .into_any_element(),
-                );
+                rows.push(self.exec_control_row(session, labels, cx).into_any_element());
             }
             for session in forwards {
                 rows.push(
-                    self.forward_control_row(session, show_labels, cx)
+                    self.forward_control_row(session, labels, cx)
                         .into_any_element(),
                 );
             }
@@ -161,10 +177,11 @@ impl Inspector {
     fn exec_control_row(
         &self,
         session: &PodExecSessionSummary,
-        show_labels: bool,
+        labels: RowLabels,
         cx: &mut Context<Self>,
     ) -> ObservedElement<Stateful<Div>> {
         let label = format!("{}/Pod/{}", session.namespace, session.pod_name);
+        let context = labels.context(&session.cluster_context);
         let showable = self
             .exec
             .tabs
@@ -179,7 +196,7 @@ impl Inspector {
         let source_label = session
             .kubeconfig_source_label
             .clone()
-            .filter(|_| show_labels);
+            .filter(|_| labels.source);
         let status = exec_status(session.status);
         let mut controls = div().flex().flex_wrap().justify_end().gap(px(8.));
         if showable {
@@ -217,6 +234,9 @@ impl Inspector {
                                     .font_family(MONO)
                                     .truncate(),
                             )
+                            .when_some(context, |text, context| {
+                                text.child(ui::muted(ui::xs(context)).truncate())
+                            })
                             .when_some(source_label, |text, source| {
                                 text.child(ui::muted(ui::xs(source)).truncate())
                             }),
@@ -235,16 +255,17 @@ impl Inspector {
     fn forward_control_row(
         &self,
         session: &PortForwardSessionSummary,
-        show_labels: bool,
+        labels: RowLabels,
         cx: &mut Context<Self>,
     ) -> ObservedElement<Stateful<Div>> {
         let label = format!("{}/{}", session.namespace, forward_title(session));
+        let context = labels.context(&session.cluster_context);
         let (status, destructive) = forward_status(session.status);
         let url = local_url(session);
         let source_label = session
             .kubeconfig_source_label
             .clone()
-            .filter(|_| show_labels);
+            .filter(|_| labels.source);
         let description = format!("{url} {status}");
         let (reconnect, stop_id, copy_url) = (session.clone(), session.id.clone(), url.clone());
         let badge = if destructive {
@@ -272,6 +293,9 @@ impl Inspector {
                                 )))
                                 .truncate(),
                             )
+                            .when_some(context, |text, context| {
+                                text.child(ui::muted(ui::xs(context)).truncate())
+                            })
                             .when_some(source_label, |text, source| {
                                 text.child(ui::muted(ui::xs(source)).truncate())
                             }),

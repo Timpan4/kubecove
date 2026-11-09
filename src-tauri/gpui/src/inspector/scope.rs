@@ -259,16 +259,20 @@ impl Inspector {
             return;
         }
         self.map.cache.take();
+        // The map shows one workspace context, chosen in the "Map context" select.
+        let scope = Scope {
+            context: self.map_context(),
+            namespace: self.scope.namespace.clone(),
+        };
         self.map_trace = Some(LoadTrace::start(
             LoadKind::Map,
-            &self.scope.context,
-            self.scope.namespace.as_deref(),
+            &scope.context,
+            scope.namespace.as_deref(),
         ));
         self.map.replace_topology(map::TopologyLoad::Loading);
         let request = self.request.clone();
         let network = self.map.network;
         let backend = self.backend.clone();
-        let scope = self.scope.clone();
         let timings = self.timings.clone();
         self.topology_task = Some(cx.spawn(async move |this, cx| {
             let result = crate::read_retry::cancelled_read(

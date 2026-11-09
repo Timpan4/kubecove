@@ -142,7 +142,7 @@ fn leaving_each_page_cancels_its_read_and_rejects_late_results(cx: &mut TestAppC
             window.render_frame(cx);
             assert!(
                 window
-                    .try_find("resource:Deployment:payments:payments-api")
+                    .try_find("resource:Deployment:payments:payments-api:mock-dev")
                     .is_some()
             );
             window.remove_window();

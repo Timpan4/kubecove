@@ -70,6 +70,9 @@ impl Inspector {
         let _profile = crate::frame_profile::scope("rows", "filter");
         let query = self.search.read(cx).value().trim().to_lowercase();
         let kinds = self.scope_kinds();
+        let contexts = self.context_selection();
+        let in_context =
+            |row: &ResourceSummary| contexts.as_ref().is_none_or(|c| c.contains(&row.cluster));
         let source = self.row_index.source(
             &self.rows,
             self.cluster_prepared(),
@@ -89,6 +92,7 @@ impl Inspector {
             &query,
             |row, owner| {
                 self.row_scope_visible(row)
+                    && in_context(row)
                     && self.filters.in_namespace(row)
                     && self.filters.in_owner(owner)
                     && self.filters.health.matches(row)
@@ -111,6 +115,7 @@ impl Inspector {
         for (index, (row, prepared)) in source.keyed_rows().enumerate() {
             if !(allowed[prepared.variant]
                 && self.row_scope_visible(row)
+                && in_context(row)
                 && self.filters.in_namespace(row))
             {
                 continue;

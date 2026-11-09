@@ -41,6 +41,8 @@ impl HealthFilter {
 pub(super) struct ResourceFilters {
     /// Selected namespaces, sorted. Empty means every namespace.
     pub namespaces: Vec<String>,
+    /// Selected workspace contexts (`context_filter.rs`). Empty means every context.
+    pub contexts: Vec<String>,
     pub health: HealthFilter,
     /// The selected GitOps owner's `filterKey`.
     pub gitops_owner: Option<String>,
@@ -52,6 +54,7 @@ pub(super) struct ResourceFilters {
     /// GitOps owner choices as (`filterKey`, label), sorted by label.
     pub owners: Vec<(String, String)>,
     pub namespace_open: bool,
+    pub context_open: bool,
     pub owner_open: bool,
     pub namespace_search: Entity<InputState>,
     _subscription: Subscription,
@@ -68,12 +71,14 @@ impl ResourceFilters {
         });
         Self {
             namespaces: Vec::new(),
+            contexts: Vec::new(),
             health: HealthFilter::All,
             gitops_owner: None,
             hide_historical_replicasets: false,
             summary: HealthSummary::default(),
             owners: Vec::new(),
             namespace_open: false,
+            context_open: false,
             owner_open: false,
             namespace_search,
             _subscription: subscription,

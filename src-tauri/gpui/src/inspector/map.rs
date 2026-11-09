@@ -40,6 +40,9 @@ pub(super) struct MapState {
     node_ids: Vec<SharedString>,
     pub(super) expanded: HashSet<String>,
     pub network: bool,
+    /// The workspace context chosen in the "Map context" select (`map_context.rs`).
+    pub(super) context: Option<String>,
+    pub(super) context_open: bool,
     pub cache: Option<Rc<topology::View>>,
     edge_cache: RefCell<Option<CachedEdges>>,
     unselected_edge_cache: RefCell<Option<CachedEdges>>,
@@ -121,6 +124,8 @@ impl MapState {
             node_ids: Vec::new(),
             expanded: HashSet::new(),
             network: false,
+            context: None,
+            context_open: false,
             cache: None,
             edge_cache: RefCell::new(None),
             unselected_edge_cache: RefCell::new(None),
@@ -403,6 +408,7 @@ impl Inspector {
                     .flex()
                     .items_center()
                     .gap(px(8.))
+                    .children(self.map_context_select(cx))
                     .child(
                         div()
                             .flex()

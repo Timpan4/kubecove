@@ -1,5 +1,6 @@
 //! `LiveSessionsView.svelte`: table cells, row controls, and small cards.
 use super::Inspector;
+use super::live_session_popover::RowLabels;
 use super::windowed::row_id;
 use crate::targets::TestSupportExt;
 use crate::{
@@ -123,16 +124,22 @@ impl Inspector {
         sessions: &LiveSessions,
         cx: &mut Context<Self>,
     ) -> Option<Div> {
-        let (forwards, _) = sessions.for_context(&self.scope.context);
+        let contexts = self.workspace_contexts();
+        let (forwards, _) = sessions.for_contexts(&contexts);
+        let labels = RowLabels {
+            source: sessions.show_source_labels,
+            context: contexts.len() > 1,
+        };
         let last = forwards.len().checked_sub(1)?;
-        // The title gains a source line and the status an error line; the
-        // other cells truncate.
+        // The title gains context and source lines and the status an error
+        // line; the other cells truncate.
         let ids = forwards
             .iter()
             .enumerate()
             .map(|(index, session)| {
                 row_id((
                     forward_title(session),
+                    labels.context(&session.cluster_context),
                     sessions
                         .show_source_labels
                         .then_some(&session.kubeconfig_source_label),
@@ -145,7 +152,7 @@ impl Inspector {
         let entity = cx.entity_id();
         Some(self.sessions.rows.rows(0, ids, entity, |index| {
             table_row(
-                self.forward_cells(sessions, forwards[index], cx),
+                self.forward_cells(sessions, forwards[index], labels, cx),
                 index == last,
             )
         }))
@@ -153,15 +160,21 @@ impl Inspector {
 
     /// The exec session table's rows, rendered only near the page's view.
     pub(super) fn exec_rows(&self, sessions: &LiveSessions, cx: &mut Context<Self>) -> Option<Div> {
-        let (_, exec) = sessions.for_context(&self.scope.context);
+        let contexts = self.workspace_contexts();
+        let (_, exec) = sessions.for_contexts(&contexts);
+        let labels = RowLabels {
+            source: sessions.show_source_labels,
+            context: contexts.len() > 1,
+        };
         let last = exec.len().checked_sub(1)?;
-        // Only the pod cell's optional source line changes a row's height.
+        // Only the pod cell's optional context and source lines change a row's height.
         let ids = exec
             .iter()
             .enumerate()
             .map(|(index, session)| {
                 row_id((
                     &session.pod_name,
+                    labels.context(&session.cluster_context),
                     sessions
                         .show_source_labels
                         .then_some(&session.kubeconfig_source_label),
@@ -170,7 +183,10 @@ impl Inspector {
             })
             .collect();
         Some(self.sessions.rows.rows(1, ids, cx.entity_id(), |index| {
-            table_row(self.exec_cells(sessions, exec[index], cx), index == last)
+            table_row(
+                self.exec_cells(sessions, exec[index], labels, cx),
+                index == last,
+            )
         }))
     }
 
@@ -178,6 +194,7 @@ impl Inspector {
         &self,
         sessions: &LiveSessions,
         session: &kubecove_lib::models::PortForwardSessionSummary,
+        labels: RowLabels,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
         let reconnect = session.clone();
@@ -198,6 +215,9 @@ impl Inspector {
                 ))
                 .min_w_0()
                 .child(ui::medium(ui::sm(forward_title(session))).truncate())
+                .when_some(labels.context(&session.cluster_context), |title, context| {
+                    title.child(ui::muted(ui::xs(context)).truncate())
+                })
                 .when_some(
                     session
                         .kubeconfig_source_label
@@ -271,6 +291,7 @@ impl Inspector {
         &self,
         sessions: &LiveSessions,
         session: &kubecove_lib::models::PodExecSessionSummary,
+        labels: RowLabels,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
         let id = session.id.clone();
@@ -278,6 +299,9 @@ impl Inspector {
             div()
                 .min_w_0()
                 .child(ui::medium(ui::sm(session.pod_name.clone())).truncate())
+                .when_some(labels.context(&session.cluster_context), |title, context| {
+                    title.child(ui::muted(ui::xs(context)).truncate())
+                })
                 .when_some(
                     session
                         .kubeconfig_source_label

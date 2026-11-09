@@ -122,7 +122,7 @@ pub(super) fn pod(cx: &mut TestAppContext, backend: Arc<Controlled>) -> gpui_kit
     let handle = open(cx, backend);
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
-        window.click("resource:Pod:payments:payments-api", cx);
+        window.click("resource:Pod:payments:payments-api:mock-dev", cx);
     })
     .unwrap();
     cx.run_until_parked();
@@ -191,7 +191,7 @@ fn start_forward(cx: &mut TestAppContext, backend: Arc<Controlled>) -> gpui_kit:
     let handle = open(cx, backend);
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        w.click("resource:Pod:payments:payments-api", cx);
+        w.click("resource:Pod:payments:payments-api:mock-dev", cx);
     })
     .unwrap();
     cx.run_until_parked();

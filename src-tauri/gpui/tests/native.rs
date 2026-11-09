@@ -552,7 +552,7 @@ fn a_read_failure_is_visible_and_can_be_retried(cx: &mut TestAppContext) {
         assert!(window.try_find("load-error").is_none());
         assert!(
             window
-                .find("resource:Deployment:payments:payments-api")
+                .find("resource:Deployment:payments:payments-api:mock-dev")
                 .visible()
         );
     })
@@ -604,14 +604,13 @@ fn the_ownership_map_opens_resources(cx: &mut TestAppContext) {
     })
     .unwrap();
     cx.run_until_parked();
+    // A one-context workspace has no context badge; the clicked node's ID
+    // names the mock-dev object whose detail opens.
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
-        assert!(
-            window
-                .find("detail-context")
-                .label()
-                .unwrap()
-                .contains("mock-dev")
+        assert_eq!(
+            window.find("detail-identity").label(),
+            Some("Deployment payments payments-api")
         );
     })
     .unwrap();
@@ -645,18 +644,16 @@ fn switching_context_cancels_the_old_read(cx: &mut TestAppContext) {
                 .unwrap()
                 .contains("mock-other")
         );
-        window.click("resource:Deployment:payments:payments-api", cx);
+        window.click("resource:Deployment:payments:payments-api:mock-other", cx);
     })
     .unwrap();
     cx.run_until_parked();
+    // The clicked row's ID names the mock-other object; its detail opens.
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
-        assert!(
-            window
-                .find("detail-context")
-                .label()
-                .unwrap()
-                .contains("mock-other")
+        assert_eq!(
+            window.find("detail-identity").label(),
+            Some("Deployment payments payments-api")
         );
     })
     .unwrap();
@@ -666,7 +663,7 @@ fn switching_context_cancels_the_old_read(cx: &mut TestAppContext) {
 fn a_dirty_draft_requires_explicit_discard(cx: &mut TestAppContext) {
     let handle = open(cx, Arc::new(Controlled::default()));
     cx.update_window(handle, |_, window, cx| {
-        window.click("resource:Deployment:payments:payments-api", cx)
+        window.click("resource:Deployment:payments:payments-api:mock-dev", cx)
     })
     .unwrap();
     cx.run_until_parked();
@@ -700,7 +697,7 @@ fn warning_events_feed_the_incident_summary_and_timeline(cx: &mut TestAppContext
     let handle = open(cx, Arc::new(Controlled::default()));
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
-        window.click("resource:Deployment:payments:payments-api", cx);
+        window.click("resource:Deployment:payments:payments-api:mock-dev", cx);
     })
     .unwrap();
     cx.run_until_parked();

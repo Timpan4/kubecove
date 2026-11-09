@@ -68,7 +68,7 @@ fn watch_burst_frame_time(cx: &mut TestAppContext) {
         window.render_frame(cx);
         assert_eq!(
             window
-                .find("resource:Deployment:namespace-6:checkout-6-deployment-6")
+                .find("resource:Deployment:namespace-6:checkout-6-deployment-6:mock-dev")
                 .description(),
             Some("Degraded")
         );

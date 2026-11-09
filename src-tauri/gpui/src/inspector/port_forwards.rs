@@ -18,7 +18,9 @@ pub(super) struct SessionsState {
     pub(super) form: Option<super::saved_forward_form::PresetForm>,
     pub(super) load: Query<LiveSessions>,
     pub(super) action: SessionAction,
-    pub(super) scope_context: Option<String>,
+    /// The workspace contexts of the last read. A change to the set cleans up
+    /// sessions outside it, unless sessions are kept across workspaces.
+    pub(super) scope_contexts: Option<Vec<String>>,
     /// `ActiveLiveSessionsButton`'s popover, open from the header count.
     pub(super) popover: bool,
     poll: Option<Task<()>>,
@@ -31,7 +33,7 @@ impl SessionsState {
             form: None,
             load: Query::default(),
             action: SessionAction::Idle,
-            scope_context: None,
+            scope_contexts: None,
             popover: false,
             poll: None,
             rows: Default::default(),
@@ -88,12 +90,17 @@ impl Inspector {
     /// on the host, without the workspace filter the page applies.
     pub(super) fn live_session_count(&self) -> Option<usize> {
         let sessions = self.sessions.load.data()?;
-        let (forwards, execs) = sessions.for_context(&self.scope.context);
+        let (forwards, execs) = sessions.for_contexts(&self.workspace_contexts());
         Some(forwards.len() + execs.len())
     }
 
     pub(super) fn ensure_sessions(&mut self, cx: &mut Context<Self>) {
-        if self.sessions.scope_context.as_deref() != Some(&self.scope.context)
+        let contexts = self.workspace_contexts();
+        if self
+            .sessions
+            .scope_contexts
+            .as_deref()
+            .is_none_or(|old| !super::scope_load::same_contexts(old, &contexts))
             || !self.sessions.load.fetching()
         {
             self.load_sessions(cx);
@@ -123,13 +130,13 @@ impl Inspector {
             .keep_live_sessions_on_workspace_switch;
         // A failed read stays visible until the next read resolves, as the web's
         // query keeps its error during a refetch. The 3 s poll must not show Loading.
+        let contexts = self.workspace_contexts();
         let state = &mut self.sessions;
-        let context = self.scope.context.clone();
         let changed = state
-            .scope_context
-            .as_ref()
-            .is_some_and(|old| *old != context);
-        state.scope_context = Some(context.clone());
+            .scope_contexts
+            .as_deref()
+            .is_some_and(|old| !super::scope_load::same_contexts(old, &contexts));
+        state.scope_contexts = Some(contexts.clone());
         let cleanup = changed && !keep;
         let previous_source = state
             .load
@@ -150,7 +157,7 @@ impl Inspector {
             {
                 backend
                     .cleanup_sessions(kubecove_lib::models::LiveSessionCleanupRequest {
-                        allowed_cluster_contexts: vec![context],
+                        allowed_cluster_contexts: contexts,
                         kubeconfig_source_key: source.clone(),
                     })
                     .await?;
@@ -191,7 +198,7 @@ impl Inspector {
                 self.page_read_failure("Live sessions unavailable", error, Operation::Surface, cx)
             }
             (Some(Ok(sessions)), None) => {
-                let (forwards, exec) = sessions.for_context(&self.scope.context);
+                let (forwards, exec) = sessions.for_contexts(&self.workspace_contexts());
                 let counts = (forwards.len(), exec.len());
                 let forward_rows = self.forward_rows(sessions, cx);
                 let exec_rows = self.exec_rows(sessions, cx);

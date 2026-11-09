@@ -415,6 +415,17 @@ impl Inspector {
             _ => None,
         };
         let resource = self.detail.resource().cloned();
+        // With several workspace contexts the header names the row's context.
+        let context_badge = resource
+            .as_ref()
+            .filter(|_| self.workspace_contexts().len() > 1)
+            .map(|resource| {
+                ui::outline_badge(resource.cluster.clone())
+                    .flex_none()
+                    .id("detail-context")
+                    .test_support()
+                    .aria_label(format!("Context: {}", resource.cluster))
+            });
         let header = div()
             .flex()
             .items_start()
@@ -428,7 +439,15 @@ impl Inspector {
                 div()
                     .min_w_0()
                     .child(ui::semibold(ui::sm(name)).truncate())
-                    .child(ui::muted(ui::xs(subtitle)).truncate()),
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(6.))
+                            .min_w_0()
+                            .child(ui::muted(ui::xs(subtitle)).truncate())
+                            .children(context_badge),
+                    ),
             )
             .child(
                 div()
@@ -613,14 +632,6 @@ impl Inspector {
                             .id("detail-identity")
                             .test_support()
                             .aria_label(identity)
-                            .absolute()
-                            .size_0(),
-                    )
-                    .child(
-                        div()
-                            .id("detail-context")
-                            .test_support()
-                            .aria_label(summary.cluster.clone())
                             .absolute()
                             .size_0(),
                     )

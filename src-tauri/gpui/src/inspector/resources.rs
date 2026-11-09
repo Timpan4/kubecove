@@ -416,6 +416,7 @@ impl Inspector {
             .items_center()
             .gap(px(8.))
             .child(self.namespace_picker(cx))
+            .children(self.context_picker(cx))
             .child(self.kinds_picker(cx));
         let owners = div()
             .flex()
@@ -621,7 +622,9 @@ impl Inspector {
                         .children(self.page_warnings().enumerate().map(|(index, warning)| {
                             div()
                                 .id(("warning", index))
+                                .test_support()
                                 .role(gpui_kit::Role::Alert)
+                                .aria_label(warning.clone())
                                 .px(px(12.))
                                 .py(px(8.))
                                 .rounded(px(8.))

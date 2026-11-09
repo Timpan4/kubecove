@@ -9,7 +9,7 @@ use gpui_kit::{
     AnyElement, Context, Div, FontWeight, Hsla, SharedString, Window, deferred, div, prelude::*, px,
 };
 
-fn check_box(checked: bool) -> Div {
+pub(super) fn check_box(checked: bool) -> Div {
     div()
         .flex()
         .flex_none()
@@ -39,6 +39,7 @@ impl Inspector {
     /// `hasFilters` in `ResourceBrowserTopBar.svelte`.
     pub(super) fn filters_active(&self, cx: &Context<Self>) -> bool {
         !self.search.read(cx).value().is_empty()
+            || self.context_selection().is_some()
             || self.filters.gitops_owner.is_some()
             || self.filters.health != HealthFilter::All
             || self
@@ -397,12 +398,13 @@ impl Inspector {
             .into_any_element()
     }
 
-    /// Clears the search, GitOps owner and health filters, as `clearFilters`
-    /// does on the web. The namespace and kind selections stay.
+    /// Clears the search, Context, GitOps owner and health filters, as
+    /// `clearFilters` does on the web. The namespace and kind selections stay.
     fn clear_resource_filters(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.search
             .update(cx, |input, cx| input.set_value("", window, cx));
         self.filters.clear_owner_and_health();
+        self.filters.contexts.clear();
         if let Some(state) = &mut self.gitops_page.workspace {
             state.filter = None;
         }

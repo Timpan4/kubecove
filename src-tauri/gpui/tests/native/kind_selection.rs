@@ -31,7 +31,7 @@ fn a_checked_kind_watch_waits_for_its_read(cx: &mut TestAppContext) {
     cx.run_until_parked();
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
-        window.find("resource:Deployment:payments:payments-api");
+        window.find("resource:Deployment:payments:payments-api:mock-dev");
     })
     .unwrap();
     cx.run_until_parked();
