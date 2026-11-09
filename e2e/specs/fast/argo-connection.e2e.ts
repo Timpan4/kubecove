@@ -48,7 +48,7 @@ describe("workspace Argo CD connection", () => {
 		expect(profiles).toHaveLength(1);
 		expect(profiles[0]).toMatchObject({
 			clusterContext: "mock-dev",
-			kubeconfigSourceKey: "browser-mock",
+			kubeconfigSourceKey: "kubeconfigSource=browser-mock",
 			rememberCredential: true,
 			endpoint: { kind: "serviceTunnel", namespace: "argocd", serviceName: "argocd-server", servicePort: 443 },
 		});
