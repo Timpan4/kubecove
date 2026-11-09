@@ -2,10 +2,10 @@
 //! the health evidence disclosure from `HealthAssessmentBadge.svelte`, the
 //! Conditions table, identity and lifecycle rows, and the raw status details.
 
-use super::Inspector;
-use super::argo::raw;
-use super::detail::{Detail, ResourceDetail};
-use super::details_tab::{row, value};
+use super::super::Inspector;
+use super::super::argo::raw;
+use super::super::detail::{Detail, ResourceDetail};
+use super::{row, value};
 use crate::incident::{self, ConditionRow};
 use crate::model::{exact_timestamp, health_source};
 use crate::preferences::TimestampTimezone;

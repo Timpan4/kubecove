@@ -1,11 +1,15 @@
 //! Details tab of the resource detail panel, mirroring `DetailsTab.svelte`
-//! and `HealthAssessmentBadge.svelte`.
+//! and `HealthAssessmentBadge.svelte`. The rest of the inspector uses
+//! `details_tab` and the `MetadataDisclosure` state it keeps on the detail.
+
+mod containers;
+mod metadata;
+mod status;
+
+pub(super) use metadata::MetadataDisclosure;
 
 use super::Inspector;
 use super::detail::ResourceDetail;
-use super::details_containers;
-use super::details_metadata;
-use super::details_status;
 use super::loading::LoadingDelays;
 use super::timeline::{incident_signals, timeline};
 use crate::model::health_source;
@@ -161,7 +165,7 @@ pub(super) fn details_tab(
                             ui::muted(ui::text(format!("Source: {source}"), 11., 20.)).truncate(),
                         ),
                 )
-                .child(details_status::health_evidence(detail, cx))
+                .child(status::health_evidence(detail, cx))
                 .when_some(summary.ready.clone(), |row, ready| {
                     row.child(ready_badge(format!("Ready {ready}")))
                 })
@@ -171,20 +175,18 @@ pub(super) fn details_tab(
                         .restarts
                         .map_or("not reported".to_owned(), |count| count.to_string())
                 )))
-                .when_some(details_metadata::owner_badge(summary), |row, owner| {
+                .when_some(metadata::owner_badge(summary), |row, owner| {
                     row.child(owner)
                 })
-                .when_some(
-                    details_metadata::helm_header_button(summary, cx),
-                    |row, button| row.child(button),
-                ),
+                .when_some(metadata::helm_header_button(summary, cx), |row, button| {
+                    row.child(button)
+                }),
         )
         .child(incident_summary(detail, loading))
         .child(timeline(detail, timeline_rows, cx))
-        .when_some(
-            details_status::conditions(detail, timezone),
-            |column, section| column.child(section),
-        )
+        .when_some(status::conditions(detail, timezone), |column, section| {
+            column.child(section)
+        })
         .child(
             div()
                 .p(px(12.))
@@ -198,26 +200,23 @@ pub(super) fn details_tab(
                         .flex()
                         .flex_col()
                         .gap(px(12.))
-                        .child(metadata_card(
-                            "Identity",
-                            details_status::identity_rows(detail),
-                        ))
-                        .child(metadata_card("Naming", details_status::naming_rows(detail)))
+                        .child(metadata_card("Identity", status::identity_rows(detail)))
+                        .child(metadata_card("Naming", status::naming_rows(detail)))
                         .child(metadata_card(
                             "Lifecycle",
-                            details_status::lifecycle_rows(detail, timezone),
+                            status::lifecycle_rows(detail, timezone),
                         ))
-                        .child(details_metadata::ownership_card(detail, cx))
-                        .child(details_metadata::labels_card(detail, cx))
-                        .child(details_metadata::annotations_card(detail, cx)),
+                        .child(metadata::ownership_card(detail, cx))
+                        .child(metadata::labels_card(detail, cx))
+                        .child(metadata::annotations_card(detail, cx)),
                 ),
         )
         .when_some(
-            details_containers::containers_section(detail, timezone),
+            containers::containers_section(detail, timezone),
             |column, section| column.child(section),
         )
-        .child(details_metadata::advanced_metadata(detail, cx))
-        .when_some(details_status::status_details(detail), |column, section| {
+        .child(metadata::advanced_metadata(detail, cx))
+        .when_some(status::status_details(detail), |column, section| {
             column.child(section)
         })
 }

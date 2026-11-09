@@ -2,7 +2,7 @@
 //! primitives that the Advanced metadata table shares. Mirrors the Containers
 //! section of `DetailsTab.svelte` and `getContainerStatusRows` in `helpers.ts`.
 
-use super::detail::ResourceDetail;
+use super::super::detail::ResourceDetail;
 use crate::model::exact_timestamp;
 use crate::preferences::TimestampTimezone;
 use crate::targets::TestSupportExt;

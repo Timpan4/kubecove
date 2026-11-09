@@ -4,8 +4,7 @@
 use super::Inspector;
 use super::actions::{ActionsState, actions_tab};
 use super::argo::ArgoTab;
-use super::details_metadata::MetadataDisclosure;
-use super::details_tab::details_tab;
+use super::details_tab::{MetadataDisclosure, details_tab};
 use super::events::EventsState;
 use super::events_tab::events_tab;
 use super::feedback;

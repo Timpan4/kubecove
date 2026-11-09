@@ -2,13 +2,13 @@
 //! ownership card, label and annotation badges with Show more/less, the
 //! Annotations and Management card and Advanced metadata. Mirrors the matching
 //! parts of `DetailsTab.svelte` and `metadata-details.ts`. The Containers table
-//! lives in `details_containers.rs`.
+//! lives in `containers.rs`.
 
-use super::Inspector;
-use super::detail::{Detail, ResourceDetail};
-use super::details_containers::{cell, row_of, table_body};
-use super::details_tab::metadata_card;
-use super::helm_page::HelmTarget;
+use super::super::Inspector;
+use super::super::detail::{Detail, ResourceDetail};
+use super::super::helm_page::HelmTarget;
+use super::containers::{cell, row_of, table_body};
+use super::metadata_card;
 use crate::targets::TestSupportExt;
 use crate::theme::{MONO, Tokens};
 use crate::ui;
@@ -25,7 +25,7 @@ const MANAGER_LIMIT: usize = 4;
 
 /// Expansion state for the metadata sections, which resets with the panel.
 #[derive(Default)]
-pub(super) struct MetadataDisclosure {
+pub(in crate::inspector) struct MetadataDisclosure {
     labels: bool,
     annotations: bool,
     advanced: bool,
@@ -47,7 +47,7 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) {
         self.helm_page.target = Some(HelmTarget { name, namespace });
-        self.open_page(super::Page::Helm, cx);
+        self.open_page(super::super::Page::Helm, cx);
     }
 
     fn toggle_disclosure(&mut self, disclosure: Disclosure, cx: &mut Context<Self>) {
