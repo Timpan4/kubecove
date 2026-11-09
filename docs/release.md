@@ -67,6 +67,30 @@ Updater artifacts require GitHub Actions `TAURI_SIGNING_PRIVATE_KEY`; password i
 
 Release notes mirror matching [CHANGELOG.md](../CHANGELOG.md) section.
 
+### Native GPUI client
+
+The release also ships the native GPUI client (`src-tauri/gpui`) as `KubeCove GPUI`, which installs beside the Tauri app under its own identifier, `com.timpan.kubecove.gpui`. `.github/workflows/gpui-release.yml` builds it with `cargo build --locked` and bundles it with `cargo packager`, configured in `[package.metadata.packager]` of `src-tauri/gpui/Cargo.toml`:
+
+| Platform | Release asset |
+| --- | --- |
+| Linux x64 | `kubecove-gpui_<version>_x86_64.AppImage` |
+| macOS universal | `kubecove-gpui_<version>_universal.app.tar.gz`, with `KubeCove GPUI.app` at the archive root |
+| Windows x64 | `kubecove-gpui_<version>_x64-setup.exe`, a per-user NSIS installer |
+
+One Linux job signs each asset with `tauri signer sign --app-version <version>` and the same `TAURI_SIGNING_PRIVATE_KEY`, then `scripts/gpui-release-manifest.mjs` checks every `.sig` against the public key in `src-tauri/tauri.conf.json` and checks that its trusted comment names `version:<version>`. It writes `latest-gpui.json` in Tauri's static updater format, with `linux-x86_64`, `darwin-x86_64`, `darwin-aarch64` and `windows-x86_64` entries. Both darwin entries point at the universal archive. The publish job uploads the assets, their signatures and `latest-gpui.json` to the release. `latest.json` stays the Tauri app's feed.
+
+The NSIS installer accepts `/P` for a passive install, `/R` to start the app after a silent or passive install, and `/NS` to skip shortcuts. In passive mode it closes a running `kubecove-gpui.exe` without asking.
+
+The GPUI crate version must equal the app version, because the client compares it with the manifest. `bun scripts/bump-version.ts` and release preparation update `src-tauri/gpui/Cargo.toml` and `src-tauri/gpui/Cargo.lock`, and release validation rejects a mismatch.
+
+To prove the GPUI build, bundle and signing steps on a branch without touching any release:
+
+```sh
+gh workflow run release.yml --ref <branch> -f gpui-dry-run=true
+```
+
+Every other release job skips a dry run, so nothing reads or writes a release or tag, and the manifest URLs point at `app-v<version>`. The signed bundles and `latest-gpui.json` arrive as the `kubecove-gpui-release` workflow artifact.
+
 ## Automated Release Gates
 
 Release tags run type checks, unit tests, Rust tests and checks, deterministic fast E2E, and real E2E across the supported Kubernetes matrix before installers build. Native Nix builds for `x86_64-linux` and `aarch64-linux` run in parallel as advisory checks, use the GitHub Actions Nix cache, and do not delay or block publishing. Workflow verifies installer assets, updater signatures, `latest.json`, and updater platform coverage before publishing. Nix users run the tagged source flake; releases do not attach a separate Nix archive.
