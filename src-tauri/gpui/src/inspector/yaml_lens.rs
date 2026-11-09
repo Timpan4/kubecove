@@ -8,7 +8,7 @@ use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
 use gpui_kit::base::input::{Diagnostic, DiagnosticSeverity};
 use gpui_kit::component::input::{EditorState, Position};
-use gpui_kit::{App, Context, Div, div, prelude::*, px};
+use gpui_kit::{App, Context, Div, Stateful, div, prelude::*, px};
 use kubecove_lib::models::{KubernetesYamlLintDiagnostic, KubernetesYamlLintSeverity};
 
 pub(super) struct Lens {
@@ -169,10 +169,12 @@ fn lenses(text: &str, marks: &[Mark]) -> Vec<Lens> {
         .collect()
 }
 
-pub(super) fn overlay(editor: &EditorState, lens: &Lens) -> Div {
+pub(super) fn overlay(editor: &EditorState, lens: &Lens) -> Stateful<Div> {
     let input = editor.input_bounds();
     let bounds = editor.range_to_bounds(&(lens.end..lens.end));
-    let mut view = div();
+    // Each lens needs its own element path: siblings sharing the path
+    // `yaml-lens` would share one identity.
+    let mut view = div().id(("yaml-lens-line", lens.line));
     if let Some(bounds) = bounds {
         let error = lens.severity == KubernetesYamlLintSeverity::Error;
         // Native lens sits after the faulty line, without changing the document.
