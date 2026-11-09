@@ -30,14 +30,18 @@ async fn prepare_off_thread(
         return Err(all_failed(results));
     }
     // Results come in plan order, so the rows come in context rank order.
-    let mut resources = Vec::new();
-    for (_, result) in &mut results {
-        if let Ok(result) = result {
-            resources.append(&mut result.resources);
-        }
-    }
-    let rows = executor
-        .spawn(async move { PreparedRows::with_inherited_owners(resources, &contexts) })
+    // Joining them copies every row, so it runs with the preparation.
+    let (results, rows) = executor
+        .spawn(async move {
+            let mut resources = Vec::new();
+            for (_, result) in &mut results {
+                if let Ok(result) = result {
+                    resources.append(&mut result.resources);
+                }
+            }
+            let rows = PreparedRows::with_inherited_owners(resources, &contexts);
+            (results, rows)
+        })
         .await;
     Ok(ScopeRows { results, rows })
 }
@@ -307,6 +311,7 @@ impl Inspector {
     }
 
     pub(super) fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let _span = crate::frame_profile::scope("scope", "refresh_start");
         self.live_menu_open = false;
         if self.scope.context.is_empty() {
             self.load_contexts(window, cx)
@@ -330,8 +335,12 @@ impl Inspector {
                     let apply_started = Instant::now();
                     match result {
                         Ok(ScopeRows { results, rows }) => {
+                            let span = crate::frame_profile::scope("scope", "apply_parts");
                             let applied = this.scope_load.apply_parts(results, true);
+                            drop(span);
+                            let span = crate::frame_profile::scope("scope", "swap_rows");
                             this.rows = Rc::new(this.keep_failed_contexts(rows, &applied.kept));
+                            drop(span);
                             this.namespaces = if applied.kept.is_empty() {
                                 applied.namespaces
                             } else {
@@ -339,7 +348,9 @@ impl Inspector {
                             };
                             this.warnings = applied.warnings;
                             this.scope_load.refresh_settled(Ok(()));
+                            let span = crate::frame_profile::scope("scope", "prepare_rows");
                             this.prepare_rows();
+                            drop(span);
                             this.filter(cx);
                         }
                         Err(error) => {
