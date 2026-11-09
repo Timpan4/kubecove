@@ -328,6 +328,8 @@ impl Inspector {
             ),
         };
         let warnings = topology.map_or(&[][..], |topology| &topology.warnings[..]);
+        // Built before `segment` borrows `cx` for its click listeners.
+        let context_select = self.map_context_select(cx);
         let segment = |icon: &str, label: &'static str, active: bool| {
             div()
                 .id(SharedString::from(format!("map-mode:{label}")))
@@ -408,7 +410,7 @@ impl Inspector {
                     .flex()
                     .items_center()
                     .gap(px(8.))
-                    .children(self.map_context_select(cx))
+                    .children(context_select)
                     .child(
                         div()
                             .flex()

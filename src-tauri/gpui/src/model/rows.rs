@@ -125,10 +125,6 @@ impl PreparedRows {
         self.identity
     }
 
-    pub(crate) fn contexts(&self) -> &[String] {
-        &self.contexts
-    }
-
     /// Whether the view lists several contexts, which adds the context to
     /// owner and Helm group labels, owner filter keys and search.
     pub(crate) fn multi_context(&self) -> bool {
