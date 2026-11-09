@@ -30,8 +30,8 @@ pub(super) struct Integrations {
     pub(super) sign_in: Option<InFlight>,
     /// The latest status read. A newer read or a remote change replaces it.
     pub(super) status_read: Option<InFlight>,
-    /// The backend's failed remote calls when the status was last read.
-    pub(super) failures_seen: u64,
+    /// Reads the status again on each session change. Dropping it stops the watch.
+    pub(super) session_watch: Option<Task<()>>,
     /// Set by a runtime change. The web resets every query then, and its Resources query reads
     /// again only when the page next mounts. The scope read that the change starts also feeds
     /// the sidebar here, so Resources reads again on its next entry instead of keeping rows a
@@ -66,7 +66,7 @@ impl Integrations {
             remote_call: None,
             sign_in: None,
             status_read: None,
-            failures_seen: 0,
+            session_watch: None,
             scope_reread: false,
             update: UpdateStatus::Idle,
             checked_at: None,

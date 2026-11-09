@@ -4,7 +4,6 @@ use super::Fixture;
 use kubecove_gpui::backend::{Read, RemoteConnectionSummary};
 use kubecove_host::remote::{RemoteAuthMode, RemoteSessionState};
 use kubecove_lib::models::{AppError, AppErrorKind};
-use std::sync::atomic::Ordering;
 
 const SIGN_IN_LINK: &str = "http://127.0.0.1:43117/api/v1/oidc/native/start?redirect_uri=http%3A%2F%2F127.0.0.1%3A49152%2Fkubecove%2Fcallback";
 
@@ -50,8 +49,10 @@ impl Fixture {
                 .remove(&selected.server_url);
         }
         drop(remote);
-        self.settings.remote_failures.fetch_add(1, Ordering::AcqRel);
         self.sync_remote_refusal();
+        // The same signal the host sends when a session ends, so the client
+        // reads the state from the host's watch like it does in production.
+        kubecove_host::remote::signal_session_changed();
     }
     pub fn runtime_endpoint(&self) -> String {
         self.settings
@@ -60,9 +61,6 @@ impl Fixture {
             .unwrap()
             .as_ref()
             .map_or_else(|| "local".to_owned(), |remote| remote.server_url.clone())
-    }
-    pub(super) fn remote_failures_read(&self) -> u64 {
-        self.settings.remote_failures.load(Ordering::Acquire)
     }
     /// Commands fail while a selected remote is not connected, as
     /// `kubecove_host::remote` refuses them, so nothing falls back to local data.

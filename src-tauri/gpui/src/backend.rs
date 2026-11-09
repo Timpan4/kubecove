@@ -133,10 +133,10 @@ pub trait Backend: Send + Sync + 'static {
     fn remote_sign_out(&self) -> Read<RemoteConnectionSummary> {
         settings_integrations::unavailable("Remote host adapter unavailable")
     }
-    /// Changes whenever a remote call fails, so the client reads the session
-    /// state again and shows its notice.
-    fn remote_failures(&self) -> u64 {
-        0
+    /// Wakes when a remote session ends, moves or fails a call, so the client
+    /// reads the session state again and shows its notice.
+    fn remote_session_changes(&self) -> tokio::sync::watch::Receiver<u64> {
+        kubecove_host::remote::subscribe_session_changes()
     }
     fn disconnect_remote(&self) -> Read<()> {
         Box::pin(async { Ok(()) })

@@ -307,8 +307,8 @@ impl Backend for Fixture {
     fn remote_sign_out(&self) -> Read<kubecove_gpui::backend::RemoteConnectionSummary> {
         self.remote_sign_out_read()
     }
-    fn remote_failures(&self) -> u64 {
-        self.remote_failures_read()
+    fn remote_session_changes(&self) -> tokio::sync::watch::Receiver<u64> {
+        kubecove_host::remote::subscribe_session_changes()
     }
     fn pick_kubeconfig_paths(&self) -> Read<KubeconfigSourcesSummary> {
         self.pick_kubeconfig_read()

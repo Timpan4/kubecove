@@ -14,10 +14,6 @@ use reads::inventory;
 mod contract;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
-/// Failed remote calls in this process. The app has one remote store, and a
-/// change tells the inspector to read the session state again.
-static REMOTE_FAILURES: AtomicU64 = AtomicU64::new(0);
-
 /// File picks read this desktop's filesystem, so remote mode offers server paths instead.
 const KUBECONFIG_PICKS_REMOTE: &str =
     "Remote mode uses paths on the server, so files cannot be picked here.";
@@ -71,9 +67,7 @@ async fn invoke<T: DeserializeOwned>(
     contract::validate(command, &args)?;
     let result = remote::remote_invoke(command.to_owned(), args, State::new(&remote))
         .await
-        .inspect_err(|_| {
-            REMOTE_FAILURES.fetch_add(1, Ordering::AcqRel);
-        })?;
+        .inspect_err(|_| remote::signal_session_changed())?;
     serde_json::from_value(result).map_err(|_| {
         AppError::new(
             "Invalid remote command response",
@@ -249,8 +243,8 @@ impl Backend for DesktopBackend {
         self.local
             .read(async move { remote::remote_sign_out(State::new(&remote)).await })
     }
-    fn remote_failures(&self) -> u64 {
-        REMOTE_FAILURES.load(Ordering::Acquire)
+    fn remote_session_changes(&self) -> tokio::sync::watch::Receiver<u64> {
+        remote::subscribe_session_changes()
     }
     route!(
         contexts(kubeconfig_source_key: Option<String>) -> Vec<ClusterContext>,

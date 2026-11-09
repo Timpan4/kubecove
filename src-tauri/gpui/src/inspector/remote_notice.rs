@@ -69,18 +69,27 @@ impl NoticePlace {
 }
 
 impl Inspector {
-    /// Reads the session state again after a remote call failed, so a moved,
-    /// expired or refused session shows its notice without opening Settings.
+    /// Starts the watch that reads the session state again on each session
+    /// change, so a moved, expired or refused session shows its notice without
+    /// opening Settings or waiting for a failed call.
     pub(super) fn sync_remote_status(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let failures = self.backend.remote_failures();
-        let state = &mut self.settings.integrations;
-        if failures == state.failures_seen {
+        if self.settings.integrations.session_watch.is_some() {
             return;
         }
-        state.failures_seen = failures;
-        if state.remote.is_some() {
-            self.refresh_remote_status(window, cx);
-        }
+        let mut changes = self.backend.remote_session_changes();
+        let task = cx.spawn_in(window, async move |this, cx| {
+            while changes.changed().await.is_ok() {
+                let updated = this.update_in(cx, |this, window, cx| {
+                    if this.settings.integrations.remote.is_some() {
+                        this.refresh_remote_status(window, cx);
+                    }
+                });
+                if updated.is_err() {
+                    break;
+                }
+            }
+        });
+        self.settings.integrations.session_watch = Some(task);
     }
 
     fn refresh_remote_status(&mut self, window: &mut Window, cx: &mut Context<Self>) {

@@ -11,7 +11,6 @@ pub(super) struct SettingsIntegrations {
     pub(super) script: Mutex<String>,
     /// Servers this app holds an OIDC sign-in for.
     pub(super) sign_ins: Mutex<std::collections::HashSet<String>>,
-    pub(super) remote_failures: std::sync::atomic::AtomicU64,
     exported: Mutex<String>,
 }
 

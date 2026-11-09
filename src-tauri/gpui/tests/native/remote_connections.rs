@@ -457,14 +457,15 @@ fn a_sign_in_revoked_during_a_read_ends_the_session_without_local_fallback() {
             .connect_remote(url, "controlled-test-credential".into())
             .await
             .unwrap();
-        let failures = backend.remote_failures();
+        let mut changes = backend.remote_session_changes();
+        changes.borrow_and_update();
         let error = backend
             .resource_kinds("revoking-host".into())
             .await
             .unwrap_err();
         assert!(!error.message.contains("controlled-test-credential"));
-        // The inspector reads the status again when the failure count changes.
-        assert_ne!(backend.remote_failures(), failures);
+        // The inspector reads the status again when the session signal fires.
+        assert!(changes.has_changed().unwrap());
         let status = backend.remote_status().await.unwrap().unwrap();
         assert!(!status.connected);
         assert_eq!(
