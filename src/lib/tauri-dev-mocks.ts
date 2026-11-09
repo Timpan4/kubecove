@@ -39,6 +39,11 @@ import type {
 	IncidentCockpitSummary,
 	IncidentSeverity,
     KubeconfigSourcesSummary,
+	LiveSessionCleanupRequest,
+	PodExecSessionMessage,
+	PodExecSessionRequest,
+	PodExecTerminalSize,
+	PortForwardRequest,
 	ResourceDetailsFull,
 	ResourceEventSummary,
 	ResourceListRequest,
@@ -53,8 +58,23 @@ import { formatYamlDocument } from "./yamlFormat";
 
 let failedWorkspaceContext: string | undefined;
 export function failWorkspaceContext(context: string) { failedWorkspaceContext = context; }
+interface LiveSessionArgs {
+	request: PortForwardRequest & PodExecSessionRequest & LiveSessionCleanupRequest;
+	sessionId: string;
+	data: string;
+	size: PodExecTerminalSize;
+	channel: Pick<Channel<PodExecSessionMessage>, "onmessage">;
+}
 
-
+const liveSessionHandlers = new Map<string, (live: LiveSessionArgs) => MockResult | Promise<MockResult>>([
+	["start_pod_port_forward", (live) => startMockForward(live.request)],
+	["start_pod_exec_session", (live) => startMockExec(live.request, live.channel)],
+	["write_pod_exec_stdin", (live) => mockExecInput(live.sessionId, live.data)],
+	["resize_pod_exec_terminal", (live) => resizeMockExec(live.sessionId, live.size)],
+	["stop_pod_exec_session", async (live) => { await coverageStopExec(); return stopMockExec(live.sessionId); }],
+	["stop_port_forward", (live) => { coverageStopForward(live.sessionId, listMockForwards()); return stopMockForward(live.sessionId); }],
+	["stop_live_sessions_outside_scope", (live) => cleanupMockSessions(live.request)],
+]);
 
 /**
  * `latencyMs` simulates each command's round trip for the browser app. The parity fixture
@@ -70,15 +90,13 @@ export function createDevMockTauriClient({ latencyMs = 35 }: { latencyMs?: numbe
 		): Promise<T> => {
 			if (latencyMs > 0) await delay(latencyMs);
 			await beforeCoverageRead(cmd);
-            // The same typed seam as the wrappers; live channels have a different message contract.
-            const live = args as { request: import("./types").PortForwardRequest & import("./types").PodExecSessionRequest & import("./types").LiveSessionCleanupRequest; sessionId: string; data: string; size: import("./types").PodExecTerminalSize; channel: Pick<Channel<import("./types").PodExecSessionMessage>, "onmessage"> } | undefined;
-            if (cmd === "start_pod_port_forward" && live) return startMockForward(live.request) as T;
-            if (cmd === "start_pod_exec_session" && live) return startMockExec(live.request, live.channel) as T;
-            if (cmd === "write_pod_exec_stdin" && live) return mockExecInput(live.sessionId, live.data) as T;
-            if (cmd === "resize_pod_exec_terminal" && live) return resizeMockExec(live.sessionId, live.size) as T;
-            if (cmd === "stop_pod_exec_session" && live) { await coverageStopExec(); return stopMockExec(live.sessionId) as T; }
-            if (cmd === "stop_port_forward" && live) { coverageStopForward(live.sessionId, listMockForwards()); return stopMockForward(live.sessionId) as T; }
-            if (cmd === "stop_live_sessions_outside_scope" && live) return cleanupMockSessions(live.request) as T;
+			const liveHandler = liveSessionHandlers.get(cmd);
+			if (liveHandler && args) {
+				// SAFETY: live-session commands come only from their typed wrappers, which pass the
+				// LiveSessionArgs fields for that command and own result T. Live channels carry a
+				// different message contract than MockArgs.channel, so they skip readMockArgs.
+				return (await liveHandler(args as LiveSessionArgs)) as T;
+			}
 			const handler = findMockHandler(cmd);
 			if (!handler) throw new Error(`No browser dev mock for command: ${cmd}`);
 			// SAFETY: caller's typed wrapper owns result T; each mock handler mirrors that command.

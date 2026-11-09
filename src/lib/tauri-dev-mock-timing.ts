@@ -198,5 +198,6 @@ export const STARTUP_HOLDS_KEY = "parity-startup-holds";
 const startupHolds = globalThis.sessionStorage?.getItem(STARTUP_HOLDS_KEY);
 if (startupHolds) {
     globalThis.sessionStorage.removeItem(STARTUP_HOLDS_KEY);
+    // SAFETY: only the parity web driver's `storeReloadHolds` writes this key, as JSON.stringify of a TimingControl[].
     for (const control of JSON.parse(startupHolds) as TimingControl[]) if (control.operation === "hold") mockTiming.control(control);
 }

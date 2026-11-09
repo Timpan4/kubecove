@@ -14,13 +14,13 @@ export function configureShellRead(next: ShellReadPhase): void {
     globalThis.sessionStorage?.setItem("parity-shell-read", next);
 }
 
-export function shellRead<Item>(read: "contexts" | "namespaces" | "resources" | "kinds", items: Item[]): Item[] {
+export function shellRead<Item extends object>(read: "contexts" | "namespaces" | "resources" | "kinds", items: Item[]): Item[] {
     if (phase === `${read}-failed`) throw new Error(`Scripted ${read} read failure`);
     // Typed like the timing mock's failures, so the friendly error classifies by kind.
     if (read === "namespaces" && phase === "namespaces-credential-failed") throw Object.assign(new Error("Scripted read: credentialUnavailable"), { kind: "credentialUnavailable" });
     if ((read === "namespaces" && phase === "namespaces-empty") || (read === "contexts" && phase === "contexts-empty")) return [];
     // The saved primary context of the parity workspaces is mock-dev.
-    if (read === "contexts" && phase === "primary-context-missing") return items.filter((item) => (item as { name?: string }).name !== "mock-dev");
+    if (read === "contexts" && phase === "primary-context-missing") return items.filter((item) => !("name" in item) || item.name !== "mock-dev");
     if (read === "kinds" && phase === "kind-missing") return [];
     return items;
 }
@@ -31,8 +31,13 @@ export function shellKubeconfigSourcesRead<Sources>(sources: Sources): Sources {
     return sources;
 }
 
+export interface ScopeRequestSplit<Request> {
+    completed: Request[];
+    forbidden: Request[];
+}
+
 /** Splits scope requests into lists that complete and the Deployment lists the phase refuses. */
-export function shellScopeRequests<Request extends { kind?: string }>(requests: Request[]): { completed: Request[]; forbidden: Request[] } {
+export function shellScopeRequests<Request extends { kind?: string }>(requests: Request[]): ScopeRequestSplit<Request> {
     const refused = (request: Request) => phase === "payments-deployments-forbidden" && request.kind === "Deployment";
     return { completed: requests.filter((request) => !refused(request)), forbidden: requests.filter(refused) };
 }
