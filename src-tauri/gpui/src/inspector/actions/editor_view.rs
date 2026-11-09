@@ -1,6 +1,7 @@
 //! Rendering for the cached Actions row editors in ResourceActionsTab.svelte.
-use super::controls::{Variant, button};
-use super::{Inspector, action_fields::*, actions_state::ActionsState};
+use super::super::Inspector;
+use super::super::controls::{Variant, button};
+use super::{fields::*, state::ActionsState};
 use crate::targets::TestSupportExt;
 use crate::{actions::RowId, theme::Tokens, ui};
 use gpui_kit::component::input::Input;
@@ -20,7 +21,7 @@ pub(super) fn render(a: &ActionsState, cx: &mut Context<Inspector>) -> Div {
             16.
         }));
     if a.expanded == Some(RowId::Rollback) {
-        return super::action_rollback_view::render(a, cx);
+        return super::rollback_view::render(a, cx);
     }
     for (gi, g) in a.editor.groups.iter().enumerate() {
         let mut section = div().flex().flex_col().gap(px(8.)).when(
@@ -50,7 +51,7 @@ pub(super) fn render(a: &ActionsState, cx: &mut Context<Inspector>) -> Div {
                     g.entries.len(),
                     cx.processor(
                         move |this: &mut Inspector, range: std::ops::Range<usize>, _, cx| {
-                            let super::detail::Detail::Ready(d) = &this.detail else {
+                            let super::super::detail::Detail::Ready(d) = &this.detail else {
                                 return Vec::new();
                             };
                             let Some(a) = &d.actions else {
@@ -160,7 +161,8 @@ fn render_entry(
                         .id(e.value_id.clone())
                         .aria_label(value_label)
                         .disabled(
-                            (e.removed && matches!(g.kind, GroupKind::Environment(_))) || a.loading,
+                            (e.removed && matches!(g.kind, GroupKind::Environment(_)))
+                                || a.loading(),
                         )
                         .text_size(px(12.))
                         .line_height(px(19.5))
@@ -169,7 +171,7 @@ fn render_entry(
         )
         .when(!image, |d| {
             d.child(
-                button(Variant::Ghost, 24., a.loading)
+                button(Variant::Ghost, 24., a.loading())
                     .id(e.remove_id.clone())
                     .test_support()
                     .aria_label(if e.removed { "Restore" } else { "Remove" })

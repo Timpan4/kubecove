@@ -1,8 +1,6 @@
 //! Cached fields and draft subscriptions for ResourceActionsTab.svelte editors.
-use super::{
-    Inspector,
-    action_drafts::{self, Field},
-};
+use super::super::Inspector;
+use super::drafts::{self, Field};
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{AppContext, Context, Entity, Subscription, Window};
 
@@ -117,7 +115,7 @@ pub(super) fn entry(
             let value = input.read(cx).value().to_string();
             let field = kind_for_value.field(&key_for_value.read(cx).value());
             if let Some(a) = this.actions_state() {
-                action_drafts::set(&mut a.edits, &field, value);
+                drafts::set(&mut a.edits, &field, value);
                 for g in &mut a.editor.groups {
                     if let Some(e) = g.entries.iter_mut().find(|e| e.input == *input) {
                         e.removed = false;
@@ -144,7 +142,7 @@ pub(super) fn entry(
                 if let Some(a) = this.actions_state() {
                     for g in &mut a.editor.groups {
                         if let Some(e) = g.entries.iter_mut().find(|e| e.key_input == *input) {
-                            let env = &mut action_drafts::container(&mut a.edits, &name).env;
+                            let env = &mut drafts::container(&mut a.edits, &name).env;
                             if let Some(change) = env.iter_mut().find(|v| v.name == e.key) {
                                 change.name = key.clone();
                             }

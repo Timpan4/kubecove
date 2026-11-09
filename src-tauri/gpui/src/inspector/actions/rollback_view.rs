@@ -1,9 +1,9 @@
 //! Revision radio rows from ResourceActionsTab.svelte: gap-2, border, px-3 py-2.
-use super::{
+use super::super::{
     Inspector,
-    actions_state::ActionsState,
     controls::{Variant, button},
 };
+use super::state::ActionsState;
 use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
 use gpui_kit::component::{Sizable, Size, radio::Radio};
@@ -91,7 +91,7 @@ pub(super) fn render(a: &ActionsState, cx: &mut Context<Inspector>) -> Div {
                 a.editor.revisions.len(),
                 cx.processor(
                     |this: &mut Inspector, range: std::ops::Range<usize>, _, cx| {
-                        let super::detail::Detail::Ready(d) = &this.detail else {
+                        let super::super::detail::Detail::Ready(d) = &this.detail else {
                             return Vec::new();
                         };
                         let Some(a) = &d.actions else {

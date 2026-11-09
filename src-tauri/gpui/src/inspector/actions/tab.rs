@@ -1,13 +1,13 @@
 //! Actions tab of the resource detail panel, mirroring
 //! `ResourceActionsTab.svelte`. Row editors collect typed deltas;
-//! `actions_review` renders the server dry-run review before execution.
+//! `review` renders the server dry-run review before execution.
 
-use super::Inspector;
-use super::actions_state::ActionsState;
-use super::controls::{Variant, button};
-use super::detail::ResourceDetail;
-use super::events::tw;
-use super::loading::LoadingDelays;
+use super::super::Inspector;
+use super::super::controls::{Variant, button};
+use super::super::detail::ResourceDetail;
+use super::super::events::tw;
+use super::super::loading::LoadingDelays;
+use super::state::ActionsState;
 use crate::actions::{self, ActionRow, RowId};
 use crate::targets::ObservedElement;
 use crate::targets::TestSupportExt;
@@ -86,7 +86,7 @@ fn row_button(actions: &ActionsState, row: &ActionRow, cx: &mut Context<Inspecto
     let state = actions.state.as_ref();
     let action = actions::action_for_row(row, state);
     let disabled = !actions::allowed(state, action)
-        || actions.loading
+        || actions.loading()
         || (row.id == RowId::Rollback && state.is_none_or(|s| s.revisions.is_empty()));
     let expanded = actions.expanded == Some(row.id);
     let (variant, label) = match row.id {
@@ -217,16 +217,16 @@ fn action_row(
                                 if id == RowId::Replicas {
                                     actions.replicas = None;
                                 }
-                                super::action_drafts::revert(&mut actions.edits, id);
+                                super::drafts::revert(&mut actions.edits, id);
                                 actions.new_entries.retain(|kind, _| {
                                     !matches!(
                                         (id, kind),
                                         (
                                             RowId::Environment,
-                                            super::action_fields::GroupKind::Environment(_)
+                                            super::fields::GroupKind::Environment(_)
                                         ) | (
                                             RowId::Resources,
-                                            super::action_fields::GroupKind::Quantity(_, _)
+                                            super::fields::GroupKind::Quantity(_, _)
                                         )
                                     )
                                 });
@@ -253,7 +253,7 @@ fn action_row(
                 Input::new(&actions.replicas_input)
                     .id("action-replicas-input")
                     .aria_label("Desired replicas")
-                    .disabled(actions.loading)
+                    .disabled(actions.loading())
                     .text_sm()
                     .h(px(32.)),
             )
@@ -279,7 +279,7 @@ fn action_row(
             actions.expanded == Some(row.id)
                 && row.id != RowId::Replicas
                 && actions::allowed(state, action),
-            |pane| pane.child(super::action_editor_view::render(actions, cx)),
+            |pane| pane.child(super::editor_view::render(actions, cx)),
         )
 }
 
@@ -307,20 +307,16 @@ fn notice(id: &'static str, text: String, success: bool) -> impl IntoElement {
 }
 
 /// The failed permission read: every action stays locked until the retry
-/// succeeds. The retry is disabled while a read runs, as on the web.
-fn load_error(actions: &ActionsState, error: &str, cx: &mut Context<Inspector>) -> Div {
+/// succeeds. A retry replaces the failure, so this never shows during a read.
+fn load_error(error: &str, cx: &mut Context<Inspector>) -> Div {
     let text =
         format!("Unable to load action state and permissions. Actions remain locked. {error}");
-    let retry = button(Variant::Ghost, 28., actions.loading)
+    let retry = button(Variant::Ghost, 28., false)
         .id("action-load-retry")
         .test_support()
         .aria_label("Retry permission check")
-        .child("Retry permission check");
-    let retry = if actions.loading {
-        retry
-    } else {
-        retry.on_click(cx.listener(|this, _, window, cx| this.load_action_state(window, cx)))
-    };
+        .child("Retry permission check")
+        .on_click(cx.listener(|this, _, window, cx| this.load_action_state(window, cx)));
     div()
         .flex()
         .flex_wrap()
@@ -343,7 +339,7 @@ fn load_error(actions: &ActionsState, error: &str, cx: &mut Context<Inspector>) 
         .child(retry)
 }
 
-pub(super) fn actions_tab(
+pub(in crate::inspector) fn actions_tab(
     detail: &ResourceDetail,
     loading: &LoadingDelays,
     cx: &mut Context<Inspector>,
@@ -351,7 +347,9 @@ pub(super) fn actions_tab(
     let Some(actions) = detail.actions.as_ref() else {
         return div().into_any_element();
     };
-    let permissions_loading = loading.phase("action-permissions", actions.loading).shown();
+    let permissions_loading = loading
+        .phase("action-permissions", actions.loading())
+        .shown();
     let visible: Vec<&ActionRow> = actions
         .rows
         .iter()
@@ -374,12 +372,7 @@ pub(super) fn actions_tab(
         .min_h_0()
         .overflow_y_scroll()
         .child(header(actions, permissions_loading))
-        .children(
-            actions
-                .load_error
-                .as_ref()
-                .map(|error| load_error(actions, error, cx)),
-        )
+        .children(actions.load.failure().map(|error| load_error(error, cx)))
         .children(
             actions
                 .result
@@ -420,8 +413,8 @@ pub(super) fn actions_tab(
             })));
     }
     let pending = (actions.pending() > 0).then(|| {
-        let can_check =
-            actions::allowed(actions.state.as_ref(), ResourceActionKind::Edit) && !actions.loading;
+        let can_check = actions::allowed(actions.state.as_ref(), ResourceActionKind::Edit)
+            && !actions.loading();
         div()
             .flex()
             .flex_none()

@@ -1,10 +1,8 @@
 //! Row editors mirror ResourceActionsTab.svelte: mt-3 border-l pl-3,
 //! space-y-4 container sections and the key/value/control grid.
-use super::action_fields::{Entry, GroupKind, entry};
-use super::{
-    Inspector,
-    action_drafts::{self, Field},
-};
+use super::super::Inspector;
+use super::drafts::{self, Field};
+use super::fields::{Entry, GroupKind, entry};
 use crate::actions::RowId;
 use gpui_kit::component::input::InputState;
 use gpui_kit::{Context, Entity, Window};
@@ -13,7 +11,7 @@ use gpui_kit::{Context, Entity, Window};
 pub(super) struct ActionEditor {
     pub groups: Vec<Group>,
     pub viewport: gpui_kit::Pixels,
-    pub revisions: Vec<super::action_rollback_view::Revision>,
+    pub revisions: Vec<super::rollback_view::Revision>,
 }
 pub(super) struct Group {
     pub title: gpui_kit::SharedString,
@@ -200,7 +198,7 @@ impl Inspector {
             let pair = actions
                 .new_entries
                 .entry(kind.clone())
-                .or_insert_with(|| super::action_fields::NewEntry::new(&kind, window, cx));
+                .or_insert_with(|| super::fields::NewEntry::new(&kind, window, cx));
             let name = pair.name.clone();
             let value = pair.value.clone();
             let gi = editor.groups.len();
@@ -227,7 +225,7 @@ impl Inspector {
             editor.revisions = base
                 .revisions
                 .iter()
-                .map(super::action_rollback_view::Revision::new)
+                .map(super::rollback_view::Revision::new)
                 .collect();
         }
         actions.editor = editor;
@@ -256,7 +254,7 @@ impl Inspector {
                     .iter()
                     .find(|c| &c.name == name)
                     .is_some_and(|c| c.env.iter().any(|v| &v.name == key));
-                let env = &mut action_drafts::container(&mut a.edits, name).env;
+                let env = &mut drafts::container(&mut a.edits, name).env;
                 env.retain(|v| &v.name != key);
                 if !e.removed && in_base {
                     env.push(kubecove_lib::models::ResourceEnvEdit {
@@ -279,7 +277,7 @@ impl Inspector {
                     .is_some_and(|c| {
                         (if *limits { &c.limits } else { &c.requests }).contains_key(key)
                     });
-                let c = action_drafts::container(&mut a.edits, name);
+                let c = drafts::container(&mut a.edits, name);
                 let map = if *limits {
                     &mut c.limits
                 } else {
@@ -350,7 +348,7 @@ impl Inspector {
             return;
         }
         let value = g.value.read(cx).value().to_string();
-        action_drafts::set(&mut a.edits, &kind.field(&key), value.clone());
+        drafts::set(&mut a.edits, &kind.field(&key), value.clone());
         let e = entry(&kind, key.clone(), value, false, "Value".into(), window, cx);
         let g = &mut a.editor.groups[group];
         if let Some(existing) = g.entries.iter_mut().find(|entry| entry.key == key) {

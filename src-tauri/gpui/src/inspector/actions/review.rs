@@ -2,10 +2,10 @@
 //! `ResourceActionsTab.svelte` (ADR 0004): the exact target, the API server
 //! result, the typed-name delete confirmation and the guarded execute button.
 
-use super::Inspector;
-use super::actions_state::{Review, ReviewStatus};
-use super::controls::{Variant, button, diff_pre};
-use super::detail::Detail;
+use super::super::Inspector;
+use super::super::controls::{Variant, button, diff_pre};
+use super::super::detail::Detail;
+use super::state::{Execution, Review, ReviewStep};
 use crate::actions;
 use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
@@ -16,17 +16,11 @@ use kubecove_lib::models::ResourceActionKind;
 
 /// `DialogDescription` for the review's current status.
 fn review_description(review: &Review) -> String {
-    if let Some(preview) = &review.preview {
-        return preview.effect.clone();
+    match &review.step {
+        ReviewStep::Previewed(previewed) => previewed.preview.effect.clone(),
+        ReviewStep::Checking { .. } => "Checking this exact resource with the API server…".into(),
+        ReviewStep::Rejected(_) => "The API server could not validate this action.".into(),
     }
-    match review.status {
-        ReviewStatus::Executing => "Applying the reviewed action…",
-        ReviewStatus::Checking => "Checking this exact resource with the API server…",
-        ReviewStatus::Ready | ReviewStatus::Failed => {
-            "The API server could not validate this action."
-        }
-    }
-    .into()
 }
 
 fn review_body(review: &Review, entity: &Entity<Inspector>, cx: &App) -> Div {
@@ -37,7 +31,7 @@ fn review_body(review: &Review, entity: &Entity<Inspector>, cx: &App) -> Div {
             entity.update(cx, |this, cx| this.close_review(window, cx));
         }
     };
-    let executing = review.status == ReviewStatus::Executing;
+    let executing = review.executing();
     let mut body = div()
         .flex()
         .flex_col()
@@ -58,12 +52,15 @@ fn review_body(review: &Review, entity: &Entity<Inspector>, cx: &App) -> Div {
                     .when(!executing, |button| button.on_click(close.clone())),
             ),
         );
-    if let Some(error) = &review.error {
-        let retry = if review.execution_attempted {
-            "Refresh this resource before retrying. "
-        } else {
-            ""
-        };
+    let failure = match &review.step {
+        ReviewStep::Rejected(error) => Some(("", error)),
+        ReviewStep::Previewed(previewed) => match &previewed.execution {
+            Execution::Failed(error) => Some(("Refresh this resource before retrying. ", error)),
+            _ => None,
+        },
+        ReviewStep::Checking { .. } => None,
+    };
+    if let Some((retry, error)) = failure {
         let text = format!("Could not complete the check or confirm the action. {retry}{error}");
         body = body.child(
             ui::xs(text.clone())
@@ -94,7 +91,7 @@ fn review_body(review: &Review, entity: &Entity<Inspector>, cx: &App) -> Div {
                     "Checking with the API server"
                 }))),
         );
-    } else if review.preview.is_some() {
+    } else if let ReviewStep::Previewed(previewed) = &review.step {
         body = body.child(
             div()
                 .mt(px(16.))
@@ -113,10 +110,10 @@ fn review_body(review: &Review, entity: &Entity<Inspector>, cx: &App) -> Div {
                     div()
                         .id("review-diff")
                         .test_support()
-                        .aria_label(review.diff_text.clone())
+                        .aria_label(previewed.diff_text.clone())
                         .max_h(px(450.))
                         .overflow_y_scroll()
-                        .child(diff_pre("review-diff-lines", &review.diff)),
+                        .child(diff_pre("review-diff-lines", &previewed.diff)),
                 ),
         );
         if review.action == ResourceActionKind::Delete {
@@ -160,7 +157,7 @@ fn review_body(review: &Review, entity: &Entity<Inspector>, cx: &App) -> Div {
                     .child(if busy { "Cancel check" } else { "Cancel" })
                     .when(!executing, |button| button.on_click(close)),
             )
-            .when(review.preview.is_some(), |footer| {
+            .when(matches!(review.step, ReviewStep::Previewed(_)), |footer| {
                 let label = if executing {
                     "Applying…"
                 } else if delete {

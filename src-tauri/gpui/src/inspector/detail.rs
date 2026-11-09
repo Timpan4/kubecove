@@ -2,8 +2,7 @@
 //! lives in its own module; tabs load their data the first time they open.
 
 use super::Inspector;
-use super::actions_state::ActionsState;
-use super::actions_tab::actions_tab;
+use super::actions::{ActionsState, actions_tab};
 use super::argo::ArgoTab;
 use super::details_metadata::MetadataDisclosure;
 use super::details_tab::details_tab;

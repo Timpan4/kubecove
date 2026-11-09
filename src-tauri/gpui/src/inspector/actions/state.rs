@@ -3,100 +3,125 @@
 //! the server dry-run review and the guarded execution that follows it. Each
 //! load and review owns its task, so replacing or closing one drops its result.
 
-use super::Inspector;
-use super::detail::Detail;
+use super::super::Inspector;
+use super::super::detail::Detail;
+use super::super::request::{Fetch, InFlight};
 use crate::actions::{self, ActionRow, RowId};
 use crate::unified_diff::{self, DiffLine};
 use gpui_kit::component::{
     WindowExt,
     input::{InputEvent, InputState},
 };
-use gpui_kit::{App, AppContext, Context, Entity, SharedString, Subscription, Task, Window};
+use gpui_kit::{App, AppContext, Context, Entity, SharedString, Subscription, Window};
 use kubecove_lib::models::{
     ResourceActionEdits, ResourceActionKind, ResourceActionPreview, ResourceActionRequest,
     ResourceActionState, ResourceSummary,
 };
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum ReviewStatus {
-    Checking,
-    Ready,
-    Executing,
-    Failed,
+/// Where a review stands. A step that waits on the API server owns that call,
+/// so closing or replacing the review cancels it.
+pub(super) enum ReviewStep {
+    Checking {
+        _read: InFlight,
+    },
+    /// The dry run failed, so nothing can execute.
+    Rejected(String),
+    /// The API server accepted the dry run.
+    Previewed(Box<Previewed>),
+}
+
+pub(super) struct Previewed {
+    pub preview: ResourceActionPreview,
+    pub diff: Vec<DiffLine>,
+    pub diff_text: SharedString,
+    pub execution: Execution,
+}
+
+pub(super) enum Execution {
+    /// Waits for the user to apply the previewed action.
+    Pending,
+    Running {
+        _call: InFlight,
+    },
+    /// The API server may have received the failed execution.
+    Failed(String),
 }
 
 pub(super) struct Review {
     pub action: ResourceActionKind,
     pub name: String,
-    pub status: ReviewStatus,
     request: ResourceActionRequest,
-    pub preview: Option<ResourceActionPreview>,
-    pub diff: Vec<DiffLine>,
-    pub diff_text: SharedString,
-    pub error: Option<String>,
-    /// The API server may have received the failed execution.
-    pub execution_attempted: bool,
+    pub step: ReviewStep,
     pub confirmation: Entity<InputState>,
-    _task: Option<Task<()>>,
     _subscription: Subscription,
 }
 
 impl Review {
+    fn execution(&self) -> Option<&Execution> {
+        match &self.step {
+            ReviewStep::Previewed(previewed) => Some(&previewed.execution),
+            _ => None,
+        }
+    }
+
+    pub fn executing(&self) -> bool {
+        matches!(self.execution(), Some(Execution::Running { .. }))
+    }
+
     pub fn busy(&self) -> bool {
-        matches!(
-            self.status,
-            ReviewStatus::Checking | ReviewStatus::Executing
-        )
+        matches!(self.step, ReviewStep::Checking { .. }) || self.executing()
     }
 
     /// `canExecute`: a ready preview, and the typed name for a deletion.
     pub fn can_execute(&self, cx: &App) -> bool {
-        self.status == ReviewStatus::Ready
-            && self.preview.is_some()
-            && self.error.is_none()
+        matches!(self.execution(), Some(Execution::Pending))
             && (self.action != ResourceActionKind::Delete
                 || self.confirmation.read(cx).value().as_ref() == self.name)
     }
 }
 
-pub(super) struct ActionsState {
+pub(in crate::inspector) struct ActionsState {
     resource: ResourceSummary,
-    pub rows: Vec<ActionRow>,
-    pub filter: Entity<InputState>,
+    pub(super) rows: Vec<ActionRow>,
+    pub(super) filter: Entity<InputState>,
     /// The trimmed, lowercased filter.
-    pub query: String,
-    pub state: Option<ResourceActionState>,
-    pub loading: bool,
-    pub load_error: Option<String>,
+    pub(super) query: String,
+    /// The loaded baseline. It stays while `load` reads again after an action.
+    pub(super) state: Option<ResourceActionState>,
+    /// The baseline read: `Ready` holds `state`, `Failed` leaves it empty.
+    pub(super) load: Fetch<()>,
     /// The numeric replica draft. Other row deltas live in `edits`.
-    pub replicas: Option<i32>,
-    pub edits: ResourceActionEdits,
-    pub pending_labels: Vec<(RowId, SharedString)>,
-    pub current_labels: Vec<(RowId, SharedString)>,
-    pub editor: super::action_editors::ActionEditor,
-    pub new_entries:
-        std::collections::HashMap<super::action_fields::GroupKind, super::action_fields::NewEntry>,
-    pub revision: Option<i64>,
-    pub expanded: Option<RowId>,
-    pub replicas_input: Entity<InputState>,
-    pub review: Option<Review>,
+    pub(super) replicas: Option<i32>,
+    pub(super) edits: ResourceActionEdits,
+    pub(super) pending_labels: Vec<(RowId, SharedString)>,
+    pub(super) current_labels: Vec<(RowId, SharedString)>,
+    pub(super) editor: super::editors::ActionEditor,
+    pub(super) new_entries:
+        std::collections::HashMap<super::fields::GroupKind, super::fields::NewEntry>,
+    pub(super) revision: Option<i64>,
+    pub(super) expanded: Option<RowId>,
+    pub(super) replicas_input: Entity<InputState>,
+    pub(super) review: Option<Review>,
     /// Effect of the last successful action.
-    pub result: Option<String>,
-    load_task: Option<Task<()>>,
+    pub(super) result: Option<String>,
     _subscriptions: Vec<Subscription>,
 }
 
 impl ActionsState {
-    pub fn resource(&self) -> &ResourceSummary {
+    pub(super) fn resource(&self) -> &ResourceSummary {
         &self.resource
     }
 
-    pub fn pending(&self) -> usize {
+    pub(super) fn loading(&self) -> bool {
+        self.load.loading()
+    }
+
+    pub(super) fn pending(&self) -> usize {
         usize::from(self.replicas.is_some())
             + self
                 .rows
                 .iter()
-                .map(|r| super::action_drafts::count(&self.edits, r.id))
+                .map(|r| super::drafts::count(&self.edits, r.id))
                 .sum::<usize>()
     }
 }
@@ -129,7 +154,7 @@ impl Inspector {
                     let label = if row.id == RowId::Replicas {
                         a.replicas.map(|replicas| format!("Pending: {replicas}"))
                     } else {
-                        super::action_drafts::pending_label(&a.edits, row.id)
+                        super::drafts::pending_label(&a.edits, row.id)
                     };
                     label.map(|label| (row.id, label.into()))
                 })
@@ -139,7 +164,11 @@ impl Inspector {
     }
 
     /// Creates the session and loads the baseline the first time the tab opens.
-    pub(super) fn open_actions(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::inspector) fn open_actions(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Detail::Ready(detail) = &mut self.detail else {
             return;
         };
@@ -166,7 +195,7 @@ impl Inspector {
                 let value = parse_replicas(&state.read(cx).value());
                 if let Some(actions) = this.actions_state()
                     && actions.state.is_some()
-                    && !actions.loading
+                    && !actions.loading()
                     && let Some(value) = value
                 {
                     actions.replicas = Some(value);
@@ -176,13 +205,12 @@ impl Inspector {
         ];
         let rows = actions::rows(&resource);
         detail.actions = Some(ActionsState {
-            loading: !rows.is_empty(),
             rows,
             resource,
             filter,
             query: String::new(),
             state: None,
-            load_error: None,
+            load: Fetch::Idle,
             replicas: None,
             edits: ResourceActionEdits::default(),
             pending_labels: Vec::new(),
@@ -194,7 +222,6 @@ impl Inspector {
             replicas_input,
             review: None,
             result: None,
-            load_task: None,
             _subscriptions: subscriptions,
         });
         self.load_action_state(window, cx);
@@ -210,18 +237,16 @@ impl Inspector {
         if actions.rows.is_empty() {
             return;
         }
-        actions.loading = true;
-        actions.load_error = None;
         let read = backend.action_state(kubecove_lib::models::ResourceActionStateRequest {
             target: actions::target(&actions.resource),
             kubeconfig_env_var: None,
         });
         let read = timings.measure("get_resource_action_state", read);
-        actions.load_task = Some(cx.spawn_in(window, async move |this, cx| {
+        actions.load = Fetch::start(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
                 let row = if let Some(actions) = this.actions_state() {
-                    match result {
+                    actions.load = match result {
                         Ok(state) => {
                             actions.current_labels = actions
                                 .rows
@@ -239,15 +264,14 @@ impl Inspector {
                                 })
                                 .collect();
                             actions.state = Some(state);
-                            actions.load_error = None;
+                            Fetch::Ready(())
                         }
                         Err(error) => {
                             actions.state = None;
                             actions.current_labels.clear();
-                            actions.load_error = Some(error.message);
+                            Fetch::Failed(error.message)
                         }
-                    }
-                    actions.loading = false;
+                    };
                     actions.expanded
                 } else {
                     None
@@ -299,18 +323,14 @@ impl Inspector {
         let Some(actions) = self.actions_state() else {
             return;
         };
-        if actions.loading || !actions::allowed(actions.state.as_ref(), action) {
+        if actions.loading() || !actions::allowed(actions.state.as_ref(), action) {
             return;
         }
         if action == ResourceActionKind::Edit && actions.pending() == 0 {
             return;
         }
         // A running execution keeps its result and refresh.
-        if actions
-            .review
-            .as_ref()
-            .is_some_and(|review| review.status == ReviewStatus::Executing)
-        {
+        if actions.review.as_ref().is_some_and(Review::executing) {
             return;
         }
         let replicas = (action == ResourceActionKind::Edit)
@@ -334,26 +354,26 @@ impl Inspector {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
                 if let Some(review) = this.actions_state().and_then(|a| a.review.as_mut()) {
-                    match result {
+                    review.step = match result {
                         Ok(preview) => {
-                            review.diff =
+                            let diff =
                                 unified_diff::compact(&preview.before_yaml, &preview.after_yaml);
-                            review.diff_text = review
-                                .diff
+                            let diff_text = diff
                                 .iter()
                                 .map(|line| line.text.as_ref())
                                 .collect::<Vec<_>>()
                                 .join("\n")
                                 .into();
-                            review.preview = Some(preview);
-                            review.status = ReviewStatus::Ready;
+                            ReviewStep::Previewed(Box::new(Previewed {
+                                preview,
+                                diff,
+                                diff_text,
+                                execution: Execution::Pending,
+                            }))
                         }
                         // A failed dry run shows its error and never executes.
-                        Err(error) => {
-                            review.status = ReviewStatus::Failed;
-                            review.error = Some(error.message);
-                        }
-                    }
+                        Err(error) => ReviewStep::Rejected(error.message),
+                    };
                 }
                 if this.persisted.preferences.skip_change_review
                     && action != ResourceActionKind::Delete
@@ -378,15 +398,9 @@ impl Inspector {
         actions.review = Some(Review {
             action,
             name: actions.resource.name.clone(),
-            status: ReviewStatus::Checking,
             request,
-            preview: None,
-            diff: Vec::new(),
-            diff_text: SharedString::default(),
-            error: None,
-            execution_attempted: false,
+            step: ReviewStep::Checking { _read: task.into() },
             confirmation,
-            _task: Some(task),
             _subscription: subscription,
         });
         self.open_review_dialog(window, cx);
@@ -406,12 +420,10 @@ impl Inspector {
         if !review.can_execute(cx) {
             return;
         }
-        let Some(preview) = review.preview.as_ref() else {
+        let ReviewStep::Previewed(previewed) = &mut review.step else {
             return;
         };
-        let request = actions::execution_request(&review.request, preview);
-        review.status = ReviewStatus::Executing;
-        review.error = None;
+        let request = actions::execution_request(&review.request, &previewed.preview);
         let reviewed_replicas = request.edits.as_ref().and_then(|edits| edits.replicas);
         let mut reviewed_edits = request.edits.clone().unwrap_or_default();
         reviewed_edits.replicas = None;
@@ -419,7 +431,7 @@ impl Inspector {
         let edit = request.action == ResourceActionKind::Edit;
         let read = backend.execute_action(request);
         let read = timings.measure("execute_action", read);
-        review._task = Some(cx.spawn_in(window, async move |this, cx| {
+        let call = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
                 let Some(actions) = this.actions_state() else {
@@ -438,7 +450,7 @@ impl Inspector {
                             actions.pending_labels.clear();
                             actions.editor = Default::default();
                             actions.new_entries.retain(|kind, _| {
-                                matches!(kind, super::action_fields::GroupKind::Metadata(_))
+                                matches!(kind, super::fields::GroupKind::Metadata(_))
                             });
                             actions.expanded = None;
                         }
@@ -453,17 +465,18 @@ impl Inspector {
                         this.load_action_state(window, cx);
                     }
                     Err(error) => {
-                        if let Some(review) = actions.review.as_mut() {
-                            review.status = ReviewStatus::Failed;
-                            review.error = Some(error.message);
-                            review.execution_attempted = true;
+                        if let Some(review) = actions.review.as_mut()
+                            && let ReviewStep::Previewed(previewed) = &mut review.step
+                        {
+                            previewed.execution = Execution::Failed(error.message);
                         }
                     }
                 }
                 cx.notify();
                 window.refresh();
             });
-        }));
+        });
+        previewed.execution = Execution::Running { _call: call.into() };
         cx.notify();
         window.refresh();
     }
@@ -473,11 +486,7 @@ impl Inspector {
         let Some(actions) = self.actions_state() else {
             return;
         };
-        if actions
-            .review
-            .as_ref()
-            .is_some_and(|review| review.status == ReviewStatus::Executing)
-        {
+        if actions.review.as_ref().is_some_and(Review::executing) {
             return;
         }
         actions.review = None;
