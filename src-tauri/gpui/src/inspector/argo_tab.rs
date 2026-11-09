@@ -36,7 +36,7 @@ pub(super) struct ArgoTab {
     pub(super) highlights: Vec<Vec<super::argo_highlight::Highlights>>,
     evidence: bool,
     pub(super) inspector: Option<ArgoApplicationInspector>,
-    pub(super) operation: super::argo_operations::Operation,
+    pub(super) operation: super::argo_operations::Phase,
     pub(super) options: super::argo_options::Options,
     pub(super) editors: Vec<(
         gpui_kit::Entity<gpui_kit::component::input::EditorState>,
@@ -528,7 +528,7 @@ pub(super) fn argo_tab(
         .min_w_0()
         .child(top)
         .when(
-            !matches!(state.operation.phase, super::argo_operations::Phase::Idle),
+            !matches!(state.operation, super::argo_operations::Phase::Idle),
             |column| column.child(super::argo_operations::panel(&state.operation, cx)),
         )
         .child(connection);

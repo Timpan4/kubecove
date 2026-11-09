@@ -398,21 +398,11 @@ pub(super) fn controls(
 ) -> Div {
     use crate::theme::Tokens;
     use gpui_kit::SharedString;
-    let operation_active = matches!(
-        state.operation.phase,
-        super::argo_operations::Phase::Checking
-            | super::argo_operations::Phase::Submitting
-            | super::argo_operations::Phase::Unconfirmed(_)
-    );
-    let busy = pending || operation_active;
+    let in_flight = state.operation.in_flight();
+    let busy = pending || in_flight.is_some();
     // Only the button that started the in-flight operation shows a spinner.
-    let in_flight = state
-        .operation
-        .last_request
-        .as_ref()
-        .map(|request| request.action.as_str());
-    let refreshing = operation_active && matches!(in_flight, Some("refresh" | "hardRefresh"));
-    let syncing = operation_active && in_flight == Some("sync");
+    let refreshing = matches!(in_flight, Some("refresh" | "hardRefresh"));
+    let syncing = in_flight == Some("sync");
     let refresh_open = state.refresh_options;
     let refresh_focus = state.options.refresh_focus.clone();
     let refresh_focus_on_open = refresh_focus.clone();

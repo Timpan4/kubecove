@@ -3,32 +3,67 @@ use super::{
     Inspector,
     controls::{Variant, button},
     detail::Detail,
+    request::InFlight,
 };
 use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
-use gpui_kit::{Context, Task, Window, div, prelude::*, px};
+use gpui_kit::{Context, Window, div, prelude::*, px};
 use kubecove_lib::models::{
-    ArgoOperationConfirmation, ArgoOperationPreflight, ArgoOperationRequest,
+    ArgoApplicationInspector, ArgoOperationConfirmation, ArgoOperationRequest,
 };
 use std::rc::Rc;
 
+/// One review's lifecycle. Each step carries what it needs, and a step that runs a
+/// read owns it, so leaving the step cancels the read.
 #[derive(Default)]
 pub(super) enum Phase {
     #[default]
     Idle,
-    Checking,
-    Review(Box<ArgoOperationPreflight>),
-    Submitting,
-    Failed(String),
-    Unconfirmed(String),
+    /// Reads the Application and the preflight for `action`.
+    Checking { action: String, _read: InFlight },
+    Review(Box<Reviewed>),
+    Submitting(Submission),
+    /// Retry reviews `retry` again.
+    Failed {
+        message: String,
+        retry: Box<ArgoOperationRequest>,
+    },
+    /// The submission's result is unknown; only a reload can tell.
+    Unconfirmed { message: String, action: String },
 }
-#[derive(Default)]
-pub(super) struct Operation {
-    pub phase: Phase,
-    request: Rc<()>,
-    pub(super) task: Option<Task<()>>,
-    baseline: Option<kubecove_lib::models::ArgoApplicationInspector>,
-    pub(super) last_request: Option<ArgoOperationRequest>,
+impl Phase {
+    /// The action whose operation is in flight, which disables the operation buttons
+    /// and spins the one that started it.
+    pub(super) fn in_flight(&self) -> Option<&str> {
+        match self {
+            Phase::Checking { action, .. } | Phase::Unconfirmed { action, .. } => Some(action),
+            Phase::Submitting(submission) => Some(&submission.action),
+            Phase::Idle | Phase::Review(_) | Phase::Failed { .. } => None,
+        }
+    }
+}
+
+/// An allowed preflight, parsed once when it arrives.
+pub(super) struct Reviewed {
+    session_id: String,
+    /// The canonical request the backend reviewed. The panel shows it and the
+    /// outcome observer watches it.
+    request: ArgoOperationRequest,
+    action: String,
+    transport: String,
+    /// The Application as it was before the operation, which tells the observer
+    /// whether Argo CD has acted on it since.
+    baseline: ArgoApplicationInspector,
+    /// The request the user asked for, which a refused submission retries.
+    asked: ArgoOperationRequest,
+}
+
+/// A confirmed review whose submission runs. Closing the detail moves it to
+/// `Inspector::argo_submissions`, so an accepted outcome is still observed.
+pub(super) struct Submission {
+    pub(super) id: Rc<()>,
+    action: String,
+    _read: InFlight,
 }
 impl Inspector {
     pub(super) fn review_argo_operation(
@@ -51,10 +86,7 @@ impl Inspector {
         let Some(state) = detail.argo.as_mut() else {
             return;
         };
-        if matches!(
-            state.operation.phase,
-            Phase::Checking | Phase::Submitting | Phase::Unconfirmed(_)
-        ) {
+        if state.operation.in_flight().is_some() {
             return;
         }
         let Some(snapshot) = &state.inspector else {
@@ -122,12 +154,10 @@ impl Inspector {
         let Some(state) = self.argo_tab_state() else {
             return;
         };
-        if !matches!(state.operation.phase, Phase::Failed(_)) {
-            return;
-        }
-        let Some(request) = state.operation.last_request.clone() else {
+        let Phase::Failed { retry, .. } = &state.operation else {
             return;
         };
+        let request = ArgoOperationRequest::clone(retry);
         self.start_argo_review(request, window, cx);
     }
     fn start_argo_review(
@@ -150,7 +180,8 @@ impl Inspector {
         }) {
             return;
         }
-        state.operation.last_request = Some(request.clone());
+        let action = request.action.clone();
+        let retry = request.clone();
         let read = async move {
             let before = backend
                 .inspect_argo(crate::backend::ArgoInspection {
@@ -170,45 +201,55 @@ impl Inspector {
             let review = backend.preflight_argo(request).await?;
             Ok((before, review))
         };
-        state.operation.request = Rc::new(());
-        let current = state.operation.request.clone();
-        state.operation.phase = Phase::Checking;
-        state.operation.task = Some(cx.spawn_in(window, async move |this, cx| {
+        // Replacing the step cancels an earlier check, and closing the detail drops it,
+        // so a running check always belongs to the open review.
+        let check = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
                 let Some(state) = this.argo_tab_state() else {
                     return;
                 };
-                if !Rc::ptr_eq(&current, &state.operation.request) {
-                    return;
-                }
-                state.operation.phase = match result {
-                    Ok((before, review))
-                        if review.allowed
-                            && review.session_id.is_some()
-                            && review.reviewed_request.is_some() =>
-                    {
-                        state.operation.baseline = Some(before);
-                        Phase::Review(Box::new(review))
+                state.operation = match result {
+                    Ok((baseline, review)) => {
+                        match (review.allowed, review.session_id, review.reviewed_request) {
+                            (true, Some(session_id), Some(request)) => {
+                                Phase::Review(Box::new(Reviewed {
+                                    session_id,
+                                    request,
+                                    action: review.action,
+                                    transport: review.transport,
+                                    baseline,
+                                    asked: retry,
+                                }))
+                            }
+                            _ => Phase::Failed {
+                                message: review
+                                    .reason
+                                    .unwrap_or_else(|| "Operation unavailable".into()),
+                                retry: Box::new(retry),
+                            },
+                        }
                     }
-                    Ok((_, review)) => Phase::Failed(
-                        review
-                            .reason
-                            .unwrap_or_else(|| "Operation unavailable".into()),
-                    ),
-                    Err(error) => Phase::Failed(error.message),
+                    Err(error) => Phase::Failed {
+                        message: error.message,
+                        retry: Box::new(retry),
+                    },
                 };
                 cx.notify();
             });
-        }));
+        });
+        state.operation = Phase::Checking {
+            action,
+            _read: check.into(),
+        };
         cx.notify();
     }
     pub(super) fn cancel_argo_review(&mut self, cx: &mut Context<Self>) {
         if let Some(state) = self.argo_tab_state() {
-            if matches!(state.operation.phase, Phase::Submitting) {
+            if matches!(state.operation, Phase::Submitting(_)) {
                 return;
             }
-            state.operation = Operation::default();
+            state.operation = Phase::Idle;
             cx.notify();
         }
     }
@@ -216,21 +257,24 @@ impl Inspector {
         let Some(state) = self.argo_tab_state() else {
             return;
         };
-        let Phase::Review(review) = &state.operation.phase else {
+        if !matches!(state.operation, Phase::Review(_)) {
             return;
-        };
-        let Some(session_id) = review.session_id.clone() else {
-            return;
-        };
-        let observed_request = review.reviewed_request.clone().expect("canonical review");
-        let baseline = state
-            .operation
-            .baseline
-            .clone()
-            .expect("fresh review baseline");
+        }
         // Take the review before issuing a request. A failed submission cannot replay it.
-        state.operation.phase = Phase::Submitting;
-        let current = state.operation.request.clone();
+        let Phase::Review(review) = std::mem::take(&mut state.operation) else {
+            return;
+        };
+        let Reviewed {
+            session_id,
+            request,
+            baseline,
+            asked,
+            ..
+        } = *review;
+        let id = Rc::new(());
+        let current = id.clone();
+        let action = asked.action.clone();
+        let unconfirmed_action = action.clone();
         let read = self.backend.run_argo(ArgoOperationConfirmation {
             confirmation: session_id.clone(),
             session_id,
@@ -242,34 +286,47 @@ impl Inspector {
                 // A closed or reopened detail has no matching review to update, but an
                 // accepted submission is still observed, as the web tracker does.
                 if let Some(state) = this.argo_tab_state()
-                    && Rc::ptr_eq(&current, &state.operation.request)
+                    && matches!(&state.operation, Phase::Submitting(s) if Rc::ptr_eq(&s.id, &current))
                 {
-                    state.operation.phase = match result {
+                    state.operation = match result {
                         Ok(result) if result.accepted => Phase::Idle,
-                        Ok(result) => Phase::Failed(result.message),
-                        Err(error) => Phase::Unconfirmed(format!(
-                            "Outcome unconfirmed. Reload before retrying. {}",
-                            error.message
-                        )),
+                        Ok(result) => Phase::Failed {
+                            message: result.message,
+                            retry: Box::new(asked),
+                        },
+                        Err(error) => Phase::Unconfirmed {
+                            message: format!(
+                                "Outcome unconfirmed. Reload before retrying. {}",
+                                error.message
+                            ),
+                            action: unconfirmed_action,
+                        },
                     };
                 }
+                // The submission has finished, so a closed detail's entry is done too.
+                this.argo_submissions
+                    .retain(|submission| !Rc::ptr_eq(&submission.id, &current));
                 if accepted {
-                    this.observe_argo_operation(observed_request, baseline, cx);
+                    this.observe_argo_operation(request, baseline, cx);
                 }
                 cx.notify();
             });
         });
         if let Some(state) = self.argo_tab_state() {
-            state.operation.task = Some(task);
+            state.operation = Phase::Submitting(Submission {
+                id,
+                action,
+                _read: task.into(),
+            });
         }
         cx.notify();
     }
 }
-pub(super) fn panel(state: &Operation, cx: &mut Context<Inspector>) -> gpui_kit::AnyElement {
+pub(super) fn panel(phase: &Phase, cx: &mut Context<Inspector>) -> gpui_kit::AnyElement {
     let body = div().flex().flex_col().gap(px(8.));
-    match &state.phase {
+    match phase {
         Phase::Idle => body.into_any_element(),
-        Phase::Checking => body
+        Phase::Checking { .. } => body
             .child(ui::xs("Checking exact Application and authorization…"))
             .child(
                 button(Variant::Outline, 24., false)
@@ -279,28 +336,23 @@ pub(super) fn panel(state: &Operation, cx: &mut Context<Inspector>) -> gpui_kit:
                     .on_click(cx.listener(|this, _, _, cx| this.cancel_argo_review(cx))),
             )
             .into_any_element(),
-        Phase::Submitting => body
+        Phase::Submitting(_) => body
             .child(ui::xs("Submitting reviewed operation…"))
             .into_any_element(),
-        Phase::Failed(message) | Phase::Unconfirmed(message) => body
-            .child(
+        Phase::Failed { message, .. } | Phase::Unconfirmed { message, .. } => {
+            let unconfirmed = matches!(phase, Phase::Unconfirmed { .. });
+            body.child(
                 ui::xs(message.clone())
                     .id("argo-operation-result")
                     .test_support()
                     .aria_label(message.clone())
-                    .text_color(
-                        if matches!(state.phase, Phase::Failed(_) | Phase::Unconfirmed(_)) {
-                            Tokens::destructive()
-                        } else {
-                            Tokens::foreground()
-                        },
-                    ),
+                    .text_color(Tokens::destructive()),
             )
             .child(
                 button(Variant::Outline, 24., false)
                     .id("argo-operation-retry")
                     .test_support()
-                    .child(if matches!(state.phase, Phase::Unconfirmed(_)) {
+                    .child(if unconfirmed {
                         "Retry state refresh"
                     } else {
                         "Retry operation"
@@ -308,7 +360,7 @@ pub(super) fn panel(state: &Operation, cx: &mut Context<Inspector>) -> gpui_kit:
                     .on_click(cx.listener(|this, _, window, cx| {
                         if this
                             .argo_tab_state()
-                            .is_some_and(|s| matches!(s.operation.phase, Phase::Unconfirmed(_)))
+                            .is_some_and(|s| matches!(s.operation, Phase::Unconfirmed { .. }))
                         {
                             this.reload_argo(window, cx);
                         } else {
@@ -316,12 +368,10 @@ pub(super) fn panel(state: &Operation, cx: &mut Context<Inspector>) -> gpui_kit:
                         }
                     })),
             )
-            .into_any_element(),
+            .into_any_element()
+        }
         Phase::Review(review) => {
-            let request = review
-                .reviewed_request
-                .as_ref()
-                .expect("review contains canonical request");
+            let request = &review.request;
             let target = format!(
                 "{} {} {} Application {} {}",
                 review.action,

@@ -1,20 +1,110 @@
 //! Accepted submissions remain owned by the workspace after their detail closes.
-use super::{Inspector, detail::ResourceDetail};
+use super::{Inspector, detail::ResourceDetail, request::InFlight};
 use crate::targets::TestSupportExt;
 use crate::{backend::ArgoInspection, ui};
-use gpui_kit::{Context, Div, Task, div, prelude::*};
-use kubecove_lib::models::{ArgoApplicationInspector, ArgoApplicationRef, ArgoOperationRequest};
-use std::{rc::Rc, time::Duration};
+use gpui_kit::{Context, Div, div, prelude::*};
+use kubecove_lib::models::{
+    AppError, ArgoApplicationInspector, ArgoApplicationRef, ArgoOperationRequest,
+};
+use std::time::Duration;
 
+/// One accepted operation, observed until Argo CD reports its end. Replacing or
+/// dropping the outcome cancels its observation.
 pub(super) struct Outcome {
-    pub busy: bool,
-    pub message: String,
-    identity: Rc<()>,
-    _task: Task<()>,
+    observation: Observation,
+    _observer: InFlight,
     request: ArgoOperationRequest,
     baseline: ArgoApplicationInspector,
-    retryable: bool,
+}
+/// What the observer knows about an accepted operation.
+enum Observation {
+    /// Argo CD has not finished it. `read_error` holds the last failed read, which
+    /// offers a manual retry beside the automatic one.
+    Waiting {
+        saw_pending: bool,
+        read_error: Option<String>,
+    },
+    Finished(String),
+}
+impl Observation {
+    fn message(&self) -> String {
+        match self {
+            Observation::Waiting {
+                read_error: Some(error),
+                ..
+            } => format!(
+                "Operation accepted; current status unavailable. Retrying observation. {error}"
+            ),
+            Observation::Waiting { .. } => "Accepted; waiting for Argo CD to complete".into(),
+            Observation::Finished(message) => message.clone(),
+        }
+    }
+    fn waiting(&self) -> bool {
+        matches!(self, Observation::Waiting { .. })
+    }
+    fn read_failed(&self) -> bool {
+        matches!(
+            self,
+            Observation::Waiting {
+                read_error: Some(_),
+                ..
+            }
+        )
+    }
+}
+/// One observation read. `saw_pending` records whether Argo CD has reported the
+/// operation as pending since it was accepted.
+fn observe(
     saw_pending: bool,
+    request: &ArgoOperationRequest,
+    baseline: &ArgoApplicationInspector,
+    read: Result<ArgoApplicationInspector, AppError>,
+) -> Observation {
+    let snapshot = match read {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            return Observation::Waiting {
+                saw_pending,
+                read_error: Some(error.message),
+            };
+        }
+    };
+    if baseline.application.uid.is_some() && baseline.application.uid != snapshot.application.uid
+    {
+        return Observation::Finished(
+            "Application was replaced. The previous operation's outcome is unknown.".into(),
+        );
+    }
+    let refresh = matches!(request.action.as_str(), "refresh" | "hardRefresh");
+    let phase = text(&snapshot.operation_state, "phase");
+    let active = snapshot.operation_requested || matches!(phase, Some("Running" | "Terminating"));
+    let pending = if refresh {
+        snapshot.refresh_requested.is_some()
+    } else {
+        active
+    };
+    let changed = if refresh {
+        text(&snapshot.status, "reconciledAt").is_some()
+            && text(&snapshot.status, "reconciledAt") != text(&baseline.status, "reconciledAt")
+    } else {
+        text(&snapshot.operation_state, "startedAt") != text(&baseline.operation_state, "startedAt")
+    };
+    if !pending && (saw_pending || changed) {
+        if refresh || phase == Some("Succeeded") {
+            return Observation::Finished("Argo CD confirmed completion".into());
+        }
+        if matches!(phase, Some("Failed" | "Error")) {
+            return Observation::Finished(format!(
+                "Argo CD reported failure. {}",
+                text(&snapshot.operation_state, "message").unwrap_or_default()
+            ));
+        }
+    }
+    // A successful read replaces an earlier read error, as the web tracker does on each read.
+    Observation::Waiting {
+        saw_pending: saw_pending || pending,
+        read_error: None,
+    }
 }
 fn key(app: &ArgoApplicationRef) -> String {
     serde_json::to_string(&(&app.context, &app.workspace_id, &app.namespace, &app.name))
@@ -25,51 +115,50 @@ fn text<'a>(v: &'a Option<serde_json::Value>, field: &str) -> Option<&'a str> {
 }
 impl Inspector {
     pub(super) fn argo_operation_busy(&self, app: &ArgoApplicationRef) -> bool {
-        self.argo_outcomes.get(&key(app)).is_some_and(|o| o.busy)
+        self.argo_outcomes
+            .get(&key(app))
+            .is_some_and(|o| o.observation.waiting())
     }
     pub(super) fn argo_outcome_panel(
         &self,
         detail: &ResourceDetail,
         cx: &mut Context<Self>,
     ) -> Option<Div> {
-        let mut panel = None;
-        if let Some(snapshot) = detail.argo.as_ref().and_then(|s| s.inspector.as_ref())
-            && let Some(outcome) = self.argo_outcomes.get(&key(&snapshot.application))
-        {
-            panel = Some(
-                div()
-                    .child(
-                        ui::xs(outcome.message.clone())
-                            .id("argo-outcome")
+        let snapshot = detail.argo.as_ref()?.inspector.as_ref()?;
+        let outcome = self.argo_outcomes.get(&key(&snapshot.application))?;
+        let message = outcome.observation.message();
+        Some(
+            div()
+                .child(
+                    ui::xs(message.clone())
+                        .id("argo-outcome")
+                        .test_support()
+                        .aria_label(message),
+                )
+                .when(outcome.observation.read_failed(), |panel| {
+                    let id = key(&snapshot.application);
+                    panel.child(
+                        super::controls::button(super::controls::Variant::Outline, 24., false)
+                            .id("argo-state-retry")
                             .test_support()
-                            .aria_label(outcome.message.clone()),
+                            .child("Retry state refresh")
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                let Some(job) = this
+                                    .argo_outcomes
+                                    .get(&id)
+                                    .filter(|j| j.observation.read_failed())
+                                else {
+                                    return;
+                                };
+                                this.observe_argo_operation(
+                                    job.request.clone(),
+                                    job.baseline.clone(),
+                                    cx,
+                                );
+                            })),
                     )
-                    .when(outcome.retryable, |panel| {
-                        let id = key(&snapshot.application);
-                        panel.child(
-                            super::controls::button(super::controls::Variant::Outline, 24., false)
-                                .id("argo-state-retry")
-                                .test_support()
-                                .child("Retry state refresh")
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    let Some(job) = this
-                                        .argo_outcomes
-                                        .get(&id)
-                                        .filter(|j| j.busy && j.retryable)
-                                    else {
-                                        return;
-                                    };
-                                    this.observe_argo_operation(
-                                        job.request.clone(),
-                                        job.baseline.clone(),
-                                        cx,
-                                    );
-                                })),
-                        )
-                    }),
-            );
-        }
-        panel
+                }),
+        )
     }
     pub(super) fn observe_argo_operation(
         &mut self,
@@ -78,103 +167,61 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) {
         let id = key(&request.application);
-        let identity = Rc::new(());
-        let current = identity.clone();
         let job_id = id.clone();
         let backend = self.backend.clone();
         let saved_request = request.clone();
         let saved_baseline = baseline.clone();
-        let saw_pending = self
-            .argo_outcomes
-            .get(&id)
-            .is_some_and(|job| job.busy && job.saw_pending);
-        let task = cx.spawn(async move |this, cx| {
+        // A retry keeps what the replaced observation already saw.
+        let saw_pending = matches!(
+            self.argo_outcomes.get(&id).map(|job| &job.observation),
+            Some(Observation::Waiting {
+                saw_pending: true,
+                ..
+            })
+        );
+        // Inserting this outcome drops the one it replaces, which cancels that
+        // observer, so the entry under `job_id` is always this observer's own.
+        let observer = cx.spawn(async move |this, cx| {
             loop {
-                let result = backend
+                let read = backend
                     .inspect_argo(ArgoInspection {
                         application: request.application.clone(),
                         connection_id: request.connection_id.clone(),
                         source: request.kubeconfig_env_var.clone(),
                     })
                     .await;
-                let keep = this.update(cx, |this, cx| {
-                    let Some(job) = this.argo_outcomes.get_mut(&job_id)
-                        .filter(|j| Rc::ptr_eq(&j.identity, &current))
-                    else {
-                        return false;
-                    };
-                    match result {
-                        Err(error) => {
-                            job.retryable = true;
-                            job.message = format!(
-                                "Operation accepted; current status unavailable. Retrying observation. {}",
-                                error.message
-                            );
-                        }
-                        Ok(snapshot) => {
-                            job.retryable = false;
-                            if baseline.application.uid.is_some()
-                                && baseline.application.uid != snapshot.application.uid
-                            {
-                                job.busy = false;
-                                job.message = "Application was replaced. The previous operation's outcome is unknown.".into();
-                            } else {
-                                let refresh = matches!(request.action.as_str(), "refresh" | "hardRefresh");
-                                let phase = text(&snapshot.operation_state, "phase");
-                                let active = snapshot.operation_requested
-                                    || matches!(phase, Some("Running" | "Terminating"));
-                                let pending = if refresh {
-                                    snapshot.refresh_requested.is_some()
-                                } else {
-                                    active
-                                };
-                                let changed = if refresh {
-                                    text(&snapshot.status, "reconciledAt").is_some()
-                                        && text(&snapshot.status, "reconciledAt") != text(&baseline.status, "reconciledAt")
-                                } else {
-                                    text(&snapshot.operation_state, "startedAt") != text(&baseline.operation_state, "startedAt")
-                                };
-                                if !pending && (job.saw_pending || changed) {
-                                    if refresh || phase == Some("Succeeded") {
-                                        job.busy = false;
-                                        job.message = "Argo CD confirmed completion".into();
-                                    } else if matches!(phase, Some("Failed" | "Error")) {
-                                        job.busy = false;
-                                        job.message = format!(
-                                            "Argo CD reported failure. {}",
-                                            text(&snapshot.operation_state, "message").unwrap_or_default()
-                                        );
-                                    }
-                                }
-                                job.saw_pending |= pending;
-                                // A successful read replaces an earlier read error, as the web tracker does on each read.
-                                if job.busy {
-                                    job.message = "Accepted; waiting for Argo CD to complete".into();
-                                }
-                            }
-                        }
-                    }
-                    cx.notify();
-                    job.busy
-                }).unwrap_or(false);
+                let keep = this
+                    .update(cx, |this, cx| {
+                        let Some(job) = this.argo_outcomes.get_mut(&job_id) else {
+                            return false;
+                        };
+                        let Observation::Waiting { saw_pending, .. } = job.observation else {
+                            return false;
+                        };
+                        job.observation = observe(saw_pending, &request, &baseline, read);
+                        cx.notify();
+                        job.observation.waiting()
+                    })
+                    .unwrap_or(false);
                 if !keep {
                     break;
                 }
                 // Same recovery interval as resource-watch.ts and the web operation tracker.
-                cx.background_executor().timer(Duration::from_millis(15_000)).await;
+                cx.background_executor()
+                    .timer(Duration::from_millis(15_000))
+                    .await;
             }
         });
         self.argo_outcomes.insert(
             id,
             Outcome {
-                busy: true,
-                message: "Accepted; waiting for Argo CD to complete".into(),
-                identity,
-                _task: task,
+                observation: Observation::Waiting {
+                    saw_pending,
+                    read_error: None,
+                },
+                _observer: observer.into(),
                 request: saved_request,
                 baseline: saved_baseline,
-                retryable: false,
-                saw_pending,
             },
         );
     }

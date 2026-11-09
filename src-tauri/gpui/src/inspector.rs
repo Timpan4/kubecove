@@ -238,8 +238,9 @@ pub struct Inspector {
     argo_highlighter: Option<gpui_kit::component::highlighter::SyntaxHighlighter>,
     argo_outcomes: std::collections::HashMap<String, argo_outcomes::Outcome>,
     /// Submissions still in flight when their detail closed. Dropping them
-    /// would cancel the submit and lose its outcome.
-    argo_submissions: Vec<Task<()>>,
+    /// would cancel the submit and lose its outcome; each removes itself once
+    /// it finishes.
+    argo_submissions: Vec<argo_operations::Submission>,
     helm_page: helm_page::HelmPage,
     cluster: cluster::ClusterState,
     incidents: incidents::IncidentsState,
@@ -530,10 +531,11 @@ impl Inspector {
         // Keep an in-flight submission alive so its outcome still reaches the observer.
         if let Detail::Ready(detail) = &mut self.detail
             && let Some(argo) = detail.argo.as_mut()
-            && matches!(argo.operation.phase, argo_operations::Phase::Submitting)
-            && let Some(task) = argo.operation.task.take()
+            && matches!(argo.operation, argo_operations::Phase::Submitting(_))
+            && let argo_operations::Phase::Submitting(submission) =
+                std::mem::take(&mut argo.operation)
         {
-            self.argo_submissions.push(task);
+            self.argo_submissions.push(submission);
         }
         self.detail = Detail::Closed;
         self.notice = None;
