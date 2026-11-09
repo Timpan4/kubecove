@@ -215,9 +215,11 @@
         { "action": "coverageScript", "script": "stop-failed" },
         { "action": "execControl", "operation": "stop" },
         { "action": "expectExecState", "container": "app", "status": "error", "contains": "[stop failed; the session may still be running]" },
+        { "action": "expectExecState", "container": "app", "status": "error", "contains": "Controlled exec app" },
         { "action": "coverageScript", "script": "base" },
         { "action": "execControl", "operation": "stop" },
         { "action": "expectExecState", "container": "app", "status": "stopped", "contains": "[stop failed; the session may still be running]" },
+        { "action": "expectExecState", "container": "app", "status": "stopped", "contains": "Controlled exec app" },
         { "action": "expectNoPageText", "text": "Controlled stop failure" },
         { "action": "closeDetail" },
         { "action": "expectDetailClosed" }
