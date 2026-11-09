@@ -293,6 +293,18 @@ impl Inspector {
     pub(super) fn clear_argo_secrets(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.argo_connections.fields().clear_secrets(window, cx);
     }
+    /// The open dialog's typed `token` or `password`. Masked inputs expose no accessibility
+    /// value, so UI tests ask here.
+    #[doc(hidden)]
+    pub fn argo_typed_secret(&self, field: &str, cx: &gpui_kit::App) -> String {
+        let fields = self.argo_connections.fields();
+        let input = match field {
+            "token" => &fields.token,
+            "password" => &fields.password,
+            other => panic!("{other} is not a masked Argo CD connection field"),
+        };
+        input.read(cx).value().to_string()
+    }
     /// Applies the web's server-source default to the open dialog. Until the user picks a source,
     /// the first connectable discovered Service is chosen. A chosen Service stays chosen while
     /// discovery still lists it. Otherwise it falls back to the first one, as the web does.

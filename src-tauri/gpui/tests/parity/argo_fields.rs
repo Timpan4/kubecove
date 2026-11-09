@@ -28,7 +28,20 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
     }
     window.render_frame(cx);
     // The message omits the value, which can be a credential.
-    let actual = window.find(id).value().unwrap_or("").to_owned();
+    let field = string(step, "field");
+    let actual = if matches!(field, "token" | "password") {
+        // Masked inputs expose no accessibility value, so the Inspector answers, as the web
+        // driver reads the input's value.
+        gpui_kit::base::Root::read(window, cx)
+            .view()
+            .clone()
+            .downcast::<kubecove_gpui::Inspector>()
+            .expect("the Inspector is the window's content")
+            .read(cx)
+            .argo_typed_secret(field, cx)
+    } else {
+        window.find(id).value().unwrap_or("").to_owned()
+    };
     assert!(
         actual == string(step, "value"),
         "{id} does not hold the expected value"
