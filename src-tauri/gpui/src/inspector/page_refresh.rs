@@ -2,6 +2,7 @@
 use super::{
     Inspector, Page,
     live_data::{self, COALESCE, RECOVERY, WatchInput},
+    watch_status::{self, LiveStatus, WatchLink},
 };
 use crate::backend::WatchTarget;
 use gpui_kit::{Context, Task, Window};
@@ -14,15 +15,7 @@ pub(super) struct PageRefresh {
     read_at: [Option<Instant>; 4],
     watches: Vec<Task<()>>,
     watch_keys: Vec<String>,
-    statuses: std::collections::HashMap<String, WatchState>,
-}
-
-#[derive(Clone, Copy, PartialEq)]
-enum WatchState {
-    Opening,
-    Live,
-    Lost,
-    Forbidden,
+    statuses: std::collections::HashMap<String, WatchLink>,
 }
 
 fn slot(page: Page) -> Option<(usize, Duration)> {
@@ -39,45 +32,20 @@ fn slot(page: Page) -> Option<(usize, Duration)> {
 }
 
 impl Inspector {
-    pub(super) fn live_label(&self) -> &'static str {
+    pub(super) fn live_status(&self) -> LiveStatus {
         if self.page != Page::GitOps {
             // ResourceLiveStatusMenu.svelte delays and holds "Refreshing…" like other indicators.
             let refreshing = self.loading.phase("live-refresh", self.live.refreshing);
             return if refreshing.shown() {
-                "Refreshing…"
+                LiveStatus::Refreshing
             } else {
-                self.live.settled_label()
+                self.live.settled_status()
             };
         }
-        if self.gitops.error().is_some() {
-            return "Refresh failed";
-        }
-        let statuses = &self.page_refresh.statuses;
-        if statuses.is_empty() {
-            return "Not connected";
-        }
-        if statuses
-            .values()
-            .all(|status| *status == WatchState::Opening)
-        {
-            return "Connecting";
-        }
-        if statuses.values().any(|status| *status == WatchState::Lost) {
-            return "Reconnecting";
-        }
-        if statuses
-            .values()
-            .all(|status| *status == WatchState::Forbidden)
-        {
-            return "Polling (limited)";
-        }
-        if statuses
-            .values()
-            .any(|status| *status == WatchState::Forbidden)
-        {
-            return "Live (limited)";
-        }
-        "Live"
+        watch_status::aggregate(
+            self.gitops.error().is_some(),
+            self.page_refresh.statuses.values().map(|&link| link.into()),
+        )
     }
     pub(super) fn invalidate_page_read(&mut self, page: Page) {
         if let Some((index, _)) = slot(page) {
@@ -184,7 +152,7 @@ impl Inspector {
             let signature = serde_json::to_string(&key).expect("watch key");
             self.page_refresh
                 .statuses
-                .insert(signature.clone(), WatchState::Opening);
+                .insert(signature.clone(), WatchLink::Opening);
             let backend = self.backend.clone();
             let scope = self.scope.clone();
             let context = scope.context.clone();
@@ -216,7 +184,7 @@ impl Inspector {
                                 let _ = this.update(cx, |this, cx| {
                                     this.page_refresh
                                         .statuses
-                                        .insert(signature.clone(), WatchState::Lost);
+                                        .insert(signature.clone(), WatchLink::Lost);
                                     cx.notify();
                                 });
                                 recovery.await;
@@ -241,25 +209,25 @@ impl Inspector {
                                 }) => {
                                     reload = lost;
                                     lost = false;
-                                    status = Some(WatchState::Live);
+                                    status = Some(WatchLink::Connected);
                                 }
                                 WatchInput::Message(StreamMessage::Status {
                                     status: StreamStatus::Forbidden,
                                     ..
                                 }) => {
                                     lost = true;
-                                    status = Some(WatchState::Forbidden);
+                                    status = Some(WatchLink::Denied);
                                 }
                                 WatchInput::Message(
                                     StreamMessage::Status { .. } | StreamMessage::Error { .. },
                                 ) => {
                                     lost = true;
-                                    status = Some(WatchState::Lost);
+                                    status = Some(WatchLink::Lost);
                                 }
                                 WatchInput::Message(StreamMessage::Stopped { .. })
                                 | WatchInput::Closed => {
                                     ended = true;
-                                    status = Some(WatchState::Lost);
+                                    status = Some(WatchLink::Lost);
                                 }
                                 WatchInput::Tick => {
                                     reload = lost;

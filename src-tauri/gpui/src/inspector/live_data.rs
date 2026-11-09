@@ -1,5 +1,9 @@
 //! View-owned streams. Recovery follows resource-watch.ts; Rust owns transport backoff.
-use super::{Inspector, Page};
+use super::{
+    Inspector, Page,
+    request::InFlight,
+    watch_status::{self, Link, LiveStatus, WatchLink, WatchSummary},
+};
 use crate::backend::{KindRows, LogStream, WatchTarget};
 use gpui_kit::{Context, Task, Window};
 use kubecove_lib::models::{
@@ -44,15 +48,50 @@ pub(super) struct LiveData {
 
 #[derive(Default)]
 struct Registration {
-    seen_status: bool,
-    connected: bool,
-    forbidden: Option<String>,
-    error: Option<String>,
+    phase: WatchPhase,
     reload_error: Option<String>,
     catching_up: bool,
     recycled: Vec<kubecove_lib::models::ResourceSummary>,
-    /// `None` until the rows for the key settle, so the watch starts at their version.
-    task: Option<Task<()>>,
+}
+
+/// A watch's lifecycle, as `WatchPhase` in resource-watch.ts.
+#[derive(Default)]
+enum WatchPhase {
+    /// The rows for the key have not settled, so the watch waits to start at their version.
+    #[default]
+    Waiting,
+    /// The stream task runs; dropping the phase cancels it.
+    Running { _task: InFlight, link: Link },
+}
+
+impl Registration {
+    fn link(&mut self) -> Option<&mut Link> {
+        match &mut self.phase {
+            WatchPhase::Waiting => None,
+            WatchPhase::Running { link, .. } => Some(link),
+        }
+    }
+
+    fn summary(&self) -> WatchSummary {
+        WatchSummary {
+            link: match &self.phase {
+                WatchPhase::Waiting => WatchLink::Opening,
+                WatchPhase::Running { link, .. } => link.summary(),
+            },
+            refresh_failed: self.reload_error.is_some(),
+            catching_up: self.catching_up,
+        }
+    }
+
+    fn messages(&self) -> impl Iterator<Item = &String> {
+        let [error, denied] = match &self.phase {
+            WatchPhase::Waiting => [None, None],
+            WatchPhase::Running { link, .. } => link.messages(),
+        };
+        [error, denied, self.reload_error.as_ref()]
+            .into_iter()
+            .flatten()
+    }
 }
 
 impl LiveData {
@@ -70,61 +109,31 @@ impl LiveData {
         self.refreshing = false;
         self.refresh_error = None;
     }
-    pub fn label(&self) -> &'static str {
+    pub fn status(&self) -> LiveStatus {
         if self.refreshing {
-            return "Refreshing…";
+            return LiveStatus::Refreshing;
         }
-        self.settled_label()
+        self.settled_status()
     }
 
-    /// The label without the pending refresh, for the delayed refresh indicator.
-    pub fn settled_label(&self) -> &'static str {
-        if self.refresh_error.is_some() {
-            return "Refresh failed";
-        }
-        if !self.watches.is_empty()
-            && self
-                .watches
-                .values()
-                .all(|w| !w.seen_status && w.error.is_none())
-        {
-            return "Connecting";
-        }
-        if self.watches.values().any(|w| w.reload_error.is_some()) {
-            "Refresh failed"
-        } else if self
-            .watches
-            .values()
-            .any(|w| w.error.is_some() || (!w.connected && w.forbidden.is_none()))
-        {
-            "Reconnecting"
-        } else if self.watches.values().any(|w| w.catching_up) {
-            "Catching up"
-        } else if !self.watches.is_empty() && self.watches.values().all(|w| w.forbidden.is_some()) {
-            "Polling (limited)"
-        } else if self.watches.values().any(|w| w.forbidden.is_some()) {
-            "Live (limited)"
-        } else if self.watches.is_empty() {
-            "Not connected"
-        } else {
-            "Live"
-        }
+    /// The status without the pending refresh, for the delayed refresh indicator.
+    pub fn settled_status(&self) -> LiveStatus {
+        watch_status::aggregate(
+            self.refresh_error.is_some(),
+            self.watches.values().map(Registration::summary),
+        )
     }
 
     /// Whether row activity may animate: every watch is live and no read is pending.
     /// Mirrors `updatesCurrent` in `ResourceBrowser.svelte`.
     pub fn updates_current(&self) -> bool {
-        !self.scope_loading && self.label() == "Live"
+        !self.scope_loading && self.status() == LiveStatus::Live
     }
 
     pub fn messages(&self) -> impl Iterator<Item = &String> {
         self.refresh_error
             .iter()
-            .chain(self.watches.values().flat_map(|w| {
-                [&w.error, &w.forbidden, &w.reload_error]
-                    .into_iter()
-                    .flatten()
-            }))
+            .chain(self.watches.values().flat_map(Registration::messages))
     }
 }
 
@@ -281,7 +290,7 @@ impl Inspector {
                 .live
                 .watches
                 .get(&signature)
-                .is_some_and(|watch| watch.task.is_some())
+                .is_some_and(|watch| matches!(watch.phase, WatchPhase::Running { .. }))
             {
                 continue;
             }
@@ -317,10 +326,10 @@ impl Inspector {
                             lost = true;
                             let _ = this.update(cx, |this, cx| {
                                 if this.live.owner == owner
-                                    && let Some(w) = this.live.watches.get_mut(&id)
+                                    && let Some(link) =
+                                        this.live.watches.get_mut(&id).and_then(Registration::link)
                                 {
-                                    w.error = Some(error.message);
-                                    w.connected = false;
+                                    link.failed(error.message);
                                 }
                                 cx.notify();
                             });
@@ -452,28 +461,21 @@ impl Inspector {
                                 let Some(w) = this.live.watches.get_mut(&id) else {
                                     return false;
                                 };
-                                if closed {
-                                    w.connected = false;
-                                }
-                                for event in transitions {
-                                    match event {
-                                        StreamMessage::Status {
-                                            status, message, ..
-                                        } => {
-                                            w.seen_status = true;
-                                            w.connected = status == StreamStatus::Connected;
-                                            w.forbidden = (status == StreamStatus::Forbidden)
-                                                .then_some(message);
-                                            if w.connected || w.forbidden.is_some() {
-                                                w.error = None;
+                                if let Some(link) = w.link() {
+                                    if closed {
+                                        link.stopped();
+                                    }
+                                    for event in transitions {
+                                        match event {
+                                            StreamMessage::Status {
+                                                status, message, ..
+                                            } => link.status(status, message),
+                                            StreamMessage::Error { message, .. } => {
+                                                link.failed(message)
                                             }
+                                            StreamMessage::Stopped { .. } => link.stopped(),
+                                            _ => {}
                                         }
-                                        StreamMessage::Error { message, .. } => {
-                                            w.error = Some(message);
-                                            w.connected = false;
-                                        }
-                                        StreamMessage::Stopped { .. } => w.connected = false,
-                                        _ => {}
                                     }
                                 }
                                 w.catching_up = reload && names.is_none();
@@ -578,7 +580,10 @@ impl Inspector {
                     timer = Box::pin(cx.background_executor().timer(RECOVERY));
                 }
             });
-            self.live.watches.entry(signature).or_default().task = Some(task);
+            self.live.watches.entry(signature).or_default().phase = WatchPhase::Running {
+                _task: task.into(),
+                link: Link::Opening,
+            };
         }
     }
 

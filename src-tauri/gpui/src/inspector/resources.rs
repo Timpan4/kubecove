@@ -4,6 +4,7 @@
 
 use super::detail::Detail;
 use super::resource_filters::HealthFilter;
+use super::watch_status::LiveStatus;
 use super::{Inspector, Load, Page};
 use crate::targets::TestSupportExt;
 use crate::theme::{Palette, Tokens};
@@ -320,6 +321,7 @@ impl Inspector {
     }
 
     pub(super) fn live_control(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let status = self.live_status();
         div()
             .relative()
             .child(
@@ -337,26 +339,31 @@ impl Inspector {
                         div()
                             .size(px(6.))
                             .rounded_full()
-                            .bg(match self.live_label() {
-                                "Live" => super::events::tw::emerald400(1.),
-                                "Refresh failed" => Tokens::destructive(),
-                                "Catching up" => super::events::tw::sky300(),
-                                "Connecting" | "Not connected" => Tokens::muted_foreground(),
-                                _ => super::events::tw::amber400(1.),
+                            .bg(match status {
+                                LiveStatus::Live => super::events::tw::emerald400(1.),
+                                LiveStatus::RefreshFailed => Tokens::destructive(),
+                                LiveStatus::CatchingUp => super::events::tw::sky300(),
+                                LiveStatus::Connecting | LiveStatus::NotConnected => {
+                                    Tokens::muted_foreground()
+                                }
+                                LiveStatus::Reconnecting
+                                | LiveStatus::LiveLimited
+                                | LiveStatus::PollingLimited
+                                | LiveStatus::Refreshing => super::events::tw::amber400(1.),
                             }),
                     )
                     .child(
-                        ui::xs(self.live_label())
-                            .text_color(match self.live_label() {
-                                "Refresh failed" => Tokens::destructive(),
-                                "Reconnecting" | "Polling (limited)" | "Live (limited)" => {
-                                    Palette::amber300()
-                                }
+                        ui::xs(status.label())
+                            .text_color(match status {
+                                LiveStatus::RefreshFailed => Tokens::destructive(),
+                                LiveStatus::Reconnecting
+                                | LiveStatus::PollingLimited
+                                | LiveStatus::LiveLimited => Palette::amber300(),
                                 _ => Tokens::muted_foreground(),
                             })
                             .id("live-label")
                             .test_support()
-                            .aria_label(self.live_label()),
+                            .aria_label(status.label()),
                     )
                     .child(ui::icon("chevron-down", 12., Tokens::muted_foreground()))
                     .on_click(cx.listener(|this, _, _, cx| {
@@ -556,7 +563,7 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let width = self.section_width(window);
-        if self.live.label() != "Refresh failed" {
+        if self.live.status() != LiveStatus::RefreshFailed {
             self.live.error_open = false;
         }
         let stacked = !matches!(self.detail, Detail::Closed);

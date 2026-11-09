@@ -1,24 +1,25 @@
 //! ResourceBrowser.svelte's stale-data notice and expandable refresh error.
-use super::Inspector;
+use super::{Inspector, watch_status::LiveStatus};
 use crate::targets::TestSupportExt;
 use crate::{theme::Palette, ui};
 use gpui_kit::{AnyElement, Context, div, prelude::*, px};
 
 impl Inspector {
     pub(super) fn live_notice(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let failed = self.live.label() == "Refresh failed";
-        let label = match self.live.label() {
-            "Live" | "Refreshing…" | "Not connected" => return None,
-            "Refresh failed" => {
+        let status = self.live.status();
+        let failed = status == LiveStatus::RefreshFailed;
+        let label = match status {
+            LiveStatus::Live | LiveStatus::Refreshing | LiveStatus::NotConnected => return None,
+            LiveStatus::RefreshFailed => {
                 "Refresh failed. Showing last observed state. Activity indicators are paused until live updates recover."
             }
-            "Polling (limited)" => {
+            LiveStatus::PollingLimited => {
                 "Live updates are unavailable. Readable resources refresh periodically. Activity indicators are paused."
             }
-            "Live (limited)" => {
+            LiveStatus::LiveLimited => {
                 "Live updates are limited. Readable resources without watch access refresh periodically. Activity indicators are paused."
             }
-            _ => {
+            LiveStatus::Connecting | LiveStatus::Reconnecting | LiveStatus::CatchingUp => {
                 "Showing last observed state. Activity indicators are paused until live updates recover."
             }
         };

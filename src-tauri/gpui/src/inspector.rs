@@ -135,6 +135,7 @@ mod timeline;
 mod timestamp_text;
 mod update_panel;
 mod usage;
+mod watch_status;
 mod windowed;
 mod workspace_editing;
 mod workspace_entries;
