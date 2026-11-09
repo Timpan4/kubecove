@@ -145,18 +145,29 @@ impl Inspector {
             // The web derives these cards from the saved scope, not from the
             // Compare shortcut's own metadata, so an imported shortcut that
             // differs from its scope does not change them.
-            for entry in compare_entries(saved) {
-                let sides = [entry.left_label, entry.right_label].map(|label| {
-                    let health =
-                        HealthSummary::of(self.workspace_rows().filter(|row| match entry.kind {
-                            CompareKind::Contexts => row.cluster == label,
-                            CompareKind::Namespaces => row.namespace.as_ref() == Some(&label),
-                        }));
-                    (label, health)
-                });
+            // One pass over the workspace rows fills every side.
+            let entries = compare_entries(saved);
+            let mut health = vec![[HealthSummary::default(); 2]; entries.len()];
+            if !entries.is_empty() {
+                for row in self.workspace_rows() {
+                    for (entry, sides) in entries.iter().zip(&mut health) {
+                        let labels = [&entry.left_label, &entry.right_label];
+                        for (label, side) in labels.into_iter().zip(sides) {
+                            let matches = match entry.kind {
+                                CompareKind::Contexts => row.cluster == *label,
+                                CompareKind::Namespaces => row.namespace.as_ref() == Some(label),
+                            };
+                            if matches {
+                                side.add(row);
+                            }
+                        }
+                    }
+                }
+            }
+            for (entry, [left, right]) in entries.into_iter().zip(health) {
                 projection.comparisons.push(Comparison {
                     title: entry.label,
-                    sides,
+                    sides: [(entry.left_label, left), (entry.right_label, right)],
                 });
             }
         }
