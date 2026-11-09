@@ -24,6 +24,8 @@ mod presentation;
 mod read_retry;
 #[path = "native/remote_connections.rs"]
 mod remote_connections;
+#[path = "native/scope_load.rs"]
+mod scope_load;
 #[path = "native/session_controls.rs"]
 mod session_controls;
 #[path = "native/settings_integrations.rs"]

@@ -1,6 +1,5 @@
 //! Context and resource-scope reads, refresh, and visible resource filtering.
 
-use super::custom_resources::CustomLoad;
 use super::load_trace::{LoadKind, LoadTrace};
 use super::{Inspector, Load, map};
 use crate::backend::Read;
@@ -56,7 +55,7 @@ impl SharedScopeReads {
 impl Inspector {
     pub(super) fn load_contexts(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.context_task.take();
-        self.load = Load::Loading;
+        self.scope_load.rows = Load::Loading;
         let task = self.read_kubeconfig_contexts(
             false,
             window,
@@ -64,7 +63,7 @@ impl Inspector {
             |this, result, _source_error, window, cx| {
                 match result {
                     Ok(contexts) if contexts.is_empty() => {
-                        this.load = Load::Failed(
+                        this.scope_load.rows = Load::Failed(
                             "No Kubernetes contexts found. Configure KUBECONFIG and retry.".into(),
                         )
                     }
@@ -101,7 +100,7 @@ impl Inspector {
                             this.load_scope(false, window, cx);
                         }
                     }
-                    Err(error) => this.load = Load::Failed(error.message),
+                    Err(error) => this.scope_load.rows = Load::Failed(error.message),
                 }
                 cx.notify();
             },
@@ -120,11 +119,10 @@ impl Inspector {
             &self.scope.context,
             self.scope.namespace.as_deref(),
         ));
-        self.scope_task.take();
+        self.scope_load.cancel();
         self.sync_page_reads(cx);
         self.kind_selection.reads.clear();
         self.live.reset_scope();
-        self.live.scope_loading = true;
         self.discover_kinds(cx);
         self.close_detail(cx);
         self.request = Rc::new(());
@@ -150,19 +148,15 @@ impl Inspector {
             .first()
             .is_some_and(|row| row.cluster == self.scope.context)
         {
-            self.load = Load::Loading;
+            self.scope_load.rows = Load::Loading;
             self.rows = Rc::default();
             self.warnings.clear();
         }
         self.prepare_rows();
         self.filter(cx);
-        self.custom_load = if custom.is_some() {
-            CustomLoad::Loading
-        } else {
-            CustomLoad::Idle
-        };
+        let awaits_custom = custom.is_some();
         // One task, so dropping it (a newer scope or refresh) cancels the custom read too.
-        self.scope_task = Some(cx.spawn_in(window, async move |this, cx| {
+        let task = cx.spawn_in(window, async move |this, cx| {
             let result = prepare_off_thread(cx.background_executor(), builtin.await).await;
             let applied = this.update(cx, |this, cx| {
                 if !Rc::ptr_eq(&this.request, &request) {
@@ -170,20 +164,18 @@ impl Inspector {
                 }
                 let apply_started = Instant::now();
                 let awaits_custom = custom.is_some();
-                this.live.scope_loading = false;
                 let ready = match result {
                     Ok((result, rows)) => {
                         this.namespaces = result.namespaces;
                         this.rows = Rc::new(rows);
                         this.live.versions = result.versions;
                         this.warnings = result.warnings;
-                        this.load = Load::Ready;
+                        this.scope_load.builtin_settled(Ok(()));
                         true
                     }
                     Err(error) => {
                         this.live.refresh_error = Some(error.message.clone());
-                        this.load = Load::Failed(error.message);
-                        this.custom_load = CustomLoad::Idle;
+                        this.scope_load.builtin_settled(Err(error.message));
                         this.rows = Rc::default();
                         this.warnings.clear();
                         false
@@ -211,7 +203,8 @@ impl Inspector {
                     this.note_apply(LoadKind::Scope, apply_started.elapsed(), true);
                 }
             });
-        }));
+        });
+        self.scope_load.start(awaits_custom, task);
         // The map loads on its own, like the web's topology query, so a
         // topology failure leaves the table usable.
         self.load_metrics(window, cx);
@@ -289,8 +282,6 @@ impl Inspector {
         if self.scope.context.is_empty() {
             self.load_contexts(window, cx)
         } else {
-            self.live.refreshing = true;
-            self.live.scope_loading = true;
             self.live.refresh_error = None;
             self.scope_trace = Some(LoadTrace::start(
                 LoadKind::Scope,
@@ -300,32 +291,33 @@ impl Inspector {
             let read = self.application_resources_read(true, cx);
             let read = self.timings.measure("list_resource_scope", read);
             let request = self.request.clone();
-            self.scope_task = Some(cx.spawn_in(window, async move |this, cx| {
+            let task = cx.spawn_in(window, async move |this, cx| {
                 let result = prepare_off_thread(cx.background_executor(), read.await).await;
                 let _ = this.update(cx, |this, cx| {
                     if !Rc::ptr_eq(&this.request, &request) {
                         return;
                     }
                     let apply_started = Instant::now();
-                    this.live.refreshing = false;
-                    this.live.scope_loading = false;
                     match result {
                         Ok((result, rows)) => {
                             this.rows = Rc::new(rows);
                             this.live.versions = result.versions;
                             this.namespaces = result.namespaces;
                             this.warnings = result.warnings;
-                            this.load = Load::Ready;
-                            this.custom_load = CustomLoad::Ready;
+                            this.scope_load.refresh_settled(Ok(()));
                             this.prepare_rows();
                             this.filter(cx);
                         }
-                        Err(error) => this.live.refresh_error = Some(error.message),
+                        Err(error) => {
+                            this.live.refresh_error = Some(error.message.clone());
+                            this.scope_load.refresh_settled(Err(error.message));
+                        }
                     }
                     cx.notify();
                     this.note_apply(LoadKind::Scope, apply_started.elapsed(), true);
                 });
-            }));
+            });
+            self.scope_load.start_refresh(task);
             self.load_topology(cx);
             self.load_inventory(true, cx);
             self.load_page(cx);

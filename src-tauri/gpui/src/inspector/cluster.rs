@@ -134,7 +134,7 @@ impl Inspector {
     /// The resource browser's load state: the workspace read, then the
     /// cluster read on the Cluster Overview.
     pub(super) fn page_load(&self) -> &Load {
-        match (&self.load, &self.cluster.load) {
+        match (&self.scope_load.rows, &self.cluster.load) {
             (Load::Ready, Some(load)) if self.page == Page::ClusterOverview => load,
             (load, _) => load,
         }

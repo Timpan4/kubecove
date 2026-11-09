@@ -24,11 +24,11 @@ impl Inspector {
         if !self.persisted.preferences.show_custom_resources {
             return Some("Custom Resources off");
         }
-        let phase = self.loading.phase(
-            "custom-resources-status",
-            matches!(self.custom_load, CustomLoad::Loading),
-        );
-        match self.custom_load {
+        let custom = self.scope_load.custom();
+        let phase = self
+            .loading
+            .phase("custom-resources-status", custom == CustomLoad::Loading);
+        match custom {
             CustomLoad::Failed => Some("Custom Resources unavailable"),
             _ if phase.shown() => Some("Loading Custom Resources"),
             _ if !phase.ready() => None,
@@ -54,12 +54,12 @@ impl Inspector {
                     std::rc::Rc::new(crate::model::PreparedRows::with_inherited_owners(rows));
                 self.live.versions.extend(result.versions);
                 self.warnings.extend(result.warnings);
-                self.custom_load = CustomLoad::Ready;
+                self.scope_load.custom_settled(true);
             }
             Err(error) => {
                 self.warnings
                     .push(format!("Custom Resources: {}", error.message));
-                self.custom_load = CustomLoad::Failed;
+                self.scope_load.custom_settled(false);
             }
         }
         self.prepare_rows();

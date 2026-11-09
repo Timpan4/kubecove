@@ -49,8 +49,8 @@ impl Inspector {
                 .expect("visible source released before patching")
                 .patch(key, rows, names)
         };
-        if !matches!(self.load, Load::Ready) && !self.rows.is_empty() {
-            self.load = Load::Ready;
+        if !matches!(self.scope_load.rows, Load::Ready) && !self.rows.is_empty() {
+            self.scope_load.rows = Load::Ready;
         }
         retired
     }
@@ -83,12 +83,9 @@ impl Inspector {
         }
         let custom = key.resource_kind.plural.is_some();
         let cluster_kind = crate::backend::CLUSTER_KINDS.contains(&key.resource_kind.kind.as_str());
-        !self.live.scope_loading
+        !self.scope_load.loading()
             && !(custom
-                && matches!(
-                    self.custom_load,
-                    super::custom_resources::CustomLoad::Loading
-                ))
+                && self.scope_load.custom() == super::custom_resources::CustomLoad::Loading)
             && !(cluster_kind && self.cluster_loading())
     }
 

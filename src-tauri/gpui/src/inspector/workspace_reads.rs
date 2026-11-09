@@ -155,6 +155,6 @@ impl Inspector {
     pub(super) fn overview_load(&self) -> &super::Load {
         self.workspace_read
             .as_ref()
-            .map_or(&self.load, |state| &state.load)
+            .map_or(&self.scope_load.rows, |state| &state.load)
     }
 }

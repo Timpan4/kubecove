@@ -6,7 +6,7 @@ use gpui_kit::{AnyElement, Context, div, prelude::*, px};
 
 impl Inspector {
     pub(super) fn live_notice(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let status = self.live.status();
+        let status = self.resource_live_status();
         let failed = status == LiveStatus::RefreshFailed;
         let label = match status {
             LiveStatus::Live | LiveStatus::Refreshing | LiveStatus::NotConnected => return None,

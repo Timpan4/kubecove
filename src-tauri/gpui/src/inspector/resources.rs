@@ -563,7 +563,7 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let width = self.section_width(window);
-        if self.live.status() != LiveStatus::RefreshFailed {
+        if self.resource_live_status() != LiveStatus::RefreshFailed {
             self.live.error_open = false;
         }
         let stacked = !matches!(self.detail, Detail::Closed);

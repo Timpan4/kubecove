@@ -35,7 +35,9 @@ impl Inspector {
     pub(super) fn live_status(&self) -> LiveStatus {
         if self.page != Page::GitOps {
             // ResourceLiveStatusMenu.svelte delays and holds "Refreshing…" like other indicators.
-            let refreshing = self.loading.phase("live-refresh", self.live.refreshing);
+            let refreshing = self
+                .loading
+                .phase("live-refresh", self.scope_load.refreshing());
             return if refreshing.shown() {
                 LiveStatus::Refreshing
             } else {

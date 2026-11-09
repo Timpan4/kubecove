@@ -197,8 +197,8 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) {
         if self.navigation.pending_detail.is_none()
-            || self.live.scope_loading
-            || matches!(self.load, Load::Loading)
+            || self.scope_load.loading()
+            || matches!(self.scope_load.rows, Load::Loading)
         {
             return;
         }

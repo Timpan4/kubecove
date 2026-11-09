@@ -112,6 +112,7 @@ mod revisions_tab;
 mod row_index;
 mod saved_forward_form;
 mod scope;
+mod scope_load;
 mod secret_data;
 mod session_actions;
 mod session_cleanup;
@@ -208,7 +209,6 @@ pub struct Inspector {
     context_picker: Entity<Choices>,
     search: Entity<InputState>,
     namespaces: Vec<NamespaceSummary>,
-    custom_load: custom_resources::CustomLoad,
     table_sort: crate::table_sort::Sort,
     /// Group and kind-group keys the table has collapsed, as `collapsedGroups` on the web.
     collapsed_groups: std::collections::HashSet<String>,
@@ -220,7 +220,7 @@ pub struct Inspector {
     /// One focus handle per table row's name control, kept while the row is on the page.
     table_focus: std::cell::RefCell<std::collections::HashMap<String, gpui_kit::FocusHandle>>,
     timeline: timeline::State,
-    load: Load,
+    scope_load: scope_load::ScopeLoad,
     warnings: Vec<String>,
     detail: Detail,
     map: map::MapState,
@@ -271,7 +271,6 @@ pub struct Inspector {
     request: Rc<()>,
     detail_request: Rc<()>,
     context_task: Option<Task<()>>,
-    scope_task: Option<Task<()>>,
     scope_trace: Option<load_trace::LoadTrace>,
     map_trace: Option<load_trace::LoadTrace>,
     topology_task: Option<Task<()>>,
@@ -356,7 +355,6 @@ impl Inspector {
             context_picker,
             search,
             namespaces: vec![],
-            custom_load: Default::default(),
             table_sort: Default::default(),
             collapsed_groups: Default::default(),
             rows: Rc::default(),
@@ -366,7 +364,7 @@ impl Inspector {
             table_rows: windowed::Windowed::unwrapped(),
             table_focus: Default::default(),
             timeline: Default::default(),
-            load: Load::Loading,
+            scope_load: Default::default(),
             warnings: vec![],
             detail: Detail::Closed,
             map: map::MapState::new(),
@@ -410,7 +408,6 @@ impl Inspector {
             request: Rc::new(()),
             detail_request: Rc::new(()),
             context_task: None,
-            scope_task: None,
             scope_trace: None,
             map_trace: None,
             topology_task: None,

@@ -34,8 +34,6 @@ pub(super) struct LiveData {
     pub picker_open: bool,
     pub selected: Option<DiscoveredResourceKind>,
     pub kind_locked: bool,
-    pub refreshing: bool,
-    pub scope_loading: bool,
     pub refresh_error: Option<String>,
     pub error_open: bool,
     discovery: Option<Task<()>>,
@@ -106,28 +104,14 @@ impl LiveData {
         self.pending.clear();
         self.versions.clear();
         self.owner.clear();
-        self.refreshing = false;
         self.refresh_error = None;
     }
-    pub fn status(&self) -> LiveStatus {
-        if self.refreshing {
-            return LiveStatus::Refreshing;
-        }
-        self.settled_status()
-    }
-
-    /// The status without the pending refresh, for the delayed refresh indicator.
+    /// The status without a pending refresh, which `ScopeLoad` owns.
     pub fn settled_status(&self) -> LiveStatus {
         watch_status::aggregate(
             self.refresh_error.is_some(),
             self.watches.values().map(Registration::summary),
         )
-    }
-
-    /// Whether row activity may animate: every watch is live and no read is pending.
-    /// Mirrors `updatesCurrent` in `ResourceBrowser.svelte`.
-    pub fn updates_current(&self) -> bool {
-        !self.scope_loading && self.status() == LiveStatus::Live
     }
 
     pub fn messages(&self) -> impl Iterator<Item = &String> {
@@ -598,7 +582,7 @@ impl Inspector {
 
     pub(super) fn flush_live_patches(&mut self, cx: &mut Context<Self>) {
         let _span = crate::frame_profile::scope("watch", "flush");
-        if self.live.scope_loading {
+        if self.scope_load.loading() {
             return;
         }
         let mut pending = std::mem::take(&mut self.live.pending);

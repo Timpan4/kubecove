@@ -184,7 +184,7 @@ impl Inspector {
         self.load_preferences(cx);
         self.relink_active_workspace(active);
         self.context_task.take();
-        self.scope_task.take();
+        self.scope_load.cancel();
         self.topology_task.take();
         self.request = std::rc::Rc::new(());
         self.close_detail(cx);
