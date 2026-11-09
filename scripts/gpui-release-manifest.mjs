@@ -37,7 +37,8 @@ function fail(label, reason) {
 // Minisign layout: the key blob is "Ed" + 8-byte key ID + 32-byte Ed25519 key. The signature
 // blob is the algorithm ("ED" signs the BLAKE2b-512 hash, "Ed" the raw bytes) + key ID +
 // 64-byte signature, and a global signature covers that signature plus the trusted comment.
-export function verifyUpdaterSignature({ publicKey, signature, data, version, label = "signature" }) {
+// `name` is the asset's file name; the signer records the name of the file it signed.
+export function verifyUpdaterSignature({ publicKey, signature, data, version, name, label = name }) {
   const keyBlob = Buffer.from(lines(publicKey)[1] ?? "", "base64");
   if (keyBlob.length !== 42 || keyBlob.toString("latin1", 0, 2) !== "Ed") fail(label, "the updater public key is not a minisign Ed25519 key");
   const key = createPublicKey({ key: { kty: "OKP", crv: "Ed25519", x: keyBlob.subarray(10).toString("base64url") }, format: "jwk" });
@@ -60,7 +61,11 @@ export function verifyUpdaterSignature({ publicKey, signature, data, version, la
   }
   // The GPUI client, like tauri-plugin-updater's `requireSignedVersion`, rejects a signature
   // that does not name the manifest version.
-  if (!trusted.split("\t").includes(`version:${version}`)) fail(label, `the trusted comment does not carry version:${version}`);
+  const fields = trusted.split("\t");
+  if (!fields.includes(`version:${version}`)) fail(label, `the trusted comment does not carry version:${version}`);
+  // The Tauri app is signed with the same key, so the GPUI client also requires a signed file
+  // name that starts with `kubecove-gpui_`. An asset renamed after signing would be refused.
+  if (!fields.includes(`file:${name}`)) fail(label, `the trusted comment does not carry file:${name}`);
 }
 
 // `read(name)` returns a file's bytes from the assets directory, or throws when it is missing.
@@ -73,7 +78,7 @@ export function buildGpuiManifest({ version, tag, repository, notes, publicKey, 
       if (!present.has(required)) throw new Error(`Missing ${required}. Found: ${[...present].sort().join(", ") || "nothing"}.`);
     }
     const signature = read(`${name}.sig`).toString("utf8");
-    verifyUpdaterSignature({ publicKey, signature, data: read(name), version, label: name });
+    verifyUpdaterSignature({ publicKey, signature, data: read(name), version, name });
     platforms[platform] = { signature, url: `https://github.com/${repository}/releases/download/${tag}/${name}` };
   }
   return { version, notes, pub_date: pubDate, platforms };
