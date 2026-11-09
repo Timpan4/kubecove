@@ -5,9 +5,11 @@ import { posix, win32 } from "node:path";
 import { test } from "node:test";
 import { runInNewContext } from "node:vm";
 import { parse } from "yaml";
+import { buildGpuiManifest, gpuiUpdaterAssets, verifyUpdaterSignature } from "./gpui-release-manifest.mjs";
 
 const workflow = parse(readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8"));
 const packaging = parse(readFileSync(new URL("../.github/workflows/server-packaging.yml", import.meta.url), "utf8"));
+const gpuiRelease = parse(readFileSync(new URL("../.github/workflows/gpui-release.yml", import.meta.url), "utf8"));
 const targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"];
 
 // The nested builders need an executable shim on PATH and unchanged artifact locations.
@@ -64,7 +66,8 @@ test("release preparation commits desktop and server version metadata", () => {
   const commands = step(job("prepare", preparation), "Commit release branch").run;
   const staged = commands.match(/^\s*git add (.+)$/m)[1].split(/\s+/);
   for (const path of ["package.json", "src-tauri/tauri.conf.json", "src-tauri/Cargo.toml",
-    "src-tauri/Cargo.lock", "src-tauri/server/Cargo.toml", "src-tauri/server/Cargo.lock", "CHANGELOG.md"]) {
+    "src-tauri/Cargo.lock", "src-tauri/server/Cargo.toml", "src-tauri/server/Cargo.lock",
+    "src-tauri/gpui/Cargo.toml", "src-tauri/gpui/Cargo.lock", "CHANGELOG.md"]) {
     assert.ok(staged.includes(path), `Release commit omits ${path}`);
   }
 });
@@ -302,13 +305,14 @@ test("server build reuses pinned actions already used by release jobs", () => {
 // Release binaries must not inherit shared compiler outputs. E2E must wrap nested Cargo.
 test("release artifacts use local mbx while E2E restores both workspace caches", () => {
   const e2e = parse(readFileSync(new URL("../.github/workflows/e2e.yml", import.meta.url), "utf8"));
-  for (const build of [job("build"), job("server-build", packaging)]) {
+  for (const build of [job("build"), job("server-build", packaging), job("bundle", gpuiRelease)]) {
     const setup = build.steps.find(({ uses }) => uses?.startsWith("jdx/mr-boxington-action@"));
     assert.equal(setup?.with.backend, "local");
     assert.doesNotMatch(JSON.stringify(build), /swatinem\/rust-cache/);
     const activation = step(build, "Activate Cargo caching");
     assert.equal(activation.run, "node scripts/ci-mbx-cargo.mjs");
-    const consumer = build.steps.find(({ uses, run }) => uses?.startsWith("tauri-apps/tauri-action@") || run?.includes("for variant in full slim"));
+    const consumer = build.steps.find(({ uses, run }) => uses?.startsWith("tauri-apps/tauri-action@")
+      || run?.includes("for variant in full slim") || run?.includes("cargo build --locked"));
     assert.ok(build.steps.indexOf(activation) < build.steps.indexOf(consumer));
   }
   for (const check of [job("e2e"), ...Object.values(e2e.jobs)]) {
@@ -327,11 +331,103 @@ test("publishing can read build artifacts and waits for all release gates", () =
   const publish = job("publish");
   assert.equal(publish.permissions.actions, "read");
   assert.equal(publish.permissions.contents, "write");
-  for (const need of ["prepare", "verify", "build", "server-packaging"]) {
+  for (const need of ["prepare", "verify", "build", "server-packaging", "gpui"]) {
     assert.ok(publish.needs.includes(need), need);
   }
-  assert.match(step(publish, "Download headless server archives").run, /gh run download/);
+  assert.match(step(publish, "Download release build artifacts").run, /gh run download/);
   assert.match(step(publish, "Upload headless server release assets").run, /gh release upload[^\n]+kubecove-server-\*\/kubecove-server_\*/);
+  // The artifact name the GPUI workflow uploads is the one publish sends to the release.
+  const signed = job("sign", gpuiRelease);
+  assert.equal(step(signed, "Upload GPUI release assets").with.name, "kubecove-gpui-release");
+  assert.match(step(publish, "Upload GPUI release assets").run, /gh release upload "\$TAG_NAME" run-assets\/kubecove-gpui-release\/\* --clobber/);
+  assert.ok(publish.steps.indexOf(step(publish, "Upload GPUI release assets")) <
+    publish.steps.indexOf(step(publish, "Verify final updater platform coverage")));
+});
+
+// A dry run starts from a branch, so any job that reads `github.ref_name` as a release tag must not run.
+test("a GPUI dry run starts only the GPUI job and can never write a release", () => {
+  const input = workflow.on.workflow_dispatch.inputs["gpui-dry-run"];
+  assert.deepEqual({ type: input.type, default: input.default }, { type: "boolean", default: false });
+  const others = Object.entries(workflow.jobs).filter(([name]) => name !== "gpui");
+  assert.ok(others.length > 0);
+  for (const [name, { if: condition = "" }] of others) {
+    assert.match(condition, /^\$\{\{ (always\(\) && )?!inputs\.gpui-dry-run \}\}$/, `${name} must skip a dry run`);
+  }
+  const gpui = job("gpui");
+  assert.equal(gpui.uses, "./.github/workflows/gpui-release.yml");
+  assert.deepEqual(gpui.permissions, { contents: "read" });
+  assert.equal(gpui.if, "${{ !cancelled() && (inputs.gpui-dry-run || needs.metadata.result == 'success') }}");
+  // `cond && '' || x` would fall through to x, so the tag expression must put the tag first.
+  assert.equal(gpui.with["release-tag"], "${{ !inputs.gpui-dry-run && github.ref_name || '' }}");
+  assert.deepEqual(gpuiRelease.permissions, { contents: "read" });
+  for (const [name, gpuiJob] of Object.entries(gpuiRelease.jobs)) {
+    assert.equal(gpuiJob.permissions, undefined, `${name} must keep read-only contents`);
+    assert.doesNotMatch(JSON.stringify(gpuiJob), /gh release|GITHUB_TOKEN|GH_TOKEN/, `${name} must not reach releases`);
+  }
+});
+
+test("GPUI bundles build on all three platforms and only the signing job holds the key", () => {
+  const bundle = job("bundle", gpuiRelease);
+  assert.deepEqual(bundle.strategy.matrix.include.map(({ platform, "bundle-target": target, format }) => `${platform}/${target}/${format}`), [
+    "ubuntu-latest/x86_64-unknown-linux-gnu/appimage",
+    "macos-latest/universal-apple-darwin/app",
+    "windows-latest/x86_64-pc-windows-msvc/nsis",
+  ]);
+  const built = step(bundle, "Build GPUI client").run;
+  assert.match(built, /cargo build --locked --release --manifest-path src-tauri\/gpui\/Cargo\.toml --bin kubecove-gpui --target "\$target"/);
+  assert.match(built, /lipo -create/);
+  assert.match(step(bundle, "Install cargo-packager").run, /^cargo install cargo-packager --version \d+\.\d+\.\d+ --locked$/);
+  assert.match(step(bundle, "Bundle GPUI client").run, /cargo packager --manifest-path src-tauri\/gpui\/Cargo\.toml --release --target "\$BUNDLE_TARGET"/);
+  assert.equal(step(bundle, "Bundle GPUI client").env.APPIMAGE_EXTRACT_AND_RUN, undefined);
+  assert.doesNotMatch(JSON.stringify(bundle), /secrets\./);
+  const signing = step(job("sign", gpuiRelease), "Sign GPUI bundles");
+  assert.equal(signing.env.TAURI_SIGNING_PRIVATE_KEY, "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}");
+  // The GPUI client rejects a signature whose trusted comment lacks the manifest version.
+  assert.match(signing.run, /bun x tauri signer sign --app-version "\$version" "\$file"/);
+  assert.match(step(job("sign", gpuiRelease), "Verify signatures and write latest-gpui.json").run, /node scripts\/gpui-release-manifest\.mjs/);
+  for (const gpuiJob of Object.values(gpuiRelease.jobs)) {
+    for (const { uses } of gpuiJob.steps.filter(({ uses }) => uses)) {
+      assert.match(uses, /@[a-f0-9]{40}$/, `${uses} must be pinned`);
+    }
+  }
+});
+
+// Produced by `tauri signer sign --app-version 1.2.3` with a throwaway key generated for this test.
+const fixtureKey = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkwRDkwNERENjc5NUVDNEEKUldSSzdKVm4zUVRaa00xbHdobEhFeVRoU21LczA3Y0RMTWlSblgxZEsyNDdBUXRWRGlCaEhmTjYK";
+const fixtureSignature = "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSSzdKVm4zUVRaa0dwTVRyVU5lWXU0MXNHYVVoWVFZZjFWMTV0T0NPUjBuSWlnYnFxTXpHd3EwMEExOTZka3h6VnhrSVpMd0ZRRmRsZ3JrWGpjcktSOE5jVG9rZDkxQVFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MjYyMzczCWZpbGU6cGF5bG9hZC5iaW4JdmVyc2lvbjoxLjIuMwpsdUJFMFFFbEwxejFXNVcyRHNwRXBxYkFLZzR3TVpWYjBWWDltMWhlSmVseEFDRUNNRTBHNStiMDRZNHVTSXZsbDRXL3BJaDVvRThUWHJsMUhQTVRDUT09Cg==";
+const fixtureData = Buffer.from("kubecove gpui fixture\n");
+
+test("GPUI signature verification accepts only the updater key, the exact bytes and the signed version", () => {
+  const signature = { publicKey: fixtureKey, signature: fixtureSignature, data: fixtureData, version: "1.2.3" };
+  assert.doesNotThrow(() => verifyUpdaterSignature(signature));
+  const productionKey = JSON.parse(readFileSync(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8")).plugins.updater.pubkey;
+  assert.throws(() => verifyUpdaterSignature({ ...signature, publicKey: productionKey }), /different key/);
+  assert.throws(() => verifyUpdaterSignature({ ...signature, data: Buffer.from("kubecove gpui fixture!\n") }), /does not match the file/);
+  assert.throws(() => verifyUpdaterSignature({ ...signature, version: "1.2.4" }), /version:1\.2\.4/);
+  // Rewriting the version inside the trusted comment breaks the global signature.
+  const forged = Buffer.from(Buffer.from(fixtureSignature, "base64").toString("utf8").replace("version:1.2.3", "version:1.2.4")).toString("base64");
+  assert.throws(() => verifyUpdaterSignature({ ...signature, signature: forged, version: "1.2.4" }), /trusted comment signature/);
+  assert.throws(() => verifyUpdaterSignature({ ...signature, signature: Buffer.from("not a signature").toString("base64") }), /not a minisign signature/);
+});
+
+test("latest-gpui.json lists every platform with its release URL and signature, or fails", () => {
+  const version = "1.2.3";
+  const files = Object.fromEntries([...new Set(Object.values(gpuiUpdaterAssets(version)))]
+    .flatMap((name) => [[name, fixtureData], [`${name}.sig`, Buffer.from(fixtureSignature)]]));
+  const build = (names, overrides = {}) => buildGpuiManifest({
+    version, tag: `app-v${version}`, repository: "owner/repo", notes: "Notes", publicKey: fixtureKey,
+    pubDate: "2026-11-09T00:00:00Z", names, read: (name) => files[name], ...overrides,
+  });
+  const manifest = build(Object.keys(files));
+  assert.deepEqual(Object.keys(manifest), ["version", "notes", "pub_date", "platforms"]);
+  assert.deepEqual(Object.keys(manifest.platforms).sort(), ["darwin-aarch64", "darwin-x86_64", "linux-x86_64", "windows-x86_64"]);
+  assert.equal(manifest.platforms["linux-x86_64"].url, "https://github.com/owner/repo/releases/download/app-v1.2.3/kubecove-gpui_1.2.3_x86_64.AppImage");
+  assert.equal(manifest.platforms["darwin-aarch64"].url, manifest.platforms["darwin-x86_64"].url);
+  assert.equal(manifest.platforms["windows-x86_64"].signature, fixtureSignature);
+  for (const missing of Object.keys(files)) {
+    assert.throws(() => build(Object.keys(files).filter((name) => name !== missing)), new RegExp(`Missing ${missing.replaceAll(".", "\\.")}\\.`));
+  }
+  assert.throws(() => build(Object.keys(files), { tag: "feat/branch" }), /does not match app version/);
 });
 
 test("final verification rejects every missing archive, checksum, installer or updater platform", () => {
@@ -347,15 +443,20 @@ test("final verification rejects every missing archive, checksum, installer or u
       const archive = `kubecove-server_${version}_${target}${suffix}.tar.gz`;
       return [archive, `${archive}.sha256`];
     })),
+    ...[...new Set(Object.values(gpuiUpdaterAssets(version)))].flatMap((bundle) => [bundle, `${bundle}.sig`]),
+    "latest-gpui.json",
   ];
   const platforms = Object.fromEntries(["darwin-aarch64", "darwin-x86_64", "linux-x86_64",
     "linux-x86_64-appimage", "windows-x86_64", "windows-x86_64-nsis"].map((key) => [key, {}]));
-  const validate = (names, coverage) => runInNewContext(code, {
+  const gpuiPlatforms = Object.fromEntries(Object.entries(gpuiUpdaterAssets(version)).map(([key, name]) =>
+    [key, { signature: "sig", url: `https://github.com/owner/repo/releases/download/app-v${version}/${name}` }]));
+  const validate = (names, coverage, gpui = { version, platforms: gpuiPlatforms }) => runInNewContext(code, {
     process: { env: { UPDATER_CHECK_DIR: "/check", RELEASE_VERSION: version } },
     require: (name) => {
       assert.equal(name, "node:fs");
       return { readFileSync: (path) => {
         if (path === "/check/assets.txt") return names.join("\n");
+        if (path === "/check/latest-gpui.json") return JSON.stringify(gpui);
         assert.equal(path, "/check/latest.json");
         return JSON.stringify({ platforms: coverage });
       } };
@@ -369,6 +470,13 @@ test("final verification rejects every missing archive, checksum, installer or u
     assert.throws(() => validate(assets, Object.fromEntries(Object.entries(platforms).filter(([key]) => key !== missing))),
       /missing platforms/);
   }
+  for (const missing of Object.keys(gpuiPlatforms)) {
+    const coverage = Object.fromEntries(Object.entries(gpuiPlatforms).filter(([key]) => key !== missing));
+    assert.throws(() => validate(assets, platforms, { version, platforms: coverage }), /missing GPUI platforms/);
+  }
+  assert.throws(() => validate(assets, platforms, { version: "1.2.2", platforms: gpuiPlatforms }), /missing GPUI platforms/);
+  const elsewhere = { ...gpuiPlatforms, "linux-x86_64": { signature: "sig", url: "https://example.com/other.AppImage" } };
+  assert.throws(() => validate(assets, platforms, { version, platforms: elsewhere }), /missing GPUI platforms: linux-x86_64/);
   const final = step(publish, "Publish completed release");
   assert.ok(publish.steps.indexOf(final) > publish.steps.indexOf(verification));
   assert.equal(final.if, "needs.prepare.outputs.release-draft == 'true'");

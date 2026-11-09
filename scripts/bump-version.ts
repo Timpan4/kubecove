@@ -34,7 +34,7 @@ console.log(
 console.log(latestReleaseTagVersion
 	? `Latest release tag: ${RELEASE_TAG_PREFIX}${latestReleaseTagVersion}.`
 	: "No existing release tags found.");
-console.log("Updated package.json, src-tauri/tauri.conf.json, src-tauri/Cargo.toml, and Cargo.lock when present.");
+console.log("Updated package.json, src-tauri/tauri.conf.json, and the Cargo.toml and Cargo.lock files of src-tauri, src-tauri/server, and src-tauri/gpui when present.");
 
 function readLatestRemoteReleaseTagVersion(): string | null {
 	const result = spawnSync(

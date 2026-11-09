@@ -14,6 +14,7 @@ import {
 	computeNextReleaseVersion,
 	latestReleaseTagVersionFromRefs,
 	parseCargoPackageVersion,
+	readWorkspaceReleaseVersions,
 	updateWorkspaceReleaseVersions,
 } from "../scripts/release-versions";
 
@@ -287,6 +288,9 @@ example = "9.9.9"
 		mkdirSync(join(root, "src-tauri", "server"), { recursive: true });
 		writeFileSync(join(root, "src-tauri", "server", "Cargo.toml"), '[package]\nname = "kubecove-server"\nversion = "0.1.0"\n');
 		writeFileSync(join(root, "src-tauri", "server", "Cargo.lock"), '[[package]]\nname = "kubecove"\nversion = "0.1.0"\n\n[[package]]\nname = "kubecove-server"\nversion = "0.1.0"\n');
+		mkdirSync(join(root, "src-tauri", "gpui"), { recursive: true });
+		writeFileSync(join(root, "src-tauri", "gpui", "Cargo.toml"), '[workspace]\nresolver = "2"\n\n[package]\nname = "kubecove-gpui"\nversion = "0.1.0"\n');
+		writeFileSync(join(root, "src-tauri", "gpui", "Cargo.lock"), '[[package]]\nname = "kubecove"\nversion = "0.1.0"\n\n[[package]]\nname = "kubecove-gpui"\nversion = "0.1.0"\n');
 
 		updateWorkspaceReleaseVersions("0.2.0", root);
 
@@ -296,6 +300,12 @@ example = "9.9.9"
 		expect(readFileSync(join(root, "src-tauri", "Cargo.lock"), "utf8")).toContain('version = "0.2.0"');
 		expect(readFileSync(join(root, "src-tauri", "server", "Cargo.toml"), "utf8")).toContain('version = "0.2.0"');
 		expect(readFileSync(join(root, "src-tauri", "server", "Cargo.lock"), "utf8")).not.toContain('version = "0.1.0"');
+		// The GPUI updater compares its crate version with the release manifest.
+		expect(readFileSync(join(root, "src-tauri", "gpui", "Cargo.toml"), "utf8")).toContain('version = "0.2.0"');
+		expect(readFileSync(join(root, "src-tauri", "gpui", "Cargo.lock"), "utf8")).not.toContain('version = "0.1.0"');
+		expect(readWorkspaceReleaseVersions(root).cargoVersion).toBe("0.2.0");
+		writeFileSync(join(root, "src-tauri", "gpui", "Cargo.toml"), '[package]\nname = "kubecove-gpui"\nversion = "0.1.0"\n');
+		expect(() => readWorkspaceReleaseVersions(root)).toThrow("Desktop and GPUI client package versions must match.");
 	});
 
 	test("fails a bump when Cargo.lock is missing the kubecove package", () => {

@@ -3,6 +3,13 @@ import { join } from "node:path";
 
 export const RELEASE_TAG_PREFIX = "app-v";
 
+// Separate Cargo workspaces that ship with the app version. Each lockfile also
+// pins the path-dependent `kubecove` crate, so both entries move together.
+const SIDE_WORKSPACES = [
+	{ directory: "server", label: "server", packageName: "kubecove-server" },
+	{ directory: "gpui", label: "GPUI client", packageName: "kubecove-gpui" },
+] as const;
+
 export type ReleaseVersions = {
 	packageVersion: string;
 	tauriVersion: string;
@@ -36,10 +43,11 @@ export function readWorkspaceReleaseVersions(root = "."): ReleaseVersions {
 		"utf8",
 	);
 	const cargoVersion = parseCargoPackageVersion(cargoToml, "src-tauri/Cargo.toml");
-	const serverPath = join(root, "src-tauri", "server", "Cargo.toml");
-	if (existsSync(serverPath)) {
-		const serverVersion = parseCargoPackageVersion(readFileSync(serverPath, "utf8"), "src-tauri/server/Cargo.toml");
-		if (serverVersion !== cargoVersion) throw new Error("Desktop and server package versions must match.");
+	for (const { directory, label } of SIDE_WORKSPACES) {
+		const manifestPath = join(root, "src-tauri", directory, "Cargo.toml");
+		if (!existsSync(manifestPath)) continue;
+		const version = parseCargoPackageVersion(readFileSync(manifestPath, "utf8"), `src-tauri/${directory}/Cargo.toml`);
+		if (version !== cargoVersion) throw new Error(`Desktop and ${label} package versions must match.`);
 	}
 
 	return {
@@ -188,13 +196,14 @@ export function updateWorkspaceReleaseVersions(
 			replaceCargoLockPackageVersion(cargoLock, targetVersion),
 		);
 	}
-	const serverPath = join(root, "src-tauri", "server", "Cargo.toml");
-	if (existsSync(serverPath)) {
-		writeFileSync(serverPath, replaceCargoPackageVersion(readFileSync(serverPath, "utf8"), targetVersion, serverPath));
-		const serverLockPath = join(root, "src-tauri", "server", "Cargo.lock");
-		if (existsSync(serverLockPath)) {
-			const serverLock = replaceCargoLockPackageVersion(readFileSync(serverLockPath, "utf8"), targetVersion, "kubecove", serverLockPath);
-			writeFileSync(serverLockPath, replaceCargoLockPackageVersion(serverLock, targetVersion, "kubecove-server", serverLockPath));
+	for (const { directory, packageName } of SIDE_WORKSPACES) {
+		const manifestPath = join(root, "src-tauri", directory, "Cargo.toml");
+		if (!existsSync(manifestPath)) continue;
+		writeFileSync(manifestPath, replaceCargoPackageVersion(readFileSync(manifestPath, "utf8"), targetVersion, manifestPath));
+		const lockPath = join(root, "src-tauri", directory, "Cargo.lock");
+		if (existsSync(lockPath)) {
+			const lock = replaceCargoLockPackageVersion(readFileSync(lockPath, "utf8"), targetVersion, "kubecove", lockPath);
+			writeFileSync(lockPath, replaceCargoLockPackageVersion(lock, targetVersion, packageName, lockPath));
 		}
 	}
 
