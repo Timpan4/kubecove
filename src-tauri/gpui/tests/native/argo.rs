@@ -247,6 +247,9 @@ fn connect_with(cx: &mut TestAppContext, h: gpui_kit::AnyWindowHandle, remember:
     step(cx, h, |w, cx| {
         w.click("argo-connect-open", cx);
         w.render_frame(cx);
+        // The dialog selects a discovered in-cluster server first, as the web does.
+        w.click("argo-external", cx);
+        w.render_frame(cx);
         scroll::reveal(w, "detail-body", "argo-url", cx);
         w.click("argo-url", cx);
         w.input("https://argocd.example.test", cx);
