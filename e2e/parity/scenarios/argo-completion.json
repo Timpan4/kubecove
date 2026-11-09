@@ -91,6 +91,27 @@
         { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
         { "action": "expectArgoText", "text": "Argo CD confirmed completion" }
       ]
+    },
+    {
+      "id": "argo-review.outcome-then-next-review",
+      "title": "A confirmed review waits for Argo CD, reports completion, and then allows the next review",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test" },
+        { "action": "reviewArgoOperation", "operation": "Sync" },
+        { "action": "expectArgoReview", "operation": "sync", "name": "tenant-ledger", "namespace": "argocd", "transport": "connected" },
+        { "action": "confirmArgoReview" },
+        { "action": "expectArgoText", "text": "Accepted; waiting for Argo CD to complete" },
+        { "action": "controlClock" },
+        { "action": "completeArgoOperation" },
+        { "action": "advanceClock", "ms": 15000 },
+        { "action": "expectArgoText", "text": "Argo CD confirmed completion" },
+        { "action": "reviewArgoOperation", "operation": "Refresh" },
+        { "action": "advanceClock", "ms": 15000 },
+        { "action": "expectArgoReview", "operation": "refresh", "name": "tenant-ledger", "namespace": "argocd", "transport": "connected" },
+        { "action": "cancelArgoReview" }
+      ]
     }
   ]
 }
