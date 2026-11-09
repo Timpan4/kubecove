@@ -58,7 +58,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             } else {
                 "space"
             };
-            window.within(id.as_str()).press(key, cx);
+            window.within(id).press(key, cx);
         }
         "sortResourceTable" => {
             let id = format!("sort:{}", string(step, "column"));
