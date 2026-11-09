@@ -1,19 +1,23 @@
 //! Saved scope and comparison projections are rebuilt on reads, never per frame.
+//! Comparison health counts read every workspace row, so the Overview builds
+//! them when it first draws after a read, not on every filter.
 use super::{Inspector, overview::titled_card};
 use crate::targets::TestSupportExt;
 use crate::{
     model::{HealthSummary, WORKSPACE_KINDS},
     ui,
-    workspaces::shortcuts::{CompareKind, compare_entries},
+    workspaces::shortcuts::{CompareEntry, CompareKind, compare_entries},
 };
 use gpui_kit::{AnyElement, SharedString, div, prelude::*, px};
+use std::{cell::RefCell, rc::Rc};
 
 #[derive(Default)]
 pub(super) struct SavedOverview {
     pub(super) shortcuts: Vec<crate::workspaces::shortcuts::Shortcut>,
     scope: [String; 3],
     warnings: Vec<String>,
-    comparisons: Vec<Comparison>,
+    entries: Vec<CompareEntry>,
+    comparisons: RefCell<Option<Rc<[Comparison]>>>,
 }
 struct Comparison {
     title: String,
@@ -145,33 +149,48 @@ impl Inspector {
             // The web derives these cards from the saved scope, not from the
             // Compare shortcut's own metadata, so an imported shortcut that
             // differs from its scope does not change them.
-            // One pass over the workspace rows fills every side.
-            let entries = compare_entries(saved);
-            let mut health = vec![[HealthSummary::default(); 2]; entries.len()];
-            if !entries.is_empty() {
-                for row in self.workspace_rows() {
-                    for (entry, sides) in entries.iter().zip(&mut health) {
-                        let labels = [&entry.left_label, &entry.right_label];
-                        for (label, side) in labels.into_iter().zip(sides) {
-                            let matches = match entry.kind {
-                                CompareKind::Contexts => row.cluster == *label,
-                                CompareKind::Namespaces => row.namespace.as_ref() == Some(label),
-                            };
-                            if matches {
-                                side.add(row);
-                            }
+            projection.entries = compare_entries(saved);
+        }
+        self.saved_overview = projection;
+    }
+
+    /// The compare cards' health counts, built on first use after each update.
+    fn saved_comparisons(&self) -> Rc<[Comparison]> {
+        let mut cache = self.saved_overview.comparisons.borrow_mut();
+        cache.get_or_insert_with(|| self.compare_health()).clone()
+    }
+
+    /// One pass over the workspace rows fills every side.
+    fn compare_health(&self) -> Rc<[Comparison]> {
+        let entries = &self.saved_overview.entries;
+        let mut health = vec![[HealthSummary::default(); 2]; entries.len()];
+        if !entries.is_empty() {
+            for row in self.workspace_rows() {
+                for (entry, sides) in entries.iter().zip(&mut health) {
+                    let labels = [&entry.left_label, &entry.right_label];
+                    for (label, side) in labels.into_iter().zip(sides) {
+                        let matches = match entry.kind {
+                            CompareKind::Contexts => row.cluster == *label,
+                            CompareKind::Namespaces => row.namespace.as_ref() == Some(label),
+                        };
+                        if matches {
+                            side.add(row);
                         }
                     }
                 }
             }
-            for (entry, [left, right]) in entries.into_iter().zip(health) {
-                projection.comparisons.push(Comparison {
-                    title: entry.label,
-                    sides: [(entry.left_label, left), (entry.right_label, right)],
-                });
-            }
         }
-        self.saved_overview = projection;
+        entries
+            .iter()
+            .zip(health)
+            .map(|(entry, [left, right])| Comparison {
+                title: entry.label.clone(),
+                sides: [
+                    (entry.left_label.clone(), left),
+                    (entry.right_label.clone(), right),
+                ],
+            })
+            .collect()
     }
     pub(super) fn saved_scope_view(&self) -> impl IntoElement {
         div()
@@ -213,14 +232,15 @@ impl Inspector {
             })
     }
     pub(super) fn compare_cards(&self) -> Option<AnyElement> {
-        (!self.saved_overview.comparisons.is_empty()).then(|| {
+        (!self.saved_overview.entries.is_empty()).then(|| {
+            let comparisons = self.saved_comparisons();
             titled_card(
                 "Compare",
                 "Health split for saved workspace compare shortcuts.",
                 div()
                     .flex()
                     .gap(px(12.))
-                    .children(self.saved_overview.comparisons.iter().map(|comparison| {
+                    .children(comparisons.iter().map(|comparison| {
                         ui::panel()
                             .flex_1()
                             .p(px(12.))
