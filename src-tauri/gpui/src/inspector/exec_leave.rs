@@ -101,7 +101,7 @@ impl Inspector {
                         }
                         Err(error) => {
                             stopped_all = false;
-                            tab.stop_failed(error.message);
+                            tab.stop_failed(error.into());
                         }
                     }
                 }

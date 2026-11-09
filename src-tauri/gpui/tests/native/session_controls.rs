@@ -118,7 +118,11 @@ fn refused_exec_is_visible(cx: &mut TestAppContext) {
     let handle = pod(cx, Arc::new(Controlled::default()));
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        assert_eq!(w.find("exec-error").label(), Some("pods/exec is forbidden"));
+        // The typed kind classifies it, as `FriendlyError.svelte` does.
+        assert_eq!(
+            w.find("exec-error").label(),
+            Some("KubeCove does not have permission for this")
+        );
     })
     .unwrap();
 }
@@ -131,7 +135,7 @@ fn exec_transport_error_is_visible(cx: &mut TestAppContext) {
         w.render_frame(cx);
         assert_eq!(
             w.find("exec-error").label(),
-            Some("Exec transport disconnected")
+            Some("KubeCove could not reach the Kubernetes API")
         );
     })
     .unwrap();

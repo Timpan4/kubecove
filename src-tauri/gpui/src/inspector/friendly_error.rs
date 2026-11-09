@@ -36,11 +36,13 @@ pub(crate) enum Operation {
     /// `providerDetection`: the Argo CD and Flux detection reads.
     ProviderDetection,
     YamlDryRun,
+    Exec,
 }
 
 impl Operation {
     fn subject(self) -> &'static str {
         match self {
+            Self::Exec => "exec session",
             Self::Contexts => "cluster contexts",
             Self::Details => "resource details",
             Self::Resources => "resources",

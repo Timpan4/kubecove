@@ -78,7 +78,7 @@ impl Inspector {
                         match result {
                             Ok(true) => {}
                             Ok(false) => tab.error = Some("Terminal resize was refused".into()),
-                            Err(error) => tab.error = Some(error.message),
+                            Err(error) => tab.error = Some(error.into()),
                         }
                         cx.notify();
                     }

@@ -240,6 +240,28 @@
       ]
     },
     {
+      "id": "exec-session.stop-failure-friendly-error",
+      "title": "A failed Stop shows the exec failure panel with the technical detail collapsed",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "start", "container": "app", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "coverageScript", "script": "stop-failed" },
+        { "action": "execControl", "operation": "stop" },
+        { "action": "expectExecState", "container": "app", "status": "error", "contains": "[stop failed; the session may still be running]" },
+        { "action": "expectPageText", "text": "Exec failed" },
+        { "action": "expectNoPageText", "text": "Controlled stop failure" },
+        { "action": "coverageScript", "script": "base" },
+        { "action": "execControl", "operation": "stop" },
+        { "action": "expectExecState", "container": "app", "status": "stopped", "contains": "[session stopped]" },
+        { "action": "expectNoPageText", "text": "Exec failed" },
+        { "action": "closeDetail" },
+        { "action": "expectDetailClosed" }
+      ]
+    },
+    {
       "id": "exec-session.leave-during-stop",
       "title": "Stop and leave closes the dialog while the stops run, and leaves once they finish",
       "steps": [

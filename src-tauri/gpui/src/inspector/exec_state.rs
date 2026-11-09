@@ -18,13 +18,42 @@ pub(super) struct ExecTab {
     /// Starts the session, then reads its messages until the channel closes. Dropping it
     /// drops the stream, which ends the session. `None` before the start and after Stop.
     pub stream: Option<InFlight>,
-    pub error: Option<String>,
+    pub error: Option<ExecError>,
     pub parser: super::exec_reflow::Parser,
     pub selection: Option<super::exec_selection::Selection>,
     pub lines: Vec<SharedString>,
     pub rendered: Vec<super::exec_buffer::TerminalRow>,
     pub accessible: SharedString,
     pub cursor_visible: bool,
+}
+
+/// The terminal's failure, shown through `FriendlyError` as the web shows `error`.
+/// Backend errors keep their kind; the web passes the text of stream errors alone.
+#[derive(Clone)]
+pub(super) struct ExecError {
+    pub kind: Option<AppErrorKind>,
+    pub message: String,
+}
+impl From<AppError> for ExecError {
+    fn from(error: AppError) -> Self {
+        Self {
+            kind: Some(error.kind),
+            message: error.message,
+        }
+    }
+}
+impl From<String> for ExecError {
+    fn from(message: String) -> Self {
+        Self {
+            kind: None,
+            message,
+        }
+    }
+}
+impl From<&str> for ExecError {
+    fn from(message: &str) -> Self {
+        message.to_owned().into()
+    }
 }
 
 /// The session behind one terminal. `ExecSessionTerminal.svelte` keeps the same
@@ -149,11 +178,11 @@ impl ExecTab {
         self.output("\x1b[2m[session stopped]\x1b[0m\r\n");
     }
     /// `stopBackendSession`'s failure: the session may still run, so it stays tracked.
-    pub(super) fn stop_failed(&mut self, message: String) {
+    pub(super) fn stop_failed(&mut self, error: ExecError) {
         if let ExecPhase::Live(live) = &mut self.phase {
             live.status = PodExecSessionStatus::Error;
         }
-        self.error = Some(message);
+        self.error = Some(error);
         self.output("\r\n\x1b[2m[stop failed; the session may still be running]\x1b[0m\r\n");
     }
     pub(super) fn refresh_view(&mut self) {
@@ -218,7 +247,7 @@ impl ExecTab {
             PodExecSessionMessage::Status { status, .. } => live.status = status,
             PodExecSessionMessage::Error { message, .. } => {
                 live.status = PodExecSessionStatus::Error;
-                self.error = Some(message);
+                self.error = Some(message.into());
             }
             PodExecSessionMessage::Exited { .. } => self.phase = ExecPhase::Ended(ExecEnd::Exited),
             PodExecSessionMessage::Stopped { .. } => {
@@ -424,7 +453,7 @@ impl Inspector {
                     if let Some(tab) = this.exec.tabs.iter_mut().find(|t| t.key == key) {
                         tab.stream = None;
                         tab.phase = ExecPhase::Ended(ExecEnd::Error);
-                        tab.error = Some(error.message);
+                        tab.error = Some(error.into());
                     }
                     cx.notify();
                 });
@@ -469,7 +498,7 @@ impl Inspector {
                 if let Err(error) = backend.exec_input(id.clone(), data).await {
                     let _ = this.update(cx, |this, cx| {
                         if let Some(tab) = this.exec.tabs.iter_mut().find(|t| t.key == key) {
-                            tab.error = Some(error.message);
+                            tab.error = Some(error.into());
                         }
                         cx.notify();
                     });
@@ -500,7 +529,7 @@ impl Inspector {
                         Ok(false) => {
                             tab.stop_failed("Stop failed; the session may still be running".into())
                         }
-                        Err(error) => tab.stop_failed(error.message),
+                        Err(error) => tab.stop_failed(error.into()),
                     }
                 }
                 this.load_sessions(cx);

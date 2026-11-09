@@ -101,6 +101,21 @@ impl Inspector {
                     .on_click(cx.listener(|this, _, _, cx| { this.exec.menu = !this.exec.menu; cx.notify(); })))
                 .child(menu).into_any_element();
         }
+        // `ExecSessionTerminal.svelte` wraps its `FriendlyError` in `shrink-0 p-2`.
+        let error = self.exec.active().and_then(|t| t.error.as_ref()).map(|error| {
+            div().flex_none().p(px(8.)).child(self.friendly_failure(
+                "exec-error",
+                error.kind,
+                &error.message,
+                super::friendly_error::Context {
+                    operation: Some(super::friendly_error::Operation::Exec),
+                    fallback_title: Some("Exec failed"),
+                    ..Default::default()
+                },
+                None,
+                cx,
+            ))
+        });
         let tabs = self.exec.tabs.iter().map(|tab| {
             let key = tab.key;
             div()
@@ -236,15 +251,7 @@ impl Inspector {
                         })
                     }),
             )
-            .when_some(active.and_then(|t| t.error.clone()), |view, error| {
-                view.child(
-                    div()
-                        .id("exec-error")
-                        .test_support()
-                        .aria_label(error.clone())
-                        .child(ui::xs(error).text_color(Tokens::destructive())),
-                )
-            })
+            .children(error)
             .child(
                 div()
                     .id("exec-terminal")
