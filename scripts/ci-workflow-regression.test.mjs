@@ -326,7 +326,7 @@ test("parity jobs run every suite shard on pull requests and on main, and keep t
   assert.ok(job("main", parity).includes("if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}"));
   assert.match(suite, /^ {10}PARITY_SUITE_SHARD: \$\{\{ inputs\.shard \}\}\/\$\{\{ inputs\.shards \}\}$/m);
   assert.match(suite, /^ {8}run: CARGO_BUILD_JOBS="\$\(nproc\)" bun run e2e:parity$/m);
-  assert.match(suite, /sudo apt-get install -y libfontconfig-dev pkg-config/);
+  assert.match(suite, /sudo apt-get install -y libfontconfig-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev pkg-config/);
   assert.match(suite, /run: bunx playwright-core install --with-deps --no-shell chromium/);
   const upload = suite.slice(suite.indexOf("- name: Upload parity artifacts"));
   assert.match(upload, /^ {8}if: \$\{\{ always\(\) && !inputs\.build-only \}\}$/m);

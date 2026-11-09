@@ -44,11 +44,12 @@ jobs:
           fetch-depth: ${{ (inputs.coverage || inputs.build-only) && 1 || 0 }}
 
       # yeslogic-fontconfig-sys finds fontconfig through pkg-config at build time.
+      # The linker needs libxcb and both xkbcommon libraries for GPUI's X11 backend.
       # GPUI loads Wayland at run time, and its test platform needs no display.
       - name: Install GPUI build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libfontconfig-dev pkg-config
+          sudo apt-get install -y libfontconfig-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev pkg-config
 
       - name: Setup Bun
         if: ${{ !inputs.build-only }}
