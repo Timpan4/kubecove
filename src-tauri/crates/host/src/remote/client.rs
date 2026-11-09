@@ -5,6 +5,7 @@ use super::http::{
 use super::models::{
     RemoteAuthMode, RemoteConnectionSummary, RemoteCredentials, RemoteSessionState, ServerSession,
 };
+use super::session_signal::signal_session_changed;
 use super::tunnels::RemoteTunnelRegistry;
 use futures_util::{SinkExt, StreamExt};
 use kubecove_kube::runtime::Channel;
@@ -335,7 +336,7 @@ impl RemoteConnection {
         }
     }
 
-    /// Records the first reason the session stopped.
+    /// Records the first reason the session stopped, then tells the views.
     fn end(&self, state: RemoteSessionState) {
         self.status
             .ended
@@ -344,6 +345,7 @@ impl RemoteConnection {
             .get_or_insert(state);
         self.active.store(false, Ordering::Release);
         self.fail_controls();
+        signal_session_changed();
     }
 
     /// HTTP 401 means the sign-in is gone; 409 with kind Session means the

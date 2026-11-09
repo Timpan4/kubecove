@@ -3,6 +3,7 @@ mod http;
 mod models;
 mod notice;
 mod session;
+mod session_signal;
 mod sign_in;
 mod store;
 mod tunnels;
@@ -18,6 +19,7 @@ mod test_server;
 
 pub use models::{RemoteAuthMode, RemoteConnectionSummary, RemoteSessionState};
 pub use notice::{RemoteNotice, RemoteNoticeAction, SIGN_IN_MEMORY_ONLY, SIGN_IN_NOT_DELETED};
+pub use session_signal::{signal_session_changed, subscribe_session_changes};
 pub use sign_in::BrowserLauncher;
 pub use store::RemoteConnectionStore;
 

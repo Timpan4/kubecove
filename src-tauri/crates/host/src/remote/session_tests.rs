@@ -281,6 +281,20 @@ async fn a_moved_session_ends_and_a_new_session_recovers() {
 }
 
 #[tokio::test]
+async fn a_moved_session_signals_the_views_to_read_it_again() {
+    let harness = harness(Browser::Complete).await;
+    harness.signed_in().await;
+    let mut changes = subscribe_session_changes();
+    changes.borrow_and_update();
+    harness.server.send(r#"{"type":"session_moved"}"#);
+    // The signal follows the stored state, so waiting for the signal is
+    // enough. A reader woken by it sees SessionEnded.
+    changes.changed().await.expect("session signal");
+    let summary = harness.wait_for(RemoteSessionState::SessionEnded).await;
+    assert!(!summary.connected);
+}
+
+#[tokio::test]
 async fn a_dropped_socket_reconnects_within_the_grace_window_or_expires() {
     let harness = harness(Browser::Complete).await;
     harness.signed_in().await;
