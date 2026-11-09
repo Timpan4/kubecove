@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed on 2026-11-09.
+Proposed on 2026-11-09. Accepted by the owner on 2026-11-09.
 
 ## Context
 
