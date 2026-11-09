@@ -26,6 +26,8 @@ struct ReadyNotifications {
 pub(super) struct ScriptState {
     failed: bool,
     burst: bool,
+    /// Limits burst notifications to this context's watches; `None` sends to every context.
+    burst_context: Option<String>,
     changed: bool,
     /// A scripted rollout gives payments-api the "Rolling out" lifecycle, which shows activity.
     rolling: bool,
@@ -296,6 +298,13 @@ impl Fixture {
             "{kind} watch start version"
         );
     }
+    /// The "burst" script, notified only on `context`'s resource watches.
+    #[allow(dead_code)] // Only the watch-burst measurement bursts one context.
+    pub fn replay_burst_in(&self, context: &str) {
+        self.live.state.lock().unwrap().burst_context = Some(context.to_owned());
+        self.replay_live("burst");
+    }
+
     pub fn replay_live(&self, script: &str) {
         if matches!(
             script,
@@ -349,7 +358,9 @@ impl Fixture {
         state.watches.retain(|(_, sender)| !sender.is_closed());
         for (watch, sender) in &state.watches {
             if matches!(script, "burst" | "burst-reset") {
-                if let WatchTarget::Resource { scope, key, .. } = watch {
+                if let WatchTarget::Resource { scope, key, .. } = watch
+                    && (state.burst_context.as_ref()).is_none_or(|only| *only == scope.context)
+                {
                     for row in self
                         .resources
                         .iter()

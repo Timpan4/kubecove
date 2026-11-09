@@ -327,6 +327,41 @@ pub fn fan_out(scaled: &Value) -> Value {
     fixture
 }
 
+/// The workspace context at `rank` in [`contexts`]: the saved parity
+/// workspace's primary context, then added contexts.
+pub fn context_name(rank: usize) -> String {
+    if rank == 0 {
+        "mock-dev".to_owned()
+    } else {
+        format!("context-{rank}")
+    }
+}
+
+/// The watch-burst workload in each of `count` contexts ([`context_name`]):
+/// one copy of its 10,000 rows per context, with that context as `cluster`.
+/// Live kind reads copy `resources` into the watched context already.
+pub fn contexts(watch: &Value, count: usize) -> Value {
+    let mut fixture = watch.clone();
+    let template = fixture["contexts"][0].clone();
+    let rows = fixture["resources"].as_array().expect("watch rows").clone();
+    let (mut contexts, mut context_rows) = (Vec::new(), Vec::new());
+    for rank in 0..count {
+        let context = context_name(rank);
+        let mut entry = template.clone();
+        entry["name"] = json!(context);
+        entry["isCurrent"] = json!(rank == 0);
+        contexts.push(entry);
+        context_rows.extend(rows.iter().map(|row| {
+            let mut row = row.clone();
+            row["cluster"] = json!(context);
+            row
+        }));
+    }
+    fixture["contexts"] = Value::Array(contexts);
+    fixture["contextResources"] = Value::Array(context_rows);
+    fixture
+}
+
 /// The opened Deployment's events, alternating its Warning and Normal event.
 fn scale_events(fixture: &mut Value) -> usize {
     let target = size("events of the opened resource");

@@ -204,6 +204,13 @@ fn main() {
         serde_json::from_slice(&std::fs::read(&watch_path).expect("watch workload")).unwrap();
     watch["contextResources"] = watch["resources"].clone();
     assert_eq!(watch["resources"].as_array().unwrap().len(), 10_000);
+    for &count in cases::multi_context::COUNTS {
+        std::fs::write(
+            directory.join(format!("fixture-contexts-{count}.json")),
+            serde_json::to_vec(&fixture::contexts(&watch, count)).unwrap(),
+        )
+        .unwrap();
+    }
     std::fs::write(watch_path, serde_json::to_vec(&watch).unwrap()).unwrap();
     let mut results = Vec::new();
     if let Some(ids) = &selected {
