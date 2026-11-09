@@ -11,7 +11,6 @@ use kubecove_lib::models::{
     ArgoApplicationInspector, ArgoApplicationRef, ArgoApplicationSummary, ResourceSummary,
 };
 use std::collections::HashMap;
-use std::rc::Rc;
 
 mod header;
 
@@ -38,7 +37,7 @@ pub(in crate::inspector) struct ApplicationWorkspace {
     identities: HashMap<String, [bool; 6]>,
     counts: [usize; 6],
     pub(super) filter: Option<usize>,
-    request: Rc<()>,
+    /// The snapshot read in flight. A new read or closing the workspace cancels it.
     task: Option<Task<()>>,
 }
 
@@ -114,7 +113,6 @@ impl Inspector {
             identities: HashMap::new(),
             counts: [0; 6],
             filter: None,
-            request: Rc::new(()),
             task: None,
         });
         self.table_page = 0;
@@ -174,8 +172,6 @@ impl Inspector {
             workspace_id: Some(workspace_id),
             ..Default::default()
         };
-        state.request = Rc::new(());
-        let request = state.request.clone();
         let read = self.backend.inspect_argo(crate::backend::ArgoInspection {
             application,
             connection_id,
@@ -187,9 +183,6 @@ impl Inspector {
                 let Some(state) = this.gitops_page.workspace.as_mut() else {
                     return;
                 };
-                if !Rc::ptr_eq(&request, &state.request) {
-                    return;
-                }
                 state.identities.clear();
                 state.counts = [0; 6];
                 state.snapshot = match result {

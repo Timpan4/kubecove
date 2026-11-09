@@ -14,10 +14,8 @@ impl Inspector {
             return;
         };
         state.focus = index;
-        state.comparison.take();
-        state.comparison_error = None;
-        state.comparison_request = Rc::new(());
-        let current = state.comparison_request.clone();
+        // Cancels the comparison of the resource that had the focus.
+        state.comparison = Fetch::Idle;
         cx.notify();
         let Some(index) = index else {
             return;
@@ -64,10 +62,7 @@ impl Inspector {
                 let Some(state) = detail.argo.as_mut() else {
                     return;
                 };
-                if !Rc::ptr_eq(&current, &state.comparison_request) {
-                    return;
-                }
-                match result {
+                state.comparison = match result {
                     Ok(comparison)
                         if crate::argo_app::identity_key(&comparison.resource)
                             == crate::argo_app::identity_key(&resource) =>
@@ -100,18 +95,16 @@ impl Inspector {
                         if let Some(snapshot) = &mut state.inspector {
                             snapshot.comparisons.push(comparison);
                         }
+                        Fetch::Ready(())
                     }
-                    Ok(_) => {
-                        state.comparison_error =
-                            Some("Comparison returned a different resource".into())
-                    }
-                    Err(error) => state.comparison_error = Some(error.message),
-                }
+                    Ok(_) => Fetch::Failed("Comparison returned a different resource".into()),
+                    Err(error) => Fetch::Failed(error.message),
+                };
                 cx.notify();
             });
         });
         if let Some(state) = self.argo_tab_state() {
-            state.comparison = Some(task);
+            state.comparison = Fetch::start(task);
         }
     }
 }

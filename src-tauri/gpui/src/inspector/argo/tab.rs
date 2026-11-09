@@ -4,6 +4,7 @@
 use super::super::controls::{self, Variant};
 use super::super::detail::{Detail, ResourceDetail};
 use super::super::feedback::Disclosure;
+use super::super::request::Fetch;
 use super::super::{Inspector, surface};
 use super::panels::{delivery, navigator};
 use super::snapshot::{DiffView, snapshot};
@@ -14,7 +15,6 @@ use crate::theme::{MONO, Palette, Tokens};
 use crate::ui;
 use gpui_kit::{AnyElement, Context, Div, SharedString, Task, Window, div, prelude::*, px};
 use kubecove_lib::models::{AppError, ArgoApplicationInspector, ArgoApplicationRef};
-use std::rc::Rc;
 
 mod comparison;
 
@@ -41,11 +41,11 @@ pub(in crate::inspector) struct ArgoTab {
         gpui_kit::Entity<gpui_kit::component::input::EditorState>,
         gpui_kit::Entity<gpui_kit::component::input::EditorState>,
     )>,
-    request: Rc<()>,
+    /// The snapshot read. A reload builds a new tab state, which cancels it.
     _task: Option<Task<()>>,
-    comparison: Option<Task<()>>,
-    comparison_request: Rc<()>,
-    pub(super) comparison_error: Option<String>,
+    /// The focused resource's connected comparison. Its result lands in
+    /// `inspector.comparisons`, so `Ready` carries nothing.
+    comparison: Fetch<()>,
     pub(super) refresh_options: bool,
 }
 
@@ -92,19 +92,13 @@ impl Inspector {
                 workspace_id: Some(workspace_id),
             },
         });
-        let request = Rc::new(());
-        let current = request.clone();
         let task = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
                 let Detail::Ready(detail) = &mut this.detail else {
                     return;
                 };
-                if detail
-                    .argo
-                    .as_ref()
-                    .is_none_or(|state| !Rc::ptr_eq(&current, &state.request))
-                {
+                if detail.argo.is_none() {
                     return;
                 }
                 let view = result.map(|inspector| {
@@ -218,11 +212,8 @@ impl Inspector {
             operation: Default::default(),
             options: super::options::Options::new(window, cx),
             editors: Vec::new(),
-            request,
             _task: Some(task),
-            comparison: None,
-            comparison_request: Rc::new(()),
-            comparison_error: None,
+            comparison: Fetch::Idle,
             refresh_options: false,
         });
     }
@@ -609,11 +600,11 @@ fn argo_tab(
             .child(navigator(view, state, cx))
             .child(delivery(view, state, timezone));
     }
-    if let Some(error) = &state.comparison_error {
+    if let Some(error) = state.comparison.failure() {
         column = column
             .child(surface::failed(
                 "Resource comparison unavailable",
-                error.clone(),
+                error.to_owned(),
             ))
             .child(
                 controls::button(Variant::Outline, 24., false)
