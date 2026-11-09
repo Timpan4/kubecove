@@ -48,11 +48,30 @@ fn visible_names(window: &mut gpui_kit::Window, expected: &[String]) -> Vec<Stri
         .collect()
 }
 
+/// Presses Tab until the control `id` has keyboard focus, as a keyboard user
+/// reaches it. The web driver's `press` focuses the name button first; GPUI's
+/// scoped `press` dispatches to the current focus and does not move it.
+fn tab_to(window: &mut gpui_kit::Window, id: &str, cx: &mut gpui_kit::App) {
+    let mut first: Option<gpui_kit::FocusHandle> = None;
+    loop {
+        window.press("tab", cx);
+        if locate::focus_state(&window.find(id.to_owned())) == Some(true) {
+            return;
+        }
+        let focused = window.focused(cx).expect("Tab focused no control");
+        match &first {
+            None => first = Some(focused),
+            Some(first) => assert!(*first != focused, "Tab cycled without reaching {id}"),
+        }
+    }
+}
+
 pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) -> bool {
     match string(step, "action") {
         "pressResourceRow" => {
             let id = row(step);
             reveal_cell(window, &id, cx);
+            tab_to(window, &id, cx);
             let key = if string(step, "key") == "Enter" {
                 "enter"
             } else {
