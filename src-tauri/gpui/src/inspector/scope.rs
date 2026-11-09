@@ -5,11 +5,26 @@ use super::load_trace::{LoadKind, LoadTrace};
 use super::{Inspector, Load, map};
 use crate::backend::Read;
 use crate::backend::ScopeResult;
+use crate::model::PreparedRows;
 use futures_util::{FutureExt, future::Shared};
 use gpui_kit::component::select::SearchableVec;
-use gpui_kit::{Context, SharedString, Window};
-use kubecove_lib::models::ResourceSummary;
+use gpui_kit::{BackgroundExecutor, Context, SharedString, Window};
+use kubecove_lib::models::{AppError, ResourceSummary};
 use std::{rc::Rc, time::Instant};
+
+/// Prepares a scope read's rows on the background executor, so applying the
+/// read on the UI thread only swaps them in.
+async fn prepare_off_thread(
+    executor: &BackgroundExecutor,
+    result: Result<ScopeResult, AppError>,
+) -> Result<(ScopeResult, PreparedRows), AppError> {
+    let mut result = result?;
+    let resources = std::mem::take(&mut result.resources);
+    let rows = executor
+        .spawn(async move { PreparedRows::with_inherited_owners(resources) })
+        .await;
+    Ok((result, rows))
+}
 
 /// The builtin and custom reads of one resource scope, shareable while in flight.
 /// Dropping every clone cancels the reads, as dropping one owned read did.
@@ -148,7 +163,7 @@ impl Inspector {
         };
         // One task, so dropping it (a newer scope or refresh) cancels the custom read too.
         self.scope_task = Some(cx.spawn_in(window, async move |this, cx| {
-            let result = builtin.await;
+            let result = prepare_off_thread(cx.background_executor(), builtin.await).await;
             let applied = this.update(cx, |this, cx| {
                 if !Rc::ptr_eq(&this.request, &request) {
                     return false;
@@ -157,11 +172,9 @@ impl Inspector {
                 let awaits_custom = custom.is_some();
                 this.live.scope_loading = false;
                 let ready = match result {
-                    Ok(result) => {
+                    Ok((result, rows)) => {
                         this.namespaces = result.namespaces;
-                        this.rows = Rc::new(crate::model::PreparedRows::with_inherited_owners(
-                            result.resources,
-                        ));
+                        this.rows = Rc::new(rows);
                         this.live.versions = result.versions;
                         this.warnings = result.warnings;
                         this.load = Load::Ready;
@@ -288,7 +301,7 @@ impl Inspector {
             let read = self.timings.measure("list_resource_scope", read);
             let request = self.request.clone();
             self.scope_task = Some(cx.spawn_in(window, async move |this, cx| {
-                let result = read.await;
+                let result = prepare_off_thread(cx.background_executor(), read.await).await;
                 let _ = this.update(cx, |this, cx| {
                     if !Rc::ptr_eq(&this.request, &request) {
                         return;
@@ -297,10 +310,8 @@ impl Inspector {
                     this.live.refreshing = false;
                     this.live.scope_loading = false;
                     match result {
-                        Ok(result) => {
-                            this.rows = Rc::new(crate::model::PreparedRows::with_inherited_owners(
-                                result.resources,
-                            ));
+                        Ok((result, rows)) => {
+                            this.rows = Rc::new(rows);
                             this.live.versions = result.versions;
                             this.namespaces = result.namespaces;
                             this.warnings = result.warnings;
@@ -326,8 +337,9 @@ impl Inspector {
         let _span = crate::frame_profile::scope("scope", "filter");
         self.update_saved_overview();
         self.filter_rows(cx);
+        // The page render rebuilds the map once per frame, so several filters
+        // before a frame, or one before a new topology replaces the old, cost one.
         self.map.links_stale = true;
-        self.rebuild_map();
         cx.notify();
     }
 

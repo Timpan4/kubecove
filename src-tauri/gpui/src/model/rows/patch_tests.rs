@@ -130,11 +130,11 @@ fn watch_patches_keep_inherited_owners_in_step_with_their_parents() {
     let mut rows = PreparedRows::with_inherited_owners(vec![parent("app"), pod.clone()]);
     assert_eq!(owner(&rows), Some("app".into()));
 
-    let identity = rows.identity().clone();
+    let identity = rows.identity();
     rows.patch(&key(), vec![pod.clone()], None);
     assert_eq!(owner(&rows), Some("app".into()));
     assert!(
-        Rc::ptr_eq(rows.identity(), &identity),
+        rows.identity() == identity,
         "unchanged read rebuilt the rows"
     );
 
@@ -202,13 +202,13 @@ fn named_reads_replace_add_and_delete_only_their_rows() {
         Some(HealthAssessmentState::Degraded)
     );
 
-    let identity = rows.identity().clone();
+    let identity = rows.identity();
     let patched = rows.patch(&key(), vec![degraded("c")], Some(names(&["c"])));
     let c = rows
         .iter()
         .position(|row| row.kind == "Pod" && row.name == "c");
     assert_eq!(patched.changed, Some(vec![c.unwrap()]));
-    assert!(Rc::ptr_eq(rows.identity(), &identity));
+    assert!(rows.identity() == identity);
     assert_eq!(
         state(&rows, "Pod", "c"),
         Some(HealthAssessmentState::Degraded)

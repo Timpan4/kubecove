@@ -1,9 +1,12 @@
 //! Immutable topology projection and reusable filtering/layout work buffers.
 
 use super::{layout, loose_key};
-use crate::{collate::Encoded, model::Visible};
+use crate::{
+    collate::Encoded,
+    model::{RowsId, Visible},
+};
 use kubecove_lib::models::ResourceTopology;
-use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, sync::Arc};
 
 #[cfg(test)]
 mod layout_tests;
@@ -11,7 +14,7 @@ mod layout_tests;
 mod tests;
 
 pub struct Source {
-    rows: Rc<()>,
+    rows: RowsId,
     pub(super) index: Arc<HashMap<String, usize>>,
     pub(super) edge_positions: Vec<usize>,
     pub(super) edge_count: usize,
@@ -85,7 +88,7 @@ impl Source {
             })
             .collect();
         let mut source = Self {
-            rows: rows.source().identity().clone(),
+            rows: rows.source().identity(),
             ranks: layout::node_ranks(&topology.nodes),
             locals: topology
                 .nodes
@@ -115,7 +118,7 @@ impl Source {
     }
 
     pub fn matches(&self, rows: &Visible) -> bool {
-        Rc::ptr_eq(&self.rows, rows.source().identity())
+        self.rows == rows.source().identity()
     }
     pub(super) fn rank(&self, index: usize) -> usize {
         self.ranks[index]

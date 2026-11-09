@@ -34,10 +34,23 @@ pub(crate) struct RowKey {
     gitops: bool,
 }
 
+/// Which prepared rows a derived view was built from. Each preparation takes a
+/// new one; patching rows in place keeps it.
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(crate) struct RowsId(u64);
+
+static ROWS_ID: AtomicU64 = AtomicU64::new(1);
+
+impl Default for RowsId {
+    fn default() -> Self {
+        Self(ROWS_ID.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct PreparedRows {
     rows: Vec<ResourceSummary>,
-    identity: Rc<()>,
+    identity: RowsId,
     keys: Vec<RowKey>,
     search: search::SearchText,
     groups: Vec<u8>,
@@ -85,10 +98,9 @@ impl PreparedRows {
         self.rows.iter().zip(&self.keys)
     }
 
-    pub(crate) fn identity(&self) -> &Rc<()> {
-        &self.identity
+    pub(crate) fn identity(&self) -> RowsId {
+        self.identity
     }
-
     /// The resource view's rows, with GitOps owners inherited in place as the
     /// filter, table and detail pane show them.
     pub(crate) fn with_inherited_owners(mut rows: Vec<ResourceSummary>) -> Self {
@@ -188,7 +200,7 @@ impl PreparedRows {
         drop(variant_ids);
         Self {
             rows,
-            identity: Rc::default(),
+            identity: RowsId::default(),
             keys,
             search,
             groups,
@@ -227,7 +239,7 @@ impl First {
 #[derive(Default)]
 pub struct Visible {
     // The key identity survives releasing the row owner for watch reconciliation.
-    identity: Rc<()>,
+    identity: RowsId,
     source: Rc<PreparedRows>,
     indices: Vec<usize>,
     previous: Vec<usize>,
@@ -336,9 +348,8 @@ impl Visible {
                 self.selected[index] = true;
             }
         }
-        let changed =
-            !Rc::ptr_eq(&self.identity, source.identity()) || self.indices != self.previous;
-        self.identity = source.identity().clone();
+        let changed = self.identity != source.identity() || self.indices != self.previous;
+        self.identity = source.identity();
         self.source = source;
         if changed {
             self.generation = GENERATION.fetch_add(1, Ordering::Relaxed);

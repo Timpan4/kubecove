@@ -9,7 +9,7 @@ use kubecove_lib::models::{
     GitOpsOwnerSummary, HealthAssessmentSource, HealthAssessmentState, ResourceSummary,
 };
 pub use rows::Visible;
-pub(crate) use rows::{KindFilter, ObservedNames, PreparedRows, reconcile};
+pub(crate) use rows::{KindFilter, ObservedNames, PreparedRows, RowsId, reconcile};
 use std::collections::{HashMap, HashSet};
 
 /// `DEFAULT_WORKSPACE_KINDS` in `src/lib/workspace-model.ts`.
