@@ -210,12 +210,20 @@ export async function argoAction(page: Page, step: Step) {
                 case "expectFocusIn":
                     if (!(await dialog.evaluate((node) => node.contains(document.activeElement)))) throw new Error("Focus is outside the Argo CD connection dialog");
                     break;
-                case "tab":
-                    for (let press = 0; press < step.presses; press += 1) await page.keyboard.press("Tab");
+                case "tabCycle":
+                case "shiftTabCycle": {
+                    // Presses until focus returns to the element focused now. The dialog's element count bounds the cycle.
+                    const limit = await dialog.locator("*").count();
+                    const first = await page.evaluateHandle(() => document.activeElement);
+                    const key = step.operation === "tabCycle" ? "Tab" : "Shift+Tab";
+                    for (let stops = 1; ; stops += 1) {
+                        if (stops > limit) throw new Error(`Focus did not return to its first control within ${limit} presses`);
+                        await page.keyboard.press(key);
+                        if (!(await dialog.evaluate((node) => node.contains(document.activeElement)))) throw new Error(`Focus left the Argo CD connection dialog after ${stops} presses`);
+                        if (await page.evaluate((start) => document.activeElement === start, first)) break;
+                    }
                     break;
-                case "shiftTab":
-                    for (let press = 0; press < step.presses; press += 1) await page.keyboard.press("Shift+Tab");
-                    break;
+                }
                 case "escape":
                     await page.keyboard.press("Escape");
                     await dialog.waitFor({ state: "hidden" });

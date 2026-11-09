@@ -485,16 +485,44 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 });
                 assert!(focused, "focus is outside the Argo CD connection dialog");
             }
-            "tab" | "shiftTab" => {
-                let key = if string(step, "operation") == "tab" {
+            "tabCycle" | "shiftTabCycle" => {
+                let key = if string(step, "operation") == "tabCycle" {
                     "tab"
                 } else {
                     "shift-tab"
                 };
-                for _ in 0..number(step, "presses") {
-                    window.press(key, cx);
-                }
+                let inside = |path: &[ElementId]| {
+                    path.iter().any(
+                        |part| matches!(part, ElementId::Name(name) if name == "argo-connection-dialog"),
+                    )
+                };
+                let focused = |window: &gpui_kit::Window| {
+                    window
+                        .elements()
+                        .iter()
+                        .find(|e| inside(e.path()) && super::locate::focus_state(e) == Some(true))
+                        .map(|e| e.path().to_vec())
+                };
                 window.render_frame(cx);
+                // The dialog's element count bounds the cycle.
+                let limit = window.elements().iter().filter(|e| inside(e.path())).count();
+                let first = focused(window).expect("focus starts inside the Argo CD connection dialog");
+                let mut stops = 0;
+                loop {
+                    stops += 1;
+                    assert!(
+                        stops <= limit,
+                        "focus did not return to its first control within {limit} presses"
+                    );
+                    window.press(key, cx);
+                    window.render_frame(cx);
+                    let now = focused(window).unwrap_or_else(|| {
+                        panic!("focus left the Argo CD connection dialog after {stops} presses")
+                    });
+                    if now == first {
+                        break;
+                    }
+                }
             }
             "escape" => {
                 window.press("escape", cx);
