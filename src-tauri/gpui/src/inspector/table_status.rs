@@ -98,8 +98,7 @@ const ACTIVITY_TURN: Duration = Duration::from_millis(1150);
 
 /// `ResourceActivityIcon.svelte`: an active row turns its arc; a paused row
 /// paints it at angle 0. GPUI schedules frames only while an active arc is
-/// rendered, and draws it static when `App::reduce_motion` is set, as the web
-/// does under `prefers-reduced-motion`.
+/// rendered.
 fn activity_icon(id: &SharedString, active: bool, color: Hsla) -> AnyElement {
     let icon = ui::icon("loader-circle", 12., color);
     let frame = div()
