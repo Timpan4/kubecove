@@ -7,6 +7,8 @@ export const TABLE_COLUMNS = ["Name", "Status", "Context", "Namespace", "Kind", 
 type TableColumn = (typeof TABLE_COLUMNS)[number];
 export const SORT_COLUMNS = ["Name", "Status", "Context", "Namespace", "Kind", "Ready", "Restarts", "CPU", "Memory", "Age"] as const;
 export type UpdateControlLabel = "Check for updates" | "Update available" | "Checking for updates" | "Update check failed";
+/** One diagnostic the YAML editor marks. Positions are 1-based `[line, column]` in UTF-16 columns; `to` is exclusive. Without `message`, the clients' texts may differ. */
+export type YamlEditorDiagnostic = { from: [number, number]; to: [number, number]; severity: "error" | "warning" | "info"; source: string; message?: string };
 export type Step =
     | { action: "expectDetailScroll"; view: "events" | "timeline" }
     | { action: "coverageSelect"; label: string; value: string }
@@ -206,6 +208,7 @@ export type Step =
     | { action: "formatYaml" }
     | { action: "foldYamlLine"; line: number }
     | { action: "expectYamlVisibleLines"; lines: number[] }
+    | { action: "expectYamlEditorDiagnostics"; diagnostics: YamlEditorDiagnostic[] }
     | { action: "openResources" | "showYaml" | "closeDetail" | "expectDetailClosed" | "expectEmpty" | "refresh" }
     | { action: "search" | "expectSearch"; value: string }
     | ({ action: "expectResource" | "expectDetail" } & Identity)

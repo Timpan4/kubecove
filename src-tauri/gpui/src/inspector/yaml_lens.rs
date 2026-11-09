@@ -1,13 +1,14 @@
 //! Inline YAML diagnostics. The editor marks every parser and Kubernetes lint
 //! finding, and the lens shows one label per line, as `errorLensField` in
-//! `YamlCodeEditor.svelte` does. Parser errors come first, then lint results.
-//! `info` findings are marked but never get a lens.
+//! `YamlCodeEditor.svelte` does. Parser errors come first, then parser
+//! warnings, then lint results. `info` findings are marked but never get a lens.
+use super::yaml_parse::{self, Level};
 use super::{Inspector, detail::Detail};
 use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
 use gpui_kit::base::input::{Diagnostic, DiagnosticSeverity};
 use gpui_kit::component::input::{EditorState, Position};
-use gpui_kit::{Context, Div, div, prelude::*, px};
+use gpui_kit::{App, Context, Div, Stateful, div, prelude::*, px};
 use kubecove_lib::models::{KubernetesYamlLintDiagnostic, KubernetesYamlLintSeverity};
 
 pub(super) struct Lens {
@@ -38,7 +39,19 @@ pub(super) fn update(
     cx: &mut Context<EditorState>,
 ) -> Vec<Lens> {
     let text = editor.value().to_string();
-    let mut marks: Vec<Mark> = parser_error(&text).into_iter().collect();
+    let mut marks: Vec<Mark> = yaml_parse::diagnostics(&text)
+        .into_iter()
+        .map(|finding| Mark {
+            from: finding.range.start,
+            to: finding.range.end,
+            severity: match finding.level {
+                Level::Error => KubernetesYamlLintSeverity::Error,
+                Level::Warning => KubernetesYamlLintSeverity::Warning,
+            },
+            source: "YAML".into(),
+            message: finding.message,
+        })
+        .collect();
     marks.extend(lint.iter().map(|diagnostic| {
         let (from, to) = field_range(&text, diagnostic.field_path.as_deref());
         Mark {
@@ -51,7 +64,11 @@ pub(super) fn update(
     }));
     if let Some(diagnostics) = editor.diagnostics_mut() {
         diagnostics.clear();
-        for mark in &marks {
+        // The editor's diagnostic set is a sum tree that paints and hovers by
+        // seeking an offset, so it takes the marks in document order.
+        let mut ordered: Vec<&Mark> = marks.iter().collect();
+        ordered.sort_by_key(|mark| mark.from);
+        for mark in ordered {
             diagnostics.push(
                 Diagnostic::new(
                     position(&text, mark.from)..position(&text, mark.to),
@@ -68,39 +85,6 @@ pub(super) fn update(
     } else {
         Vec::new()
     }
-}
-
-/// The first serde_yaml error, on the one character at its column.
-fn parser_error(text: &str) -> Option<Mark> {
-    let error = serde_yaml::from_str::<serde_yaml::Value>(text).err()?;
-    let location = error.location();
-    let line = location.as_ref().map_or(1, |l| l.line());
-    let column = location.as_ref().map_or(1, |l| l.column());
-    let start = text
-        .split_inclusive('\n')
-        .take(line.saturating_sub(1))
-        .map(str::len)
-        .sum::<usize>();
-    let content = text[start..].split('\n').next().unwrap_or("");
-    // serde_yaml reports character columns.
-    let from = start
-        + content
-            .char_indices()
-            .nth(column.saturating_sub(1))
-            .map_or(content.len(), |(index, _)| index);
-    let to = from
-        + text[from..]
-            .chars()
-            .next()
-            .filter(|c| *c != '\n')
-            .map_or(0, char::len_utf8);
-    Some(Mark {
-        from,
-        to,
-        severity: KubernetesYamlLintSeverity::Error,
-        source: "YAML".into(),
-        message: error.to_string(),
-    })
 }
 
 /// `findYamlFieldRange`: the first line that declares the field's last key,
@@ -185,10 +169,12 @@ fn lenses(text: &str, marks: &[Mark]) -> Vec<Lens> {
         .collect()
 }
 
-pub(super) fn overlay(editor: &EditorState, lens: &Lens) -> Div {
+pub(super) fn overlay(editor: &EditorState, lens: &Lens) -> Stateful<Div> {
     let input = editor.input_bounds();
     let bounds = editor.range_to_bounds(&(lens.end..lens.end));
-    let mut view = div();
+    // Each lens needs its own element path: siblings sharing the path
+    // `yaml-lens` would share one identity.
+    let mut view = div().id(("yaml-lens-line", lens.line));
     if let Some(bounds) = bounds {
         let error = lens.severity == KubernetesYamlLintSeverity::Error;
         // Native lens sits after the faulty line, without changing the document.
@@ -217,6 +203,38 @@ pub(super) fn overlay(editor: &EditorState, lens: &Lens) -> Div {
 }
 
 impl Inspector {
+    /// Every diagnostic the YAML editor marks, for the parity driver, which
+    /// compares them with CodeMirror's: `from` and `to` as 1-based
+    /// `[line, column]` in UTF-16 columns, then severity, source and message.
+    /// Empty while no resource detail is loaded.
+    pub fn yaml_editor_diagnostics(&self, cx: &App) -> serde_json::Value {
+        let Detail::Ready(detail) = &self.detail else {
+            return serde_json::Value::Array(Vec::new());
+        };
+        let editor = detail.editor.read(cx);
+        let point = |position: &Position| [position.line + 1, position.character + 1];
+        let diagnostics = editor.diagnostics().into_iter().flat_map(|set| set.iter());
+        serde_json::Value::Array(
+            diagnostics
+                .map(|entry| {
+                    let diagnostic = &entry.diagnostic;
+                    serde_json::json!({
+                        "from": point(&diagnostic.range.start),
+                        "to": point(&diagnostic.range.end),
+                        "severity": match diagnostic.severity {
+                            DiagnosticSeverity::Error => "error",
+                            DiagnosticSeverity::Warning => "warning",
+                            DiagnosticSeverity::Info => "info",
+                            DiagnosticSeverity::Hint => "hint",
+                        },
+                        "source": diagnostic.source.as_ref().map(ToString::to_string),
+                        "message": diagnostic.message.to_string(),
+                    })
+                })
+                .collect(),
+        )
+    }
+
     pub(super) fn refresh_yaml_lens(&mut self, cx: &mut Context<Self>) {
         let enabled = self.persisted.preferences.yaml_error_lens_enabled;
         if let Detail::Ready(detail) = &mut self.detail {

@@ -18,10 +18,11 @@ import type {
 } from "../../../src/lib/types";
 
 const ACTION_KINDS = new Set(["Deployment", "StatefulSet", "DaemonSet", "Pod", "ConfigMap"]);
-/** Drafts `yaml-lint-permissions.json` types into the editor. Each must match its step exactly. */
+/** Drafts `yaml-lint-permissions.json` and `yaml-parser-diagnostics.json` type into the editor. Each must match its step exactly. */
 const LINT_DRAFTS = [
 	"apiVersion: apps/v1\nkind: StatefulSet\nmetadata:\n  name: payments-api\n  namespace: payments\n",
 	"apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: payments-api\n  namespace: payments\n",
+	"apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: payments-api\n  name: payments-api-v2\n  labels: !custom\n    app: payments\nspec: ]\n",
 ];
 
 export async function streamMessages(client: TauriClient, command: string, request: object): Promise<StreamMessage[]> {

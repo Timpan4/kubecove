@@ -6,6 +6,7 @@ import { resourceTableStep } from "./contract-resources";
 import { sessionStep } from "./contract-sessions";
 import { DETAIL_RESIZE_KEYS, LOG_LEVELS, MAP_CONTROLS, MAP_KEYS, PANEL_CONTROLS, RBAC_CATEGORIES, RBAC_RISKS, SORT_COLUMNS, type Step, TABLE_COLUMNS, VERDICTS } from "./contract-steps";
 import { boolean, count, object, oneOf, optionalBoolean, string, strings } from "./contract-values";
+import { yamlEditorStep } from "./contract-yaml";
 
 export type { Step } from "./contract-steps";
 export type Scenario = { id: string; title: string; steps: Step[] };
@@ -60,6 +61,7 @@ export const ACTIONS = [
 	"expectLiveState", "replayLiveData", "expectResourceStatus", "openCustomKind",
 	"selectTopologyNode", "expectTopologyEmpty", "expectUsageFooter", "openUsageTree", "expectNoUsageFooter", "expectUsageProcess", "setTopologyMode", "selectNamespace", "expectTopology", "expectTopologyEdge", "expectNoTopologyNode", "expectResourceMetrics",
 	"expectYamlAbsent",
+	"expectYamlEditorDiagnostics",
 	"clickActionEntry",
 	"fillContainerImage",
 	"openActionEditor", "fillActionField", "chooseActionRevision", "selectYamlShape", "selectYamlEncoding", "replaceYamlDraft", "expectYamlDocument", "expectYamlPicker", "formatYaml", "foldYamlLine", "expectYamlVisibleLines",
@@ -93,7 +95,7 @@ void allActionsListed;
 
 function step(value: unknown): Step {
 	const item = object(value);
-	const areaStep = integrationStep(item) ?? sessionStep(item) ?? resourceTableStep(item);
+	const areaStep = integrationStep(item) ?? sessionStep(item) ?? resourceTableStep(item) ?? yamlEditorStep(item);
 	if (areaStep) return areaStep;
 	switch (item.action) {
         case "sidebarToggle": case "sidebarSelect": return { action: item.action, path: strings(item.path, false) };
