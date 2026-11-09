@@ -1,8 +1,9 @@
+import type { JsonObject } from "../../src/lib/types";
 import { ARGO_OPTION_NAMES, type Step } from "./contract-steps";
-import { boolean, count, oneOf, optionalBoolean, plainString, string, strings } from "./contract-values";
+import { boolean, count, isBoolean, oneOf, optionalBoolean, plainString, string, strings } from "./contract-values";
 
 /** Parses remote connection, MCP server and Argo CD steps; returns undefined for any other action. */
-export function integrationStep(item: Record<string, unknown>): Step | undefined {
+export function integrationStep(item: JsonObject): Step | undefined {
 	switch (item.action) {
 		case "expectRemoteHost": return { action: item.action, url: string(item.url), disconnected: optionalBoolean(item.disconnected) };
 		case "expectRemoteHostTooltip": return { action: item.action, value: string(item.value) };
@@ -14,10 +15,10 @@ export function integrationStep(item: Record<string, unknown>): Step | undefined
 		case "fillMcpPort": return { action: item.action, value: string(item.value) };
 		case "mcpControl": return { action: item.action, control: oneOf(["MCP server", "Submit port", "Save", "Copy token", "Copy Claude Code command", "Rotate token"], item.control, "an MCP control") };
 		case "expectMcpState":
-			if (typeof item.enabled !== "boolean" || typeof item.running !== "boolean" || typeof item.save !== "boolean" || typeof item.command !== "boolean") throw new Error("Expected MCP control states");
+			if (!isBoolean(item.enabled) || !isBoolean(item.running) || !isBoolean(item.save) || !isBoolean(item.command)) throw new Error("Expected MCP control states");
 			return { action: item.action, enabled: item.enabled, port: string(item.port), running: item.running, save: item.save, command: item.command };
 		case "expectMcpCopy":
-			if (typeof item.rotated !== "boolean") throw new Error("Expected rotation state");
+			if (!isBoolean(item.rotated)) throw new Error("Expected rotation state");
 			return { action: item.action, kind: oneOf(["token", "command"], item.kind, "an MCP copy kind"), rotated: item.rotated };
 		case "expectMcpRequests": return { action: item.action, requests: strings(item.requests, true) };
 		case "selectArgoPreference": return { action: item.action, preference: oneOf(["Automatic", "Kubernetes"], item.preference, "an inspection preference") };
@@ -27,7 +28,7 @@ export function integrationStep(item: Record<string, unknown>): Step | undefined
 		case "expectArgoWorkspaceTransport": return { action: item.action, text: string(item.text) };
 		case "confirmArgoTunnel": return { action: item.action, failure: item.failure == null ? undefined : string(item.failure) };
 		case "completeArgoOperation": return { action: item.action };
-		case "connectArgoProfile": return { action: item.action, url: string(item.url), remember: optionalBoolean(item.remember), tunnel: optionalBoolean(item.tunnel), local: optionalBoolean(item.local), insecure: optionalBoolean(item.insecure), customCa: item.customCa == null ? undefined : string(item.customCa), surface: item.surface == null ? undefined : oneOf<"page">(["page"], item.surface, "an Argo connection surface") };
+		case "connectArgoProfile": return { action: item.action, url: string(item.url), remember: optionalBoolean(item.remember), tunnel: optionalBoolean(item.tunnel), local: optionalBoolean(item.local), insecure: optionalBoolean(item.insecure), customCa: item.customCa == null ? undefined : string(item.customCa), surface: item.surface == null ? undefined : oneOf(["page"] as const, item.surface, "an Argo connection surface") };
 		case "disconnectArgoProfile": case "confirmArgoReview": case "cancelArgoReview": return { action: item.action };
 		case "configureArgoMock": return { action: item.action, script: oneOf(["base", "discovery-error", "target-mismatch", "preview-error", "snapshot-error", "operation-error", "lazy", "full-diff", "connect-pending", "disconnect-pending"], item.script, "an Argo fixture script") };
 		case "argoControl": return { action: item.action, control: oneOf(["Open connection", "Close connection", "Disconnect", "Forget", "Retry", "Confirm target again", "Retry operation", "Retry state refresh", "Retry snapshot", "Technical detail", "Show diff", "Show fewer lines", "All changes", "Sync options", "Sync with these options", "Refresh options"], item.control, "an Argo control"), url: item.url == null ? undefined : string(item.url) };
