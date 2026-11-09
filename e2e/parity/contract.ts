@@ -1,15 +1,12 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { LIVE_SCRIPTS } from "../../src/lib/tauri-dev-mock-live";
 
-import { ARGO_OPTION_NAMES, DETAIL_RESIZE_KEYS, LOG_LEVELS, MAP_CONTROLS, MAP_KEYS, PANEL_CONTROLS, RBAC_CATEGORIES, RBAC_RISKS, SORT_COLUMNS, type Step, TABLE_COLUMNS, VERDICTS } from "./contract-steps";
+import { integrationStep } from "./contract-integrations";
+import { sessionStep } from "./contract-sessions";
+import { DETAIL_RESIZE_KEYS, LOG_LEVELS, MAP_CONTROLS, MAP_KEYS, PANEL_CONTROLS, RBAC_CATEGORIES, RBAC_RISKS, SORT_COLUMNS, type Step, TABLE_COLUMNS, VERDICTS } from "./contract-steps";
+import { boolean, count, object, oneOf, optionalBoolean, string, strings } from "./contract-values";
 
 export type { Step } from "./contract-steps";
-function oneOf<T extends string>(values: readonly T[], value: unknown, label: string): T {
-	const found = values.find((candidate) => candidate === value);
-	if (!found) throw new Error(`Expected ${label}`);
-	return found;
-}
 export type Scenario = { id: string; title: string; steps: Step[] };
 export type Contract = { scenarios: Scenario[] };
 
@@ -92,33 +89,10 @@ type Missing = Exclude<Step["action"], (typeof ACTIONS)[number]>;
 const allActionsListed: Missing extends never ? true : Missing = true;
 void allActionsListed;
 
-function object(value: unknown): Record<string, unknown> {
-	if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Expected object");
-	return Object.fromEntries(Object.entries(value));
-}
-function string(value: unknown): string {
-	if (typeof value !== "string" || !value.trim()) throw new Error("Expected nonempty string");
-	return value;
-}
-function count(value: unknown): number {
-	if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw new Error("Expected a nonnegative integer");
-	return value;
-}
-function strings(value: unknown, allowEmpty: boolean): string[] {
-	if (!Array.isArray(value) || (!allowEmpty && !value.length)) throw new Error("Expected a list of strings");
-	return value.map(string);
-}
-function boolean(value: unknown): boolean {
-    if (typeof value !== "boolean") throw new Error("Expected boolean");
-    return value;
-}
-function optionalBoolean(value: unknown): boolean | undefined {
-    if (value == null) return undefined;
-    if (typeof value !== "boolean") throw new Error("Expected boolean");
-    return value;
-}
 function step(value: unknown): Step {
 	const item = object(value);
+	const areaStep = integrationStep(item) ?? sessionStep(item);
+	if (areaStep) return areaStep;
 	switch (item.action) {
         case "sidebarToggle": case "sidebarSelect": return { action: item.action, path: strings(item.path, false) };
         case "expectSidebarRow": return { action: item.action, path: strings(item.path, false), visible: boolean(item.visible), selected: boolean(item.selected) };
@@ -152,13 +126,6 @@ function step(value: unknown): Step {
         case "expectWorkspaceEntry": case "openWorkspaceEntry": return { action: item.action, panel: oneOf(["Pinned", "Recent"], item.panel, "an entry panel"), label: string(item.label), index: count(item.index), count: count(item.count) };
         case "reorderKindKey": return { action: item.action, kind: string(item.kind), key: oneOf(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"], item.key, "a reorder key") };
         case "resetKindOrder": return { action: item.action };
-        case "expectRemoteHost": return { action: item.action, url: string(item.url), disconnected: optionalBoolean(item.disconnected) };
-        case "expectRemoteHostTooltip": return { action: item.action, value: string(item.value) };
-        case "expectNoRemoteHost": case "dropRemoteConnection": return { action: item.action };
-        case "remoteSessionSignal": return { action: item.action, state: oneOf(["reconnecting", "sessionEnded", "signInExpired", "sessionExpired"], item.state, "a remote session signal") };
-        case "expectRemoteNotice": return { action: item.action, value: string(item.value) };
-        case "expectNoRemoteNotice": return { action: item.action };
-        case "clickRemoteNoticeButton": return { action: item.action, label: oneOf(["Sign in", "Copy sign-in link", "Cancel", "Start a new session", "Disconnect"], item.label, "a remote notice button") };
         case "configureShellRead": return { action: item.action, phase: oneOf(["ready", "contexts-failed", "contexts-empty", "namespaces-failed", "namespaces-credential-failed", "namespaces-empty", "resources-failed", "primary-context-missing", "kind-missing", "payments-api-removed", "payments-deployments-forbidden", "payments-ingress-version-changed", "sources-failed"], item.phase, "a shell read phase") };
         case "openNamespaceList": case "openNavigationDrawer": return { action: item.action };
         case "expectNamespaceRow": return { action: item.action, name: string(item.name), age: string(item.age) };
@@ -211,48 +178,6 @@ function step(value: unknown): Step {
         case "controlClock": return { action: item.action };
         case "advanceClock": return { action: item.action, ms: count(item.ms) };
         case "clickDetailControl": return { action: item.action, label: string(item.label) };
-        case "fillMcpPort": return { action: item.action, value: string(item.value) };
-        case "mcpControl": return { action: item.action, control: oneOf(["MCP server", "Submit port", "Save", "Copy token", "Copy Claude Code command", "Rotate token"], item.control, "an MCP control") };
-        case "expectMcpState":
-            if (typeof item.enabled !== "boolean" || typeof item.running !== "boolean" || typeof item.save !== "boolean" || typeof item.command !== "boolean") throw new Error("Expected MCP control states");
-            return { action: item.action, enabled: item.enabled, port: string(item.port), running: item.running, save: item.save, command: item.command };
-        case "expectMcpCopy":
-            if (typeof item.rotated !== "boolean") throw new Error("Expected rotation state");
-            return { action: item.action, kind: oneOf(["token", "command"], item.kind, "an MCP copy kind"), rotated: item.rotated };
-        case "expectMcpRequests": return { action: item.action, requests: strings(item.requests, true) };
-        case "selectArgoPreference": return { action: item.action, preference: oneOf(["Automatic", "Kubernetes"], item.preference, "an inspection preference") };
-        case "expectSavedArgoProfile": return { action: item.action, url: string(item.url) };
-        case "configureArgoSync": return { action: item.action, revision: string(item.revision), name: string(item.name) };
-        case "selectArgoHistory": return { action: item.action, revision: string(item.revision) };
-        case "expectArgoWorkspaceTransport": return { action: item.action, text: string(item.text) };
-        case "confirmArgoTunnel": return { action: item.action, failure: item.failure == null ? undefined : string(item.failure) };
-        case "completeArgoOperation": return { action: item.action };
-        case "connectArgoProfile": return { action: item.action, url: string(item.url), remember: optionalBoolean(item.remember), tunnel: optionalBoolean(item.tunnel), local: optionalBoolean(item.local), insecure: optionalBoolean(item.insecure), customCa: item.customCa == null ? undefined : string(item.customCa), surface: item.surface == null ? undefined : oneOf<"page">(["page"], item.surface, "an Argo connection surface") };
-        case "disconnectArgoProfile": case "confirmArgoReview": case "cancelArgoReview": return { action: item.action };
-        case "configureArgoMock": return { action: item.action, script: oneOf(["base", "discovery-error", "target-mismatch", "preview-error", "snapshot-error", "operation-error", "lazy", "full-diff", "connect-pending", "disconnect-pending"], item.script, "an Argo fixture script") };
-        case "argoControl": return { action: item.action, control: oneOf(["Open connection", "Close connection", "Disconnect", "Forget", "Retry", "Confirm target again", "Retry operation", "Retry state refresh", "Retry snapshot", "Technical detail", "Show diff", "Show fewer lines", "All changes", "Sync options", "Sync with these options", "Refresh options"], item.control, "an Argo control"), url: item.url == null ? undefined : string(item.url) };
-        case "focusArgoResource": return { action: item.action, key: string(item.key), label: string(item.label) };
-        case "expectNoSavedArgoProfile": return { action: item.action, url: string(item.url) };
-        case "expandArgoDiff": return { action: item.action };
-        case "reconnectArgoProfile": return { action: item.action };
-        case "configureArgoInventory": return { action: item.action, mode: oneOf(["base", "absent", "empty", "partial", "unavailable"], item.mode, "an Argo inventory mode") };
-        case "copyArgoValue": return { action: item.action, control: oneOf(["source", "revision", "repository value", "release value", "cluster target value"], item.control, "an Argo copy control"), contains: string(item.contains) };
-        case "reviewArgoOperation": return { action: item.action, operation: oneOf(["Refresh", "Hard refresh", "Sync", "Rollback"], item.operation, "an Argo operation") };
-        case "expectArgoReview": return { action: item.action, operation: string(item.operation), name: string(item.name), namespace: string(item.namespace), transport: string(item.transport) };
-        case "expectArgoText": return { action: item.action, text: string(item.text) };
-        case "expectArgoPopover": return { action: item.action, control: oneOf(["Sync options", "Refresh options"], item.control, "an Argo options popover"), open: boolean(item.open) };
-        case "dismissArgoPopover": return { action: item.action, how: oneOf(["Escape", "outside click"], item.how, "a popover dismissal") };
-        case "expectArgoCheckbox": return { action: item.action, name: oneOf(ARGO_OPTION_NAMES, item.name, "an Argo option"), checked: boolean(item.checked) };
-        case "toggleArgoOption": return { action: item.action, name: oneOf(ARGO_OPTION_NAMES, item.name, "an Argo option") };
-        case "expectNoArgoControl": return { action: item.action, control: oneOf(["Confirm target again", "Reconnect"], item.control, "an Argo control") };
-        case "expectArgoFocusInPopover": return { action: item.action, control: oneOf(["Sync options", "Refresh options"], item.control, "an Argo options popover") };
-        case "argoConnectionDialog": return { action: item.action, operation: oneOf(["open", "expectFocusIn", "tab", "shiftTab", "escape", "outsideClick", "expectOpen", "expectRemember", "expectLocalLogin", "expectInsecure", "chooseLocalLogin", "chooseInsecure", "openDetail", "chooseFoundInCluster", "chooseExternalUrl", "expectFoundInCluster"], item.operation, "an Argo connection dialog operation"), presses: item.presses === undefined ? 0 : count(item.presses), open: optionalBoolean(item.open) === true, checked: optionalBoolean(item.checked) === true };
-        case "tabArgoPopover": return { action: item.action, control: oneOf(["Sync options", "Refresh options"], item.control, "an Argo options popover"), presses: count(item.presses) };
-        case "expectArgoTriggerFocus": return { action: item.action, control: oneOf(["Sync options", "Refresh options"], item.control, "an Argo options trigger") };
-        case "expectArgoOptionFocusable": return { action: item.action, name: oneOf(["Prune", "Dry run", "Force / replace"], item.name, "an Argo sync option") };
-        case "expectArgoOperationState": return { action: item.action, control: oneOf(["Sync", "Refresh", "Sync options", "Refresh options"], item.control, "an Argo operation control"), enabled: boolean(item.enabled) };
-        case "selectArgoConnection": return { action: item.action, url: string(item.url) };
-        case "argoDocument": return { action: item.action, view: oneOf(["Desired", "Live", "Changes"], item.view, "an Argo document"), contains: string(item.contains) };
         case "cancelYamlEdit": return { action: item.action };
         case "revealSecretValue": case "hideSecretValue": case "refreshLatencyReport": case "clearLatencyReport": case "expectLatencyEmpty": case "openDocumentation": return { action: item.action };
         case "expectSecretValue":
@@ -295,40 +220,8 @@ function step(value: unknown): Step {
         case "expectSettingsText": case "expectNoSettingsText": case "expectRuntimeEndpoint": return { action: item.action, value: string(item.value) };
         case "expectMaskedToken": case "reopenStoredSettings": case "attemptUnverifiedUpdate": return { action: item.action };
         case "configureSettingsMock": return { action: item.action, script: oneOf(["oidc-server", "oidc-browser-waits", "oidc-memory-only", "oidc-store-keeps-sign-in", "access-server", "choose-kubeconfig", "choose-workspace", "choose-unavailable-workspace", "choose-application-workspace", "choose-compare-workspace", "choose-last-export", "cancel-dialog", "no-update", "invalid-signature", "update-available"], item.script, "a settings script") };
-        case "terminalFit": return { action: item.action, width: count(item.width), height: count(item.height) };
-        case "terminalOutput": return { action: item.action, data: string(item.data), container: string(item.container) };
-        case "terminalSelect": return { action: item.action, row: count(item.row), col: count(item.col), endRow: count(item.endRow), endCol: count(item.endCol), word: optionalBoolean(item.word) ?? false, line: optionalBoolean(item.line) ?? false, alt: optionalBoolean(item.alt) ?? false };
-        case "terminalCopy": case "terminalPaste": return { action: item.action, text: item.text === "" ? "" : string(item.text) };
-        case "terminalPrimaryPaste": return { action: item.action, text: string(item.text) };
-        case "terminalScroll": return { action: item.action, rows: count(item.rows) };
-        case "terminalDragOutside": return { action: item.action, row: count(item.row), col: count(item.col), edge: oneOf(["above", "below"], item.edge, "a terminal edge") };
-        case "terminalRelease": return { action: item.action, ms: count(item.ms) };
-        case "terminalFocus": return { action: item.action, focused: boolean(item.focused) };
-        case "expectTerminalCursor": return { action: item.action, cursor: oneOf(["block", "block blink", "bar", "bar blink", "underline", "underline blink", "outline"], item.cursor, "a cursor paint"), ...(item.row == null ? {} : { row: count(item.row) }), ...(item.col == null ? {} : { col: count(item.col) }) };
         case "expectWorkspaceExport": case "exportSavedWorkspace": return { action: item.action, name: string(item.name) };
         case "expectExportedShortcut": return { action: item.action, name: string(item.name), shortcut: object(item.shortcut) };
-        case "configurePreset": return { action: item.action, label: string(item.label), context: string(item.context), namespace: string(item.namespace), service: string(item.service), remote: string(item.remote), local: string(item.local) };
-        case "presetControl": return { action: item.action, operation: oneOf(["add", "save", "edit", "start", "remove", "absent"], item.operation, "a preset action"), ...(item.label === undefined ? {} : { label: string(item.label) }) };
-        case "replaySessions": return { action: item.action, script: oneOf(["reconnecting", "failed", "foreign-output", "exec-exited", "exec-failed", "exec-stopped"], item.script, "a session script") };
-        case "confirmExecLeave": return { action: item.action, choice: oneOf(["stay", "stop"], item.choice, "a leave choice") };
-        case "configureForward": return { action: item.action, remote: string(item.remote), local: typeof item.local === "string" ? item.local : "" };
-        case "forwardControl": return { action: item.action, operation: oneOf(["start", "save", "restore", "stop", "reconnect"], item.operation, "a forward control"), ...(item.target === undefined ? {} : { target: string(item.target) }) };
-        case "expectForwardState": return { action: item.action, target: string(item.target), local: string(item.local), status: string(item.status), count: count(item.count), ...(item.resolved === undefined ? {} : { resolved: string(item.resolved) }) };
-        case "expectForwardNotice": return { action: item.action, title: string(item.title), text: string(item.text) };
-        case "execControl": {
-            const control: Extract<Step, { action: "execControl" }> = {
-                action: item.action,
-                operation: oneOf(["start", "input", "close", "stop", "select", "custom", "arguments", "shortcut", "run"], item.operation, "an exec control"),
-            };
-            if (item.container !== undefined) control.container = string(item.container);
-            if (item.command !== undefined) control.command = string(item.command);
-            if (item.data !== undefined) control.data = string(item.data);
-            if (item.tab !== undefined) control.tab = count(item.tab);
-            return control;
-        }
-        case "expectExecState": return { action: item.action, container: string(item.container), status: string(item.status), contains: typeof item.contains === "string" ? item.contains : "", ...(item.absent === undefined ? {} : { absent: string(item.absent) }), ...(item.command === undefined ? {} : { command: string(item.command) }) };
-        case "expectLiveState": return { action: item.action, label: string(item.label), ...(item.notice === undefined ? {} : { notice: string(item.notice) }) };
-        case "replayLiveData": return { action: item.action, script: oneOf(LIVE_SCRIPTS, item.script, "a live script") };
         case "expectResourceStatus": return { action: item.action, kind: string(item.kind), namespace: string(item.namespace), name: string(item.name), status: string(item.status) };
         case "openCustomKind": return { action: item.action, kind: string(item.kind), surface: oneOf(["sidebar", "picker"], item.surface, "a kind surface") };
         case "searchCustomKinds": case "searchKindPicker": return { action: item.action, value: item.value === "" ? "" : string(item.value) };
