@@ -2,40 +2,38 @@
 //! The web uses `buildGlobalSearchFetchKeys`; native discovery remains limited to
 //! the kinds its backend supports.
 
+use super::super::request::InFlight;
 use super::Inspector;
 use crate::backend::{CLUSTER_KINDS, Scope};
 use crate::model::WORKSPACE_KINDS;
 use crate::palette;
-use gpui_kit::{Context, SharedString, Task};
+use gpui_kit::{Context, SharedString};
 use kubecove_lib::models::ResourceSummary;
-use std::{collections::HashSet, rc::Rc};
+use std::collections::HashSet;
 
+/// The read that warms the open palette's index. `Loading` owns the read, so
+/// a new warm-up or closing the palette cancels it.
 #[derive(Default)]
-enum Status {
+pub(super) enum SearchRead {
     #[default]
     Idle,
-    Loading,
+    Loading {
+        _read: InFlight,
+    },
     Ready,
     Partial(SharedString),
 }
 
-#[derive(Default)]
-pub(super) struct SearchRead {
-    task: Option<Task<()>>,
-    request: Rc<()>,
-    status: Status,
-}
-
 impl SearchRead {
     pub(super) fn loading(&self) -> bool {
-        matches!(self.status, Status::Loading)
+        matches!(self, SearchRead::Loading { .. })
     }
 
     pub(super) fn message(&self) -> Option<SharedString> {
-        match &self.status {
-            Status::Loading => Some("Loading resources...".into()),
-            Status::Partial(warning) => Some(warning.clone()),
-            Status::Idle | Status::Ready => None,
+        match self {
+            SearchRead::Loading { .. } => Some("Loading resources...".into()),
+            SearchRead::Partial(warning) => Some(warning.clone()),
+            SearchRead::Idle | SearchRead::Ready => None,
         }
     }
 }
@@ -58,19 +56,12 @@ impl Inspector {
         let cluster = crate::read_retry::read(cx.background_executor().clone(), move || {
             backend.cluster_resources(read_context.clone(), false)
         });
-        let state = &mut self.palette.search;
-        state.status = Status::Loading;
-        state.request = Rc::new(());
-        let request = state.request.clone();
-        state.task = Some(cx.spawn(async move |this, cx| {
+        let read = cx.spawn(async move |this, cx| {
             // NativeBackend starts both host tasks when the reads are created.
             // Dropping this task drops both reads and aborts their host tasks.
             let results = [workspace.await, cluster.await];
             let _ = this.update(cx, |this, cx| {
-                if !this.palette.open
-                    || this.scope.context != context
-                    || !Rc::ptr_eq(&this.palette.search.request, &request)
-                {
+                if this.scope.context != context {
                     return;
                 }
                 let mut rows = Vec::new();
@@ -84,17 +75,18 @@ impl Inspector {
                         Err(error) => warnings.push(error.message),
                     }
                 }
-                this.palette.search.status = if warnings.is_empty() {
-                    Status::Ready
+                this.palette.search = if warnings.is_empty() {
+                    SearchRead::Ready
                 } else {
-                    Status::Partial(
+                    SearchRead::Partial(
                         format!("Resource search is partial: {}", warnings.join("; ")).into(),
                     )
                 };
                 this.set_palette_resources(rows);
                 this.refresh_palette(cx);
             });
-        }));
+        });
+        self.palette.search = SearchRead::Loading { _read: read.into() };
         cx.notify();
     }
 
