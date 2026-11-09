@@ -22,12 +22,12 @@ A workspace may display **Context unavailable** when its primary saved context i
 
 ## Choose scope
 
-- **Context** is the primary cluster context used for context-specific discovery and GitOps detection.
-- **Cluster group** adds one or more contexts to the workspace's resource scope. It is local navigation metadata, not a Kubernetes cluster group.
+- **Context** is the primary cluster context used for context-specific discovery and GitOps detection. GitOps, Helm, RBAC, Incidents, Usage, and the Cluster Overview still use only the primary context.
+- **Cluster group** adds one or more contexts to the workspace's resource scope. Resources reads the primary context and every group member together, in one merged table. It is local navigation metadata, not a Kubernetes cluster group.
 - **Namespaces** restrict namespaced resource requests. Leave them empty for all namespaces.
 - **Kinds** restrict resource collection. New workspaces use the built-in inspection kinds; editing preserves the existing kind selection.
 
-For example, an operations workspace can use primary context `prod-eu`, group `prod-us`, and namespaces `payments` and `platform`. Resource health and comparisons then use the saved multi-context scope.
+For example, an operations workspace can use primary context `prod-eu`, group `prod-us`, and namespaces `payments` and `platform`. Resources then lists the matching objects from both `prod-eu` and `prod-us` in one table, each row marked with its context. Resource health and comparisons use the saved multi-context scope.
 
 ## Import and export
 
