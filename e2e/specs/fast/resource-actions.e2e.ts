@@ -42,11 +42,14 @@ describe("resource Actions review", () => {
 		await $('[role="tab"]=Actions').click();
 	}
 
+	// payments-api has an api container and a sidecar, and each gets its own editors.
+	const apiImage = (imageRow: WebdriverIO.Element) =>
+		imageRow.$('.//section[h4[normalize-space()="api"]]//input[@aria-label="Container image"]');
+
 	it("keeps a pending container edit when a separate restart succeeds", async () => {
 		const imageRow = await $('[data-resource-action="image"]');
 		await imageRow.$("button=Edit").click();
-		const image = await imageRow.$('input[aria-label="Container image"]');
-		await image.setValue("ghcr.io/example/payments-api:reviewed");
+		await apiImage(imageRow).setValue("ghcr.io/example/payments-api:reviewed");
 		await expect(imageRow).toHaveText(expect.stringContaining("Pending"));
 		const replicasRow = await $('[data-resource-action="replicas"]');
 		await replicasRow.$("button=Edit").click();
@@ -55,11 +58,9 @@ describe("resource Actions review", () => {
 
 		const environmentRow = await $('[data-resource-action="environment"]');
 		await environmentRow.$("button=Edit").click();
-		const newVariableName = await environmentRow.$('input[aria-label^="New environment name "]');
-		const newVariableValue = await environmentRow.$('input[aria-label^="New environment value "]');
-		await newVariableName.setValue("ACTIONS_REVIEW");
-		await newVariableValue.setValue("enabled");
-		await environmentRow.$("button=Add").click();
+		await environmentRow.$('input[aria-label="New environment name api"]').setValue("ACTIONS_REVIEW");
+		await environmentRow.$('input[aria-label="New environment value api"]').setValue("enabled");
+		await environmentRow.$$("button=Add")[0].click();
 		const resourcesRow = await $('[data-resource-action="resources"]');
 		await resourcesRow.$("button=Edit").click();
 		await resourcesRow.$('input[aria-label="Request value api cpu"]').setValue("100m");
@@ -127,7 +128,7 @@ describe("resource Actions review", () => {
 	it("keeps a failed dry run in review without an execution action", async () => {
 		const imageRow = await $('[data-resource-action="image"]');
 		await imageRow.$("button=Edit").click();
-		await imageRow.$('input[aria-label="Container image"]').setValue(" ");
+		await apiImage(imageRow).setValue(" ");
 		await $("button=Check changes").click();
 
 		const review = await $('[role="dialog"]');
@@ -168,7 +169,7 @@ describe("resource Actions review", () => {
 		await enableSkipReview();
 		const imageRow = await $('[data-resource-action="image"]');
 		await imageRow.$("button=Edit").click();
-		await imageRow.$('input[aria-label="Container image"]').setValue("ghcr.io/example/payments-api:skipped");
+		await apiImage(imageRow).setValue("ghcr.io/example/payments-api:skipped");
 		const outcome = await browser.execute(() => new Promise<{ dialogSeen: boolean; missingCheckButton?: boolean }>((done) => {
 			let dialogSeen = false;
 			const observer = new MutationObserver(() => {
@@ -200,7 +201,7 @@ describe("resource Actions review", () => {
 		await enableSkipReview();
 		const imageRow = await $('[data-resource-action="image"]');
 		await imageRow.$("button=Edit").click();
-		await imageRow.$('input[aria-label="Container image"]').setValue(" ");
+		await apiImage(imageRow).setValue(" ");
 		await $("button=Check changes").click();
 
 		const review = await $('[role="dialog"]');
@@ -211,7 +212,7 @@ describe("resource Actions review", () => {
 	it("traps keyboard focus inside an open server review", async () => {
 		const imageRow = await $('[data-resource-action="image"]');
 		await imageRow.$("button=Edit").click();
-		await imageRow.$('input[aria-label="Container image"]').setValue("ghcr.io/example/payments-api:keyboard-review");
+		await apiImage(imageRow).setValue("ghcr.io/example/payments-api:keyboard-review");
 		await $("button=Check changes").click();
 		const review = await $('[role="dialog"]');
 		await review.waitForDisplayed();

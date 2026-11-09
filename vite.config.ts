@@ -39,6 +39,7 @@ export default defineConfig(({ command }) => {
 				"@codemirror/view",
 				"@lezer/highlight",
 				"@tanstack/svelte-virtual",
+				"@tauri-apps/api/window",
 				"@xterm/addon-fit",
 				"@xterm/xterm",
 				"diff",
