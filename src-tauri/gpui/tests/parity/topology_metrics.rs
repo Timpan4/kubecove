@@ -39,7 +39,12 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
                 .expect("the Inspector is the window's content");
             assert!(inspector.read(cx).map_draws_edge(s("source"), s("target")));
         }
-        "selectTopologyNode" => window.click(format!("map-node:{}", s("id")), cx),
+        "selectTopologyNode" => {
+            let node = format!("map-node:{}", s("id"));
+            // Beside an open detail the page scrolls, and the map can sit below the window.
+            super::scroll::reveal(window, "resources", &node, cx);
+            window.click(node, cx)
+        }
         "expectTopologyEmpty" => assert_eq!(window.find("map-empty").label(), Some(s("title"))),
         "expectNoTopologyNode" => {
             assert!(window.try_find(format!("map-node:{}", s("id"))).is_none())
