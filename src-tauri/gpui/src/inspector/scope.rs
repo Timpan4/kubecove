@@ -296,7 +296,9 @@ impl Inspector {
                     Ok(topology) => map::TopologyLoad::Ready(topology),
                     Err(error) => map::TopologyLoad::Failed(error),
                 });
-                this.rebuild_map();
+                // The resource render rebuilds the map before drawing it, once
+                // per frame, so a scope read applied in the same frame costs no
+                // second build.
                 cx.notify();
                 this.note_apply(LoadKind::Map, apply_started.elapsed(), true);
             });
