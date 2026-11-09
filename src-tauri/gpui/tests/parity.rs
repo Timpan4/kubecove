@@ -772,6 +772,16 @@ fn run_scenario(
                 .advance_clock(std::time::Duration::from_millis(450));
             cx.run_until_parked();
         }
+        if step["action"] == "openResources"
+            && backend.failed_workspace_context.lock().unwrap().is_some()
+        {
+            // The failed context's read retries after read_retry.rs's delays before the page settles.
+            for millis in [1000, 2000] {
+                cx.background_executor
+                    .advance_clock(std::time::Duration::from_millis(millis));
+                cx.run_until_parked();
+            }
+        }
     }
     let unexpected = backend.unexpected_requests();
     assert!(unexpected.is_empty(), "{}", unexpected.join("\n"));
