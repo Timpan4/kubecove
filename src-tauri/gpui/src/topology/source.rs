@@ -56,20 +56,21 @@ impl Source {
             .iter()
             .map(|node| index[node.id.as_str()])
             .collect();
-        let mut row_index: HashMap<_, Vec<usize>> = HashMap::new();
-        for (i, row) in rows.all_rows().iter().enumerate() {
-            row_index.entry(loose_key(row)).or_default().push(i);
+        // A refresh rebuilds this for every row of every workspace context, while
+        // the graph has one context's nodes. Index the nodes and stream the rows
+        // once, so a row costs a lookup and allocates nothing.
+        let mut node_keys: HashMap<_, Vec<usize>> = HashMap::with_capacity(topology.nodes.len());
+        for (i, node) in topology.nodes.iter().enumerate() {
+            node_keys.entry(loose_key(&node.summary)).or_default().push(i);
         }
-        let matches = topology
-            .nodes
-            .iter()
-            .map(|node| {
-                row_index
-                    .get(&loose_key(&node.summary))
-                    .cloned()
-                    .unwrap_or_default()
-            })
-            .collect();
+        let mut matches: Vec<Vec<usize>> = vec![Vec::new(); topology.nodes.len()];
+        for (i, row) in rows.all_rows().iter().enumerate() {
+            if let Some(nodes) = node_keys.get(&loose_key(row)) {
+                for &node in nodes {
+                    matches[node].push(i);
+                }
+            }
+        }
         let mut parents = vec![Vec::new(); topology.nodes.len()];
         let edge_index: HashMap<_, _> = topology
             .edges
