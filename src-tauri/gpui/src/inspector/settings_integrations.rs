@@ -40,8 +40,8 @@ pub(super) struct Integrations {
     pub(super) update: UpdateStatus,
     pub(super) checked_at: Option<String>,
     pub(super) update_error: Option<String>,
-    pub(super) update_busy: bool,
-    update_task: Option<Task<()>>,
+    /// The update check in flight. Check is disabled while it runs.
+    pub(super) update_check: Option<InFlight>,
 }
 impl Integrations {
     pub(super) fn new(window: &mut Window, cx: &mut Context<Inspector>) -> Self {
@@ -71,8 +71,7 @@ impl Integrations {
             update: UpdateStatus::Idle,
             checked_at: None,
             update_error: None,
-            update_busy: false,
-            update_task: None,
+            update_check: None,
         }
     }
 }
@@ -316,19 +315,16 @@ impl Inspector {
         ))
     }
     pub(super) fn check_settings_updates(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.settings.integrations.update_busy || !self.backend.updates_enabled() {
+        if self.settings.integrations.update_check.is_some() || !self.backend.updates_enabled() {
             return;
         }
         let read = self.backend.check_updates();
         let read = self.timings.measure("check_updates", read);
-        let state = &mut self.settings.integrations;
-        state.update_busy = true;
-        state.update_error = None;
-        state.update_task = Some(cx.spawn_in(window, async move |this, cx| {
+        let check = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
                 let state = &mut this.settings.integrations;
-                state.update_busy = false;
+                state.update_check = None;
                 state.checked_at = Some(
                     chrono::Local::now()
                         .format("%b %-d, %Y, %-H:%M")
@@ -346,7 +342,10 @@ impl Inspector {
                 this.offer_available_update();
                 cx.notify();
             });
-        }));
+        });
+        let state = &mut self.settings.integrations;
+        state.update_error = None;
+        state.update_check = Some(check.into());
         cx.notify();
     }
     pub(super) fn updates_settings_section(&self, cx: &mut Context<Self>) -> Div {
@@ -373,7 +372,7 @@ impl Inspector {
             if let UpdateStatus::Available(update) = &state.update {
                 control = control.child(ui::outline_badge(format!("Update {}", update.version)));
             }
-            control = control.child(action("Check", state.update_busy).on_click(
+            control = control.child(action("Check", state.update_check.is_some()).on_click(
                 cx.listener(|this, _, window, cx| this.check_settings_updates(window, cx)),
             ));
         } else {

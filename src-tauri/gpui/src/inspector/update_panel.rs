@@ -58,13 +58,15 @@ impl Inspector {
     }
 
     fn update_checking(&self) -> super::loading::Phase {
-        self.loading
-            .phase("update-check", self.settings.integrations.update_busy)
+        self.loading.phase(
+            "update-check",
+            self.settings.integrations.update_check.is_some(),
+        )
     }
 
     fn update_tooltip(&self) -> &'static str {
         let state = &self.settings.integrations;
-        if state.update_busy && self.update_checking().shown() {
+        if state.update_check.is_some() && self.update_checking().shown() {
             "Checking for updates"
         } else if state.update_error.is_some() {
             "Update check failed"
@@ -169,7 +171,7 @@ impl Inspector {
             .border_color(Tokens::border())
             .child(ui::muted(ui::xs(format!("Last checked: {last_checked}"))))
             .child(
-                button(Variant::Outline, 24., state.update_busy)
+                button(Variant::Outline, 24., state.update_check.is_some())
                     .id("header-update-check")
                     .test_support()
                     .aria_label("Check")
@@ -204,7 +206,7 @@ impl Inspector {
                 ))
                 .child(labelled(ui::xs(error.clone()), error));
         }
-        if state.update_busy {
+        if state.update_check.is_some() {
             if !self.update_checking().shown() {
                 return body;
             }
