@@ -105,6 +105,23 @@
       ]
     },
     {
+      "id": "state.argo-submit-outcome-after-other-resource",
+      "title": "An accepted operation is observed when another resource opens during submission",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test" },
+        { "action": "reviewArgoOperation", "operation": "Sync" },
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "run_argo_operation", "context": "" } },
+        { "action": "confirmArgoReview" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "root-application", "namespace": "argocd" },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "run_argo_operation", "context": "" } },
+        { "action": "completeArgoOperation" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "expectArgoText", "text": "Argo CD confirmed completion" }
+      ]
+    },
+    {
       "id": "state.incidents-refresh-error-while-pending",
       "title": "A failed Incidents refresh stays visible while the next read is pending",
       "steps": [
