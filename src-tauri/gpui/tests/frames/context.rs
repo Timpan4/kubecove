@@ -227,20 +227,24 @@ impl FrameContext {
     /// Runs the dispatcher until idle. The SDK drain blocks until background
     /// work finishes; the time this thread spends blocked moves from the frame's
     /// CPU work to its `wait`. Without a thread CPU clock, all of it stays CPU work.
+    /// Both clocks bracket only the drain call, so the journal collection and
+    /// bookkeeping in `operation` are never counted as blocked time.
     fn drain(&mut self) -> (bool, bool) {
         let executor = self.app.update(|cx| cx.background_executor().clone());
-        let (wall, cpu) = (Instant::now(), thread_cpu());
-        let (_, rendered, pending) = self.operation(false, |_| {
+        let (blocked, rendered, pending) = self.operation(false, |_| {
             let _span = kubecove_gpui::frame_profile::scope("dispatcher", "drain");
+            let (wall, cpu) = (Instant::now(), thread_cpu());
             executor
                 .dispatcher()
                 .as_threaded()
                 .expect("benchmark dispatcher")
                 .run_until_idle();
+            let wall = wall.elapsed();
+            cpu.zip(thread_cpu())
+                .map(|(before, after)| wall.saturating_sub(after.saturating_sub(before)))
         });
-        let ran = cpu.zip(thread_cpu()).map(|(before, after)| after - before);
-        if let (Some(capture), Some(ran)) = (&mut self.capture, ran) {
-            let blocked = wall.elapsed().saturating_sub(ran).min(capture.work);
+        if let (Some(capture), Some(blocked)) = (&mut self.capture, blocked) {
+            let blocked = blocked.min(capture.work);
             capture.work -= blocked;
             capture.wait += blocked;
         }
