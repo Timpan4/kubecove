@@ -84,8 +84,8 @@
         { "action": "openResources" },
         { "action": "search", "value": "payments-api" },
         { "action": "openKindPicker" },
-        { "action": "searchKindPicker", "value": "Service" },
-        { "action": "toggleKind", "kind": "Service", "checked": false },
+        { "action": "searchKindPicker", "value": "ReplicaSet" },
+        { "action": "toggleKind", "kind": "ReplicaSet", "checked": false },
         { "action": "closeKindPicker" },
         { "action": "expectTopologyEdge", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-6b5f8c9d7" },
         { "action": "setHistoricalReplicaSets", "checked": true },
@@ -95,8 +95,8 @@
         { "action": "expectTopologyEdge", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-6b5f8c9d7" },
         { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
         { "action": "openKindPicker" },
-        { "action": "searchKindPicker", "value": "Service" },
-        { "action": "toggleKind", "kind": "Service", "checked": true },
+        { "action": "searchKindPicker", "value": "ReplicaSet" },
+        { "action": "toggleKind", "kind": "ReplicaSet", "checked": true },
         { "action": "closeKindPicker" }
       ]
     },
