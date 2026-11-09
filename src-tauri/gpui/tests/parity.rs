@@ -235,6 +235,7 @@ fn finish(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
     if step["action"] == "coverageSelect" {
         coverage::finish(window, cx, step);
     }
+    terminal::finish(window, cx, step);
     if step["action"] == "selectArgoPreference" {
         window.press("enter", cx);
     }

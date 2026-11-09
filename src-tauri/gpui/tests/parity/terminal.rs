@@ -92,6 +92,19 @@ pub fn advance_drag_scroll(cx: &mut gpui_kit::TestAppContext, ms: u64) {
     }
 }
 
+/// Closes the menu a right click opens, as a user does before typing. The web driver's
+/// right press opens no menu. GPUI builds the menu after the right click's update, so
+/// Escape in that update would reach the terminal and leave the menu holding focus.
+pub fn finish(window: &mut Window, cx: &mut App, step: &Value) {
+    if step["action"] == "terminalRightClick" {
+        assert!(
+            window.try_find("popup-menu").is_some(),
+            "a right click opens the terminal menu"
+        );
+        window.press("escape", cx);
+    }
+}
+
 pub fn apply(window: &mut Window, cx: &mut App, step: &Value) -> bool {
     match string(step, "action") {
         "terminalFit" => {}
