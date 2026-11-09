@@ -369,34 +369,9 @@ impl Backend for Fixture {
         &self,
         scope: Scope,
         key: kubecove_lib::models::WatchResourceKey,
-        mut recycled: Vec<ResourceSummary>,
+        recycled: Vec<ResourceSummary>,
     ) -> Read<kubecove_gpui::backend::KindRows> {
-        let _span = kubecove_gpui::frame_profile::scope("fixture", "kind_read");
-        let resource_version = Some(self.list_version());
-        if self.live_failed() {
-            return Box::pin(async move {
-                drop(recycled);
-                Err(AppError::new(
-                    "Scripted reload failure",
-                    AppErrorKind::Cluster,
-                ))
-            });
-        }
-        let rows = if let Some(rows) = self.ready_kind_read(&scope, &key) {
-            self.defer_kind_buffer(recycled);
-            rows
-        } else {
-            let rows = self.kind_rows(&scope, &key);
-            recycled.clear();
-            recycled.extend(rows);
-            recycled
-        };
-        Box::pin(async move {
-            Ok(kubecove_gpui::backend::KindRows {
-                rows,
-                resource_version,
-            })
-        })
+        self.kind_read(scope, key, recycled)
     }
     fn namespace_custom_kinds(
         &self,

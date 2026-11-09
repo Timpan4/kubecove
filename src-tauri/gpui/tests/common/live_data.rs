@@ -122,6 +122,41 @@ impl Fixture {
         *current = ready;
     }
 
+    /// `kind_resources`: a burst's prepared read, or the kind's rows now.
+    pub(super) fn kind_read(
+        &self,
+        scope: Scope,
+        key: kubecove_lib::models::WatchResourceKey,
+        mut recycled: Vec<ResourceSummary>,
+    ) -> Read<kubecove_gpui::backend::KindRows> {
+        let _span = kubecove_gpui::frame_profile::scope("fixture", "kind_read");
+        let resource_version = Some(self.list_version());
+        if self.live_failed() {
+            return Box::pin(async move {
+                drop(recycled);
+                Err(AppError::new(
+                    "Scripted reload failure",
+                    AppErrorKind::Cluster,
+                ))
+            });
+        }
+        let rows = if let Some(rows) = self.ready_kind_read(&scope, &key) {
+            self.defer_kind_buffer(recycled);
+            rows
+        } else {
+            let rows = self.kind_rows(&scope, &key);
+            recycled.clear();
+            recycled.extend(rows);
+            recycled
+        };
+        Box::pin(async move {
+            Ok(kubecove_gpui::backend::KindRows {
+                rows,
+                resource_version,
+            })
+        })
+    }
+
     pub(super) fn defer_kind_buffer(&self, rows: Vec<ResourceSummary>) {
         if !rows.is_empty() {
             self.live.returned.lock().unwrap().push(rows);
