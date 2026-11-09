@@ -18,17 +18,19 @@ impl From<Task<()>> for InFlight {
 
 /// One read whose result the view shows. `Loading` owns the read, so assigning
 /// a new state cancels the old read.
-pub(super) enum Fetch<T> {
+#[derive(Default)]
+pub(super) enum Fetch<T, E = String> {
     /// No read has started.
+    #[default]
     Idle,
     Loading {
         _read: InFlight,
     },
     Ready(T),
-    Failed(String),
+    Failed(E),
 }
 
-impl<T> Fetch<T> {
+impl<T, E> Fetch<T, E> {
     /// A read that owns `read`, so replacing this state cancels it.
     pub(super) fn start(read: Task<()>) -> Self {
         Fetch::Loading { _read: read.into() }
@@ -38,18 +40,18 @@ impl<T> Fetch<T> {
         matches!(self, Fetch::Loading { .. })
     }
 
-    pub(super) fn failure(&self) -> Option<&str> {
+    pub(super) fn ready(&self) -> Option<&T> {
         match self {
-            Fetch::Failed(message) => Some(message),
+            Fetch::Ready(value) => Some(value),
             _ => None,
         }
     }
 }
 
 impl<T> Fetch<T> {
-    pub(super) fn ready(&self) -> Option<&T> {
+    pub(super) fn failure(&self) -> Option<&str> {
         match self {
-            Fetch::Ready(value) => Some(value),
+            Fetch::Failed(message) => Some(message),
             _ => None,
         }
     }

@@ -2,27 +2,15 @@
 //! context's namespaces with ages and created times, and its empty, error and
 //! loading states.
 
-use super::{Inspector, Page, friendly_error::Operation};
+use super::{Inspector, Page, friendly_error::Operation, request::Fetch};
 use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui;
-use gpui_kit::{AnyElement, Context, Div, FontWeight, SharedString, Task, div, prelude::*, px};
+use gpui_kit::{AnyElement, Context, Div, FontWeight, SharedString, div, prelude::*, px};
 use kubecove_lib::models::{AppError, NamespaceSummary};
 
-#[derive(Default)]
-enum NamespaceRead {
-    #[default]
-    Idle,
-    Loading,
-    Ready(Vec<NamespaceSummary>),
-    Failed(AppError),
-}
-
-#[derive(Default)]
-pub(super) struct NamespaceListState {
-    read: NamespaceRead,
-    task: Option<Task<()>>,
-}
+/// The page's read of the context's namespaces.
+pub(super) type NamespaceListState = Fetch<Vec<NamespaceSummary>, AppError>;
 
 impl Inspector {
     /// `View all` opens the page and clears the tree's leaf selection, as the
@@ -39,19 +27,18 @@ impl Inspector {
     pub(super) fn load_namespace_list(&mut self, cx: &mut Context<Self>) {
         let context = self.scope.context.clone();
         if context.is_empty() {
-            self.namespace_list = NamespaceListState::default();
+            self.namespace_list = Fetch::Idle;
             cx.notify();
             return;
         }
-        self.namespace_list.read = NamespaceRead::Loading;
         let read = crate::backend::namespaces_for_context(self.backend.clone(), context);
         let read = self.timings.measure("list_namespaces", read);
-        self.namespace_list.task = Some(cx.spawn(async move |this, cx| {
+        self.namespace_list = Fetch::start(cx.spawn(async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
-                this.namespace_list.read = match result {
-                    Ok(namespaces) => NamespaceRead::Ready(namespaces),
-                    Err(error) => NamespaceRead::Failed(error),
+                this.namespace_list = match result {
+                    Ok(namespaces) => Fetch::Ready(namespaces),
+                    Err(error) => Fetch::Failed(error),
                 };
                 cx.notify();
             });
@@ -61,37 +48,31 @@ impl Inspector {
 
     pub(super) fn namespace_list_page(&self, cx: &mut Context<Self>) -> AnyElement {
         let pending = !self.scope.context.is_empty()
-            && matches!(
-                self.namespace_list.read,
-                NamespaceRead::Idle | NamespaceRead::Loading
-            );
+            && matches!(self.namespace_list, Fetch::Idle | Fetch::Loading { .. });
         let phase = self.loading.phase("namespace-list", pending);
         let body = if self.scope.context.is_empty() {
             no_context()
         } else {
-            match &self.namespace_list.read {
+            match &self.namespace_list {
                 // NamespaceList.svelte checks the error before the loading state.
-                NamespaceRead::Failed(error) => self.page_read_failure(
+                Fetch::Failed(error) => self.page_read_failure(
                     "Failed to load namespaces",
                     error,
                     Operation::Resources,
                     cx,
                 ),
                 _ if phase.shown() => loading(),
-                NamespaceRead::Idle | NamespaceRead::Loading => div().into_any_element(),
+                Fetch::Idle | Fetch::Loading { .. } => div().into_any_element(),
                 _ if !phase.ready() => div().into_any_element(),
-                NamespaceRead::Ready(namespaces) if namespaces.is_empty() => empty(),
-                NamespaceRead::Ready(namespaces) => {
-                    self.namespace_table(namespaces).into_any_element()
-                }
+                Fetch::Ready(namespaces) if namespaces.is_empty() => empty(),
+                Fetch::Ready(namespaces) => self.namespace_table(namespaces).into_any_element(),
             }
         };
-        let count = match &self.namespace_list.read {
-            NamespaceRead::Ready(namespaces) if !namespaces.is_empty() && phase.ready() => {
-                Some(namespaces.len())
-            }
-            _ => None,
-        };
+        let count = self
+            .namespace_list
+            .ready()
+            .filter(|namespaces| !namespaces.is_empty() && phase.ready())
+            .map(Vec::len);
         div()
             .flex()
             .flex_col()
