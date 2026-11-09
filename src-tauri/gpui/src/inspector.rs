@@ -40,6 +40,7 @@ mod exec_drag;
 mod exec_input;
 mod exec_keys;
 mod exec_leave;
+mod exec_menu;
 mod exec_move;
 mod exec_reflow;
 mod exec_resize;

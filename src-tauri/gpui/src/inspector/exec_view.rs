@@ -4,6 +4,7 @@ use super::{
     Inspector,
     controls::{Variant, button},
     detail::Detail,
+    exec_menu,
 };
 use crate::targets::TestSupportExt;
 use crate::{
@@ -169,6 +170,8 @@ impl Inspector {
         let pending_start =
             active.is_some_and(|t| matches!(t.phase, super::exec_state::ExecPhase::Pending(_)));
         let dragging = self.exec.drag.is_some();
+        let has_selection = active.is_some_and(|tab| tab.has_selection());
+        let menu_owner = entity.clone();
         div()
             .relative()
             .flex()
@@ -252,7 +255,7 @@ impl Inspector {
                     }),
             )
             .children(error)
-            .child(
+            .child(exec_menu::with_terminal_menu(
                 div()
                     .id("exec-terminal")
                     .relative()
@@ -401,7 +404,9 @@ impl Inspector {
                         .inset_0()
                         .size_full(),
                     ),
-            )
+                menu_owner,
+                has_selection,
+            ))
             .child(menu)
             .into_any_element()
     }

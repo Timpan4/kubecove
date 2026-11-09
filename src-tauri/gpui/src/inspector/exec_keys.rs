@@ -3,6 +3,13 @@ use super::Inspector;
 use gpui_kit::{Context, KeyDownEvent};
 
 impl Inspector {
+    /// Pastes the clipboard's text, for Shift+Insert and the platform paste gesture.
+    /// The terminal's context menu calls this too.
+    pub(super) fn paste_clipboard(&mut self, cx: &mut Context<Self>) {
+        if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
+            self.paste_exec(&text, cx);
+        }
+    }
     pub(super) fn exec_key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
         let key = &event.keystroke;
         let m = key.modifiers;
@@ -19,9 +26,7 @@ impl Inspector {
             || (control_clipboard && key.key == "v")
             || (m.shift && !m.control && !m.alt && !m.platform && key.key == "insert")
         {
-            if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
-                self.paste_exec(&text, cx);
-            }
+            self.paste_clipboard(cx);
             cx.stop_propagation();
             return;
         }

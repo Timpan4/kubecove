@@ -48,17 +48,36 @@ impl ExecTab {
         self.parser.callbacks().discarded + self.parser.screen().scrollback_len()
             - self.parser.screen().scrollback()
     }
-    pub(super) fn selected_text(&mut self) -> Option<String> {
+    /// The selection that `selected_text` copies, or `None` when it copies nothing.
+    fn copyable_selection(&self) -> Option<Selection> {
         let selection = self.selection?;
         let (start, end) = selection.ordered();
         // xterm ignores a zero-width rectangle.
+        let zero_width_rectangle =
+            selection.column && selection.columns().0 == selection.columns().1;
+        (start != end && !zero_width_rectangle && start.0 >= self.parser.callbacks().discarded)
+            .then_some(selection)
+    }
+    pub(super) fn has_selection(&self) -> bool {
+        self.copyable_selection().is_some()
+    }
+    /// xterm `selectAll`: the whole retained buffer, scrollback included.
+    pub(super) fn select_all(&mut self) {
+        let first = self.parser.callbacks().discarded;
+        let (rows, cols) = self.parser.screen().size();
+        let last = first + self.parser.screen().scrollback_len() + usize::from(rows.get()) - 1;
+        self.selection = Some(Selection {
+            anchor: (first, 0),
+            anchor_end: (first, 0),
+            end: (last, cols.get()),
+            column: false,
+        });
+        self.refresh_view();
+    }
+    pub(super) fn selected_text(&mut self) -> Option<String> {
+        let selection = self.copyable_selection()?;
+        let (start, end) = selection.ordered();
         let columns = selection.column.then(|| selection.columns());
-        if start == end
-            || columns.is_some_and(|(left, right)| left == right)
-            || start.0 < self.parser.callbacks().discarded
-        {
-            return None;
-        }
         let offset = self.parser.screen().scrollback();
         let base = self.parser.callbacks().discarded + self.parser.screen().scrollback_len();
         let cols = self.parser.screen().size().1.get();
@@ -252,6 +271,17 @@ impl Inspector {
         {
             cx.write_to_clipboard(ClipboardItem::new_string(text));
         }
+    }
+    pub(super) fn select_all_exec(&mut self, cx: &mut Context<Self>) {
+        if let Some(tab) = self
+            .exec
+            .tabs
+            .iter_mut()
+            .find(|t| Some(t.key) == self.exec.active)
+        {
+            tab.select_all();
+        }
+        cx.notify();
     }
     pub(super) fn paste_exec(&mut self, text: &str, cx: &mut Context<Self>) {
         let mut text = text.replace("\r\n", "\n").replace('\n', "\r");
