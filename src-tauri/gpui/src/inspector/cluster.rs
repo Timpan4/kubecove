@@ -20,7 +20,7 @@ pub(super) struct ClusterState {
     pub(super) rows: Vec<ResourceSummary>,
     /// `rows` with inherited GitOps owners, rebuilt by `prepare_rows`.
     pub(super) prepared: Vec<ResourceSummary>,
-    /// The list version of each kind in `rows`, by watch signature.
+    /// The list version of each kind in `rows`, by `watch_id` in `context`.
     pub(super) versions: crate::backend::ListVersions,
     warnings: Vec<String>,
     task: Option<Task<()>>,
@@ -75,7 +75,10 @@ impl Inspector {
                 match result {
                     Ok(result) => {
                         this.cluster.rows = result.resources;
-                        this.cluster.versions = result.versions;
+                        this.cluster.versions = crate::backend::context_versions(
+                            &this.cluster.context,
+                            result.versions,
+                        );
                         this.cluster.warnings = result.warnings;
                         this.cluster.load = Some(Load::Ready);
                     }

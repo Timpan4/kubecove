@@ -1,5 +1,6 @@
 //! Sidebar discovery search and resource-kind checkbox scope.
 use super::{Inspector, live_data};
+use crate::backend::Scope;
 use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
@@ -18,20 +19,21 @@ pub(super) struct KindSelection {
     _subscriptions: Vec<Subscription>,
 }
 
-/// A newly checked kind's list read. Its watch waits until the rows land, so it
-/// starts at their version.
+/// A newly checked kind's list read in every watched context. Its watches wait
+/// until the rows land, so they start at their version.
 pub(super) struct KindRead {
-    signature: String,
+    /// The `watch_id` of the kind in each context read.
+    ids: Vec<String>,
     loading: bool,
     _task: gpui_kit::Task<()>,
 }
 
 impl KindSelection {
-    /// Whether a checked kind's rows for the watch `signature` are still loading.
-    pub(super) fn loading(&self, signature: &str) -> bool {
+    /// Whether a checked kind's rows for the watch `id` are still loading.
+    pub(super) fn loading(&self, id: &str) -> bool {
         self.reads
             .values()
-            .any(|read| read.loading && read.signature == signature)
+            .any(|read| read.loading && read.ids.iter().any(|other| other == id))
     }
 }
 
@@ -183,21 +185,37 @@ impl Inspector {
             return;
         };
         let scope = self.scope.clone();
+        let contexts = self.watch_contexts();
+        let ids = contexts
+            .iter()
+            .map(|context| crate::backend::watch_id(context, &key))
+            .collect();
         let backend = self.backend.clone();
-        let read_scope = scope.clone();
         let read_key = key.clone();
+        let namespace = scope.namespace.clone();
         let executor = cx.background_executor().clone();
         // A backend can prepare a snapshot before returning its read future.
         let read = cx.background_executor().spawn(async move {
-            crate::read_retry::read(executor, move || {
-                backend.kind_resources(read_scope.clone(), read_key.clone(), Vec::new())
-            })
-            .await
+            let reads = contexts
+                .into_iter()
+                .map(|context| {
+                    let backend = backend.clone();
+                    let read_scope = Scope {
+                        context: context.clone(),
+                        namespace: namespace.clone(),
+                    };
+                    let read_key = read_key.clone();
+                    let read = crate::read_retry::read(executor.clone(), move || {
+                        backend.kind_resources(read_scope.clone(), read_key.clone(), Vec::new())
+                    });
+                    (context, read)
+                })
+                .collect();
+            crate::workspaces::reads::settle(reads).await
         });
         let selected = id.clone();
-        let signature = crate::backend::watch_signature(&key);
         let task = cx.spawn(async move |this, cx| {
-            let result = read.await;
+            let results = read.await;
             let _ = this.update(cx, |this, cx| {
                 // The task is still in the map: removing an entry drops its task.
                 if let Some(read) = this.kind_selection.reads.get_mut(&selected) {
@@ -206,22 +224,34 @@ impl Inspector {
                 if this.scope != scope || !this.kind_selected(&selected) {
                     return;
                 }
-                match result {
-                    Ok(crate::backend::KindRows {
-                        rows,
-                        resource_version,
-                    }) => this.queue_live_patch(
-                        super::live_rows::Patch {
-                            scope: scope.clone(),
-                            key: key.clone(),
+                let several = results.len() > 1;
+                for (context, result) in results {
+                    match result {
+                        Ok(crate::backend::KindRows {
                             rows,
                             resource_version,
-                            names: None,
-                            watch: None,
-                        },
-                        cx,
-                    ),
-                    Err(error) => this.live.refresh_error = Some(error.message),
+                        }) => this.queue_live_patch(
+                            super::live_rows::Patch {
+                                scope: Scope {
+                                    context,
+                                    namespace: scope.namespace.clone(),
+                                },
+                                key: key.clone(),
+                                rows,
+                                resource_version,
+                                names: None,
+                                watch: None,
+                            },
+                            cx,
+                        ),
+                        Err(error) => {
+                            this.live.refresh_error = Some(super::scope_load::context_message(
+                                several,
+                                &context,
+                                &error.message,
+                            ))
+                        }
+                    }
                 }
                 cx.notify();
             });
@@ -229,7 +259,7 @@ impl Inspector {
         self.kind_selection.reads.insert(
             id,
             KindRead {
-                signature,
+                ids,
                 loading: true,
                 _task: task,
             },

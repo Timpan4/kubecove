@@ -2,9 +2,9 @@
 use super::{Inspector, Page, sidebar_discovery::ClusterRead};
 use crate::backend::ScopeResult;
 use crate::targets::TestSupportExt;
+use crate::workspaces::reads::ContextResults;
 use crate::{theme::Tokens, ui};
 use gpui_kit::{AnyElement, Context, SharedString, deferred, div, prelude::*, px};
-use kubecove_lib::models::AppError;
 
 /// The custom-resource read that follows the built-in resource read.
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
@@ -40,30 +40,24 @@ impl Inspector {
         }
     }
 
-    /// Adds the custom rows after the built-in rows have rendered.
+    /// Adds each context's custom rows after the built-in rows have rendered,
+    /// keeping the rows in context rank order.
     pub(super) fn apply_custom_resources(
         &mut self,
-        result: Result<ScopeResult, AppError>,
+        results: ContextResults<ScopeResult>,
         cx: &mut Context<Self>,
     ) {
-        match result {
-            Ok(result) => {
-                let mut rows = self.rows.backend_rows();
-                rows.extend(result.resources);
-                self.rows = std::rc::Rc::new(crate::model::PreparedRows::with_inherited_owners(
-                    rows,
-                    std::slice::from_ref(&self.scope.context),
-                ));
-                self.live.versions.extend(result.versions);
-                self.warnings.extend(result.warnings);
-                self.scope_load.custom_settled(true);
-            }
-            Err(error) => {
-                self.warnings
-                    .push(format!("Custom Resources: {}", error.message));
-                self.scope_load.custom_settled(false);
-            }
+        let (added, warnings) = self.scope_load.custom_settled(results);
+        if !added.is_empty() {
+            let contexts = self.scope_load.contexts();
+            let mut rows = self.rows.backend_rows();
+            rows.extend(added);
+            super::scope_load::rank_order(&mut rows, contexts);
+            self.rows = std::rc::Rc::new(crate::model::PreparedRows::with_inherited_owners(
+                rows, contexts,
+            ));
         }
+        self.warnings.extend(warnings);
         self.prepare_rows();
         self.filter(cx);
         cx.notify();

@@ -64,7 +64,8 @@ pub struct ScopeResult {
     pub resources: Vec<ResourceSummary>,
     pub warnings: Vec<String>,
     /// The list version of each kind's rows, by `live_data::watch_signature` of its
-    /// watch key. A view starts that watch at this version.
+    /// watch key. A view keys them by [`watch_id`] in the read's context and
+    /// starts that watch at this version.
     pub versions: ListVersions,
     /// The lists this read completed. A row missing from a completed list is
     /// gone; one missing from a failed or unread list may still exist.
@@ -80,6 +81,27 @@ pub struct Listed {
 }
 
 pub type ListVersions = std::collections::HashMap<String, String>;
+
+/// The identity of a watch key in one context. A view that reads several
+/// contexts keys its watches and its rows' list versions by it, so the same
+/// kind in two contexts never shares a watch or a version.
+pub fn watch_id(context: &str, key: &WatchResourceKey) -> String {
+    context_watch_id(context, &watch_signature(key))
+}
+
+/// A read's [`ScopeResult::versions`] for `context`, keyed by [`watch_id`].
+pub fn context_versions(context: &str, versions: ListVersions) -> ListVersions {
+    versions
+        .into_iter()
+        .map(|(signature, version)| (context_watch_id(context, &signature), version))
+        .collect()
+}
+
+/// A unit separator joins the two: a context name may contain any printable
+/// character, and a signature contains `:` and `/`.
+fn context_watch_id(context: &str, signature: &str) -> String {
+    format!("{context}\u{1f}{signature}")
+}
 
 /// One kind's rows and the version of the list they came from.
 #[derive(Default)]

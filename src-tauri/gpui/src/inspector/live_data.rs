@@ -4,13 +4,15 @@ use super::{
     request::InFlight,
     watch_status::{self, Link, LiveStatus, WatchLink, WatchSummary},
 };
-use crate::backend::{KindRows, LogStream, WatchTarget};
+use crate::backend::{KindRows, LogStream, Scope, WatchTarget};
+use futures_util::future::join_all;
 use gpui_kit::{Context, Task, Window};
 use kubecove_lib::models::{
-    DiscoveredResourceKind, StreamMessage, StreamStatus, WatchResourceKey, WatchResourceKind,
+    AppError, DiscoveredResourceKind, StreamMessage, StreamStatus, WatchResourceKey,
+    WatchResourceKind,
 };
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     future::{Future, poll_fn},
     pin::Pin,
     task::Poll,
@@ -38,10 +40,9 @@ pub(super) struct LiveData {
     pub error_open: bool,
     discovery: Option<Task<()>>,
     catalog_task: Option<Task<()>>,
+    /// Each watch by `watch_id`, so the same kind in two contexts has two watches.
     watches: HashMap<String, Registration>,
     pending: Vec<super::live_rows::Patch>,
-    /// The list version of each kind in the scope rows, by watch signature.
-    pub versions: crate::backend::ListVersions,
 }
 
 #[derive(Default)]
@@ -102,7 +103,6 @@ impl LiveData {
     pub fn reset_scope(&mut self) {
         self.watches.clear();
         self.pending.clear();
-        self.versions.clear();
         self.owner.clear();
         self.refresh_error = None;
     }
@@ -119,6 +119,33 @@ impl LiveData {
             .iter()
             .chain(self.watches.values().flat_map(Registration::messages))
     }
+}
+
+/// Every context's kinds once each by API identity, in context rank order,
+/// and a warning for each context whose read failed.
+fn union_kinds(
+    contexts: &[String],
+    results: Vec<Result<Vec<DiscoveredResourceKind>, AppError>>,
+) -> (Vec<DiscoveredResourceKind>, Vec<String>) {
+    let several = contexts.len() > 1;
+    let mut seen = HashSet::new();
+    let mut kinds = Vec::new();
+    let mut warnings = Vec::new();
+    for (context, result) in contexts.iter().zip(results) {
+        match result {
+            Ok(found) => kinds.extend(
+                found
+                    .into_iter()
+                    .filter(|kind| seen.insert(super::kind_selection::identity(kind))),
+            ),
+            Err(error) => warnings.push(super::scope_load::context_message(
+                several,
+                context,
+                &format!("Custom Resources: {}", error.message),
+            )),
+        }
+    }
+    (kinds, warnings)
 }
 
 pub(super) fn key(kind: &str, namespace: Option<String>) -> WatchResourceKey {
@@ -161,62 +188,68 @@ pub(super) async fn receive_or_tick(
 
 impl Inspector {
     /// Custom kinds present in the selected namespace, or cluster-wide with no
-    /// namespace, as the web's `listPresentCustomResourceKinds` returns them.
-    pub(super) fn discover_kinds(&mut self, cx: &mut Context<Self>) {
+    /// namespace, as the web's `listPresentCustomResourceKinds` returns them,
+    /// for each of `contexts`, once each by API identity.
+    pub(super) fn discover_kinds(&mut self, contexts: Vec<String>, cx: &mut Context<Self>) {
         self.live.kinds.clear();
         self.live.catalog.clear();
-        let scope = self.scope.clone();
-        let context = scope.context.clone();
+        let namespace = self.scope.namespace.clone();
         let backend = self.backend.clone();
         let timings = self.timings.clone();
         // The picker lists every discovered kind whatever the namespace, as the web's kind picker does.
         let catalog_backend = self.backend.clone();
-        let catalog_context = context.clone();
+        let catalog_contexts = contexts.clone();
         self.live.catalog_task = Some(cx.spawn(async move |this, cx| {
-            let result = crate::read_retry::cancelled_read(
-                || catalog_backend.resource_kinds(catalog_context.clone()),
-                |delay| cx.background_executor().timer(delay),
-            )
+            let executor = cx.background_executor().clone();
+            let results = join_all(catalog_contexts.iter().map(|context| {
+                let (backend, context, executor) =
+                    (catalog_backend.clone(), context.clone(), executor.clone());
+                crate::read_retry::cancelled_read(
+                    move || backend.resource_kinds(context.clone()),
+                    move |delay| executor.timer(delay),
+                )
+            }))
             .await;
             let _ = this.update(cx, |this, cx| {
-                if this.scope.context != catalog_context {
+                if this.scope_load.contexts() != catalog_contexts.as_slice() {
                     return;
                 }
-                match result {
-                    Ok(kinds) => this.live.catalog = kinds,
-                    Err(error) => this
-                        .warnings
-                        .push(format!("Custom Resources: {}", error.message)),
-                }
+                let (kinds, warnings) = union_kinds(&catalog_contexts, results);
+                this.live.catalog = kinds;
+                this.warnings.extend(warnings);
                 cx.notify();
             });
         }));
         self.live.discovery = Some(cx.spawn(async move |this, cx| {
-            let result = crate::read_retry::cancelled_read(
-                || {
-                    timings.measure(
-                        "list_present_custom_resource_kinds",
-                        backend.namespace_custom_kinds(scope.clone()),
-                    )
-                },
-                |delay| cx.background_executor().timer(delay),
-            )
+            let executor = cx.background_executor().clone();
+            let results = join_all(contexts.iter().map(|context| {
+                let scope = Scope {
+                    context: context.clone(),
+                    namespace: namespace.clone(),
+                };
+                let (backend, timings, executor) =
+                    (backend.clone(), timings.clone(), executor.clone());
+                crate::read_retry::cancelled_read(
+                    move || {
+                        timings.measure(
+                            "list_present_custom_resource_kinds",
+                            backend.namespace_custom_kinds(scope.clone()),
+                        )
+                    },
+                    move |delay| executor.timer(delay),
+                )
+            }))
             .await;
             let _ = this.update(cx, |this, cx| {
-                if this.scope.context != context {
+                if this.scope_load.contexts() != contexts.as_slice() {
                     return;
                 }
-                match result {
-                    Ok(kinds) => {
-                        this.live.kinds = kinds;
-                        if this.fill_custom_selection() {
-                            this.filter(cx);
-                        }
-                    }
-                    Err(error) => this
-                        .warnings
-                        .push(format!("Custom Resources: {}", error.message)),
+                let (kinds, warnings) = union_kinds(&contexts, results);
+                this.live.kinds = kinds;
+                if this.fill_custom_selection() {
+                    this.filter(cx);
                 }
+                this.warnings.extend(warnings);
                 cx.notify();
             });
         }));
@@ -226,11 +259,15 @@ impl Inspector {
     pub(super) fn sync_live(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let _profile = crate::frame_profile::scope("live", "sync");
         self.sync_gitops_watches(window, cx);
+        // The sorted context set, so a change of workspace contexts clears every watch.
+        let mut contexts = self.watch_contexts();
+        contexts.sort();
         let owner = format!(
-            "{:?}:{:?}:{}:{:?}:{:?}:{:?}",
+            "{:?}:{:?}:{}:{:?}:{:?}:{:?}:{:?}",
             self.page as u8,
             self.launcher.active,
             self.scope.context,
+            contexts,
             self.scope.namespace,
             self.live
                 .selected
@@ -268,32 +305,41 @@ impl Inspector {
                 self.scope.namespace.clone(),
             )];
         }
-        for key in keys {
-            let signature = crate::backend::watch_signature(&key);
+        // One watch per context and kind, so each context's rows patch alone.
+        let contexts = self.watch_contexts();
+        let pairs = contexts
+            .iter()
+            .flat_map(|context| keys.iter().map(move |key| (context, key)));
+        for (context, key) in pairs {
+            let watch = crate::backend::watch_id(context, key);
             if self
                 .live
                 .watches
-                .get(&signature)
+                .get(&watch)
                 .is_some_and(|watch| matches!(watch.phase, WatchPhase::Running { .. }))
             {
                 continue;
             }
             // A watch starts at the version of the rows the view shows, so it
             // waits until they settle. Until then it reports as connecting.
-            if !self.rows_settled(&key) {
-                self.live.watches.entry(signature).or_default();
+            if !self.rows_settled(context, key) {
+                self.live.watches.entry(watch).or_default();
                 continue;
             }
-            let scope = self.scope.clone();
+            let key = key.clone();
+            let scope = Scope {
+                context: context.clone(),
+                namespace: self.scope.namespace.clone(),
+            };
             let backend = self.backend.clone();
             let owner = self.live.owner.clone();
-            let id = signature.clone();
+            let id = watch.clone();
             let task = cx.spawn_in(window, async move |this, cx| {
                 let mut lost = false;
                 let mut timer = Box::pin(cx.background_executor().timer(RECOVERY));
                 loop {
                     let resource_version = this
-                        .update(cx, |this, _| this.shown_version(&key))
+                        .update(cx, |this, _| this.shown_version(&scope.context, &key))
                         .ok()
                         .flatten();
                     let read = {
@@ -564,7 +610,7 @@ impl Inspector {
                     timer = Box::pin(cx.background_executor().timer(RECOVERY));
                 }
             });
-            self.live.watches.entry(signature).or_default().phase = WatchPhase::Running {
+            self.live.watches.entry(watch).or_default().phase = WatchPhase::Running {
                 _task: task.into(),
                 link: Link::Opening,
             };
@@ -586,7 +632,7 @@ impl Inspector {
             return;
         }
         let mut pending = std::mem::take(&mut self.live.pending);
-        pending.retain(|patch| patch.scope == self.scope);
+        pending.retain(|patch| self.patch_in_scope(&patch.scope));
         if pending.is_empty() {
             return;
         }

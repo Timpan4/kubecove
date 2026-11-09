@@ -121,7 +121,8 @@ impl Inspector {
                         this.toggle_usage(cx);
                     }
                     if row.title == "Show Custom Resources" {
-                        this.discover_kinds(cx);
+                        let contexts = this.scope_load.contexts().to_vec();
+                        this.discover_kinds(contexts, cx);
                     }
                     if row.title == "Enable diagnostics" {
                         this.refresh_diagnostics(false, cx);

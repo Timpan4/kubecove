@@ -28,6 +28,7 @@ impl RowIndex {
         cluster: &[ResourceSummary],
         request: &Rc<()>,
         cluster_request: &Rc<()>,
+        contexts: &[String],
     ) -> Rc<PreparedRows> {
         let _profile = crate::frame_profile::scope("rows", "source");
         // Scope rows already show inherited owners (`PreparedRows::with_inherited_owners`).
@@ -52,7 +53,7 @@ impl RowIndex {
         let mut rows = Vec::with_capacity(scope.len() + cluster.len());
         rows.extend_from_slice(scope);
         rows.extend_from_slice(cluster);
-        let data = Rc::new(PreparedRows::new(rows, scope.contexts()));
+        let data = Rc::new(PreparedRows::new(rows, contexts));
         *current = Some(Snapshot {
             scope: scope.clone(),
             request: request.clone(),
@@ -74,6 +75,7 @@ impl Inspector {
             self.cluster_prepared(),
             &self.request,
             &self.cluster.request,
+            self.scope_load.contexts(),
         );
         let mut visible = std::mem::take(&mut self.visible);
         // The refilter does not read the owner list or summary below, and its

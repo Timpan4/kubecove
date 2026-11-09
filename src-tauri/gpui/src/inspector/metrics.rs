@@ -107,23 +107,63 @@ impl Inspector {
             )
     }
 
+    /// Reads every context's metrics at once. Rows find theirs by cluster.
     pub(super) fn load_metrics(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.metrics.task.take();
         self.metrics.summary = None;
         self.metrics.slots.clear();
         let request = self.request.clone();
-        let read = self.backend.metrics(self.scope.clone());
-        let read = self.timings.measure("metrics", read);
+        let reads = self
+            .scope_load
+            .contexts()
+            .iter()
+            .map(|context| {
+                let read = self.backend.metrics(crate::backend::Scope {
+                    context: context.clone(),
+                    namespace: self.scope.namespace.clone(),
+                });
+                (context.clone(), self.timings.measure("metrics", read))
+            })
+            .collect();
+        let read = crate::workspaces::reads::settle(reads);
         self.metrics.task = Some(cx.spawn_in(window, async move |this, cx| {
-            let result = read.await;
+            let result = merge(read.await);
             let _ = this.update(cx, |this, cx| {
                 if !Rc::ptr_eq(&this.request, &request) {
                     return;
                 }
                 this.metrics.slots = result.as_ref().map(slots).unwrap_or_default();
-                this.metrics.summary = Some(result.map_err(|error| error.message));
+                this.metrics.summary = Some(result);
                 cx.notify();
             });
         }));
     }
+}
+
+/// Every context's metrics in one summary. Metrics keep their cluster, so the
+/// contexts never mix. The card shows the availability of the first context in
+/// rank order that answered; the read fails only when every context failed.
+fn merge(
+    results: crate::workspaces::reads::ContextResults<ResourceMetricsSummary>,
+) -> Result<ResourceMetricsSummary, String> {
+    let mut merged: Option<ResourceMetricsSummary> = None;
+    let mut first_error = None;
+    for (_, result) in results {
+        match result {
+            Ok(summary) => {
+                if let Some(all) = &mut merged {
+                    all.pods.extend(summary.pods);
+                    all.nodes.extend(summary.nodes);
+                    all.workloads.extend(summary.workloads);
+                    all.warnings.extend(summary.warnings);
+                } else {
+                    merged = Some(summary);
+                }
+            }
+            Err(error) => {
+                first_error.get_or_insert(error.message);
+            }
+        }
+    }
+    merged.ok_or_else(|| first_error.unwrap_or_default())
 }

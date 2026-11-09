@@ -54,13 +54,23 @@ impl Inspector {
         });
         cx.notify();
     }
-    /// True when the Overview read is the same request as the scope read: one
-    /// saved context, the current context, no namespace and no focused Application.
-    fn overview_matches_scope(&self) -> bool {
-        let contexts = self.workspace_contexts();
+    /// True when the Overview read is the same request as the scope read of
+    /// `contexts`: the same set of workspace contexts, no namespace and no
+    /// focused Application.
+    fn overview_matches_scope(&self, contexts: &[String]) -> bool {
         self.focused_application().is_none()
             && self.scope.namespace.is_none()
-            && matches!(contexts.as_slice(), [only] if *only == self.scope.context)
+            && super::scope_load::same_contexts(contexts, &self.workspace_contexts())
+    }
+
+    /// The contexts the Resources page reads, in rank order: every workspace
+    /// context, or the focused Application's context alone.
+    pub(super) fn resource_contexts(&self) -> Vec<String> {
+        if self.focused_application().is_some() {
+            vec![self.scope.context.clone()]
+        } else {
+            self.workspace_contexts()
+        }
     }
 
     pub(super) fn workspace_contexts(&self) -> Vec<String> {
@@ -95,7 +105,8 @@ impl Inspector {
                 (context, read)
             })
             .collect();
-        crate::workspaces::reads::resources(reads)
+        let settled = crate::workspaces::reads::settle(reads);
+        Box::pin(async move { crate::workspaces::reads::merge(settled.await) })
     }
 
     /// Every Overview visit reads the saved scope, as the web's workspace query
@@ -116,7 +127,7 @@ impl Inspector {
         self.load_restore_inventory(cx);
         let request = self.request.clone();
         let read = match shared {
-            Some(shared) if self.overview_matches_scope() => shared.overview_read(),
+            Some(shared) if self.overview_matches_scope(&shared.contexts) => shared.overview_read(),
             _ => self.workspace_resources_read(refresh, cx),
         };
         let task = cx.spawn(async move |this, cx| {
