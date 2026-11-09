@@ -7,7 +7,7 @@ export const LIVE_EVENTS: ResourceEventSummary[] = [
     { eventType: "Normal", reason: "LiveOlder", message: "Older scripted event", count: 1, lastSeen: "2m", lastSeenAt: "2026-06-29T10:01:00Z", source: "parity", namespace: "payments" },
     { eventType: "Normal", reason: "LiveNewest", message: "Newest scripted event", count: 1, lastSeen: "1m", lastSeenAt: "2026-06-29T10:02:00Z", source: "parity", namespace: "payments" },
 ];
-export const LIVE_SCRIPTS = ["update", "rollout", "delete", "ownership", "reconnecting", "connected", "events", "events-overflow", "forbidden", "failed", "missed-delete"] as const;
+export const LIVE_SCRIPTS = ["update", "rollout", "delete", "add", "ownership", "reconnecting", "connected", "events", "events-overflow", "forbidden", "failed", "missed-delete"] as const;
 export type LiveScript = typeof LIVE_SCRIPTS[number];
 type Watch = { id: string; channel: Pick<Channel<StreamMessage>, "onmessage">; context: string; keys?: ResourceWatchStart[]; kind?: string; name?: string; namespace?: string | null };
 const watches = new Map<string, Watch>();
@@ -15,6 +15,9 @@ const watchStarts: ResourceWatchStart[] = [];
 let serial = 0;
 let changed = false;
 let deleted = false;
+// The "add" script creates a copy of payments-api whose name sorts between the payments Deployments.
+let added = false;
+const ADDED = "orders-api";
 // A scripted rollout gives payments-api the "Rolling out" lifecycle, which shows activity.
 let rolling = false;
 // The "ownership" script moves checkout-worker to a Flux owner. Its ownerRef-only Pod follows it.
@@ -68,12 +71,13 @@ export function emitMockKindChange(kind: string): void {
 }
 export function liveResources(rows: ResourceSummary[]): ResourceSummary[] {
     if (failed) throw new Error("Scripted reload failure");
-    return rows.filter((row) => !(deleted && target(row))).map((row) => {
+    const copy = added ? rows.find(target) : undefined;
+    return rows.filter((row) => !(deleted && target(row))).map((row): ResourceSummary => {
         if (reowned && row.kind === "Deployment" && row.namespace === "payments" && row.name === REOWNED) return { ...row, gitOpsOwner: FLUX_OWNER };
         if (!target(row)) return row;
         if (rolling) return { ...row, status: "Rolling out" };
         return changed && row.healthAssessment ? { ...row, status: "Progressing", healthAssessment: { ...row.healthAssessment, state: "degraded" } } : row;
-    });
+    }).concat(copy ? [{ ...copy, name: ADDED }] : []);
 }
 function target(row: ResourceSummary): boolean { return row.kind === "Deployment" && row.namespace === "payments" && row.name === "payments-api"; }
 export function liveEvents(kind?: string, name?: string): ResourceEventSummary[] | undefined {
@@ -82,9 +86,10 @@ export function liveEvents(kind?: string, name?: string): ResourceEventSummary[]
 export function replayLiveData(script: LiveScript): void {
     // "missed-delete" deletes payments-api without a notification, as an event a lost watch never delivered.
     const missed = script === "missed-delete";
-    const rowChange = script === "update" || script === "rollout" || script === "delete" || script === "ownership" || missed;
+    const rowChange = script === "update" || script === "rollout" || script === "delete" || script === "add" || script === "ownership" || missed;
     if (rowChange) mockTiming.invalidate("mock-dev");
     if (script === "ownership") reowned = true;
+    if (script === "add") added = true;
     if (script === "failed") failed = true;
     if (script === "connected") failed = false;
     if (script === "update") changed = true;
@@ -109,7 +114,7 @@ export function replayLiveData(script: LiveScript): void {
         } else if ((script === "events" || script === "events-overflow") && watch.name === "payments-api" && watch.kind === "Deployment") {
             watch.channel.onmessage({ type: "resourceEventsChanged", streamId, target: { cluster: watch.context, kind: "Deployment", name: watch.name, namespace: watch.namespace }, action: "applied" });
         } else if (script !== "events" && script !== "events-overflow" && watch.keys?.some((key) => key.resourceKind.kind === "Deployment" && (!key.namespace || key.namespace === "payments"))) {
-            watch.channel.onmessage({ type: "resourceChanged", streamId, target: { cluster: watch.context, kind: "Deployment", name: script === "ownership" ? REOWNED : "payments-api", namespace: "payments" }, action: script === "delete" ? "deleted" : "applied" });
+            watch.channel.onmessage({ type: "resourceChanged", streamId, target: { cluster: watch.context, kind: "Deployment", name: script === "ownership" ? REOWNED : script === "add" ? ADDED : "payments-api", namespace: "payments" }, action: script === "delete" ? "deleted" : "applied" });
         }
     }
 }

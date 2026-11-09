@@ -30,6 +30,8 @@ pub(super) struct ScriptState {
     /// A scripted rollout gives payments-api the "Rolling out" lifecycle, which shows activity.
     rolling: bool,
     deleted: bool,
+    /// The "add" script lists a copy of payments-api named `ADDED`.
+    added: bool,
     /// The "ownership" script moves checkout-worker to a Flux owner. Its ownerRef-only Pod follows it.
     reowned: bool,
     events: Option<EventSet>,
@@ -43,6 +45,16 @@ pub(super) struct ScriptState {
 }
 /// The Deployment the "ownership" script moves to another GitOps owner.
 const REOWNED: &str = "checkout-worker";
+/// The copy of payments-api the "add" script creates. Its name sorts between
+/// the payments Deployments.
+const ADDED: &str = "orders-api";
+
+/// The Deployment the update, rollout and delete scripts change.
+fn scripted_target(row: &ResourceSummary) -> bool {
+    row.kind == "Deployment"
+        && row.namespace.as_deref() == Some("payments")
+        && row.name == "payments-api"
+}
 #[derive(Clone, Copy)]
 enum EventSet {
     Live,
@@ -284,7 +296,7 @@ impl Fixture {
     pub fn replay_live(&self, script: &str) {
         if matches!(
             script,
-            "update" | "rollout" | "delete" | "ownership" | "missed-delete"
+            "update" | "rollout" | "delete" | "add" | "ownership" | "missed-delete"
         ) {
             self.timing.invalidate("mock-dev");
         }
@@ -301,10 +313,11 @@ impl Fixture {
                 state.changed_at = Some(state.revision + 1);
                 return;
             }
-            "update" | "rollout" | "delete" | "ownership" => {
+            "update" | "rollout" | "delete" | "add" | "ownership" => {
                 state.changed |= script == "update";
                 state.rolling |= script == "rollout";
                 state.deleted |= script == "delete";
+                state.added |= script == "add";
                 state.reowned |= script == "ownership";
                 state.revision += 1;
                 state.changed_at = Some(state.revision + 1);
@@ -351,10 +364,10 @@ impl Fixture {
                 kind: "Deployment".into(),
                 namespace: Some("payments".into()),
                 name: Some(
-                    if script == "ownership" {
-                        REOWNED
-                    } else {
-                        "payments-api"
+                    match script {
+                        "ownership" => REOWNED,
+                        "add" => ADDED,
+                        _ => "payments-api",
                     }
                     .into(),
                 ),
@@ -378,7 +391,7 @@ impl Fixture {
                         action: "applied".into(),
                     }
                 }
-                "update" | "rollout" | "delete" | "ownership" | "failed" if matches!(watch, WatchTarget::Resource { key, .. } if key.resource_kind.kind == "Deployment") => {
+                "update" | "rollout" | "delete" | "add" | "ownership" | "failed" if matches!(watch, WatchTarget::Resource { key, .. } if key.resource_kind.kind == "Deployment") => {
                     StreamMessage::ResourceChanged {
                         stream_id: "fixture".into(),
                         target,
@@ -465,6 +478,14 @@ impl Fixture {
     }
     pub(super) fn live_rows(&self, rows: Vec<ResourceSummary>) -> Vec<ResourceSummary> {
         let state = self.live.state.lock().unwrap();
+        let added = state
+            .added
+            .then(|| rows.iter().find(|row| scripted_target(row)).cloned())
+            .flatten()
+            .map(|row| ResourceSummary {
+                name: ADDED.into(),
+                ..row
+            });
         rows.into_iter()
             .filter_map(|mut row| {
                 if state.burst {
@@ -486,10 +507,7 @@ impl Fixture {
                         partial: false,
                     });
                 }
-                if row.kind == "Deployment"
-                    && row.namespace.as_deref() == Some("payments")
-                    && row.name == "payments-api"
-                {
+                if scripted_target(&row) {
                     if state.deleted {
                         return None;
                     }
@@ -503,6 +521,7 @@ impl Fixture {
                 }
                 Some(row)
             })
+            .chain(added)
             .collect()
     }
     pub(super) fn scripted_events(

@@ -48,6 +48,20 @@
       ]
     },
     {
+      "id": "resources.table-sort-live-add",
+      "title": "A row a watch adds takes its place in the Name sort",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "expectLiveState", "label": "Live" },
+        { "action": "search", "value": "apps/v1" },
+        { "action": "sortResourceTable", "column": "Name" },
+        { "action": "expectResourceOrder", "names": ["payments-api", "checkout-worker"] },
+        { "action": "replayLiveData", "script": "add" },
+        { "action": "expectResource", "kind": "Deployment", "name": "orders-api", "namespace": "payments" },
+        { "action": "expectResourceOrder", "names": ["payments-api", "orders-api", "checkout-worker"] }
+      ]
+    },
+    {
       "id": "resources.table-groups",
       "title": "Ownership and kind group rows collapse and expand their rows",
       "steps": [
