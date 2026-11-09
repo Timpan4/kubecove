@@ -7,7 +7,7 @@ export function resourceTableStep(item: Record<string, unknown>): Step | undefin
 		case "pressResourceRow": return { action: item.action, key: oneOf(["Enter", "Space"], item.key, "Enter or Space"), kind: string(item.kind), name: string(item.name), namespace: string(item.namespace) };
 		case "openResource": return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), ...(item.context === undefined ? {} : { context: string(item.context) }) };
 		case "expectRowContexts": return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), contexts: strings(item.contexts, false) };
-		case "filterContexts": return { action: item.action, contexts: strings(item.contexts, false) };
+		case "filterContexts": return { action: item.action, contexts: strings(item.contexts, true) };
 		case "expectResourceSummary": return { action: item.action, text: string(item.text) };
 		case "selectMapContext": return { action: item.action, context: string(item.context) };
 		case "expectMapContext":

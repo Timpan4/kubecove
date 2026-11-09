@@ -159,12 +159,9 @@ impl Inspector {
     fn toggle_context(&mut self, context: &str, checked: bool, cx: &mut Context<Self>) {
         let available = self.workspace_contexts();
         let selected = self.context_selection().unwrap_or_default();
-        let next = next_context_selection(&selected, &available, context, checked);
-        // Unchecking the last selected context would hide every row; keep it.
-        if !checked && next.is_empty() && !selected.is_empty() {
-            return;
-        }
-        self.filters.contexts = next;
+        // Unchecking the last selected context leaves none, which clears the
+        // filter and shows every context, as `toggleContext` does on the web.
+        self.filters.contexts = next_context_selection(&selected, &available, context, checked);
         self.table_page = 0;
         self.filter(cx);
         cx.notify();

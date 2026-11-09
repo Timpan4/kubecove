@@ -56,7 +56,7 @@
     },
     {
       "id": "resources.multi-context-filter-search",
-      "title": "The Context filter narrows rows, Clear restores every context, and search matches the context name",
+      "title": "The Context filter narrows rows, unchecking its last context or Clear restores every context, and search matches the context name",
       "steps": [
         { "action": "openLauncher" },
         { "action": "editSavedWorkspace", "name": "Parity mock workspace" },
@@ -68,6 +68,10 @@
         { "action": "filterContexts", "contexts": ["admin@solid-k8s"] },
         { "action": "expectRowContexts", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "contexts": ["admin@solid-k8s"] },
         { "action": "expectResourceSummary", "text": "7 resources · 2 contexts · page 1 of 1" },
+        { "action": "filterContexts", "contexts": [] },
+        { "action": "expectRowContexts", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "contexts": ["mock-dev", "admin@solid-k8s"] },
+        { "action": "filterContexts", "contexts": ["admin@solid-k8s"] },
+        { "action": "expectRowContexts", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "contexts": ["admin@solid-k8s"] },
         { "action": "clearResourceFilters" },
         { "action": "expectSearch", "value": "" },
         { "action": "search", "value": "payments-api" },

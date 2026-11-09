@@ -43,7 +43,8 @@ fn row_contexts(
 }
 
 /// Sets the Context filter to exactly `wanted`. Checks the wanted contexts
-/// first, so the selection never passes through an empty set.
+/// first, so the selection passes through an empty set only when `wanted` is
+/// empty: unchecking the last context then clears the filter.
 fn filter_contexts(window: &mut gpui_kit::Window, wanted: &[String], cx: &mut gpui_kit::App) {
     window.click("context-picker", cx);
     window.render_frame(cx);

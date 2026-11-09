@@ -216,7 +216,7 @@ export type Step =
     | ({ action: "openResource"; context?: string } & Identity)
     /** The contexts of every row with this identity, in display order. */
     | ({ action: "expectRowContexts"; contexts: string[] } & Identity)
-    /** Sets the Context filter to exactly these contexts. */
+    /** Sets the Context filter to exactly these contexts. An empty list unchecks every context, which clears the filter. */
     | { action: "filterContexts"; contexts: string[] }
     /** The Resource Table status line, such as "14 resources · 2 contexts · page 1 of 1". */
     | { action: "expectResourceSummary"; text: string }
