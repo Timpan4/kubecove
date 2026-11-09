@@ -62,10 +62,8 @@
 		confirmStoppingExecSessions,
 		hasOpenExecSessions,
 	} from "@/features/live-sessions/openExecSessions.svelte";
-	import {
-		canLeaveYamlDraft,
-		UNSAVED_YAML_DRAFT_NOTICE,
-	} from "@/features/resource-detail/yamlDraftGuard.svelte";
+	import { canLeaveYamlDraft } from "@/features/resource-detail/yamlDraftGuard.svelte";
+	import { installYamlDraftCloseGuard } from "@/features/resource-detail/yamlDraftCloseGuard";
 	import YamlDraftNotice from "@/features/resource-detail/YamlDraftNotice.svelte";
 	import NamespaceList from "@/features/resources/NamespaceList.svelte";
 	import ResourceBrowser from "@/features/resources/ResourceBrowser.svelte";
@@ -323,13 +321,7 @@
 		};
 		window.addEventListener("resize", closeNarrowNavigation);
 		window.addEventListener("pagehide", flushPathStateWrite);
-		// Browser mode: the page asks before unloading while a YAML draft has unsaved changes.
-		const refuseUnloadWithYamlDraft = (event: BeforeUnloadEvent) => {
-			if (canLeaveYamlDraft()) return;
-			event.preventDefault();
-			event.returnValue = UNSAVED_YAML_DRAFT_NOTICE;
-		};
-		window.addEventListener("beforeunload", refuseUnloadWithYamlDraft);
+		const stopYamlDraftCloseGuard = installYamlDraftCloseGuard();
 		window.addEventListener("beforeunload", flushPathStateWrite);
 		const flushWhenHidden = () => {
 			if (document.visibilityState === "hidden") flushPathStateWrite();
@@ -340,7 +332,7 @@
 			stopRbacHandoff();
 			window.removeEventListener("resize", closeNarrowNavigation);
 			window.removeEventListener("pagehide", flushPathStateWrite);
-			window.removeEventListener("beforeunload", refuseUnloadWithYamlDraft);
+			stopYamlDraftCloseGuard();
 			window.removeEventListener("beforeunload", flushPathStateWrite);
 			document.removeEventListener("visibilitychange", flushWhenHidden);
 		};
