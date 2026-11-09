@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted.
+Accepted. Amended by [ADR 0033](0033-multi-context-resource-views.md) for multi-context resource views.
 
 ## Context
 

@@ -13,6 +13,7 @@ User-facing procedures start in the [public Wiki](https://github.com/Timpan4/kub
 
 ## Engineering
 
+- [Multi-context resource views](decisions/0033-multi-context-resource-views.md): proposed Resources view reads across workspace contexts, with per-context identity, targets and the ownership map scope.
 - [Desktop close guard](decisions/0032-desktop-close-draft-guard.md): window close refuses while a YAML draft has unsaved changes in the Tauri desktop client.
 - [Desktop remote sign-in](decisions/0031-gpui-remote-sign-in.md): proposed OIDC and Access sign-in, credential handling and session notices for desktop remote clients.
 - [GPUI local persistence](decisions/0030-gpui-local-preferences.md): native preference schema, local workspace and review storage, migration and runtime ownership.
