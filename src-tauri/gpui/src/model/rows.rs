@@ -36,6 +36,13 @@ pub(crate) struct RowKey {
     pub(crate) variant: usize,
 }
 
+impl RowKey {
+    /// The row's GitOps owner as an index into `PreparedRows::owner_at`.
+    pub(crate) fn owner_index(&self) -> Option<usize> {
+        self.owner.map(|owner| owner as usize)
+    }
+}
+
 /// A distinct GitOps owner of the prepared rows.
 struct Owner {
     /// The owner filter's `filterKey`.
@@ -117,8 +124,28 @@ impl PreparedRows {
 
     /// The owner filter's `filterKey` and label of a row's GitOps owner.
     pub(crate) fn owner(&self, key: &RowKey) -> Option<(&str, &str)> {
-        let owner = &self.owners[key.owner? as usize];
-        Some((&owner.key, &owner.label))
+        Some(self.owner_at(key.owner_index()?))
+    }
+
+    /// The rows' contexts in rank order, which `row_contexts` indexes.
+    pub(crate) fn context_names(&self) -> &[String] {
+        &self.contexts
+    }
+
+    /// Each row's context as an index into `context_names`.
+    pub(crate) fn row_contexts(&self) -> &[u32] {
+        &self.context
+    }
+
+    /// The number of distinct GitOps owners, which `RowKey::owner_index` indexes.
+    pub(crate) fn owner_count(&self) -> usize {
+        self.owners.len()
+    }
+
+    /// The `filterKey` and label of the owner at an index below `owner_count`.
+    pub(crate) fn owner_at(&self, index: usize) -> (&str, &str) {
+        let owner = &self.owners[index];
+        (&owner.key, &owner.label)
     }
 
     pub(crate) fn identity(&self) -> RowsId {

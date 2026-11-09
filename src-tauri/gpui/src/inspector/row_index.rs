@@ -102,7 +102,9 @@ impl Inspector {
         );
         let summary_profile = crate::frame_profile::scope("rows", "summary");
         let matches = visible.search_matches();
-        let mut owners = std::collections::BTreeMap::new();
+        // Per interned owner, the first row that lists it; a row costs an index
+        // write instead of a string-keyed map insert.
+        let mut first_row = vec![usize::MAX; source.owner_count()];
         let mut summary = crate::model::HealthSummary::default();
         let mut allowed = Vec::new();
         source.fill_kind_mask(
@@ -120,13 +122,27 @@ impl Inspector {
             {
                 continue;
             }
-            let owner = source.owner(prepared);
-            if let Some((key, label)) = owner {
-                owners.entry(key).or_insert(label);
+            let owner = prepared.owner_index();
+            if let Some(owner) = owner {
+                first_row[owner] = first_row[owner].min(index);
             }
-            if self.filters.in_owner(owner.map(|(key, _)| key)) && matches.contains(index) {
+            let key = owner.map(|owner| source.owner_at(owner).0);
+            if self.filters.in_owner(key) && matches.contains(index) {
                 summary.add(row);
             }
+        }
+        // Owners that share a filter key keep the label of the first listed row.
+        let mut listed: Vec<_> = first_row
+            .iter()
+            .enumerate()
+            .filter(|&(_, &row)| row != usize::MAX)
+            .map(|(owner, &row)| (row, owner))
+            .collect();
+        listed.sort_unstable();
+        let mut owners = std::collections::BTreeMap::new();
+        for (_, owner) in listed {
+            let (key, label) = source.owner_at(owner);
+            owners.entry(key).or_insert(label);
         }
         let mut owners: Vec<_> = owners
             .into_iter()
