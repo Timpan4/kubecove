@@ -30,6 +30,11 @@ pub struct Argo {
     reviewed: Mutex<bool>,
     #[serde(skip)]
     pub complete: std::sync::atomic::AtomicBool,
+    /// Requests no fixture entry matches. They fail as Argo errors instead of panicking:
+    /// the client often calls the backend inside a GPUI update, and a panic there stops
+    /// effect flushing for every later scenario in the process.
+    #[serde(skip)]
+    unexpected: Mutex<Vec<String>>,
 }
 #[derive(Deserialize)]
 struct Preview {
@@ -74,6 +79,18 @@ impl Argo {
             let _ = release.send(());
         }
     }
+    /// Requests that matched no fixture entry; the parity harness fails the scenario on any.
+    // Only the parity harness checks them.
+    #[allow(dead_code)]
+    pub fn unexpected_requests(&self) -> Vec<String> {
+        self.unexpected.lock().unwrap().clone()
+    }
+    fn unexpected<T: Send + 'static>(&self, kind: &str, request: &Value) -> Read<T> {
+        let message = format!("unexpected {kind}: {request}");
+        eprintln!("{message}");
+        self.unexpected.lock().unwrap().push(message.clone());
+        failed(&message)
+    }
     /// Waits for the next script when `script` is the current one.
     fn hold(&self, script: &str) -> Option<oneshot::Receiver<()>> {
         if *self.script.lock().unwrap() != script {
@@ -88,13 +105,10 @@ impl Argo {
             return failed("Fixture tunnel target changed");
         }
         let request = serde_json::to_value(request).unwrap();
-        let status = self
-            .connections
-            .iter()
-            .find(|r| r.request == request)
-            .unwrap_or_else(|| panic!("unexpected connection: {request}"))
-            .result
-            .clone();
+        let Some(connection) = self.connections.iter().find(|r| r.request == request) else {
+            return self.unexpected("connection", &request);
+        };
+        let status = connection.result.clone();
         let held = self.hold("connect-pending");
         let active = self.active.clone();
         Box::pin(async move {
@@ -128,12 +142,10 @@ impl Argo {
             return failed("Fixture tunnel preview unavailable");
         }
         let request = serde_json::to_value(request).unwrap();
-        let preview = self
-            .previews
-            .iter()
-            .find(|p| p.request == request)
-            .unwrap_or_else(|| panic!("unexpected preview: {request}"));
-        ready(preview.result.clone())
+        match self.previews.iter().find(|p| p.request == request) {
+            Some(preview) => ready(preview.result.clone()),
+            None => self.unexpected("preview", &request),
+        }
     }
     pub fn disconnect(&self, id: String) -> Read<()> {
         assert!(
@@ -159,11 +171,9 @@ impl Argo {
             assert!(*self.active.lock().unwrap());
         }
         let request = serde_json::to_value(request).unwrap();
-        let inspection = self
-            .inspections
-            .iter()
-            .find(|r| r.request == request)
-            .unwrap_or_else(|| panic!("unexpected inspection: {request}"));
+        let Some(inspection) = self.inspections.iter().find(|r| r.request == request) else {
+            return self.unexpected("inspection", &request);
+        };
         let mut result = if *self.script.lock().unwrap() == "full-diff" {
             inspection.full.clone()
         } else {
@@ -188,13 +198,10 @@ impl Argo {
             return failed("Fixture preflight unavailable");
         }
         let request = serde_json::to_value(request).unwrap();
-        let review = self
-            .operations
-            .iter()
-            .find(|r| r.request == request)
-            .unwrap_or_else(|| panic!("unexpected operation: {request}"))
-            .review
-            .clone();
+        let Some(operation) = self.operations.iter().find(|r| r.request == request) else {
+            return self.unexpected("operation", &request);
+        };
+        let review = operation.review.clone();
         *self.reviewed.lock().unwrap() = review.allowed;
         ready(review)
     }
@@ -221,12 +228,10 @@ impl Argo {
         resource: ArgoManagedResource,
     ) -> Read<ArgoResourceComparison> {
         let request = serde_json::json!({"inspection": inspection, "resource": resource});
-        let result = self
-            .comparisons
-            .iter()
-            .find(|c| c.request == request)
-            .unwrap_or_else(|| panic!("unexpected comparison: {request}"));
-        ready(result.result.clone())
+        match self.comparisons.iter().find(|c| c.request == request) {
+            Some(comparison) => ready(comparison.result.clone()),
+            None => self.unexpected("comparison", &request),
+        }
     }
     pub fn run(&self, confirmation: ArgoOperationConfirmation) -> Read<ArgoOperationResult> {
         assert!(

@@ -761,6 +761,8 @@ fn run_scenario(
             cx.run_until_parked();
         }
     }
+    let unexpected = backend.argo.unexpected_requests();
+    assert!(unexpected.is_empty(), "{}", unexpected.join("\n"));
     cx.update_window(handle, |_, window, _| window.remove_window())
         .unwrap();
     cx.run_until_parked();
