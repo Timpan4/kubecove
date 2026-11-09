@@ -164,6 +164,13 @@ pub(super) async fn sign_in(
     }) {
         return Ok(store.summary().await);
     }
+    // The sign-in stays pending until the guard drops, so Sign out, Cancel and
+    // Disconnect can end it while its session opens.
+    let ended = EndSignIn {
+        store,
+        server_url: &server_url,
+        pending: Arc::clone(&pending),
+    };
     // A new sign-in replaces an ended session.
     if let Some(previous) = store.current.write().await.take() {
         previous.close().await;
@@ -178,28 +185,41 @@ pub(super) async fn sign_in(
         }
         Err(error) => Err(error),
     };
-    // The sign-in stays pending until here, so Sign out, Cancel and
-    // Disconnect can end it while its session opens.
-    store.update_selection(&server_url, |selected| {
-        let ours = selected
-            .pending
-            .as_ref()
-            .is_some_and(|current| Arc::ptr_eq(current, &pending));
-        if ours {
-            selected.pending = None;
-        }
-        // A sign-in that did not open a session leaves nothing to wait for.
-        let stale = match selected.state {
-            RemoteSessionState::WaitingForBrowser => selected.pending.is_none(),
-            RemoteSessionState::Connecting => ours,
-            _ => false,
-        };
-        if stale {
-            selected.state = RemoteSessionState::SignInRequired;
-        }
-    });
+    drop(ended);
     outcome?;
     Ok(store.summary().await)
+}
+
+/// Clears a sign-in from the selection however `sign_in` stops: finished,
+/// failed, or dropped while it awaits, as when the GPUI client replaces or
+/// closes the task that runs it.
+struct EndSignIn<'a> {
+    store: &'a RemoteConnectionStore,
+    server_url: &'a str,
+    pending: Arc<PendingSignIn>,
+}
+
+impl Drop for EndSignIn<'_> {
+    fn drop(&mut self) {
+        self.store.update_selection(self.server_url, |selected| {
+            let ours = selected
+                .pending
+                .as_ref()
+                .is_some_and(|current| Arc::ptr_eq(current, &self.pending));
+            if ours {
+                selected.pending = None;
+            }
+            // A sign-in that did not open a session leaves nothing to wait for.
+            let stale = match selected.state {
+                RemoteSessionState::WaitingForBrowser => selected.pending.is_none(),
+                RemoteSessionState::Connecting => ours,
+                _ => false,
+            };
+            if stale {
+                selected.state = RemoteSessionState::SignInRequired;
+            }
+        });
+    }
 }
 
 /// Keeps the issued credential and opens a session with it, unless the

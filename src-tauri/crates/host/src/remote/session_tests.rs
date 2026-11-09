@@ -220,6 +220,26 @@ async fn cancel_and_disconnect_end_a_waiting_sign_in() {
 }
 
 #[tokio::test]
+async fn a_sign_in_dropped_while_it_waits_for_the_browser_can_start_again() {
+    let harness = harness(Browser::Idle).await;
+    harness.select().await.unwrap();
+    let store = Arc::clone(&harness.store);
+    let waiting = tokio::spawn(async move { session::sign_in(&store).await });
+    harness
+        .wait_for(RemoteSessionState::WaitingForBrowser)
+        .await;
+    // The GPUI client drops the future when it replaces the sign-in task or closes.
+    waiting.abort();
+    assert!(waiting.await.unwrap_err().is_cancelled());
+    assert_eq!(harness.state().await, Some(RemoteSessionState::SignInRequired));
+    assert!(session::sign_in_link(&harness.store).is_none());
+
+    *harness.browser.behavior.lock().unwrap() = Browser::Complete;
+    let summary = harness.sign_in().await.unwrap().unwrap();
+    assert_eq!(summary.session_state, RemoteSessionState::Connected);
+}
+
+#[tokio::test]
 async fn the_session_is_connecting_while_the_server_opens_it() {
     let harness = harness(Browser::Idle).await;
     harness.store_sign_in();
