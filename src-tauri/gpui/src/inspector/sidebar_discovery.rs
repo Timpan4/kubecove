@@ -1,28 +1,30 @@
 //! Custom-kind discovery for the sidebar: every discovered kind for the Custom Resources
 //! section (the web's `list_resource_kinds` query), and namespace-owned kinds for namespace
 //! branches (the web's expanded namespace query).
-use super::Inspector;
-use gpui_kit::{AnyElement, Context, Task, div, prelude::*, px};
+use super::{Inspector, request::Fetch};
+use gpui_kit::{AnyElement, Context, div, prelude::*, px};
 use kubecove_lib::models::DiscoveredResourceKind;
-use std::{collections::HashMap, rc::Rc};
+use std::collections::HashMap;
 
+/// Each read owns its task, so removing a namespace's entry or changing the
+/// context cancels the read, and a result only settles into its own entry.
 #[derive(Default)]
 pub(super) struct Discovery {
     context: String,
-    reads: HashMap<String, Read>,
+    /// Namespace-owned kinds for each open namespace branch.
+    reads: HashMap<String, Fetch<Vec<DiscoveredResourceKind>>>,
     /// Cluster-wide discovered kinds, which list kinds even without objects.
-    cluster: Option<ClusterKinds>,
+    /// `Idle` until the first sync with an open workspace.
+    cluster: Fetch<Vec<DiscoveredResourceKind>>,
 }
 
-struct Read {
-    request: Rc<()>,
-    task: Option<Task<()>>,
-    result: Option<Result<Vec<DiscoveredResourceKind>, String>>,
-}
-
-struct ClusterKinds {
-    task: Option<Task<()>>,
-    result: Option<Result<Vec<DiscoveredResourceKind>, String>>,
+fn settled(
+    result: Result<Vec<DiscoveredResourceKind>, kubecove_lib::models::AppError>,
+) -> Fetch<Vec<DiscoveredResourceKind>> {
+    match result {
+        Ok(kinds) => Fetch::Ready(kinds),
+        Err(error) => Fetch::Failed(error.message),
+    }
 }
 
 /// The web's `resourceKindsPending`, `resourceKindsError` and kind list for the Custom Resources section.
@@ -37,7 +39,7 @@ impl Inspector {
         let state = &mut self.sidebar_tree.discovery;
         if state.context != self.scope.context {
             state.reads.clear();
-            state.cluster = None;
+            state.cluster = Fetch::Idle;
             state.context = self.scope.context.clone();
         }
         state.reads.retain(|ns, _| {
@@ -46,7 +48,7 @@ impl Inspector {
         if !self.persisted.preferences.show_custom_resources || !self.workspace_open() {
             return;
         }
-        if self.sidebar_tree.discovery.cluster.is_none() {
+        if matches!(self.sidebar_tree.discovery.cluster, Fetch::Idle) {
             // The Svelte sidebar opts this query into `cancelledQueryRetry`: only a superseded
             // (cancelled) read retries, so a transport failure shows at once.
             let backend = self.backend.clone();
@@ -57,20 +59,13 @@ impl Inspector {
                     move || backend.resource_kinds(context.clone()),
                     move |delay| executor.timer(delay),
                 )
-                .await
-                .map_err(|error| error.message);
+                .await;
                 let _ = this.update(cx, |this, cx| {
-                    if let Some(cluster) = this.sidebar_tree.discovery.cluster.as_mut() {
-                        cluster.result = Some(result);
-                        cluster.task.take();
-                        cx.notify();
-                    }
+                    this.sidebar_tree.discovery.cluster = settled(result);
+                    cx.notify();
                 });
             });
-            self.sidebar_tree.discovery.cluster = Some(ClusterKinds {
-                task: Some(task),
-                result: None,
-            });
+            self.sidebar_tree.discovery.cluster = Fetch::start(task);
         }
         let state = &mut self.sidebar_tree.discovery;
         for ns in &self.namespaces {
@@ -87,33 +82,20 @@ impl Inspector {
                 namespace: Some(namespace.clone()),
             };
             let read = self.backend.namespace_custom_kinds(scope);
-            let request = Rc::new(());
-            let owner = request.clone();
             let task = cx.spawn(async move |this, cx| {
-                let result = read.await.map_err(|error| error.message);
+                let result = read.await;
                 let _ = this.update(cx, |this, cx| {
                     let state = &mut this.sidebar_tree.discovery;
                     if state.context != context {
                         return;
                     }
                     if let Some(read) = state.reads.get_mut(&namespace) {
-                        if !Rc::ptr_eq(&read.request, &owner) {
-                            return;
-                        }
-                        read.result = Some(result);
-                        read.task.take();
+                        *read = settled(result);
                         cx.notify();
                     }
                 });
             });
-            state.reads.insert(
-                ns.name.clone(),
-                Read {
-                    request,
-                    task: Some(task),
-                    result: None,
-                },
-            );
+            state.reads.insert(ns.name.clone(), Fetch::start(task));
         }
     }
 
@@ -127,30 +109,20 @@ impl Inspector {
 
     /// The cluster-wide kind read the Custom Resources section shows as loading, failed or ready.
     pub(super) fn cluster_read(&self) -> ClusterRead<'_> {
-        match self
-            .sidebar_tree
-            .discovery
-            .cluster
-            .as_ref()
-            .map(|cluster| cluster.result.as_ref())
-        {
-            None | Some(None) => ClusterRead::Loading,
-            Some(Some(Err(message))) => ClusterRead::Failed(message),
-            Some(Some(Ok(kinds))) => ClusterRead::Ready(kinds),
+        match &self.sidebar_tree.discovery.cluster {
+            Fetch::Idle | Fetch::Loading { .. } => ClusterRead::Loading,
+            Fetch::Failed(message) => ClusterRead::Failed(message),
+            Fetch::Ready(kinds) => ClusterRead::Ready(kinds),
         }
     }
 
     fn namespace_kinds(&self, namespace: &str) -> &[DiscoveredResourceKind] {
-        match self
-            .sidebar_tree
+        self.sidebar_tree
             .discovery
             .reads
             .get(namespace)
-            .and_then(|read| read.result.as_ref())
-        {
-            Some(Ok(kinds)) => kinds,
-            _ => &[],
-        }
+            .and_then(Fetch::ready)
+            .map_or(&[], Vec::as_slice)
     }
 
     pub(super) fn namespace_custom_target(
@@ -179,14 +151,14 @@ impl Inspector {
         };
         let phase = self.loading.phase(
             &format!("sidebar-namespace-kinds:{namespace}"),
-            read.result.is_none(),
+            read.loading(),
         );
-        let message = match &read.result {
+        let message = match read {
             _ if phase.shown() => Some("Loading custom resources..."),
             _ if !phase.ready() => return vec![],
-            None => return vec![],
-            Some(Err(_)) => Some("Custom resources failed to load"),
-            Some(Ok(_)) => None,
+            Fetch::Idle | Fetch::Loading { .. } => return vec![],
+            Fetch::Failed(_) => Some("Custom resources failed to load"),
+            Fetch::Ready(_) => None,
         };
         if let Some(message) = message {
             return vec![
