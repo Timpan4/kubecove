@@ -20,7 +20,6 @@ use gpui_kit::{
 };
 use kubecove_lib::models::{HelmReleaseList, HelmReleaseSummary};
 
-#[path = "helm_rail.rs"]
 mod rail;
 
 /// List rows the table puts in the top item beside the rail.

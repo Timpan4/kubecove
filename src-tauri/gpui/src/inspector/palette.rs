@@ -2,7 +2,6 @@
 //! `CommandDialog` (`top-[20%] max-w-lg rounded-lg border bg-surface-2`).
 //! Search reads use the shared backend and are cancelled when the palette closes.
 
-#[path = "palette_search.rs"]
 mod search;
 
 use super::{Inspector, Page};

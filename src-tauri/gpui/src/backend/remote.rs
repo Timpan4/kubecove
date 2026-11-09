@@ -5,13 +5,10 @@ use kubecove_host::remote::{self, RemoteConnectionStore};
 use kubecove_lib::models::*;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
-#[path = "remote_inventory.rs"]
+mod contract;
 mod reads;
-#[path = "remote_streams.rs"]
 mod streams;
 use reads::inventory;
-#[path = "remote_contract.rs"]
-mod contract;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 /// File picks read this desktop's filesystem, so remote mode offers server paths instead.

@@ -13,7 +13,6 @@ use crate::ui::{self, Tone};
 use gpui_kit::{ClipboardItem, Context, Div, FontWeight, Hsla, SharedString, div, prelude::*, px};
 use kubecove_lib::models::HealthAssessmentState;
 
-#[path = "gitops_list.rs"]
 mod list;
 pub(super) use list::{list_header, list_row};
 
