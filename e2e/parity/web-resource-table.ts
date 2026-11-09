@@ -4,9 +4,10 @@ import type { Step } from "./contract";
 
 type Identity = { kind: string; name: string; namespace: string };
 
-/** The table row for one resource, found by its name, kind and namespace. */
-export function resourceRow(page: Page, step: Identity) {
-	return page.locator("tr").filter({ has: page.getByRole("button", { name: `Open resource ${step.name}`, exact: true }) }).filter({ has: page.getByText(step.kind, { exact: true }) }).filter({ has: page.getByText(step.namespace, { exact: true }) });
+/** The table rows for one resource, found by its name, kind and namespace, and by its Context cell when `context` is given. */
+export function resourceRow(page: Page, step: Identity & { context?: string }) {
+	const rows = page.locator("tr").filter({ has: page.getByRole("button", { name: `Open resource ${step.name}`, exact: true }) }).filter({ has: page.getByText(step.kind, { exact: true }) }).filter({ has: page.getByText(step.namespace, { exact: true }) });
+	return step.context === undefined ? rows : rows.filter({ has: page.getByRole("cell", { name: step.context, exact: true }) });
 }
 
 /** The cell under a column header, located by the header's text in the row's table. */

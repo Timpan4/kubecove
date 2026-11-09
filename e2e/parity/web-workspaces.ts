@@ -47,11 +47,10 @@ export async function workspaceAction(page: Page, step: Step): Promise<void> {
             if (!shortcuts.some((shortcut) => isDeepStrictEqual(shortcut, step.shortcut))) throw new Error(`Export of ${step.name} lacks shortcut ${JSON.stringify(step.shortcut)}: ${JSON.stringify(shortcuts)}`);
             break;
         }
+        // The detail header names the target context: a badge with several contexts, screen-reader text with one.
         case "expectDetailContext":
-            await page.getByRole("tab", { name: "YAML", exact: true }).click();
-            await page.getByRole("button", { name: "Edit YAML", exact: true }).click();
-            await page.getByRole("tabpanel").getByText(`Context: ${step.context}`, { exact: true }).waitFor();
-            await page.getByRole("button", { name: "Cancel", exact: true }).click(); break;
+            await page.getByRole("button", { name: "Close resource details", exact: true }).locator("xpath=ancestor::header")
+                .getByText(`Context: ${step.context}`, { exact: true }).waitFor(); break;
         default: throw new Error(`Not a workspace action: ${step.action}`);
     }
 }
