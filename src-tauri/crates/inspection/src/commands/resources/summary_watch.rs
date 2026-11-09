@@ -26,7 +26,6 @@ pub fn watched_resource_summary(
     cluster_context: &str,
     object: &DynamicObject,
 ) -> Option<ResourceSummary> {
-    let now = Utc::now();
     fn decoded<T: DeserializeOwned>(object: &DynamicObject) -> Option<T> {
         serde_json::to_value(object)
             .and_then(serde_json::from_value)
@@ -43,6 +42,7 @@ pub fn watched_resource_summary(
             now,
         ))
     }
+    let now = Utc::now();
     match kind {
         "Pod" => Some(builtin_summary(
             cluster_context,

@@ -24,7 +24,7 @@ impl<T: Clone> SharedCache<T> {
         let mut entries = self.entries.lock().expect("live store cache lock");
         match entries.get_mut(key) {
             Some(CacheEntry::Ready(ready)) if !ready.dirty => {
-                patch(Arc::make_mut(&mut ready.value))
+                patch(Arc::make_mut(&mut ready.value));
             }
             Some(CacheEntry::Loading { dirty, .. }) => *dirty = true,
             Some(CacheEntry::Ready(_)) | None => {}
