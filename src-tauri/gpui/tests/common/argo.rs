@@ -115,8 +115,9 @@ impl Argo {
         if *self.script.lock().unwrap() == "discovery-error" {
             return failed("Fixture discovery unavailable");
         }
-        let expected = request.context == "mock-dev"
-            && serde_json::to_value(&request.source).unwrap() == self.target["source"]
+        // The web mock answers discovery the same way for every context, such as a workspace
+        // switched to docker-desktop, so only the source and the absent endpoint must match.
+        let expected = serde_json::to_value(&request.source).unwrap() == self.target["source"]
             && request.endpoint.is_none();
         if !expected {
             return self.unexpected("discovery", &serde_json::to_value(request).unwrap());
