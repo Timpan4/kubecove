@@ -200,11 +200,12 @@
         { "action": "expectMapContext", "shown": true, "context": "mock-dev" },
         { "action": "selectTopologyNode", "id": "mock-dev:apps/v1:Deployment:platform:metrics-gateway" },
         { "action": "closeDetail" },
-        { "action": "expectNoTopologyNode", "id": "admin@solid-k8s:apps/v1:Deployment:platform:edge-relay" },
+        { "action": "expectNoTopologyNode", "id": "admin@solid-k8s:apps/v1:Deployment:platform:metrics-gateway" },
         { "action": "selectMapContext", "context": "admin@solid-k8s" },
         { "action": "expectMapContext", "shown": true, "context": "admin@solid-k8s" },
-        { "action": "selectTopologyNode", "id": "admin@solid-k8s:apps/v1:Deployment:platform:edge-relay" },
-        { "action": "expectDetail", "kind": "Deployment", "namespace": "platform", "name": "edge-relay" },
+        { "action": "selectTopologyNode", "id": "admin@solid-k8s:apps/v1:Deployment:platform:metrics-gateway" },
+        { "action": "expectDetail", "kind": "Deployment", "namespace": "platform", "name": "metrics-gateway" },
+        { "action": "expectDetailContext", "context": "admin@solid-k8s" },
         { "action": "expectNoTopologyNode", "id": "mock-dev:apps/v1:Deployment:platform:metrics-gateway" }
       ]
     }
