@@ -80,7 +80,9 @@ export async function argoAction(page: Page, step: Step) {
                 await dialog.getByText("Advanced", { exact: true }).click();
                 if (step.customCa) await dialog.getByLabel("Custom CA PEM (session only)", { exact: true }).fill(step.customCa);
                 if (step.insecure) {
-                    await dialog.getByRole("switch").first().click();
+                    // The dialog keeps the switch between connects, so turn it on only when it is off.
+                    const insecure = dialog.getByRole("switch").first();
+                    if ((await insecure.getAttribute("aria-checked")) !== "true") await insecure.click();
                     await dialog.getByText("Certificate validation is disabled and never saved.", { exact: true }).waitFor();
                 }
             }
@@ -228,6 +230,20 @@ export async function argoAction(page: Page, step: Step) {
                 case "expectRemember": {
                     const checked = await dialog.getByRole("switch", { name: "Remember credential in native keyring", exact: true }).getAttribute("aria-checked");
                     if ((checked === "true") !== step.checked) throw new Error(`Remember credential switch is ${checked}`);
+                    break;
+                }
+                case "expectLocalLogin": {
+                    const checked = await dialog.getByRole("radio", { name: "Local login", exact: true }).getAttribute("aria-checked");
+                    if ((checked === "true") !== step.checked) throw new Error(`Local login choice is ${checked}`);
+                    break;
+                }
+                case "expectInsecure": {
+                    // The invalid-certificate switch sits under the external URL's Advanced disclosure.
+                    await dialog.getByRole("radio", { name: "External URL", exact: true }).click();
+                    const label = dialog.getByText("Accept invalid TLS certificate for this session", { exact: true });
+                    if (!(await label.isVisible())) await dialog.getByText("Advanced", { exact: true }).click();
+                    const checked = await dialog.getByRole("switch").first().getAttribute("aria-checked");
+                    if ((checked === "true") !== step.checked) throw new Error(`Invalid certificate switch is ${checked}`);
                     break;
                 }
             }

@@ -50,6 +50,20 @@
       ]
     },
     {
+      "id": "argo-connection.keeps-login-and-tls-choices",
+      "title": "The connection dialog keeps the sign-in method and the invalid-certificate choice when it opens again",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test", "local": true, "insecure": true, "customCa": "parity fixture CA" },
+        { "action": "expectArgoText", "text": "Connected Argo CD API" },
+        { "action": "argoControl", "control": "Open connection" },
+        { "action": "argoConnectionDialog", "operation": "expectLocalLogin", "checked": true },
+        { "action": "argoConnectionDialog", "operation": "expectInsecure", "checked": true },
+        { "action": "argoControl", "control": "Close connection" }
+      ]
+    },
+    {
       "id": "argo-connection.close-keeps-auto-reconnect",
       "title": "Closing the connection dialog during automatic reconnects lets every remembered profile reconnect",
       "steps": [

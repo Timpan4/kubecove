@@ -213,7 +213,6 @@ impl Inspector {
         state.open = false;
         state.dialog = false;
         state.editing = None;
-        state.insecure = false;
         self.clear_argo_secrets(window, cx);
         cx.notify();
     }
@@ -374,7 +373,6 @@ impl Inspector {
                         this.record_argo_status(status, window, cx);
                         this.argo_connections.open = false;
                         this.argo_connections.dialog = false;
-                        this.argo_connections.insecure = false;
                         this.reload_argo(window, cx);
                     }
                     Err(message) => {

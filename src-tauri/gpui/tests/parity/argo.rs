@@ -181,7 +181,9 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             }
             if step["insecure"] == true {
                 reveal(window, anchor, "argo-insecure", cx);
-                window.click("argo-insecure", cx);
+                if window.find("argo-insecure").checked() != Some(true) {
+                    window.click("argo-insecure", cx);
+                }
             }
         }
         "disconnectArgoProfile" => {
@@ -491,6 +493,19 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                     window.find("argo-remember").checked(),
                     step["checked"].as_bool(),
                     "Remember credential switch"
+                );
+            }
+            "expectLocalLogin" | "expectInsecure" => {
+                let id = if string(step, "operation") == "expectLocalLogin" {
+                    "argo-auth:Local login"
+                } else {
+                    "argo-insecure"
+                };
+                reveal(window, "detail-body", id, cx);
+                assert_eq!(
+                    window.find(id).checked(),
+                    step["checked"].as_bool(),
+                    "{id} choice"
                 );
             }
             operation => panic!("unknown Argo connection dialog operation {operation}"),

@@ -21,9 +21,8 @@ impl Inspector {
         self.argo_connections.editing = None;
         self.argo_connections.endpoint = None;
         self.argo_connections.step.clear_preview();
-        // `ArgoConnectionDialog.svelte` keeps the Remember credential choice between opens.
-        self.argo_connections.local = false;
-        self.argo_connections.insecure = false;
+        // `ArgoConnectionDialog.svelte` keeps the sign-in method, the invalid-certificate
+        // choice and the Remember credential choice between opens.
         self.clear_argo_secrets(window, cx);
         self.argo_connections.open = true;
         self.argo_connections.dialog = true;
@@ -311,6 +310,8 @@ impl Inspector {
                     button(Variant::Outline, 24., false)
                         .id("argo-insecure")
                         .test_support()
+                        .aria_label("Accept invalid TLS certificate for this session")
+                        .aria_toggled(toggled(state.insecure))
                         .child(format!(
                             "Accept invalid TLS certificate for this session: {}",
                             state.insecure
@@ -351,6 +352,8 @@ impl Inspector {
                     button(Variant::Outline, 24., false)
                         .id(gpui_kit::SharedString::from(format!("argo-auth:{label}")))
                         .test_support()
+                        .aria_label(label)
+                        .aria_toggled(toggled(state.local == (label == "Local login")))
                         .child(label)
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.argo_connections.local = label == "Local login";
@@ -382,11 +385,7 @@ impl Inspector {
                 .id("argo-remember")
                 .test_support()
                 .aria_label("Remember credential in native keyring")
-                .aria_toggled(if state.remember {
-                    gpui_kit::accesskit::Toggled::True
-                } else {
-                    gpui_kit::accesskit::Toggled::False
-                })
+                .aria_toggled(toggled(state.remember))
                 .child(format!(
                     "Remember credential in native keyring: {}",
                     state.remember
@@ -460,5 +459,14 @@ impl Inspector {
                     .text_color(Tokens::destructive()),
             )
         })
+    }
+}
+
+/// The checked state the web's switches and sign-in radios expose.
+fn toggled(on: bool) -> gpui_kit::accesskit::Toggled {
+    if on {
+        gpui_kit::accesskit::Toggled::True
+    } else {
+        gpui_kit::accesskit::Toggled::False
     }
 }
