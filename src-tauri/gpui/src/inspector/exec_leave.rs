@@ -63,19 +63,18 @@ impl Inspector {
             return;
         };
         let backend = self.backend.clone();
-        let mut ids = Vec::new();
-        for tab in &mut self.exec.tabs {
-            if let Some(id) = tab.session_id().map(str::to_owned) {
-                tab.stopping();
-                ids.push(id);
-            }
-        }
+        let stops: Vec<_> = self
+            .exec
+            .tabs
+            .iter_mut()
+            .filter_map(|tab| tab.stopping().map(|id| (tab.key, id)))
+            .collect();
         let stop = cx.spawn_in(window, async move |this, cx| {
             // Every session gets its stop, as `confirmStoppingExecSessions` stops every tab.
-            let mut results = Vec::with_capacity(ids.len());
-            for id in ids {
+            let mut results = Vec::with_capacity(stops.len());
+            for (key, id) in stops {
                 let result = backend.stop_exec(id.clone()).await;
-                results.push((id, result));
+                results.push((key, id, result));
             }
             let _ = this.update_in(cx, |this, window, cx| {
                 let LeaveDialog::Stopping { intent, .. } =
@@ -84,25 +83,9 @@ impl Inspector {
                     return;
                 };
                 let mut stopped_all = true;
-                for (id, result) in results {
-                    let Some(tab) = this
-                        .exec
-                        .tabs
-                        .iter_mut()
-                        .find(|tab| tab.session_id() == Some(id.as_str()))
-                    else {
-                        continue;
-                    };
-                    match result {
-                        Ok(true) => tab.stopped(),
-                        Ok(false) => {
-                            stopped_all = false;
-                            tab.stop_failed("Stop failed; the session may still be running".into());
-                        }
-                        Err(error) => {
-                            stopped_all = false;
-                            tab.stop_failed(error.into());
-                        }
+                for (key, id, result) in results {
+                    if let Some(tab) = this.exec.tabs.iter_mut().find(|tab| tab.key == key) {
+                        stopped_all &= tab.stop_returned(id, result);
                     }
                 }
                 this.load_sessions(cx);

@@ -240,6 +240,24 @@
       ]
     },
     {
+      "id": "exec-session.stop-pending-status",
+      "title": "Stop marks the terminal as stopped while the backend stop is still running",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "start", "container": "app", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "coverageScript", "script": "stop-pending" },
+        { "action": "execControl", "operation": "stop" },
+        { "action": "expectExecState", "container": "app", "status": "stopped", "contains": "[stopping session]", "absent": "[session stopped]" },
+        { "action": "coverageScript", "script": "base" },
+        { "action": "expectExecState", "container": "app", "status": "stopped", "contains": "[session stopped]" },
+        { "action": "closeDetail" },
+        { "action": "expectDetailClosed" }
+      ]
+    },
+    {
       "id": "exec-session.stop-failure-friendly-error",
       "title": "A failed Stop shows the exec failure panel with the technical detail collapsed",
       "steps": [

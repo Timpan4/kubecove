@@ -166,24 +166,49 @@ impl ExecTab {
             ExecPhase::Ended(ExecEnd::Error) => "error",
         }
     }
-    /// `stopSession`'s note before the backend stop runs.
-    pub(super) fn stopping(&mut self) {
-        self.output("\r\n\x1b[2m[stopping session]\x1b[0m\r\n");
-    }
-    /// `stopBackendSession`'s success, which also clears an earlier stop failure.
-    pub(super) fn stopped(&mut self) {
-        self.stream = None;
-        self.phase = ExecPhase::Ended(ExecEnd::Stopped);
-        self.error = None;
-        self.output("\x1b[2m[session stopped]\x1b[0m\r\n");
-    }
-    /// `stopBackendSession`'s failure: the session may still run, so it stays tracked.
-    pub(super) fn stop_failed(&mut self, error: ExecError) {
-        if let ExecPhase::Live(live) = &mut self.phase {
-            live.status = PodExecSessionStatus::Error;
+    /// `stopSession`'s `ended("stopped", "stopping session")`: the tab shows stopped at once
+    /// and stops reading input, and the caller stops the returned session. The stream stays
+    /// open until that stop returns, because dropping it ends the process even when the
+    /// backend stop would fail.
+    pub(super) fn stopping(&mut self) -> Option<String> {
+        match std::mem::replace(&mut self.phase, ExecPhase::Ended(ExecEnd::Stopped)) {
+            ExecPhase::Live(live) => {
+                self.note("stopping session");
+                Some(live.id)
+            }
+            phase => {
+                self.phase = phase;
+                None
+            }
         }
+    }
+    /// `stopBackendSession`'s result for the session `stopping` returned. Success also
+    /// clears an earlier stop failure. A failure tracks the session again, as the web
+    /// restores `sessionId`, so the next Stop or leave tries again. Returns whether it stopped.
+    pub(super) fn stop_returned(&mut self, id: String, result: Result<bool, AppError>) -> bool {
+        let error: ExecError = match result {
+            Ok(true) => {
+                self.stream = None;
+                self.error = None;
+                self.output("\x1b[2m[session stopped]\x1b[0m\r\n");
+                return true;
+            }
+            Ok(false) => "Stop failed; the session may still be running".into(),
+            Err(error) => error.into(),
+        };
+        self.phase = ExecPhase::Live(LiveExec {
+            id,
+            status: PodExecSessionStatus::Error,
+            input: None,
+            resize: None,
+        });
         self.error = Some(error);
-        self.output("\r\n\x1b[2m[stop failed; the session may still be running]\x1b[0m\r\n");
+        self.note("stop failed; the session may still be running");
+        false
+    }
+    /// `writeln` of a dim bracketed note on its own line.
+    fn note(&mut self, note: &str) {
+        self.output(&format!("\r\n\x1b[2m[{note}]\x1b[0m\r\n"));
     }
     pub(super) fn refresh_view(&mut self) {
         if self
@@ -515,22 +540,16 @@ impl Inspector {
         let Some(tab) = self.exec.tabs.iter_mut().find(|t| t.key == key) else {
             return;
         };
-        let Some(id) = tab.session_id().map(str::to_owned) else {
+        let Some(id) = tab.stopping() else {
             return;
         };
-        tab.stopping();
-        let read = self.backend.stop_exec(id);
+        let read = self.backend.stop_exec(id.clone());
+        cx.notify();
         cx.spawn(async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
                 if let Some(tab) = this.exec.tabs.iter_mut().find(|t| t.key == key) {
-                    match result {
-                        Ok(true) => tab.stopped(),
-                        Ok(false) => {
-                            tab.stop_failed("Stop failed; the session may still be running".into())
-                        }
-                        Err(error) => tab.stop_failed(error.into()),
-                    }
+                    tab.stop_returned(id, result);
                 }
                 this.load_sessions(cx);
                 cx.notify();
