@@ -20,7 +20,9 @@ pub(super) type Observed = crate::targets::ObservedElement<Stateful<Div>>;
 
 pub(super) struct SettingsState {
     pub(super) kind_focus: std::collections::HashMap<String, gpui_kit::FocusHandle>,
-    pub(super) diagnostics: crate::backend::adapters::BackendDiagnostics,
+    /// The resource kind being dragged in the kind order setting. Read only while a drag is active.
+    pub(super) kind_drag: Option<String>,
+    pub(super) diagnostics:crate::backend::adapters::BackendDiagnostics,
     pub(super) diagnostics_error: Option<String>,
     /// The last latency-report action's result, shown under the report.
     pub(super) diagnostics_status: Option<String>,
@@ -60,6 +62,7 @@ impl SettingsState {
         })];
         Self {
             kind_focus: Default::default(),
+            kind_drag: None,
             diagnostics: Default::default(),
             diagnostics_error: None,
             diagnostics_status: None,

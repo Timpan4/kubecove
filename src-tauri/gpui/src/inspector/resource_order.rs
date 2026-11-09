@@ -16,6 +16,19 @@ impl gpui_kit::Render for DragKind {
 }
 
 impl Inspector {
+    /// Records the kind being dragged. Notifies only when it changes.
+    pub(super) fn track_kind_drag(&mut self, kind: String, cx: &mut Context<Self>) {
+        if self.settings.kind_drag.as_deref() != Some(kind.as_str()) {
+            self.settings.kind_drag = Some(kind);
+            cx.notify();
+        }
+    }
+    /// Clears the drag highlight when the pointer is released.
+    pub(super) fn end_kind_drag(&mut self, cx: &mut Context<Self>) {
+        if self.settings.kind_drag.take().is_some() {
+            cx.notify();
+        }
+    }
     pub(super) fn drop_kind(
         &mut self,
         kind: &str,

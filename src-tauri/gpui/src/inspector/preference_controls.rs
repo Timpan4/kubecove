@@ -253,9 +253,28 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let lanes = &self.persisted.preferences.resource_kind_lanes;
+        // Highlights the dragged row, as ResourceKindOrderSettings.svelte does.
+        let dragged = cx
+            .has_active_drag()
+            .then_some(self.settings.kind_drag.as_deref())
+            .flatten();
         div()
             .id("setting-row:Resource group order")
             .test_support()
+            .on_drag_move::<super::resource_order::DragKind>(cx.listener(
+                |this, event: &gpui_kit::DragMoveEvent<super::resource_order::DragKind>, _, cx| {
+                    let kind = event.drag(cx).0.clone();
+                    this.track_kind_drag(kind, cx);
+                },
+            ))
+            .on_mouse_up(
+                gpui_kit::MouseButton::Left,
+                cx.listener(|this, _, _, cx| this.end_kind_drag(cx)),
+            )
+            .on_mouse_up_out(
+                gpui_kit::MouseButton::Left,
+                cx.listener(|this, _, _, cx| this.end_kind_drag(cx)),
+            )
             .flex()
             .flex_col()
             .gap(px(12.))
@@ -368,6 +387,10 @@ impl Inspector {
                                     .border_1()
                                     .border_color(Tokens::border())
                                     .bg(Tokens::card())
+                                    .when(dragged == Some(kind.as_str()), |item| {
+                                        item.border_color(Tokens::primary())
+                                            .bg(Tokens::muted())
+                                    })
                                     .child(
                                         ui::sm(if kind == "*" {
                                             "All other kinds".to_owned()
