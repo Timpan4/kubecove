@@ -256,13 +256,23 @@
 		const startInFlight = startTask;
 		if (!liveSessionId && !startInFlight) return true;
 		startRun += 1;
-		ended("stopped", "stopping session");
 		let stopped: boolean;
 		if (liveSessionId) {
+			// The channel stays open until the stop succeeds. A failed stop may leave the session
+			// running, and its output still belongs in the terminal, as GPUI keeps its stream.
+			status = "stopped";
+			input?.dispose();
+			input = null;
+			terminal?.writeln(`\r\n${DIM}[stopping session]${RESET}`);
 			stopTask = stopBackendSession(liveSessionId);
 			stopped = await stopTask;
 			stopTask = null;
+			if (stopped) {
+				closeChannel();
+				void invalidatePodExecQueries(invalidateQueries);
+			}
 		} else {
+			ended("stopped", "stopping session");
 			// Still starting: the start gives up or, once its channel is closed, stops its own
 			// session. The backend start returns right after registering, so this wait is short.
 			await startInFlight;
