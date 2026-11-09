@@ -7,6 +7,7 @@ use kubecove_gpui::{
 use std::sync::Arc;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    cap_malloc_arenas();
     // reqwest is built with `rustls-no-provider`, so a TLS client such as the update check
     // panics unless a provider is installed first. Only the first installation takes effect.
     let _ = rustls::crypto::ring::default_provider().install_default();
@@ -51,3 +52,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     Ok(())
 }
+
+/// glibc gives allocating threads their own arenas, up to eight per core, and freed per-frame
+/// buffers stay resident in each. Two arenas measured 691 MiB PSS at 10,000 Pods against
+/// 799 MiB with the default (`MALLOC_ARENA_MAX=2`, GPUI cost map item 8).
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+fn cap_malloc_arenas() {
+    /// `M_ARENA_MAX` in glibc's `malloc.h`.
+    const M_ARENA_MAX: std::ffi::c_int = -8;
+    unsafe extern "C" {
+        fn mallopt(param: std::ffi::c_int, value: std::ffi::c_int) -> std::ffi::c_int;
+    }
+    // SAFETY: mallopt only sets an allocator tunable, and it runs before any other thread starts.
+    unsafe { mallopt(M_ARENA_MAX, 2) };
+}
+
+#[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+fn cap_malloc_arenas() {}
