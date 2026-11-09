@@ -174,7 +174,7 @@ fn style(cell: &vt100::Cell, cursor: bool) -> HighlightStyle {
 }
 pub(super) fn snapshot(
     screen: &vt100::Screen,
-    selection: Option<super::exec_selection::Selection>,
+    selection: Option<super::selection::Selection>,
     top: usize,
 ) -> Vec<TerminalRow> {
     let (rows, cols) = screen.size();

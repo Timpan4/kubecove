@@ -1,5 +1,6 @@
 //! `ExecSessionTerminal.svelte`: each terminal owns its stream, identity and task.
-use super::{Inspector, detail::Detail, exec_leave::LeaveDialog, request::InFlight};
+use super::super::{Inspector, detail::Detail, request::InFlight};
+use super::leave::LeaveDialog;
 use gpui_kit::{Context, FocusHandle, SharedString, Task, Window};
 use kubecove_lib::models::*;
 use std::num::NonZeroU16;
@@ -19,10 +20,10 @@ pub(super) struct ExecTab {
     /// drops the stream, which ends the session. `None` before the start and after Stop.
     pub stream: Option<InFlight>,
     pub error: Option<ExecError>,
-    pub parser: super::exec_reflow::Parser,
-    pub selection: Option<super::exec_selection::Selection>,
+    pub parser: super::reflow::Parser,
+    pub selection: Option<super::selection::Selection>,
     pub lines: Vec<SharedString>,
-    pub rendered: Vec<super::exec_buffer::TerminalRow>,
+    pub rendered: Vec<super::buffer::TerminalRow>,
     pub accessible: SharedString,
     pub cursor_visible: bool,
 }
@@ -71,7 +72,7 @@ pub(super) struct LiveExec {
     pub id: String,
     pub status: PodExecSessionStatus,
     pub input: Option<ExecInput>,
-    pub resize: Option<super::exec_resize::ExecResize>,
+    pub resize: Option<super::resize::ExecResize>,
 }
 
 /// Guarded stdin: keystrokes queue here and one task writes them in order.
@@ -87,24 +88,24 @@ pub(super) enum ExecEnd {
     Error,
 }
 
-pub(super) struct ExecState {
-    pub custom: Option<super::exec_custom::ExecCustomForm>,
-    pub tabs: Vec<ExecTab>,
-    pub active: Option<usize>,
-    pub next: usize,
-    pub focus: FocusHandle,
-    pub menu: bool,
-    pub composition: Option<String>,
-    pub leave: LeaveDialog,
-    pub bounds: Option<gpui_kit::Bounds<gpui_kit::Pixels>>,
-    pub drag: Option<super::exec_drag::Drag>,
-    pub blink_task: Option<Task<()>>,
+pub(in crate::inspector) struct ExecState {
+    pub(super) custom: Option<super::custom::ExecCustomForm>,
+    pub(super) tabs: Vec<ExecTab>,
+    pub(super) active: Option<usize>,
+    pub(super) next: usize,
+    pub(super) focus: FocusHandle,
+    pub(super) menu: bool,
+    pub(super) composition: Option<String>,
+    pub(super) leave: LeaveDialog,
+    pub(super) bounds: Option<gpui_kit::Bounds<gpui_kit::Pixels>>,
+    pub(super) drag: Option<super::drag::Drag>,
+    pub(super) blink_task: Option<Task<()>>,
     /// Selects the cursor paint; xterm draws `cursorInactiveStyle` without focus.
-    pub focused: bool,
+    pub(super) focused: bool,
     _focus: [gpui_kit::Subscription; 2],
 }
 impl ExecState {
-    pub fn new(window: &mut Window, cx: &mut Context<Inspector>) -> Self {
+    pub(in crate::inspector) fn new(window: &mut Window, cx: &mut Context<Inspector>) -> Self {
         let focus = cx.focus_handle();
         let focus_changed = |focused| {
             move |this: &mut Inspector, _: &mut Window, cx: &mut Context<Inspector>| {
@@ -131,10 +132,29 @@ impl ExecState {
             focused: false,
         }
     }
-    pub fn active(&self) -> Option<&ExecTab> {
+    pub(super) fn active(&self) -> Option<&ExecTab> {
         self.tabs.iter().find(|t| Some(t.key) == self.active)
     }
-    pub fn clear(&mut self) {
+    fn session_tab(&self, session_id: &str) -> Option<usize> {
+        self.tabs
+            .iter()
+            .find(|tab| tab.session_id() == Some(session_id))
+            .map(|tab| tab.key)
+    }
+    /// Whether a terminal tab holds this live session.
+    pub(in crate::inspector) fn has_session(&self, session_id: &str) -> bool {
+        self.session_tab(session_id).is_some()
+    }
+    /// Makes the tab that holds this live session the active one. Returns
+    /// false when no tab holds it.
+    pub(in crate::inspector) fn show_session(&mut self, session_id: &str) -> bool {
+        let tab = self.session_tab(session_id);
+        if tab.is_some() {
+            self.active = tab;
+        }
+        tab.is_some()
+    }
+    pub(in crate::inspector) fn clear(&mut self) {
         self.drag = None;
         self.blink_task = None;
         self.custom = None;
@@ -210,11 +230,8 @@ impl ExecTab {
         {
             self.selection = None;
         }
-        self.rendered = super::exec_buffer::snapshot(
-            self.parser.screen(),
-            self.selection,
-            self.viewport_start(),
-        );
+        self.rendered =
+            super::buffer::snapshot(self.parser.screen(), self.selection, self.viewport_start());
         self.lines = self.rendered.iter().map(|row| row.text.clone()).collect();
         self.accessible = self
             .lines
@@ -346,8 +363,8 @@ impl Inspector {
         let key = self.exec.next;
         // The detail has a 1px divider, p-4 content, and a 1px terminal border.
         // Fit before printing the start notice so a subsequent shrink cannot truncate it.
-        let width = super::resources::detail_width(self, window) - 1. - 2. * 16. - 2.;
-        let cols = super::exec_resize::terminal_columns(width, window).unwrap_or(COLS);
+        let width = super::super::resources::detail_width(self, window) - 1. - 2. * 16. - 2.;
+        let cols = super::resize::terminal_columns(width, window).unwrap_or(COLS);
         self.exec.next += 1;
         self.exec.active = Some(key);
         self.exec.menu = false;
@@ -358,7 +375,7 @@ impl Inspector {
             phase: ExecPhase::Ended(ExecEnd::Stopped),
             stream: None,
             error: None,
-            parser: super::exec_reflow::Parser::new_with_callbacks(
+            parser: super::reflow::Parser::new_with_callbacks(
                 NonZeroU16::new(ROWS).unwrap(),
                 NonZeroU16::new(cols).unwrap(),
                 SCROLLBACK,

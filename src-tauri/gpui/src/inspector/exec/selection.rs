@@ -1,5 +1,6 @@
 //! Buffer coordinates remain stable when the viewport scrolls or receives output.
-use super::{Inspector, exec_state::ExecTab};
+use super::super::Inspector;
+use super::state::ExecTab;
 use gpui_kit::{Bounds, ClipboardItem, Context, Pixels, Point};
 
 pub(super) type Cell = (usize, u16);

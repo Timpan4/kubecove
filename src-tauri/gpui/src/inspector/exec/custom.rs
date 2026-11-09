@@ -1,5 +1,5 @@
 //! `ExecSessionMenu.svelte`: argv lines are passed literally, without a shell.
-use super::{
+use super::super::{
     Inspector,
     controls::{Variant, button},
     detail::Detail,

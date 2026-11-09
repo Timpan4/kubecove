@@ -1,5 +1,6 @@
 //! Terminal fit calls the same narrow resize command as `ExecSessionTerminal.svelte`.
-use super::{Inspector, exec_state::ExecPhase, request::InFlight};
+use super::super::{Inspector, request::InFlight};
+use super::state::ExecPhase;
 use gpui_kit::Context;
 use kubecove_lib::models::PodExecTerminalSize;
 use std::num::NonZeroU16;
@@ -39,7 +40,7 @@ impl Inspector {
             return;
         }
         tab.selection = None;
-        super::exec_reflow::resize(&mut tab.parser, rows_nz, cols_nz);
+        super::reflow::resize(&mut tab.parser, rows_nz, cols_nz);
         tab.refresh_view();
         self.begin_exec_stream(key, cx);
         self.send_exec_resize(key, cx);

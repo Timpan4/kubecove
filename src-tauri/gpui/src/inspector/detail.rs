@@ -244,7 +244,7 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) {
         if self.defer_exec_leave(
-            super::exec_leave::LeaveIntent::Resource(Box::new(resource.clone())),
+            super::exec::LeaveIntent::Resource(Box::new(resource.clone())),
             cx,
         ) {
             return;

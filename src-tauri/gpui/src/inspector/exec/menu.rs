@@ -1,7 +1,7 @@
 //! The exec terminal's right-click menu. The web shows the platform webview
 //! menu here, and these items are its terminal entries: Copy, Paste and Select all.
 //! Each item calls the method its keyboard gesture uses in `exec_keys`.
-use super::Inspector;
+use super::super::Inspector;
 use gpui_kit::component::menu::{ContextMenuExt, PopupMenuItem};
 use gpui_kit::{Div, Entity, IntoElement, ParentElement, Stateful};
 

@@ -1,5 +1,5 @@
 //! `StopExecSessionsDialog.svelte` and `openExecSessions.svelte.ts`.
-use super::{
+use super::super::{
     Inspector, Page,
     controls::{Variant, button},
     request::InFlight,
@@ -9,7 +9,7 @@ use crate::ui;
 use gpui_kit::{AnyElement, Context, Window, div, prelude::*, px};
 use kubecove_lib::models::ResourceSummary;
 
-pub(super) enum LeaveIntent {
+pub(in crate::inspector) enum LeaveIntent {
     Close,
     Page(Page),
     Resource(Box<ResourceSummary>),
@@ -35,7 +35,11 @@ pub(super) enum LeaveDialog {
 impl Inspector {
     /// Returns true when the caller must not leave now: an unsaved YAML draft refuses first,
     /// so exec sessions are never stopped for a navigation the draft then blocks.
-    pub(super) fn defer_exec_leave(&mut self, intent: LeaveIntent, cx: &mut Context<Self>) -> bool {
+    pub(in crate::inspector) fn defer_exec_leave(
+        &mut self,
+        intent: LeaveIntent,
+        cx: &mut Context<Self>,
+    ) -> bool {
         if !self.can_leave(cx) {
             return true;
         }
@@ -121,7 +125,10 @@ impl Inspector {
         }
     }
 
-    pub(super) fn exec_leave_dialog(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    pub(in crate::inspector) fn exec_leave_dialog(
+        &self,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
         let LeaveDialog::Confirming(_) = &self.exec.leave else {
             return None;
         };

@@ -291,7 +291,7 @@ impl Inspector {
     }
 
     pub(super) fn open_workspace(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
-        if self.defer_exec_leave(super::exec_leave::LeaveIntent::Workspace(id), cx) {
+        if self.defer_exec_leave(super::exec::LeaveIntent::Workspace(id), cx) {
             return;
         }
         if !self.can_leave(cx) {

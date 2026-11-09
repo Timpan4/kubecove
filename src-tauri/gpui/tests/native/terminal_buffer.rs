@@ -1,5 +1,5 @@
 //! Failure modes that need parser state, history eviction or split wire data.
-use super::exec_reflow::{History, Parser, resize};
+use super::reflow::{History, Parser, resize};
 use std::num::NonZeroU16;
 
 fn n(value: u16) -> NonZeroU16 {
@@ -82,12 +82,12 @@ fn alternate_screen_does_not_enter_normal_scrollback() {
     assert_eq!(terminal.screen().scrollback_len(), 0);
 }
 
-fn tab() -> super::exec_state::ExecTab {
-    super::exec_state::ExecTab {
+fn tab() -> super::state::ExecTab {
+    super::state::ExecTab {
         key: 0,
         container: "app".into(),
         command: vec!["/bin/sh".into()],
-        phase: super::exec_state::ExecPhase::Ended(super::exec_state::ExecEnd::Stopped),
+        phase: super::state::ExecPhase::Ended(super::state::ExecEnd::Stopped),
         stream: None,
         error: None,
         parser: parser(3, 8),
@@ -102,9 +102,9 @@ fn tab() -> super::exec_state::ExecTab {
 fn eviction_clears_selection_instead_of_copying_replacement_rows() {
     let mut tab = tab();
     tab.parser.process(b"selected\r\n");
-    tab.selection = Some(super::exec_selection::Selection {
+    tab.selection = Some(super::selection::Selection {
         end: (0, 8),
-        ..super::exec_selection::Selection::at((0, 0), false)
+        ..super::selection::Selection::at((0, 0), false)
     });
     for _ in 0..tab.parser.screen().scrollback_capacity()
         + usize::from(tab.parser.screen().size().0.get())
@@ -119,9 +119,9 @@ fn eviction_clears_selection_instead_of_copying_replacement_rows() {
 fn copy_keeps_explicit_spaces_and_complete_unicode_cells() {
     let mut tab = tab();
     tab.parser.process("界e\u{301}   x\r\nhard\r\n".as_bytes());
-    tab.selection = Some(super::exec_selection::Selection {
+    tab.selection = Some(super::selection::Selection {
         end: (1, 4),
-        ..super::exec_selection::Selection::at((0, 0), false)
+        ..super::selection::Selection::at((0, 0), false)
     });
     assert_eq!(
         tab.selected_text().unwrap(),
@@ -139,9 +139,9 @@ fn erasing_a_wide_wrap_cannot_join_new_hard_lines() {
     tab.parser.process("1234567界\r\n".as_bytes());
     tab.parser.process(b"\x1b[2");
     tab.parser.process(b"J\x1b[Hfirst\r\nsecond\r\n");
-    tab.selection = Some(super::exec_selection::Selection {
+    tab.selection = Some(super::selection::Selection {
         end: (1, 6),
-        ..super::exec_selection::Selection::at((0, 0), false)
+        ..super::selection::Selection::at((0, 0), false)
     });
     assert_eq!(
         tab.selected_text().unwrap(),

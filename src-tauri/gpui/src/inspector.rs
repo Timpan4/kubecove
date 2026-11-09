@@ -35,19 +35,7 @@ mod details_tab;
 mod diagnostics;
 mod events;
 mod events_tab;
-mod exec_buffer;
-mod exec_custom;
-mod exec_drag;
-mod exec_input;
-mod exec_keys;
-mod exec_leave;
-mod exec_menu;
-mod exec_move;
-mod exec_reflow;
-mod exec_resize;
-mod exec_selection;
-mod exec_state;
-mod exec_view;
+mod exec;
 mod feedback;
 mod foreground_bar;
 mod forward_tab;
@@ -133,9 +121,6 @@ mod surface;
 mod table;
 mod table_columns;
 mod table_status;
-#[cfg(test)]
-#[path = "../tests/native/terminal_buffer.rs"]
-mod terminal_buffer_tests;
 mod timeline;
 mod timestamp_text;
 mod update_panel;
@@ -253,7 +238,7 @@ pub struct Inspector {
     cluster: cluster::ClusterState,
     incidents: incidents::IncidentsState,
     sessions: port_forwards::SessionsState,
-    exec: exec_state::ExecState,
+    exec: exec::ExecState,
     rbac: rbac_page::RbacState,
     settings: settings_page::SettingsState,
     launcher: launcher::LauncherState,
@@ -315,9 +300,7 @@ impl Inspector {
                     return;
                 };
                 if this.scope.context != context.as_ref() {
-                    if this
-                        .defer_exec_leave(exec_leave::LeaveIntent::Context(context.to_string()), cx)
-                    {
+                    if this.defer_exec_leave(exec::LeaveIntent::Context(context.to_string()), cx) {
                         // Show the context the view still uses.
                         let current = SharedString::from(this.scope.context.clone());
                         this.context_picker.update(cx, |picker, cx| {
@@ -389,7 +372,7 @@ impl Inspector {
             cluster: Default::default(),
             incidents: incidents::IncidentsState::new(),
             sessions: port_forwards::SessionsState::new(),
-            exec: exec_state::ExecState::new(window, cx),
+            exec: exec::ExecState::new(window, cx),
             rbac: rbac_page::RbacState::new(window, cx),
             settings: settings_page::SettingsState::new(window, cx),
             launcher: launcher::LauncherState::new(window, cx),
@@ -439,7 +422,7 @@ impl Inspector {
     }
 
     fn open_page(&mut self, page: Page, cx: &mut Context<Self>) {
-        if self.page != page && self.defer_exec_leave(exec_leave::LeaveIntent::Page(page), cx) {
+        if self.page != page && self.defer_exec_leave(exec::LeaveIntent::Page(page), cx) {
             return;
         }
         if self.page != page && self.can_leave(cx) {
@@ -469,7 +452,7 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.defer_exec_leave(exec_leave::LeaveIntent::Namespace(namespace.clone()), cx) {
+        if self.defer_exec_leave(exec::LeaveIntent::Namespace(namespace.clone()), cx) {
             return;
         }
         if !self.can_leave(cx) {
@@ -523,7 +506,7 @@ impl Inspector {
     }
 
     fn close_detail(&mut self, cx: &mut Context<Self>) {
-        if self.defer_exec_leave(exec_leave::LeaveIntent::Close, cx) {
+        if self.defer_exec_leave(exec::LeaveIntent::Close, cx) {
             return;
         }
         if !self.can_leave(cx) {

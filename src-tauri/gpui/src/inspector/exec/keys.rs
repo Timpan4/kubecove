@@ -1,5 +1,5 @@
 //! xterm's keyboard sequences and platform clipboard gestures.
-use super::Inspector;
+use super::super::Inspector;
 use gpui_kit::{Context, KeyDownEvent};
 
 impl Inspector {
@@ -60,17 +60,14 @@ impl Inspector {
                 .find(|t| Some(t.key) == self.exec.active)
             {
                 let screen = tab.parser.screen();
-                tab.selection = Some(super::exec_selection::Selection {
+                tab.selection = Some(super::selection::Selection {
                     end: (
                         tab.parser.callbacks().discarded
                             + screen.scrollback_len()
                             + usize::from(screen.size().0.get() - 1),
                         screen.size().1.get(),
                     ),
-                    ..super::exec_selection::Selection::at(
-                        (tab.parser.callbacks().discarded, 0),
-                        false,
-                    )
+                    ..super::selection::Selection::at((tab.parser.callbacks().discarded, 0), false)
                 });
                 tab.refresh_view();
                 cx.notify();

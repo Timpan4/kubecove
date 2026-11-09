@@ -1,6 +1,7 @@
 //! Terminal selection gestures from xterm 6 `SelectionService`, which the web
 //! terminal uses with the options in `execTerminal.ts`.
-use super::{Inspector, exec_selection::Selection};
+use super::super::Inspector;
+use super::selection::Selection;
 use gpui_kit::{
     Context, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Task, Window,
 };
@@ -239,7 +240,7 @@ impl Inspector {
                 && let Some(target) = self.exec_target(event.position)
                 && let Some(tab) = self.exec.active()
             {
-                let sequence = super::exec_move::sequence(tab.parser.screen(), target);
+                let sequence = super::cursor_move::sequence(tab.parser.screen(), target);
                 self.exec_input(sequence, cx);
             }
         } else {
@@ -255,7 +256,7 @@ impl Inspector {
             .tabs
             .iter_mut()
             .find(|t| Some(t.key) == self.exec.active)
-            .and_then(super::exec_state::ExecTab::selected_text)
+            .and_then(super::state::ExecTab::selected_text)
         {
             cx.write_to_primary(gpui_kit::ClipboardItem::new_string(text));
         }

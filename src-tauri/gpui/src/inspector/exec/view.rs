@@ -1,11 +1,11 @@
 //! `ExecTab.svelte`: empty `min-h-72`, session strip `h-9 gap-0.5`, and
 //! `ExecSessionTerminal.svelte`'s `px-2.5 pt-2` on the #101113 terminal.
-use super::{
+use super::super::{
     Inspector,
     controls::{Variant, button},
     detail::Detail,
-    exec_menu,
 };
+use super::menu;
 use crate::targets::TestSupportExt;
 use crate::{
     theme::{MONO, Tokens},
@@ -15,9 +15,9 @@ use gpui_kit::{AnyElement, Context, SharedString, div, prelude::*, px, rgb};
 
 fn status_dot(status: &str) -> gpui_kit::Div {
     let color = match status {
-        "running" => super::events::tw::emerald500(1.),
-        "starting" | "connecting" => super::events::tw::amber500(1.),
-        "error" => super::log_row::red500(1.),
+        "running" => super::super::events::tw::emerald500(1.),
+        "starting" | "connecting" => super::super::events::tw::amber500(1.),
+        "error" => super::super::log_row::red500(1.),
         _ => Tokens::muted_foreground().opacity(0.6),
     };
     // `ExecTab.svelte`: size-[7px] rounded-full.
@@ -25,7 +25,7 @@ fn status_dot(status: &str) -> gpui_kit::Div {
 }
 
 impl Inspector {
-    pub(super) fn exec_view(&self, cx: &mut Context<Self>) -> AnyElement {
+    pub(in crate::inspector) fn exec_view(&self, cx: &mut Context<Self>) -> AnyElement {
         let Detail::Ready(detail) = &self.detail else {
             return div().into_any_element();
         };
@@ -108,8 +108,8 @@ impl Inspector {
                 "exec-error",
                 error.kind,
                 &error.message,
-                super::friendly_error::Context {
-                    operation: Some(super::friendly_error::Operation::Exec),
+                super::super::friendly_error::Context {
+                    operation: Some(super::super::friendly_error::Operation::Exec),
                     fallback_title: Some("Exec failed"),
                     ..Default::default()
                 },
@@ -168,7 +168,7 @@ impl Inspector {
         let active_key = self.exec.active;
         let current_size = active.map(|t| t.parser.screen().size());
         let pending_start =
-            active.is_some_and(|t| matches!(t.phase, super::exec_state::ExecPhase::Pending(_)));
+            active.is_some_and(|t| matches!(t.phase, super::state::ExecPhase::Pending(_)));
         let dragging = self.exec.drag.is_some();
         let has_selection = active.is_some_and(|tab| tab.has_selection());
         let menu_owner = entity.clone();
@@ -257,7 +257,7 @@ impl Inspector {
             .children(error)
             // The menu wraps a plain container: the terminal's test-support wrappers are not
             // styled parent elements, which the context menu needs.
-            .child(exec_menu::with_terminal_menu(
+            .child(menu::with_terminal_menu(
                 div()
                     .id("exec-terminal-menu")
                     .flex()
@@ -285,7 +285,7 @@ impl Inspector {
                         gpui_kit::MouseButton::Left,
                         cx.listener(|this, event, window, cx| this.select_exec(event, window, cx)),
                     )
-                    .map(|terminal| super::exec_drag::middle_paste(terminal, cx))
+                    .map(|terminal| super::drag::middle_paste(terminal, cx))
                     .on_mouse_move(
                         cx.listener(|this, event, _, cx| this.report_exec_motion(event, cx)),
                     )
@@ -336,8 +336,8 @@ impl Inspector {
                     .on_key_down(cx.listener(|this, event, _, cx| this.exec_key(event, cx)))
                     .children(active.into_iter().flat_map(|tab| {
                         let (shape, blink) =
-                            super::exec_buffer::cursor_shape(tab.parser.screen().cursor_style());
-                        let paint = super::exec_buffer::CursorPaint {
+                            super::buffer::cursor_shape(tab.parser.screen().cursor_style());
+                        let paint = super::buffer::CursorPaint {
                             shape,
                             focused: self.exec.focused,
                             blink,
@@ -345,14 +345,14 @@ impl Inspector {
                         };
                         tab.rendered
                             .iter()
-                            .map(move |row| super::exec_buffer::row_element(row, paint))
+                            .map(move |row| super::buffer::row_element(row, paint))
                     }))
                     .child(
                         gpui_kit::canvas(
                             |_, _, _| (),
                             move |bounds, (), window, cx| {
                                 if let Some(key) = active_key
-                                    && let Some(cols) = super::exec_resize::terminal_columns(
+                                    && let Some(cols) = super::resize::terminal_columns(
                                         f32::from(bounds.size.width),
                                         window,
                                     )

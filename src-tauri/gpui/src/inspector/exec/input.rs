@@ -1,5 +1,5 @@
 //! Native text/IME and clipboard entry into the remote exec process, never a local shell.
-use super::Inspector;
+use super::super::Inspector;
 use gpui_kit::{Bounds, Context, EntityInputHandler, Pixels, Point, UTF16Selection, Window};
 use std::ops::Range;
 impl EntityInputHandler for Inspector {

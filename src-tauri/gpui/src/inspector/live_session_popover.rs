@@ -182,11 +182,7 @@ impl Inspector {
     ) -> ObservedElement<Stateful<Div>> {
         let label = format!("{}/Pod/{}", session.namespace, session.pod_name);
         let context = labels.context(&session.cluster_context);
-        let showable = self
-            .exec
-            .tabs
-            .iter()
-            .any(|tab| tab.session_id() == Some(session.id.as_str()));
+        let showable = self.exec.has_session(&session.id);
         let (session_id, pod, namespace) = (
             session.id.clone(),
             session.pod_name.clone(),
@@ -350,15 +346,9 @@ impl Inspector {
         namespace: &str,
         cx: &mut Context<Self>,
     ) {
-        let Some(tab) = self
-            .exec
-            .tabs
-            .iter()
-            .find(|tab| tab.session_id() == Some(session_id))
-        else {
+        if !self.exec.show_session(session_id) {
             return;
-        };
-        self.exec.active = Some(tab.key);
+        }
         self.sessions.popover = false;
         if let Detail::Ready(detail) = &mut self.detail
             && detail.data.summary.kind == "Pod"

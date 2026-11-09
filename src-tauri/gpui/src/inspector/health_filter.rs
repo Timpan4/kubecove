@@ -28,10 +28,7 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.defer_exec_leave(
-            super::exec_leave::LeaveIntent::IncidentResources(filter),
-            cx,
-        ) {
+        if self.defer_exec_leave(super::exec::LeaveIntent::IncidentResources(filter), cx) {
             return;
         }
         self.select_namespace(None, window, cx);
