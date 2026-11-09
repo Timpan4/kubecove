@@ -134,9 +134,10 @@ pub trait Backend: Send + Sync + 'static {
         settings_integrations::unavailable("Remote host adapter unavailable")
     }
     /// Wakes when a remote session ends, moves or fails a call, so the client
-    /// reads the session state again and shows its notice.
+    /// reads the session state again and shows its notice. A backend without
+    /// remote sessions never signals: its sender is already dropped.
     fn remote_session_changes(&self) -> tokio::sync::watch::Receiver<u64> {
-        kubecove_host::remote::subscribe_session_changes()
+        tokio::sync::watch::channel(0).1
     }
     fn disconnect_remote(&self) -> Read<()> {
         Box::pin(async { Ok(()) })

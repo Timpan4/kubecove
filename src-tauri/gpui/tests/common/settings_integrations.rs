@@ -11,6 +11,9 @@ pub(super) struct SettingsIntegrations {
     pub(super) script: Mutex<String>,
     /// Servers this app holds an OIDC sign-in for.
     pub(super) sign_ins: Mutex<std::collections::HashSet<String>>,
+    /// This fixture's session signal. The host's signal is process-wide, so a
+    /// remote test firing it on a tokio thread would wake other tests' views.
+    pub(super) session_changes: tokio::sync::watch::Sender<u64>,
     exported: Mutex<String>,
 }
 

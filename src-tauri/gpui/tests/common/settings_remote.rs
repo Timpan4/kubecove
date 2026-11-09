@@ -50,9 +50,9 @@ impl Fixture {
         }
         drop(remote);
         self.sync_remote_refusal();
-        // The same signal the host sends when a session ends, so the client
-        // reads the state from the host's watch like it does in production.
-        kubecove_host::remote::signal_session_changed();
+        // The client reads the state again from this watch, as it does from the
+        // host's watch in production.
+        self.settings.session_changes.send_modify(|count| *count += 1);
     }
     pub fn runtime_endpoint(&self) -> String {
         self.settings

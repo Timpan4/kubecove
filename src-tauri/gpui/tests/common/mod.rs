@@ -308,7 +308,7 @@ impl Backend for Fixture {
         self.remote_sign_out_read()
     }
     fn remote_session_changes(&self) -> tokio::sync::watch::Receiver<u64> {
-        kubecove_host::remote::subscribe_session_changes()
+        self.settings.session_changes.subscribe()
     }
     fn pick_kubeconfig_paths(&self) -> Read<KubeconfigSourcesSummary> {
         self.pick_kubeconfig_read()
