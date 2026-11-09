@@ -221,3 +221,151 @@ fn preferred_members_keep_owner_groups_and_kind_lanes_contiguous() {
         ["c", "a", "e", "b", "d"]
     );
 }
+
+// The packed-key sort must order every column as the web's comparison sort
+// does. Failure modes: a descending sort reverses the name tie-break; ties
+// use numeric name collation (`pod-10` before `pod-9`, `a1` before `a01`);
+// values that differ only in case do not tie; a missing number (-1) or a
+// fractional CPU value sorts out of place; canonical and other Age values
+// mixed in one sort compare by different rules; equal names in two namespaces
+// lose row order; rows outside the filter shift the ranks of visible rows;
+// owner groups, kind lanes and preferred rows follow name order instead of
+// the active sort.
+#[test]
+fn packed_sort_matches_the_web_comparison_sort() {
+    use crate::model::{TableView, grouped_page};
+    use crate::table_sort::{Column, Sort, Usage, reference};
+    use kubecove_lib::models::HealthAssessmentState as State;
+    const NAMES: [&str; 12] = [
+        "pod-9", "pod-10", "a01", "a1", "A1", "Étage", "same", "same", "zeta", "b-2", "b-02",
+        "pod-9b",
+    ];
+    const STATES: [State; 5] = [
+        State::Healthy,
+        State::Degraded,
+        State::NeedsAttention,
+        State::Unknown,
+        State::NotEvaluated,
+    ];
+    const READY: [Option<&str>; 6] = [
+        Some("1/1"),
+        Some("0/1"),
+        Some("10/10"),
+        None,
+        Some("Ready"),
+        Some("ready"),
+    ];
+    let build = |mixed_ages: bool| -> Vec<ResourceSummary> {
+        (0..40)
+            .map(|index: usize| {
+                let kind = ["Pod", "Deployment", "Service", "Widget"][index % 4];
+                let namespace = [Some("a"), Some("b"), Some("B"), None][index / 12 % 4];
+                let argo = [None, Some("shop"), Some("web")][index % 3];
+                let mut row: ResourceSummary = serde_json::from_value(json!({
+                    "name": NAMES[index % NAMES.len()],
+                    "kind": kind,
+                    "cluster": "test",
+                    "namespace": namespace,
+                    "age": format!("{}d", index % 7),
+                    "argoApp": argo,
+                    "helmRelease": index.is_multiple_of(5).then_some("chart"),
+                }))
+                .unwrap();
+                row.health_assessment.state = STATES[index % STATES.len()];
+                row.ready = READY[index % READY.len()].map(str::to_owned);
+                row.restarts = (!index.is_multiple_of(4)).then_some((index % 3) as i32);
+                row.created_at = (!mixed_ages || !index.is_multiple_of(6)).then(|| {
+                    format!(
+                        "2026-{:02}-0{}T1{}:00:0{}Z",
+                        index % 12 + 1,
+                        index % 3,
+                        index % 2,
+                        index % 4
+                    )
+                });
+                row
+            })
+            .collect()
+    };
+    let usage = |row: &ResourceSummary| Usage {
+        cpu_millicores: (!row.name.len().is_multiple_of(3)).then_some(row.name.len() as f64 / 4.),
+        memory_bytes: row.namespace.as_ref().map(|ns| (ns.len() as i64) << 40),
+    };
+    let identity =
+        |row: &ResourceSummary| (row.kind.clone(), row.namespace.clone(), row.name.clone());
+    let lanes = crate::preferences::KindLanes::default();
+    let collapsed = std::collections::HashSet::new();
+    let columns = [
+        Column::Name,
+        Column::Status,
+        Column::Namespace,
+        Column::Kind,
+        Column::Ready,
+        Column::Restarts,
+        Column::Cpu,
+        Column::Memory,
+        Column::Age,
+    ];
+    for mixed_ages in [false, true] {
+        let rows = build(mixed_ages);
+        let source = Rc::new(PreparedRows::new(rows));
+        for kinds in [
+            vec!["Pod", "Deployment", "Service", "Widget"],
+            vec!["Deployment", "Widget"],
+        ] {
+            let kinds: Vec<String> = kinds.into_iter().map(String::from).collect();
+            let preferences: [fn(&ResourceSummary) -> bool; 2] = [
+                |_| false,
+                |row| row.argo_app.as_deref() == Some("web") && row.name.len() % 2 == 1,
+            ];
+            for preferred in preferences {
+                let mut visible = Visible::default();
+                visible.refilter_with(
+                    source.clone(),
+                    KindFilter {
+                        kinds: &kinds,
+                        selected: |_: &str, _: Option<&str>| true,
+                    },
+                    "",
+                    |_, _| true,
+                    preferred,
+                    &lanes,
+                );
+                for column in columns {
+                    for desc in [false, true] {
+                        let sort = Sort { column, desc };
+                        let actual: Vec<_> = visible
+                            .sorted_order(sort, usage)
+                            .into_iter()
+                            .map(|index| identity(&visible.all_rows()[index]))
+                            .collect();
+                        let refs: Vec<&ResourceSummary> = visible.iter().collect();
+                        let view = TableView {
+                            page: 0,
+                            sort,
+                            collapsed: &collapsed,
+                            selected: None,
+                        };
+                        let expected: Vec<_> = grouped_page(
+                            reference::order(&refs, sort, usage)
+                                .into_iter()
+                                .map(|index| refs[index])
+                                .collect(),
+                            &view,
+                            preferred,
+                            &lanes,
+                        )
+                        .rows
+                        .iter()
+                        .map(identity)
+                        .collect();
+                        assert_eq!(
+                            actual, expected,
+                            "{sort:?}, mixed ages {mixed_ages}, kinds {kinds:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}

@@ -75,9 +75,6 @@ pub fn detail_page(fixture: &Value) -> usize {
                     collapsed: &Default::default(),
                     selected: None,
                 },
-                &mut Default::default(),
-                |_| false,
-                &Default::default(),
                 |_| Default::default(),
             )
             .rows

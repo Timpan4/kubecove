@@ -41,21 +41,13 @@ impl Inspector {
             Some(version) => versions.insert(signature, version),
             None => versions.remove(&signature),
         };
-        // A patch can change sorted values in place, which the visible
-        // generation does not show, so the sorted order moves those rows.
         let retired = if cluster_rows {
-            self.table_order.invalidate();
             crate::model::reconcile(&mut self.cluster.rows, key, rows, names);
             Vec::new()
         } else {
-            let patched = Rc::get_mut(&mut self.rows)
+            Rc::get_mut(&mut self.rows)
                 .expect("visible source released before patching")
-                .patch(key, rows, names);
-            match &patched.changed {
-                Some(changed) => self.table_order.patched(changed),
-                None => self.table_order.invalidate(),
-            }
-            patched.recycled
+                .patch(key, rows, names)
         };
         if !matches!(self.load, Load::Ready) && !self.rows.is_empty() {
             self.load = Load::Ready;

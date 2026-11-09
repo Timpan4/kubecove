@@ -212,22 +212,15 @@ fn reconcile_indexed(
     keys_changed
 }
 
-/// What a watch patch did to the prepared rows.
-pub(crate) struct Patched {
-    /// The read's buffer, for the next read to reuse off the UI thread.
-    pub recycled: Vec<ResourceSummary>,
-    /// Indices of the rows replaced in place, or `None` when any row may have
-    /// changed or moved.
-    pub changed: Option<Vec<usize>>,
-}
-
 impl PreparedRows {
+    /// Applies a watch read. Returns the read's buffer when the rows were
+    /// patched in place, for the next read to reuse off the UI thread.
     pub(crate) fn patch(
         &mut self,
         key: &WatchResourceKey,
         mut rows: Vec<ResourceSummary>,
         names: Option<ObservedNames>,
-    ) -> Patched {
+    ) -> Vec<ResourceSummary> {
         // Watch rows carry the backend's owners, so compare them with those. If no
         // key changes, the rows keep their positions and the same inherited owners.
         self.swap_owners();
@@ -237,12 +230,7 @@ impl PreparedRows {
             .position(|(kind, _)| *kind == key.resource_kind.kind);
         let names = match kind {
             Some(kind) => match self.patch_members(kind, key, &mut rows, names) {
-                Ok(changed) => {
-                    return Patched {
-                        recycled: rows,
-                        changed,
-                    };
-                }
+                Ok(()) => return rows,
                 Err(names) => names,
             },
             None => names.map(NameIndex::from),
@@ -253,10 +241,7 @@ impl PreparedRows {
         } else {
             self.swap_owners();
         }
-        Patched {
-            recycled: Vec::new(),
-            changed: None,
-        }
+        Vec::new()
     }
 
     /// Patches the listed rows of a kind the view holds in place. `Err` hands
@@ -268,7 +253,7 @@ impl PreparedRows {
         key: &WatchResourceKey,
         rows: &mut Vec<ResourceSummary>,
         names: Option<ObservedNames>,
-    ) -> Result<Option<Vec<usize>>, Option<NameIndex>> {
+    ) -> Result<(), Option<NameIndex>> {
         let members = &self.by_kind[kind];
         let span = crate::frame_profile::scope("watch", "ordered_check");
         let ordered_names = names.as_ref().filter(|names| names.0.len() == rows.len());
@@ -307,53 +292,52 @@ impl PreparedRows {
                         std::mem::swap(&mut self.rows[index], row);
                     }
                 }
-                let changed = (!keys_changed).then(|| members.clone());
-                Ok(self.settle(changed))
+                self.settle(keys_changed);
+                Ok(())
             }
             Coverage::Named(names) if ordered => {
-                let mut changed = Some(Vec::new());
+                let mut keys_changed = false;
                 for (&index, row) in members.iter().zip(rows.iter_mut()) {
                     if names.contains(row.namespace.as_deref(), &row.name) {
-                        if !same_projection(&self.rows[index], row) {
-                            changed = None;
-                        }
+                        keys_changed |= !same_projection(&self.rows[index], row);
                         std::mem::swap(&mut self.rows[index], row);
-                        if let Some(changed) = &mut changed {
-                            changed.push(index);
-                        }
                     }
                 }
-                Ok(self.settle(changed))
+                self.settle(keys_changed);
+                Ok(())
             }
             Coverage::All => Err(None),
-            Coverage::Named(names) => match self.replace_named(key, rows, &names) {
-                Some(changed) => Ok(self.settle(Some(changed))),
-                None => Err(Some(names)),
-            },
+            Coverage::Named(names) => {
+                if self.replace_named(key, rows, &names) {
+                    self.settle(false);
+                    Ok(())
+                } else {
+                    Err(Some(names))
+                }
+            }
         }
     }
 
     /// Restores inherited owners after rows were replaced in place, or prepares
-    /// the rows again when a replaced row changed its keys (`changed` is `None`).
-    fn settle(&mut self, changed: Option<Vec<usize>>) -> Option<Vec<usize>> {
-        if changed.is_some() {
-            self.swap_owners();
-        } else {
+    /// the rows again when a replaced row changed its keys.
+    fn settle(&mut self, keys_changed: bool) {
+        if keys_changed {
             self.rebuild();
+        } else {
+            self.swap_owners();
         }
-        changed
     }
 
     /// Replaces each named row with its row in `rows` when every name is one
     /// row the view holds and the read still lists, with the same keys.
-    /// Returns `None`, with nothing replaced, when a name was added, deleted,
+    /// Returns `false`, with nothing replaced, when a name was added, deleted,
     /// held twice or changed keys.
     fn replace_named(
         &mut self,
         key: &WatchResourceKey,
         rows: &mut [ResourceSummary],
         names: &NameIndex,
-    ) -> Option<Vec<usize>> {
+    ) -> bool {
         // The read's named rows, sorted by slot hash like the view's slots.
         let read = slot_table(rows.iter().enumerate().filter(|(_, row)| {
             in_key(key, row) && names.contains(row.namespace.as_deref(), &row.name)
@@ -365,20 +349,24 @@ impl PreparedRows {
         let mut pairs = Vec::with_capacity(read.len());
         for (namespace, name) in names.iter() {
             let hash = slot_hash(&key.resource_kind.kind, namespace, name);
-            let held = find_slot(slots, current, hash, key, namespace, name).ok()?;
-            let listed = find_slot(&read, rows, hash, key, namespace, name).ok()?;
+            let (Ok(held), Ok(listed)) = (
+                find_slot(slots, current, hash, key, namespace, name),
+                find_slot(&read, rows, hash, key, namespace, name),
+            ) else {
+                return false;
+            };
             match (held, listed) {
                 (Some(index), Some(position)) if same_keys(&current[index], &rows[position]) => {
                     pairs.push((index, position));
                 }
                 (None, None) => {}
-                _ => return None,
+                _ => return false,
             }
         }
-        for &(index, position) in &pairs {
+        for (index, position) in pairs {
             std::mem::swap(&mut self.rows[index], &mut rows[position]);
         }
-        Some(pairs.into_iter().map(|(index, _)| index).collect())
+        true
     }
 }
 

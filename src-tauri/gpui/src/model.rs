@@ -321,37 +321,10 @@ pub struct TablePage {
     pub page_count: usize,
 }
 
-/// The visible rows' positions under a non-default sort. The order is kept
-/// until the visible rows or the sort change, so frames between those changes
-/// do not sort again.
-#[derive(Default)]
-pub struct SortedOrder {
-    /// Visible generation and sort the order was built for.
-    key: Option<(u64, Sort)>,
-    order: Vec<usize>,
-    /// Source rows patched in place since then. Only they move.
-    patched: Vec<usize>,
-}
-
-impl SortedOrder {
-    /// Drops the order when sorted values may change anywhere without a new
-    /// visible generation, as new usage metrics do.
-    pub fn invalidate(&mut self) {
-        self.key = None;
-        self.patched.clear();
-    }
-
-    /// Source rows replaced in place, whose sorted values may have changed.
-    pub fn patched(&mut self, rows: &[usize]) {
-        if self.key.is_some() {
-            self.patched.extend_from_slice(rows);
-        }
-    }
-}
-
 /// Rows already in the table's sort order, grouped by ownership, then kind
 /// lane, as `buildResourceTableDisplay` and `buildResourceTableEntries` do.
-/// Only the current page's rows are cloned.
+/// The tests compare the prepared order with this direct form of the web's.
+#[cfg(test)]
 fn grouped_page(
     mut sorted: Vec<&ResourceSummary>,
     view: &TableView<'_>,
@@ -479,38 +452,24 @@ fn page_from_order(
     }
 }
 
-/// Reuses the prepared display order for the default sort, and `sorted` for
-/// any other sort.
+/// The table page in display order: the prepared order for the default sort,
+/// and a sort of the visible rows' packed keys for any other sort.
 pub fn indexed_table_page(
     visible: &Visible,
     view: &TableView<'_>,
-    sorted: &mut SortedOrder,
-    preferred: impl Fn(&ResourceSummary) -> bool,
-    lanes: &crate::preferences::KindLanes,
     usage: impl Fn(&ResourceSummary) -> table_sort::Usage,
 ) -> TablePage {
     let _profile = crate::frame_profile::scope("table", "project");
     if view.sort == Sort::default() {
         return page_from_order(visible.ordered().collect(), visible.grouped_by_gitops, view);
     }
-    let rows: Vec<&ResourceSummary> = visible.iter().collect();
-    let key = (visible.generation(), view.sort);
-    if sorted.key != Some(key) {
-        sorted.order = table_sort::order(&rows, view.sort, usage);
-        sorted.key = Some(key);
-        sorted.patched.clear();
-    } else if !sorted.patched.is_empty() {
-        let mut moved: Vec<usize> = sorted
-            .patched
-            .drain(..)
-            .filter_map(|index| visible.position(index))
-            .collect();
-        moved.sort_unstable();
-        moved.dedup();
-        table_sort::reposition(&mut sorted.order, &rows, view.sort, usage, &moved);
-    }
-    let rows = sorted.order.iter().map(|&index| rows[index]).collect();
-    grouped_page(rows, view, preferred, lanes)
+    let rows = visible.all_rows();
+    let order = visible.sorted_order(view.sort, usage);
+    page_from_order(
+        order.into_iter().map(|index| &rows[index]).collect(),
+        visible.grouped_by_gitops,
+        view,
+    )
 }
 
 #[cfg(test)]
@@ -526,7 +485,7 @@ fn display_order(rows: &[ResourceSummary]) -> (Vec<usize>, bool) {
             selected: None,
         };
         let refs: Vec<&ResourceSummary> = rows.iter().collect();
-        let order = table_sort::order(&refs, view.sort, |_| Default::default());
+        let order = table_sort::reference::order(&refs, view.sort, |_| Default::default());
         let output = grouped_page(
             order.into_iter().map(|index| refs[index]).collect(),
             &view,

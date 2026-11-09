@@ -501,16 +501,9 @@ impl Inspector {
             collapsed: &self.collapsed_groups,
             selected: self.detail.resource(),
         };
-        let mut sorted = std::mem::take(&mut self.table_order);
-        let page = std::rc::Rc::new(indexed_table_page(
-            &self.visible,
-            &view,
-            &mut sorted,
-            |row| self.application_manages(row),
-            &self.persisted.preferences.resource_kind_lanes,
-            |row| self.usage(row),
-        ));
-        self.table_order = sorted;
+        let page = std::rc::Rc::new(indexed_table_page(&self.visible, &view, |row| {
+            self.usage(row)
+        }));
         self.table_page = self.table_page.min(page.page_count - 1);
         let columns = self.columns(&page.rows);
         let min_width: f32 = columns.iter().map(|column| column.width()).sum();

@@ -2,8 +2,10 @@
 //! select and order indices; resource strings stay with their source snapshot.
 
 use super::{HealthSummary, gitops_label, ownership_group};
+mod order;
 mod patch;
 mod search;
+mod sort;
 use crate::collate::Key;
 use kubecove_lib::models::{GitOpsOwnerSummary, ResourceSummary};
 pub(crate) use patch::{ObservedNames, reconcile};
@@ -30,7 +32,6 @@ pub(crate) struct RowKey {
     lane: usize,
     kind: usize,
     pub(crate) variant: usize,
-    name_rank: usize,
     gitops: bool,
 }
 
@@ -59,6 +60,7 @@ pub(crate) struct PreparedRows {
     variants: Vec<usize>,
     lanes: Vec<Lane>,
     by_name: Vec<usize>,
+    sort: sort::SortColumns,
     /// Set by `with_inherited_owners`: each row whose GitOps owner it inherited,
     /// with the owner the backend sent. `swap_owners` exchanges the two, so a
     /// watch patch compares and replaces backend rows.
@@ -136,12 +138,9 @@ impl PreparedRows {
 
     pub(crate) fn new(rows: Vec<ResourceSummary>) -> Self {
         let _span = crate::frame_profile::scope("rows", "prepare");
+        let names: Vec<Key<'_>> = rows.iter().map(|row| Key::new(&row.name, true)).collect();
         let mut sorted: Vec<_> = (0..rows.len()).collect();
-        sorted.sort_by_cached_key(|&row| Key::new(&rows[row].name, true));
-        let mut name_rank = vec![0; rows.len()];
-        for (rank, &row) in sorted.iter().enumerate() {
-            name_rank[row] = rank;
-        }
+        sorted.sort_by(|&a, &b| names[a].cmp(&names[b]));
         let mut groups = Vec::new();
         let mut group_ids = HashMap::new();
         let mut kinds: Vec<(String, usize)> = Vec::new();
@@ -192,12 +191,13 @@ impl PreparedRows {
                     lane,
                     kind,
                     variant,
-                    name_rank: name_rank[index],
                     gitops: gitops_label(row).is_some(),
                 }
             })
             .collect();
         drop(variant_ids);
+        let sort = sort::SortColumns::new(&rows, &names, &sorted, &kinds);
+        drop(names);
         Self {
             rows,
             identity: RowsId::default(),
@@ -209,31 +209,11 @@ impl PreparedRows {
             variants,
             lanes,
             by_name: sorted,
+            sort,
             inherited: Vec::new(),
             slots: None,
         }
     }
-}
-
-#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
-struct OrderKey {
-    group_rank: u8,
-    group_first: usize,
-    lane_rank: usize,
-    lane_first: usize,
-}
-
-#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
-struct First {
-    ordinary: bool,
-    name_rank: usize,
-}
-
-impl First {
-    const UNSEEN: Self = Self {
-        ordinary: true,
-        name_rank: usize::MAX,
-    };
 }
 
 #[derive(Default)]
@@ -243,16 +223,16 @@ pub struct Visible {
     source: Rc<PreparedRows>,
     indices: Vec<usize>,
     previous: Vec<usize>,
+    /// Display order under the default sort.
     order: Vec<usize>,
-    ordered_lanes: Vec<(OrderKey, usize)>,
-    lane_rows: Vec<Vec<usize>>,
+    /// Visible rows in name order, the default sort's sequence.
+    by_name: Vec<usize>,
+    grouping: order::Grouping,
     preferred: Vec<bool>,
     lane_order: Vec<usize>,
     allowed: Vec<bool>,
     selected: Vec<bool>,
     matches: SearchMatches,
-    group_first: Vec<First>,
-    lane_first: Vec<First>,
     pub(super) grouped_by_gitops: bool,
     generation: u64,
     health: HealthSummary,
@@ -288,11 +268,6 @@ impl Visible {
     }
     pub(crate) fn all_rows(&self) -> &[ResourceSummary] {
         &self.source.rows
-    }
-    /// The visible position of source row `index`, if it is visible.
-    pub(crate) fn position(&self, index: usize) -> Option<usize> {
-        // `refilter_with` keeps visible indices in source order.
-        self.indices.binary_search(&index).ok()
     }
     pub(crate) fn contains_index(&self, index: usize) -> bool {
         self.selected[index]
@@ -376,93 +351,27 @@ impl Visible {
             .indices
             .iter()
             .any(|&index| self.source.keys[index].gitops);
-        self.group_first
-            .resize(self.source.groups.len(), First::UNSEEN);
-        self.group_first.fill(First::UNSEEN);
-        self.lane_first.resize(
-            self.source.lanes.len().max(self.source.kinds.len()),
-            First::UNSEEN,
+        // Name order is immutable; only the preferred partition and the order
+        // of lanes can change.
+        self.by_name.clear();
+        let selected = &self.selected;
+        self.by_name.extend(
+            self.source
+                .by_name
+                .iter()
+                .copied()
+                .filter(|&index| selected[index]),
         );
-        self.lane_first.fill(First::UNSEEN);
-        for &index in &self.indices {
-            let key = &self.source.keys[index];
-            let (group, lane) = if self.grouped_by_gitops {
-                (key.group, key.lane)
-            } else {
-                (0, key.kind)
-            };
-            let first = First {
-                ordinary: !self.grouped_by_gitops || !self.preferred[index],
-                name_rank: key.name_rank,
-            };
-            self.group_first[group] = self.group_first[group].min(first);
-            self.lane_first[lane] = self.lane_first[lane].min(first);
-        }
-        self.ordered_lanes.clear();
-        let lane_count = if self.grouped_by_gitops {
-            self.source.lanes.len()
-        } else {
-            self.source.kinds.len()
-        };
-        for lane in 0..lane_count {
-            if self.lane_first[lane] == First::UNSEEN {
-                continue;
-            }
-            let (group, kind) = if self.grouped_by_gitops {
-                let lane = &self.source.lanes[lane];
-                (lane.group, lane.kind)
-            } else {
-                (0, lane)
-            };
-            self.ordered_lanes.push((
-                OrderKey {
-                    group_rank: if !self.grouped_by_gitops || !self.group_first[group].ordinary {
-                        0
-                    } else {
-                        self.source.groups[group] + 1
-                    },
-                    group_first: self.group_first[group].name_rank,
-                    lane_rank: if self.grouped_by_gitops && !self.lane_first[lane].ordinary {
-                        0
-                    } else {
-                        self.lane_order[kind] + 1
-                    },
-                    lane_first: self.lane_first[lane].name_rank,
-                },
-                lane,
-            ));
-        }
-        self.ordered_lanes.sort_unstable_by_key(|&(key, _)| key);
-        self.lane_rows.resize_with(lane_count, Vec::new);
-        for rows in &mut self.lane_rows {
-            rows.clear();
-        }
-        // Rows within a lane share its sort prefix. Name order is immutable;
-        // only the preferred partition and the order of lanes can change.
-        for &index in &self.source.by_name {
-            if self.selected[index] {
-                let key = &self.source.keys[index];
-                let lane = if self.grouped_by_gitops {
-                    key.lane
-                } else {
-                    key.kind
-                };
-                self.lane_rows[lane].push(index);
-            }
-        }
-        self.order.clear();
-        let preferred = &self.preferred;
-        for &(_, lane) in &self.ordered_lanes {
-            let rows = &self.lane_rows[lane];
-            if self.grouped_by_gitops {
-                self.order
-                    .extend(rows.iter().copied().filter(|&index| preferred[index]));
-                self.order
-                    .extend(rows.iter().copied().filter(|&index| !preferred[index]));
-            } else {
-                self.order.extend_from_slice(rows);
-            }
-        }
+        self.grouping.order(
+            &order::Lanes {
+                source: &self.source,
+                grouped: self.grouped_by_gitops,
+                preferred: &self.preferred,
+                lane_order: &self.lane_order,
+            },
+            &self.by_name,
+            &mut self.order,
+        );
         drop(order_span);
         self.health = HealthSummary::of(self.iter());
     }

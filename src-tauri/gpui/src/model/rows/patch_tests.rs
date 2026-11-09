@@ -152,7 +152,7 @@ fn watch_patches_keep_inherited_owners_in_step_with_their_parents() {
 // A named read holds only the rows its notices name. Failure modes: a named row
 // missing from the read lingers; a named row new in the read is not added; a
 // row of another kind with the same name is replaced; an in-place update
-// reports another row as changed or rebuilds the rows.
+// rebuilds the rows.
 #[test]
 fn named_reads_replace_add_and_delete_only_their_rows() {
     let service = |name: &str| {
@@ -177,13 +177,14 @@ fn named_reads_replace_add_and_delete_only_their_rows() {
         row("c", "ns"),
         service("a"),
     ]);
-    let patched = rows.patch(
+    let identity = rows.identity();
+    rows.patch(
         &key(),
         vec![degraded("a"), row("d", "ns")],
         Some(names(&["a", "b", "d"])),
     );
     assert!(
-        patched.changed.is_none(),
+        rows.identity() != identity,
         "an add or delete must prepare the rows again"
     );
     let state = |rows: &PreparedRows, kind: &str, name: &str| {
@@ -203,11 +204,7 @@ fn named_reads_replace_add_and_delete_only_their_rows() {
     );
 
     let identity = rows.identity();
-    let patched = rows.patch(&key(), vec![degraded("c")], Some(names(&["c"])));
-    let c = rows
-        .iter()
-        .position(|row| row.kind == "Pod" && row.name == "c");
-    assert_eq!(patched.changed, Some(vec![c.unwrap()]));
+    rows.patch(&key(), vec![degraded("c")], Some(names(&["c"])));
     assert!(rows.identity() == identity);
     assert_eq!(
         state(&rows, "Pod", "c"),
