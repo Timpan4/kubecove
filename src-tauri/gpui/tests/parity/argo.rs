@@ -504,6 +504,13 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 window.click("argo-connect-toolbar", cx);
                 window.render_frame(cx);
             }
+            "expectConnectForm" => {
+                window.render_frame(cx);
+                assert!(
+                    window.try_find("argo-connect-submit").is_some(),
+                    "the Argo CD connection form is not shown"
+                );
+            }
             "expectOpen" => {
                 window.render_frame(cx);
                 assert_eq!(
@@ -520,12 +527,6 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                     _ => "argo-insecure",
                 };
                 window.render_frame(cx);
-                // The GitOps page dialog opens on its saved connections; the form is one press away.
-                if window.try_find("argo-remember").is_none() {
-                    reveal(window, "argo-connection-dialog", "argo-connect-open", cx);
-                    window.click("argo-connect-open", cx);
-                    window.render_frame(cx);
-                }
                 // The invalid-certificate switch belongs to the external URL, as on the web.
                 if id == "argo-insecure" {
                     reveal(window, "detail-body", "argo-external", cx);

@@ -105,6 +105,16 @@
       ]
     },
     {
+      "id": "argo-connection.page-dialog-shows-form",
+      "title": "The GitOps page's connection dialog shows the connection form at once, under the saved connections",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "argoConnectionDialog", "operation": "open" },
+        { "action": "argoConnectionDialog", "operation": "expectConnectForm" },
+        { "action": "argoControl", "control": "Close connection" }
+      ]
+    },
+    {
       "id": "argo-connection.keeps-server-source",
       "title": "The connection dialog keeps the chosen server source when it opens again",
       "steps": [

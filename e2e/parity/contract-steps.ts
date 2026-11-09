@@ -143,7 +143,7 @@ export type Step =
     | { action: "expectNoArgoControl"; control: "Confirm target again" | "Reconnect" }
     | { action: "expectArgoFocusInPopover"; control: "Sync options" | "Refresh options" }
     | { action: "tabArgoPopover"; control: "Sync options" | "Refresh options"; presses: number }
-    | { action: "argoConnectionDialog"; operation: "open" | "expectFocusIn" | "tab" | "shiftTab" | "escape" | "outsideClick" | "expectOpen" | "expectRemember" | "expectLocalLogin" | "expectInsecure" | "chooseLocalLogin" | "chooseInsecure" | "openDetail" | "chooseFoundInCluster" | "chooseExternalUrl" | "expectFoundInCluster"; presses: number; open: boolean; checked: boolean }
+    | { action: "argoConnectionDialog"; operation: "open" | "expectFocusIn" | "tab" | "shiftTab" | "escape" | "outsideClick" | "expectOpen" | "expectConnectForm" | "expectRemember" | "expectLocalLogin" | "expectInsecure" | "chooseLocalLogin" | "chooseInsecure" | "openDetail" | "chooseFoundInCluster" | "chooseExternalUrl" | "expectFoundInCluster"; presses: number; open: boolean; checked: boolean }
     | { action: "expectArgoTriggerFocus"; control: "Sync options" | "Refresh options" }
     | { action: "expectArgoOptionFocusable"; name: "Prune" | "Dry run" | "Force / replace" }
     | { action: "expectArgoOperationState"; control: "Sync" | "Refresh" | "Sync options" | "Refresh options"; enabled: boolean }

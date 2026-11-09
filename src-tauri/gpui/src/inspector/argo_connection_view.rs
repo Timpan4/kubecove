@@ -25,6 +25,16 @@ impl Inspector {
         if !self.argo_connections.dialog {
             self.argo_connections.host = super::argo_connection::DialogHost::Detail;
         }
+        self.show_argo_connection_form(window, cx);
+    }
+    /// Opens the GitOps page's dialog on its connection form, as the web's page dialog does.
+    pub(super) fn open_argo_connection_page(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.argo_connections.host = super::argo_connection::DialogHost::Page;
+        self.show_argo_connection_form(window, cx);
+    }
+    fn show_argo_connection_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.argo_connections.editing = None;
+        self.argo_connections.step.clear_preview();
         self.settle_argo_source();
         self.clear_argo_secrets(window, cx);
         self.argo_connections.open = true;

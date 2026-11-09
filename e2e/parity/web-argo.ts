@@ -224,6 +224,10 @@ export async function argoAction(page: Page, step: Step) {
                     await page.mouse.click(4, 4);
                     await dialog.waitFor({ state: "hidden" });
                     break;
+                case "expectConnectForm":
+                    // The form's Connect button sits under the saved connections, so the dialog shows it at once.
+                    if (!(await dialog.getByRole("button", { name: "Connect", exact: true }).isVisible())) throw new Error("The Argo CD connection form is not shown");
+                    break;
                 case "expectOpen":
                     await dialog.waitFor({ state: step.open ? "visible" : "hidden" });
                     break;
