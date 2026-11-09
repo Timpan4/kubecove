@@ -267,10 +267,11 @@ impl Inspector {
                     column,
                     div()
                         .id(SharedString::from(format!(
-                            "pin:{}:{}:{}",
+                            "pin:{}:{}:{}:{}",
                             row.kind,
                             row.namespace.as_deref().unwrap_or(""),
-                            row.name
+                            row.name,
+                            row.cluster
                         )))
                         .test_support()
                         .aria_label(format!(

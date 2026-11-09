@@ -141,12 +141,9 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             return true;
         }
         "toggleResourcePin" => {
-            let id = format!(
-                "pin:{}:{}:{}",
-                string(step, "kind"),
-                string(step, "namespace"),
-                string(step, "name")
-            );
+            // Pin IDs end in the row's context, as row IDs do.
+            let target = detail::resolve_resource(window, &row(step), cx).expect("resource row");
+            let id = format!("pin:{}", target.strip_prefix("resource:").unwrap());
             window.render_frame(cx);
             let table = window.find("resource-table").bounds();
             let offset = table.center().x - window.find(id.clone()).bounds().center().x;

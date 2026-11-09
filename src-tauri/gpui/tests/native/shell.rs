@@ -59,11 +59,13 @@ fn failed_pin_save_keeps_the_edit_visible_and_the_store_unchanged(cx: &mut TestA
     let handle = open(cx, backend.clone());
     click(cx, handle, "nav:Workloads");
     backend.shell.fail_save.store(true, Ordering::SeqCst);
-    click(cx, handle, "pin:Deployment:payments:payments-api");
+    click(cx, handle, "pin:Deployment:payments:payments-api:mock-dev");
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
         assert_eq!(
-            window.find("pin:Deployment:payments:payments-api").label(),
+            window
+                .find("pin:Deployment:payments:payments-api:mock-dev")
+                .label(),
             Some("Unpin Deployment payments-api")
         );
         assert_eq!(
@@ -82,7 +84,7 @@ fn failed_pin_save_keeps_the_edit_visible_and_the_store_unchanged(cx: &mut TestA
             .is_empty()
     );
     backend.shell.fail_save.store(false, Ordering::SeqCst);
-    click(cx, handle, "pin:Deployment:payments:payments-api");
+    click(cx, handle, "pin:Deployment:payments:payments-api:mock-dev");
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
         assert!(window.try_find("notice").is_none());
