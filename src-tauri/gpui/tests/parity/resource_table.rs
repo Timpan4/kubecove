@@ -104,6 +104,14 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             locate::click_in(window, "resource-table", target, cx);
         }
         "expectResourceGroup" => {
+            // The table mounts only the group headers near its viewport.
+            detail::scan_table(window, cx, |window| {
+                use gpui_kit::test::TestQueryExt;
+                window
+                    .elements()
+                    .iter()
+                    .any(|element| element.label() == Some(string(step, "label")))
+            });
             let group = window
                 .within("resource-table")
                 .find_by_label(string(step, "label"));
