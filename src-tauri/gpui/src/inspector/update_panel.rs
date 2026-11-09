@@ -1,10 +1,10 @@
 //! Header app-update control, mirroring `UpdateStatusButton.svelte`. It shows
-//! the same typed update check that Settings uses. Installation stays disabled,
-//! so this panel never downloads or installs anything.
+//! the same update state that Settings uses (`updates.rs`).
 
 use super::Inspector;
 use super::controls::{Variant, button};
-use crate::backend::{INSTALL_UNAVAILABLE, UpdateStatus};
+use super::updates::Install;
+use crate::backend::UpdateStatus;
 use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui;
@@ -34,7 +34,7 @@ impl Inspector {
     }
 
     fn available_version(&self) -> Option<String> {
-        match &self.settings.integrations.update {
+        match &self.updates.status {
             UpdateStatus::Available(update) => Some(update.version.clone()),
             _ => None,
         }
@@ -58,18 +58,20 @@ impl Inspector {
     }
 
     fn update_checking(&self) -> super::loading::Phase {
-        self.loading.phase(
-            "update-check",
-            self.settings.integrations.update_check.is_some(),
-        )
+        self.loading
+            .phase("update-check", self.updates.check.is_some())
     }
 
     fn update_tooltip(&self) -> &'static str {
-        let state = &self.settings.integrations;
-        if state.update_check.is_some() && self.update_checking().shown() {
+        let state = &self.updates;
+        if state.check.is_some() && self.update_checking().shown() {
             "Checking for updates"
-        } else if state.update_error.is_some() {
+        } else if state.error.is_some() {
             "Update check failed"
+        } else if matches!(state.install, Install::Downloading { .. }) {
+            "Downloading update"
+        } else if matches!(state.install, Install::Installed(_)) {
+            "Restart to finish update"
         } else if self.available_version().is_some() {
             "Update available"
         } else {
@@ -101,7 +103,8 @@ impl Inspector {
                 }),
             );
         let mut wrapper = div().relative().mr(px(4.)).child(trigger);
-        if self.available_version().is_some() {
+        // The dot marks an update to act on: offered, downloading, or waiting for its relaunch.
+        if self.available_version().is_some() && self.updates.error.is_none() {
             wrapper = wrapper.child(
                 div()
                     .absolute()
@@ -135,7 +138,7 @@ impl Inspector {
     }
 
     fn update_panel_card(&self, cx: &mut Context<Self>) -> Div {
-        let state = &self.settings.integrations;
+        let state = &self.updates;
         let mut header = div()
             .flex()
             .items_start()
@@ -171,14 +174,14 @@ impl Inspector {
             .border_color(Tokens::border())
             .child(ui::muted(ui::xs(format!("Last checked: {last_checked}"))))
             .child(
-                button(Variant::Outline, 24., state.update_check.is_some())
+                button(Variant::Outline, 24., !state.can_check())
                     .id("header-update-check")
                     .test_support()
                     .aria_label("Check")
                     .child(ui::icon("refresh-cw", 14., Tokens::foreground()))
                     .child("Check")
                     .on_click(
-                        cx.listener(|this, _, window, cx| this.check_settings_updates(window, cx)),
+                        cx.listener(|this, _, window, cx| this.check_for_updates(window, cx)),
                     ),
             );
         div()
@@ -196,9 +199,9 @@ impl Inspector {
     }
 
     fn update_body(&self, cx: &mut Context<Self>) -> Div {
-        let state = &self.settings.integrations;
+        let state = &self.updates;
         let body = div().flex().flex_col().gap(px(8.));
-        if let Some(error) = &state.update_error {
+        if let Some(error) = &state.error {
             return body
                 .child(labelled(
                     ui::sm("Update check failed.").text_color(Tokens::destructive()),
@@ -206,7 +209,7 @@ impl Inspector {
                 ))
                 .child(labelled(ui::xs(error.clone()), error));
         }
-        if state.update_check.is_some() {
+        if state.check.is_some() {
             if !self.update_checking().shown() {
                 return body;
             }
@@ -215,7 +218,55 @@ impl Inspector {
                 "Checking for updates...",
             ));
         }
-        match &state.update {
+        match &state.install {
+            Install::NotStarted => {}
+            Install::Downloading { progress, .. } => {
+                let percent = progress.percent();
+                let caption = match percent {
+                    Some(percent) => format!("{percent}%"),
+                    None => "Preparing installer".to_owned(),
+                };
+                // `width: ${downloadProgress ?? 12}%`: a short bar until the size is known.
+                let filled = percent.map_or(0.12, |percent| percent as f32 / 100.);
+                return body
+                    .child(labelled(
+                        ui::sm("Downloading update..."),
+                        "Downloading update...",
+                    ))
+                    .child(
+                        div()
+                            .h(px(8.))
+                            .rounded_full()
+                            .overflow_hidden()
+                            .bg(Tokens::muted())
+                            .child(
+                                div()
+                                    .h_full()
+                                    .w(gpui_kit::relative(filled))
+                                    .bg(Tokens::primary()),
+                            ),
+                    )
+                    .child(labelled(ui::muted(ui::xs(caption.clone())), &caption));
+            }
+            Install::Installed(_) => {
+                return body
+                    .gap(px(12.))
+                    .child(labelled(
+                        ui::sm("Update installed. Restart KubeCove to finish."),
+                        "Update installed. Restart KubeCove to finish.",
+                    ))
+                    .child(
+                        button(Variant::Default, 28., false)
+                            .id("header-update-relaunch")
+                            .test_support()
+                            .aria_label("Relaunch")
+                            .child(ui::icon("refresh-cw", 14., Tokens::primary_foreground()))
+                            .child("Relaunch")
+                            .on_click(cx.listener(|this, _, _, cx| this.relaunch_after_update(cx))),
+                    );
+            }
+        }
+        match &state.status {
             UpdateStatus::Available(update) => {
                 let title = format!("KubeCove {} is available.", update.version);
                 let mut body = body.child(labelled(ui::sm(title.clone()), &title));
@@ -250,13 +301,15 @@ impl Inspector {
                                 .on_click(cx.listener(|this, _, _, cx| this.dismiss_update(cx))),
                         )
                         .child(
-                            button(Variant::Default, 28., true)
+                            button(Variant::Default, 28., false)
                                 .id("header-update-install")
                                 .test_support()
                                 .aria_label("Install")
                                 .child(ui::icon("download", 14., Tokens::primary_foreground()))
                                 .child("Install")
-                                .aria_description(INSTALL_UNAVAILABLE),
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.install_update(window, cx)
+                                })),
                         ),
                 )
             }

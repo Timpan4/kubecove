@@ -1,4 +1,4 @@
-//! Remote sign-in and update status use only the typed host seam.
+//! Remote sign-in uses only the typed host seam.
 use super::remote_notice;
 use super::request::InFlight;
 use super::{
@@ -7,11 +7,7 @@ use super::{
     settings_page::settings_row,
 };
 use crate::targets::TestSupportExt;
-use crate::{
-    backend::{INSTALL_UNAVAILABLE, RemoteConnectionSummary, UpdateStatus},
-    theme::Tokens,
-    ui,
-};
+use crate::{backend::RemoteConnectionSummary, theme::Tokens, ui};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::{Context, Div, Entity, SharedString, Task, Window, div, prelude::*, px};
 use kubecove_host::remote::RemoteAuthMode;
@@ -37,11 +33,6 @@ pub(super) struct Integrations {
     /// the sidebar here, so Resources reads again on its next entry instead of keeping rows a
     /// later remote drop would make stale.
     scope_reread: bool,
-    pub(super) update: UpdateStatus,
-    pub(super) checked_at: Option<String>,
-    pub(super) update_error: Option<String>,
-    /// The update check in flight. Check is disabled while it runs.
-    pub(super) update_check: Option<InFlight>,
 }
 impl Integrations {
     pub(super) fn new(window: &mut Window, cx: &mut Context<Inspector>) -> Self {
@@ -68,10 +59,6 @@ impl Integrations {
             status_read: None,
             session_watch: None,
             scope_reread: false,
-            update: UpdateStatus::Idle,
-            checked_at: None,
-            update_error: None,
-            update_check: None,
         }
     }
 }
@@ -254,28 +241,18 @@ impl Inspector {
                 body = body.children(remote_notice::sign_in_notes(remote, "settings"));
                 let mut actions = div().flex().gap(px(8.));
                 if remote.auth_mode == RemoteAuthMode::Oidc {
-                    actions =
-                        actions.child(action("Sign out", busy).on_click(cx.listener(
-                            |this, _, window, cx| this.sign_out_settings_remote(window, cx),
-                        )));
+                    actions = actions.child(action("Sign out", busy).on_click(cx.listener(
+                        |this, _, window, cx| this.sign_out_settings_remote(window, cx),
+                    )));
                 }
-                body = body.child(
-                    actions.child(
-                        action("Disconnect", busy).on_click(cx.listener(
-                            |this, _, window, cx| this.disconnect_settings_remote(window, cx),
-                        )),
-                    ),
-                );
+                body = body.child(actions.child(action("Disconnect", busy).on_click(
+                    cx.listener(|this, _, window, cx| this.disconnect_settings_remote(window, cx)),
+                )));
             }
         }
         if remote_notice::needs_token(state.remote.as_ref()) {
             body = body
-                .child(field(
-                    "Server URL",
-                    "remote-server-url",
-                    &state.url,
-                    busy,
-                ))
+                .child(field("Server URL", "remote-server-url", &state.url, busy))
                 .child(field(
                     "Server token",
                     "remote-server-token",
@@ -314,115 +291,12 @@ impl Inspector {
             body.into_any_element(),
         ))
     }
-    pub(super) fn check_settings_updates(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.settings.integrations.update_check.is_some() || !self.backend.updates_enabled() {
-            return;
-        }
-        let read = self.backend.check_updates();
-        let read = self.timings.measure("check_updates", read);
-        let check = cx.spawn_in(window, async move |this, cx| {
-            let result = read.await;
-            let _ = this.update(cx, |this, cx| {
-                let state = &mut this.settings.integrations;
-                state.update_check = None;
-                state.checked_at = Some(
-                    chrono::Local::now()
-                        .format("%b %-d, %Y, %-H:%M")
-                        .to_string(),
-                );
-                this.persisted.updates.last_checked_at = state.checked_at.clone();
-                match result {
-                    Ok(status) => state.update = status,
-                    Err(error) => {
-                        state.update = UpdateStatus::Idle;
-                        state.update_error = Some(error.message);
-                    }
-                }
-                this.save_preferences(cx);
-                this.offer_available_update();
-                cx.notify();
-            });
-        });
-        let state = &mut self.settings.integrations;
-        state.update_error = None;
-        state.update_check = Some(check.into());
-        cx.notify();
-    }
-    pub(super) fn updates_settings_section(&self, cx: &mut Context<Self>) -> Div {
-        let state = &self.settings.integrations;
-        let enabled = self.backend.updates_enabled();
-        let description = if enabled {
-            format!(
-                "Current version {}. Last checked: {}.",
-                env!("CARGO_PKG_VERSION"),
-                self.persisted
-                    .updates
-                    .last_checked_at
-                    .as_deref()
-                    .unwrap_or("Not checked yet")
-            )
-        } else {
-            format!(
-                "Current version {}. Development build; update checks disabled.",
-                env!("CARGO_PKG_VERSION")
-            )
-        };
-        let mut control = div().flex().items_center().gap(px(8.));
-        if enabled {
-            if let UpdateStatus::Available(update) = &state.update {
-                control = control.child(ui::outline_badge(format!("Update {}", update.version)));
-            }
-            control = control.child(action("Check", state.update_check.is_some()).on_click(
-                cx.listener(|this, _, window, cx| this.check_settings_updates(window, cx)),
-            ));
-        } else {
-            control = control.child(ui::outline_badge("Dev build"));
-        }
-        let mut section = div().flex().flex_col().gap(px(16.)).child(
-            settings_row("KubeCove version", description, control.into_any_element())
-                .aria_label("KubeCove version"),
-        );
-        if enabled {
-            if let UpdateStatus::Available(update) = &state.update {
-                section = section
-                    .child(
-                        settings_row(
-                            "Update available",
-                            format!(
-                                "KubeCove {} can be downloaded and installed now.",
-                                update.version
-                            ),
-                            action("Install", true)
-                                .aria_description(INSTALL_UNAVAILABLE)
-                                .into_any_element(),
-                        )
-                        .aria_label("Update available"),
-                    )
-                    .child(ui::muted(ui::xs(INSTALL_UNAVAILABLE)));
-            }
-            if let Some(error) = &state.update_error {
-                section = section.child(
-                    settings_row(
-                        "Update check failed",
-                        error.clone(),
-                        action("Retry", false)
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.check_settings_updates(window, cx)
-                            }))
-                            .into_any_element(),
-                    )
-                    .aria_label(error.clone()),
-                );
-            }
-        }
-        section
-    }
 }
 
 const SSO_NOTE: &str =
     "Leave the token empty to sign in to a single sign-on server through your browser.";
 
-fn action(label: &'static str, disabled: bool) -> super::settings_page::Observed {
+pub(super) fn action(label: &'static str, disabled: bool) -> super::settings_page::Observed {
     button(Variant::Outline, 32., disabled)
         .id(SharedString::from(format!("settings-button:{label}")))
         .test_support()

@@ -182,8 +182,21 @@ pub trait Backend: Send + Sync + 'static {
     fn check_updates(&self) -> Read<UpdateStatus> {
         settings_integrations::unavailable("Update checks unavailable")
     }
-    fn install_update(&self) -> Read<()> {
-        settings_integrations::unavailable(INSTALL_UNAVAILABLE)
+    /// Downloads, verifies and installs `update`, reporting the download through `progress`.
+    /// The result starts the installed version.
+    fn install_update(
+        &self,
+        _update: AvailableUpdate,
+        _progress: tokio::sync::watch::Sender<DownloadProgress>,
+    ) -> Read<Relaunch> {
+        settings_integrations::unavailable("Update installation unavailable")
+    }
+    /// Starts the installed version. The caller quits the app when this succeeds.
+    fn relaunch(&self, _relaunch: &Relaunch) -> Result<(), AppError> {
+        Err(AppError::new(
+            "Relaunch unavailable",
+            AppErrorKind::UnsupportedOperation,
+        ))
     }
     fn import_workspace(&self) -> Read<Option<String>> {
         settings_integrations::unavailable("File dialog unavailable")
@@ -450,13 +463,13 @@ mod mcp;
 mod remote;
 mod security;
 pub mod settings_integrations;
+pub mod updates;
 mod workspace_files;
 pub use detail_reads::{LogStream, LogTarget};
 pub use kubecove_lib::commands::kubeconfig::KubeconfigSourcesSummary;
 pub use remote::DesktopBackend;
-pub use settings_integrations::{
-    AvailableUpdate, INSTALL_UNAVAILABLE, RemoteConnectionSummary, UpdateStatus,
-};
+pub use settings_integrations::RemoteConnectionSummary;
+pub use updates::{AvailableUpdate, DownloadProgress, Relaunch, UpdateStatus};
 mod inventory;
 mod native_reads;
 mod session_controls;

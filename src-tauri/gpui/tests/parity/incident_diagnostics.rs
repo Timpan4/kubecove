@@ -20,6 +20,8 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             let id = match string(step, "control") {
                 "Open" => "header-update",
                 "Check" => "header-update-check",
+                "Install" => "header-update-install",
+                "Relaunch" => "header-update-relaunch",
                 _ => "header-update-later",
             };
             window.click(id, cx);

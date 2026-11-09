@@ -168,12 +168,65 @@
       "title": "An unverified update is never installed",
       "steps": [
         { "action": "configureSettingsMock", "script": "invalid-signature" },
+        { "action": "restartClient" },
+        { "action": "expectSettingsText", "value": "KubeCove 0.14.0 is available." },
+        { "action": "updateStatusControl", "control": "Later" },
         { "action": "openSettings" },
         { "action": "showSettingsSection", "section": "Updates" },
-        { "action": "clickSettingsButton", "label": "Check" },
         { "action": "expectSettingsText", "value": "Update available" },
-        { "action": "attemptUnverifiedUpdate" },
+        { "action": "clickSettingsButton", "label": "Install" },
+        { "action": "expectSettingsText", "value": "Invalid update signature" },
         { "action": "expectNoSettingsText", "value": "Relaunch required" }
+      ]
+    },
+    {
+      "id": "settings-updates.download-progress",
+      "title": "An update that is downloading shows its progress in Settings and on the header control",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "update-download-waits" },
+        { "action": "restartClient" },
+        { "action": "expectSettingsText", "value": "KubeCove 0.14.0 is available." },
+        { "action": "updateStatusControl", "control": "Later" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Updates" },
+        { "action": "clickSettingsButton", "label": "Install" },
+        { "action": "expectSettingsText", "value": "Installing update" },
+        { "action": "expectSettingsText", "value": "Download progress: 40%." },
+        { "action": "expectNoSettingsText", "value": "Update available" },
+        { "action": "expectUpdateControl", "label": "Downloading update" }
+      ]
+    },
+    {
+      "id": "settings-updates.install-and-relaunch",
+      "title": "An installed update asks for a relaunch, and a relaunch that fails says why",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "update-installs" },
+        { "action": "restartClient" },
+        { "action": "expectSettingsText", "value": "KubeCove 0.14.0 is available." },
+        { "action": "updateStatusControl", "control": "Later" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Updates" },
+        { "action": "clickSettingsButton", "label": "Install" },
+        { "action": "expectSettingsText", "value": "Relaunch required" },
+        { "action": "expectSettingsText", "value": "Update is installed. Relaunch KubeCove to finish." },
+        { "action": "expectUpdateControl", "label": "Restart to finish update" },
+        { "action": "clickSettingsButton", "label": "Relaunch" },
+        { "action": "expectSettingsText", "value": "Tests cannot relaunch" },
+        { "action": "expectNoSettingsText", "value": "Relaunch required" }
+      ]
+    },
+    {
+      "id": "settings-updates.header-install",
+      "title": "The header popover installs the offered update and then offers the relaunch",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "update-installs" },
+        { "action": "restartClient" },
+        { "action": "expectSettingsText", "value": "KubeCove 0.14.0 is available." },
+        { "action": "updateStatusControl", "control": "Install" },
+        { "action": "expectSettingsText", "value": "Update installed. Restart KubeCove to finish." },
+        { "action": "expectUpdateControl", "label": "Restart to finish update" },
+        { "action": "updateStatusControl", "control": "Relaunch" },
+        { "action": "expectSettingsText", "value": "Tests cannot relaunch" }
       ]
     },
     {

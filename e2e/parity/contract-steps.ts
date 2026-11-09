@@ -8,7 +8,7 @@ type ArgoOptionName = (typeof ARGO_OPTION_NAMES)[number];
 export const TABLE_COLUMNS = ["Name", "Status", "Context", "Namespace", "Kind", "Ready", "Restarts", "CPU", "Memory", "Owner", "Age"] as const;
 type TableColumn = (typeof TABLE_COLUMNS)[number];
 export const SORT_COLUMNS = ["Name", "Status", "Context", "Namespace", "Kind", "Ready", "Restarts", "CPU", "Memory", "Age"] as const;
-export type UpdateControlLabel = "Check for updates" | "Update available" | "Checking for updates" | "Update check failed";
+export type UpdateControlLabel = "Check for updates" | "Update available" | "Checking for updates" | "Update check failed" | "Downloading update" | "Restart to finish update";
 /** One diagnostic the YAML editor marks. Positions are 1-based `[line, column]` in UTF-16 columns; `to` is exclusive. Without `message`, the clients' texts may differ. */
 export type YamlEditorDiagnostic = { from: [number, number]; to: [number, number]; severity: "error" | "warning" | "info"; source: string; message?: string };
 export type Step =
@@ -172,7 +172,7 @@ export type Step =
     | { action: "typeSettingsField"; field: "Server token"; value: string }
     | { action: "runTopologySpike" }
     | { action: "expectTopologySpikeText"; value: string }
-    | { action: "updateStatusControl"; control: "Open" | "Check" | "Later" | "Escape" }
+    | { action: "updateStatusControl"; control: "Open" | "Check" | "Later" | "Install" | "Relaunch" | "Escape" }
     | { action: "expectUpdateControl"; label: UpdateControlLabel }
     | { action: "configurePreset"; label: string; context: string; namespace: string; service: string; remote: string; local: string }
     | { action: "presetControl"; operation: "add" | "save" | "edit" | "start" | "remove" | "absent"; label?: string }
@@ -193,8 +193,8 @@ export type Step =
     | { action: "expectKubeconfigPathBefore"; value: string; other: string }
     | { action: "expectAccessibleName"; name: string }
     | { action: "expectSettingsText" | "expectNoSettingsText" | "expectRuntimeEndpoint"; value: string }
-    | { action: "expectMaskedToken" | "reopenStoredSettings" | "attemptUnverifiedUpdate" }
-    | { action: "configureSettingsMock"; script: "oidc-server" | "oidc-browser-waits" | "oidc-sign-in-fails" | "oidc-memory-only" | "oidc-store-keeps-sign-in" | "access-server" | "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "choose-application-workspace" | "choose-compare-workspace" | "choose-last-export" | "cancel-dialog" | "no-update" | "invalid-signature" | "update-available" }
+    | { action: "expectMaskedToken" | "reopenStoredSettings" }
+    | { action: "configureSettingsMock"; script: "oidc-server" | "oidc-browser-waits" | "oidc-sign-in-fails" | "oidc-memory-only" | "oidc-store-keeps-sign-in" | "access-server" | "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "choose-application-workspace" | "choose-compare-workspace" | "choose-last-export" | "cancel-dialog" | "no-update" | "invalid-signature" | "update-available" | "update-installs" | "update-download-waits" }
     | { action: "expectLiveState"; label: string; notice?: string }
     | { action: "replayLiveData"; script: import("../../src/lib/tauri-dev-mock-live").LiveScript }
     | ({ action: "expectResourceStatus"; status: string } & Identity)

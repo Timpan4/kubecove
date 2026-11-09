@@ -656,6 +656,16 @@ impl Backend for DesktopBackend {
     fn check_updates(&self) -> Read<UpdateStatus> {
         self.local.check_updates()
     }
+    fn install_update(
+        &self,
+        update: AvailableUpdate,
+        progress: tokio::sync::watch::Sender<DownloadProgress>,
+    ) -> Read<Relaunch> {
+        self.local.install_update(update, progress)
+    }
+    fn relaunch(&self, relaunch: &Relaunch) -> Result<(), AppError> {
+        self.local.relaunch(relaunch)
+    }
     fn import_workspace(&self) -> Read<Option<String>> {
         self.local.import_workspace()
     }

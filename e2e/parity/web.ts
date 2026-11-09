@@ -133,10 +133,6 @@ export async function action(page: Page, step: Step) {
         case "configureSettingsMock":
             await page.evaluate(`import('/src/lib/settings-integration-mocks.ts').then(m => m.configureSettingsMock(${JSON.stringify(step.script)}))`);
             break;
-        case "attemptUnverifiedUpdate":
-            await page.getByRole("button", { name: "Install", exact: true }).click();
-            await page.getByText("Invalid update signature", { exact: true }).waitFor();
-            break;
         case "configureForward": case "forwardControl": case "expectForwardState": case "expectForwardNotice":case "execControl": case "expectExecState": case "replaySessions": case "confirmExecLeave": case "configurePreset": case "presetControl": await liveSessionAction(page, step); break;
         case "openLiveSessionPopover": case "expectLiveSessionRow": case "liveSessionControl": case "expectHealthTooltip": case "expectTimestampTooltip": case "expectEventTimeTooltip": await sessionHealthAction(page, step); break;
         case "expectLiveState":

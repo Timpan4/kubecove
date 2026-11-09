@@ -332,7 +332,21 @@ impl Backend for NativeBackend {
         self.read(async move { commands::reorder_kubeconfig_paths(paths) })
     }
     fn check_updates(&self) -> Read<UpdateStatus> {
-        self.read(settings_integrations::check_updates())
+        self.read(updates::check())
+    }
+    fn install_update(
+        &self,
+        update: AvailableUpdate,
+        progress: tokio::sync::watch::Sender<DownloadProgress>,
+    ) -> Read<Relaunch> {
+        self.read(async move {
+            let public_key = updates::Feed::release()?.public_key;
+            let target = updates::InstallTarget::current()?;
+            updates::install(update, public_key, target, progress).await
+        })
+    }
+    fn relaunch(&self, relaunch: &Relaunch) -> Result<(), AppError> {
+        relaunch.start()
     }
     fn import_workspace(&self) -> Read<Option<String>> {
         self.read(workspace_files::import())

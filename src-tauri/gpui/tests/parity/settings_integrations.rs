@@ -122,15 +122,6 @@ pub fn act(window: &mut Window, cx: &mut App, step: &Value) -> bool {
         "reopenStoredSettings" => {
             window.click("settings-back", cx);
         }
-        "attemptUnverifiedUpdate" => {
-            let install = window.find("settings-button:Install");
-            assert!(
-                install
-                    .description()
-                    .is_some_and(|text| text.contains("signed GPUI"))
-            );
-            window.click("settings-button:Install", cx);
-        }
         _ => return false,
     }
     true

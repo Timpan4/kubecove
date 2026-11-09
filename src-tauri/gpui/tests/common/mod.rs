@@ -317,6 +317,19 @@ impl Backend for Fixture {
     fn check_updates(&self) -> Read<kubecove_gpui::backend::UpdateStatus> {
         self.check_updates_read()
     }
+    fn install_update(
+        &self,
+        _update: kubecove_gpui::backend::AvailableUpdate,
+        progress: tokio::sync::watch::Sender<kubecove_gpui::backend::DownloadProgress>,
+    ) -> Read<kubecove_gpui::backend::Relaunch> {
+        self.install_update_read(progress)
+    }
+    fn relaunch(&self, _relaunch: &kubecove_gpui::backend::Relaunch) -> Result<(), AppError> {
+        Err(AppError::new(
+            "Tests cannot relaunch",
+            AppErrorKind::UnsupportedOperation,
+        ))
+    }
     fn cleanup_sessions(
         &self,
         request: kubecove_lib::models::LiveSessionCleanupRequest,

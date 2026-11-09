@@ -1,6 +1,7 @@
 use super::Fixture;
 use kubecove_gpui::backend::{
-    AvailableUpdate, KubeconfigSourcesSummary, Read, RemoteConnectionSummary, UpdateStatus,
+    AvailableUpdate, DownloadProgress, KubeconfigSourcesSummary, Read, Relaunch,
+    RemoteConnectionSummary, UpdateStatus,
 };
 use kubecove_lib::models::{AppError, AppErrorKind};
 use std::sync::Mutex;
@@ -170,22 +171,61 @@ impl Fixture {
     pub(super) fn updates_enabled_read(&self) -> bool {
         matches!(
             self.settings.script.lock().unwrap().as_str(),
-            "no-update" | "invalid-signature" | "update-available"
+            "no-update"
+                | "invalid-signature"
+                | "update-available"
+                | "update-installs"
+                | "update-download-waits"
         )
     }
     pub(super) fn check_updates_read(&self) -> Read<UpdateStatus> {
         let status = match self.settings.script.lock().unwrap().as_str() {
-            "invalid-signature" => UpdateStatus::Available(AvailableUpdate {
-                version: "0.14.0".into(),
-                notes: None,
-            }),
+            "invalid-signature" | "update-installs" | "update-download-waits" => {
+                UpdateStatus::Available(AvailableUpdate {
+                    version: "0.14.0".into(),
+                    ..Default::default()
+                })
+            }
             "update-available" => UpdateStatus::Available(AvailableUpdate {
                 version: "0.14.0".into(),
                 notes: Some("Fixes topology edges.".into()),
+                ..Default::default()
             }),
             _ => UpdateStatus::UpToDate,
         };
         Box::pin(async move { Ok(status) })
+    }
+    /// The scripts mirror `applyUpdateScript` in `settings-integration-mocks.ts`.
+    pub(super) fn install_update_read(
+        &self,
+        progress: tokio::sync::watch::Sender<DownloadProgress>,
+    ) -> Read<Relaunch> {
+        match self.settings.script.lock().unwrap().as_str() {
+            "update-installs" => {
+                progress.send_replace(DownloadProgress {
+                    downloaded: 100,
+                    total: Some(100),
+                });
+                Box::pin(async { Ok(Relaunch::default()) })
+            }
+            // The download stops at 40% and never finishes.
+            "update-download-waits" => {
+                progress.send_replace(DownloadProgress {
+                    downloaded: 40,
+                    total: Some(100),
+                });
+                Box::pin(async move {
+                    let _progress = progress;
+                    std::future::pending().await
+                })
+            }
+            _ => Box::pin(async {
+                Err(AppError::new(
+                    "Invalid update signature",
+                    AppErrorKind::Validation,
+                ))
+            }),
+        }
     }
     pub(super) fn kubeconfig_sources_read(&self) -> Read<KubeconfigSourcesSummary> {
         let sources = self.kubeconfig.lock().expect("kubeconfig lock").clone();

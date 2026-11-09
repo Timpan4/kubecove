@@ -1,9 +1,6 @@
 //! Storage is process-global in the shared backend. Isolate each failure mode
 //! in a subprocess with a worktree-local directory and no user kubeconfig.
-use kubecove_gpui::backend::{
-    Backend, NativeBackend,
-    settings_integrations::{UpdateStatus, update_status},
-};
+use kubecove_gpui::backend::{Backend, NativeBackend};
 use std::{path::PathBuf, process::Command};
 
 #[test]
@@ -75,22 +72,6 @@ fn storage_child() {
             );
         }
         _ => panic!("unknown storage case"),
-    }
-}
-
-#[test]
-fn update_manifest_does_not_offer_current_or_invalid_versions() {
-    for version in [env!("CARGO_PKG_VERSION"), "0.0.1"] {
-        assert!(matches!(
-            update_status(&serde_json::json!({"version":version})).unwrap(),
-            UpdateStatus::UpToDate
-        ));
-    }
-    for manifest in [
-        serde_json::json!({}),
-        serde_json::json!({"version":"invalid"}),
-    ] {
-        assert!(update_status(&manifest).is_err());
     }
 }
 

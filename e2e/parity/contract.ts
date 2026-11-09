@@ -57,7 +57,7 @@ export const ACTIONS = [
     "replaySessions", "confirmExecLeave",
     "configureForward", "forwardControl", "expectForwardState", "expectForwardNotice","execControl", "expectExecState",
     "expectWorkspaceExport", "exportSavedWorkspace", "expectExportedShortcut",
-    "expectAccessibleName", "fillSettingsField", "clickSettingsButton", "clickKubeconfigPathButton", "expectKubeconfigPathBefore", "expectSettingsText", "expectNoSettingsText", "expectRuntimeEndpoint", "expectMaskedToken", "reopenStoredSettings", "attemptUnverifiedUpdate", "configureSettingsMock",
+    "expectAccessibleName", "fillSettingsField", "clickSettingsButton", "clickKubeconfigPathButton", "expectKubeconfigPathBefore", "expectSettingsText", "expectNoSettingsText", "expectRuntimeEndpoint", "expectMaskedToken", "reopenStoredSettings", "configureSettingsMock",
 	"expectLiveState", "replayLiveData", "expectResourceStatus", "openCustomKind",
 	"selectTopologyNode", "expectTopologyEmpty", "expectUsageFooter", "openUsageTree", "expectNoUsageFooter", "expectUsageProcess", "setTopologyMode", "selectNamespace", "expectTopology", "expectTopologyEdge", "expectNoTopologyNode", "expectResourceMetrics",
 	"expectYamlAbsent",
@@ -225,8 +225,8 @@ function step<Value>(value: Value): Step {
             return copy;
         }
         case "typeSettingsField": return { action: item.action, field: oneOf(["Server token"], item.field, "a typed settings field"), value: string(item.value) };
-        case "expectUpdateControl": return { action: item.action, label: oneOf(["Check for updates", "Update available", "Checking for updates", "Update check failed"] as const, item.label, "an update control label") };
-        case "updateStatusControl": return { action: item.action, control: oneOf(["Open", "Check", "Later", "Escape"], item.control, "an update control") };
+        case "expectUpdateControl": return { action: item.action, label: oneOf(["Check for updates", "Update available", "Checking for updates", "Update check failed", "Downloading update", "Restart to finish update"] as const, item.label, "an update control label") };
+        case "updateStatusControl": return { action: item.action, control: oneOf(["Open", "Check", "Later", "Install", "Relaunch", "Escape"], item.control, "an update control") };
         case "expectDocumentationRequest": return { action: item.action, url: string(item.url) };
         case "fillSettingsField": return { action: item.action, field: oneOf(["Server URL", "Server token"], item.field, "a remote field"), value: string(item.value) };
         case "clickSettingsButton": return { action: item.action, label: string(item.label) };
@@ -234,8 +234,8 @@ function step<Value>(value: Value): Step {
         case "expectKubeconfigPathBefore": return { action: item.action, value: string(item.value), other: string(item.other) };
         case "expectAccessibleName": return { action: item.action, name: string(item.name) };
         case "expectSettingsText": case "expectNoSettingsText": case "expectRuntimeEndpoint": return { action: item.action, value: string(item.value) };
-        case "expectMaskedToken": case "reopenStoredSettings": case "attemptUnverifiedUpdate": return { action: item.action };
-        case "configureSettingsMock": return { action: item.action, script: oneOf(["oidc-server", "oidc-browser-waits", "oidc-sign-in-fails", "oidc-memory-only", "oidc-store-keeps-sign-in", "access-server", "choose-kubeconfig", "choose-workspace", "choose-unavailable-workspace", "choose-application-workspace", "choose-compare-workspace", "choose-last-export", "cancel-dialog", "no-update", "invalid-signature", "update-available"], item.script, "a settings script") };
+        case "expectMaskedToken": case "reopenStoredSettings": return { action: item.action };
+        case "configureSettingsMock": return { action: item.action, script: oneOf(["oidc-server", "oidc-browser-waits", "oidc-sign-in-fails", "oidc-memory-only", "oidc-store-keeps-sign-in", "access-server", "choose-kubeconfig", "choose-workspace", "choose-unavailable-workspace", "choose-application-workspace", "choose-compare-workspace", "choose-last-export", "cancel-dialog", "no-update", "invalid-signature", "update-available", "update-installs", "update-download-waits"], item.script, "a settings script") };
         case "expectWorkspaceExport": case "exportSavedWorkspace": return { action: item.action, name: string(item.name) };
         case "expectExportedShortcut": return { action: item.action, name: string(item.name), shortcut: object(item.shortcut) };
         case "expectResourceStatus": return { action: item.action, kind: string(item.kind), namespace: string(item.namespace), name: string(item.name), status: string(item.status) };

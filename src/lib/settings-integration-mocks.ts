@@ -8,8 +8,9 @@ import { setAppUpdatesEnabledForTests } from "./release-channel";
 import type { RemoteAuthMode, RemoteConnectionSummary, RemoteSessionState } from "./remote-runtime";
 import workspace from "./settings-integration-workspace.json";
 
-export type SettingsScript = "oidc-server" | "oidc-browser-waits" | "oidc-sign-in-fails" | "oidc-memory-only" | "oidc-store-keeps-sign-in" | "access-server" | "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "choose-application-workspace" | "choose-compare-workspace" | "choose-last-export" | "cancel-dialog" | "no-update" | "invalid-signature" | "update-available";
-type UpdateScript = "no-update" | "invalid-signature" | "update-available";
+export type SettingsScript = "oidc-server" | "oidc-browser-waits" | "oidc-sign-in-fails" | "oidc-memory-only" | "oidc-store-keeps-sign-in" | "access-server" | "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "choose-application-workspace" | "choose-compare-workspace" | "choose-last-export" | "cancel-dialog" | "no-update" | "invalid-signature" | "update-available" | "update-installs" | "update-download-waits";
+const UPDATE_SCRIPTS = ["no-update", "invalid-signature", "update-available", "update-installs", "update-download-waits"] as const;
+type UpdateScript = (typeof UPDATE_SCRIPTS)[number];
 /** Page-session storage, so a reloaded page keeps the update script its scenario configured. */
 const UPDATE_SCRIPT_KEY = "kubecove-parity-update-script";
 let selected: RemoteConnectionSummary | null = null;
@@ -33,7 +34,7 @@ export function configureSettingsMock(script: SettingsScript): void {
 	if (isUpdateScript(script)) applyUpdateScript(script);
 }
 function isUpdateScript(script: string | null): script is UpdateScript {
-	return script === "no-update" || script === "invalid-signature" || script === "update-available";
+	return UPDATE_SCRIPTS.some((known) => known === script);
 }
 /** Enables update checks with the API the script names. The app reads the enablement when it mounts. */
 function applyUpdateScript(script: UpdateScript): void {
@@ -43,7 +44,17 @@ function applyUpdateScript(script: UpdateScript): void {
 			currentVersion: "0.13.0",
 			version: "0.14.0",
 			body: script === "update-available" ? "Fixes topology edges." : undefined,
-			downloadAndInstall: async () => { throw new Error("Invalid update signature"); },
+			downloadAndInstall: async (onEvent) => {
+				if (script !== "update-installs" && script !== "update-download-waits") throw new Error("Invalid update signature");
+				onEvent?.({ event: "Started", data: { contentLength: 100 } });
+				if (script === "update-download-waits") {
+					// The download stops at 40% and never finishes.
+					onEvent?.({ event: "Progress", data: { chunkLength: 40 } });
+					return new Promise<void>(() => {});
+				}
+				onEvent?.({ event: "Progress", data: { chunkLength: 100 } });
+				onEvent?.({ event: "Finished" });
+			},
 		},
 		relaunch: async () => { throw new Error("Tests cannot relaunch"); },
 	});

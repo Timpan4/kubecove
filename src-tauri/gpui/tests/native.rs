@@ -36,6 +36,8 @@ mod session_controls;
 mod settings_integrations;
 #[path = "native/shell.rs"]
 mod shell;
+#[path = "native/updates.rs"]
+mod updates;
 #[path = "native/watch_burst.rs"]
 mod watch_burst;
 #[path = "native/workspaces.rs"]

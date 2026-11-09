@@ -26,6 +26,11 @@ reqwest = { version = "=0.13.5", default-features = false, features = ["json", "
 # reqwest uses `rustls-no-provider`; `main` installs the ring provider before the update check.
 rustls = { version = "=0.23.46", default-features = false, features = ["ring"] }
 semver = "=1.0.28"
+# Update installation (ADR 0034), at the versions the desktop app's updater plugin locks:
+# the signature check, and the macOS `.app.tar.gz` unpacking.
+minisign-verify = "=0.3.0"
+tar = { version = "=0.4.46", default-features = false }
+flate2 = "=1.1.10"
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "sync", "time"] }
 # Shares one in-flight resource scope read between the Overview and the browser.
 futures-util = "=0.3.34"

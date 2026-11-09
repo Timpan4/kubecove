@@ -97,6 +97,7 @@ mod table_status;
 mod timeline;
 mod timestamp_text;
 mod update_panel;
+mod updates;
 mod usage;
 mod watch_status;
 mod windowed;
@@ -207,6 +208,7 @@ pub struct Inspector {
     navigation_open: bool,
     namespace_list: namespace_list::NamespaceListState,
     update_panel: update_panel::PanelState,
+    updates: updates::Updates,
     live: live_data::LiveData,
     kind_selection: kind_selection::KindSelection,
     filters: resource_filters::ResourceFilters,
@@ -337,6 +339,7 @@ impl Inspector {
             navigation_open: false,
             namespace_list: Default::default(),
             update_panel: Default::default(),
+            updates: Default::default(),
             live: Default::default(),
             kind_selection: kind_selection::KindSelection::new(window, cx),
             filters: resource_filters::ResourceFilters::new(window, cx),
@@ -360,7 +363,7 @@ impl Inspector {
         // namespace reads start here rather than on the first open.
         this.load_launcher_contexts(false, window, cx);
         // The web checks once at startup when updates are enabled (`scheduleAutomaticUpdateCheck`).
-        this.check_settings_updates(window, cx);
+        this.check_for_updates(window, cx);
         this
     }
 
