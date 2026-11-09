@@ -5,7 +5,7 @@ import { integrationStep } from "./contract-integrations";
 import { resourceTableStep } from "./contract-resources";
 import { sessionStep } from "./contract-sessions";
 import { DETAIL_RESIZE_KEYS, LOG_LEVELS, MAP_CONTROLS, MAP_KEYS, PANEL_CONTROLS, RBAC_CATEGORIES, RBAC_RISKS, SORT_COLUMNS, type Step, TABLE_COLUMNS, VERDICTS } from "./contract-steps";
-import { boolean, count, object, oneOf, optionalBoolean, string, strings } from "./contract-values";
+import { boolean, count, isBoolean, isNumber, isString, object, oneOf, optionalBoolean, string, strings } from "./contract-values";
 import { yamlEditorStep } from "./contract-yaml";
 
 export type { Step } from "./contract-steps";
@@ -93,7 +93,7 @@ type Missing = Exclude<Step["action"], (typeof ACTIONS)[number]>;
 const allActionsListed: Missing extends never ? true : Missing = true;
 void allActionsListed;
 
-function step(value: unknown): Step {
+function step<Value>(value: Value): Step {
 	const item = object(value);
 	const areaStep = integrationStep(item) ?? sessionStep(item) ?? resourceTableStep(item) ?? yamlEditorStep(item);
 	if (areaStep) return areaStep;
@@ -126,7 +126,11 @@ function step(value: unknown): Step {
         case "expectPermissionTarget": return { action: item.action, verb: string(item.verb), resource: string(item.resource) };
         case "copyResourceName": return { action: item.action, kind: string(item.kind), namespace: string(item.namespace), name: string(item.name) };
         case "expectCopyToast": return { action: item.action, text: string(item.text) };
-        case "toggleResourcePin": return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), ...(item.context === undefined ? {} : { context: string(item.context) }) };
+        case "toggleResourcePin": {
+            const pin: Extract<Step, { action: "toggleResourcePin" }> = { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace) };
+            if (item.context !== undefined) pin.context = string(item.context);
+            return pin;
+        }
         case "expectWorkspaceEntry": case "openWorkspaceEntry": return { action: item.action, panel: oneOf(["Pinned", "Recent"], item.panel, "an entry panel"), label: string(item.label), index: count(item.index), count: count(item.count) };
         case "reorderKindKey": return { action: item.action, kind: string(item.kind), key: oneOf(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"], item.key, "a reorder key") };
         case "resetKindOrder": return { action: item.action };
@@ -135,7 +139,7 @@ function step(value: unknown): Step {
         case "expectNamespaceRow": return { action: item.action, name: string(item.name), age: string(item.age) };
         case "resizeViewport": return { action: item.action, width: count(item.width), height: count(item.height) };
         case "expectNavigationDrawer":
-            if (typeof item.open !== "boolean") throw new Error("Expected drawer state");
+            if (!isBoolean(item.open)) throw new Error("Expected drawer state");
             return { action: item.action, open: item.open };
         case "sidebarKey": return { action: item.action, path: strings(item.path, false), key: oneOf(["Enter", "Space", "ArrowLeft", "ArrowRight"], item.key, "a sidebar key") };
         case "retryLauncher": case "expectLauncherRetry": return { action: item.action, read: oneOf(["contexts", "namespaces"], item.read, "a launcher read") };
@@ -185,9 +189,13 @@ function step(value: unknown): Step {
         case "cancelYamlEdit": return { action: item.action };
         case "revealSecretValue": case "hideSecretValue": case "refreshLatencyReport": case "clearLatencyReport": case "expectLatencyEmpty": case "openDocumentation": return { action: item.action };
         case "expectSecretValue":
-            if (typeof item.visible !== "boolean") throw new Error("Expected Secret visibility");
+            if (!isBoolean(item.visible)) throw new Error("Expected Secret visibility");
             return { action: item.action, visible: item.visible };
-        case "expectYamlLens": return { action: item.action, line: count(item.line), ...(item.marked === undefined ? {} : { marked: string(item.marked) }) };
+        case "expectYamlLens": {
+            const lens: Extract<Step, { action: "expectYamlLens" }> = { action: item.action, line: count(item.line) };
+            if (item.marked !== undefined) lens.marked = string(item.marked);
+            return lens;
+        }
         case "expectYamlDiagnostic":
             if (item.severity !== "error" && item.severity !== "warning" && item.severity !== "info") throw new Error("Expected a diagnostic severity");
             return { action: item.action, severity: item.severity, source: string(item.source), message: string(item.message), path: string(item.path) };
@@ -196,9 +204,12 @@ function step(value: unknown): Step {
         case "expectNoYamlApplyDescription": return { action: item.action };
         case "expectActionLoadError": return { action: item.action, text: string(item.text) };
         case "expectNoActionLoadError": case "retryActionPermission": return { action: item.action };
-        case "expectActionLock":
-            if (typeof item.locked !== "boolean") throw new Error("Expected a lock state");
-            return { action: item.action, row: string(item.row), locked: item.locked, ...(item.reason === undefined ? {} : { reason: string(item.reason) }) };
+        case "expectActionLock": {
+            if (!isBoolean(item.locked)) throw new Error("Expected a lock state");
+            const lock: Extract<Step, { action: "expectActionLock" }> = { action: item.action, row: string(item.row), locked: item.locked };
+            if (item.reason !== undefined) lock.reason = string(item.reason);
+            return lock;
+        }
         case "expectLatencyTiming": return { action: item.action, command: string(item.command) };
         case "copyLatencyReport": return { action: item.action };
         case "expectLatencyReportCopy": return { action: item.action, contains: string(item.contains) };
@@ -206,13 +217,13 @@ function step(value: unknown): Step {
         case "copyInteractions": case "clearInteractions": return { action: item.action };
         case "runTopologySpike": return { action: item.action };
         case "expectTopologySpikeText": return { action: item.action, value: string(item.value) };
-        case "expectInteractionCopy":
+        case "expectInteractionCopy": {
             if (item.contains === undefined && item.excludes === undefined) throw new Error("Expected contains or excludes");
-            return {
-                action: item.action,
-                ...(item.contains === undefined ? {} : { contains: string(item.contains) }),
-                ...(item.excludes === undefined ? {} : { excludes: string(item.excludes) }),
-            };
+            const copy: Extract<Step, { action: "expectInteractionCopy" }> = { action: item.action };
+            if (item.contains !== undefined) copy.contains = string(item.contains);
+            if (item.excludes !== undefined) copy.excludes = string(item.excludes);
+            return copy;
+        }
         case "typeSettingsField": return { action: item.action, field: oneOf(["Server token"], item.field, "a typed settings field"), value: string(item.value) };
         case "expectUpdateControl": return { action: item.action, label: oneOf(["Check for updates", "Update available", "Checking for updates", "Update check failed"] as const, item.label, "an update control label") };
         case "updateStatusControl": return { action: item.action, control: oneOf(["Open", "Check", "Later", "Escape"], item.control, "an update control") };
@@ -251,7 +262,7 @@ function step(value: unknown): Step {
         case "expectTopologyEmpty": return { action: item.action, title: string(item.title) };
         case "selectTopologyNode": case "expectNoTopologyNode": return { action: item.action, id: string(item.id) };
         case "expectResourceMetrics":
-            if (typeof item.namespace !== "string") throw new Error("Expected namespace");
+            if (!isString(item.namespace)) throw new Error("Expected namespace");
             return { action: item.action, kind: string(item.kind), namespace: item.namespace, name: string(item.name), cpu: string(item.cpu), memory: string(item.memory) };
 		case "expectYamlAbsent": return { action: item.action, fragments: strings(item.fragments, false) };
 		case "clickActionEntry": return { action: item.action, label: string(item.label), button: oneOf(["Add", "Remove", "Restore"], item.button, "an entry action") };
@@ -304,14 +315,18 @@ function step(value: unknown): Step {
 		case "expectLogsEmpty": case "expectYamlNotice": case "expectNoYamlNotice": return { action: item.action, title: string(item.title) };
 		case "toggleLogRow": {
 			const row: Extract<Step, { action: "toggleLogRow" }> = { action: item.action, line: string(item.line) };
-			if (item.key !== undefined) row.key = oneOf<"Enter" | "Space">(["Enter", "Space"], item.key, "a log row key");
+			if (item.key !== undefined) row.key = oneOf(["Enter", "Space"] as const, item.key, "a log row key");
 			return row;
 		}
 		case "toggleLogExpandAll": return { action: item.action };
 		case "expectLogRowOpen": return { action: item.action, line: string(item.line), open: boolean(item.open) };
 		case "copyLogLine": return { action: item.action, line: string(item.line), contains: string(item.contains) };
 		case "expectLogTimestampTooltip": return { action: item.action, line: string(item.line), value: string(item.value) };
-		case "expectRestorePrompt": return { action: item.action, visible: boolean(item.visible), ...(item.count === undefined ? {} : { count: count(item.count) }) };
+		case "expectRestorePrompt": {
+            const prompt: Extract<Step, { action: "expectRestorePrompt" }> = { action: item.action, visible: boolean(item.visible) };
+            if (item.count !== undefined) prompt.count = count(item.count);
+            return prompt;
+        }
 		case "restorePromptControl": return { action: item.action, control: oneOf(["Start saved", "Review", "Skip", "Auto-start"], item.control, "a restore prompt control") };
 		case "selectRevision": case "reviewAction": return { action: item.action, label: string(item.label) };
 		case "expectRevisionDiff":
@@ -323,7 +338,7 @@ function step(value: unknown): Step {
 		case "expectNoResource":
 			return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace) };
 		case "expectPaletteResource": case "expectNoPaletteResource": case "choosePaletteResource":
-			if (typeof item.namespace !== "string") throw new Error("Expected a resource namespace, empty for cluster resources");
+			if (!isString(item.namespace)) throw new Error("Expected a resource namespace, empty for cluster resources");
 			return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: item.namespace };
 		case "openLauncher": case "createWorkspace": case "openSettings": case "closeSettings": return { action: item.action };
 		case "nameWorkspace": case "searchSettings": case "setKubeconfigEnvVar": case "expectKubeconfigEnvVar": case "addServerKubeconfigPath": case "expectSettingsEmpty": case "searchPalette":
@@ -344,7 +359,7 @@ function step(value: unknown): Step {
 		case "verifyRbacAccess": return { action: item.action, verb: string(item.verb) };
 		case "expectRbacVerdict": return { action: item.action, outcome: oneOf(VERDICTS, item.outcome, "an access review outcome") };
 		case "editRbacReviewNote": case "expectRbacReviewNote":
-			if (typeof item.value !== "string") throw new Error("Expected review note text");
+			if (!isString(item.value)) throw new Error("Expected review note text");
 			return { action: item.action, value: item.value };
 		case "saveRbacReview":
 			return { action: item.action, disposition: oneOf(["expected", "anomalous"], item.disposition, "a review disposition") };
@@ -360,7 +375,7 @@ function step(value: unknown): Step {
         case "restartClient": return { action: item.action };
         case "toggleSetting": return { action: item.action, setting: string(item.setting) };
 		case "expectSetting":
-			if (typeof item.checked !== "boolean") throw new Error("Expected a checked state");
+			if (!isBoolean(item.checked)) throw new Error("Expected a checked state");
 			return { action: item.action, setting: string(item.setting), checked: item.checked };
 		case "openPalette":
 			if (item.via !== "button" && item.via !== "shortcut") throw new Error("Expected how the palette opens");
@@ -382,17 +397,17 @@ function step(value: unknown): Step {
 		case "mapKey": return { action: item.action, key: oneOf(MAP_KEYS, item.key, "a graph key") };
 		case "expectMapFocus": case "expectNoMapFocus": return { action: item.action, id: string(item.id) };
 		case "expectMapNodeInView": {
-			if (typeof item.inView !== "boolean") throw new Error("Expected a boolean inView");
+			if (!isBoolean(item.inView)) throw new Error("Expected a boolean inView");
 			return { action: item.action, id: string(item.id), inView: item.inView };
 		}
 		case "panMap": {
-			if (typeof item.dx !== "number" || !Number.isFinite(item.dx)) throw new Error("Expected a finite dx");
-			if (typeof item.dy !== "number" || !Number.isFinite(item.dy)) throw new Error("Expected a finite dy");
+			if (!isNumber(item.dx) || !Number.isFinite(item.dx)) throw new Error("Expected a finite dx");
+			if (!isNumber(item.dy) || !Number.isFinite(item.dy)) throw new Error("Expected a finite dy");
 			return { action: item.action, dx: item.dx, dy: item.dy };
 		}
 		case "clickMapControl": case "expectMapControlFocus": return { action: item.action, control: oneOf(MAP_CONTROLS, item.control, "a map control") };
 		case "expectMapZoom": {
-			if (typeof item.zoom !== "number" || !Number.isFinite(item.zoom) || item.zoom <= 0) throw new Error("Expected a positive zoom");
+			if (!isNumber(item.zoom) || !Number.isFinite(item.zoom) || item.zoom <= 0) throw new Error("Expected a positive zoom");
 			return { action: item.action, zoom: item.zoom };
 		}
 		case "resizeDetail": return { action: item.action, key: oneOf(DETAIL_RESIZE_KEYS, item.key, "a detail resize key") };
@@ -420,18 +435,22 @@ function step(value: unknown): Step {
 		case "expectResourceActivity": return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), state: oneOf(["active", "paused"] as const, item.state, "an activity state") };
 		case "openLiveSessionPopover": return { action: item.action };
 		case "expectLiveSessionRow": return { action: item.action, target: string(item.target), status: string(item.status), controls: strings(item.controls, false) };
-		case "liveSessionControl": return { action: item.action, operation: oneOf(["Show", "Reconnect", "Copy", "Stop", "Manage"], item.operation, "a live-session control"), ...(item.target === undefined ? {} : { target: string(item.target) }) };
+		case "liveSessionControl": {
+            const control: Extract<Step, { action: "liveSessionControl" }> = { action: item.action, operation: oneOf(["Show", "Reconnect", "Copy", "Stop", "Manage"], item.operation, "a live-session control") };
+            if (item.target !== undefined) control.target = string(item.target);
+            return control;
+        }
 		case "expectHealthTooltip": return { action: item.action, kind: string(item.kind), namespace: string(item.namespace), name: string(item.name), state: string(item.state), source: string(item.source), statuses: strings(item.statuses, true), partial: boolean(item.partial) };
 		case "expectTimestampTooltip": return { action: item.action, kind: string(item.kind), namespace: string(item.namespace), name: string(item.name), value: string(item.value) };
 		case "expectEventTimeTooltip": return { action: item.action, index: count(item.index) };
 		default: throw new Error(`Unknown action: ${String(item.action)}`);
 	}
 }
-export function parseContract(value: unknown): Contract {
+export function parseContract<Value>(value: Value): Contract {
 	const input = object(value);
 	if (input.fixture !== "browser-mocks" || input.context !== "mock-dev" || !Array.isArray(input.scenarios) || !input.scenarios.length) throw new Error("Invalid parity contract");
 	const ids = new Set<string>();
-	return { scenarios: input.scenarios.map((value: unknown) => {
+	return { scenarios: input.scenarios.map((value) => {
 		const scenario = object(value);
 		const id = string(scenario.id);
 		if (ids.has(id)) throw new Error(`Duplicate scenario: ${id}`);
