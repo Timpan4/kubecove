@@ -124,7 +124,7 @@ function step(value: unknown): Step {
         case "expectPermissionTarget": return { action: item.action, verb: string(item.verb), resource: string(item.resource) };
         case "copyResourceName": return { action: item.action, kind: string(item.kind), namespace: string(item.namespace), name: string(item.name) };
         case "expectCopyToast": return { action: item.action, text: string(item.text) };
-        case "toggleResourcePin": return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace) };
+        case "toggleResourcePin": return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), ...(item.context === undefined ? {} : { context: string(item.context) }) };
         case "expectWorkspaceEntry": case "openWorkspaceEntry": return { action: item.action, panel: oneOf(["Pinned", "Recent"], item.panel, "an entry panel"), label: string(item.label), index: count(item.index), count: count(item.count) };
         case "reorderKindKey": return { action: item.action, kind: string(item.kind), key: oneOf(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"], item.key, "a reorder key") };
         case "resetKindOrder": return { action: item.action };

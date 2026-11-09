@@ -141,7 +141,7 @@
         { "action": "openSavedWorkspace", "name": "Imported compare" },
         { "action": "openResources" },
         { "action": "selectNamespace", "namespace": "payments" },
-        { "action": "toggleResourcePin", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "toggleResourcePin", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "context": "mock-dev" },
         { "action": "openPage", "page": "Workspace Overview" },
         { "action": "expectWorkspaceEntry", "panel": "Pinned", "label": "Deployment / payments-api", "index": 0, "count": 1 },
         { "action": "openLauncher" },

@@ -44,7 +44,8 @@ export type Step =
     | { action: "expectPermissionTarget"; verb: string; resource: string }
     | ({ action: "copyResourceName" } & Identity)
     | { action: "expectCopyToast"; text: string }
-    | ({ action: "toggleResourcePin" } & Identity)
+    /** `context` names the row's context in a multi-context workspace, where each context has its own row. */
+    | ({ action: "toggleResourcePin"; context?: string } & Identity)
     | { action: "expectWorkspaceEntry" | "openWorkspaceEntry"; panel: "Pinned" | "Recent"; label: string; index: number; count: number }
     | { action: "reorderKindKey"; kind: string; key: "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" }
     | { action: "resetKindOrder" }

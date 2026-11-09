@@ -109,7 +109,8 @@ export async function shellAction(page: Page, step: Step): Promise<void> {
             break;
         }
         case "toggleResourcePin": {
-            const row = page.getByRole("row").filter({ has: page.getByRole("button", { name: new RegExp(`^(?:Pin|Unpin) ${step.kind} ${step.name}$`) }) }).filter({ hasText: step.namespace });
+            const rows = page.getByRole("row").filter({ has: page.getByRole("button", { name: new RegExp(`^(?:Pin|Unpin) ${step.kind} ${step.name}$`) }) }).filter({ hasText: step.namespace });
+            const row = step.context === undefined ? rows : rows.filter({ has: page.getByRole("cell", { name: step.context, exact: true }) });
             await row.getByRole("button", { name: new RegExp(`^(?:Pin|Unpin) ${step.kind} ${step.name}$`) }).click();
             break;
         }
