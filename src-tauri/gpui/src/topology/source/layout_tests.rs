@@ -104,7 +104,7 @@ fn filtered_layout_matches_recomputation_for_every_subset() {
                     selected: |_: &str, _: Option<&str>| true,
                 },
                 "",
-                |row, _| wanted.contains(row.name.as_str()),
+                |_, row, _| wanted.contains(row.name.as_str()),
                 |_| false,
                 &crate::preferences::KindLanes::default(),
             );
@@ -134,7 +134,7 @@ fn root_prefix_width_change_preserves_filtered_positions() {
             selected: |_: &str, _: Option<&str>| true,
         },
         "",
-        |row, _| matches!(row.name.as_str(), "root-9999" | "root-10000"),
+        |_, row, _| matches!(row.name.as_str(), "root-9999" | "root-10000"),
         |_| false,
         &crate::preferences::KindLanes::default(),
     );

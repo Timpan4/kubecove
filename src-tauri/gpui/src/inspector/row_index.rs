@@ -1,6 +1,7 @@
 //! Resource data is projected once per read. Queries reuse flat index buffers.
 
 use super::Inspector;
+use super::resource_filters::HealthFilter;
 use crate::model::{KindFilter, PreparedRows};
 use gpui_kit::Context;
 use kubecove_lib::models::ResourceSummary;
@@ -81,19 +82,36 @@ impl Inspector {
             self.scope_load.contexts(),
         );
         let mut visible = std::mem::take(&mut self.visible);
-        // The refilter does not read the owner list or summary below, and its
-        // query matches serve both passes.
+        let kind_filter = KindFilter {
+            kinds: &kinds,
+            selected: |kind: &str, api: Option<&str>| self.selected_kind(kind, api),
+        };
+        let mut allowed = Vec::new();
+        source.fill_kind_mask(&kind_filter, &mut allowed);
+        // The kind, scope, context and namespace tests run once per row. The
+        // owner list, the refilter and the health summary all read the result.
+        // Per interned owner, the first row in view that lists it.
+        let mut first_row = vec![usize::MAX; source.owner_count()];
+        let in_view: Vec<bool> = source
+            .keyed_rows()
+            .enumerate()
+            .map(|(index, (row, prepared))| {
+                let keep = allowed[prepared.variant]
+                    && self.row_scope_visible(row)
+                    && in_context(row)
+                    && self.filters.in_namespace(row);
+                if let Some(owner) = prepared.owner_index().filter(|_| keep) {
+                    first_row[owner] = first_row[owner].min(index);
+                }
+                keep
+            })
+            .collect();
         visible.refilter_with(
             source.clone(),
-            KindFilter {
-                kinds: &kinds,
-                selected: |kind: &str, api: Option<&str>| self.selected_kind(kind, api),
-            },
+            kind_filter,
             &query,
-            |row, owner| {
-                self.row_scope_visible(row)
-                    && in_context(row)
-                    && self.filters.in_namespace(row)
+            |index, row, owner| {
+                in_view[index]
                     && self.filters.in_owner(owner)
                     && self.filters.health.matches(row)
             },
@@ -101,54 +119,45 @@ impl Inspector {
             &self.persisted.preferences.resource_kind_lanes,
         );
         let summary_profile = crate::frame_profile::scope("rows", "summary");
-        let matches = visible.search_matches();
-        // Per interned owner, the first row that lists it; a row costs an index
-        // write instead of a string-keyed map insert.
-        let mut first_row = vec![usize::MAX; source.owner_count()];
-        let mut summary = crate::model::HealthSummary::default();
-        let mut allowed = Vec::new();
-        source.fill_kind_mask(
-            &KindFilter {
-                kinds: &kinds,
-                selected: |kind: &str, api: Option<&str>| self.selected_kind(kind, api),
-            },
-            &mut allowed,
-        );
-        for (index, (row, prepared)) in source.keyed_rows().enumerate() {
-            if !(allowed[prepared.variant]
-                && self.row_scope_visible(row)
-                && in_context(row)
-                && self.filters.in_namespace(row))
-            {
-                continue;
+        // Without a health filter the summary counts exactly the refilter's
+        // rows, which it has already summarized.
+        let summary = if self.filters.health == HealthFilter::All {
+            visible.health()
+        } else {
+            let matches = visible.search_matches();
+            let mut summary = crate::model::HealthSummary::default();
+            for (index, (row, prepared)) in source.keyed_rows().enumerate() {
+                if in_view[index]
+                    && matches.contains(index)
+                    && self.filters.in_owner(
+                        prepared
+                            .owner_index()
+                            .map(|owner| source.owner_at(owner).0),
+                    )
+                {
+                    summary.add(row);
+                }
             }
-            let owner = prepared.owner_index();
-            if let Some(owner) = owner {
-                first_row[owner] = first_row[owner].min(index);
-            }
-            let key = owner.map(|owner| source.owner_at(owner).0);
-            if self.filters.in_owner(key) && matches.contains(index) {
-                summary.add(row);
+            summary
+        };
+        // Owners that share a filter key show once, with the label of the
+        // first row in view, in the rank `PreparedRows` collated.
+        let mut by_key: Vec<Option<(usize, usize)>> = vec![None; source.owner_key_count()];
+        for (owner, &row) in first_row.iter().enumerate() {
+            let slot = &mut by_key[source.owner_key_id(owner)];
+            if row != usize::MAX && slot.is_none_or(|(first, _)| row < first) {
+                *slot = Some((row, owner));
             }
         }
-        // Owners that share a filter key keep the label of the first listed row.
-        let mut listed: Vec<_> = first_row
-            .iter()
-            .enumerate()
-            .filter(|&(_, &row)| row != usize::MAX)
-            .map(|(owner, &row)| (row, owner))
-            .collect();
-        listed.sort_unstable();
-        let mut owners = std::collections::BTreeMap::new();
-        for (_, owner) in listed {
-            let (key, label) = source.owner_at(owner);
-            owners.entry(key).or_insert(label);
-        }
-        let mut owners: Vec<_> = owners
+        let mut listed: Vec<usize> = by_key.into_iter().flatten().map(|(_, owner)| owner).collect();
+        listed.sort_unstable_by_key(|&owner| source.owner_rank(owner));
+        let owners: Vec<_> = listed
             .into_iter()
-            .map(|(key, label)| (key.to_owned(), label.to_owned()))
+            .map(|owner| {
+                let (key, label) = source.owner_at(owner);
+                (key.to_owned(), label.to_owned())
+            })
             .collect();
-        owners.sort_by(|a, b| crate::collate::collate(&a.1, &b.1, false));
         drop(summary_profile);
         self.filters.owners = owners;
         self.filters.summary = summary;

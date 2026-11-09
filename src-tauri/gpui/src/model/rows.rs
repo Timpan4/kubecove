@@ -49,6 +49,10 @@ struct Owner {
     key: String,
     label: String,
     group: usize,
+    /// The owner filter list's order: collated label, then key.
+    rank: u32,
+    /// The same for owners that share `key`, which the list shows once.
+    key_id: u32,
 }
 
 /// Which prepared rows a derived view was built from. Each preparation takes a
@@ -83,6 +87,8 @@ pub(crate) struct PreparedRows {
     by_name: Vec<usize>,
     sort: sort::SortColumns,
     owners: Vec<Owner>,
+    /// The number of distinct owner filter keys.
+    owner_keys: usize,
     /// Set by `with_inherited_owners`: each row whose GitOps owner it inherited,
     /// with the owner the backend sent. `swap_owners` exchanges the two, so a
     /// watch patch compares and replaces backend rows.
@@ -140,6 +146,21 @@ impl PreparedRows {
     /// The number of distinct GitOps owners, which `RowKey::owner_index` indexes.
     pub(crate) fn owner_count(&self) -> usize {
         self.owners.len()
+    }
+
+    /// The number of distinct owner filter keys, which `owner_key_id` indexes.
+    pub(crate) fn owner_key_count(&self) -> usize {
+        self.owner_keys
+    }
+
+    /// The owner's filter key as an index below `owner_key_count`.
+    pub(crate) fn owner_key_id(&self, index: usize) -> usize {
+        self.owners[index].key_id as usize
+    }
+
+    /// The owner's position in the filter list: collated label, then key.
+    pub(crate) fn owner_rank(&self, index: usize) -> u32 {
+        self.owners[index].rank
     }
 
     /// The `filterKey` and label of the owner at an index below `owner_count`.
@@ -244,6 +265,8 @@ impl PreparedRows {
                                 key: owner_ref.filter_key(&row.cluster, multi_context),
                                 group: group(label.clone(), 0),
                                 label,
+                                rank: 0,
+                                key_id: 0,
                             });
                             u32::try_from(owners.len() - 1).expect("owner count fits u32")
                         })
@@ -298,7 +321,8 @@ impl PreparedRows {
             .collect();
         drop(variant_ids);
         drop(owner_ids);
-        let sort = sort::SortColumns::new(&rows, &names, &sorted, &kinds, &context, &contexts);
+        let owner_keys = rank_owners(&mut owners);
+        let sort =sort::SortColumns::new(&rows, &names, &sorted, &kinds, &context, &contexts);
         drop(names);
         Self {
             rows,
@@ -315,10 +339,39 @@ impl PreparedRows {
             by_name: sorted,
             sort,
             owners,
+            owner_keys,
             inherited: Vec::new(),
             slots: None,
         }
     }
+}
+
+/// Sets each owner's filter list rank and key id, and returns the number of
+/// distinct keys. Collating here, where the rows are prepared, leaves each
+/// filter pass an integer sort.
+fn rank_owners(owners: &mut [Owner]) -> usize {
+    let index = |value: usize| u32::try_from(value).expect("owner count fits u32");
+    let mut order: Vec<usize> = (0..owners.len()).collect();
+    order.sort_by(|&a, &b| {
+        crate::collate::collate(&owners[a].label, &owners[b].label, false)
+            .then_with(|| owners[a].key.cmp(&owners[b].key))
+    });
+    let mut ids: HashMap<&str, u32> = HashMap::with_capacity(owners.len());
+    let key_ids: Vec<u32> = owners
+        .iter()
+        .map(|owner| {
+            let next = index(ids.len());
+            *ids.entry(owner.key.as_str()).or_insert(next)
+        })
+        .collect();
+    let keys = ids.len();
+    for (rank, &owner) in order.iter().enumerate() {
+        owners[owner].rank = index(rank);
+    }
+    for (owner, key_id) in owners.iter_mut().zip(key_ids) {
+        owner.key_id = key_id;
+    }
+    keys
 }
 
 /// The contexts in rank order and each row's rank. `listed` comes first, so
@@ -421,7 +474,7 @@ impl Visible {
                 selected: |_: &str, _: Option<&str>| true,
             },
             query,
-            |_, _| true,
+            |_, _, _| true,
             |_| false,
             &crate::preferences::KindLanes::default(),
         );
@@ -432,7 +485,8 @@ impl Visible {
         source: Rc<PreparedRows>,
         kinds: KindFilter<'_, impl Fn(&str, Option<&str>) -> bool>,
         query: &str,
-        included: impl Fn(&ResourceSummary, Option<&str>) -> bool,
+        // The row's index in `source`, the row and its owner filter key.
+        included: impl Fn(usize, &ResourceSummary, Option<&str>) -> bool,
         preferred: impl Fn(&ResourceSummary) -> bool,
         lanes: &crate::preferences::KindLanes,
     ) {
@@ -445,7 +499,11 @@ impl Visible {
         self.selected.fill(false);
         for (index, key) in source.keys.iter().enumerate() {
             if self.allowed[key.variant]
-                && included(&source.rows[index], source.owner(key).map(|(key, _)| key))
+                && included(
+                    index,
+                    &source.rows[index],
+                    source.owner(key).map(|(key, _)| key),
+                )
                 && self.matches.contains(index)
             {
                 self.indices.push(index);
@@ -518,7 +576,7 @@ impl FromIterator<ResourceSummary> for Visible {
                 selected: |_: &str, _: Option<&str>| true,
             },
             "",
-            |_, _| true,
+            |_, _, _| true,
             |_| false,
             &crate::preferences::KindLanes::default(),
         );
