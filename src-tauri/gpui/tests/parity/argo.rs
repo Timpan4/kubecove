@@ -165,6 +165,9 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             window.click("argo-connect-open", cx);
             window.render_frame(cx);
             if step["tunnel"] != true {
+                // As on the web, choose the source: the dialog keeps the last one.
+                reveal(window, anchor, "argo-external", cx);
+                window.click("argo-external", cx);
                 reveal(window, anchor, "argo-url", cx);
                 replace_text(window, cx, "argo-url", string(step, "url"));
             }
@@ -448,6 +451,28 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 assert!(seek(window, cx, "gitops-list", "argo-connect-toolbar"));
                 window.click("argo-connect-toolbar", cx);
                 window.render_frame(cx);
+            }
+            "openDetail" => {
+                reveal(window, "detail-body", "argo-connect-open", cx);
+                window.click("argo-connect-open", cx);
+                window.render_frame(cx);
+            }
+            source @ ("chooseFoundInCluster" | "chooseExternalUrl") => {
+                let id = if source == "chooseExternalUrl" {
+                    "argo-external"
+                } else {
+                    "argo-server:service:argocd:argocd-server:443"
+                };
+                reveal(window, "detail-body", id, cx);
+                window.click(id, cx);
+            }
+            "expectFoundInCluster" => {
+                reveal(window, "detail-body", "argo-external", cx);
+                assert_eq!(
+                    window.find("argo-external").checked(),
+                    step["checked"].as_bool().map(|found| !found),
+                    "External URL choice"
+                );
             }
             "expectFocusIn" => {
                 window.render_frame(cx);

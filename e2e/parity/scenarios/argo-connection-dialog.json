@@ -94,6 +94,24 @@
       ]
     },
     {
+      "id": "argo-connection.keeps-server-source",
+      "title": "The connection dialog keeps the chosen server source when it opens again",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "argoConnectionDialog", "operation": "openDetail" },
+        { "action": "argoConnectionDialog", "operation": "chooseFoundInCluster" },
+        { "action": "argoControl", "control": "Close connection" },
+        { "action": "argoConnectionDialog", "operation": "openDetail" },
+        { "action": "argoConnectionDialog", "operation": "expectFoundInCluster", "checked": true },
+        { "action": "argoConnectionDialog", "operation": "chooseExternalUrl" },
+        { "action": "argoControl", "control": "Close connection" },
+        { "action": "argoConnectionDialog", "operation": "openDetail" },
+        { "action": "argoConnectionDialog", "operation": "expectFoundInCluster", "checked": false },
+        { "action": "argoControl", "control": "Close connection" }
+      ]
+    },
+    {
       "id": "argo-connection.close-keeps-auto-reconnect",
       "title": "Closing the connection dialog during automatic reconnects lets every remembered profile reconnect",
       "steps": [

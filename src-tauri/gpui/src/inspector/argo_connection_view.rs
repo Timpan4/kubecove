@@ -19,7 +19,6 @@ use kubecove_lib::models::ArgoConfirmedTarget;
 impl Inspector {
     pub(super) fn open_argo_connection(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.argo_connections.editing = None;
-        self.argo_connections.endpoint = None;
         self.argo_connections.step.clear_preview();
         // The detail panel opens its own dialog. Inside the GitOps page dialog this
         // button only shows the form, so that dialog keeps its own choices.
@@ -254,9 +253,11 @@ impl Inspector {
             button(Variant::Outline, 24., false)
                 .id("argo-external")
                 .test_support()
+                .aria_label("External URL")
+                .aria_toggled(toggled(choices.endpoint.is_none()))
                 .child("External URL")
                 .on_click(cx.listener(|this, _, _, cx| {
-                    this.argo_connections.endpoint = None;
+                    this.argo_connections.choices_mut().endpoint = None;
                     this.argo_connections.editing = None;
                     this.argo_connections.step.clear_preview();
                     cx.notify();
@@ -278,6 +279,12 @@ impl Inspector {
                     )))
                     .test_support()
                     .aria_label(super::argo_profiles::endpoint_label(&endpoint))
+                    .aria_toggled(toggled(
+                        choices
+                            .endpoint
+                            .as_ref()
+                            .is_some_and(|chosen| same_server(chosen, &endpoint)),
+                    ))
                     .child(format!(
                         "{}{}",
                         super::argo_profiles::endpoint_label(&endpoint),
@@ -288,14 +295,14 @@ impl Inspector {
                         }
                     ))
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        this.argo_connections.endpoint = Some(endpoint.clone());
+                        this.argo_connections.choices_mut().endpoint = Some(endpoint.clone());
                         this.argo_connections.editing = None;
                         this.argo_connections.step.clear_preview();
                         cx.notify();
                     })),
             );
         }
-        if state.endpoint.is_none() {
+        if choices.endpoint.is_none() {
             panel = panel
                 .child(
                     Input::new(&state.url)
@@ -335,11 +342,11 @@ impl Inspector {
                 );
             }
         }
-        if state.endpoint.is_some() {
+        if choices.endpoint.is_some() {
             panel = panel.child(div().flex().gap(px(8.)).children(["https", "http"].map(|scheme| {
                 button(Variant::Outline, 24., state.busy()).id(gpui_kit::SharedString::from(format!("argo-protocol:{scheme}"))).test_support().child(scheme.to_uppercase())
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        if let Some(kubecove_lib::models::ArgoServerEndpoint::ServiceTunnel { scheme: value, .. }) = this.argo_connections.endpoint.as_mut() { *value = scheme.into(); }
+                        if let Some(kubecove_lib::models::ArgoServerEndpoint::ServiceTunnel { scheme: value, .. }) = this.argo_connections.choices_mut().endpoint.as_mut() { *value = scheme.into(); }
                         this.argo_connections.step.clear_preview();
                         cx.notify();
                     }))
@@ -466,7 +473,33 @@ impl Inspector {
     }
 }
 
-/// The checked state the web's switches and sign-in radios expose.
+/// Whether the chosen endpoint is this discovered Service, whatever protocol edits it carries,
+/// as the web's server radios compare server ids.
+fn same_server(
+    chosen: &kubecove_lib::models::ArgoServerEndpoint,
+    server: &kubecove_lib::models::ArgoServerEndpoint,
+) -> bool {
+    use kubecove_lib::models::ArgoServerEndpoint::ServiceTunnel;
+    match (chosen, server) {
+        (
+            ServiceTunnel {
+                namespace,
+                service_name,
+                service_port,
+                ..
+            },
+            ServiceTunnel {
+                namespace: n,
+                service_name: s,
+                service_port: p,
+                ..
+            },
+        ) => (namespace, service_name, service_port) == (n, s, p),
+        _ => false,
+    }
+}
+
+/// The checked state the web's switches and radios expose.
 fn toggled(on: bool) -> gpui_kit::accesskit::Toggled {
     if on {
         gpui_kit::accesskit::Toggled::True

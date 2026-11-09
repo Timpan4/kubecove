@@ -67,6 +67,8 @@ pub(super) struct DialogChoices {
     pub local: bool,
     pub insecure: bool,
     pub remember: bool,
+    /// The chosen discovered Service with its protocol edits. `None` is External URL.
+    pub endpoint: Option<ArgoServerEndpoint>,
 }
 /// Remembered profiles that reconnect one at a time after the workspace scope changes.
 /// Only a scope change replaces it.
@@ -95,7 +97,6 @@ pub(super) struct Connections {
     /// The detail dialog's choices. Closing the detail or opening another resource resets them.
     pub detail: DialogChoices,
     pub servers: Vec<ArgoServerCapability>,
-    pub endpoint: Option<ArgoServerEndpoint>,
     pub step: ConnectStep,
     /// A running Disconnect or Forget.
     pub profile_action: Option<InFlight>,
@@ -175,7 +176,6 @@ impl Connections {
             page: DialogChoices::default(),
             detail: DialogChoices::default(),
             servers: vec![],
-            endpoint: None,
             step: ConnectStep::Idle,
             profile_action: None,
             reconnect: Reconnect::default(),
@@ -306,7 +306,7 @@ impl Inspector {
                     .editing
                     .as_ref()
                     .map(|p| p.endpoint.clone())
-                    .or_else(|| state.endpoint.clone())
+                    .or_else(|| choices.endpoint.clone())
             })
             .unwrap_or_else(|| ArgoServerEndpoint::ExternalHttps {
                 url: state.url.read(cx).value().trim().to_owned(),

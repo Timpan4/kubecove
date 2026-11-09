@@ -240,6 +240,20 @@ export async function argoAction(page: Page, step: Step) {
                 case "chooseLocalLogin":
                     await dialog.getByRole("radio", { name: "Local login", exact: true }).click();
                     break;
+                // Opens the detail's dialog without choosing a server source, unlike "Open connection".
+                case "openDetail":
+                    await page.getByRole("tabpanel").getByRole("button", { name: /^(Manage connection|Connect Argo CD)$/ }).click();
+                    await dialog.waitFor();
+                    break;
+                case "chooseFoundInCluster":
+                case "chooseExternalUrl":
+                    await dialog.getByRole("radio", { name: step.operation === "chooseExternalUrl" ? "External URL" : "Found in cluster", exact: true }).click();
+                    break;
+                case "expectFoundInCluster": {
+                    const checked = await dialog.getByRole("radio", { name: "Found in cluster", exact: true }).getAttribute("aria-checked");
+                    if ((checked === "true") !== step.checked) throw new Error(`Found in cluster choice is ${checked}`);
+                    break;
+                }
                 case "expectInsecure":
                 case "chooseInsecure": {
                     // The invalid-certificate switch sits under the external URL's Advanced disclosure.
