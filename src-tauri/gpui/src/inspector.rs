@@ -24,7 +24,6 @@ mod gitops_page;
 mod gitops_section;
 mod gitops_tooltip;
 mod header;
-mod health_filter;
 mod helm_card;
 mod helm_details;
 mod helm_page;

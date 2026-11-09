@@ -6,6 +6,7 @@ use super::{
 };
 use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use gpui_kit::{Context, Div, SharedString, Task, Window, div, prelude::*, px};
 use std::collections::BTreeMap;
 
@@ -144,7 +145,7 @@ impl Inspector {
                         return false;
                     };
                     match result {
-                        Ok(encoded) => match crate::secret_values::decode(&encoded) {
+                        Ok(encoded) => match decode(&encoded) {
                             Ok(value) => {
                                 detail.secrets.values.insert(target.clone(), value);
                             }
@@ -178,5 +179,26 @@ impl Inspector {
             }
         });
         detail.secrets.tasks.insert(id, task);
+    }
+}
+
+/// Decodes one revealed value, with no logging or persistence.
+fn decode(encoded: &str) -> Result<String, &'static str> {
+    let bytes = STANDARD
+        .decode(encoded)
+        .map_err(|_| "Invalid base64 value")?;
+    String::from_utf8(bytes).map_err(|_| "Binary value cannot be shown as UTF-8")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::decode;
+
+    // Failure modes: malformed and binary reveals must not reach the view.
+    #[test]
+    fn reveal_decoding_rejects_invalid_and_binary_data() {
+        assert_eq!(decode("c2VjcmV0").unwrap(), "secret");
+        assert!(decode("not base64!").is_err());
+        assert!(decode("/w==").is_err());
     }
 }

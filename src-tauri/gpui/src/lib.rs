@@ -21,7 +21,6 @@ mod palette;
 pub mod preferences;
 mod rbac;
 mod read_retry;
-mod resource_search;
 mod settings;
 mod table_sort;
 mod targets;
@@ -40,4 +39,3 @@ pub fn init(cx: &mut gpui_kit::App) -> gpui_kit::Result<()> {
     Ok(())
 }
 pub mod diagnostics;
-pub mod secret_values;

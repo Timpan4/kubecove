@@ -61,7 +61,7 @@ fn indexed_rows_preserve_filter_and_display_order() {
                 .iter()
                 .filter(|row| kinds.contains(&row.kind))
                 .filter(|row| {
-                    query.is_empty() || crate::resource_search::haystack(row).contains(&query)
+                    query.is_empty() || crate::model::rows::search::haystack(row).contains(&query)
                 })
                 .cloned()
                 .collect();

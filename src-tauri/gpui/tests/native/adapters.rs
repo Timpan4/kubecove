@@ -1,9 +1,8 @@
-// Failure modes: malformed and binary reveals must not reach the view.
-// Disabling or clearing collection must discard pending timings.
+// Failure mode: disabling or clearing collection must discard pending timings.
 use super::{Controlled, open};
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AppContext, TestAppContext};
-use kubecove_gpui::{diagnostics::Timings, secret_values::decode};
+use kubecove_gpui::diagnostics::Timings;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
@@ -123,13 +122,6 @@ fn revealed_values_expire_at_the_web_lifetime(cx: &mut TestAppContext) {
         assert!(window.try_find("secret-value:data:token").is_none());
     })
     .unwrap();
-}
-
-#[test]
-fn reveal_decoding_rejects_invalid_and_binary_data() {
-    assert_eq!(decode("c2VjcmV0").unwrap(), "secret");
-    assert!(decode("not base64!").is_err());
-    assert!(decode("/w==").is_err());
 }
 
 #[test]

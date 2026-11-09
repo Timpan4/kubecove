@@ -2,13 +2,17 @@
 //! `resourceBrowserModel.ts`: namespace multi-select, health buttons, the
 //! GitOps owner and the historical ReplicaSet toggle. Filters run as one pass
 //! over the rows; the owner list and health counts come from that same pass.
+//! The health filter mirrors `HealthFilter` and `classifyResourceHealth` in
+//! `src/features/resources/helpers.ts`. The summary counts stay on the rows in
+//! scope before this filter, as `buildResourceHealthSummary` does on the web.
 
+use crate::incidents::Filter as IncidentFilter;
 use crate::model::HealthSummary;
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{AppContext, Context, Entity, Subscription, Window};
 use kubecove_lib::models::{HealthAssessmentState, ResourceSummary};
 
-use super::Inspector;
+use super::{Inspector, Page};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) enum HealthFilter {
@@ -35,6 +39,39 @@ impl HealthFilter {
             Self::Degraded => state == HealthAssessmentState::Degraded,
             Self::Restarted => row.restarts.unwrap_or(0) > 0,
         }
+    }
+
+    /// `incidentResourcesHealthFilter` in `src/features/incidents/model.ts`.
+    fn from_incident(filter: IncidentFilter) -> Self {
+        match filter {
+            IncidentFilter::Degraded => Self::Degraded,
+            IncidentFilter::Attention => Self::Attention,
+            IncidentFilter::Restarted => Self::Restarted,
+            IncidentFilter::All | IncidentFilter::Warning => Self::All,
+        }
+    }
+}
+
+impl Inspector {
+    /// The incident's "Open resources" action: all namespaces, an empty search,
+    /// and the incident's health filter, as `openResources` does on the web.
+    pub(super) fn open_incident_resources(
+        &mut self,
+        filter: IncidentFilter,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.defer_exec_leave(super::exec::LeaveIntent::IncidentResources(filter), cx) {
+            return;
+        }
+        self.select_namespace(None, window, cx);
+        if self.page != Page::Resources {
+            return;
+        }
+        self.search
+            .update(cx, |input, cx| input.set_value("", window, cx));
+        self.filters.health = HealthFilter::from_incident(filter);
+        self.filter(cx);
     }
 }
 
