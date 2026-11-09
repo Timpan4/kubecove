@@ -171,16 +171,9 @@ impl ExecTab {
     /// open until that stop returns, because dropping it ends the process even when the
     /// backend stop would fail.
     pub(super) fn stopping(&mut self) -> Option<String> {
-        match std::mem::replace(&mut self.phase, ExecPhase::Ended(ExecEnd::Stopped)) {
-            ExecPhase::Live(live) => {
-                self.note("stopping session");
-                Some(live.id)
-            }
-            phase => {
-                self.phase = phase;
-                None
-            }
-        }
+        let id = self.session_id()?.to_owned();
+        self.ended(ExecEnd::Stopped, "stopping session");
+        Some(id)
     }
     /// `stopBackendSession`'s result for the session `stopping` returned. Success also
     /// clears an earlier stop failure. A failure tracks the session again, as the web
@@ -271,15 +264,26 @@ impl ExecTab {
             PodExecSessionMessage::Started { summary, .. } => live.status = summary.status,
             PodExecSessionMessage::Status { status, .. } => live.status = status,
             PodExecSessionMessage::Error { message, .. } => {
-                live.status = PodExecSessionStatus::Error;
+                self.ended(ExecEnd::Error, &message);
                 self.error = Some(message.into());
             }
-            PodExecSessionMessage::Exited { .. } => self.phase = ExecPhase::Ended(ExecEnd::Exited),
+            PodExecSessionMessage::Exited { exit_code, .. } => self.ended(
+                ExecEnd::Exited,
+                &exit_code.map_or_else(
+                    || "exited".into(),
+                    |code| format!("exited with code {code}"),
+                ),
+            ),
             PodExecSessionMessage::Stopped { .. } => {
-                self.phase = ExecPhase::Ended(ExecEnd::Stopped)
+                self.ended(ExecEnd::Stopped, "session stopped")
             }
             PodExecSessionMessage::Output { .. } => {}
         }
+    }
+    /// `ended`: the session is over, so the tab stops reading input and writes `note`.
+    fn ended(&mut self, end: ExecEnd, note: &str) {
+        self.phase = ExecPhase::Ended(end);
+        self.note(note);
     }
     /// The stream closed without a final message.
     fn stream_closed(&mut self) {

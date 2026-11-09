@@ -7,13 +7,26 @@ let workspaceOpened = false;
 const forwards = new Map(mockPortForwards.map((s) => [s.id, s]));
 const execs = new Map(mockExecSessions.map((s) => [s.id, s]));
 const channels = new Map<string, Pick<Channel<PodExecSessionMessage>, "onmessage">>();
-export type SessionScript = "reconnecting" | "failed" | "foreign-output";
-export function forwardReplayState(script: Exclude<SessionScript, "foreign-output">): Pick<PortForwardSessionSummary, "status" | "lastError"> {
+export type ExecEndScript = "exec-exited" | "exec-failed" | "exec-stopped";
+export type SessionScript = "reconnecting" | "failed" | "foreign-output" | ExecEndScript;
+export function forwardReplayState(script: "reconnecting" | "failed"): Pick<PortForwardSessionSummary, "status" | "lastError"> {
     return script === "failed" ? { status: "error", lastError: "Controlled transport failure" } : { status: "reconnecting" };
+}
+/** The last message of a running exec session that exits, fails, or is stopped outside its tab. */
+export function execEndMessage(script: ExecEndScript, sessionId: string): PodExecSessionMessage {
+    if (script === "exec-exited") return { type: "exited", sessionId, exitCode: 0 };
+    if (script === "exec-failed") return { type: "error", sessionId, message: "Controlled exec failure" };
+    return { type: "stopped", sessionId };
 }
 export function replaySessions(script: SessionScript) {
     if (script === "foreign-output") {
         for (const channel of channels.values()) channel.onmessage({ type: "output", sessionId: "foreign-session", stream: "stdout", data: "FOREIGN SESSION OUTPUT" });
+    } else if (script === "exec-exited" || script === "exec-failed" || script === "exec-stopped") {
+        for (const [id, channel] of channels) {
+            channel.onmessage(execEndMessage(script, id));
+            channels.delete(id);
+            execs.delete(id);
+        }
     } else {
         for (const [id, session] of forwards) forwards.set(id, { ...session, ...forwardReplayState(script) });
     }

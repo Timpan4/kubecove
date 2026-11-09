@@ -1,6 +1,6 @@
 import { buildPodExecRequest } from "../../../src/features/live-sessions/podExecHelpers";
 import type { TauriClient } from "../../../src/lib/tauri";
-import { forwardReplayState } from "../../../src/lib/tauri-dev-mock-session-controls";
+import { execEndMessage, forwardReplayState } from "../../../src/lib/tauri-dev-mock-session-controls";
 import type { PodExecSessionMessage, PodExecSessionRequest, PodExecSessionSummary, PortForwardRequest, PortForwardSessionSummary, ResourceSummary } from "../../../src/lib/types";
 
 export async function exportSessionControls(client: TauriClient, resources: ResourceSummary[]) {
@@ -30,5 +30,7 @@ export async function exportSessionControls(client: TauriClient, resources: Reso
             await client.invoke("stop_pod_exec_session", { sessionId: summary.id });
         }
     }
-    return { forwards, execs, replay: { failed: forwardReplayState("failed"), reconnecting: forwardReplayState("reconnecting") } };
+    // The native mock replaces the empty session id with each running session's id.
+    const execEnds = Object.fromEntries((["exec-exited", "exec-failed", "exec-stopped"] as const).map((script) => [script, execEndMessage(script, "")]));
+    return { forwards, execs, replay: { failed: forwardReplayState("failed"), reconnecting: forwardReplayState("reconnecting") }, execEnds };
 }

@@ -11,6 +11,9 @@ pub struct SessionControls {
     execs: Vec<Exec>,
     #[serde(default)]
     replay: std::collections::HashMap<String, ForwardReplay>,
+    /// `execEndMessage` per script, for a session id the replay fills in.
+    #[serde(default, rename = "execEnds")]
+    exec_ends: std::collections::HashMap<String, PodExecSessionMessage>,
     #[serde(skip)]
     state: Arc<Mutex<Running>>,
 }
@@ -48,6 +51,23 @@ fn refused<T: Send + 'static>() -> Read<T> {
             AppErrorKind::Validation,
         ))
     })
+}
+/// Points a recorded message at the running session `id`.
+fn for_session(message: &mut PodExecSessionMessage, id: &str) {
+    match message {
+        PodExecSessionMessage::Started {
+            session_id,
+            summary,
+        } => {
+            *session_id = id.into();
+            summary.id = id.into();
+        }
+        PodExecSessionMessage::Status { session_id, .. }
+        | PodExecSessionMessage::Output { session_id, .. }
+        | PodExecSessionMessage::Error { session_id, .. }
+        | PodExecSessionMessage::Exited { session_id, .. }
+        | PodExecSessionMessage::Stopped { session_id } => *session_id = id.into(),
+    }
 }
 struct Owner {
     id: String,
@@ -143,6 +163,14 @@ impl SessionControls {
                     data: "FOREIGN SESSION OUTPUT".into(),
                 });
             }
+        } else if let Some(end) = self.exec_ends.get(script) {
+            // As `replaySessions` does, every running session ends and leaves the list.
+            for (summary, sender) in std::mem::take(&mut state.execs) {
+                let mut message = end.clone();
+                for_session(&mut message, &summary.id);
+                let _ = sender.send(message);
+                state.stopped.push(summary.id);
+            }
         } else {
             let update = self
                 .replay
@@ -209,20 +237,7 @@ impl SessionControls {
         let (sender, messages) = mpsc::unbounded_channel();
         for message in &record.messages {
             let mut message = message.clone();
-            match &mut message {
-                PodExecSessionMessage::Started {
-                    session_id,
-                    summary: started,
-                } => {
-                    *session_id = summary.id.clone();
-                    started.id = summary.id.clone();
-                }
-                PodExecSessionMessage::Status { session_id, .. }
-                | PodExecSessionMessage::Output { session_id, .. }
-                | PodExecSessionMessage::Error { session_id, .. }
-                | PodExecSessionMessage::Exited { session_id, .. }
-                | PodExecSessionMessage::Stopped { session_id } => *session_id = summary.id.clone(),
-            }
+            for_session(&mut message, &summary.id);
             sender.send(message).unwrap();
         }
         state.execs.push((summary.clone(), sender));

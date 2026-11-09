@@ -258,6 +258,52 @@
       ]
     },
     {
+      "id": "exec-session.exit-note",
+      "title": "A session that exits ends its terminal with the exit code note",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "start", "container": "app", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "replaySessions", "script": "exec-exited" },
+        { "action": "expectExecState", "container": "app", "status": "exited", "contains": "[exited with code 0]" },
+        { "action": "closeDetail" },
+        { "action": "expectDetailClosed" }
+      ]
+    },
+    {
+      "id": "exec-session.failure-note",
+      "title": "A session that fails ends its terminal with the failure as a note and shows the exec failure panel",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "start", "container": "app", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "replaySessions", "script": "exec-failed" },
+        { "action": "expectExecState", "container": "app", "status": "error", "contains": "[Controlled exec failure]" },
+        { "action": "expectPageText", "text": "Exec failed" },
+        { "action": "closeDetail" },
+        { "action": "expectDetailClosed" }
+      ]
+    },
+    {
+      "id": "exec-session.outside-stop-note",
+      "title": "A session stopped outside its tab ends the terminal with the stopped note",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "start", "container": "app", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "replaySessions", "script": "exec-stopped" },
+        { "action": "expectExecState", "container": "app", "status": "stopped", "contains": "[session stopped]" },
+        { "action": "closeDetail" },
+        { "action": "expectDetailClosed" }
+      ]
+    },
+    {
       "id": "exec-session.stop-failure-friendly-error",
       "title": "A failed Stop shows the exec failure panel with the technical detail collapsed",
       "steps": [

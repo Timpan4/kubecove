@@ -167,7 +167,7 @@ export type Step =
     | { action: "expectUpdateControl"; label: UpdateControlLabel }
     | { action: "configurePreset"; label: string; context: string; namespace: string; service: string; remote: string; local: string }
     | { action: "presetControl"; operation: "add" | "save" | "edit" | "start" | "remove" | "absent"; label?: string }
-    | { action: "replaySessions"; script: "reconnecting" | "failed" | "foreign-output" }
+    | { action: "replaySessions"; script: "reconnecting" | "failed" | "foreign-output" | "exec-exited" | "exec-failed" | "exec-stopped" }
     | { action: "confirmExecLeave"; choice: "stay" | "stop" }
     | { action: "configureForward"; remote: string; local: string }
     | { action: "forwardControl"; operation: "start" | "save" | "restore" | "stop" | "reconnect"; target?: string }
