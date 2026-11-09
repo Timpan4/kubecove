@@ -53,6 +53,21 @@ impl ConnectStep {
         }
     }
 }
+/// The surface whose dialog is open. The web mounts one `ArgoConnectionDialog` on the
+/// GitOps page and one in each Application detail, and each keeps its own choices.
+#[derive(Clone, Copy, Default)]
+pub(super) enum DialogHost {
+    #[default]
+    Detail,
+    Page,
+}
+/// The choices one web dialog keeps between opens until it unmounts.
+#[derive(Default)]
+pub(super) struct DialogChoices {
+    pub local: bool,
+    pub insecure: bool,
+    pub remember: bool,
+}
 /// Remembered profiles that reconnect one at a time after the workspace scope changes.
 /// Only a scope change replaces it.
 #[derive(Default)]
@@ -74,9 +89,11 @@ pub(super) struct Connections {
     pub ca: Entity<TextareaState>,
     pub root_path: Entity<InputState>,
     pub tls_name: Entity<InputState>,
-    pub local: bool,
-    pub insecure: bool,
-    pub remember: bool,
+    pub host: DialogHost,
+    /// The GitOps page dialog's choices. Leaving the page resets them.
+    pub page: DialogChoices,
+    /// The detail dialog's choices. Closing the detail or opening another resource resets them.
+    pub detail: DialogChoices,
     pub servers: Vec<ArgoServerCapability>,
     pub endpoint: Option<ArgoServerEndpoint>,
     pub step: ConnectStep,
@@ -154,9 +171,9 @@ impl Connections {
             ca: cx.new(|cx| TextareaState::new(window, cx).rows(3)),
             root_path: cx.new(|cx| InputState::new(window, cx)),
             tls_name: cx.new(|cx| InputState::new(window, cx)),
-            local: false,
-            insecure: false,
-            remember: false,
+            host: DialogHost::default(),
+            page: DialogChoices::default(),
+            detail: DialogChoices::default(),
             servers: vec![],
             endpoint: None,
             step: ConnectStep::Idle,
@@ -164,6 +181,19 @@ impl Connections {
             reconnect: Reconnect::default(),
             discovery: None,
             discovery_error: None,
+        }
+    }
+    /// The open dialog's choices.
+    pub fn choices(&self) -> &DialogChoices {
+        match self.host {
+            DialogHost::Detail => &self.detail,
+            DialogHost::Page => &self.page,
+        }
+    }
+    pub fn choices_mut(&mut self) -> &mut DialogChoices {
+        match self.host {
+            DialogHost::Detail => &mut self.detail,
+            DialogHost::Page => &mut self.page,
         }
     }
     /// The dialog blocks new connects and profile actions while one runs.
@@ -248,11 +278,12 @@ impl Inspector {
             return;
         }
         let state = &self.argo_connections;
+        let choices = state.choices();
         let remembered = state
             .editing
             .as_ref()
             .is_some_and(|p| p.remember_credential);
-        let credential = if state.local {
+        let credential = if choices.local {
             !state.username.read(cx).value().is_empty()
                 && !state.password.read(cx).value().is_empty()
         } else {
@@ -324,7 +355,7 @@ impl Inspector {
             workspace_id: Some(self.argo_workspace_id()),
             kubeconfig_source_key: self.argo_source_key().map(str::to_owned),
             transport: "connected".into(),
-            remember_credential: state.remember
+            remember_credential: choices.remember
                 || state
                     .editing
                     .as_ref()
@@ -336,22 +367,22 @@ impl Inspector {
         };
         let read = self.backend.connect_argo(ArgoConnect {
             profile,
-            token: if state.local {
+            token: if choices.local {
                 None
             } else {
                 value(&state.token)
             },
-            username: if state.local {
+            username: if choices.local {
                 value(&state.username)
             } else {
                 None
             },
-            password: if state.local {
+            password: if choices.local {
                 value(&state.password)
             } else {
                 None
             },
-            insecure_tls: external && state.insecure,
+            insecure_tls: external && choices.insecure,
             custom_ca_pem: if external {
                 let ca = state.ca.read(cx).value().to_string();
                 (!ca.is_empty()).then(|| ca.into_bytes())

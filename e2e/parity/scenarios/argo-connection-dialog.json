@@ -64,6 +64,36 @@
       ]
     },
     {
+      "id": "argo-connection.choices-per-dialog",
+      "title": "The GitOps page dialog and the Application detail dialog keep their own choices, and closing the detail resets its dialog",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test", "remember": true, "surface": "page" },
+        { "action": "expectArgoText", "text": "Connected Argo CD API" },
+        { "action": "argoControl", "control": "Open connection" },
+        { "action": "argoConnectionDialog", "operation": "expectRemember", "checked": false },
+        { "action": "argoConnectionDialog", "operation": "chooseLocalLogin" },
+        { "action": "argoConnectionDialog", "operation": "chooseInsecure" },
+        { "action": "argoControl", "control": "Close connection" },
+        { "action": "argoControl", "control": "Open connection" },
+        { "action": "argoConnectionDialog", "operation": "expectLocalLogin", "checked": true },
+        { "action": "argoConnectionDialog", "operation": "expectInsecure", "checked": true },
+        { "action": "argoControl", "control": "Close connection" },
+        { "action": "argoConnectionDialog", "operation": "open" },
+        { "action": "argoConnectionDialog", "operation": "expectRemember", "checked": true },
+        { "action": "argoConnectionDialog", "operation": "expectLocalLogin", "checked": false },
+        { "action": "argoConnectionDialog", "operation": "expectInsecure", "checked": false },
+        { "action": "argoConnectionDialog", "operation": "escape" },
+        { "action": "closeDetail" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "argoControl", "control": "Open connection" },
+        { "action": "argoConnectionDialog", "operation": "expectLocalLogin", "checked": false },
+        { "action": "argoConnectionDialog", "operation": "expectInsecure", "checked": false },
+        { "action": "argoControl", "control": "Close connection" }
+      ]
+    },
+    {
       "id": "argo-connection.close-keeps-auto-reconnect",
       "title": "Closing the connection dialog during automatic reconnects lets every remembered profile reconnect",
       "steps": [

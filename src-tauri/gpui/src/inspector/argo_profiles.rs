@@ -214,10 +214,9 @@ impl Inspector {
             self.argo_connections.servers.clear();
             self.argo_connections.scope = scope;
             self.argo_connections.step = ConnectStep::Idle;
-            // A new scope mounts a new web dialog, which starts from its default choices.
-            self.argo_connections.local = false;
-            self.argo_connections.insecure = false;
-            self.argo_connections.remember = false;
+            // A new scope mounts new web dialogs, which start from their default choices.
+            self.argo_connections.page = Default::default();
+            self.argo_connections.detail = Default::default();
             self.restore_argo_preferences();
             self.sync_argo_picker(window, cx);
             self.argo_outcomes.clear();

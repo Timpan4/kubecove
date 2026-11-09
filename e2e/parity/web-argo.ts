@@ -237,13 +237,20 @@ export async function argoAction(page: Page, step: Step) {
                     if ((checked === "true") !== step.checked) throw new Error(`Local login choice is ${checked}`);
                     break;
                 }
-                case "expectInsecure": {
+                case "chooseLocalLogin":
+                    await dialog.getByRole("radio", { name: "Local login", exact: true }).click();
+                    break;
+                case "expectInsecure":
+                case "chooseInsecure": {
                     // The invalid-certificate switch sits under the external URL's Advanced disclosure.
                     await dialog.getByRole("radio", { name: "External URL", exact: true }).click();
                     const label = dialog.getByText("Accept invalid TLS certificate for this session", { exact: true });
                     if (!(await label.isVisible())) await dialog.getByText("Advanced", { exact: true }).click();
-                    const checked = await dialog.getByRole("switch").first().getAttribute("aria-checked");
-                    if ((checked === "true") !== step.checked) throw new Error(`Invalid certificate switch is ${checked}`);
+                    const insecure = dialog.getByRole("switch").first();
+                    const checked = await insecure.getAttribute("aria-checked");
+                    if (step.operation === "chooseInsecure") {
+                        if (checked !== "true") await insecure.click();
+                    } else if ((checked === "true") !== step.checked) throw new Error(`Invalid certificate switch is ${checked}`);
                     break;
                 }
             }

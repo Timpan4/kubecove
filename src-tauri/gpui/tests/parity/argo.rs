@@ -487,21 +487,32 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                     "Argo CD connection dialog open state"
                 );
             }
-            "expectRemember" => {
-                window.render_frame(cx);
-                assert_eq!(
-                    window.find("argo-remember").checked(),
-                    step["checked"].as_bool(),
-                    "Remember credential switch"
-                );
-            }
-            "expectLocalLogin" | "expectInsecure" => {
-                let id = if string(step, "operation") == "expectLocalLogin" {
-                    "argo-auth:Local login"
-                } else {
-                    "argo-insecure"
+            operation @ ("expectRemember" | "expectLocalLogin" | "expectInsecure"
+            | "chooseLocalLogin" | "chooseInsecure") => {
+                let id = match operation {
+                    "expectRemember" => "argo-remember",
+                    "expectLocalLogin" | "chooseLocalLogin" => "argo-auth:Local login",
+                    _ => "argo-insecure",
                 };
+                window.render_frame(cx);
+                // The GitOps page dialog opens on its saved connections; the form is one press away.
+                if window.try_find("argo-remember").is_none() {
+                    reveal(window, "argo-connection-dialog", "argo-connect-open", cx);
+                    window.click("argo-connect-open", cx);
+                    window.render_frame(cx);
+                }
+                // The invalid-certificate switch belongs to the external URL, as on the web.
+                if id == "argo-insecure" {
+                    reveal(window, "detail-body", "argo-external", cx);
+                    window.click("argo-external", cx);
+                }
                 reveal(window, "detail-body", id, cx);
+                if operation.starts_with("choose") {
+                    if window.find(id).checked() != Some(true) {
+                        window.click(id, cx);
+                    }
+                    return true;
+                }
                 assert_eq!(
                     window.find(id).checked(),
                     step["checked"].as_bool(),

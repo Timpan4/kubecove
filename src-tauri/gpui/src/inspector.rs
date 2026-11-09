@@ -443,6 +443,7 @@ impl Inspector {
         }
         if self.page != page && self.can_leave(cx) {
             self.gitops_page.workspace = None;
+            self.argo_connections.page = Default::default();
             self.close_detail(cx);
             self.topology_task.take();
             self.set_page(page);
@@ -538,6 +539,7 @@ impl Inspector {
             self.argo_submissions.push(submission);
         }
         self.detail = Detail::Closed;
+        self.argo_connections.detail = Default::default();
         self.notice = None;
         cx.notify();
     }

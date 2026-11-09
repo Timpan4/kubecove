@@ -284,6 +284,7 @@ impl Inspector {
                     .id("argo-connect-toolbar")
                     .test_support()
                     .on_click(cx.listener(|this, _, window, cx| {
+                        this.argo_connections.host = super::argo_connection::DialogHost::Page;
                         this.argo_connections.dialog = true;
                         this.focus_argo_connection_dialog(window, cx);
                         cx.notify();

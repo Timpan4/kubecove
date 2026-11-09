@@ -21,8 +21,11 @@ impl Inspector {
         self.argo_connections.editing = None;
         self.argo_connections.endpoint = None;
         self.argo_connections.step.clear_preview();
-        // `ArgoConnectionDialog.svelte` keeps the sign-in method, the invalid-certificate
-        // choice and the Remember credential choice between opens.
+        // The detail panel opens its own dialog. Inside the GitOps page dialog this
+        // button only shows the form, so that dialog keeps its own choices.
+        if !self.argo_connections.dialog {
+            self.argo_connections.host = super::argo_connection::DialogHost::Detail;
+        }
         self.clear_argo_secrets(window, cx);
         self.argo_connections.open = true;
         self.argo_connections.dialog = true;
@@ -98,6 +101,7 @@ impl Inspector {
     }
     fn argo_connection_content(&self, cx: &mut Context<Self>) -> Div {
         let state = &self.argo_connections;
+        let choices = state.choices();
         let mut panel = super::argo_panels::panel()
             .flex()
             .flex_col()
@@ -311,17 +315,17 @@ impl Inspector {
                         .id("argo-insecure")
                         .test_support()
                         .aria_label("Accept invalid TLS certificate for this session")
-                        .aria_toggled(toggled(state.insecure))
+                        .aria_toggled(toggled(choices.insecure))
                         .child(format!(
                             "Accept invalid TLS certificate for this session: {}",
-                            state.insecure
+                            choices.insecure
                         ))
                         .on_click(cx.listener(|this, _, _, cx| {
-                            this.argo_connections.insecure = !this.argo_connections.insecure;
+                            this.argo_connections.choices_mut().insecure ^= true;
                             cx.notify();
                         })),
                 );
-            if state.insecure {
+            if choices.insecure {
                 panel = panel.child(
                     ui::xs("Insecure session. Certificate validation is disabled and never saved.")
                         .id("argo-insecure-warning")
@@ -353,15 +357,15 @@ impl Inspector {
                         .id(gpui_kit::SharedString::from(format!("argo-auth:{label}")))
                         .test_support()
                         .aria_label(label)
-                        .aria_toggled(toggled(state.local == (label == "Local login")))
+                        .aria_toggled(toggled(choices.local == (label == "Local login")))
                         .child(label)
                         .on_click(cx.listener(move |this, _, _, cx| {
-                            this.argo_connections.local = label == "Local login";
+                            this.argo_connections.choices_mut().local = label == "Local login";
                             cx.notify();
                         }))
                 })),
         );
-        if state.local {
+        if choices.local {
             panel = panel
                 .child(
                     Input::new(&state.username)
@@ -385,13 +389,13 @@ impl Inspector {
                 .id("argo-remember")
                 .test_support()
                 .aria_label("Remember credential in native keyring")
-                .aria_toggled(toggled(state.remember))
+                .aria_toggled(toggled(choices.remember))
                 .child(format!(
                     "Remember credential in native keyring: {}",
-                    state.remember
+                    choices.remember
                 ))
                 .on_click(cx.listener(|this, _, _, cx| {
-                    this.argo_connections.remember = !this.argo_connections.remember;
+                    this.argo_connections.choices_mut().remember ^= true;
                     cx.notify();
                 })),
         );
