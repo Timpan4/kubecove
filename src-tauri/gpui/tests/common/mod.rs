@@ -16,6 +16,7 @@ mod session_controls;
 mod settings_integrations;
 mod settings_remote;
 mod timing;
+mod unexpected;
 
 use detail_tabs::DetailTabs;
 use kubecove_gpui::{
@@ -335,16 +336,7 @@ impl Backend for Fixture {
         self.session_controls.start(request)
     }
     fn stop_forward(&self, id: String) -> Read<bool> {
-        if self.coverage_script() == "stop-failed" {
-            assert!(
-                self.session_controls
-                    .list(&self.live_sessions.port_forwards)
-                    .iter()
-                    .any(|session| session.id == id)
-            );
-            return self.coverage_read("stop_port_forward", Box::pin(async { Ok(false) }));
-        }
-        self.session_controls.stop(id)
+        self.coverage_stop_forward(id)
     }
     fn exec(
         &self,

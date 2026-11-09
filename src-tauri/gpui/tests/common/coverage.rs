@@ -5,6 +5,7 @@ use serde::de::DeserializeOwned;
 pub(super) struct CoverageState {
     script: Mutex<String>,
     pending: Mutex<Vec<tokio::sync::oneshot::Sender<String>>>,
+    pub(super) unexpected: super::unexpected::Unexpected,
 }
 
 impl Fixture {
@@ -23,6 +24,20 @@ impl Fixture {
         for sender in self.coverage_state.pending.lock().unwrap().drain(..) {
             let _ = sender.send(script.into());
         }
+    }
+
+    /// `coverageStopForward`: "stop-failed" refuses forward stops, and a stop for a
+    /// forward the fixture does not run is an unexpected request.
+    pub(super) fn coverage_stop_forward(&self, id: String) -> Read<bool> {
+        if self.coverage_script() != "stop-failed" {
+            return self.session_controls.stop(id);
+        }
+        let forwards = self.session_controls.list(&self.live_sessions.port_forwards);
+        if !forwards.iter().any(|session| session.id == id) {
+            let message = self.coverage_state.unexpected.record("forward stop", &id);
+            return Box::pin(async move { Err(AppError::new(message, AppErrorKind::Cluster)) });
+        }
+        self.coverage_read("stop_port_forward", Box::pin(async { Ok(false) }))
     }
 
     /// `coverageStopExec`: "stop-failed" refuses exec stops and "stop-pending" holds

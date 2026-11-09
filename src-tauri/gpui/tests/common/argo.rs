@@ -30,11 +30,9 @@ pub struct Argo {
     reviewed: Mutex<bool>,
     #[serde(skip)]
     pub complete: std::sync::atomic::AtomicBool,
-    /// Requests no fixture entry matches. They fail as Argo errors instead of panicking:
-    /// the client often calls the backend inside a GPUI update, and a panic there stops
-    /// effect flushing for every later scenario in the process.
+    /// Requests the fixture does not expect fail as Argo errors; see `unexpected.rs`.
     #[serde(skip)]
-    unexpected: Mutex<Vec<String>>,
+    pub(super) unexpected: super::unexpected::Unexpected,
 }
 #[derive(Deserialize)]
 struct Preview {
@@ -79,17 +77,8 @@ impl Argo {
             let _ = release.send(());
         }
     }
-    /// Requests that matched no fixture entry; the parity harness fails the scenario on any.
-    // Only the parity harness checks them.
-    #[allow(dead_code)]
-    pub fn unexpected_requests(&self) -> Vec<String> {
-        self.unexpected.lock().unwrap().clone()
-    }
     fn unexpected<T: Send + 'static>(&self, kind: &str, request: &Value) -> Read<T> {
-        let message = format!("unexpected {kind}: {request}");
-        eprintln!("{message}");
-        self.unexpected.lock().unwrap().push(message.clone());
-        failed(&message)
+        failed(&self.unexpected.record(kind, request))
     }
     /// Waits for the next script when `script` is the current one.
     fn hold(&self, script: &str) -> Option<oneshot::Receiver<()>> {
@@ -126,12 +115,12 @@ impl Argo {
         if *self.script.lock().unwrap() == "discovery-error" {
             return failed("Fixture discovery unavailable");
         }
-        assert_eq!(request.context, "mock-dev");
-        assert_eq!(
-            serde_json::to_value(request.source).unwrap(),
-            self.target["source"]
-        );
-        assert!(request.endpoint.is_none());
+        let expected = request.context == "mock-dev"
+            && serde_json::to_value(&request.source).unwrap() == self.target["source"]
+            && request.endpoint.is_none();
+        if !expected {
+            return self.unexpected("discovery", &serde_json::to_value(request).unwrap());
+        }
         ready(self.discovery.clone())
     }
     pub fn preview(
@@ -148,11 +137,13 @@ impl Argo {
         }
     }
     pub fn disconnect(&self, id: String) -> Read<()> {
-        assert!(
-            self.connections
-                .iter()
-                .any(|c| c.result.profile.as_ref().is_some_and(|p| p.id == id))
-        );
+        if !self
+            .connections
+            .iter()
+            .any(|c| c.result.profile.as_ref().is_some_and(|p| p.id == id))
+        {
+            return self.unexpected("disconnect", &Value::String(id));
+        }
         let held = self.hold("disconnect-pending");
         let active = self.active.clone();
         Box::pin(async move {
@@ -167,10 +158,11 @@ impl Argo {
         if *self.script.lock().unwrap() == "snapshot-error" {
             return failed("Fixture snapshot unavailable");
         }
-        if request.connection_id.is_some() {
-            assert!(*self.active.lock().unwrap());
-        }
+        let connected = request.connection_id.is_some();
         let request = serde_json::to_value(request).unwrap();
+        if connected && !*self.active.lock().unwrap() {
+            return self.unexpected("inspection without an active connection", &request);
+        }
         let Some(inspection) = self.inspections.iter().find(|r| r.request == request) else {
             return self.unexpected("inspection", &request);
         };
@@ -206,20 +198,18 @@ impl Argo {
         ready(review)
     }
     pub fn forget(&self, profile: ArgoConnectionProfile) -> Read<()> {
-        assert!(
-            self.connections
-                .iter()
-                .any(|c| c
-                    .result
-                    .profile
-                    .as_ref()
-                    .is_some_and(|p| serde_json::to_value(p).unwrap()
-                        == serde_json::to_value(&profile).unwrap()))
-        );
-        assert!(
-            !*self.active.lock().unwrap(),
-            "disconnect before forgetting"
-        );
+        let profile = serde_json::to_value(profile).unwrap();
+        if !self.connections.iter().any(|c| {
+            c.result
+                .profile
+                .as_ref()
+                .is_some_and(|p| serde_json::to_value(p).unwrap() == profile)
+        }) {
+            return self.unexpected("forget", &profile);
+        }
+        if *self.active.lock().unwrap() {
+            return self.unexpected("forget before disconnect", &profile);
+        }
         ready(())
     }
     pub fn compare(
@@ -234,14 +224,13 @@ impl Argo {
         }
     }
     pub fn run(&self, confirmation: ArgoOperationConfirmation) -> Read<ArgoOperationResult> {
-        assert!(
-            std::mem::take(&mut *self.reviewed.lock().unwrap()),
-            "no unconsumed review"
-        );
-        assert_eq!(
-            serde_json::to_value(confirmation).unwrap(),
-            self.confirmation
-        );
+        let confirmation = serde_json::to_value(confirmation).unwrap();
+        if !std::mem::take(&mut *self.reviewed.lock().unwrap()) {
+            return self.unexpected("run without an unconsumed review", &confirmation);
+        }
+        if confirmation != self.confirmation {
+            return self.unexpected("confirmation", &confirmation);
+        }
         ready(self.result.clone())
     }
 }
