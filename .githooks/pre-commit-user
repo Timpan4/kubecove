@@ -164,7 +164,12 @@ if [ -f package.json ]; then
 fi
 
 if [ -f src-tauri/Cargo.toml ]; then
-  cargo check --workspace --manifest-path src-tauri/Cargo.toml
+  # The workspace excludes gpui and server, so only staged paths elsewhere under src-tauri/ can break it.
+  all_staged=$(git diff --cached --name-only)
+  workspace_paths=$(printf '%s\n' "$all_staged" | grep -E '^src-tauri/' | grep -Ev '^src-tauri/(gpui|server)/' || true)
+  if [ -n "$workspace_paths" ]; then
+    cargo check --workspace --manifest-path src-tauri/Cargo.toml
+  fi
 elif [ -f Cargo.toml ]; then
   cargo check
 fi
