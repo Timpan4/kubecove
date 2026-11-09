@@ -53,9 +53,9 @@
     "@fontsource-variable/geist": "5.3.0",
     "@fontsource-variable/inter": "5.3.0",
     "@lezer/highlight": "1.2.5",
-    "@tanstack/query-core": "5.105.1",
-    "@tanstack/svelte-query": "6.3.7",
-    "@tanstack/svelte-virtual": "3.13.51",
+    "@tanstack/query-core": "5.106.1",
+    "@tanstack/svelte-query": "6.3.11",
+    "@tanstack/svelte-virtual": "3.13.52",
     "@tauri-apps/api": "2.12.4",
     "@tauri-apps/plugin-opener": "2.7.2",
     "@tauri-apps/plugin-process": "2.4.0",
@@ -67,7 +67,7 @@
     "diff": "9.0.0",
     "tailwind-merge": "3.7.0",
     "yaml": "2.9.1",
-    "zustand": "5.0.16"
+    "zustand": "5.1.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.4",
