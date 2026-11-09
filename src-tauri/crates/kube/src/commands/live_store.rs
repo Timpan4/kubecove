@@ -595,16 +595,16 @@ impl ClusterLiveStore {
                 .resources
                 .peek(&all_key, CacheMode::LiveFor(RESOURCE_FRESHNESS))
             {
-                return Ok(ListSnapshot {
-                    rows: Arc::new(
+                return Ok(ListSnapshot::new(
+                    Arc::new(
                         list.rows
                             .iter()
                             .filter(|row| row.namespace.as_deref() == Some(namespace.as_str()))
                             .cloned()
                             .collect(),
                     ),
-                    resource_version: list.resource_version.clone(),
-                });
+                    list.resource_version.clone(),
+                ));
             }
         }
 

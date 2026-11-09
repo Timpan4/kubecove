@@ -3,6 +3,7 @@
 //! into the clean cached lists of its kind, so the next read is served from
 //! the cache instead of a new list. Any list it cannot update in place is
 //! marked dirty, as every list is without it, and lists again on its next read.
+use super::list::RowSlots;
 use super::{
     CacheEntry, ClusterLiveStore, ListSnapshot, ScopeNamespace, SharedCache,
     namespace_key_for_namespaced, resource_cache_key, typed_kind_key, watch_kind_keys,
@@ -41,17 +42,10 @@ fn apply_row(
     resource_version: Option<&str>,
 ) {
     let rows = Arc::make_mut(&mut snapshot.rows);
-    let held = rows
-        .iter()
-        .position(|row| row.namespace.as_deref() == namespace && row.name == name);
-    match (held, row) {
-        (Some(index), Some(row)) => rows[index] = row,
-        (None, Some(row)) => rows.push(row),
-        (Some(index), None) => {
-            rows.remove(index);
-        }
-        (None, None) => {}
-    }
+    snapshot
+        .slots
+        .get_or_insert_with(|| RowSlots::new(rows))
+        .apply(rows, namespace, name, row);
     if let Some(version) = resource_version {
         snapshot.resource_version = Some(version.to_owned());
     }

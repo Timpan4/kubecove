@@ -291,6 +291,7 @@ async fn resource_scope_result_from(
             Ok(ListSnapshot {
                 rows,
                 resource_version,
+                ..
             }) => {
                 batches.push(rows);
                 if let Some(resource_version) = resource_version {

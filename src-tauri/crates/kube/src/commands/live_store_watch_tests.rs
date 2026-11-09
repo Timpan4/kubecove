@@ -77,9 +77,9 @@ fn statuses(snapshot: &ListSnapshot) -> Vec<(String, String)> {
 }
 
 // Failure modes: a modified object leaves its cached row stale or lists the
-// kind again; an added object is missing; a deleted object lingers; the
-// namespace list and the all-namespace list disagree; the list version stays
-// behind the applied event.
+// kind again; an added object is missing; a deleted object lingers; an event
+// after a delete updates the wrong row; the namespace list and the
+// all-namespace list disagree; the list version stays behind the applied event.
 #[tokio::test]
 async fn watch_events_update_cached_lists_without_listing_again() {
     // A namespace read uses a cached all-namespace list, so each list gets its own store.
@@ -94,6 +94,7 @@ async fn watch_events_update_cached_lists_without_listing_again() {
             WatchEvent::Modified(pod("a", "Running", "11")),
             WatchEvent::Added(pod("c", "Pending", "12")),
             WatchEvent::Deleted(pod("b", "Running", "13")),
+            WatchEvent::Modified(pod("c", "Failed", "14")),
         ] {
             store.apply_watch_event(SOURCE, CONTEXT, &pods(), &event);
         }
@@ -102,11 +103,11 @@ async fn watch_events_update_cached_lists_without_listing_again() {
             statuses(&snapshot),
             [
                 ("a".into(), "Running".into()),
-                ("c".into(), "Pending".into())
+                ("c".into(), "Failed".into())
             ],
             "{namespace:?}"
         );
-        assert_eq!(snapshot.resource_version.as_deref(), Some("13"));
+        assert_eq!(snapshot.resource_version.as_deref(), Some("14"));
     }
 }
 
