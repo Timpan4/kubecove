@@ -50,8 +50,10 @@ impl Inspector {
             Ok(result) => {
                 let mut rows = self.rows.backend_rows();
                 rows.extend(result.resources);
-                self.rows =
-                    std::rc::Rc::new(crate::model::PreparedRows::with_inherited_owners(rows));
+                self.rows = std::rc::Rc::new(crate::model::PreparedRows::with_inherited_owners(
+                    rows,
+                    std::slice::from_ref(&self.scope.context),
+                ));
                 self.live.versions.extend(result.versions);
                 self.warnings.extend(result.warnings);
                 self.scope_load.custom_settled(true);

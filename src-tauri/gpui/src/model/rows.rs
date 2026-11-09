@@ -60,6 +60,11 @@ impl Default for RowsId {
 #[derive(Default)]
 pub(crate) struct PreparedRows {
     rows: Vec<ResourceSummary>,
+    /// The contexts in rank order: the caller's list, which keeps a context's
+    /// rank while it has no rows, then any other row cluster in first-seen order.
+    contexts: Vec<String>,
+    /// Each row's index in `contexts`, which is its context rank.
+    context: Vec<u32>,
     identity: RowsId,
     keys: Vec<RowKey>,
     search: search::SearchText,
@@ -119,14 +124,28 @@ impl PreparedRows {
     pub(crate) fn identity(&self) -> RowsId {
         self.identity
     }
+
+    pub(crate) fn contexts(&self) -> &[String] {
+        &self.contexts
+    }
+
+    /// Whether the view lists several contexts, which adds the context to
+    /// owner and Helm group labels, owner filter keys and search.
+    pub(crate) fn multi_context(&self) -> bool {
+        self.contexts.len() > 1
+    }
+
     /// The resource view's rows, with GitOps owners inherited in place as the
     /// filter, table and detail pane show them.
-    pub(crate) fn with_inherited_owners(mut rows: Vec<ResourceSummary>) -> Self {
+    pub(crate) fn with_inherited_owners(
+        mut rows: Vec<ResourceSummary>,
+        contexts: &[String],
+    ) -> Self {
         let inherited = {
             let _profile = crate::frame_profile::scope("rows", "inherit_owners");
             super::inherit_gitops_owners(&mut rows)
         };
-        let mut prepared = Self::new(rows);
+        let mut prepared = Self::new(rows, contexts);
         prepared.inherited = inherited;
         prepared
     }
@@ -148,14 +167,22 @@ impl PreparedRows {
 
     /// Prepares patched rows again. Only the resource view's rows are patched.
     fn rebuild(&mut self) {
-        *self = Self::with_inherited_owners(std::mem::take(&mut self.rows));
+        let contexts = std::mem::take(&mut self.contexts);
+        *self = Self::with_inherited_owners(std::mem::take(&mut self.rows), &contexts);
     }
 
-    pub(crate) fn new(rows: Vec<ResourceSummary>) -> Self {
+    /// Prepares the rows of a view whose contexts, in rank order, are `contexts`.
+    pub(crate) fn new(rows: Vec<ResourceSummary>, contexts: &[String]) -> Self {
         let _span = crate::frame_profile::scope("rows", "prepare");
+        let (contexts, context) = context_ranks(&rows, contexts);
+        let multi_context = contexts.len() > 1;
         let names: Vec<Key<'_>> = rows.iter().map(|row| Key::new(&row.name, true)).collect();
         let mut sorted: Vec<_> = (0..rows.len()).collect();
-        sorted.sort_by(|&a, &b| names[a].cmp(&names[b]));
+        sorted.sort_by(|&a, &b| {
+            names[a]
+                .cmp(&names[b])
+                .then_with(|| context[a].cmp(&context[b]))
+        });
         let mut groups = Vec::new();
         // Group labels, owner strings and owner groups are built once per
         // distinct owner or Helm release, not once per row.
@@ -167,9 +194,10 @@ impl PreparedRows {
                 next
             })
         };
-        let mut owner_ids: HashMap<OwnerRef<'_>, u32> = HashMap::new();
+        // Owners and Helm releases are distinct per context.
+        let mut owner_ids: HashMap<(u32, OwnerRef<'_>), u32> = HashMap::new();
         let mut owners: Vec<Owner> = Vec::new();
-        let mut helm_groups: HashMap<&str, usize> = HashMap::new();
+        let mut helm_groups: HashMap<(u32, &str), usize> = HashMap::new();
         let mut kinds: Vec<(String, usize)> = Vec::new();
         let mut by_kind: Vec<Vec<usize>> = Vec::new();
         let mut lane_ids = HashMap::new();
@@ -181,23 +209,30 @@ impl PreparedRows {
             .iter()
             .enumerate()
             .map(|(index, row)| {
+                let row_context = context[index];
                 let owner_ref = super::owner_ref(row);
                 let owner = owner_ref.map(|owner_ref| {
-                    *owner_ids.entry(owner_ref).or_insert_with(|| {
-                        let label = owner_ref.label();
-                        owners.push(Owner {
-                            key: owner_ref.filter_key(),
-                            group: group(label.clone(), 0),
-                            label,
-                        });
-                        u32::try_from(owners.len() - 1).expect("owner count fits u32")
-                    })
+                    *owner_ids
+                        .entry((row_context, owner_ref))
+                        .or_insert_with(|| {
+                            let label =
+                                super::in_context(owner_ref.label(), &row.cluster, multi_context);
+                            owners.push(Owner {
+                                key: owner_ref.filter_key(&row.cluster, multi_context),
+                                group: group(label.clone(), 0),
+                                label,
+                            });
+                            u32::try_from(owners.len() - 1).expect("owner count fits u32")
+                        })
                 });
                 let group = match (owner, row.helm_release.as_deref()) {
                     (Some(owner), _) => owners[owner as usize].group,
                     (None, Some(release)) => *helm_groups
-                        .entry(release)
-                        .or_insert_with(|| group(super::helm_group(release), 1)),
+                        .entry((row_context, release))
+                        .or_insert_with(|| {
+                            let label = super::helm_group(release);
+                            group(super::in_context(label, &row.cluster, multi_context), 1)
+                        }),
                     (None, None) => group(super::no_owner_group(row).to_owned(), 2),
                 };
                 let kind = kinds
@@ -224,7 +259,11 @@ impl PreparedRows {
                     lanes.push(Lane { group, kind });
                     next_lane
                 });
-                search.push(row, owner_ref);
+                search.push(
+                    row,
+                    owner_ref,
+                    multi_context.then_some(row.cluster.as_str()),
+                );
                 RowKey {
                     owner,
                     group,
@@ -236,10 +275,12 @@ impl PreparedRows {
             .collect();
         drop(variant_ids);
         drop(owner_ids);
-        let sort = sort::SortColumns::new(&rows, &names, &sorted, &kinds);
+        let sort = sort::SortColumns::new(&rows, &names, &sorted, &kinds, &context, &contexts);
         drop(names);
         Self {
             rows,
+            contexts,
+            context,
             identity: RowsId::default(),
             keys,
             search,
@@ -255,6 +296,33 @@ impl PreparedRows {
             slots: None,
         }
     }
+}
+
+/// The contexts in rank order and each row's rank. `listed` comes first, so
+/// a listed context keeps its rank while it has no rows. A row of a context
+/// outside `listed` appends that context, in first-seen order, so every row
+/// has a rank.
+fn context_ranks(rows: &[ResourceSummary], listed: &[String]) -> (Vec<String>, Vec<u32>) {
+    let rank = |count: usize| u32::try_from(count).expect("context count fits u32");
+    let mut contexts: Vec<String> = Vec::with_capacity(listed.len());
+    let mut ids: HashMap<&str, u32> = HashMap::with_capacity(listed.len());
+    for context in listed {
+        if let std::collections::hash_map::Entry::Vacant(entry) = ids.entry(context.as_str()) {
+            entry.insert(rank(contexts.len()));
+            contexts.push(context.clone());
+        }
+    }
+    let ranks = rows
+        .iter()
+        .map(|row| {
+            let next = rank(contexts.len());
+            *ids.entry(row.cluster.as_str()).or_insert_with(|| {
+                contexts.push(row.cluster.clone());
+                next
+            })
+        })
+        .collect();
+    (contexts, ranks)
 }
 
 #[derive(Default)]
@@ -417,7 +485,7 @@ impl Visible {
 
 impl FromIterator<ResourceSummary> for Visible {
     fn from_iter<I: IntoIterator<Item = ResourceSummary>>(rows: I) -> Self {
-        let source = Rc::new(PreparedRows::new(rows.into_iter().collect()));
+        let source = Rc::new(PreparedRows::new(rows.into_iter().collect(), &[]));
         let kinds: Vec<_> = source.kinds.iter().map(|(kind, _)| kind.clone()).collect();
         let mut visible = Self::default();
         visible.refilter_with(

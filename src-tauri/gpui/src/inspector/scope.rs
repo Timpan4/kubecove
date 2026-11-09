@@ -16,11 +16,12 @@ use std::{rc::Rc, time::Instant};
 async fn prepare_off_thread(
     executor: &BackgroundExecutor,
     result: Result<ScopeResult, AppError>,
+    context: String,
 ) -> Result<(ScopeResult, PreparedRows), AppError> {
     let mut result = result?;
     let resources = std::mem::take(&mut result.resources);
     let rows = executor
-        .spawn(async move { PreparedRows::with_inherited_owners(resources) })
+        .spawn(async move { PreparedRows::with_inherited_owners(resources, &[context]) })
         .await;
     Ok((result, rows))
 }
@@ -156,8 +157,9 @@ impl Inspector {
         self.filter(cx);
         let awaits_custom = custom.is_some();
         // One task, so dropping it (a newer scope or refresh) cancels the custom read too.
+        let context = self.scope.context.clone();
         let task = cx.spawn_in(window, async move |this, cx| {
-            let result = prepare_off_thread(cx.background_executor(), builtin.await).await;
+            let result = prepare_off_thread(cx.background_executor(), builtin.await, context).await;
             let applied = this.update(cx, |this, cx| {
                 if !Rc::ptr_eq(&this.request, &request) {
                     return false;
@@ -291,8 +293,10 @@ impl Inspector {
             let read = self.application_resources_read(true, cx);
             let read = self.timings.measure("list_resource_scope", read);
             let request = self.request.clone();
+            let context = self.scope.context.clone();
             let task = cx.spawn_in(window, async move |this, cx| {
-                let result = prepare_off_thread(cx.background_executor(), read.await).await;
+                let result =
+                    prepare_off_thread(cx.background_executor(), read.await, context).await;
                 let _ = this.update(cx, |this, cx| {
                     if !Rc::ptr_eq(&this.request, &request) {
                         return;

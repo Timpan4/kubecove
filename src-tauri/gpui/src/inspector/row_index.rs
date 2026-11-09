@@ -52,7 +52,7 @@ impl RowIndex {
         let mut rows = Vec::with_capacity(scope.len() + cluster.len());
         rows.extend_from_slice(scope);
         rows.extend_from_slice(cluster);
-        let data = Rc::new(PreparedRows::new(rows));
+        let data = Rc::new(PreparedRows::new(rows, scope.contexts()));
         *current = Some(Snapshot {
             scope: scope.clone(),
             request: request.clone(),

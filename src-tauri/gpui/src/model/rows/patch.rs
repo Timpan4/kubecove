@@ -145,45 +145,68 @@ fn same_keys(a: &ResourceSummary, b: &ResourceSummary) -> bool {
     same_identity(a, b) && same_projection(a, b)
 }
 
-/// Whether a watch of `key` lists `row`.
-fn in_key(key: &WatchResourceKey, row: &ResourceSummary) -> bool {
-    row.kind == key.resource_kind.kind
-        && (key.resource_kind.api_version.is_some() || row.dynamic != Some(true))
-        && key
-            .resource_kind
-            .api_version
-            .as_ref()
-            .is_none_or(|api| row.api_version.as_ref() == Some(api))
-        && key
-            .namespace
-            .as_ref()
-            .is_none_or(|ns| row.namespace.as_ref() == Some(ns))
+/// One context's watch of one resource key. Rows of other contexts are
+/// outside it, so its reads never touch them.
+#[derive(Clone, Copy)]
+struct Watch<'a> {
+    context: &'a str,
+    key: &'a WatchResourceKey,
 }
 
-fn slot_hash(kind: &str, namespace: Option<&str>, name: &str) -> u64 {
+impl Watch<'_> {
+    /// Whether this watch lists `row`.
+    fn lists(self, row: &ResourceSummary) -> bool {
+        let key = self.key;
+        row.cluster == self.context
+            && row.kind == key.resource_kind.kind
+            && (key.resource_kind.api_version.is_some() || row.dynamic != Some(true))
+            && key
+                .resource_kind
+                .api_version
+                .as_ref()
+                .is_none_or(|api| row.api_version.as_ref() == Some(api))
+            && key
+                .namespace
+                .as_ref()
+                .is_none_or(|ns| row.namespace.as_ref() == Some(ns))
+    }
+
+    /// The slot hash of the row this watch lists under a name.
+    fn slot(self, namespace: Option<&str>, name: &str) -> u64 {
+        slot_hash(self.context, &self.key.resource_kind.kind, namespace, name)
+    }
+}
+
+fn slot_hash(cluster: &str, kind: &str, namespace: Option<&str>, name: &str) -> u64 {
     let mut hasher = DefaultHasher::new();
-    (kind, namespace, name).hash(&mut hasher);
+    (cluster, kind, namespace, name).hash(&mut hasher);
     hasher.finish()
 }
 
+/// Applies a watch read of `key` in `context` to `current`. Rows of other
+/// contexts stay as they are. Returns whether a row was added, deleted or
+/// changed its keys.
 pub(crate) fn reconcile(
     current: &mut Vec<ResourceSummary>,
+    context: &str,
     key: &WatchResourceKey,
     rows: Vec<ResourceSummary>,
     names: Option<ObservedNames>,
 ) -> bool {
     let names = names.map(NameIndex::from);
-    reconcile_indexed(current, key, rows, names.as_ref())
+    reconcile_indexed(current, Watch { context, key }, rows, names.as_ref())
 }
 
 fn reconcile_indexed(
     current: &mut Vec<ResourceSummary>,
-    key: &WatchResourceKey,
+    watch: Watch<'_>,
     rows: Vec<ResourceSummary>,
     names: Option<&NameIndex>,
 ) -> bool {
+    // `Name` holds no context; `matches` admits only rows of the watch's
+    // context, so two contexts' rows never share a name here.
     let matches = |row: &ResourceSummary| {
-        in_key(key, row)
+        watch.lists(row)
             && names
                 .as_ref()
                 .is_none_or(|names| names.contains(row.namespace.as_deref(), &row.name))
@@ -213,14 +236,17 @@ fn reconcile_indexed(
 }
 
 impl PreparedRows {
-    /// Applies a watch read. Returns the read's buffer when the rows were
-    /// patched in place, for the next read to reuse off the UI thread.
+    /// Applies a watch read of `key` in `context`. Rows of other contexts stay
+    /// as they are. Returns the read's buffer when the rows were patched in
+    /// place, for the next read to reuse off the UI thread.
     pub(crate) fn patch(
         &mut self,
+        context: &str,
         key: &WatchResourceKey,
         mut rows: Vec<ResourceSummary>,
         names: Option<ObservedNames>,
     ) -> Vec<ResourceSummary> {
+        let watch = Watch { context, key };
         // Watch rows carry the backend's owners, so compare them with those. If no
         // key changes, the rows keep their positions and the same inherited owners.
         self.swap_owners();
@@ -229,14 +255,14 @@ impl PreparedRows {
             .iter()
             .position(|(kind, _)| *kind == key.resource_kind.kind);
         let names = match kind {
-            Some(kind) => match self.patch_members(kind, key, &mut rows, names) {
+            Some(kind) => match self.patch_members(kind, watch, &mut rows, names) {
                 Ok(()) => return rows,
                 Err(names) => names,
             },
             None => names.map(NameIndex::from),
         };
         let _span = crate::frame_profile::scope("watch", "reconcile");
-        if reconcile_indexed(&mut self.rows, key, rows, names.as_ref()) {
+        if reconcile_indexed(&mut self.rows, watch, rows, names.as_ref()) {
             self.rebuild();
         } else {
             self.swap_owners();
@@ -244,29 +270,35 @@ impl PreparedRows {
         Vec::new()
     }
 
-    /// Patches the listed rows of a kind the view holds in place. `Err` hands
-    /// the names back, with the rows untouched, when the read adds or deletes
-    /// rows of the kind in a way only a reconcile resolves.
+    /// Patches the listed rows of a kind the view holds in the watch's context
+    /// in place. `Err` hands the names back, with the rows untouched, when the
+    /// read adds or deletes rows of the kind in a way only a reconcile resolves.
     fn patch_members(
         &mut self,
         kind: usize,
-        key: &WatchResourceKey,
+        watch: Watch<'_>,
         rows: &mut Vec<ResourceSummary>,
         names: Option<ObservedNames>,
     ) -> Result<(), Option<NameIndex>> {
-        let members = &self.by_kind[kind];
+        let rank = self
+            .contexts
+            .iter()
+            .position(|context| context == watch.context)
+            .and_then(|rank| u32::try_from(rank).ok());
+        let (by_kind, context) = (&self.by_kind[kind], &self.context);
+        let members = move || kind_members(by_kind, context, rank);
         let span = crate::frame_profile::scope("watch", "ordered_check");
+        let count = members().count();
         let ordered_names = names.as_ref().filter(|names| names.0.len() == rows.len());
         let mut complete = names.is_none() || ordered_names.is_some();
-        let ordered = rows.len() == members.len()
-            && members
-                .iter()
+        let ordered = rows.len() == count
+            && members()
                 .zip(rows.iter())
                 .enumerate()
-                .all(|(position, (&index, row))| {
+                .all(|(position, (index, row))| {
                     complete &=
                         ordered_names.is_none_or(|names| names.ordered_match(position, row));
-                    same_identity(&self.rows[index], row) && in_key(key, row)
+                    same_identity(&self.rows[index], row) && watch.lists(row)
                 });
         let coverage = if ordered && complete {
             Coverage::All
@@ -281,14 +313,13 @@ impl PreparedRows {
         let _span = crate::frame_profile::scope("watch", "replace_rows");
         match coverage {
             Coverage::All if ordered => {
-                let keys_changed = members
-                    .iter()
+                let keys_changed = members()
                     .zip(rows.iter())
-                    .any(|(&index, row)| !same_projection(&self.rows[index], row));
-                if members.len() == self.rows.len() {
+                    .any(|(index, row)| !same_projection(&self.rows[index], row));
+                if count == self.rows.len() {
                     std::mem::swap(&mut self.rows, rows);
                 } else {
-                    for (&index, row) in members.iter().zip(rows.iter_mut()) {
+                    for (index, row) in members().zip(rows.iter_mut()) {
                         std::mem::swap(&mut self.rows[index], row);
                     }
                 }
@@ -297,7 +328,7 @@ impl PreparedRows {
             }
             Coverage::Named(names) if ordered => {
                 let mut keys_changed = false;
-                for (&index, row) in members.iter().zip(rows.iter_mut()) {
+                for (index, row) in members().zip(rows.iter_mut()) {
                     if names.contains(row.namespace.as_deref(), &row.name) {
                         keys_changed |= !same_projection(&self.rows[index], row);
                         std::mem::swap(&mut self.rows[index], row);
@@ -308,7 +339,7 @@ impl PreparedRows {
             }
             Coverage::All => Err(None),
             Coverage::Named(names) => {
-                if self.replace_named(key, rows, &names) {
+                if self.replace_named(watch, rows, &names) {
                     self.settle(false);
                     Ok(())
                 } else {
@@ -334,13 +365,13 @@ impl PreparedRows {
     /// held twice or changed keys.
     fn replace_named(
         &mut self,
-        key: &WatchResourceKey,
+        watch: Watch<'_>,
         rows: &mut [ResourceSummary],
         names: &NameIndex,
     ) -> bool {
         // The read's named rows, sorted by slot hash like the view's slots.
         let read = slot_table(rows.iter().enumerate().filter(|(_, row)| {
-            in_key(key, row) && names.contains(row.namespace.as_deref(), &row.name)
+            watch.lists(row) && names.contains(row.namespace.as_deref(), &row.name)
         }));
         let current = &self.rows;
         let slots = self
@@ -348,10 +379,10 @@ impl PreparedRows {
             .get_or_insert_with(|| slot_table(current.iter().enumerate()));
         let mut pairs = Vec::with_capacity(read.len());
         for (namespace, name) in names.iter() {
-            let hash = slot_hash(&key.resource_kind.kind, namespace, name);
+            let hash = watch.slot(namespace, name);
             let (Ok(held), Ok(listed)) = (
-                find_slot(slots, current, hash, key, namespace, name),
-                find_slot(&read, rows, hash, key, namespace, name),
+                find_slot(slots, current, hash, watch, namespace, name),
+                find_slot(&read, rows, hash, watch, namespace, name),
             ) else {
                 return false;
             };
@@ -370,12 +401,24 @@ impl PreparedRows {
     }
 }
 
-/// Row indices sorted by the hash of their kind, namespace and name.
+/// The rows in `by_kind` whose context rank is `rank`, in row order.
+fn kind_members<'a>(
+    by_kind: &'a [usize],
+    context: &'a [u32],
+    rank: Option<u32>,
+) -> impl Iterator<Item = usize> + 'a {
+    by_kind
+        .iter()
+        .copied()
+        .filter(move |&index| Some(context[index]) == rank)
+}
+
+/// Row indices sorted by the hash of their cluster, kind, namespace and name.
 fn slot_table<'a>(rows: impl Iterator<Item = (usize, &'a ResourceSummary)>) -> Vec<(u64, u32)> {
     let mut slots: Vec<_> = rows
         .map(|(index, row)| {
             (
-                slot_hash(&row.kind, row.namespace.as_deref(), &row.name),
+                slot_hash(&row.cluster, &row.kind, row.namespace.as_deref(), &row.name),
                 u32::try_from(index).expect("row index fits u32"),
             )
         })
@@ -384,13 +427,13 @@ fn slot_table<'a>(rows: impl Iterator<Item = (usize, &'a ResourceSummary)>) -> V
     slots
 }
 
-/// The one row in `slots` that a watch of `key` lists under this name.
+/// The one row in `slots` that `watch` lists under this name.
 /// `Ok(None)` when there is none; `Err` when two rows share the name.
 fn find_slot(
     slots: &[(u64, u32)],
     rows: &[ResourceSummary],
     hash: u64,
-    key: &WatchResourceKey,
+    watch: Watch<'_>,
     namespace: Option<&str>,
     name: &str,
 ) -> Result<Option<usize>, ()> {
@@ -401,7 +444,7 @@ fn find_slot(
         let row = &rows[index];
         if row.namespace.as_deref() == namespace
             && row.name == name
-            && in_key(key, row)
+            && watch.lists(row)
             && found.replace(index).is_some()
         {
             return Err(());

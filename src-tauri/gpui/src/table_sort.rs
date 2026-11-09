@@ -16,6 +16,8 @@ pub enum Column {
     Cpu,
     Memory,
     Age,
+    /// The row's Kubernetes context, shown when a view holds several.
+    Context,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -53,6 +55,7 @@ impl Column {
             Column::Cpu => "CPU",
             Column::Memory => "Memory",
             Column::Age => "Age",
+            Column::Context => "Context",
         }
     }
 
@@ -121,6 +124,7 @@ pub(crate) mod reference {
             Column::Cpu => Value::Number(usage.cpu_millicores.unwrap_or(-1.)),
             Column::Memory => Value::Number(usage.memory_bytes.map_or(-1., |bytes| bytes as f64)),
             Column::Age => text(row.created_at.as_deref().unwrap_or(&row.age)),
+            Column::Context => text(&row.cluster),
         }
     }
 
@@ -135,9 +139,11 @@ pub(crate) mod reference {
 
     /// Indices of `rows` in the table's sort order. Ties keep ascending name
     /// order, as `nameCollator` breaks them on the web, even when the sort is
-    /// descending.
+    /// descending, then the order of the row's context in `contexts`. A
+    /// context outside `contexts` ranks after every listed one.
     pub(crate) fn order(
         rows: &[&ResourceSummary],
+        contexts: &[String],
         sort: Sort,
         usage: impl Fn(&ResourceSummary) -> Usage,
     ) -> Vec<usize> {
@@ -146,6 +152,15 @@ pub(crate) mod reference {
             .map(|row| value(row, sort.column, usage(row)))
             .collect();
         let names: Vec<Key<'_>> = rows.iter().map(|row| Key::new(&row.name, false)).collect();
+        let ranks: Vec<usize> = rows
+            .iter()
+            .map(|row| {
+                contexts
+                    .iter()
+                    .position(|context| *context == row.cluster)
+                    .unwrap_or(contexts.len())
+            })
+            .collect();
         let mut indices: Vec<usize> = (0..rows.len()).collect();
         indices.sort_by(|&left, &right| {
             let ordering = compare(&values[left], &values[right]);
@@ -154,7 +169,9 @@ pub(crate) mod reference {
             } else {
                 ordering
             };
-            ordering.then_with(|| names[left].full_cmp(&names[right]))
+            ordering
+                .then_with(|| names[left].full_cmp(&names[right]))
+                .then_with(|| ranks[left].cmp(&ranks[right]))
         });
         indices
     }

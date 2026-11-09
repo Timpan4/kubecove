@@ -1,8 +1,9 @@
 //! Table order under a non-default sort, as `sortedResourceRows` and
 //! `valueForSort` in `src/features/resources/resourceTableModel.ts` order it.
 //! Each visible row gets one packed key: the sorted column's value in the high
-//! bits and the row's name tie rank in the low 32. One unstable sort of plain
-//! integers orders the rows, and the low bits name each row.
+//! bits and the row's tie rank, by name and then context rank, in the low 32.
+//! One unstable sort of plain integers orders the rows, and the low bits name
+//! each row.
 
 use super::{PreparedRows, Visible, order::Lanes};
 use crate::collate::Key;
@@ -10,21 +11,26 @@ use crate::table_sort::{Column, Sort, Usage, health_state};
 use kubecove_lib::models::ResourceSummary;
 use std::collections::HashMap;
 
-/// Per-row sort values fixed at preparation. They read only name, namespace
-/// and kind, which a watch patch never changes in place: a patch that adds,
-/// deletes or renames a row prepares every row again (`PreparedRows::rebuild`).
+/// Per-row sort values fixed at preparation. They read only name, namespace,
+/// kind and context, which a watch patch never changes in place: a patch that
+/// adds, deletes or renames a row prepares every row again
+/// (`PreparedRows::rebuild`).
 #[derive(Default)]
 pub(super) struct SortColumns {
     /// Rank of the name's numeric collation primary; equal primaries share one.
     name: Vec<u32>,
-    /// Unique rank by full non-numeric name collation, then row index: the
-    /// web's `nameCollator` tie-break, then its stable sort.
+    /// Unique rank by full non-numeric name collation, then context rank, then
+    /// row index: the web's `nameCollator` and context-rank tie-breaks, then
+    /// its stable sort. A watch patch appends new rows, so row index alone
+    /// would put a new row after a same-named row of a later context.
     ties: Vec<u32>,
     /// The row at each tie rank.
     by_tie: Vec<u32>,
     namespace: Vec<u32>,
     /// Collation rank of each prepared kind.
     kind: Vec<u32>,
+    /// Collation rank of each prepared context name.
+    context: Vec<u32>,
 }
 
 fn index(value: usize) -> u32 {
@@ -48,11 +54,14 @@ fn base_ranks(keys: &[Key<'_>]) -> Vec<u32> {
 
 impl SortColumns {
     /// `by_name` lists the rows sorted by full numeric name collation.
+    /// `context` holds each row's rank in `contexts`.
     pub(super) fn new(
         rows: &[ResourceSummary],
         names: &[Key<'_>],
         by_name: &[usize],
         kinds: &[(String, usize)],
+        context: &[u32],
+        contexts: &[String],
     ) -> Self {
         let mut name = vec![0; rows.len()];
         let mut rank = 0;
@@ -69,8 +78,13 @@ impl SortColumns {
         let mut by_tie: Vec<u32> = (0..index(rows.len())).collect();
         {
             let plain: Vec<Key<'_>> = rows.iter().map(|row| Key::new(&row.name, false)).collect();
-            // Stable, so equal names keep row order.
-            by_tie.sort_by(|&a, &b| plain[a as usize].full_cmp(&plain[b as usize]));
+            // Stable, so equal names in one context keep row order.
+            by_tie.sort_by(|&a, &b| {
+                let (a, b) = (a as usize, b as usize);
+                plain[a]
+                    .full_cmp(&plain[b])
+                    .then_with(|| context[a].cmp(&context[b]))
+            });
         }
         let mut ties = vec![0; rows.len()];
         for (rank, &row) in by_tie.iter().enumerate() {
@@ -90,6 +104,10 @@ impl SortColumns {
             .collect();
         let namespace_ranks = base_ranks(&namespace_keys);
         let kind_keys: Vec<Key<'_>> = kinds.iter().map(|(kind, _)| Key::new(kind, true)).collect();
+        let context_keys: Vec<Key<'_>> = contexts
+            .iter()
+            .map(|context| Key::new(context, true))
+            .collect();
         Self {
             name,
             ties,
@@ -99,6 +117,7 @@ impl SortColumns {
                 .map(|id| namespace_ranks[id])
                 .collect(),
             kind: base_ranks(&kind_keys),
+            context: base_ranks(&context_keys),
         }
     }
 }
@@ -195,13 +214,17 @@ fn values(
             .map(|&i| timestamp(age(row(i))))
             .collect::<Option<Vec<u64>>>()
             .unwrap_or_else(|| text_ranks(rows.iter().map(|&i| age(row(i))))),
+        Column::Context => rows
+            .iter()
+            .map(|&i| u64::from(columns.context[source.context[i] as usize]))
+            .collect(),
     }
 }
 
 impl Visible {
     /// The visible rows in display order under `sort`. Ties keep ascending
     /// name order, as `nameCollator` breaks them on the web, even when the
-    /// sort is descending.
+    /// sort is descending, then context rank.
     pub(crate) fn sorted_order(
         &self,
         sort: Sort,

@@ -25,7 +25,8 @@ fn indexed_rows_preserve_filter_and_display_order() {
         .unwrap()
     })
     .collect();
-    let source = Rc::new(PreparedRows::new(rows.clone()));
+    let contexts = ["test".to_owned()];
+    let source = Rc::new(PreparedRows::new(rows.clone(), &contexts));
     let mut visible = Visible::default();
     for query in [
         "",
@@ -64,7 +65,7 @@ fn indexed_rows_preserve_filter_and_display_order() {
                 })
                 .cloned()
                 .collect();
-            let (order, grouped) = super::super::display_order(&expected);
+            let (order, grouped) = super::super::display_order(&expected, &contexts);
             visible.refilter(source.clone(), &kinds, &query);
             assert_eq!(
                 visible
@@ -89,7 +90,7 @@ fn indexed_rows_preserve_filter_and_display_order() {
             assert_eq!(visible.grouped_by_gitops, grouped);
         }
     }
-    let replacement = Rc::new(PreparedRows::new(vec![rows[4].clone()]));
+    let replacement = Rc::new(PreparedRows::new(vec![rows[4].clone()], &contexts));
     visible.refilter(replacement, &["Pod".into()], "");
     assert_eq!(visible.len(), 1);
     assert_eq!(visible.ordered().next().unwrap().name, "a-2");
@@ -106,7 +107,7 @@ fn changing_preferred_owner_reorders_the_same_rows() {
         }))
         .unwrap()
     });
-    let source = Rc::new(PreparedRows::new(rows.into()));
+    let source = Rc::new(PreparedRows::new(rows.into(), &["test".to_owned()]));
     let mut visible = Visible::default();
     let kinds = vec!["Pod".into()];
     let lanes = crate::preferences::KindLanes::default();
@@ -150,7 +151,7 @@ fn kind_selection_distinguishes_api_versions_and_rechecks_selection() {
         }))
         .unwrap()
     });
-    let source = Rc::new(PreparedRows::new(rows.into()));
+    let source = Rc::new(PreparedRows::new(rows.into(), &["test".to_owned()]));
     let kinds = vec!["Widget".into()];
     let lanes = crate::preferences::KindLanes::default();
     let mut visible = Visible::default();
@@ -199,7 +200,7 @@ fn preferred_members_keep_owner_groups_and_kind_lanes_contiguous() {
         }))
         .unwrap()
     });
-    let source = Rc::new(PreparedRows::new(rows.into()));
+    let source = Rc::new(PreparedRows::new(rows.into(), &["test".to_owned()]));
     let kinds = vec!["Pod".into(), "Service".into()];
     let mut visible = Visible::default();
     visible.refilter_with(
@@ -230,7 +231,9 @@ fn preferred_members_keep_owner_groups_and_kind_lanes_contiguous() {
 // mixed in one sort compare by different rules; equal names in two namespaces
 // lose row order; rows outside the filter shift the ranks of visible rows;
 // owner groups, kind lanes and preferred rows follow name order instead of
-// the active sort.
+// the active sort. With two contexts: equal names tie by context name or by
+// row order instead of context rank; the Context column sorts by rank instead
+// of by context name; owner and Helm groups of two contexts merge.
 #[test]
 fn packed_sort_matches_the_web_comparison_sort() {
     use crate::model::{TableView, grouped_page};
@@ -255,7 +258,7 @@ fn packed_sort_matches_the_web_comparison_sort() {
         Some("Ready"),
         Some("ready"),
     ];
-    let build = |mixed_ages: bool| -> Vec<ResourceSummary> {
+    let build = |mixed_ages: bool, contexts: &[String]| -> Vec<ResourceSummary> {
         (0..40)
             .map(|index: usize| {
                 let kind = ["Pod", "Deployment", "Service", "Widget"][index % 4];
@@ -264,7 +267,7 @@ fn packed_sort_matches_the_web_comparison_sort() {
                 let mut row: ResourceSummary = serde_json::from_value(json!({
                     "name": NAMES[index % NAMES.len()],
                     "kind": kind,
-                    "cluster": "test",
+                    "cluster": contexts[index / 7 % contexts.len()],
                     "namespace": namespace,
                     "age": format!("{}d", index % 7),
                     "argoApp": argo,
@@ -291,8 +294,14 @@ fn packed_sort_matches_the_web_comparison_sort() {
         cpu_millicores: (!row.name.len().is_multiple_of(3)).then_some(row.name.len() as f64 / 4.),
         memory_bytes: row.namespace.as_ref().map(|ns| (ns.len() as i64) << 40),
     };
-    let identity =
-        |row: &ResourceSummary| (row.kind.clone(), row.namespace.clone(), row.name.clone());
+    let identity = |row: &ResourceSummary| {
+        (
+            row.kind.clone(),
+            row.namespace.clone(),
+            row.name.clone(),
+            row.cluster.clone(),
+        )
+    };
     let lanes = crate::preferences::KindLanes::default();
     let collapsed = std::collections::HashSet::new();
     let columns = [
@@ -305,10 +314,19 @@ fn packed_sort_matches_the_web_comparison_sort() {
         Column::Cpu,
         Column::Memory,
         Column::Age,
+        Column::Context,
     ];
-    for mixed_ages in [false, true] {
-        let rows = build(mixed_ages);
-        let source = Rc::new(PreparedRows::new(rows));
+    // "east" collates before "west", so rank order differs from name order.
+    let context_sets = [
+        vec!["test".to_owned()],
+        vec!["west".to_owned(), "east".to_owned()],
+    ];
+    for (contexts, mixed_ages) in context_sets
+        .iter()
+        .flat_map(|contexts| [false, true].map(|mixed| (contexts, mixed)))
+    {
+        let rows = build(mixed_ages, contexts.as_slice());
+        let source = Rc::new(PreparedRows::new(rows, contexts));
         for kinds in [
             vec!["Pod", "Deployment", "Service", "Widget"],
             vec!["Deployment", "Widget"],
@@ -347,13 +365,14 @@ fn packed_sort_matches_the_web_comparison_sort() {
                             selected: None,
                         };
                         let expected: Vec<_> = grouped_page(
-                            reference::order(&refs, sort, usage)
+                            reference::order(&refs, contexts, sort, usage)
                                 .into_iter()
                                 .map(|index| refs[index])
                                 .collect(),
                             &view,
                             preferred,
                             &lanes,
+                            contexts.len() > 1,
                         )
                         .rows
                         .iter()
@@ -361,11 +380,246 @@ fn packed_sort_matches_the_web_comparison_sort() {
                         .collect();
                         assert_eq!(
                             actual, expected,
-                            "{sort:?}, mixed ages {mixed_ages}, kinds {kinds:?}"
+                            "{sort:?}, mixed ages {mixed_ages}, kinds {kinds:?}, contexts {contexts:?}"
                         );
                     }
                 }
             }
         }
     }
+}
+
+fn resource(name: &str, cluster: &str) -> ResourceSummary {
+    serde_json::from_value(json!({
+        "name":name, "kind":"Pod", "cluster":cluster, "namespace":"payments", "age":"1d"
+    }))
+    .unwrap()
+}
+
+/// Two workspace contexts whose rank order differs from their name order.
+fn workspace() -> [String; 2] {
+    ["mock-dev".to_owned(), "admin@solid-k8s".to_owned()]
+}
+
+// Same-named rows of two contexts tie under every column but Context.
+// Failure modes: the tie breaks by row order, so a row a watch appends sorts
+// after a same-named row of a later context; it breaks by context name
+// instead of workspace rank; a descending sort reverses the rank; the
+// Context column sorts by rank instead of by context name.
+#[test]
+fn same_names_in_two_contexts_order_by_context_rank() {
+    use crate::table_sort::{Column, Sort};
+    use kubecove_lib::models::WatchResourceKey;
+    let mut rows = PreparedRows::new(
+        vec![resource("payments-api", "admin@solid-k8s")],
+        &workspace(),
+    );
+    let key: WatchResourceKey =
+        serde_json::from_value(json!({"resourceKind":{"kind":"Pod"}, "namespace":null})).unwrap();
+    rows.patch(
+        "mock-dev",
+        &key,
+        vec![resource("payments-api", "mock-dev")],
+        None,
+    );
+    fn clusters(rows: &[ResourceSummary]) -> Vec<String> {
+        rows.iter().map(|row| row.cluster.clone()).collect()
+    }
+    assert_eq!(
+        clusters(&rows),
+        ["admin@solid-k8s", "mock-dev"],
+        "the watch appends its row"
+    );
+    let mut visible = Visible::default();
+    visible.refilter(Rc::new(rows), &["Pod".into()], "");
+    let by_rank = ["mock-dev", "admin@solid-k8s"];
+    assert_eq!(
+        visible
+            .ordered()
+            .map(|row| row.cluster.as_str())
+            .collect::<Vec<_>>(),
+        by_rank
+    );
+    let sorted = |column: Column, desc: bool| -> Vec<String> {
+        visible
+            .sorted_order(Sort { column, desc }, |_| Default::default())
+            .into_iter()
+            .map(|index| visible.all_rows()[index].cluster.clone())
+            .collect()
+    };
+    for column in [
+        Column::Name,
+        Column::Status,
+        Column::Namespace,
+        Column::Kind,
+        Column::Ready,
+        Column::Restarts,
+        Column::Cpu,
+        Column::Memory,
+        Column::Age,
+    ] {
+        for desc in [false, true] {
+            assert_eq!(sorted(column, desc), by_rank, "{column:?}, desc {desc}");
+        }
+    }
+    assert_eq!(
+        sorted(Column::Context, false),
+        ["admin@solid-k8s", "mock-dev"]
+    );
+    assert_eq!(sorted(Column::Context, true), by_rank);
+}
+
+// A Pod inherits the GitOps owner of its ReplicaSet. Failure mode: a Pod in
+// one context inherits the owner of a same-named ReplicaSet in another.
+#[test]
+fn owners_are_inherited_only_within_one_context() {
+    let replica_set: ResourceSummary = serde_json::from_value(json!({
+        "name":"payments-api-rs", "kind":"ReplicaSet", "cluster":"mock-dev",
+        "namespace":"payments", "age":"1d",
+        "gitOpsOwner":{"provider":"argo", "kind":"Application", "name":"payments",
+            "confidence":"label", "provenance":"tracking-id", "partial":false}
+    }))
+    .unwrap();
+    let pod = |cluster: &str| {
+        let mut pod = resource("payments-api", cluster);
+        pod.owner_ref = Some("payments-api-rs".into());
+        pod
+    };
+    let rows = PreparedRows::with_inherited_owners(
+        vec![replica_set, pod("mock-dev"), pod("admin@solid-k8s")],
+        &workspace(),
+    );
+    let owner = |cluster: &str| -> Option<String> {
+        let pod = rows
+            .iter()
+            .find(|row| row.kind == "Pod" && row.cluster == cluster)
+            .unwrap();
+        pod.git_ops_owner.as_ref().map(|owner| owner.name.clone())
+    };
+    assert_eq!(owner("mock-dev").as_deref(), Some("payments"));
+    assert_eq!(owner("admin@solid-k8s"), None);
+}
+
+// Owner and Helm groups belong to one context. Failure modes: one Argo CD
+// application name or one Helm release in two contexts makes one group or
+// one owner filter key; a one-context view adds the context to its labels.
+#[test]
+fn owner_and_helm_groups_split_by_context() {
+    use crate::model::{Entry, TableView, indexed_table_page};
+    fn row(name: &str, cluster: &str, argo: Option<&str>, helm: Option<&str>) -> ResourceSummary {
+        serde_json::from_value(json!({
+            "name":name, "kind":"Pod", "cluster":cluster, "namespace":"payments",
+            "age":"1d", "argoApp":argo, "helmRelease":helm
+        }))
+        .unwrap()
+    }
+    /// The page's group labels and the distinct owner filter keys.
+    fn groups(rows: Vec<ResourceSummary>, contexts: &[String]) -> (Vec<String>, Vec<String>) {
+        let source = Rc::new(PreparedRows::new(rows, contexts));
+        let owner_keys: std::collections::BTreeSet<String> = source
+            .keyed_rows()
+            .filter_map(|(_, key)| source.owner(key))
+            .map(|(key, _)| key.to_owned())
+            .collect();
+        let mut visible = Visible::default();
+        visible.refilter(source, &["Pod".into()], "");
+        let collapsed = std::collections::HashSet::new();
+        let view = TableView {
+            page: 0,
+            sort: Default::default(),
+            collapsed: &collapsed,
+            selected: None,
+        };
+        let labels = indexed_table_page(&visible, &view, |_| Default::default())
+            .entries
+            .into_iter()
+            .filter_map(|entry| match entry {
+                Entry::Group { label, .. } => Some(label),
+                _ => None,
+            })
+            .collect();
+        (labels, owner_keys.into_iter().collect())
+    }
+    let (labels, keys) = groups(
+        vec![
+            row("p1", "mock-dev", Some("payments"), None),
+            row("p1", "admin@solid-k8s", Some("payments"), None),
+            row("h1", "mock-dev", None, Some("chart")),
+            row("h1", "admin@solid-k8s", None, Some("chart")),
+        ],
+        &workspace(),
+    );
+    assert_eq!(
+        labels,
+        [
+            "Owned by Argo CD: payments (partial evidence) · mock-dev",
+            "Owned by Argo CD: payments (partial evidence) · admin@solid-k8s",
+            "Helm release: chart · mock-dev",
+            "Helm release: chart · admin@solid-k8s",
+        ]
+    );
+    assert_eq!(
+        keys,
+        [
+            "admin@solid-k8s:argo:Application::payments",
+            "mock-dev:argo:Application::payments",
+        ]
+    );
+
+    let (labels, keys) = groups(
+        vec![
+            row("p1", "mock-dev", Some("payments"), None),
+            row("h1", "mock-dev", None, Some("chart")),
+        ],
+        &["mock-dev".to_owned()],
+    );
+    assert_eq!(
+        labels,
+        [
+            "Owned by Argo CD: payments (partial evidence)",
+            "Helm release: chart",
+        ]
+    );
+    assert_eq!(keys, ["argo:Application::payments"]);
+}
+
+// Failure modes: a one-context view matches its context name; a view of two
+// contexts misses a context name or matches it in the other context's rows;
+// search follows the contexts the rows hold instead of the workspace's list.
+#[test]
+fn search_matches_a_context_name_only_when_the_view_lists_several() {
+    fn matches(rows: Vec<ResourceSummary>, contexts: &[String], query: &str) -> Vec<String> {
+        let mut visible = Visible::default();
+        visible.refilter(
+            Rc::new(PreparedRows::new(rows, contexts)),
+            &["Pod".into()],
+            query,
+        );
+        visible
+            .iter()
+            .map(|row| format!("{}/{}", row.cluster, row.name))
+            .collect()
+    }
+    let one = || vec![resource("payments-api", "mock-dev")];
+    assert!(matches(one(), &["mock-dev".to_owned()], "mock-dev").is_empty());
+    let both = || {
+        vec![
+            resource("payments-api", "mock-dev"),
+            resource("payments-api", "admin@solid-k8s"),
+        ]
+    };
+    assert_eq!(
+        matches(both(), &workspace(), "solid-k8s"),
+        ["admin@solid-k8s/payments-api"]
+    );
+    assert_eq!(
+        matches(both(), &workspace(), "mock-dev"),
+        ["mock-dev/payments-api"]
+    );
+    // The workspace lists two contexts, so search names the context even
+    // while only one of them has rows.
+    assert_eq!(
+        matches(one(), &workspace(), "mock-dev"),
+        ["mock-dev/payments-api"]
+    );
 }

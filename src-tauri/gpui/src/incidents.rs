@@ -185,7 +185,7 @@ impl Queue {
         let group = items
             .iter()
             .map(|item| {
-                let label = ownership_group(&item.resource).0;
+                let label = ownership_group(&item.resource, false).0;
                 *label_of.entry(label).or_insert_with_key(|label| {
                     labels.push(label.clone());
                     labels.len() - 1

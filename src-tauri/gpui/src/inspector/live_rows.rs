@@ -42,12 +42,12 @@ impl Inspector {
             None => versions.remove(&signature),
         };
         let retired = if cluster_rows {
-            crate::model::reconcile(&mut self.cluster.rows, key, rows, names);
+            crate::model::reconcile(&mut self.cluster.rows, &scope.context, key, rows, names);
             Vec::new()
         } else {
             Rc::get_mut(&mut self.rows)
                 .expect("visible source released before patching")
-                .patch(key, rows, names)
+                .patch(&scope.context, key, rows, names)
         };
         if !matches!(self.scope_load.rows, Load::Ready) && !self.rows.is_empty() {
             self.scope_load.rows = Load::Ready;

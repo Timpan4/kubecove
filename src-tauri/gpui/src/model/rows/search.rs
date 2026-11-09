@@ -19,12 +19,14 @@ impl SearchText {
         }
     }
 
+    /// `context` is the row's context when the rows span several contexts.
     pub(super) fn push(
         &mut self,
         row: &ResourceSummary,
         owner: Option<crate::model::OwnerRef<'_>>,
+        context: Option<&str>,
     ) {
-        crate::resource_search::push_haystack(row, owner, &mut self.text);
+        crate::resource_search::push_haystack(row, owner, context, &mut self.text);
         self.ends.push(self.text.len());
     }
 

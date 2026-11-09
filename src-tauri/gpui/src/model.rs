@@ -63,19 +63,29 @@ impl HealthSummary {
     }
 }
 
-/// `gitOpsOwnershipGroup` in `src/lib/gitops-ownership-evidence.ts`.
-pub fn ownership_group(row: &ResourceSummary) -> (String, u8) {
-    if let Some(owner) = owner_ref(row) {
-        return (owner.label(), 0);
-    }
-    if let Some(release) = &row.helm_release {
-        return (helm_group(release), 1);
-    }
-    (no_owner_group(row).into(), 2)
+/// `gitOpsOwnershipGroup` in `src/lib/gitops-ownership-evidence.ts`. In a view
+/// of several contexts, owner and Helm groups belong to the row's context.
+pub fn ownership_group(row: &ResourceSummary, multi_context: bool) -> (String, u8) {
+    let (label, rank) = match (owner_ref(row), &row.helm_release) {
+        (Some(owner), _) => (owner.label(), 0),
+        (None, Some(release)) => (helm_group(release), 1),
+        (None, None) => return (no_owner_group(row).into(), 2),
+    };
+    (in_context(label, &row.cluster, multi_context), rank)
 }
 
 fn helm_group(release: &str) -> String {
     format!("Helm release: {release}")
+}
+
+/// An owner or Helm group label. With several contexts the label names the
+/// context, so the same owner name in two clusters makes two groups.
+fn in_context(label: String, context: &str, multi_context: bool) -> String {
+    if multi_context {
+        format!("{label} · {context}")
+    } else {
+        label
+    }
 }
 
 fn no_owner_group(row: &ResourceSummary) -> &'static str {
@@ -156,44 +166,57 @@ impl OwnerRef<'_> {
         }
     }
 
-    /// The owner filter's `filterKey`: `provider:kind:namespace:name`.
-    pub fn filter_key(self) -> String {
-        format!(
+    /// The owner filter's `filterKey`: `provider:kind:namespace:name`, after
+    /// `cluster:` in a view of several contexts.
+    pub fn filter_key(self, context: &str, multi_context: bool) -> String {
+        let key = format!(
             "{}:{}:{}:{}",
             self.provider,
             self.kind,
             self.namespace.unwrap_or_default(),
             self.name
-        )
+        );
+        if multi_context {
+            format!("{context}:{key}")
+        } else {
+            key
+        }
     }
 }
 
 /// `inheritGitOpsOwnership` in `src/lib/gitops-ownership-evidence.ts`.
 ///
 /// A row without direct GitOps evidence takes the `gitOpsOwner` of its nearest
-/// `ownerRef` ancestor in the same namespace that has evidence. Parents match by
-/// namespace and name only, and the last row with a name wins, as in the web map.
+/// `ownerRef` ancestor in the same cluster and namespace that has evidence.
+/// Parents match by cluster, namespace and name only, and the last row with a
+/// name wins, as in the web map. The cluster keeps a Pod in one context from
+/// inheriting the owner of a same-named ReplicaSet in another.
 /// The rows change in place, so the table, search and detail pane read the
 /// inherited owner from the row itself without a second copy of every row.
 /// Returns each changed row's index with the owner it had before.
 pub fn inherit_gitops_owners(
     rows: &mut [ResourceSummary],
 ) -> Vec<(usize, Option<GitOpsOwnerSummary>)> {
-    fn namespace_key(row: &ResourceSummary) -> &str {
-        row.namespace.as_deref().unwrap_or_default()
+    /// The row's cluster and namespace with a name in them.
+    fn named<'a>(row: &'a ResourceSummary, name: &'a str) -> (&'a str, &'a str, &'a str) {
+        (
+            &row.cluster,
+            row.namespace.as_deref().unwrap_or_default(),
+            name,
+        )
     }
     let inherited: Vec<(usize, usize)> = {
         let rows = &*rows;
-        let owner_keys: HashSet<(&str, &str)> = rows
+        let owner_keys: HashSet<(&str, &str, &str)> = rows
             .iter()
-            .filter_map(|row| Some((namespace_key(row), row.owner_ref.as_deref()?)))
+            .filter_map(|row| Some(named(row, row.owner_ref.as_deref()?)))
             .collect();
         if owner_keys.is_empty() {
             return Vec::new();
         }
-        let mut parents: HashMap<(&str, &str), usize> = HashMap::new();
+        let mut parents: HashMap<(&str, &str, &str), usize> = HashMap::new();
         for (index, row) in rows.iter().enumerate() {
-            let key = (namespace_key(row), row.name.as_str());
+            let key = named(row, &row.name);
             if owner_keys.contains(&key) {
                 parents.insert(key, index);
             }
@@ -210,7 +233,7 @@ pub fn inherit_gitops_owners(
                 let mut seen = HashSet::from([index]);
                 let mut current = row;
                 while let Some(parent) = current.owner_ref.as_deref() {
-                    let &owner_index = parents.get(&(namespace_key(current), parent))?;
+                    let &owner_index = parents.get(&named(current, parent))?;
                     if !seen.insert(owner_index) {
                         return None;
                     }
@@ -314,7 +337,10 @@ fn type_key(group: &str, type_label: &str) -> String {
 }
 
 fn same_resource(left: &ResourceSummary, right: &ResourceSummary) -> bool {
-    left.kind == right.kind && left.namespace == right.namespace && left.name == right.name
+    left.kind == right.kind
+        && left.namespace == right.namespace
+        && left.name == right.name
+        && left.cluster == right.cluster
 }
 
 pub struct TablePage {
@@ -333,6 +359,7 @@ fn grouped_page(
     view: &TableView<'_>,
     preferred: impl Fn(&ResourceSummary) -> bool,
     lanes: &crate::preferences::KindLanes,
+    multi_context: bool,
 ) -> TablePage {
     let grouped_by_gitops = sorted.iter().any(|row| owner_ref(row).is_some());
     if grouped_by_gitops {
@@ -341,7 +368,7 @@ fn grouped_page(
     let mut groups: Vec<(String, u8, Vec<&ResourceSummary>)> = Vec::new();
     for row in sorted {
         let (label, rank) = if grouped_by_gitops {
-            ownership_group(row)
+            ownership_group(row, multi_context)
         } else {
             (String::new(), 0)
         };
@@ -369,12 +396,13 @@ fn grouped_page(
         });
         display.extend(kinds.into_iter().flat_map(|kind| kind.1));
     }
-    page_from_order(display, grouped_by_gitops, view)
+    page_from_order(display, grouped_by_gitops, multi_context, view)
 }
 
 fn page_from_order(
     display: Vec<&ResourceSummary>,
     grouped_by_gitops: bool,
+    multi_context: bool,
     view: &TableView<'_>,
 ) -> TablePage {
     let total = display.len();
@@ -391,14 +419,14 @@ fn page_from_order(
         .selected
         .and_then(|selected| display.iter().find(|row| same_resource(row, selected)))
         .map(|row| {
-            let group = ownership_group(row).0;
+            let group = ownership_group(row, multi_context).0;
             let type_label = type_label(row);
             (group_key(&group), type_key(&group, &type_label))
         });
     let mut entries = Vec::new();
     let mut previous: Option<(String, String)> = None;
     for (index, row) in page_rows.iter().enumerate() {
-        let group = ownership_group(row).0;
+        let group = ownership_group(row, multi_context).0;
         let kind = type_label(row);
         let group_changed = previous.as_ref().is_none_or(|(g, _)| *g != group);
         let type_changed = previous
@@ -417,7 +445,7 @@ fn page_from_order(
         if grouped_by_gitops && group_changed {
             let count = page_rows
                 .iter()
-                .filter(|other| ownership_group(other).0 == group)
+                .filter(|other| ownership_group(other, multi_context).0 == group)
                 .count();
             entries.push(Entry::Group {
                 key: row_group_key.clone(),
@@ -430,7 +458,7 @@ fn page_from_order(
             let count = page_rows
                 .iter()
                 .filter(|other| {
-                    (!grouped_by_gitops || ownership_group(other).0 == group)
+                    (!grouped_by_gitops || ownership_group(other, multi_context).0 == group)
                         && type_label(other) == kind
                 })
                 .count();
@@ -463,20 +491,29 @@ pub fn indexed_table_page(
     usage: impl Fn(&ResourceSummary) -> table_sort::Usage,
 ) -> TablePage {
     let _profile = crate::frame_profile::scope("table", "project");
+    let multi_context = visible.source().multi_context();
     if view.sort == Sort::default() {
-        return page_from_order(visible.ordered().collect(), visible.grouped_by_gitops, view);
+        return page_from_order(
+            visible.ordered().collect(),
+            visible.grouped_by_gitops,
+            multi_context,
+            view,
+        );
     }
     let rows = visible.all_rows();
     let order = visible.sorted_order(view.sort, usage);
     page_from_order(
         order.into_iter().map(|index| &rows[index]).collect(),
         visible.grouped_by_gitops,
+        multi_context,
         view,
     )
 }
 
+/// The reference display order of `rows` from `contexts`, the context list
+/// their prepared rows were built with.
 #[cfg(test)]
-fn display_order(rows: &[ResourceSummary]) -> (Vec<usize>, bool) {
+fn display_order(rows: &[ResourceSummary], contexts: &[String]) -> (Vec<usize>, bool) {
     let grouped = rows.iter().any(|row| owner_ref(row).is_some());
     let collapsed = HashSet::new();
     let mut indices = Vec::new();
@@ -488,12 +525,14 @@ fn display_order(rows: &[ResourceSummary]) -> (Vec<usize>, bool) {
             selected: None,
         };
         let refs: Vec<&ResourceSummary> = rows.iter().collect();
-        let order = table_sort::reference::order(&refs, view.sort, |_| Default::default());
+        let order =
+            table_sort::reference::order(&refs, contexts, view.sort, |_| Default::default());
         let output = grouped_page(
             order.into_iter().map(|index| refs[index]).collect(),
             &view,
             |_| false,
             &crate::preferences::KindLanes::default(),
+            contexts.len() > 1,
         );
         indices.extend(output.rows.iter().map(|row| {
             rows.iter()

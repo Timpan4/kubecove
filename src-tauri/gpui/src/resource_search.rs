@@ -9,15 +9,22 @@ use kubecove_lib::models::ResourceSummary;
 #[cfg(test)]
 pub fn haystack(row: &ResourceSummary) -> String {
     let mut text = String::new();
-    push_haystack(row, crate::model::owner_ref(row), &mut text);
+    push_haystack(row, crate::model::owner_ref(row), None, &mut text);
     text
 }
 
 /// Appends the row's lowercase search text to `text`: identity, API identity,
 /// owner reference, Helm release and the GitOps owner's terms (`owner_ref` of
-/// the row). Each field is lowercased alone, which matches lowercasing the
+/// the row). `context` is the row's context in a view of several contexts, and
+/// `None` otherwise, so a one-context view does not match its context name.
+/// Each field is lowercased alone, which matches lowercasing the
 /// joined text because no case mapping looks across a newline.
-pub fn push_haystack(row: &ResourceSummary, owner: Option<OwnerRef<'_>>, text: &mut String) {
+pub fn push_haystack(
+    row: &ResourceSummary,
+    owner: Option<OwnerRef<'_>>,
+    context: Option<&str>,
+    text: &mut String,
+) {
     let fields = [
         Some(row.name.as_str()),
         Some(row.kind.as_str()),
@@ -33,6 +40,7 @@ pub fn push_haystack(row: &ResourceSummary, owner: Option<OwnerRef<'_>>, text: &
         owner.and_then(|owner| owner.namespace),
         owner.map(|owner| owner.confidence),
         owner.map(|owner| owner.provenance),
+        context,
     ];
     let mut first = true;
     for field in fields
