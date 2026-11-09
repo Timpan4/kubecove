@@ -13,6 +13,7 @@ User-facing procedures start in the [public Wiki](https://github.com/Timpan4/kub
 
 ## Engineering
 
+- [Desktop close guard](decisions/0032-desktop-close-draft-guard.md): window close refuses while a YAML draft has unsaved changes in the Tauri desktop client.
 - [Desktop remote sign-in](decisions/0031-gpui-remote-sign-in.md): proposed OIDC and Access sign-in, credential handling and session notices for desktop remote clients.
 - [GPUI local persistence](decisions/0030-gpui-local-preferences.md): native preference schema, local workspace and review storage, migration and runtime ownership.
 - [GPUI native client](../src-tauri/gpui/README.md): opt-in native inspection client and shared frontend acceptance scenarios under [ADR 0029](decisions/0029-gpui-native-client-and-feature-parity.md).
