@@ -7,6 +7,7 @@ mod actions_review;
 mod actions_state;
 mod actions_tab;
 mod argo_connection;
+mod argo_connection_dialog;
 mod argo_connection_view;
 mod argo_highlight;
 mod argo_operations;
