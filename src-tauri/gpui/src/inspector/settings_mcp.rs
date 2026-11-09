@@ -2,6 +2,7 @@
 use super::{
     Inspector,
     controls::{Variant, button},
+    request::InFlight,
     settings_page::{Observed, settings_row, switch},
 };
 use crate::targets::TestSupportExt;
@@ -13,18 +14,18 @@ use crate::{
 };
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::{
-    ClipboardItem, Context, Div, Entity, SharedString, Subscription, Task, Window, div, prelude::*,
-    px,
+    ClipboardItem, Context, Div, Entity, SharedString, Subscription, Window, div, prelude::*, px,
 };
 use kubecove_lib::models::McpStatus;
 
 pub(super) struct McpState {
     status: Option<McpStatus>,
     port: Entity<InputState>,
-    busy: bool,
+    /// The status read, settings change, token rotation or token copy in
+    /// flight. The controls are disabled while it runs.
+    call: Option<InFlight>,
     error: Option<String>,
     announcement: String,
-    task: Option<Task<()>>,
     _subscription: Subscription,
 }
 impl McpState {
@@ -39,10 +40,9 @@ impl McpState {
         Self {
             status: None,
             port,
-            busy: false,
+            call: None,
             error: None,
             announcement: String::new(),
-            task: None,
             _subscription: subscription,
         }
     }
@@ -54,8 +54,9 @@ impl McpState {
         }
         text.parse().ok().filter(|port| *port != 0)
     }
-    fn ready(&self) -> bool {
-        !self.busy && self.status.is_some()
+    /// The status the controls act on: known, with no call in flight.
+    fn ready(&self) -> Option<&McpStatus> {
+        self.status.as_ref().filter(|_| self.call.is_none())
     }
 }
 
@@ -71,14 +72,11 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let state = &mut self.settings.mcp;
-        state.busy = true;
-        state.error = None;
-        state.task = Some(cx.spawn_in(window, async move |this, cx| {
+        let call = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
                 let state = &mut this.settings.mcp;
-                state.busy = false;
+                state.call = None;
                 match result {
                     Ok(status) => {
                         if sync_port {
@@ -92,15 +90,17 @@ impl Inspector {
                 }
                 cx.notify();
             });
-        }));
+        });
+        let state = &mut self.settings.mcp;
+        state.error = None;
+        state.call = Some(call.into());
         cx.notify();
     }
     fn change_mcp(&mut self, save_port: bool, window: &mut Window, cx: &mut Context<Self>) {
         let state = &self.settings.mcp;
-        if !state.ready() {
+        let Some(status) = state.ready() else {
             return;
-        }
-        let status = state.status.as_ref().expect("ready status");
+        };
         let (enabled, port) = if save_port {
             let Some(port) = state.port(cx).filter(|port| *port != status.port) else {
                 return;
@@ -117,28 +117,25 @@ impl Inspector {
         );
     }
     fn rotate_mcp(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.settings.mcp.ready() {
+        if self.settings.mcp.ready().is_some() {
             self.run_mcp(self.backend.rotate_mcp_token(), false, window, cx);
         }
     }
     fn copy_mcp(&mut self, command: bool, window: &mut Window, cx: &mut Context<Self>) {
-        let state = &mut self.settings.mcp;
-        if !state.ready() {
+        let Some(status) = self.settings.mcp.ready() else {
             return;
-        }
+        };
         // Capture the URL before the asynchronous credential read, matching Svelte.
-        let url = state.status.as_ref().and_then(|status| status.url.clone());
+        let url = status.url.clone();
         if command && url.is_none() {
             return;
         }
         let read = self.backend.reveal_mcp_token();
-        state.busy = true;
-        state.announcement.clear();
-        state.task = Some(cx.spawn_in(window, async move |this, cx| {
+        let call = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
                 let state = &mut this.settings.mcp;
-                state.busy = false;
+                state.call = None;
                 match result {
                     Ok(token) => {
                         let value = match url.filter(|_| command) {
@@ -152,12 +149,15 @@ impl Inspector {
                 }
                 cx.notify();
             });
-        }));
+        });
+        let state = &mut self.settings.mcp;
+        state.announcement.clear();
+        state.call = Some(call.into());
         cx.notify();
     }
     pub(super) fn mcp_settings_section(&self, cx: &mut Context<Self>) -> Div {
         let state = &self.settings.mcp;
-        let ready = state.ready();
+        let ready = state.ready().is_some();
         let enabled = state.status.as_ref().is_some_and(|status| status.enabled);
         let running = state.status.as_ref().is_some_and(|status| status.running);
         let rows: Vec<_> = settings::rows(Category::Agents, false).collect();
