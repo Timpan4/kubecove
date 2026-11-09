@@ -137,9 +137,11 @@ impl ExecTab {
             ExecPhase::Ended(ExecEnd::Error) => "error",
         }
     }
+    /// `stopBackendSession`'s success, which also clears an earlier stop failure.
     pub(super) fn stopped(&mut self) {
         self.stream = None;
         self.phase = ExecPhase::Ended(ExecEnd::Stopped);
+        self.error = None;
     }
     /// `stopBackendSession`'s failure: the session may still run, so it stays tracked.
     pub(super) fn stop_failed(&mut self, message: String) {
@@ -494,9 +496,9 @@ impl Inspector {
                     match result {
                         Ok(true) => tab.stopped(),
                         Ok(false) => {
-                            tab.error = Some("Stop failed; the session may still be running".into())
+                            tab.stop_failed("Stop failed; the session may still be running".into())
                         }
-                        Err(error) => tab.error = Some(error.message),
+                        Err(error) => tab.stop_failed(error.message),
                     }
                 }
                 this.load_sessions(cx);
