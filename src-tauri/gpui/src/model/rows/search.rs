@@ -19,8 +19,12 @@ impl SearchText {
         }
     }
 
-    pub(super) fn push(&mut self, row: &ResourceSummary) {
-        crate::resource_search::push_haystack(row, &mut self.text);
+    pub(super) fn push(
+        &mut self,
+        row: &ResourceSummary,
+        owner: Option<crate::model::OwnerRef<'_>>,
+    ) {
+        crate::resource_search::push_haystack(row, owner, &mut self.text);
         self.ends.push(self.text.len());
     }
 

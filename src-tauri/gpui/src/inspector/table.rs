@@ -9,8 +9,7 @@ use super::table_columns::{
 use super::table_status::{health_badge, lifecycle_status};
 use super::{Inspector, surface, timestamp_text};
 use crate::model::{
-    Entry, TableView, gitops_owner, gitops_owner_name, group_visual, indexed_table_page,
-    kind_visual,
+    Entry, OwnerRef, TableView, group_visual, indexed_table_page, kind_visual, owner_ref,
 };
 use crate::table_sort::{self, Column as SortColumn};
 use crate::targets::TestSupportExt;
@@ -58,7 +57,7 @@ impl Inspector {
         }) {
             columns.push(Column::Memory);
         }
-        if rows.iter().any(|row| gitops_owner(row).is_some()) {
+        if rows.iter().any(|row| owner_ref(row).is_some()) {
             columns.push(Column::Owner);
         }
         columns.extend([Column::Age, Column::Pin]);
@@ -90,7 +89,8 @@ impl Inspector {
                 crate::metrics::memory(self.resource_metric(row).and_then(|m| m.memory_bytes))
                     .to_string()
             }
-            Column::Owner => gitops_owner_name(row)
+            Column::Owner => owner_ref(row)
+                .map(OwnerRef::name)
                 .or_else(|| row.helm_release.clone())
                 .unwrap_or_else(|| EMPTY.into()),
             Column::Age => self.timestamp_label(&row.age, row.created_at.as_deref()),

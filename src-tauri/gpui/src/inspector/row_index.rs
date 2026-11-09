@@ -113,15 +113,11 @@ impl Inspector {
             {
                 continue;
             }
-            let owner = &prepared.owner;
-            if let Some((key, label)) = &owner {
-                owners.entry(key.as_str()).or_insert(label.as_str());
+            let owner = source.owner(prepared);
+            if let Some((key, label)) = owner {
+                owners.entry(key).or_insert(label);
             }
-            if self
-                .filters
-                .in_owner(owner.as_ref().map(|(key, _)| key.as_str()))
-                && matches.contains(index)
-            {
+            if self.filters.in_owner(owner.map(|(key, _)| key)) && matches.contains(index) {
                 summary.add(row);
             }
         }

@@ -1,7 +1,7 @@
 //! Immutable resource rows and prepared search/group keys. Filter changes only
 //! select and order indices; resource strings stay with their source snapshot.
 
-use super::{HealthSummary, gitops_label, ownership_group};
+use super::{HealthSummary, OwnerRef};
 mod order;
 mod patch;
 mod search;
@@ -27,12 +27,20 @@ pub(crate) struct KindFilter<'a, F> {
 }
 
 pub(crate) struct RowKey {
-    pub(crate) owner: Option<(String, String)>,
+    /// The row's GitOps owner in `PreparedRows::owners`.
+    owner: Option<u32>,
     group: usize,
     lane: usize,
     kind: usize,
     pub(crate) variant: usize,
-    gitops: bool,
+}
+
+/// A distinct GitOps owner of the prepared rows.
+struct Owner {
+    /// The owner filter's `filterKey`.
+    key: String,
+    label: String,
+    group: usize,
 }
 
 /// Which prepared rows a derived view was built from. Each preparation takes a
@@ -61,6 +69,7 @@ pub(crate) struct PreparedRows {
     lanes: Vec<Lane>,
     by_name: Vec<usize>,
     sort: sort::SortColumns,
+    owners: Vec<Owner>,
     /// Set by `with_inherited_owners`: each row whose GitOps owner it inherited,
     /// with the owner the backend sent. `swap_owners` exchanges the two, so a
     /// watch patch compares and replaces backend rows.
@@ -98,6 +107,12 @@ impl PreparedRows {
 
     pub(crate) fn keyed_rows(&self) -> impl Iterator<Item = (&ResourceSummary, &RowKey)> {
         self.rows.iter().zip(&self.keys)
+    }
+
+    /// The owner filter's `filterKey` and label of a row's GitOps owner.
+    pub(crate) fn owner(&self, key: &RowKey) -> Option<(&str, &str)> {
+        let owner = &self.owners[key.owner? as usize];
+        Some((&owner.key, &owner.label))
     }
 
     pub(crate) fn identity(&self) -> RowsId {
@@ -142,7 +157,19 @@ impl PreparedRows {
         let mut sorted: Vec<_> = (0..rows.len()).collect();
         sorted.sort_by(|&a, &b| names[a].cmp(&names[b]));
         let mut groups = Vec::new();
-        let mut group_ids = HashMap::new();
+        // Group labels, owner strings and owner groups are built once per
+        // distinct owner or Helm release, not once per row.
+        let mut group_ids: HashMap<String, usize> = HashMap::new();
+        let mut group = |label: String, rank: u8| {
+            let next = groups.len();
+            *group_ids.entry(label).or_insert_with(|| {
+                groups.push(rank);
+                next
+            })
+        };
+        let mut owner_ids: HashMap<OwnerRef<'_>, u32> = HashMap::new();
+        let mut owners: Vec<Owner> = Vec::new();
+        let mut helm_groups: HashMap<&str, usize> = HashMap::new();
         let mut kinds: Vec<(String, usize)> = Vec::new();
         let mut by_kind: Vec<Vec<usize>> = Vec::new();
         let mut lane_ids = HashMap::new();
@@ -154,12 +181,25 @@ impl PreparedRows {
             .iter()
             .enumerate()
             .map(|(index, row)| {
-                let (label, rank) = ownership_group(row);
-                let next_group = groups.len();
-                let group = *group_ids.entry(label.clone()).or_insert_with(|| {
-                    groups.push(rank);
-                    next_group
+                let owner_ref = super::owner_ref(row);
+                let owner = owner_ref.map(|owner_ref| {
+                    *owner_ids.entry(owner_ref).or_insert_with(|| {
+                        let label = owner_ref.label();
+                        owners.push(Owner {
+                            key: owner_ref.filter_key(),
+                            group: group(label.clone(), 0),
+                            label,
+                        });
+                        u32::try_from(owners.len() - 1).expect("owner count fits u32")
+                    })
                 });
+                let group = match (owner, row.helm_release.as_deref()) {
+                    (Some(owner), _) => owners[owner as usize].group,
+                    (None, Some(release)) => *helm_groups
+                        .entry(release)
+                        .or_insert_with(|| group(super::helm_group(release), 1)),
+                    (None, None) => group(super::no_owner_group(row).to_owned(), 2),
+                };
                 let kind = kinds
                     .iter()
                     .position(|(kind, _)| *kind == row.kind)
@@ -184,18 +224,18 @@ impl PreparedRows {
                     lanes.push(Lane { group, kind });
                     next_lane
                 });
-                search.push(row);
+                search.push(row, owner_ref);
                 RowKey {
-                    owner: super::gitops_owner_filter(row),
+                    owner,
                     group,
                     lane,
                     kind,
                     variant,
-                    gitops: gitops_label(row).is_some(),
                 }
             })
             .collect();
         drop(variant_ids);
+        drop(owner_ids);
         let sort = sort::SortColumns::new(&rows, &names, &sorted, &kinds);
         drop(names);
         Self {
@@ -210,6 +250,7 @@ impl PreparedRows {
             lanes,
             by_name: sorted,
             sort,
+            owners,
             inherited: Vec::new(),
             slots: None,
         }
@@ -313,10 +354,7 @@ impl Visible {
         self.selected.fill(false);
         for (index, key) in source.keys.iter().enumerate() {
             if self.allowed[key.variant]
-                && included(
-                    &source.rows[index],
-                    key.owner.as_ref().map(|(key, _)| key.as_str()),
-                )
+                && included(&source.rows[index], source.owner(key).map(|(key, _)| key))
                 && self.matches.contains(index)
             {
                 self.indices.push(index);
@@ -350,7 +388,7 @@ impl Visible {
         self.grouped_by_gitops = self
             .indices
             .iter()
-            .any(|&index| self.source.keys[index].gitops);
+            .any(|&index| self.source.keys[index].owner.is_some());
         // Name order is immutable; only the preferred partition and the order
         // of lanes can change.
         self.by_name.clear();

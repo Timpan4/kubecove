@@ -63,106 +63,109 @@ impl HealthSummary {
     }
 }
 
-/// The GitOps owner filter entry for a row, as `gitOpsOwnership` in
-/// `src/lib/gitops-ownership-evidence.ts` computes it: the `filterKey`
-/// (`provider:kind:namespace:name`) and the group label. Owners the adapters
-/// do not recognize have no entry.
-pub fn gitops_owner_filter(row: &ResourceSummary) -> Option<(String, String)> {
-    let label = gitops_label(row)?;
-    let key = match row.git_ops_owner.as_ref() {
-        Some(owner) => format!(
-            "{}:{}:{}:{}",
-            owner.provider,
-            owner.kind,
-            owner.namespace.as_deref().unwrap_or_default(),
-            owner.name.trim()
-        ),
-        None => format!("argo:Application::{}", row.argo_app.as_deref()?.trim()),
-    };
-    Some((key, label))
-}
-
 /// `gitOpsOwnershipGroup` in `src/lib/gitops-ownership-evidence.ts`.
 pub fn ownership_group(row: &ResourceSummary) -> (String, u8) {
-    if let Some(label) = gitops_label(row) {
-        return (label, 0);
+    if let Some(owner) = owner_ref(row) {
+        return (owner.label(), 0);
     }
     if let Some(release) = &row.helm_release {
-        return (format!("Helm release: {release}"), 1);
+        return (helm_group(release), 1);
     }
-    let label = if row.git_ops_ownership_partial {
+    (no_owner_group(row).into(), 2)
+}
+
+fn helm_group(release: &str) -> String {
+    format!("Helm release: {release}")
+}
+
+fn no_owner_group(row: &ResourceSummary) -> &'static str {
+    if row.git_ops_ownership_partial {
         "No GitOps ownership evidence (partial coverage)"
     } else {
         "No GitOps ownership evidence"
-    };
-    (label.into(), 2)
+    }
 }
 
-/// A GitOps owner that a provider adapter recognizes, as `gitOpsOwnership`
-/// returns it in `src/lib/gitops-ownership-evidence.ts`.
-pub struct GitOpsOwned {
-    pub provider: String,
-    pub kind: String,
-    pub name: String,
-    pub namespace: Option<String>,
-    pub confidence: String,
-    pub provenance: String,
+/// A GitOps owner that a provider adapter recognizes, borrowed from its row.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct OwnerRef<'a> {
+    pub provider: &'a str,
+    pub kind: &'a str,
+    /// Trimmed.
+    pub name: &'a str,
+    pub namespace: Option<&'a str>,
+    pub confidence: &'a str,
+    pub provenance: &'a str,
     pub partial: bool,
 }
 
-/// The row's GitOps owner. An Argo CD name annotation stands in when the
-/// backend reports no owner, and a row with no recognized owner has none.
-pub fn gitops_owner(row: &ResourceSummary) -> Option<GitOpsOwned> {
+/// The row's GitOps owner, as `gitOpsOwnership` in
+/// `src/lib/gitops-ownership-evidence.ts` returns it. An Argo CD name
+/// annotation stands in when the backend reports no owner, and a row with no
+/// recognized owner has none.
+pub fn owner_ref(row: &ResourceSummary) -> Option<OwnerRef<'_>> {
     // Rust owners always state `partial`; an annotation-only Argo app is partial.
     let owner = match row.git_ops_owner.as_ref() {
-        Some(owner) => GitOpsOwned {
-            provider: owner.provider.clone(),
-            kind: owner.kind.clone(),
-            name: owner.name.trim().to_owned(),
-            namespace: owner.namespace.clone(),
-            confidence: owner.confidence.clone(),
-            provenance: owner.provenance.clone(),
+        Some(owner) => OwnerRef {
+            provider: &owner.provider,
+            kind: &owner.kind,
+            name: owner.name.trim(),
+            namespace: owner.namespace.as_deref(),
+            confidence: &owner.confidence,
+            provenance: &owner.provenance,
             partial: owner.partial,
         },
-        None => GitOpsOwned {
-            provider: "argo".into(),
-            kind: "Application".into(),
-            name: row.argo_app.as_deref()?.trim().to_owned(),
+        None => OwnerRef {
+            provider: "argo",
+            kind: "Application",
+            name: row.argo_app.as_deref()?.trim(),
             namespace: None,
-            confidence: "metadata".into(),
-            provenance: "argocd-name-annotation".into(),
+            confidence: "metadata",
+            provenance: "argocd-name-annotation",
             partial: true,
         },
     };
     let recognized = matches!(
-        (owner.provider.as_str(), owner.kind.as_str()),
+        (owner.provider, owner.kind),
         ("argo", "Application") | ("flux", "Kustomization" | "HelmRelease")
     );
     (recognized && !owner.name.is_empty()).then_some(owner)
 }
 
-/// `ownerName` in `gitOpsOwnership`: the Flux owner is qualified by its namespace.
-pub fn gitops_owner_name(row: &ResourceSummary) -> Option<String> {
-    let owner = gitops_owner(row)?;
-    Some(match (owner.provider.as_str(), owner.namespace) {
-        ("flux", Some(namespace)) => format!("{namespace}/{}", owner.name),
-        _ => owner.name,
-    })
-}
+impl OwnerRef<'_> {
+    /// `ownerName` in `gitOpsOwnership`: the Flux owner is qualified by its namespace.
+    pub fn name(self) -> String {
+        match (self.provider, self.namespace) {
+            ("flux", Some(namespace)) => format!("{namespace}/{}", self.name),
+            _ => self.name.to_owned(),
+        }
+    }
 
-fn gitops_label(row: &ResourceSummary) -> Option<String> {
-    let owner = gitops_owner(row)?;
-    let name = gitops_owner_name(row)?;
-    let label = if owner.provider == "argo" {
-        format!("Owned by Argo CD: {name}")
-    } else {
-        format!("Owned by Flux {}: {name}", owner.kind)
-    };
-    Some(if owner.partial {
-        format!("{label} (partial evidence)")
-    } else {
-        label
-    })
+    /// The owner's group label.
+    pub fn label(self) -> String {
+        let name = self.name();
+        let label = if self.provider == "argo" {
+            format!("Owned by Argo CD: {name}")
+        } else {
+            format!("Owned by Flux {}: {name}", self.kind)
+        };
+        if self.partial {
+            format!("{label} (partial evidence)")
+        } else {
+            label
+        }
+    }
+
+    /// The owner filter's `filterKey`: `provider:kind:namespace:name`.
+    pub fn filter_key(self) -> String {
+        format!(
+            "{}:{}:{}:{}",
+            self.provider,
+            self.kind,
+            self.namespace.unwrap_or_default(),
+            self.name
+        )
+    }
 }
 
 /// `inheritGitOpsOwnership` in `src/lib/gitops-ownership-evidence.ts`.
@@ -201,18 +204,18 @@ pub fn inherit_gitops_owners(
         rows.iter()
             .enumerate()
             .filter_map(|(index, row)| {
-                if gitops_label(row).is_some() {
+                if owner_ref(row).is_some() {
                     return None;
                 }
                 let mut seen = HashSet::from([index]);
                 let mut current = row;
-                while let Some(owner_ref) = current.owner_ref.as_deref() {
-                    let &owner_index = parents.get(&(namespace_key(current), owner_ref))?;
+                while let Some(parent) = current.owner_ref.as_deref() {
+                    let &owner_index = parents.get(&(namespace_key(current), parent))?;
                     if !seen.insert(owner_index) {
                         return None;
                     }
                     let owner = &rows[owner_index];
-                    if gitops_label(owner).is_some() {
+                    if owner_ref(owner).is_some() {
                         return Some((index, owner_index));
                     }
                     current = owner;
@@ -331,7 +334,7 @@ fn grouped_page(
     preferred: impl Fn(&ResourceSummary) -> bool,
     lanes: &crate::preferences::KindLanes,
 ) -> TablePage {
-    let grouped_by_gitops = sorted.iter().any(|row| gitops_label(row).is_some());
+    let grouped_by_gitops = sorted.iter().any(|row| owner_ref(row).is_some());
     if grouped_by_gitops {
         sorted.sort_by_key(|row| !preferred(row));
     }
@@ -474,7 +477,7 @@ pub fn indexed_table_page(
 
 #[cfg(test)]
 fn display_order(rows: &[ResourceSummary]) -> (Vec<usize>, bool) {
-    let grouped = rows.iter().any(|row| gitops_label(row).is_some());
+    let grouped = rows.iter().any(|row| owner_ref(row).is_some());
     let collapsed = HashSet::new();
     let mut indices = Vec::new();
     for page in 0..rows.len().div_ceil(PAGE_SIZE) {
