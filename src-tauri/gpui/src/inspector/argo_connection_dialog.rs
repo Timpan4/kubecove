@@ -38,7 +38,9 @@ impl Inspector {
                         .role(gpui_kit::Role::Dialog)
                         .aria_label("Argo CD connection")
                         .track_focus(&dialog_focus)
-                        .w(px(672.))
+                        // Like the web's `w-full max-w-2xl`: a narrow window narrows the dialog instead of clipping its left edge.
+                        .w_full()
+                        .max_w(px(672.))
                         .max_h(relative(0.9))
                         .overflow_y_scroll()
                         .on_key_down(cx.listener(
