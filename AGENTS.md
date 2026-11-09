@@ -170,8 +170,8 @@ Write an ADR before changing:
 
 Run the smallest tier that covers the change, from the checkout root with the build settings under GPUI work. Pick the checks that would fail if the change broke, and stop there.
 
-1. Agent patch: `cargo clippy --manifest-path src-tauri/gpui/Cargo.toml --all-targets -- -D warnings` (it checks as `cargo check` does and catches the lints that tier 2 fails on), plus `PARITY_CHANGED=<branch head the patch starts from> bun run e2e:parity`, which runs the scenarios the patch, including uncommitted files, can affect. It reads the coverage map at `e2e/artifacts/parity-coverage-map.json` and runs the full suite without one; `e2e/parity/README.md` ("Change-based selection") shows how to download it from CI or record it.
-2. Merge into the working branch: `cargo clippy --manifest-path src-tauri/gpui/Cargo.toml --all-targets -- -D warnings`, `cargo test --manifest-path src-tauri/gpui/Cargo.toml --lib --test native`, and `PARITY_CHANGED=<working branch> bun run e2e:parity`.
+1. Agent patch from a parallel child agent: no compilation. The child runs no cargo command (check, clippy, test or build), no parity and no frames run. It edits, runs `bun run typecheck` and `bun run lint` for TypeScript changes, commits, and lists in its report what was never compiled or run. The parent merges the batch and runs tier 2 once for all of it. Never give a child `PARITY_CHANGED`: without the coverage map at `e2e/artifacts/parity-coverage-map.json` it runs the full suite. `e2e/parity/README.md` ("Change-based selection") shows how to download the map from CI or record it.
+2. Merge of a batch into the working branch, run by the parent once per batch: `cargo clippy --manifest-path src-tauri/gpui/Cargo.toml --all-targets -- -D warnings`, `cargo test --manifest-path src-tauri/gpui/Cargo.toml --lib --test native`, and `PARITY_CHANGED=<working branch> bun run e2e:parity`.
 3. After a fix: `PARITY_RERUN=last bun run e2e:parity` runs only the scenarios either driver did not pass in the newest run. Give an artifacts directory instead of `last` to use another run.
 4. Full suite: CI runs the same change-based selection on the PR and the full suite after each merge to main (`.github/workflows/parity.yml`), so developers and agents run tiers 1 to 3 locally. Run `bun scripts/gpui-frames.ts --runs 3` only before a PR.
 
@@ -192,7 +192,7 @@ Rules for agents that hand work to child agents, from observed failures.
 - Start each child from the current branch head. Before it reports, it rebases its own unpushed commits onto the latest head. Stale bases caused most merge conflicts.
 - Tell children to run builds and tests in the foreground, or to call `t3_background_wait` before ending a turn. Never end a turn with a job pending: a child that does is not woken when the job finishes, and its work sits uncommitted.
 - Every brief names a stop condition and a first report point, such as "report after the first measured run".
-- Give children the build settings and lock path from GPUI work and the verification tier their change needs.
+- Parallel children compile nothing (tier 1). Give build settings and the lock path only to a single agent that runs a batch gate.
 - When a child reports that it is waiting, check its worktree for finished commits before resuming it.
 
 ## Skill Backlog
