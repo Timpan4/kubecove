@@ -64,7 +64,8 @@ test("release preparation commits desktop and server version metadata", () => {
   const commands = step(job("prepare", preparation), "Commit release branch").run;
   const staged = commands.match(/^\s*git add (.+)$/m)[1].split(/\s+/);
   for (const path of ["package.json", "src-tauri/tauri.conf.json", "src-tauri/Cargo.toml",
-    "src-tauri/Cargo.lock", "src-tauri/server/Cargo.toml", "src-tauri/server/Cargo.lock", "CHANGELOG.md"]) {
+    "src-tauri/Cargo.lock", "src-tauri/server/Cargo.toml", "src-tauri/server/Cargo.lock",
+    "src-tauri/gpui/Cargo.toml", "src-tauri/gpui/Cargo.lock", "CHANGELOG.md"]) {
     assert.ok(staged.includes(path), `Release commit omits ${path}`);
   }
 });

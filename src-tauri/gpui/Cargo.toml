@@ -3,7 +3,9 @@ resolver = "2"
 
 [package]
 name = "kubecove-gpui"
-version = "0.13.0"
+# The in-app updater compares this with the release manifest, so
+# `scripts/release-versions.ts` keeps it equal to the app version.
+version = "0.13.3"
 edition = "2024"
 rust-version = "1.99"
 license = "AGPL-3.0-or-later"
