@@ -368,7 +368,7 @@ mod tests {
             assert!(connection.tunnel_senders.lock().unwrap().is_empty());
         }
         connection.close().await;
-        assert!(connection.tunnels.list().is_empty());
+        assert_eq!(connection.tunnels.list(), Vec::new());
     }
 
     #[tokio::test]

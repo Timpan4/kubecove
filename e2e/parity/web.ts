@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium, type Locator, type Page } from "playwright-core";
 import { chromeExecutable, freePort, readinessTimeoutMs, startIdentity, stopGroup, waitFor } from "../../.agents/skills/verify-kubecove/scripts/processes";
@@ -115,7 +115,10 @@ export async function action(page: Page, step: Step) {
         }
         case "reopenStoredSettings":
             {
-                const directory = await mkdtemp(join(process.env.TMPDIR ?? join(process.cwd(), ".t"), "parity-settings-"));
+                // A fresh checkout, such as a CI runner, has no ignored `.t` directory yet.
+                const parent = process.env.TMPDIR ?? join(process.cwd(), ".t");
+                await mkdir(parent, { recursive: true });
+                const directory = await mkdtemp(join(parent, "parity-settings-"));
                 try {
                     const snapshot = await page.evaluate("import('/src/lib/tauri-dev-mocks.ts').then(m => m.createDevMockTauriClient().invoke('get_kubeconfig_sources'))");
                     const path = join(directory, "sources.json");
