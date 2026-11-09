@@ -112,6 +112,7 @@ impl Inspector {
     fn argo_connection_content(&self, cx: &mut Context<Self>) -> Div {
         let state = &self.argo_connections;
         let choices = state.choices();
+        let fields = state.fields();
         let mut panel = super::argo_panels::panel()
             .flex()
             .flex_col()
@@ -191,7 +192,8 @@ impl Inspector {
                                 }) {
                                     this.disconnect_argo_profile(id.clone(), window, cx);
                                 } else {
-                                    this.argo_connections.url.update(cx, |input, cx| {
+                                    let url = this.argo_connections.fields().url.clone();
+                                    url.update(cx, |input, cx| {
                                         input.set_value(saved.url.clone(), window, cx)
                                     });
                                     this.argo_connections.editing = Some(saved.clone());
@@ -318,14 +320,14 @@ impl Inspector {
         if choices.endpoint.is_none() {
             panel = panel
                 .child(
-                    Input::new(&state.url)
+                    Input::new(&fields.url)
                         .id("argo-url")
                         .aria_label("Argo CD server URL"),
                 )
                 .child(ui::xs("Custom CA PEM (session only)"))
                 .child(
                     div().id("argo-ca").test_support().child(
-                        Textarea::new(&state.ca)
+                        Textarea::new(&fields.ca)
                             .accessibility_id("argo-ca-input")
                             .aria_label("Custom CA PEM (session only)"),
                     ),
@@ -365,8 +367,8 @@ impl Inspector {
                     }))
             })))
                 .child(ui::muted(ui::xs("HTTPS pins the server certificate you confirm. HTTP sends the credential without TLS inside the private tunnel.")))
-                .child(Input::new(&state.root_path).id("argo-root-path").aria_label("Root path"))
-                .child(Input::new(&state.tls_name).id("argo-tls-name").aria_label("TLS server name"));
+                .child(Input::new(&fields.root_path).id("argo-root-path").aria_label("Root path"))
+                .child(Input::new(&fields.tls_name).id("argo-tls-name").aria_label("TLS server name"));
         }
         panel = panel.child(
             div()
@@ -388,18 +390,18 @@ impl Inspector {
         if choices.local {
             panel = panel
                 .child(
-                    Input::new(&state.username)
+                    Input::new(&fields.username)
                         .id("argo-username")
                         .aria_label("Username"),
                 )
                 .child(
-                    Input::new(&state.password)
+                    Input::new(&fields.password)
                         .id("argo-password")
                         .aria_label("Password"),
                 );
         } else {
             panel = panel.child(
-                Input::new(&state.token)
+                Input::new(&fields.token)
                     .id("argo-token")
                     .aria_label("Argo CD token"),
             );

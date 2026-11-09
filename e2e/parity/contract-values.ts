@@ -12,6 +12,11 @@ export function string(value: unknown): string {
 	if (typeof value !== "string" || !value.trim()) throw new Error("Expected nonempty string");
 	return value;
 }
+/** A string that may be empty, such as an expected field value. */
+export function plainString(value: unknown): string {
+	if (typeof value !== "string") throw new Error("Expected a string");
+	return value;
+}
 export function count(value: unknown): number {
 	if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw new Error("Expected a nonnegative integer");
 	return value;

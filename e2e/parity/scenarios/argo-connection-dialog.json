@@ -173,6 +173,51 @@
         { "action": "expectNoArgoControl", "control": "Reconnect" },
         { "action": "argoControl", "control": "Close connection" }
       ]
+    },
+    {
+      "id": "argo-connection.fields-per-dialog",
+      "title": "The GitOps page dialog and the Application detail dialog keep their own server URL, root path and TLS server name",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "argoConnectionDialog", "operation": "openDetail" },
+        { "action": "argoConnectionDialog", "operation": "chooseFoundInCluster" },
+        { "action": "fillArgoConnectionField", "field": "rootPath", "value": "/detail-only" },
+        { "action": "fillArgoConnectionField", "field": "tlsServerName", "value": "detail-only.argocd.example.test" },
+        { "action": "argoConnectionDialog", "operation": "escape" },
+        { "action": "argoConnectionDialog", "operation": "open" },
+        { "action": "argoConnectionDialog", "operation": "chooseFoundInCluster" },
+        { "action": "expectArgoConnectionField", "field": "rootPath", "value": "" },
+        { "action": "expectArgoConnectionField", "field": "tlsServerName", "value": "" },
+        { "action": "argoConnectionDialog", "operation": "chooseExternalUrl" },
+        { "action": "fillArgoConnectionField", "field": "url", "value": "https://page-only.argocd.example.test" },
+        { "action": "argoConnectionDialog", "operation": "escape" },
+        { "action": "argoConnectionDialog", "operation": "openDetail" },
+        { "action": "argoConnectionDialog", "operation": "chooseExternalUrl" },
+        { "action": "expectArgoConnectionField", "field": "url", "value": "" },
+        { "action": "argoConnectionDialog", "operation": "chooseFoundInCluster" },
+        { "action": "expectArgoConnectionField", "field": "rootPath", "value": "/detail-only" },
+        { "action": "argoConnectionDialog", "operation": "escape" }
+      ]
+    },
+    {
+      "id": "argo-connection.keeps-typed-token-until-submit",
+      "title": "A typed token stays in the connection dialog after it closes, and a successful connect clears it",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "argoConnectionDialog", "operation": "open" },
+        { "action": "fillArgoConnectionField", "field": "token", "value": "parity-fixture-token" },
+        { "action": "argoConnectionDialog", "operation": "escape" },
+        { "action": "argoConnectionDialog", "operation": "open" },
+        { "action": "expectArgoConnectionField", "field": "token", "value": "parity-fixture-token" },
+        { "action": "argoConnectionDialog", "operation": "escape" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test", "surface": "page" },
+        { "action": "expectArgoText", "text": "Connected Argo CD API" },
+        { "action": "argoConnectionDialog", "operation": "open" },
+        { "action": "expectArgoConnectionField", "field": "token", "value": "" },
+        { "action": "argoConnectionDialog", "operation": "escape" }
+      ]
     }
   ]
 }

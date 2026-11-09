@@ -144,6 +144,7 @@ export type Step =
     | { action: "expectArgoFocusInPopover"; control: "Sync options" | "Refresh options" }
     | { action: "tabArgoPopover"; control: "Sync options" | "Refresh options"; presses: number }
     | { action: "argoConnectionDialog"; operation: "open" | "expectFocusIn" | "tabCycle" | "shiftTabCycle" | "escape" | "outsideClick" | "expectOpen" | "expectConnectForm" | "expectRemember" | "expectLocalLogin" | "expectInsecure" | "chooseLocalLogin" | "chooseInsecure" | "openDetail" | "chooseFoundInCluster" | "chooseExternalUrl" | "expectFoundInCluster"; open: boolean; checked: boolean }
+    | { action: "fillArgoConnectionField" | "expectArgoConnectionField"; field: "url" | "rootPath" | "tlsServerName" | "token" | "password"; value: string }
     | { action: "expectArgoTriggerFocus"; control: "Sync options" | "Refresh options" }
     | { action: "expectArgoOptionFocusable"; name: "Prune" | "Dry run" | "Force / replace" }
     | { action: "expectArgoOperationState"; control: "Sync" | "Refresh" | "Sync options" | "Refresh options"; enabled: boolean }

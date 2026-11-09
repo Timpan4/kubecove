@@ -222,6 +222,10 @@ impl Inspector {
             }
             // A new scope mounts new web detail dialogs, which start from their default choices.
             self.argo_connections.detail = Default::default();
+            self.argo_connections
+                .discard_fields(super::argo_connection::DialogHost::Page, cx);
+            self.argo_connections
+                .discard_fields(super::argo_connection::DialogHost::Detail, cx);
             self.restore_argo_preferences();
             self.sync_argo_picker(window, cx);
             self.argo_outcomes.clear();

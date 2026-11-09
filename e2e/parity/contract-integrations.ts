@@ -1,5 +1,5 @@
 import { ARGO_OPTION_NAMES, type Step } from "./contract-steps";
-import { boolean, count, oneOf, optionalBoolean, string, strings } from "./contract-values";
+import { boolean, count, oneOf, optionalBoolean, plainString, string, strings } from "./contract-values";
 
 /** Parses remote connection, MCP server and Argo CD steps; returns undefined for any other action. */
 export function integrationStep(item: Record<string, unknown>): Step | undefined {
@@ -46,6 +46,7 @@ export function integrationStep(item: Record<string, unknown>): Step | undefined
 		case "toggleArgoOption": return { action: item.action, name: oneOf(ARGO_OPTION_NAMES, item.name, "an Argo option") };
 		case "expectNoArgoControl": return { action: item.action, control: oneOf(["Confirm target again", "Reconnect"], item.control, "an Argo control") };
 		case "expectArgoFocusInPopover": return { action: item.action, control: oneOf(["Sync options", "Refresh options"], item.control, "an Argo options popover") };
+		case "fillArgoConnectionField": case "expectArgoConnectionField": return { action: item.action, field: oneOf(["url", "rootPath", "tlsServerName", "token", "password"], item.field, "an Argo connection field"), value: plainString(item.value) };
 		case "argoConnectionDialog": return { action: item.action, operation: oneOf(["open", "expectFocusIn", "tabCycle", "shiftTabCycle", "escape", "outsideClick", "expectOpen", "expectConnectForm", "expectRemember", "expectLocalLogin", "expectInsecure", "chooseLocalLogin", "chooseInsecure", "openDetail", "chooseFoundInCluster", "chooseExternalUrl", "expectFoundInCluster"], item.operation, "an Argo connection dialog operation"), open: optionalBoolean(item.open) === true, checked: optionalBoolean(item.checked) === true };
 		case "tabArgoPopover": return { action: item.action, control: oneOf(["Sync options", "Refresh options"], item.control, "an Argo options popover"), presses: count(item.presses) };
 		case "expectArgoTriggerFocus": return { action: item.action, control: oneOf(["Sync options", "Refresh options"], item.control, "an Argo options trigger") };

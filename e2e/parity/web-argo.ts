@@ -306,6 +306,18 @@ export async function argoAction(page: Page, step: Step) {
             break;
         }
 
+        case "fillArgoConnectionField":
+        case "expectArgoConnectionField": {
+            const dialog = page.getByRole("dialog", { name: "Argo CD connection" });
+            const labels = { url: "Argo CD server URL", rootPath: "Root path", tlsServerName: "TLS server name", token: "Token", password: "Password" };
+            const field = dialog.getByLabel(labels[step.field], { exact: true });
+            // The root path and TLS server name sit under the discovered server's Advanced disclosure.
+            if ((step.field === "rootPath" || step.field === "tlsServerName") && !(await field.isVisible())) await dialog.getByText("Advanced", { exact: true }).click();
+            if (step.action === "fillArgoConnectionField") await field.fill(step.value);
+            // The error omits the value, which can be a credential.
+            else if ((await field.inputValue()) !== step.value) throw new Error(`${step.field} does not hold the expected value`);
+            break;
+        }
         default: throw new Error(`Unknown Argo action ${step.action}`);
     }
 }

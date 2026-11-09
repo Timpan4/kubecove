@@ -74,6 +74,47 @@ pub(super) struct DialogChoices {
     /// The chosen discovered Service with its protocol edits. `None` is External URL.
     pub endpoint: Option<ArgoServerEndpoint>,
 }
+/// The text one web dialog keeps until it unmounts: its server URL, its Advanced fields and
+/// its typed credentials.
+#[derive(Clone)]
+pub(super) struct DialogFields {
+    pub url: Entity<InputState>,
+    pub root_path: Entity<InputState>,
+    pub tls_name: Entity<InputState>,
+    pub ca: Entity<TextareaState>,
+    pub token: Entity<InputState>,
+    pub username: Entity<InputState>,
+    pub password: Entity<InputState>,
+}
+impl DialogFields {
+    fn new(window: &mut Window, cx: &mut gpui_kit::App) -> Self {
+        Self {
+            url: cx.new(|cx| {
+                InputState::new(window, cx).placeholder("https://argocd.example.test")
+            }),
+            root_path: cx.new(|cx| InputState::new(window, cx)),
+            tls_name: cx.new(|cx| InputState::new(window, cx)),
+            ca: cx.new(|cx| TextareaState::new(window, cx).rows(3)),
+            token: cx.new(|cx| InputState::new(window, cx).masked(true)),
+            username: cx.new(|cx| InputState::new(window, cx)),
+            password: cx.new(|cx| InputState::new(window, cx).masked(true)),
+        }
+    }
+    /// Empties the typed credentials and the CA, as the web does after a submit.
+    pub fn clear_secrets(&self, window: &mut Window, cx: &mut gpui_kit::App) {
+        self.ca.update(cx, |input, cx| input.set_value("", window, cx));
+        for field in [&self.token, &self.username, &self.password] {
+            field.update(cx, |input, cx| input.set_value("", window, cx));
+        }
+    }
+    /// Empties every field, as the web loses them when its dialog unmounts.
+    pub fn clear_all(&self, window: &mut Window, cx: &mut gpui_kit::App) {
+        for field in [&self.url, &self.root_path, &self.tls_name] {
+            field.update(cx, |input, cx| input.set_value("", window, cx));
+        }
+        self.clear_secrets(window, cx);
+    }
+}
 /// Remembered profiles that reconnect one at a time after the workspace scope changes.
 /// Only a scope change replaces it.
 #[derive(Default)]
@@ -90,18 +131,17 @@ pub(super) struct Connections {
     pub scope: String,
     /// The workspace whose page dialog choices `page` holds. Only a workspace change resets them.
     pub page_workspace: String,
-    pub url: Entity<InputState>,
-    pub token: Entity<InputState>,
-    pub username: Entity<InputState>,
-    pub password: Entity<InputState>,
-    pub ca: Entity<TextareaState>,
-    pub root_path: Entity<InputState>,
-    pub tls_name: Entity<InputState>,
     pub host: DialogHost,
     /// The GitOps page dialog's choices. Leaving the page resets them.
     pub page: DialogChoices,
     /// The detail dialog's choices. Closing the detail or opening another resource resets them.
     pub detail: DialogChoices,
+    /// The GitOps page dialog's text. As on the web, each dialog keeps its own.
+    pub page_fields: DialogFields,
+    /// The detail dialog's text.
+    pub detail_fields: DialogFields,
+    /// The window that owns the field entities, so an unmounted dialog can empty them.
+    pub window_handle: gpui_kit::AnyWindowHandle,
     pub servers: Vec<ArgoServerCapability>,
     pub step: ConnectStep,
     /// A running Disconnect or Forget.
@@ -171,17 +211,12 @@ impl Connections {
             editing: None,
             scope: String::new(),
             page_workspace: String::new(),
-            url: cx
-                .new(|cx| InputState::new(window, cx).placeholder("https://argocd.example.test")),
-            token: cx.new(|cx| InputState::new(window, cx).masked(true)),
-            username: cx.new(|cx| InputState::new(window, cx)),
-            password: cx.new(|cx| InputState::new(window, cx).masked(true)),
-            ca: cx.new(|cx| TextareaState::new(window, cx).rows(3)),
-            root_path: cx.new(|cx| InputState::new(window, cx)),
-            tls_name: cx.new(|cx| InputState::new(window, cx)),
             host: DialogHost::default(),
             page: DialogChoices::default(),
             detail: DialogChoices::default(),
+            page_fields: DialogFields::new(window, cx),
+            detail_fields: DialogFields::new(window, cx),
+            window_handle: window.window_handle(),
             servers: vec![],
             step: ConnectStep::Idle,
             profile_action: None,
@@ -202,6 +237,26 @@ impl Connections {
             DialogHost::Detail => &mut self.detail,
             DialogHost::Page => &mut self.page,
         }
+    }
+    /// The open dialog's text fields.
+    pub fn fields(&self) -> &DialogFields {
+        self.fields_for(self.host)
+    }
+    pub fn fields_for(&self, host: DialogHost) -> &DialogFields {
+        match host {
+            DialogHost::Detail => &self.detail_fields,
+            DialogHost::Page => &self.page_fields,
+        }
+    }
+    /// Empties a dialog's text once its surface unmounts, as the web does. The reset sites
+    /// have no window, so the clear runs deferred on the window that owns the entities.
+    pub fn discard_fields(&self, host: DialogHost, cx: &mut gpui_kit::App) {
+        let fields = self.fields_for(host).clone();
+        let handle = self.window_handle;
+        cx.defer(move |cx| {
+            // A closed window has no fields left to empty.
+            let _ = cx.update_window(handle, |_, window, cx| fields.clear_all(window, cx));
+        });
     }
     /// The dialog blocks new connects and profile actions while one runs.
     pub fn busy(&self) -> bool {
@@ -239,16 +294,7 @@ impl Inspector {
         self.load_application_workspace(cx);
     }
     pub(super) fn clear_argo_secrets(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.argo_connections
-            .ca
-            .update(cx, |input, cx| input.set_value("", window, cx));
-        for field in [
-            &self.argo_connections.token,
-            &self.argo_connections.username,
-            &self.argo_connections.password,
-        ] {
-            field.update(cx, |input, cx| input.set_value("", window, cx));
-        }
+        self.argo_connections.fields().clear_secrets(window, cx);
     }
     /// Applies the web's server-source default to the open dialog. Until the user picks a source,
     /// the first connectable discovered Service is chosen. A chosen Service stays chosen while
@@ -315,15 +361,16 @@ impl Inspector {
         }
         let state = &self.argo_connections;
         let choices = state.choices();
+        let fields = state.fields();
         let remembered = state
             .editing
             .as_ref()
             .is_some_and(|p| p.remember_credential);
         let credential = if choices.local {
-            !state.username.read(cx).value().is_empty()
-                && !state.password.read(cx).value().is_empty()
+            !fields.username.read(cx).value().is_empty()
+                && !fields.password.read(cx).value().is_empty()
         } else {
-            !state.token.read(cx).value().is_empty()
+            !fields.token.read(cx).value().is_empty()
         };
         if !credential && !remembered {
             self.argo_connections.step = ConnectStep::failed(
@@ -345,7 +392,7 @@ impl Inspector {
                     .or_else(|| choices.endpoint.clone())
             })
             .unwrap_or_else(|| ArgoServerEndpoint::ExternalHttps {
-                url: state.url.read(cx).value().trim().to_owned(),
+                url: fields.url.read(cx).value().trim().to_owned(),
             });
         if confirmed_target.is_none()
             && state.editing.is_none()
@@ -355,8 +402,8 @@ impl Inspector {
                 ..
             } = &mut endpoint
         {
-            let root = state.root_path.read(cx).value().trim().to_owned();
-            let name = state.tls_name.read(cx).value().trim().to_owned();
+            let root = fields.root_path.read(cx).value().trim().to_owned();
+            let name = fields.tls_name.read(cx).value().trim().to_owned();
             if !root.is_empty() {
                 *root_path = Some(root);
             }
@@ -406,21 +453,21 @@ impl Inspector {
             token: if choices.local {
                 None
             } else {
-                value(&state.token)
+                value(&fields.token)
             },
             username: if choices.local {
-                value(&state.username)
+                value(&fields.username)
             } else {
                 None
             },
             password: if choices.local {
-                value(&state.password)
+                value(&fields.password)
             } else {
                 None
             },
             insecure_tls: external && choices.insecure,
             custom_ca_pem: if external {
-                let ca = state.ca.read(cx).value().to_string();
+                let ca = fields.ca.read(cx).value().to_string();
                 (!ca.is_empty()).then(|| ca.into_bytes())
             } else {
                 None

@@ -6,6 +6,8 @@
 mod adapters;
 #[path = "parity/argo.rs"]
 mod argo;
+#[path = "parity/argo_fields.rs"]
+mod argo_fields;
 #[path = "parity/code_coverage.rs"]
 mod code_coverage;
 mod common;

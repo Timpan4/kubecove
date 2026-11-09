@@ -446,11 +446,18 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 "focus is not on {id}"
             );
         }
+        "fillArgoConnectionField" | "expectArgoConnectionField" => argo_fields::act(window, cx, step),
         "argoConnectionDialog" => match string(step, "operation") {
             "open" => {
                 assert!(seek(window, cx, "gitops-list", "argo-connect-toolbar"));
                 window.click("argo-connect-toolbar", cx);
                 window.render_frame(cx);
+                // The page dialog opens on its saved connections, and the form is one press away.
+                if window.try_find("argo-external").is_none() {
+                    reveal(window, "argo-connection-dialog", "argo-connect-open", cx);
+                    window.click("argo-connect-open", cx);
+                    window.render_frame(cx);
+                }
             }
             "openDetail" => {
                 reveal(window, "detail-body", "argo-connect-open", cx);
