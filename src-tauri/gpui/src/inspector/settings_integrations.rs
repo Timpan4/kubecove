@@ -1,5 +1,6 @@
 //! Remote sign-in and update status use only the typed host seam.
 use super::remote_notice;
+use super::request::InFlight;
 use super::{
     Inspector, Page,
     controls::{Variant, button},
@@ -21,11 +22,14 @@ pub(super) struct Integrations {
     token: Entity<InputState>,
     pub(super) remote: Option<RemoteConnectionSummary>,
     pub(super) remote_error: Option<String>,
-    pub(super) remote_busy: bool,
-    pub(super) remote_task: Option<Task<()>>,
-    /// The browser sign-in, which runs until it finishes or is cancelled.
-    pub(super) sign_in_task: Option<Task<()>>,
-    pub(super) status_task: Option<Task<()>>,
+    /// The one remote change in flight: Connect, Disconnect, Sign out or Start a new
+    /// session. The remote controls are disabled while it runs.
+    pub(super) remote_call: Option<InFlight>,
+    /// The browser sign-in, which runs until it finishes or is cancelled. Its
+    /// notice keeps Cancel usable.
+    pub(super) sign_in: Option<InFlight>,
+    /// The latest status read. A newer read or a remote change replaces it.
+    pub(super) status_read: Option<InFlight>,
     /// The backend's failed remote calls when the status was last read.
     pub(super) failures_seen: u64,
     /// Set by a runtime change. The web resets every query then, and its Resources query reads
@@ -59,10 +63,9 @@ impl Integrations {
             token,
             remote: None,
             remote_error: None,
-            remote_busy: false,
-            remote_task: None,
-            sign_in_task: None,
-            status_task: None,
+            remote_call: None,
+            sign_in: None,
+            status_read: None,
             failures_seen: 0,
             scope_reread: false,
             update: UpdateStatus::Idle,
@@ -82,8 +85,8 @@ impl Inspector {
     ) {
         let read = self.backend.remote_status();
         let read = self.timings.measure("remote_status", read);
-        self.settings.integrations.remote_task =
-            Some(cx.spawn_in(window, async move |this, cx| {
+        self.settings.integrations.status_read = Some(
+            cx.spawn_in(window, async move |this, cx| {
                 let result = read.await;
                 let _ = this.update_in(cx, |this, window, cx| {
                     match result {
@@ -99,11 +102,22 @@ impl Inspector {
                     }
                     cx.notify();
                 });
-            }));
+            })
+            .into(),
+        );
+    }
+
+    /// Starts a remote change. Its summary supersedes a pending status read.
+    pub(super) fn start_remote_call(&mut self, task: Task<()>, cx: &mut Context<Self>) {
+        let state = &mut self.settings.integrations;
+        state.remote_call = Some(task.into());
+        state.status_read = None;
+        state.remote_error = None;
+        cx.notify();
     }
 
     fn connect_settings_remote(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.settings.integrations.remote_busy || !self.can_leave(cx) {
+        if self.settings.integrations.remote_call.is_some() || !self.can_leave(cx) {
             return;
         }
         let state = &mut self.settings.integrations;
@@ -119,12 +133,10 @@ impl Inspector {
         state
             .token
             .update(cx, |input, cx| input.set_value("", window, cx));
-        state.remote_busy = true;
-        state.remote_error = None;
-        state.remote_task = Some(cx.spawn_in(window, async move |this, cx| {
+        let task = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
-                this.settings.integrations.remote_busy = false;
+                this.settings.integrations.remote_call = None;
                 match result {
                     Ok(summary) => {
                         this.settings.integrations.remote = Some(summary);
@@ -134,26 +146,23 @@ impl Inspector {
                 }
                 cx.notify();
             });
-        }));
-        cx.notify();
+        });
+        self.start_remote_call(task, cx);
     }
     pub(super) fn disconnect_settings_remote(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.settings.integrations.remote_busy || !self.can_leave(cx) {
+        if self.settings.integrations.remote_call.is_some() || !self.can_leave(cx) {
             return;
         }
         let read = self.backend.disconnect_remote();
         let read = self.timings.measure("disconnect_remote", read);
-        let state = &mut self.settings.integrations;
-        state.remote_busy = true;
-        state.remote_error = None;
-        state.remote_task = Some(cx.spawn_in(window, async move |this, cx| {
+        let task = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
-                this.settings.integrations.remote_busy = false;
+                this.settings.integrations.remote_call = None;
                 match result {
                     Ok(()) => {
                         this.settings.integrations.remote = None;
@@ -163,8 +172,8 @@ impl Inspector {
                 }
                 cx.notify();
             });
-        }));
-        cx.notify();
+        });
+        self.start_remote_call(task, cx);
     }
     pub(super) fn runtime_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.feedback = Default::default();
@@ -208,6 +217,7 @@ impl Inspector {
     }
     pub(super) fn remote_settings_section(&self, cx: &mut Context<Self>) -> Div {
         let state = &self.settings.integrations;
+        let busy = state.remote_call.is_some();
         let mut body = div().flex().flex_col().gap(px(12.)).w(px(436.));
         if let Some(remote) = &state.remote {
             let live = remote_notice::is_live(remote);
@@ -246,13 +256,13 @@ impl Inspector {
                 let mut actions = div().flex().gap(px(8.));
                 if remote.auth_mode == RemoteAuthMode::Oidc {
                     actions =
-                        actions.child(action("Sign out", state.remote_busy).on_click(cx.listener(
+                        actions.child(action("Sign out", busy).on_click(cx.listener(
                             |this, _, window, cx| this.sign_out_settings_remote(window, cx),
                         )));
                 }
                 body = body.child(
                     actions.child(
-                        action("Disconnect", state.remote_busy).on_click(cx.listener(
+                        action("Disconnect", busy).on_click(cx.listener(
                             |this, _, window, cx| this.disconnect_settings_remote(window, cx),
                         )),
                     ),
@@ -265,20 +275,20 @@ impl Inspector {
                     "Server URL",
                     "remote-server-url",
                     &state.url,
-                    state.remote_busy,
+                    busy,
                 ))
                 .child(field(
                     "Server token",
                     "remote-server-token",
                     &state.token,
-                    state.remote_busy,
+                    busy,
                 ))
                 .child(
                     div().flex().child(
                         button(
                             Variant::Default,
                             28.,
-                            state.remote_busy || state.url.read(cx).value().trim().is_empty(),
+                            busy || state.url.read(cx).value().trim().is_empty(),
                         )
                         .id("settings-button:Connect")
                         .test_support()

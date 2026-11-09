@@ -85,16 +85,16 @@ impl Inspector {
 
     fn refresh_remote_status(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let read = self.backend.remote_status();
-        self.settings.integrations.status_task =
-            Some(cx.spawn_in(window, async move |this, cx| {
-                let result = read.await;
-                let _ = this.update(cx, |this, cx| {
-                    if let Ok(remote) = result {
-                        this.settings.integrations.remote = remote;
-                    }
-                    cx.notify();
-                });
-            }));
+        let task = cx.spawn_in(window, async move |this, cx| {
+            let result = read.await;
+            let _ = this.update(cx, |this, cx| {
+                if let Ok(remote) = result {
+                    this.settings.integrations.remote = remote;
+                }
+                cx.notify();
+            });
+        });
+        self.settings.integrations.status_read = Some(task.into());
     }
 
     pub(super) fn remote_notice_action(
@@ -107,18 +107,19 @@ impl Inspector {
             RemoteNoticeAction::SignIn => self.sign_in_remote(window, cx),
             RemoteNoticeAction::CopySignInLink => self.copy_sign_in_link(window, cx),
             RemoteNoticeAction::CancelSignIn => {
+                // Detached, so no later status read or copy can drop the cancel.
                 let read = self.backend.remote_cancel_sign_in();
-                self.settings.integrations.status_task =
-                    Some(cx.spawn_in(window, async move |this, cx| {
-                        let result = read.await;
-                        let _ = this.update_in(cx, |this, window, cx| match result {
-                            Ok(()) => this.refresh_remote_status(window, cx),
-                            Err(error) => {
-                                this.settings.integrations.remote_error = Some(error.message);
-                                cx.notify();
-                            }
-                        });
-                    }));
+                cx.spawn_in(window, async move |this, cx| {
+                    let result = read.await;
+                    let _ = this.update_in(cx, |this, window, cx| match result {
+                        Ok(()) => this.refresh_remote_status(window, cx),
+                        Err(error) => {
+                            this.settings.integrations.remote_error = Some(error.message);
+                            cx.notify();
+                        }
+                    });
+                })
+                .detach();
             }
             RemoteNoticeAction::StartNewSession => {
                 let read = self.backend.remote_start_new_session();
@@ -141,9 +142,10 @@ impl Inspector {
         remote.connected = false;
         state.remote_error = None;
         let read = self.backend.remote_sign_in();
-        state.sign_in_task = Some(cx.spawn_in(window, async move |this, cx| {
+        let task = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
+                this.settings.integrations.sign_in = None;
                 match result {
                     Ok(summary) => this.apply_remote_summary(summary, window, cx),
                     Err(error) => {
@@ -153,31 +155,33 @@ impl Inspector {
                 }
                 cx.notify();
             });
-        }));
+        });
+        self.settings.integrations.sign_in = Some(task.into());
         cx.notify();
     }
 
+    /// Detached, so it shares no slot with the status read it may overlap.
     fn copy_sign_in_link(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let read = self.backend.remote_sign_in_link();
-        self.settings.integrations.status_task =
-            Some(cx.spawn_in(window, async move |this, cx| {
-                let result = read.await;
-                let _ = this.update(cx, |this, cx| {
-                    match result {
-                        Ok(Some(link)) => {
-                            cx.write_to_clipboard(ClipboardItem::new_string(link));
-                            this.show_copy_toast("Copied sign-in link.".into(), cx);
-                        }
-                        Ok(None) => {}
-                        Err(error) => this.settings.integrations.remote_error = Some(error.message),
+        cx.spawn_in(window, async move |this, cx| {
+            let result = read.await;
+            let _ = this.update(cx, |this, cx| {
+                match result {
+                    Ok(Some(link)) => {
+                        cx.write_to_clipboard(ClipboardItem::new_string(link));
+                        this.show_copy_toast("Copied sign-in link.".into(), cx);
                     }
-                    cx.notify();
-                });
-            }));
+                    Ok(None) => {}
+                    Err(error) => this.settings.integrations.remote_error = Some(error.message),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     pub(super) fn sign_out_settings_remote(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.settings.integrations.remote_busy || !self.can_leave(cx) {
+        if self.settings.integrations.remote_call.is_some() || !self.can_leave(cx) {
             return;
         }
         let read = self.backend.remote_sign_out();
@@ -192,21 +196,18 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let state = &mut self.settings.integrations;
-        state.remote_busy = true;
-        state.remote_error = None;
-        state.remote_task = Some(cx.spawn_in(window, async move |this, cx| {
+        let task = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
-                this.settings.integrations.remote_busy = false;
+                this.settings.integrations.remote_call = None;
                 match result {
                     Ok(summary) => this.apply_remote_summary(Some(summary), window, cx),
                     Err(error) => this.settings.integrations.remote_error = Some(error.message),
                 }
                 cx.notify();
             });
-        }));
-        cx.notify();
+        });
+        self.start_remote_call(task, cx);
     }
 
     fn apply_remote_summary(
@@ -270,7 +271,7 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) -> Div {
         let (prefix, buttons) = (place.text(), place.button());
-        let busy = self.settings.integrations.remote_busy;
+        let busy = self.settings.integrations.remote_call.is_some();
         let mut body = div().flex().flex_col().gap(px(8.));
         if let Some(title) = notice.title {
             body = body.child(

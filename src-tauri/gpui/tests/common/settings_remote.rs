@@ -89,8 +89,11 @@ impl Fixture {
         self.sync_remote_refusal();
         remote
     }
+    /// Scenarios hold it as the web's `remote_connection_status` command.
     pub(super) fn remote_status_read(&self) -> Read<Option<RemoteConnectionSummary>> {
-        ready(Ok(self.settings.remote.lock().unwrap().clone()))
+        let remote = self.settings.remote.lock().unwrap().clone();
+        self.timing
+            .gate("remote_connection_status", "", "", remote)
     }
     pub(super) fn connect_remote_read(
         &self,
@@ -139,6 +142,13 @@ impl Fixture {
             return ready(Ok(None));
         };
         let script = self.settings.script.lock().unwrap().clone();
+        // The provider denied the sign-in; the server stays selected and signed out.
+        if script == "oidc-sign-in-fails" {
+            return ready(Err(AppError::new(
+                "Sign-in was not completed.",
+                AppErrorKind::Forbidden,
+            )));
+        }
         if script == "oidc-browser-waits" {
             selected.session_state = RemoteSessionState::WaitingForBrowser;
             selected.connected = false;

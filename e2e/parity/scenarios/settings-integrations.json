@@ -266,6 +266,25 @@
       ]
     },
     {
+      "id": "settings-remote.failed-sign-in-copy-keeps-status-refresh",
+      "title": "Copy sign-in link during the status read after a failed sign-in does not drop that read, so the notice catches up",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "oidc-sign-in-fails" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "expectSettingsText", "value": "Sign in through your browser to use this server." },
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "remote_connection_status", "context": "" } },
+        { "action": "clickSettingsButton", "label": "Sign in" },
+        { "action": "expectSettingsText", "value": "Finish signing in in your browser." },
+        { "action": "clickSettingsButton", "label": "Copy sign-in link" },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "remote_connection_status", "context": "" } },
+        { "action": "expectSettingsText", "value": "Sign in through your browser to use this server." },
+        { "action": "expectSettingsText", "value": "Sign-in was not completed." }
+      ]
+    },
+    {
       "id": "settings-remote.oidc-session-notices",
       "title": "Server signals show their notice in Settings and in place of the workspace, and each notice action recovers the session",
       "steps": [

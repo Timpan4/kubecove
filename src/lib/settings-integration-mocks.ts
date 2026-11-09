@@ -8,7 +8,7 @@ import { setAppUpdatesEnabledForTests } from "./release-channel";
 import type { RemoteAuthMode, RemoteConnectionSummary, RemoteSessionState } from "./remote-runtime";
 import workspace from "./settings-integration-workspace.json";
 
-export type SettingsScript = "oidc-server" | "oidc-browser-waits" | "oidc-memory-only" | "oidc-store-keeps-sign-in" | "access-server" | "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "choose-application-workspace" | "choose-compare-workspace" | "choose-last-export" | "cancel-dialog" | "no-update" | "invalid-signature" | "update-available";
+export type SettingsScript = "oidc-server" | "oidc-browser-waits" | "oidc-sign-in-fails" | "oidc-memory-only" | "oidc-store-keeps-sign-in" | "access-server" | "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "choose-application-workspace" | "choose-compare-workspace" | "choose-last-export" | "cancel-dialog" | "no-update" | "invalid-signature" | "update-available";
 type UpdateScript = "no-update" | "invalid-signature" | "update-available";
 /** Page-session storage, so a reloaded page keeps the update script its scenario configured. */
 const UPDATE_SCRIPT_KEY = "kubecove-parity-update-script";
@@ -88,6 +88,8 @@ export function connectRemoteMock(serverUrl: string, token = ""): RemoteConnecti
 export function disconnectRemoteMock(): undefined { selected = null; }
 export function signInRemoteMock(): RemoteConnectionSummary | null {
 	if (!selected) return null;
+	// The provider denied the sign-in; the server stays selected and signed out.
+	if (remoteScript === "oidc-sign-in-fails") throw new Error("Sign-in was not completed.");
 	if (remoteScript === "oidc-browser-waits") {
 		selected = { ...selected, connected: false, sessionState: "waitingForBrowser" };
 	} else {

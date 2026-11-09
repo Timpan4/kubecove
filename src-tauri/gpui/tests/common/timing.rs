@@ -143,7 +143,9 @@ impl Timing {
         })
     }
 
-    fn gate<T: serde::Serialize + serde::de::DeserializeOwned + Send + 'static>(
+    /// Holds or fails `command` as scripted, without the credential gate or the
+    /// remote refusal that cluster reads get.
+    pub(super) fn gate<T: serde::Serialize + serde::de::DeserializeOwned + Send + 'static>(
         &self,
         command: &str,
         context: &str,
