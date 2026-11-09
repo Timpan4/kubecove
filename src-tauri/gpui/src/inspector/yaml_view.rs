@@ -42,7 +42,7 @@ impl YamlView {
             cx.subscribe_in(&shape, window, |this, _, event, window, cx| {
                 if let SelectEvent::Confirm(Some(value)) = event {
                     if let Detail::Ready(d) = &mut this.detail {
-                        if d.yaml.editing() {
+                        if !matches!(d.yaml.phase(), Phase::Viewing) {
                             return;
                         }
                         d.yaml_view.mode = if value.as_ref() == "Apply clean" {
@@ -57,7 +57,7 @@ impl YamlView {
             cx.subscribe_in(&encoding, window, |this, _, event, window, cx| {
                 if let SelectEvent::Confirm(Some(value)) = event {
                     if let Detail::Ready(d) = &mut this.detail {
-                        if d.yaml.editing() {
+                        if !matches!(d.yaml.phase(), Phase::Viewing) {
                             return;
                         }
                         d.yaml_view.format = if value.as_ref() == "KYAML" {
@@ -114,7 +114,8 @@ impl Inspector {
         let Some(d) = self.yaml_apply() else {
             return;
         };
-        if d.yaml.editing() {
+        // The view reads only while it shows. A draft load or an edit owns the editor.
+        if !matches!(d.yaml.phase(), Phase::Viewing) {
             return;
         }
         d.yaml_view.error = None;
@@ -125,7 +126,7 @@ impl Inspector {
             d.yaml_view.format,
         );
         let read = self.timings.measure("get_resource_yaml", read);
-        self.diff_task = Some(cx.spawn_in(window, async move |this, cx| {
+        let read = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
                 if let Some(d) = this.yaml_apply() {
@@ -144,7 +145,10 @@ impl Inspector {
                 this.refresh_yaml_lens(cx);
                 cx.notify();
             });
-        }));
+        });
+        if let Some(d) = self.yaml_apply() {
+            d.yaml.run_beside(read);
+        }
         cx.notify();
     }
 
@@ -152,7 +156,7 @@ impl Inspector {
         let Some(d) = self.yaml_apply() else {
             return;
         };
-        if !matches!(d.yaml.phase, Phase::Editing | Phase::Reviewed(_)) {
+        if !matches!(d.yaml.phase(), Phase::Editing | Phase::Reviewed(_)) {
             return;
         }
         let text = d.editor.read(cx).value().to_string();
@@ -163,7 +167,7 @@ impl Inspector {
                 .map_err(|e| AppError::new(e.to_string(), AppErrorKind::Serialization))?;
             kubecove_lib::commands::helpers::serialize_json_value_document(&value, format)
         });
-        self.diff_task = Some(cx.spawn_in(window, async move |this, cx| {
+        let task = cx.spawn_in(window, async move |this, cx| {
             let result = work.await;
             let _ = this.update_in(cx, |this, window, cx| {
                 let Some(d) = this.yaml_apply() else {
@@ -190,7 +194,8 @@ impl Inspector {
                 }
                 cx.notify();
             });
-        }));
+        });
+        d.yaml.run_beside(task);
         cx.notify();
     }
 }

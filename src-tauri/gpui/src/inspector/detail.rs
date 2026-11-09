@@ -172,11 +172,8 @@ impl ResourceDetail {
             if !matches!(event, InputEvent::Change) {
                 return;
             }
-            if let Detail::Ready(detail) = &mut this.detail
-                && detail.yaml.draft_changed()
-            {
-                // A pending dry run reviewed the old text, so its result is dropped.
-                this.diff_task.take();
+            if let Detail::Ready(detail) = &mut this.detail {
+                detail.yaml.draft_changed();
             }
             this.schedule_yaml_lint(window, cx);
             cx.notify();

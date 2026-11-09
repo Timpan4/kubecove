@@ -1,13 +1,14 @@
 //! Guarded YAML apply flow of `ResourceYamlPane.svelte` (ADR 0004). The draft
 //! is the server's apply-clean YAML, a server-side dry run reviews it, and
-//! Apply sends only the reviewed request. Async steps run in
-//! `Inspector::diff_task`, so a new step, Cancel or closing the panel drops the
-//! previous step's result. `yaml_tab` renders this state.
+//! Apply sends only the reviewed request. A phase that waits on a read owns
+//! it, so a new step, Cancel or closing the panel cancels the step it leaves.
+//! `yaml_tab` renders this state.
 
 use super::Inspector;
 use super::detail::{Detail, ResourceDetail};
+use super::request::InFlight;
 use crate::unified_diff::{self, DiffLine};
-use gpui_kit::{Context, Window};
+use gpui_kit::{Context, Task, Window};
 use kubecove_lib::models::{
     AppError, ResourceSummary, YamlApplyPreview, YamlApplyRequest, YamlViewMode,
 };
@@ -16,15 +17,26 @@ pub(super) struct Review {
     pub request: YamlApplyRequest,
     pub lines: Vec<DiffLine>,
     pub full_lines: Vec<DiffLine>,
+    /// The diff shows every line instead of its compact form.
+    pub show_full: bool,
 }
 
 pub(super) enum Phase {
     Viewing,
-    LoadingDraft,
+    /// The apply-clean draft read runs.
+    LoadingDraft {
+        _read: InFlight,
+    },
     Editing,
-    Preparing,
+    /// The dry run of the draft runs.
+    Preparing {
+        _read: InFlight,
+    },
     Reviewed(Review),
-    Applying(Review),
+    Applying {
+        review: Review,
+        _read: InFlight,
+    },
 }
 
 pub(super) enum Feedback {
@@ -36,27 +48,51 @@ pub(super) enum Feedback {
 }
 
 pub(super) struct YamlApply {
-    pub phase: Phase,
+    phase: Phase,
+    /// A view reload while `Viewing`, or a Format while `Editing` or `Reviewed`.
+    /// Neither changes the phase, and entering a phase cancels it.
+    beside: Option<InFlight>,
     pub feedback: Feedback,
     /// The apply-clean draft the editor started from, which `dirty` compares.
     pub base: String,
     pub force_for_resource: bool,
-    pub show_full: bool,
 }
 
 impl Default for YamlApply {
     fn default() -> Self {
         Self {
             phase: Phase::Viewing,
+            beside: None,
             feedback: Feedback::None,
             base: String::new(),
             force_for_resource: false,
-            show_full: false,
         }
     }
 }
 
 impl YamlApply {
+    pub fn phase(&self) -> &Phase {
+        &self.phase
+    }
+
+    /// Moves to `phase`. The phase it leaves drops its read, and so does a
+    /// reload or Format that ran beside it.
+    fn enter(&mut self, phase: Phase) {
+        self.beside = None;
+        self.phase = phase;
+    }
+
+    /// Runs a view reload or a Format beside the current phase, in place of the last one.
+    pub fn run_beside(&mut self, read: Task<()>) {
+        self.beside = Some(read.into());
+    }
+
+    pub fn toggle_full_diff(&mut self) {
+        if let Phase::Reviewed(review) | Phase::Applying { review, .. } = &mut self.phase {
+            review.show_full = !review.show_full;
+        }
+    }
+
     pub fn feedback_format(&self) -> Option<String> {
         if let Feedback::FormatFailed(message) = &self.feedback {
             Some(message.clone())
@@ -67,27 +103,25 @@ impl YamlApply {
 
     /// `yamlEditing`: the draft editor replaces the read-only view.
     pub fn editing(&self) -> bool {
-        !matches!(self.phase, Phase::Viewing | Phase::LoadingDraft)
+        !matches!(self.phase, Phase::Viewing | Phase::LoadingDraft { .. })
     }
 
     pub fn review(&self) -> Option<&Review> {
         match &self.phase {
-            Phase::Reviewed(review) | Phase::Applying(review) => Some(review),
+            Phase::Reviewed(review) | Phase::Applying { review, .. } => Some(review),
             _ => None,
         }
     }
 
-    /// `clearYamlDraftFeedback`: any draft change invalidates the dry run.
-    /// Returns whether a pending step must be dropped.
-    pub fn draft_changed(&mut self) -> bool {
-        if !self.editing() || matches!(self.phase, Phase::Applying(_)) {
-            return false;
+    /// `clearYamlDraftFeedback`: any draft change invalidates the dry run. A
+    /// pending dry run reviewed the old text, so entering `Editing` cancels it.
+    pub fn draft_changed(&mut self) {
+        if !self.editing() || matches!(self.phase, Phase::Applying { .. }) {
+            return;
         }
-        self.phase = Phase::Editing;
+        self.enter(Phase::Editing);
         self.feedback = Feedback::None;
         self.force_for_resource = false;
-        self.show_full = false;
-        true
     }
 }
 
@@ -128,6 +162,7 @@ fn review(
     let (current, dry_run) = (&preview.current_yaml, &preview.dry_run_yaml);
     let force = request.force_conflicts;
     Review {
+        show_full: false,
         lines: if style == crate::preferences::DiffStyle::Git {
             unified_diff::dry_run_git(current, dry_run, false)
         } else {
@@ -152,7 +187,6 @@ impl Inspector {
 
     /// `resetYamlApply`: back to the read-only view of the loaded YAML.
     pub(super) fn reset_yaml_apply(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.diff_task.take();
         let Some(detail) = self.yaml_apply() else {
             return;
         };
@@ -194,10 +228,6 @@ impl Inspector {
         {
             return;
         }
-        detail.yaml = YamlApply {
-            phase: Phase::LoadingDraft,
-            ..Default::default()
-        };
         detail.yaml_view.shape.update(cx, |s, cx| {
             s.set_selected_value(&gpui_kit::SharedString::from("Apply clean"), window, cx)
         });
@@ -207,7 +237,7 @@ impl Inspector {
             detail.yaml_view.format,
         );
         let read = timings.measure("get_resource_yaml", read);
-        self.diff_task = Some(cx.spawn_in(window, async move |this, cx| {
+        let read = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
                 let Some(detail) = this.yaml_apply() else {
@@ -221,17 +251,21 @@ impl Inspector {
                             .update(cx, |editor, cx| editor.set_value(draft, window, cx));
                         detail.marks.refresh(&detail.editor, cx);
                         // Set after the value, so loading the draft is not a draft change.
-                        detail.yaml.phase = Phase::Editing;
+                        detail.yaml.enter(Phase::Editing);
                     }
                     Err(error) => {
-                        detail.yaml.phase = Phase::Viewing;
+                        detail.yaml.enter(Phase::Viewing);
                         detail.yaml.feedback = Feedback::PrepareFailed(error);
                     }
                 }
                 this.schedule_yaml_lint(window, cx);
                 cx.notify();
             });
-        }));
+        });
+        detail.yaml = YamlApply {
+            phase: Phase::LoadingDraft { _read: read.into() },
+            ..Default::default()
+        };
         cx.notify();
     }
 
@@ -252,35 +286,37 @@ impl Inspector {
             return;
         }
         let draft = detail.editor.read(cx).value().to_string();
-        let state = &mut detail.yaml;
-        state.phase = Phase::Preparing;
-        state.feedback = Feedback::None;
-        state.show_full = false;
-        let force = force.unwrap_or(state.force_for_resource || global_force);
+        let force = force.unwrap_or(detail.yaml.force_for_resource || global_force);
         let mut request = apply_request(&detail.data.summary, draft, force);
         request.yaml_encoding = detail.yaml_view.format;
         let read = backend.prepare_yaml_apply(request.clone());
         let read = timings.measure("prepare_yaml_apply", read);
-        self.diff_task = Some(cx.spawn_in(window, async move |this, cx| {
+        let read = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
                 let style = this.persisted.preferences.yaml_diff_style;
                 let Some(detail) = this.yaml_apply() else {
                     return;
                 };
-                detail.yaml.phase = match result {
-                    Ok(preview) => Phase::Reviewed(review(request, &preview, style)),
-                    Err(error) => {
-                        detail.yaml.feedback = Feedback::PrepareFailed(error);
-                        Phase::Editing
+                match result {
+                    Ok(preview) => {
+                        detail
+                            .yaml
+                            .enter(Phase::Reviewed(review(request, &preview, style)));
                     }
-                };
+                    Err(error) => {
+                        detail.yaml.enter(Phase::Editing);
+                        detail.yaml.feedback = Feedback::PrepareFailed(error);
+                    }
+                }
                 if this.persisted.preferences.skip_change_review {
                     this.apply_yaml_review(window, cx);
                 }
                 cx.notify();
             });
-        }));
+        });
+        detail.yaml.enter(Phase::Preparing { _read: read.into() });
+        detail.yaml.feedback = Feedback::None;
         cx.notify();
     }
 
@@ -304,9 +340,7 @@ impl Inspector {
         let read = backend.apply_yaml(review.request.clone());
         let read = timings.measure("apply_yaml", read);
         let force = review.request.force_conflicts;
-        detail.yaml.phase = Phase::Applying(review);
-        detail.yaml.feedback = Feedback::None;
-        self.diff_task = Some(cx.spawn_in(window, async move |this, cx| {
+        let read = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
                 match result {
@@ -325,7 +359,7 @@ impl Inspector {
                         };
                         let draft = detail.editor.read(cx).value().to_string();
                         let phase = std::mem::replace(&mut detail.yaml.phase, Phase::Editing);
-                        if let Phase::Applying(review) = phase
+                        if let Phase::Applying { review, .. } = phase
                             && review.request.yaml == draft
                         {
                             detail.yaml.phase = Phase::Reviewed(review);
@@ -335,7 +369,12 @@ impl Inspector {
                 }
                 cx.notify();
             });
-        }));
+        });
+        detail.yaml.enter(Phase::Applying {
+            review,
+            _read: read.into(),
+        });
+        detail.yaml.feedback = Feedback::None;
         cx.notify();
     }
 }

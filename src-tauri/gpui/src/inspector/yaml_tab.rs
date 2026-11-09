@@ -145,10 +145,10 @@ fn force_conflicts(state: &YamlApply, global: bool) -> Div {
 
 fn dry_run_diff(
     review: &Review,
-    full: bool,
     style: crate::preferences::DiffStyle,
     cx: &mut Context<Inspector>,
 ) -> Div {
+    let full = review.show_full;
     let lines = if full {
         &review.full_lines
     } else {
@@ -196,7 +196,7 @@ fn dry_run_diff(
                         })
                         .on_click(cx.listener(|this, _, _, cx| {
                             if let Some(detail) = this.yaml_apply() {
-                                detail.yaml.show_full = !detail.yaml.show_full;
+                                detail.yaml.toggle_full_diff();
                             }
                             cx.notify();
                         })),
@@ -252,8 +252,8 @@ fn edit_controls(
     kyaml: bool,
     cx: &mut Context<Inspector>,
 ) -> Div {
-    let preparing = matches!(state.phase, Phase::Preparing);
-    let applying = matches!(state.phase, Phase::Applying(_));
+    let preparing = matches!(state.phase(), Phase::Preparing { .. });
+    let applying = matches!(state.phase(), Phase::Applying { .. });
     let reviewed = state.review().is_some();
     let dry_run_disabled = preparing || applying || draft_empty;
     let apply_disabled = !reviewed || applying;
@@ -416,8 +416,8 @@ pub(super) fn yaml_tab(
     let summary = &detail.data.summary;
     let state = &detail.yaml;
     let editing = state.editing();
-    let loading = matches!(state.phase, Phase::LoadingDraft);
-    let applying = matches!(state.phase, Phase::Applying(_));
+    let loading = matches!(state.phase(), Phase::LoadingDraft { .. });
+    let applying = matches!(state.phase(), Phase::Applying { .. });
     let disabled = disabled_reason(summary);
     let path = [
         summary.cluster.as_str(),
@@ -617,7 +617,7 @@ pub(super) fn yaml_tab(
             |pane, message| pane.child(failure("yaml-apply-error", "YAML apply failed", message)),
         )
         .when_some(state.review().filter(|_| editing), |pane, review| {
-            pane.child(dry_run_diff(review, state.show_full, style, cx))
+            pane.child(dry_run_diff(review, style, cx))
         })
         // `YamlCodeEditor minHeight`: 520px read-only, 420px while editing. GPUI's
         // editor needs a definite height, so longer YAML scrolls inside it.

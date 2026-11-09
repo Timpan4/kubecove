@@ -400,15 +400,8 @@ impl Backend for Controlled {
     fn execute_action(&self, request: ResourceActionRequest) -> Read<ClusterOperationResult> {
         self.detail.execute_action(request)
     }
-    fn resource_yaml(&self, resource: ResourceSummary, _: YamlViewMode) -> Read<String> {
-        Box::pin(async move {
-            Ok(if resource.kind == "Secret" {
-                adapters::SECRET_YAML
-            } else {
-                YAML
-            }
-            .into())
-        })
+    fn resource_yaml(&self, resource: ResourceSummary, mode: YamlViewMode) -> Read<String> {
+        self.detail.resource_yaml(resource, mode)
     }
     fn prepare_yaml_apply(&self, request: YamlApplyRequest) -> Read<YamlApplyPreview> {
         self.detail.prepare_yaml_apply(request)

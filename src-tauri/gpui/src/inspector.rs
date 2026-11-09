@@ -279,7 +279,6 @@ pub struct Inspector {
     scope_trace: Option<load_trace::LoadTrace>,
     map_trace: Option<load_trace::LoadTrace>,
     topology_task: Option<Task<()>>,
-    diff_task: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -416,7 +415,6 @@ impl Inspector {
             scope_trace: None,
             map_trace: None,
             topology_task: None,
-            diff_task: None,
             _subscriptions: subscriptions,
         };
         this.load_preferences(cx);
@@ -533,7 +531,6 @@ impl Inspector {
         if !self.can_leave(cx) {
             return;
         }
-        self.diff_task.take();
         self.detail_request = Rc::new(());
         self.exec.clear();
         // Keep an in-flight submission alive so its outcome still reaches the observer.

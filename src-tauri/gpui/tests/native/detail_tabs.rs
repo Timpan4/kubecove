@@ -8,8 +8,8 @@ use gpui_kit::{AppContext, TestAppContext};
 use kubecove_gpui::backend::{LogStream, LogTarget, Read};
 use kubecove_lib::models::{
     AppError, AppErrorKind, ClusterOperationResult, ResourceActionPreview, ResourceActionRequest,
-    ResourceActionState, ResourceActionStateRequest, StreamMessage, YamlApplyPreview,
-    YamlApplyRequest, YamlApplyResult,
+    ResourceActionState, ResourceActionStateRequest, ResourceSummary, StreamMessage,
+    YamlApplyPreview, YamlApplyRequest, YamlApplyResult, YamlViewMode,
 };
 use serde_json::json;
 use std::sync::{
@@ -30,6 +30,8 @@ pub struct DetailControls {
     /// Holds the next dry run until the test releases it.
     dry_run_gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
     applied: AtomicUsize,
+    /// Holds the next apply-clean draft read until the test releases it.
+    draft_gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
 }
 
 /// Records that the backend stream stopped, as `StopStream` does natively.
@@ -109,6 +111,23 @@ impl DetailControls {
                 target: request.target,
                 effect: "Restarted".into(),
             })
+        })
+    }
+
+    pub fn resource_yaml(&self, resource: ResourceSummary, mode: YamlViewMode) -> Read<String> {
+        let gate = (mode == YamlViewMode::ApplyClean)
+            .then(|| self.draft_gate.lock().unwrap().take())
+            .flatten();
+        Box::pin(async move {
+            if let Some(gate) = gate {
+                let _ = gate.await;
+            }
+            Ok(if resource.kind == "Secret" {
+                super::adapters::SECRET_YAML
+            } else {
+                super::YAML
+            }
+            .into())
         })
     }
 
@@ -297,6 +316,24 @@ fn a_refused_yaml_dry_run_shows_its_error_and_blocks_apply(cx: &mut TestAppConte
         window.click("yaml-apply", cx);
     });
     assert_eq!(backend.detail.applied.load(Ordering::SeqCst), 0);
+}
+
+/// Failure mode: returning to the YAML tab while the edit draft loads reads the
+/// view in the draft's place, so the draft never arrives and Edit stays disabled.
+#[gpui_kit::test]
+fn returning_to_the_yaml_tab_keeps_the_draft_load(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    let handle = open_tab(cx, backend.clone(), "yaml");
+    let (release, gate) = tokio::sync::oneshot::channel();
+    *backend.detail.draft_gate.lock().unwrap() = Some(gate);
+    step(cx, handle, |window, cx| window.click("edit-draft", cx));
+    step(cx, handle, |window, cx| window.click("show-events", cx));
+    step(cx, handle, |window, cx| window.click("show-yaml", cx));
+    let _ = release.send(());
+    cx.run_until_parked();
+    step(cx, handle, |window, _| {
+        assert!(window.find("discard-draft").visible());
+    });
 }
 
 /// Failure mode: a dry run that finishes after the draft changed marks the
