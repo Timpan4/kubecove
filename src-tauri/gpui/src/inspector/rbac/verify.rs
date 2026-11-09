@@ -1,23 +1,21 @@
 //! The "Verify exact action" SubjectAccessReview form from `RbacView.svelte`
 //! and its latest result.
 
-use super::Inspector;
-use super::controls::{Variant, button};
-use super::rbac_inspector::caps;
-use super::rbac_page::IdentitySource;
+use super::super::Inspector;
+use super::super::controls::{Variant, button};
+use super::super::request::InFlight;
+use super::inspector::caps;
+use super::page::IdentitySource;
 use crate::rbac::permissions::{Identity, IdentityKind, identity_defaults, unique_groups};
 use crate::targets::TestSupportExt;
 use crate::theme::{Palette, Tokens};
 use crate::ui;
 use gpui_kit::component::input::{Input, InputEvent, InputState, TextareaState};
-use gpui_kit::{
-    AnyElement, App, Context, Div, Entity, Subscription, Task, Window, div, prelude::*, px,
-};
+use gpui_kit::{AnyElement, App, Context, Div, Entity, Subscription, Window, div, prelude::*, px};
 use kubecove_lib::models::{
     RbacAccessReviewOutcome, RbacAccessReviewRequest, RbacAccessReviewResult,
     RbacAccessReviewTarget, RbacInspectionSummary,
 };
-use std::rc::Rc;
 
 struct Submitted {
     timestamp: String,
@@ -25,9 +23,14 @@ struct Submitted {
     target: String,
 }
 
+/// One exact-action review. `Checking` owns the read, so an input change
+/// that resets the review cancels it.
 enum Review {
     None,
-    Checking(Submitted),
+    Checking {
+        submitted: Submitted,
+        _read: InFlight,
+    },
     Done(Submitted, RbacAccessReviewResult),
     Failed(Submitted, String),
 }
@@ -49,8 +52,6 @@ pub(super) struct Verifier {
     review: Review,
     pub(super) note: Entity<TextareaState>,
     pub(super) note_error: Option<String>,
-    request: Rc<()>,
-    task: Option<Task<()>>,
 }
 
 impl Verifier {
@@ -94,16 +95,12 @@ impl Verifier {
                     .placeholder("Why is this access expected or anomalous?")
             }),
             note_error: None,
-            request: Rc::new(()),
-            task: None,
         }
     }
 
-    /// Any input change drops a result for an older request.
+    /// Any input change drops the result, or cancels the read, of an older request.
     pub(super) fn reset(&mut self) {
         self.review = Review::None;
-        self.request = Rc::new(());
-        self.task = None;
     }
 
     /// `manualIdentityValue`.
@@ -155,7 +152,7 @@ fn field(input: &Entity<InputState>, id: &'static str, label: &'static str) -> I
 }
 
 impl Inspector {
-    pub(super) fn fill_permission_target(
+    pub(in crate::inspector) fn fill_permission_target(
         &mut self,
         target: RbacAccessReviewTarget,
         window: &mut Window,
@@ -224,7 +221,7 @@ impl Inspector {
         let (Some(data), Some(target)) = (state.data(), state.verifier.target(cx)) else {
             return;
         };
-        if identity.name.is_empty() || matches!(state.verifier.review, Review::Checking(_)) {
+        if identity.name.is_empty() || matches!(state.verifier.review, Review::Checking { .. }) {
             return;
         }
         let request = RbacAccessReviewRequest {
@@ -240,20 +237,13 @@ impl Inspector {
             identity: serde_json::to_string(&request.identity).unwrap_or_default(),
             target: serde_json::to_string(&request.target).unwrap_or_default(),
         };
-        let verifier = &mut state.verifier;
-        verifier.review = Review::Checking(submitted);
-        verifier.request = Rc::new(());
-        let token = verifier.request.clone();
         let read = self.backend.review_rbac(request);
         let read = self.timings.measure("review_rbac", read);
-        self.rbac.verifier.task = Some(cx.spawn(async move |this, cx| {
+        let read = cx.spawn(async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
                 let verifier = &mut this.rbac.verifier;
-                if !Rc::ptr_eq(&verifier.request, &token) {
-                    return;
-                }
-                let Review::Checking(submitted) =
+                let Review::Checking { submitted, .. } =
                     std::mem::replace(&mut verifier.review, Review::None)
                 else {
                     return;
@@ -264,7 +254,11 @@ impl Inspector {
                 };
                 cx.notify();
             });
-        }));
+        });
+        self.rbac.verifier.review = Review::Checking {
+            submitted,
+            _read: read.into(),
+        };
         cx.notify();
     }
 
@@ -272,7 +266,7 @@ impl Inspector {
         let state = &self.rbac;
         let verifier = &state.verifier;
         let manual = matches!(state.identity, IdentitySource::Manual) || identity.name.is_empty();
-        let checking = matches!(verifier.review, Review::Checking(_));
+        let checking = matches!(verifier.review, Review::Checking { .. });
         let ready = !checking && !identity.name.is_empty() && verifier.target(cx).is_some();
         let toggle = |id: &'static str, label: &'static str, on: bool| {
             button(
@@ -451,7 +445,7 @@ impl Inspector {
     pub(super) fn rbac_latest(&self, data: &RbacInspectionSummary) -> Option<AnyElement> {
         let (submitted, result, failure) = match &self.rbac.verifier.review {
             Review::None => return None,
-            Review::Checking(submitted) => (submitted, None, None),
+            Review::Checking { submitted, .. } => (submitted, None, None),
             Review::Done(submitted, result) => (submitted, Some(result), None),
             Review::Failed(submitted, message) => (submitted, None, Some(message)),
         };

@@ -1,11 +1,11 @@
 //! RBAC Cockpit, mirroring `RbacSurface.svelte` and `RbacView.svelte`: state,
-//! loading, the access posture and page layout. `rbac_queue.rs` renders the
-//! toolbar and queue, `rbac_inspector.rs` the selected object's evidence.
+//! loading, the access posture and page layout. `queue.rs` renders the
+//! toolbar and queue, `inspector.rs` the selected object's evidence.
 
-use super::controls::{Variant, button};
-use super::rbac_queue::{has_level, tinted_badge};
-use super::rbac_verify::Verifier;
-use super::{Inspector, Page, friendly_error::Operation, request::Query, surface};
+use super::super::controls::{Variant, button};
+use super::super::{Inspector, Page, friendly_error::Operation, request::Query, surface};
+use super::queue::{has_level, tinted_badge};
+use super::verify::Verifier;
 use crate::rbac::permissions::{Identity, IdentityKind, Observed, observed};
 use crate::rbac::review::ReviewRecord;
 use crate::rbac::{self, Bucket, CockpitItem, ObjectRef, RbacView};
@@ -27,12 +27,12 @@ pub(super) enum IdentitySource {
     Subject(Identity),
 }
 
-pub(super) struct RbacState {
+pub(in crate::inspector) struct RbacState {
     context: String,
     load: Query<Box<RbacInspectionSummary>>,
     pub(super) view: RbacView,
     /// Opened on a kind child, which the header names instead of "RBAC".
-    pub(super) kind_location: bool,
+    pub(in crate::inspector) kind_location: bool,
     pub(super) bucket: Bucket,
     pub(super) search: Entity<InputState>,
     pub(super) items: Vec<CockpitItem>,
@@ -43,15 +43,18 @@ pub(super) struct RbacState {
     selected: Option<String>,
     pub(super) identity: IdentitySource,
     pub(super) verifier: Verifier,
-    pub(super) reviews: Vec<ReviewRecord>,
-    pub(super) review_editor_key: Option<(String, String, Option<String>)>,
+    /// The open workspace's reviews. The launcher copies them from and back
+    /// to the saved workspace.
+    pub(in crate::inspector) reviews: Vec<ReviewRecord>,
+    /// The review the note editor shows. Opening a workspace clears it.
+    pub(in crate::inspector) review_editor_key: Option<(String, String, Option<String>)>,
     /// Observed grants for the identity they were computed for.
     observed: Option<(Identity, Observed)>,
     _subscriptions: Vec<Subscription>,
 }
 
 impl RbacState {
-    pub(super) fn new(window: &mut Window, cx: &mut Context<Inspector>) -> Self {
+    pub(in crate::inspector) fn new(window: &mut Window, cx: &mut Context<Inspector>) -> Self {
         let search = cx.new(|cx| {
             InputState::new(window, cx).placeholder(search_placeholder(RbacView::ServiceAccounts))
         });
@@ -83,7 +86,7 @@ impl RbacState {
         }
     }
 
-    pub(super) fn location(&self) -> &'static str {
+    pub(in crate::inspector) fn location(&self) -> &'static str {
         if self.kind_location {
             self.view.label()
         } else {
@@ -134,7 +137,7 @@ fn search_placeholder(view: RbacView) -> String {
 
 impl Inspector {
     /// Opens the cockpit on a category, or on Service Accounts from the section.
-    pub(super) fn open_rbac(
+    pub(in crate::inspector) fn open_rbac(
         &mut self,
         view: Option<RbacView>,
         window: &mut Window,
@@ -149,7 +152,7 @@ impl Inspector {
         }
     }
 
-    pub(super) fn load_rbac(&mut self, cx: &mut Context<Self>) {
+    pub(in crate::inspector) fn load_rbac(&mut self, cx: &mut Context<Self>) {
         if self.scope.context.is_empty() {
             return;
         }
@@ -190,12 +193,12 @@ impl Inspector {
         cx.notify();
     }
 
-    pub(super) fn refresh_rbac(&mut self, cx: &mut Context<Self>) {
+    pub(in crate::inspector) fn refresh_rbac(&mut self, cx: &mut Context<Self>) {
         self.invalidate_page_read(Page::Rbac);
         self.load_rbac(cx);
     }
 
-    pub(super) fn cancel_rbac_read(&mut self) {
+    pub(in crate::inspector) fn cancel_rbac_read(&mut self) {
         self.rbac.load.cancel();
     }
 
@@ -273,7 +276,11 @@ impl Inspector {
         state.observed.as_ref().map(|(_, grants)| grants)
     }
 
-    pub(super) fn rbac_page(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+    pub(in crate::inspector) fn rbac_page(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Div {
         self.sync_rbac_review_note(window, cx);
         let pending = surface::pending_slot(
             self.loading.phase("surface-rbac", self.rbac.load.pending()),

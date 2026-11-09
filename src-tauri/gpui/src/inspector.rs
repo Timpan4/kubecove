@@ -74,11 +74,7 @@ mod preference_controls;
 mod preferences;
 mod presentation;
 mod preset_table;
-mod rbac_inspector;
-mod rbac_page;
-mod rbac_queue;
-mod rbac_review;
-mod rbac_verify;
+mod rbac;
 mod remote_notice;
 mod resource_filter_controls;
 mod resource_filters;
@@ -221,7 +217,7 @@ pub struct Inspector {
     incidents: incidents::IncidentsState,
     sessions: port_forwards::SessionsState,
     exec: exec::ExecState,
-    rbac: rbac_page::RbacState,
+    rbac: rbac::RbacState,
     settings: settings_page::SettingsState,
     launcher: launcher::LauncherState,
     palette: palette::PaletteState,
@@ -352,7 +348,7 @@ impl Inspector {
             incidents: incidents::IncidentsState::new(),
             sessions: port_forwards::SessionsState::new(),
             exec: exec::ExecState::new(window, cx),
-            rbac: rbac_page::RbacState::new(window, cx),
+            rbac: rbac::RbacState::new(window, cx),
             settings: settings_page::SettingsState::new(window, cx),
             launcher: launcher::LauncherState::new(window, cx),
             palette: palette::PaletteState::new(window, cx),

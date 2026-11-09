@@ -1,10 +1,10 @@
 //! The RBAC inspector's right column: `RbacReviewPanel.svelte`, the verifier,
 //! the latest verification and input coverage.
 
-use super::Inspector;
-use super::controls::{Variant, button};
-use super::rbac_inspector::caps;
-use super::rbac_queue::review_badge;
+use super::super::Inspector;
+use super::super::controls::{Variant, button};
+use super::inspector::caps;
+use super::queue::review_badge;
 use crate::rbac::permissions::Identity;
 use crate::rbac::review::{self, Disposition, ReviewRecord};
 use crate::rbac::{self, CockpitItem};

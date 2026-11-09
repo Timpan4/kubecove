@@ -2,9 +2,9 @@
 //! `RbacView.svelte`, with the risk and review badges they share with the
 //! inspector.
 
-use super::controls::{Variant, button};
-use super::rbac_page::PAGE;
-use super::{Inspector, surface};
+use super::super::controls::{Variant, button};
+use super::super::{Inspector, surface};
+use super::page::PAGE;
 use crate::rbac::review::{self, ReviewRecord, Status};
 use crate::rbac::{self, Bucket, CockpitItem, RbacView};
 use crate::targets::TestSupportExt;

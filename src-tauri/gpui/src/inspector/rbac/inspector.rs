@@ -1,10 +1,10 @@
 //! The RBAC inspector card from `RbacView.svelte`: header, evidence tiles,
 //! findings, rules, subjects, observed grants and the source chain.
 
-use super::Inspector;
-use super::controls::{Variant, button};
-use super::rbac_queue::{review_badge, risk_badge, risk_rail};
-use super::surface;
+use super::super::Inspector;
+use super::super::controls::{Variant, button};
+use super::super::surface;
+use super::queue::{review_badge, risk_badge, risk_rail};
 use crate::rbac::permissions::{Identity, IdentityKind};
 use crate::rbac::{self, CockpitItem, ObjectRef, RbacView};
 use crate::targets::TestSupportExt;
