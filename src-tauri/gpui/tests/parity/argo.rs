@@ -109,7 +109,11 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
         "argoControl" => {
             let id = match string(step, "control") {
                 "Open connection" => "argo-connect-open",
-                "Close connection" => "argo-connection-close",
+                "Close connection" => {
+                    // The close button sits below the form, so a short window needs a scroll to reach it.
+                    reveal(window, "argo-connection-dialog", "argo-connection-close", cx);
+                    "argo-connection-close"
+                }
                 "Disconnect" => {
                     locate::click_label(window, "root", "Disconnect", cx);
                     return true;
@@ -552,6 +556,38 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                     window.try_find("argo-connection-dialog").is_some(),
                     step["open"].as_bool() == Some(true),
                     "Argo CD connection dialog open state"
+                );
+            }
+            "expectInWindow" => {
+                window.render_frame(cx);
+                let dialog = window.find("argo-connection-dialog").bounds();
+                let viewport = window.viewport_size();
+                assert!(
+                    dialog.left() >= gpui_kit::px(0.)
+                        && dialog.top() >= gpui_kit::px(0.)
+                        && dialog.right() <= viewport.width
+                        && dialog.bottom() <= viewport.height,
+                    "the Argo CD connection dialog {dialog:?} overflows the {viewport:?} window"
+                );
+            }
+            "expectReachable" => {
+                let id = match string(step, "control") {
+                    "External URL" => "argo-external",
+                    "Token" => "argo-token",
+                    "Remember credential" => "argo-remember",
+                    "Connect" => "argo-connect-submit",
+                    control => panic!("unknown Argo connection dialog control {control}"),
+                };
+                reveal(window, "argo-connection-dialog", id, cx);
+                window.render_frame(cx);
+                let dialog = window.find("argo-connection-dialog").bounds();
+                let control = window.find(id).bounds();
+                assert!(
+                    control.left() >= dialog.left()
+                        && control.right() <= dialog.right()
+                        && control.top() >= dialog.top()
+                        && control.bottom() <= dialog.bottom(),
+                    "{id} is not reachable inside the Argo CD connection dialog"
                 );
             }
             operation @ ("expectRemember" | "expectLocalLogin" | "expectInsecure"

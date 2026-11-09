@@ -218,6 +218,22 @@
         { "action": "expectArgoConnectionField", "field": "token", "value": "" },
         { "action": "argoConnectionDialog", "operation": "escape" }
       ]
+    },
+    {
+      "id": "argo-connection.fits-constrained-window",
+      "title": "The connection dialog stays inside a short, narrow window, and its form controls and Connect button are reachable by scrolling",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "argoConnectionDialog", "operation": "open" },
+        { "action": "resizeViewport", "width": 480, "height": 420 },
+        { "action": "argoConnectionDialog", "operation": "expectInWindow" },
+        { "action": "argoConnectionDialog", "operation": "expectReachable", "control": "External URL" },
+        { "action": "argoConnectionDialog", "operation": "expectReachable", "control": "Token" },
+        { "action": "argoConnectionDialog", "operation": "expectReachable", "control": "Remember credential" },
+        { "action": "argoConnectionDialog", "operation": "expectReachable", "control": "Connect" },
+        { "action": "argoControl", "control": "Close connection" },
+        { "action": "argoConnectionDialog", "operation": "expectOpen", "open": false }
+      ]
     }
   ]
 }

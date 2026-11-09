@@ -1,5 +1,17 @@
-import type { Page } from "playwright-core";
+import type { Locator, Page } from "playwright-core";
 import type { Step } from "./contract";
+
+/** The control a dialog reachability check names, as the web renders it. */
+function argoDialogControl(dialog: Locator, control: string): Locator {
+    switch (control) {
+        case "External URL": return dialog.getByRole("radio", { name: "External URL", exact: true });
+        case "Token": return dialog.locator("#argo-token");
+        case "Remember credential": return dialog.getByRole("switch", { name: "Remember credential in native keyring", exact: true });
+        case "Connect": return dialog.getByRole("button", { name: "Connect", exact: true });
+        default: throw new Error(`Unknown Argo connection dialog control ${control}`);
+    }
+}
+
 export async function argoAction(page: Page, step: Step) {
     switch (step.action) {
         case "reconnectArgoProfile":
@@ -236,6 +248,28 @@ export async function argoAction(page: Page, step: Step) {
                     // The form's Connect button sits under the saved connections, so the dialog shows it at once.
                     if (!(await dialog.getByRole("button", { name: "Connect", exact: true }).isVisible())) throw new Error("The Argo CD connection form is not shown");
                     break;
+                case "expectInWindow": {
+                    // The dialog's box must lie inside the window, so no edge is clipped.
+                    const box = await dialog.boundingBox();
+                    const viewport = page.viewportSize();
+                    if (!box || !viewport) throw new Error("The Argo CD connection dialog has no box");
+                    if (box.x < 0 || box.y < 0 || box.x + box.width > viewport.width || box.y + box.height > viewport.height) {
+                        throw new Error(`The Argo CD connection dialog ${JSON.stringify(box)} overflows the ${viewport.width}x${viewport.height} window`);
+                    }
+                    break;
+                }
+                case "expectReachable": {
+                    // Scrolling the dialog brings the control in, and the control then lies inside the dialog's box.
+                    const control = argoDialogControl(dialog, step.control);
+                    await control.scrollIntoViewIfNeeded();
+                    const box = await control.boundingBox();
+                    const outer = await dialog.boundingBox();
+                    if (!box || !outer) throw new Error(`${step.control} has no box in the Argo CD connection dialog`);
+                    if (box.x < outer.x || box.y < outer.y || box.x + box.width > outer.x + outer.width || box.y + box.height > outer.y + outer.height) {
+                        throw new Error(`${step.control} is not reachable inside the Argo CD connection dialog`);
+                    }
+                    break;
+                }
                 case "expectOpen":
                     await dialog.waitFor({ state: step.open ? "visible" : "hidden" });
                     break;
