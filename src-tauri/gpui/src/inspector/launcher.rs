@@ -504,7 +504,7 @@ impl Inspector {
                             .flex()
                             .gap(px(8.))
                             .child(
-                                button(Variant::Outline, 24., state.transfer.busy)
+                                button(Variant::Outline, 24., state.transfer.busy())
                                     .id("settings-button:Import")
                                     .test_support()
                                     .aria_label("Import")
@@ -515,7 +515,7 @@ impl Inspector {
                                     })),
                             )
                             .child(
-                                button(Variant::Outline, 24., state.transfer.busy)
+                                button(Variant::Outline, 24., state.transfer.busy())
                                     .id("settings-button:Export all")
                                     .test_support()
                                     .aria_label("Export all")

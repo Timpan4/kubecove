@@ -2,6 +2,7 @@
 use super::{
     Inspector,
     controls::{Variant, button},
+    request::InFlight,
 };
 use crate::targets::TestSupportExt;
 use crate::{
@@ -12,18 +13,18 @@ use crate::{
         transfer::{self, ImportedWorkspace},
     },
 };
-use gpui_kit::{Context, Div, SharedString, Task, Window, div, prelude::*, px};
+use gpui_kit::{Context, Div, SharedString, Window, div, prelude::*, px};
 use std::collections::HashMap;
 
 #[derive(Default)]
 pub(super) struct TransferState {
-    pub(super) busy: bool,
-    task: Option<Task<()>>,
+    /// The native file dialog in flight. Import and Export wait for it.
+    dialog: Option<InFlight>,
     pub(super) documents: HashMap<u64, serde_json::Value>,
-    preview: Vec<ImportedWorkspace>,
-    decisions: Vec<ImportAction>,
-    error: Option<String>,
-    message: Option<String>,
+    /// The parsed import file, with the decision for each workspace.
+    preview: Vec<(ImportedWorkspace, ImportAction)>,
+    /// The last import or export's outcome.
+    notice: Option<Notice>,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ImportAction {
@@ -31,7 +32,24 @@ enum ImportAction {
     Replace,
     Skip,
 }
+enum Notice {
+    Info(String),
+    Failed(String),
+}
 impl TransferState {
+    pub(super) fn busy(&self) -> bool {
+        self.dialog.is_some()
+    }
+    /// Starts a file dialog and clears the last outcome.
+    fn start(&mut self, dialog: gpui_kit::Task<()>) {
+        self.notice = None;
+        self.dialog = Some(dialog.into());
+    }
+    fn nothing_to_import(&self) -> bool {
+        self.preview
+            .iter()
+            .all(|(_, action)| *action == ImportAction::Skip)
+    }
     fn matches(&self, saved: &SavedWorkspace, item: &ImportedWorkspace) -> bool {
         saved.name == item.name
             || self.documents.get(&saved.id).is_some_and(|document| {
@@ -42,43 +60,45 @@ impl TransferState {
 
 impl Inspector {
     pub(super) fn import_workspace_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.launcher.transfer.busy {
+        if self.launcher.transfer.busy() {
             return;
         }
         let read = self.backend.import_workspace();
-        self.launcher.transfer.busy = true;
-        self.launcher.transfer.error = None;
-        self.launcher.transfer.message = None;
-        self.launcher.transfer.task = Some(cx.spawn_in(window, async move |this, cx| {
+        let dialog = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
-                this.launcher.transfer.busy = false;
+                let launcher = &mut this.launcher;
+                launcher.transfer.dialog = None;
                 match result {
-                    Ok(None) => this.launcher.transfer.message = Some("Import canceled.".into()),
+                    Ok(None) => {
+                        launcher.transfer.notice = Some(Notice::Info("Import canceled.".into()))
+                    }
                     Ok(Some(raw)) => match transfer::parse(&raw) {
                         Ok(preview) => {
-                            this.launcher.transfer.decisions =
-                                preview
-                                    .iter()
-                                    .map(|item| {
-                                        if this.launcher.saved.iter().any(|saved| {
-                                            this.launcher.transfer.matches(saved, item)
-                                        }) {
-                                            ImportAction::Skip
-                                        } else {
-                                            ImportAction::Add
-                                        }
-                                    })
-                                    .collect();
-                            this.launcher.transfer.preview = preview;
+                            launcher.transfer.preview = preview
+                                .into_iter()
+                                .map(|item| {
+                                    let known = launcher
+                                        .saved
+                                        .iter()
+                                        .any(|saved| launcher.transfer.matches(saved, &item));
+                                    let action = if known {
+                                        ImportAction::Skip
+                                    } else {
+                                        ImportAction::Add
+                                    };
+                                    (item, action)
+                                })
+                                .collect();
                         }
-                        Err(error) => this.launcher.transfer.error = Some(error),
+                        Err(error) => launcher.transfer.notice = Some(Notice::Failed(error)),
                     },
-                    Err(error) => this.launcher.transfer.error = Some(error.message),
+                    Err(error) => launcher.transfer.notice = Some(Notice::Failed(error.message)),
                 }
                 cx.notify();
             });
-        }));
+        });
+        self.launcher.transfer.start(dialog);
         cx.notify();
     }
     pub(super) fn export_workspace_file(
@@ -87,7 +107,7 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.launcher.transfer.busy {
+        if self.launcher.transfer.busy() {
             return;
         }
         let saved: Vec<_> = self
@@ -114,36 +134,28 @@ impl Inspector {
         let read = self
             .backend
             .export_workspace("kubecove-workspaces.json".into(), content);
-        self.launcher.transfer.busy = true;
-        self.launcher.transfer.error = None;
-        self.launcher.transfer.message = None;
-        self.launcher.transfer.task = Some(cx.spawn_in(window, async move |this, cx| {
+        let dialog = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
-                this.launcher.transfer.busy = false;
-                match result {
-                    Ok(true) => this.launcher.transfer.message = Some(message),
-                    Ok(false) => this.launcher.transfer.message = Some("Export canceled.".into()),
-                    Err(error) => this.launcher.transfer.error = Some(error.message),
-                }
+                let transfer = &mut this.launcher.transfer;
+                transfer.dialog = None;
+                transfer.notice = Some(match result {
+                    Ok(true) => Notice::Info(message),
+                    Ok(false) => Notice::Info("Export canceled.".into()),
+                    Err(error) => Notice::Failed(error.message),
+                });
                 cx.notify();
             });
-        }));
+        });
+        self.launcher.transfer.start(dialog);
         cx.notify();
     }
     fn apply_workspace_import(&mut self, cx: &mut Context<Self>) {
-        if self
-            .launcher
-            .transfer
-            .decisions
-            .iter()
-            .all(|action| *action == ImportAction::Skip)
-        {
+        if self.launcher.transfer.nothing_to_import() {
             return;
         }
         let preview = std::mem::take(&mut self.launcher.transfer.preview);
-        let decisions = std::mem::take(&mut self.launcher.transfer.decisions);
-        for (item, decision) in preview.into_iter().zip(decisions) {
+        for (item, decision) in preview {
             if decision == ImportAction::Skip {
                 continue;
             }
@@ -203,22 +215,25 @@ impl Inspector {
     pub(super) fn workspace_transfer_panel(&self, cx: &mut Context<Self>) -> Div {
         let state = &self.launcher.transfer;
         let mut panel = div().flex().flex_col().gap(px(8.));
-        if let Some(error) = &state.error {
-            panel = panel.child(
-                ui::xs(error.clone())
-                    .id("workspace-transfer-error")
-                    .test_support()
-                    .aria_label(error.clone())
-                    .text_color(Tokens::destructive()),
-            );
-        }
-        if let Some(message) = &state.message {
-            panel = panel.child(
-                ui::muted(ui::xs(message.clone()))
-                    .id("workspace-transfer-message")
-                    .test_support()
-                    .aria_label(message.clone()),
-            );
+        match &state.notice {
+            Some(Notice::Failed(error)) => {
+                panel = panel.child(
+                    ui::xs(error.clone())
+                        .id("workspace-transfer-error")
+                        .test_support()
+                        .aria_label(error.clone())
+                        .text_color(Tokens::destructive()),
+                );
+            }
+            Some(Notice::Info(message)) => {
+                panel = panel.child(
+                    ui::muted(ui::xs(message.clone()))
+                        .id("workspace-transfer-message")
+                        .test_support()
+                        .aria_label(message.clone()),
+                );
+            }
+            None => {}
         }
         if !state.preview.is_empty() {
             panel = panel.child(
@@ -227,7 +242,7 @@ impl Inspector {
                     .test_support()
                     .aria_label("Import preview"),
             );
-            for (index, item) in state.preview.iter().enumerate() {
+            for (index, (item, decision)) in state.preview.iter().enumerate() {
                 panel = panel.child(
                     div()
                         .flex()
@@ -243,7 +258,7 @@ impl Inspector {
                             .into_iter()
                             .map(|(action, label)| {
                                 button(
-                                    if state.decisions[index] == action {
+                                    if *decision == action {
                                         Variant::Secondary
                                     } else {
                                         Variant::Outline
@@ -259,7 +274,11 @@ impl Inspector {
                                 .child(label)
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
-                                        this.launcher.transfer.decisions[index] = action;
+                                        if let Some((_, decision)) =
+                                            this.launcher.transfer.preview.get_mut(index)
+                                        {
+                                            *decision = action;
+                                        }
                                         cx.notify();
                                     },
                                 ))
@@ -272,19 +291,14 @@ impl Inspector {
                     .flex()
                     .gap(px(8.))
                     .child(
-                        button(
-                            Variant::Default,
-                            28.,
-                            state
-                                .decisions
-                                .iter()
-                                .all(|action| *action == ImportAction::Skip),
-                        )
-                        .id("settings-button:Apply import")
-                        .test_support()
-                        .aria_label("Apply import")
-                        .child("Apply import")
-                        .on_click(cx.listener(|this, _, _, cx| this.apply_workspace_import(cx))),
+                        button(Variant::Default, 28., state.nothing_to_import())
+                            .id("settings-button:Apply import")
+                            .test_support()
+                            .aria_label("Apply import")
+                            .child("Apply import")
+                            .on_click(
+                                cx.listener(|this, _, _, cx| this.apply_workspace_import(cx)),
+                            ),
                     )
                     .child(
                         button(Variant::Outline, 28., false)
@@ -294,7 +308,6 @@ impl Inspector {
                             .child("Cancel")
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.launcher.transfer.preview.clear();
-                                this.launcher.transfer.decisions.clear();
                                 cx.notify();
                             })),
                     ),
