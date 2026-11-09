@@ -24,7 +24,10 @@ impl Inspector {
                     return;
                 }
                 match result {
-                    Ok(servers) => this.argo_connections.servers = servers,
+                    Ok(servers) => {
+                        this.argo_connections.servers = servers;
+                        this.settle_argo_source();
+                    }
                     Err(error) => this.argo_connections.discovery_error = Some(error.message),
                 }
                 cx.notify();

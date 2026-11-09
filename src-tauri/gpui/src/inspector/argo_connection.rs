@@ -1,5 +1,7 @@
 //! Workspace-scoped connection state. Credentials live only in masked inputs until submission.
-use super::{Inspector, detail::Detail, request::InFlight};
+use super::{
+    Inspector, argo_connection_view::same_server, detail::Detail, request::InFlight,
+};
 use crate::backend::ArgoConnect;
 use gpui_kit::{
     AppContext, Context, Entity, FocusHandle, Window,
@@ -67,6 +69,8 @@ pub(super) struct DialogChoices {
     pub local: bool,
     pub insecure: bool,
     pub remember: bool,
+    /// Whether the user picked the server source. Until then the first discovered Service is the default.
+    pub source_chosen: bool,
     /// The chosen discovered Service with its protocol edits. `None` is External URL.
     pub endpoint: Option<ArgoServerEndpoint>,
 }
@@ -201,6 +205,16 @@ impl Connections {
         matches!(self.step, ConnectStep::Busy { .. }) || self.profile_action.is_some()
     }
 }
+/// The endpoint the web's server radios offer: a connectable Service tunnel.
+fn connectable_endpoint(server: &ArgoServerCapability) -> Option<ArgoServerEndpoint> {
+    if server.unavailable_reason.is_some() {
+        return None;
+    }
+    match &server.endpoint {
+        Some(endpoint @ ArgoServerEndpoint::ServiceTunnel { .. }) => Some(endpoint.clone()),
+        _ => None,
+    }
+}
 /// A connect result as the status to record, or the message to show.
 pub(super) fn connected(
     result: Result<ArgoConnectionStatus, AppError>,
@@ -232,6 +246,25 @@ impl Inspector {
         ] {
             field.update(cx, |input, cx| input.set_value("", window, cx));
         }
+    }
+    /// Applies the web's server-source default to the open dialog. Until the user picks a source,
+    /// the first connectable discovered Service is chosen. A chosen Service stays chosen while
+    /// discovery still lists it. Otherwise it falls back to the first one, as the web does.
+    /// Empty discovery leaves the choice alone, so a read still in flight cannot clear it.
+    pub(super) fn settle_argo_source(&mut self) {
+        let state = &self.argo_connections;
+        if state.servers.is_empty() {
+            return;
+        }
+        let connectable = || state.servers.iter().filter_map(connectable_endpoint);
+        let first = connectable().next();
+        let choices = state.choices();
+        let next = match &choices.endpoint {
+            _ if !choices.source_chosen => first,
+            Some(chosen) if !connectable().any(|server| same_server(chosen, &server)) => first,
+            kept => kept.clone(),
+        };
+        self.argo_connections.choices_mut().endpoint = next;
     }
     /// Closes the dialog and cancels its preview or connect. A failure stays visible.
     pub(super) fn cancel_argo_connection(&mut self, window: &mut Window, cx: &mut Context<Self>) {

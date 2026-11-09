@@ -25,6 +25,7 @@ impl Inspector {
         if !self.argo_connections.dialog {
             self.argo_connections.host = super::argo_connection::DialogHost::Detail;
         }
+        self.settle_argo_source();
         self.clear_argo_secrets(window, cx);
         self.argo_connections.open = true;
         self.argo_connections.dialog = true;
@@ -257,6 +258,7 @@ impl Inspector {
                 .aria_toggled(toggled(choices.endpoint.is_none()))
                 .child("External URL")
                 .on_click(cx.listener(|this, _, _, cx| {
+                    this.argo_connections.choices_mut().source_chosen = true;
                     this.argo_connections.choices_mut().endpoint = None;
                     this.argo_connections.editing = None;
                     this.argo_connections.step.clear_preview();
@@ -295,6 +297,7 @@ impl Inspector {
                         }
                     ))
                     .on_click(cx.listener(move |this, _, _, cx| {
+                        this.argo_connections.choices_mut().source_chosen = true;
                         this.argo_connections.choices_mut().endpoint = Some(endpoint.clone());
                         this.argo_connections.editing = None;
                         this.argo_connections.step.clear_preview();
@@ -475,7 +478,7 @@ impl Inspector {
 
 /// Whether the chosen endpoint is this discovered Service, whatever protocol edits it carries,
 /// as the web's server radios compare server ids.
-fn same_server(
+pub(super) fn same_server(
     chosen: &kubecove_lib::models::ArgoServerEndpoint,
     server: &kubecove_lib::models::ArgoServerEndpoint,
 ) -> bool {

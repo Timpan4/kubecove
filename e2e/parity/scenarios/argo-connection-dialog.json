@@ -94,6 +94,17 @@
       ]
     },
     {
+      "id": "argo-connection.defaults-to-found-in-cluster",
+      "title": "The connection dialog selects Found in cluster and its first server when no source was chosen",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "argoConnectionDialog", "operation": "openDetail" },
+        { "action": "argoConnectionDialog", "operation": "expectFoundInCluster", "checked": true },
+        { "action": "argoControl", "control": "Close connection" }
+      ]
+    },
+    {
       "id": "argo-connection.keeps-server-source",
       "title": "The connection dialog keeps the chosen server source when it opens again",
       "steps": [
