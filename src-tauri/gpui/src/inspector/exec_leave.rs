@@ -63,12 +63,13 @@ impl Inspector {
             return;
         };
         let backend = self.backend.clone();
-        let ids: Vec<String> = self
-            .exec
-            .tabs
-            .iter()
-            .filter_map(|tab| tab.session_id().map(str::to_owned))
-            .collect();
+        let mut ids = Vec::new();
+        for tab in &mut self.exec.tabs {
+            if let Some(id) = tab.session_id().map(str::to_owned) {
+                tab.stopping();
+                ids.push(id);
+            }
+        }
         let stop = cx.spawn_in(window, async move |this, cx| {
             // Every session gets its stop, as `confirmStoppingExecSessions` stops every tab.
             let mut results = Vec::with_capacity(ids.len());

@@ -224,6 +224,22 @@
       ]
     },
     {
+      "id": "exec-session.stop-notes",
+      "title": "Stop writes the stopping note to the terminal and the stopped note once the stop succeeds",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "start", "container": "app", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "execControl", "operation": "stop" },
+        { "action": "expectExecState", "container": "app", "status": "stopped", "contains": "[stopping session]" },
+        { "action": "expectExecState", "container": "app", "status": "stopped", "contains": "[session stopped]" },
+        { "action": "closeDetail" },
+        { "action": "expectDetailClosed" }
+      ]
+    },
+    {
       "id": "exec-session.leave-during-stop",
       "title": "Stop and leave closes the dialog while the stops run, and leaves once they finish",
       "steps": [

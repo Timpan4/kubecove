@@ -137,11 +137,16 @@ impl ExecTab {
             ExecPhase::Ended(ExecEnd::Error) => "error",
         }
     }
+    /// `stopSession`'s note before the backend stop runs.
+    pub(super) fn stopping(&mut self) {
+        self.output("\r\n\x1b[2m[stopping session]\x1b[0m\r\n");
+    }
     /// `stopBackendSession`'s success, which also clears an earlier stop failure.
     pub(super) fn stopped(&mut self) {
         self.stream = None;
         self.phase = ExecPhase::Ended(ExecEnd::Stopped);
         self.error = None;
+        self.output("\x1b[2m[session stopped]\x1b[0m\r\n");
     }
     /// `stopBackendSession`'s failure: the session may still run, so it stays tracked.
     pub(super) fn stop_failed(&mut self, message: String) {
@@ -478,16 +483,13 @@ impl Inspector {
         });
     }
     pub(super) fn stop_exec_tab(&mut self, key: usize, cx: &mut Context<Self>) {
-        let Some(id) = self
-            .exec
-            .tabs
-            .iter()
-            .find(|t| t.key == key)
-            .and_then(|t| t.session_id())
-            .map(str::to_owned)
-        else {
+        let Some(tab) = self.exec.tabs.iter_mut().find(|t| t.key == key) else {
             return;
         };
+        let Some(id) = tab.session_id().map(str::to_owned) else {
+            return;
+        };
+        tab.stopping();
         let read = self.backend.stop_exec(id);
         cx.spawn(async move |this, cx| {
             let result = read.await;
