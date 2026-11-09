@@ -411,8 +411,7 @@ impl Inspector {
         cx.notify();
     }
 
-    /// The historical ReplicaSet checkbox. See `ResourceFilters` for why it
-    /// currently hides nothing.
+    /// The historical ReplicaSet checkbox. The map applies it; see `ResourceFilters`.
     pub(super) fn historical_toggle(&self, cx: &mut Context<Self>) -> AnyElement {
         let checked = self.filters.hide_historical_replicasets;
         div()

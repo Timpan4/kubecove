@@ -52,7 +52,7 @@ impl Graph {
         // The web times `buildFlowTopologyView`; the native layout also matches rows.
         let started = Instant::now();
         let source = topology::Source::new(&topology, &rows);
-        let prepared = topology::prepare(&topology, &rows, &source, None);
+        let prepared = topology::prepare(&topology, &rows, &source, None, false);
         let view = topology::view(&topology, &prepared, None, &HashSet::new(), true);
         let layout_ms = started.elapsed().as_secs_f64() * 1000.;
 

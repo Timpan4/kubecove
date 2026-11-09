@@ -18,7 +18,7 @@ fn edge(id: &str, source: &str, target: &str) -> TopologyEdge {
 }
 
 fn check_layout(topology: &ResourceTopology, source: &Source, rows: &Visible) {
-    let (nodes, edges) = source.filter(rows, None);
+    let (nodes, edges) = source.filter(rows, None, false);
     let graph = layout::Graph::ranked(
         nodes.iter().map(|&i| (i, &topology.nodes[i])),
         edges.iter().map(|&i| (i, &topology.edges[i])),

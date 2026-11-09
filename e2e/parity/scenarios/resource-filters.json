@@ -79,14 +79,25 @@
     },
     {
       "id": "resource-filters.hide-historical-replicasets",
-      "title": "The historical ReplicaSet checkbox toggles without removing current rows",
+      "title": "The historical ReplicaSet checkbox hides only the historical ReplicaSet from the map",
       "steps": [
         { "action": "openResources" },
         { "action": "search", "value": "payments-api" },
+        { "action": "openKindPicker" },
+        { "action": "searchKindPicker", "value": "Service" },
+        { "action": "toggleKind", "kind": "Service", "checked": false },
+        { "action": "closeKindPicker" },
+        { "action": "expectTopologyEdge", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-6b5f8c9d7" },
         { "action": "setHistoricalReplicaSets", "checked": true },
+        { "action": "expectNoTopologyNode", "id": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-6b5f8c9d7" },
         { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
         { "action": "setHistoricalReplicaSets", "checked": false },
-        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" }
+        { "action": "expectTopologyEdge", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-6b5f8c9d7" },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "openKindPicker" },
+        { "action": "searchKindPicker", "value": "Service" },
+        { "action": "toggleKind", "kind": "Service", "checked": true },
+        { "action": "closeKindPicker" }
       ]
     },
     {

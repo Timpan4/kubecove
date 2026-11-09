@@ -77,6 +77,8 @@ pub(super) struct MapState {
 
 struct PreparedMap {
     rows: u64,
+    /// The "Hide historical ReplicaSets" toggle the layout was filtered with.
+    hide_historical: bool,
     links: Option<Vec<bool>>,
     nodes: (usize, usize),
     edges: (usize, usize),
@@ -211,9 +213,12 @@ impl Inspector {
                     && Rc::ptr_eq(&previous.request, &self.request)
                     && previous.source.matches(&self.visible)
             });
-            let current = same_source && prepared.as_ref().unwrap().rows == rows;
+            let hide_historical = self.filters.hide_historical_replicasets;
+            let current = same_source
+                && prepared.as_ref().unwrap().rows == rows
+                && prepared.as_ref().unwrap().hide_historical == hide_historical;
             // The link mask follows the kind selection, so it is recomputed only
-            // when the rows, the graph or the selection change, not every frame.
+            // when the rows, the graph, the toggle or the selection change, not every frame.
             if !current || links_stale {
                 let links = self.map_links(topology);
                 if same_source {
@@ -224,9 +229,11 @@ impl Inspector {
                             &self.visible,
                             &prepared.source,
                             links.as_deref(),
+                            hide_historical,
                         ));
                         prepared.rows = rows;
                         prepared.links = links;
+                        prepared.hide_historical = hide_historical;
                     }
                 } else {
                     let source = topology::Source::new(topology, &self.visible);
@@ -235,9 +242,11 @@ impl Inspector {
                         &self.visible,
                         &source,
                         links.as_deref(),
+                        hide_historical,
                     ));
                     *prepared = Some(PreparedMap {
                         rows,
+                        hide_historical,
                         links,
                         nodes,
                         edges,

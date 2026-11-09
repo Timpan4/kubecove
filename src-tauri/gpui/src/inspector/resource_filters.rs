@@ -44,8 +44,8 @@ pub(super) struct ResourceFilters {
     pub health: HealthFilter,
     /// The selected GitOps owner's `filterKey`.
     pub gitops_owner: Option<String>,
-    /// The web's toggle. Its topology filter reads `deploymentRevision`, which
-    /// no backend or mock sets, so the toggle currently hides nothing.
+    /// The web's toggle. It hides historical ReplicaSets from the map, the
+    /// topology view of these rows, using each node's `deploymentRevision`.
     pub hide_historical_replicasets: bool,
     /// Health counts over the rows that pass every filter except health.
     pub summary: HealthSummary,

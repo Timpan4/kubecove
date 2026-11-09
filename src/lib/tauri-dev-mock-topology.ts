@@ -3,19 +3,29 @@ import type { ResourceSummary, ResourceTopology } from "./types";
 
 // Browser-mock ownership and network-flow maps, built from the mock rows of one cluster.
 
+// payments-api is at revision 3, and its revision 3 ReplicaSet owns the Pod. Its revision 2
+// ReplicaSet has no Pods, so "Hide historical ReplicaSets" removes it from the map.
+const PAYMENTS_API_REVISION = 3;
+const PAYMENTS_API_HISTORICAL_REVISION = 2;
+const PAYMENTS_API_HISTORICAL_REPLICASET = "payments-api-6b5f8c9d7";
+
 export function ownershipTopology(cluster: string, namespaces: ReadonlySet<string>, rows: ResourceSummary[]): ResourceTopology {
 	const deploymentRows = rows.filter((row) => row.kind === "Deployment" && inNamespaceScope(row, namespaces));
 	const replicaSets = deploymentRows.map((row) => replicaSetFor(row, cluster));
+	const historicalRows = deploymentRows.filter(hasHistoricalReplicaSet);
+	const historicalReplicaSets = historicalRows.map((row) => historicalReplicaSetFor(row, cluster));
 	const podRows = rows.filter((row) => row.kind === "Pod" && inNamespaceScope(row, namespaces));
 	const standaloneRows = rows.filter((row) => isOwnershipStandalone(row) && inNamespaceScope(row, namespaces) && !isOwnershipNoise(row));
 	const nodes = [
-		...deploymentRows.map((row) => topologyNode(row, cluster)),
+		...deploymentRows.map((row) => topologyNode(row, cluster, [], deploymentRevisionOf(row))),
 		...replicaSets,
+		...historicalReplicaSets,
 		...podRows.map((row) => topologyNode(row, cluster)),
 		...standaloneRows.map((row) => topologyNode(row, cluster)),
 	];
 	const edges = [
 		...deploymentRows.map((row) => topologyEdge(topologyId(row, cluster), replicaSetId(row, cluster), "owns")),
+		...historicalRows.map((row) => topologyEdge(topologyId(row, cluster), historicalReplicaSetId(row, cluster), "owns")),
 		...podRows.flatMap((row) => {
 			const owner = deploymentRows.find((deployment) => deployment.namespace === row.namespace && row.name.startsWith(`${deployment.name}-`));
 			return owner ? [topologyEdge(replicaSetId(owner, cluster), topologyId(row, cluster), "owns")] : [];
@@ -153,7 +163,7 @@ function isOwnershipNoise(row: ResourceSummary): boolean {
 	return row.kind === "ConfigMap" && row.name === "kube-root-ca.crt";
 }
 
-function topologyNode(row: ResourceSummary, cluster: string, portHints: string[] = []) {
+function topologyNode(row: ResourceSummary, cluster: string, portHints: string[] = [], deploymentRevision?: number) {
 	return {
 		id: topologyId(row, cluster),
 		kind: row.kind,
@@ -163,14 +173,32 @@ function topologyNode(row: ResourceSummary, cluster: string, portHints: string[]
 		health: row.health,
 		portHints,
 		selectable: true,
+		...(deploymentRevision === undefined ? {} : { deploymentRevision }),
 		summary: { ...row, cluster },
 	};
+}
+
+function deploymentRevisionOf(row: ResourceSummary): number | undefined {
+	return row.name === "payments-api" ? PAYMENTS_API_REVISION : undefined;
+}
+
+function hasHistoricalReplicaSet(row: ResourceSummary): boolean {
+	return row.name === "payments-api";
 }
 
 function replicaSetFor(row: ResourceSummary, cluster: string) {
 	const name = row.name === "payments-api" ? "payments-api-7d9c9b7f8d" : `${row.name}-54b7f7bdbc`;
 	const summary = res("ReplicaSet", name, row.namespace, row.health, row.ready, row.status, 0, row.argoApp ? "shop" : "platform", { apiVersion: "apps/v1", cluster });
-	return topologyNode(summary, cluster);
+	return topologyNode(summary, cluster, [], deploymentRevisionOf(row));
+}
+
+function historicalReplicaSetFor(row: ResourceSummary, cluster: string) {
+	const summary = res("ReplicaSet", PAYMENTS_API_HISTORICAL_REPLICASET, row.namespace, "healthy", "0/0", "Scaled to 0", 0, row.argoApp ? "shop" : "platform", { apiVersion: "apps/v1", cluster });
+	return topologyNode(summary, cluster, [], PAYMENTS_API_HISTORICAL_REVISION);
+}
+
+function historicalReplicaSetId(row: ResourceSummary, cluster: string): string {
+	return topologyId({ apiVersion: "apps/v1", kind: "ReplicaSet", namespace: row.namespace, name: PAYMENTS_API_HISTORICAL_REPLICASET }, cluster);
 }
 
 function topologyId(row: Pick<ResourceSummary, "apiVersion" | "kind" | "namespace" | "name">, cluster: string): string {

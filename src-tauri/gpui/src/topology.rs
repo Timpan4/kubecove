@@ -87,8 +87,8 @@ fn loose_key(row: &ResourceSummary) -> (&str, &str, Option<&str>, &str) {
 }
 
 /// `filterTopologyByTableRows`: matching resources plus every ancestor that
-/// explains their ownership. Historical ReplicaSets stay; the native table
-/// has no "Hide historical ReplicaSets" filter yet.
+/// explains their ownership. Reference for `Source::filter` without the
+/// historical ReplicaSet filter.
 #[cfg(test)]
 fn filter_by_rows(
     topology: &ResourceTopology,
@@ -222,16 +222,18 @@ pub struct Prepared {
 }
 
 /// `links` marks the topology nodes whose kind is outside a narrowed kind
-/// selection; see `Source::filter`.
+/// selection; see `Source::filter`. `hide_historical` is the table's
+/// "Hide historical ReplicaSets" toggle.
 pub fn prepare(
     topology: &ResourceTopology,
     rows: &crate::model::Visible,
     source: &Source,
     links: Option<&[bool]>,
+    hide_historical: bool,
 ) -> Prepared {
     // The graph keeps the last node of a repeated id, so the index does too.
     let filter_span = crate::frame_profile::scope("topology", "filter");
-    let (source_nodes, source_edges) = source.filter(rows, links);
+    let (source_nodes, source_edges) = source.filter(rows, links, hide_historical);
     drop(filter_span);
     let graph_span = crate::frame_profile::scope("topology", "graph");
     let graph = Graph::ranked(
@@ -245,7 +247,9 @@ pub fn prepare(
     );
     drop(graph_span);
     let layout_span = crate::frame_profile::scope("topology", "depth_and_order");
-    let (depth, order) = source.depth_and_order(&graph, links.is_none());
+    // Hiding can leave a kept node under a hidden parent, so the precomputed
+    // stable layout (which needs ancestor-closed nodes) is not used then.
+    let (depth, order) = source.depth_and_order(&graph, links.is_none() && !hide_historical);
     drop(layout_span);
     let positions_span = crate::frame_profile::scope("topology", "positions");
     let positions = layout::positions(&graph, &depth, &order);

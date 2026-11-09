@@ -22,6 +22,8 @@ pub struct Source {
     matches: Vec<Vec<usize>>,
     parents: Vec<Vec<usize>>,
     pub(super) endpoints: Vec<Option<(usize, usize)>>,
+    /// Per canonical node: a historical ReplicaSet, which the toggle hides.
+    historical: Vec<bool>,
     ranks: Vec<usize>,
     pub(super) locals: Vec<Encoded>,
     pub(super) layout: RefCell<layout::Scratch>,
@@ -87,8 +89,10 @@ impl Source {
                 Some((source, target))
             })
             .collect();
+        let historical = historical_replicasets(topology, &parents, &endpoints);
         let mut source = Self {
             rows: rows.source().identity(),
+            historical,
             ranks: layout::node_ranks(&topology.nodes),
             locals: topology
                 .nodes
@@ -155,11 +159,14 @@ impl Source {
     /// Nodes matching `rows` and their ancestors. With `links`, a per-node mask
     /// of kinds outside a narrowed kind selection, it keeps the matching nodes
     /// and the masked nodes one edge from them instead, as
-    /// `filterTopologyByTableRows` does on the web.
+    /// `filterTopologyByTableRows` does on the web. With `hide_historical`, the
+    /// historical ReplicaSets and their edges are removed first, as
+    /// `filterHistoricalReplicaSets` does on the web.
     pub(super) fn filter(
         &self,
         rows: &Visible,
         links: Option<&[bool]>,
+        hide_historical: bool,
     ) -> (Vec<usize>, Vec<usize>) {
         let mut scratch = self.filter.borrow_mut();
         let Filter {
@@ -172,9 +179,13 @@ impl Source {
         matched.resize(self.canonical.len(), false);
         matched.fill(false);
         pending.clear();
+        let hidden = |node: usize| hide_historical && self.historical[node];
         for (i, matches) in self.matches.iter().enumerate() {
             let canonical = self.canonical[i];
-            if !kept[canonical] && matches.iter().any(|&row| rows.contains_index(row)) {
+            if !kept[canonical]
+                && !hidden(canonical)
+                && matches.iter().any(|&row| rows.contains_index(row))
+            {
                 kept[canonical] = true;
                 matched[canonical] = true;
                 pending.push(canonical);
@@ -182,12 +193,18 @@ impl Source {
         }
         if let Some(links) = links {
             for &(source, target) in self.endpoints.iter().flatten() {
+                if hidden(source) || hidden(target) {
+                    continue;
+                }
                 kept[target] |= matched[source] && links[target];
                 kept[source] |= matched[target] && links[source];
             }
         } else {
             while let Some(node) = pending.pop() {
                 for &parent in &self.parents[node] {
+                    if hidden(parent) {
+                        continue;
+                    }
                     if !std::mem::replace(&mut kept[parent], true) {
                         pending.push(parent);
                     }
@@ -208,6 +225,39 @@ impl Source {
                 .collect(),
         )
     }
+}
+
+/// `filterHistoricalReplicaSets`: a ReplicaSet with no Pod children whose
+/// revision is below its Deployment parent's revision. Indexed like `endpoints`.
+fn historical_replicasets(
+    topology: &ResourceTopology,
+    parents: &[Vec<usize>],
+    endpoints: &[Option<(usize, usize)>],
+) -> Vec<bool> {
+    let nodes = &topology.nodes;
+    let mut owns_pods = vec![false; nodes.len()];
+    for &(source, target) in endpoints.iter().flatten() {
+        if nodes[target].kind == "Pod" {
+            owns_pods[source] = true;
+        }
+    }
+    (0..nodes.len())
+        .map(|index| {
+            let node = &nodes[index];
+            let Some(revision) = node.deployment_revision else {
+                return false;
+            };
+            if node.kind != "ReplicaSet" || owns_pods[index] {
+                return false;
+            }
+            parents[index]
+                .iter()
+                .map(|&parent| &nodes[parent])
+                .find(|parent| parent.kind == "Deployment")
+                .and_then(|deployment| deployment.deployment_revision)
+                .is_some_and(|deployment| revision < deployment)
+        })
+        .collect()
 }
 
 impl StableLayout {

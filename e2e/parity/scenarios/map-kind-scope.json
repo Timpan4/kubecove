@@ -44,7 +44,7 @@
         { "action": "openKindPicker" },
         { "action": "toggleKind", "kind": "Deployment", "checked": true },
         { "action": "closeKindPicker" },
-        { "action": "expectTopology", "nodes": 51, "edges": 39 },
+        { "action": "expectTopology", "nodes": 52, "edges": 40 },
         { "action": "expectTopologyEdge", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:v1:ConfigMap:payments:payments-api-config" },
         { "action": "openKindPicker" },
         { "action": "toggleKind", "kind": "Deployment", "checked": false },
