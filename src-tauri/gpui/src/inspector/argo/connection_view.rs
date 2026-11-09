@@ -40,7 +40,6 @@ impl Inspector {
         self.argo_connections.editing = None;
         self.argo_connections.step.clear_preview();
         self.settle_argo_source();
-        self.argo_connections.open = true;
         self.argo_connections.dialog = true;
         self.focus_argo_connection_dialog(window, cx);
         self.discover_argo_servers(window, cx);
@@ -79,7 +78,7 @@ impl Inspector {
                         cx.listener(|this, _, window, cx| this.open_argo_connection(window, cx)),
                     ),
             );
-        if !state.open {
+        if !state.dialog {
             return super::panels::panel().flex().flex_col().gap(px(8.))
                 .child(gpui_kit::component::select::Select::new(&state.picker).id("argo-inspection-preference").w_full())
                 .child(div().flex().flex_wrap().items_center().gap(px(8.))

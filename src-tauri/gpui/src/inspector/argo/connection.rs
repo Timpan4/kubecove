@@ -122,7 +122,7 @@ pub(super) struct Reconnect {
     pub current: Option<InFlight>,
 }
 pub(in crate::inspector) struct Connections {
-    pub(super) open: bool,
+    /// The connection dialog is open, on the surface `host` names.
     pub(super) dialog: bool,
     pub(super) profiles: Vec<ArgoConnectionStatus>,
     pub(super) selected: Preference,
@@ -201,7 +201,6 @@ impl Connections {
             picker,
             dialog_focus: cx.focus_handle(),
             _subscription: subscription,
-            open: false,
             dialog: false,
             profiles: vec![],
             selected: Preference::Automatic,
@@ -340,7 +339,6 @@ impl Inspector {
             state.step = ConnectStep::Idle;
         }
         state.discovery.take();
-        state.open = false;
         state.dialog = false;
         state.editing = None;
         cx.notify();
@@ -502,7 +500,6 @@ impl Inspector {
                     Ok(status) => {
                         this.argo_connections.step = ConnectStep::Idle;
                         this.record_argo_status(status, window, cx);
-                        this.argo_connections.open = false;
                         this.argo_connections.dialog = false;
                         this.reload_argo(window, cx);
                     }
