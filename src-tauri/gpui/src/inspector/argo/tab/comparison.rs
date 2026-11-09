@@ -90,7 +90,7 @@ impl Inspector {
                                         .default_value(change.live.clone())
                                 }),
                             );
-                            state.highlights[index] = super::super::argo_highlight::lines(
+                            state.highlights[index] = super::super::highlight::lines(
                                 &mut this.argo_highlighter,
                                 change.diff.as_deref().unwrap_or_default(),
                                 &gpui_kit::component::Theme::global(cx).highlight_theme,

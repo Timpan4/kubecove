@@ -1,8 +1,6 @@
 //! Only endpoint metadata and the inspection choice enter ADR 0030 storage.
-use super::{
-    Inspector,
-    argo_connection::{ConnectStep, Preference, Reconnect, connected},
-};
+use super::super::Inspector;
+use super::connection::{ConnectStep, Preference, Reconnect, connected};
 use crate::backend::ArgoConnect;
 use crate::preferences::{ArgoProfile, ConnectionPreference, Endpoint};
 use gpui_kit::{Context, Window};
@@ -201,7 +199,11 @@ impl Inspector {
         self.argo_connections.profile_action = Some(task.into());
         cx.notify();
     }
-    pub(super) fn sync_argo_scope(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::inspector) fn sync_argo_scope(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let scope = format!(
             "{}:{}:{:?}",
             self.argo_workspace_id(),
@@ -219,9 +221,9 @@ impl Inspector {
             self.argo_connections.page = Default::default();
             self.argo_connections.detail = Default::default();
             self.argo_connections
-                .discard_fields(super::argo_connection::DialogHost::Page, cx);
+                .discard_fields(super::connection::DialogHost::Page, cx);
             self.argo_connections
-                .discard_fields(super::argo_connection::DialogHost::Detail, cx);
+                .discard_fields(super::connection::DialogHost::Detail, cx);
             self.restore_argo_preferences();
             self.sync_argo_picker(window, cx);
             self.argo_outcomes.clear();
@@ -387,7 +389,15 @@ impl Inspector {
     fn argo_preference_key(&self) -> String {
         self.argo_workspace_id()
     }
-    pub(super) fn restore_argo_preferences(&mut self) {
+    /// Forgets this session's connection statuses and outcomes, then restores
+    /// the stored profiles. Runs when the preferences document is read again.
+    pub(in crate::inspector) fn reload_argo_preferences(&mut self) {
+        self.argo_connections.profiles.clear();
+        self.argo_connections.scope.clear();
+        self.argo_outcomes.clear();
+        self.restore_argo_preferences();
+    }
+    fn restore_argo_preferences(&mut self) {
         let mut statuses = std::mem::take(&mut self.argo_connections.profiles);
         self.argo_connections.profiles = self
             .persisted

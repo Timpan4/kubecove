@@ -1,8 +1,8 @@
 //! `ArgoApplicationWorkspaceHeader.svelte` and `argo-workspace-model.ts`.
 //! A focused Application filters by managed resource identity, never its name.
 
-use super::controls::{self, Variant};
-use super::{Inspector, Page};
+use super::super::controls::{self, Variant};
+use super::super::{Inspector, Page};
 use crate::targets::TestSupportExt;
 use crate::theme::{Palette, Tokens};
 use crate::ui;
@@ -13,7 +13,6 @@ use kubecove_lib::models::{
 use std::collections::HashMap;
 use std::rc::Rc;
 
-#[path = "argo_workspace_header.rs"]
 mod header;
 
 const FILTERS: [&str; 6] = [
@@ -31,7 +30,7 @@ enum Snapshot {
     Failed(String),
 }
 
-pub(super) struct ApplicationWorkspace {
+pub(in crate::inspector) struct ApplicationWorkspace {
     app: ArgoApplicationSummary,
     snapshot: Snapshot,
     namespaces: Vec<String>,
@@ -41,6 +40,17 @@ pub(super) struct ApplicationWorkspace {
     pub(super) filter: Option<usize>,
     request: Rc<()>,
     task: Option<Task<()>>,
+}
+
+impl ApplicationWorkspace {
+    /// Whether a managed-resource filter narrows the table.
+    pub(in crate::inspector) fn filtered(&self) -> bool {
+        self.filter.is_some()
+    }
+
+    pub(in crate::inspector) fn clear_filter(&mut self) {
+        self.filter = None;
+    }
 }
 
 fn key(group: &str, kind: &str, namespace: &str, name: &str) -> String {
@@ -55,7 +65,7 @@ fn key(group: &str, kind: &str, namespace: &str, name: &str) -> String {
 }
 
 impl Inspector {
-    pub(super) fn open_application_resources(
+    pub(in crate::inspector) fn open_application_resources(
         &mut self,
         app: ArgoApplicationSummary,
         window: &mut Window,
@@ -111,7 +121,7 @@ impl Inspector {
         self.load_scope(false, window, cx);
     }
 
-    pub(super) fn application_workspace_name(&self) -> Option<&str> {
+    pub(in crate::inspector) fn application_workspace_name(&self) -> Option<&str> {
         self.gitops_page
             .workspace
             .as_ref()
@@ -120,7 +130,7 @@ impl Inspector {
     }
 
     /// The Application whose resources the Resources page shows in this context.
-    pub(super) fn focused_application(&self) -> Option<&ArgoApplicationSummary> {
+    pub(in crate::inspector) fn focused_application(&self) -> Option<&ArgoApplicationSummary> {
         self.gitops_page
             .workspace
             .as_ref()
@@ -128,7 +138,7 @@ impl Inspector {
             .map(|state| &state.app)
     }
 
-    pub(super) fn application_resources_read(
+    pub(in crate::inspector) fn application_resources_read(
         &self,
         mut refresh: bool,
         cx: &Context<Self>,
@@ -145,7 +155,7 @@ impl Inspector {
         })
     }
 
-    pub(super) fn load_application_workspace(&mut self, cx: &mut Context<Self>) {
+    pub(in crate::inspector) fn load_application_workspace(&mut self, cx: &mut Context<Self>) {
         let connection_id = self.argo_connection_id();
         let workspace_id = self.argo_workspace_id();
         let source = self.argo_source_key().map(str::to_owned);
@@ -230,7 +240,7 @@ impl Inspector {
         cx.notify();
     }
 
-    pub(super) fn argo_workspace_matches(&self, row: &ResourceSummary) -> bool {
+    pub(in crate::inspector) fn argo_workspace_matches(&self, row: &ResourceSummary) -> bool {
         let Some(state) = self
             .gitops_page
             .workspace
@@ -271,7 +281,7 @@ impl Inspector {
             .is_some_and(|filters| filters[filter])
     }
 
-    pub(super) fn application_manages(&self, row: &ResourceSummary) -> bool {
+    pub(in crate::inspector) fn application_manages(&self, row: &ResourceSummary) -> bool {
         let Some(state) = self
             .gitops_page
             .workspace
@@ -294,7 +304,10 @@ impl Inspector {
         ))
     }
 
-    pub(super) fn application_resource_filters(&self, cx: &mut Context<Self>) -> Option<Div> {
+    pub(in crate::inspector) fn application_resource_filters(
+        &self,
+        cx: &mut Context<Self>,
+    ) -> Option<Div> {
         let state = self
             .gitops_page
             .workspace

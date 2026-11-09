@@ -6,19 +6,7 @@ mod action_rollback_view;
 mod actions_review;
 mod actions_state;
 mod actions_tab;
-mod argo_connection;
-mod argo_connection_dialog;
-mod argo_connection_view;
-mod argo_highlight;
-mod argo_operations;
-mod argo_options;
-mod argo_outcomes;
-mod argo_panels;
-mod argo_profiles;
-mod argo_snapshot;
-mod argo_tab;
-mod argo_tunnel;
-mod argo_workspace;
+mod argo;
 mod clipped;
 mod cluster;
 mod context_filter;
@@ -227,13 +215,13 @@ pub struct Inspector {
     usage: usage::UsageState,
     gitops: gitops_section::GitOpsState,
     gitops_page: gitops_page::GitOpsPage,
-    argo_connections: argo_connection::Connections,
+    argo_connections: argo::Connections,
     argo_highlighter: Option<gpui_kit::component::highlighter::SyntaxHighlighter>,
-    argo_outcomes: std::collections::HashMap<String, argo_outcomes::Outcome>,
+    argo_outcomes: std::collections::HashMap<String, argo::Outcome>,
     /// Submissions still in flight when their detail closed. Dropping them
     /// would cancel the submit and lose its outcome; each removes itself once
     /// it finishes.
-    argo_submissions: Vec<argo_operations::Submission>,
+    argo_submissions: Vec<argo::Submission>,
     helm_page: helm_page::HelmPage,
     cluster: cluster::ClusterState,
     incidents: incidents::IncidentsState,
@@ -364,7 +352,7 @@ impl Inspector {
             usage: Default::default(),
             gitops: Default::default(),
             gitops_page: gitops_page::GitOpsPage::new(),
-            argo_connections: argo_connection::Connections::new(window, cx),
+            argo_connections: argo::Connections::new(window, cx),
             argo_highlighter: None,
             argo_outcomes: Default::default(),
             argo_submissions: Vec::new(),
@@ -427,9 +415,8 @@ impl Inspector {
         }
         if self.page != page && self.can_leave(cx) {
             self.gitops_page.workspace = None;
-            self.argo_connections.page = Default::default();
             self.argo_connections
-                .discard_fields(argo_connection::DialogHost::Page, cx);
+                .reset_dialog(argo::DialogHost::Page, cx);
             self.close_detail(cx);
             self.topology_task.take();
             self.set_page(page);
@@ -513,19 +500,10 @@ impl Inspector {
             return;
         }
         self.exec.clear();
-        // Keep an in-flight submission alive so its outcome still reaches the observer.
-        if let Detail::Ready(detail) = &mut self.detail
-            && let Some(argo) = detail.argo.as_mut()
-            && matches!(argo.operation, argo_operations::Phase::Submitting(_))
-            && let argo_operations::Phase::Submitting(submission) =
-                std::mem::take(&mut argo.operation)
-        {
-            self.argo_submissions.push(submission);
-        }
+        self.keep_argo_submission();
         self.detail = Detail::Closed;
-        self.argo_connections.detail = Default::default();
         self.argo_connections
-            .discard_fields(argo_connection::DialogHost::Detail, cx);
+            .reset_dialog(argo::DialogHost::Detail, cx);
         self.notice = None;
         cx.notify();
     }

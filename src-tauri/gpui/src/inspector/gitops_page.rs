@@ -25,7 +25,7 @@ use gpui_kit::{
 const TOP_ROWS: [usize; 2] = [1, 4];
 
 pub(super) struct GitOpsPage {
-    pub workspace: Option<super::argo_workspace::ApplicationWorkspace>,
+    pub workspace: Option<super::argo::ApplicationWorkspace>,
     pub x_scroll: ScrollHandle,
     pub focus: Focus,
     pub mode: ViewMode,

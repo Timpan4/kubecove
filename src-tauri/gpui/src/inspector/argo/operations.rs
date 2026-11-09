@@ -1,5 +1,5 @@
 //! One Rust-owned, single-use review per selected Application.
-use super::{
+use super::super::{
     Inspector,
     controls::{Variant, button},
     detail::Detail,
@@ -60,12 +60,24 @@ pub(super) struct Reviewed {
 
 /// A confirmed review whose submission runs. Closing the detail moves it to
 /// `Inspector::argo_submissions`, so an accepted outcome is still observed.
-pub(super) struct Submission {
+pub(in crate::inspector) struct Submission {
     pub(super) id: Rc<()>,
     action: String,
     _read: InFlight,
 }
 impl Inspector {
+    /// Moves a submission in flight out of the detail that is about to close,
+    /// so its outcome still reaches the observer.
+    pub(in crate::inspector) fn keep_argo_submission(&mut self) {
+        if let Detail::Ready(detail) = &mut self.detail
+            && let Some(argo) = detail.argo.as_mut()
+            && matches!(argo.operation, Phase::Submitting(_))
+            && let Phase::Submitting(submission) = std::mem::take(&mut argo.operation)
+        {
+            self.argo_submissions.push(submission);
+        }
+    }
+
     pub(super) fn review_argo_operation(
         &mut self,
         label: &str,

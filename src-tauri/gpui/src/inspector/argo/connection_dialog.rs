@@ -1,6 +1,6 @@
 //! The Argo CD connection dialog: the modal overlay, its focus trap, Escape and
 //! outside-press dismissal, and its Close button.
-use super::{
+use super::super::{
     Inspector,
     controls::{Variant, button},
 };
@@ -15,7 +15,7 @@ use gpui_kit::{
 };
 
 impl Inspector {
-    pub(super) fn argo_connection_dialog(
+    pub(in crate::inspector) fn argo_connection_dialog(
         &self,
         cx: &mut Context<Self>,
     ) -> Option<gpui_kit::AnyElement> {

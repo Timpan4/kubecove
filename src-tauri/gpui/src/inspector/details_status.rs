@@ -3,7 +3,7 @@
 //! Conditions table, identity and lifecycle rows, and the raw status details.
 
 use super::Inspector;
-use super::argo_tab::raw;
+use super::argo::raw;
 use super::detail::{Detail, ResourceDetail};
 use super::details_tab::{row, value};
 use crate::incident::{self, ConditionRow};

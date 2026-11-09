@@ -1,5 +1,6 @@
 //! Discovery and preview finish before any credential leaves the connection form.
-use super::{Inspector, argo_connection::ConnectStep};
+use super::super::Inspector;
+use super::connection::ConnectStep;
 use crate::backend::ArgoTarget;
 use gpui_kit::{Context, Window};
 use kubecove_lib::models::ArgoServerEndpoint;

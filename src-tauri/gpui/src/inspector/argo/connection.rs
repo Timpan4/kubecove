@@ -1,7 +1,6 @@
 //! Workspace-scoped connection state. Credentials live only in masked inputs until submission.
-use super::{
-    Inspector, argo_connection_view::same_server, detail::Detail, request::InFlight,
-};
+use super::super::{Inspector, detail::Detail, request::InFlight};
+use super::connection_view::same_server;
 use crate::backend::ArgoConnect;
 use gpui_kit::{
     AppContext, Context, Entity, FocusHandle, Window,
@@ -58,7 +57,7 @@ impl ConnectStep {
 /// The surface whose dialog is open. The web mounts one `ArgoConnectionDialog` on the
 /// GitOps page and one in each Application detail, and each keeps its own choices.
 #[derive(Clone, Copy, Default)]
-pub(super) enum DialogHost {
+pub(in crate::inspector) enum DialogHost {
     #[default]
     Detail,
     Page,
@@ -122,43 +121,43 @@ pub(super) struct Reconnect {
     pub queue: std::collections::VecDeque<ArgoConnectionProfile>,
     pub current: Option<InFlight>,
 }
-pub(super) struct Connections {
-    pub open: bool,
-    pub dialog: bool,
-    pub profiles: Vec<ArgoConnectionStatus>,
-    pub selected: Preference,
-    pub editing: Option<ArgoConnectionProfile>,
-    pub scope: String,
-    pub host: DialogHost,
+pub(in crate::inspector) struct Connections {
+    pub(super) open: bool,
+    pub(super) dialog: bool,
+    pub(super) profiles: Vec<ArgoConnectionStatus>,
+    pub(super) selected: Preference,
+    pub(super) editing: Option<ArgoConnectionProfile>,
+    pub(super) scope: String,
+    pub(super) host: DialogHost,
     /// The GitOps page dialog's choices. Leaving the page or changing the scope resets them.
-    pub page: DialogChoices,
+    pub(super) page: DialogChoices,
     /// The detail dialog's choices. Closing the detail or opening another resource resets them.
-    pub detail: DialogChoices,
+    pub(super) detail: DialogChoices,
     /// The GitOps page dialog's text. As on the web, each dialog keeps its own.
-    pub page_fields: DialogFields,
+    pub(super) page_fields: DialogFields,
     /// The detail dialog's text.
-    pub detail_fields: DialogFields,
+    pub(super) detail_fields: DialogFields,
     /// The window that owns the field entities, so an unmounted dialog can empty them.
-    pub window_handle: gpui_kit::AnyWindowHandle,
-    pub servers: Vec<ArgoServerCapability>,
-    pub step: ConnectStep,
+    pub(super) window_handle: gpui_kit::AnyWindowHandle,
+    pub(super) servers: Vec<ArgoServerCapability>,
+    pub(super) step: ConnectStep,
     /// A running Disconnect or Forget.
-    pub profile_action: Option<InFlight>,
-    pub reconnect: Reconnect,
-    pub discovery: Option<gpui_kit::Task<()>>,
-    pub discovery_error: Option<String>,
-    pub picker: Entity<
+    pub(super) profile_action: Option<InFlight>,
+    pub(super) reconnect: Reconnect,
+    pub(super) discovery: Option<gpui_kit::Task<()>>,
+    pub(super) discovery_error: Option<String>,
+    pub(super) picker: Entity<
         gpui_kit::component::select::SelectState<
             gpui_kit::component::select::SearchableVec<gpui_kit::SharedString>,
         >,
     >,
     /// Focus container of the connection dialog. Its focus trap keeps Tab and
     /// Shift-Tab inside the dialog, as the web's dialog does.
-    pub dialog_focus: FocusHandle,
-    pub _subscription: gpui_kit::Subscription,
+    pub(super) dialog_focus: FocusHandle,
+    pub(super) _subscription: gpui_kit::Subscription,
 }
 impl Connections {
-    pub fn new(window: &mut Window, cx: &mut Context<Inspector>) -> Self {
+    pub(in crate::inspector) fn new(window: &mut Window, cx: &mut Context<Inspector>) -> Self {
         use gpui_kit::component::select::{SearchableVec, SelectEvent, SelectState};
         let picker = cx.new(|cx| {
             SelectState::new(
@@ -186,7 +185,7 @@ impl Connections {
                         .filter_map(|s| s.profile.as_ref())
                         .find(|p| {
                             this.argo_profile_matches(p)
-                                && super::argo_profiles::endpoint_label(&p.endpoint) == label
+                                && super::profiles::endpoint_label(&p.endpoint) == label
                         })
                     else {
                         return;
@@ -223,31 +222,40 @@ impl Connections {
         }
     }
     /// The open dialog's choices.
-    pub fn choices(&self) -> &DialogChoices {
+    pub(super) fn choices(&self) -> &DialogChoices {
         match self.host {
             DialogHost::Detail => &self.detail,
             DialogHost::Page => &self.page,
         }
     }
-    pub fn choices_mut(&mut self) -> &mut DialogChoices {
+    pub(super) fn choices_mut(&mut self) -> &mut DialogChoices {
         match self.host {
             DialogHost::Detail => &mut self.detail,
             DialogHost::Page => &mut self.page,
         }
     }
     /// The open dialog's text fields.
-    pub fn fields(&self) -> &DialogFields {
+    pub(super) fn fields(&self) -> &DialogFields {
         self.fields_for(self.host)
     }
-    pub fn fields_for(&self, host: DialogHost) -> &DialogFields {
+    pub(super) fn fields_for(&self, host: DialogHost) -> &DialogFields {
         match host {
             DialogHost::Detail => &self.detail_fields,
             DialogHost::Page => &self.page_fields,
         }
     }
+    /// Forgets what the user chose and typed in one dialog, once the surface
+    /// that hosts it goes away.
+    pub(in crate::inspector) fn reset_dialog(&mut self, host: DialogHost, cx: &mut gpui_kit::App) {
+        match host {
+            DialogHost::Detail => self.detail = DialogChoices::default(),
+            DialogHost::Page => self.page = DialogChoices::default(),
+        }
+        self.discard_fields(host, cx);
+    }
     /// Empties a dialog's text once its surface unmounts, as the web does. The reset sites
     /// have no window, so the clear runs deferred on the window that owns the entities.
-    pub fn discard_fields(&self, host: DialogHost, cx: &mut gpui_kit::App) {
+    pub(super) fn discard_fields(&self, host: DialogHost, cx: &mut gpui_kit::App) {
         let fields = self.fields_for(host).clone();
         let handle = self.window_handle;
         cx.defer(move |cx| {
@@ -256,7 +264,7 @@ impl Connections {
         });
     }
     /// The dialog blocks new connects and profile actions while one runs.
-    pub fn busy(&self) -> bool {
+    pub(super) fn busy(&self) -> bool {
         matches!(self.step, ConnectStep::Busy { .. }) || self.profile_action.is_some()
     }
 }
@@ -426,7 +434,7 @@ impl Inspector {
             self.preview_argo_target(endpoint, window, cx);
             return;
         }
-        let url = super::argo_profiles::endpoint_url(&endpoint);
+        let url = super::profiles::endpoint_url(&endpoint);
         let external = matches!(endpoint, ArgoServerEndpoint::ExternalHttps { .. });
         let profile = ArgoConnectionProfile {
             id: state.editing.as_ref().map_or_else(
@@ -436,7 +444,7 @@ impl Inspector {
                         self.argo_workspace_id(),
                         self.scope.context,
                         self.argo_source_key().unwrap_or("global"),
-                        super::argo_profiles::endpoint_identity(&endpoint)
+                        super::profiles::endpoint_identity(&endpoint)
                     )
                 },
                 |p| p.id.clone(),

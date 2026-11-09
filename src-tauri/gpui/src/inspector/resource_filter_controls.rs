@@ -46,7 +46,7 @@ impl Inspector {
                 .gitops_page
                 .workspace
                 .as_ref()
-                .is_some_and(|state| state.filter.is_some())
+                .is_some_and(|state| state.filtered())
     }
 
     pub(super) fn namespace_picker(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -406,7 +406,7 @@ impl Inspector {
         self.filters.clear_owner_and_health();
         self.filters.contexts.clear();
         if let Some(state) = &mut self.gitops_page.workspace {
-            state.filter = None;
+            state.clear_filter();
         }
         self.table_page = 0;
         self.filter(cx);

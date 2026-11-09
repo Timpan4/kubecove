@@ -1,5 +1,5 @@
 //! Accepted submissions remain owned by the workspace after their detail closes.
-use super::{Inspector, detail::ResourceDetail, request::InFlight};
+use super::super::{Inspector, controls, detail::ResourceDetail, request::InFlight};
 use crate::targets::TestSupportExt;
 use crate::{backend::ArgoInspection, ui};
 use gpui_kit::{Context, Div, div, prelude::*};
@@ -10,7 +10,7 @@ use std::time::Duration;
 
 /// One accepted operation, observed until Argo CD reports its end. Replacing or
 /// dropping the outcome cancels its observation.
-pub(super) struct Outcome {
+pub(in crate::inspector) struct Outcome {
     observation: Observation,
     _observer: InFlight,
     request: ArgoOperationRequest,
@@ -138,7 +138,7 @@ impl Inspector {
                 .when(outcome.observation.read_failed(), |panel| {
                     let id = key(&snapshot.application);
                     panel.child(
-                        super::controls::button(super::controls::Variant::Outline, 24., false)
+                        controls::button(controls::Variant::Outline, 24., false)
                             .id("argo-state-retry")
                             .test_support()
                             .child("Retry state refresh")

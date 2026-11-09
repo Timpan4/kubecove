@@ -1,10 +1,10 @@
 //! Sync options follow the Svelte flow. Choices beyond the Application defaults
 //! open the Application-name confirmation before the reviewed operation starts.
-use super::{
+use super::super::{
     Inspector,
-    argo_tab::ArgoTab,
     controls::{Variant, button},
 };
+use super::tab::ArgoTab;
 use crate::targets::TestSupportExt;
 use crate::ui;
 use gpui_kit::{
@@ -169,7 +169,7 @@ fn choice(
 }
 
 pub(super) fn panel(state: &ArgoTab, name: &str, cx: &mut Context<Inspector>) -> Div {
-    let mut panel = super::argo_panels::panel().flex().flex_col().gap(px(8.));
+    let mut panel = super::panels::panel().flex().flex_col().gap(px(8.));
     if !state.options.open {
         return panel;
     }
@@ -284,8 +284,11 @@ pub(super) fn panel(state: &ArgoTab, name: &str, cx: &mut Context<Inspector>) ->
 }
 
 impl Inspector {
-    pub(super) fn argo_sync_dialog(&self, cx: &mut Context<Self>) -> Option<gpui_kit::AnyElement> {
-        let super::detail::Detail::Ready(detail) = &self.detail else {
+    pub(in crate::inspector) fn argo_sync_dialog(
+        &self,
+        cx: &mut Context<Self>,
+    ) -> Option<gpui_kit::AnyElement> {
+        let super::super::detail::Detail::Ready(detail) = &self.detail else {
             return None;
         };
         let state = detail.argo.as_ref()?;
@@ -360,7 +363,7 @@ fn trigger(
 impl Inspector {
     /// Escape closes an open Sync or Refresh options popover, as the web does.
     /// Returns whether one was open, so the caller can stop the key there.
-    pub(super) fn close_argo_option_popovers(
+    pub(in crate::inspector) fn close_argo_option_popovers(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -469,7 +472,7 @@ pub(super) fn controls(
                         cx.notify();
                     }
                 })))
-            .when(state.refresh_options, |group| group.child(gpui_kit::deferred(super::argo_panels::panel().id("argo-refresh-panel").test_support().occlude().absolute().top(px(28.)).right_0().w(px(256.)).shadow_lg()
+            .when(state.refresh_options, |group| group.child(gpui_kit::deferred(super::panels::panel().id("argo-refresh-panel").test_support().occlude().absolute().top(px(28.)).right_0().w(px(256.)).shadow_lg()
                 .on_mouse_down_out(cx.listener(|this, _, _, cx| {
                     if let Some(s) = this.argo_tab_state() { s.refresh_options = false; }
                     cx.notify();

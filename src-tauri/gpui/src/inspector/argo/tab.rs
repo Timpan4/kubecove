@@ -1,12 +1,12 @@
 //! The Argo CD inspector uses the selected transport and canonical Application.
 //! Connection credentials and operation reviews stay behind the Rust backend.
 
-use super::argo_panels::{delivery, navigator};
-use super::argo_snapshot::{DiffView, snapshot};
-use super::controls::{self, Variant};
-use super::detail::{Detail, ResourceDetail};
-use super::feedback::Disclosure;
-use super::{Inspector, surface};
+use super::super::controls::{self, Variant};
+use super::super::detail::{Detail, ResourceDetail};
+use super::super::feedback::Disclosure;
+use super::super::{Inspector, surface};
+use super::panels::{delivery, navigator};
+use super::snapshot::{DiffView, snapshot};
 use crate::argo_app::ArgoView;
 use crate::model::health_source;
 use crate::targets::TestSupportExt;
@@ -16,7 +16,6 @@ use gpui_kit::{AnyElement, Context, Div, SharedString, Task, Window, div, prelud
 use kubecove_lib::models::{AppError, ArgoApplicationInspector, ArgoApplicationRef};
 use std::rc::Rc;
 
-#[path = "argo_comparison.rs"]
 mod comparison;
 
 enum ArgoLoad {
@@ -25,7 +24,7 @@ enum ArgoLoad {
     Failed(AppError),
 }
 
-pub(super) struct ArgoTab {
+pub(in crate::inspector) struct ArgoTab {
     load: ArgoLoad,
     /// The change navigator's focused resource, by index into `changes`.
     pub(super) focus: Option<usize>,
@@ -33,11 +32,11 @@ pub(super) struct ArgoTab {
     /// Removals whose live YAML is shown, and diffs shown in full.
     pub(super) expanded: Vec<usize>,
     pub(super) full: Vec<usize>,
-    pub(super) highlights: Vec<Vec<super::argo_highlight::Highlights>>,
+    pub(super) highlights: Vec<Vec<super::highlight::Highlights>>,
     evidence: bool,
     pub(super) inspector: Option<ArgoApplicationInspector>,
-    pub(super) operation: super::argo_operations::Phase,
-    pub(super) options: super::argo_options::Options,
+    pub(super) operation: super::operations::Phase,
+    pub(super) options: super::options::Options,
     pub(super) editors: Vec<(
         gpui_kit::Entity<gpui_kit::component::input::EditorState>,
         gpui_kit::Entity<gpui_kit::component::input::EditorState>,
@@ -68,7 +67,7 @@ impl Inspector {
     }
 
     /// Reads the inspector snapshot the first time the tab opens.
-    pub(super) fn open_argo(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::inspector) fn open_argo(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let connection_id = self.argo_connection_id();
         let workspace_id = self.argo_workspace_id();
         let source = self.argo_source_key().map(str::to_owned);
@@ -125,7 +124,7 @@ impl Inspector {
                                 .changes
                                 .iter()
                                 .map(|change| {
-                                    super::argo_highlight::lines(
+                                    super::highlight::lines(
                                         &mut this.argo_highlighter,
                                         change.diff.as_deref().unwrap_or_default(),
                                         &gpui_kit::component::Theme::global(cx).highlight_theme,
@@ -156,14 +155,14 @@ impl Inspector {
                                 .collect();
                             drop(editors_span);
                             state.inspector = Some(inspector);
-                            let options: Vec<super::argo_options::HistoryChoice> = state
+                            let options: Vec<super::options::HistoryChoice> = state
                                 .inspector
                                 .as_ref()
                                 .unwrap()
                                 .history
                                 .iter()
                                 .enumerate()
-                                .map(|(index, h)| super::argo_options::HistoryChoice {
+                                .map(|(index, h)| super::options::HistoryChoice {
                                     index,
                                     revision: h
                                         .revision
@@ -217,7 +216,7 @@ impl Inspector {
             evidence: false,
             inspector: None,
             operation: Default::default(),
-            options: super::argo_options::Options::new(window, cx),
+            options: super::options::Options::new(window, cx),
             editors: Vec::new(),
             request,
             _task: Some(task),
@@ -255,7 +254,7 @@ fn signal(value: usize, label: &str, description: &str) -> impl IntoElement {
 }
 
 /// `raw()` in `HealthAssessmentBadge.svelte`: strings as-is, other values as JSON.
-pub(super) fn raw(value: &serde_json::Value) -> String {
+pub(in crate::inspector) fn raw(value: &serde_json::Value) -> String {
     match value {
         serde_json::Value::String(text) => text.clone(),
         other => other.to_string(),
@@ -271,13 +270,42 @@ pub(super) struct ArgoConnectionState {
     pub busy: bool,
 }
 
-pub(super) fn argo_tab(
+impl Inspector {
+    /// The Argo CD tab of the open resource, with its connection and outcome panels.
+    pub(in crate::inspector) fn argo_detail_tab(
+        &self,
+        detail: &ResourceDetail,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let busy = detail
+            .argo
+            .as_ref()
+            .and_then(|state| state.inspector.as_ref())
+            .is_some_and(|snapshot| self.argo_operation_busy(&snapshot.application));
+        argo_tab(
+            detail,
+            self.persisted.preferences.timestamp_timezone,
+            self.argo_connection_panel(cx)
+                .children(self.argo_outcome_panel(detail, cx)),
+            ArgoConnectionState {
+                connected: self.argo_connection_id().is_some(),
+                unavailable: self.argo_connection_unavailable(),
+                busy,
+            },
+            &self.feedback.disclosure(),
+            &self.loading,
+            cx,
+        )
+    }
+}
+
+fn argo_tab(
     detail: &ResourceDetail,
     timezone: crate::preferences::TimestampTimezone,
     connection: Div,
     selected: ArgoConnectionState,
     disclosure: &Disclosure,
-    loading_delays: &super::loading::LoadingDelays,
+    loading_delays: &super::super::loading::LoadingDelays,
     cx: &mut Context<Inspector>,
 ) -> AnyElement {
     let Some(state) = detail.argo.as_ref() else {
@@ -481,7 +509,7 @@ pub(super) fn argo_tab(
                         ),
                 ),
         )
-        .child(super::argo_options::controls(
+        .child(super::options::controls(
             state,
             &summary.name,
             loading || selected.busy,
@@ -528,8 +556,8 @@ pub(super) fn argo_tab(
         .min_w_0()
         .child(top)
         .when(
-            !matches!(state.operation, super::argo_operations::Phase::Idle),
-            |column| column.child(super::argo_operations::panel(&state.operation, cx)),
+            !matches!(state.operation, super::operations::Phase::Idle),
+            |column| column.child(super::operations::panel(&state.operation, cx)),
         )
         .child(connection);
     if let ArgoLoad::Failed(error) = &state.load {

@@ -1,9 +1,9 @@
 //! Native controls for the same connection choices exposed by the Svelte dialog.
-use super::{
+use super::super::{
     Inspector,
-    argo_connection::{ConnectStep, Preference},
     controls::{Variant, button},
 };
+use super::connection::{ConnectStep, Preference};
 use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
 use gpui_kit::{
@@ -22,13 +22,17 @@ impl Inspector {
         // The detail panel opens its own dialog. Inside the GitOps page dialog this
         // button only shows the form, so that dialog keeps its own choices.
         if !self.argo_connections.dialog {
-            self.argo_connections.host = super::argo_connection::DialogHost::Detail;
+            self.argo_connections.host = super::connection::DialogHost::Detail;
         }
         self.show_argo_connection_form(window, cx);
     }
     /// Opens the GitOps page's dialog on its connection form, as the web's page dialog does.
-    pub(super) fn open_argo_connection_page(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.argo_connections.host = super::argo_connection::DialogHost::Page;
+    pub(in crate::inspector) fn open_argo_connection_page(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.argo_connections.host = super::connection::DialogHost::Page;
         self.show_argo_connection_form(window, cx);
     }
     /// Typed text stays, as the web keeps it until the dialog unmounts or a submit clears it.
@@ -58,7 +62,7 @@ impl Inspector {
         let state = &self.argo_connections;
         let choices = state.choices();
         let fields = state.fields();
-        let mut panel = super::argo_panels::panel()
+        let mut panel = super::panels::panel()
             .flex()
             .flex_col()
             .gap(px(8.))
@@ -76,7 +80,7 @@ impl Inspector {
                     ),
             );
         if !state.open {
-            return super::argo_panels::panel().flex().flex_col().gap(px(8.))
+            return super::panels::panel().flex().flex_col().gap(px(8.))
                 .child(gpui_kit::component::select::Select::new(&state.picker).id("argo-inspection-preference").w_full())
                 .child(div().flex().flex_wrap().items_center().gap(px(8.))
                     .child(ui::muted(ui::xs(if self.argo_connection_id().is_some() {
@@ -237,7 +241,7 @@ impl Inspector {
                         server.id
                     )))
                     .test_support()
-                    .aria_label(super::argo_profiles::endpoint_label(&endpoint))
+                    .aria_label(super::profiles::endpoint_label(&endpoint))
                     .aria_toggled(toggled(
                         choices
                             .endpoint
@@ -246,7 +250,7 @@ impl Inspector {
                     ))
                     .child(format!(
                         "{}{}",
-                        super::argo_profiles::endpoint_label(&endpoint),
+                        super::profiles::endpoint_label(&endpoint),
                         if server.argo_labeled {
                             ""
                         } else {

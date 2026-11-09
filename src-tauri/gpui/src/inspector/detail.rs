@@ -4,7 +4,7 @@
 use super::Inspector;
 use super::actions_state::ActionsState;
 use super::actions_tab::actions_tab;
-use super::argo_tab::{ArgoTab, argo_tab};
+use super::argo::ArgoTab;
 use super::details_metadata::MetadataDisclosure;
 use super::details_tab::details_tab;
 use super::events::EventsState;
@@ -575,24 +575,7 @@ impl Inspector {
                         cx,
                     ),
                     DetailTab::Revisions => revisions_tab(detail, &self.loading, cx),
-                    DetailTab::Argo => argo_tab(
-                        detail,
-                        self.persisted.preferences.timestamp_timezone,
-                        self.argo_connection_panel(cx)
-                            .children(self.argo_outcome_panel(detail, cx)),
-                        super::argo_tab::ArgoConnectionState {
-                            connected: self.argo_connection_id().is_some(),
-                            unavailable: self.argo_connection_unavailable(),
-                            busy: detail
-                                .argo
-                                .as_ref()
-                                .and_then(|s| s.inspector.as_ref())
-                                .is_some_and(|s| self.argo_operation_busy(&s.application)),
-                        },
-                        &self.feedback.disclosure(),
-                        &self.loading,
-                        cx,
-                    ),
+                    DetailTab::Argo => self.argo_detail_tab(detail, cx),
                     DetailTab::Actions => actions_tab(detail, &self.loading, cx),
                     DetailTab::Yaml => {
                         yaml_tab(self, detail, &self.persisted.preferences, cx).into_any_element()

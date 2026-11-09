@@ -1,9 +1,9 @@
 //! The Argo CD tab's panels from `ArgoApplicationDetails.svelte`: the change
 //! navigator, and the Delivery and Recent deployment cards.
 
-use super::Inspector;
-use super::argo_tab::ArgoTab;
-use super::controls::{self, Variant};
+use super::super::Inspector;
+use super::super::controls::{self, Variant};
+use super::tab::ArgoTab;
 use crate::argo_app::ArgoView;
 use crate::model::exact_timestamp;
 use crate::targets::TestSupportExt;

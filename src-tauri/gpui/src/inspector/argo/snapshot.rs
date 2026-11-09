@@ -3,12 +3,12 @@
 //! for the Changes view. Read-only YAML editors and diff lines share the
 //! native YAML syntax highlighter.
 
-use super::Inspector;
-use super::argo_panels::{caps, panel};
-use super::argo_tab::ArgoTab;
-use super::controls::{self, Variant};
-use super::delivery_ui as dui;
-use super::loading::Phase;
+use super::super::Inspector;
+use super::super::controls::{self, Variant};
+use super::super::delivery_ui as dui;
+use super::super::loading::Phase;
+use super::panels::{caps, panel};
+use super::tab::ArgoTab;
 use crate::argo_app::{ArgoView, Change, ChangeBadge};
 use crate::targets::TestSupportExt;
 use crate::theme::{MONO, Palette, Tokens};
@@ -140,7 +140,7 @@ fn yaml_text(index: usize, text: &SharedString, state: &ArgoTab, live: bool) -> 
         .into_any_element()
 }
 
-fn diff_line(line: &DiffLine, highlights: Option<&super::argo_highlight::Highlights>) -> Div {
+fn diff_line(line: &DiffLine, highlights: Option<&super::highlight::Highlights>) -> Div {
     let (background, foreground) = controls::diff_colors(line.kind);
     div()
         .h(px(20.))
