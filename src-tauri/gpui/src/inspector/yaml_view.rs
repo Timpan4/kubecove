@@ -130,6 +130,9 @@ impl Inspector {
             let _ = this.update_in(cx, |this, window, cx| {
                 if let Some(d) = this.yaml_apply() {
                     match result {
+                        // Unchanged YAML leaves the editor alone, as `YamlCodeEditor.svelte`
+                        // does, because `set_value` resets the cursor, scroll and folds.
+                        Ok(text) if *d.editor.read(cx).text() == *text => d.yaml_view.text = text,
                         Ok(text) => {
                             d.yaml_view.text = text.clone();
                             d.editor.update(cx, |e, cx| e.set_value(text, window, cx));

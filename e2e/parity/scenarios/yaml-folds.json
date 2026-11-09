@@ -22,6 +22,20 @@
         { "action": "foldYamlLine", "line": 2 },
         { "action": "expectYamlVisibleLines", "lines": [1, 2] }
       ]
+    },
+    {
+      "id": "yaml.fold-kept-across-tab-switch",
+      "title": "Switching to another detail tab and back to YAML keeps the folded block folded, because unchanged YAML does not reset the editor",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "YAML" },
+        { "action": "foldYamlLine", "line": 10 },
+        { "action": "expectYamlVisibleLines", "lines": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14, 15, 16] },
+        { "action": "showTab", "tab": "Details" },
+        { "action": "showTab", "tab": "YAML" },
+        { "action": "expectYamlVisibleLines", "lines": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14, 15, 16] }
+      ]
     }
   ]
 }
