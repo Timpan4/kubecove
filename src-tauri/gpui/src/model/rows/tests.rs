@@ -3,7 +3,8 @@ use serde_json::json;
 
 // Failure modes: filtering changes a kind lane's first member; equal names lose
 // source order; removing the last GitOps owner changes grouping; lowercasing or
-// joined search fields changes substring matches; a new source keeps old indices.
+// joined search fields changes substring matches; a match runs from one row's
+// search text into the next row's in the shared buffer; a new source keeps old indices.
 #[test]
 fn indexed_rows_preserve_filter_and_display_order() {
     let rows: Vec<ResourceSummary> = [
@@ -38,6 +39,14 @@ fn indexed_rows_preserve_filter_and_display_order() {
         "é",
         "i",
         " evidencepayments ",
+        "paymentsa-2",
+        "paymentsz-2",
+        "paymentsa",
+        "charta-02",
+        "appa-2",
+        "paymentsé",
+        "paymentsi",
+        "s",
     ] {
         let query = query.trim().to_lowercase();
         for kinds in [

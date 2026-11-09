@@ -45,6 +45,9 @@ serde_yaml = { package = "yaml_serde", version = "=0.10.7" }
 # GPUI Kit's tree-sitter feature already uses this version. The YAML editor
 # walks the syntax tree that GPUI Kit's `SyntaxHighlighter` returns.
 tree-sitter = "=0.26.13"
+# Already in the lockfile through `regex`. The resource search scans all rows'
+# text in one buffer with its SIMD substring finder.
+memchr = "=2.8.3"
 
 [dev-dependencies]
 tokio-tungstenite = "=0.30.0"

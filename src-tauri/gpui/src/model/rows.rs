@@ -3,9 +3,11 @@
 
 use super::{HealthSummary, gitops_label, ownership_group};
 mod patch;
+mod search;
 use crate::collate::Key;
 use kubecove_lib::models::{GitOpsOwnerSummary, ResourceSummary};
 pub(crate) use patch::{ObservedNames, reconcile};
+pub(crate) use search::SearchMatches;
 use std::{
     collections::HashMap,
     rc::Rc,
@@ -23,7 +25,6 @@ pub(crate) struct KindFilter<'a, F> {
 }
 
 pub(crate) struct RowKey {
-    pub(crate) search: String,
     pub(crate) owner: Option<(String, String)>,
     group: usize,
     lane: usize,
@@ -38,6 +39,7 @@ pub(crate) struct PreparedRows {
     rows: Vec<ResourceSummary>,
     identity: Rc<()>,
     keys: Vec<RowKey>,
+    search: search::SearchText,
     groups: Vec<u8>,
     kinds: Vec<(String, usize)>,
     by_kind: Vec<Vec<usize>>,
@@ -133,6 +135,7 @@ impl PreparedRows {
         let mut lanes = Vec::new();
         let mut variants = Vec::new();
         let mut variant_ids = HashMap::new();
+        let mut search = search::SearchText::with_capacity(rows.len());
         let keys = rows
             .iter()
             .enumerate()
@@ -167,8 +170,8 @@ impl PreparedRows {
                     lanes.push(Lane { group, kind });
                     next_lane
                 });
+                search.push(row);
                 RowKey {
-                    search: crate::resource_search::haystack(row),
                     owner: super::gitops_owner_filter(row),
                     group,
                     lane,
@@ -184,6 +187,7 @@ impl PreparedRows {
             rows,
             identity: Rc::default(),
             keys,
+            search,
             groups,
             kinds,
             by_kind,
@@ -230,6 +234,7 @@ pub struct Visible {
     lane_order: Vec<usize>,
     allowed: Vec<bool>,
     selected: Vec<bool>,
+    matches: SearchMatches,
     group_first: Vec<First>,
     lane_first: Vec<First>,
     pub(super) grouped_by_gitops: bool,
@@ -271,6 +276,10 @@ impl Visible {
     pub(crate) fn contains_index(&self, index: usize) -> bool {
         self.selected[index]
     }
+    /// The source rows the last refilter's query matched, before the other filters.
+    pub(crate) fn search_matches(&self) -> &SearchMatches {
+        &self.matches
+    }
     pub(super) fn ordered(&self) -> impl Iterator<Item = &ResourceSummary> {
         self.order.iter().map(|&index| &self.source.rows[index])
     }
@@ -301,6 +310,7 @@ impl Visible {
     ) {
         let _span = crate::frame_profile::scope("rows", "refilter");
         source.fill_kind_mask(&kinds, &mut self.allowed);
+        source.search.matches(query, &mut self.matches);
         std::mem::swap(&mut self.previous, &mut self.indices);
         self.indices.clear();
         self.selected.resize(source.rows.len(), false);
@@ -311,7 +321,7 @@ impl Visible {
                     &source.rows[index],
                     key.owner.as_ref().map(|(key, _)| key.as_str()),
                 )
-                && (query.is_empty() || key.search.contains(query))
+                && self.matches.contains(index)
             {
                 self.indices.push(index);
                 self.selected[index] = true;

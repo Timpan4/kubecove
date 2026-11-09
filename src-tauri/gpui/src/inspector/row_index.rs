@@ -76,46 +76,10 @@ impl Inspector {
             &self.cluster.request,
         );
         let mut visible = std::mem::take(&mut self.visible);
-        let summary_profile = crate::frame_profile::scope("rows", "summary");
-        let mut owners = std::collections::BTreeMap::new();
-        let mut summary = crate::model::HealthSummary::default();
-        let mut allowed = Vec::new();
-        source.fill_kind_mask(
-            &KindFilter {
-                kinds: &kinds,
-                selected: |kind: &str, api: Option<&str>| self.selected_kind(kind, api),
-            },
-            &mut allowed,
-        );
-        for (row, prepared) in source.keyed_rows() {
-            if !(allowed[prepared.variant]
-                && self.row_scope_visible(row)
-                && self.filters.in_namespace(row))
-            {
-                continue;
-            }
-            let owner = &prepared.owner;
-            if let Some((key, label)) = &owner {
-                owners.entry(key.as_str()).or_insert(label.as_str());
-            }
-            if self
-                .filters
-                .in_owner(owner.as_ref().map(|(key, _)| key.as_str()))
-                && (query.is_empty() || prepared.search.contains(&query))
-            {
-                summary.add(row);
-            }
-        }
-        let mut owners: Vec<_> = owners
-            .into_iter()
-            .map(|(key, label)| (key.to_owned(), label.to_owned()))
-            .collect();
-        owners.sort_by(|a, b| crate::collate::collate(&a.1, &b.1, false));
-        self.filters.owners = owners;
-        self.filters.summary = summary;
-        drop(summary_profile);
+        // The refilter does not read the owner list or summary below, and its
+        // query matches serve both passes.
         visible.refilter_with(
-            source,
+            source.clone(),
             KindFilter {
                 kinds: &kinds,
                 selected: |kind: &str, api: Option<&str>| self.selected_kind(kind, api),
@@ -130,6 +94,45 @@ impl Inspector {
             |row| self.application_manages(row),
             &self.persisted.preferences.resource_kind_lanes,
         );
+        let summary_profile = crate::frame_profile::scope("rows", "summary");
+        let matches = visible.search_matches();
+        let mut owners = std::collections::BTreeMap::new();
+        let mut summary = crate::model::HealthSummary::default();
+        let mut allowed = Vec::new();
+        source.fill_kind_mask(
+            &KindFilter {
+                kinds: &kinds,
+                selected: |kind: &str, api: Option<&str>| self.selected_kind(kind, api),
+            },
+            &mut allowed,
+        );
+        for (index, (row, prepared)) in source.keyed_rows().enumerate() {
+            if !(allowed[prepared.variant]
+                && self.row_scope_visible(row)
+                && self.filters.in_namespace(row))
+            {
+                continue;
+            }
+            let owner = &prepared.owner;
+            if let Some((key, label)) = &owner {
+                owners.entry(key.as_str()).or_insert(label.as_str());
+            }
+            if self
+                .filters
+                .in_owner(owner.as_ref().map(|(key, _)| key.as_str()))
+                && matches.contains(index)
+            {
+                summary.add(row);
+            }
+        }
+        let mut owners: Vec<_> = owners
+            .into_iter()
+            .map(|(key, label)| (key.to_owned(), label.to_owned()))
+            .collect();
+        owners.sort_by(|a, b| crate::collate::collate(&a.1, &b.1, false));
+        drop(summary_profile);
+        self.filters.owners = owners;
+        self.filters.summary = summary;
         self.visible = visible;
         cx.notify();
     }
