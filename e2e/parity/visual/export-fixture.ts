@@ -34,7 +34,7 @@ import { exportSessionControls } from "./export-session-controls";
 
 // Browser mocks omit owner fields the Rust model requires; fill them with the
 // values the web frontend infers (`owner.partial ?? confidence !== "inventory"`).
-function rustShape(row: ResourceSummary): ResourceSummary {
+function withRustOwnerFields(row: ResourceSummary): ResourceSummary {
 	const owner = row.gitOpsOwner;
 	return owner ? { ...row, gitOpsOwner: { provenance: "browser-mock", ...owner, partial: owner.partial ?? owner.confidence !== "inventory" } } : row;
 }
@@ -51,24 +51,24 @@ const details: ResourceDetailsFull[] = [];
 const contextResources: ResourceSummary[] = [];
 for (const context of contexts) {
     const rows = await client.invoke<ResourceSummary[]>("list_resources", { clusterContext: context.name });
-    contextResources.push(...rows.map(rustShape));
+    contextResources.push(...rows.map(withRustOwnerFields));
     if (context.name === clusterContext) continue;
     for (const row of rows) {
         const detail = await client.invoke<ResourceDetailsFull>("get_resource_details", { clusterContext: context.name, kind: row.kind, name: row.name, namespace: row.namespace });
-        details.push({ ...detail, summary: rustShape({ ...detail.summary, cluster: context.name }) });
+        details.push({ ...detail, summary: withRustOwnerFields({ ...detail.summary, cluster: context.name }) });
     }
 }
 // Events per resource in the Rust `ResourceEventSummary` shape the mocks already use.
 const events: { kind: string; name: string; namespace: string | null; events: ResourceEventSummary[] }[] = [];
 for (const row of resources) {
 	const detail = await client.invoke<ResourceDetailsFull>("get_resource_details", { clusterContext, kind: row.kind, name: row.name, namespace: row.namespace });
-	details.push({ ...detail, summary: rustShape(detail.summary) });
+	details.push({ ...detail, summary: withRustOwnerFields(detail.summary) });
 	const rows = await client.invoke<ResourceEventSummary[]>("list_resource_events", { clusterContext, kind: row.kind, name: row.name, namespace: row.namespace });
 	events.push({ kind: row.kind, name: row.name, namespace: row.namespace ?? null, events: rows });
 }
 // The web map reads every namespace (`namespaces: []`) for the All scope the views capture.
 const topology = await client.invoke<ResourceTopology>("list_resource_topology", { clusterContext, namespaces: [], mode: "ownership" });
-const rustGraph = (graph: ResourceTopology) => ({ ...graph, nodes: graph.nodes.map((node) => ({ ...node, summary: rustShape(node.summary) })) });
+const rustGraph = (graph: ResourceTopology) => ({ ...graph, nodes: graph.nodes.map((node) => ({ ...node, summary: withRustOwnerFields(node.summary) })) });
 const rustTopology = rustGraph(topology);
 const networkTopology = rustGraph(await client.invoke<ResourceTopology>("list_resource_topology", { clusterContext, namespaces: [], mode: "networkFlow" }));
 // The ownership map's "Map context" select reads another workspace context's graph,
@@ -97,11 +97,11 @@ const incidents = {
 	...cockpit,
 	items: cockpit.items.map((item) => {
 		const state = item.state ?? (item.severity === "restarted" ? "historical" : "active");
-		return { ...item, state, resource: rustShape(item.resource), signals: item.signals.map((signal) => ({ ...signal, state: signal.state ?? state })) };
+		return { ...item, state, resource: withRustOwnerFields(item.resource), signals: item.signals.map((signal) => ({ ...signal, state: signal.state ?? state })) };
 	}),
 };
 // The incident guide reads the ownership graph of a Pod's namespace.
-const namespaceTopologies: Record<string, unknown> = {};
+const namespaceTopologies: Record<string, ReturnType<typeof rustGraph>> = {};
 const topologyNamespaces = new Set<string>();
 for (const item of incidents.items) {
 	const namespace = item.resource.namespace;
@@ -149,5 +149,5 @@ for (const row of resources.filter((row) => row.kind === "Secret")) {
     const request = { clusterContext: row.cluster, name: row.name, namespace: row.namespace, key: "token" };
     secretReveals.push({ request, encoded: await client.invoke<string>("reveal_secret_data_value", request) });
 }
-await writeFile(output, JSON.stringify({ coverage, pageReads, mcp: mcpMockStatus(), argoConnected, secretReveals, sessionControls, liveEvents: LIVE_EVENTS, overflowEvents: OVERFLOW_EVENTS, contexts, namespaces, kinds, contextResources, resources: resources.map(rustShape), details, events, topology: rustTopology, networkTopology, contextTopologies, metrics, appUsage, namespaceTopologies, gitops, helm, incidents, liveSessions, detailTabs: { ...detailTabs, logs: { ...detailTabs.logs, cases: logCases } }, rbac, rbacReviews, kubeconfig: sources }, null, "\t"));
+await writeFile(output, JSON.stringify({ coverage, pageReads, mcp: mcpMockStatus(), argoConnected, secretReveals, sessionControls, liveEvents: LIVE_EVENTS, overflowEvents: OVERFLOW_EVENTS, contexts, namespaces, kinds, contextResources, resources: resources.map(withRustOwnerFields), details, events, topology: rustTopology, networkTopology, contextTopologies, metrics, appUsage, namespaceTopologies, gitops, helm, incidents, liveSessions, detailTabs: { ...detailTabs, logs: { ...detailTabs.logs, cases: logCases } }, rbac, rbacReviews, kubeconfig: sources }, null, "\t"));
 console.log(`fixture: ${resources.length} resources, ${details.length} details -> ${output}`);

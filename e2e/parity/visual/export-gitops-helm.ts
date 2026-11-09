@@ -25,7 +25,7 @@ function withAssessment<T extends { healthAssessment?: HealthAssessment }>(item:
 }
 
 // Browser mocks omit owner fields the Rust model requires, as in `export-fixture.ts`.
-function rustShape(row: ResourceSummary): ResourceSummary {
+function withRustOwnerFields(row: ResourceSummary): ResourceSummary {
 	const owner = row.gitOpsOwner;
 	return owner ? { ...row, gitOpsOwner: { provenance: "browser-mock", ...owner, partial: owner.partial ?? owner.confidence !== "inventory" } } : row;
 }
@@ -44,7 +44,7 @@ export async function exportGitOpsPage(client: TauriClient, clusterContext: stri
 		const details = await client.invoke<ResourceDetailsFull>("get_dynamic_resource_details", { clusterContext, resourceKind: APPLICATION_KIND, name: app.name, namespace: app.namespace });
 		const application = { name: app.name, namespace: app.namespace ?? null, project: app.project ?? null, resourceVersion: null, uid: null, apiVersion: APPLICATION_KIND.apiVersion, context: clusterContext, workspaceId: null };
 		const inspector = await client.invoke("get_argo_application_inspector", { clusterContext, transport: "kubernetes", application });
-		applications.push({ details: { ...details, summary: rustShape(details.summary) }, inspector });
+		applications.push({ details: { ...details, summary: withRustOwnerFields(details.summary) }, inspector });
 	}
 	return { appSets, projects, applications };
 }
@@ -57,7 +57,7 @@ export async function exportHelm(client: TauriClient, clusterContext: string | u
 		const target = { clusterContext: release.cluster, namespace: release.namespace, storageKind: release.storageKind, storageName: release.storageName };
 		details.push(await client.invoke<HelmReleaseDetails>("get_helm_release_details", target));
 		const reconciliation = await client.invoke<HelmReleaseReconciliation>("get_helm_release_reconciliation", target);
-		reconciliations.push({ ...reconciliation, resources: reconciliation.resources.map((resource) => (resource.liveResource ? { ...resource, liveResource: rustShape(resource.liveResource) } : resource)) });
+		reconciliations.push({ ...reconciliation, resources: reconciliation.resources.map((resource) => (resource.liveResource ? { ...resource, liveResource: withRustOwnerFields(resource.liveResource) } : resource)) });
 	}
 	return { list, details, reconciliations };
 }
