@@ -148,7 +148,9 @@ mod yaml_folds;
 mod yaml_lens;
 mod yaml_lint;
 mod yaml_marks;
+mod yaml_parse;
 mod yaml_tab;
+mod yaml_tags;
 mod yaml_view;
 
 use crate::backend::{Backend, Scope};
