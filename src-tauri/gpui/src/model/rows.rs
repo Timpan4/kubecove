@@ -76,6 +76,9 @@ pub(crate) struct PreparedRows {
     contexts: Vec<String>,
     /// Each row's index in `contexts`, which is its context rank.
     context: Vec<u32>,
+    /// Each row's `identity_hash`. Patches in place keep identities, so a
+    /// rebuild is the only change.
+    identities: Vec<u64>,
     identity: RowsId,
     keys: Vec<RowKey>,
     search: search::SearchText,
@@ -141,6 +144,11 @@ impl PreparedRows {
     /// Each row's context as an index into `context_names`.
     pub(crate) fn row_contexts(&self) -> &[u32] {
         &self.context
+    }
+
+    /// Each row's `identity_hash`, prepared with the rows off the UI thread.
+    pub(crate) fn row_identities(&self) -> &[u64] {
+        &self.identities
     }
 
     /// The number of distinct GitOps owners, which `RowKey::owner_index` indexes.
@@ -219,6 +227,7 @@ impl PreparedRows {
     pub(crate) fn new(rows: Vec<ResourceSummary>, contexts: &[String]) -> Self {
         let _span = crate::frame_profile::scope("rows", "prepare");
         let (contexts, context) = context_ranks(&rows, contexts);
+        let identities = rows.iter().map(identity_hash).collect();
         let multi_context = contexts.len() > 1;
         let names: Vec<Key<'_>> = rows.iter().map(|row| Key::new(&row.name, true)).collect();
         let mut sorted: Vec<_> = (0..rows.len()).collect();
@@ -328,6 +337,7 @@ impl PreparedRows {
             rows,
             contexts,
             context,
+            identities,
             identity: RowsId::default(),
             keys,
             search,
@@ -344,6 +354,16 @@ impl PreparedRows {
             slots: None,
         }
     }
+}
+
+/// A hash of a resource's cluster, kind, namespace and name, which the
+/// ownership map matches its nodes to rows by. Equal hashes still compare the
+/// fields.
+pub(crate) fn identity_hash(row: &ResourceSummary) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::hash::DefaultHasher::new();
+    (&row.cluster, &row.kind, &row.namespace, &row.name).hash(&mut hasher);
+    hasher.finish()
 }
 
 /// Sets each owner's filter list rank and key id, and returns the number of

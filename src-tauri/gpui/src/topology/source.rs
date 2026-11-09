@@ -3,7 +3,7 @@
 use super::{layout, loose_key};
 use crate::{
     collate::Encoded,
-    model::{RowsId, Visible},
+    model::{RowsId, Visible, identity_hash},
 };
 use kubecove_lib::models::ResourceTopology;
 use std::{cell::RefCell, collections::HashMap, sync::Arc};
@@ -57,36 +57,43 @@ impl Source {
             .map(|node| index[node.id.as_str()])
             .collect();
         // A refresh rebuilds this for every row of every workspace context, while
-        // the graph has one context's nodes. Index the nodes and stream the rows
-        // once, so a row costs a lookup and allocates nothing. The key starts with
-        // the cluster, so a row from a cluster without nodes skips the hash.
-        let mut node_keys: HashMap<_, Vec<usize>> = HashMap::with_capacity(topology.nodes.len());
+        // the graph has one context's nodes. Rows carry their context index and
+        // identity hash, prepared off the UI thread, so a row costs array reads
+        // and, in a context with nodes, one lookup. Equal hashes compare keys.
+        let mut node_hashes: HashMap<u64, Vec<usize>> =
+            HashMap::with_capacity(topology.nodes.len());
         let mut clusters: Vec<&str> = Vec::new();
         for (i, node) in topology.nodes.iter().enumerate() {
-            node_keys.entry(loose_key(&node.summary)).or_default().push(i);
+            node_hashes
+                .entry(identity_hash(&node.summary))
+                .or_default()
+                .push(i);
             if !clusters.contains(&node.summary.cluster.as_str()) {
                 clusters.push(&node.summary.cluster);
             }
         }
-        // Rows carry their context as an index, so the check reads a flag, not the row.
         let prepared = rows.source();
         let with_nodes: Vec<bool> = prepared
             .context_names()
             .iter()
             .map(|context| clusters.contains(&context.as_str()))
             .collect();
+        let all_rows = rows.all_rows();
         let mut matches: Vec<Vec<usize>> = vec![Vec::new(); topology.nodes.len()];
-        for (i, (row, &context)) in rows
-            .all_rows()
+        for (i, (&context, hash)) in prepared
+            .row_contexts()
             .iter()
-            .zip(prepared.row_contexts())
+            .zip(prepared.row_identities())
             .enumerate()
         {
             if !with_nodes[context as usize] {
                 continue;
             }
-            if let Some(nodes) = node_keys.get(&loose_key(row)) {
-                for &node in nodes {
+            if let Some(nodes) = node_hashes.get(hash) {
+                let key = loose_key(&all_rows[i]);
+                for &node in nodes.iter().filter(|&&node| {
+                    loose_key(&topology.nodes[node].summary) == key
+                }) {
                     matches[node].push(i);
                 }
             }
