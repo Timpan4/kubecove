@@ -172,9 +172,12 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 reveal(window, anchor, "argo-auth:Local login", cx);
                 window.click("argo-auth:Local login", cx);
             }
+            // The dialog keeps the switch between connects, so turn it on only when it is off.
             if step["remember"] == true {
                 reveal(window, anchor, "argo-remember", cx);
-                window.click("argo-remember", cx);
+                if window.find("argo-remember").checked() != Some(true) {
+                    window.click("argo-remember", cx);
+                }
             }
             if step["insecure"] == true {
                 reveal(window, anchor, "argo-insecure", cx);
@@ -480,6 +483,14 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                     window.try_find("argo-connection-dialog").is_some(),
                     step["open"].as_bool() == Some(true),
                     "Argo CD connection dialog open state"
+                );
+            }
+            "expectRemember" => {
+                window.render_frame(cx);
+                assert_eq!(
+                    window.find("argo-remember").checked(),
+                    step["checked"].as_bool(),
+                    "Remember credential switch"
                 );
             }
             operation => panic!("unknown Argo connection dialog operation {operation}"),

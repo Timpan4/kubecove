@@ -21,7 +21,7 @@ impl Inspector {
         self.argo_connections.editing = None;
         self.argo_connections.endpoint = None;
         self.argo_connections.step.clear_preview();
-        self.argo_connections.remember = false;
+        // `ArgoConnectionDialog.svelte` keeps the Remember credential choice between opens.
         self.argo_connections.local = false;
         self.argo_connections.insecure = false;
         self.clear_argo_secrets(window, cx);
@@ -381,6 +381,12 @@ impl Inspector {
             button(Variant::Outline, 24., false)
                 .id("argo-remember")
                 .test_support()
+                .aria_label("Remember credential in native keyring")
+                .aria_toggled(if state.remember {
+                    gpui_kit::accesskit::Toggled::True
+                } else {
+                    gpui_kit::accesskit::Toggled::False
+                })
                 .child(format!(
                     "Remember credential in native keyring: {}",
                     state.remember

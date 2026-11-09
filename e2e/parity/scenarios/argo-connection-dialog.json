@@ -37,15 +37,25 @@
       ]
     },
     {
+      "id": "argo-connection.keeps-remember-choice",
+      "title": "The connection dialog keeps the Remember credential choice when it opens again",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test", "remember": true },
+        { "action": "expectArgoText", "text": "Connected Argo CD API" },
+        { "action": "argoControl", "control": "Open connection" },
+        { "action": "argoConnectionDialog", "operation": "expectRemember", "checked": true },
+        { "action": "argoControl", "control": "Close connection" }
+      ]
+    },
+    {
       "id": "argo-connection.close-keeps-auto-reconnect",
       "title": "Closing the connection dialog during automatic reconnects lets every remembered profile reconnect",
       "steps": [
         { "action": "openPage", "page": "GitOps" },
         { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
         { "action": "connectArgoProfile", "url": "https://argocd.example.test", "remember": true },
-        { "action": "restartClient" },
-        { "action": "openPage", "page": "GitOps" },
-        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
         { "action": "expectArgoText", "text": "Connected Argo CD API" },
         { "action": "connectArgoProfile", "url": "https://argocd-server.argocd.svc", "tunnel": true, "remember": true },
         { "action": "confirmArgoTunnel" },

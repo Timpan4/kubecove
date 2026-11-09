@@ -84,7 +84,9 @@ export async function argoAction(page: Page, step: Step) {
                     await dialog.getByText("Certificate validation is disabled and never saved.", { exact: true }).waitFor();
                 }
             }
-            if (step.remember) await dialog.getByRole("switch", { name: "Remember credential in native keyring", exact: true }).click();
+            // The dialog keeps the switch between connects, so turn it on only when it is off.
+            const remember = dialog.getByRole("switch", { name: "Remember credential in native keyring", exact: true });
+            if (step.remember && (await remember.getAttribute("aria-checked")) !== "true") await remember.click();
             await dialog.getByRole("button", { name: "Connect", exact: true }).click();
             if (step.tunnel) { await dialog.getByText("Confirm tunnel target", { exact: true }).waitFor(); break; }
             await dialog.getByRole("button", { name: "Disconnect", exact: true }).waitFor();
@@ -223,6 +225,11 @@ export async function argoAction(page: Page, step: Step) {
                 case "expectOpen":
                     await dialog.waitFor({ state: step.open ? "visible" : "hidden" });
                     break;
+                case "expectRemember": {
+                    const checked = await dialog.getByRole("switch", { name: "Remember credential in native keyring", exact: true }).getAttribute("aria-checked");
+                    if ((checked === "true") !== step.checked) throw new Error(`Remember credential switch is ${checked}`);
+                    break;
+                }
             }
             break;
         }
