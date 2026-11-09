@@ -60,12 +60,10 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
         }
         "returnToSource" => window.click("permission-return", cx),
         "copyResourceName" => {
-            let id = format!(
-                "resource-copy:{}:{}:{}",
-                string(step, "kind"),
-                string(step, "namespace"),
-                string(step, "name")
-            );
+            // The copy button's ID is its row's ID under another prefix.
+            let id = super::detail::resolve_resource(window, &row(step), cx)
+                .expect("resource row is rendered")
+                .replacen("resource:", "resource-copy:", 1);
             reveal(window, "page", &id, cx);
             locate::click_in(window, "page", id.into(), cx);
             assert_eq!(

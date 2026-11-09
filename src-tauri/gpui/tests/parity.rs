@@ -51,6 +51,8 @@ mod map_gestures;
 mod map_panels;
 #[path = "parity/mcp.rs"]
 mod mcp;
+#[path = "parity/multi_context.rs"]
+mod multi_context;
 #[path = "parity/navigation.rs"]
 mod navigation;
 #[path = "parity/resource_filters.rs"]
@@ -103,13 +105,19 @@ fn string<'a>(v: &'a Value, key: &str) -> &'a str {
 fn number(v: &Value, key: &str) -> u64 {
     v[key].as_u64().unwrap_or_else(|| panic!("missing {key}"))
 }
+/// A row's element ID, or without a `context` the ID prefix that
+/// `detail::resolve_resource` matches against every context's row.
 fn row(step: &Value) -> String {
-    format!(
+    let id = format!(
         "resource:{}:{}:{}",
         string(step, "kind"),
         string(step, "namespace"),
         string(step, "name")
-    )
+    );
+    match step["context"].as_str() {
+        Some(context) => format!("{id}:{context}"),
+        None => id,
+    }
 }
 
 /// The first detail tab, at the top of the scrolling detail body.
@@ -212,6 +220,7 @@ fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
         || map_panels::apply(window, cx, step)
         || topology_metrics::apply(window, cx, step)
         || resource_table::act(window, cx, step)
+        || multi_context::act(window, cx, step)
         || detail::act(window, cx, step)
         || detail_status::act(window, cx, step)
         || details_metadata::act(window, cx, step)

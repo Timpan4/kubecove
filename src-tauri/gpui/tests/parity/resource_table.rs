@@ -32,6 +32,13 @@ fn reveal_cell(window: &mut gpui_kit::Window, id: &str, cx: &mut gpui_kit::App) 
     }
 }
 
+/// The element ID of the row a step names, scrolled into the table.
+fn resolved_row(window: &mut gpui_kit::Window, step: &Value, cx: &mut gpui_kit::App) -> String {
+    let target = row(step);
+    detail::resolve_resource(window, &target, cx)
+        .unwrap_or_else(|| panic!("resource table did not render {target}"))
+}
+
 /// The table's visible resource names in visual order, limited to `expected`.
 fn visible_names(window: &mut gpui_kit::Window, expected: &[String]) -> Vec<String> {
     window
@@ -69,7 +76,7 @@ fn tab_to(window: &mut gpui_kit::Window, id: &str, cx: &mut gpui_kit::App) {
 pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) -> bool {
     match string(step, "action") {
         "pressResourceRow" => {
-            let id = row(step);
+            let id = resolved_row(window, step, cx);
             reveal_cell(window, &id, cx);
             tab_to(window, &id, cx);
             let key = if string(step, "key") == "Enter" {
@@ -108,19 +115,28 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             assert_eq!(group.description(), Some(expected));
         }
         "openResourceRow" => {
-            let cell = format!("cell:{}:{}", string(step, "column"), row(step));
+            let cell = format!(
+                "cell:{}:{}",
+                string(step, "column"),
+                resolved_row(window, step, cx)
+            );
             reveal_cell(window, &cell, cx);
             window.click(cell, cx);
         }
         "expectResourceCell" => {
-            let cell = format!("cell:{}:{}", string(step, "column"), row(step));
+            let cell = format!(
+                "cell:{}:{}",
+                string(step, "column"),
+                resolved_row(window, step, cx)
+            );
             reveal_cell(window, &cell, cx);
             assert_eq!(window.find(cell).label(), Some(string(step, "text")));
         }
         "expectResourceCellFits" => {
             let column = string(step, "column");
-            let cell = format!("cell:{column}:{}", row(step));
-            let value = format!("value:{column}:{}", row(step));
+            let row = resolved_row(window, step, cx);
+            let cell = format!("cell:{column}:{row}");
+            let value = format!("value:{column}:{row}");
             reveal_cell(window, &cell, cx);
             let outer = window.find(cell);
             let inner = window.find(value);

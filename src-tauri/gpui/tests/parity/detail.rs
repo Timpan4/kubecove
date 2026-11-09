@@ -97,8 +97,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
         // view, as Playwright's `visible` state does.
         "expectResource" => assert!(reveal_resource(window, &row(step), cx)),
         "openResource" => {
-            let row = row(step);
-            assert!(reveal_resource(window, &row, cx));
+            let row = resolve_resource(window, &row(step), cx).expect("resource row is rendered");
             window.click(row, cx);
         }
         "expectDetail" => assert_eq!(
@@ -296,10 +295,38 @@ pub(super) fn reveal_resource(
     target: &str,
     cx: &mut gpui_kit::App,
 ) -> bool {
-    let id = gpui_kit::ElementId::Name(target.to_owned().into());
+    resolve_resource(window, target, cx).is_some()
+}
+
+/// Scrolls the table to the first visible row that `target` names and returns
+/// its element ID. Row IDs end in the row's context, so a target without one
+/// matches the row of every context and the first in display order wins.
+pub(super) fn resolve_resource(
+    window: &mut gpui_kit::Window,
+    target: &str,
+    cx: &mut gpui_kit::App,
+) -> Option<String> {
+    let mut found = None;
     scan_table(window, cx, |window| {
-        window.try_find(id.clone()).is_some_and(|row| row.visible())
-    })
+        found = rendered_rows(window, target).into_iter().next();
+        found.is_some()
+    });
+    found
+}
+
+/// The element IDs of the visible rows that `target` names, top to bottom.
+pub(super) fn rendered_rows(window: &gpui_kit::Window, target: &str) -> Vec<String> {
+    use gpui_kit::test::TestQueryExt;
+    let prefix = format!("{target}:");
+    window
+        .elements()
+        .iter()
+        .filter(|element| element.visible())
+        .filter_map(|element| {
+            let id = locate::id(element).to_string();
+            (id == target || id.starts_with(&prefix)).then_some(id)
+        })
+        .collect()
 }
 
 /// Calls `visit` at each scroll position of the current table page, from the

@@ -14,10 +14,11 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
                 assert!(window.try_find("live-notice").is_none());
             }
         }
-        "expectResourceStatus" => assert_eq!(
-            window.find(row(step)).description(),
-            Some(string(step, "status"))
-        ),
+        "expectResourceStatus" => {
+            let id = super::detail::resolve_resource(window, &row(step), cx)
+                .expect("resource row is rendered");
+            assert_eq!(window.find(id).description(), Some(string(step, "status")));
+        }
         "openCustomKind" => {
             let picker = string(step, "surface") == "picker";
             window.click(

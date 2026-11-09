@@ -147,12 +147,61 @@ mod text_fit {
         search(&mut cx, handle, "argocd-server");
         act(&mut cx, handle, |window, _| {
             let value = window
-                .find("value:Kind:resource:Deployment:argocd:argocd-server")
+                .find("value:Kind:resource:Deployment:argocd:argocd-server:mock-dev")
                 .bounds();
             if let Err(problem) =
                 shows_in_full(window, "Deployment", SM_FONT_SIZE, value.size.width)
             {
                 panic!("Kind column: {problem}");
+            }
+        });
+    }
+
+    /// Clicks the element labeled `label` inside `scope`.
+    fn click_label(
+        window: &mut gpui_kit::Window,
+        scope: &'static str,
+        label: &str,
+        cx: &mut gpui_kit::App,
+    ) {
+        let target = window.within(scope).find_by_label(label);
+        let id = target.path().last().expect("labeled element has an ID").clone();
+        window.click(id, cx);
+    }
+
+    /// With admin@solid-k8s added to the workspace, the Context column fits
+    /// "admin@solid-k8s", the longest fixture context name, without an ellipsis.
+    fn context_column_fits(fixture: &Path) {
+        let (mut cx, handle) = open(fixture);
+        act(&mut cx, handle, |window, cx| {
+            window.click("header-workspaces", cx)
+        });
+        act(&mut cx, handle, |window, cx| {
+            click_label(window, "launcher-body", "Edit Parity mock workspace", cx)
+        });
+        act(&mut cx, handle, |window, cx| {
+            window.click("workspace-group:admin@solid-k8s", cx)
+        });
+        act(&mut cx, handle, |window, cx| {
+            window.click("workspace-create", cx)
+        });
+        act(&mut cx, handle, |window, cx| {
+            click_label(window, "launcher-body", "Open Parity mock workspace", cx)
+        });
+        act(&mut cx, handle, |window, cx| {
+            if window.try_find("resources").is_none() {
+                window.click("open-resources", cx);
+            }
+        });
+        search(&mut cx, handle, "edge-relay");
+        act(&mut cx, handle, |window, _| {
+            let value = window
+                .find("value:Context:resource:Deployment:platform:edge-relay:admin@solid-k8s")
+                .bounds();
+            if let Err(problem) =
+                shows_in_full(window, "admin@solid-k8s", SM_FONT_SIZE, value.size.width)
+            {
+                panic!("Context column: {problem}");
             }
         });
     }
@@ -163,7 +212,7 @@ mod text_fit {
         let (mut cx, handle) = open(fixture);
         search(&mut cx, handle, "argocd-dex-server");
         act(&mut cx, handle, |window, cx| {
-            window.click("resource:Pod:argocd:argocd-dex-server-6d7f9c5b8-q4w2n", cx)
+            window.click("resource:Pod:argocd:argocd-dex-server-6d7f9c5b8-q4w2n:mock-dev", cx)
         });
         act(&mut cx, handle, |window, cx| window.click("show-logs", cx));
         act(&mut cx, handle, |window, _| {
@@ -192,6 +241,8 @@ mod text_fit {
         let fixture = Path::new(&fixture);
         deployment_kind_fits(fixture);
         println!("text_fit deployment-kind-fits: passed");
+        context_column_fits(fixture);
+        println!("text_fit context-column-fits: passed");
         live_log_status_shows_in_full(fixture);
         println!("text_fit live-log-status-shows-in-full: passed");
     }
