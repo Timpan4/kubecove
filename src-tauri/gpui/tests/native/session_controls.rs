@@ -44,6 +44,8 @@ pub struct SessionControls {
     pub pending: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
     pub forward_pending: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
     pub stopped_forwards: Arc<Mutex<Vec<String>>>,
+    /// Output the next exec session prints, then keeps open as a shell does.
+    pub exec_output: Mutex<Option<String>>,
 }
 impl SessionControls {
     pub fn forward(&self, request: PortForwardRequest) -> Read<PortForwardSessionSummary> {
@@ -75,9 +77,13 @@ impl SessionControls {
     pub fn exec(&self, _: PodExecSessionRequest) -> Read<ExecStream> {
         let transport = self.transport.load(Ordering::SeqCst);
         let pending = self.pending.lock().unwrap().take();
+        let output = self.exec_output.lock().unwrap().take();
         Box::pin(async move {
             if let Some(pending) = pending {
                 let _ = pending.await;
+            }
+            if let Some(output) = output {
+                return Ok(scripted_exec(output));
             }
             Err(AppError::new(
                 if transport {
@@ -94,7 +100,24 @@ impl SessionControls {
         })
     }
 }
-fn pod(cx: &mut TestAppContext, backend: Arc<Controlled>) -> gpui_kit::AnyWindowHandle {
+/// A session that prints `output` and then stays open.
+fn scripted_exec(output: String) -> ExecStream {
+    let summary: PodExecSessionSummary = serde_json::from_value(serde_json::json!({
+        "id": "scripted-exec", "clusterContext": "mock-dev", "namespace": "payments",
+        "podName": "payments-api", "command": ["/bin/sh"], "stdin": true, "tty": true,
+        "terminalCols": 80, "terminalRows": 24, "status": "running", "startedAt": ""
+    }))
+    .unwrap();
+    let (send, receive) = tokio::sync::mpsc::unbounded_channel();
+    let _ = send.send(PodExecSessionMessage::Output {
+        session_id: "scripted-exec".into(),
+        stream: "stdout".into(),
+        data: output,
+    });
+    // The sender owns the stream's lifetime, so the session stays open.
+    ExecStream::new(summary, receive, send)
+}
+pub(super) fn pod(cx: &mut TestAppContext, backend: Arc<Controlled>) -> gpui_kit::AnyWindowHandle {
     backend.sessions.enabled.store(true, Ordering::SeqCst);
     let handle = open(cx, backend);
     cx.update_window(handle, |_, window, cx| {

@@ -8,6 +8,8 @@ mod argo_outcomes;
 mod default_read_retry;
 #[path = "native/detail_tabs.rs"]
 mod detail_tabs;
+#[path = "native/exec_context_menu.rs"]
+mod exec_context_menu;
 #[path = "native/kind_selection.rs"]
 mod kind_selection;
 #[path = "native/live_data.rs"]
