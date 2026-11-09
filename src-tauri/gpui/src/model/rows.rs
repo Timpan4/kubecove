@@ -2,6 +2,7 @@
 //! select and order indices; resource strings stay with their source snapshot.
 
 use super::{HealthSummary, OwnerRef};
+mod free;
 mod order;
 mod patch;
 mod search;
@@ -125,10 +126,9 @@ impl PreparedRows {
             let _profile = crate::frame_profile::scope("rows", "inherit_owners");
             super::inherit_gitops_owners(&mut rows)
         };
-        Self {
-            inherited,
-            ..Self::new(rows)
-        }
+        let mut prepared = Self::new(rows);
+        prepared.inherited = inherited;
+        prepared
     }
 
     /// The rows with the GitOps owners the backend sent.
