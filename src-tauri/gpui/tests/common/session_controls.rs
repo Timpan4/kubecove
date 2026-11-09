@@ -163,6 +163,14 @@ impl SessionControls {
                     data: "FOREIGN SESSION OUTPUT".into(),
                 });
             }
+        } else if script == "exec-output" {
+            for (summary, sender) in &state.execs {
+                let _ = sender.send(PodExecSessionMessage::Output {
+                    session_id: summary.id.clone(),
+                    stream: "stdout".into(),
+                    data: "LATE EXEC OUTPUT\r\n".into(),
+                });
+            }
         } else if let Some(end) = self.exec_ends.get(script) {
             // As `replaySessions` does, every running session ends and leaves the list.
             for (summary, sender) in std::mem::take(&mut state.execs) {

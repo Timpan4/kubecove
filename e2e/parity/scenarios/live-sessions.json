@@ -216,6 +216,8 @@
         { "action": "execControl", "operation": "stop" },
         { "action": "expectExecState", "container": "app", "status": "error", "contains": "[stop failed; the session may still be running]" },
         { "action": "expectExecState", "container": "app", "status": "error", "contains": "Controlled exec app" },
+        { "action": "replaySessions", "script": "exec-output" },
+        { "action": "expectExecState", "container": "app", "status": "error", "contains": "LATE EXEC OUTPUT" },
         { "action": "coverageScript", "script": "base" },
         { "action": "execControl", "operation": "stop" },
         { "action": "expectExecState", "container": "app", "status": "stopped", "contains": "[stop failed; the session may still be running]" },

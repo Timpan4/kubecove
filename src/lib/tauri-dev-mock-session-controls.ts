@@ -8,7 +8,7 @@ const forwards = new Map(mockPortForwards.map((s) => [s.id, s]));
 const execs = new Map(mockExecSessions.map((s) => [s.id, s]));
 const channels = new Map<string, Pick<Channel<PodExecSessionMessage>, "onmessage">>();
 export type ExecEndScript = "exec-exited" | "exec-failed" | "exec-stopped";
-export type SessionScript = "reconnecting" | "failed" | "foreign-output" | ExecEndScript;
+export type SessionScript = "reconnecting" | "failed" | "foreign-output" | "exec-output" | ExecEndScript;
 export function forwardReplayState(script: "reconnecting" | "failed"): Pick<PortForwardSessionSummary, "status" | "lastError"> {
     return script === "failed" ? { status: "error", lastError: "Controlled transport failure" } : { status: "reconnecting" };
 }
@@ -21,6 +21,8 @@ export function execEndMessage(script: ExecEndScript, sessionId: string): PodExe
 export function replaySessions(script: SessionScript) {
     if (script === "foreign-output") {
         for (const channel of channels.values()) channel.onmessage({ type: "output", sessionId: "foreign-session", stream: "stdout", data: "FOREIGN SESSION OUTPUT" });
+    } else if (script === "exec-output") {
+        for (const [id, channel] of channels) channel.onmessage({ type: "output", sessionId: id, stream: "stdout", data: "LATE EXEC OUTPUT\r\n" });
     } else if (script === "exec-exited" || script === "exec-failed" || script === "exec-stopped") {
         for (const [id, channel] of channels) {
             channel.onmessage(execEndMessage(script, id));

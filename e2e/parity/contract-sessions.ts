@@ -17,7 +17,7 @@ export function sessionStep(item: Record<string, unknown>): Step | undefined {
 		case "expectTerminalCursor": return { action: item.action, cursor: oneOf(["block", "block blink", "bar", "bar blink", "underline", "underline blink", "outline"], item.cursor, "a cursor paint"), ...(item.row == null ? {} : { row: count(item.row) }), ...(item.col == null ? {} : { col: count(item.col) }) };
 		case "configurePreset": return { action: item.action, label: string(item.label), context: string(item.context), namespace: string(item.namespace), service: string(item.service), remote: string(item.remote), local: string(item.local) };
 		case "presetControl": return { action: item.action, operation: oneOf(["add", "save", "edit", "start", "remove", "absent"], item.operation, "a preset action"), ...(item.label === undefined ? {} : { label: string(item.label) }) };
-		case "replaySessions": return { action: item.action, script: oneOf(["reconnecting", "failed", "foreign-output", "exec-exited", "exec-failed", "exec-stopped"], item.script, "a session script") };
+		case "replaySessions": return { action: item.action, script: oneOf(["reconnecting", "failed", "foreign-output", "exec-output", "exec-exited", "exec-failed", "exec-stopped"], item.script, "a session script") };
 		case "confirmExecLeave": return { action: item.action, choice: oneOf(["stay", "stop"], item.choice, "a leave choice") };
 		case "configureForward": return { action: item.action, remote: string(item.remote), local: typeof item.local === "string" ? item.local : "" };
 		case "forwardControl": return { action: item.action, operation: oneOf(["start", "save", "restore", "stop", "reconnect"], item.operation, "a forward control"), ...(item.target === undefined ? {} : { target: string(item.target) }) };
