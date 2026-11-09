@@ -315,8 +315,9 @@ impl Inspector {
         };
         self.argo_connections.choices_mut().endpoint = next;
     }
-    /// Closes the dialog and cancels its preview or connect. A failure stays visible.
-    pub(super) fn cancel_argo_connection(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Closes the dialog and cancels its preview or connect. A failure stays visible. The typed
+    /// text stays too, as the web keeps it until the dialog unmounts or a submit clears it.
+    pub(super) fn cancel_argo_connection(&mut self, cx: &mut Context<Self>) {
         let state = &mut self.argo_connections;
         if !matches!(state.step, ConnectStep::Failed { .. }) {
             state.step = ConnectStep::Idle;
@@ -325,7 +326,6 @@ impl Inspector {
         state.open = false;
         state.dialog = false;
         state.editing = None;
-        self.clear_argo_secrets(window, cx);
         cx.notify();
     }
     /// Records a connected profile and saves it, as the web's connection status cache does.

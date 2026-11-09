@@ -209,7 +209,7 @@ impl Inspector {
             self.argo_source_key()
         );
         if self.argo_connections.scope != scope {
-            self.cancel_argo_connection(window, cx);
+            self.cancel_argo_connection(cx);
             self.argo_connections.discovery.take();
             self.argo_connections.servers.clear();
             self.argo_connections.scope = scope;

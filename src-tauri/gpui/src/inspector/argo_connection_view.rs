@@ -32,11 +32,11 @@ impl Inspector {
         self.argo_connections.host = super::argo_connection::DialogHost::Page;
         self.show_argo_connection_form(window, cx);
     }
+    /// Typed text stays, as the web keeps it until the dialog unmounts or a submit clears it.
     fn show_argo_connection_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.argo_connections.editing = None;
         self.argo_connections.step.clear_preview();
         self.settle_argo_source();
-        self.clear_argo_secrets(window, cx);
         self.argo_connections.open = true;
         self.argo_connections.dialog = true;
         self.focus_argo_connection_dialog(window, cx);
@@ -82,15 +82,15 @@ impl Inspector {
                         .max_h(relative(0.9))
                         .overflow_y_scroll()
                         .on_key_down(cx.listener(
-                            |this, event: &gpui_kit::KeyDownEvent, window, cx| {
+                            |this, event: &gpui_kit::KeyDownEvent, _, cx| {
                                 if event.keystroke.key == "escape" {
-                                    this.cancel_argo_connection(window, cx);
+                                    this.cancel_argo_connection(cx);
                                     cx.stop_propagation();
                                 }
                             },
                         ))
-                        .on_mouse_down_out(cx.listener(|this, _, window, cx| {
-                            this.cancel_argo_connection(window, cx)
+                        .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                            this.cancel_argo_connection(cx)
                         }))
                         .child(self.argo_connection_content(cx))
                         .child(
@@ -98,8 +98,8 @@ impl Inspector {
                                 .id("argo-connection-close")
                                 .test_support()
                                 .child("Close connection")
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.cancel_argo_connection(window, cx)
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.cancel_argo_connection(cx)
                                 })),
                         ),
                 );
@@ -456,7 +456,7 @@ impl Inspector {
                     .test_support()
                     .child("Cancel")
                     .on_click(
-                        cx.listener(|this, _, window, cx| this.cancel_argo_connection(window, cx)),
+                        cx.listener(|this, _, _, cx| this.cancel_argo_connection(cx)),
                     ),
             );
         if let ConnectStep::Failed {
