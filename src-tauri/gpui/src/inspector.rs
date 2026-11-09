@@ -215,13 +215,7 @@ pub struct Inspector {
     usage: usage::UsageState,
     gitops: gitops_section::GitOpsState,
     gitops_page: gitops_page::GitOpsPage,
-    argo_connections: argo::Connections,
-    argo_highlighter: Option<gpui_kit::component::highlighter::SyntaxHighlighter>,
-    argo_outcomes: std::collections::HashMap<String, argo::Outcome>,
-    /// Submissions still in flight when their detail closed. Dropping them
-    /// would cancel the submit and lose its outcome; each removes itself once
-    /// it finishes.
-    argo_submissions: Vec<argo::Submission>,
+    argo: argo::ArgoState,
     helm_page: helm_page::HelmPage,
     cluster: cluster::ClusterState,
     incidents: incidents::IncidentsState,
@@ -352,10 +346,7 @@ impl Inspector {
             usage: Default::default(),
             gitops: Default::default(),
             gitops_page: gitops_page::GitOpsPage::new(),
-            argo_connections: argo::Connections::new(window, cx),
-            argo_highlighter: None,
-            argo_outcomes: Default::default(),
-            argo_submissions: Vec::new(),
+            argo: argo::ArgoState::new(window, cx),
             helm_page: helm_page::HelmPage::new(window, cx),
             cluster: Default::default(),
             incidents: incidents::IncidentsState::new(),
@@ -415,8 +406,7 @@ impl Inspector {
         }
         if self.page != page && self.can_leave(cx) {
             self.gitops_page.workspace = None;
-            self.argo_connections
-                .reset_dialog(argo::DialogHost::Page, cx);
+            self.argo.reset_dialog(argo::DialogHost::Page, cx);
             self.close_detail(cx);
             self.topology_task.take();
             self.set_page(page);
@@ -502,8 +492,7 @@ impl Inspector {
         self.exec.clear();
         self.keep_argo_submission();
         self.detail = Detail::Closed;
-        self.argo_connections
-            .reset_dialog(argo::DialogHost::Detail, cx);
+        self.argo.reset_dialog(argo::DialogHost::Detail, cx);
         self.notice = None;
         cx.notify();
     }

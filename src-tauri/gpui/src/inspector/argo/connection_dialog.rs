@@ -19,8 +19,8 @@ impl Inspector {
         &self,
         cx: &mut Context<Self>,
     ) -> Option<gpui_kit::AnyElement> {
-        let dialog_focus = self.argo_connections.dialog_focus.clone();
-        self.argo_connections.dialog.then(|| {
+        let dialog_focus = self.argo.connections.dialog_focus.clone();
+        self.argo.connections.dialog.then(|| {
             let overlay = div()
                 .absolute()
                 .inset_0()

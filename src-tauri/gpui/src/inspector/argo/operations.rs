@@ -59,8 +59,8 @@ pub(super) struct Reviewed {
 }
 
 /// A confirmed review whose submission runs. Closing the detail moves it to
-/// `Inspector::argo_submissions`, so an accepted outcome is still observed.
-pub(in crate::inspector) struct Submission {
+/// `ArgoState::submissions`, so an accepted outcome is still observed.
+pub(super) struct Submission {
     pub(super) id: Rc<()>,
     action: String,
     _read: InFlight,
@@ -74,7 +74,7 @@ impl Inspector {
             && matches!(argo.operation, Phase::Submitting(_))
             && let Phase::Submitting(submission) = std::mem::take(&mut argo.operation)
         {
-            self.argo_submissions.push(submission);
+            self.argo.submissions.push(submission);
         }
     }
 
@@ -316,7 +316,7 @@ impl Inspector {
                     };
                 }
                 // The submission has finished, so a closed detail's entry is done too.
-                this.argo_submissions
+                this.argo.submissions
                     .retain(|submission| !Rc::ptr_eq(&submission.id, &current));
                 if accepted {
                     this.observe_argo_operation(request, baseline, cx);

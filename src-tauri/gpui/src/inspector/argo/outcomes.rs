@@ -10,7 +10,7 @@ use std::time::Duration;
 
 /// One accepted operation, observed until Argo CD reports its end. Replacing or
 /// dropping the outcome cancels its observation.
-pub(in crate::inspector) struct Outcome {
+pub(super) struct Outcome {
     observation: Observation,
     _observer: InFlight,
     request: ArgoOperationRequest,
@@ -115,7 +115,8 @@ fn text<'a>(v: &'a Option<serde_json::Value>, field: &str) -> Option<&'a str> {
 }
 impl Inspector {
     pub(super) fn argo_operation_busy(&self, app: &ArgoApplicationRef) -> bool {
-        self.argo_outcomes
+        self.argo
+            .outcomes
             .get(&key(app))
             .is_some_and(|o| o.observation.waiting())
     }
@@ -125,7 +126,7 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) -> Option<Div> {
         let snapshot = detail.argo.as_ref()?.inspector.as_ref()?;
-        let outcome = self.argo_outcomes.get(&key(&snapshot.application))?;
+        let outcome = self.argo.outcomes.get(&key(&snapshot.application))?;
         let message = outcome.observation.message();
         Some(
             div()
@@ -144,7 +145,8 @@ impl Inspector {
                             .child("Retry state refresh")
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 let Some(job) = this
-                                    .argo_outcomes
+                                    .argo
+                                    .outcomes
                                     .get(&id)
                                     .filter(|j| j.observation.read_failed())
                                 else {
@@ -173,7 +175,7 @@ impl Inspector {
         let saved_baseline = baseline.clone();
         // A retry keeps what the replaced observation already saw.
         let saw_pending = matches!(
-            self.argo_outcomes.get(&id).map(|job| &job.observation),
+            self.argo.outcomes.get(&id).map(|job| &job.observation),
             Some(Observation::Waiting {
                 saw_pending: true,
                 ..
@@ -192,7 +194,7 @@ impl Inspector {
                     .await;
                 let keep = this
                     .update(cx, |this, cx| {
-                        let Some(job) = this.argo_outcomes.get_mut(&job_id) else {
+                        let Some(job) = this.argo.outcomes.get_mut(&job_id) else {
                             return false;
                         };
                         let Observation::Waiting { saw_pending, .. } = job.observation else {
@@ -212,7 +214,7 @@ impl Inspector {
                     .await;
             }
         });
-        self.argo_outcomes.insert(
+        self.argo.outcomes.insert(
             id,
             Outcome {
                 observation: Observation::Waiting {

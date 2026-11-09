@@ -119,7 +119,7 @@ impl Inspector {
                                 .iter()
                                 .map(|change| {
                                     super::highlight::lines(
-                                        &mut this.argo_highlighter,
+                                        &mut this.argo.highlighter,
                                         change.diff.as_deref().unwrap_or_default(),
                                         &gpui_kit::component::Theme::global(cx).highlight_theme,
                                     )

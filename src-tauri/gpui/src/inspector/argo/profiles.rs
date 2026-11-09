@@ -116,11 +116,12 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.argo_connections.busy() {
+        if self.argo.connections.busy() {
             return;
         }
         let Some(profile) = self
-            .argo_connections
+            .argo
+            .connections
             .profiles
             .iter()
             .filter_map(|s| s.profile.as_ref())
@@ -140,7 +141,7 @@ impl Inspector {
         match self.backend.save_preferences(document) {
             Ok(document) => self.persisted = document,
             Err(error) => {
-                self.argo_connections.step = ConnectStep::failed(format!(
+                self.argo.connections.step = ConnectStep::failed(format!(
                     "Forget stopped before credential deletion. {}",
                     error.message
                 ));
@@ -148,9 +149,10 @@ impl Inspector {
                 return;
             }
         }
-        self.argo_connections.reconnect.queue.retain(|p| p.id != id);
+        self.argo.connections.reconnect.queue.retain(|p| p.id != id);
         for p in self
-            .argo_connections
+            .argo
+            .connections
             .profiles
             .iter_mut()
             .filter_map(|s| s.profile.as_mut())
@@ -169,8 +171,8 @@ impl Inspector {
         let task = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
-                this.argo_connections.profile_action = None;
-                for s in &mut this.argo_connections.profiles {
+                this.argo.connections.profile_action = None;
+                for s in &mut this.argo.connections.profiles {
                     if s.profile.as_ref().is_some_and(|p| p.id == id) { s.connected = false; }
                 }
                 let result = result.and_then(|()| {
@@ -183,20 +185,20 @@ impl Inspector {
                 match result {
                     Ok(document) => {
                         this.persisted = document;
-                        this.argo_connections.profiles.retain(|s| s.profile.as_ref().is_none_or(|p| p.id != id));
-                        if matches!(&this.argo_connections.selected, Preference::Connected(p) if p == &id) {
-                            this.argo_connections.selected = Preference::Automatic;
+                        this.argo.connections.profiles.retain(|s| s.profile.as_ref().is_none_or(|p| p.id != id));
+                        if matches!(&this.argo.connections.selected, Preference::Connected(p) if p == &id) {
+                            this.argo.connections.selected = Preference::Automatic;
                         }
                     }
-                    Err(error) => this.argo_connections.step = ConnectStep::failed(format!("Forget incomplete. Automatic reconnect is disabled. Retry Forget. {}", error.message)),
+                    Err(error) => this.argo.connections.step = ConnectStep::failed(format!("Forget incomplete. Automatic reconnect is disabled. Retry Forget. {}", error.message)),
                 }
                 this.sync_argo_picker(window, cx);
                 this.reload_argo(window, cx);
                 cx.notify();
             });
         });
-        self.argo_connections.step = ConnectStep::Idle;
-        self.argo_connections.profile_action = Some(task.into());
+        self.argo.connections.step = ConnectStep::Idle;
+        self.argo.connections.profile_action = Some(task.into());
         cx.notify();
     }
     pub(in crate::inspector) fn sync_argo_scope(
@@ -210,26 +212,29 @@ impl Inspector {
             self.scope.context,
             self.argo_source_key()
         );
-        if self.argo_connections.scope != scope {
+        if self.argo.connections.scope != scope {
             self.cancel_argo_connection(cx);
-            self.argo_connections.discovery.take();
-            self.argo_connections.servers.clear();
-            self.argo_connections.scope = scope;
-            self.argo_connections.step = ConnectStep::Idle;
+            self.argo.connections.discovery.take();
+            self.argo.connections.servers.clear();
+            self.argo.connections.scope = scope;
+            self.argo.connections.step = ConnectStep::Idle;
             // A new scope mounts new web dialogs, which start from their default choices. The
             // page dialog sits under an Argo detection keyed by context and kubeconfig source.
-            self.argo_connections.page = Default::default();
-            self.argo_connections.detail = Default::default();
-            self.argo_connections
+            self.argo.connections.page = Default::default();
+            self.argo.connections.detail = Default::default();
+            self.argo
+                .connections
                 .discard_fields(super::connection::DialogHost::Page, cx);
-            self.argo_connections
+            self.argo
+                .connections
                 .discard_fields(super::connection::DialogHost::Detail, cx);
             self.restore_argo_preferences();
             self.sync_argo_picker(window, cx);
-            self.argo_outcomes.clear();
-            self.argo_connections.reconnect = Reconnect {
+            self.argo.outcomes.clear();
+            self.argo.connections.reconnect = Reconnect {
                 queue: self
-                    .argo_connections
+                    .argo
+                    .connections
                     .profiles
                     .iter()
                     .filter(|s| !s.connected)
@@ -254,19 +259,20 @@ impl Inspector {
             .and_then(|s| s.source_key.as_deref())
     }
     pub(super) fn argo_connection_id(&self) -> Option<String> {
-        if matches!(self.argo_connections.selected, Preference::Kubernetes) {
+        if matches!(self.argo.connections.selected, Preference::Kubernetes) {
             return None;
         }
-        self.argo_connections
+        self.argo
+            .connections
             .profiles
             .iter()
             .filter(|s| {
-                s.connected || matches!(self.argo_connections.selected, Preference::Connected(_))
+                s.connected || matches!(self.argo.connections.selected, Preference::Connected(_))
             })
             .filter_map(|s| s.profile.as_ref())
             .find(|p| {
                 self.argo_profile_matches(p)
-                    && match &self.argo_connections.selected {
+                    && match &self.argo.connections.selected {
                         Preference::Connected(id) => id == &p.id,
                         Preference::Automatic => true,
                         Preference::Kubernetes => false,
@@ -278,11 +284,12 @@ impl Inspector {
     /// `argoOperationAvailability`. Only a saved preference for one profile can be unavailable.
     pub(super) fn argo_connection_unavailable(&self) -> Option<String> {
         const FALLBACK: &str = "Selected Argo CD provider connection is unavailable.";
-        let Preference::Connected(id) = &self.argo_connections.selected else {
+        let Preference::Connected(id) = &self.argo.connections.selected else {
             return None;
         };
         let status = self
-            .argo_connections
+            .argo
+            .connections
             .profiles
             .iter()
             .find(|s| s.profile.as_ref().is_some_and(|p| &p.id == id));
@@ -306,8 +313,8 @@ impl Inspector {
     /// Reconnects the next remembered profile, as the web's `reconnectRememberedArgoProfile`.
     /// It leaves the dialog alone, and a failed attempt waits silently for a manual reconnect.
     fn reconnect_next_argo_profile(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(saved) = self.argo_connections.reconnect.queue.pop_front() else {
-            self.argo_connections.reconnect.current = None;
+        let Some(saved) = self.argo.connections.reconnect.queue.pop_front() else {
+            self.argo.connections.reconnect.current = None;
             return;
         };
         let confirmed_target = match &saved.endpoint {
@@ -353,7 +360,7 @@ impl Inspector {
                 cx.notify();
             });
         });
-        self.argo_connections.reconnect.current = Some(task.into());
+        self.argo.connections.reconnect.current = Some(task.into());
     }
     pub(super) fn sync_argo_picker(
         &mut self,
@@ -363,25 +370,27 @@ impl Inspector {
         use gpui_kit::{SharedString, component::select::SearchableVec};
         let mut choices: Vec<SharedString> = vec!["Automatic".into(), "Kubernetes".into()];
         choices.extend(
-            self.argo_connections
+            self.argo
+                .connections
                 .profiles
                 .iter()
                 .filter_map(|s| s.profile.as_ref())
                 .filter(|p| self.argo_profile_matches(p))
                 .map(|p| endpoint_label(&p.endpoint).into()),
         );
-        let selected: SharedString = match &self.argo_connections.selected {
+        let selected: SharedString = match &self.argo.connections.selected {
             Preference::Automatic => "Automatic".into(),
             Preference::Kubernetes => "Kubernetes".into(),
             Preference::Connected(id) => self
-                .argo_connections
+                .argo
+                .connections
                 .profiles
                 .iter()
                 .filter_map(|s| s.profile.as_ref())
                 .find(|p| &p.id == id)
                 .map_or_else(|| id.clone().into(), |p| endpoint_label(&p.endpoint).into()),
         };
-        self.argo_connections.picker.update(cx, |picker, cx| {
+        self.argo.connections.picker.update(cx, |picker, cx| {
             picker.set_items(SearchableVec::new(choices), window, cx);
             picker.set_selected_value(&selected, window, cx);
         });
@@ -392,14 +401,14 @@ impl Inspector {
     /// Forgets this session's connection statuses and outcomes, then restores
     /// the stored profiles. Runs when the preferences document is read again.
     pub(in crate::inspector) fn reload_argo_preferences(&mut self) {
-        self.argo_connections.profiles.clear();
-        self.argo_connections.scope.clear();
-        self.argo_outcomes.clear();
+        self.argo.connections.profiles.clear();
+        self.argo.connections.scope.clear();
+        self.argo.outcomes.clear();
         self.restore_argo_preferences();
     }
     fn restore_argo_preferences(&mut self) {
-        let mut statuses = std::mem::take(&mut self.argo_connections.profiles);
-        self.argo_connections.profiles = self
+        let mut statuses = std::mem::take(&mut self.argo.connections.profiles);
+        self.argo.connections.profiles = self
             .persisted
             .preferences
             .argo_profiles
@@ -428,7 +437,7 @@ impl Inspector {
                 }
             })
             .collect();
-        self.argo_connections.selected = match self
+        self.argo.connections.selected = match self
             .persisted
             .preferences
             .argo_connection_preferences
@@ -443,7 +452,8 @@ impl Inspector {
     }
     pub(super) fn persist_argo_preferences(&mut self, cx: &mut Context<Self>) {
         self.persisted.preferences.argo_profiles = self
-            .argo_connections
+            .argo
+            .connections
             .profiles
             .iter()
             .filter_map(|s| s.profile.as_ref())
@@ -456,7 +466,7 @@ impl Inspector {
                 remember_credential: p.remember_credential,
             })
             .collect();
-        let preference = match &self.argo_connections.selected {
+        let preference = match &self.argo.connections.selected {
             Preference::Automatic => ConnectionPreference::Automatic,
             Preference::Kubernetes => ConnectionPreference::Kubernetes,
             Preference::Connected(id) => ConnectionPreference::Connected {

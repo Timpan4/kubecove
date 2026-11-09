@@ -17,12 +17,12 @@ use kubecove_lib::models::ArgoConfirmedTarget;
 
 impl Inspector {
     pub(super) fn open_argo_connection(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.argo_connections.editing = None;
-        self.argo_connections.step.clear_preview();
+        self.argo.connections.editing = None;
+        self.argo.connections.step.clear_preview();
         // The detail panel opens its own dialog. Inside the GitOps page dialog this
         // button only shows the form, so that dialog keeps its own choices.
-        if !self.argo_connections.dialog {
-            self.argo_connections.host = super::connection::DialogHost::Detail;
+        if !self.argo.connections.dialog {
+            self.argo.connections.host = super::connection::DialogHost::Detail;
         }
         self.show_argo_connection_form(window, cx);
     }
@@ -32,15 +32,15 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.argo_connections.host = super::connection::DialogHost::Page;
+        self.argo.connections.host = super::connection::DialogHost::Page;
         self.show_argo_connection_form(window, cx);
     }
     /// Typed text stays, as the web keeps it until the dialog unmounts or a submit clears it.
     fn show_argo_connection_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.argo_connections.editing = None;
-        self.argo_connections.step.clear_preview();
+        self.argo.connections.editing = None;
+        self.argo.connections.step.clear_preview();
         self.settle_argo_source();
-        self.argo_connections.dialog = true;
+        self.argo.connections.dialog = true;
         self.focus_argo_connection_dialog(window, cx);
         self.discover_argo_servers(window, cx);
         cx.notify();
@@ -48,17 +48,17 @@ impl Inspector {
     /// Moves focus into the connection dialog once it is rendered, so its
     /// focus trap governs Tab from the first press.
     pub(super) fn focus_argo_connection_dialog(&self, window: &mut Window, cx: &mut Context<Self>) {
-        let focus = self.argo_connections.dialog_focus.clone();
+        let focus = self.argo.connections.dialog_focus.clone();
         cx.defer_in(window, move |_, window, cx| focus.focus(window, cx));
     }
     pub(super) fn argo_connection_panel(&self, cx: &mut Context<Self>) -> Div {
-        if self.argo_connections.dialog {
+        if self.argo.connections.dialog {
             return div();
         }
         self.argo_connection_content(cx)
     }
     pub(super) fn argo_connection_content(&self, cx: &mut Context<Self>) -> Div {
-        let state = &self.argo_connections;
+        let state = &self.argo.connections;
         let choices = state.choices();
         let fields = state.fields();
         let mut panel = super::panels::panel()
@@ -135,17 +135,17 @@ impl Inspector {
                                 "Reconnect"
                             })
                             .on_click(cx.listener(move |this, _, window, cx| {
-                                if this.argo_connections.profiles.iter().any(|s| {
+                                if this.argo.connections.profiles.iter().any(|s| {
                                     s.connected && s.profile.as_ref().is_some_and(|p| p.id == id)
                                 }) {
                                     this.disconnect_argo_profile(id.clone(), window, cx);
                                 } else {
-                                    let url = this.argo_connections.fields().url.clone();
+                                    let url = this.argo.connections.fields().url.clone();
                                     url.update(cx, |input, cx| {
                                         input.set_value(saved.url.clone(), window, cx)
                                     });
-                                    this.argo_connections.editing = Some(saved.clone());
-                                    this.argo_connections.step.clear_preview();
+                                    this.argo.connections.editing = Some(saved.clone());
+                                    this.argo.connections.step.clear_preview();
                                     let confirmed = if saved.remember_credential {
                                         match &saved.endpoint {
                                             kubecove_lib::models::ArgoServerEndpoint::ServiceTunnel { namespace, service_name, .. } => Some(ArgoConfirmedTarget { namespace: namespace.clone(), service_name: service_name.clone(), pod_name: None, certificate_sha256: None }),
@@ -200,7 +200,7 @@ impl Inspector {
                         .test_support()
                         .child(label)
                         .on_click(cx.listener(move |this, _, window, cx| {
-                            this.argo_connections.selected = if label == "Automatic" {
+                            this.argo.connections.selected = if label == "Automatic" {
                                 Preference::Automatic
                             } else {
                                 Preference::Kubernetes
@@ -218,10 +218,10 @@ impl Inspector {
                 .aria_toggled(toggled(choices.endpoint.is_none()))
                 .child("External URL")
                 .on_click(cx.listener(|this, _, _, cx| {
-                    this.argo_connections.choices_mut().source_chosen = true;
-                    this.argo_connections.choices_mut().endpoint = None;
-                    this.argo_connections.editing = None;
-                    this.argo_connections.step.clear_preview();
+                    this.argo.connections.choices_mut().source_chosen = true;
+                    this.argo.connections.choices_mut().endpoint = None;
+                    this.argo.connections.editing = None;
+                    this.argo.connections.step.clear_preview();
                     cx.notify();
                 })),
         );
@@ -257,10 +257,10 @@ impl Inspector {
                         }
                     ))
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        this.argo_connections.choices_mut().source_chosen = true;
-                        this.argo_connections.choices_mut().endpoint = Some(endpoint.clone());
-                        this.argo_connections.editing = None;
-                        this.argo_connections.step.clear_preview();
+                        this.argo.connections.choices_mut().source_chosen = true;
+                        this.argo.connections.choices_mut().endpoint = Some(endpoint.clone());
+                        this.argo.connections.editing = None;
+                        this.argo.connections.step.clear_preview();
                         cx.notify();
                     })),
             );
@@ -291,7 +291,7 @@ impl Inspector {
                             choices.insecure
                         ))
                         .on_click(cx.listener(|this, _, _, cx| {
-                            this.argo_connections.choices_mut().insecure ^= true;
+                            this.argo.connections.choices_mut().insecure ^= true;
                             cx.notify();
                         })),
                 );
@@ -309,8 +309,8 @@ impl Inspector {
             panel = panel.child(div().flex().gap(px(8.)).children(["https", "http"].map(|scheme| {
                 button(Variant::Outline, 24., state.busy()).id(gpui_kit::SharedString::from(format!("argo-protocol:{scheme}"))).test_support().child(scheme.to_uppercase())
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        if let Some(kubecove_lib::models::ArgoServerEndpoint::ServiceTunnel { scheme: value, .. }) = this.argo_connections.choices_mut().endpoint.as_mut() { *value = scheme.into(); }
-                        this.argo_connections.step.clear_preview();
+                        if let Some(kubecove_lib::models::ArgoServerEndpoint::ServiceTunnel { scheme: value, .. }) = this.argo.connections.choices_mut().endpoint.as_mut() { *value = scheme.into(); }
+                        this.argo.connections.step.clear_preview();
                         cx.notify();
                     }))
             })))
@@ -330,7 +330,7 @@ impl Inspector {
                         .aria_toggled(toggled(choices.local == (label == "Local login")))
                         .child(label)
                         .on_click(cx.listener(move |this, _, _, cx| {
-                            this.argo_connections.choices_mut().local = label == "Local login";
+                            this.argo.connections.choices_mut().local = label == "Local login";
                             cx.notify();
                         }))
                 })),
@@ -365,7 +365,7 @@ impl Inspector {
                     choices.remember
                 ))
                 .on_click(cx.listener(|this, _, _, cx| {
-                    this.argo_connections.choices_mut().remember ^= true;
+                    this.argo.connections.choices_mut().remember ^= true;
                     cx.notify();
                 })),
         );
@@ -419,7 +419,7 @@ impl Inspector {
                     .test_support()
                     .child("Confirm target again")
                     .on_click(cx.listener(move |this, _, window, cx| {
-                        this.argo_connections.editing = Some(profile.clone());
+                        this.argo.connections.editing = Some(profile.clone());
                         this.preview_argo_target(profile.endpoint.clone(), window, cx)
                     })),
             );
