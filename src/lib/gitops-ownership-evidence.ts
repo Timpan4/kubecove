@@ -164,8 +164,10 @@ export function gitOpsOwnershipFilterValue(filter: string): string {
 const inheritedRows = new WeakMap<ResourceSummary, { ownerKey: string | undefined; row: ResourceSummary }>();
 
 // Owners are matched within one cluster, so a Pod never inherits a same-named owner from another context.
+// Kubernetes namespaces and object names cannot contain "/", so the first two separators are unambiguous;
+// the context name comes last because it can hold any character.
 const objectKey = (cluster: string, namespace: string | null | undefined, name: string) =>
-	JSON.stringify([cluster, namespace ?? "", name]);
+	`${namespace ?? ""}/${name}/${cluster}`;
 
 export function inheritGitOpsOwnership(resources: ResourceSummary[]): ResourceSummary[] {
 	const ownerKeys = new Set<string>();
