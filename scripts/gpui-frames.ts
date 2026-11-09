@@ -220,8 +220,8 @@ for (let index = 0; index < runs; index += 1) {
 	);
 	loads.push({ before, after: loadavg(), priority, uptime, power });
 	const measured: Run = JSON.parse(await readFile(report, "utf8"));
-	if (measured.measurementVersion !== 2 || measured.mode !== "Production")
-		throw new Error("Per-frame acceptance requires the production-mode version 2 harness");
+	if (measured.measurementVersion !== 3 || measured.mode !== "Production")
+		throw new Error("Per-frame acceptance requires the production-mode version 3 harness");
 	if (
 		!measured.build ||
 		resolve(measured.build.manifestDirectory) !== sourceDirectory ||
@@ -251,7 +251,7 @@ const summaries: Summary[] = reports[0].cases.map((first) => {
 		)
 			throw new Error(`Missing samples for ${first.id}`);
 		if (
-			report.measurementVersion === 2 &&
+			report.measurementVersion === 3 &&
 			(entry.cpuFrames?.length !== frames ||
 				entry.cpuFrames.some(
 					(frames) =>
@@ -413,8 +413,8 @@ const lines = [
 	`CPU: ${result.cpu} (${result.cores} threads). Load averages (1/5/15 min) before and after each run: ${loads.map((load) => `${load.before.map((value) => value.toFixed(2)).join("/")} -> ${load.after.map((value) => value.toFixed(2)).join("/")} (process priority ${load.priority ?? "unavailable"}, power profile ${load.power ?? "unavailable"})`).join(", ")}. Release build peak RSS: ${Number.isFinite(result.buildPeakRssMb) ? `${ms(result.buildPeakRssMb)} MiB` : "not recorded"}.`,
 	`Build provenance: ${JSON.stringify(result.build)}. Executable SHA-256: ${binarySha256}.`,
 	"",
-	result.measurementVersion === 2
-		? "`frame` includes the input/state update and executor drain before a scheduled production-mode frame, plus that frame callback including render, layout, prepaint, scene paint and cleanup. Every draw has its own sample, including synchronous redraws inside native key dispatch. CPU intervals split at SDK draw completion, carrying subsequent update work into the next frame; callback cleanup is included and the final tail is charged to the last frame. Content-settled latency ends at the last content draw's callback completion. Remaining ready work without a draw is conservatively charged to the last CPU sample, so frame CPU can slightly exceed content-settled latency. Presentation-only VRR keepalive callbacks have separate samples and stay in the CPU gate; they do not extend content-settled latency. Future timers are not waited for. SDK frame journal drains and harness bookkeeping sit outside CPU work timers. `draw` is the SDK Window::draw interval within that callback. No GPU renderer is attached to the CPU context. Input-to-settled latency includes the measured frame sequence and harness bookkeeping; it is unpaced headless wall time, without vsync or network latency. The CPU gate checks each frame ordinal and the worst frame per input in every run."
+	result.measurementVersion === 3
+		? "`frame` includes the input/state update and the UI thread's own CPU time during the executor drain before a scheduled production-mode frame (time blocked on background work is the frame's `wait`, outside the gate, but inside content-settled latency), plus that frame callback including render, layout, prepaint, scene paint and cleanup. Every draw has its own sample, including synchronous redraws inside native key dispatch. CPU intervals split at SDK draw completion, carrying subsequent update work into the next frame; callback cleanup is included and the final tail is charged to the last frame. Content-settled latency ends at the last content draw's callback completion. Remaining ready work without a draw is conservatively charged to the last CPU sample, so frame CPU can slightly exceed content-settled latency. Presentation-only VRR keepalive callbacks have separate samples and stay in the CPU gate; they do not extend content-settled latency. Future timers are not waited for. SDK frame journal drains and harness bookkeeping sit outside CPU work timers. `draw` is the SDK Window::draw interval within that callback. No GPU renderer is attached to the CPU context. Input-to-settled latency includes the measured frame sequence and harness bookkeeping; it is unpaced headless wall time, without vsync or network latency. The CPU gate checks each frame ordinal and the worst frame per input in every run."
 		: "`draw` times a forced full refresh: render, layout, prepaint, scene paint, and element arena cleanup. It excludes setup, warm-up, target lookup, scene hashing and tasks scheduled by that draw. A view's `frame` column is this CPU redraw cost. For interactions that column is `step`: one input event and all tasks and redraws it causes until the test executor parks. This is input-to-settled CPU latency, potentially spanning several draws, not one frame. The separate forced `draw` is not a measured share of `step`. Fixture reads answer immediately; no cluster or network latency is included.",
 	"The first warm-up redraw is reported separately as `first warm-up draw`; setup has already drawn the view, so it is not a cold open. Repeated view draws force actual work rather than timing clean idle windows. Interaction `changed` counts compare painted quads and the input probe outside the timer; inspect this count before trusting an interaction. `gpu`, when available, re-encodes the retained scene after the measured production submit and waits for RGBA readback. It can include previously queued work, so it is not isolated GPU execution or an additive display latency. Without a headless renderer `draw` excludes GPU submit, execution, composition and present, so CPU results cannot prove displayed 120 fps. This inventory covers only cases.rs on this branch, not every possible product interaction or concurrently ported pages.",
 	!gpu
@@ -444,7 +444,7 @@ const lines = [
 		return `| ${summary.id} | ${summary.kind} | ${ms(frame?.median.p50)} | ${ms(frame?.median.p95)} | ${ms(frame?.median.p99)} | ${ms(frame?.maximum ?? frame?.median.max)} | ${ms(frame?.p95Spread[0])}-${ms(frame?.p95Spread[1])} | ${ms(summary.metrics.draw?.median.p95)} | ${ms(summary.metrics.step?.median.p95)} | ${ms(summary.metrics.gpuFrame?.median.p95)} | ${ms(summary.metrics.gpu?.median.p50)} | ${ms(summary.metrics.gpu?.median.p95)} | ${summary.changed}/${summary.frames} | ${ms(frame?.halves[0])} / ${ms(frame?.halves[1])} | ${ms(summary.coldDrawMs)} | ${over ? "over" : "ok"} |`;
 	}),
 ];
-if (result.measurementVersion === 2) {
+if (result.measurementVersion === 3) {
 	lines.push(
 		"",
 		"## Interaction settling",

@@ -4,6 +4,22 @@ use kubecove_lib::models::{WatchResourceKey, WatchResourceKind};
 
 impl Fixture {
     pub(super) fn resource_fixture(&self, scope: Scope) -> Read<ScopeResult> {
+        let Some((fixture, executor)) = self
+            .off_thread_reads
+            .get()
+            .and_then(|(fixture, executor)| Some((fixture.upgrade()?, executor.clone())))
+        else {
+            return self.build_resource_read(scope);
+        };
+        // Only the row copy runs in the background. The timed read it returns is
+        // awaited by the caller, as before.
+        #[allow(clippy::async_yields_async)]
+        let read = executor.spawn(async move { fixture.build_resource_read(scope) });
+        Box::pin(async move { read.await.await })
+    }
+
+    /// Filters and copies the scope's rows, then returns the timed read.
+    fn build_resource_read(&self, scope: Scope) -> Read<ScopeResult> {
         let phase = self.shell_read_phase.lock().unwrap().clone();
         if phase == "resources-failed" {
             return Box::pin(async {

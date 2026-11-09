@@ -4484,6 +4484,7 @@ dependencies = [
  "gpui-pre",
  "kubecove",
  "kubecove-host",
+ "libc",
  "memchr",
  "regex",
  "reqwest",

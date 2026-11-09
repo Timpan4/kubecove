@@ -61,6 +61,10 @@ gpui-frame-engine = { package = "gpui-pre", version = "=0.3.11", default-feature
 futures = { version = "=0.3.34", default-features = false, features = ["std"] }
 serde = { version = "=1.0.229", features = ["derive"] }
 
+# The frames harness reads the UI thread's CPU clock; already in the lockfile.
+[target.'cfg(unix)'.dev-dependencies]
+libc = "=0.2.191"
+
 [[test]]
 name = "visual"
 harness = false

@@ -25,6 +25,10 @@ pub struct CpuFrame {
     pub paint: u64,
     pub submit: u64,
     pub presentation_only: bool,
+    /// Time the UI thread spent blocked on background work while draining the
+    /// dispatcher. It is left out of `cpu`: the app keeps drawing while that
+    /// work runs on its worker threads.
+    pub wait: u64,
 }
 
 struct Capture {
@@ -32,6 +36,7 @@ struct Capture {
     started: Instant,
     content_settled: Instant,
     work: Duration,
+    wait: Duration,
     frames: Vec<CpuFrame>,
 }
 
@@ -85,6 +90,7 @@ impl FrameContext {
             started,
             content_settled: started,
             work: Duration::ZERO,
+            wait: Duration::ZERO,
             frames: Vec::new(),
         });
     }
@@ -102,6 +108,7 @@ impl FrameContext {
             });
         if let Some(last) = capture.frames.last_mut() {
             last.cpu += super::nanos(capture.work);
+            last.wait += super::nanos(capture.wait);
         }
         (
             super::nanos(capture.content_settled.duration_since(capture.started)),
@@ -169,8 +176,10 @@ impl FrameContext {
                     paint: super::nanos(draw.phases.paint),
                     presentation_only: false,
                     submit: 0,
+                    wait: super::nanos(capture.wait),
                 });
                 capture.work = Duration::ZERO;
+                capture.wait = Duration::ZERO;
                 capture.content_settled = cursor;
             }
             capture.work += end.duration_since(cursor);
@@ -178,7 +187,9 @@ impl FrameContext {
                 let last = capture.frames.last_mut().unwrap();
                 last.submit += super::nanos(submit);
                 last.cpu += super::nanos(capture.work);
+                last.wait += super::nanos(capture.wait);
                 capture.work = Duration::ZERO;
+                capture.wait = Duration::ZERO;
                 capture.content_settled = end;
             } else if callback && newly_presented {
                 // Native key dispatch may draw synchronously. Its later submit
@@ -190,8 +201,10 @@ impl FrameContext {
                     .find(|frame| !frame.presentation_only)
                     .expect("a newly submitted scene has a measured draw");
                 last.cpu += super::nanos(capture.work);
+                last.wait += super::nanos(capture.wait);
                 last.submit += super::nanos(submit);
                 capture.work = Duration::ZERO;
+                capture.wait = Duration::ZERO;
                 capture.content_settled = end;
             } else if callback && presented {
                 capture.frames.push(CpuFrame {
@@ -202,18 +215,22 @@ impl FrameContext {
                     paint: 0,
                     presentation_only: true,
                     submit: super::nanos(submit),
+                    wait: super::nanos(capture.wait),
                 });
                 capture.work = Duration::ZERO;
+                capture.wait = Duration::ZERO;
             }
         }
         (result, drew || newly_presented, pending)
     }
 
-    /// One frame turn, for steady views and unmeasured setup. Ongoing frame
-    /// demand carries into the next turn rather than blocking a frame sample.
-    pub fn tick(&mut self) -> (bool, bool) {
+    /// Runs the dispatcher until idle. The SDK drain blocks until background
+    /// work finishes; the time this thread spends blocked moves from the frame's
+    /// CPU work to its `wait`. Without a thread CPU clock, all of it stays CPU work.
+    fn drain(&mut self) -> (bool, bool) {
         let executor = self.app.update(|cx| cx.background_executor().clone());
-        self.operation(false, |_| {
+        let (wall, cpu) = (Instant::now(), thread_cpu());
+        let (_, rendered, pending) = self.operation(false, |_| {
             let _span = kubecove_gpui::frame_profile::scope("dispatcher", "drain");
             executor
                 .dispatcher()
@@ -221,6 +238,19 @@ impl FrameContext {
                 .expect("benchmark dispatcher")
                 .run_until_idle();
         });
+        let ran = cpu.zip(thread_cpu()).map(|(before, after)| after - before);
+        if let (Some(capture), Some(ran)) = (&mut self.capture, ran) {
+            let blocked = wall.elapsed().saturating_sub(ran).min(capture.work);
+            capture.work -= blocked;
+            capture.wait += blocked;
+        }
+        (rendered, pending)
+    }
+
+    /// One frame turn, for steady views and unmeasured setup. Ongoing frame
+    /// demand carries into the next turn rather than blocking a frame sample.
+    pub fn tick(&mut self) -> (bool, bool) {
+        self.drain();
         let open = self.app.update(|cx| cx.windows());
         let mut drew = false;
         let mut dispatched = false;
@@ -236,21 +266,13 @@ impl FrameContext {
     /// callback establishes content quiescence. VRR keepalive presentation
     /// is sampled too, but does not extend content-settled latency.
     pub fn settle(&mut self) {
-        let executor = self.app.update(|cx| cx.background_executor().clone());
         loop {
             let (dispatched, drew) = self.tick();
             if !dispatched {
                 break;
             }
             if !drew {
-                let (_, rendered, pending) = self.operation(false, |_| {
-                    let _span = kubecove_gpui::frame_profile::scope("dispatcher", "drain");
-                    executor
-                        .dispatcher()
-                        .as_threaded()
-                        .expect("benchmark dispatcher")
-                        .run_until_idle();
-                });
+                let (rendered, pending) = self.drain();
                 if !rendered && !pending {
                     break;
                 }
@@ -262,6 +284,30 @@ impl FrameContext {
 impl Drop for FrameContext {
     fn drop(&mut self) {
         self.app.update(|cx| cx.shutdown());
+    }
+}
+
+/// This thread's CPU clock, which does not advance while the thread is blocked.
+fn thread_cpu() -> Option<Duration> {
+    #[cfg(unix)]
+    {
+        let mut time = libc::timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
+        // SAFETY: `time` is a valid, writable timespec for the duration of the call.
+        let status = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut time) };
+        if status != 0 {
+            return None;
+        }
+        Some(Duration::new(
+            u64::try_from(time.tv_sec).ok()?,
+            u32::try_from(time.tv_nsec).ok()?,
+        ))
+    }
+    #[cfg(not(unix))]
+    {
+        None
     }
 }
 

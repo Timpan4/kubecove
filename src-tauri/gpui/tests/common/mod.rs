@@ -84,6 +84,12 @@ pub struct Fixture {
     context_resources: Vec<ResourceSummary>,
     #[serde(skip)]
     pub failed_workspace_context: Mutex<Option<String>>,
+    /// Set by the frames harness: scope reads build their rows on the background
+    /// executor, as `NativeBackend` builds them on its runtime, and the dispatcher
+    /// drain still waits for them. UI tests leave it unset and build them inline.
+    #[serde(skip)]
+    pub off_thread_reads:
+        std::sync::OnceLock<(std::sync::Weak<Fixture>, gpui_kit::BackgroundExecutor)>,
     details: Vec<ResourceDetailsFull>,
     events: Vec<ResourceEvents>,
     topology: ResourceTopology,

@@ -70,6 +70,11 @@ impl Driver {
                 .join(fixture_name.unwrap_or("fixture-scaled.json")),
         ));
         let mut cx = FrameContext::new(gpu);
+        let executor = cx.update(|cx| cx.background_executor().clone());
+        backend
+            .off_thread_reads
+            .set((Arc::downgrade(&backend), executor))
+            .unwrap_or_else(|_| panic!("a new fixture has no executor"));
         let (handle, _inspector) = cx
             .update(|cx| {
                 gpui_kit::open_window(window_options(), cx, |window, cx| {
@@ -275,7 +280,8 @@ fn main() {
     std::fs::write(
         &report,
         serde_json::to_vec(&json!({
-            "measurementVersion": 2,
+            // 3: time blocked on background work during a drain is `wait`, not frame CPU.
+            "measurementVersion": 3,
             "mode": "Production",
             "build": {
                 "manifestDirectory": env!("CARGO_MANIFEST_DIR"),
