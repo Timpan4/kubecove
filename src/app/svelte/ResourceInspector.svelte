@@ -46,7 +46,7 @@
 				<span class="truncate">{resource.kind} / {resource.namespace ?? "cluster"}</span>
 				<!-- The target context is visible with several contexts and announced with one. -->
 				{#if workspaceReadContext.clusterContexts.length > 1}
-					<Badge variant="outline" class="max-w-40 shrink-0 truncate" title={resource.cluster}><span class="sr-only">Context: </span>{resource.cluster}</Badge>
+					<Badge variant="outline" class="max-w-40 shrink-0 truncate" title={resource.cluster}><span class="sr-only">{"Context: "}</span>{resource.cluster}</Badge>
 				{:else}
 					<span class="sr-only">Context: {resource.cluster}</span>
 				{/if}
