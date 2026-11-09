@@ -27,8 +27,12 @@ dialogs behind `Backend`; tests supply controlled responses. Remote token-mode
 connections reuse the Rust HTTP/WebSocket client, with no local fallback after
 socket failure. Explicit disconnect returns to local access.
 
-Update checks read the configured desktop feed. Installation stays disabled
-because its artifacts install Tauri, not GPUI. Browser-only preferences keep their
+Update checks read `latest-gpui.json` beside the desktop feed on the same release.
+Install downloads this platform's build, checks its signature and signed version
+against the key in `tauri.conf.json`, and replaces the AppImage or app bundle, or
+saves the Windows installer and runs it on relaunch. See
+[ADR 0034](../../docs/decisions/0034-gpui-release-bundles-and-updates.md).
+Browser-only preferences keep their
 controls disabled pending a storage decision. Settings scenarios use worktree-local
 temporary storage; native storage tests reopen it in separate processes.
 
