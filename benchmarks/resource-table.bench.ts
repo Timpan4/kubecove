@@ -216,7 +216,7 @@ const ownershipRows: ResourceSummary[] = Array.from(
 				apiVersion: "apps/v1",
 				kind: "Deployment",
 				name: deploymentName,
-				metrics: metricSummary("Deployment", deploymentName, namespace, index),
+				metrics: metricSummary("Deployment", deploymentName, namespace, index, shared.cluster),
 				argoApp: app,
 				gitOpsOwner: {
 					provider: "argo" as const,
@@ -231,7 +231,7 @@ const ownershipRows: ResourceSummary[] = Array.from(
 				apiVersion: "apps/v1",
 				kind: "ReplicaSet",
 				name: replicaSetName,
-				metrics: metricSummary("ReplicaSet", replicaSetName, namespace, index),
+				metrics: metricSummary("ReplicaSet", replicaSetName, namespace, index, shared.cluster),
 				ownerRef: deploymentName,
 			},
 			{
@@ -239,7 +239,7 @@ const ownershipRows: ResourceSummary[] = Array.from(
 				apiVersion: "v1",
 				kind: "Pod",
 				name: `${app}-pod`,
-				metrics: metricSummary("Pod", `${app}-pod`, namespace, index),
+				metrics: metricSummary("Pod", `${app}-pod`, namespace, index, shared.cluster),
 				ownerRef: replicaSetName,
 				restarts: unhealthy ? 5 : 0,
 			},
@@ -248,7 +248,7 @@ const ownershipRows: ResourceSummary[] = Array.from(
 				apiVersion: "v1",
 				kind: "Service",
 				name: `${app}-service`,
-				metrics: metricSummary("Service", `${app}-service`, namespace, index),
+				metrics: metricSummary("Service", `${app}-service`, namespace, index, shared.cluster),
 				ownerRef: deploymentName,
 			},
 		] satisfies ResourceSummary[];

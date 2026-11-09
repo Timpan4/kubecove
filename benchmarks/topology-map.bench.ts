@@ -88,7 +88,7 @@ const metrics: ResourceMetricsSummary = {
 	workloads: metricEntries.filter((metric) => metric.kind !== "Pod"),
 	warnings: [],
 };
-const metricIndex = resourceMetricIndex(metrics);
+const metricIndex = resourceMetricIndex([{ clusterContext: metrics.cluster, summary: metrics }]);
 const tableModel = buildResourceTableModel(projection, tableState);
 const historical = filterHistoricalReplicaSets(topology, true);
 const mappedTopology = filterTopologyByTableRows(
