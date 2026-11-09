@@ -37,7 +37,11 @@ pub fn push_haystack(row: &ResourceSummary, text: &mut String) {
         owner.map(|owner| owner.provenance.as_str()),
     ];
     let mut first = true;
-    for field in fields.into_iter().flatten().filter(|field| !field.is_empty()) {
+    for field in fields
+        .into_iter()
+        .flatten()
+        .filter(|field| !field.is_empty())
+    {
         if !first {
             text.push('\n');
         }
