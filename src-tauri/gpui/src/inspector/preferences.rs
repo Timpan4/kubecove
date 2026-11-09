@@ -8,8 +8,7 @@ impl Inspector {
         let source = self
             .sessions
             .load
-            .as_ref()
-            .and_then(|r| r.as_ref().ok())
+            .data()
             .and_then(|s| s.source_key.as_deref());
         serde_json::to_string(&(source, &self.scope.context, self.workspace_name.as_ref()))
             .expect("string tuple")

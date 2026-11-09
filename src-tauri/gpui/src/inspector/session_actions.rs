@@ -30,8 +30,7 @@ impl Inspector {
         let source = self
             .sessions
             .load
-            .as_ref()
-            .and_then(|r| r.as_ref().ok())
+            .data()
             .and_then(|s| s.source_key.clone());
         let backend = self.backend.clone();
         cx.spawn_in(window, async move |this, cx| {
@@ -42,8 +41,7 @@ impl Inspector {
                         let current = this
                             .sessions
                             .load
-                            .as_ref()
-                            .and_then(|r| r.as_ref().ok())
+                            .data()
                             .and_then(|s| s.source_key.clone());
                         current == source
                             && (this
@@ -94,8 +92,7 @@ impl Inspector {
     pub(super) fn session_env_var(&self) -> Option<String> {
         self.sessions
             .load
-            .as_ref()
-            .and_then(|r| r.as_ref().ok())
+            .data()
             .and_then(|s| s.source_key.as_deref())
             .and_then(|s| s.strip_prefix("kubeconfigEnv="))
             .filter(|s| *s != "KUBECONFIG")

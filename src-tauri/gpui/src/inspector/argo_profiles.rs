@@ -252,8 +252,7 @@ impl Inspector {
     pub(super) fn argo_source_key(&self) -> Option<&str> {
         self.sessions
             .load
-            .as_ref()
-            .and_then(|r| r.as_ref().ok())
+            .data()
             .and_then(|s| s.source_key.as_deref())
     }
     pub(super) fn argo_connection_id(&self) -> Option<String> {

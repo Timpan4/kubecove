@@ -147,8 +147,7 @@ impl Inspector {
         let sessions: Vec<_> = self
             .sessions
             .load
-            .as_ref()
-            .and_then(|r| r.as_ref().ok())
+            .data()
             .map(|sessions| {
                 sessions
                     .for_context(&self.scope.context)
