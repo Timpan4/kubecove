@@ -118,8 +118,8 @@ export async function terminalAction(page: Page, step: Step): Promise<void> {
                 const cursor = [...document.querySelectorAll(".xterm .xterm-rows .xterm-cursor")].find((element) => element.getClientRects().length > 0);
                 if (!cursor) return false;
                 const has = (name: string) => cursor.classList.contains(`xterm-cursor-${name}`);
-                const shape = ["outline", "bar", "underline", "block"].find(has);
-                const paint = `${shape}${has("blink") ? " blink" : ""}`;
+                const cursorStyle = ["outline", "bar", "underline", "block"].find(has);
+                const paint = `${cursorStyle}${has("blink") ? " blink" : ""}`;
                 const line = cursor.closest(".xterm-rows > div");
                 const at = Array.prototype.indexOf.call(line?.parentElement?.children ?? [], line);
                 const x = Math.round((cursor.getBoundingClientRect().left - left) / width);

@@ -133,7 +133,7 @@ export async function checkCoverage(page: Page, check: string) {
 			break;
 		case "map-viewport": {
 			// Name the wait that timed out: full-suite runs failed here with a bare 30 s timeout.
-			const step = <T>(name: string, wait: Promise<T>) => wait.catch((error: unknown) => {
+			const step = <T>(name: string, wait: Promise<T>) => wait.catch((error) => {
 				throw new Error(`map-viewport ${name}: ${error instanceof Error ? error.message : String(error)}`);
 			});
 			await page.locator(".svelte-flow").scrollIntoViewIfNeeded();

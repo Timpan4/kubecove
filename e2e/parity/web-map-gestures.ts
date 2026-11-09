@@ -11,6 +11,10 @@ const LAYOUT_ROUNDING_PX = 1;
 const WHEEL_PIXELS = 100;
 const WHEEL_STEP = 2 ** (WHEEL_PIXELS * 0.002);
 
+declare global {
+	interface Window { mapSettle?: { style: string; since: number } }
+}
+
 type Point = { x: number; y: number };
 
 /** Map pointer gestures: a drag that starts on a node, and a wheel that zooms about the cursor. */
@@ -34,12 +38,11 @@ export async function checkMapGesture(page: Page, check: string) {
 async function waitForFitToSettle(page: Page) {
 	await page.waitForFunction(
 		(duration) => {
-			const state = window as unknown as { mapSettle?: { style: string; since: number } };
 			const style = document.querySelector<HTMLElement>(".svelte-flow__viewport")?.getAttribute("style") ?? "";
 			const now = performance.now();
-			state.mapSettle ??= { style, since: now };
-			if (state.mapSettle.style !== style) state.mapSettle = { style, since: now };
-			return now - state.mapSettle.since >= duration;
+			window.mapSettle ??= { style, since: now };
+			if (window.mapSettle.style !== style) window.mapSettle = { style, since: now };
+			return now - window.mapSettle.since >= duration;
 		},
 		FIT_VIEW_DURATION_MS,
 		{ polling: "raf" },

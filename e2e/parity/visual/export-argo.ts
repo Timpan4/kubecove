@@ -2,7 +2,7 @@ import { applicationSpecFromYaml } from "../../../src/features/gitops/argo-appli
 import { argoProfileId } from "../../../src/features/gitops/argo-connection";
 import type { TauriClient } from "../../../src/lib/tauri";
 import { configureArgoMock } from "../../../src/lib/tauri-dev-mock-argo";
-import type { ArgoApplicationInspector, ArgoApplicationRef, ArgoConnectionStatus, ArgoOperationRequest, ResourceDetailsFull } from "../../../src/lib/types";
+import type { ArgoApplicationInspector, ArgoApplicationRef, ArgoConnectionStatus, ArgoOperationRequest, JsonObject, JsonValue, ResourceDetailsFull } from "../../../src/lib/types";
 
 /** Exact native requests from the same mock command implementation as web. */
 export async function exportArgo(client: TauriClient, applications: { details: ResourceDetailsFull }[]) {
@@ -92,8 +92,10 @@ export async function exportArgo(client: TauriClient, applications: { details: R
     await client.invoke("disconnect_argo_server", { id: profile.id });
     return { connect, connected, connections, discovery, target, previews, inspections, comparisons, operations, confirmation, result };
 }
-function automatedPrune(policy: unknown): boolean {
-    if (!policy || typeof policy !== "object" || !("automated" in policy)) return false;
-    const automated = policy.automated;
-    return !!automated && typeof automated === "object" && "prune" in automated && automated.prune === true;
+function isJsonRecord<Value>(value: Value): value is Value & JsonObject {
+    return value !== null && !Array.isArray(value) && Object(value) === value;
+}
+
+function automatedPrune(policy: JsonValue | undefined): boolean {
+    return isJsonRecord(policy) && isJsonRecord(policy.automated) && policy.automated.prune === true;
 }

@@ -18,11 +18,14 @@ const decoded = new Map<string, Segments>();
 function segments(file: string, source: string): Segments {
 	const match = /\/\/# sourceMappingURL=data:application\/json;(?:charset=utf-8;)?base64,([A-Za-z0-9+/=]+)\s*$/.exec(source);
 	if (!match?.[1]) return undefined;
+	// SAFETY: Vite's dev transform appends this inline map, and it always carries `sources` and `mappings`. The regex above guarantees the base64 payload.
 	const map = JSON.parse(Buffer.from(match[1], "base64").toString("utf8")) as { sources: string[]; mappings: string };
 	const own = new Set(map.sources.flatMap((name, index) => basename(name.split("?")[0] ?? "") === basename(file) ? [index] : []));
 	const lineStarts = [0];
 	for (let index = 0; index < source.length; index++) if (source.charCodeAt(index) === 10) lineStarts.push(index + 1);
-	const result = { offsets: [] as number[], lines: [] as number[] };
+	const offsets: number[] = [];
+	const lines: number[] = [];
+	const result = { offsets, lines };
 	let [line, column, sourceIndex, originalLine, value, shift] = [0, 0, 0, 0, 0, 0];
 	const fields: number[] = [];
 	const flush = () => {
@@ -93,7 +96,9 @@ function fileCoverage(entry: Entry & { source: string }, map: Segments, svelte: 
 		if (previous && gaps[previous.offset] === gaps[offset] && line > previous.line) for (let fill = previous.line + 1; fill < line; fill++) lines.push(fill);
 		previous = { offset, line };
 	}
-	return { lines: toRanges(lines), active, ...(svelte ? { code: toRanges(code) } : {}) };
+	const result: FileCoverage = { lines: toRanges(lines), active };
+	if (svelte) result.code = toRanges(code);
+	return result;
 }
 
 /** Repository path of a Vite-served project module, or undefined for dependencies and styles. */
@@ -111,14 +116,20 @@ export async function startCodeCoverage(page: Page) {
 	return {
 		async save(artifacts: string, index: number, id: string) {
 			const files: ScenarioCoverage["files"] = {};
-			for (const entry of await page.coverage.stopJSCoverage() as Entry[]) {
+			for (const entry of await page.coverage.stopJSCoverage()) {
 				const path = sourcePath(entry.url);
 				if (!path || entry.source === undefined) continue;
 				const key = `${path}:${entry.source.length}`;
 				if (!decoded.has(key)) decoded.set(key, segments(path, entry.source));
 				const file = fileCoverage({ ...entry, source: entry.source }, decoded.get(key), path.endsWith(".svelte"));
 				const earlier = files[path];
-				files[path] = earlier ? { lines: toRanges([...earlier.lines, ...file.lines].flatMap(expand)), active: earlier.active || file.active, ...(file.code ? { code: toRanges([...(earlier.code ?? []), ...file.code].flatMap(expand)) } : {}) } : file;
+				if (!earlier) {
+					files[path] = file;
+					continue;
+				}
+				const merged: FileCoverage = { lines: toRanges([...earlier.lines, ...file.lines].flatMap(expand)), active: earlier.active || file.active };
+				if (file.code) merged.code = toRanges([...(earlier.code ?? []), ...file.code].flatMap(expand));
+				files[path] = merged;
 			}
 			await mkdir(join(artifacts, "coverage"), { recursive: true });
 			await writeFile(join(artifacts, "coverage", `web-${index}.json`), JSON.stringify({ id, files } satisfies ScenarioCoverage));

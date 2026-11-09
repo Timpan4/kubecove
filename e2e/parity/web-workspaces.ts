@@ -3,7 +3,7 @@ import type { Page } from "playwright-core";
 import original from "../../src/lib/settings-integration-workspace.json";
 import type { Step } from "./contract";
 
-export function expectRetainedWorkspaceFields(items: { spec: { displayName: string; scope: Record<string, unknown>; portForwards: unknown } }[], name: string) {
+export function expectRetainedWorkspaceFields(items: { spec: { displayName: string; scope: typeof original.spec.scope; portForwards: unknown } }[], name: string) {
     const item = items.find((item) => item.spec.displayName === name);
     if (!item) throw new Error("Missing exported workspace");
     for (const field of ["kinds", "layout", "gitOpsFilter", "argoAppFilter", "shortcutPreferences"] as const) {

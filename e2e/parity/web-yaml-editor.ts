@@ -77,14 +77,15 @@ function editorDiagnostics(expected: YamlEditorDiagnostic[] | null) {
 	type LintDiagnostic = { from: number; to: number; severity: string; source?: string; message: string };
 	type LintState = { diagnostics: { between(from: number, to: number, visit: (from: number, to: number, value: { spec: { diagnostics?: LintDiagnostic[] } }) => void): void } };
 	type Doc = { length: number; lineAt(offset: number): { number: number; from: number } };
-	const field = (target: unknown, key: string): unknown => (typeof target === "object" && target !== null ? Reflect.get(target, key) : undefined);
-	const isLintState = (value: unknown): value is LintState => typeof value === "object" && value !== null && "diagnostics" in value && "panel" in value && "selected" in value;
-	const isDoc = (value: unknown): value is Doc => typeof value === "object" && value !== null && "lineAt" in value && "length" in value;
+	const isObjectValue = <Value>(value: Value): value is Value & object => Object(value) === value;
+	const field = <Target>(target: Target, key: string) => (isObjectValue(target) ? Object(target)[key] : undefined);
+	const isLintState = <Value>(value: Value): value is Value & LintState => isObjectValue(value) && "diagnostics" in value && "panel" in value && "selected" in value;
+	const isDoc = <Value>(value: Value): value is Value & Doc => isObjectValue(value) && "lineAt" in value && "length" in value;
 	const content = document.querySelector(".cm-content[contenteditable=true]");
 	const state = field(field(field(field(content, "cmTile"), "root"), "view"), "state");
 	const doc = field(state, "doc");
 	const values = field(state, "values");
-	const lint = Array.isArray(values) ? values.find(isLintState) : undefined;
+	const lint = Array.isArray(values) ? values.find((value): value is LintState => isLintState(value)) : undefined;
 	if (!isDoc(doc) || !lint) return expected ? false : null;
 	const found = new Set<LintDiagnostic>();
 	lint.diagnostics.between(0, doc.length, (_from, _to, value) => {

@@ -25,7 +25,7 @@ const LINT_DRAFTS = [
 	"apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: payments-api\n  name: payments-api-v2\n  labels: !custom\n    app: payments\nspec: ]\n",
 ];
 
-export async function streamMessages(client: TauriClient, command: string, request: object): Promise<StreamMessage[]> {
+export async function streamMessages(client: TauriClient, command: string, request: { batchLines: boolean }): Promise<StreamMessage[]> {
 	const messages: StreamMessage[] = [];
 	if (!client.createChannel) throw new Error("The mock client has no stream channel");
 	const channel = client.createChannel<StreamMessage>((message) => messages.push(message));
@@ -35,7 +35,7 @@ export async function streamMessages(client: TauriClient, command: string, reque
 	return messages;
 }
 
-function errorMessage(error: unknown): string {
+function errorMessage<Value>(error: Value): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
