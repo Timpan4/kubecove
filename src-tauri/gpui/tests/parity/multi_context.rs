@@ -3,16 +3,37 @@
 
 use super::*;
 
-/// The contexts of every rendered row with the step's identity, top to bottom.
-/// Row IDs end in their context (`table_columns::resource_id`).
-fn row_contexts(window: &mut gpui_kit::Window, step: &Value, cx: &mut gpui_kit::App) -> Vec<String> {
+/// The contexts of every row with the step's identity on the current table
+/// page, top to bottom. Row IDs end in their context
+/// (`table_columns::resource_id`). The table mounts only the rows near its
+/// viewport, so the same rows of another context can sit below the first
+/// one's viewport: the whole page is scanned from the top.
+fn row_contexts(
+    window: &mut gpui_kit::Window,
+    step: &Value,
+    cx: &mut gpui_kit::App,
+) -> Vec<String> {
     let identity = row(step);
-    if !detail::reveal_resource(window, &identity, cx) {
-        return Vec::new();
-    }
+    let mut ids: Vec<String> = Vec::new();
+    // `None` until the first visit, which is at the current scroll position
+    // before the scan resets to the top, so only the top-down visits count.
+    let mut previous: Option<Option<Vec<String>>> = None;
+    detail::scan_table(window, cx, |window| {
+        let rendered = detail::rendered_rows(window, "resource");
+        let Some(last) = previous.replace(Some(rendered.clone())) else {
+            previous = Some(None);
+            return false;
+        };
+        for id in detail::rendered_rows(window, &identity) {
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+        // Scrolling no longer moves the rows: the bottom of the page.
+        last.is_some_and(|last| last == rendered)
+    });
     let prefix = format!("{identity}:");
-    detail::rendered_rows(window, &identity)
-        .into_iter()
+    ids.into_iter()
         .map(|id| {
             id.strip_prefix(&prefix)
                 .unwrap_or_else(|| panic!("row {id} has no context"))
@@ -41,7 +62,10 @@ fn filter_contexts(window: &mut gpui_kit::Window, wanted: &[String], cx: &mut gp
         assert!(options.contains(context), "no Context option {context}");
     }
     for check in [true, false] {
-        for context in options.iter().filter(|context| wanted.contains(context) == check) {
+        for context in options
+            .iter()
+            .filter(|context| wanted.contains(context) == check)
+        {
             let id = format!("context-option:{context}");
             let checked = window.find(id.clone()).description() == Some("checked");
             if checked != check {
@@ -66,11 +90,17 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
         "selectMapContext" => {
             window.click("map-context", cx);
             window.render_frame(cx);
-            window.click(format!("map-context-option:{}", string(step, "context")), cx);
+            window.click(
+                format!("map-context-option:{}", string(step, "context")),
+                cx,
+            );
         }
         "expectMapContext" => {
             if step["shown"] == true {
-                assert!(window.find("map-context").visible(), "Map context is hidden");
+                assert!(
+                    window.find("map-context").visible(),
+                    "Map context is hidden"
+                );
                 assert_eq!(
                     window.find("map-context-value").label(),
                     Some(string(step, "context"))
