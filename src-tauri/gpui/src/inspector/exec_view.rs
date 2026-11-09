@@ -255,7 +255,15 @@ impl Inspector {
                     }),
             )
             .children(error)
+            // The menu wraps a plain container: the terminal's test-support wrappers are not
+            // styled parent elements, which the context menu needs.
             .child(exec_menu::with_terminal_menu(
+                div()
+                    .id("exec-terminal-menu")
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_h(px(288.)),
                 div()
                     .id("exec-terminal")
                     .relative()

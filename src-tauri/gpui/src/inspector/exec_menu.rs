@@ -3,15 +3,16 @@
 //! Each item calls the method its keyboard gesture uses in `exec_keys`.
 use super::Inspector;
 use gpui_kit::component::menu::{ContextMenuExt, PopupMenuItem};
-use gpui_kit::{Div, Entity, IntoElement, Stateful};
+use gpui_kit::{Div, Entity, IntoElement, ParentElement, Stateful};
 
-/// Wraps the terminal in a context menu. Copy is disabled while nothing is selected.
+/// Puts the terminal in `container` with a context menu. Copy is disabled while nothing is selected.
 pub(super) fn with_terminal_menu(
-    terminal: Stateful<Div>,
+    container: Stateful<Div>,
+    terminal: impl IntoElement,
     owner: Entity<Inspector>,
     has_selection: bool,
 ) -> impl IntoElement {
-    terminal.context_menu(move |menu, _, _| {
+    container.child(terminal).context_menu(move |menu, _, _| {
         let copy = owner.clone();
         let paste = owner.clone();
         let select_all = owner.clone();

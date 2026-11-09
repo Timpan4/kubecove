@@ -4,12 +4,16 @@ use super::Controlled;
 use super::session_controls::pod;
 use gpui_kit::test::{ClickOptions, TestWindowExt};
 use gpui_kit::{
-    AnyWindowHandle, ClipboardItem, MouseButton, MouseDownEvent, MouseUpEvent, TestAppContext,
+    AnyWindowHandle, AppContext, ClipboardItem, InputEvent, MouseButton, MouseDownEvent, MouseUpEvent, TestAppContext,
     point, px,
 };
 use std::sync::Arc;
 
-/// A terminal whose first row reads "hello world", with its first paint and output done.
+/// The first cell of row 2, below the "Starting" banner and its blank line, inside the
+/// terminal's px-2.5 pt-2 padding and 14 px rows (as the parity terminal driver measures).
+const HELLO: (f32, f32) = (12., 8. + 2.5 * 14.);
+
+/// A terminal whose row 2 reads "hello world", with its first paint and output done.
 fn terminal_with_output(cx: &mut TestAppContext) -> AnyWindowHandle {
     let backend = Arc::new(Controlled::default());
     *backend.sessions.exec_output.lock().unwrap() = Some("hello world\r\n".into());
@@ -23,13 +27,13 @@ fn terminal_with_output(cx: &mut TestAppContext) -> AnyWindowHandle {
     handle
 }
 
-/// A right click on the first cell of the first row, which opens the menu.
+/// A right click on the first cell of "hello", which opens the menu.
 fn open_menu(cx: &mut TestAppContext, handle: AnyWindowHandle) {
     cx.update_window(handle, |_, w, cx| {
         w.click_with_options(
             "exec-terminal",
             ClickOptions::new()
-                .with_offset(point(px(12.), px(15.)))
+                .with_offset(point(px(HELLO.0), px(HELLO.1)))
                 .with_button(MouseButton::Right),
             cx,
         );
@@ -49,12 +53,12 @@ fn open_menu(cx: &mut TestAppContext, handle: AnyWindowHandle) {
 #[gpui_kit::test]
 fn right_click_then_copy_copies_the_selection(cx: &mut TestAppContext) {
     let handle = terminal_with_output(cx);
-    // Double-clicking the first cell selects the word "hello".
+    // Double-clicking the first cell of "hello" selects the word.
     cx.update_window(handle, |_, w, cx| {
         w.click_with_options(
             "exec-terminal",
             ClickOptions::new()
-                .with_offset(point(px(12.), px(15.)))
+                .with_offset(point(px(HELLO.0), px(HELLO.1)))
                 .with_count(2),
             cx,
         );
