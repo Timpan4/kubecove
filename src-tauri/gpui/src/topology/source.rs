@@ -68,9 +68,21 @@ impl Source {
                 clusters.push(&node.summary.cluster);
             }
         }
+        // Rows carry their context as an index, so the check reads a flag, not the row.
+        let prepared = rows.source();
+        let with_nodes: Vec<bool> = prepared
+            .context_names()
+            .iter()
+            .map(|context| clusters.contains(&context.as_str()))
+            .collect();
         let mut matches: Vec<Vec<usize>> = vec![Vec::new(); topology.nodes.len()];
-        for (i, row) in rows.all_rows().iter().enumerate() {
-            if !clusters.contains(&row.cluster.as_str()) {
+        for (i, (row, &context)) in rows
+            .all_rows()
+            .iter()
+            .zip(prepared.row_contexts())
+            .enumerate()
+        {
+            if !with_nodes[context as usize] {
                 continue;
             }
             if let Some(nodes) = node_keys.get(&loose_key(row)) {
