@@ -92,12 +92,15 @@ export function encodeMap(commit: string, records: ScenarioCoverage[], info: Cod
 		const functions = [...new Set([...(info.functions?.[path] ?? []).map((range) => range.join(":")), ...entry.functions.keys()])]
 			.sort((left, right) => Number(left.split(":")[0]) - Number(right.split(":")[0]))
 			.flatMap((key) => [intern(entry.functions.get(key) ?? []), ...key.split(":").map(Number)]);
-		files[path] = { loaded: intern(entry.loaded), active: intern(entry.active), lines, ...(code ? { code: code.flat() } : {}), ...(functions.length ? { functions } : {}) };
+		const file: CoverageMap["files"][string] = { loaded: intern(entry.loaded), active: intern(entry.active), lines };
+		if (code) file.code = code.flat();
+		if (functions.length) file.functions = functions;
+		files[path] = file;
 	}
 	return { version: 1, commit, scenarios: records.map((record) => record.id), sets, compiled: [...new Set(info.compiled)].sort(), files };
 }
 
-export function decodeMap(map: CoverageMap): { records: ScenarioCoverage[]; info: CodeInfo } {
+export function decodeMap(map: CoverageMap) {
 	const records: ScenarioCoverage[] = map.scenarios.map((id) => ({ id, files: {} }));
 	const code: Record<string, Range[]> = {};
 	const functions: Record<string, Range[]> = {};
@@ -140,8 +143,9 @@ export function pairs(flat: number[]): Range[] {
 }
 
 export async function readMap(path: string): Promise<CoverageMap> {
+	// SAFETY: the checks below cover the fields readers index first. Maps come only from mergeMaps and writeRunMap in this file.
 	const map = JSON.parse(await readFile(path, "utf8")) as CoverageMap;
-	if (map.version !== 1 || typeof map.commit !== "string" || !Array.isArray(map.scenarios) || !Array.isArray(map.sets) || typeof map.files !== "object") {
+	if (map.version !== 1 || String(map.commit) !== map.commit || !Array.isArray(map.scenarios) || !Array.isArray(map.sets) || Object(map.files) !== map.files) {
 		throw new Error(`${path} is not a version 1 parity coverage map`);
 	}
 	return map;
@@ -149,6 +153,7 @@ export async function readMap(path: string): Promise<CoverageMap> {
 
 async function passed(artifacts: string, driver: string): Promise<Set<string>> {
 	try {
+		// SAFETY: a driver report is written as { driver, scenarios }. A report of another shape throws in the filter below, and the catch returns no passes.
 		const report = JSON.parse(await readFile(join(artifacts, `${driver}.json`), "utf8")) as { scenarios: { id: string; status: string }[] };
 		return new Set(report.scenarios.filter((result) => result.status === "passed").map((result) => result.id));
 	} catch { return new Set(); }
@@ -170,6 +175,7 @@ export async function writeRunMap(artifacts: string, out: string): Promise<Cover
 	const ids = (await readFile(join(artifacts, "scenarios.txt"), "utf8")).split("\n").filter(Boolean);
 	const [web, gpui] = await Promise.all([passed(artifacts, "web"), passed(artifacts, "gpui")]);
 	const names = new Set(await readdir(directory));
+	// SAFETY: each per-scenario file is written by startCodeCoverage().save as { id, files }. writeRunMap checks the id below.
 	const read = async (name: string) => names.has(name) ? JSON.parse(await readFile(join(directory, name), "utf8")) as ScenarioCoverage : undefined;
 	const records: ScenarioCoverage[] = [];
 	for (const [index, id] of ids.entries()) {
@@ -178,6 +184,7 @@ export async function writeRunMap(artifacts: string, out: string): Promise<Cover
 		if (webFiles?.id !== id || gpuiFiles?.id !== id) continue;
 		records.push({ id, files: { ...webFiles.files, ...gpuiFiles.files } });
 	}
+	// SAFETY: recordGpuiCoverage in gpui-coverage-map.ts writes gpui-code.json as a CodeInfo.
 	const info = JSON.parse(await readFile(join(directory, "gpui-code.json"), "utf8")) as CodeInfo;
 	// A function V8 never compiled in one scenario can be compiled in another, so take the union.
 	const webCode = new Map<string, Set<number>>();

@@ -57,7 +57,7 @@ type Span = { path: string; range: Range };
  * Per-file executed lines, executed function spans and coverable lines from
  * `llvm-cov export -format=lcov`. `spans` gives each function's span by mangled name.
  */
-function parseLcov(text: string, root: string, spans: Map<string, Span>): { files: ScenarioCoverage["files"]; code: Record<string, Range[]> } {
+function parseLcov(text: string, root: string, spans: Map<string, Span>) {
 	const files: ScenarioCoverage["files"] = {};
 	const code: Record<string, Range[]> = {};
 	const ran = new Map<string, Range[]>();
@@ -96,6 +96,7 @@ function parseLcov(text: string, root: string, spans: Map<string, Span>): { file
  */
 async function functionSpans(cov: string, profile: string, executable: string, root: string): Promise<Map<string, Span>> {
 	type Export = { data: { functions: { name: string; filenames: string[]; regions: number[][] }[] }[] };
+	// SAFETY: `llvm-cov export -format=text` writes the export schema that Export describes, with `data[].functions[]` entries that carry name, filenames and regions.
 	const exported = JSON.parse(await output([cov, "export", "-format=text", "-skip-expansions", `-instr-profile=${profile}`, executable, IGNORED])) as Export;
 	const spans = new Map<string, Span>();
 	for (const fn of exported.data[0]?.functions ?? []) {
