@@ -39,6 +39,10 @@ use cache_diagnostics::CacheCounters;
 mod list;
 pub use list::{ListSnapshot, ListedResources};
 
+#[path = "live_store_watch.rs"]
+mod watch;
+pub use watch::WatchedRow;
+
 type SharedLoad<T> = Shared<BoxFuture<'static, Result<Arc<T>, AppError>>>;
 
 #[derive(Clone, Copy)]
@@ -404,6 +408,7 @@ pub struct ClusterLiveStore {
     resources: Arc<SharedCache<ListSnapshot>>,
     topologies: Arc<SharedCache<ResourceTopology>>,
     flux_ownership_indexes: Arc<SharedCache<FluxOwnershipIndex>>,
+    watched_rows: Option<WatchedRow>,
 }
 
 impl Default for ClusterLiveStore {
@@ -417,6 +422,7 @@ impl Default for ClusterLiveStore {
             resources: Arc::new(SharedCache::new("resources")),
             topologies: Arc::new(SharedCache::new("topologies")),
             flux_ownership_indexes: Arc::new(SharedCache::new("flux_ownership_indexes")),
+            watched_rows: None,
         }
     }
 }
@@ -648,6 +654,11 @@ impl ClusterLiveStore {
             self.resources.mark_dirty(&exact_key);
             self.resources.mark_dirty(&all_key);
         }
+        self.mark_derived_dirty(source_key, cluster_context);
+    }
+
+    /// Marks the context's topologies and present custom kinds dirty.
+    fn mark_derived_dirty(&self, source_key: &str, cluster_context: &str) {
         let prefix = format!("{source_key}|context={cluster_context}|");
         self.topologies
             .mark_dirty_where(|key| key.starts_with(&prefix));

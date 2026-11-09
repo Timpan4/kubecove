@@ -37,5 +37,5 @@ pub use resources::{
     list_deployment_revisions, list_dynamic_resource_snapshot, list_dynamic_resources,
     list_resource_scope, list_resource_snapshot, list_resource_topology, list_resources,
     prepare_yaml_apply, resource_details_from, resource_scope_from, resource_topology_from,
-    resource_yaml_from, resources_summary_from, reveal_secret_data_value,
+    resource_yaml_from, resources_summary_from, reveal_secret_data_value, watched_resource_summary,
 };

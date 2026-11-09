@@ -81,6 +81,15 @@ impl Backend for NativeBackend {
     ) -> Read<KindRows> {
         live_data::kind_resources(self, scope, key, recycled)
     }
+    fn named_kind_resources(
+        &self,
+        scope: Scope,
+        key: WatchResourceKey,
+        names: Vec<(Option<String>, String)>,
+        recycled: Vec<ResourceSummary>,
+    ) -> Read<KindRows> {
+        live_data::named_kind_resources(self, scope, key, names, recycled)
+    }
     fn watch(&self, target: WatchTarget) -> Read<LogStream> {
         live_data::watch(self, target)
     }

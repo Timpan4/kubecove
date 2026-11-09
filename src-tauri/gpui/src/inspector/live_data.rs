@@ -495,14 +495,26 @@ impl Inspector {
                             let retry_backend = backend.clone();
                             let retry_scope = scope.clone();
                             let retry_key = key.clone();
+                            // Notices that name every change read only those rows.
+                            // A tick, a reconnect or an unnamed notice lists the kind.
+                            let named = names.as_ref().map(crate::model::ObservedNames::to_vec);
                             let rows = crate::read_retry::read(
                                 cx.background_executor().clone(),
                                 move || {
-                                    retry_backend.kind_resources(
-                                        retry_scope.clone(),
-                                        retry_key.clone(),
-                                        recycled.take().unwrap_or_default(),
-                                    )
+                                    let recycled = recycled.take().unwrap_or_default();
+                                    match &named {
+                                        Some(named) => retry_backend.named_kind_resources(
+                                            retry_scope.clone(),
+                                            retry_key.clone(),
+                                            named.clone(),
+                                            recycled,
+                                        ),
+                                        None => retry_backend.kind_resources(
+                                            retry_scope.clone(),
+                                            retry_key.clone(),
+                                            recycled,
+                                        ),
+                                    }
                                 },
                             )
                             .await;

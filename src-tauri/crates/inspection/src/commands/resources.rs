@@ -16,6 +16,8 @@ mod summary_core;
 mod summary_projection;
 #[cfg(feature = "bench-support")]
 pub use summary_projection::{decode_pod_list_summaries, decode_summary_projection};
+mod summary_watch;
+pub use summary_watch::watched_resource_summary;
 mod summary_workloads;
 pub(crate) mod topology;
 #[cfg(feature = "bench-support")]

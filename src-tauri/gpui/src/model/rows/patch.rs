@@ -13,6 +13,9 @@ impl ObservedNames {
     pub(crate) fn insert(&mut self, name: Name) {
         self.0.push(name);
     }
+    pub(crate) fn to_vec(&self) -> Vec<Name> {
+        self.0.clone()
+    }
     fn ordered_match(&self, index: usize, row: &ResourceSummary) -> bool {
         let (namespace, name) = &self.0[index];
         *namespace == row.namespace && *name == row.name

@@ -233,11 +233,12 @@ pub(super) async fn run_resource_watch(
                             }
                             let target =
                                 dynamic_event_target(&cluster_context, &kind_label, &event);
-                            live_store.mark_watch_resource_dirty(
+                            // Before the notice, so a read it triggers sees the change.
+                            live_store.apply_watch_event(
                                 access.source_key(),
                                 &cluster_context,
                                 &normalized_kind,
-                                target.namespace.as_deref(),
+                                &event,
                             );
                             if !broadcaster.resource_changed(
                                 target,

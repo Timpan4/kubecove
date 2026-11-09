@@ -4,9 +4,12 @@ use super::{
     ScopeResult,
 };
 use kubecove_lib::{
-    commands::{self, ClusterAccess, list_projection::bounded_join_all},
+    commands::{
+        self, ClusterAccess, ClusterLiveStore, list_projection::bounded_join_all,
+        live_store::ListSnapshot,
+    },
     models::{
-        AppErrorKind, DiscoveredResourceKind, ResourceSummary, ResourceWatchStart,
+        AppError, AppErrorKind, DiscoveredResourceKind, ResourceSummary, ResourceWatchStart,
         WatchResourceKey, WatchResourceKind,
     },
     runtime::{Channel, ChannelClosed, State},
@@ -100,36 +103,7 @@ pub(super) fn kind_resources(
             &scope.context,
             std::slice::from_ref(&key),
         );
-        let kind = key.resource_kind;
-        let snapshot = if let (Some(group), Some(version), Some(api_version), Some(plural)) =
-            (kind.group, kind.version, kind.api_version, kind.plural)
-        {
-            commands::list_dynamic_resource_snapshot(
-                scope.context,
-                DiscoveredResourceKind {
-                    group,
-                    version,
-                    api_version,
-                    plural,
-                    kind: kind.kind,
-                    namespaced: kind.namespaced.unwrap_or(true),
-                    short_names: Vec::new(),
-                },
-                key.namespace,
-                None,
-                State::new(&store),
-            )
-            .await?
-        } else {
-            commands::list_resource_snapshot(
-                scope.context,
-                kind.kind,
-                key.namespace,
-                None,
-                State::new(&store),
-            )
-            .await?
-        };
+        let snapshot = kind_snapshot(&store, scope, key).await?;
         let rows = match Arc::try_unwrap(snapshot.rows) {
             Ok(rows) => reuse_row_buffer(recycled, rows),
             Err(rows) => {
@@ -142,6 +116,92 @@ pub(super) fn kind_resources(
             resource_version: snapshot.resource_version,
         })
     })
+}
+
+/// The named rows of `key` from its cached list. The watch that named them
+/// already applied its events to that list (`applying_watch_rows`), so the
+/// read lists again only when the cached list went dirty or expired.
+pub(super) fn named_kind_resources(
+    backend: &NativeBackend,
+    scope: Scope,
+    key: WatchResourceKey,
+    names: Vec<(Option<String>, String)>,
+    mut recycled: Vec<ResourceSummary>,
+) -> Read<KindRows> {
+    let store = backend.store.clone();
+    backend.read(async move {
+        let snapshot = kind_snapshot(&store, scope, key).await?;
+        let names = NameSet::new(names);
+        recycled.clear();
+        recycled.extend(
+            snapshot
+                .rows
+                .iter()
+                .filter(|row| names.contains(row))
+                .cloned(),
+        );
+        Ok(KindRows {
+            rows: recycled,
+            resource_version: snapshot.resource_version,
+        })
+    })
+}
+
+async fn kind_snapshot(
+    store: &ClusterLiveStore,
+    scope: Scope,
+    key: WatchResourceKey,
+) -> Result<ListSnapshot, AppError> {
+    let kind = key.resource_kind;
+    if let (Some(group), Some(version), Some(api_version), Some(plural)) =
+        (kind.group, kind.version, kind.api_version, kind.plural)
+    {
+        commands::list_dynamic_resource_snapshot(
+            scope.context,
+            DiscoveredResourceKind {
+                group,
+                version,
+                api_version,
+                plural,
+                kind: kind.kind,
+                namespaced: kind.namespaced.unwrap_or(true),
+                short_names: Vec::new(),
+            },
+            key.namespace,
+            None,
+            State::new(store),
+        )
+        .await
+    } else {
+        commands::list_resource_snapshot(
+            scope.context,
+            kind.kind,
+            key.namespace,
+            None,
+            State::new(store),
+        )
+        .await
+    }
+}
+
+/// Watch-notice names, sorted for lookup by a row's namespace and name.
+pub(crate) struct NameSet(Vec<(Option<String>, String)>);
+
+impl NameSet {
+    pub(crate) fn new(mut names: Vec<(Option<String>, String)>) -> Self {
+        names.sort_unstable();
+        names.dedup();
+        Self(names)
+    }
+
+    pub(crate) fn contains(&self, row: &ResourceSummary) -> bool {
+        self.0
+            .binary_search_by(|(namespace, name)| {
+                (namespace.as_deref(), name.as_str())
+                    .cmp(&(row.namespace.as_deref(), row.name.as_str()))
+            })
+            .is_ok()
+    }
 }
 
 /// Appends a snapshot's rows. The list cache usually shares them, so they are

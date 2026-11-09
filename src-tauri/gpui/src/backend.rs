@@ -22,6 +22,16 @@ use std::{future::Future, pin::Pin, sync::Arc};
 
 pub type Read<T> = Pin<Box<dyn Future<Output = Result<T, AppError>> + Send>>;
 
+/// A whole-kind read narrowed to the rows a watch notice named.
+fn named_rows(read: Read<KindRows>, names: Vec<(Option<String>, String)>) -> Read<KindRows> {
+    Box::pin(async move {
+        let mut read = read.await?;
+        let names = live_data::NameSet::new(names);
+        read.rows.retain(|row| names.contains(row));
+        Ok(read)
+    })
+}
+
 /// `list_namespaces` for a context with the selected kubeconfig source, as the web passes it.
 /// A source that cannot be read falls back to the default source, as the contexts read does.
 pub fn namespaces_for_context(
@@ -200,6 +210,17 @@ pub trait Backend: Send + Sync + 'static {
                 resource_version,
             })
         })
+    }
+    /// The rows of `key` that a watch notice named, at a version that shows
+    /// the noticed changes. A named row the read leaves out was deleted.
+    fn named_kind_resources(
+        &self,
+        scope: Scope,
+        key: WatchResourceKey,
+        names: Vec<(Option<String>, String)>,
+        recycled: Vec<ResourceSummary>,
+    ) -> Read<KindRows> {
+        named_rows(self.kind_resources(scope, key, recycled), names)
     }
     fn watch(&self, _target: WatchTarget) -> Read<LogStream> {
         Box::pin(async {
@@ -444,7 +465,10 @@ impl NativeBackend {
                     .build()?,
             ),
             usage: Default::default(),
-            store: ClusterLiveStore::default(),
+            // Watch events update the cached lists, so a notice reads its rows
+            // from the cache instead of listing the kind again.
+            store: ClusterLiveStore::default()
+                .applying_watch_rows(commands::watched_resource_summary),
             cancellations: BackendCancellationRegistry::default(),
             port_forwards: PortForwardRegistry::default(),
             exec_sessions: PodExecRegistry::default(),

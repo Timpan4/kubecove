@@ -285,6 +285,14 @@ async fn list_details_and_topology_share_one_summary_per_builtin_kind() {
         let details = comparable(&details.summary);
         assert_eq!(details, comparable(list), "{label}: details");
 
+        // A watch event carries the object as a dynamic object, and a cached
+        // list takes its row in place of listing again.
+        let watched: kube::api::DynamicObject = serde_json::from_value(case.object.clone())
+            .unwrap_or_else(|error| panic!("{label}: watch object: {error}"));
+        let watched = super::super::watched_resource_summary(&kind, CONTEXT, &watched)
+            .unwrap_or_else(|| panic!("{label}: no watch row"));
+        assert_eq!(comparable(&watched), comparable(list), "{label}: watch");
+
         if case.topology == Topology::Absent {
             continue;
         }

@@ -454,6 +454,18 @@ impl Backend for DesktopBackend {
         };
         self.call(command, args)
     }
+    fn named_kind_resources(
+        &self,
+        scope: Scope,
+        key: WatchResourceKey,
+        names: Vec<(Option<String>, String)>,
+        recycled: Vec<ResourceSummary>,
+    ) -> Read<KindRows> {
+        if !self.selected() {
+            return self.local.named_kind_resources(scope, key, names, recycled);
+        }
+        super::named_rows(self.kind_resources(scope, key, recycled), names)
+    }
     fn kind_resources(
         &self,
         scope: Scope,
