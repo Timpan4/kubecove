@@ -80,7 +80,7 @@
     },
     {
       "id": "resources.multi-context-sort",
-      "title": "Context sorts by context name, and ties under any column order by workspace context rank in both directions",
+      "title": "Context sorts by context name, each context's owner group sorts its own rows, and ties order by workspace context rank in both directions",
       "steps": [
         { "action": "openLauncher" },
         { "action": "editSavedWorkspace", "name": "Parity mock workspace" },
@@ -89,7 +89,7 @@
         { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
         { "action": "openResources" },
         { "action": "search", "value": "payments-api-7d9c9b7f8d" },
-        { "action": "expectResourceOrder", "names": ["payments-api-7d9c9b7f8d-k2r9p", "payments-api-7d9c9b7f8d-k2r9p", "payments-api-7d9c9b7f8d-x4m8v", "payments-api-7d9c9b7f8d-x4m8v"] },
+        { "action": "expectResourceOrder", "names": ["payments-api-7d9c9b7f8d-k2r9p", "payments-api-7d9c9b7f8d-x4m8v", "payments-api-7d9c9b7f8d-k2r9p", "payments-api-7d9c9b7f8d-x4m8v"] },
         { "action": "expectRowContexts", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p", "contexts": ["mock-dev", "admin@solid-k8s"] },
         { "action": "sortResourceTable", "column": "Context" },
         { "action": "expectResourceOrder", "names": ["payments-api-7d9c9b7f8d-k2r9p", "payments-api-7d9c9b7f8d-x4m8v", "payments-api-7d9c9b7f8d-k2r9p", "payments-api-7d9c9b7f8d-x4m8v"] },
@@ -97,13 +97,34 @@
         { "action": "sortResourceTable", "column": "Context" },
         { "action": "expectRowContexts", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p", "contexts": ["mock-dev", "admin@solid-k8s"] },
         { "action": "sortResourceTable", "column": "Restarts" },
-        { "action": "expectResourceOrder", "names": ["payments-api-7d9c9b7f8d-x4m8v", "payments-api-7d9c9b7f8d-x4m8v", "payments-api-7d9c9b7f8d-k2r9p", "payments-api-7d9c9b7f8d-k2r9p"] },
+        { "action": "expectResourceOrder", "names": ["payments-api-7d9c9b7f8d-x4m8v", "payments-api-7d9c9b7f8d-k2r9p", "payments-api-7d9c9b7f8d-x4m8v", "payments-api-7d9c9b7f8d-k2r9p"] },
         { "action": "expectRowContexts", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-x4m8v", "contexts": ["mock-dev", "admin@solid-k8s"] },
         { "action": "sortResourceTable", "column": "Restarts" },
-        { "action": "expectResourceOrder", "names": ["payments-api-7d9c9b7f8d-k2r9p", "payments-api-7d9c9b7f8d-k2r9p", "payments-api-7d9c9b7f8d-x4m8v", "payments-api-7d9c9b7f8d-x4m8v"] },
+        { "action": "expectResourceOrder", "names": ["payments-api-7d9c9b7f8d-k2r9p", "payments-api-7d9c9b7f8d-x4m8v", "payments-api-7d9c9b7f8d-k2r9p", "payments-api-7d9c9b7f8d-x4m8v"] },
         { "action": "expectRowContexts", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p", "contexts": ["mock-dev", "admin@solid-k8s"] },
         { "action": "sortResourceTable", "column": "Name" },
         { "action": "expectRowContexts", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p", "contexts": ["mock-dev", "admin@solid-k8s"] }
+      ]
+    },
+    {
+      "id": "resources.multi-context-owner-groups",
+      "title": "The same Argo CD Application or Helm release in two contexts makes one group and one owner filter per context",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "editSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "toggleWorkspaceContext", "context": "admin@solid-k8s" },
+        { "action": "saveWorkspace" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api-7d9c9b7f8d" },
+        { "action": "expectResourceGroup", "label": "Owned by Argo CD: shop (partial evidence) · mock-dev", "expanded": true },
+        { "action": "expectResourceGroup", "label": "Owned by Argo CD: shop (partial evidence) · admin@solid-k8s", "expanded": true },
+        { "action": "chooseGitOpsOwner", "owner": "Owned by Argo CD: shop (partial evidence) · admin@solid-k8s" },
+        { "action": "expectRowContexts", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p", "contexts": ["admin@solid-k8s"] },
+        { "action": "chooseGitOpsOwner", "owner": "All GitOps owners" },
+        { "action": "search", "value": "metrics-gateway" },
+        { "action": "expectResourceGroup", "label": "Helm release: metrics-gateway · mock-dev", "expanded": true },
+        { "action": "expectResourceGroup", "label": "Helm release: metrics-gateway · admin@solid-k8s", "expanded": true }
       ]
     },
     {

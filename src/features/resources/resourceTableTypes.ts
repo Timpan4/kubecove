@@ -64,6 +64,8 @@ export type ResourceTableEntry =
 export interface ResourceTableProjection {
 	searchIndex: ResourceSearchEntry[];
 	gitOpsFilters: GitOpsOwnershipFilter[];
+	/** The workspace has more than one context: owner and Helm groups and owner filters are per context. */
+	multiContext: boolean;
 }
 
 export interface ResourceTableModel {
@@ -76,6 +78,7 @@ export interface ResourceTableModel {
 	pageCount: number;
 	safePageIndex: number;
 	groupedByGitOps: boolean;
+	multiContext: boolean;
 	gitOpsFilters: GitOpsOwnershipFilter[];
 	healthSummary: HealthSummary;
 	columnVisibility: {
@@ -95,6 +98,7 @@ export type ResourceTableDisplay = Pick<
 	| "totalRows"
 	| "pageCount"
 	| "groupedByGitOps"
+	| "multiContext"
 	| "gitOpsFilters"
 	| "healthSummary"
 > & {

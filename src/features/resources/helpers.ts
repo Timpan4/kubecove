@@ -1,6 +1,7 @@
 import type { StatusTone } from "@/components/status-badge-styles";
 import {
 	gitOpsOwnership,
+	gitOpsOwnershipFilterKeys,
 	gitOpsOwnershipFilterValue,
 	gitOpsOwnershipGroupLabel,
 } from "@/lib/gitops-ownership-evidence";
@@ -179,22 +180,27 @@ export function filterResources(
 
 // One cache per mode: the same rows can show in a one-context and a multi-context workspace.
 const searchEntries = new WeakMap<ResourceSummary, ResourceSearchEntry>();
-const contextSearchEntries = new WeakMap<ResourceSummary, ResourceSearchEntry>();
+const multiContextEntries = new WeakMap<ResourceSummary, ResourceSearchEntry>();
 
-/** `contextSearch` adds each row's context name last, for workspaces with more than one context. */
+/**
+ * `multiContext`, for workspaces with more than one context, adds each row's
+ * context name last to its search text and keys its owner filter by context.
+ */
 export function buildResourceSearchIndex(
 	data: ResourceSummary[],
-	contextSearch = false,
+	multiContext = false,
 ): ResourceSearchEntry[] {
 	const entries: ResourceSearchEntry[] = [];
-	const cache = contextSearch ? contextSearchEntries : searchEntries;
+	const cache = multiContext ? multiContextEntries : searchEntries;
 	for (const resource of data) {
 		const cached = cache.get(resource);
 		if (cached) { entries.push(cached); continue; }
 		const ownership = gitOpsOwnership(resource);
 		const entry = {
 			resource,
-			gitOpsFilterKeys: ownership?.filterKeys ?? [],
+			gitOpsFilterKeys: ownership
+				? gitOpsOwnershipFilterKeys(resource, ownership, multiContext)
+				: [],
 			searchText: [
 				resource.name,
 				resource.namespace,
@@ -205,7 +211,7 @@ export function buildResourceSearchIndex(
 				resource.ownerRef,
 				resource.helmRelease,
 				...(ownership?.searchTerms ?? []),
-				contextSearch ? resource.cluster : undefined,
+				multiContext ? resource.cluster : undefined,
 			]
 				.filter((value): value is string => Boolean(value))
 				.join("\n")
@@ -257,14 +263,18 @@ export function formatResourceTypeGroupLabel(resource: ResourceSummary): string 
 	return `${resource.kind}s`;
 }
 
-export function resourceGroupCollapseKey(resource: ResourceSummary): string {
-	return `group:${gitOpsOwnershipGroupLabel(resource)}`;
+export function resourceGroupCollapseKey(
+	resource: ResourceSummary,
+	multiContext = false,
+): string {
+	return `group:${gitOpsOwnershipGroupLabel(resource, multiContext)}`;
 }
 
 export function resourceTypeGroupCollapseKey(
 	resource: ResourceSummary,
+	multiContext = false,
 ): string {
-	return `${resourceGroupCollapseKey(resource)}::type:${formatResourceTypeGroupLabel(resource)}`;
+	return `${resourceGroupCollapseKey(resource, multiContext)}::type:${formatResourceTypeGroupLabel(resource)}`;
 }
 
 export function describeResourceScope(

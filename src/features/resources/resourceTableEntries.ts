@@ -21,32 +21,35 @@ export function buildResourceTableEntries(
 		selectedResource && collapsedGroups.size
 			? page.rowForResource(selectedResource)
 			: undefined;
-	const selectedGroup = selected ? resourceGroupCollapseKey(selected) : null;
-	const selectedType = selected ? resourceTypeGroupCollapseKey(selected) : null;
-	const { pageRows, groupedByGitOps } = page;
+	const { pageRows, groupedByGitOps, multiContext } = page;
+	const selectedGroup = selected
+		? resourceGroupCollapseKey(selected, multiContext)
+		: null;
+	const selectedType = selected
+		? resourceTypeGroupCollapseKey(selected, multiContext)
+		: null;
 	const pageGroups = groupedByGitOps
-		? pageGitOpsGroupCounts(pageRows, true)
+		? pageGitOpsGroupCounts(pageRows, true, multiContext)
 		: new Map<string, number>();
-	const pageTypeGroups = pageTypeGroupCounts(pageRows, true);
+	const pageTypeGroups = pageTypeGroupCounts(pageRows, true, multiContext);
 	const entries: ResourceTableEntry[] = [];
 	let previous: ResourceSummary | null = null;
+	let previousGroupLabel: string | null = null;
 	for (const resource of pageRows) {
-		const groupLabel = gitOpsOwnershipGroupLabel(resource);
+		const groupLabel = gitOpsOwnershipGroupLabel(resource, multiContext);
 		const typeLabel = formatResourceTypeGroupLabel(resource);
-		const groupKey = resourceGroupCollapseKey(resource);
-		const typeKey = resourceTypeGroupCollapseKey(resource);
+		const groupKey = resourceGroupCollapseKey(resource, multiContext);
+		const typeKey = resourceTypeGroupCollapseKey(resource, multiContext);
 		const groupCollapsed =
 			groupedByGitOps &&
 			groupKey !== selectedGroup &&
 			collapsedGroups.has(groupKey);
 		const typeCollapsed =
 			typeKey !== selectedType && collapsedGroups.has(typeKey);
-		const showGroup =
-			groupedByGitOps &&
-			(!previous || gitOpsOwnershipGroupLabel(previous) !== groupLabel);
+		const showGroup = groupedByGitOps && previousGroupLabel !== groupLabel;
 		const showType =
 			!previous ||
-			(groupedByGitOps && gitOpsOwnershipGroupLabel(previous) !== groupLabel) ||
+			(groupedByGitOps && previousGroupLabel !== groupLabel) ||
 			formatResourceTypeGroupLabel(previous) !== typeLabel;
 		if (showGroup)
 			entries.push({
@@ -68,6 +71,7 @@ export function buildResourceTableEntries(
 		if (!groupCollapsed && !typeCollapsed)
 			entries.push({ type: "resource", key: resourceKey(resource), resource });
 		previous = resource;
+		previousGroupLabel = groupLabel;
 	}
 	return entries;
 }

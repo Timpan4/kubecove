@@ -93,21 +93,46 @@ export function gitOpsOwnership(
 	};
 }
 
+// In a view of several contexts, owners and Helm releases belong to their row's
+// context: the same Argo CD Application in two clusters is two groups and two
+// filters. GPUI: `in_context` and `OwnerRef::filter_key` in `gpui/src/model.rs`.
+const inContextLabel = (label: string, resource: Pick<ResourceSummary, "cluster">, multiContext: boolean) =>
+	multiContext ? `${label} · ${resource.cluster}` : label;
+const inContextKey = (key: string, resource: Pick<ResourceSummary, "cluster">, multiContext: boolean) =>
+	multiContext ? `${resource.cluster}:${key}` : key;
+
+/** The owner filter keys a row matches. The Argo CD Application name stays a key in every context, for filters set by name. */
+export function gitOpsOwnershipFilterKeys(
+	resource: Pick<ResourceSummary, "cluster">,
+	ownership: GitOpsOwnershipPresentation,
+	multiContext = false,
+): string[] {
+	if (!multiContext) return ownership.filterKeys;
+	return ownership.filterKeys.map((key) =>
+		key === ownership.filterKey ? inContextKey(key, resource, true) : key,
+	);
+}
+
 export function gitOpsOwnershipFilters(
 	resources: ResourceSummary[],
+	multiContext = false,
 ): GitOpsOwnershipFilter[] {
 	const filters = new Map<string, string>();
 	for (const resource of resources) {
 		const ownership = gitOpsOwnership(resource);
-		if (ownership) filters.set(ownership.filterKey, ownership.label);
+		if (ownership)
+			filters.set(
+				inContextKey(ownership.filterKey, resource, multiContext),
+				inContextLabel(ownership.label, resource, multiContext),
+			);
 	}
 	return Array.from(filters, ([key, label]) => ({ key, label })).sort((a, b) =>
 		a.label.localeCompare(b.label),
 	);
 }
 
-export function gitOpsOwnershipGroupLabel(resource: ResourceSummary): string {
-	return gitOpsOwnershipGroup(resource).label;
+export function gitOpsOwnershipGroupLabel(resource: ResourceSummary, multiContext = false): string {
+	return gitOpsOwnershipGroup(resource, multiContext).label;
 }
 
 /// Rank orders ownership groups: GitOps-owned, then Helm, then no evidence.
@@ -116,10 +141,11 @@ export interface GitOpsOwnershipGroup {
 	rank: number;
 }
 
-export function gitOpsOwnershipGroup(resource: ResourceSummary): GitOpsOwnershipGroup {
+export function gitOpsOwnershipGroup(resource: ResourceSummary, multiContext = false): GitOpsOwnershipGroup {
 	const ownership = gitOpsOwnership(resource);
-	if (ownership) return { label: ownership.label, rank: 0 };
-	if (resource.helmRelease) return { label: `Helm release: ${resource.helmRelease}`, rank: 1 };
+	if (ownership) return { label: inContextLabel(ownership.label, resource, multiContext), rank: 0 };
+	if (resource.helmRelease)
+		return { label: inContextLabel(`Helm release: ${resource.helmRelease}`, resource, multiContext), rank: 1 };
 	return {
 		label: resource.gitOpsOwnershipPartial
 			? "No GitOps ownership evidence (partial coverage)"
@@ -128,9 +154,11 @@ export function gitOpsOwnershipGroup(resource: ResourceSummary): GitOpsOwnership
 	};
 }
 
+/** The owner name of a filter key, with or without the `cluster:` prefix of a multi-context view. */
 export function gitOpsOwnershipFilterValue(filter: string): string {
-	const [provider, kind, , name] = filter.split(":");
-	return provider && kind && name ? name : filter;
+	const parts = filter.split(":");
+	const [provider, kind, , name] = parts.slice(-4);
+	return parts.length >= 4 && provider && kind && name ? name : filter;
 }
 
 const inheritedRows = new WeakMap<ResourceSummary, { ownerKey: string | undefined; row: ResourceSummary }>();

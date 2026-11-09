@@ -132,6 +132,7 @@ function kindGroupedRows(
 function gitOpsGroupedRows(
 	rows: ResourceSummary[],
 	kindOrder: readonly string[],
+	multiContext: boolean,
 	preferredGitOpsResourceKeys?: ReadonlySet<string>,
 ): ResourceSummary[] {
 	const isPreferred = (row: ResourceSummary) =>
@@ -146,7 +147,7 @@ function gitOpsGroupedRows(
 		{ rank: number; rows: ResourceSummary[] }
 	>();
 	for (const row of preferredRows) {
-		const { label, rank } = gitOpsOwnershipGroup(row);
+		const { label, rank } = gitOpsOwnershipGroup(row, multiContext);
 		const group = ownershipGroups.get(label);
 		if (group) group.rows.push(row);
 		else
@@ -189,15 +190,20 @@ function typeGroupedRows(
 	return grouped;
 }
 
-/** `contextSearch`: search also matches each row's context name, for workspaces with more than one context. */
+/**
+ * `multiContext`, for workspaces with more than one context: search also
+ * matches each row's context name, and owner and Helm groups and owner
+ * filters stay inside one context.
+ */
 export function buildResourceTableProjection(
 	rows: ResourceSummary[],
-	contextSearch = false,
+	multiContext = false,
 ): ResourceTableProjection {
 	const inheritedRows = inheritGitOpsOwnership(rows);
 	return {
-		searchIndex: buildResourceSearchIndex(inheritedRows, contextSearch),
-		gitOpsFilters: gitOpsOwnershipFilters(inheritedRows),
+		searchIndex: buildResourceSearchIndex(inheritedRows, multiContext),
+		gitOpsFilters: gitOpsOwnershipFilters(inheritedRows, multiContext),
+		multiContext,
 	};
 }
 
@@ -228,6 +234,7 @@ export function buildResourceTableDisplay(
 		? gitOpsGroupedRows(
 				sortedRows,
 				kindOrder,
+				projection.multiContext,
 				state.preferredGitOpsResourceKeys,
 			)
 		: typeGroupedRows(sortedRows, kindOrder);
@@ -262,6 +269,7 @@ export function buildResourceTableDisplay(
 		pageCount,
 		totalRows: displayRows.length,
 		groupedByGitOps,
+		multiContext: projection.multiContext,
 		gitOpsFilters: projection.gitOpsFilters,
 		healthSummary: buildResourceHealthSummary(scopedRows),
 		rowForResource,
