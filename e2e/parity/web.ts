@@ -60,7 +60,7 @@ export async function action(page: Page, step: Step) {
         case "coverageCheck": await checkCoverage(page, step.check); break;
         case "coverageClick": case "coverageFill": case "coverageText": case "paletteKey": case "expectPaletteOpen": case "deleteSavedWorkspace": case "importDecision": case "cancelImport": case "searchEvents": await coverageAction(page, step); break;
         case "panelControl": case "expectPanelControl": case "skipGraph": case "mapKey": case "expectMapFocus": case "expectNoMapFocus": case "expectMapNodeInView": case "panMap": case "clickMapControl": case "expectMapControlFocus": case "expectMapZoom": case "resizeDetail": case "expectDetailResize": await panelAction(page, step); break;
-        case "terminalFit": case "terminalOutput": case "terminalSelect": case "terminalCopy": case "terminalPaste": case "terminalScroll": case "terminalPrimaryPaste": case "terminalDragOutside": case "terminalRelease": case "terminalFocus": case "expectTerminalCursor":
+        case "terminalFit": case "terminalOutput": case "terminalSelect": case "terminalCopy": case "terminalPaste": case "terminalScroll": case "terminalPrimaryPaste": case "terminalDragOutside": case "terminalRelease": case "terminalFocus": case "terminalRightClick": case "expectTerminalCursor":
             await terminalAction(page, step); break;
         case "failWorkspaceContext": case "expectWorkspaceReadWarning": case "expectContextUnavailable":
             await workspaceAction(page, step); break;

@@ -104,6 +104,14 @@ export async function terminalAction(page: Page, step: Step): Promise<void> {
             else await terminal.locator("textarea").evaluate((element: HTMLTextAreaElement) => element.blur());
             await frames(page);
             break;
+        case "terminalRightClick": {
+            const cells = await geometry(terminal);
+            const at = cells.at(step.row, step.col);
+            // xterm skips a right press while text is selected, so the selection survives for the browser's context menu.
+            await page.mouse.click(at.x, at.y, { button: "right" });
+            await frames(page);
+            break;
+        }
         case "expectTerminalCursor": {
             const cells = await geometry(terminal);
             await page.waitForFunction(({ expected, row, col, left, width }) => {

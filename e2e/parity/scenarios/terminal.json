@@ -539,6 +539,59 @@
       ]
     },
     {
+      "id": "exec-session.right-click-keeps-selection",
+      "title": "Right click keeps the selection so Copy still copies it",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "openResource",
+          "kind": "Pod",
+          "namespace": "payments",
+          "name": "payments-api-7d9c9b7f8d-k2r9p"
+        },
+        {
+          "action": "showTab",
+          "tab": "Exec"
+        },
+        {
+          "action": "execControl",
+          "operation": "start",
+          "container": "app",
+          "command": "/bin/sh"
+        },
+        {
+          "action": "expectExecState",
+          "container": "app",
+          "status": "running",
+          "contains": "Controlled exec app"
+        },
+        {
+          "action": "terminalOutput",
+          "container": "app",
+          "data": "\u001b[2J\u001b[Halpha beta\r\n"
+        },
+        {
+          "action": "terminalSelect",
+          "row": 0,
+          "col": 0,
+          "endRow": 0,
+          "endCol": 5,
+          "word": false
+        },
+        {
+          "action": "terminalRightClick",
+          "row": 0,
+          "col": 2
+        },
+        {
+          "action": "terminalCopy",
+          "text": "alpha"
+        }
+      ]
+    },
+    {
       "id": "exec-session.alt-click-cursor",
       "title": "Alt click sends arrow keys that move the shell cursor to the clicked cell",
       "steps": [

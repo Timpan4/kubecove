@@ -196,6 +196,17 @@ pub fn apply(window: &mut Window, cx: &mut App, step: &Value) -> bool {
                 window.render_frame(cx);
             }
         }
+        "terminalRightClick" => {
+            // Only the primary button selects, so a right press leaves the selection as it is.
+            let position = cell(window, number(step, "row"), number(step, "col"));
+            window.click_with_options(
+                "exec-terminal",
+                ClickOptions::new()
+                    .with_offset(position)
+                    .with_button(MouseButton::Right),
+                cx,
+            );
+        }
         "expectTerminalCursor" => {
             let origin = window.find("exec-terminal").bounds().origin;
             let cursor = window.find("exec-cursor");

@@ -80,6 +80,8 @@ export type Step =
     | { action: "terminalDragOutside"; row: number; col: number; edge: "above" | "below" }
     | { action: "terminalRelease"; ms: number }
     | { action: "terminalFocus"; focused: boolean }
+    // A right press keeps an existing selection: xterm ignores button 2 while text is selected.
+    | { action: "terminalRightClick"; row: number; col: number }
     // `cursor` is the shape with " blink" when it blinks, or "outline" without focus.
     | { action: "expectTerminalCursor"; cursor: string; row?: number; col?: number }
     | { action: "failWorkspaceContext" | "expectWorkspaceReadWarning"; context: string }

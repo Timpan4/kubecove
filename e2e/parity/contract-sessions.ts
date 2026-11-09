@@ -14,6 +14,7 @@ export function sessionStep(item: Record<string, unknown>): Step | undefined {
 		case "terminalDragOutside": return { action: item.action, row: count(item.row), col: count(item.col), edge: oneOf(["above", "below"], item.edge, "a terminal edge") };
 		case "terminalRelease": return { action: item.action, ms: count(item.ms) };
 		case "terminalFocus": return { action: item.action, focused: boolean(item.focused) };
+		case "terminalRightClick": return { action: item.action, row: count(item.row), col: count(item.col) };
 		case "expectTerminalCursor": return { action: item.action, cursor: oneOf(["block", "block blink", "bar", "bar blink", "underline", "underline blink", "outline"], item.cursor, "a cursor paint"), ...(item.row == null ? {} : { row: count(item.row) }), ...(item.col == null ? {} : { col: count(item.col) }) };
 		case "configurePreset": return { action: item.action, label: string(item.label), context: string(item.context), namespace: string(item.namespace), service: string(item.service), remote: string(item.remote), local: string(item.local) };
 		case "presetControl": return { action: item.action, operation: oneOf(["add", "save", "edit", "start", "remove", "absent"], item.operation, "a preset action"), ...(item.label === undefined ? {} : { label: string(item.label) }) };
