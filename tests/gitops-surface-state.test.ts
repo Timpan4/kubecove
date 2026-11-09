@@ -12,7 +12,7 @@ const readyDetection = {
 	isPending: false,
 	error: null,
 };
-const emptyList = { data: [], isPending: false, error: null };
+const emptyList = { data: { items: [] }, isPending: false, error: null };
 
 describe("GitOps surface state", () => {
 	const application = {
@@ -72,7 +72,7 @@ describe("GitOps surface state", () => {
 			argoDetection: { ...readyDetection, data: true },
 			fluxDetection: { ...readyDetection, data: { detected: false } },
 			argoApps: {
-				data: [{
+				data: { items: [{
 					name: "api",
 					cluster: "kind-dev",
 					namespace: "argocd",
@@ -85,11 +85,11 @@ describe("GitOps surface state", () => {
 					sourceRevision: null,
 					resourceNamespaces: ["default"],
 					age: "1h",
-				}],
+				}] },
 				isPending: false,
 				error: null,
 			},
-			argoAppSets: { data: [], isPending: false, error: listError },
+			argoAppSets: { isPending: false, error: listError },
 			argoProjects: emptyList,
 			fluxResources: [],
 		});
