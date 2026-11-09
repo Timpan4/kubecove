@@ -1,5 +1,5 @@
 import { parseDocument } from "yaml";
-import type { KubernetesYamlLintDiagnostic, KubernetesYamlLintResult, YamlApplyRequest } from "./types";
+import type { JsonObject, JsonValue, KubernetesYamlLintDiagnostic, KubernetesYamlLintResult, YamlApplyRequest } from "./types";
 
 /**
  * The browser mock's `lint_kubernetes_yaml`. It reports the YAML parse error
@@ -13,19 +13,19 @@ export function lintMockYaml(request: Partial<YamlApplyRequest> | undefined): Ku
 	const document = parseDocument(yaml, { prettyErrors: false, strict: true, uniqueKeys: true });
 	const parseError = document.errors[0];
 	if (parseError) return { diagnostics: [{ severity: "error", source: "YAML", message: parseError.message }], notes: [] };
-	const manifest: unknown = document.toJS();
+	const manifest: JsonValue = document.toJS();
 	if (!isRecord(manifest)) return { diagnostics: [], notes: [] };
 	return { diagnostics: [...apiVersionDiagnostics(request, manifest), ...kindDiagnostics(request, manifest)], notes: [] };
 }
 
-function apiVersionDiagnostics(request: Partial<YamlApplyRequest>, manifest: Record<string, unknown>): KubernetesYamlLintDiagnostic[] {
+function apiVersionDiagnostics(request: Partial<YamlApplyRequest>, manifest: JsonObject): KubernetesYamlLintDiagnostic[] {
 	const actual = manifest.apiVersion;
 	if (actual === undefined) return [kubernetesError("apiVersion is required.", "apiVersion")];
 	if (request.apiVersion === undefined || actual === request.apiVersion) return [];
 	return [kubernetesError(`apiVersion must match selected resource: expected ${request.apiVersion}, got ${String(actual)}.`, "apiVersion")];
 }
 
-function kindDiagnostics(request: Partial<YamlApplyRequest>, manifest: Record<string, unknown>): KubernetesYamlLintDiagnostic[] {
+function kindDiagnostics(request: Partial<YamlApplyRequest>, manifest: JsonObject): KubernetesYamlLintDiagnostic[] {
 	const actual = manifest.kind;
 	if (actual === undefined) return [kubernetesError("kind is required.", "kind")];
 	if (actual === request.kind) return [];
@@ -36,6 +36,6 @@ function kubernetesError(message: string, fieldPath: string): KubernetesYamlLint
 	return { severity: "error", source: "Kubernetes", message, fieldPath };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
+function isRecord<Value>(value: Value): value is Value & JsonObject {
+	return value !== null && !Array.isArray(value) && Object(value) === value;
 }

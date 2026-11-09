@@ -103,6 +103,7 @@ export async function changedScenarios(base: string, scenarioIds: string[], mapP
 		const fullMatch = [diff.oldPath, diff.newPath].find((path) => path && FULL_SUITE.some((rule) => rule.test(path)));
 		if (fullMatch) return full(`${fullMatch} changed, which coverage cannot see`);
 		if (diff.newPath && SCENARIO_FILE.test(diff.newPath)) {
+			// SAFETY: a scenario file reaches a parity run only through parseContract in contract.ts, which requires each scenario's string id. This scan reads nothing else.
 			const contract = JSON.parse(await show(diff.newPath)) as { scenarios?: { id?: string }[] };
 			for (const scenario of contract.scenarios ?? []) if (scenario.id) add(scenario.id, `${diff.newPath} changed`);
 		} else if (!diff.oldPath || !SCENARIO_FILE.test(diff.oldPath)) code.push(diff);

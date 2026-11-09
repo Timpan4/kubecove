@@ -9,7 +9,11 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { stringify } from "yaml";
-import { type MemoryFixture, startMemoryFixture } from "../e2e/harness/memory-fixture";
+import { MEMORY_FIXTURE_ROWS, type MemoryFixture, startMemoryFixture } from "../e2e/harness/memory-fixture";
+
+function isMemoryFixture<Value>(value: Value): value is Value & MemoryFixture {
+	return Object.hasOwn(MEMORY_FIXTURE_ROWS, String(value));
+}
 
 const args = process.argv.slice(2);
 const option = (name: string, fallback: string) => {
@@ -17,7 +21,9 @@ const option = (name: string, fallback: string) => {
 	return index === -1 ? fallback : (args[index + 1] ?? fallback);
 };
 const binary = resolve(option("--bin", ""));
-const fixtureSize = option("--fixture", "large") as MemoryFixture;
+const fixtureOption = option("--fixture", "large");
+if (!isMemoryFixture(fixtureOption)) throw new Error(`--fixture must name a memory fixture: ${fixtureOption}`);
+const fixtureSize = fixtureOption;
 const latencies = option("--latency-ms", "0,25").split(",").map(Number);
 const out = resolve(option("--out", join("e2e", "artifacts", `gpui-speed-${new Date().toISOString().replace(/[:.]/g, "-")}`)));
 if (!binary || !(await Bun.file(binary).exists())) throw new Error("--bin must name the built speed test binary");

@@ -38,7 +38,7 @@ export async function argoAction(page: Page, step: Step) {
         }
         case "configureArgoMock":
             // `restartClient` reloads the page; the script then applies to startup reads, as the native fixture's does.
-            await page.addInitScript((script) => { (globalThis as { __kubecoveParityArgo?: string }).__kubecoveParityArgo = script; }, step.script);
+            await page.addInitScript((script) => { Object.assign(globalThis, { __kubecoveParityArgo: script }); }, step.script);
             await page.evaluate(`import('/src/lib/tauri-dev-mock-argo.ts').then(m => m.configureArgoMock(${JSON.stringify(step.script)}))`);
             break;
         case "controlClock":
@@ -322,7 +322,7 @@ export async function argoAction(page: Page, step: Step) {
         case "expectArgoOptionFocusable": {
             const option = page.locator("[data-slot=popover-content]").getByRole("checkbox", { name: step.name, exact: true });
             await option.waitFor();
-            if (!(await option.evaluate((node) => node.tabIndex >= 0 && !(node as HTMLButtonElement).disabled))) throw new Error(`${step.name} is not keyboard focusable`);
+            if (!(await option.evaluate((node) => node.tabIndex >= 0 && !("disabled" in node && node.disabled)))) throw new Error(`${step.name} is not keyboard focusable`);
             break;
         }
         case "expectArgoTriggerFocus": {

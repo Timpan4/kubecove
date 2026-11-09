@@ -62,6 +62,7 @@ async function lastRun(): Promise<string> {
 		try {
 			await stat(join(root, name, "scenarios.txt"));
 			// An interrupted run never reached most scenarios, so its results say nothing about them.
+			// SAFETY: the finally block below writes result.json with an optional string `error`, which is all this reads.
 			const result = JSON.parse(await readFile(join(root, name, "result.json"), "utf8")) as { error?: string };
 			if (result.error?.includes("Interrupted")) return undefined;
 			return { path: join(root, name), time: (await stat(join(root, name, "result.json"))).mtimeMs };
@@ -74,6 +75,7 @@ async function lastRun(): Promise<string> {
 
 async function passedIn(run: string, driver: string): Promise<Set<string>> {
 	try {
+		// SAFETY: runWeb and runGpui write each driver report as { driver, scenarios }. A report of another shape throws in the filter, and the catch returns no passes.
 		const report = JSON.parse(await readFile(join(run, `${driver}.json`), "utf8")) as { scenarios: { id: string; status: string }[] };
 		return new Set(report.scenarios.filter((result) => result.status === "passed").map((result) => result.id));
 	} catch { return new Set(); }
@@ -129,8 +131,8 @@ try {
 	const exported = Bun.spawn(["bun", "e2e/parity/visual/export-fixture.ts", fixture], { stdout: "inherit", stderr: "inherit" });
 	const exportExit = exported.exited.then((code) => { mark("fixture"); return code; });
 	await Promise.all([
-		runWeb(contract, artifacts, controller.signal, jobs).catch((error: unknown) => fail(`Web driver: ${String(error)}`)).finally(() => mark("web")),
-		runGpui(contract, artifacts, { path: fixture, exit: exportExit }, jobs, controller.signal, mark, coverage).then((problem) => { if (problem) fail(problem); }, (error: unknown) => fail(`GPUI driver: ${String(error)}`)),
+		runWeb(contract, artifacts, controller.signal, jobs).catch((error) => fail(`Web driver: ${String(error)}`)).finally(() => mark("web")),
+		runGpui(contract, artifacts, { path: fixture, exit: exportExit }, jobs, controller.signal, mark, coverage).then((problem) => { if (problem) fail(problem); }, (error) => fail(`GPUI driver: ${String(error)}`)),
 	]);
 	controller.signal.throwIfAborted();
 	const reports = await Promise.all(["web", "gpui"].map(async (driver) => JSON.parse(await readFile(join(artifacts, `${driver}.json`), "utf8"))));

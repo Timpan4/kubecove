@@ -1,3 +1,5 @@
+import type { JsonObject } from "../../src/lib/types";
+
 type Identity = { kind: string; name: string; namespace: string };
 /** Checkbox labels inside the Argo Sync options popover. */
 export const ARGO_OPTION_NAMES = ["Prune", "Dry run", "Force / replace"] as const;
@@ -184,7 +186,7 @@ export type Step =
     | { action: "execControl"; operation: "start" | "input" | "close" | "stop" | "select" | "custom" | "arguments" | "shortcut" | "run"; container?: string; command?: string; data?: string; tab?: number }
     | { action: "expectExecState"; container: string; status: string; contains: string; absent?: string; command?: string }
     | { action: "expectWorkspaceExport" | "exportSavedWorkspace"; name: string }
-    | { action: "expectExportedShortcut"; name: string; shortcut: Record<string, unknown> }
+    | { action: "expectExportedShortcut"; name: string; shortcut: JsonObject }
     | { action: "fillSettingsField"; field: "Server URL" | "Server token"; value: string }
     | { action: "clickSettingsButton"; label: string }
     | { action: "clickKubeconfigPathButton"; value: string; label: string }

@@ -1,5 +1,5 @@
 import { networkIngressTargets, networkServiceFallbackSelectors, networkServicePodMap, now, ownershipDependencyHints, res, resources } from "./tauri-dev-mock-data";
-import type { ResourceSummary, ResourceTopology } from "./types";
+import type { ResourceSummary, ResourceTopology, TopologyNode } from "./types";
 
 // Browser-mock ownership and network-flow maps, built from the mock rows of one cluster.
 
@@ -163,8 +163,8 @@ function isOwnershipNoise(row: ResourceSummary): boolean {
 	return row.kind === "ConfigMap" && row.name === "kube-root-ca.crt";
 }
 
-function topologyNode(row: ResourceSummary, cluster: string, portHints: string[] = [], deploymentRevision?: number) {
-	return {
+function topologyNode(row: ResourceSummary, cluster: string, portHints: string[] = [], deploymentRevision?: number): TopologyNode {
+	const node: Omit<TopologyNode, "summary"> = {
 		id: topologyId(row, cluster),
 		kind: row.kind,
 		name: row.name,
@@ -173,9 +173,9 @@ function topologyNode(row: ResourceSummary, cluster: string, portHints: string[]
 		health: row.health,
 		portHints,
 		selectable: true,
-		...(deploymentRevision === undefined ? {} : { deploymentRevision }),
-		summary: { ...row, cluster },
 	};
+	if (deploymentRevision !== undefined) node.deploymentRevision = deploymentRevision;
+	return { ...node, summary: { ...row, cluster } };
 }
 
 function deploymentRevisionOf(row: ResourceSummary): number | undefined {

@@ -167,7 +167,7 @@ describe("svelte workspace shell model", () => {
 			argoDetected: true,
 			fluxDetection: fluxDetected,
 			detectingGitOps: false,
-			resourceKindsPending: false,
+			resourceKindsLoading: null,
 			resourceKindsError: "",
 			showUnavailableGitOpsProviders: false,
 		});
@@ -234,7 +234,7 @@ describe("svelte workspace shell model", () => {
 			argoDetected: false,
 			fluxDetection: { detected: false, kinds: [], missingKinds: [] },
 			detectingGitOps: false,
-			resourceKindsPending: false,
+			resourceKindsLoading: null,
 			resourceKindsError: "",
 			showUnavailableGitOpsProviders: false,
 		});
@@ -260,7 +260,7 @@ describe("svelte workspace shell model", () => {
 			argoDetected: undefined,
 			fluxDetection: undefined,
 			detectingGitOps: true,
-			resourceKindsPending: true,
+			resourceKindsLoading: "shown",
 			resourceKindsError: "",
 			showUnavailableGitOpsProviders: false,
 		});
@@ -273,13 +273,26 @@ describe("svelte workspace shell model", () => {
 			disabled: true,
 		});
 
+		// Before the show delay passes, a pending discovery read shows neither a placeholder nor "no kinds".
+		const waitingTree = buildSidebarTree({
+			namespaces: [],
+			resourceKinds: [],
+			argoDetected: undefined,
+			fluxDetection: undefined,
+			detectingGitOps: true,
+			resourceKindsLoading: "waiting",
+			resourceKindsError: "",
+			showUnavailableGitOpsProviders: false,
+		});
+		expect(findNode(waitingTree, "Custom Resources").children ?? []).toEqual([]);
+
 		const failedTree = buildSidebarTree({
 			namespaces: [],
 			resourceKinds: [],
 			argoDetected: false,
 			fluxDetection: { detected: false, kinds: [], missingKinds: [] },
 			detectingGitOps: false,
-			resourceKindsPending: false,
+			resourceKindsLoading: null,
 			resourceKindsError: "boom",
 			showUnavailableGitOpsProviders: true,
 		});
@@ -461,6 +474,7 @@ describe("svelte workspace shell model", () => {
 			canQuery: true,
 			namespaces: ["argocd"],
 			kinds: [...SUPPORTED_KINDS],
+			categoryKinds: false,
 		});
 		expect(
 			getResourceBrowserScope({
@@ -468,14 +482,22 @@ describe("svelte workspace shell model", () => {
 				selectedNode: topLevelPod,
 				viewMode: "resources",
 			}),
-		).toEqual({ canQuery: true, namespaces: ["default"], kinds: ["Pod"] });
+		).toEqual({ canQuery: true, namespaces: ["default"], kinds: ["Pod"], categoryKinds: false });
 		expect(
 			getResourceBrowserScope({
 				workspace,
 				selectedNode: clusterNode,
 				viewMode: "resources",
 			}),
-		).toEqual({ canQuery: true, namespaces: [], kinds: ["Node"] });
+		).toEqual({ canQuery: true, namespaces: [], kinds: ["Node"], categoryKinds: false });
+		// An "All namespaces" category selects only its own kinds, not every workspace kind.
+		expect(
+			getResourceBrowserScope({
+				workspace,
+				selectedNode: { type: "section", section: "network" },
+				viewMode: "resources",
+			}),
+		).toEqual({ canQuery: true, namespaces: ["default"], kinds: ["Service", "Ingress"], categoryKinds: true });
 	});
 
 	test("Svelte Argo shortcuts preserve target application selection", () => {
