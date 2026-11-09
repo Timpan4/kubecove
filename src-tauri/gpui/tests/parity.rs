@@ -79,6 +79,8 @@ mod topology_spike;
 mod workspace;
 #[path = "parity/workspace_editing.rs"]
 mod workspace_editing;
+#[path = "parity/yaml_diagnostics.rs"]
+mod yaml_diagnostics;
 #[path = "parity/yaml_folds.rs"]
 mod yaml_folds;
 
@@ -223,7 +225,8 @@ fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
         || diagnostics::act(window, cx, step)
         || topology_spike::act(window, cx, step)
         || delivery::act(window, cx, step)
-        || yaml_folds::act(window, cx, step))
+        || yaml_folds::act(window, cx, step)
+        || yaml_diagnostics::act(window, cx, step))
     {
         panic!("unknown parity action: {}", string(step, "action"));
     }
