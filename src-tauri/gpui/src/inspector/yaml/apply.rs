@@ -2,11 +2,11 @@
 //! is the server's apply-clean YAML, a server-side dry run reviews it, and
 //! Apply sends only the reviewed request. A phase that waits on a read owns
 //! it, so a new step, Cancel or closing the panel cancels the step it leaves.
-//! `yaml_tab` renders this state.
+//! `tab` renders this state.
 
-use super::Inspector;
-use super::detail::{Detail, ResourceDetail};
-use super::request::InFlight;
+use super::super::Inspector;
+use super::super::detail::{Detail, ResourceDetail};
+use super::super::request::InFlight;
 use crate::unified_diff::{self, DiffLine};
 use gpui_kit::{Context, Task, Window};
 use kubecove_lib::models::{
@@ -47,15 +47,15 @@ pub(super) enum Feedback {
     Applied(String),
 }
 
-pub(super) struct YamlApply {
+pub(in crate::inspector) struct YamlApply {
     phase: Phase,
     /// A view reload while `Viewing`, or a Format while `Editing` or `Reviewed`.
     /// Neither changes the phase, and entering a phase cancels it.
     beside: Option<InFlight>,
-    pub feedback: Feedback,
+    pub(super) feedback: Feedback,
     /// The apply-clean draft the editor started from, which `dirty` compares.
-    pub base: String,
-    pub force_for_resource: bool,
+    pub(super) base: String,
+    pub(super) force_for_resource: bool,
 }
 
 impl Default for YamlApply {
@@ -71,7 +71,7 @@ impl Default for YamlApply {
 }
 
 impl YamlApply {
-    pub fn phase(&self) -> &Phase {
+    pub(super) fn phase(&self) -> &Phase {
         &self.phase
     }
 
@@ -83,17 +83,17 @@ impl YamlApply {
     }
 
     /// Runs a view reload or a Format beside the current phase, in place of the last one.
-    pub fn run_beside(&mut self, read: Task<()>) {
+    pub(super) fn run_beside(&mut self, read: Task<()>) {
         self.beside = Some(read.into());
     }
 
-    pub fn toggle_full_diff(&mut self) {
+    pub(super) fn toggle_full_diff(&mut self) {
         if let Phase::Reviewed(review) | Phase::Applying { review, .. } = &mut self.phase {
             review.show_full = !review.show_full;
         }
     }
 
-    pub fn feedback_format(&self) -> Option<String> {
+    pub(super) fn feedback_format(&self) -> Option<String> {
         if let Feedback::FormatFailed(message) = &self.feedback {
             Some(message.clone())
         } else {
@@ -102,11 +102,16 @@ impl YamlApply {
     }
 
     /// `yamlEditing`: the draft editor replaces the read-only view.
-    pub fn editing(&self) -> bool {
+    pub(super) fn editing(&self) -> bool {
         !matches!(self.phase, Phase::Viewing | Phase::LoadingDraft { .. })
     }
 
-    pub fn review(&self) -> Option<&Review> {
+    /// The editor's `draft` differs from the YAML the edit started from.
+    pub fn dirty(&self, draft: &str) -> bool {
+        self.editing() && draft != self.base
+    }
+
+    pub(super) fn review(&self) -> Option<&Review> {
         match &self.phase {
             Phase::Reviewed(review) | Phase::Applying { review, .. } => Some(review),
             _ => None,

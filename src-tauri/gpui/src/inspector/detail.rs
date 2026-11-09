@@ -13,9 +13,7 @@ use super::logs_state::LogsState;
 use super::logs_tab::logs_tab;
 use super::revisions_tab::{RevisionsState, revisions_tab};
 use super::windowed::row_id;
-use super::yaml_apply::YamlApply;
-use super::yaml_marks::YamlMarks;
-use super::yaml_tab::yaml_tab;
+use super::yaml::{self, YamlApply, YamlMarks, yaml_tab};
 use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui;
@@ -116,11 +114,11 @@ pub(super) struct ResourceDetail {
     pub scroll: ScrollHandle,
     pub editor: Entity<EditorState>,
     pub marks: YamlMarks,
-    pub lenses: Vec<super::yaml_lens::Lens>,
-    pub lint: super::yaml_lint::Lint,
+    pub lenses: Vec<yaml::Lens>,
+    pub lint: yaml::Lint,
     pub tab: DetailTab,
     pub yaml: YamlApply,
-    pub yaml_view: super::yaml_view::YamlView,
+    pub yaml_view: yaml::YamlView,
     pub secrets: super::secret_data::SecretData,
     pub events: EventsState,
     pub logs: Option<LogsState>,
@@ -161,7 +159,7 @@ impl ResourceDetail {
                 // The web marks indentation with tints instead of guide lines.
                 .indent_guides(false)
                 .default_value(data.yaml.clone());
-            editor.set_highlighter_factory(super::yaml_folds::factory(), cx);
+            editor.set_highlighter_factory(yaml::fold_factory(), cx);
             editor
         });
         let marks = YamlMarks::new(&editor, cx);
@@ -198,7 +196,7 @@ impl ResourceDetail {
             marks,
             tab: DetailTab::Details,
             yaml: YamlApply::default(),
-            yaml_view: super::yaml_view::YamlView::new(window, cx),
+            yaml_view: yaml::YamlView::new(window, cx),
             events: EventsState::new(window, cx),
             logs: None,
             revisions: None,
@@ -210,7 +208,7 @@ impl ResourceDetail {
     }
 
     pub fn dirty(&self, cx: &App) -> bool {
-        self.yaml.editing() && self.editor.read(cx).value().as_ref() != self.yaml.base
+        self.yaml.dirty(self.editor.read(cx).value().as_ref())
     }
 }
 

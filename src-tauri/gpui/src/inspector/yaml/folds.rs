@@ -25,7 +25,7 @@ const PARSE_DEBOUNCE: Duration = Duration::from_millis(150);
 
 const LANGUAGE: &str = "yaml";
 
-pub(super) fn factory() -> InputHighlighterFactory {
+pub(in crate::inspector) fn factory() -> InputHighlighterFactory {
     Rc::new(|language| {
         (language == LANGUAGE).then(|| {
             Box::new(YamlHighlighter {

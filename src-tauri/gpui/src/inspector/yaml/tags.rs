@@ -4,7 +4,7 @@
 //! tests and `coreKnownTags`. Scalar values are decoded only as far as tag
 //! tests and key comparison need them.
 
-use super::yaml_parse::Level;
+use super::parse::Level;
 use regex::Regex;
 use std::{
     collections::HashMap,

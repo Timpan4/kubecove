@@ -2,9 +2,9 @@
 //! in `ResourceYamlPane.svelte`. A draft change clears the previous result,
 //! and one lint runs after the 450 ms linter delay of `YamlCodeEditor.svelte`.
 //! A newer change drops the pending lint, as the web linter restarts.
-//! `yaml_tab` renders the result and `yaml_lens` marks it in the editor.
-use super::Inspector;
-use super::yaml_apply::apply_request;
+//! `tab` renders the result and `lens` marks it in the editor.
+use super::super::Inspector;
+use super::apply::apply_request;
 use gpui_kit::{Context, Task, Window};
 use kubecove_lib::models::{AppError, KubernetesYamlLintDiagnostic, KubernetesYamlLintStatusNote};
 use std::time::Duration;
@@ -14,18 +14,18 @@ const LINT_DELAY: Duration = Duration::from_millis(450);
 
 /// The lint of the current draft. `task` holds the pending delay and request.
 #[derive(Default)]
-pub(super) struct Lint {
-    pub diagnostics: Vec<KubernetesYamlLintDiagnostic>,
-    pub notes: Vec<KubernetesYamlLintStatusNote>,
+pub(in crate::inspector) struct Lint {
+    pub(super) diagnostics: Vec<KubernetesYamlLintDiagnostic>,
+    pub(super) notes: Vec<KubernetesYamlLintStatusNote>,
     /// The failure as the command returned it, kept whole so the view can
     /// classify it the way `FriendlyError` does.
-    pub error: Option<AppError>,
+    pub(super) error: Option<AppError>,
     task: Option<Task<()>>,
 }
 
 impl Lint {
     /// `clearYamlLint`: drops the result and any pending lint.
-    pub fn clear(&mut self) {
+    pub(super) fn clear(&mut self) {
         self.diagnostics.clear();
         self.notes.clear();
         self.error = None;
@@ -35,7 +35,11 @@ impl Lint {
 
 impl Inspector {
     /// Clears the lint, then lints the draft after the delay while editing.
-    pub(super) fn schedule_yaml_lint(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::inspector) fn schedule_yaml_lint(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let backend = self.backend.clone();
         let timings = self.timings.clone();
         let Some(detail) = self.yaml_apply() else {

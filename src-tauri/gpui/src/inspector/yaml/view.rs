@@ -1,22 +1,19 @@
 //! YAML shape and encoding controls from YamlTab.svelte. Reads and formatting
 //! happen on changes, never while rendering a frame.
-use super::{
-    Inspector,
-    detail::Detail,
-    yaml_apply::{Feedback, Phase},
-};
+use super::super::{Inspector, detail::Detail};
+use super::apply::{Feedback, Phase};
 use gpui_kit::component::select::{SearchableVec, Select, SelectEvent, SelectState};
 use gpui_kit::{AppContext, Context, Entity, SharedString, Subscription, Window, prelude::*, px};
 use kubecove_lib::models::{AppError, AppErrorKind, YamlEncoding, YamlViewMode};
 
 type Choices = SelectState<SearchableVec<SharedString>>;
-pub(super) struct YamlView {
+pub(in crate::inspector) struct YamlView {
     pub shape: Entity<Choices>,
     pub encoding: Entity<Choices>,
     pub mode: YamlViewMode,
     pub format: YamlEncoding,
     pub text: String,
-    pub error: Option<String>,
+    pub(super) error: Option<String>,
     _subscriptions: Vec<Subscription>,
 }
 fn choices(labels: &[&str], window: &mut Window, cx: &mut Context<Inspector>) -> Entity<Choices> {
@@ -109,7 +106,11 @@ pub(super) fn picker(view: &YamlView, shape: bool, disabled: bool) -> impl IntoE
 }
 
 impl Inspector {
-    pub(super) fn reload_yaml_view(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::inspector) fn reload_yaml_view(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let backend = self.backend.clone();
         let Some(d) = self.yaml_apply() else {
             return;

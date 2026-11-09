@@ -104,15 +104,7 @@ mod windowed;
 mod workspace_editing;
 mod workspace_entries;
 mod workspace_reads;
-mod yaml_apply;
-mod yaml_folds;
-mod yaml_lens;
-mod yaml_lint;
-mod yaml_marks;
-mod yaml_parse;
-mod yaml_tab;
-mod yaml_tags;
-mod yaml_view;
+mod yaml;
 
 use crate::backend::{Backend, Scope};
 use crate::targets::TestSupportExt;

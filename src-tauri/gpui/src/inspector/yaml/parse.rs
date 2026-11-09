@@ -14,7 +14,7 @@
 //! schema, and the web's composer errors that tree-sitter accepts or reports
 //! as a syntax error.
 
-use super::yaml_tags::{self, KeyValue};
+use super::tags::{self, KeyValue};
 use std::{
     collections::{HashMap, HashSet},
     ops::Range,
@@ -53,7 +53,7 @@ pub(super) fn diagnostics(text: &str) -> Vec<Finding> {
     let mut scan = Scan {
         text,
         findings: Vec::new(),
-        handles: yaml_tags::default_handles(),
+        handles: tags::default_handles(),
     };
     let root = tree.root_node();
     let mut cursor = root.walk();
@@ -200,9 +200,9 @@ impl Scan<'_> {
         else {
             return;
         };
-        let content = yaml_tags::content(holder, self.text);
+        let content = tags::content(holder, self.text);
         let source = &self.text[tag.byte_range()];
-        for (level, message) in yaml_tags::check(source, &content, &self.handles) {
+        for (level, message) in tags::check(source, &content, &self.handles) {
             self.push(tag.byte_range(), level, message);
         }
     }
@@ -221,7 +221,7 @@ impl Scan<'_> {
             })
             .collect();
         for key in keys {
-            let Some(value) = yaml_tags::key_value(key, self.text) else {
+            let Some(value) = tags::key_value(key, self.text) else {
                 continue;
             };
             if !seen.insert(value) {

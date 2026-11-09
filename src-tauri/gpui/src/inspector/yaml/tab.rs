@@ -1,12 +1,12 @@
 //! YAML tab of the resource detail panel, mirroring `YamlTab.svelte` and the
-//! draft editor of `ResourceYamlPane.svelte`. `yaml_apply` owns the guarded
+//! draft editor of `ResourceYamlPane.svelte`. `apply` owns the guarded
 //! apply flow this view drives.
 
-use super::Inspector;
-use super::controls::{Variant, button, diff_lines};
-use super::detail::ResourceDetail;
-use super::friendly_error::{Context as ErrorContext, Operation};
-use super::yaml_apply::{Feedback, Phase, Review, YamlApply, disabled_reason};
+use super::super::Inspector;
+use super::super::controls::{Variant, button, diff_lines};
+use super::super::detail::ResourceDetail;
+use super::super::friendly_error::{Context as ErrorContext, Operation};
+use super::apply::{Feedback, Phase, Review, YamlApply, disabled_reason};
 use crate::targets::ObservedElement;
 use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
@@ -406,7 +406,7 @@ fn lint_diagnostics(diagnostics: &[KubernetesYamlLintDiagnostic]) -> Div {
         }))
 }
 
-pub(super) fn yaml_tab(
+pub(in crate::inspector) fn yaml_tab(
     inspector: &Inspector,
     detail: &ResourceDetail,
     preferences: &crate::preferences::Preferences,
@@ -466,7 +466,7 @@ pub(super) fn yaml_tab(
         .gap(px(12.))
         .when(
             summary.kind == "Secret" && !preferences.redact_secrets,
-            |pane| pane.child(super::secret_data::view(detail, cx)),
+            |pane| pane.child(super::super::secret_data::view(detail, cx)),
         )
         .child(
             div()
@@ -499,12 +499,12 @@ pub(super) fn yaml_tab(
                         .items_center()
                         .gap(px(8.))
                         .flex_wrap()
-                        .child(super::yaml_view::picker(
+                        .child(super::view::picker(
                             &detail.yaml_view,
                             true,
                             editing || loading,
                         ))
-                        .child(super::yaml_view::picker(
+                        .child(super::view::picker(
                             &detail.yaml_view,
                             false,
                             editing || loading,
@@ -644,7 +644,7 @@ pub(super) fn yaml_tab(
                     detail
                         .lenses
                         .iter()
-                        .map(|lens| super::yaml_lens::overlay(detail.editor.read(cx), lens)),
+                        .map(|lens| super::lens::overlay(detail.editor.read(cx), lens)),
                 ),
         )
         .when(editing && !detail.lint.diagnostics.is_empty(), |pane| {

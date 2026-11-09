@@ -1,7 +1,7 @@
 //! Indent tints for the YAML editor, from `addIndentDecorations` and the
 //! `.kubecove-yaml-indent-N` styles in `src/components/yamlCodeViewerExtensions.ts`.
 
-use super::Inspector;
+use super::super::Inspector;
 use crate::theme::oklch;
 use gpui_kit::component::input::{
     EditorState, InputEvent, RangeDecoration, RangeDecorationCollection, RangeDecorationStyle,
@@ -41,7 +41,7 @@ fn indent_marks(text: &str) -> Vec<RangeDecoration> {
     marks
 }
 
-pub(super) struct YamlMarks {
+pub(in crate::inspector) struct YamlMarks {
     collection: RangeDecorationCollection,
     _changed: Subscription,
 }
@@ -67,7 +67,7 @@ impl YamlMarks {
     }
 
     /// `set_value` replaces the document without a change event.
-    pub fn refresh(&self, editor: &Entity<EditorState>, cx: &mut App) {
+    pub(super) fn refresh(&self, editor: &Entity<EditorState>, cx: &mut App) {
         let text = editor.read(cx).value();
         self.collection.set(indent_marks(&text), cx);
     }

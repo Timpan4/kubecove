@@ -2,8 +2,8 @@
 //! finding, and the lens shows one label per line, as `errorLensField` in
 //! `YamlCodeEditor.svelte` does. Parser errors come first, then parser
 //! warnings, then lint results. `info` findings are marked but never get a lens.
-use super::yaml_parse::{self, Level};
-use super::{Inspector, detail::Detail};
+use super::super::{Inspector, detail::Detail};
+use super::parse::{self, Level};
 use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
 use gpui_kit::base::input::{Diagnostic, DiagnosticSeverity};
@@ -11,11 +11,11 @@ use gpui_kit::component::input::{EditorState, Position};
 use gpui_kit::{App, Context, Div, Stateful, div, prelude::*, px};
 use kubecove_lib::models::{KubernetesYamlLintDiagnostic, KubernetesYamlLintSeverity};
 
-pub(super) struct Lens {
+pub(in crate::inspector) struct Lens {
     /// One-based line the label sits on.
-    pub line: usize,
+    pub(super) line: usize,
     /// `source: message`, as the web lens reads.
-    pub label: String,
+    pub(super) label: String,
     severity: KubernetesYamlLintSeverity,
     /// Byte offset of the line end, where the lens anchors.
     end: usize,
@@ -39,7 +39,7 @@ pub(super) fn update(
     cx: &mut Context<EditorState>,
 ) -> Vec<Lens> {
     let text = editor.value().to_string();
-    let mut marks: Vec<Mark> = yaml_parse::diagnostics(&text)
+    let mut marks: Vec<Mark> = parse::diagnostics(&text)
         .into_iter()
         .map(|finding| Mark {
             from: finding.range.start,
@@ -235,7 +235,7 @@ impl Inspector {
         )
     }
 
-    pub(super) fn refresh_yaml_lens(&mut self, cx: &mut Context<Self>) {
+    pub(in crate::inspector) fn refresh_yaml_lens(&mut self, cx: &mut Context<Self>) {
         let enabled = self.persisted.preferences.yaml_error_lens_enabled;
         if let Detail::Ready(detail) = &mut self.detail {
             detail.lenses = detail.editor.update(cx, |editor, cx| {
