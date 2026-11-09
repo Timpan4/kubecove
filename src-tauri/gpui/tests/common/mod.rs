@@ -196,18 +196,7 @@ impl Backend for Fixture {
         Box::pin(async { Ok(()) })
     }
     fn reveal_secret(&self, resource: ResourceSummary, key: String) -> Read<String> {
-        let request = serde_json::json!({"clusterContext": resource.cluster, "name": resource.name, "namespace": resource.namespace, "key": key});
-        let found = self
-            .secret_reveals
-            .iter()
-            .find(|entry| entry["request"] == request)
-            .and_then(|entry| entry["encoded"].as_str())
-            .map(str::to_owned);
-        Box::pin(async move {
-            found.ok_or_else(|| {
-                AppError::new("No matching Secret reveal fixture", AppErrorKind::NotFound)
-            })
-        })
+        self.reveal_secret_fixture(resource, key)
     }
     fn discover_argo(
         &self,
@@ -387,24 +376,7 @@ impl Backend for Fixture {
         &self,
         scope: Scope,
     ) -> Read<Vec<kubecove_lib::models::DiscoveredResourceKind>> {
-        let kinds = self
-            .kinds
-            .iter()
-            .filter(|kind| {
-                kind.namespaced
-                    && self.resources.iter().any(|row| {
-                        row.kind == kind.kind
-                            && row.api_version.as_ref() == Some(&kind.api_version)
-                            // A cluster-wide scope has no namespace and reads every namespace.
-                            && scope
-                                .namespace
-                                .as_ref()
-                                .is_none_or(|namespace| row.namespace.as_ref() == Some(namespace))
-                    })
-            })
-            .cloned()
-            .collect();
-        Box::pin(async move { Ok(kinds) })
+        self.namespace_custom_kinds_fixture(scope)
     }
     fn resource_kinds(
         &self,
@@ -422,206 +394,42 @@ impl Backend for Fixture {
         self.live_watch(target)
     }
     fn contexts(&self, _kubeconfig_source_key: Option<String>) -> Read<Vec<ClusterContext>> {
-        if *self.shell_read_phase.lock().unwrap() == "contexts-failed" {
-            return Box::pin(async {
-                Err(AppError::new(
-                    "Scripted contexts read failure",
-                    AppErrorKind::Cluster,
-                ))
-            });
-        }
-        if *self.shell_read_phase.lock().unwrap() == "contexts-empty" {
-            return Box::pin(async { Ok(vec![]) });
-        }
-        // The saved primary context of the parity workspaces is mock-dev.
-        let missing = *self.shell_read_phase.lock().unwrap() == "primary-context-missing";
-        let available: Vec<_> = self
-            .cluster_contexts
-            .iter()
-            .filter(|context| !(missing && context.name == "mock-dev"))
-            .cloned()
-            .collect();
-        // The web mock keys `list_kube_contexts` without a cluster context.
-        self.timing.wrap(
-            "list_kube_contexts",
-            "",
-            Box::pin(async move { Ok(available) }),
-        )
+        self.launcher_contexts()
     }
     fn resources(&self, scope: Scope, _: bool) -> Read<ScopeResult> {
         self.resource_fixture(scope)
     }
     fn details(&self, resource: ResourceSummary) -> Read<ResourceDetailsFull> {
-        let _profile = kubecove_gpui::frame_profile::scope("fixture", "details");
-        let found = self
-            .details
-            .iter()
-            .find(|detail| {
-                detail.summary.kind == resource.kind
-                    && detail.summary.cluster == resource.cluster
-                    && detail.summary.name == resource.name
-                    && detail.summary.namespace == resource.namespace
-            })
-            .cloned()
-            .or_else(|| self.gitops.application_details(&resource));
-        // Named after the command the native and web clients call for this resource.
-        let command = if resource.dynamic == Some(true) {
-            "get_dynamic_resource_details"
-        } else {
-            "get_resource_details"
-        };
-        let read = self.timing.read(command, &resource.cluster, "", found);
-        self.coverage_read(
-            "get_resource_details",
-            Box::pin(async move {
-                read.await?
-                    .ok_or_else(|| AppError::new("No fixture details", AppErrorKind::NotFound))
-            }),
-        )
+        self.details_fixture(resource)
     }
     fn application_resources(&self, app: ArgoApplicationSummary, _: bool) -> Read<ScopeResult> {
-        let resources = self.resources.clone();
-        let namespaces = self.namespaces.clone();
-        // delivery_workspace::resources lists each kind once per target namespace
-        // and reports each list's version under that list's own watch key.
-        let mut targets = app.resource_namespaces;
-        if targets.is_empty() {
-            targets.extend(app.destination_namespace);
-        }
-        let versions = if targets.is_empty() {
-            self.list_versions(None)
-        } else {
-            targets
-                .iter()
-                .flat_map(|namespace| self.list_versions(Some(namespace)))
-                .collect()
-        };
-        Box::pin(async move {
-            Ok(ScopeResult {
-                namespaces,
-                resources,
-                warnings: vec![],
-                versions,
-                listed: vec![],
-            })
-        })
+        self.application_resources_fixture(app)
     }
-    /// The all-namespaces graph, or a namespace's graph the fixture exported.
     fn topology(&self, scope: Scope) -> Read<std::sync::Arc<ResourceTopology>> {
-        let context = scope.context.clone();
-        let key = scope.namespace.clone().unwrap_or_default();
-        let topology = std::sync::Arc::new(self.context_topology(&scope).unwrap_or_else(|| {
-            scope
-                .namespace
-                .and_then(|namespace| self.namespace_topologies.get(&namespace))
-                .unwrap_or(&self.topology)
-                .clone()
-        }));
-        self.coverage_read(
-            "list_resource_topology",
-            self.timing
-                .read("list_resource_topology", &context, &key, topology),
-        )
+        self.topology_fixture(scope)
     }
     fn network_topology(&self, scope: Scope) -> Read<std::sync::Arc<ResourceTopology>> {
-        let mut graph = self.network_topology.clone();
-        if let Some(namespace) = &scope.namespace {
-            graph
-                .nodes
-                .retain(|node| node.namespace.as_ref() == Some(namespace));
-            let ids: std::collections::HashSet<_> =
-                graph.nodes.iter().map(|node| &node.id).collect();
-            graph
-                .edges
-                .retain(|edge| ids.contains(&edge.source) && ids.contains(&edge.target));
-        }
-        Box::pin(async move { Ok(std::sync::Arc::new(graph)) })
+        self.network_topology_fixture(scope)
     }
     fn app_usage(&self, _: bool) -> Read<kubecove_lib::models::AppUsageMetrics> {
         let usage = self.app_usage.clone();
         self.timing.read("get_app_usage_metrics", "", "", usage)
     }
     fn metrics(&self, scope: Scope) -> Read<kubecove_lib::models::ResourceMetricsSummary> {
-        let mut metrics = self.metrics.clone();
-        for metric in metrics
-            .pods
-            .iter_mut()
-            .chain(&mut metrics.nodes)
-            .chain(&mut metrics.workloads)
-        {
-            metric.cluster = scope.context.clone();
-        }
-        Box::pin(async move { Ok(metrics) })
+        self.metrics_fixture(scope)
     }
     fn gitops(&self, context: String) -> Read<GitOpsInventory> {
-        let read = self
-            .timing
-            .wrap("detect_argocd", &context, self.page_gitops());
-        let mode = self.argo.inventory_mode.lock().unwrap().clone();
-        Box::pin(async move {
-            if mode == "unavailable" {
-                return Err(AppError::new(
-                    "Fixture provider detection unavailable",
-                    AppErrorKind::Cluster,
-                ));
-            }
-            let mut result = read.await?;
-            match mode.as_str() {
-                "absent" => {
-                    result.argo = None;
-                    result.flux = None;
-                    result.app_sets.clear();
-                    result.projects.clear();
-                }
-                "empty" => result.argo = Some(vec![]),
-                "partial" => {
-                    result.argo = Some(vec![]);
-                    result.list_error = Some(AppError::new(
-                        "Fixture Argo inventory unavailable",
-                        AppErrorKind::Cluster,
-                    ));
-                }
-                _ => {}
-            }
-            Ok(result)
-        })
+        self.gitops_fixture(context)
     }
     fn cluster_resources(&self, _: String, _: bool) -> Read<ScopeResult> {
-        let resources = self
-            .resources
-            .iter()
-            .filter(|row| CLUSTER_KINDS.contains(&row.kind.as_str()))
-            .cloned()
-            .collect();
-        let versions = self.list_versions(None);
-        Box::pin(async move {
-            Ok(ScopeResult {
-                namespaces: vec![],
-                resources,
-                warnings: vec![],
-                versions,
-                listed: vec![],
-            })
-        })
+        self.cluster_resources_fixture()
     }
     fn events(
         &self,
         resource: ResourceSummary,
         _: Option<String>,
     ) -> Read<Vec<ResourceEventSummary>> {
-        if let Some(events) = self.scripted_events(&resource) {
-            return Box::pin(async move { Ok(events) });
-        }
-        let found = self
-            .events
-            .iter()
-            .find(|row| {
-                row.kind == resource.kind
-                    && row.name == resource.name
-                    && row.namespace == resource.namespace
-            })
-            .map_or_else(Vec::new, |row| row.events.clone());
-        Box::pin(async move { Ok(found) })
+        self.events_fixture(resource)
     }
     fn incidents(&self, context: String) -> Read<IncidentCockpitSummary> {
         let incidents = self.incidents.clone();

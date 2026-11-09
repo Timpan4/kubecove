@@ -147,4 +147,145 @@ impl Fixture {
             })
             .collect::<Vec<_>>()
     }
+
+    pub(super) fn application_resources_fixture(
+        &self,
+        app: ArgoApplicationSummary,
+    ) -> Read<ScopeResult> {
+        let resources = self.resources.clone();
+        let namespaces = self.namespaces.clone();
+        // delivery_workspace::resources lists each kind once per target namespace
+        // and reports each list's version under that list's own watch key.
+        let mut targets = app.resource_namespaces;
+        if targets.is_empty() {
+            targets.extend(app.destination_namespace);
+        }
+        let versions = if targets.is_empty() {
+            self.list_versions(None)
+        } else {
+            targets
+                .iter()
+                .flat_map(|namespace| self.list_versions(Some(namespace)))
+                .collect()
+        };
+        Box::pin(async move {
+            Ok(ScopeResult {
+                namespaces,
+                resources,
+                warnings: vec![],
+                versions,
+                listed: vec![],
+            })
+        })
+    }
+
+    pub(super) fn cluster_resources_fixture(&self) -> Read<ScopeResult> {
+        let resources = self
+            .resources
+            .iter()
+            .filter(|row| CLUSTER_KINDS.contains(&row.kind.as_str()))
+            .cloned()
+            .collect();
+        let versions = self.list_versions(None);
+        Box::pin(async move {
+            Ok(ScopeResult {
+                namespaces: vec![],
+                resources,
+                warnings: vec![],
+                versions,
+                listed: vec![],
+            })
+        })
+    }
+
+    pub(super) fn namespace_custom_kinds_fixture(
+        &self,
+        scope: Scope,
+    ) -> Read<Vec<kubecove_lib::models::DiscoveredResourceKind>> {
+        let kinds = self
+            .kinds
+            .iter()
+            .filter(|kind| {
+                kind.namespaced
+                    && self.resources.iter().any(|row| {
+                        row.kind == kind.kind
+                            && row.api_version.as_ref() == Some(&kind.api_version)
+                            // A cluster-wide scope has no namespace and reads every namespace.
+                            && scope
+                                .namespace
+                                .as_ref()
+                                .is_none_or(|namespace| row.namespace.as_ref() == Some(namespace))
+                    })
+            })
+            .cloned()
+            .collect();
+        Box::pin(async move { Ok(kinds) })
+    }
+
+    pub(super) fn details_fixture(&self, resource: ResourceSummary) -> Read<ResourceDetailsFull> {
+        let _profile = kubecove_gpui::frame_profile::scope("fixture", "details");
+        let found = self
+            .details
+            .iter()
+            .find(|detail| {
+                detail.summary.kind == resource.kind
+                    && detail.summary.cluster == resource.cluster
+                    && detail.summary.name == resource.name
+                    && detail.summary.namespace == resource.namespace
+            })
+            .cloned()
+            .or_else(|| self.gitops.application_details(&resource));
+        // Named after the command the native and web clients call for this resource.
+        let command = if resource.dynamic == Some(true) {
+            "get_dynamic_resource_details"
+        } else {
+            "get_resource_details"
+        };
+        let read = self.timing.read(command, &resource.cluster, "", found);
+        self.coverage_read(
+            "get_resource_details",
+            Box::pin(async move {
+                read.await?
+                    .ok_or_else(|| AppError::new("No fixture details", AppErrorKind::NotFound))
+            }),
+        )
+    }
+
+    pub(super) fn events_fixture(
+        &self,
+        resource: ResourceSummary,
+    ) -> Read<Vec<ResourceEventSummary>> {
+        if let Some(events) = self.scripted_events(&resource) {
+            return Box::pin(async move { Ok(events) });
+        }
+        let found = self
+            .events
+            .iter()
+            .find(|row| {
+                row.kind == resource.kind
+                    && row.name == resource.name
+                    && row.namespace == resource.namespace
+            })
+            .map_or_else(Vec::new, |row| row.events.clone());
+        Box::pin(async move { Ok(found) })
+    }
+
+    pub(super) fn reveal_secret_fixture(
+        &self,
+        resource: ResourceSummary,
+        key: String,
+    ) -> Read<String> {
+        let request = serde_json::json!({"clusterContext": resource.cluster, "name": resource.name, "namespace": resource.namespace, "key": key});
+        let found = self
+            .secret_reveals
+            .iter()
+            .find(|entry| entry["request"] == request)
+            .and_then(|entry| entry["encoded"].as_str())
+            .map(str::to_owned);
+        Box::pin(async move {
+            found.ok_or_else(|| {
+                AppError::new("No matching Secret reveal fixture", AppErrorKind::NotFound)
+            })
+        })
+    }
 }

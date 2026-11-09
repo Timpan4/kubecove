@@ -34,7 +34,42 @@ impl Fixture {
         })
     }
 
-    pub(super) fn page_gitops(&self) -> Read<GitOpsInventory> {
+    /// The GitOps inventory read, shaped by the scripted Argo inventory mode.
+    pub(super) fn gitops_fixture(&self, context: String) -> Read<GitOpsInventory> {
+        let read = self
+            .timing
+            .wrap("detect_argocd", &context, self.page_gitops());
+        let mode = self.argo.inventory_mode.lock().unwrap().clone();
+        Box::pin(async move {
+            if mode == "unavailable" {
+                return Err(AppError::new(
+                    "Fixture provider detection unavailable",
+                    AppErrorKind::Cluster,
+                ));
+            }
+            let mut result = read.await?;
+            match mode.as_str() {
+                "absent" => {
+                    result.argo = None;
+                    result.flux = None;
+                    result.app_sets.clear();
+                    result.projects.clear();
+                }
+                "empty" => result.argo = Some(vec![]),
+                "partial" => {
+                    result.argo = Some(vec![]);
+                    result.list_error = Some(AppError::new(
+                        "Fixture Argo inventory unavailable",
+                        AppErrorKind::Cluster,
+                    ));
+                }
+                _ => {}
+            }
+            Ok(result)
+        })
+    }
+
+    fn page_gitops(&self) -> Read<GitOpsInventory> {
         let phase = self.page_read_phase.lock().unwrap().clone();
         let appsets = self.page_reads.get("list_argocd_appsets").cloned();
         let flux = self.page_reads.get("list_flux_resources").cloned();
