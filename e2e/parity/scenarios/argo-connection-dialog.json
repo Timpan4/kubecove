@@ -115,6 +115,25 @@
       ]
     },
     {
+      "id": "argo-connection.page-choices-survive-context-change",
+      "title": "The GitOps page dialog keeps its choices when the workspace's context changes, as the web's page dialog does",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "argoConnectionDialog", "operation": "open" },
+        { "action": "argoConnectionDialog", "operation": "chooseLocalLogin" },
+        { "action": "argoControl", "control": "Close connection" },
+        { "action": "openLauncher" },
+        { "action": "editSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "selectWorkspaceContext", "context": "docker-desktop" },
+        { "action": "saveWorkspace" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "argoConnectionDialog", "operation": "open" },
+        { "action": "argoConnectionDialog", "operation": "expectLocalLogin", "checked": true },
+        { "action": "argoControl", "control": "Close connection" }
+      ]
+    },
+    {
       "id": "argo-connection.keeps-server-source",
       "title": "The connection dialog keeps the chosen server source when it opens again",
       "steps": [

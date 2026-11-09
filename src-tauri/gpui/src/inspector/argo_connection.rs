@@ -88,6 +88,8 @@ pub(super) struct Connections {
     pub selected: Preference,
     pub editing: Option<ArgoConnectionProfile>,
     pub scope: String,
+    /// The workspace whose page dialog choices `page` holds. Only a workspace change resets them.
+    pub page_workspace: String,
     pub url: Entity<InputState>,
     pub token: Entity<InputState>,
     pub username: Entity<InputState>,
@@ -168,6 +170,7 @@ impl Connections {
             selected: Preference::Automatic,
             editing: None,
             scope: String::new(),
+            page_workspace: String::new(),
             url: cx
                 .new(|cx| InputState::new(window, cx).placeholder("https://argocd.example.test")),
             token: cx.new(|cx| InputState::new(window, cx).masked(true)),

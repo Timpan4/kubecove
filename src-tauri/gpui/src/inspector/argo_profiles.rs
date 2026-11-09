@@ -214,8 +214,13 @@ impl Inspector {
             self.argo_connections.servers.clear();
             self.argo_connections.scope = scope;
             self.argo_connections.step = ConnectStep::Idle;
-            // A new scope mounts new web dialogs, which start from their default choices.
-            self.argo_connections.page = Default::default();
+            // The web's page dialog keeps its choices until the workspace changes, so a context change keeps them.
+            let workspace = self.argo_workspace_id();
+            if self.argo_connections.page_workspace != workspace {
+                self.argo_connections.page = Default::default();
+                self.argo_connections.page_workspace = workspace;
+            }
+            // A new scope mounts new web detail dialogs, which start from their default choices.
             self.argo_connections.detail = Default::default();
             self.restore_argo_preferences();
             self.sync_argo_picker(window, cx);
