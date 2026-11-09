@@ -15,7 +15,10 @@ use crate::table_sort::{self, Column as SortColumn};
 use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui::{self, Tone};
-use gpui_kit::{AnyElement, Context, Div, FontWeight, SharedString, div, prelude::*, px};
+use gpui_kit::{
+    AnyElement, Context, Div, FocusHandle, FontWeight, KeyDownEvent, SharedString, div, prelude::*,
+    px,
+};
 use kubecove_lib::models::ResourceSummary;
 
 /// A group or kind-group header row, laid out as its web `Button` is.
@@ -107,41 +110,67 @@ impl Inspector {
         }
     }
 
+    /// The focus handle of a row's name control. It is created on first use and
+    /// kept while the row stays on the page, so the keyboard can reach the row.
+    fn name_focus(&self, row: &ResourceSummary, cx: &mut Context<Self>) -> FocusHandle {
+        self.table_focus
+            .borrow_mut()
+            .entry(resource_id(row))
+            .or_insert_with(|| cx.focus_handle().tab_stop(true))
+            .clone()
+    }
+
+    /// The name cell. Its control takes focus, and Enter or Space opens the resource
+    /// as a click does, as the web's name button does.
+    fn name_cell(&self, row: &ResourceSummary, cx: &mut Context<Self>) -> Div {
+        let focus = self.name_focus(row, cx);
+        let resource = row.clone();
+        cell(
+            Column::Name,
+            div()
+                .flex()
+                .items_center()
+                .gap(px(4.))
+                .min_w_0()
+                .child(
+                    div()
+                        .id(SharedString::from(resource_id(row)))
+                        .test_support()
+                        .aria_label(format!("Open resource {}", row.name))
+                        .aria_description(format!("{:?}", row.health_assessment.state))
+                        .min_w_0()
+                        .cursor_pointer()
+                        .track_focus(&focus)
+                        .focus(|style| style.border_2().border_color(Tokens::ring()))
+                        .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
+                            if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                                this.open_resource(resource.clone(), window, cx);
+                                cx.stop_propagation();
+                            }
+                        }))
+                        .child(
+                            ui::medium(ui::sm(row.name.clone()))
+                                .whitespace_nowrap()
+                                .truncate(),
+                        ),
+                )
+                .child(super::copyable::copy_button(
+                    format!(
+                        "resource-copy:{}:{}:{}",
+                        row.kind,
+                        row.namespace.as_deref().unwrap_or(""),
+                        row.name
+                    ),
+                    "resource name",
+                    row.name.clone(),
+                    cx,
+                )),
+        )
+    }
+
     fn row_cell(&self, column: Column, row: &ResourceSummary, cx: &mut Context<Self>) -> Div {
         match column {
-            Column::Name => cell(
-                column,
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(4.))
-                    .min_w_0()
-                    .child(
-                        div()
-                            .id(SharedString::from(resource_id(row)))
-                            .test_support()
-                            .aria_label(format!("Open resource {}", row.name))
-                            .aria_description(format!("{:?}", row.health_assessment.state))
-                            .min_w_0()
-                            .cursor_pointer()
-                            .child(
-                                ui::medium(ui::sm(row.name.clone()))
-                                    .whitespace_nowrap()
-                                    .truncate(),
-                            ),
-                    )
-                    .child(super::copyable::copy_button(
-                        format!(
-                            "resource-copy:{}:{}:{}",
-                            row.kind,
-                            row.namespace.as_deref().unwrap_or(""),
-                            row.name
-                        ),
-                        "resource name",
-                        row.name.clone(),
-                        cx,
-                    )),
-            ),
+            Column::Name => self.name_cell(row, cx),
             Column::Status => {
                 let content: AnyElement =
                     match crate::topology::node::lifecycle(&row.kind, row.status.as_deref()) {
@@ -505,6 +534,9 @@ impl Inspector {
             self.usage(row)
         }));
         self.table_page = self.table_page.min(page.page_count - 1);
+        // Drop the focus handles of rows that left the page.
+        let live: std::collections::HashSet<String> = page.rows.iter().map(resource_id).collect();
+        self.table_focus.get_mut().retain(|id, _| live.contains(id));
         let columns = self.columns(&page.rows);
         let min_width: f32 = columns.iter().map(|column| column.width()).sum();
         let header = div()

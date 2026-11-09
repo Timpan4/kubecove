@@ -140,7 +140,7 @@ export async function action(page: Page, step: Step) {
             if (step.notice) await page.getByText(step.notice, { exact: true }).first().waitFor();
             break;
         case "replayLiveData": await page.evaluate(`import('/src/lib/tauri-dev-mock-live.ts').then(m => m.replayLiveData(${JSON.stringify(step.script)}))`); break;
-        case "sortResourceTable": case "expectResourceOrder": case "toggleResourceGroup": case "expectResourceGroup": case "openResourceRow": case "expectResourceCell": case "expectResourceCellFits": case "expectResourceColumns": case "expectResourceActivity": await resourceTableAction(page, step); break;
+        case "sortResourceTable": case "pressResourceRow": case "expectResourceOrder": case "toggleResourceGroup": case "expectResourceGroup": case "openResourceRow": case "expectResourceCell": case "expectResourceCellFits": case "expectResourceColumns": case "expectResourceActivity": await resourceTableAction(page, step); break;
         case "expectResourceStatus": await resourceRow(page, step).getByText(step.status, { exact: true }).waitFor(); break;
         case "openCustomKind": {
             if (step.surface === "sidebar") {

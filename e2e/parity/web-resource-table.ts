@@ -21,6 +21,10 @@ async function cellFor(page: Page, step: Identity & { column: string }) {
 
 export async function resourceTableAction(page: Page, step: Step) {
 	switch (step.action) {
+		case "pressResourceRow":
+			// The name is a native button: focusing it and pressing Enter or Space clicks it.
+			await resourceRow(page, step).getByRole("button", { name: `Open resource ${step.name}`, exact: true }).press(step.key);
+			break;
 		case "sortResourceTable":
 			await page.locator("thead").getByRole("button", { name: `Sort by ${step.column}`, exact: true }).click();
 			break;

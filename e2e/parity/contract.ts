@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { integrationStep } from "./contract-integrations";
+import { resourceTableStep } from "./contract-resources";
 import { sessionStep } from "./contract-sessions";
 import { DETAIL_RESIZE_KEYS, LOG_LEVELS, MAP_CONTROLS, MAP_KEYS, PANEL_CONTROLS, RBAC_CATEGORIES, RBAC_RISKS, SORT_COLUMNS, type Step, TABLE_COLUMNS, VERDICTS } from "./contract-steps";
 import { boolean, count, object, oneOf, optionalBoolean, string, strings } from "./contract-values";
@@ -79,7 +80,7 @@ export const ACTIONS = [
 	"openGitOps", "expandNav", "expectGitOpsTable", "expectGitOpsItem", "expectNoGitOpsItem", "openGitOpsDetails", "expectArgoApplication",
 	"expectArgoSignal", "expectHelmCount", "expectHelmRelease", "expectNoHelmRelease", "openHelmRelease", "selectHelmNamespace", "searchHelm",
 	"expectHelmDetails", "openGitOpsResources", "expectArgoWorkspace", "filterArgoResources", "setDeliveryView",
-    "sortResourceTable", "expectResourceOrder", "toggleResourceGroup", "expectResourceGroup", "openResourceRow", "expectResourceCell", "expectResourceCellFits", "expectResourceColumns", "expectResourceActivity",
+    "sortResourceTable", "pressResourceRow", "expectResourceOrder", "toggleResourceGroup", "expectResourceGroup", "openResourceRow", "expectResourceCell", "expectResourceCellFits", "expectResourceColumns", "expectResourceActivity",
 	"clickDetailControl",
 	"openLiveSessionPopover", "expectLiveSessionRow", "liveSessionControl", "expectHealthTooltip", "expectTimestampTooltip", "expectEventTimeTooltip",
     "panelControl", "expectPanelControl", "skipGraph", "mapKey", "expectMapFocus", "expectNoMapFocus", "expectMapNodeInView", "panMap", "clickMapControl", "expectMapControlFocus", "expectMapZoom", "resizeDetail", "expectDetailResize",
@@ -91,7 +92,7 @@ void allActionsListed;
 
 function step(value: unknown): Step {
 	const item = object(value);
-	const areaStep = integrationStep(item) ?? sessionStep(item);
+	const areaStep = integrationStep(item) ?? sessionStep(item) ?? resourceTableStep(item);
 	if (areaStep) return areaStep;
 	switch (item.action) {
         case "sidebarToggle": case "sidebarSelect": return { action: item.action, path: strings(item.path, false) };

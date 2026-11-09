@@ -217,6 +217,8 @@ pub struct Inspector {
     row_index: row_index::RowIndex,
     table_page: usize,
     table_rows: windowed::Windowed,
+    /// One focus handle per table row's name control, kept while the row is on the page.
+    table_focus: std::cell::RefCell<std::collections::HashMap<String, gpui_kit::FocusHandle>>,
     timeline: timeline::State,
     load: Load,
     warnings: Vec<String>,
@@ -362,6 +364,7 @@ impl Inspector {
             row_index: Default::default(),
             table_page: 0,
             table_rows: windowed::Windowed::unwrapped(),
+            table_focus: Default::default(),
             timeline: Default::default(),
             load: Load::Loading,
             warnings: vec![],

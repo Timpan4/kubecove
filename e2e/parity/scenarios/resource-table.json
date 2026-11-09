@@ -119,6 +119,20 @@
       ]
     },
     {
+      "id": "resources.table-row-keyboard",
+      "title": "Enter and Space on a focused resource row's name open that resource's detail",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api-7d9c9b7f8d" },
+        { "action": "pressResourceRow", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-k2r9p", "namespace": "payments", "key": "Enter" },
+        { "action": "expectDetail", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-k2r9p", "namespace": "payments" },
+        { "action": "closeDetail" },
+        { "action": "expectDetailClosed" },
+        { "action": "pressResourceRow", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-x4m8v", "namespace": "payments", "key": "Space" },
+        { "action": "expectDetail", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-x4m8v", "namespace": "payments" }
+      ]
+    },
+    {
       "id": "resources.table-cells",
       "title": "Each page admits the columns its rows report, Helm-only rows admit no Owner column, and cells show the reported values",
       "steps": [

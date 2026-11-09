@@ -50,6 +50,16 @@ fn visible_names(window: &mut gpui_kit::Window, expected: &[String]) -> Vec<Stri
 
 pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) -> bool {
     match string(step, "action") {
+        "pressResourceRow" => {
+            let id = row(step);
+            reveal_cell(window, &id, cx);
+            let key = if string(step, "key") == "Enter" {
+                "enter"
+            } else {
+                "space"
+            };
+            window.within(id.as_str()).press(key, cx);
+        }
         "sortResourceTable" => {
             let id = format!("sort:{}", string(step, "column"));
             reveal_cell(window, &id, cx);
