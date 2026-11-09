@@ -1,0 +1,216 @@
+name: GPUI release bundles
+
+# Builds the native GPUI client into updater bundles, signs them with the Tauri updater key,
+# verifies the signatures and writes `latest-gpui.json`. Called by release.yml. Everything
+# leaves as workflow artifacts; this workflow cannot write to releases, and release.yml's
+# publish job uploads the `kubecove-gpui-release` artifact to the release.
+on:
+  workflow_call:
+    inputs:
+      release-tag:
+        description: The app-v* tag the manifest URLs point at. Empty for a dry run.
+        required: false
+        type: string
+        default: ""
+    secrets:
+      TAURI_SIGNING_PRIVATE_KEY:
+        required: true
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    name: Bundle GPUI ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Linux x64
+            key: linux-x64
+            platform: ubuntu-latest
+            rust-targets: "x86_64-unknown-linux-gnu"
+            bundle-target: x86_64-unknown-linux-gnu
+            format: appimage
+          - label: macOS universal
+            key: macos-universal
+            platform: macos-latest
+            rust-targets: "aarch64-apple-darwin x86_64-apple-darwin"
+            bundle-target: universal-apple-darwin
+            format: app
+          - label: Windows x64
+            key: windows-x64
+            platform: windows-latest
+            rust-targets: "x86_64-pc-windows-msvc"
+            bundle-target: x86_64-pc-windows-msvc
+            format: nsis
+
+    runs-on: ${{ matrix.platform }}
+    # The same limit as the Tauri installer builds in release.yml.
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The GPUI build dependencies from parity-suite.yml, plus `file` and FUSE 2, which the
+      # Tauri AppImage build installs. linuxdeploy mounts its appimage plugin through FUSE.
+      - name: Install Linux GPUI dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y file libfontconfig-dev libfuse2 libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev pkg-config
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      - name: Install Rust targets
+        run: rustup target add ${{ matrix.rust-targets }}
+
+      # A build-time tool only. Installed before Cargo caching takes over `cargo`.
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --version 0.11.8 --locked
+
+      - name: Cache Rust
+        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
+        with:
+          version: "1.29.2"
+          backend: local
+
+      - name: Activate Cargo caching
+        run: node scripts/ci-mbx-cargo.mjs
+
+      - name: Build GPUI client
+        env:
+          RUST_TARGETS: ${{ matrix.rust-targets }}
+          BUNDLE_TARGET: ${{ matrix.bundle-target }}
+        run: |
+          set -euo pipefail
+          for target in $RUST_TARGETS; do
+            cargo build --locked --release --manifest-path src-tauri/gpui/Cargo.toml --bin kubecove-gpui --target "$target"
+          done
+          # cargo-packager reads binaries from target/<bundle target>/release.
+          if [[ "$BUNDLE_TARGET" == universal-apple-darwin ]]; then
+            universal=src-tauri/gpui/target/universal-apple-darwin/release
+            mkdir -p "$universal"
+            lipo -create \
+              src-tauri/gpui/target/aarch64-apple-darwin/release/kubecove-gpui \
+              src-tauri/gpui/target/x86_64-apple-darwin/release/kubecove-gpui \
+              -output "$universal/kubecove-gpui"
+          fi
+
+      # The bundle settings live in `[package.metadata.packager]` of src-tauri/gpui/Cargo.toml.
+      - name: Bundle GPUI client
+        env:
+          BUNDLE_TARGET: ${{ matrix.bundle-target }}
+          FORMAT: ${{ matrix.format }}
+        # Leave APPIMAGE_EXTRACT_AND_RUN unset: with it, the extracted appimage plugin runs
+        # appimagetool from another directory and it cannot find the AppDir.
+        run: |
+          set -euo pipefail
+          # cargo-packager resolves an existing --out-dir before it changes to the crate directory.
+          out=src-tauri/gpui/target/gpui-bundle
+          mkdir -p "$out" gpui-updater
+          cargo packager --manifest-path src-tauri/gpui/Cargo.toml --release --target "$BUNDLE_TARGET" \
+            --packages kubecove-gpui --formats "$FORMAT" --out-dir "$out"
+          version="$(node -p 'require("./src-tauri/tauri.conf.json").version')"
+          case "$FORMAT" in
+            appimage) cp "$out/kubecove-gpui_${version}_x86_64.AppImage" gpui-updater/ ;;
+            nsis) cp "$out/kubecove-gpui_${version}_x64-setup.exe" gpui-updater/ ;;
+            # The updater archive holds the bundle at its root, as Tauri's `.app.tar.gz` does.
+            app) tar -czf "gpui-updater/kubecove-gpui_${version}_universal.app.tar.gz" -C "$out" "KubeCove GPUI.app" ;;
+          esac
+          ls -l gpui-updater
+
+      - name: Upload unsigned GPUI bundle
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: kubecove-gpui-bundle-${{ matrix.key }}
+          path: gpui-updater/*
+          if-no-files-found: error
+
+  # Signing happens once, here, so build runners never receive the updater key.
+  sign:
+    name: Sign GPUI bundles and write latest-gpui.json
+    needs: bundle
+    runs-on: ubuntu-latest
+    # The same limit as the release publish job.
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      # Provides the lockfile-pinned Tauri CLI for `tauri signer sign`.
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download GPUI bundles
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: kubecove-gpui-bundle-*
+          path: gpui-release
+          merge-multiple: true
+
+      - name: Sign GPUI bundles
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          version="$(node -p 'require("./src-tauri/tauri.conf.json").version')"
+          for file in gpui-release/*; do
+            # The version in the trusted comment is what the GPUI client checks against the manifest.
+            bun x tauri signer sign --app-version "$version" "$file"
+          done
+
+      - name: Verify signatures and write latest-gpui.json
+        env:
+          ASSETS_DIR: gpui-release
+          GH_REPO: ${{ github.repository }}
+          NOTES_FILE: release-notes.md
+          RELEASE_TAG: ${{ inputs.release-tag }}
+        run: |
+          set -euo pipefail
+          bun scripts/release-body.ts > "$NOTES_FILE"
+          node scripts/gpui-release-manifest.mjs
+          ls -l gpui-release
+
+      - name: Upload GPUI release assets
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: kubecove-gpui-release
+          path: gpui-release/*
+          if-no-files-found: error
