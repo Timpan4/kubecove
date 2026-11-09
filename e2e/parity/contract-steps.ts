@@ -2,9 +2,10 @@ type Identity = { kind: string; name: string; namespace: string };
 /** Checkbox labels inside the Argo Sync options popover. */
 export const ARGO_OPTION_NAMES = ["Prune", "Dry run", "Force / replace"] as const;
 type ArgoOptionName = (typeof ARGO_OPTION_NAMES)[number];
-export const TABLE_COLUMNS = ["Name", "Status", "Namespace", "Kind", "Ready", "Restarts", "CPU", "Memory", "Owner", "Age"] as const;
+// Context shows only when the workspace has more than one context.
+export const TABLE_COLUMNS = ["Name", "Status", "Context", "Namespace", "Kind", "Ready", "Restarts", "CPU", "Memory", "Owner", "Age"] as const;
 type TableColumn = (typeof TABLE_COLUMNS)[number];
-export const SORT_COLUMNS = ["Name", "Status", "Namespace", "Kind", "Ready", "Restarts", "CPU", "Memory", "Age"] as const;
+export const SORT_COLUMNS = ["Name", "Status", "Context", "Namespace", "Kind", "Ready", "Restarts", "CPU", "Memory", "Age"] as const;
 export type UpdateControlLabel = "Check for updates" | "Update available" | "Checking for updates" | "Update check failed";
 export type Step =
     | { action: "expectDetailScroll"; view: "events" | "timeline" }
@@ -206,7 +207,19 @@ export type Step =
     | { action: "expectYamlVisibleLines"; lines: number[] }
     | { action: "openResources" | "showYaml" | "closeDetail" | "expectDetailClosed" | "expectEmpty" | "refresh" }
     | { action: "search" | "expectSearch"; value: string }
-    | ({ action: "expectResource" | "openResource" | "expectDetail" } & Identity)
+    | ({ action: "expectResource" | "expectDetail" } & Identity)
+    /** `context` picks the row of that context when several contexts list the same object. */
+    | ({ action: "openResource"; context?: string } & Identity)
+    /** The contexts of every row with this identity, in display order. */
+    | ({ action: "expectRowContexts"; contexts: string[] } & Identity)
+    /** Sets the Context filter to exactly these contexts. */
+    | { action: "filterContexts"; contexts: string[] }
+    /** The Resource Table status line, such as "14 resources · 2 contexts · page 1 of 1". */
+    | { action: "expectResourceSummary"; text: string }
+    | { action: "selectMapContext"; context: string }
+    /** The ownership map's "Map context" select and its value; `shown: false` asserts there is no select. */
+    | { action: "expectMapContext"; shown: true; context: string }
+    | { action: "expectMapContext"; shown: false }
     | { action: "expectClusterResource" | "expectNoClusterResource"; kind: string; name: string }
     | { action: "expectYaml"; contains: string[] }
     | { action: "openPage"; page: string }

@@ -108,7 +108,7 @@
     },
     {
       "id": "workspaces.multi-context-overview",
-      "title": "Overview counts duplicate names in each context and removed contexts disappear; Resources stays primary-only",
+      "title": "Overview counts duplicate names in each context, and a removed context drops out of the totals",
       "steps": [
         {
           "action": "expectOverviewHealth",
@@ -134,37 +134,7 @@
         },
         {
           "action": "expectOverviewHealth",
-          "total": 112
-        },
-        {
-          "action": "openResources"
-        },
-        {
-          "action": "search",
-          "value": "payments-api"
-        },
-        {
-          "action": "openResource",
-          "kind": "Deployment",
-          "namespace": "payments",
-          "name": "payments-api"
-        },
-        {
-          "action": "expectDetailContext",
-          "context": "mock-dev"
-        },
-        {
-          "action": "showYaml"
-        },
-        {
-          "action": "expectYaml",
-          "contains": [
-            "kind: Deployment",
-            "name: payments-api"
-          ]
-        },
-        {
-          "action": "closeDetail"
+          "total": 113
         },
         {
           "action": "openLauncher"

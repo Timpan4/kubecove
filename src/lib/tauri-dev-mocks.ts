@@ -11,6 +11,7 @@ import {
 	namespaces,
 	now,
 	resources,
+	solidOnlyResources,
 	source,
 } from "./tauri-dev-mock-data";
 import { argoApps, helmReleases } from "./tauri-dev-mock-gitops-data";
@@ -193,7 +194,7 @@ function findMockHandler(command: string): MockHandler | undefined {
 }
 
 function resourcesForCluster(cluster = "mock-dev"): ResourceSummary[] {
-	const rows = cluster === "docker-desktop" ? dockerResources : resources;
+	const rows = cluster === "docker-desktop" ? dockerResources : cluster === "admin@solid-k8s" ? [...resources, ...solidOnlyResources] : resources;
 	return rows.map((row) => ({ ...row, cluster }));
 }
 

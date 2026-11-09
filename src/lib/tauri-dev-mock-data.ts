@@ -228,6 +228,12 @@ export const dockerResources: ResourceSummary[] = [
 	res("Node", "docker-desktop", null, "healthy", "Ready", "Ready", 0, "local", { cluster: "docker-desktop" }),
 ];
 
+// admin@solid-k8s lists every `resources` row plus these, so multi-context
+// scenarios can tell its rows from mock-dev's.
+export const solidOnlyResources: ResourceSummary[] = [
+	res("Deployment", "edge-relay", "platform", "healthy", "1/1", "Ready", 0, "edge", { cluster: "admin@solid-k8s" }),
+];
+
 export const ownershipDependencyHints: Array<{
 	ownerKind: string;
 	ownerName: string;
