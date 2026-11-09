@@ -27,6 +27,7 @@ async function buildParity(workspace: string, env: Record<string, string | undef
 	if (build.code !== 0) throw new Error(`GPUI parity build exited ${build.code}`);
 	for (const line of build.output.split("\n")) {
 		if (!line.startsWith("{")) continue;
+		// SAFETY: cargo writes one JSON object per line under --message-format=json. Every field read here is optional in cargo's schema, and each read is a comparison.
 		const message = JSON.parse(line) as { reason?: string; executable?: string | null; target?: { name?: string } };
 		if (message.reason === "compiler-artifact" && message.target?.name === "parity" && message.executable) return message.executable;
 	}
@@ -44,8 +45,8 @@ export async function runGpui(contract: Contract, artifacts: string, fixture: { 
 	// scripts/e2e-parity.ts writes the selected IDs here before either driver starts.
 	const ids = join(artifacts, "scenarios.txt");
 	// Keep path-crate artifacts specific to this worktree, including environment overrides.
-	const env: Record<string, string | undefined> = { ...process.env, CARGO_TARGET_DIR: process.env.CARGO_TARGET_DIR ?? join(workspace, "target"), CARGO_BUILD_BUILD_DIR: process.env.CARGO_BUILD_BUILD_DIR ?? join(workspace, "build"), KUBECOVE_E2E_ARTIFACTS: artifacts, KUBECOVE_PARITY_FIXTURE: fixture.path, KUBECOVE_PARITY_SCENARIO_IDS: ids, CARGO_BUILD_JOBS: process.env.CARGO_BUILD_JOBS ?? "1" };
-	delete env.ARGV0; delete env.KUBECONFIG; delete env.KUBECOVE_PARITY_SCENARIO_PREFIX;
+	const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !["ARGV0", "KUBECONFIG", "KUBECOVE_PARITY_SCENARIO_PREFIX"].includes(name)));
+	Object.assign(env, { CARGO_TARGET_DIR: process.env.CARGO_TARGET_DIR ?? join(workspace, "target"), CARGO_BUILD_BUILD_DIR: process.env.CARGO_BUILD_BUILD_DIR ?? join(workspace, "build"), KUBECOVE_E2E_ARTIFACTS: artifacts, KUBECOVE_PARITY_FIXTURE: fixture.path, KUBECOVE_PARITY_SCENARIO_IDS: ids, CARGO_BUILD_JOBS: process.env.CARGO_BUILD_JOBS ?? "1" });
 	const strayProfiles = join(env.CARGO_TARGET_DIR ?? "", "coverage", "profraw");
 	if (coverage) {
 		const target = join(env.CARGO_TARGET_DIR ?? "", "coverage");
@@ -71,6 +72,7 @@ export async function runGpui(contract: Contract, artifacts: string, fixture: { 
 	for (const [index, run] of runs.entries()) {
 		if (run.code !== 0) problems.push(`GPUI shard ${index}/${count} exited ${run.code}`);
 		try {
+			// SAFETY: the parity test binary writes each shard report as { scenarios }. A report without that array throws in the loop below, and the catch records it as missing.
 			const report = JSON.parse(await readFile(join(artifacts, `gpui-${index}.json`), "utf8")) as { scenarios: { id: string }[] };
 			for (const result of report.scenarios) results.set(result.id, result);
 		} catch { problems.push(`GPUI shard ${index}/${count} wrote no report`); }
