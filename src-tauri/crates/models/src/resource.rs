@@ -263,7 +263,7 @@ pub struct KubernetesYamlLintResult {
     pub notes: Vec<KubernetesYamlLintStatusNote>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TopologyRelation {
     Owns,

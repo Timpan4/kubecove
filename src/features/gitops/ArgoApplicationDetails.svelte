@@ -87,6 +87,7 @@
 	import {
 		applyArgoSyncDefaults,
 		argoComparisonDocument,
+		argoComparisonIndex,
 		argoHistoryKey,
 		argoReconciliationResources,
 		argoResourceCounts,
@@ -195,6 +196,7 @@
 	});
 	const managedResources = $derived(snapshot?.resources ?? []);
 	const reconciliationResources = $derived(argoReconciliationResources(managedResources));
+	const comparisonsByKey = $derived(argoComparisonIndex(snapshot?.comparisons ?? []));
 	const selectedResourceKey = $derived(
 		selectedResource ? argoResourceIdentityKey(selectedResource) : null,
 	);
@@ -524,7 +526,7 @@
 	function comparisonFor(item: ArgoManagedResource): ArgoResourceComparison | null {
 		return resolveArgoResourceComparison(
 			item,
-			snapshot?.comparisons ?? [],
+			comparisonsByKey,
 			snapshot?.transport,
 			selectedResourceKey,
 			selectedComparison.data,

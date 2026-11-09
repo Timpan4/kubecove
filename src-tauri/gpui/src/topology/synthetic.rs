@@ -112,10 +112,7 @@ pub fn build(node_count: usize) -> ResourceTopology {
                 id: format!("{}->{}", source.id, target.id),
                 source: source.id.clone(),
                 target: target.id.clone(),
-                relation: TEMPLATES[template]
-                    .2
-                    .clone()
-                    .unwrap_or(TopologyRelation::Owns),
+                relation: TEMPLATES[template].2.unwrap_or(TopologyRelation::Owns),
             });
         }
         app += 1;

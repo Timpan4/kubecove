@@ -114,6 +114,12 @@ The native client lives in `src-tauri/gpui`. These rules come from parallel agen
 - For perf-sensitive changes, measure the relevant path before and after, optimize one measured bottleneck at a time, and re-measure the same benchmark or diagnostic path.
 - Do not copy iteration syntax blindly. In measured or repeated hot paths, inspect collection size, call frequency, allocation, and early-exit behavior; prefer one `for...of` pass over allocation-heavy spread or chained `map`/`filter`/`flatMap` when behavior stays exact. Keep `some`/`find`/`every` where their short-circuit semantics improve clarity, and never use `for...in` for arrays.
 - Add a new benchmark only when the changed hot path is not covered by existing benchmarks or diagnostics.
+- Fix a slow hot path by redesigning its data layout before adding a cache. Ask in this order:
+  - Can a hash map keyed by IDs become a flat array, with references stored as indices into it? Can the most-used fields be packed into spare bits of that index?
+  - Should this be a structure of arrays instead of an array of structures, so a pass touches only the fields it reads?
+  - Can a short, heap-allocated list become a stack-allocated list with inline capacity?
+  - Can an array or set of booleans become a bitset?
+- Caching is a secondary tool. Add a cache only when a measurement shows the redesigned path is still too slow, and keep existing caches unless a redesign makes them unnecessary.
 
 ## Cross-Platform
 

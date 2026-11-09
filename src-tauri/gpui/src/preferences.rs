@@ -53,6 +53,7 @@ pub enum DeliveryMode {
 pub struct Preferences {
     pub show_exact_timestamps: bool,
     pub show_usage_footer: bool,
+    pub measure_working_set: bool,
     pub expand_timeline_by_default: bool,
     pub show_ownership_map_by_default: bool,
     pub show_full_topology_on_selection: bool,
@@ -83,6 +84,7 @@ impl Default for Preferences {
         Self {
             show_exact_timestamps: false,
             show_usage_footer: false,
+            measure_working_set: false,
             expand_timeline_by_default: false,
             show_ownership_map_by_default: true,
             show_full_topology_on_selection: false,

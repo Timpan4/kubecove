@@ -296,7 +296,8 @@ pub trait Backend: Send + Sync + 'static {
             ))
         })
     }
-    fn app_usage(&self) -> Read<kubecove_lib::models::AppUsageMetrics> {
+    /// `measure_working_set` turns on the Linux WSS measurement for this sample.
+    fn app_usage(&self, _measure_working_set: bool) -> Read<kubecove_lib::models::AppUsageMetrics> {
         Box::pin(async {
             Err(AppError::new(
                 "Usage metrics unavailable",

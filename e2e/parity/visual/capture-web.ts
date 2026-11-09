@@ -54,7 +54,7 @@ async function show(page: Page, view: View) {
 		case "usage-footer":
             await page.getByRole("button", { name: "Open settings", exact: true }).click();
             await page.getByRole("switch", { name: "Show CPU and memory footer", exact: true }).click();
-            await page.locator("footer").getByText("CPU 3.8% · Memory 370 MB · 3 processes", { exact: true }).waitFor();
+            await page.locator("footer").getByText("CPU 3.8% · WSS -- · RSS 370 MB · PSS 287 MB · 3 processes", { exact: true }).waitFor();
             return;
         case "live-limited":
         case "live-failed":

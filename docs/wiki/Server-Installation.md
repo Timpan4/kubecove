@@ -7,7 +7,7 @@
 | Method | Use it when | Platforms |
 | --- | --- | --- |
 | [Native archive with systemd](#native-archive-with-systemd) | A Linux host should run KubeCove as a service. Works with kubeconfig exec plugins such as `aws` or `gke-gcloud-auth-plugin` installed on the host. | Linux x64, Linux arm64 |
-| [Native archive, run directly](#native-archive-run-directly) | You want a quick trial, or you run it under your own user on macOS. | Linux x64, Linux arm64, macOS arm64 |
+| [Native archive, run directly](#native-archive-run-directly) | You want a quick trial, or you run it under your own user without systemd. | Linux x64, Linux arm64 |
 | [Docker](#docker) | The host already runs containers, and the kubeconfig uses tokens or certificates rather than exec plugins. | linux/amd64, linux/arm64 |
 | [Kubernetes](#kubernetes) | KubeCove should run inside a cluster and read it through a ServiceAccount. | linux/amd64, linux/arm64 |
 
@@ -26,7 +26,7 @@ Linux arm64 archives, slim archives and arm64 images are published from the rele
 
 ## Native archives
 
-Release assets are named `kubecove-server_<version>_<target>[-slim].tar.gz`, each with a matching `.sha256` file. The targets are `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` and `aarch64-apple-darwin`.
+Release assets are named `kubecove-server_<version>_<target>[-slim].tar.gz`, each with a matching `.sha256` file. The targets are `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`. Releases up to v0.13.0 also included `aarch64-apple-darwin`; on macOS, build the server from source instead.
 
 Each archive contains:
 
@@ -40,8 +40,6 @@ Download the archive and its checksum, then verify before extracting:
 ```sh
 sha256sum -c kubecove-server_<version>_<target>.tar.gz.sha256
 ```
-
-On macOS, use `shasum -a 256 -c` instead.
 
 The Linux executables need glibc. They do not need GTK, WebKit or a display.
 
@@ -114,7 +112,7 @@ tar -xzf kubecove-server_<version>_<target>.tar.gz
 ./kubecove-server --listen 127.0.0.1:8080 --public-origin http://localhost:8080
 ```
 
-Startup prints a login URL containing a fresh token. Treat it as a password. The token is also stored in `server-token` in the data directory; run `./kubecove-server --help` for `--data-dir` and the other options. On macOS, Gatekeeper may block an unsigned download. Allow it in System Settings → Privacy & Security, or remove the quarantine attribute from the extracted files.
+Startup prints a login URL containing a fresh token. Treat it as a password. The token is also stored in `server-token` in the data directory; run `./kubecove-server --help` for `--data-dir` and the other options.
 
 To upgrade, stop the server, replace both executables with the new release, and start it again.
 

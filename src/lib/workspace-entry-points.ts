@@ -97,8 +97,11 @@ export function isPinnedEntry(
 	entries: Partial<WorkspaceEntryPoints> | undefined,
 	entry: WorkspaceEntryPoint,
 ): boolean {
+	// Deduplication never changes membership, so the raw pinned list answers this.
+	const pinned = entries?.pinned;
+	if (!Array.isArray(pinned)) return false;
 	const key = entryPointKey(entry);
-	return normalizeEntryPoints(entries).pinned.some((item) => entryPointKey(item) === key);
+	return pinned.some((item) => entryPointKey(item) === key);
 }
 
 export function togglePinnedEntry(

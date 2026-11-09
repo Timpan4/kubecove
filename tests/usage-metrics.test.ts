@@ -32,21 +32,23 @@ describe("usage metrics formatting", () => {
 		expect(
 			formatUsageMetrics({
 				cpuPercent: 2.4,
-				memoryBytes: 184 * 1024 * 1024,
+				memory: { wssBytes: null, rssBytes: 184 * 1024 * 1024, pssBytes: 120 * 1024 * 1024 },
+				workingSetWindowMs: null,
 				processCount: 3,
 				sampledAt: "2026-05-20T10:00:00Z",
 				breakdown: [],
 			}),
-		).toBe("CPU 2.4% · Memory 184 MB · 3 processes");
+		).toBe("CPU 2.4% · WSS -- · RSS 184 MB · PSS 120 MB · 3 processes");
 		expect(
 			formatUsageMetrics({
 				cpuPercent: 0,
-				memoryBytes: 2.5 * 1024 * 1024 * 1024,
+				memory: { wssBytes: 2.5 * 1024 * 1024 * 1024, rssBytes: null, pssBytes: null },
+				workingSetWindowMs: null,
 				processCount: 0,
 				sampledAt: "2026-05-20T10:00:00Z",
 				breakdown: [],
 			}),
-		).toBe("CPU 0.0% · Memory 2.5 GB · 0 processes");
+		).toBe("CPU 0.0% · WSS 2.5 GB · RSS -- · PSS -- · 0 processes");
 	});
 
 	test("formats nested usage breakdown rows", () => {
@@ -54,14 +56,14 @@ describe("usage metrics formatting", () => {
 			label: "KubeCove",
 			description: "Rust/Tauri host process",
 			cpuPercent: 1.2,
-			memoryBytes: 256 * 1024 * 1024,
+			memory: { wssBytes: null, rssBytes: 256 * 1024 * 1024, pssBytes: null },
 			processCount: 3,
 			children: [
 				{
 					label: "WebView",
 					description: "Renderer",
 					cpuPercent: 0.8,
-					memoryBytes: 128 * 1024 * 1024,
+					memory: { wssBytes: null, rssBytes: 128 * 1024 * 1024, pssBytes: null },
 					processCount: 2,
 					children: [],
 				},
@@ -69,10 +71,10 @@ describe("usage metrics formatting", () => {
 		};
 
 		expect(formatUsageMetricsBreakdownDetails(item)).toBe(
-			"CPU 1.2% · 256 MB · 3 processes",
+			"CPU 1.2% · WSS -- · RSS 256 MB · PSS -- · 3 processes",
 		);
 		expect(formatUsageMetricsBreakdownDetails(item.children[0])).toBe(
-			"CPU 0.8% · 128 MB · 2 processes",
+			"CPU 0.8% · WSS -- · RSS 128 MB · PSS -- · 2 processes",
 		);
 		expect(flattenUsageMetricsBreakdown([item]).map(({ item, depth }) => [item.label, depth])).toEqual([
 			["KubeCove", 0],
@@ -85,7 +87,7 @@ describe("usage metrics formatting", () => {
 			label,
 			description: label,
 			cpuPercent: 0,
-			memoryBytes: 0,
+			memory: { wssBytes: null, rssBytes: 0, pssBytes: null },
 			processCount: 1,
 			children: [],
 		});

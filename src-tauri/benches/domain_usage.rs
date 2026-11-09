@@ -11,16 +11,16 @@ fn assert_attribution(metrics: &AppUsageMetrics, expected_count: usize) {
         metrics
             .breakdown
             .iter()
-            .map(|row| row.memory_bytes)
+            .map(|row| row.memory.rss_bytes.expect("fixture RSS"))
             .sum::<u64>(),
-        metrics.memory_bytes
+        metrics.memory.rss_bytes.expect("fixture RSS")
     );
     assert!(
         metrics
             .breakdown
             .iter()
             .flat_map(|group| group.children.windows(2))
-            .all(|children| children[0].memory_bytes >= children[1].memory_bytes)
+            .all(|children| children[0].memory.rss_bytes >= children[1].memory.rss_bytes)
     );
 }
 
@@ -100,7 +100,7 @@ mod usage_process_attribution_macos_ambiguous_cohort {
             domain_usage::process_inputs(),
             UsageProcessPlatform::Native,
         );
-        assert_eq!(expected.memory_bytes, native.memory_bytes);
+        assert_eq!(expected.memory, native.memory);
 
         bencher
             .with_inputs(|| inputs.clone())

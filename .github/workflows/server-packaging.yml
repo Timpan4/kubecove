@@ -39,9 +39,6 @@ jobs:
           - label: Linux arm64
             platform: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
-          - label: macOS arm64
-            platform: macos-latest
-            target: aarch64-apple-darwin
 
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 45
@@ -72,10 +69,13 @@ jobs:
         run: rustup target add ${{ matrix.target }}
 
       - name: Cache headless server Rust dependencies
-        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
         with:
-          shared-key: kubecove-server-release-${{ matrix.target }}
-          workspaces: "./src-tauri/server -> target"
+          version: "1.29.2"
+          backend: local
+
+      - name: Activate Cargo caching
+        run: node scripts/ci-mbx-cargo.mjs
 
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile

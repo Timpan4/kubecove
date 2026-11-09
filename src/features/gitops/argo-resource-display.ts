@@ -7,10 +7,7 @@ import type {
 	ArgoResourceComparison,
 	JsonValue,
 } from "@/lib/types";
-import {
-	argoComparisonForResource,
-	argoResourceIdentityKey,
-} from "./argo-workspace-model";
+import { argoResourceIdentityKey } from "./argo-workspace-model";
 
 export type YamlDiffSegment = { text: string; className: string };
 
@@ -21,23 +18,24 @@ export function argoDocumentText(value: JsonValue | undefined): string {
 		: stringify(value).trimEnd();
 }
 
+/** `comparisonsByKey` comes from `argoComparisonIndex` over the snapshot's comparisons. */
 export function resolveArgoResourceComparison(
 	resource: ArgoManagedResource,
-	comparisons: ArgoResourceComparison[],
+	comparisonsByKey: ReadonlyMap<string, ArgoResourceComparison>,
 	transport: "connected" | "kubernetes" | undefined,
 	selectedResourceKey: string | null,
 	selectedComparison: ArgoResourceComparison | null | undefined,
 ): ArgoResourceComparison | null {
-	const eager = argoComparisonForResource(comparisons, resource);
+	const key = argoResourceIdentityKey(resource);
 	if (
 		transport === "connected" &&
-		selectedResourceKey === argoResourceIdentityKey(resource) &&
+		selectedResourceKey === key &&
 		selectedComparison &&
 		argoResourceIdentityKey(selectedComparison.resource) === selectedResourceKey
 	) {
 		return selectedComparison;
 	}
-	return eager;
+	return key === null ? null : (comparisonsByKey.get(key) ?? null);
 }
 
 const yamlDiffHighlighter = tagHighlighter([

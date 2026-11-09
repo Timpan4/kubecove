@@ -139,3 +139,71 @@ Fresh release-shaped native WebKitGTK runs passed all 12 stages with the five-mi
 | Rows after collection/refetch, ms | 300.46 | 18,030.83 |
 
 The polling wait starts after capturing the inactive checkpoint, so its elapsed time differs slightly from the configured timer. Both runs restore resource data after collection and record an 800 by 553 CSS-pixel viewport. Native screenshots show the resource overview and generated YAML; DOM assertions cover navigation, metrics, and topology. These are local lifecycle observations, not a measured five-minute freshness guarantee, heap attribution, or cross-platform performance result.
+
+## Large ownership map edge layer
+
+On 2026-11-04 the large fixture's ownership map mounted 10,002 Svelte Flow nodes and 10,001 edge components while 9 nodes were on screen. With `onlyRenderVisibleElements`, Svelte Flow mounts both endpoints of every edge whose endpoint bounding box crosses the viewport. Each ReplicaSet-to-Pod box in a 10,000-Pod fan-out crosses it. In an experiment build that already skipped off-screen node bodies, passing no edges to Svelte Flow cut the open map's JS heap from 693 MiB to 116 MiB, so the edge components and the endpoints they forced accounted for most of the map's memory.
+
+Maps that use `onlyRenderVisibleElements` (120 or more elements) now draw their edges in one SVG layer, `OwnershipMapEdgeLayer.svelte`, placed in Svelte Flow's back viewport layer. Svelte Flow then mounts only on-screen nodes. `topology-edge-layer.ts` reproduces Svelte Flow's smoothstep path from the handle anchors, the z-index lift for a selected node's edges, the edge culling rule, the arrowhead marker markup, and the `Edge from A to B` image labels. Edges that touch nested nodes stay with Svelte Flow. Smaller maps are unchanged. Layer edges are not hit targets: Svelte Flow edges in this map had no click handler, and their selection styling was overridden by each edge's inline stroke.
+
+`topology-edge-layer.test.ts` compares the layer with `@xyflow/system`'s own `getEdgePosition`, `getSmoothStepPath`, `getElevatedEdgeZIndex`, and `isEdgeVisible` for unselected, ReplicaSet-selected and Pod-selected fan-outs. Changing the selected-node lift, the handle anchor, or the culling boundary makes it fail.
+
+Headless Chromium against the large fixture, release builds of `a0c5891` and the change, the same driver for both:
+
+| Measurement | Before | After |
+| --- | ---: | ---: |
+| Rendered edges, open map / with a Pod selected | 10,001 / 2,504 | 10,001 / 2,504 |
+| Edge style, marker, computed stroke, opacity, width, dash and z-index differences | | 0 |
+| Largest path coordinate difference, flow units | | 0.095 |
+| Differing pixels in the map pane, 744 by 320, Pod selected / open map | | 0 / 3 |
+| DOM nodes, open map | 231,840 | 11,974 |
+| JS heap after GC, open map, MiB | 951 | 144 |
+| Page renderer process footprint, open map, MiB | 2,240 | 505 |
+| Page renderer process footprint, metrics loaded, MiB | 2,021 | 509 |
+
+Path coordinates differ because Svelte Flow measures handle bounds from the DOM, which adds float error such as `507.0002` where the layer computes `507`.
+
+Native WebKitGTK, same large fixture, release-profile e2e builds in a headless cage compositor, one run each. The repository memory spec's first-rows assertion expects the `resources` root to report at least 10,000 items, but both builds report 1, so these runs used a local copy without that assertion.
+
+| Desktop observation | Before | After |
+| --- | ---: | ---: |
+| Mounted flow nodes, map open / warm return | 4,712 / 10,002 | 14 / 19 |
+| Map open, ms | 37,431 | 9,170 |
+| Warm return, ms | 18,874 | 11,426 |
+| Rows after collection and refetch, ms | 18,967 | 9,759 |
+| Host process at map open, MiB | 889 | 606 |
+| WebKit processes, peak, MiB | 5,595 | 5,641 |
+
+The edge layer does not lower the WebKit peak. WebKit already holds 2.8 GiB at the first resource rows, before the map mounts, while Chromium's page process holds 240 MiB at that stage. A smaps snapshot of the WebKit web process attributed 2,287 MiB at 14 s and 3,200 MiB at 25 s to `WKFastMalloc`. The next section traces that peak.
+
+## Declared ownership map handles
+
+WebKit's remote inspector (`WEBKIT_INSPECTOR_HTTP_SERVER`) gave the cause of the first-rows peak. A JavaScriptCore heap snapshot after a forced GC held 172 MiB at the first resource rows, but the inspector's Memory domain reported up to 1,575 MiB of JavaScript and 1,786 MiB of other memory before it settled. That is transient allocation, not retention. Replaying the 7.1 MB `list_resource_scope` response ten times through Tauri IPC did not grow memory, so IPC was ruled out. A ScriptProfiler sample over the 9.9 s from the launcher to the first rows put 97% of samples in one Svelte flush that mounted every ownership map node. The activity icon's `getComputedStyle` per canvas took 33%, `bind:size` 16% and Svelte Flow's node renderer 18%.
+
+Svelte Flow's `getNodesInside` treats a node with no `internals.handleBounds` as needing an initial render, so `onlyRenderVisibleElements` mounted all 10,002 nodes once to measure their handles. Resource nodes now declare their handles through `ownershipNodeHandles` in `topology-edge-layer.ts`, with the same 6 px bounds Svelte Flow measures from its stylesheet. Nodes of the same size share one handle array, because building three objects per node made CodSpeed's 4,000-node F07 layout benchmark 10.89% slower; with sharing, local timings match the base. Svelte Flow derives `handleBounds` from them before any measurement, so only on-screen nodes mount. The edge layer anchors edges on the same declared handles. `topology-edge-layer.test.ts` checks that unmeasured resource nodes are culled to the viewport. Removing the handles, or moving them off the border, makes it fail.
+
+Native WebKitGTK, same large fixture and spec copy as above, release-profile e2e builds, one run each. "Before" is the edge layer plus the workspace-close heap trim.
+
+| Desktop observation | Before | After |
+| --- | ---: | ---: |
+| Launcher to first resource rows, s | 9.9 | 0.6 |
+| YAML to map open, s | 11.3 | 1.7 |
+| Workspace switch to warm return, s | 12.0 | 0.9 |
+| WebKit Memory domain peak, MiB (JavaScript peak) | 3,053 (1,581) | 1,981 (706) |
+| WebKit processes footprint peak, MiB | 5,436 | 2,412 |
+| Host process footprint peak, MiB | 768 | 576 |
+| All app processes at the end of the spec, MiB | 4,008 | 1,395 |
+
+The profiler took 2,671 samples from the launcher through map open, against 9,344 from the launcher to the first rows before, and the activity icon no longer appears among the top frames. v0.13.2 (`a0c5891`) measured 6,485 MiB peak and 5,195 MiB at the end for all app processes in the same harness.
+
+Headless Chromium against the edge layer build, same driver: all 10,001 open-map edges and 2,504 Pod-selected edges match in path, style, marker, computed paint and z-index. The map pane differs by about one anti-aliased pixel on the open map and none with a Pod selected. Metrics-ready took 1,486 ms instead of 5,233, map open 261 ms instead of 4,126 and warm return 414 ms instead of 4,205. With an 8 s settle before each measurement, two runs per build:
+
+| Chromium, MiB | Edge layer build | Declared handles |
+| --- | ---: | ---: |
+| JS heap after GC, map open | 110 / 111 | 124 / 121 |
+| JS heap after GC, resource detail | 139 / 143 | 121 / 119 |
+| JS heap after GC, idle launcher | 46 / 46 | 36 / 34 |
+| JS heap before GC, map open | 722 / 730 | 235 / 212 |
+| Page renderer footprint, map open | 870 / 916 | 758 / 740 |
+
+The open map retains 10 to 14 MiB more. Sharing the handle arrays did not change that (125 and 126 MiB in two more runs), so it is not the handle objects; the heap was not attributed further. Without the settle, the faster build is measured while its background loads are still running, which made its after-GC heap look up to 65 MiB larger.

@@ -30,7 +30,7 @@ export function startupReport(entries: ProfileEntry[], heapBytes: number | null,
 	const memoryGroup = (label: string) => {
 		const group = usage?.breakdown.find((group) => group.label === label);
 		return {
-			bytes: group?.memoryBytes ?? null,
+			memory: group?.memory ?? null,
 			processCount: group?.processCount ?? null,
 			unavailable: group ? null : "not-observed",
 		};
@@ -47,7 +47,7 @@ export function startupReport(entries: ProfileEntry[], heapBytes: number | null,
 			host: memoryGroup("KubeCove"),
 			webview: memoryGroup("WebView"),
 			otherChildren: memoryGroup("Other children"),
-			processTreeBytes: usage?.memoryBytes ?? null,
+			processTree: usage?.memory ?? null,
 			jsHeap: { bytes: heapBytes, unavailable: heapBytes === null ? "engine-does-not-expose-heap" : null },
 		},
 	};

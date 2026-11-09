@@ -681,7 +681,7 @@
         },
         {
           "action": "expectUsageFooter",
-          "text": "CPU 3.8% · Memory 370 MB · 3 processes"
+          "text": "CPU 3.8% · WSS -- · RSS 370 MB · PSS 287 MB · 3 processes"
         }
       ]
     },

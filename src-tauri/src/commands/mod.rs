@@ -41,9 +41,22 @@ pub async fn cancel_workspace_requests(
     let client_generation = helpers::client_cache::rotate_client_generation();
     let cancelled_loads = live_store.cancel_loading();
     argo_connections.close_all().await?;
+    // After a 10k-Pod workspace closed, the desktop host's allocator held 478 MiB
+    // of freed response buffers against 73 MiB in use.
+    let _ = tokio::task::spawn_blocking(release_freed_heap).await;
     Ok(CancelWorkspaceRequestsResult {
         cancelled_requests,
         cancelled_loads,
         client_generation,
     })
+}
+
+/// glibc keeps freed pages in its per-thread arenas for the life of the process,
+/// so without this the host stays at its peak after large responses are freed.
+pub fn release_freed_heap() {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    // SAFETY: malloc_trim takes no pointers and only releases glibc's own free pages.
+    unsafe {
+        libc::malloc_trim(0);
+    }
 }

@@ -37,7 +37,7 @@ describe("release footprint startup companion", () => {
 			};
 			}, [...fonts]);
 			expect(frontend.fonts.length).toBeGreaterThan(0);
-			const usage = await browser.execute(() => window.__TAURI__.core.invoke<AppUsageMetrics>("get_app_usage_metrics"));
+			const usage = await browser.execute(() => window.__TAURI__.core.invoke<AppUsageMetrics, { measureWorkingSet: boolean }>("get_app_usage_metrics", { measureWorkingSet: false }));
 			stages.push({ stage, ...frontend, ...startupReport(frontend.entries, null, usage) });
 		}
 		async function clickText(text: string) {

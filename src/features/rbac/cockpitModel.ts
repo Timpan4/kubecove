@@ -24,7 +24,8 @@ interface RbacRiskIndex {
 	bindingsByGroup: Map<string, RbacBindingSummary[]>;
 	bindingsByServiceAccount: Map<string, RbacBindingSummary[]>;
 	bindingOrder: Map<RbacBindingSummary, number>;
-	rolesByReference: Map<string, RbacRoleSummary>;
+	// Each binding's own risks followed by its referenced role's risks.
+	bindingRisks: Map<RbacBindingSummary, RbacRiskIndicator[]>;
 }
 
 export function objectKey(category: RbacView, item: { kind?: string; name?: string; namespace?: string }): string {
@@ -41,7 +42,7 @@ export function cockpitItems(data: RbacInspectionSummary, category: RbacView): R
 			: category === "Bindings" ? [...data.roleBindings, ...data.clusterRoleBindings]
 			: category === "Service Accounts" ? data.serviceAccounts
 			: data.namespaceAccess;
-	return rows.map((item) => {
+	const keyed = rows.map((item) => {
 		const risks = resolvedRisks(data, riskIndex, category, item);
 		const name = "name" in item ? item.name : item.namespace;
 		const kind = category === "Service Accounts"
@@ -49,8 +50,15 @@ export function cockpitItems(data: RbacInspectionSummary, category: RbacView): R
 			: "kind" in item
 				? item.kind
 				: "Namespace";
-		return { category, key: objectKey(category, { kind, name, namespace: "namespace" in item ? item.namespace : undefined }), name, namespace: "namespace" in item ? item.namespace : undefined, kind, risks, findings: risks.length, item };
-	}).sort((a, b) => riskWeight(b.risks) - riskWeight(a.risks) || b.findings - a.findings || `${a.namespace ?? ""}/${a.name}`.localeCompare(`${b.namespace ?? ""}/${b.name}`));
+		const namespace = "namespace" in item ? item.namespace : undefined;
+		const entry: RbacCockpitItem = { category, key: objectKey(category, { kind, name, namespace }), name, namespace, kind, risks, findings: risks.length, item };
+		// Sort keys are computed once per row instead of twice per comparison.
+		return { entry, weight: riskWeight(risks), label: `${namespace ?? ""}/${name}` };
+	});
+	keyed.sort((a, b) => b.weight - a.weight || b.entry.findings - a.entry.findings || a.label.localeCompare(b.label));
+	const items: RbacCockpitItem[] = [];
+	for (const { entry } of keyed) items.push(entry);
+	return items;
 }
 
 function resolvedRisks(
@@ -62,19 +70,15 @@ function resolvedRisks(
 	if (category === "Bindings" && riskIndex) {
 		// SAFETY: cockpitItems selects only binding arrays for the Bindings category.
 		const binding = item as RbacBindingSummary;
-		return uniqueRisks([
-			...binding.risks,
-			...referencedRoleRisks(riskIndex, binding),
-		]);
+		return uniqueRisks(riskIndex.bindingRisks.get(binding) ?? binding.risks);
 	}
 	if (category !== "Service Accounts" || !riskIndex) return item.risks;
 	// SAFETY: cockpitItems selects only serviceAccounts for the Service Accounts category.
 	const account = item as ServiceAccountSummary;
 	const bindings = bindingsForServiceAccount(riskIndex, account);
-	const inherited = bindings.flatMap((binding) => [
-		...binding.risks,
-		...referencedRoleRisks(riskIndex, binding),
-	]);
+	const inherited = bindings.flatMap(
+		(binding) => riskIndex.bindingRisks.get(binding) ?? binding.risks,
+	);
 	const incomplete = data.coverage.filter(
 		(entry) =>
 			entry.status !== "complete" &&
@@ -94,10 +98,10 @@ function resolvedRisks(
 }
 
 function referencedRoleRisks(
-	riskIndex: RbacRiskIndex,
+	rolesByReference: Map<string, RbacRoleSummary>,
 	binding: RbacBindingSummary,
 ): RbacRiskIndicator[] {
-	const role = riskIndex.rolesByReference.get(roleReferenceKey(
+	const role = rolesByReference.get(roleReferenceKey(
 		binding.roleRefKind,
 		binding.roleRefName,
 		binding.namespace,
@@ -144,9 +148,11 @@ function buildRbacRiskIndex(data: RbacInspectionSummary): RbacRiskIndex {
 	const bindingsByGroup = new Map<string, RbacBindingSummary[]>();
 	const bindingsByServiceAccount = new Map<string, RbacBindingSummary[]>();
 	const bindingOrder = new Map<RbacBindingSummary, number>();
+	const bindingRisks = new Map<RbacBindingSummary, RbacRiskIndicator[]>();
 	const bindings = [...data.roleBindings, ...data.clusterRoleBindings];
 	for (const [index, binding] of bindings.entries()) {
 		bindingOrder.set(binding, index);
+		bindingRisks.set(binding, [...binding.risks, ...referencedRoleRisks(rolesByReference, binding)]);
 		for (const subject of binding.subjects) {
 			if (subject.kind === "ServiceAccount") {
 				pushMapValue(
@@ -160,7 +166,7 @@ function buildRbacRiskIndex(data: RbacInspectionSummary): RbacRiskIndex {
 		}
 	}
 
-	return { bindingsByGroup, bindingsByServiceAccount, bindingOrder, rolesByReference };
+	return { bindingsByGroup, bindingsByServiceAccount, bindingOrder, bindingRisks };
 }
 
 function bindingsForServiceAccount(

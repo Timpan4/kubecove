@@ -1,13 +1,52 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { posix, win32 } from "node:path";
 import { test } from "node:test";
 import { runInNewContext } from "node:vm";
 import { parse } from "yaml";
 
 const workflow = parse(readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8"));
 const packaging = parse(readFileSync(new URL("../.github/workflows/server-packaging.yml", import.meta.url), "utf8"));
-const targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "aarch64-apple-darwin"];
+const targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"];
+
+// The nested builders need an executable shim on PATH and unchanged artifact locations.
+test("Cargo activation exports the platform shim only after successful setup", () => {
+  const code = readFileSync(new URL("./ci-mbx-cargo.mjs", import.meta.url), "utf8").replace(/^import .*;\n/gm, "");
+  for (const platform of ["linux", "darwin", "win32"]) {
+    const paths = platform === "win32" ? win32 : posix;
+    const home = platform === "win32" ? "C:\\Users\\runner" : "/home/runner";
+    const env = { GITHUB_PATH: "path-file", GITHUB_ENV: "env-file", LOCALAPPDATA: paths.join(home, "AppData", "Local"), XDG_DATA_HOME: "/custom/data" };
+    let data;
+    if (platform === "win32") {
+      data = env.LOCALAPPDATA;
+    } else if (platform === "darwin") {
+      data = paths.join(home, "Library", "Application Support");
+    } else {
+      data = env.XDG_DATA_HOME;
+    }
+    const shim = paths.join(data, "mbx", "bin");
+    const writes = [];
+    let installed = false;
+    const context = {
+      process: { platform, env }, join: paths.join, homedir: () => home, constants: { X_OK: 1 },
+      execFileSync: (command, args) => {
+        assert.equal(command, "mbx");
+        assert.equal(JSON.stringify(args), JSON.stringify(["setup", "--yes"]));
+        installed = true;
+      },
+      accessSync: (path) => { assert.ok(installed); assert.equal(path, paths.join(shim, platform === "win32" ? "cargo.exe" : "cargo")); },
+      appendFileSync: (...args) => writes.push(args),
+    };
+    runInNewContext(code, context);
+    assert.deepEqual(writes, [["path-file", `${shim}\n`], ["env-file", "MBX_TARGET_VIEWS=0\n"]]);
+    writes.length = 0;
+    assert.throws(() => runInNewContext(code, { ...context, execFileSync: () => { throw new Error("setup failed"); } }), /setup failed/);
+    assert.deepEqual(writes, []);
+    assert.throws(() => runInNewContext(code, { ...context, accessSync: () => { throw new Error("missing shim"); } }), /missing shim/);
+    assert.deepEqual(writes, []);
+  }
+});
 
 function job(name, source = workflow) {
   assert.ok(source.jobs[name], `Missing job: ${name}`);
@@ -232,16 +271,16 @@ test("native shell builds both variants with a nonempty command array", () => {
   const result = spawnSync("bash", ["-euc", `
     cargo() { printf 'cargo %s\\n' "$*"; }
     bash() { printf 'package %s\\n' "$*"; }
-    TARGET=aarch64-apple-darwin
+    TARGET=aarch64-unknown-linux-gnu
     TAG_NAME=app-v1.2.3
     ${commands}
   `], { encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(result.stdout.trim().split("\n"), [
-    "cargo build --locked --release --manifest-path src-tauri/server/Cargo.toml --target aarch64-apple-darwin",
-    "package scripts/package-server.sh aarch64-apple-darwin full 1.2.3",
-    "cargo build --locked --release --manifest-path src-tauri/server/Cargo.toml --target aarch64-apple-darwin --no-default-features",
-    "package scripts/package-server.sh aarch64-apple-darwin slim 1.2.3",
+    "cargo build --locked --release --manifest-path src-tauri/server/Cargo.toml --target aarch64-unknown-linux-gnu",
+    "package scripts/package-server.sh aarch64-unknown-linux-gnu full 1.2.3",
+    "cargo build --locked --release --manifest-path src-tauri/server/Cargo.toml --target aarch64-unknown-linux-gnu --no-default-features",
+    "package scripts/package-server.sh aarch64-unknown-linux-gnu slim 1.2.3",
   ]);
   // Bash 3.2 treats empty arrays as unset under nounset; the base command must never be empty.
   assert.match(commands, /build=\(cargo build/);
@@ -255,8 +294,32 @@ test("server build reuses pinned actions already used by release jobs", () => {
     assert.match(pinned, /@[a-f0-9]{40}$/);
     assert.ok(build.steps.some(({ uses }) => uses === pinned), `${action} pin differs`);
   }
-  for (const action of ["dtolnay/rust-toolchain", "swatinem/rust-cache"]) {
+  for (const action of ["dtolnay/rust-toolchain", "jdx/mr-boxington-action"]) {
     assert.match(build.steps.find(({ uses }) => uses?.startsWith(`${action}@`))?.uses, /@[a-f0-9]{40}$/);
+  }
+});
+
+// Release binaries must not inherit shared compiler outputs. E2E must wrap nested Cargo.
+test("release artifacts use local mbx while E2E restores both workspace caches", () => {
+  const e2e = parse(readFileSync(new URL("../.github/workflows/e2e.yml", import.meta.url), "utf8"));
+  for (const build of [job("build"), job("server-build", packaging)]) {
+    const setup = build.steps.find(({ uses }) => uses?.startsWith("jdx/mr-boxington-action@"));
+    assert.equal(setup?.with.backend, "local");
+    assert.doesNotMatch(JSON.stringify(build), /swatinem\/rust-cache/);
+    const activation = step(build, "Activate Cargo caching");
+    assert.equal(activation.run, "node scripts/ci-mbx-cargo.mjs");
+    const consumer = build.steps.find(({ uses, run }) => uses?.startsWith("tauri-apps/tauri-action@") || run?.includes("for variant in full slim"));
+    assert.ok(build.steps.indexOf(activation) < build.steps.indexOf(consumer));
+  }
+  for (const check of [job("e2e"), ...Object.values(e2e.jobs)]) {
+    const setups = check.steps.filter(({ uses }) => uses?.startsWith("jdx/mr-boxington-action@"));
+    assert.deepEqual(setups.map(({ with: inputs }) => inputs["working-directory"]), ["src-tauri", "src-tauri/server"]);
+    assert.deepEqual(setups.map(({ with: inputs }) => inputs["cache-generation"]), ["kubecove-e2e", "kubecove-server-e2e"]);
+    const activation = step(check, "Activate Cargo caching");
+    assert.equal(activation.run, "node scripts/ci-mbx-cargo.mjs");
+    const consumer = check.steps.find(({ run }) => run?.includes("bun run e2e:"));
+    assert.ok(check.steps.indexOf(activation) < check.steps.indexOf(consumer));
+    assert.doesNotMatch(JSON.stringify(check), /swatinem\/rust-cache/);
   }
 });
 

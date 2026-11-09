@@ -271,3 +271,145 @@ fn leaves_workload_metrics_empty_when_pod_sample_has_no_usage() {
     assert_eq!(workloads[0].cpu_millicores, None);
     assert_eq!(workloads[0].memory_bytes, None);
 }
+
+fn owner(kind: &str, name: &str, controller: Option<bool>) -> serde_json::Value {
+    json!({ "apiVersion": "apps/v1", "kind": kind, "name": name, "uid": format!("{name}-uid"), "controller": controller })
+}
+
+fn full_pod(name: &str, owners: serde_json::Value) -> serde_json::Value {
+    json!({
+        "apiVersion": "v1", "kind": "Pod",
+        "metadata": {
+            "name": name, "namespace": "payments", "uid": format!("{name}-uid"),
+            "labels": { "app": "api" },
+            "annotations": { "kubectl.kubernetes.io/last-applied-configuration": "{}" },
+            "managedFields": [{ "manager": "kubelet", "operation": "Update", "fieldsV1": { "f:status": {} } }],
+            "ownerReferences": owners,
+        },
+        "spec": { "containers": [{ "name": "api", "image": "api:1", "ports": [{ "containerPort": 8080 }] }], "nodeName": "node-a" },
+        "status": { "phase": "Running", "conditions": [{ "type": "Ready", "status": "True" }] },
+    })
+}
+
+fn object_list(items: Vec<serde_json::Value>) -> serde_json::Value {
+    json!({ "apiVersion": "v1", "kind": "List", "metadata": { "resourceVersion": "1" }, "items": items })
+}
+
+// Failure modes for the narrow metrics decoders: a changed usage sum, sample
+// time, name or namespace; non-string, null or missing usage values or
+// timestamps read differently; labels on metrics metadata or managed fields,
+// spec and status on Pods changing the result; an owner reference lost from
+// the rollup, including a controller listed after a non-controller owner;
+// and either the all-namespace or the named-namespace request path diverging.
+// The expected summary decodes the same responses completely, as the list
+// API did before the projections.
+#[tokio::test]
+async fn narrow_metrics_decoding_matches_complete_decoding() {
+    use crate::commands::FixedClusterAccess;
+    use kube::api::ObjectList;
+    use kubecove_kube::commands::discovery_fixture::{self, FixtureKind};
+    let pods = object_list(vec![
+        full_pod("api-0", json!([owner("ReplicaSet", "api-7d9", Some(true))])),
+        full_pod("solo", serde_json::Value::Null),
+        full_pod(
+            "job-0",
+            json!([
+                owner("Job", "first", None),
+                owner("Job", "batch", Some(true))
+            ]),
+        ),
+    ]);
+    let replicasets = object_list(vec![json!({
+        "apiVersion": "apps/v1", "kind": "ReplicaSet",
+        "metadata": { "name": "api-7d9", "namespace": "payments", "ownerReferences": [owner("Deployment", "api", Some(true))] },
+        "spec": { "replicas": 1, "selector": { "matchLabels": { "app": "api" } } },
+        "status": { "replicas": 1 },
+    })]);
+    let pod_metrics = object_list(vec![
+        json!({ "apiVersion": "metrics.k8s.io/v1beta1", "kind": "PodMetrics",
+            "metadata": { "name": "api-0", "namespace": "payments", "labels": { "app": "api" }, "creationTimestamp": "2026-01-01T00:00:00Z" },
+            "timestamp": "2026-05-22T12:00:00Z", "window": "30s",
+            "containers": [
+                { "name": "api", "usage": { "cpu": "150m", "memory": "64Mi" } },
+                { "name": "sidecar", "usage": { "cpu": 5, "memory": null } },
+            ] }),
+        json!({ "apiVersion": "metrics.k8s.io/v1beta1", "kind": "PodMetrics",
+            "metadata": { "name": "solo", "namespace": "payments" }, "timestamp": null }),
+        json!({ "apiVersion": "metrics.k8s.io/v1beta1", "kind": "PodMetrics",
+            "metadata": { "name": "job-0", "namespace": "payments" }, "timestamp": "2026-05-22T12:00:05Z",
+            "containers": [{ "name": "job", "usage": { "cpu": "20000000n", "memory": "1Gi" } }] }),
+    ]);
+    let node_metrics = object_list(vec![
+        json!({ "apiVersion": "metrics.k8s.io/v1beta1", "kind": "NodeMetrics",
+            "metadata": { "name": "node-a" }, "timestamp": "2026-05-22T12:00:00Z", "usage": { "cpu": "2", "memory": "2Gi" } }),
+        json!({ "apiVersion": "metrics.k8s.io/v1beta1", "kind": "NodeMetrics",
+            "metadata": { "name": "node-b" }, "timestamp": 7 }),
+    ]);
+    let complete = resource_metrics_projection(
+        "fixture",
+        &serde_json::from_value::<ObjectList<DynamicObject>>(pod_metrics.clone())
+            .unwrap()
+            .items,
+        &serde_json::from_value::<ObjectList<DynamicObject>>(node_metrics.clone())
+            .unwrap()
+            .items,
+        &serde_json::from_value::<ObjectList<Pod>>(pods.clone())
+            .unwrap()
+            .items,
+        &serde_json::from_value::<ObjectList<ReplicaSet>>(replicasets.clone())
+            .unwrap()
+            .items,
+        Vec::new(),
+        false,
+        false,
+    );
+    assert_eq!(complete.workloads.len(), 3, "fixture exercises the rollup");
+    let kinds = [
+        FixtureKind {
+            group: "metrics.k8s.io",
+            version: "v1beta1",
+            kind: "PodMetrics",
+            plural: "pods",
+            namespaced: true,
+        },
+        FixtureKind {
+            group: "metrics.k8s.io",
+            version: "v1beta1",
+            kind: "NodeMetrics",
+            plural: "nodes",
+            namespaced: false,
+        },
+    ];
+    for (namespaces, prefix) in [
+        (Vec::new(), String::new()),
+        (
+            vec!["payments".to_string()],
+            "/namespaces/payments".to_string(),
+        ),
+    ] {
+        let lists = [
+            (format!("/api/v1{prefix}/pods"), pods.clone()),
+            (
+                format!("/apis/apps/v1{prefix}/replicasets"),
+                replicasets.clone(),
+            ),
+            (
+                format!("/apis/metrics.k8s.io/v1beta1{prefix}/pods"),
+                pod_metrics.clone(),
+            ),
+            (
+                "/apis/metrics.k8s.io/v1beta1/nodes".to_string(),
+                node_metrics.clone(),
+            ),
+        ];
+        let access = FixedClusterAccess::new(discovery_fixture::client_with_lists(
+            &kinds,
+            lists.into_iter().collect(),
+        ))
+        .access();
+        let narrow = resource_metrics_from(&access, "fixture".into(), namespaces)
+            .await
+            .expect("metrics summary");
+        assert_eq!(narrow, complete, "prefix {prefix:?}");
+    }
+}

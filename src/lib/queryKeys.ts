@@ -293,7 +293,7 @@ export const queryKeys = {
 		scoped(F.incidentCockpit, source, context, ...resourceScopeParts(fetchKeys)),
 	portForwards: () => [F.portForwards.root] as const,
 	podExecSessions: () => [F.podExecSessions.root] as const,
-	appUsageMetrics: () => [F.appUsageMetrics.root] as const,
+	appUsageMetrics: (measureWorkingSet: boolean) => [F.appUsageMetrics.root, measureWorkingSet] as const,
 	backendDiagnostics: () => [F.backendDiagnostics.root] as const,
 	backendCacheDiagnostics: () => [F.backendCacheDiagnostics.root] as const,
 	/** A disabled query's key while it has no target; never fetched or cancelled. */

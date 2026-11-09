@@ -315,7 +315,11 @@ impl Backend for DesktopBackend {
         "list_resource_metrics",
         scope_args(scope)
     );
-    route!(app_usage() -> AppUsageMetrics, "get_app_usage_metrics", json!({}));
+    route!(
+        app_usage(measure_working_set: bool) -> AppUsageMetrics,
+        "get_app_usage_metrics",
+        json!({"measureWorkingSet":measure_working_set})
+    );
     route!(
         rbac(context: String) -> RbacInspectionSummary,
         "list_rbac_inspection",

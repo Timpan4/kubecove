@@ -25,6 +25,8 @@ pub struct Owner {
     pub request_gate: RwLock<()>,
     pub socket_changed: Notify,
     pub socket: Mutex<SocketState>,
+    /// Declared last: fields drop in order, so this runs after the session's caches are freed.
+    _release_heap: ReleaseHeapOnDrop,
 }
 
 /// The session's browser socket. Each connect bumps the generation, so a
@@ -130,6 +132,7 @@ impl Sessions {
             request_gate: RwLock::new(()),
             socket_changed: Notify::new(),
             socket: Mutex::new(SocketState::default()),
+            _release_heap: ReleaseHeapOnDrop,
         });
         let info = self.info(&owner);
         owners.push(Arc::clone(&owner));
@@ -266,6 +269,23 @@ impl Sessions {
         }
         self.retired_caches.retire(&owner.backend.live_store);
         result
+    }
+}
+
+/// An idle server stayed at its peak (1 GiB on one deployment) because the
+/// pages a session's caches freed were never returned. The workspace-close
+/// trim in `cleanup` runs while the caches are still alive, so this one runs
+/// after they are gone.
+struct ReleaseHeapOnDrop;
+
+impl Drop for ReleaseHeapOnDrop {
+    fn drop(&mut self) {
+        // The trim took 1.5 to 2.9 ms after a large session, and the last owner
+        // reference usually drops on an async worker.
+        match tokio::runtime::Handle::try_current() {
+            Ok(runtime) => drop(runtime.spawn_blocking(kubecove_lib::commands::release_freed_heap)),
+            Err(_) => kubecove_lib::commands::release_freed_heap(),
+        }
     }
 }
 

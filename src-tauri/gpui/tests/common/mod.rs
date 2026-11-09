@@ -537,7 +537,7 @@ impl Backend for Fixture {
         }
         Box::pin(async move { Ok(std::sync::Arc::new(graph)) })
     }
-    fn app_usage(&self) -> Read<kubecove_lib::models::AppUsageMetrics> {
+    fn app_usage(&self, _: bool) -> Read<kubecove_lib::models::AppUsageMetrics> {
         let usage = self.app_usage.clone();
         self.timing.read("get_app_usage_metrics", "", "", usage)
     }

@@ -61,9 +61,7 @@ mod typed_resource_summaries_10000 {
             false_ready_condition.health_assessment.state,
             kubecove_lib::models::HealthAssessmentState::Degraded
         );
-        bencher
-            .with_inputs(|| SUMMARY_INPUT.clone())
-            .bench_values(|fixture| black_box(typed_summaries_at(&fixture, fixed_now())));
+        bencher.bench(|| black_box(typed_summaries_at(black_box(&SUMMARY_INPUT), fixed_now())));
     }
 }
 
@@ -127,9 +125,7 @@ mod dynamic_resource_summaries_10000 {
             unrecognized_conditions.health_assessment.state,
             kubecove_lib::models::HealthAssessmentState::NotEvaluated
         );
-        bencher
-            .with_inputs(|| DYNAMIC_INPUT.clone())
-            .bench_values(|fixture| black_box(dynamic_summaries_at(&fixture, fixed_now())));
+        bencher.bench(|| black_box(dynamic_summaries_at(black_box(&DYNAMIC_INPUT), fixed_now())));
     }
 }
 

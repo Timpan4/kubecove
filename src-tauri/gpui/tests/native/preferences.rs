@@ -27,7 +27,7 @@ fn restart_and_stale_writes() {
     document.preferences.show_exact_timestamps = true;
     document.preferences.log_layout = kubecove_gpui::preferences::LogLayout::Gutter;
     let mut values = serde_json::to_value(&document.preferences).unwrap();
-    assert_eq!(values.as_object().unwrap().len(), 24);
+    assert_eq!(values.as_object().unwrap().len(), 25);
     for value in values.as_object_mut().unwrap().values_mut() {
         if let Some(enabled) = value.as_bool() {
             *value = serde_json::json!(!enabled);

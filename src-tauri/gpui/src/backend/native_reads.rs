@@ -153,8 +153,8 @@ impl Backend for NativeBackend {
         topology_metrics::topology(self, scope, "networkFlow")
     }
 
-    fn app_usage(&self) -> Read<kubecove_lib::models::AppUsageMetrics> {
-        topology_metrics::app_usage(self)
+    fn app_usage(&self, measure_working_set: bool) -> Read<kubecove_lib::models::AppUsageMetrics> {
+        topology_metrics::app_usage(self, measure_working_set)
     }
 
     fn metrics(&self, scope: Scope) -> Read<kubecove_lib::models::ResourceMetricsSummary> {

@@ -69,7 +69,7 @@ const outsideWorkspaceKeys = [
 	queryKeys.argoConnectionStatuses("dev", "ws", ["profile"]),
 	queryKeys.portForwards(),
 	queryKeys.podExecSessions(),
-	queryKeys.appUsageMetrics(),
+	queryKeys.appUsageMetrics(false),
 	queryKeys.backendDiagnostics(),
 	queryKeys.backendCacheDiagnostics(),
 ];

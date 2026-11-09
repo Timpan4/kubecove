@@ -77,6 +77,11 @@ function createdAtNewestFirstKey(node: TopologyNode): string {
 	return `0:${String(Number.MAX_SAFE_INTEGER - ms).padStart(16, "0")}`;
 }
 
+// `localeCompare` with an options argument builds a new ICU collator on every
+// call. ECMA-402 defines it as `new Intl.Collator(locales, options).compare`,
+// so one shared collator keeps the order and skips that cost per comparison.
+const NAME_COLLATOR = new Intl.Collator(undefined, { numeric: true });
+
 export function sortTopologyNodes(a: TopologyNode, b: TopologyNode): number {
 	const rank = kindRank(a.kind) - kindRank(b.kind);
 	if (rank !== 0) return rank;
@@ -86,7 +91,7 @@ export function sortTopologyNodes(a: TopologyNode, b: TopologyNode): number {
 	if (kind !== 0) return kind;
 	const createdAt = compareCreatedAtNewestFirst(a, b);
 	if (createdAt !== 0) return createdAt;
-	return a.name.localeCompare(b.name, undefined, { numeric: true });
+	return NAME_COLLATOR.compare(a.name, b.name);
 }
 
 export function topologyColumnDepth(

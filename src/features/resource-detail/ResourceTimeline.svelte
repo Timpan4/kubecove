@@ -5,7 +5,7 @@
 	import type { IncidentTimelineItem, IncidentTimelineTone } from "./incident-timeline";
 	import {
 		groupIncidentTimelineByDay,
-		incidentTimelineTime,
+		incidentTimelineTimeFormatter,
 		incidentTimelineTitle,
 	} from "./incident-timeline-labels";
 
@@ -48,9 +48,7 @@
 		groups.some((group) => group.key === todayKey),
 	);
 
-	function time(item: IncidentTimelineItem): string {
-		return incidentTimelineTime(item, timezone);
-	}
+	const time = $derived(incidentTimelineTimeFormatter(timezone));
 
 	function toneClass(tone: IncidentTimelineTone): string {
 		return { error: "text-destructive", warning: "text-amber-300", info: "text-sky-300", neutral: "text-secondary-foreground" }[tone];

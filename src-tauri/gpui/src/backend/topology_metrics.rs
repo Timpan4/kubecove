@@ -44,7 +44,12 @@ pub(super) fn metrics(backend: &NativeBackend, scope: Scope) -> Read<ResourceMet
     })
 }
 
-pub(super) fn app_usage(backend: &NativeBackend) -> Read<AppUsageMetrics> {
+pub(super) fn app_usage(
+    backend: &NativeBackend,
+    measure_working_set: bool,
+) -> Read<AppUsageMetrics> {
     let monitor = backend.usage.clone();
-    backend.read(async move { commands::get_app_usage_metrics(State::new(&monitor)).await })
+    backend.read(async move {
+        commands::get_app_usage_metrics(measure_working_set, State::new(&monitor)).await
+    })
 }

@@ -117,6 +117,13 @@ pub const ROWS: &[Row] = &[
     ),
     row(
         C::General,
+        "Measure working set (WSS)",
+        "Linux only. Each footer refresh resets the kernel's referenced-page bits for KubeCove processes, so WSS shows memory touched since the previous refresh. The kernel may then reclaim those pages sooner. Windows always reports its working set; macOS has none.",
+        Switch(false),
+        None,
+    ),
+    row(
+        C::General,
         "Redact secrets",
         "Keeps Secret values hidden by default. Connected Argo Secret values stay provider masked.",
         Switch(true),

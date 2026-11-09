@@ -87,6 +87,9 @@
     0 16px 32px -8px oklch(0.21 0.004 49.25 / 0.1);
   --shadow-2xl: 0 16px 32px -12px oklch(0.21 0.004 49.25 / 0.2),
     0 32px 64px -16px oklch(0.21 0.004 49.25 / 0.12);
+  /* Map card edge: a hard, unblurred drop line plus a top highlight. */
+  --topology-node-edge-shadow: oklch(0.21 0.004 49.25 / 0.16);
+  --topology-node-edge-highlight: color-mix(in oklch, white 70%, transparent);
   /* Stacking-context scale — single source of truth for z utilities. */
   --z-base: 0;
   --z-content: 10;
@@ -230,6 +233,8 @@
     0 16px 32px -8px oklch(0 0 0 / 0.4);
   --shadow-2xl: 0 16px 32px -12px oklch(0 0 0 / 0.6),
     0 32px 64px -16px oklch(0 0 0 / 0.44);
+  --topology-node-edge-shadow: oklch(0 0 0 / 0.45);
+  --topology-node-edge-highlight: color-mix(in oklch, white 8%, transparent);
   /* z scale re-declared for parity; values match :root. */
   --z-base: 0;
   --z-content: 10;
@@ -501,27 +506,18 @@
   .svelte-ownership-resource-node {
     --topology-node-border: color-mix(
       in oklch,
-      var(--resource-tone-color, var(--primary)) 40%,
+      var(--resource-tone-color, var(--primary)) 50%,
       var(--border)
     );
     --topology-node-border-top: var(--topology-node-border);
     --topology-node-border-right: var(--topology-node-border);
     --topology-node-border-bottom: var(--topology-node-border);
     --topology-node-border-left: var(--topology-node-border);
-    --topology-node-bg:
-      linear-gradient(
-        135deg,
-        color-mix(
-          in oklch,
-          var(--resource-tone-color, var(--primary)) 15%,
-          var(--surface-2)
-        ) 0%,
-        color-mix(
-          in oklch,
-          var(--resource-tone-color, var(--primary)) 5%,
-          var(--surface-1)
-        ) 100%
-      );
+    --topology-node-bg: color-mix(
+      in oklch,
+      var(--resource-tone-color, var(--primary)) 14%,
+      var(--surface-2)
+    );
   }
 
   .svelte-ownership-resource-node::before {
@@ -562,7 +558,6 @@
 
   .svelte-ownership-resource-node .resource-topology-status-dot {
     background: var(--topology-chip-color, var(--muted-foreground));
-    box-shadow: 0 0 8px color-mix(in oklch, var(--topology-chip-color, var(--muted-foreground)) 62%, transparent);
   }
 
 }

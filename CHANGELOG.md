@@ -3,6 +3,21 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.13.3 - 2026-11-05
+### Improved
+
+- Cut desktop and headless memory on large clusters (#646).
+
+## 0.13.2 - 2026-11-04
+### Release
+
+- Prepared KubeCove beta release metadata.
+
+## 0.13.1 - 2026-11-04
+### Improved
+
+- Index-based topology build, hoisted Intl formatters, and per-row sort keys (#641).
+
 ## 0.13.0 - 2026-11-03
 ### Added
 

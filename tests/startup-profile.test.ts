@@ -39,7 +39,7 @@ test("report orders milestones, aggregates IPC, and excludes arbitrary diagnosti
 	expect(report.milestones.slice(0, 2).map(({ name }) => name)).toEqual(["frontend-entry", "launcher-ready"]);
 	expect(report.milestones.find(({ name }) => name === "first-resource-rows")).toEqual({ name: "first-resource-rows", atMs: null, unavailable: "not-reached" });
 	expect(report.ipc.commands).toEqual([{ command: "get_kubeconfig_sources", count: 2, errors: 1, totalMs: 30, maxMs: 20 }]);
-	expect(report.memory.webview.bytes).toBeNull();
+	expect(report.memory.webview.memory).toBeNull();
 	expect(report.memory.jsHeap.bytes).toBeNull();
 	expect(JSON.stringify(report)).not.toContain("secret-token");
 });

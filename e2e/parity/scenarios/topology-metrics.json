@@ -113,7 +113,7 @@
 		},
 		{
 			"id": "usage-footer.toggle",
-			"title": "App process usage footer toggles and opens the process tree",
+			"title": "App process usage footer toggles, shows WSS, RSS and PSS, opens the process tree, and its working set setting toggles",
 			"steps": [
 				{
 					"action": "openSettings"
@@ -124,7 +124,21 @@
 				},
 				{
 					"action": "expectUsageFooter",
-					"text": "CPU 3.8% · Memory 370 MB · 3 processes"
+					"text": "CPU 3.8% · WSS -- · RSS 370 MB · PSS 287 MB · 3 processes"
+				},
+				{
+					"action": "expectSetting",
+					"setting": "Measure working set (WSS)",
+					"checked": false
+				},
+				{
+					"action": "toggleSetting",
+					"setting": "Measure working set (WSS)"
+				},
+				{
+					"action": "expectSetting",
+					"setting": "Measure working set (WSS)",
+					"checked": true
 				},
 				{
 					"action": "openUsageTree"

@@ -22,6 +22,7 @@ impl Inspector {
         let checked = match row.title {
             "Show exact timestamps" => Some(p.show_exact_timestamps),
             "Show CPU and memory footer" => Some(p.show_usage_footer),
+            "Measure working set (WSS)" => Some(p.measure_working_set),
             "Redact secrets" => Some(p.redact_secrets),
             "Keep full map visible during selection" => Some(p.show_full_topology_on_selection),
             "Show ownership map by default" => Some(p.show_ownership_map_by_default),
@@ -39,6 +40,13 @@ impl Inspector {
             _ => None,
         };
         let widget = if let Some(checked) = checked {
+            // The web switch is `disabled` while the footer is hidden.
+            if row.title == "Measure working set (WSS)" && !p.show_usage_footer {
+                return switch(row.title, checked)
+                    .opacity(0.5)
+                    .cursor_default()
+                    .into_any_element();
+            }
             switch(row.title, checked)
                 .on_click(cx.listener(move |this, _, window, cx| {
                     if row.title == "Skip change review"
@@ -56,6 +64,10 @@ impl Inspector {
                         "Show CPU and memory footer" => {
                             this.persisted.preferences.show_usage_footer =
                                 !this.persisted.preferences.show_usage_footer
+                        }
+                        "Measure working set (WSS)" => {
+                            this.persisted.preferences.measure_working_set =
+                                !this.persisted.preferences.measure_working_set
                         }
                         "Redact secrets" => {
                             this.persisted.preferences.redact_secrets =

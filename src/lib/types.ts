@@ -85,64 +85,6 @@ export type {
 	CancelWorkspaceRequestsResult,
 } from "./cancellation-types";
 
-export type YamlViewMode = "kubectl" | "applyClean";
-export type YamlEncoding = "yaml" | "kyaml";
-
-export interface YamlApplyRequest {
-	clusterContext: string;
-	kubeconfigEnvVar?: string;
-	kind: string;
-	apiVersion?: string;
-	group?: string;
-	version?: string;
-	plural?: string;
-	namespaced?: boolean;
-	name: string;
-	namespace?: string | null;
-	yaml: string;
-	yamlEncoding?: YamlEncoding;
-	forceConflicts?: boolean;
-}
-
-export interface YamlApplyTarget {
-	clusterContext: string;
-	kind: string;
-	apiVersion?: string;
-	name: string;
-	namespace?: string | null;
-}
-
-export interface YamlApplyPreview {
-	target: YamlApplyTarget;
-	currentYaml: string;
-	dryRunYaml: string;
-}
-
-export interface YamlApplyResult {
-	target: YamlApplyTarget;
-	appliedYaml: string;
-}
-
-export type KubernetesYamlLintSeverity = "error" | "warning" | "info";
-
-export interface KubernetesYamlLintDiagnostic {
-	severity: KubernetesYamlLintSeverity;
-	source: string;
-	message: string;
-	fieldPath?: string;
-}
-
-export interface KubernetesYamlLintStatusNote {
-	severity: KubernetesYamlLintSeverity;
-	source: string;
-	message: string;
-}
-
-export interface KubernetesYamlLintResult {
-	diagnostics: KubernetesYamlLintDiagnostic[];
-	notes: KubernetesYamlLintStatusNote[];
-}
-
 export type {
 	ClusterOperationResult,
 	ClusterOperationTarget,
@@ -469,18 +411,27 @@ export interface WatchResourceTarget {
 	name?: string | null;
 }
 
+/** A figure is null when the platform does not report it or a group total would be partial. */
+export interface AppUsageMemory {
+	wssBytes: number | null;
+	rssBytes: number | null;
+	pssBytes: number | null;
+}
+
 export interface AppUsageMetricsBreakdown {
 	label: string;
 	description: string;
 	cpuPercent: number;
-	memoryBytes: number;
+	memory: AppUsageMemory;
 	processCount: number;
 	children: AppUsageMetricsBreakdown[];
 }
 
 export interface AppUsageMetrics {
 	cpuPercent: number;
-	memoryBytes: number;
+	memory: AppUsageMemory;
+	/** Interval covered by Linux WSS; null when WSS is not an interval measurement. */
+	workingSetWindowMs: number | null;
 	processCount: number;
 	sampledAt: string;
 	breakdown: AppUsageMetricsBreakdown[];
@@ -591,3 +542,4 @@ export type * from "./health-types";
 export type * from "./helm-types";
 
 export type * from "./rbac-types";
+export type * from "./yaml-types";

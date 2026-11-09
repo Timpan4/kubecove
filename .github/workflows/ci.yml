@@ -229,12 +229,12 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Rust
-        uses: swatinem/rust-cache@v2
+      - name: Setup Mr Boxington for Rust checks
+        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
         with:
-          shared-key: kubecove-rust-ci
-          workspaces: "./src-tauri -> target"
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          version: "1.29.2"
+          working-directory: src-tauri
+          cache-generation: kubecove-rust-ci
 
       - name: Audit Rust dependencies
         uses: rustsec/audit-check@v2.0.0
@@ -245,10 +245,10 @@ jobs:
           ignore: RUSTSEC-2024-0429
 
       - name: Test Rust
-        run: cargo test --workspace --manifest-path src-tauri/Cargo.toml
+        run: mbx test --workspace --manifest-path src-tauri/Cargo.toml
 
       - name: Lint Rust
-        run: cargo clippy --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+        run: mbx clippy --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
 
   server:
     name: Headless server checks
@@ -267,13 +267,20 @@ jobs:
           bun-version: "1.4.4"
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-      - name: Cache Rust
-        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Setup Mr Boxington for GUI-free backend checks
+        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
         with:
-          workspaces: |
-            ./src-tauri -> target
-            ./src-tauri/server -> target
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          version: "1.29.2"
+          working-directory: src-tauri
+          cache-generation: kubecove-server-backend-ci
+      - name: Setup Mr Boxington for headless server checks
+        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
+        with:
+          version: "1.29.2"
+          working-directory: src-tauri/server
+          cache-generation: kubecove-server-ci
+      - name: Activate Cargo caching
+        run: node scripts/ci-mbx-cargo.mjs
       - name: Cache Bun dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -295,17 +302,17 @@ jobs:
             exit 1
           fi
       - name: Test GUI-free backend crates
-        run: cargo test --locked --workspace --no-default-features --manifest-path src-tauri/Cargo.toml
+        run: mbx test --locked --workspace --no-default-features --manifest-path src-tauri/Cargo.toml
       - name: Test headless server
-        run: cargo test --manifest-path src-tauri/server/Cargo.toml --locked
+        run: mbx test --manifest-path src-tauri/server/Cargo.toml --locked
       - name: Verify API-only server
         run: |
-          cargo test --manifest-path src-tauri/server/Cargo.toml --locked --no-default-features
-          cargo clippy --manifest-path src-tauri/server/Cargo.toml --locked --no-default-features --all-targets -- -D warnings
+          mbx test --manifest-path src-tauri/server/Cargo.toml --locked --no-default-features
+          mbx clippy --manifest-path src-tauri/server/Cargo.toml --locked --no-default-features --all-targets -- -D warnings
       - name: Lint headless server
-        run: cargo clippy --manifest-path src-tauri/server/Cargo.toml --all-targets --locked -- -D warnings
+        run: mbx clippy --manifest-path src-tauri/server/Cargo.toml --all-targets --locked -- -D warnings
       - name: Build headless server
-        run: cargo build --manifest-path src-tauri/server/Cargo.toml --locked
+        run: mbx build --manifest-path src-tauri/server/Cargo.toml --locked
       - name: Verify HTTP and WebSocket lifecycle
         run: bun e2e/headless-smoke.ts
       - name: Upload headless verification report
