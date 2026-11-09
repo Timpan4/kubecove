@@ -6,10 +6,12 @@ use super::*;
 pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) -> bool {
     match string(step, "action") {
         "expectYamlEditorDiagnostics" => {
-            let inspector = window
-                .root::<Inspector>()
-                .flatten()
-                .expect("the parity window shows the Inspector");
+            // The window's root is gpui-kit's `Root`, which wraps the Inspector.
+            let inspector = gpui_kit::base::Root::read(window, cx)
+                .view()
+                .clone()
+                .downcast::<Inspector>()
+                .expect("the Inspector is the window's content");
             let actual = inspector.read(cx).yaml_editor_diagnostics(cx);
             let mut actual = actual.as_array().expect("a diagnostic list").clone();
             // The web driver sorts CodeMirror's diagnostics the same way.
