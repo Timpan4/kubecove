@@ -115,8 +115,8 @@
       ]
     },
     {
-      "id": "argo-connection.page-choices-survive-context-change",
-      "title": "The GitOps page dialog keeps its choices when the workspace's context changes, as the web's page dialog does",
+      "id": "argo-connection.page-choices-reset-on-context-change",
+      "title": "The GitOps page dialog starts from its default choices after the workspace's context changes, as the web's page dialog remounts",
       "steps": [
         { "action": "openPage", "page": "GitOps" },
         { "action": "argoConnectionDialog", "operation": "open" },
@@ -129,7 +129,7 @@
         { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
         { "action": "openPage", "page": "GitOps" },
         { "action": "argoConnectionDialog", "operation": "open" },
-        { "action": "argoConnectionDialog", "operation": "expectLocalLogin", "checked": true },
+        { "action": "argoConnectionDialog", "operation": "expectLocalLogin", "checked": false },
         { "action": "argoControl", "control": "Close connection" }
       ]
     },

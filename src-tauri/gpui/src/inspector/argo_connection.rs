@@ -129,10 +129,8 @@ pub(super) struct Connections {
     pub selected: Preference,
     pub editing: Option<ArgoConnectionProfile>,
     pub scope: String,
-    /// The workspace whose page dialog choices `page` holds. Only a workspace change resets them.
-    pub page_workspace: String,
     pub host: DialogHost,
-    /// The GitOps page dialog's choices. Leaving the page resets them.
+    /// The GitOps page dialog's choices. Leaving the page or changing the scope resets them.
     pub page: DialogChoices,
     /// The detail dialog's choices. Closing the detail or opening another resource resets them.
     pub detail: DialogChoices,
@@ -210,7 +208,6 @@ impl Connections {
             selected: Preference::Automatic,
             editing: None,
             scope: String::new(),
-            page_workspace: String::new(),
             host: DialogHost::default(),
             page: DialogChoices::default(),
             detail: DialogChoices::default(),
