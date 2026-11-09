@@ -77,7 +77,7 @@ impl Source {
             .enumerate()
             .map(|(i, edge)| (edge.id.as_str(), i))
             .collect();
-        let endpoints = topology
+        let endpoints: Vec<_> = topology
             .edges
             .iter()
             .map(|edge| {
