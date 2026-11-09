@@ -431,9 +431,7 @@ impl Backend for Controlled {
         Box::pin(async { Err(AppError::new("Review denied", AppErrorKind::Forbidden)) })
     }
     fn kubeconfig_sources(&self) -> Read<KubeconfigSourcesSummary> {
-        Box::pin(async {
-            Ok(serde_json::from_value(json!({"kubeconfigEnvVar":"KUBECONFIG","paths":[],"sourceKey":"default","sourceLabel":"KUBECONFIG","showSourceLabels":true,"warnings":[]})).unwrap())
-        })
+        self.shell.kubeconfig_sources()
     }
     /// Like the production backend, which cannot persist kubeconfig settings.
     fn kubeconfig_writes_unavailable(&self) -> Option<&'static str> {

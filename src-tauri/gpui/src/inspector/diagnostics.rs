@@ -338,13 +338,16 @@ impl Inspector {
                 .child("Open Wiki")
                 .on_click(cx.listener(|this, _, window, cx| {
                     let read = this.backend.open_documentation();
-                    this.settings.task = Some(cx.spawn_in(window, async move |this, cx| {
+                    // Detached: opening the browser belongs to no page state, so
+                    // nothing replaces or cancels it.
+                    cx.spawn_in(window, async move |this, cx| {
                         let result = read.await;
                         let _ = this.update(cx, |this, cx| {
                             this.notice = result.err().map(|e| e.message);
                             cx.notify();
                         });
-                    }));
+                    })
+                    .detach();
                 }))
                 .into_any_element(),
         )

@@ -38,8 +38,8 @@ impl Inspector {
         count: usize,
         cx: &mut Context<Self>,
     ) -> Observed {
-        let disabled =
-            self.settings.busy || self.backend.kubeconfig_source_edits_unavailable().is_some();
+        let disabled = self.settings.source_change.is_some()
+            || self.backend.kubeconfig_source_edits_unavailable().is_some();
         let path = entry.path.clone();
         div()
             .id(SharedString::from(format!("kubeconfig-path:{path}")))
@@ -142,12 +142,11 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.settings.busy = true;
-        self.settings.task = Some(cx.spawn_in(window, async move |this, cx| {
+        let change = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
                 let state = &mut this.settings;
-                state.busy = false;
+                state.source_change = None;
                 match result {
                     Ok(sources) => {
                         let value = sources.kubeconfig_env_var.clone();
@@ -168,7 +167,8 @@ impl Inspector {
                 }
                 cx.notify();
             });
-        }));
+        });
+        self.settings.source_change = Some(change.into());
         cx.notify();
     }
 
@@ -218,7 +218,7 @@ impl Inspector {
         let remote = self.remote_mode();
         // File picks are the only source change that stays local-only.
         let source_edits = self.backend.kubeconfig_source_edits_unavailable();
-        let edits_disabled = source_edits.is_some() || state.busy;
+        let edits_disabled = source_edits.is_some() || state.source_change.is_some();
         let (label, description, show, error) = match &state.sources {
             None => (
                 "KUBECONFIG".to_owned(),
@@ -389,14 +389,14 @@ impl Inspector {
     ) -> Observed {
         let paths = sources.map_or(&[][..], |sources| sources.paths.as_slice());
         let edits_unavailable = self.backend.kubeconfig_source_edits_unavailable();
-        let edits_disabled = edits_unavailable.is_some() || self.settings.busy;
+        let busy = self.settings.source_change.is_some();
+        let edits_disabled = edits_unavailable.is_some() || busy;
         let description = if remote {
             "Extra kubeconfig files read from the server filesystem."
         } else {
             "Extra kubeconfig files KubeCove reads beside environment variable."
         };
-        let picks_disabled =
-            self.backend.kubeconfig_writes_unavailable().is_some() || self.settings.busy;
+        let picks_disabled = self.backend.kubeconfig_writes_unavailable().is_some() || busy;
         let pick = (!remote).then(|| {
             button(Variant::Outline, 24., picks_disabled)
                 .id("settings-button:Choose files")

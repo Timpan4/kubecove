@@ -6,6 +6,8 @@ use kubecove_gpui::preferences::{Document, Store};
 #[derive(Default)]
 pub(super) struct ShellControls {
     pub pending: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+    /// Holds the next kubeconfig sources read until the test releases it.
+    pub sources_pending: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
     pub fail_save: AtomicBool,
     pub preferences: Store,
 }
@@ -18,6 +20,15 @@ impl ShellControls {
                 let _ = pending.await;
             }
             Ok(vec![])
+        })
+    }
+    pub fn kubeconfig_sources(&self) -> Read<KubeconfigSourcesSummary> {
+        let pending = self.sources_pending.lock().unwrap().take();
+        Box::pin(async move {
+            if let Some(pending) = pending {
+                let _ = pending.await;
+            }
+            Ok(serde_json::from_value(json!({"kubeconfigEnvVar":"KUBECONFIG","paths":[],"sourceKey":"default","sourceLabel":"KUBECONFIG","showSourceLabels":true,"warnings":[]})).unwrap())
         })
     }
     pub fn save(&self, document: Document) -> Result<Document, AppError> {
@@ -51,6 +62,27 @@ fn launcher_context_change_drops_the_old_namespace_read(cx: &mut TestAppContext)
         sender.send(()).is_err(),
         "old namespace read survived context selection"
     );
+}
+
+/// Failure mode: Open Wiki replaces the kubeconfig sources read, so the
+/// Kubeconfig section never leaves its loading state.
+#[gpui_kit::test]
+fn opening_the_wiki_keeps_the_kubeconfig_sources_read(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    let handle = open(cx, backend.clone());
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    *backend.shell.sources_pending.lock().unwrap() = Some(receiver);
+    click(cx, handle, "open-settings");
+    click(cx, handle, "open-documentation");
+    let _ = sender.send(());
+    cx.run_until_parked();
+    click(cx, handle, "settings-section:Kubeconfig");
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        let toggle = window.find("setting:Show kubeconfig source labels");
+        assert_eq!(toggle.checked(), Some(true));
+    })
+    .unwrap();
 }
 
 #[gpui_kit::test]

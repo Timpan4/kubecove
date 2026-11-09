@@ -39,8 +39,9 @@ pub(super) struct SettingsState {
     /// The single-line server path field that remote mode uses instead of `pasted_paths`.
     pub(super) server_path: Entity<InputState>,
     pub(super) sources: Option<Result<KubeconfigSourcesSummary, String>>,
-    pub(super) busy: bool,
-    pub(super) task: Option<Task<()>>,
+    /// The kubeconfig sources read or edit in flight. The source controls are
+    /// disabled while it runs, and a newer one replaces it.
+    pub(super) source_change: Option<super::request::InFlight>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -77,8 +78,7 @@ impl SettingsState {
             pasted_paths,
             server_path,
             sources: None,
-            busy: false,
-            task: None,
+            source_change: None,
             _subscriptions: subscriptions,
         }
     }
