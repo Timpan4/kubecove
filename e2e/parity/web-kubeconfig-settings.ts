@@ -8,6 +8,9 @@ export async function kubeconfigSettingsAction(page: Page, step: Step): Promise<
 			await page.getByRole("textbox", { name: "Kubeconfig path on server", exact: true }).fill(step.value);
 			await page.getByRole("button", { name: "Add server path", exact: true }).click();
 			return;
+		case "expectAccessibleName":
+			await page.getByRole("textbox", { name: step.name, exact: true }).waitFor();
+			return;
 		case "clickKubeconfigPathButton": {
 			// Row buttons share their labels, so the row is the innermost container that holds both the path and the button.
 			const button = page.locator("div")

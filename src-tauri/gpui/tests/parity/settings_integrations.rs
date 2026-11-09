@@ -47,6 +47,13 @@ pub fn act(window: &mut Window, cx: &mut App, step: &Value) -> bool {
             window.input(string(step, "value"), cx);
             locate::click_in(window, "page", "settings-button:Add server path".into(), cx);
         }
+        "expectAccessibleName" => {
+            let name = string(step, "name");
+            assert!(
+                !window.find_all_by_label(name).is_empty(),
+                "no element is labeled {name:?}"
+            );
+        }
         "clickKubeconfigPathButton" => {
             let id = format!(
                 "kubeconfig-path-button:{}:{}",

@@ -58,6 +58,7 @@
       "steps": [
         { "action": "openSettings" },
         { "action": "showSettingsSection", "section": "Kubeconfig" },
+        { "action": "expectAccessibleName", "name": "Paste kubeconfig paths" },
         { "action": "setKubeconfigEnvVar", "value": "PARITY_KUBECONFIG" },
         { "action": "configureSettingsMock", "script": "choose-kubeconfig" },
         { "action": "clickSettingsButton", "label": "Choose files" },

@@ -451,7 +451,7 @@ impl Inspector {
                         .mt(px(8.))
                         .child(
                             Textarea::new(&self.settings.pasted_paths)
-                                .aria_label("Kubeconfig paths")
+                                .aria_label("Paste kubeconfig paths")
                                 .disabled(edits_unavailable.is_some())
                                 .text_xs()
                                 .h(px(64.)),

@@ -329,7 +329,7 @@ export async function action(page: Page, step: Step) {
 		case "expectSettingRow": await page.getByText(step.title, { exact: true }).first().waitFor(); break;
 		case "expectNoSettingRow": if (await page.getByText(step.title, { exact: true }).count()) throw new Error(`${step.title} is shown`); break;
 		case "expectSettingsEmpty": await page.getByText(`No settings match "${step.value}".`, { exact: true }).waitFor(); break;
-		case "addServerKubeconfigPath": case "clickKubeconfigPathButton": case "expectKubeconfigPathBefore": await kubeconfigSettingsAction(page, step); break;
+		case "addServerKubeconfigPath": case "clickKubeconfigPathButton": case "expectKubeconfigPathBefore": case "expectAccessibleName": await kubeconfigSettingsAction(page, step); break;
 		case "setKubeconfigEnvVar": {
 			await page.getByRole("textbox", { name: "Kubeconfig env var", exact: true }).fill(step.value);
 			const save = page.getByRole("button", { name: "Save", exact: true });

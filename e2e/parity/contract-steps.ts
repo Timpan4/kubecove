@@ -182,6 +182,7 @@ export type Step =
     | { action: "clickSettingsButton"; label: string }
     | { action: "clickKubeconfigPathButton"; value: string; label: string }
     | { action: "expectKubeconfigPathBefore"; value: string; other: string }
+    | { action: "expectAccessibleName"; name: string }
     | { action: "expectSettingsText" | "expectNoSettingsText" | "expectRuntimeEndpoint"; value: string }
     | { action: "expectMaskedToken" | "reopenStoredSettings" | "attemptUnverifiedUpdate" }
     | { action: "configureSettingsMock"; script: "oidc-server" | "oidc-browser-waits" | "oidc-sign-in-fails" | "oidc-memory-only" | "oidc-store-keeps-sign-in" | "access-server" | "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "choose-application-workspace" | "choose-compare-workspace" | "choose-last-export" | "cancel-dialog" | "no-update" | "invalid-signature" | "update-available" }

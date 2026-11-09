@@ -55,7 +55,7 @@ export const ACTIONS = [
     "replaySessions", "confirmExecLeave",
     "configureForward", "forwardControl", "expectForwardState", "expectForwardNotice","execControl", "expectExecState",
     "expectWorkspaceExport", "exportSavedWorkspace", "expectExportedShortcut",
-    "fillSettingsField", "clickSettingsButton", "clickKubeconfigPathButton", "expectKubeconfigPathBefore", "expectSettingsText", "expectNoSettingsText", "expectRuntimeEndpoint", "expectMaskedToken", "reopenStoredSettings", "attemptUnverifiedUpdate", "configureSettingsMock",
+    "expectAccessibleName", "fillSettingsField", "clickSettingsButton", "clickKubeconfigPathButton", "expectKubeconfigPathBefore", "expectSettingsText", "expectNoSettingsText", "expectRuntimeEndpoint", "expectMaskedToken", "reopenStoredSettings", "attemptUnverifiedUpdate", "configureSettingsMock",
 	"expectLiveState", "replayLiveData", "expectResourceStatus", "openCustomKind",
 	"selectTopologyNode", "expectTopologyEmpty", "expectUsageFooter", "openUsageTree", "expectNoUsageFooter", "expectUsageProcess", "setTopologyMode", "selectNamespace", "expectTopology", "expectTopologyEdge", "expectNoTopologyNode", "expectResourceMetrics",
 	"expectYamlAbsent",
@@ -217,6 +217,7 @@ function step(value: unknown): Step {
         case "clickSettingsButton": return { action: item.action, label: string(item.label) };
         case "clickKubeconfigPathButton": return { action: item.action, value: string(item.value), label: string(item.label) };
         case "expectKubeconfigPathBefore": return { action: item.action, value: string(item.value), other: string(item.other) };
+        case "expectAccessibleName": return { action: item.action, name: string(item.name) };
         case "expectSettingsText": case "expectNoSettingsText": case "expectRuntimeEndpoint": return { action: item.action, value: string(item.value) };
         case "expectMaskedToken": case "reopenStoredSettings": case "attemptUnverifiedUpdate": return { action: item.action };
         case "configureSettingsMock": return { action: item.action, script: oneOf(["oidc-server", "oidc-browser-waits", "oidc-sign-in-fails", "oidc-memory-only", "oidc-store-keeps-sign-in", "access-server", "choose-kubeconfig", "choose-workspace", "choose-unavailable-workspace", "choose-application-workspace", "choose-compare-workspace", "choose-last-export", "cancel-dialog", "no-update", "invalid-signature", "update-available"], item.script, "a settings script") };
