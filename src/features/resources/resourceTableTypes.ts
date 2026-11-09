@@ -8,6 +8,7 @@ import type {
 
 export type ResourceSortColumn =
 	| "name"
+	| "context"
 	| "namespace"
 	| "kind"
 	| "status"
@@ -32,6 +33,10 @@ export interface ResourceTableState {
 	selectedResource?: ResourceSummary | null;
 	preferredGitOpsResourceKeys?: ReadonlySet<string>;
 	kindOrder?: readonly string[];
+	/** Workspace contexts in rank order. Ties under any sort column order by this rank. */
+	contexts?: readonly string[];
+	/** Contexts whose rows show. Empty or absent shows every context. */
+	contextFilter?: ReadonlySet<string>;
 }
 
 export type ResourceTableEntry =

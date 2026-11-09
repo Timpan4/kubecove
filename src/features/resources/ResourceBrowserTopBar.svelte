@@ -42,6 +42,9 @@
 		gitOpsFilter,
 		gitOpsFilters,
 		metricsMessage,
+		contexts = [],
+		contextFilter = [],
+		onContextFilterChange = () => {},
 		customResourcesStatus,
 		refreshControls,
 		onAllNamespacesSelect,
@@ -70,6 +73,11 @@
 		gitOpsFilter: string;
 		gitOpsFilters: GitOpsOwnershipFilter[];
 		metricsMessage: string | null;
+		/** Workspace contexts in rank order. The Context filter shows only for more than one. */
+		contexts?: readonly string[];
+		/** Contexts whose rows show; empty shows every context. */
+		contextFilter?: string[];
+		onContextFilterChange?: (contexts: string[]) => void;
 		customResourcesStatus?: string | null;
 		refreshControls: Snippet;
 		onAllNamespacesSelect: () => void;
@@ -83,7 +91,14 @@
 		onClearFilters: () => void;
 	} = $props();
 
-	const hasFilters = $derived(Boolean(search || gitOpsFilter || healthFilter !== "all" || argoFilter !== "none"));
+	const hasFilters = $derived(Boolean(search || gitOpsFilter || healthFilter !== "all" || argoFilter !== "none" || contextFilter.length));
+	const contextScopeOptions = $derived(contexts.map((context) => ({ key: context, label: context })));
+	// Rank order is kept; selecting every context, or none, clears the filter.
+	function toggleContext(context: string, checked: boolean) {
+		const shown = contextFilter.length === 0 ? contexts : contextFilter;
+		const next = contexts.filter((candidate) => candidate === context ? checked : shown.includes(candidate));
+		onContextFilterChange(next.length === contexts.length ? [] : next);
+	}
 	const namespaceLabel = $derived(
 		selectedNamespaces.length === 0
 			? "All"
@@ -157,6 +172,25 @@
 				onSelectAll={onAllNamespacesSelect}
 				onToggle={onNamespaceToggle}
 			/>
+
+			{#if contexts.length > 1}
+				<ResourceScopeSelector
+					triggerLabel="Context"
+					triggerValue={contextFilter.length === 0 ? "All" : contextFilter.join(", ")}
+					triggerAriaLabel="Edit context filter"
+					heading="Contexts"
+					selectAllLabel="Select all contexts"
+					searchAriaLabel="Search contexts"
+					searchPlaceholder="Search contexts..."
+					emptyLabel="No contexts"
+					noMatchesLabel="No matching contexts"
+					options={contextScopeOptions}
+					selectedKeys={new Set(contextFilter)}
+					allSelected={contextFilter.length === 0}
+					onSelectAll={() => onContextFilterChange([])}
+					onToggle={toggleContext}
+				/>
+			{/if}
 
 			{#if kindScopeLocked}
 				<Badge variant="outline">Kind {kindsLabel}</Badge>

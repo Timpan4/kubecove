@@ -42,6 +42,7 @@ export type PathStateWorkspaceViewMode =
 export type PathStateHealthFilter = (typeof PATH_STATE_HEALTH_FILTERS)[number];
 export type PathStateResourceSortColumn =
 	| "name"
+	| "context"
 	| "namespace"
 	| "kind"
 	| "status"
@@ -288,7 +289,7 @@ function sanitizeBrowserState<Value>(value: Value): PathStateResourceBrowserStat
 		),
 		sortColumn: pickString(
 			value.sortColumn,
-			["name", "namespace", "kind", "status", "ready", "restarts", "age", "cpu", "memory"] as const,
+			["name", "context", "namespace", "kind", "status", "ready", "restarts", "age", "cpu", "memory"] as const,
 			"name",
 		),
 		sortDesc: booleanValue(value.sortDesc, false),

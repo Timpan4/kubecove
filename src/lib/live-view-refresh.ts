@@ -82,6 +82,31 @@ export const IDLE_LIVE_VIEW: LiveViewState = {
 	warnings: [],
 };
 
+const STATUS_SEVERITY: LiveViewState["status"][] = ["reconnecting", "connecting", "partial", "polling", "connected", "idle"];
+
+/**
+ * One state for several contexts' views: the most severe status, except that a
+ * context that polls next to live ones makes the whole view partial. With more
+ * than one state, messages, errors and warnings name their context.
+ */
+export function combineLiveViewStates(states: readonly { clusterContext: string; state: LiveViewState }[]): LiveViewState {
+	if (states.length <= 1) return states[0]?.state ?? IDLE_LIVE_VIEW;
+	const named = (context: string, text: string | null) => (text === null ? null : `${context}: ${text}`);
+	const active = states.filter(({ state }) => state.status !== "idle");
+	if (active.length === 0) return IDLE_LIVE_VIEW;
+	const [worst] = [...active].sort((left, right) =>
+		STATUS_SEVERITY.indexOf(left.state.status) - STATUS_SEVERITY.indexOf(right.state.status));
+	const mixedPolling = worst.state.status === "polling" && active.some(({ state }) => state.status !== "polling");
+	return {
+		status: mixedPolling ? "partial" : worst.state.status,
+		catchingUp: active.some(({ state }) => state.catchingUp),
+		message: named(worst.clusterContext, worst.state.message) ?? "",
+		error: active.map(({ clusterContext, state }) => named(clusterContext, state.error)).find(Boolean) ?? null,
+		reloadError: active.map(({ clusterContext, state }) => named(clusterContext, state.reloadError)).find(Boolean) ?? null,
+		warnings: active.flatMap(({ clusterContext, state }) => state.warnings.map((warning) => `${clusterContext}: ${warning}`)),
+	};
+}
+
 /** A component's live view: its state, the identity of its watched scope, and manual refresh. */
 export interface LiveViewControls {
 	readonly state: LiveViewState;

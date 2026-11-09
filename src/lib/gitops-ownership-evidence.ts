@@ -135,18 +135,22 @@ export function gitOpsOwnershipFilterValue(filter: string): string {
 
 const inheritedRows = new WeakMap<ResourceSummary, { ownerKey: string | undefined; row: ResourceSummary }>();
 
+// Owners are matched within one cluster, so a Pod never inherits a same-named owner from another context.
+const objectKey = (cluster: string, namespace: string | null | undefined, name: string) =>
+	JSON.stringify([cluster, namespace ?? "", name]);
+
 export function inheritGitOpsOwnership(resources: ResourceSummary[]): ResourceSummary[] {
 	const ownerKeys = new Set<string>();
 	for (const resource of resources) {
 		if (resource.ownerRef) {
-			ownerKeys.add(`${resource.namespace ?? ""}/${resource.ownerRef}`);
+			ownerKeys.add(objectKey(resource.cluster, resource.namespace, resource.ownerRef));
 		}
 	}
 	if (ownerKeys.size === 0) return resources;
 
 	const resourcesByName = new Map<string, ResourceSummary>();
 	for (const resource of resources) {
-		const key = `${resource.namespace ?? ""}/${resource.name}`;
+		const key = objectKey(resource.cluster, resource.namespace, resource.name);
 		if (ownerKeys.has(key)) resourcesByName.set(key, resource);
 	}
 	if (resourcesByName.size === 0) return resources;
@@ -157,7 +161,7 @@ export function inheritGitOpsOwnership(resources: ResourceSummary[]): ResourceSu
 		let current: ResourceSummary | undefined = resource;
 		while (current?.ownerRef) {
 			const owner = resourcesByName.get(
-				`${current.namespace ?? ""}/${current.ownerRef}`,
+				objectKey(current.cluster, current.namespace, current.ownerRef),
 			);
 			if (!owner || seen.has(owner)) break;
 			if (gitOpsOwnership(owner)) {

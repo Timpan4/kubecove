@@ -23,6 +23,7 @@
 		selectedStandaloneExpansionId as resolveSelectedStandaloneExpansionId,
 		type FlowTopologyNode,
 	} from "./topology";
+	import MapContextSelect from "./MapContextSelect.svelte";
 	import OwnershipMapViewport from "./OwnershipMapViewport.svelte";
 	import OwnershipResourceNode from "./OwnershipResourceNode.svelte";
 	import StandaloneKindGroupNode from "./StandaloneKindGroupNode.svelte";
@@ -47,6 +48,9 @@
 		onNodeSelect,
 		onMapToggle,
 		updatesCurrent = true,
+		contexts = [],
+		mapContext = "",
+		onMapContextChange = () => {},
 	}: {
 		topology: ResourceTopology | undefined;
 		isLoading: boolean;
@@ -60,6 +64,10 @@
 		onNodeSelect: (nodeId: string, resource: ResourceSummary | null) => void;
 		onMapToggle?: () => void;
 		updatesCurrent?: boolean;
+		/** Workspace contexts in rank order; more than one shows the Map context select. */
+		contexts?: readonly string[];
+		mapContext?: string;
+		onMapContextChange?: (context: string) => void;
 	} = $props();
 	setContext(RESOURCE_ACTIVITY_CURRENT, () => updatesCurrent);
 	const loading = loadingDelay(() => isLoading);
@@ -175,6 +183,9 @@
 			</div>
 		</div>
 		<div class="flex items-center gap-2">
+			{#if contexts.length > 1}
+				<MapContextSelect {contexts} value={mapContext} onChange={onMapContextChange} />
+			{/if}
 			<div class="inline-flex h-8 overflow-hidden rounded-md border bg-background p-0.5">
 				<Button
 					variant={mode === "ownership" ? "secondary" : "ghost"}

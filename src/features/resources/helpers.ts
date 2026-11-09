@@ -177,14 +177,19 @@ export function filterResources(
 	);
 }
 
+// One cache per mode: the same rows can show in a one-context and a multi-context workspace.
 const searchEntries = new WeakMap<ResourceSummary, ResourceSearchEntry>();
+const contextSearchEntries = new WeakMap<ResourceSummary, ResourceSearchEntry>();
 
+/** `contextSearch` adds each row's context name last, for workspaces with more than one context. */
 export function buildResourceSearchIndex(
 	data: ResourceSummary[],
+	contextSearch = false,
 ): ResourceSearchEntry[] {
 	const entries: ResourceSearchEntry[] = [];
+	const cache = contextSearch ? contextSearchEntries : searchEntries;
 	for (const resource of data) {
-		const cached = searchEntries.get(resource);
+		const cached = cache.get(resource);
 		if (cached) { entries.push(cached); continue; }
 		const ownership = gitOpsOwnership(resource);
 		const entry = {
@@ -200,12 +205,13 @@ export function buildResourceSearchIndex(
 				resource.ownerRef,
 				resource.helmRelease,
 				...(ownership?.searchTerms ?? []),
+				contextSearch ? resource.cluster : undefined,
 			]
 				.filter((value): value is string => Boolean(value))
 				.join("\n")
 				.toLowerCase(),
 		};
-		searchEntries.set(resource, entry);
+		cache.set(resource, entry);
 		entries.push(entry);
 	}
 	return entries;

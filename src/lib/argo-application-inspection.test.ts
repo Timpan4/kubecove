@@ -100,6 +100,7 @@ function harness({
 			readContext: {
 				workspaceId: "workspace-1",
 				clusterContext: "kind-dev",
+				clusterContexts: ["kind-dev"],
 				namespaceScope: [],
 				kubeconfigSourceKey: "KUBECONFIG",
 				sourceReady: true,

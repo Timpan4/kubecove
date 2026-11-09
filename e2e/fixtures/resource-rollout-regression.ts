@@ -76,7 +76,7 @@ export async function mountResourceRollout() {
 	const component = mount(ResourceRolloutHarness, { target, props: {
 		queryClient, client, title: "Rollout regression", initialNamespaces: ["layercove"],
 		initialKinds: ["Deployment", "ReplicaSet", "Pod", "ConfigMap"], customResourcesEnabled: false,
-		workspaceReadContext: { workspaceId: "rollout-regression", clusterContext: "rollout-regression", namespaceScope: [], sourceReady: true, sourceError: null, showKubeconfigSourceLabels: false },
+		workspaceReadContext: { workspaceId: "rollout-regression", clusterContext: "rollout-regression", clusterContexts: ["rollout-regression"], namespaceScope: [], sourceReady: true, sourceError: null, showKubeconfigSourceLabels: false },
 	} });
 	control = {
 		switchScope() {
