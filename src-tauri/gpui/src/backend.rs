@@ -22,8 +22,12 @@ use std::{future::Future, pin::Pin, sync::Arc};
 
 pub type Read<T> = Pin<Box<dyn Future<Output = Result<T, AppError>> + Send>>;
 
+/// The namespace and name of each object a batch of watch notices named,
+/// shared between the read and the patch that follows it.
+pub type WatchNames = Arc<Vec<(Option<String>, String)>>;
+
 /// A whole-kind read narrowed to the rows a watch notice named.
-fn named_rows(read: Read<KindRows>, names: Vec<(Option<String>, String)>) -> Read<KindRows> {
+pub fn named_rows(read: Read<KindRows>, names: WatchNames) -> Read<KindRows> {
     Box::pin(async move {
         let mut read = read.await?;
         let names = live_data::NameSet::new(names);
@@ -217,7 +221,7 @@ pub trait Backend: Send + Sync + 'static {
         &self,
         scope: Scope,
         key: WatchResourceKey,
-        names: Vec<(Option<String>, String)>,
+        names: WatchNames,
         recycled: Vec<ResourceSummary>,
     ) -> Read<KindRows> {
         named_rows(self.kind_resources(scope, key, recycled), names)

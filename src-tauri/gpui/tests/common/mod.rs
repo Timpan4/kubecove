@@ -373,6 +373,15 @@ impl Backend for Fixture {
     ) -> Read<kubecove_gpui::backend::KindRows> {
         self.kind_read(scope, key, recycled)
     }
+    fn named_kind_resources(
+        &self,
+        scope: Scope,
+        key: kubecove_lib::models::WatchResourceKey,
+        names: kubecove_gpui::backend::WatchNames,
+        recycled: Vec<ResourceSummary>,
+    ) -> Read<kubecove_gpui::backend::KindRows> {
+        self.named_kind_read(scope, key, names, recycled)
+    }
     fn namespace_custom_kinds(
         &self,
         scope: Scope,

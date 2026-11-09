@@ -157,6 +157,26 @@ impl Fixture {
         })
     }
 
+    /// `named_kind_resources`. A prepared burst names every row of its ready
+    /// read, so that read is the named read, filtered outside the measured
+    /// frame as NativeBackend filters named reads on its runtime.
+    pub(super) fn named_kind_read(
+        &self,
+        scope: Scope,
+        key: kubecove_lib::models::WatchResourceKey,
+        names: kubecove_gpui::backend::WatchNames,
+        recycled: Vec<ResourceSummary>,
+    ) -> Read<kubecove_gpui::backend::KindRows> {
+        let wanted = serde_json::to_value(&key).unwrap();
+        let prepared = (self.live.ready.lock().unwrap().iter())
+            .any(|read| read.scope == scope && read.key == wanted);
+        let read = self.kind_read(scope, key, recycled);
+        if prepared {
+            return read;
+        }
+        kubecove_gpui::backend::named_rows(read, names)
+    }
+
     pub(super) fn defer_kind_buffer(&self, rows: Vec<ResourceSummary>) {
         if !rows.is_empty() {
             self.live.returned.lock().unwrap().push(rows);

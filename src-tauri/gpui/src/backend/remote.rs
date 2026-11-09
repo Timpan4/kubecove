@@ -458,7 +458,7 @@ impl Backend for DesktopBackend {
         &self,
         scope: Scope,
         key: WatchResourceKey,
-        names: Vec<(Option<String>, String)>,
+        names: super::WatchNames,
         recycled: Vec<ResourceSummary>,
     ) -> Read<KindRows> {
         if !self.selected() {

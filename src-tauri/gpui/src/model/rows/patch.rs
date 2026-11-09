@@ -4,17 +4,24 @@ use kubecove_lib::models::{ResourceSummary, WatchResourceKey};
 use std::{
     collections::{HashMap, HashSet},
     hash::{DefaultHasher, Hash, Hasher},
+    sync::Arc,
 };
 pub(crate) type Name = (Option<String>, String);
 
+/// The names a batch of watch notices carried, in arrival order. The named read
+/// shares them, and the patch takes them back once that read is done.
 #[derive(Default)]
-pub(crate) struct ObservedNames(Vec<Name>);
+pub(crate) struct ObservedNames(Arc<Vec<Name>>);
 impl ObservedNames {
     pub(crate) fn insert(&mut self, name: Name) {
-        self.0.push(name);
+        Arc::make_mut(&mut self.0).push(name);
     }
-    pub(crate) fn to_vec(&self) -> Vec<Name> {
+    pub(crate) fn shared(&self) -> Arc<Vec<Name>> {
         self.0.clone()
+    }
+    /// The names themselves, copied only if a read still holds them.
+    fn into_names(self) -> Vec<Name> {
+        Arc::try_unwrap(self.0).unwrap_or_else(|shared| (*shared).clone())
     }
     fn ordered_match(&self, index: usize, row: &ResourceSummary) -> bool {
         let (namespace, name) = &self.0[index];
@@ -23,7 +30,7 @@ impl ObservedNames {
 }
 impl FromIterator<Name> for ObservedNames {
     fn from_iter<T: IntoIterator<Item = Name>>(names: T) -> Self {
-        Self(names.into_iter().collect())
+        Self(Arc::new(names.into_iter().collect()))
     }
 }
 
@@ -35,7 +42,7 @@ struct NameIndex {
 impl From<ObservedNames> for NameIndex {
     fn from(names: ObservedNames) -> Self {
         let mut index = Self::default();
-        for (namespace, name) in names.0 {
+        for (namespace, name) in names.into_names() {
             match namespace {
                 Some(namespace) => {
                     index.namespaces.entry(namespace).or_default().insert(name);

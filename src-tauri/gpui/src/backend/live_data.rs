@@ -125,7 +125,7 @@ pub(super) fn named_kind_resources(
     backend: &NativeBackend,
     scope: Scope,
     key: WatchResourceKey,
-    names: Vec<(Option<String>, String)>,
+    names: super::WatchNames,
     mut recycled: Vec<ResourceSummary>,
 ) -> Read<KindRows> {
     let store = backend.store.clone();
@@ -184,23 +184,45 @@ async fn kind_snapshot(
     }
 }
 
-/// Watch-notice names, sorted for lookup by a row's namespace and name.
-pub(crate) struct NameSet(Vec<(Option<String>, String)>);
+/// Watch-notice names with their positions sorted by a hash of namespace and
+/// name, so a row is looked up without comparing or sorting strings.
+pub(crate) struct NameSet {
+    names: super::WatchNames,
+    slots: Vec<(u64, u32)>,
+}
+
+fn name_hash(namespace: Option<&str>, name: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::hash::DefaultHasher::new();
+    (namespace, name).hash(&mut hasher);
+    hasher.finish()
+}
 
 impl NameSet {
-    pub(crate) fn new(mut names: Vec<(Option<String>, String)>) -> Self {
-        names.sort_unstable();
-        names.dedup();
-        Self(names)
+    pub(crate) fn new(names: super::WatchNames) -> Self {
+        let mut slots: Vec<_> = names
+            .iter()
+            .enumerate()
+            .map(|(index, (namespace, name))| {
+                let index =
+                    u32::try_from(index).expect("a notice batch names fewer than 2^32 objects");
+                (name_hash(namespace.as_deref(), name), index)
+            })
+            .collect();
+        slots.sort_unstable();
+        Self { names, slots }
     }
 
     pub(crate) fn contains(&self, row: &ResourceSummary) -> bool {
-        self.0
-            .binary_search_by(|(namespace, name)| {
-                (namespace.as_deref(), name.as_str())
-                    .cmp(&(row.namespace.as_deref(), row.name.as_str()))
+        let hash = name_hash(row.namespace.as_deref(), &row.name);
+        let start = self.slots.partition_point(|&(slot, _)| slot < hash);
+        self.slots[start..]
+            .iter()
+            .take_while(|&&(slot, _)| slot == hash)
+            .any(|&(_, index)| {
+                let (namespace, name) = &self.names[index as usize];
+                *namespace == row.namespace && *name == row.name
             })
-            .is_ok()
     }
 }
 

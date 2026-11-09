@@ -497,7 +497,7 @@ impl Inspector {
                             let retry_key = key.clone();
                             // Notices that name every change read only those rows.
                             // A tick, a reconnect or an unnamed notice lists the kind.
-                            let named = names.as_ref().map(crate::model::ObservedNames::to_vec);
+                            let named = names.as_ref().map(crate::model::ObservedNames::shared);
                             let rows = crate::read_retry::read(
                                 cx.background_executor().clone(),
                                 move || {

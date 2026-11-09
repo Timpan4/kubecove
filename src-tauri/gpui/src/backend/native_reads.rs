@@ -85,7 +85,7 @@ impl Backend for NativeBackend {
         &self,
         scope: Scope,
         key: WatchResourceKey,
-        names: Vec<(Option<String>, String)>,
+        names: WatchNames,
         recycled: Vec<ResourceSummary>,
     ) -> Read<KindRows> {
         live_data::named_kind_resources(self, scope, key, names, recycled)
