@@ -47,6 +47,12 @@ fn default_scope_retry_waits_then_stops_without_intermediate_error(cx: &mut Test
         backend.default_retry.calls.load(Ordering::SeqCst),
         first + 2
     );
+    // The last failure ends the refresh and shows, instead of leaving it loading.
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(window.find("live-label").label(), Some("Refresh failed"));
+    })
+    .unwrap();
 }
 
 #[gpui_kit::test]
