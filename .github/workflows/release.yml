@@ -146,6 +146,12 @@ jobs:
         with:
           persist-credentials: false
 
+      # The cache action never updates the package lists on a hosted runner. A list older than
+      # the archive asks for package versions the mirror has dropped, the install fails with 404,
+      # and the action then saves an empty cache.
+      - name: Refresh apt package lists
+        run: sudo apt-get update
+
       - name: Install Linux Tauri dependencies
         uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
         with:
@@ -189,6 +195,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      # See the note on the same step in the rust job.
+      - name: Refresh apt package lists
+        run: sudo apt-get update
 
       - name: Install Tauri Linux dependencies
         uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
@@ -426,6 +436,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      # See the note on the same step in the rust job.
+      - name: Refresh apt package lists
+        if: matrix.platform == 'ubuntu-latest'
+        run: sudo apt-get update
 
       - name: Install Linux Tauri dependencies
         if: matrix.platform == 'ubuntu-latest'
