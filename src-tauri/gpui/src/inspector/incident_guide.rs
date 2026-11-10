@@ -3,6 +3,7 @@
 
 use super::{
     Inspector, Page,
+    argo::raw,
     detail::DetailTab,
     incidents::{enrichment, severity_badge},
     surface,
@@ -12,11 +13,12 @@ use crate::incidents::{
     guidance::{self, Enrichment, Evidence, Tone},
     resource_label,
 };
+use crate::model::health_source;
 use crate::targets::TestSupportExt;
 use crate::theme::{Palette, Tokens};
 use crate::ui;
 use gpui_kit::{AnyElement, Context, Div, Hsla, SharedString, div, prelude::*, px};
-use kubecove_lib::models::ResourceSummary;
+use kubecove_lib::models::{IncidentCockpitItem, ResourceSummary};
 
 fn evidence_color(tone: Tone) -> Hsla {
     match tone {
@@ -83,6 +85,63 @@ fn evidence_row(evidence: &Evidence) -> Div {
                 }),
         )
         .child(relaxed(evidence.detail.clone()).mt(px(4.)))
+}
+
+/// `HealthAssessmentBadge details`: a `<details>` disclosure listing each
+/// evidence source, raw value and reason, closed for each new incident.
+fn health_evidence(
+    item: &IncidentCockpitItem,
+    open_key: Option<&str>,
+    cx: &mut Context<Inspector>,
+) -> impl IntoElement {
+    let key = incidents::item_key(item);
+    let open = open_key == Some(key.as_str());
+    let evidence = &item.resource.health_assessment.evidence;
+    div()
+        .id("incident-health-evidence")
+        .test_support()
+        .aria_label("Health evidence")
+        .aria_expanded(open)
+        .mt(px(8.))
+        .p(px(8.))
+        .rounded(px(6.))
+        .border_1()
+        .border_color(Tokens::border())
+        .bg(Tokens::background().opacity(0.4))
+        .cursor_pointer()
+        .on_click(cx.listener(move |this, _, _, cx| {
+            let state = &mut this.incidents;
+            state.evidence_open = (!open).then(|| key.clone());
+            cx.notify();
+        }))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .child(ui::text(if open { "▼" } else { "▶" }, 8., 16.))
+                .child(ui::medium(ui::xs("Health evidence"))),
+        )
+        // The source label, then the raw value and reason (the web's em dash is UI text).
+        .when(open, |disclosure| {
+            disclosure.child(div().mt(px(8.)).flex().flex_col().gap(px(6.)).children(
+                evidence.iter().map(|evidence| {
+                    div()
+                        .flex()
+                        .flex_wrap()
+                        .child(ui::medium(ui::xs(format!(
+                            "{}:",
+                            health_source(std::slice::from_ref(&evidence.source))
+                        ))))
+                        .child(ui::muted(ui::xs(format!(
+                            " {} \u{2014} {}{}",
+                            raw(&evidence.raw),
+                            evidence.reason,
+                            if evidence.current { "" } else { " (historical)" }
+                        ))))
+                }),
+            ))
+        })
 }
 
 impl Inspector {
@@ -416,23 +475,7 @@ impl Inspector {
                     )
                     .child(ui::text(guide.summary.clone(), 14., 22.75).mt(px(12.)).max_w(px(896.)))
                     .child(surface::health_badge(&item.resource.health_assessment).mt(px(12.)))
-                    .child(
-                        div()
-                            .mt(px(8.))
-                            .p(px(8.))
-                            .rounded(px(6.))
-                            .border_1()
-                            .border_color(Tokens::border())
-                            .bg(Tokens::background().opacity(0.4))
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap(px(6.))
-                                    .child(ui::text("▶", 8., 16.))
-                                    .child(ui::medium(ui::xs("Health evidence"))),
-                            ),
-                    ),
+                    .child(health_evidence(item, state.evidence_open.as_deref(), cx)),
             )
             .child(
                 div()
