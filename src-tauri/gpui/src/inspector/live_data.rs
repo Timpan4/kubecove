@@ -479,7 +479,9 @@ impl Inspector {
                                 _ => {}
                             }
                         }
-                        if tick {
+                        // After a failed reload, rows it should have changed may be
+                        // stale, so the next reload lists the kind, not just its names.
+                        if tick || read_failed {
                             names = None;
                         }
                         drop(batch_profile);
