@@ -331,7 +331,8 @@ impl ArgoView {
             path: or(
                 string_at(spec, &["source", "path"])
                     .or_else(|| string_at(spec, &["source", "chart"]))
-                    .or_else(|| string_at(spec, &["sources", "0", "path"])),
+                    .or_else(|| string_at(spec, &["sources", "0", "path"]))
+                    .or_else(|| string_at(spec, &["sources", "0", "chart"])),
                 "Path unavailable",
             ),
             configured_revision: or(source_at("targetRevision"), "Revision unavailable"),

@@ -297,9 +297,9 @@ impl Inspector {
                         gpui_kit::MouseButton::Left,
                         cx.listener(|this, event: &gpui_kit::MouseUpEvent, _, cx| {
                             if !event.modifiers.shift
-                                && let Some(cell) = this.exec_cell(event.position)
+                                && let Some(target) = this.exec_target(event.position)
                             {
-                                this.exec_mouse(cell, 0, true, cx);
+                                this.exec_mouse(target, 0, true, cx);
                             }
                         }),
                     )
@@ -311,10 +311,10 @@ impl Inspector {
                                 tab.parser.screen().mouse_protocol_mode()
                                     != vt100::MouseProtocolMode::None
                             })
-                            && let Some(cell) = this.exec_cell(event.position)
+                            && let Some(target) = this.exec_target(event.position)
                         {
                             for _ in 0..delta.unsigned_abs() {
-                                this.exec_mouse(cell, if delta > 0 { 64 } else { 65 }, false, cx);
+                                this.exec_mouse(target, if delta > 0 { 64 } else { 65 }, false, cx);
                             }
                             cx.stop_propagation();
                             return;

@@ -160,7 +160,9 @@ impl ExecTab {
             start = prev;
         }
         loop {
-            if end.1 == wrap_end(end.0) {
+            // A click in the gap a wide character left before its wrap starts past
+            // the wrap end, so equality alone would never stop the scan.
+            if end.1 >= wrap_end(end.0) {
                 if end.0 + 1 < rows && wraps(end.0) {
                     end = (end.0 + 1, 0);
                 } else {
@@ -204,6 +206,16 @@ impl ExecTab {
         }
     }
 }
+/// Pasted text as the shell receives it. A bracketed paste drops ESC, so clipboard
+/// text cannot end the paste early with `ESC [201~` and have the shell run the rest.
+pub(super) fn paste_payload(text: &str, bracketed: bool) -> String {
+    let text = text.replace("\r\n", "\n").replace('\n', "\r");
+    if bracketed {
+        format!("\x1b[200~{}\x1b[201~", text.replace('\x1b', ""))
+    } else {
+        text
+    }
+}
 impl Inspector {
     pub(super) fn exec_cell(&self, point: Point<Pixels>) -> Option<Cell> {
         let tab = self.exec.active()?;
@@ -243,7 +255,8 @@ impl Inspector {
         if self.exec.drag.is_some() || event.modifiers.shift {
             return;
         }
-        let (Some(cell), Some(tab)) = (self.exec_cell(event.position), self.exec.active()) else {
+        let (Some(target), Some(tab)) = (self.exec_target(event.position), self.exec.active())
+        else {
             return;
         };
         let mode = tab.parser.screen().mouse_protocol_mode();
@@ -251,7 +264,7 @@ impl Inspector {
             || (mode == vt100::MouseProtocolMode::ButtonMotion && event.pressed_button.is_some())
         {
             self.exec_mouse(
-                cell,
+                target,
                 if event.pressed_button.is_some() {
                     32
                 } else {
@@ -285,19 +298,17 @@ impl Inspector {
         cx.notify();
     }
     pub(super) fn paste_exec(&mut self, text: &str, cx: &mut Context<Self>) {
-        let mut text = text.replace("\r\n", "\n").replace('\n', "\r");
-        if self
+        let bracketed = self
             .exec
             .active()
-            .is_some_and(|t| t.parser.screen().bracketed_paste())
-        {
-            text = format!("\x1b[200~{text}\x1b[201~");
-        }
-        self.exec_input(text, cx);
+            .is_some_and(|t| t.parser.screen().bracketed_paste());
+        self.exec_input(paste_payload(text, bracketed), cx);
     }
+    /// A mouse-protocol report for the viewport cell `target` from `exec_target`, which
+    /// floors the pointer into its cell as xterm's `getMouseReportCoords` does.
     pub(super) fn exec_mouse(
         &mut self,
-        cell: Cell,
+        target: (u16, u16),
         button: u16,
         release: bool,
         cx: &mut Context<Self>,
@@ -312,8 +323,7 @@ impl Inspector {
         {
             return;
         }
-        let col = cell.1.min(screen.size().1.get() - 1) + 1;
-        let row = cell.0 - tab.viewport_start() + 1;
+        let (row, col) = (target.0 + 1, target.1 + 1);
         let data = match screen.mouse_protocol_encoding() {
             vt100::MouseProtocolEncoding::Sgr => format!(
                 "\x1b[<{button};{col};{row}{}",

@@ -104,7 +104,10 @@ impl PageControls {
                 let _ = receiver.await;
             }
             if failed {
-                return Err(AppError::new("Page refresh refused", AppErrorKind::Network));
+                return Err(AppError::new(
+                    "Page refresh refused. Authorization: Bearer page-secret",
+                    AppErrorKind::Network,
+                ));
             }
             base.await
         })
@@ -173,9 +176,11 @@ fn a_failed_incident_refresh_preserves_rows_and_exposes_the_error(cx: &mut TestA
         assert!(window.try_find("Incident refresh failed").is_some());
         window.click("Incident refresh failed:detail", cx);
         window.render_frame(cx);
+        // Failure mode: a credential in the backend message reaches the panel and
+        // the copied detail.
         assert_eq!(
             window.find("Incident refresh failed:technical").label(),
-            Some("Page refresh refused")
+            Some("Page refresh refused. Authorization: Bearer [REDACTED]")
         );
     })
     .unwrap();

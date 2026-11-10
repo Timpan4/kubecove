@@ -121,7 +121,8 @@ impl DialogFields {
 #[derive(Default)]
 pub(super) struct Reconnect {
     pub queue: std::collections::VecDeque<ArgoConnectionProfile>,
-    pub current: Option<InFlight>,
+    /// The profile ID whose reconnect runs, so Forget can cancel it before cleanup.
+    pub current: Option<(String, InFlight)>,
 }
 pub(super) struct Connections {
     /// The connection dialog is open, on the surface `host` names.
@@ -150,7 +151,7 @@ pub(super) struct Connections {
     pub(super) discovery_error: Option<String>,
     pub(super) picker: Entity<
         gpui_kit::component::select::SelectState<
-            gpui_kit::component::select::SearchableVec<gpui_kit::SharedString>,
+            gpui_kit::component::select::SearchableVec<super::profiles::PreferenceChoice>,
         >,
     >,
     /// Focus container of the connection dialog. Its focus trap keeps Tab and
@@ -163,10 +164,7 @@ impl Connections {
         use gpui_kit::component::select::{SearchableVec, SelectEvent, SelectState};
         let picker = cx.new(|cx| {
             SelectState::new(
-                SearchableVec::new(vec![
-                    gpui_kit::SharedString::from("Automatic"),
-                    "Kubernetes".into(),
-                ]),
+                SearchableVec::new(super::profiles::PreferenceChoice::fixed()),
                 None,
                 window,
                 cx,
@@ -177,23 +175,23 @@ impl Connections {
                 return;
             };
             let preference = match value.as_ref() {
-                "Automatic" => Preference::Automatic,
-                "Kubernetes" => Preference::Kubernetes,
-                label => {
-                    let Some(profile) = this
+                "automatic" => Preference::Automatic,
+                "kubernetes" => Preference::Kubernetes,
+                value => {
+                    let Some(id) = value.strip_prefix("connected:") else {
+                        return;
+                    };
+                    if !this
                         .argo
                         .connections
                         .profiles
                         .iter()
                         .filter_map(|s| s.profile.as_ref())
-                        .find(|p| {
-                            this.argo_profile_matches(p)
-                                && super::profiles::endpoint_label(&p.endpoint) == label
-                        })
-                    else {
+                        .any(|p| p.id == id && this.argo_profile_matches(p))
+                    {
                         return;
-                    };
-                    Preference::Connected(profile.id.clone())
+                    }
+                    Preference::Connected(id.to_owned())
                 }
             };
             this.argo.connections.selected = preference;
@@ -467,25 +465,29 @@ impl Inspector {
             let s = field.read(cx).value().to_string();
             (!s.is_empty()).then_some(s)
         };
+        // A remembered profile reconnects with its keyring credential and default TLS
+        // checks, as the web does. The form holds what was typed for a new connection,
+        // which may be meant for another server.
+        let form = !remembered;
         let read = self.backend.connect_argo(ArgoConnect {
             profile,
-            token: if choices.local {
-                None
-            } else {
+            token: if form && !choices.local {
                 value(&fields.token)
+            } else {
+                None
             },
-            username: if choices.local {
+            username: if form && choices.local {
                 value(&fields.username)
             } else {
                 None
             },
-            password: if choices.local {
+            password: if form && choices.local {
                 value(&fields.password)
             } else {
                 None
             },
-            insecure_tls: external && choices.insecure,
-            custom_ca_pem: if external {
+            insecure_tls: form && external && choices.insecure,
+            custom_ca_pem: if form && external {
                 let ca = fields.ca.read(cx).value().to_string();
                 (!ca.is_empty()).then(|| ca.into_bytes())
             } else {
@@ -496,7 +498,9 @@ impl Inspector {
         let reconfirm = state.editing.clone().filter(|p| {
             p.remember_credential && matches!(p.endpoint, ArgoServerEndpoint::ServiceTunnel { .. })
         });
-        self.clear_argo_secrets(window, cx);
+        if form {
+            self.clear_argo_secrets(window, cx);
+        }
         let task = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {

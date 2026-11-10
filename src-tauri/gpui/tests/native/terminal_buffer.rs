@@ -153,6 +153,25 @@ fn erasing_a_wide_wrap_cannot_join_new_hard_lines() {
     );
 }
 
+// Failure mode: the gap a wide character leaves before its wrap is past the wrap
+// end, so the forward scan never stops and overflows its column counter.
+#[test]
+fn double_click_in_a_wide_character_wrap_gap_stays_in_bounds() {
+    let mut tab = tab();
+    tab.parser.process("abcdefg界\r\n".as_bytes());
+    assert_eq!(tab.word((0, 7)).end, (1, 0));
+}
+
+// Failure mode: clipboard text with `ESC [201~` ends the bracketed paste, and the
+// shell runs the command after it on the pasted newline.
+#[test]
+fn bracketed_paste_cannot_be_ended_by_pasted_text() {
+    let payload = super::selection::paste_payload("echo safe\x1b[201~rm -rf ~\n", true);
+    assert!(payload.starts_with("\x1b[200~"));
+    assert_eq!(payload.matches('\x1b').count(), 2);
+    assert!(payload.ends_with("rm -rf ~\r\x1b[201~"));
+}
+
 #[test]
 fn double_click_joins_a_word_across_a_wide_character_wrap() {
     let mut tab = tab();

@@ -111,6 +111,40 @@ fn name(selection: Selection, size: f32, line: f32, cx: &mut Context<Inspector>)
         )
 }
 
+impl Inspector {
+    /// `openGitOpsSelection`: an Application opens its resources, anything else its detail.
+    fn open_gitops_selection(
+        &mut self,
+        key: &str,
+        window: &mut gpui_kit::Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(data) = self.gitops.inventory() else {
+            return;
+        };
+        let found = self
+            .gitops_page
+            .rows()
+            .iter()
+            .filter_map(|row| row.resolve(data))
+            .find(|selection| selection.key() == key)
+            .map(|selection| {
+                (
+                    match selection {
+                        Selection::App(app) => Some(app.clone()),
+                        _ => None,
+                    },
+                    selection.resource(),
+                )
+            });
+        match found {
+            Some((Some(app), _)) => self.open_application_resources(app, window, cx),
+            Some((None, resource)) => self.open_resource_on(resource, None, window, cx),
+            None => {}
+        }
+    }
+}
+
 /// The Details and View resources buttons.
 fn actions(selection: Selection, resources_label: &str, cx: &mut Context<Inspector>) -> Div {
     let resource = selection.resource();
@@ -246,29 +280,7 @@ pub(super) fn card(
                 .shadow_md()
         })
         .on_click(cx.listener(move |this, _, window, cx| {
-            let Some(data) = this.gitops.inventory() else {
-                return;
-            };
-            let found = this
-                .gitops_page
-                .rows()
-                .iter()
-                .filter_map(|row| row.resolve(data))
-                .find(|selection| selection.key() == key)
-                .map(|selection| {
-                    (
-                        match selection {
-                            Selection::App(app) => Some(app.clone()),
-                            _ => None,
-                        },
-                        selection.resource(),
-                    )
-                });
-            match found {
-                Some((Some(app), _)) => this.open_application_resources(app, window, cx),
-                Some((None, resource)) => this.open_resource_on(resource, None, window, cx),
-                None => {}
-            }
+            this.open_gitops_selection(&key, window, cx)
         }))
         .child(
             div()

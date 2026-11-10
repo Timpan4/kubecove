@@ -8,6 +8,36 @@ use kubecove_lib::models::{
     ArgoConfirmedTarget, ArgoConnectionProfile, ArgoConnectionStatus, ArgoServerEndpoint,
 };
 
+/// One inspection choice. As in the web picker, the value is `automatic`, `kubernetes` or
+/// `connected:<profile id>`, because two profiles can share an endpoint label.
+#[derive(Clone)]
+pub(super) struct PreferenceChoice {
+    value: gpui_kit::SharedString,
+    title: gpui_kit::SharedString,
+}
+impl PreferenceChoice {
+    pub(super) fn fixed() -> Vec<Self> {
+        vec![
+            Self::new("automatic".into(), "Automatic".into()),
+            Self::new("kubernetes".into(), "Kubernetes".into()),
+        ]
+    }
+    fn new(value: String, title: String) -> Self {
+        Self {
+            value: value.into(),
+            title: title.into(),
+        }
+    }
+}
+impl gpui_kit::component::searchable_list::SearchableListItem for PreferenceChoice {
+    type Value = gpui_kit::SharedString;
+    fn value(&self) -> &gpui_kit::SharedString {
+        &self.value
+    }
+    fn title(&self) -> gpui_kit::SharedString {
+        self.title.clone()
+    }
+}
 pub(super) fn endpoint_label(endpoint: &ArgoServerEndpoint) -> String {
     match endpoint {
         ArgoServerEndpoint::ExternalHttps { url } => url.clone(),
@@ -150,6 +180,19 @@ impl Inspector {
             }
         }
         self.argo.connections.reconnect.queue.retain(|p| p.id != id);
+        // A reconnect of this profile that finished after cleanup would install its
+        // connection and save it again, so it is cancelled and the queue moves on.
+        if self
+            .argo
+            .connections
+            .reconnect
+            .current
+            .as_ref()
+            .is_some_and(|(current, _)| current == &id)
+        {
+            self.argo.connections.reconnect.current = None;
+            self.reconnect_next_argo_profile(window, cx);
+        }
         for p in self
             .argo
             .connections
@@ -287,12 +330,13 @@ impl Inspector {
         let Preference::Connected(id) = &self.argo.connections.selected else {
             return None;
         };
-        let status = self
-            .argo
-            .connections
-            .profiles
-            .iter()
-            .find(|s| s.profile.as_ref().is_some_and(|p| &p.id == id));
+        // A preference restored by workspace can name a profile of another context or
+        // source. It is not eligible here, as in `resolveArgoConnectionPolicy`.
+        let status = self.argo.connections.profiles.iter().find(|s| {
+            s.profile
+                .as_ref()
+                .is_some_and(|p| &p.id == id && self.argo_profile_matches(p))
+        });
         match status {
             Some(status) if status.connected => None,
             Some(status) => Some(
@@ -330,6 +374,7 @@ impl Inspector {
             }),
             _ => None,
         };
+        let id = saved.id.clone();
         let profile = ArgoConnectionProfile {
             url: endpoint_url(&saved.endpoint),
             id: saved.id,
@@ -360,7 +405,7 @@ impl Inspector {
                 cx.notify();
             });
         });
-        self.argo.connections.reconnect.current = Some(task.into());
+        self.argo.connections.reconnect.current = Some((id, task.into()));
     }
     pub(super) fn sync_argo_picker(
         &mut self,
@@ -368,7 +413,7 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) {
         use gpui_kit::{SharedString, component::select::SearchableVec};
-        let mut choices: Vec<SharedString> = vec!["Automatic".into(), "Kubernetes".into()];
+        let mut choices = PreferenceChoice::fixed();
         choices.extend(
             self.argo
                 .connections
@@ -376,19 +421,14 @@ impl Inspector {
                 .iter()
                 .filter_map(|s| s.profile.as_ref())
                 .filter(|p| self.argo_profile_matches(p))
-                .map(|p| endpoint_label(&p.endpoint).into()),
+                .map(|p| {
+                    PreferenceChoice::new(format!("connected:{}", p.id), endpoint_label(&p.endpoint))
+                }),
         );
         let selected: SharedString = match &self.argo.connections.selected {
-            Preference::Automatic => "Automatic".into(),
-            Preference::Kubernetes => "Kubernetes".into(),
-            Preference::Connected(id) => self
-                .argo
-                .connections
-                .profiles
-                .iter()
-                .filter_map(|s| s.profile.as_ref())
-                .find(|p| &p.id == id)
-                .map_or_else(|| id.clone().into(), |p| endpoint_label(&p.endpoint).into()),
+            Preference::Automatic => "automatic".into(),
+            Preference::Kubernetes => "kubernetes".into(),
+            Preference::Connected(id) => format!("connected:{id}").into(),
         };
         self.argo.connections.picker.update(cx, |picker, cx| {
             picker.set_items(SearchableVec::new(choices), window, cx);

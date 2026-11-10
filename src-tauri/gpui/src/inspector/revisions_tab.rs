@@ -17,7 +17,24 @@ use gpui_kit::{
 };
 use kubecove_lib::models::DeploymentRevision;
 
-type Choices = SelectState<SearchableVec<SharedString>>;
+type Choices = SelectState<SearchableVec<RevisionChoice>>;
+
+/// A comparison option keyed by ReplicaSet name, as the web `SelectItem` value is:
+/// two ReplicaSets can carry the same revision number and so the same label.
+#[derive(Clone)]
+struct RevisionChoice {
+    name: SharedString,
+    title: SharedString,
+}
+impl gpui_kit::component::searchable_list::SearchableListItem for RevisionChoice {
+    type Value = SharedString;
+    fn value(&self) -> &SharedString {
+        &self.name
+    }
+    fn title(&self) -> SharedString {
+        self.title.clone()
+    }
+}
 
 pub(super) enum RevisionsLoad {
     Pending,
@@ -77,14 +94,15 @@ impl RevisionsState {
                 .find(|revision| Some(&revision.name) != selected.as_ref())
                 .map(|revision| revision.name.clone())
         };
-        let options: Vec<SharedString> = revisions
+        let options: Vec<RevisionChoice> = revisions
             .iter()
             .filter(|revision| Some(&revision.name) != selected.as_ref())
-            .map(|revision| label(revision).into())
+            .map(|revision| RevisionChoice {
+                name: revision.name.clone().into(),
+                title: label(revision).into(),
+            })
             .collect();
-        let chosen = self
-            .find(comparison.as_deref())
-            .map(|revision| SharedString::from(label(revision)));
+        let chosen = comparison.clone().map(SharedString::from);
         self.diff = match (
             self.find(selected.as_deref()),
             self.find(comparison.as_deref()),
@@ -122,18 +140,23 @@ impl Inspector {
         }
     }
 
-    /// Loads the revisions the first time the tab opens.
+    /// Loads the revisions the first time the tab opens, and again after a failed
+    /// read, as the web query refetches its error when the tab mounts again.
     pub(super) fn open_revisions(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let backend = self.backend.clone();
         let Detail::Ready(detail) = &mut self.detail else {
             return;
         };
-        if detail.revisions.is_some() {
+        if detail
+            .revisions
+            .as_ref()
+            .is_some_and(|state| !matches!(state.load, RevisionsLoad::Failed))
+        {
             return;
         }
         let picker = cx.new(|cx| {
             SelectState::new(
-                SearchableVec::new(Vec::<SharedString>::new()),
+                SearchableVec::new(Vec::<RevisionChoice>::new()),
                 None,
                 window,
                 cx,
@@ -145,9 +168,7 @@ impl Inspector {
             };
             if let Some(state) = this.revisions_state() {
                 let name = state
-                    .revisions()
-                    .iter()
-                    .find(|revision| label(revision) == chosen.as_ref())
+                    .find(Some(chosen.as_ref()))
                     .map(|revision| revision.name.clone());
                 if name.is_some() && name != state.comparison {
                     state.comparison = name;

@@ -229,6 +229,43 @@ fn partial_title(context: &Context<'_>, fallback: &str) -> String {
         .unwrap_or_else(|| format!("Some {} could not load", subject(context)))
 }
 
+/// `SENSITIVE_DETAIL_PATTERNS` in `src/lib/error-redaction.ts`, applied in the same order.
+static SENSITIVE_DETAIL: LazyLock<[(Regex, &str); 6]> = LazyLock::new(|| {
+    [
+        (
+            r"(?i)(\bauthorization\s*:\s*(?:basic|bearer)\s+)[^\s,;]+",
+            "${1}[REDACTED]",
+        ),
+        (r"(?i)(\b(?:x-api-key|api-key)\s*:\s*)[^\s,;]+", "${1}[REDACTED]"),
+        (r"(?i)(\bbearer\s+)[A-Za-z0-9._~+/-]+=*", "${1}[REDACTED]"),
+        (r"(?i)(https?://)[^/\s:@]+:[^/\s@]+@", "${1}[REDACTED]@"),
+        (
+            r"(?i)([?&](?:access[_-]?token|id[_-]?token|token|password|client[_-]?secret|x-amz-credential|x-amz-security-token|x-amz-signature|sig|signature|(?:x[-_])?api[-_]?key)=)[^&#\s]+",
+            "${1}[REDACTED]",
+        ),
+        (
+            r#"(?i)(["']?(?:access[_-]?token|id[_-]?token|token|password|client[_-]?secret|(?:x[-_])?api[-_]?key)["']?\s*[:=]\s*["']?)[^"',\s}]+"#,
+            "${1}[REDACTED]",
+        ),
+    ]
+    .map(|(pattern, replacement)| {
+        (
+            Regex::new(pattern).expect("redaction pattern compiles"),
+            replacement,
+        )
+    })
+});
+
+/// `redactSensitiveErrorDetail`: hides credentials, URL user info and token
+/// parameters in error text before it is shown or copied.
+pub(crate) fn redact_detail(detail: &str) -> String {
+    SENSITIVE_DETAIL
+        .iter()
+        .fold(detail.to_owned(), |text, (pattern, replacement)| {
+            pattern.replace_all(&text, *replacement).into_owned()
+        })
+}
+
 /// `friendlyError`: builds the title, summary and next step for a failure.
 pub(crate) fn present(
     kind: Option<AppErrorKind>,
@@ -257,7 +294,7 @@ pub(crate) fn present(
                 .fallback_title
                 .unwrap_or("This operation is unavailable")
                 .to_owned(),
-            summary: message.to_owned(),
+            summary: redact_detail(message),
             ..plain(String::new(), String::new())
         },
         Bucket::Authentication => with_next(

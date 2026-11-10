@@ -270,7 +270,9 @@ impl Inspector {
             .copied
             .filter(|(key, _)| *key == id)
             .map(|(_, ok)| ok);
-        let technical = message.to_owned();
+        // Shown, read aloud and copied, so credentials are removed as the web's
+        // `messageFromFriendlyError` does.
+        let technical = friendly_error::redact_detail(message);
         let copy_text = technical.clone();
         let description = description(&presentation, compact);
         let border = if presentation.warning {
@@ -405,8 +407,16 @@ impl Inspector {
                     if origin.workspace != this.launcher.active {
                         return;
                     }
-                    this.scope = origin.scope;
+                    let previous = std::mem::replace(&mut this.scope, origin.scope.clone());
                     this.open_page(origin.page, cx);
+                    if this.page != origin.page {
+                        // A draft or exec session refused or deferred the navigation:
+                        // keep the current scope and the return target for another try.
+                        this.scope = previous;
+                        this.feedback.origin = Some(origin);
+                        cx.notify();
+                        return;
+                    }
                     this.load_scope(false, window, cx);
                     if let Some(resource) = origin.resource {
                         this.open_resource_on(resource, origin.tab, window, cx);

@@ -68,6 +68,9 @@ pub(super) struct Reviewed {
 /// `ArgoState::submissions`, so an accepted outcome is still observed.
 pub(super) struct Submission {
     pub(super) id: Rc<()>,
+    /// The Application's outcome key. A kept submission keeps a reopened detail
+    /// from starting a second operation on it.
+    pub(super) application: String,
     action: String,
     _read: InFlight,
 }
@@ -216,6 +219,23 @@ impl Inspector {
                     kubecove_lib::models::AppErrorKind::ArgoConnection,
                 ));
             }
+            // An operation started elsewhere is not in this client's outcomes, and the
+            // Kubernetes transport would patch over it, so the fresh read decides.
+            if super::outcomes::operation_pending(&before) {
+                return Err(kubecove_lib::models::AppError::new(
+                    "This Application already has an operation in progress. Wait for it to finish.",
+                    kubecove_lib::models::AppErrorKind::ArgoConnection,
+                ));
+            }
+            // Review the Application as it is now, keeping the scope the user chose,
+            // so a newer resourceVersion does not fail every submission and retry.
+            let mut request = request;
+            request.application = kubecove_lib::models::ArgoApplicationRef {
+                context: request.application.context.take(),
+                workspace_id: request.application.workspace_id.take(),
+                ..before.application.clone()
+            };
+            request.resource_version = before.application.resource_version.clone();
             let review = backend.preflight_argo(request).await?;
             Ok((before, review))
         };
@@ -293,6 +313,7 @@ impl Inspector {
         let current = id.clone();
         let action = asked.action.clone();
         let unconfirmed_action = action.clone();
+        let application = super::outcomes::key(&request.application);
         let read = self.backend.run_argo(ArgoOperationConfirmation {
             confirmation: session_id.clone(),
             session_id,
@@ -301,31 +322,43 @@ impl Inspector {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
                 let accepted = result.as_ref().is_ok_and(|r| r.accepted);
-                // A closed or reopened detail has no matching review to update, but an
-                // accepted submission is still observed, as the web tracker does.
-                if let Some(state) = this.argo_tab_state()
+                let unconfirmed = result.is_err();
+                let message = match result {
+                    Ok(result) => result.message,
+                    Err(error) => format!(
+                        "Outcome unconfirmed. Reload before retrying. {}",
+                        error.message
+                    ),
+                };
+                // A closed or reopened detail has no matching review to update. Its
+                // result goes to the workspace outcomes instead, as the web tracker does.
+                let shown = if let Some(state) = this.argo_tab_state()
                     && matches!(&state.operation, Phase::Submitting(s) if Rc::ptr_eq(&s.id, &current))
                 {
-                    state.operation = match result {
-                        Ok(result) if result.accepted => Phase::Idle,
-                        Ok(result) => Phase::Failed {
-                            message: result.message,
-                            retry: Box::new(asked),
-                        },
-                        Err(error) => Phase::Unconfirmed {
-                            message: format!(
-                                "Outcome unconfirmed. Reload before retrying. {}",
-                                error.message
-                            ),
+                    state.operation = if accepted {
+                        Phase::Idle
+                    } else if unconfirmed {
+                        Phase::Unconfirmed {
+                            message: message.clone(),
                             action: unconfirmed_action,
-                        },
+                        }
+                    } else {
+                        Phase::Failed {
+                            message: message.clone(),
+                            retry: Box::new(asked),
+                        }
                     };
-                }
+                    true
+                } else {
+                    false
+                };
                 // The submission has finished, so a closed detail's entry is done too.
                 this.argo.submissions
                     .retain(|submission| !Rc::ptr_eq(&submission.id, &current));
                 if accepted {
                     this.observe_argo_operation(request, baseline, cx);
+                } else if !shown {
+                    this.record_argo_outcome(request, baseline, message);
                 }
                 cx.notify();
             });
@@ -333,6 +366,7 @@ impl Inspector {
         if let Some(state) = self.argo_tab_state() {
             state.operation = Phase::Submitting(Submission {
                 id,
+                application,
                 action,
                 _read: task.into(),
             });
