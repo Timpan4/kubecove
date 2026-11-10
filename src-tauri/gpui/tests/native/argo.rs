@@ -33,6 +33,8 @@ pub struct ArgoControls {
     pub observation: std::sync::atomic::AtomicUsize,
     pub repeated_revision: AtomicBool,
     pub connections: std::sync::atomic::AtomicUsize,
+    /// The token each connect request carried.
+    pub tokens: Mutex<Vec<Option<String>>>,
     preview_gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
     preview_fail: AtomicBool,
 }
@@ -74,6 +76,7 @@ impl ArgoControls {
     }
     pub fn connect(&self, request: ArgoConnect) -> Read<ArgoConnectionStatus> {
         self.connections.fetch_add(1, Ordering::SeqCst);
+        self.tokens.lock().unwrap().push(request.token.clone());
         let fail = self.fail.load(Ordering::SeqCst);
         let gate = self.connect_gate.lock().unwrap().take();
         Box::pin(async move {

@@ -3,6 +3,39 @@
 use super::argo::{connect, connect_remembered, open_argo, scroll, step};
 use super::*;
 
+// Failure mode: Reconnect on a remembered profile sends the token typed in the
+// new-connection form for another server, so that server receives it.
+#[gpui_kit::test]
+fn reconnecting_a_remembered_profile_ignores_typed_credentials(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    let h = open_argo(cx, backend.clone());
+    connect_remembered(cx, h);
+    let id = backend.argo.document.lock().unwrap().preferences.argo_profiles[0]
+        .id
+        .clone();
+    let profile = format!("argo-profile:{id}");
+    step(cx, h, |w, cx| {
+        scroll::reveal(w, "detail-body", "argo-connect-open", cx);
+        w.click("argo-connect-open", cx);
+        w.render_frame(cx);
+        // Connected, so this disconnects.
+        scroll::reveal(w, "detail-body", &profile, cx);
+        w.click(&profile, cx);
+    });
+    step(cx, h, |w, cx| {
+        w.click("argo-external", cx);
+        w.render_frame(cx);
+        scroll::reveal(w, "detail-body", "argo-token", cx);
+        w.click("argo-token", cx);
+        w.input("token-for-another-server", cx);
+        scroll::reveal(w, "detail-body", &profile, cx);
+        w.click(&profile, cx);
+    });
+    let tokens = backend.argo.tokens.lock().unwrap();
+    assert_eq!(tokens.len(), 2, "Reconnect sends a second connect request");
+    assert_eq!(tokens[1], None);
+}
+
 fn forget(cx: &mut TestAppContext, h: gpui_kit::AnyWindowHandle, id: &str) {
     step(cx, h, |w, cx| {
         scroll::reveal(w, "detail-body", "argo-connect-open", cx);
