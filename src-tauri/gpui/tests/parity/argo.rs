@@ -26,6 +26,9 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             window.click("live-status", cx);
             window.render_frame(cx);
             window.click("refresh", cx);
+            // The menu stays open after a refresh, so close it before later steps click under it.
+            window.render_frame(cx);
+            window.click("live-status", cx);
         }
         "copyArgoValue" => {
             use gpui_kit::test::TestEventExt;

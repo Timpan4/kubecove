@@ -394,6 +394,14 @@ pub(super) fn run_scenario(
         if step["action"] == "terminalRelease" {
             terminal::advance_drag_scroll(cx, number(step, "ms"));
         }
+        if step["action"] == "expectLiveState" {
+            // The stale-data notice appears after the show delay in
+            // `inspector/loading.rs` and stays for its minimum visible time.
+            // Both are 300 ms.
+            cx.background_executor
+                .advance_clock(std::time::Duration::from_millis(300));
+            cx.run_until_parked();
+        }
         if step["action"] == "replayLiveData" {
             // Advance the production web refresh throttle, not wall-clock sleeps.
             cx.background_executor

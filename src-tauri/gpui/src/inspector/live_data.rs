@@ -1,6 +1,7 @@
 //! View-owned streams. Recovery follows resource-watch.ts; Rust owns transport backoff.
 use super::{
     Inspector, Page,
+    live_status::WatchReport,
     request::InFlight,
     watch_status::{self, Link, LiveStatus, WatchLink, WatchSummary},
 };
@@ -26,7 +27,11 @@ pub const COALESCE: Duration = Duration::from_millis(250);
 
 #[derive(Default)]
 pub(super) struct LiveData {
+    /// The page and scope the watches belong to. A change stops every watch.
     owner: String,
+    /// The kind selection the watches were last reconciled with. A change
+    /// stops only the watches whose kind left the selection.
+    kind_scope: String,
     /// Custom kinds present in the selected namespace, for the sidebar.
     pub kinds: Vec<DiscoveredResourceKind>,
     /// Every discovered kind in the cluster, for the kind picker as the web's `resourceKindsQuery` provides.
@@ -47,6 +52,8 @@ pub(super) struct LiveData {
 
 #[derive(Default)]
 struct Registration {
+    /// The context the watch runs in, which names its messages when the view reads several.
+    context: String,
     phase: WatchPhase,
     reload_error: Option<String>,
     catching_up: bool,
@@ -82,11 +89,16 @@ impl Registration {
         }
     }
 
-    fn messages(&self) -> impl Iterator<Item = &String> {
-        let [error, denied] = match &self.phase {
+    /// The stream's error and its denial.
+    fn link_messages(&self) -> [Option<&String>; 2] {
+        match &self.phase {
             WatchPhase::Waiting => [None, None],
             WatchPhase::Running { link, .. } => link.messages(),
-        };
+        }
+    }
+
+    fn messages(&self) -> impl Iterator<Item = &String> {
+        let [error, denied] = self.link_messages();
         [error, denied, self.reload_error.as_ref()]
             .into_iter()
             .flatten()
@@ -94,6 +106,13 @@ impl Registration {
 }
 
 impl LiveData {
+    /// The watch `id`, registered for `context` if it is new.
+    fn registration(&mut self, id: String, context: &str) -> &mut Registration {
+        self.watches.entry(id).or_insert_with(|| Registration {
+            context: context.to_owned(),
+            ..Default::default()
+        })
+    }
     fn take_buffer(&mut self, id: &str) -> Vec<kubecove_lib::models::ResourceSummary> {
         self.watches
             .get_mut(id)
@@ -118,6 +137,26 @@ impl LiveData {
         self.refresh_error
             .iter()
             .chain(self.watches.values().flat_map(Registration::messages))
+    }
+
+    /// Each watch for the status menu, in id order, so the first error it
+    /// lists does not change between frames.
+    pub fn reports(&self) -> Vec<WatchReport<'_>> {
+        let mut watches: Vec<_> = self.watches.iter().collect();
+        watches.sort_unstable_by_key(|(id, _)| id.as_str());
+        watches
+            .into_iter()
+            .map(|(_, watch)| {
+                let [error, denied] = watch.link_messages();
+                WatchReport {
+                    context: &watch.context,
+                    link: watch.summary().link,
+                    error: error.map(String::as_str),
+                    denied: denied.map(String::as_str),
+                    reload_error: watch.reload_error.as_deref(),
+                }
+            })
+            .collect()
     }
 }
 
@@ -263,12 +302,20 @@ impl Inspector {
         let mut contexts = self.watch_contexts();
         contexts.sort();
         let owner = format!(
-            "{:?}:{:?}:{}:{:?}:{:?}:{:?}:{:?}",
+            "{:?}:{:?}:{}:{:?}:{:?}",
             self.page as u8,
             self.launcher.active,
             self.scope.context,
             contexts,
             self.scope.namespace,
+        );
+        if owner != self.live.owner {
+            self.live.watches.clear();
+            self.live.pending.clear();
+            self.live.owner = owner;
+        }
+        let kind_scope = format!(
+            "{:?}:{:?}",
             self.live
                 .selected
                 .as_ref()
@@ -279,11 +326,8 @@ impl Inspector {
                 kinds
             })
         );
-        if owner != self.live.owner {
-            self.live.watches.clear();
-            self.live.pending.clear();
-            self.live.owner = owner;
-        }
+        let kinds_changed = kind_scope != self.live.kind_scope;
+        self.live.kind_scope = kind_scope;
         if !self.workspace_open()
             || self.scope.context.is_empty()
             || !matches!(
@@ -307,11 +351,26 @@ impl Inspector {
         }
         // One watch per context and kind, so each context's rows patch alone.
         let contexts = self.watch_contexts();
-        let pairs = contexts
+        let pairs: Vec<_> = contexts
             .iter()
-            .flat_map(|context| keys.iter().map(move |key| (context, key)));
-        for (context, key) in pairs {
-            let watch = crate::backend::watch_id(context, key);
+            .flat_map(|context| keys.iter().map(move |key| (context, key)))
+            .map(|(context, key)| (context, key, crate::backend::watch_id(context, key)))
+            .collect();
+        // A changed kind selection keeps the watches of the kinds it still
+        // holds, as `update` in resource-watch.ts keeps unchanged keys' streams.
+        if kinds_changed {
+            let wanted: HashSet<&str> = pairs.iter().map(|(_, _, id)| id.as_str()).collect();
+            self.live
+                .watches
+                .retain(|id, _| wanted.contains(id.as_str()));
+            self.live.pending.retain(|patch| {
+                patch
+                    .watch
+                    .as_deref()
+                    .is_none_or(|id| wanted.contains(id))
+            });
+        }
+        for (context, key, watch) in pairs {
             if self
                 .live
                 .watches
@@ -323,7 +382,7 @@ impl Inspector {
             // A watch starts at the version of the rows the view shows, so it
             // waits until they settle. Until then it reports as connecting.
             if !self.rows_settled(context, key) {
-                self.live.watches.entry(watch).or_default();
+                self.live.registration(watch, context);
                 continue;
             }
             let key = key.clone();
@@ -616,7 +675,7 @@ impl Inspector {
                     timer = Box::pin(cx.background_executor().timer(RECOVERY));
                 }
             });
-            self.live.watches.entry(watch).or_default().phase = WatchPhase::Running {
+            self.live.registration(watch, context).phase = WatchPhase::Running {
                 _task: task.into(),
                 link: Link::Opening,
             };

@@ -18,6 +18,13 @@ pub(super) struct PageRefresh {
     statuses: std::collections::HashMap<String, WatchLink>,
 }
 
+impl PageRefresh {
+    /// Each GitOps watch's connection, for the status menu.
+    pub(super) fn links(&self) -> impl Iterator<Item = WatchLink> + '_ {
+        self.statuses.values().copied()
+    }
+}
+
 fn slot(page: Page) -> Option<(usize, Duration)> {
     // These are query staleTime values, not polling intervals.
     // GitOpsSurface.svelte, HelmSurface.svelte, IncidentSurface.svelte: 15_000.
