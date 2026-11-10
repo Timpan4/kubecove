@@ -39,6 +39,10 @@ pub(super) struct EventsState {
     task: Option<Task<()>>,
     pub watch: Option<Task<()>>,
     pub watch_error: Option<String>,
+    /// The number of the last read started, and of the newest read that
+    /// settled into `load`. The first read and the watch's reads overlap.
+    started_reads: u64,
+    settled_read: u64,
     _search_changed: Subscription,
 }
 
@@ -63,8 +67,22 @@ impl EventsState {
             task: None,
             watch: None,
             watch_error: None,
+            started_reads: 0,
+            settled_read: 0,
             _search_changed,
         }
+    }
+
+    /// Numbers a read as it starts.
+    pub fn begin_read(&mut self) -> u64 {
+        self.started_reads += 1;
+        self.started_reads
+    }
+
+    /// Whether the read numbered `read` may still change `load`: a read that
+    /// started later has not already settled it.
+    pub fn current(&self, read: u64) -> bool {
+        read > self.settled_read
     }
 
     pub fn events(&self) -> &[ResourceEventSummary] {
@@ -74,9 +92,11 @@ impl EventsState {
         }
     }
 
-    /// Stores a complete read and the layout source the timeline cache compares.
-    /// Every path that writes `EventsLoad::Ready` goes through here.
-    pub fn set_ready(&mut self, mut events: Vec<ResourceEventSummary>) {
+    /// Stores the complete read numbered `read` and the layout source the
+    /// timeline cache compares. Every path that writes `EventsLoad::Ready`
+    /// goes through here, after checking `current(read)`.
+    pub fn set_ready(&mut self, read: u64, mut events: Vec<ResourceEventSummary>) {
+        self.settled_read = read;
         incident::sort_events(&mut events);
         let source: Arc<[u8]> = serde_json::to_vec(&events)
             .expect("event models serialize")
@@ -103,6 +123,7 @@ impl Inspector {
         let uid = detail.data.metadata["uid"].as_str().map(str::to_owned);
         let read = self.backend.events(detail.data.summary.clone(), uid);
         let read = self.timings.measure("events", read);
+        let number = detail.events.begin_read();
         detail.events.load = EventsLoad::Pending;
         detail.events.layout_key = 0;
         detail.events.layout_source = Arc::default();
@@ -110,10 +131,13 @@ impl Inspector {
         detail.events.task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
-                if let Detail::Ready(detail) = &mut this.detail {
+                // A watch read that started later may already have settled newer rows.
+                if let Detail::Ready(detail) = &mut this.detail
+                    && detail.events.current(number)
+                {
                     detail.events.rows = Windowed::default();
                     match result {
-                        Ok(events) => detail.events.set_ready(events),
+                        Ok(events) => detail.events.set_ready(number, events),
                         Err(error) => detail.events.load = EventsLoad::Failed(error.message),
                     }
                 }
