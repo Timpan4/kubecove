@@ -255,7 +255,8 @@ impl Inspector {
         if self.exec.drag.is_some() || event.modifiers.shift {
             return;
         }
-        let (Some(cell), Some(tab)) = (self.exec_cell(event.position), self.exec.active()) else {
+        let (Some(target), Some(tab)) = (self.exec_target(event.position), self.exec.active())
+        else {
             return;
         };
         let mode = tab.parser.screen().mouse_protocol_mode();
@@ -263,7 +264,7 @@ impl Inspector {
             || (mode == vt100::MouseProtocolMode::ButtonMotion && event.pressed_button.is_some())
         {
             self.exec_mouse(
-                cell,
+                target,
                 if event.pressed_button.is_some() {
                     32
                 } else {
@@ -303,9 +304,11 @@ impl Inspector {
             .is_some_and(|t| t.parser.screen().bracketed_paste());
         self.exec_input(paste_payload(text, bracketed), cx);
     }
+    /// A mouse-protocol report for the viewport cell `target` from `exec_target`, which
+    /// floors the pointer into its cell as xterm's `getMouseReportCoords` does.
     pub(super) fn exec_mouse(
         &mut self,
-        cell: Cell,
+        target: (u16, u16),
         button: u16,
         release: bool,
         cx: &mut Context<Self>,
@@ -320,8 +323,7 @@ impl Inspector {
         {
             return;
         }
-        let col = cell.1.min(screen.size().1.get() - 1) + 1;
-        let row = cell.0 - tab.viewport_start() + 1;
+        let (row, col) = (target.0 + 1, target.1 + 1);
         let data = match screen.mouse_protocol_encoding() {
             vt100::MouseProtocolEncoding::Sgr => format!(
                 "\x1b[<{button};{col};{row}{}",

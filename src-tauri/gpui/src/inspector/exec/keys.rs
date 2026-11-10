@@ -101,8 +101,18 @@ impl Inspector {
             } else {
                 format!("\x1b{}{code}", if application { 'O' } else { '[' })
             }
-        } else if m.control && !m.shift && !m.alt && !m.platform && key.key.len() == 1 {
-            match key.key.as_bytes()[0] {
+        } else if m.control
+            && !m.shift
+            && !m.alt
+            && !m.platform
+            && (key.key.len() == 1 || key.key == "space")
+        {
+            // GPUI names the space key "space", which xterm maps to NUL with Ctrl.
+            match if key.key == "space" {
+                b' '
+            } else {
+                key.key.as_bytes()[0]
+            } {
                 b'a'..=b'z' => String::from((key.key.as_bytes()[0] & 0x1f) as char),
                 b' ' | b'@' => "\0".into(),
                 b'[' | b'3' => "\x1b".into(),

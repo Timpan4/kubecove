@@ -50,7 +50,9 @@ impl Inspector {
         if tab.parser.screen().mouse_protocol_mode() != vt100::MouseProtocolMode::None
             && !event.modifiers.shift
         {
-            self.exec_mouse(cell, 0, false, cx);
+            if let Some(target) = self.exec_target(event.position) {
+                self.exec_mouse(target, 0, false, cx);
+            }
             return;
         }
         let row = u16::try_from(cell.0 - tab.viewport_start()).unwrap();
