@@ -1,24 +1,81 @@
 //! Pointer gestures on the ownership map: a drag that starts on a node pans
-//! without selecting it, and one wheel step zooms about the cursor. Mirrors
-//! `e2e/parity/web-map-gestures.ts`.
+//! without selecting it, and one wheel step zooms about the cursor. The
+//! `map-viewport-*` checks follow the viewport while a selection moves it.
+//! Mirrors `e2e/parity/web-map-gestures.ts`.
 use super::*;
 use gpui_kit::ElementId;
 use gpui_kit::test::TestEventExt;
 use gpui_kit::{
     InputEvent, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, px,
 };
+use std::cell::Cell;
 
 /// Layout rounding allowed when comparing measured node boxes, in pixels.
 const LAYOUT_ROUNDING: f32 = 1.;
 /// One wheel notch of 100 px, which xyflow turns into a zoom step of `2 ** (100 * 0.002)`.
 const WHEEL_PIXELS: f32 = 100.;
 
+/// The `coverageCheck` names that `check` handles.
+pub(super) const CHECKS: &[&str] = &[
+    "map-drag-node",
+    "map-wheel",
+    "map-viewport-settled",
+    "map-viewport-held",
+    "map-viewport-moved",
+];
+
+thread_local! {
+    /// The viewport the last `map-viewport-settled` or `map-viewport-moved` check saw.
+    static RECORDED: Cell<Option<[f32; 3]>> = const { Cell::new(None) };
+}
+
 pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check: &str) {
     match check {
         "map-drag-node" => drag_from_node(window, cx),
         "map-wheel" => wheel_at_node(window, cx),
+        "map-viewport-settled" => {
+            settle(window, cx);
+            RECORDED.set(Some(viewport(window, cx)));
+        }
+        "map-viewport-held" => assert_eq!(
+            Some(viewport(window, cx)),
+            RECORDED.get(),
+            "The map viewport moved"
+        ),
+        "map-viewport-moved" => {
+            let now = viewport(window, cx);
+            assert_ne!(Some(now), RECORDED.get(), "The map viewport did not move");
+            RECORDED.set(Some(now));
+        }
         other => panic!("unknown map gesture check {other}"),
     }
+}
+
+fn inspector(
+    window: &gpui_kit::Window,
+    cx: &gpui_kit::App,
+) -> gpui_kit::Entity<kubecove_gpui::Inspector> {
+    gpui_kit::base::Root::read(window, cx)
+        .view()
+        .clone()
+        .downcast::<kubecove_gpui::Inspector>()
+        .expect("the Inspector is the window's content")
+}
+
+/// The viewport in use as `[x, y, zoom]`, as the last rendered frame showed it.
+fn viewport(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App) -> [f32; 3] {
+    window.render_frame(cx);
+    inspector(window, cx)
+        .read(cx)
+        .map_viewport_in_use()
+        .expect("the map has a viewport")
+}
+
+/// Ends a running map transition. The web driver's clicks and waits let the
+/// transition finish first; this clock moves only when a step advances it.
+pub(super) fn settle(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App) {
+    inspector(window, cx).update(cx, |inspector, cx| inspector.finish_map_transition(cx));
+    window.render_frame(cx);
 }
 
 fn first_node(window: &gpui_kit::Window) -> ElementId {

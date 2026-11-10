@@ -199,6 +199,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             );
         }
         check @ ("map-full" | "map-full-selection") => {
+            map_gestures::settle(window, cx);
             reveal(window, "page", "map-viewport", cx);
             assert!(window.elements().iter().any(|element| element.visible() && matches!(element.path().last(), Some(ElementId::Name(name)) if name.starts_with("map-node:"))));
             assert!(
@@ -214,8 +215,8 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 assert!(window.elements().iter().any(|element| element.visible() && matches!(element.path().last(), Some(ElementId::Name(name)) if name.starts_with("map-node:") && !name.contains(":payments:"))));
             }
         }
-        "map-drag-node" | "map-wheel" => {
-            map_gestures::check(window, cx, string(step, "check"));
+        check if map_gestures::CHECKS.contains(&check) => {
+            map_gestures::check(window, cx, check);
         }
         "map-viewport" => {
             reveal(window, "page", "map-viewport", cx);

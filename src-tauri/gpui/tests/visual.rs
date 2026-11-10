@@ -33,6 +33,15 @@ mod visual {
 
     fn capture(cx: &mut HeadlessAppContext, handle: AnyWindowHandle, out: &Path, view: &str) {
         cx.run_until_parked();
+        // The web capture waits before its screenshot, so the map's fit transition
+        // has ended. This clock moves only when a test advances it.
+        cx.update_window(handle, |_, window, cx| {
+            let root = gpui_kit::base::Root::read(window, cx).view().clone();
+            if let Ok(inspector) = root.downcast::<Inspector>() {
+                inspector.update(cx, |inspector, cx| inspector.finish_map_transition(cx));
+            }
+        })
+        .unwrap();
         // The first frame measures the ownership map's viewport; the second fits the graph to it.
         for _ in 0..2 {
             cx.update_window(handle, |_, window, cx| window.render_frame(cx))

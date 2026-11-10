@@ -483,6 +483,7 @@ impl Inspector {
         }
         let stacked = !matches!(self.detail, Detail::Closed);
         self.rebuild_map();
+        self.sync_map_motion(window, cx);
         self.sync_map_focus(window, cx);
         let loading = self
             .loading

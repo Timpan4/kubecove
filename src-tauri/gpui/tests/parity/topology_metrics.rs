@@ -41,6 +41,8 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
         }
         "selectTopologyNode" => {
             let node = format!("map-node:{}", s("id"));
+            // Playwright clicks a node once it stops moving, after any transition ends.
+            super::map_gestures::settle(window, cx);
             // Beside an open detail the page scrolls, and the map can sit below the window.
             super::scroll::reveal(window, "resources", &node, cx);
             window.click(node, cx)
