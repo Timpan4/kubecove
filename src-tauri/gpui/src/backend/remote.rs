@@ -403,6 +403,9 @@ impl Backend for DesktopBackend {
                 versions: Default::default(),
                 listed: vec![],
             };
+            // Kind alone does not name a resource type: custom resources from two API
+            // groups can share a kind and object names.
+            let mut seen = std::collections::HashSet::new();
             for namespace in scopes {
                 let next = inventory(
                     remote.clone(),
@@ -422,11 +425,13 @@ impl Backend for DesktopBackend {
                     result.versions.entry(key).or_insert(version);
                 }
                 for row in next.resources {
-                    if !result.resources.iter().any(|old| {
-                        old.kind == row.kind
-                            && old.name == row.name
-                            && old.namespace == row.namespace
-                    }) {
+                    let identity = (
+                        row.group.clone(),
+                        row.kind.clone(),
+                        row.namespace.clone(),
+                        row.name.clone(),
+                    );
+                    if seen.insert(identity) {
                         result.resources.push(row);
                     }
                 }
@@ -577,33 +582,59 @@ impl Backend for DesktopBackend {
         self.local.read(async move {
             let args = json!({"clusterContext":context});
             let mut inventory = GitOpsInventory::default();
-            let detected: bool = invoke(remote.clone(), "detect_argocd", args.clone()).await?;
-            if detected {
-                let [applications, app_sets, projects] = crate::gitops::ARGO_KINDS
-                    .map(|(kind, plural)| crate::gitops::argo_watch_key(kind, plural));
-                let list = invoke(remote.clone(), "list_argocd_applications", args.clone()).await?;
-                inventory.argo = Some(inventory.keep(&applications, list));
-                let list = invoke(remote.clone(), "list_argocd_appsets", args.clone()).await?;
-                inventory.app_sets = inventory.keep(&app_sets, list);
-                let list = invoke(remote.clone(), "list_argocd_appprojects", args.clone()).await?;
-                inventory.projects = inventory.keep(&projects, list);
-            }
-            let flux: FluxDetectionSummary = invoke(remote.clone(), "detect_flux", args).await?;
-            if flux.detected {
-                let mut rows = Vec::new();
-                for kind in flux.kinds {
-                    let key = crate::gitops::flux_watch_key(&kind);
-                    let list: VersionedList<FluxResourceSummary> = invoke(
-                        remote.clone(),
-                        "list_flux_resources",
-                        json!({"clusterContext":context,"resourceKind":kind}),
-                    )
-                    .await?;
-                    rows.extend(inventory.keep(&key, list));
+            // As in the native read, a failed list keeps the others and lands in `list_error`.
+            let mut errors = Vec::new();
+            match invoke::<bool>(remote.clone(), "detect_argocd", args.clone()).await {
+                Ok(true) => {
+                    let [applications, app_sets, projects] = crate::gitops::ARGO_KINDS
+                        .map(|(kind, plural)| crate::gitops::argo_watch_key(kind, plural));
+                    let list: Result<VersionedList<ArgoApplicationSummary>, _> =
+                        invoke(remote.clone(), "list_argocd_applications", args.clone()).await;
+                    inventory.argo = Some(match list {
+                        Ok(list) => inventory.keep(&applications, list),
+                        Err(error) => {
+                            errors.push(error);
+                            Vec::new()
+                        }
+                    });
+                    let list: Result<VersionedList<ArgoApplicationSetSummary>, _> =
+                        invoke(remote.clone(), "list_argocd_appsets", args.clone()).await;
+                    match list {
+                        Ok(list) => inventory.app_sets = inventory.keep(&app_sets, list),
+                        Err(error) => errors.push(error),
+                    }
+                    let list: Result<VersionedList<ArgoAppProjectSummary>, _> =
+                        invoke(remote.clone(), "list_argocd_appprojects", args.clone()).await;
+                    match list {
+                        Ok(list) => inventory.projects = inventory.keep(&projects, list),
+                        Err(error) => errors.push(error),
+                    }
                 }
-                inventory.flux = Some(rows);
+                Ok(false) => {}
+                Err(error) => errors.push(error),
             }
-            Ok(inventory)
+            match invoke::<FluxDetectionSummary>(remote.clone(), "detect_flux", args).await {
+                Ok(flux) if flux.detected => {
+                    let mut rows = Vec::new();
+                    for kind in flux.kinds {
+                        let key = crate::gitops::flux_watch_key(&kind);
+                        let list: Result<VersionedList<FluxResourceSummary>, _> = invoke(
+                            remote.clone(),
+                            "list_flux_resources",
+                            json!({"clusterContext":context,"resourceKind":kind}),
+                        )
+                        .await;
+                        match list {
+                            Ok(list) => rows.extend(inventory.keep(&key, list)),
+                            Err(error) => errors.push(error),
+                        }
+                    }
+                    inventory.flux = Some(rows);
+                }
+                Ok(_) => {}
+                Err(error) => errors.push(error),
+            }
+            super::inventory::with_list_errors(inventory, errors)
         })
     }
     fn kubeconfig_writes_unavailable(&self) -> Option<&'static str> {
