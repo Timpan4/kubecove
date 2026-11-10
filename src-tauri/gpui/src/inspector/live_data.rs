@@ -404,6 +404,10 @@ impl Inspector {
                                                 },
                                                 cx,
                                             );
+                                            // As after a reload: the rows are current again.
+                                            if let Some(w) = this.live.watches.get_mut(&id) {
+                                                w.reload_error = None;
+                                            }
                                         }
                                         Err(error) => {
                                             if let Some(w) = this.live.watches.get_mut(&id) {
