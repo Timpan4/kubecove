@@ -6,8 +6,14 @@ pub(super) struct WorkspaceControls {
     enabled: AtomicBool,
     fail_other: AtomicBool,
     pending: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+    /// The file the next Import dialog returns.
+    pub import: Mutex<Option<String>>,
 }
 impl WorkspaceControls {
+    pub fn import(&self) -> Read<Option<String>> {
+        let content = self.import.lock().unwrap().clone();
+        Box::pin(async move { Ok(content) })
+    }
     pub fn read(&self, scope: &Scope) -> Option<Read<ScopeResult>> {
         if !self.enabled.load(Ordering::SeqCst) {
             return None;
@@ -79,6 +85,53 @@ fn one_failed_context_keeps_successful_rows_and_names_the_failure(cx: &mut TestA
         );
     })
     .unwrap();
+}
+/// Failure mode: Replace overwrites the first saved workspace whose display
+/// name matches, although a later one shares the file's metadata name.
+#[gpui_kit::test]
+fn import_replace_prefers_the_shared_metadata_name(cx: &mut TestAppContext) {
+    let shared = |name: &str| json!({"apiVersion":"kubecove.dev/workspace/v1","kind":"Workspace","metadata":{"name":"controlled"},"spec":{"displayName":name,"scope":{"clusterContext":"mock-dev","namespaces":["payments"],"kinds":["Pod"],"layout":"overview"},"shortcuts":[],"portForwards":[]}});
+    let saved = |id: u64, name: &str| kubecove_gpui::workspaces::SavedWorkspace {
+        id,
+        name: name.into(),
+        context: "mock-other".into(),
+        group: vec![],
+        group_name: None,
+        namespaces: vec![],
+        kinds: vec![],
+        updated: id,
+        reviews: vec![],
+    };
+    let backend = Arc::new(Controlled::default());
+    {
+        let mut document = backend.argo.document.lock().unwrap();
+        document.workspaces = vec![saved(1, "Controlled import"), saved(2, "Renamed import")];
+        document
+            .workspace_documents
+            .insert(2, shared("Renamed import"));
+    }
+    *backend.workspace.import.lock().unwrap() = Some(shared("Controlled import").to_string());
+    let handle = open(cx, backend.clone());
+    launcher(cx, handle);
+    for id in [
+        "settings-button:Import",
+        "workspace-import:0:Replace",
+        "settings-button:Apply import",
+    ] {
+        cx.update_window(handle, |_, window, cx| {
+            window.render_frame(cx);
+            window.click(id, cx);
+        })
+        .unwrap();
+        cx.run_until_parked();
+    }
+    let document = backend.argo.document.lock().unwrap();
+    let context = |id: u64| {
+        let workspace = document.workspaces.iter().find(|saved| saved.id == id);
+        workspace.map(|saved| saved.context.clone())
+    };
+    assert_eq!(context(2).as_deref(), Some("mock-dev"), "shared key not replaced");
+    assert_eq!(context(1).as_deref(), Some("mock-other"), "name match overwritten");
 }
 #[gpui_kit::test]
 fn changing_workspace_cancels_every_old_context_read(cx: &mut TestAppContext) {

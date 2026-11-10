@@ -109,6 +109,9 @@ impl Backend for Controlled {
         *self.argo.document.lock().unwrap() = document.clone();
         Ok(document)
     }
+    fn import_workspace(&self) -> Read<Option<String>> {
+        self.workspace.import()
+    }
     fn disconnect_argo(&self, _: String) -> Read<()> {
         Box::pin(async { Ok(()) })
     }
