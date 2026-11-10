@@ -150,7 +150,7 @@ pub(super) struct Connections {
     pub(super) discovery_error: Option<String>,
     pub(super) picker: Entity<
         gpui_kit::component::select::SelectState<
-            gpui_kit::component::select::SearchableVec<gpui_kit::SharedString>,
+            gpui_kit::component::select::SearchableVec<super::profiles::PreferenceChoice>,
         >,
     >,
     /// Focus container of the connection dialog. Its focus trap keeps Tab and
@@ -163,10 +163,7 @@ impl Connections {
         use gpui_kit::component::select::{SearchableVec, SelectEvent, SelectState};
         let picker = cx.new(|cx| {
             SelectState::new(
-                SearchableVec::new(vec![
-                    gpui_kit::SharedString::from("Automatic"),
-                    "Kubernetes".into(),
-                ]),
+                SearchableVec::new(super::profiles::PreferenceChoice::fixed()),
                 None,
                 window,
                 cx,
@@ -177,23 +174,23 @@ impl Connections {
                 return;
             };
             let preference = match value.as_ref() {
-                "Automatic" => Preference::Automatic,
-                "Kubernetes" => Preference::Kubernetes,
-                label => {
-                    let Some(profile) = this
+                "automatic" => Preference::Automatic,
+                "kubernetes" => Preference::Kubernetes,
+                value => {
+                    let Some(id) = value.strip_prefix("connected:") else {
+                        return;
+                    };
+                    if !this
                         .argo
                         .connections
                         .profiles
                         .iter()
                         .filter_map(|s| s.profile.as_ref())
-                        .find(|p| {
-                            this.argo_profile_matches(p)
-                                && super::profiles::endpoint_label(&p.endpoint) == label
-                        })
-                    else {
+                        .any(|p| p.id == id && this.argo_profile_matches(p))
+                    {
                         return;
-                    };
-                    Preference::Connected(profile.id.clone())
+                    }
+                    Preference::Connected(id.to_owned())
                 }
             };
             this.argo.connections.selected = preference;
