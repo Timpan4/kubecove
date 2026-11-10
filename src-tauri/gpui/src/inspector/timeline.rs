@@ -11,6 +11,7 @@ use super::loading::{LoadingDelays, Phase};
 use super::windowed::Windowed;
 use crate::incident::{self, SignalTone};
 use crate::incident_timeline::{self as entries, TimelineItem};
+use crate::preferences::TimestampTimezone;
 use crate::targets::TestSupportExt;
 use crate::theme::{MONO, Tokens};
 use crate::ui;
@@ -366,12 +367,18 @@ fn entry(
 }
 
 /// `ResourceTimeline.svelte`: `section px-1 py-2`.
-pub(super) fn timeline(detail: &ResourceDetail, state: &State, cx: &mut Context<Inspector>) -> Div {
+pub(super) fn timeline(
+    detail: &ResourceDetail,
+    state: &State,
+    timezone: TimestampTimezone,
+    cx: &mut Context<Inspector>,
+) -> Div {
     let summary = &detail.data.summary;
-    let model = state.model(detail);
+    let model = state.model(detail, timezone);
     let items = &model.items;
     let groups = &model.groups;
-    let hide_today = entries::hide_today_heading(groups.iter().map(|group| group.key.as_deref()));
+    let hide_today =
+        entries::hide_today_heading(groups.iter().map(|group| group.key.as_deref()), timezone);
     let geometry = if matches!(detail.events.load, EventsLoad::Pending) {
         Windowed::default()
     } else {
@@ -448,7 +455,13 @@ pub(super) fn timeline(detail: &ResourceDetail, state: &State, cx: &mut Context<
         .px(px(4.))
         .py(px(8.))
         .child(header)
-        .child(ui::muted(small("Oldest first")).mb(px(8.)));
+        .child(
+            ui::muted(small(match timezone {
+                TimestampTimezone::Local => "Oldest first",
+                TimestampTimezone::Utc => "Oldest first, UTC",
+            }))
+            .mb(px(8.)),
+        );
     if items.is_empty() {
         return div().child(section.child(
             ui::muted(ui::xs("No incident timeline entries for this resource.")).py(px(16.)),
@@ -507,7 +520,7 @@ impl Inspector {
         };
         Some(
             self.timeline
-                .model(detail)
+                .model(detail, self.persisted.preferences.timestamp_timezone)
                 .groups
                 .iter()
                 .flat_map(|group| &group.rows)

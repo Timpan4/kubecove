@@ -8,6 +8,7 @@ use super::super::{
 use crate::{
     incident::ConditionRow,
     incident_timeline::{self as entries, TimelineItem},
+    preferences::TimestampTimezone,
 };
 use kubecove_lib::models::{ResourceEventSummary, ResourceSummary};
 use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
@@ -38,6 +39,7 @@ impl Model {
         summary: &ResourceSummary,
         conditions: &[ConditionRow],
         events: &[ResourceEventSummary],
+        timezone: TimestampTimezone,
     ) -> Self {
         let items = entries::incident_timeline(summary, conditions, events);
         let index: HashMap<_, _> = items
@@ -45,7 +47,7 @@ impl Model {
             .enumerate()
             .map(|(i, item)| (item.id.as_str(), i))
             .collect();
-        let groups = entries::group_by_day(&items)
+        let groups = entries::group_by_day(&items, timezone)
             .into_iter()
             .map(|group| {
                 let last = group.items.len().saturating_sub(1);
@@ -55,7 +57,7 @@ impl Model {
                     .enumerate()
                     .map(|(i, item)| {
                         let time = if group.key.is_some() {
-                            entries::timeline_time(item)
+                            entries::timeline_time(item, timezone)
                         } else {
                             String::new()
                         };
@@ -93,6 +95,7 @@ impl Model {
 struct Current {
     data: Arc<[u8]>,
     events: Arc<[u8]>,
+    timezone: TimestampTimezone,
     model: Rc<Model>,
 }
 
@@ -103,12 +106,13 @@ pub(crate) struct State {
 }
 
 impl State {
-    pub(super) fn model(&self, detail: &ResourceDetail) -> Rc<Model> {
+    pub(super) fn model(&self, detail: &ResourceDetail, timezone: TimestampTimezone) -> Rc<Model> {
         let mut current = self.current.borrow_mut();
         if !matches!(detail.events.load, EventsLoad::Pending)
             && let Some(previous) = &*current
             && previous.data == detail.timeline_source
             && previous.events == detail.events.layout_source
+            && previous.timezone == timezone
         {
             return previous.model.clone();
         }
@@ -117,12 +121,14 @@ impl State {
             &detail.data.summary,
             &conditions,
             detail.events.events(),
+            timezone,
         ));
         // A pending read must not evict the completed projection on reopening.
         if !matches!(detail.events.load, EventsLoad::Pending) {
             *current = Some(Current {
                 data: detail.timeline_source.clone(),
                 events: detail.events.layout_source.clone(),
+                timezone,
                 model: model.clone(),
             });
         }
