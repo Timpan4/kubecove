@@ -6,13 +6,13 @@
 //! signature names the version the manifest announced.
 use base64::Engine as _;
 use kubecove_lib::models::{AppError, AppErrorKind};
-use minisign_verify::{PublicKey, Signature};
+use minisign_verify::{PublicKey, Signature, StreamVerifier};
 use std::{ffi::OsString, io, path::PathBuf};
-use tokio::sync::watch;
+use tokio::sync::{mpsc, watch};
 
 mod install;
 
-pub use install::{InstallTarget, bundle_of};
+pub use install::{InstallTarget, Staged, bundle_of};
 
 #[derive(Clone, Debug, Default)]
 pub enum UpdateStatus {
@@ -176,103 +176,171 @@ pub fn release(manifest: &serde_json::Value, platform: &str) -> Result<UpdateSta
 }
 
 /// Accepts `bytes` only when `signature` is a signature of them by `public_key` and it was made
-/// for `version`. The manifest is not signed, so its version alone does not prove which release
-/// the URL and signature point at: without the second check a tampered manifest could pair a
-/// new version number with an older signed build.
+/// for `version`. It runs the same check `install` runs over a download as it arrives.
 pub fn verify(
     bytes: &[u8],
     signature: &str,
     public_key: &str,
     version: &str,
 ) -> Result<(), AppError> {
-    let invalid = || AppError::new("Invalid update signature", AppErrorKind::Validation);
-    let text = |encoded: &str| {
-        base64::engine::general_purpose::STANDARD
-            .decode(encoded.trim())
-            .ok()
-            .and_then(|decoded| String::from_utf8(decoded).ok())
-            .ok_or_else(invalid)
-    };
-    let public_key = PublicKey::decode(&text(public_key)?).map_err(|_| invalid())?;
-    let signature = Signature::decode(&text(signature)?).map_err(|_| invalid())?;
-    // The Tauri signer always prehashes, so the legacy unhashed form is refused.
-    public_key
-        .verify(bytes, &signature, false)
-        .map_err(|_| invalid())?;
-    // The trusted comment is covered by the signature, so it is read only after `verify`.
-    // The signer writes it as tab-separated `key:value` fields.
-    let comment = signature.trusted_comment();
-    let signed = |key: &str| {
-        comment
-            .split('\t')
-            .find_map(|field| field.strip_prefix(key))
-    };
-    if signed("version:") != Some(version) {
-        return Err(AppError::new(
-            format!("The update is not signed for version {version}"),
-            AppErrorKind::Validation,
-        ));
-    }
-    // The Tauri desktop app is signed with the same key and names its version too. The signed
-    // file name tells the two products apart.
-    if !signed("file:").is_some_and(|file| file.starts_with(ARTIFACT_PREFIX)) {
-        return Err(AppError::new(
-            "The update is not a KubeCove GPUI build",
-            AppErrorKind::Validation,
-        ));
-    }
-    Ok(())
+    let signed = Signed::decode(signature, public_key)?;
+    let mut verifier = signed.stream()?;
+    verifier.update(bytes);
+    signed.check(verifier, version)
 }
 
-/// Downloads the update's build, verifies it and installs it. Nothing is written before the
-/// signature checks out.
+/// The release key and a build's signature, decoded.
+struct Signed {
+    public_key: PublicKey,
+    signature: Signature,
+}
+
+fn invalid_signature() -> AppError {
+    AppError::new("Invalid update signature", AppErrorKind::Validation)
+}
+
+impl Signed {
+    fn decode(signature: &str, public_key: &str) -> Result<Self, AppError> {
+        let text = |encoded: &str| {
+            base64::engine::general_purpose::STANDARD
+                .decode(encoded.trim())
+                .ok()
+                .and_then(|decoded| String::from_utf8(decoded).ok())
+                .ok_or_else(invalid_signature)
+        };
+        Ok(Self {
+            public_key: PublicKey::decode(&text(public_key)?).map_err(|_| invalid_signature())?,
+            signature: Signature::decode(&text(signature)?).map_err(|_| invalid_signature())?,
+        })
+    }
+
+    /// Hashes the build as it arrives. The stream form accepts only prehashed signatures, so
+    /// the legacy unhashed form is refused; the Tauri signer always prehashes.
+    fn stream(&self) -> Result<StreamVerifier<'_>, AppError> {
+        self.public_key
+            .verify_stream(&self.signature)
+            .map_err(|_| invalid_signature())
+    }
+
+    /// Accepts the hashed build only when the signature holds and was made for `version`. The
+    /// manifest is not signed, so its version alone does not prove which release the URL and
+    /// signature point at: without the second check a tampered manifest could pair a new
+    /// version number with an older signed build.
+    fn check(&self, mut verifier: StreamVerifier<'_>, version: &str) -> Result<(), AppError> {
+        verifier.finalize().map_err(|_| invalid_signature())?;
+        // The trusted comment is covered by the signature, so it is read only after `finalize`.
+        // The signer writes it as tab-separated `key:value` fields.
+        let comment = self.signature.trusted_comment();
+        let signed = |key: &str| {
+            comment
+                .split('\t')
+                .find_map(|field| field.strip_prefix(key))
+        };
+        if signed("version:") != Some(version) {
+            return Err(AppError::new(
+                format!("The update is not signed for version {version}"),
+                AppErrorKind::Validation,
+            ));
+        }
+        // The Tauri desktop app is signed with the same key and names its version too. The
+        // signed file name tells the two products apart.
+        if !signed("file:").is_some_and(|file| file.starts_with(ARTIFACT_PREFIX)) {
+            return Err(AppError::new(
+                "The update is not a KubeCove GPUI build",
+                AppErrorKind::Validation,
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Downloads the update's build, verifies it and installs it. The download goes chunk by chunk
+/// to a staged file and the signature check, so memory use does not grow with its size. The
+/// staged file is put in place only after the signature checks out, and removed otherwise.
 pub async fn install(
     update: AvailableUpdate,
     public_key: String,
     target: InstallTarget,
     progress: watch::Sender<DownloadProgress>,
 ) -> Result<Relaunch, AppError> {
-    let bytes = download(&update.artifact.url, &progress).await?;
-    // Hashing the build and writing it block, so they run off the async workers.
-    tokio::task::spawn_blocking(move || {
-        verify(
-            &bytes,
-            &update.artifact.signature,
-            &public_key,
-            &update.version,
-        )?;
-        target.install(&bytes, &update.version)
-    })
-    .await
-    .map_err(|_| AppError::new("Update installation stopped", AppErrorKind::Internal))?
+    let signed = Signed::decode(&update.artifact.signature, &public_key)?;
+    // 1 is the least capacity tokio allows, so at most one chunk waits between the two sides.
+    let (sender, chunks) = mpsc::channel(1);
+    let version = update.version;
+    // Writing and hashing the build block, so they run off the async workers.
+    let writer = tokio::task::spawn_blocking(move || receive(&target, &signed, &version, chunks));
+    let downloaded = download(&update.artifact.url, &progress, &sender).await;
+    // A download that stopped before `End` leaves the writer waiting until the sender is gone.
+    drop(sender);
+    let installed = writer
+        .await
+        .map_err(|_| AppError::new("Update installation stopped", AppErrorKind::Internal))?;
+    downloaded?;
+    installed
 }
 
+/// What the download sends the writer. Only `End` completes a download: a sender dropped before
+/// it means the download failed or was abandoned.
+enum Piece {
+    Chunk(Vec<u8>),
+    End,
+}
+
+/// Writes each chunk to the staged file and the signature check, and installs the file once the
+/// download has ended and the signature holds. Every early return drops the staged file, which
+/// removes it.
+fn receive(
+    target: &InstallTarget,
+    signed: &Signed,
+    version: &str,
+    mut chunks: mpsc::Receiver<Piece>,
+) -> Result<Relaunch, AppError> {
+    let mut verifier = signed.stream()?;
+    let mut staged = target.stage()?;
+    loop {
+        match chunks.blocking_recv() {
+            Some(Piece::Chunk(chunk)) => {
+                verifier.update(&chunk);
+                staged.write(&chunk)?;
+            }
+            Some(Piece::End) => break,
+            None => return Err(download_failed()),
+        }
+    }
+    signed.check(verifier, version)?;
+    staged.install(version)
+}
+
+fn download_failed() -> AppError {
+    AppError::new("Could not download the update", AppErrorKind::Network)
+}
+
+/// Sends the build to `writer` as it arrives, then `End`. It stops early without an error when
+/// the writer has stopped, because the writer's own result says why.
 async fn download(
     url: &str,
     progress: &watch::Sender<DownloadProgress>,
-) -> Result<Vec<u8>, AppError> {
-    let failed = || AppError::new("Could not download the update", AppErrorKind::Network);
+    writer: &mpsc::Sender<Piece>,
+) -> Result<(), AppError> {
     let mut response = reqwest::Client::new()
         .get(url)
         .header(reqwest::header::ACCEPT, "application/octet-stream")
         .send()
         .await
         .and_then(reqwest::Response::error_for_status)
-        .map_err(|_| failed())?;
+        .map_err(|_| download_failed())?;
     let total = response.content_length();
-    let mut bytes = Vec::new();
-    progress.send_replace(DownloadProgress {
-        downloaded: 0,
-        total,
-    });
-    while let Some(chunk) = response.chunk().await.map_err(|_| failed())? {
-        bytes.extend_from_slice(&chunk);
-        progress.send_replace(DownloadProgress {
-            downloaded: bytes.len() as u64,
-            total,
-        });
+    let mut downloaded = 0u64;
+    progress.send_replace(DownloadProgress { downloaded, total });
+    while let Some(chunk) = response.chunk().await.map_err(|_| download_failed())? {
+        downloaded = downloaded.saturating_add(chunk.len() as u64);
+        if writer.send(Piece::Chunk(chunk.into())).await.is_err() {
+            return Ok(());
+        }
+        progress.send_replace(DownloadProgress { downloaded, total });
     }
-    Ok(bytes)
+    let _ = writer.send(Piece::End).await;
+    Ok(())
 }
 
 fn failed(action: &str, error: &io::Error) -> AppError {

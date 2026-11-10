@@ -8,19 +8,23 @@
 //! the same key made for the Tauri desktop app's build of that version; text that is not a
 //! signature or a key.
 //!
-//! Download: a failed request; a body that is not the signed build.
+//! Download: a failed request; a body that is not the signed build; a body that ends before its
+//! announced length, even when the bytes that arrived are the signed build; a refused, failed or
+//! cut-short download that leaves its staged file behind, for any install target.
 //!
 //! Install: a payload of the wrong kind for the platform; a missing install path; a failure
 //! that leaves the installed version changed or leaves work files behind; an archive without
-//! exactly one app bundle; lost executable permissions.
+//! exactly one app bundle; lost executable permissions; an installer left beside the verified
+//! one under its staged name.
 //!
 //! The keys below are throwaway test keys made with `tauri signer generate`. The signatures
 //! come from `tauri signer sign`, the tool the release uses, so the encoding checked here is
 //! the one a release produces. The signer records the signed file's name, so each signature
 //! was made over a copy of `PAYLOAD` named as a release asset is.
 use kubecove_gpui::backend::updates::{
-    self, Artifact, AvailableUpdate, DownloadProgress, Feed, InstallTarget, UpdateStatus,
+    self, Artifact, AvailableUpdate, DownloadProgress, Feed, InstallTarget, Relaunch, UpdateStatus,
 };
+use kubecove_lib::models::AppError;
 use std::{
     io::{Read as _, Write as _},
     path::{Path, PathBuf},
@@ -62,6 +66,11 @@ fn names(directory: &Path) -> Vec<String> {
 
 /// Answers one request on a local port with `status` and `body`.
 fn serve(status: &'static str, body: &'static [u8]) -> String {
+    serve_announcing(status, body, body.len())
+}
+
+/// Answers one request with `status`, a `Content-Length` of `length` and `body`, then closes.
+fn serve_announcing(status: &'static str, body: &'static [u8], length: usize) -> String {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("http://{}/build", listener.local_addr().unwrap());
     std::thread::spawn(move || {
@@ -77,8 +86,7 @@ fn serve(status: &'static str, body: &'static [u8]) -> String {
         }
         write!(
             stream,
-            "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-            body.len()
+            "HTTP/1.1 {status}\r\nContent-Length: {length}\r\nConnection: close\r\n\r\n"
         )
         .unwrap();
         stream.write_all(body).unwrap();
@@ -86,14 +94,11 @@ fn serve(status: &'static str, body: &'static [u8]) -> String {
     url
 }
 
-/// Runs the whole install against `url`, with the test key and an AppImage at `appimage`.
+/// Runs the whole install against `url`, with the test key, into `target`.
 fn install_from(
     url: String,
-    appimage: &Path,
-) -> (
-    Result<updates::Relaunch, kubecove_lib::models::AppError>,
-    DownloadProgress,
-) {
+    target: InstallTarget,
+) -> (Result<Relaunch, AppError>, DownloadProgress) {
     // reqwest is built without a TLS provider; `main` installs this one in the app.
     let _ = rustls::crypto::ring::default_provider().install_default();
     let (sender, receiver) = tokio::sync::watch::channel(DownloadProgress::default());
@@ -107,14 +112,17 @@ fn install_from(
     };
     let result = tokio::runtime::Runtime::new()
         .unwrap()
-        .block_on(updates::install(
-            update,
-            PUBLIC_KEY.into(),
-            InstallTarget::AppImage(appimage.to_owned()),
-            sender,
-        ));
+        .block_on(updates::install(update, PUBLIC_KEY.into(), target, sender));
     let progress = *receiver.borrow();
     (result, progress)
+}
+
+/// Stages `payload` for `target` and installs it. The update flow verifies the signature
+/// between the two steps; the tests that call this cover the file handling alone.
+fn install_unsigned(target: &InstallTarget, payload: &[u8]) -> Result<Relaunch, AppError> {
+    let mut staged = target.stage()?;
+    staged.write(payload)?;
+    staged.install(VERSION)
 }
 
 fn installed_appimage(directory: &Path) -> PathBuf {
@@ -253,7 +261,10 @@ fn only_the_release_key_and_the_announced_version_verify() {
 fn a_verified_download_replaces_the_appimage_and_keeps_it_executable() {
     let directory = directory("install");
     let appimage = installed_appimage(&directory);
-    let (result, progress) = install_from(serve("200 OK", PAYLOAD), &appimage);
+    let (result, progress) = install_from(
+        serve("200 OK", PAYLOAD),
+        InstallTarget::AppImage(appimage.clone()),
+    );
     let relaunch = result.unwrap();
     assert_eq!(std::fs::read(&appimage).unwrap(), PAYLOAD);
     assert_eq!(relaunch.program, appimage);
@@ -276,20 +287,50 @@ fn a_verified_download_replaces_the_appimage_and_keeps_it_executable() {
 }
 
 #[test]
-fn a_tampered_or_failed_download_leaves_the_appimage_as_it_was() {
+fn a_tampered_failed_or_cut_short_download_changes_nothing_and_leaves_no_staged_file() {
     let directory = directory("refuse");
     let appimage = installed_appimage(&directory);
-    for (status, body) in [
-        ("200 OK", &b"\x7fELF another build"[..]),
-        ("404 Not Found", &b""[..]),
+    let bundle = directory.join("KubeCove GPUI.app");
+    let binary = bundle.join("Contents/MacOS/kubecove-gpui");
+    std::fs::create_dir_all(binary.parent().unwrap()).unwrap();
+    std::fs::write(&binary, b"installed version").unwrap();
+    let installers = directory.join("installers");
+    std::fs::create_dir(&installers).unwrap();
+    for target in [
+        InstallTarget::AppImage(appimage.clone()),
+        InstallTarget::AppBundle(bundle),
+        InstallTarget::Installer(installers.clone()),
     ] {
-        let (result, _) = install_from(serve(status, body), &appimage);
-        assert!(result.is_err(), "installed after {status}");
-        assert_eq!(
-            std::fs::read(&appimage).unwrap(),
-            b"\x7fELF installed version"
-        );
-        assert_eq!(names(&directory), ["KubeCove GPUI.AppImage"]);
+        for (case, url) in [
+            (
+                "a tampered build",
+                serve("200 OK", b"\x7fELF another build"),
+            ),
+            ("a failed request", serve("404 Not Found", b"")),
+            // Every byte of the signed build arrives, then the body ends one byte short of its
+            // announced length. Only a download that ends as announced may install.
+            (
+                "a body cut short",
+                serve_announcing("200 OK", PAYLOAD, PAYLOAD.len() + 1),
+            ),
+        ] {
+            let (result, _) = install_from(url, target.clone());
+            assert!(result.is_err(), "installed {case} into {target:?}");
+            assert_eq!(
+                std::fs::read(&appimage).unwrap(),
+                b"\x7fELF installed version"
+            );
+            assert_eq!(std::fs::read(&binary).unwrap(), b"installed version");
+            assert_eq!(
+                names(&directory),
+                ["KubeCove GPUI.AppImage", "KubeCove GPUI.app", "installers"],
+                "{case} into {target:?} left a staged file"
+            );
+            assert!(
+                names(&installers).is_empty(),
+                "{case} left a staged installer"
+            );
+        }
     }
 }
 
@@ -298,13 +339,13 @@ fn an_appimage_install_refuses_other_payloads_and_a_missing_path() {
     let directory = directory("appimage");
     let appimage = installed_appimage(&directory);
     let target = InstallTarget::AppImage(appimage.clone());
-    assert!(target.install(b"MZ a Windows installer", VERSION).is_err());
+    assert!(install_unsigned(&target, b"MZ a Windows installer").is_err());
     assert_eq!(
         std::fs::read(&appimage).unwrap(),
         b"\x7fELF installed version"
     );
     let missing = InstallTarget::AppImage(directory.join("missing.AppImage"));
-    assert!(missing.install(PAYLOAD, VERSION).is_err());
+    assert!(install_unsigned(&missing, PAYLOAD).is_err());
     assert_eq!(names(&directory), ["KubeCove GPUI.AppImage"]);
 }
 
@@ -335,7 +376,7 @@ fn a_bundle_install_swaps_the_app_and_refuses_an_archive_without_one() {
         ("not an archive", b"not gzip".to_vec()),
     ] {
         assert!(
-            target.install(&payload, VERSION).is_err(),
+            install_unsigned(&target, &payload).is_err(),
             "installed {case}"
         );
         assert_eq!(std::fs::read(&binary).unwrap(), b"installed version");
@@ -346,7 +387,7 @@ fn a_bundle_install_swaps_the_app_and_refuses_an_archive_without_one() {
         "KubeCove GPUI.app/Contents/MacOS/kubecove-gpui",
         b"new version",
     )]);
-    let relaunch = target.install(&update, VERSION).unwrap();
+    let relaunch = install_unsigned(&target, &update).unwrap();
     assert_eq!(std::fs::read(&binary).unwrap(), b"new version");
     assert!(!bundle.join("Contents/removed-in-update").exists());
     assert_eq!(names(&directory), ["KubeCove GPUI.app"]);
@@ -368,14 +409,15 @@ fn a_bundle_install_swaps_the_app_and_refuses_an_archive_without_one() {
 fn a_windows_install_saves_the_installer_and_runs_it_passively_on_relaunch() {
     let directory = directory("installer");
     let target = InstallTarget::Installer(directory.clone());
-    assert!(target.install(PAYLOAD, VERSION).is_err());
+    assert!(install_unsigned(&target, PAYLOAD).is_err());
     assert!(names(&directory).is_empty());
 
     let installer = directory.join("KubeCove-GPUI-99.0.0-setup.exe");
     // An interrupted earlier install left a file at the same path.
     std::fs::write(&installer, b"stale").unwrap();
-    let relaunch = target.install(b"MZ new installer", VERSION).unwrap();
+    let relaunch = install_unsigned(&target, b"MZ new installer").unwrap();
     assert_eq!(std::fs::read(&installer).unwrap(), b"MZ new installer");
+    assert_eq!(names(&directory), ["KubeCove-GPUI-99.0.0-setup.exe"]);
     assert_eq!(relaunch.program, installer);
     assert_eq!(relaunch.args, ["/P", "/R"]);
 }
