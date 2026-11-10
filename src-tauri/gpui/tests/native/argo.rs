@@ -28,6 +28,7 @@ pub struct ArgoControls {
     connect_gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
     inspect_gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
     pub submitted: std::sync::atomic::AtomicUsize,
+    pub run_gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
     pub accept: AtomicBool,
     pub observation: std::sync::atomic::AtomicUsize,
     pub repeated_revision: AtomicBool,
@@ -52,16 +53,19 @@ impl ArgoControls {
     pub fn run(&self, confirmation: ArgoOperationConfirmation) -> Read<ArgoOperationResult> {
         assert_eq!(confirmation.session_id, "native-review");
         self.submitted.fetch_add(1, Ordering::SeqCst);
-        if self.accept.load(Ordering::SeqCst) {
-            return Box::pin(async {
-                Ok(ArgoOperationResult {
+        let gate = self.run_gate.lock().unwrap().take();
+        let accept = self.accept.load(Ordering::SeqCst);
+        Box::pin(async move {
+            if let Some(gate) = gate {
+                let _ = gate.await;
+            }
+            if accept {
+                return Ok(ArgoOperationResult {
                     accepted: true,
                     message: "Fixture accepted".into(),
                     ..Default::default()
-                })
-            });
-        }
-        Box::pin(async {
+                });
+            }
             Err(AppError::new(
                 "Argo CD execution refused",
                 AppErrorKind::Forbidden,

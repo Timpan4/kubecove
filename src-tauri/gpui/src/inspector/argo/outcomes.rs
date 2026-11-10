@@ -12,7 +12,8 @@ use std::time::Duration;
 /// dropping the outcome cancels its observation.
 pub(super) struct Outcome {
     observation: Observation,
-    _observer: InFlight,
+    /// `None` for a submission that ended unaccepted after its detail closed.
+    _observer: Option<InFlight>,
     request: ArgoOperationRequest,
     baseline: ArgoApplicationInspector,
 }
@@ -115,7 +116,7 @@ pub(super) fn operation_pending(snapshot: &ArgoApplicationInspector) -> bool {
             Some("Running" | "Terminating")
         )
 }
-fn key(app: &ArgoApplicationRef) -> String {
+pub(super) fn key(app: &ArgoApplicationRef) -> String {
     serde_json::to_string(&(&app.context, &app.workspace_id, &app.namespace, &app.name))
         .expect("Application identity")
 }
@@ -124,10 +125,31 @@ fn text<'a>(v: &'a Option<serde_json::Value>, field: &str) -> Option<&'a str> {
 }
 impl Inspector {
     pub(super) fn argo_operation_busy(&self, app: &ArgoApplicationRef) -> bool {
-        self.argo
-            .outcomes
-            .get(&key(app))
-            .is_some_and(|o| o.observation.waiting())
+        let id = key(app);
+        self.argo.submissions.iter().any(|s| s.application == id)
+            || self
+                .argo
+                .outcomes
+                .get(&id)
+                .is_some_and(|o| o.observation.waiting())
+    }
+    /// Shows how a submission ended after its detail closed, so reopening the
+    /// Application does not lose a refused or unconfirmed result.
+    pub(super) fn record_argo_outcome(
+        &mut self,
+        request: ArgoOperationRequest,
+        baseline: ArgoApplicationInspector,
+        message: String,
+    ) {
+        self.argo.outcomes.insert(
+            key(&request.application),
+            Outcome {
+                observation: Observation::Finished(message),
+                _observer: None,
+                request,
+                baseline,
+            },
+        );
     }
     pub(super) fn argo_outcome_panel(
         &self,
@@ -230,7 +252,7 @@ impl Inspector {
                     saw_pending,
                     read_error: None,
                 },
-                _observer: observer.into(),
+                _observer: Some(observer.into()),
                 request: saved_request,
                 baseline: saved_baseline,
             },

@@ -71,6 +71,38 @@ fn review_uses_the_fresh_resource_version(cx: &mut TestAppContext) {
         Some("fresh")
     );
 }
+// Failure mode: closing the detail during submission and reopening the Application
+// gives an idle tab that submits a second operation, and the first one's
+// unconfirmed result is dropped with the closed tab.
+#[gpui_kit::test]
+fn reopening_during_submission_blocks_a_second_operation(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    let (send, gate) = tokio::sync::oneshot::channel();
+    *backend.argo.run_gate.lock().unwrap() = Some(gate);
+    let h = argo::open_argo(cx, backend.clone());
+    click_sync(cx, h);
+    argo::step(cx, h, |w, cx| {
+        scroll::reveal(w, "detail-body", "argo-review-confirm", cx);
+        w.click("argo-review-confirm", cx);
+    });
+    argo::step(cx, h, |w, cx| w.click("close-detail", cx));
+    argo::step(cx, h, |w, cx| {
+        w.click("resource:Application:payments:payments-api:mock-dev", cx)
+    });
+    argo::step(cx, h, |w, cx| w.click("show-argo", cx));
+    click_sync(cx, h);
+    assert_eq!(backend.argo.reviews.lock().unwrap().len(), 1);
+    send.send(()).unwrap();
+    cx.run_until_parked();
+    argo::step(cx, h, |w, _| {
+        assert!(
+            w.find("argo-outcome")
+                .label()
+                .unwrap()
+                .contains("Outcome unconfirmed")
+        );
+    });
+}
 
 fn submit(cx: &mut TestAppContext, backend: Arc<Controlled>) -> gpui_kit::AnyWindowHandle {
     backend.argo.accept.store(true, Ordering::SeqCst);
