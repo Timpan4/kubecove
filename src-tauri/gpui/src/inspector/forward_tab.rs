@@ -244,24 +244,33 @@ impl Inspector {
                                 "Start"
                             }))
                             .on_click(cx.listener(|this, _, window, cx| {
+                                // A validation failure must not replace the running guard.
+                                if this.sessions.action.running() {
+                                    return;
+                                }
                                 match this.forward_request(cx) {
                                     Ok(request) => this.start_forward_request(request, window, cx),
                                     Err(e) => {
                                         this.sessions.action =
-                                            SessionAction::Done(ActionFeedback::Failed(e))
+                                            SessionAction::Done(ActionFeedback::Failed(e));
+                                        cx.notify();
                                     }
                                 }
                             })),
                     )
                     .when(service, |row| {
                         row.child(
-                            button(Variant::Outline, 28., false)
+                            button(Variant::Outline, 28., self.sessions.action.running())
                                 .id("forward-save")
                                 .test_support()
                                 .child(ui::xs("Save preset"))
-                                .on_click(
-                                    cx.listener(|this, _, _, cx| this.save_forward_preset(cx)),
-                                ),
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    // The preset notice shares the action state,
+                                    // so a save would clear the running guard.
+                                    if !this.sessions.action.running() {
+                                        this.save_forward_preset(cx);
+                                    }
+                                })),
                         )
                     })
                     .child(ui::muted(ui::xs("Local URL appears after session starts."))),
