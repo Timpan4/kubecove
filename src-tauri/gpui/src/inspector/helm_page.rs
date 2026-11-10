@@ -179,16 +179,18 @@ impl Inspector {
                 let namespace = page.namespace.take();
                 // A pending target applies after a successful read and stays pending after a failed one.
                 let target = if success { page.target.take() } else { None };
-                let namespace = target
-                    .as_ref()
-                    .and_then(|target| target.namespace.clone())
-                    .or(namespace);
-                page.namespace = helm::resolve_namespace(page.releases(), namespace);
                 let target_index = target.as_ref().and_then(|target| {
                     page.releases()
                         .iter()
                         .position(|release| target.matches(release))
                 });
+                // HelmSurface filters to the matched release's namespace, so a target
+                // without one still shows its release in the list.
+                let namespace = target_index
+                    .map(|index| page.releases()[index].namespace.clone())
+                    .or_else(|| target.as_ref().and_then(|target| target.namespace.clone()))
+                    .or(namespace);
+                page.namespace = helm::resolve_namespace(page.releases(), namespace);
                 // `selectedHelmReleaseExists`: a vanished release closes its details.
                 page.selected = target_index.or_else(|| {
                     previous.and_then(|previous| {
