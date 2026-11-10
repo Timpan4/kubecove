@@ -270,7 +270,9 @@ impl Inspector {
             .copied
             .filter(|(key, _)| *key == id)
             .map(|(_, ok)| ok);
-        let technical = message.to_owned();
+        // Shown, read aloud and copied, so credentials are removed as the web's
+        // `messageFromFriendlyError` does.
+        let technical = friendly_error::redact_detail(message);
         let copy_text = technical.clone();
         let description = description(&presentation, compact);
         let border = if presentation.warning {
