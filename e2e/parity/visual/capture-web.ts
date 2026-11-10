@@ -273,8 +273,15 @@ try {
 		console.log(`web ${view}`);
 		await page.close();
 	}
+} catch (error) {
+	console.error(error);
+	process.exitCode = 1;
 } finally {
-	await browser?.close();
-	if (!(await stopGroup(vite.pid, identity))) console.error(`Could not stop Vite process group ${vite.pid}`);
-    await writeFile(join(output, "vite.log"), (await viteLogs).join("\n"));
+	await browser?.close().catch((error) => { console.error("Could not close the browser:", error); process.exitCode = 1; });
+	if (await stopGroup(vite.pid, identity)) await writeFile(join(output, "vite.log"), (await viteLogs).join("\n"));
+	else {
+		// A Vite group that is still running holds its pipes open, so its logs would never end.
+		console.error(`Could not stop Vite process group ${vite.pid}; vite.log is not written`);
+		process.exit(1);
+	}
 }
