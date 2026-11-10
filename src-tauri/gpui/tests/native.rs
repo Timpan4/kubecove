@@ -393,7 +393,7 @@ impl Backend for Controlled {
         self.detail.log_stream(target)
     }
     fn deployment_revisions(&self, _: ResourceSummary) -> Read<Vec<DeploymentRevision>> {
-        Box::pin(async { Ok(vec![]) })
+        self.detail.deployment_revisions()
     }
     fn action_state(&self, request: ResourceActionStateRequest) -> Read<ResourceActionState> {
         self.detail.action_state(request)

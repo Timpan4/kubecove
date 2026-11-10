@@ -7,11 +7,12 @@ use gpui_kit::test::{TestQueryExt, TestWindowExt};
 use gpui_kit::{AppContext, TestAppContext};
 use kubecove_gpui::backend::{LogStream, LogTarget, Read};
 use kubecove_lib::models::{
-    AppError, AppErrorKind, ClusterOperationResult, ResourceActionPreview, ResourceActionRequest,
-    ResourceActionState, ResourceActionStateRequest, ResourceSummary, StreamMessage,
-    YamlApplyPreview, YamlApplyRequest, YamlApplyResult, YamlViewMode,
+    AppError, AppErrorKind, ClusterOperationResult, DeploymentRevision, ResourceActionPreview,
+    ResourceActionRequest, ResourceActionState, ResourceActionStateRequest, ResourceSummary,
+    StreamMessage, YamlApplyPreview, YamlApplyRequest, YamlApplyResult, YamlViewMode,
 };
 use serde_json::json;
+use std::collections::VecDeque;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -32,6 +33,8 @@ pub struct DetailControls {
     applied: AtomicUsize,
     /// Holds the next apply-clean draft read until the test releases it.
     draft_gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+    /// Scripted revision reads in order; an empty queue reads no revisions.
+    revisions: Mutex<VecDeque<Result<Vec<DeploymentRevision>, AppError>>>,
 }
 
 /// Records that the backend stream stopped, as `StopStream` does natively.
@@ -44,6 +47,11 @@ impl Drop for StopFlag {
 }
 
 impl DetailControls {
+    pub fn deployment_revisions(&self) -> Read<Vec<DeploymentRevision>> {
+        let next = self.revisions.lock().unwrap().pop_front();
+        Box::pin(async move { next.unwrap_or_else(|| Ok(vec![])) })
+    }
+
     pub fn log_stream(&self, _: LogTarget) -> Read<LogStream> {
         let fail = self.log_fail.load(Ordering::SeqCst);
         let stopped = self.log_stopped.clone();
@@ -375,5 +383,48 @@ fn a_dry_run_of_an_old_draft_is_dropped(cx: &mut TestAppContext) {
             window.find("yaml-applied").label(),
             Some("Deployment/payments-api applied.")
         );
+    });
+}
+
+fn revision(name: &str, number: u64, image: &str) -> DeploymentRevision {
+    DeploymentRevision {
+        name: name.into(),
+        revision: Some(number),
+        change_cause: None,
+        created_at: None,
+        pod_template_yaml: format!("image: {image}\n"),
+    }
+}
+
+/// Failure modes: a failed revisions read never retries, so the tab stays on its
+/// error until the detail closes; and the comparison picker keyed by label
+/// resolves two ReplicaSets with the same revision number to the first one.
+#[gpui_kit::test]
+fn revisions_retry_after_a_failure_and_compare_by_replica_set(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    backend.detail.revisions.lock().unwrap().extend([
+        Err(AppError::new("replicasets is forbidden", AppErrorKind::Forbidden)),
+        Ok(vec![
+            revision("payments-api-top", 4, "top"),
+            revision("payments-api-a", 3, "first"),
+            revision("payments-api-b", 3, "second"),
+        ]),
+    ]);
+    let handle = open_tab(cx, backend.clone(), "revisions");
+    step(cx, handle, |window, cx| {
+        assert!(window.find("revisions-error").visible());
+        window.click("show-details", cx);
+    });
+    step(cx, handle, |window, cx| window.click("show-revisions", cx));
+    step(cx, handle, |window, cx| {
+        let diff = window.find("revision-diff").label().unwrap_or_default().to_owned();
+        assert!(diff.contains("image: first"), "{diff}");
+        window.within("revision-comparison").click("input", cx);
+        window.press("down", cx);
+        window.press("enter", cx);
+    });
+    step(cx, handle, |window, _| {
+        let diff = window.find("revision-diff").label().unwrap_or_default().to_owned();
+        assert!(diff.contains("image: second"), "{diff}");
     });
 }
