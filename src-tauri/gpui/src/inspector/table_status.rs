@@ -117,3 +117,16 @@ fn activity_icon(id: &SharedString, active: bool, color: Hsla) -> AnyElement {
         ))
         .into_any_element()
 }
+
+/// What sets a resource row's height. The Status cell wraps a Partial badge
+/// beside the wider health labels, and a lifecycle status replaces both, so
+/// rows that differ here cannot share one measured height.
+pub(super) fn row_height_key(row: &ResourceSummary) -> u64 {
+    let assessment = &row.health_assessment;
+    super::windowed::row_id((
+        row.kind.as_str(),
+        row.status.as_deref(),
+        surface::health_state_label(assessment.state),
+        assessment.completeness == HealthAssessmentCompleteness::Partial,
+    ))
+}
