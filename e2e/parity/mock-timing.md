@@ -122,6 +122,23 @@ After watch release the native driver advances the existing 250 ms refresh
 throttle from `src/lib/live-view-refresh.ts`, as other watch scenarios do.
 The existing browser mock's 35 ms delay is unchanged and is not measurement evidence.
 
+## Map viewport transition timing
+
+A map selection moves the viewport to the new fit over 120 ms, and a deselection
+over 260 ms, the durations in `src/features/resources/OwnershipMapViewport.svelte`.
+The GPUI client takes the time from the executor clock
+(`src-tauri/gpui/src/inspector/map/motion.rs`), so in the native driver a
+transition stays at its start until a step advances the clock.
+
+`coverage-map.selection-pan` pauses the web clock with `controlClock` before it
+selects a node, then advances both clocks and checks that the viewport holds,
+moves, moves again and settles. Where the web driver waits for the map, as
+Playwright does before it clicks a node, the native driver calls
+`Inspector::finish_map_transition` instead of advancing its clock. Advancing
+would also move loading delays and other timers, and the clock cannot advance
+inside the window update where step handlers run, because advancing runs tasks.
+`selectTopologyNode`, the `map-full` checks and the visual capture do this.
+
 ## Coverage boundary
 
 The browser interceptor covers command reads. Native fixture gates currently cover
