@@ -67,7 +67,13 @@ fn replacing_scope_owner_drops_timer_and_read(cx: &mut TestAppContext) {
         .push_back(AppErrorKind::Network);
     refresh(cx, handle);
     cx.run_until_parked();
-    refresh(cx, handle);
+    // The refresh button is disabled while a refresh waits to retry, so a scope
+    // change replaces the owner.
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window.click("namespace:payments", cx);
+    })
+    .unwrap();
     cx.run_until_parked();
     let replacement = backend.default_retry.calls.load(Ordering::SeqCst);
     tick(cx, 1000);

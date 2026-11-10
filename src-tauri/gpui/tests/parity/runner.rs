@@ -114,10 +114,13 @@ pub(super) fn run_scenario(
     *window = Some(opened);
     let mut handle = opened;
     cx.run_until_parked();
+    // After `controlClock` the scenario owns the clock, as the web driver's paused page clock does.
+    let mut scenario_clock = false;
     for (index, step) in scenario["steps"].as_array().unwrap().iter().enumerate() {
         if index < startup_steps {
             continue;
         }
+        scenario_clock |= step["action"] == "controlClock";
         if (step["action"] == "expectArgoText"
             && matches!(
                 step["text"].as_str(),
@@ -402,7 +405,7 @@ pub(super) fn run_scenario(
                 .advance_clock(std::time::Duration::from_millis(300));
             cx.run_until_parked();
         }
-        if step["action"] == "replayLiveData" {
+        if step["action"] == "replayLiveData" && !scenario_clock {
             // Advance the production web refresh throttle, not wall-clock sleeps.
             cx.background_executor
                 .advance_clock(std::time::Duration::from_millis(250));
