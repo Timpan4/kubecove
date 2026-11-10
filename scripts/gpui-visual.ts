@@ -33,11 +33,10 @@ if (!skipWeb) {
 }
 
 const workspace = resolve("src-tauri/gpui");
-// One build job by default: parallel rustc and linker processes for the GPUI
-// tree exhausted RAM on a shared workstation. Set CARGO_BUILD_JOBS to override.
 // Keep both Cargo directories specific to this worktree. Shared path-crate
-// artifacts can overwrite each other across checkouts.
-const env = { ...process.env, CARGO_BUILD_JOBS: process.env.CARGO_BUILD_JOBS ?? "1", CARGO_TARGET_DIR: process.env.CARGO_TARGET_DIR ?? join(workspace, "target"), CARGO_BUILD_BUILD_DIR: process.env.CARGO_BUILD_BUILD_DIR ?? join(workspace, "build"), KUBECOVE_VISUAL_FIXTURE: fixture, KUBECOVE_VISUAL_OUT: join(out, "gpui"), KUBECOVE_VISUAL_VIEWS: views.join(",") };
+// artifacts can overwrite each other across checkouts. The job count comes from
+// the machine's cargo configuration; set CARGO_BUILD_JOBS on a machine short of RAM.
+const env = { ...process.env, CARGO_TARGET_DIR: process.env.CARGO_TARGET_DIR ?? join(workspace, "target"), CARGO_BUILD_BUILD_DIR: process.env.CARGO_BUILD_BUILD_DIR ?? join(workspace, "build"), KUBECOVE_VISUAL_FIXTURE: fixture, KUBECOVE_VISUAL_OUT: join(out, "gpui"), KUBECOVE_VISUAL_VIEWS: views.join(",") };
 delete env.ARGV0;
 delete env.KUBECOVE_E2E_ARTIFACTS;
 await writeFile(join(out, "gpui.log"), await run(["nice", "cargo", "test", "--locked", "--manifest-path", join(workspace, "Cargo.toml"), "--test", "visual"], env));

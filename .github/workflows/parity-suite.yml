@@ -110,8 +110,7 @@ jobs:
           CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/src-tauri/gpui/target
         run: CARGO_BUILD_JOBS="$(nproc)" cargo test --manifest-path src-tauri/gpui/Cargo.toml --test parity --no-run
 
-      # Build intermediates stay in the cached target directory. The runner's default
-      # CARGO_BUILD_JOBS of 1 is for the shared workstation; CI uses every CPU.
+      # Build intermediates stay in the cached target directory. CI uses every CPU.
       - name: Run parity suite
         if: ${{ !inputs.build-only }}
         env:

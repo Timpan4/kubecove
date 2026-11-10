@@ -5,7 +5,6 @@ Run from the repository root:
 ```sh
 export CARGO_TARGET_DIR="$PWD/src-tauri/gpui/target"
 export CARGO_BUILD_BUILD_DIR="$PWD/src-tauri/gpui/build"
-export CARGO_BUILD_JOBS=1
 mkdir -p .t
 export TMPDIR="$PWD/.t"
 nice -n 10 bun scripts/gpui-frames.ts --runs 3 --frames 240 --warmup 120
