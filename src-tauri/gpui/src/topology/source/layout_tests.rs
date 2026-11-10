@@ -153,3 +153,38 @@ fn leading_zero_names_share_a_rank() {
     ]);
     assert_eq!(ranks, [0, 0, 1]);
 }
+
+// A selection inside a rootless cycle has no root subtree. Filtering by that
+// empty subtree removed every node, so selecting the resource emptied the map.
+#[test]
+fn selecting_inside_a_rootless_cycle_keeps_the_graph() {
+    let topology = ResourceTopology {
+        nodes: vec![node("a", "Pod"), node("b", "Pod"), node("loop", "Pod")],
+        edges: vec![edge("ab", "a", "b"), edge("ba", "b", "a"), edge("self", "loop", "loop")],
+        warnings: vec![],
+    };
+    let rows: Visible = topology.nodes.iter().map(|n| n.summary.clone()).collect();
+    let source = Source::new(&topology, &rows);
+    let prepared = crate::topology::prepare(&topology, &rows, &source, None, false);
+    let select = |selected: Option<usize>| {
+        crate::topology::view(
+            &topology,
+            &prepared,
+            selected.map(|index| &topology.nodes[index].summary),
+            &HashSet::new(),
+            false,
+        )
+    };
+    let whole = select(None);
+    assert_eq!(whole.nodes.len(), 3);
+    for selected in [0, 2] {
+        let view = select(Some(selected));
+        assert_eq!(view.nodes.len(), whole.nodes.len(), "selection {selected} kept every node");
+        assert_eq!(view.edges.len(), whole.edges.len(), "selection {selected} kept every edge");
+        assert_eq!(
+            view.nodes.iter().filter(|node| node.selected).count(),
+            1,
+            "selection {selected} is still highlighted"
+        );
+    }
+}
