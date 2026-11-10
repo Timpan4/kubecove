@@ -79,7 +79,10 @@ fn escape_dismisses_the_advanced_sync_confirmation(cx: &mut TestAppContext) {
     argo::step(cx, h, |w, cx| {
         scroll::reveal(w, "detail-body", "argo-sync-options", cx);
         w.click("argo-sync-options", cx);
-        w.render_frame(cx);
+    });
+    // A separate step, so the popover's deferred focus runs before the next press, as it
+    // does between two presses of a person.
+    argo::step(cx, h, |w, cx| {
         scroll::reveal(w, "detail-body", "argo-sync:Prune", cx);
         w.click("argo-sync:Prune", cx);
         scroll::reveal(w, "detail-body", "argo-sync-advanced", cx);

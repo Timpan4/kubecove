@@ -272,7 +272,12 @@ pub(super) fn panel(state: &ArgoTab, name: &str, cx: &mut Context<Inspector>) ->
                         return;
                     };
                     if needs_confirmation(state, cx) {
-                        state.options.name.update(cx, |input, cx| input.set_value("", window, cx));
+                        // The options that had focus leave the tree here. Without a focused
+                        // element inside the dialog, no key reaches it, Escape included.
+                        state.options.name.update(cx, |input, cx| {
+                            input.set_value("", window, cx);
+                            input.focus(window, cx);
+                        });
                         state.options.confirming = true;
                         cx.notify();
                     } else {
