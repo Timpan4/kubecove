@@ -21,9 +21,9 @@ type Scenario = Contract["scenarios"][number];
  * - PARITY_PREFIX: comma-separated scenario ID prefixes.
  * - PARITY_CHANGED=<base ref>: the scenarios the changes since the merge base with that ref can
  *   affect, from the coverage map at PARITY_COVERAGE_MAP (e2e/parity/changed-scenarios.ts).
- * - PARITY_RERUN, resolved to `rerun`: only the scenarios either driver did not pass there.
  * - PARITY_SUITE_SHARD=<index>/<count>: every `count`-th scenario from position `index`, so
  *   separate CI jobs split one suite.
+ * - PARITY_RERUN, resolved to `rerun`: only the scenarios either driver did not pass there.
  */
 async function selectScenarios(scenarios: Scenario[], rerun: string | undefined): Promise<Scenario[]> {
 	const prefixes = (process.env.PARITY_PREFIX ?? "").split(",").map((prefix) => prefix.trim()).filter(Boolean);
@@ -35,19 +35,20 @@ async function selectScenarios(scenarios: Scenario[], rerun: string | undefined)
 		console.log(selection.all ? `Changes since ${base}: full suite (${selection.all})` : `Changes since ${base} select ${selection.ids.size} of ${selected.length} scenarios`);
 		selected = selected.filter((scenario) => selection.ids.has(scenario.id));
 	}
-	if (rerun) {
-		const [web, gpui] = await Promise.all([passedIn(rerun, "web"), passedIn(rerun, "gpui")]);
-		// Only the scenarios that run selected; a prefixed run never ran the others.
-		const earlier = new Set((await readFile(join(rerun, "scenarios.txt"), "utf8")).split("\n").filter(Boolean));
-		selected = selected.filter((scenario) => earlier.has(scenario.id) && (!web.has(scenario.id) || !gpui.has(scenario.id)));
-		console.log(`Rerunning ${selected.length} scenarios not passed in ${rerun}`);
-	}
+	// Shard before the rerun filter, so a shard's rerun keeps the scenarios that shard ran.
 	const shard = process.env.PARITY_SUITE_SHARD;
 	if (shard) {
 		const match = /^(\d+)\/(\d+)$/.exec(shard);
 		const [index, count] = [Number(match?.[1]), Number(match?.[2])];
 		if (!match || index >= count) throw new Error(`PARITY_SUITE_SHARD must be <index>/<count>: ${shard}`);
 		selected = selected.filter((_, position) => position % count === index);
+	}
+	if (rerun) {
+		const [web, gpui] = await Promise.all([passedIn(rerun, "web"), passedIn(rerun, "gpui")]);
+		// Only the scenarios that run selected; a prefixed run never ran the others.
+		const earlier = new Set((await readFile(join(rerun, "scenarios.txt"), "utf8")).split("\n").filter(Boolean));
+		selected = selected.filter((scenario) => earlier.has(scenario.id) && (!web.has(scenario.id) || !gpui.has(scenario.id)));
+		console.log(`Rerunning ${selected.length} scenarios not passed in ${rerun}`);
 	}
 	return selected;
 }
@@ -105,22 +106,8 @@ process.once("SIGINT", interrupt);
 process.once("SIGTERM", interrupt);
 let failure: string | undefined;
 const fail = (message: string) => { failure = failure ? `${failure}; ${message}` : message; };
-try {
-	const contract = await loadContract();
-	requireViewCoverage(contract, VIEWS);
-	contract.scenarios = await selectScenarios(contract.scenarios, rerun);
-	if (!contract.scenarios.length) {
-		if (rerun) {
-			console.log("Nothing to rerun: both drivers passed every selected scenario.");
-			process.exit(0);
-		}
-		// A change no scenario can observe, or a CI shard with no share of a small selection.
-		if (process.env.PARITY_CHANGED) {
-			console.log("No parity scenarios selected by the changes.");
-			process.exit(0);
-		}
-		throw new Error("No parity scenarios selected");
-	}
+/** Runs both drivers on the selected scenarios and records any failure through `fail`. */
+async function runDrivers(contract: Contract) {
 	// The selection is what PARITY_RERUN reads back, and the GPUI processes run exactly these IDs.
 	await writeFile(join(artifacts, "scenarios.txt"), contract.scenarios.map((scenario) => scenario.id).join("\n"));
 	const jobs = Number(process.env.PARITY_JOBS ?? Math.max(1, Math.floor(availableParallelism() / 2)));
@@ -150,6 +137,17 @@ try {
 		const narrowed = ["PARITY_PREFIX", "PARITY_CHANGED", "PARITY_RERUN", "PARITY_SUITE_SHARD"].some((name) => process.env[name]);
 		if (!narrowed) await copyFile(join(artifacts, "coverage-map.json"), resolve(DEFAULT_MAP));
 	}
+}
+
+try {
+	const contract = await loadContract();
+	requireViewCoverage(contract, VIEWS);
+	contract.scenarios = await selectScenarios(contract.scenarios, rerun);
+	if (contract.scenarios.length) await runDrivers(contract);
+	else if (rerun) console.log("Nothing to rerun: both drivers passed every selected scenario.");
+	// A change no scenario can observe, or a CI shard with no share of a small selection.
+	else if (process.env.PARITY_CHANGED) console.log("No parity scenarios selected by the changes.");
+	else throw new Error("No parity scenarios selected");
 } catch (error) { fail(String(error)); }
 finally {
 	process.removeListener("SIGINT", interrupt); process.removeListener("SIGTERM", interrupt);
