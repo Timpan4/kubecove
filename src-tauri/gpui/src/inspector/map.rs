@@ -6,6 +6,7 @@
 mod cards;
 mod focus;
 mod links;
+mod motion;
 mod paint;
 pub(super) mod spike;
 mod viewport;
@@ -52,6 +53,8 @@ pub(super) struct MapState {
     origin: Rc<Cell<(f32, f32)>>,
     /// A pan or zoom, kept while the fitted viewport it started from is current.
     adjusted: Option<(Viewport, Viewport)>,
+    /// The animated move from one fit to the next (`motion.rs`).
+    motion: motion::Motion,
     drag: Option<(Point<Pixels>, Viewport)>,
     /// Set once a press on the map moves past `NODE_CLICK_DISTANCE`. The node under
     /// the release then gets no click, so a pan does not select a node.
@@ -136,6 +139,7 @@ impl MapState {
             size: Rc::default(),
             origin: Rc::default(),
             adjusted: None,
+            motion: motion::Motion::default(),
             drag: None,
             pan_moved: false,
             resource_focus: Vec::new(),

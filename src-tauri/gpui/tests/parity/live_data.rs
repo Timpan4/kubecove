@@ -14,6 +14,24 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
                 assert!(window.try_find("live-notice").is_none());
             }
         }
+        "expectLiveMenu" => {
+            window.click("live-status", cx);
+            window.render_frame(cx);
+            for (id, label) in [
+                ("live-menu-title", "Current view"),
+                ("live-message", string(step, "message")),
+                (
+                    "live-refresh-hint",
+                    "Clear cached data for this view and fetch it again. Filters and selection are preserved.",
+                ),
+                ("refresh", "Refresh (clear cache)"),
+            ] {
+                assert_eq!(window.find(id).label(), Some(label), "{id}");
+            }
+            window.click("live-status", cx);
+            window.render_frame(cx);
+            assert!(window.try_find("live-menu").is_none());
+        }
         "expectResourceStatus" => {
             let id = super::detail::resolve_resource(window, &row(step), cx)
                 .expect("resource row is rendered");

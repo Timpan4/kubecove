@@ -366,6 +366,58 @@
 					"check": "map-wheel"
 				}
 			]
+		},
+		{
+			"id": "coverage-map.selection-pan",
+			"title": "Selecting a map node moves the viewport to the new fit over time instead of jumping",
+			"steps": [
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "selectNamespace",
+					"namespace": "payments"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "map-viewport-settled"
+				},
+				{
+					"action": "controlClock"
+				},
+				{
+					"action": "selectTopologyNode",
+					"id": "mock-dev:apps/v1:Deployment:payments:payments-api"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "map-viewport-held"
+				},
+				{
+					"action": "advanceClock",
+					"ms": 60
+				},
+				{
+					"action": "coverageCheck",
+					"check": "map-viewport-moved"
+				},
+				{
+					"action": "advanceClock",
+					"ms": 260
+				},
+				{
+					"action": "coverageCheck",
+					"check": "map-viewport-moved"
+				},
+				{
+					"action": "advanceClock",
+					"ms": 260
+				},
+				{
+					"action": "coverageCheck",
+					"check": "map-viewport-held"
+				}
+			]
 		}
 	]
 }

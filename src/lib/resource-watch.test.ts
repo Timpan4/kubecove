@@ -507,6 +507,9 @@ test("status after an update reflects only the current keys", async () => {
 	await Promise.resolve();
 	await Promise.resolve();
 	harness.handlers.get("0")?.({ type: "status", streamId: "Pod/a", status: "connected", message: "connected" });
+	// The other watch has not connected yet and nothing was lost, so the view is still starting.
+	expect(states.at(-1)?.status).toBe("connecting");
+	harness.handlers.get("1")?.({ type: "error", streamId: "Pod/b", message: "offline" });
 	expect(states.at(-1)?.status).toBe("reconnecting");
 	observer.update([pod("a")], { onState, onChange: () => {}, reload: async () => {} });
 	expect(states.at(-1)?.status).toBe("connected");

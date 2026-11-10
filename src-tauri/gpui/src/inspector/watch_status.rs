@@ -65,6 +65,80 @@ impl From<WatchLink> for WatchSummary {
     }
 }
 
+/// What a set of watches reports together: `status` in `resource-watch.ts`,
+/// and `IDLE_LIVE_VIEW` in `live-view-refresh.ts` for a view without watches.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Connection {
+    Idle,
+    /// A watch has not connected yet, and none was lost.
+    Connecting,
+    /// A watch that was connected, or failed to open, is recovering.
+    Reconnecting,
+    /// Every watch is denied.
+    Polling,
+    /// Some watches are denied and the rest are connected.
+    Partial,
+    Connected,
+}
+
+impl Connection {
+    pub(super) fn of(watches: impl IntoIterator<Item = WatchLink>) -> Self {
+        let (mut any, mut lost, mut opening, mut denied, mut connected) =
+            (false, false, false, false, false);
+        for link in watches {
+            any = true;
+            match link {
+                WatchLink::Lost => lost = true,
+                WatchLink::Opening => opening = true,
+                WatchLink::Denied => denied = true,
+                WatchLink::Connected => connected = true,
+            }
+        }
+        if !any {
+            Connection::Idle
+        } else if lost {
+            Connection::Reconnecting
+        } else if opening {
+            Connection::Connecting
+        } else if !connected {
+            Connection::Polling
+        } else if denied {
+            Connection::Partial
+        } else {
+            Connection::Connected
+        }
+    }
+
+    /// The status menu's message for this state.
+    pub(super) fn message(self) -> &'static str {
+        match self {
+            Connection::Idle => "No live resource watches in this view.",
+            Connection::Connecting => "Starting live updates",
+            Connection::Reconnecting => "Reconnecting; periodically reloading this view",
+            Connection::Polling => {
+                "Watch access is unavailable. Readable resources refresh periodically."
+            }
+            Connection::Partial => {
+                "Live updates connected for permitted resources. Readable resources without watch access refresh periodically."
+            }
+            Connection::Connected => "Live updates connected",
+        }
+    }
+
+    /// `STATUS_SEVERITY` in `live-view-refresh.ts`: the lowest rank names a
+    /// view of several contexts.
+    pub(super) fn severity(self) -> u8 {
+        match self {
+            Connection::Reconnecting => 0,
+            Connection::Connecting => 1,
+            Connection::Partial => 2,
+            Connection::Polling => 3,
+            Connection::Connected => 4,
+            Connection::Idle => 5,
+        }
+    }
+}
+
 /// The label for a view's watches. `refresh_failed` is the view's own read.
 pub(super) fn aggregate(
     refresh_failed: bool,
@@ -73,34 +147,21 @@ pub(super) fn aggregate(
     if refresh_failed {
         return LiveStatus::RefreshFailed;
     }
-    let (mut any, mut all_opening, mut all_denied) = (false, true, true);
-    let (mut reload_failed, mut unconnected, mut catching_up, mut denied) =
-        (false, false, false, false);
-    for watch in watches {
-        any = true;
-        all_opening &= watch.link == WatchLink::Opening;
-        all_denied &= watch.link == WatchLink::Denied;
-        denied |= watch.link == WatchLink::Denied;
-        unconnected |= matches!(watch.link, WatchLink::Opening | WatchLink::Lost);
+    let (mut reload_failed, mut catching_up) = (false, false);
+    let connection = Connection::of(watches.into_iter().map(|watch| {
         reload_failed |= watch.refresh_failed;
         catching_up |= watch.catching_up;
-    }
-    if !any {
-        LiveStatus::NotConnected
-    } else if all_opening {
-        LiveStatus::Connecting
-    } else if reload_failed {
-        LiveStatus::RefreshFailed
-    } else if unconnected {
-        LiveStatus::Reconnecting
-    } else if catching_up {
-        LiveStatus::CatchingUp
-    } else if all_denied {
-        LiveStatus::PollingLimited
-    } else if denied {
-        LiveStatus::LiveLimited
-    } else {
-        LiveStatus::Live
+        watch.link
+    }));
+    match connection {
+        Connection::Idle => LiveStatus::NotConnected,
+        _ if reload_failed => LiveStatus::RefreshFailed,
+        Connection::Reconnecting => LiveStatus::Reconnecting,
+        _ if catching_up => LiveStatus::CatchingUp,
+        Connection::Connecting => LiveStatus::Connecting,
+        Connection::Polling => LiveStatus::PollingLimited,
+        Connection::Partial => LiveStatus::LiveLimited,
+        Connection::Connected => LiveStatus::Live,
     }
 }
 
@@ -195,7 +256,7 @@ mod tests {
             catching_up: true,
             ..watch(Connected)
         };
-        let cases: [(bool, Vec<WatchSummary>, LiveStatus); 11] = [
+        let cases: [(bool, Vec<WatchSummary>, LiveStatus); 12] = [
             (true, vec![watch(Opening)], LiveStatus::RefreshFailed),
             (false, vec![], LiveStatus::NotConnected),
             (true, vec![], LiveStatus::RefreshFailed),
@@ -209,10 +270,15 @@ mod tests {
                 vec![failed_reload, watch(Lost)],
                 LiveStatus::RefreshFailed,
             ),
-            // An opening watch among reporting ones counts as not connected.
+            // A watch that has not connected yet was not lost, so the view connects.
             (
                 false,
                 vec![watch(Opening), watch(Connected)],
+                LiveStatus::Connecting,
+            ),
+            (
+                false,
+                vec![watch(Opening), watch(Lost), watch(Connected)],
                 LiveStatus::Reconnecting,
             ),
             (

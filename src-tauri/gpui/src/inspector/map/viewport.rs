@@ -98,23 +98,14 @@ fn zoom_control(
 }
 
 impl Inspector {
-    /// The fitted viewport and the viewport in use, which a pan or zoom may have adjusted.
-    fn map_viewports(&self, view: &topology::View) -> (Option<Viewport>, Option<Viewport>) {
-        let (width, height) = self.map.size.get();
-        let fit = topology::fit(&view.nodes, width, height);
-        let current = match (self.map.adjusted, fit) {
-            (Some((base, current)), Some(fit)) if base == fit => Some(current),
-            _ => fit,
-        };
-        (fit, current)
-    }
-
     fn run_control(&mut self, action: ControlAction, cx: &mut Context<Self>) {
         match action {
             ControlAction::ZoomIn => self.zoom_map(ZOOM_STEP, cx),
             ControlAction::ZoomOut => self.zoom_map(1. / ZOOM_STEP, cx),
             ControlAction::Fit => {
+                // xyflow's `fitView` without a duration jumps to the fit.
                 self.map.adjusted = None;
+                self.map.motion.stop();
                 cx.notify();
             }
         }
@@ -167,14 +158,17 @@ impl Inspector {
         let (Some(fit), Some(current)) = self.map_viewports(&view) else {
             return;
         };
-        let zoom = current.zoom;
-        let left = node.x * zoom + current.x;
-        let right = (node.x + node.width) * zoom + current.x;
-        let top = node.y * zoom + current.y;
-        let bottom = (node.y + node.height) * zoom + current.y;
+        // During a transition, judge by its target: the web judges before the
+        // selection re-lays out the graph, and this runs after.
+        let seen = self.map.motion.target().unwrap_or(current);
+        let left = node.x * seen.zoom + seen.x;
+        let right = (node.x + node.width) * seen.zoom + seen.x;
+        let top = node.y * seen.zoom + seen.y;
+        let bottom = (node.y + node.height) * seen.zoom + seen.y;
         if left <= width && right >= 0. && top <= height && bottom >= 0. {
             return;
         }
+        let zoom = current.zoom;
         let (center_x, center_y) = (node.x + node.width / 2., node.y + node.height / 2.);
         self.map.adjusted = Some((
             fit,
@@ -404,6 +398,12 @@ impl Inspector {
                 cx.listener(move |this, event: &gpui_kit::MouseDownEvent, _, _| {
                     this.map.drag = viewport.map(|viewport| (event.position, viewport));
                     this.map.pan_moved = false;
+                    // d3-zoom's `mousedown` interrupts a transition where it is.
+                    if let (Some(fit), Some(viewport)) = (fit, viewport)
+                        && this.map.motion.running()
+                    {
+                        this.map.adjusted = Some((fit, viewport));
+                    }
                 }),
             )
             .on_mouse_move(

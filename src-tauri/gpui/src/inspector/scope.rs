@@ -312,7 +312,6 @@ impl Inspector {
 
     pub(super) fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let _span = crate::frame_profile::scope("scope", "refresh_start");
-        self.live_menu_open = false;
         if self.scope.context.is_empty() {
             self.load_contexts(window, cx)
         } else {

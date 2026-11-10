@@ -102,6 +102,16 @@ both steps because its clock moves only when a step advances it. The web driver
 installs its fake clock before load whenever a scenario uses `advanceClock`.
 Time still runs there unless the scenario also uses `controlClock`.
 
+The stale-data notice of the resource browser ("Showing last observed state.")
+uses the same two times. The native driver advances its clock 300 ms before
+every `expectLiveState` check, so a notice that is due has appeared and a
+notice whose watches recovered has gone. `live-menu.notice-delay` checks both
+times with the web clock paused. The native driver advances 250 ms after each
+`replayLiveData`, but not once a scenario has run `controlClock`, because the
+scenario then owns the clock in both drivers. That scenario checks the notice
+is absent straight after the replay, present 300 ms later, still present
+straight after recovery, and gone 1000 ms after that.
+
 The `loading-delay.` scenarios pause the web clock with `controlClock` before the
 resource table mounts, so both drivers measure the same intervals. The web mock
 waits 35 ms before it reaches a hold, so these scenarios advance the clock before
@@ -113,6 +123,23 @@ caps backoff at that duration. Both drivers advance a test clock for this check.
 After watch release the native driver advances the existing 250 ms refresh
 throttle from `src/lib/live-view-refresh.ts`, as other watch scenarios do.
 The existing browser mock's 35 ms delay is unchanged and is not measurement evidence.
+
+## Map viewport transition timing
+
+A map selection moves the viewport to the new fit over 120 ms, and a deselection
+over 260 ms, the durations in `src/features/resources/OwnershipMapViewport.svelte`.
+The GPUI client takes the time from the executor clock
+(`src-tauri/gpui/src/inspector/map/motion.rs`), so in the native driver a
+transition stays at its start until a step advances the clock.
+
+`coverage-map.selection-pan` pauses the web clock with `controlClock` before it
+selects a node, then advances both clocks and checks that the viewport holds,
+moves, moves again and settles. Where the web driver waits for the map, as
+Playwright does before it clicks a node, the native driver calls
+`Inspector::finish_map_transition` instead of advancing its clock. Advancing
+would also move loading delays and other timers, and the clock cannot advance
+inside the window update where step handlers run, because advancing runs tasks.
+`selectTopologyNode`, the `map-full` checks and the visual capture do this.
 
 ## Coverage boundary
 

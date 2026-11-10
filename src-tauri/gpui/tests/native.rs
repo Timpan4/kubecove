@@ -521,13 +521,16 @@ fn open(cx: &mut TestAppContext, backend: Arc<Controlled>) -> gpui_kit::AnyWindo
     window
 }
 
-/// Refresh lives in the Live updates menu, as in the web top bar.
+/// Refresh lives in the Live updates menu, as in the web top bar. The menu
+/// stays open after a refresh, so this closes it again.
 fn refresh(cx: &mut TestAppContext, handle: gpui_kit::AnyWindowHandle) {
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
         window.click("live-status", cx);
         window.render_frame(cx);
         window.click("refresh", cx);
+        window.render_frame(cx);
+        window.click("live-status", cx);
     })
     .unwrap();
 }

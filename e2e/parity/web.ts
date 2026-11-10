@@ -15,6 +15,7 @@ import { topologySpikeAction } from "./web-topology-spike";
 import { feedbackAction } from "./web-feedback";
 import { incidentDiagnosticsAction } from "./web-incident-diagnostics";
 import { kubeconfigSettingsAction } from "./web-kubeconfig-settings";
+import { liveMenuAction } from "./web-live-menu";
 import { liveSessionAction } from "./web-live-sessions";
 import { logRowAndRestoreAction } from "./web-logs-restore";
 import { expectLogToolbarFit } from "./web-logs-toolbar";
@@ -139,6 +140,7 @@ export async function action(page: Page, step: Step) {
             await page.getByRole("button", { name: "Live updates and refresh options" }).first().getByText(step.label, { exact: true }).waitFor();
             if (step.notice) await page.getByText(step.notice, { exact: true }).first().waitFor();
             break;
+        case "expectLiveMenu": await liveMenuAction(page, step); break;
         case "replayLiveData": await page.evaluate(`import('/src/lib/tauri-dev-mock-live.ts').then(m => m.replayLiveData(${JSON.stringify(step.script)}))`); break;
         case "sortResourceTable": case "pressResourceRow": case "expectResourceOrder": case "toggleResourceGroup": case "expectResourceGroup": case "openResourceRow": case "expectResourceCell": case "expectResourceCellFits": case "expectResourceColumns": case "expectResourceActivity": await resourceTableAction(page, step); break;
         case "expectRowContexts": case "filterContexts": case "expectResourceSummary": case "selectMapContext": case "expectMapContext": await multiContextAction(page, step); break;

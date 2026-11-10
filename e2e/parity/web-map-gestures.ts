@@ -16,6 +16,46 @@ declare global {
 }
 
 type Point = { x: number; y: number };
+/** xyflow's viewport transform as [x, y, zoom]. */
+type Transform = [number, number, number];
+
+/** The transform each page's last `map-viewport-settled` or `map-viewport-moved` check saw. */
+const recorded = new WeakMap<Page, Transform>();
+
+/**
+ * Follows the viewport while a selection moves it. `map-viewport-settled` waits for the fit, then
+ * records the transform; `map-viewport-held` expects it unchanged; `map-viewport-moved` expects it
+ * changed and records it again. The scenario pauses the page clock before selecting, so the
+ * transition advances only through `advanceClock`: 60 ms is half of OwnershipMapViewport.svelte's
+ * SELECTED_FIT_VIEW_DURATION_MS, and 260 ms, its FIT_VIEW_DURATION_MS, outlasts the rest of the
+ * transition plus the two animation frames the component waits before `setViewport`.
+ */
+export async function checkMapViewport(page: Page, check: string) {
+	if (check === "map-viewport-settled") {
+		await page.locator(node).first().waitFor();
+		await waitForFitToSettle(page);
+		recorded.set(page, await transform(page));
+		return;
+	}
+	const before = recorded.get(page);
+	if (!before) throw new Error(`${check} needs an earlier map-viewport-settled check`);
+	const now = await transform(page);
+	const same = now.every((value, index) => value === before[index]);
+	if (check === "map-viewport-held") {
+		if (!same) throw new Error(`The map viewport moved from ${before.join(", ")} to ${now.join(", ")}`);
+		return;
+	}
+	if (same) throw new Error(`The map viewport did not move from ${before.join(", ")}`);
+	recorded.set(page, now);
+}
+
+/** Reads the transform as `expectMapZoom` reads the zoom. */
+function transform(page: Page): Promise<Transform> {
+	return page.locator(".svelte-flow__viewport").evaluate((viewport): Transform => {
+		const matrix = new DOMMatrixReadOnly(getComputedStyle(viewport).transform);
+		return [matrix.e, matrix.f, matrix.a];
+	});
+}
 
 /** Map pointer gestures: a drag that starts on a node, and a wheel that zooms about the cursor. */
 export async function checkMapGesture(page: Page, check: string) {
