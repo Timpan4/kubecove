@@ -107,8 +107,7 @@ impl Inspector {
         let custom = key.resource_kind.plural.is_some();
         let cluster_kind = crate::backend::CLUSTER_KINDS.contains(&key.resource_kind.kind.as_str());
         !self.scope_load.loading()
-            && !(custom
-                && self.scope_load.custom() == super::custom_resources::CustomLoad::Loading)
+            && !(custom && self.scope_load.custom() == super::custom_resources::CustomLoad::Loading)
             && !(cluster_kind && self.cluster_loading())
     }
 

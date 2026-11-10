@@ -331,7 +331,7 @@ impl PreparedRows {
         drop(variant_ids);
         drop(owner_ids);
         let owner_keys = rank_owners(&mut owners);
-        let sort =sort::SortColumns::new(&rows, &names, &sorted, &kinds, &context, &contexts);
+        let sort = sort::SortColumns::new(&rows, &names, &sorted, &kinds, &context, &contexts);
         drop(names);
         Self {
             rows,

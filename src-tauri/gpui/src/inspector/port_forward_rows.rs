@@ -215,9 +215,10 @@ impl Inspector {
                 ))
                 .min_w_0()
                 .child(ui::medium(ui::sm(forward_title(session))).truncate())
-                .when_some(labels.context(&session.cluster_context), |title, context| {
-                    title.child(ui::muted(ui::xs(context)).truncate())
-                })
+                .when_some(
+                    labels.context(&session.cluster_context),
+                    |title, context| title.child(ui::muted(ui::xs(context)).truncate()),
+                )
                 .when_some(
                     session
                         .kubeconfig_source_label
@@ -299,9 +300,10 @@ impl Inspector {
             div()
                 .min_w_0()
                 .child(ui::medium(ui::sm(session.pod_name.clone())).truncate())
-                .when_some(labels.context(&session.cluster_context), |title, context| {
-                    title.child(ui::muted(ui::xs(context)).truncate())
-                })
+                .when_some(
+                    labels.context(&session.cluster_context),
+                    |title, context| title.child(ui::muted(ui::xs(context)).truncate()),
+                )
                 .when_some(
                     session
                         .kubeconfig_source_label

@@ -22,7 +22,7 @@ pub(super) struct SettingsState {
     pub(super) kind_focus: std::collections::HashMap<String, gpui_kit::FocusHandle>,
     /// The resource kind being dragged in the kind order setting. Read only while a drag is active.
     pub(super) kind_drag: Option<String>,
-    pub(super) diagnostics:crate::backend::adapters::BackendDiagnostics,
+    pub(super) diagnostics: crate::backend::adapters::BackendDiagnostics,
     pub(super) diagnostics_error: Option<String>,
     /// The last latency-report action's result, shown under the report.
     pub(super) diagnostics_status: Option<String>,

@@ -199,18 +199,54 @@ mod tests {
             (true, vec![watch(Opening)], LiveStatus::RefreshFailed),
             (false, vec![], LiveStatus::NotConnected),
             (true, vec![], LiveStatus::RefreshFailed),
-            (false, vec![watch(Opening), watch(Opening)], LiveStatus::Connecting),
-            (false, vec![failed_reload, watch(Lost)], LiveStatus::RefreshFailed),
+            (
+                false,
+                vec![watch(Opening), watch(Opening)],
+                LiveStatus::Connecting,
+            ),
+            (
+                false,
+                vec![failed_reload, watch(Lost)],
+                LiveStatus::RefreshFailed,
+            ),
             // An opening watch among reporting ones counts as not connected.
-            (false, vec![watch(Opening), watch(Connected)], LiveStatus::Reconnecting),
-            (false, vec![watch(Lost), catching_up, watch(Denied)], LiveStatus::Reconnecting),
-            (false, vec![catching_up, watch(Denied)], LiveStatus::CatchingUp),
-            (false, vec![watch(Denied), watch(Denied)], LiveStatus::PollingLimited),
-            (false, vec![watch(Denied), watch(Connected)], LiveStatus::LiveLimited),
-            (false, vec![watch(Connected), watch(Connected)], LiveStatus::Live),
+            (
+                false,
+                vec![watch(Opening), watch(Connected)],
+                LiveStatus::Reconnecting,
+            ),
+            (
+                false,
+                vec![watch(Lost), catching_up, watch(Denied)],
+                LiveStatus::Reconnecting,
+            ),
+            (
+                false,
+                vec![catching_up, watch(Denied)],
+                LiveStatus::CatchingUp,
+            ),
+            (
+                false,
+                vec![watch(Denied), watch(Denied)],
+                LiveStatus::PollingLimited,
+            ),
+            (
+                false,
+                vec![watch(Denied), watch(Connected)],
+                LiveStatus::LiveLimited,
+            ),
+            (
+                false,
+                vec![watch(Connected), watch(Connected)],
+                LiveStatus::Live,
+            ),
         ];
         for (view_failed, watches, expected) in cases {
-            assert_eq!(aggregate(view_failed, watches.clone()), expected, "{watches:?}");
+            assert_eq!(
+                aggregate(view_failed, watches.clone()),
+                expected,
+                "{watches:?}"
+            );
         }
     }
 }

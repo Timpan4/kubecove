@@ -401,8 +401,7 @@ impl Inspector {
                                     .border_color(Tokens::border())
                                     .bg(Tokens::card())
                                     .when(dragged == Some(kind.as_str()), |item| {
-                                        item.border_color(Tokens::primary())
-                                            .bg(Tokens::muted())
+                                        item.border_color(Tokens::primary()).bg(Tokens::muted())
                                     })
                                     .child(
                                         ui::sm(if kind == "*" {

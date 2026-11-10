@@ -66,7 +66,11 @@ pub(super) fn diagnostics(text: &str) -> Vec<Finding> {
         .flatten();
     // `parseDocument` composes the first document and stops at the second.
     let end = second.map(|document| {
-        scan.push(document.byte_range(), Level::Error, MULTIPLE_DOCS.to_owned());
+        scan.push(
+            document.byte_range(),
+            Level::Error,
+            MULTIPLE_DOCS.to_owned(),
+        );
         document.start_byte()
     });
     scan.walk(root, end);
@@ -166,20 +170,29 @@ impl Scan<'_> {
                     self.push(range, Level::Error, message.to_owned());
                 }
                 if let [handle, prefix, ..] = rest {
-                    self.handles.insert((*handle).to_owned(), (*prefix).to_owned());
+                    self.handles
+                        .insert((*handle).to_owned(), (*prefix).to_owned());
                 }
             }
             ["%YAML", version] => {
                 if !matches!(*version, "1.1" | "1.2") {
                     let numeric = version.split_once('.').is_some_and(|(major, minor)| {
-                        [major, minor]
-                            .iter()
-                            .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
+                        [major, minor].iter().all(|part| {
+                            !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit())
+                        })
                     });
                     // The web reports from the version, six characters in.
                     let from = (range.start + 6).min(range.end);
-                    let level = if numeric { Level::Warning } else { Level::Error };
-                    self.push(from..range.end, level, format!("Unsupported YAML version {version}"));
+                    let level = if numeric {
+                        Level::Warning
+                    } else {
+                        Level::Error
+                    };
+                    self.push(
+                        from..range.end,
+                        level,
+                        format!("Unsupported YAML version {version}"),
+                    );
                 }
             }
             ["%YAML", ..] => {
@@ -226,7 +239,11 @@ impl Scan<'_> {
             };
             if !seen.insert(value) {
                 let start = key.start_byte();
-                self.push(start..start, Level::Error, "Map keys must be unique".to_owned());
+                self.push(
+                    start..start,
+                    Level::Error,
+                    "Map keys must be unique".to_owned(),
+                );
             }
         }
     }

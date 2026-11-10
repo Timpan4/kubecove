@@ -6,12 +6,7 @@
 
 use super::parse::Level;
 use regex::Regex;
-use std::{
-    collections::HashMap,
-    iter::Peekable,
-    str::Chars,
-    sync::LazyLock,
-};
+use std::{collections::HashMap, iter::Peekable, str::Chars, sync::LazyLock};
 use tree_sitter::Node;
 
 const CORE: &str = "tag:yaml.org,2002:";
@@ -96,7 +91,11 @@ pub(super) fn check(
     let unresolved = || (Level::Warning, format!("Unresolved tag: {name}"));
     match content {
         Content::Map | Content::Seq => {
-            let kind = if matches!(content, Content::Map) { "map" } else { "seq" };
+            let kind = if matches!(content, Content::Map) {
+                "map"
+            } else {
+                "seq"
+            };
             if name == "!" || name.strip_prefix(CORE) == Some(kind) {
                 return findings;
             }
@@ -121,10 +120,12 @@ pub(super) fn check(
                     Some("str") => true,
                     Some("null") => NULL.is_match(value),
                     Some("bool") => BOOL.is_match(value),
-                    Some("int") => [&INT_OCT, &INT, &INT_HEX].iter().any(|test| test.is_match(value)),
-                    Some("float") => {
-                        [&FLOAT_NAN, &FLOAT_EXP, &FLOAT].iter().any(|test| test.is_match(value))
-                    }
+                    Some("int") => [&INT_OCT, &INT, &INT_HEX]
+                        .iter()
+                        .any(|test| test.is_match(value)),
+                    Some("float") => [&FLOAT_NAN, &FLOAT_EXP, &FLOAT]
+                        .iter()
+                        .any(|test| test.is_match(value)),
                     _ => false,
                 }
                 || matches!(known, Some(None));
@@ -148,7 +149,10 @@ fn tag_name(
     }
     if let Some(body) = source.strip_prefix("!<") {
         // `source.slice(2, -1)` drops the last character, `>` or not.
-        let verbatim = body.char_indices().last().map_or("", |(end, _)| &body[..end]);
+        let verbatim = body
+            .char_indices()
+            .last()
+            .map_or("", |(end, _)| &body[..end]);
         if matches!(verbatim, "!" | "!!") {
             findings.push((
                 Level::Error,
@@ -253,7 +257,9 @@ fn core_number(value: &str) -> Option<f64> {
         value[2..]
             .chars()
             .filter_map(|digit| digit.to_digit(radix))
-            .fold(0.0, |total, digit| total * f64::from(radix) + f64::from(digit))
+            .fold(0.0, |total, digit| {
+                total * f64::from(radix) + f64::from(digit)
+            })
     };
     if INT_OCT.is_match(value) {
         Some(digits(8))
@@ -362,7 +368,10 @@ fn push_escape(value: &mut String, escape: char, chars: &mut Peekable<Chars<'_>>
     };
     let digits: String = chars.by_ref().take(length).collect();
     let hex = length > 0 && digits.len() == length && digits.bytes().all(|b| b.is_ascii_hexdigit());
-    match u32::from_str_radix(&digits, 16).ok().and_then(char::from_u32) {
+    match u32::from_str_radix(&digits, 16)
+        .ok()
+        .and_then(char::from_u32)
+    {
         Some(decoded) if hex => value.push(decoded),
         _ => {
             value.push('\\');
@@ -398,7 +407,10 @@ fn block_value(raw: &str) -> String {
             if folded {
                 value.push(' ');
             } else {
-                value.extend(std::iter::repeat_n('\n', breaks + usize::from(!header.starts_with('>'))));
+                value.extend(std::iter::repeat_n(
+                    '\n',
+                    breaks + usize::from(!header.starts_with('>')),
+                ));
             }
         }
         value.push_str(line.get(indent..).unwrap_or_default());

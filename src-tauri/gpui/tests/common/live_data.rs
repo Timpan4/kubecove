@@ -481,10 +481,8 @@ impl Fixture {
             {
                 let deleted = state.deleted || (state.deleted_in_mock_dev && context == "mock-dev");
                 let changed = [
-                    (state.changed || state.rolling || deleted).then_some((
-                        "payments-api",
-                        if deleted { "deleted" } else { "applied" },
-                    )),
+                    (state.changed || state.rolling || deleted)
+                        .then_some(("payments-api", if deleted { "deleted" } else { "applied" })),
                     state.reowned.then_some((REOWNED, "applied")),
                 ];
                 for (name, action) in changed.into_iter().flatten() {

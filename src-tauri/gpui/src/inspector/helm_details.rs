@@ -151,7 +151,8 @@ impl Inspector {
             return;
         }
         let details = &self.helm_page.details;
-        self.loading.phase("helm-details", details.details.pending());
+        self.loading
+            .phase("helm-details", details.details.pending());
         self.loading
             .phase("helm-reconciliation", details.reconciliation.pending());
     }
@@ -431,9 +432,7 @@ impl Inspector {
 
     fn helm_reconciliation(&self, width: f32, cx: &mut Context<Self>) -> Div {
         let state = &self.helm_page.details.reconciliation;
-        let phase = self
-            .loading
-            .phase("helm-reconciliation", state.pending());
+        let phase = self.loading.phase("helm-reconciliation", state.pending());
         let totals = match state.settled() {
             Some(Ok(data)) if phase.ready() => Some(format!(
                 "{} tracked, {} missing, {} label-only",

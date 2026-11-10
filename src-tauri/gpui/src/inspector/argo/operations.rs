@@ -20,7 +20,10 @@ pub(super) enum Phase {
     #[default]
     Idle,
     /// Reads the Application and the preflight for `action`.
-    Checking { action: String, _read: InFlight },
+    Checking {
+        action: String,
+        _read: InFlight,
+    },
     Review(Box<Reviewed>),
     Submitting(Submission),
     /// Retry reviews `retry` again.
@@ -29,7 +32,10 @@ pub(super) enum Phase {
         retry: Box<ArgoOperationRequest>,
     },
     /// The submission's result is unknown; only a reload can tell.
-    Unconfirmed { message: String, action: String },
+    Unconfirmed {
+        message: String,
+        action: String,
+    },
 }
 impl Phase {
     /// The action whose operation is in flight, which disables the operation buttons

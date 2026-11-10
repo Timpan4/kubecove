@@ -231,7 +231,10 @@ async fn a_sign_in_dropped_while_it_waits_for_the_browser_can_start_again() {
     // The GPUI client drops the future when it replaces the sign-in task or closes.
     waiting.abort();
     assert!(waiting.await.unwrap_err().is_cancelled());
-    assert_eq!(harness.state().await, Some(RemoteSessionState::SignInRequired));
+    assert_eq!(
+        harness.state().await,
+        Some(RemoteSessionState::SignInRequired)
+    );
     assert!(session::sign_in_link(&harness.store).is_none());
 
     *harness.browser.behavior.lock().unwrap() = Browser::Complete;

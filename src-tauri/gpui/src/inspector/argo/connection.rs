@@ -21,7 +21,9 @@ pub(super) enum Preference {
 pub(super) enum ConnectStep {
     Idle,
     /// A tunnel preview or a connect read. Replacing the step cancels it.
-    Busy { _read: InFlight },
+    Busy {
+        _read: InFlight,
+    },
     /// A previewed tunnel target that waits for the user's confirmation.
     ConfirmTarget {
         endpoint: ArgoServerEndpoint,
@@ -88,9 +90,8 @@ pub(super) struct DialogFields {
 impl DialogFields {
     fn new(window: &mut Window, cx: &mut gpui_kit::App) -> Self {
         Self {
-            url: cx.new(|cx| {
-                InputState::new(window, cx).placeholder("https://argocd.example.test")
-            }),
+            url: cx
+                .new(|cx| InputState::new(window, cx).placeholder("https://argocd.example.test")),
             root_path: cx.new(|cx| InputState::new(window, cx)),
             tls_name: cx.new(|cx| InputState::new(window, cx)),
             ca: cx.new(|cx| TextareaState::new(window, cx).rows(3)),
@@ -101,7 +102,8 @@ impl DialogFields {
     }
     /// Empties the typed credentials and the CA, as the web does after a submit.
     pub fn clear_secrets(&self, window: &mut Window, cx: &mut gpui_kit::App) {
-        self.ca.update(cx, |input, cx| input.set_value("", window, cx));
+        self.ca
+            .update(cx, |input, cx| input.set_value("", window, cx));
         for field in [&self.token, &self.username, &self.password] {
             field.update(cx, |input, cx| input.set_value("", window, cx));
         }

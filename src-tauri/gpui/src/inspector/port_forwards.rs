@@ -138,10 +138,7 @@ impl Inspector {
             .is_some_and(|old| !super::scope_load::same_contexts(old, &contexts));
         state.scope_contexts = Some(contexts.clone());
         let cleanup = changed && !keep;
-        let previous_source = state
-            .load
-            .data()
-            .and_then(|s| s.source_key.clone());
+        let previous_source = state.load.data().and_then(|s| s.source_key.clone());
         let backend = self.backend.clone();
         let executor = cx.background_executor().clone();
         let source = backend.clone();

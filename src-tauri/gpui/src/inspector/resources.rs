@@ -335,23 +335,18 @@ impl Inspector {
                     .px(px(10.))
                     .gap(px(8.))
                     .bg(Tokens::background().opacity(0.5))
-                    .child(
-                        div()
-                            .size(px(6.))
-                            .rounded_full()
-                            .bg(match status {
-                                LiveStatus::Live => super::events::tw::emerald400(1.),
-                                LiveStatus::RefreshFailed => Tokens::destructive(),
-                                LiveStatus::CatchingUp => super::events::tw::sky300(),
-                                LiveStatus::Connecting | LiveStatus::NotConnected => {
-                                    Tokens::muted_foreground()
-                                }
-                                LiveStatus::Reconnecting
-                                | LiveStatus::LiveLimited
-                                | LiveStatus::PollingLimited
-                                | LiveStatus::Refreshing => super::events::tw::amber400(1.),
-                            }),
-                    )
+                    .child(div().size(px(6.)).rounded_full().bg(match status {
+                        LiveStatus::Live => super::events::tw::emerald400(1.),
+                        LiveStatus::RefreshFailed => Tokens::destructive(),
+                        LiveStatus::CatchingUp => super::events::tw::sky300(),
+                        LiveStatus::Connecting | LiveStatus::NotConnected => {
+                            Tokens::muted_foreground()
+                        }
+                        LiveStatus::Reconnecting
+                        | LiveStatus::LiveLimited
+                        | LiveStatus::PollingLimited
+                        | LiveStatus::Refreshing => super::events::tw::amber400(1.),
+                    }))
                     .child(
                         ui::xs(status.label())
                             .text_color(match status {

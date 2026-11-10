@@ -6,13 +6,7 @@ use super::super::{
 };
 use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
-use gpui_kit::{
-    Context,
-    base::FocusTrapElement,
-    div,
-    prelude::*,
-    px, relative,
-};
+use gpui_kit::{Context, base::FocusTrapElement, div, prelude::*, px, relative};
 
 impl Inspector {
     pub(in crate::inspector) fn argo_connection_dialog(
@@ -43,26 +37,24 @@ impl Inspector {
                         .max_w(px(672.))
                         .max_h(relative(0.9))
                         .overflow_y_scroll()
-                        .on_key_down(cx.listener(
-                            |this, event: &gpui_kit::KeyDownEvent, _, cx| {
-                                if event.keystroke.key == "escape" {
-                                    this.cancel_argo_connection(cx);
-                                    cx.stop_propagation();
-                                }
-                            },
-                        ))
-                        .on_mouse_down_out(cx.listener(|this, _, _, cx| {
-                            this.cancel_argo_connection(cx)
+                        .on_key_down(cx.listener(|this, event: &gpui_kit::KeyDownEvent, _, cx| {
+                            if event.keystroke.key == "escape" {
+                                this.cancel_argo_connection(cx);
+                                cx.stop_propagation();
+                            }
                         }))
+                        .on_mouse_down_out(
+                            cx.listener(|this, _, _, cx| this.cancel_argo_connection(cx)),
+                        )
                         .child(self.argo_connection_content(cx))
                         .child(
                             button(Variant::Outline, 24., false)
                                 .id("argo-connection-close")
                                 .test_support()
                                 .child("Close connection")
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.cancel_argo_connection(cx)
-                                })),
+                                .on_click(
+                                    cx.listener(|this, _, _, cx| this.cancel_argo_connection(cx)),
+                                ),
                         ),
                 );
             overlay

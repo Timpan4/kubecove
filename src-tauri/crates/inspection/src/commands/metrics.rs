@@ -540,14 +540,8 @@ pub async fn resource_metrics_from(
     let (pod_result, node_result, pod_owners, replicaset_owners) = futures_util::join!(
         Box::pin(list_pod_metric_objects(client.clone(), &namespaces)),
         Box::pin(list_node_metric_objects(client.clone())),
-        Box::pin(list_in_namespaces::<Pod>(
-            client.clone(),
-            &namespaces
-        )),
-        Box::pin(list_in_namespaces::<ReplicaSet>(
-            client,
-            &namespaces
-        )),
+        Box::pin(list_in_namespaces::<Pod>(client.clone(), &namespaces)),
+        Box::pin(list_in_namespaces::<ReplicaSet>(client, &namespaces)),
     );
     let mut warnings = Vec::new();
     let mut had_unavailable_error = false;

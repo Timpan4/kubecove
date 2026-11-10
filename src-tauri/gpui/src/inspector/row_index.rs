@@ -111,9 +111,7 @@ impl Inspector {
             kind_filter,
             &query,
             |index, row, owner| {
-                in_view[index]
-                    && self.filters.in_owner(owner)
-                    && self.filters.health.matches(row)
+                in_view[index] && self.filters.in_owner(owner) && self.filters.health.matches(row)
             },
             |row| self.application_manages(row),
             &self.persisted.preferences.resource_kind_lanes,
@@ -129,11 +127,9 @@ impl Inspector {
             for (index, (row, prepared)) in source.keyed_rows().enumerate() {
                 if in_view[index]
                     && matches.contains(index)
-                    && self.filters.in_owner(
-                        prepared
-                            .owner_index()
-                            .map(|owner| source.owner_at(owner).0),
-                    )
+                    && self
+                        .filters
+                        .in_owner(prepared.owner_index().map(|owner| source.owner_at(owner).0))
                 {
                     summary.add(row);
                 }
@@ -149,7 +145,11 @@ impl Inspector {
                 *slot = Some((row, owner));
             }
         }
-        let mut listed: Vec<usize> = by_key.into_iter().flatten().map(|(_, owner)| owner).collect();
+        let mut listed: Vec<usize> = by_key
+            .into_iter()
+            .flatten()
+            .map(|(_, owner)| owner)
+            .collect();
         listed.sort_unstable_by_key(|&owner| source.owner_rank(owner));
         let owners: Vec<_> = listed
             .into_iter()

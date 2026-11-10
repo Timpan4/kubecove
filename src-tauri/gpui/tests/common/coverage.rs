@@ -32,7 +32,9 @@ impl Fixture {
         if self.coverage_script() != "stop-failed" {
             return self.session_controls.stop(id);
         }
-        let forwards = self.session_controls.list(&self.live_sessions.port_forwards);
+        let forwards = self
+            .session_controls
+            .list(&self.live_sessions.port_forwards);
         if !forwards.iter().any(|session| session.id == id) {
             let message = self.coverage_state.unexpected.record("forward stop", &id);
             return Box::pin(async move { Err(AppError::new(message, AppErrorKind::Cluster)) });

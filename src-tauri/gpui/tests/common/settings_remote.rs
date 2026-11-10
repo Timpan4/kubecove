@@ -52,7 +52,9 @@ impl Fixture {
         self.sync_remote_refusal();
         // The client reads the state again from this watch, as it does from the
         // host's watch in production.
-        self.settings.session_changes.send_modify(|count| *count += 1);
+        self.settings
+            .session_changes
+            .send_modify(|count| *count += 1);
     }
     pub fn runtime_endpoint(&self) -> String {
         self.settings
@@ -90,8 +92,7 @@ impl Fixture {
     /// Scenarios hold it as the web's `remote_connection_status` command.
     pub(super) fn remote_status_read(&self) -> Read<Option<RemoteConnectionSummary>> {
         let remote = self.settings.remote.lock().unwrap().clone();
-        self.timing
-            .gate("remote_connection_status", "", "", remote)
+        self.timing.gate("remote_connection_status", "", "", remote)
     }
     pub(super) fn connect_remote_read(
         &self,

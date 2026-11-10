@@ -131,12 +131,16 @@ impl<T, E> Query<T, E> {
     }
 
     pub(super) fn data(&self) -> Option<&T> {
-        self.settled.as_ref().and_then(|result| result.as_ref().ok())
+        self.settled
+            .as_ref()
+            .and_then(|result| result.as_ref().ok())
     }
 
     /// The failure of a read that left no data to show.
     pub(super) fn failure(&self) -> Option<&E> {
-        self.settled.as_ref().and_then(|result| result.as_ref().err())
+        self.settled
+            .as_ref()
+            .and_then(|result| result.as_ref().err())
     }
 
     pub(super) fn refresh_error(&self) -> Option<&E> {

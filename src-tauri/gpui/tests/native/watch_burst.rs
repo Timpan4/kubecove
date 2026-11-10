@@ -95,7 +95,9 @@ fn open_resources(
     });
     cx.run_until_parked();
     if count > 1 {
-        act(cx, handle, |window, cx| window.click("header-workspaces", cx));
+        act(cx, handle, |window, cx| {
+            window.click("header-workspaces", cx)
+        });
         act(cx, handle, |window, cx| {
             click_label(window, cx, "Edit Parity mock workspace")
         });
@@ -105,7 +107,9 @@ fn open_resources(
                 window.click(named(target), cx);
             });
         }
-        act(cx, handle, |window, cx| window.click("workspace-create", cx));
+        act(cx, handle, |window, cx| {
+            window.click("workspace-create", cx)
+        });
         act(cx, handle, |window, cx| {
             click_label(window, cx, "Open Parity mock workspace")
         });
@@ -116,7 +120,11 @@ fn open_resources(
     });
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
-        let summary = window.find("resource-table-summary").label().unwrap_or_default().to_owned();
+        let summary = window
+            .find("resource-table-summary")
+            .label()
+            .unwrap_or_default()
+            .to_owned();
         assert!(
             summary.starts_with(&format!("{} resources", count * 10_000)),
             "{count} contexts must list {} rows: {summary}",

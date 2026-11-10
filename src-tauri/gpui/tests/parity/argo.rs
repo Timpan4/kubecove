@@ -111,7 +111,12 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 "Open connection" => "argo-connect-open",
                 "Close connection" => {
                     // The close button sits below the form, so a short window needs a scroll to reach it.
-                    reveal(window, "argo-connection-dialog", "argo-connection-close", cx);
+                    reveal(
+                        window,
+                        "argo-connection-dialog",
+                        "argo-connection-close",
+                        cx,
+                    );
                     "argo-connection-close"
                 }
                 "Disconnect" => {
@@ -450,7 +455,9 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 "focus is not on {id}"
             );
         }
-        "fillArgoConnectionField" | "expectArgoConnectionField" => argo_fields::act(window, cx, step),
+        "fillArgoConnectionField" | "expectArgoConnectionField" => {
+            argo_fields::act(window, cx, step)
+        }
         "argoConnectionDialog" => match string(step, "operation") {
             "open" => {
                 assert!(seek(window, cx, "gitops-list", "argo-connect-toolbar"));
@@ -516,8 +523,13 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 };
                 window.render_frame(cx);
                 // The dialog's element count bounds the cycle.
-                let limit = window.elements().iter().filter(|e| inside(e.path())).count();
-                let first = focused(window).expect("focus starts inside the Argo CD connection dialog");
+                let limit = window
+                    .elements()
+                    .iter()
+                    .filter(|e| inside(e.path()))
+                    .count();
+                let first =
+                    focused(window).expect("focus starts inside the Argo CD connection dialog");
                 let mut stops = 0;
                 loop {
                     stops += 1;

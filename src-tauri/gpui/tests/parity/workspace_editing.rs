@@ -50,7 +50,10 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
         // workspace context the sidebar names.
         "expectDetailContext" => {
             let context = string(step, "context");
-            assert!(window.try_find("detail-identity").is_some(), "no open detail");
+            assert!(
+                window.try_find("detail-identity").is_some(),
+                "no open detail"
+            );
             match window.try_find("detail-context") {
                 Some(badge) => {
                     assert_eq!(badge.label(), Some(format!("Context: {context}").as_str()));

@@ -88,7 +88,10 @@ pub(super) fn setup(driver: &mut Driver, view: &str) {
                 window.input("payments-api-7d9c9b7f8d-k2r9p", cx);
             });
             driver.act(|window, cx| {
-                window.click("resource:Pod:payments:payments-api-7d9c9b7f8d-k2r9p:mock-dev", cx)
+                window.click(
+                    "resource:Pod:payments:payments-api-7d9c9b7f8d-k2r9p:mock-dev",
+                    cx,
+                )
             });
             driver.act(|window, cx| {
                 window.click(
@@ -164,7 +167,10 @@ pub(super) fn setup(driver: &mut Driver, view: &str) {
                 window.input("argocd-dex-server", cx);
             });
             driver.act(|window, cx| {
-                window.click("resource:Pod:argocd:argocd-dex-server-6d7f9c5b8-q4w2n:mock-dev", cx)
+                window.click(
+                    "resource:Pod:argocd:argocd-dex-server-6d7f9c5b8-q4w2n:mock-dev",
+                    cx,
+                )
             });
             driver.act(|window, cx| window.click("show-logs", cx));
             if view == "logs.pod-paused" {

@@ -69,8 +69,7 @@ fn observe(
             };
         }
     };
-    if baseline.application.uid.is_some() && baseline.application.uid != snapshot.application.uid
-    {
+    if baseline.application.uid.is_some() && baseline.application.uid != snapshot.application.uid {
         return Observation::Finished(
             "Application was replaced. The previous operation's outcome is unknown.".into(),
         );

@@ -61,23 +61,17 @@ impl Inspector {
         let state = &self.argo.connections;
         let choices = state.choices();
         let fields = state.fields();
-        let mut panel = super::panels::panel()
-            .flex()
-            .flex_col()
-            .gap(px(8.))
-            .child(
-                button(Variant::Outline, 24., false)
-                    .id("argo-connect-open")
-                    .test_support()
-                    .child(if self.argo_connection_id().is_some() {
-                        "Manage connection"
-                    } else {
-                        "Connect Argo CD"
-                    })
-                    .on_click(
-                        cx.listener(|this, _, window, cx| this.open_argo_connection(window, cx)),
-                    ),
-            );
+        let mut panel = super::panels::panel().flex().flex_col().gap(px(8.)).child(
+            button(Variant::Outline, 24., false)
+                .id("argo-connect-open")
+                .test_support()
+                .child(if self.argo_connection_id().is_some() {
+                    "Manage connection"
+                } else {
+                    "Connect Argo CD"
+                })
+                .on_click(cx.listener(|this, _, window, cx| this.open_argo_connection(window, cx))),
+        );
         if !state.dialog {
             return super::panels::panel().flex().flex_col().gap(px(8.))
                 .child(gpui_kit::component::select::Select::new(&state.picker).id("argo-inspection-preference").w_full())
@@ -403,9 +397,7 @@ impl Inspector {
                     .id("argo-connect-cancel")
                     .test_support()
                     .child("Cancel")
-                    .on_click(
-                        cx.listener(|this, _, _, cx| this.cancel_argo_connection(cx)),
-                    ),
+                    .on_click(cx.listener(|this, _, _, cx| this.cancel_argo_connection(cx))),
             );
         if let ConnectStep::Failed {
             reconfirm: Some(profile),

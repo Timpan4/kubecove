@@ -91,9 +91,10 @@ impl Source {
             }
             if let Some(nodes) = node_hashes.get(hash) {
                 let key = loose_key(&all_rows[i]);
-                for &node in nodes.iter().filter(|&&node| {
-                    loose_key(&topology.nodes[node].summary) == key
-                }) {
+                for &node in nodes
+                    .iter()
+                    .filter(|&&node| loose_key(&topology.nodes[node].summary) == key)
+                {
                     matches[node].push(i);
                 }
             }

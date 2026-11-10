@@ -27,22 +27,14 @@ impl Inspector {
         }
         self.sessions.action = SessionAction::Running;
         let context = self.scope.context.clone();
-        let source = self
-            .sessions
-            .load
-            .data()
-            .and_then(|s| s.source_key.clone());
+        let source = self.sessions.load.data().and_then(|s| s.source_key.clone());
         let backend = self.backend.clone();
         cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             if let Ok(sessions) = &result {
                 let belongs = this
                     .update(cx, |this, _| {
-                        let current = this
-                            .sessions
-                            .load
-                            .data()
-                            .and_then(|s| s.source_key.clone());
+                        let current = this.sessions.load.data().and_then(|s| s.source_key.clone());
                         current == source
                             && (this
                                 .persisted

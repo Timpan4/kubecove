@@ -165,7 +165,11 @@ mod text_fit {
         cx: &mut gpui_kit::App,
     ) {
         let target = window.within(scope).find_by_label(label);
-        let id = target.path().last().expect("labeled element has an ID").clone();
+        let id = target
+            .path()
+            .last()
+            .expect("labeled element has an ID")
+            .clone();
         window.click(id, cx);
     }
 
@@ -212,7 +216,10 @@ mod text_fit {
         let (mut cx, handle) = open(fixture);
         search(&mut cx, handle, "argocd-dex-server");
         act(&mut cx, handle, |window, cx| {
-            window.click("resource:Pod:argocd:argocd-dex-server-6d7f9c5b8-q4w2n:mock-dev", cx)
+            window.click(
+                "resource:Pod:argocd:argocd-dex-server-6d7f9c5b8-q4w2n:mock-dev",
+                cx,
+            )
         });
         act(&mut cx, handle, |window, cx| window.click("show-logs", cx));
         act(&mut cx, handle, |window, _| {

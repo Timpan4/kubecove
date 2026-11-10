@@ -282,9 +282,8 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) -> Div {
         self.sync_rbac_review_note(window, cx);
-        let pending = surface::pending_slot(
-            self.loading.phase("surface-rbac", self.rbac.load.pending()),
-        );
+        let pending =
+            surface::pending_slot(self.loading.phase("surface-rbac", self.rbac.load.pending()));
         let body = match (self.rbac.load.settled(), pending) {
             (_, Some(slot)) => slot,
             (None, None) => div().into_any_element(),

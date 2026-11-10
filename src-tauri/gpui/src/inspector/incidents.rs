@@ -456,9 +456,12 @@ impl Inspector {
                     .min_w_0()
                     .gap(px(12.))
                     .child(self.overview_section(cx))
-                    .when_some(self.incidents.load.refresh_error().cloned(), |body, error| {
-                        body.child(self.page_failure("Incident refresh failed", error, cx))
-                    })
+                    .when_some(
+                        self.incidents.load.refresh_error().cloned(),
+                        |body, error| {
+                            body.child(self.page_failure("Incident refresh failed", error, cx))
+                        },
+                    )
                     .when(!warnings.is_empty(), |body| {
                         body.child(
                             ui::panel()

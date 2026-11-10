@@ -90,7 +90,10 @@ impl Inspector {
                 context: contexts.len() > 1,
             };
             for session in execs {
-                rows.push(self.exec_control_row(session, labels, cx).into_any_element());
+                rows.push(
+                    self.exec_control_row(session, labels, cx)
+                        .into_any_element(),
+                );
             }
             for session in forwards {
                 rows.push(

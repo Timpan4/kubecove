@@ -146,9 +146,7 @@ impl ScopeLoad {
 
     /// Starts the live menu's refresh, replacing and so cancelling any scope read.
     pub(super) fn start_refresh(&mut self, task: Task<()>) {
-        self.read = Some(ScopeRead::Refresh {
-            _task: task.into(),
-        });
+        self.read = Some(ScopeRead::Refresh { _task: task.into() });
     }
 
     /// Drops the scope read, which cancels it.
@@ -163,7 +161,11 @@ impl ScopeLoad {
         match result {
             Ok(()) => {
                 self.rows = Load::Ready;
-                if let Some(ScopeRead::Builtin { custom: true, _task }) = read {
+                if let Some(ScopeRead::Builtin {
+                    custom: true,
+                    _task,
+                }) = read
+                {
                     self.read = Some(ScopeRead::Custom { _task });
                 }
             }
