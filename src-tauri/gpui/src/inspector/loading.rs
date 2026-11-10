@@ -41,19 +41,38 @@ impl Phase {
 #[derive(Clone, Copy)]
 struct Episode {
     started: Instant,
+    /// The first frame that rendered the indicator. The minimum visible time
+    /// counts from here, as the web counts from its show timer, so a late
+    /// first frame still shows the indicator for the whole time.
+    shown: Option<Instant>,
     finished: Option<Instant>,
 }
 
 impl Episode {
+    fn new(started: Instant) -> Self {
+        Self {
+            started,
+            shown: None,
+            finished: None,
+        }
+    }
+
     /// The phase at `now` and the instant it next changes.
     fn phase(self, now: Instant) -> (Phase, Option<Instant>) {
         let shown_at = self.started + SHOW_DELAY;
-        let hidden_at = shown_at + MIN_VISIBLE;
-        match self.finished {
-            None if now < shown_at => (Phase::Waiting, Some(shown_at)),
-            None => (Phase::Shown, None),
-            Some(finished) if finished < shown_at || now >= hidden_at => (Phase::Ready, None),
-            Some(_) => (Phase::Shown, Some(hidden_at)),
+        match (self.shown, self.finished) {
+            // Settled before any frame rendered its indicator.
+            (None, Some(_)) => (Phase::Ready, None),
+            (None, None) if now < shown_at => (Phase::Waiting, Some(shown_at)),
+            (_, None) => (Phase::Shown, None),
+            (Some(shown), Some(_)) => {
+                let hidden_at = shown + MIN_VISIBLE;
+                if now >= hidden_at {
+                    (Phase::Ready, None)
+                } else {
+                    (Phase::Shown, Some(hidden_at))
+                }
+            }
         }
     }
 }
@@ -86,12 +105,9 @@ impl LoadingDelays {
             };
         };
         let previous = frame.episodes.get(key).map(|(episode, _)| *episode);
-        let episode = match (previous, pending) {
+        let mut episode = match (previous, pending) {
             (None, false) => return Phase::Ready,
-            (None, true) => Episode {
-                started: now,
-                finished: None,
-            },
+            (None, true) => Episode::new(now),
             // A new read during the minimum visible time keeps the indicator.
             (Some(episode), true) if episode.finished.is_some() => {
                 if episode.phase(now).0.shown() {
@@ -100,10 +116,7 @@ impl LoadingDelays {
                         ..episode
                     }
                 } else {
-                    Episode {
-                        started: now,
-                        finished: None,
-                    }
+                    Episode::new(now)
                 }
             }
             (Some(episode), false) if episode.finished.is_none() => Episode {
@@ -113,6 +126,9 @@ impl LoadingDelays {
             (Some(episode), _) => episode,
         };
         let (phase, next) = episode.phase(now);
+        if phase.shown() && episode.shown.is_none() {
+            episode.shown = Some(now);
+        }
         if phase.ready() {
             frame.episodes.remove(key);
         } else if let Some(entry) = frame.episodes.get_mut(key) {
@@ -124,6 +140,13 @@ impl LoadingDelays {
             frame.next = Some(frame.next.map_or(next, |current| current.min(next)));
         }
         phase
+    }
+
+    /// Whether the indicator `key` rendered this frame in place of its
+    /// content: its read is pending, or the indicator is held for its minimum
+    /// visible time. Ready episodes are removed as they settle.
+    pub fn holds(&self, key: &str) -> bool {
+        self.frame.borrow().episodes.contains_key(key)
     }
 
     pub(super) fn begin_frame(&mut self, now: Instant) {
@@ -180,5 +203,20 @@ mod tests {
         delays.frame.get_mut().episodes.retain(|_, (_, seen)| *seen);
         let later = start + Duration::from_secs(10);
         assert_eq!(frame(&mut delays, later, true), Phase::Waiting);
+    }
+
+    // Failure mode: the first frame after the show delay comes late, and the
+    // minimum visible time, counted from the scheduled show time, hides the
+    // indicator almost as soon as it first draws.
+    #[test]
+    fn a_late_first_indicator_frame_stays_for_the_minimum_time() {
+        let start = Instant::now();
+        let at = |ms| start + Duration::from_millis(ms);
+        let mut delays = LoadingDelays::default();
+        assert_eq!(frame(&mut delays, at(0), true), Phase::Waiting);
+        assert_eq!(frame(&mut delays, at(550), true), Phase::Shown);
+        assert_eq!(frame(&mut delays, at(560), false), Phase::Shown);
+        assert_eq!(frame(&mut delays, at(849), false), Phase::Shown);
+        assert_eq!(frame(&mut delays, at(850), false), Phase::Ready);
     }
 }

@@ -23,6 +23,15 @@ impl LoadKind {
             Self::Map => "map",
         }
     }
+
+    /// The `LoadingDelays` key of the indicator that stands in for the
+    /// load's content (`resources.rs` and `map.rs`).
+    fn indicator(self) -> &'static str {
+        match self {
+            Self::Scope => "resources",
+            Self::Map => "map",
+        }
+    }
 }
 
 pub(super) struct LoadTrace {
@@ -88,11 +97,18 @@ impl Inspector {
     }
 
     /// Called at the end of each render. Traces whose data is applied are finished
-    /// by the frame that draws it, and log once that frame is done.
+    /// by the frame that draws it, and log once that frame is done. While the
+    /// loading indicator still stands in for the content, the trace waits.
     pub(super) fn record_load_frames(&mut self, window: &mut Window, render: Duration) {
+        let scope_held = self.loading.holds(LoadKind::Scope.indicator());
+        let map_held = self.loading.holds(LoadKind::Map.indicator());
         for mut trace in [
-            take_awaiting(&mut self.scope_trace),
-            take_awaiting(&mut self.map_trace),
+            (!scope_held)
+                .then(|| take_awaiting(&mut self.scope_trace))
+                .flatten(),
+            (!map_held)
+                .then(|| take_awaiting(&mut self.map_trace))
+                .flatten(),
         ]
         .into_iter()
         .flatten()
