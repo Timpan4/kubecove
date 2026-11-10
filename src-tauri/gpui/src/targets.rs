@@ -7,9 +7,13 @@
 //! deepest hovered element and a key to the deepest focused one. Element state
 //! also survives cached-view replay, so cached subtrees still resolve.
 //!
-//! A target is named by its element id up to the first `:`, which keeps the
-//! static part (`resource-row`) and drops resource names, secret keys and other
-//! cluster data that ids carry after it. Labels and text are never read.
+//! A target is named by its element id: a `Name` id up to its first `:`, or a
+//! `NamedInteger` id's name. Many ids are built from container names, keys and
+//! other cluster data, sometimes with no `:` before them, and that data has the
+//! same lowercase kebab shape as the static ids. So a name is recorded only when
+//! `build.rs` found it as the leading text of a string literal in `src/`
+//! (`TARGET_NAMES`); any other id, including ids of other kinds, is recorded as
+//! `dynamic`. Labels and text are never read.
 use gpui_kit::{
     App, Bounds, Element, ElementId, FocusHandle, GlobalElementId, Hitbox, InspectorElementId,
     InteractiveElement, IntoElement, LayoutId, Pixels, Window,
@@ -75,9 +79,18 @@ pub(crate) fn focused(window: &Window, cx: &App) -> Option<String> {
     })
 }
 
+/// Sorted static names from the program's string literals, written by `build.rs`.
+const TARGET_NAMES: &[&str] = include!(concat!(env!("OUT_DIR"), "/target_names.rs"));
+
 fn target_name(role: Option<gpui_kit::Role>, id: &ElementId) -> String {
-    let id = id.to_string();
-    let id = id.split(':').next().unwrap_or_default();
+    let name = match id {
+        ElementId::Name(text) => text.split(':').next(),
+        ElementId::NamedInteger(name, _) => Some(&**name),
+        _ => None,
+    };
+    let id = name
+        .filter(|name| TARGET_NAMES.binary_search(name).is_ok())
+        .unwrap_or("dynamic");
     match role {
         Some(role) => format!("{} [id={id}]", format!("{role:?}").to_lowercase()),
         None => format!("[id={id}]"),
@@ -230,4 +243,44 @@ impl<E: Element<PrepaintState = Option<Hitbox>> + InteractiveElement + gpui_kit:
 impl<E: Element<PrepaintState = Option<Hitbox>> + gpui_kit::StatefulInteractiveElement>
     gpui_kit::StatefulInteractiveElement for Targeted<E>
 {
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{TARGET_NAMES, target_name};
+    use gpui_kit::{ElementId, Role};
+
+    // Literals in this module are in `src/` too, so the names the tests expect
+    // in the table are assembled at run time from parts. They are then in the
+    // table only because the app's own ids use them.
+
+    #[test]
+    fn cluster_data_before_a_colon_is_dynamic() {
+        // Longer than every table entry, so it cannot be one.
+        let longest = TARGET_NAMES.iter().map(|name| name.len()).max();
+        let pod = format!("payments-api-{}", "x".repeat(longest.unwrap_or(0)));
+        let id = ElementId::Name(format!("{pod}:logs").into());
+        assert_eq!(target_name(None, &id), "[id=dynamic]");
+    }
+
+    #[test]
+    fn field_controls_id_without_a_colon_is_dynamic() {
+        // The shape `inspector/actions/fields.rs` builds for a container and key.
+        let id = ElementId::Name("Environment value web API_KEY controls".into());
+        assert_eq!(target_name(Some(Role::Button), &id), "button [id=dynamic]");
+    }
+
+    #[test]
+    fn literal_prefix_keeps_only_the_static_part() {
+        // `inspector/interaction_report.rs` builds `setting-row:{title}`.
+        let id = ElementId::Name(format!("{}-row:payments-api", "setting").into());
+        assert_eq!(target_name(None, &id), "[id=setting-row]");
+    }
+
+    #[test]
+    fn named_integer_records_its_literal_name() {
+        // `inspector/interaction_report.rs` builds `("interaction-row", index)`.
+        let id = ElementId::NamedInteger(format!("{}-row", "interaction").into(), 3);
+        assert_eq!(target_name(None, &id), "[id=interaction-row]");
+    }
 }
