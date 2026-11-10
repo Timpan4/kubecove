@@ -273,6 +273,13 @@ mod visual {
                     } else {
                         "reconnecting"
                     });
+                    if view == "live-reconnecting" {
+                        // The stale-data notice appears once the lost watch has
+                        // rendered for the show delay in `inspector/loading.rs`.
+                        cx.run_until_parked();
+                        act(&mut cx, handle, |_, _| {});
+                        cx.advance_clock(std::time::Duration::from_millis(300));
+                    }
                 }
                 "kind-picker" => {
                     act(&mut cx, handle, |window, cx| {
