@@ -96,14 +96,23 @@ impl Inspector {
         )
     }
 
+    /// A row of a custom kind (a CRD in the catalog, or present in the scope)
+    /// matches only that kind's API identity, so a built-in kind of the same
+    /// name does not select it. Explicit selections resolve against the whole
+    /// catalog, so a kind that had no objects at discovery shows its new rows.
     pub(super) fn selected_kind(&self, row_kind: &str, api_version: Option<&str>) -> bool {
         self.kind_selection.chosen.as_ref().is_none_or(|chosen| {
-            chosen.contains(row_kind)
-                || self.live.kinds.iter().any(|kind| {
-                    kind.kind == row_kind
-                        && api_version.is_none_or(|api| api == kind.api_version.as_str())
-                        && chosen.contains(&identity(kind))
-                })
+            let custom = api_version.and_then(|api| {
+                self.live
+                    .catalog
+                    .iter()
+                    .chain(&self.live.kinds)
+                    .find(|kind| kind.kind == row_kind && kind.api_version == api)
+            });
+            match custom {
+                Some(kind) => chosen.contains(&identity(kind)),
+                None => chosen.contains(row_kind),
+            }
         })
     }
 
