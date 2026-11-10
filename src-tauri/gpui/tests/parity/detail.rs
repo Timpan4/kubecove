@@ -189,9 +189,9 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
         "expectPortForward" => assert!(window.find_by_label(string(step, "title")).visible()),
         "expectLogLines" => {
             // Rows are labeled with their headline, in display order.
-            let rendered: Vec<String> = (0usize..)
-                .map_while(|index| window.try_find(("log-row", index)))
-                .map(|row| row.label().unwrap_or_default().to_owned())
+            let rendered: Vec<String> = locate::mounted_rows(window, "log-row")
+                .into_iter()
+                .map(|(_, label)| label)
                 .collect();
             assert_eq!(rendered, strings(step, "lines"));
         }
