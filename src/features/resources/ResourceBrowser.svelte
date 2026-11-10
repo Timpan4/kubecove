@@ -467,6 +467,9 @@
 			(!sourceReady || (resourcesQuery.isPending && !resourcesQuery.isPlaceholderData)),
 	);
 	const ownershipMapLoading = loadingDelay(() => !OwnershipMapComponent && !ownershipMapLoadError);
+	// Watches that connect or recover within the show delay show no notice. Limited and failed states are not transient.
+	const staleNotice = loadingDelay(() => !updatesCurrent && !live.state.reloadError
+		&& live.state.status !== "partial" && live.state.status !== "polling");
 	const resourceError = $derived(
 		workspaceReadContext.sourceError
 			? workspaceReadContext.sourceError
@@ -767,7 +770,7 @@
 				<summary class="cursor-pointer px-3 py-2"><span role="status">Refresh failed. Showing last observed state. Activity indicators are paused until live updates recover.</span></summary>
 				<div class="px-3 pb-3"><FriendlyError error={live.state.reloadError} context={{ operation: "resourcesLoad", fallbackTitle: "Resource refresh failed. Retrying." }} /></div>
 			</details>
-		{:else if !updatesCurrent && (resourcesQuery.data || topologyQuery.data)}
+		{:else if (resourcesQuery.data || topologyQuery.data) && (live.state.status === "partial" || live.state.status === "polling" || staleNotice.shown)}
 			<p role="status" class="rounded-md border border-amber-500/30 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
 				{#if live.state.status === "partial"}
 					Live updates are limited. Readable resources without watch access refresh periodically. Activity indicators are paused.

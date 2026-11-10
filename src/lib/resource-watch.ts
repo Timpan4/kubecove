@@ -61,6 +61,8 @@ interface WatchRegistration {
 	phase: WatchPhase;
 	// What the running stream last reported.
 	connected: boolean;
+	// The stream failed, dropped or ended. A watch that has not connected yet is not lost.
+	lost: boolean;
 	error: string | null;
 	permissionWarning: string | null;
 }
@@ -92,6 +94,7 @@ export function observeResourceScope({
 		key,
 		phase: { kind: "idle" },
 		connected: false,
+		lost: false,
 		error: null,
 		permissionWarning: null,
 	});
@@ -124,8 +127,9 @@ export function observeResourceScope({
 			...watches.flatMap((watch) => watch.permissionWarning ? [watch.permissionWarning] : []),
 			...reloadWarnings,
 		])];
+		// Watches that are still opening next to connected ones are starting, not recovering.
 		const status = !connected
-			? disconnected.every((watch) => watch.phase.kind === "waiting") ? "connecting" : "reconnecting"
+			? disconnected.some((watch) => watch.lost) ? "reconnecting" : "connecting"
 			: available.length === 0 ? "polling"
 			: warnings.length ? "partial" : "connected";
 		handlers.onState({
@@ -156,16 +160,19 @@ export function observeResourceScope({
 			if (event.type === "status") {
 				watch.permissionWarning = event.status === "forbidden" ? event.message : null;
 				watch.connected = event.status === "connected";
-				if (!watch.connected && !watch.permissionWarning) needsCatchUp = true;
-				if (watch.connected || watch.permissionWarning) watch.error = null;
+				watch.lost = !watch.connected && !watch.permissionWarning;
+				if (watch.lost) needsCatchUp = true;
+				else watch.error = null;
 			} else if (event.type === "error") {
 				watch.connected = false;
+				watch.lost = true;
 				watch.error = event.message;
 				needsCatchUp = true;
 			} else if (event.type === "stopped") {
 				// Also reached while opening: the start result below then finds the watch idle.
 				watch.phase = { kind: "idle" };
 				watch.connected = false;
+				watch.lost = true;
 				needsCatchUp = true;
 				closeStreamChannel(channel);
 			} else if (event.type === "resourceChanged") {
@@ -194,6 +201,7 @@ export function observeResourceScope({
 				watch.phase = { kind: "idle" };
 				watch.error = messageFromError(error);
 				watch.connected = false;
+				watch.lost = true;
 				needsCatchUp = true;
 				closeStreamChannel(channel);
 				publish();

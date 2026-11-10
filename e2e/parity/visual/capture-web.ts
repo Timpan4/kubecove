@@ -63,6 +63,8 @@ async function show(page: Page, view: View) {
             await page.getByRole("button", { name: "Live updates and refresh options" }).first().getByText("Live", { exact: true }).waitFor();
             await page.evaluate(`import('/src/lib/tauri-dev-mock-live.ts').then(m => m.replayLiveData(${JSON.stringify(view === "live-limited" ? "forbidden" : view === "live-failed" ? "failed" : "reconnecting")}))`);
             await page.getByRole("button", { name: "Live updates and refresh options" }).first().getByText(view === "live-limited" ? "Polling (limited)" : view === "live-failed" ? "Refresh failed" : "Reconnecting", { exact: true }).waitFor();
+            // The stale-data notice appears after the loading show delay.
+            if (view === "live-reconnecting") await page.getByText("Showing last observed state. Activity indicators are paused until live updates recover.", { exact: true }).waitFor();
             return;
         case "custom-search":
             await action(page, { action: "searchCustomKinds", value: "kustom" });
