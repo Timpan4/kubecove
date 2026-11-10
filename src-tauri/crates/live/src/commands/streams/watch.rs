@@ -3,7 +3,7 @@ use super::{
     registry::StreamBroadcaster,
 };
 use crate::{
-    commands::{ClusterAccess, ClusterLiveStore},
+    commands::{ClusterAccess, ClusterLiveStore, WatchOrigin},
     models::{ResourceWatchStart, StreamStatus, WatchResourceKey, WatchResourceTarget},
 };
 use futures_util::StreamExt;
@@ -174,6 +174,10 @@ pub(super) async fn run_resource_watch(
     // connections resume from the last event, and a 410 resets to "0".
     let mut resource_version = resource_version.unwrap_or_else(|| "0".to_string());
     let resource_version = &mut resource_version;
+    // The version after which this watch has delivered every change, for the
+    // live store to order events against cached lists. Bookmarks do not move
+    // it, so it stays at or before any list a delivered event updated.
+    let mut position: Option<String> = None;
 
     'watch: loop {
         let client = match access.stream_client(&cluster_context).await {
@@ -189,6 +193,14 @@ pub(super) async fn run_resource_watch(
         let api = scoped_dynamic_api(client, &key, namespaced, &api_resource);
         let params = WatchParams::default().timeout(WATCH_TIMEOUT_SECS);
         let watch_started = Instant::now();
+        // A connection at "0" replays objects out of order and omits deletions.
+        // A resumed connection continues from the last event, so it keeps the
+        // position; after a replay, the version it resumes at starts one.
+        if *resource_version == "0" {
+            position = None;
+        } else if position.is_none() {
+            position = Some(resource_version.clone());
+        }
 
         match api.watch(&params, resource_version).await {
             Ok(stream) => {
@@ -238,8 +250,15 @@ pub(super) async fn run_resource_watch(
                                 access.source_key(),
                                 &cluster_context,
                                 &normalized_kind,
+                                WatchOrigin {
+                                    namespace: key.namespace.as_deref(),
+                                    position: position.as_deref(),
+                                },
                                 &event,
                             );
+                            if position.is_some() {
+                                position.clone_from(&event_version);
+                            }
                             if !broadcaster.resource_changed(
                                 target,
                                 event_action(&event),

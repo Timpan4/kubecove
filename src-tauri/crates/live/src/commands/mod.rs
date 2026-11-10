@@ -6,7 +6,7 @@ pub mod streams;
 #[cfg(test)]
 pub(crate) use kubecove_kube::commands::{ClientIntent, FixedClusterAccess};
 pub(crate) use kubecove_kube::commands::{
-    ClusterAccess, ClusterLiveStore, SessionScope, builtin_kinds, helpers,
+    ClusterAccess, ClusterLiveStore, SessionScope, WatchOrigin, builtin_kinds, helpers,
 };
 
 pub use live_sessions::{LiveSessionScope, stop_live_sessions_outside_scope};

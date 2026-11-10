@@ -46,6 +46,16 @@ fn pods() -> WatchResourceKind {
     }
 }
 
+/// A watch of `namespace` (`None` for all) that has delivered every change
+/// after `position`.
+fn origin<'a>(namespace: Option<&'a str>, position: Option<&'a str>) -> WatchOrigin<'a> {
+    WatchOrigin {
+        namespace,
+        position,
+    }
+}
+
+/// Reads the pods of `namespace`, listing `loaded` at version "10" on a miss.
 async fn list(
     store: &ClusterLiveStore,
     namespace: Option<&str>,
@@ -90,13 +100,20 @@ async fn watch_events_update_cached_lists_without_listing_again() {
             summary("b", "apps", "Running"),
         ];
         list(&store, namespace, seed).await;
-        for event in [
-            WatchEvent::Modified(pod("a", "Running", "11")),
-            WatchEvent::Added(pod("c", "Pending", "12")),
-            WatchEvent::Deleted(pod("b", "Running", "13")),
-            WatchEvent::Modified(pod("c", "Failed", "14")),
+        // Each event's watch position is the previous event's version.
+        for (event, position) in [
+            (WatchEvent::Modified(pod("a", "Running", "11")), "10"),
+            (WatchEvent::Added(pod("c", "Pending", "12")), "11"),
+            (WatchEvent::Deleted(pod("b", "Running", "13")), "12"),
+            (WatchEvent::Modified(pod("c", "Failed", "14")), "13"),
         ] {
-            store.apply_watch_event(SOURCE, CONTEXT, &pods(), &event);
+            store.apply_watch_event(
+                SOURCE,
+                CONTEXT,
+                &pods(),
+                origin(namespace, Some(position)),
+                &event,
+            );
         }
         let snapshot = list(&store, namespace, Vec::new()).await;
         assert_eq!(
@@ -108,6 +125,68 @@ async fn watch_events_update_cached_lists_without_listing_again() {
             "{namespace:?}"
         );
         assert_eq!(snapshot.resource_version.as_deref(), Some("14"));
+    }
+}
+
+// Failure modes: a second watch of the same list that runs behind the first
+// (or a list read after an event) rolls a row back, brings back a deleted
+// object, or moves the list version backwards.
+#[tokio::test]
+async fn events_the_list_already_holds_are_skipped() {
+    let store = ClusterLiveStore::default().applying_watch_rows(project);
+    let seed = vec![
+        summary("a", "apps", "Pending"),
+        summary("b", "apps", "Running"),
+    ];
+    list(&store, None, seed).await;
+    for (event, position) in [
+        (WatchEvent::Modified(pod("b", "Failed", "11")), "10"),
+        (WatchEvent::Deleted(pod("b", "Failed", "12")), "11"),
+        (WatchEvent::Modified(pod("a", "Running", "13")), "12"),
+        // The lagging watch, and an event older than the list.
+        (WatchEvent::Modified(pod("b", "Failed", "11")), "10"),
+        (WatchEvent::Modified(pod("a", "Pending", "9")), "8"),
+    ] {
+        store.apply_watch_event(
+            SOURCE,
+            CONTEXT,
+            &pods(),
+            origin(None, Some(position)),
+            &event,
+        );
+    }
+    let snapshot = list(&store, None, Vec::new()).await;
+    assert_eq!(statuses(&snapshot), [("a".into(), "Running".into())]);
+    assert_eq!(snapshot.resource_version.as_deref(), Some("13"));
+}
+
+// Failure modes: a namespace watch advances the all-namespace list past
+// changes in other namespaces; a watch that started after the list (or replays
+// from "0") patches it across changes it never delivered. Each must make the
+// next read list again.
+#[tokio::test]
+async fn events_that_do_not_follow_the_list_make_the_next_read_list_again() {
+    let relisted = vec![summary("fresh", "apps", "Running")];
+    for (list_namespace, watch) in [
+        (None, origin(Some("apps"), Some("10"))),
+        (Some("apps"), origin(None, Some("15"))),
+        (Some("apps"), origin(None, None)),
+    ] {
+        let store = ClusterLiveStore::default().applying_watch_rows(project);
+        list(&store, list_namespace, vec![summary("a", "apps", "Pending")]).await;
+        store.apply_watch_event(
+            SOURCE,
+            CONTEXT,
+            &pods(),
+            watch,
+            &WatchEvent::Modified(pod("a", "Running", "16")),
+        );
+        let snapshot = list(&store, list_namespace, relisted.clone()).await;
+        assert_eq!(
+            statuses(&snapshot),
+            [("fresh".into(), "Running".into())],
+            "{list_namespace:?} {watch:?}"
+        );
     }
 }
 
@@ -126,6 +205,7 @@ async fn unappliable_watch_events_make_the_next_read_list_again() {
             SOURCE,
             CONTEXT,
             &pods(),
+            origin(None, Some("10")),
             &WatchEvent::Modified(pod("opaque", "Running", "11")),
         );
         let snapshot = list(&store, None, relisted.clone()).await;
@@ -155,6 +235,7 @@ async fn unappliable_watch_events_make_the_next_read_list_again() {
         SOURCE,
         CONTEXT,
         &pods(),
+        origin(None, Some("10")),
         &WatchEvent::Modified(pod("a", "Running", "11")),
     );
     release.send(()).unwrap();

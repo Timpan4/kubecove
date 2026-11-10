@@ -41,7 +41,7 @@ pub use list::{ListSnapshot, ListedResources};
 
 #[path = "live_store_watch.rs"]
 mod watch;
-pub use watch::WatchedRow;
+pub use watch::{WatchOrigin, WatchedRow};
 
 type SharedLoad<T> = Shared<BoxFuture<'static, Result<Arc<T>, AppError>>>;
 
