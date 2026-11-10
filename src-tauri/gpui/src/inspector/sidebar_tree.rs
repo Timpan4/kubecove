@@ -76,11 +76,13 @@ impl TreeState {
             .then_some(focused)
     }
 
+    /// The handle is the tab stop: an element's `tab_index` applies only to a
+    /// handle the element creates, not to one it tracks.
     pub(super) fn focus_handle(&self, path: &str, cx: &mut App) -> FocusHandle {
         self.focus
             .borrow_mut()
             .entry(path.to_owned())
-            .or_insert_with(|| cx.focus_handle())
+            .or_insert_with(|| cx.focus_handle().tab_stop(true))
             .clone()
     }
 }

@@ -47,8 +47,20 @@ fn enter_on_a_tabbed_sidebar_row_selects_it(cx: &mut TestAppContext) {
     click(cx, handle, "nav:Network");
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
-        assert_eq!(window.find("nav:Network").description(), Some("selected"));
+        let row = window.find("nav:Network");
+        assert_eq!(row.description(), Some("selected"));
+        assert_eq!(row.focused(), Some(true), "a click focuses its row");
         window.press("tab", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(
+            window.find("nav:Config").focused(),
+            Some(true),
+            "Tab moves focus to the next row"
+        );
         window.press("enter", cx);
     })
     .unwrap();
@@ -56,10 +68,11 @@ fn enter_on_a_tabbed_sidebar_row_selects_it(cx: &mut TestAppContext) {
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
         assert_eq!(
-            window.find("nav:Network").description(),
-            Some("unselected"),
+            window.find("nav:Config").description(),
+            Some("selected"),
             "Enter must select the row Tab focused"
         );
+        assert_eq!(window.find("nav:Network").description(), Some("unselected"));
     })
     .unwrap();
 }
@@ -69,12 +82,17 @@ fn enter_on_a_tabbed_sidebar_row_selects_it(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn kinds_restored_by_reset_reorder_with_arrow_keys(cx: &mut TestAppContext) {
     let backend = Arc::new(Controlled::default());
-    backend.argo.document.lock().unwrap().preferences.resource_kind_lanes =
-        kubecove_gpui::preferences::KindLanes {
-            first: vec!["Secret".into()],
-            normal: vec!["*".into()],
-            last: vec!["Pod".into()],
-        };
+    backend
+        .argo
+        .document
+        .lock()
+        .unwrap()
+        .preferences
+        .resource_kind_lanes = kubecove_gpui::preferences::KindLanes {
+        first: vec!["Secret".into()],
+        normal: vec!["*".into()],
+        last: vec!["Pod".into()],
+    };
     let handle = open(cx, backend);
     click(cx, handle, "open-settings");
     click(cx, handle, "settings-section:Appearance");
