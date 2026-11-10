@@ -41,17 +41,20 @@
 	const viewportDuration = $derived(prefersReducedMotion.current ? 0 : fitDuration);
 
 	$effect(() => {
+		const plan = fitPlan;
 		if (
-			!fitPlan ||
-			fitPlan.key === lastFitKey ||
+			!plan ||
+			plan.key === lastFitKey ||
 			globalThis.window === undefined
 		) return;
-		lastFitKey = fitPlan.key;
 		let secondFrame: number | null = null;
 		const firstFrame = window.requestAnimationFrame(() => {
 			secondFrame = window.requestAnimationFrame(() => {
+				// A plan counts as fitted only here. A graph update with the same key
+				// reruns this effect and cancels the frames, and must schedule them again.
+				lastFitKey = plan.key;
 				void tick().then(() =>
-					flow.setViewport(fitPlan.viewport, { duration: viewportDuration }),
+					flow.setViewport(plan.viewport, { duration: viewportDuration }),
 				);
 			});
 		});
