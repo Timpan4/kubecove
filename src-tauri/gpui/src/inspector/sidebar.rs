@@ -221,8 +221,8 @@ impl Inspector {
                     )
                     .track_focus(&focus)
                     .tab_index(0)
-                    .on_key_down(
-                        cx.listener(move |this, event: &gpui_kit::KeyDownEvent, window, cx| {
+                    .on_key_down(cx.listener(
+                        move |this, event: &gpui_kit::KeyDownEvent, window, cx| {
                             match event.keystroke.key.as_str() {
                                 "left" | "right" if custom => {
                                     this.live.custom_open = event.keystroke.key == "right";
@@ -234,8 +234,8 @@ impl Inspector {
                                 }
                                 _ => {}
                             }
-                        }),
-                    )
+                        },
+                    ))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.activate_navigation(target, custom, window, cx);
                     }))

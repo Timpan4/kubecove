@@ -353,9 +353,9 @@ impl Inspector {
                         .track_focus(&focus)
                         .focus(|style| style.border_2().border_color(Tokens::ring()))
                 })
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    this.set_map_mode(network, window, cx)
-                }))
+                .on_click(
+                    cx.listener(move |this, _, window, cx| this.set_map_mode(network, window, cx)),
+                )
                 .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
                     if matches!(event.keystroke.key.as_str(), "enter" | "space") {
                         this.set_map_mode(network, window, cx);

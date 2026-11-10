@@ -284,7 +284,10 @@ mod tests {
     #[test]
     fn tagged_keys_compare_by_their_resolved_type() {
         assert_eq!(duplicate_lines("!!int 1: a\n1: b\n"), [2]);
-        assert_eq!(duplicate_lines("!!int 0x1: a\n!<tag:yaml.org,2002:int> 1: b\n"), [2]);
+        assert_eq!(
+            duplicate_lines("!!int 0x1: a\n!<tag:yaml.org,2002:int> 1: b\n"),
+            [2]
+        );
         assert!(duplicate_lines("!!str true: a\n!!bool true: b\n").is_empty());
         assert!(duplicate_lines("!!str 1: a\n1: b\n").is_empty());
         assert_eq!(duplicate_lines("!!str 1: a\n\"1\": b\n"), [2]);
@@ -296,8 +299,14 @@ mod tests {
     #[test]
     fn folded_keys_keep_breaks_around_more_indented_lines() {
         assert!(duplicate_lines("? >-\n  a\n    b\n: one\n\"a   b\": two\n").is_empty());
-        assert_eq!(duplicate_lines("? >-\n  a\n    b\n: one\n\"a\\n  b\": two\n"), [5]);
-        assert_eq!(duplicate_lines("? >-\n  a\n  b\n: one\n\"a b\": two\n"), [5]);
+        assert_eq!(
+            duplicate_lines("? >-\n  a\n    b\n: one\n\"a\\n  b\": two\n"),
+            [5]
+        );
+        assert_eq!(
+            duplicate_lines("? >-\n  a\n  b\n: one\n\"a b\": two\n"),
+            [5]
+        );
         assert_eq!(duplicate_lines("? |-\n\n  a\n: one\n\"\\na\": two\n"), [5]);
     }
 }

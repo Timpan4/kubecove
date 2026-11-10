@@ -262,7 +262,7 @@ impl Inspector {
                     .iter()
                     .find(|(name, _)| *name == label)
                 {
-                    self.tree_select(label.to_owned(), None, *kinds, window, cx);
+                    self.tree_select(label.to_owned(), None, kinds, window, cx);
                 }
             }
             Destination::CustomResources => self.select_custom_resources(window, cx),

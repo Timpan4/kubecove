@@ -53,7 +53,10 @@ impl Inspector {
                 let source = backend.kubeconfig_sources().await?.source_key;
                 // A workspace opened during the source read owns the sessions,
                 // including forwards it restores, so nothing stops then.
-                if this.update(cx, |this, _| this.workspace_open()).unwrap_or(true) {
+                if this
+                    .update(cx, |this, _| this.workspace_open())
+                    .unwrap_or(true)
+                {
                     return Ok(None);
                 }
                 backend

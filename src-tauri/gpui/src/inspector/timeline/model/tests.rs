@@ -64,7 +64,11 @@ fn utc_setting_groups_and_times_entries_in_utc() {
             (
                 group.key.as_deref(),
                 group.label.as_str(),
-                group.rows.iter().map(|row| row.time.as_str()).collect::<Vec<_>>(),
+                group
+                    .rows
+                    .iter()
+                    .map(|row| row.time.as_str())
+                    .collect::<Vec<_>>(),
             )
         })
         .collect();

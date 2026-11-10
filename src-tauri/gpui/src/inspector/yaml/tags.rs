@@ -286,7 +286,11 @@ fn number_key(number: f64) -> Option<KeyValue> {
         return None;
     }
     // `-0 === 0` in JavaScript.
-    Some(KeyValue::Number(if number == 0.0 { 0 } else { number.to_bits() }))
+    Some(KeyValue::Number(if number == 0.0 {
+        0
+    } else {
+        number.to_bits()
+    }))
 }
 
 /// The number a plain scalar resolves to in the core schema, in the order of

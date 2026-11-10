@@ -156,8 +156,9 @@ pub fn hide_today_heading<'a>(
 
 /// `incidentTimelineTimeFormatter`.
 pub fn timeline_time(item: &TimelineItem, timezone: TimestampTimezone) -> String {
-    parse(item.timestamp.as_deref())
-        .map_or("No time".to_owned(), |time| in_zone(time, timezone, "%H:%M:%S"))
+    parse(item.timestamp.as_deref()).map_or("No time".to_owned(), |time| {
+        in_zone(time, timezone, "%H:%M:%S")
+    })
 }
 
 /// The text after `prefix`, matched ignoring ASCII case like the web's `/i`

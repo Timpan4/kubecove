@@ -74,13 +74,6 @@ pub fn full_timestamp(value: &str) -> String {
     })
 }
 
-/// `formatExactTimeOnly(..., "second")`, else `fallback`.
-pub fn time_of_day(value: Option<&str>, fallback: &str) -> String {
-    parse(value).map_or(fallback.to_owned(), |time| {
-        time.with_timezone(&Local).format("%H:%M:%S").to_string()
-    })
-}
-
 pub(crate) fn is_warning(event: &ResourceEventSummary) -> bool {
     event.event_type == "Warning"
 }
