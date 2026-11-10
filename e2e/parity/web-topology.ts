@@ -21,6 +21,10 @@ export async function topologyAction(page: Page, step: Step) {
 		case "selectTopologyNode": await page.locator(`.svelte-flow__node[data-id="${step.id}"]`).click(); break;
 		case "expectTopologyEmpty": await page.getByText(step.title, { exact: true }).waitFor(); break;
 		case "expectNoTopologyNode":
+			// The loading spinner shows only after a delay, so its absence does not mean the graph
+			// loaded. Wait for a rendered graph, so an empty container cannot pass this check.
+			await page.locator(".svelte-flow__node").first().waitFor();
+			await page.getByText("Loading topology", { exact: true }).waitFor({ state: "hidden" });
 			if (await page.locator(`.svelte-flow__node[data-id="${step.id}"]`).count()) throw new Error("Other mode's node remains");
 			break;
 		case "expectResourceMetrics": {
