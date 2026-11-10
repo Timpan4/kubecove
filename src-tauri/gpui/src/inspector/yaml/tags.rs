@@ -114,20 +114,8 @@ pub(super) fn check(
         Content::Scalar(value) => {
             // `findScalarTagByName`: `str` and `!` take any value, the other
             // core tags need their test, then the known scalar tags.
-            let value = value.as_str();
             let resolved = name == "!"
-                || match name.strip_prefix(CORE) {
-                    Some("str") => true,
-                    Some("null") => NULL.is_match(value),
-                    Some("bool") => BOOL.is_match(value),
-                    Some("int") => [&INT_OCT, &INT, &INT_HEX]
-                        .iter()
-                        .any(|test| test.is_match(value)),
-                    Some("float") => [&FLOAT_NAN, &FLOAT_EXP, &FLOAT]
-                        .iter()
-                        .any(|test| test.is_match(value)),
-                    _ => false,
-                }
+                || core_test(name.strip_prefix(CORE), value)
                 || matches!(known, Some(None));
             if !resolved {
                 findings.push(unresolved());
@@ -216,13 +204,35 @@ pub(super) enum KeyValue {
     Text(String),
 }
 
-pub(super) fn key_value(key: Node, text: &str) -> Option<KeyValue> {
+/// The tests of the core scalar tags in `findScalarTagByName`: `str` takes any
+/// value, `null`, `bool`, `int` and `float` need a match. `core` is the tag
+/// name after the core prefix.
+fn core_test(core: Option<&str>, value: &str) -> bool {
+    match core {
+        Some("str") => true,
+        Some("null") => NULL.is_match(value),
+        Some("bool") => BOOL.is_match(value),
+        Some("int") => [&INT_OCT, &INT, &INT_HEX]
+            .iter()
+            .any(|test| test.is_match(value)),
+        Some("float") => [&FLOAT_NAN, &FLOAT_EXP, &FLOAT]
+            .iter()
+            .any(|test| test.is_match(value)),
+        _ => false,
+    }
+}
+
+pub(super) fn key_value(
+    key: Node,
+    text: &str,
+    handles: &HashMap<String, String>,
+) -> Option<KeyValue> {
     let mut cursor = key.walk();
-    let mut tagged = false;
+    let mut tag = None;
     let mut scalar = None;
     for child in key.named_children(&mut cursor) {
         match child.kind() {
-            "tag" => tagged = true,
+            "tag" => tag = Some(&text[child.byte_range()]),
             "anchor" | "comment" => {}
             "plain_scalar" | "single_quote_scalar" | "double_quote_scalar" | "block_scalar" => {
                 scalar = Some(child);
@@ -232,22 +242,51 @@ pub(super) fn key_value(key: Node, text: &str) -> Option<KeyValue> {
     }
     let scalar = scalar?;
     let value = scalar_value(scalar, text);
-    if tagged || scalar.kind() != "plain_scalar" {
-        return Some(KeyValue::Text(value));
+    // `composeScalar`: a tag that resolves picks the type by name, whatever
+    // the quoting. A tag that does not resolve leaves the untagged rules,
+    // and `check` reports it.
+    match tag.and_then(|source| tag_name(source, handles, &mut Vec::new())) {
+        Some(name) => tagged_key(&name, value),
+        None if scalar.kind() != "plain_scalar" => Some(KeyValue::Text(value)),
+        None => Some(if NULL.is_match(&value) {
+            KeyValue::Null
+        } else if BOOL.is_match(&value) {
+            KeyValue::Bool(value.starts_with(['t', 'T']))
+        } else if let Some(number) = core_number(&value) {
+            return number_key(number);
+        } else {
+            KeyValue::Text(value)
+        }),
     }
-    Some(if NULL.is_match(&value) {
-        KeyValue::Null
-    } else if BOOL.is_match(&value) {
-        KeyValue::Bool(value.starts_with(['t', 'T']))
-    } else if let Some(number) = core_number(&value) {
-        if number.is_nan() {
-            return None;
-        }
-        // `-0 === 0` in JavaScript.
-        KeyValue::Number(if number == 0.0 { 0 } else { number.to_bits() })
-    } else {
-        KeyValue::Text(value)
-    })
+}
+
+/// A key with the explicit tag `name`, as `findScalarTagByName` resolves it.
+fn tagged_key(name: &str, value: String) -> Option<KeyValue> {
+    let core = name.strip_prefix(CORE);
+    if !core_test(core, &value) {
+        // A known scalar tag, such as `!!timestamp`, resolves to an object,
+        // which equals no other key. Any other tag falls back to a string.
+        let object = core.is_some_and(|core| {
+            KNOWN_TAGS
+                .iter()
+                .any(|(known, collection)| *known == core && collection.is_none())
+        });
+        return (!object).then_some(KeyValue::Text(value));
+    }
+    match core {
+        Some("null") => Some(KeyValue::Null),
+        Some("bool") => Some(KeyValue::Bool(value.starts_with(['t', 'T']))),
+        Some("int" | "float") => core_number(&value).and_then(number_key),
+        _ => Some(KeyValue::Text(value)),
+    }
+}
+
+fn number_key(number: f64) -> Option<KeyValue> {
+    if number.is_nan() {
+        return None;
+    }
+    // `-0 === 0` in JavaScript.
+    Some(KeyValue::Number(if number == 0.0 { 0 } else { number.to_bits() }))
 }
 
 /// The number a plain scalar resolves to in the core schema, in the order of
@@ -381,40 +420,71 @@ fn push_escape(value: &mut String, escape: char, chars: &mut Peekable<Chars<'_>>
     }
 }
 
-/// A block scalar's content: lines without the first content line's indent,
-/// joined by line breaks for `|` and folded for `>`, then chomped.
+/// A block scalar's content, as `resolveBlockScalar` builds it: lines without
+/// the first content line's indent, joined by line breaks for `|`. For `>`,
+/// lines at that indent fold to spaces, and the breaks around more-indented
+/// lines stay. Leading blank lines stay, then the trailing ones are chomped.
 fn block_value(raw: &str) -> String {
     let (header, body) = raw.split_once('\n').unwrap_or((raw, ""));
     let header = header.split('#').next().unwrap_or_default();
-    let lines: Vec<&str> = body.split('\n').collect();
-    let indent = lines
+    let folded = header.starts_with('>');
+    // `[indent, content]` per line: the leading spaces, then the rest
+    // without a carriage return. A line without content is blank.
+    let lines: Vec<(usize, &str)> = body
+        .split('\n')
+        .map(|line| {
+            let content = line.trim_start_matches(' ');
+            let content = content.strip_suffix('\r').unwrap_or(content);
+            (line.len() - line.trim_start_matches(' ').len(), content)
+        })
+        .collect();
+    let start = lines
         .iter()
-        .find(|line| !line.trim().is_empty())
-        .map_or(0, |line| line.len() - line.trim_start_matches(' ').len());
+        .position(|(_, content)| !content.is_empty())
+        .unwrap_or(0);
+    let indent = lines.get(start).map_or(0, |(spaces, _)| *spaces);
     let end = lines
         .iter()
-        .rposition(|line| !line.trim().is_empty())
+        .rposition(|(_, content)| !content.is_empty())
         .map_or(0, |last| last + 1);
     let mut value = String::new();
-    let mut breaks = 0;
-    for line in &lines[..end] {
-        if line.trim().is_empty() {
-            breaks += 1;
-            continue;
-        }
-        if !value.is_empty() {
-            let folded = header.starts_with('>') && breaks == 0;
-            if folded {
-                value.push(' ');
+    let push_line = |value: &mut String, spaces: usize, content: &str| {
+        value.extend(std::iter::repeat_n(' ', spaces.saturating_sub(indent)));
+        value.push_str(content);
+    };
+    for &(spaces, _) in &lines[..start.min(end)] {
+        push_line(&mut value, spaces, "");
+        value.push('\n');
+    }
+    let mut separator = "";
+    let mut more_indented = false;
+    for &(spaces, content) in &lines[start.min(end)..end] {
+        if !folded {
+            value.push_str(separator);
+            push_line(&mut value, spaces, content);
+            separator = "\n";
+        } else if spaces > indent || content.starts_with('\t') {
+            separator = match separator {
+                " " => "\n",
+                "\n" if !more_indented => "\n\n",
+                other => other,
+            };
+            value.push_str(separator);
+            push_line(&mut value, spaces, content);
+            separator = "\n";
+            more_indented = true;
+        } else if content.is_empty() {
+            if separator == "\n" {
+                value.push('\n');
             } else {
-                value.extend(std::iter::repeat_n(
-                    '\n',
-                    breaks + usize::from(!header.starts_with('>')),
-                ));
+                separator = "\n";
             }
+        } else {
+            value.push_str(separator);
+            value.push_str(content);
+            separator = " ";
+            more_indented = false;
         }
-        value.push_str(line.get(indent..).unwrap_or_default());
-        breaks = 0;
     }
     // Line breaks after the last content line.
     let trailing = if end == 0 { 0 } else { lines.len() - end };
