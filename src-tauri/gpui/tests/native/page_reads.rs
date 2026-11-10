@@ -1,4 +1,5 @@
 use super::*;
+use gpui_kit::test::TestQueryExt;
 use std::sync::atomic::AtomicUsize;
 
 #[derive(Default)]
@@ -157,6 +158,12 @@ fn a_failed_incident_refresh_preserves_rows_and_exposes_the_error(cx: &mut TestA
     let backend = Arc::new(Controlled::default());
     let handle = open(cx, backend.clone());
     click(cx, handle, "nav:Incidents");
+    // A loaded incident card, labeled kind/name, that the failed refresh must keep.
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.try_find_by_label("Pod/payments-api-0").is_some());
+    })
+    .unwrap();
     backend.pages.fail.store(true, Ordering::SeqCst);
     click(cx, handle, "incidents-refresh");
     for millis in [1000, 2000] {
@@ -169,6 +176,10 @@ fn a_failed_incident_refresh_preserves_rows_and_exposes_the_error(cx: &mut TestA
         assert!(
             window.try_find("incidents-refresh").is_some(),
             "stale incident controls must remain usable"
+        );
+        assert!(
+            window.try_find_by_label("Pod/payments-api-0").is_some(),
+            "loaded incident rows must survive a failed refresh"
         );
         assert!(window.try_find("Incident refresh failed").is_some());
         window.click("Incident refresh failed:detail", cx);
