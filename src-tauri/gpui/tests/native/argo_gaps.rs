@@ -119,7 +119,8 @@ fn forget_failures_preserve_retryable_profile_without_auto_reconnect(cx: &mut Te
 fn forget_does_not_delete_credential_when_reconnect_opt_out_cannot_save(cx: &mut TestAppContext) {
     let backend = Arc::new(Controlled::default());
     let h = open_argo(cx, backend.clone());
-    connect(cx, h);
+    // A remembered profile, so forget must first save the reconnect opt-out.
+    connect_remembered(cx, h);
     let id = backend
         .argo
         .document
@@ -135,16 +136,18 @@ fn forget_does_not_delete_credential_when_reconnect_opt_out_cannot_save(cx: &mut
     );
     forget(cx, h, &id);
     assert!(backend.argo.forgotten.lock().unwrap().is_empty());
-    assert_eq!(
-        backend
-            .argo
-            .document
-            .lock()
-            .unwrap()
-            .preferences
-            .argo_profiles[0]
-            .id,
-        id
+    let profile = backend
+        .argo
+        .document
+        .lock()
+        .unwrap()
+        .preferences
+        .argo_profiles[0]
+        .clone();
+    assert_eq!(profile.id, id);
+    assert!(
+        profile.remember_credential,
+        "a failed opt-out save keeps automatic reconnect on"
     );
     step(cx, h, |w, _| {
         assert!(
