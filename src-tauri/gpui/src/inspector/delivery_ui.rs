@@ -178,14 +178,21 @@ pub(super) fn rail(beside: bool, sections: Vec<Div>) -> Div {
             .gap(px(20.))
             .children(sections)
     } else {
+        // The web strip is `overflow-x-auto`, so sections past the width stay reachable.
         div()
-            .flex()
-            .gap(px(20.))
+            .min_w_0()
             .pb(px(12.))
             .border_b_1()
             .border_color(Tokens::border())
-            .overflow_hidden()
-            .children(sections)
+            .child(
+                div()
+                    .id("delivery-rail-strip")
+                    .w_full()
+                    .overflow_x_scroll()
+                    .flex()
+                    .gap(px(20.))
+                    .children(sections),
+            )
     }
 }
 

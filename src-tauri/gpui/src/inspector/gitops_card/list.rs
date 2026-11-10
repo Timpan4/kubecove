@@ -15,20 +15,24 @@ use gpui_kit::{Context, Div, ScrollHandle, div, prelude::*, px};
 /// The list's columns: `minmax(12rem,1fr) 9rem minmax(16rem,1.35fr)
 /// minmax(7rem,0.6fr) minmax(9rem,0.75fr) 4rem 9rem` with `gap-3 px-3`, at
 /// least `68rem` wide. Flexible tracks below their minimum freeze there.
+const TRACKS: [(f32, f32); 7] = [
+    (192., 1.),
+    (144., 0.),
+    (256., 1.35),
+    (112., 0.6),
+    (144., 0.75),
+    (64., 0.),
+    (144., 0.),
+];
 fn columns(width: f32) -> [f32; 7] {
-    dui::tracks(
-        [
-            (192., 1.),
-            (144., 0.),
-            (256., 1.35),
-            (112., 0.6),
-            (144., 0.75),
-            (64., 0.),
-            (144., 0.),
-        ],
-        1088.,
-        width,
-    )
+    dui::tracks(TRACKS, 1088., width)
+}
+/// The narrowest row that shows every track: the minimums with `gap-3 px-3` exceed
+/// `68rem`, and the web's scroll container reaches the grid's overflowing tracks.
+fn scroll_width() -> f32 {
+    TRACKS.iter().map(|(min, _)| min).sum::<f32>()
+        + (TRACKS.len() as f32 - 1.) * CARD_GAP
+        + 24.
 }
 
 /// The list header row: `bg-muted/30 px-3 py-2 text-[0.65rem] uppercase`.
@@ -63,7 +67,7 @@ pub(in crate::inspector) fn list_header(width: f32, scroll: &ScrollHandle) -> Di
         .child(dui::horizontal(
             body,
             width,
-            1088.,
+            scroll_width(),
             scroll,
             "gitops-columns".into(),
         ))
@@ -115,7 +119,18 @@ pub(in crate::inspector) fn list_row(
         .child(
             cell(0)
                 .pl(px(4.))
-                .child(name(selection, 14., 20., cx))
+                // The web list name's `onActivate` opens the selection, as a card click does.
+                .child({
+                    let key = selection.key();
+                    div()
+                        .id(gpui_kit::SharedString::from(format!("gitops-list-name:{key}")))
+                        .min_w_0()
+                        .cursor_pointer()
+                        .child(name(selection, 14., 20., cx))
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.open_gitops_selection(&key, window, cx)
+                        }))
+                })
                 .child(ui::muted(ui::xs(selection.subtitle().to_owned())).truncate()),
         )
         .child(
@@ -164,7 +179,7 @@ pub(in crate::inspector) fn list_row(
         .child(dui::horizontal(
             body,
             width,
-            1088.,
+            scroll_width(),
             scroll,
             format!("gitops-columns:{}", selection.key()),
         ))
