@@ -290,7 +290,11 @@ impl Backend for Controlled {
         } else {
             YAML
         };
+        let gate = self.detail.details_gate.lock().unwrap().take();
         Box::pin(async move {
+            if let Some(gate) = gate {
+                let _ = gate.await;
+            }
             Ok(ResourceDetailsFull {
                 summary,
                 yaml: yaml.into(),

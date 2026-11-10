@@ -32,6 +32,8 @@ pub struct DetailControls {
     applied: AtomicUsize,
     /// Holds the next apply-clean draft read until the test releases it.
     draft_gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+    /// Holds the next resource details read until the test releases it.
+    pub details_gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
 }
 
 /// Records that the backend stream stopped, as `StopStream` does natively.
@@ -206,6 +208,27 @@ fn step(
     })
     .unwrap();
     cx.run_until_parked();
+}
+
+/// Failure mode: a tab picked while the details read runs is dropped, so the
+/// detail opens on Details.
+#[gpui_kit::test]
+fn a_tab_picked_while_the_detail_loads_is_kept(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    let (release, gate) = tokio::sync::oneshot::channel();
+    *backend.detail.details_gate.lock().unwrap() = Some(gate);
+    let handle = open(cx, backend);
+    step(cx, handle, |window, cx| {
+        window.click("resource:Deployment:payments:payments-api:mock-dev", cx);
+    });
+    step(cx, handle, |window, cx| {
+        window.click("show-yaml", cx);
+    });
+    let _ = release.send(());
+    cx.run_until_parked();
+    step(cx, handle, |window, _| {
+        assert_eq!(window.find("show-yaml").selected(), Some(true));
+    });
 }
 
 #[gpui_kit::test]

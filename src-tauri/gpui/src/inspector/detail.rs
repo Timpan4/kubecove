@@ -36,7 +36,8 @@ pub(super) enum Detail {
 /// and drops `tab`, so a closed panel's tab never reaches the next resource.
 pub(super) struct LoadingDetail {
     pub resource: ResourceSummary,
-    /// The tab `open_resource_on` asked for, shown once the read succeeds.
+    /// The tab `open_resource_on` asked for or the user picked while the read
+    /// runs, shown once the read succeeds.
     pub tab: Option<DetailTab>,
     _read: Task<()>,
 }
@@ -215,9 +216,18 @@ impl ResourceDetail {
 impl Inspector {
     fn set_tab(&mut self, tab: DetailTab, window: &mut Window, cx: &mut Context<Self>) {
         self.request_view();
-        if let Detail::Ready(detail) = &mut self.detail {
-            detail.secrets = Default::default();
-            detail.tab = tab;
+        match &mut self.detail {
+            Detail::Ready(detail) => {
+                detail.secrets = Default::default();
+                detail.tab = tab;
+            }
+            // `settle_detail` opens the tab picked while the read runs.
+            Detail::Loading(loading) => {
+                loading.tab = Some(tab);
+                cx.notify();
+                return;
+            }
+            Detail::Closed | Detail::Failed(_) => {}
         }
         match tab {
             DetailTab::Logs => self.open_logs(window, cx),
@@ -240,7 +250,7 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) {
         if self.defer_exec_leave(
-            super::exec::LeaveIntent::Resource(Box::new(resource.clone())),
+            super::exec::LeaveIntent::Resource(Box::new(resource.clone()), tab),
             cx,
         ) {
             return;
@@ -405,6 +415,7 @@ impl Inspector {
         };
         let active = match &self.detail {
             Detail::Ready(detail) => Some(detail.tab),
+            Detail::Loading(loading) => loading.tab,
             _ => None,
         };
         let resource = self.detail.resource().cloned();
