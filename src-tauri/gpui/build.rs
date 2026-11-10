@@ -46,13 +46,20 @@ fn is_static_name(name: &str) -> bool {
 /// The text of each `"`-delimited literal. A backslash skips the next byte,
 /// except in raw strings, which end at a quote followed by their opening `#`s.
 /// The char literals `'"'` and `'\X'` are stepped over so their quote does not
-/// open a literal.
+/// open a literal. Line comments are skipped, so a lone quote in prose cannot
+/// pair with the quote that opens the next literal.
 fn literals(source: &str) -> Vec<&str> {
     let bytes = source.as_bytes();
     let mut literals = Vec::new();
     let mut index = 0;
     while index < bytes.len() {
         match bytes[index] {
+            b'/' if bytes.get(index + 1) == Some(&b'/') => {
+                index += bytes[index..]
+                    .iter()
+                    .position(|&byte| byte == b'\n')
+                    .unwrap_or(bytes.len() - index);
+            }
             b'\'' if matches!(bytes.get(index + 1), Some(b'"' | b'\\')) => index += 3,
             b'"' => {
                 let hashes = bytes[..index]
