@@ -32,6 +32,8 @@ pub struct DetailControls {
     applied: AtomicUsize,
     /// Holds the next apply-clean draft read until the test releases it.
     draft_gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+    /// Reads of the read-only YAML view, as opposed to apply-clean drafts.
+    view_reads: AtomicUsize,
 }
 
 /// Records that the backend stream stopped, as `StopStream` does natively.
@@ -118,6 +120,9 @@ impl DetailControls {
         let gate = (mode == YamlViewMode::ApplyClean)
             .then(|| self.draft_gate.lock().unwrap().take())
             .flatten();
+        if mode != YamlViewMode::ApplyClean {
+            self.view_reads.fetch_add(1, Ordering::SeqCst);
+        }
         Box::pin(async move {
             if let Some(gate) = gate {
                 let _ = gate.await;
@@ -390,5 +395,29 @@ fn a_refused_sidebar_row_keeps_its_selection(cx: &mut TestAppContext) {
     step(cx, handle, |window, _| {
         assert_eq!(window.find("nav:RBAC").description(), Some("unselected"));
         assert!(window.find("discard-draft").visible());
+    });
+}
+
+/// Failure mode: a successful apply shows its message beside the pre-edit
+/// manifest, because nothing reads the applied object's YAML again.
+#[gpui_kit::test]
+fn a_successful_apply_reads_the_yaml_view_again(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    let handle = open_tab(cx, backend.clone(), "yaml");
+    step(cx, handle, |window, cx| window.click("edit-draft", cx));
+    step(cx, handle, |window, cx| edit_draft(window, cx, DRAFT));
+    step(cx, handle, |window, cx| window.click("yaml-dry-run", cx));
+    let before = backend.detail.view_reads.load(Ordering::SeqCst);
+    step(cx, handle, |window, cx| window.click("yaml-apply", cx));
+    assert_eq!(backend.detail.applied.load(Ordering::SeqCst), 1);
+    assert!(
+        backend.detail.view_reads.load(Ordering::SeqCst) > before,
+        "the applied object's YAML must be read again"
+    );
+    step(cx, handle, |window, _| {
+        assert_eq!(
+            window.find("yaml-applied").label(),
+            Some("Deployment/payments-api applied.")
+        );
     });
 }
