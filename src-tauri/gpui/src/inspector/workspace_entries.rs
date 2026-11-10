@@ -177,7 +177,10 @@ impl Inspector {
         if !self.can_leave(cx) {
             return;
         }
-        if entry.kind == EntryKind::Namespace && entry.cluster_context == self.scope.context {
+        // The web's `openEntryPoint` opens a namespace in the current context,
+        // whichever context it was visited in. Namespace entries carry no kind
+        // to resolve as a resource.
+        if entry.kind == EntryKind::Namespace {
             self.select_namespace(Some(entry.name.clone()), window, cx);
             return;
         }

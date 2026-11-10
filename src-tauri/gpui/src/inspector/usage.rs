@@ -207,13 +207,23 @@ impl Inspector {
                             .border_color(Tokens::border())
                             .bg(Tokens::card())
                             .p(px(8.))
+                            .flex()
+                            .flex_col()
                             .child(ui::semibold(ui::xs("App process tree")).mb(px(8.)))
-                            .children(
-                                self.usage
-                                    .sample
-                                    .as_ref()
-                                    .and_then(|r| r.as_ref().ok())
-                                    .map(|sample| process_rows(&sample.breakdown, 0)),
+                            // `AppUsageFooter.svelte` scrolls the tree inside the popover.
+                            .child(
+                                div()
+                                    .id("usage-process-tree")
+                                    .flex_1()
+                                    .min_h_0()
+                                    .overflow_y_scroll()
+                                    .children(
+                                        self.usage
+                                            .sample
+                                            .as_ref()
+                                            .and_then(|r| r.as_ref().ok())
+                                            .map(|sample| process_rows(&sample.breakdown, 0)),
+                                    ),
                             ),
                     )
                 })
