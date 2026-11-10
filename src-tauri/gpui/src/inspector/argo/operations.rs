@@ -216,6 +216,23 @@ impl Inspector {
                     kubecove_lib::models::AppErrorKind::ArgoConnection,
                 ));
             }
+            // An operation started elsewhere is not in this client's outcomes, and the
+            // Kubernetes transport would patch over it, so the fresh read decides.
+            if super::outcomes::operation_pending(&before) {
+                return Err(kubecove_lib::models::AppError::new(
+                    "This Application already has an operation in progress. Wait for it to finish.",
+                    kubecove_lib::models::AppErrorKind::ArgoConnection,
+                ));
+            }
+            // Review the Application as it is now, keeping the scope the user chose,
+            // so a newer resourceVersion does not fail every submission and retry.
+            let mut request = request;
+            request.application = kubecove_lib::models::ArgoApplicationRef {
+                context: request.application.context.take(),
+                workspace_id: request.application.workspace_id.take(),
+                ..before.application.clone()
+            };
+            request.resource_version = before.application.resource_version.clone();
             let review = backend.preflight_argo(request).await?;
             Ok((before, review))
         };

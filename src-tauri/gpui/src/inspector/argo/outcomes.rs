@@ -105,6 +105,16 @@ fn observe(
         read_error: None,
     }
 }
+/// Whether Argo CD reports an operation or refresh that has not finished, as the web
+/// tracker checks before a review.
+pub(super) fn operation_pending(snapshot: &ArgoApplicationInspector) -> bool {
+    snapshot.operation_requested
+        || snapshot.refresh_requested.is_some()
+        || matches!(
+            text(&snapshot.operation_state, "phase"),
+            Some("Running" | "Terminating")
+        )
+}
 fn key(app: &ArgoApplicationRef) -> String {
     serde_json::to_string(&(&app.context, &app.workspace_id, &app.namespace, &app.name))
         .expect("Application identity")

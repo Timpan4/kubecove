@@ -160,6 +160,10 @@ impl ArgoControls {
                 }
                 .into(),
             );
+            // Argo CD wrote the Application after the tab opened.
+            if observation == 6 {
+                application.resource_version = Some("fresh".into());
+            }
             Ok(ArgoApplicationInspector {
                 application,
                 resources: if lazy {
