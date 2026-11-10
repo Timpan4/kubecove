@@ -63,3 +63,34 @@ fn enter_on_a_tabbed_sidebar_row_selects_it(cx: &mut TestAppContext) {
     })
     .unwrap();
 }
+
+/// Reset brings back default kinds that a saved custom order left out. Each
+/// of them must take focus and arrow keys, as the rows loaded at start do.
+#[gpui_kit::test]
+fn kinds_restored_by_reset_reorder_with_arrow_keys(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    backend.argo.document.lock().unwrap().preferences.resource_kind_lanes =
+        kubecove_gpui::preferences::KindLanes {
+            first: vec!["Secret".into()],
+            normal: vec!["*".into()],
+            last: vec!["Pod".into()],
+        };
+    let handle = open(cx, backend);
+    click(cx, handle, "open-settings");
+    click(cx, handle, "settings-section:Appearance");
+    click(cx, handle, "reset-kind-order");
+    click(cx, handle, "kind-order-item:ConfigMap");
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(
+            window.find("kind-order-item:ConfigMap").description(),
+            Some("Normal:4")
+        );
+        window.press("down", cx);
+        assert_eq!(
+            window.find("kind-order-item:ConfigMap").description(),
+            Some("Normal:5")
+        );
+    })
+    .unwrap();
+}
