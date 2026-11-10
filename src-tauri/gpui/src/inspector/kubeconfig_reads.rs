@@ -97,11 +97,15 @@ impl Inspector {
             let _ = this.update_in(cx, |this, window, cx| {
                 let reads = &mut this.launcher.kubeconfig;
                 let read_at = Instant::now();
+                // A failed fetch evicts the older success, so the next open retries
+                // instead of showing that success as this read's result.
                 if let Some(source) = fetched_source {
                     reads.source = Some((read_at, source));
+                } else if source_error.is_some() {
+                    reads.source = None;
                 }
-                if let (true, Ok(rows)) = (fetched_contexts, &result) {
-                    reads.context_list = Some(CachedContexts {
+                if fetched_contexts {
+                    reads.context_list = result.as_ref().ok().map(|rows| CachedContexts {
                         read_at,
                         source_key: source_key.clone(),
                         rows: rows.clone(),
