@@ -30,9 +30,7 @@ fn columns(width: f32) -> [f32; 7] {
 /// The narrowest row that shows every track: the minimums with `gap-3 px-3` exceed
 /// `68rem`, and the web's scroll container reaches the grid's overflowing tracks.
 fn scroll_width() -> f32 {
-    TRACKS.iter().map(|(min, _)| min).sum::<f32>()
-        + (TRACKS.len() as f32 - 1.) * CARD_GAP
-        + 24.
+    TRACKS.iter().map(|(min, _)| min).sum::<f32>() + (TRACKS.len() as f32 - 1.) * CARD_GAP + 24.
 }
 
 /// The list header row: `bg-muted/30 px-3 py-2 text-[0.65rem] uppercase`.
@@ -123,7 +121,9 @@ pub(in crate::inspector) fn list_row(
                 .child({
                     let key = selection.key();
                     div()
-                        .id(gpui_kit::SharedString::from(format!("gitops-list-name:{key}")))
+                        .id(gpui_kit::SharedString::from(format!(
+                            "gitops-list-name:{key}"
+                        )))
                         .min_w_0()
                         .cursor_pointer()
                         .child(name(selection, 14., 20., cx))

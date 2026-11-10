@@ -262,7 +262,11 @@ impl Inspector {
                 let selected = self.nav_selected(&row);
                 let expanded = row.toggle.is_some_and(|node| self.nav_open(node));
                 // The web `selectNode` returns for a disabled row, such as an unavailable provider.
-                let open = if row.disabled { Open::Nothing } else { row.open };
+                let open = if row.disabled {
+                    Open::Nothing
+                } else {
+                    row.open
+                };
                 let toggle = row.toggle;
                 div()
                     .id(SharedString::from(row.id))

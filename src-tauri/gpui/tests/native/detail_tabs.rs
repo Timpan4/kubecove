@@ -426,7 +426,10 @@ fn revision(name: &str, number: u64, image: &str) -> DeploymentRevision {
 fn revisions_retry_after_a_failure_and_compare_by_replica_set(cx: &mut TestAppContext) {
     let backend = Arc::new(Controlled::default());
     backend.detail.revisions.lock().unwrap().extend([
-        Err(AppError::new("replicasets is forbidden", AppErrorKind::Forbidden)),
+        Err(AppError::new(
+            "replicasets is forbidden",
+            AppErrorKind::Forbidden,
+        )),
         Ok(vec![
             revision("payments-api-top", 4, "top"),
             revision("payments-api-a", 3, "first"),
@@ -440,14 +443,22 @@ fn revisions_retry_after_a_failure_and_compare_by_replica_set(cx: &mut TestAppCo
     });
     step(cx, handle, |window, cx| window.click("show-revisions", cx));
     step(cx, handle, |window, cx| {
-        let diff = window.find("revision-diff").label().unwrap_or_default().to_owned();
+        let diff = window
+            .find("revision-diff")
+            .label()
+            .unwrap_or_default()
+            .to_owned();
         assert!(diff.contains("image: first"), "{diff}");
         window.within("revision-comparison").click("input", cx);
         window.press("down", cx);
         window.press("enter", cx);
     });
     step(cx, handle, |window, _| {
-        let diff = window.find("revision-diff").label().unwrap_or_default().to_owned();
+        let diff = window
+            .find("revision-diff")
+            .label()
+            .unwrap_or_default()
+            .to_owned();
         assert!(diff.contains("image: second"), "{diff}");
     });
 }

@@ -422,7 +422,10 @@ impl Inspector {
                 .filter_map(|s| s.profile.as_ref())
                 .filter(|p| self.argo_profile_matches(p))
                 .map(|p| {
-                    PreferenceChoice::new(format!("connected:{}", p.id), endpoint_label(&p.endpoint))
+                    PreferenceChoice::new(
+                        format!("connected:{}", p.id),
+                        endpoint_label(&p.endpoint),
+                    )
                 }),
         );
         let selected: SharedString = match &self.argo.connections.selected {

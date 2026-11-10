@@ -496,7 +496,10 @@ pub(super) fn table(
         .children(rows.into_iter().map(row));
     div().min_w_0().child(
         div()
-            .id(SharedString::from(format!("helm-table:{}", headers.join("|"))))
+            .id(SharedString::from(format!(
+                "helm-table:{}",
+                headers.join("|")
+            )))
             .w_full()
             .overflow_x_scroll()
             .child(body),

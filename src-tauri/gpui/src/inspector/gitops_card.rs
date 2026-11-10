@@ -279,9 +279,9 @@ pub(super) fn card(
             card.border_color(Tokens::primary().opacity(0.5))
                 .shadow_md()
         })
-        .on_click(cx.listener(move |this, _, window, cx| {
-            this.open_gitops_selection(&key, window, cx)
-        }))
+        .on_click(
+            cx.listener(move |this, _, window, cx| this.open_gitops_selection(&key, window, cx)),
+        )
         .child(
             div()
                 .w(px(4.))

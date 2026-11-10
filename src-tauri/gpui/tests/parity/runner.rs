@@ -35,10 +35,9 @@ pub(super) fn failure_message(artifacts: &OsString, payload: Box<dyn Any + Send>
         })
         .unwrap_or_else(|| "panic without a message".to_owned());
     // The step loop writes the shard-specific name, so read the same one.
-    let last_step = fs::read_to_string(
-        Path::new(artifacts).join(artifact_name("gpui-progress", "txt")),
-    )
-    .unwrap_or_default();
+    let last_step =
+        fs::read_to_string(Path::new(artifacts).join(artifact_name("gpui-progress", "txt")))
+            .unwrap_or_default();
     format!("{panic} (last step: {})", last_step.trim())
 }
 
