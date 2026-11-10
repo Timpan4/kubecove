@@ -28,6 +28,9 @@ impl Inspector {
                 {
                     Ok(stream) => stream,
                     Err(error) => {
+                        // Events may change while no watch runs, so the next
+                        // Connected status lists them again.
+                        catch_up = true;
                         let _ = this.update(cx, |this, cx| {
                             if let Detail::Ready(detail) = &mut this.detail {
                                 detail.events.watch_error = Some(error.message);
