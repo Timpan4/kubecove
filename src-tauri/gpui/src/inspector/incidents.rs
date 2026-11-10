@@ -32,6 +32,9 @@ pub(super) struct IncidentsState {
     pub(super) topology: Fetch<Arc<ResourceTopology>>,
     pub(super) copied: Option<(String, bool)>,
     pub(super) show_step_context: bool,
+    /// The incident whose guide shows its Health evidence list. Keyed, so a
+    /// new selection starts closed as the web's `<details>` does.
+    pub(super) evidence_open: Option<String>,
 }
 
 impl IncidentsState {
@@ -49,6 +52,7 @@ impl IncidentsState {
             topology: Fetch::Idle,
             copied: None,
             show_step_context: false,
+            evidence_open: None,
         }
     }
 
@@ -122,7 +126,8 @@ impl Inspector {
     pub(super) fn open_incident_filter(&mut self, filter: Filter, cx: &mut Context<Self>) {
         self.open_page(super::Page::Incidents, cx);
         if self.page == super::Page::Incidents {
-            self.incidents.filter = filter;
+            // Rebuilds a cached queue, which a failed refresh would otherwise keep.
+            self.incidents.set_filter(filter);
             self.incidents.selected = None;
             self.incidents.enriched = None;
             self.enrich_incident(cx);

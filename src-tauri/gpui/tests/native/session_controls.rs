@@ -230,6 +230,30 @@ fn a_forward_that_finishes_after_context_change_is_stopped(cx: &mut TestAppConte
         ["delayed-forward"]
     );
 }
+/// Failure mode: Start with an invalid port while a start runs replaces the
+/// running state, so the next Start overlaps the first.
+#[gpui_kit::test]
+fn an_invalid_start_keeps_the_running_start_guarded(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    let (send, receive) = tokio::sync::oneshot::channel();
+    *backend.sessions.forward_pending.lock().unwrap() = Some(receive);
+    let handle = start_forward(cx, backend);
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        // "190901" is past the TCP port range.
+        w.click("forward-local", cx);
+        w.input("1", cx);
+        w.click("forward-start", cx);
+        w.render_frame(cx);
+        assert!(
+            w.try_find("forward-error").is_none(),
+            "an invalid Start replaced the running start"
+        );
+    })
+    .unwrap();
+    let _ = send.send(());
+    cx.run_until_parked();
+}
 #[gpui_kit::test]
 fn a_refused_forward_is_visible(cx: &mut TestAppContext) {
     let handle = start_forward(cx, Arc::new(Controlled::default()));

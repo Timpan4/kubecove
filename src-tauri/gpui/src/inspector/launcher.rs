@@ -223,11 +223,20 @@ impl Inspector {
             |this, result, source_warning, window, cx| {
                 match result {
                     Ok(contexts) => {
-                        this.launcher.context_choices = contexts
+                        let state = &mut this.launcher;
+                        let before = state.effective().to_owned();
+                        state.context_choices = contexts
                             .into_iter()
                             .map(|context| (context.name, context.is_current))
                             .collect();
-                        this.launcher.contexts = Fetch::Ready(ContextsRead { source_warning });
+                        // A new current context moves an unpicked form to another
+                        // cluster, so its selections reset as `choose_launcher_context`'s do.
+                        if state.effective() != before {
+                            state.namespaces.clear();
+                            let effective = state.effective().to_owned();
+                            state.group.retain(|member| *member != effective);
+                        }
+                        state.contexts = Fetch::Ready(ContextsRead { source_warning });
                         this.discover_namespaces(window, cx);
                         this.update_saved_overview();
                     }

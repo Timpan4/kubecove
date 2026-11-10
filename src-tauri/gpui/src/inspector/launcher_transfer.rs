@@ -22,9 +22,15 @@ pub(super) struct TransferState {
     dialog: Option<InFlight>,
     pub(super) documents: HashMap<u64, serde_json::Value>,
     /// The parsed import file, with the decision for each workspace.
-    preview: Vec<(ImportedWorkspace, ImportAction)>,
+    preview: Vec<PreviewItem>,
     /// The last import or export's outcome.
     notice: Option<Notice>,
+}
+struct PreviewItem {
+    item: ImportedWorkspace,
+    action: ImportAction,
+    /// The saved workspace Replace overwrites, resolved when the file is read.
+    target: Option<u64>,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ImportAction {
@@ -48,13 +54,19 @@ impl TransferState {
     fn nothing_to_import(&self) -> bool {
         self.preview
             .iter()
-            .all(|(_, action)| *action == ImportAction::Skip)
+            .all(|preview| preview.action == ImportAction::Skip)
     }
-    fn matches(&self, saved: &SavedWorkspace, item: &ImportedWorkspace) -> bool {
-        saved.name == item.name
-            || self.documents.get(&saved.id).is_some_and(|document| {
+    /// `findExistingWorkspace` in `workspace-sharing.ts`: a shared metadata
+    /// name match wins over a display name match anywhere in the list.
+    fn find_existing(&self, saved: &[SavedWorkspace], item: &ImportedWorkspace) -> Option<u64> {
+        let shared = saved.iter().find(|saved| {
+            self.documents.get(&saved.id).is_some_and(|document| {
                 document["metadata"]["name"] == item.document["metadata"]["name"]
             })
+        });
+        shared
+            .or_else(|| saved.iter().find(|saved| saved.name == item.name))
+            .map(|saved| saved.id)
     }
 }
 
@@ -78,16 +90,18 @@ impl Inspector {
                             launcher.transfer.preview = preview
                                 .into_iter()
                                 .map(|item| {
-                                    let known = launcher
-                                        .saved
-                                        .iter()
-                                        .any(|saved| launcher.transfer.matches(saved, &item));
-                                    let action = if known {
+                                    let target =
+                                        launcher.transfer.find_existing(&launcher.saved, &item);
+                                    let action = if target.is_some() {
                                         ImportAction::Skip
                                     } else {
                                         ImportAction::Add
                                     };
-                                    (item, action)
+                                    PreviewItem {
+                                        item,
+                                        action,
+                                        target,
+                                    }
                                 })
                                 .collect();
                         }
@@ -155,18 +169,19 @@ impl Inspector {
             return;
         }
         let preview = std::mem::take(&mut self.launcher.transfer.preview);
-        for (item, decision) in preview {
-            if decision == ImportAction::Skip {
+        for PreviewItem {
+            item,
+            action,
+            target,
+        } in preview
+        {
+            if action == ImportAction::Skip {
                 continue;
             }
-            let existing = (decision == ImportAction::Replace)
-                .then(|| {
-                    self.launcher
-                        .saved
-                        .iter()
-                        .position(|saved| self.launcher.transfer.matches(saved, &item))
-                })
-                .flatten();
+            // A target deleted since the preview falls back to Add, as on the web.
+            let existing = target
+                .filter(|_| action == ImportAction::Replace)
+                .and_then(|id| self.launcher.saved.iter().position(|saved| saved.id == id));
             let next = self.launcher.next;
             self.launcher.next = self.launcher.next.saturating_add(1);
             let id = existing.map_or(next, |index| self.launcher.saved[index].id);
@@ -242,7 +257,9 @@ impl Inspector {
                     .test_support()
                     .aria_label("Import preview"),
             );
-            for (index, (item, decision)) in state.preview.iter().enumerate() {
+            for (index, PreviewItem { item, action: decision, .. }) in
+                state.preview.iter().enumerate()
+            {
                 panel = panel.child(
                     div()
                         .flex()
@@ -274,10 +291,10 @@ impl Inspector {
                                 .child(label)
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
-                                        if let Some((_, decision)) =
+                                        if let Some(preview) =
                                             this.launcher.transfer.preview.get_mut(index)
                                         {
-                                            *decision = action;
+                                            preview.action = action;
                                         }
                                         cx.notify();
                                     },

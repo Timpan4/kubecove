@@ -12,7 +12,8 @@ use kubecove_lib::models::ResourceSummary;
 pub(in crate::inspector) enum LeaveIntent {
     Close,
     Page(Page),
-    Resource(Box<ResourceSummary>),
+    /// The resource and the tab `open_resource_on` asked for.
+    Resource(Box<ResourceSummary>, Option<super::super::detail::DetailTab>),
     Namespace(Option<String>),
     IncidentResources(crate::incidents::Filter),
     Context(String),
@@ -111,7 +112,9 @@ impl Inspector {
         match intent {
             LeaveIntent::Close => self.close_detail(cx),
             LeaveIntent::Page(page) => self.open_page(page, cx),
-            LeaveIntent::Resource(resource) => self.open_resource(*resource, window, cx),
+            LeaveIntent::Resource(resource, tab) => {
+                self.open_resource_on(*resource, tab, window, cx)
+            }
             LeaveIntent::Namespace(namespace) => self.select_namespace(namespace, window, cx),
             LeaveIntent::IncidentResources(filter) => {
                 self.open_incident_resources(filter, window, cx)
