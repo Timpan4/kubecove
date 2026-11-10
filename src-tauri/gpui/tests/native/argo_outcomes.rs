@@ -71,6 +71,29 @@ fn review_uses_the_fresh_resource_version(cx: &mut TestAppContext) {
         Some("fresh")
     );
 }
+// Failure mode: Escape in the advanced-sync confirmation hides its body but keeps the
+// modal overlay, leaving no Confirm or Cancel button.
+#[gpui_kit::test]
+fn escape_dismisses_the_advanced_sync_confirmation(cx: &mut TestAppContext) {
+    let h = argo::open_argo(cx, Arc::new(Controlled::default()));
+    argo::step(cx, h, |w, cx| {
+        scroll::reveal(w, "detail-body", "argo-sync-options", cx);
+        w.click("argo-sync-options", cx);
+        w.render_frame(cx);
+        scroll::reveal(w, "detail-body", "argo-sync:Prune", cx);
+        w.click("argo-sync:Prune", cx);
+        scroll::reveal(w, "detail-body", "argo-sync-advanced", cx);
+        w.click("argo-sync-advanced", cx);
+    });
+    argo::step(cx, h, |w, cx| {
+        assert!(w.try_find("argo-sync-dialog").is_some());
+        w.press("escape", cx);
+    });
+    argo::step(cx, h, |w, _| {
+        assert!(w.try_find("argo-sync-dialog").is_none());
+    });
+}
+
 // Failure mode: closing the detail during submission and reopening the Application
 // gives an idle tab that submits a second operation, and the first one's
 // unconfirmed result is dropped with the closed tab.

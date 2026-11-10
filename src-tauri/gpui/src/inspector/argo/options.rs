@@ -371,7 +371,16 @@ impl Inspector {
         let Some(state) = self.argo_tab_state() else {
             return false;
         };
-        let sync_open = state.options.open && !state.options.confirming;
+        // The advanced-sync confirmation renders while `confirming` holds, and its body
+        // only while `open` does, so Escape dismisses it as its Cancel button does.
+        if state.options.confirming {
+            state.options.confirming = false;
+            state.options.open = false;
+            let trigger = state.options.sync_trigger.clone();
+            trigger.focus(window, cx);
+            return true;
+        }
+        let sync_open = state.options.open;
         let refresh_open = state.refresh_options;
         let trigger = if sync_open {
             Some(state.options.sync_trigger.clone())
