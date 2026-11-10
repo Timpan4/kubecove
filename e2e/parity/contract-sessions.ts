@@ -64,6 +64,7 @@ export function sessionStep(item: JsonObject): Step | undefined {
 			if (item.notice !== undefined) state.notice = string(item.notice);
 			return state;
 		}
+		case "expectLiveMenu": return { action: item.action, message: string(item.message) };
 		case "replayLiveData": return { action: item.action, script: oneOf(LIVE_SCRIPTS, item.script, "a live script") };
 		default: return undefined;
 	}

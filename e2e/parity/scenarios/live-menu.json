@@ -1,0 +1,38 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "live-menu.content",
+      "title": "The live menu names the view's connection and offers a refresh that clears the cache",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "expectLiveState", "label": "Live" },
+        { "action": "expectLiveMenu", "message": "Live updates connected" },
+        { "action": "replayLiveData", "script": "reconnecting" },
+        { "action": "expectLiveState", "label": "Reconnecting" },
+        { "action": "expectLiveMenu", "message": "Reconnecting; periodically reloading this view" },
+        { "action": "replayLiveData", "script": "forbidden" },
+        { "action": "expectLiveState", "label": "Polling (limited)" },
+        { "action": "expectLiveMenu", "message": "Watch access is unavailable. Readable resources refresh periodically." }
+      ]
+    },
+    {
+      "id": "live-menu.notice-delay",
+      "title": "The stale-data notice appears after 300 ms and stays for at least 300 ms",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "expectLiveState", "label": "Live" },
+        { "action": "controlClock" },
+        { "action": "replayLiveData", "script": "reconnecting" },
+        { "action": "expectNoPageText", "text": "Showing last observed state. Activity indicators are paused until live updates recover." },
+        { "action": "advanceClock", "ms": 300 },
+        { "action": "expectPageText", "text": "Showing last observed state. Activity indicators are paused until live updates recover." },
+        { "action": "replayLiveData", "script": "connected" },
+        { "action": "expectPageText", "text": "Showing last observed state. Activity indicators are paused until live updates recover." },
+        { "action": "advanceClock", "ms": 1000 },
+        { "action": "expectNoPageText", "text": "Showing last observed state. Activity indicators are paused until live updates recover." }
+      ]
+    }
+  ]
+}

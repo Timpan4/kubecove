@@ -58,7 +58,7 @@ export const ACTIONS = [
     "configureForward", "forwardControl", "expectForwardState", "expectForwardNotice","execControl", "expectExecState",
     "expectWorkspaceExport", "exportSavedWorkspace", "expectExportedShortcut",
     "expectAccessibleName", "fillSettingsField", "clickSettingsButton", "clickKubeconfigPathButton", "expectKubeconfigPathBefore", "expectSettingsText", "expectNoSettingsText", "expectRuntimeEndpoint", "expectMaskedToken", "reopenStoredSettings", "configureSettingsMock",
-	"expectLiveState", "replayLiveData", "expectResourceStatus", "openCustomKind",
+	"expectLiveState", "expectLiveMenu", "replayLiveData", "expectResourceStatus", "openCustomKind",
 	"selectTopologyNode", "expectTopologyEmpty", "expectUsageFooter", "openUsageTree", "expectNoUsageFooter", "expectUsageProcess", "setTopologyMode", "selectNamespace", "expectTopology", "expectTopologyEdge", "expectNoTopologyNode", "expectResourceMetrics",
 	"expectYamlAbsent",
 	"expectYamlEditorDiagnostics",
