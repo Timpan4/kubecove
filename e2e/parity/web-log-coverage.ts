@@ -19,7 +19,14 @@ export async function checkLogCoverage(page: Page, check: string): Promise<void>
 		await page.waitForFunction((element) => element?.scrollTop === 0, await viewport.elementHandle());
 	} else if (check === "log-jump") {
 		await page.getByRole("button", { name: /1 new line/ }).click();
-		await page.getByText("Newest controlled line", { exact: true }).waitFor();
+		const newest = page.getByText("Newest controlled line", { exact: true });
+		await newest.waitFor();
+		// The line is in the DOM before the jump, so the jump must scroll it into the log viewport.
+		const viewport = newest.locator('xpath=ancestor::div[contains(@class,"overflow-auto")][1]');
+		await page.waitForFunction(([line, box]) => {
+			const [row, view] = [line?.getBoundingClientRect(), box?.getBoundingClientRect()];
+			return !!row && !!view && row.bottom > view.top && row.top < view.bottom;
+		}, [await newest.elementHandle(), await viewport.elementHandle()] as const);
 		await page.getByRole("button", { name: /1 new line/ }).waitFor({ state: "hidden" });
 	} else throw new Error(`Unknown log check ${check}`);
 }
