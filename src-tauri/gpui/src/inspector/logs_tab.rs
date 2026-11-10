@@ -399,7 +399,18 @@ fn viewport(logs: &LogsState, connecting: bool, cx: &mut Context<Inspector>) -> 
         .rounded(px(8.))
         .border_1()
         .border_color(Tokens::border())
-        .bg(Tokens::background().opacity(0.5));
+        .bg(Tokens::background().opacity(0.5))
+        // The list scrolls first (bubble phase), so a scroll back to the latest
+        // line clears the unseen count, as the web viewport's scroll handler does.
+        .on_scroll(cx.listener(|this, _: &gpui_kit::ScrollEvent, _, cx| {
+            if let Some(logs) = this.logs_state()
+                && logs.unseen > 0
+                && logs.pinned()
+            {
+                logs.unseen = 0;
+                cx.notify();
+            }
+        }));
     let body = if logs.buffer.is_empty() {
         let text = if logs.paused {
             "Paused. New lines are held until you resume.".to_owned()
