@@ -50,7 +50,6 @@
         { "action": "openResources" },
         { "action": "selectNamespace", "namespace": "operations" },
         { "action": "search", "value": "operations-crashloop" },
-        { "action": "expectPageText", "text": "CrashLoopBackOff" },
         { "action": "expectResource", "kind": "Pod", "namespace": "operations", "name": "operations-crashloop-7f468cd8b8-lab01" },
         { "action": "expectResourceCell", "kind": "Pod", "namespace": "operations", "name": "operations-crashloop-7f468cd8b8-lab01", "column": "Status", "text": "CrashLoopBackOff" }
       ]
