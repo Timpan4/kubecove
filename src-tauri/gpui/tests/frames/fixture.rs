@@ -196,6 +196,10 @@ fn scale_topology(fixture: &mut Value) -> usize {
         .iter()
         .filter(|node| node["namespace"].is_string())
         .collect();
+    let namespaced: std::collections::HashSet<String> = templates
+        .iter()
+        .filter_map(|node| text(node, "id"))
+        .collect();
     let mut scaled_nodes = nodes.clone();
     let mut scaled_edges = edges.clone();
     let mut copy = 0;
@@ -222,6 +226,13 @@ fn scale_topology(fixture: &mut Value) -> usize {
             let target_id = text(edge, "target").expect("edge target");
             let (new_source, new_target) = (ids.get(&source), ids.get(&target_id));
             if new_source.is_none() && new_target.is_none() {
+                continue;
+            }
+            // The last copy can stop at the target before a namespaced end is
+            // copied. Only a shared cluster-scoped end may keep the original.
+            if (new_source.is_none() && namespaced.contains(&source))
+                || (new_target.is_none() && namespaced.contains(&target_id))
+            {
                 continue;
             }
             let source = new_source.cloned().unwrap_or(source);
