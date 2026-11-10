@@ -363,12 +363,9 @@ impl Inspector {
             self.live
                 .watches
                 .retain(|id, _| wanted.contains(id.as_str()));
-            self.live.pending.retain(|patch| {
-                patch
-                    .watch
-                    .as_deref()
-                    .is_none_or(|id| wanted.contains(id))
-            });
+            self.live
+                .pending
+                .retain(|patch| patch.watch.as_deref().is_none_or(|id| wanted.contains(id)));
         }
         for (context, key, watch) in pairs {
             if self

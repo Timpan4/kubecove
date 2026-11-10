@@ -191,8 +191,8 @@ impl Inspector {
             .test_support()
             .aria_label(label)
             .aria_description(if busy { "disabled" } else { "enabled" })
-        .w_full()
-        .justify_center();
+            .w_full()
+            .justify_center();
         let button = if busy {
             surface::disabled(button)
         } else {
