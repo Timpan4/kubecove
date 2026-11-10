@@ -51,16 +51,22 @@ impl Inspector {
         self.session_cleanup.task = Some(cx.spawn(async move |this, cx| {
             let outcome = async {
                 let source = backend.kubeconfig_sources().await?.source_key;
+                // A workspace opened during the source read owns the sessions,
+                // including forwards it restores, so nothing stops then.
+                if this.update(cx, |this, _| this.workspace_open()).unwrap_or(true) {
+                    return Ok(None);
+                }
                 backend
                     .cleanup_sessions(LiveSessionCleanupRequest {
                         allowed_cluster_contexts: vec![],
                         kubeconfig_source_key: source,
                     })
                     .await
+                    .map(Some)
             }
             .await;
             let notice = match outcome {
-                Ok(result) => stopped_notice(&result),
+                Ok(result) => result.as_ref().and_then(stopped_notice),
                 Err(error) => Some(format!("Live session cleanup failed: {}", error.message)),
             };
             let _ = this.update(cx, |this, cx| {

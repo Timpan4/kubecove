@@ -305,3 +305,24 @@ fn deleting_the_edited_preset_closes_its_form(cx: &mut TestAppContext) {
     })
     .unwrap();
 }
+/// Opening the launcher closes the workspace but keeps `scope.context`. Before
+/// the fix a forward that finished after that exit cleanup kept running.
+#[gpui_kit::test]
+fn a_forward_that_finishes_after_the_workspace_closes_is_stopped(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    let (send, receive) = tokio::sync::oneshot::channel();
+    *backend.sessions.forward_pending.lock().unwrap() = Some(receive);
+    let handle = start_forward(cx, backend.clone());
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("header-workspaces", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    send.send(()).unwrap();
+    cx.run_until_parked();
+    assert_eq!(
+        *backend.sessions.stopped_forwards.lock().unwrap(),
+        ["delayed-forward"]
+    );
+}

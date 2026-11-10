@@ -249,7 +249,10 @@ impl Inspector {
                     )
                 })
                 .into_any_element(),
+            // Two forwards to one target share the title-based control IDs the
+            // tests select by; the session ID keeps their element state apart.
             div()
+                .id(SharedString::from(format!("forward-actions:{}", session.id)))
                 .flex()
                 .flex_wrap()
                 .gap(px(4.))
