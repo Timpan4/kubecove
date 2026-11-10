@@ -3,6 +3,15 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.14.0 - 2026-11-10
+### Added
+
+- Native GPUI client with shared parity scenarios (#656).
+
+### Release
+
+- Use Mr Boxington in CI, release builds, and E2E (#648).
+
 ## 0.13.3 - 2026-11-05
 ### Improved
 
