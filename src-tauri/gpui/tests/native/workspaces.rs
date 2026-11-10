@@ -130,8 +130,16 @@ fn import_replace_prefers_the_shared_metadata_name(cx: &mut TestAppContext) {
         let workspace = document.workspaces.iter().find(|saved| saved.id == id);
         workspace.map(|saved| saved.context.clone())
     };
-    assert_eq!(context(2).as_deref(), Some("mock-dev"), "shared key not replaced");
-    assert_eq!(context(1).as_deref(), Some("mock-other"), "name match overwritten");
+    assert_eq!(
+        context(2).as_deref(),
+        Some("mock-dev"),
+        "shared key not replaced"
+    );
+    assert_eq!(
+        context(1).as_deref(),
+        Some("mock-other"),
+        "name match overwritten"
+    );
 }
 #[gpui_kit::test]
 fn changing_workspace_cancels_every_old_context_read(cx: &mut TestAppContext) {

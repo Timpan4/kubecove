@@ -78,12 +78,7 @@ impl<T: Clone> SharedCache<T> {
     /// Changes a clean cached value in place when `decide` allows it. A dirty
     /// value stays dirty, and a load in flight is marked dirty, because the
     /// change may predate its list.
-    fn patch_ready(
-        &self,
-        key: &str,
-        decide: impl FnOnce(&T) -> Patch,
-        patch: impl FnOnce(&mut T),
-    ) {
+    fn patch_ready(&self, key: &str, decide: impl FnOnce(&T) -> Patch, patch: impl FnOnce(&mut T)) {
         let mut entries = self.entries.lock().expect("live store cache lock");
         match entries.get_mut(key) {
             Some(CacheEntry::Ready(ready)) if !ready.dirty => match decide(&ready.value) {

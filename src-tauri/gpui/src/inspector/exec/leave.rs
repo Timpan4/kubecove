@@ -13,7 +13,10 @@ pub(in crate::inspector) enum LeaveIntent {
     Close,
     Page(Page),
     /// The resource and the tab `open_resource_on` asked for.
-    Resource(Box<ResourceSummary>, Option<super::super::detail::DetailTab>),
+    Resource(
+        Box<ResourceSummary>,
+        Option<super::super::detail::DetailTab>,
+    ),
     Namespace(Option<String>),
     IncidentResources(crate::incidents::Filter),
     Context(String),

@@ -173,7 +173,12 @@ async fn events_that_do_not_follow_the_list_make_the_next_read_list_again() {
         (Some("apps"), origin(None, None)),
     ] {
         let store = ClusterLiveStore::default().applying_watch_rows(project);
-        list(&store, list_namespace, vec![summary("a", "apps", "Pending")]).await;
+        list(
+            &store,
+            list_namespace,
+            vec![summary("a", "apps", "Pending")],
+        )
+        .await;
         store.apply_watch_event(
             SOURCE,
             CONTEXT,

@@ -257,8 +257,14 @@ impl Inspector {
                     .test_support()
                     .aria_label("Import preview"),
             );
-            for (index, PreviewItem { item, action: decision, .. }) in
-                state.preview.iter().enumerate()
+            for (
+                index,
+                PreviewItem {
+                    item,
+                    action: decision,
+                    ..
+                },
+            ) in state.preview.iter().enumerate()
             {
                 panel = panel.child(
                     div()

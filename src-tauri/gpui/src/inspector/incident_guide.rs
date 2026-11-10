@@ -137,7 +137,11 @@ fn health_evidence(
                             " {} \u{2014} {}{}",
                             raw(&evidence.raw),
                             evidence.reason,
-                            if evidence.current { "" } else { " (historical)" }
+                            if evidence.current {
+                                ""
+                            } else {
+                                " (historical)"
+                            }
                         ))))
                 }),
             ))
