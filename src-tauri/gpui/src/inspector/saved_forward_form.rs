@@ -10,6 +10,9 @@ use gpui_kit::{AnyElement, AppContext, Context, Entity, Window, div, prelude::*,
 use kubecove_lib::models::PortForwardRequest;
 
 pub(super) struct PresetForm {
+    /// The preset list the form saves into, fixed when the form opens.
+    key: String,
+    /// The edited entry's index in that list, kept in step by `preset_removed`.
     editing: Option<usize>,
     label: Entity<InputState>,
     context: Entity<InputState>,
@@ -26,12 +29,14 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let key = self.preset_key();
         let saved = editing.and_then(|i| {
             self.persisted
                 .saved_forward_presets
-                .get(&self.preset_key())
+                .get(&key)
                 .and_then(|p| p.get(i))
         });
+        let editing = editing.filter(|_| saved.is_some());
         let label = saved.map(|p| p.label.clone()).unwrap_or_default();
         let request = saved.map(|p| &p.request);
         let context = request
@@ -49,6 +54,7 @@ impl Inspector {
             .map(|p| p.to_string())
             .unwrap_or_default();
         self.sessions.form = Some(PresetForm {
+            key,
             editing,
             label: cx.new(|cx| {
                 InputState::new(window, cx)
@@ -157,8 +163,21 @@ impl Inspector {
                 .into_any_element(),
         )
     }
+    /// `LiveSessionsSurface.svelte` `deleteSavedPortForward`: deleting the
+    /// edited preset closes the form; deleting an earlier one keeps the form
+    /// on the same preset.
+    pub(super) fn preset_removed(&mut self, key: &str, removed: usize) {
+        let Some(form) = self.sessions.form.as_mut().filter(|f| f.key == key) else {
+            return;
+        };
+        let editing = form.editing;
+        match editing {
+            Some(i) if i == removed => self.sessions.form = None,
+            Some(i) if i > removed => form.editing = Some(i - 1),
+            _ => {}
+        }
+    }
     fn submit_preset(&mut self, cx: &mut Context<Self>) {
-        let preset_key = self.preset_key();
         let env = self.session_env_var();
         let Some(form) = &mut self.sessions.form else {
             return;
@@ -199,14 +218,21 @@ impl Inspector {
         let presets = self
             .persisted
             .saved_forward_presets
-            .entry(preset_key)
+            .entry(form.key.clone())
             .or_default();
         let saved = crate::preferences::SavedForward {
             request,
             label: form.label.read(cx).value().trim().to_owned(),
         };
         match form.editing {
-            Some(i) => presets[i] = saved,
+            Some(i) => {
+                let Some(entry) = presets.get_mut(i) else {
+                    form.error = Some("This saved forward no longer exists.".into());
+                    cx.notify();
+                    return;
+                };
+                *entry = saved;
+            }
             None => presets.push(saved),
         }
         self.sessions.form = None;
