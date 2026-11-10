@@ -1,33 +1,30 @@
 use super::*;
 
-// Parent choice, cycles, root numbering, equal collation keys and Unicode
-// must preserve the complete string algorithm's ranks when scratch is reused.
-#[test]
-fn encoded_order_matches_complete_layout_keys() {
+/// Ranks the graph of `(id, name, kind)` nodes and `(source, target)` edges both ways and
+/// requires the written-out keys' ranks.
+fn check(nodes: &[(&str, &str, &str)], edges: &[(&str, &str)], scratch: &mut Scratch) {
     use serde_json::json;
-    let nodes: Vec<_> = ["Z", "a", "b", "c", "é", "😀"]
-        .into_iter()
-        .map(|name| {
-            serde_json::from_value(
-                json!({"id":name,"name":name,"kind":"Pod","health":"healthy","selectable":true,
-            "summary":{"name":name,"kind":"Pod","cluster":"test","namespace":"ns","age":"1d"}}),
-            )
-            .unwrap()
-        })
-        .collect();
-    let edges = [("Z", "b"), ("a", "b"), ("b", "c"), ("c", "a")]
-        .into_iter()
-        .enumerate()
-        .map(|(i, (source, target))| {
-            serde_json::from_value(
-                json!({"id":i.to_string(),"source":source,"target":target,"relation":"owns"}),
-            )
-            .unwrap()
-        })
-        .collect();
     let topology = kubecove_lib::models::ResourceTopology {
-        nodes,
-        edges,
+        nodes: nodes
+            .iter()
+            .map(|(id, name, kind)| {
+                serde_json::from_value(json!({
+                    "id":id,"name":name,"kind":kind,"health":"healthy","selectable":true,
+                    "summary":{"name":name,"kind":kind,"cluster":"test","namespace":"ns","age":"1d"}
+                }))
+                .unwrap()
+            })
+            .collect(),
+        edges: edges
+            .iter()
+            .enumerate()
+            .map(|(i, (source, target))| {
+                serde_json::from_value(
+                    json!({"id":i.to_string(),"source":source,"target":target,"relation":"owns"}),
+                )
+                .unwrap()
+            })
+            .collect(),
         warnings: vec![],
     };
     let rows = topology
@@ -47,16 +44,57 @@ fn encoded_order_matches_complete_layout_keys() {
         .map(|node| source.index[node.id.as_str()])
         .collect();
     let depth = super::super::depths(&graph);
-    let expected = legacy_order_keys(&graph, &depth);
+    assert_eq!(
+        order_keys(&graph, &depth, &raw, &source.locals, scratch),
+        legacy_order_keys(&graph, &depth),
+        "nodes {nodes:?} edges {edges:?}"
+    );
+}
+
+// Parent choice, cycles, root numbering, equal collation keys and Unicode
+// must preserve the complete string algorithm's ranks when scratch is reused.
+#[test]
+fn encoded_order_matches_complete_layout_keys() {
+    let nodes = ["Z", "a", "b", "c", "é", "😀"].map(|name| (name, name, "Pod"));
+    let edges = [("Z", "b"), ("a", "b"), ("b", "c"), ("c", "a")];
     let mut scratch = Scratch::default();
-    assert_eq!(
-        order_keys(&graph, &depth, &raw, &source.locals, &mut scratch),
-        expected
-    );
-    assert_eq!(
-        order_keys(&graph, &depth, &raw, &source.locals, &mut scratch),
-        expected
-    );
+    check(&nodes, &edges, &mut scratch);
+    check(&nodes, &edges, &mut scratch);
+}
+
+// Keys are compared part by part instead of written out. The two can only disagree where
+// parts do not line up: a key that is a prefix of another, keys that differ only in case,
+// several parents, shared ancestors and cycles. Small random graphs dense in those cases
+// must rank as the written-out keys do, with the scratch reused throughout.
+#[test]
+fn part_by_part_order_matches_written_out_keys_on_random_graphs() {
+    const IDS: [&str; 8] = ["a", "A", "ab", "aB", "a-b", "b", "é", "E"];
+    const NAMES: [&str; 2] = ["x", "X"];
+    const KINDS: [&str; 3] = ["Deployment", "ReplicaSet", "Pod"];
+    // xorshift64, so every run checks the same graphs.
+    let mut state = 0x9e37_79b9_7f4a_7c15_u64;
+    let mut below = |bound: usize| {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        (state % bound as u64) as usize
+    };
+    let mut scratch = Scratch::default();
+    for _ in 0..2_000 {
+        let mut ids = IDS;
+        for at in (1..ids.len()).rev() {
+            ids.swap(at, below(at + 1));
+        }
+        let count = 2 + below(ids.len() - 1);
+        let nodes: Vec<_> = ids[..count]
+            .iter()
+            .map(|&id| (id, NAMES[below(NAMES.len())], KINDS[below(KINDS.len())]))
+            .collect();
+        let edges: Vec<_> = (0..below(2 * count))
+            .map(|_| (ids[below(count)], ids[below(count)]))
+            .collect();
+        check(&nodes, &edges, &mut scratch);
+    }
 }
 
 use super::super::{created_at_ms, kind_rank};

@@ -102,8 +102,7 @@ impl<'a> Key<'a> {
     }
 }
 
-/// A nonnumeric layout key. Joining encoded segments preserves the collation
-/// units and reuses the destination's buffers instead of decoding each prefix.
+/// One part of a nonnumeric layout key, with its collation units decoded once.
 #[derive(Default, Eq, PartialEq)]
 pub(crate) struct Encoded {
     primary: Vec<u8>,
@@ -116,32 +115,10 @@ impl Encoded {
         Self { primary, text }
     }
 
-    pub(crate) fn join(&mut self, prefix: &Self, depth: i32, local: &Self) {
-        use std::fmt::Write;
-        self.text.clear();
-        self.text.push_str(&prefix.text);
-        let start = self.text.len();
-        write!(&mut self.text, ">{depth:02}>").expect("writing to a String");
-        self.primary.clear();
-        self.primary.extend_from_slice(&prefix.primary);
-        // Only the fixed separator and integer depth need decoding here.
-        append_units(&mut self.primary, &self.text[start..], false);
-        self.text.push_str(&local.text);
-        self.primary.extend_from_slice(&local.primary);
-    }
-}
-
-impl Ord for Encoded {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.primary
-            .cmp(&other.primary)
-            .then_with(|| tie(&self.text, &other.text))
-    }
-}
-
-impl PartialOrd for Encoded {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
+    /// The collation units. Those of a text are the units of its parts in order, so a key
+    /// made of several parts compares as its parts' units do one after another.
+    pub(crate) fn primary(&self) -> &[u8] {
+        &self.primary
     }
 }
 
@@ -150,6 +127,19 @@ fn tie(a: &str, b: &str) -> Ordering {
     a.chars()
         .map(uppercase)
         .cmp(b.chars().map(uppercase))
+        .then_with(|| a.cmp(b))
+}
+
+/// `tie` for two texts read as characters, for a key that is never written out as one string.
+/// Strings order by byte as their characters order by code point, so the two agree.
+pub(crate) fn tie_chars(
+    a: impl Iterator<Item = char> + Clone,
+    b: impl Iterator<Item = char> + Clone,
+) -> Ordering {
+    let uppercase = |c: char| c.is_ascii_uppercase();
+    a.clone()
+        .map(uppercase)
+        .cmp(b.clone().map(uppercase))
         .then_with(|| a.cmp(b))
 }
 

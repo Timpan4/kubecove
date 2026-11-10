@@ -294,38 +294,62 @@ impl<'a> NodeKey<'a> {
 
 /// `topologyColumnDepth` followed by `compactDirectEdgeDepths`.
 pub fn depths(graph: &Graph) -> Vec<i32> {
-    fn resolve(
-        graph: &Graph,
+    /// A node whose parents are being resolved, and the deepest parent edge so far.
+    struct Frame {
         node: usize,
-        depth: &mut [Option<i32>],
-        visiting: &mut [bool],
-    ) -> i32 {
-        if let Some(cached) = depth[node] {
-            return cached;
-        }
-        let rank = kind_rank(&graph.nodes[node].kind);
-        if visiting[node] {
-            return rank;
-        }
-        visiting[node] = true;
-        let resolved = if graph.parents[node].is_empty() {
-            0
-        } else {
-            let mut edge_depth = 0;
-            for &parent in &graph.parents[node] {
-                edge_depth = edge_depth.max(resolve(graph, parent, depth, visiting) + 1);
-            }
-            edge_depth.max(rank)
-        };
-        depth[node] = Some(resolved);
-        visiting[node] = false;
-        resolved
+        next: usize,
+        edge_depth: i32,
     }
+    let rank = |node: usize| kind_rank(&graph.nodes[node].kind);
     let count = graph.nodes.len();
-    let mut depth = vec![None; count];
+    let mut depth: Vec<Option<i32>> = vec![None; count];
     let mut visiting = vec![false; count];
-    for node in 0..count {
-        resolve(graph, node, &mut depth, &mut visiting);
+    // The web recurses once per owner link. A cluster sets no limit on a chain's length, so
+    // the nodes being resolved are kept here instead of on the stack.
+    let mut pending: Vec<Frame> = Vec::new();
+    for start in 0..count {
+        if depth[start].is_some() {
+            continue;
+        }
+        visiting[start] = true;
+        pending.push(Frame {
+            node: start,
+            next: 0,
+            edge_depth: 0,
+        });
+        while let Some(frame) = pending.last_mut() {
+            let node = frame.node;
+            if let Some(&parent) = graph.parents[node].get(frame.next) {
+                frame.next += 1;
+                let parent_depth = if let Some(cached) = depth[parent] {
+                    cached
+                } else if visiting[parent] {
+                    // A cycle: the node met again counts as its kind's column.
+                    rank(parent)
+                } else {
+                    visiting[parent] = true;
+                    pending.push(Frame {
+                        node: parent,
+                        next: 0,
+                        edge_depth: 0,
+                    });
+                    continue;
+                };
+                frame.edge_depth = frame.edge_depth.max(parent_depth + 1);
+                continue;
+            }
+            let resolved = if graph.parents[node].is_empty() {
+                0
+            } else {
+                frame.edge_depth.max(rank(node))
+            };
+            pending.pop();
+            depth[node] = Some(resolved);
+            visiting[node] = false;
+            if let Some(child) = pending.last_mut() {
+                child.edge_depth = child.edge_depth.max(resolved + 1);
+            }
+        }
     }
     let column: Vec<i32> = depth.into_iter().map(Option::unwrap_or_default).collect();
     let mut compacted = column.clone();
@@ -382,45 +406,86 @@ pub fn positions(graph: &Graph, depth: &[i32], order: &[usize]) -> Vec<Option<(f
         owned.into_iter().chain(standalone).collect()
     };
 
+    /// A node whose children are being placed.
+    struct Frame {
+        node: usize,
+        top: f32,
+        /// The next child to place.
+        at: usize,
+        /// Where the next child starts.
+        next: f32,
+        first: Option<f32>,
+        last: Option<f32>,
+    }
     struct Placer<'p> {
         primary_children: &'p [Vec<usize>],
         x: Vec<f32>,
         positions: Vec<Option<(f32, f32)>>,
         visited: Vec<bool>,
         visiting: Vec<bool>,
+        /// The web recurses once per owner link; see `depths`.
+        pending: Vec<Frame>,
     }
     const STEP: f32 = NODE_HEIGHT + ROW_GAP;
     impl Placer<'_> {
+        /// Places `node` and its subtree from `top` down, and returns where the next
+        /// subtree starts.
         fn place(&mut self, node: usize, top: f32) -> f32 {
+            let mut placed = self.begin(node, top);
+            loop {
+                if let Some(end) = placed.take() {
+                    let Some(frame) = self.pending.last_mut() else {
+                        return end;
+                    };
+                    let child = self.primary_children[frame.node][frame.at - 1];
+                    let before = std::mem::replace(&mut frame.next, end);
+                    let child_y = self.positions[child].map_or(before, |(_, y)| y);
+                    frame.first.get_or_insert(child_y);
+                    frame.last = Some(child_y);
+                    if !self.primary_children[child].is_empty() {
+                        frame.next += SUBTREE_GAP;
+                    }
+                }
+                let frame = self.pending.last_mut().expect("a node is being placed");
+                if let Some(&child) = self.primary_children[frame.node].get(frame.at) {
+                    frame.at += 1;
+                    let top = frame.next;
+                    placed = self.begin(child, top);
+                    continue;
+                }
+                let frame = self.pending.pop().expect("a node is being placed");
+                let y = match (frame.first, frame.last) {
+                    (Some(first), Some(last)) => (first + last) / 2.,
+                    _ => frame.top,
+                };
+                self.positions[frame.node] = Some((self.x[frame.node], y));
+                self.visited[frame.node] = true;
+                self.visiting[frame.node] = false;
+                placed = Some(frame.next.max(y + STEP));
+            }
+        }
+
+        /// Starts placing `node`. A node already placed, or met again inside its own
+        /// subtree, is done at once and returns where the next subtree starts.
+        fn begin(&mut self, node: usize, top: f32) -> Option<f32> {
             if self.visited[node] {
-                return top;
+                return Some(top);
             }
             if self.visiting[node] {
                 self.positions[node] = Some((self.x[node], top));
                 self.visited[node] = true;
-                return top + STEP;
+                return Some(top + STEP);
             }
             self.visiting[node] = true;
-            let mut next = top;
-            let (mut first, mut last) = (None, None);
-            for &child in self.primary_children[node].iter() {
-                let before = next;
-                next = self.place(child, next);
-                let child_y = self.positions[child].map_or(before, |(_, y)| y);
-                first.get_or_insert(child_y);
-                last = Some(child_y);
-                if !self.primary_children[child].is_empty() {
-                    next += SUBTREE_GAP;
-                }
-            }
-            let y = match (first, last) {
-                (Some(first), Some(last)) => (first + last) / 2.,
-                _ => top,
-            };
-            self.positions[node] = Some((self.x[node], y));
-            self.visited[node] = true;
-            self.visiting[node] = false;
-            next.max(y + STEP)
+            self.pending.push(Frame {
+                node,
+                top,
+                at: 0,
+                next: top,
+                first: None,
+                last: None,
+            });
+            None
         }
     }
     let mut placer = Placer {
@@ -433,6 +498,7 @@ pub fn positions(graph: &Graph, depth: &[i32], order: &[usize]) -> Vec<Option<(f
         visited: vec![false; count],
         // The web passes a fresh `visiting` set per root; a finished root clears its marks.
         visiting: vec![false; count],
+        pending: Vec::new(),
     };
     let mut cursor = CANVAS_PADDING;
     for root in ordered_roots {

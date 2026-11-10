@@ -113,6 +113,43 @@ fn filtered_layout_matches_recomputation_for_every_subset() {
     }
 }
 
+// Owner chains have no length limit in a cluster. One that is far longer than the stack
+// allows recursion per link must still lay out, in memory that grows with its length.
+#[test]
+fn a_long_owner_chain_lays_out() {
+    const LINKS: usize = 50_000;
+    let name = |i: usize| format!("link-{i}");
+    let topology = ResourceTopology {
+        nodes: (0..=LINKS).map(|i| node(&name(i), "Pod")).collect(),
+        edges: (0..LINKS)
+            .map(|i| edge(&i.to_string(), &name(i), &name(i + 1)))
+            .collect(),
+        warnings: vec![],
+    };
+    let rows: Visible = topology.nodes.iter().map(|n| n.summary.clone()).collect();
+    let source = Source::new(&topology, &rows);
+    let graph = layout::Graph::ranked(
+        topology.nodes.iter().enumerate(),
+        topology.edges.iter().enumerate(),
+        &source,
+    );
+    let (depth, order) = source.depth_and_order(&graph, false);
+    let links: Vec<usize> = (0..=LINKS).collect();
+    assert_eq!(
+        depth,
+        links.iter().map(|&i| i as i32).collect::<Vec<_>>(),
+        "each link is one column right of its owner"
+    );
+    assert_eq!(order, links, "each link sorts after its owner");
+    let positions = layout::positions(&graph, &depth, &order);
+    let first = positions[0].expect("the chain's root is placed");
+    for pair in positions.windows(2) {
+        let (owner, owned) = (pair[0].unwrap(), pair[1].unwrap());
+        assert!(owner.0 < owned.0, "columns run left to right");
+        assert_eq!(owned.1, first.1, "a chain stays on one row");
+    }
+}
+
 // Root prefixes use a minimum width of four in order.rs. Crossing that width
 // reverses string order for 9999 and 10000; removing roots then reverses it again.
 #[test]
