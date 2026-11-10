@@ -28,7 +28,7 @@ A manual run of `release.yml` with the `gpui-dry-run` input builds, bundles, sig
 
 ### Trust
 
-The client trusts one thing: the public key in `src-tauri/tauri.conf.json`, compiled into the binary. The manifest and the download are untrusted. Before anything is written:
+The client trusts one thing: the public key in `src-tauri/tauri.conf.json`, compiled into the binary. The manifest and the download are untrusted. Until the download has ended and passed these checks, its bytes go only to a staged file that is never executed, renamed or unpacked, and every failure removes that file:
 
 1. The downloaded bytes must carry a valid signature from that key. Unhashed legacy signatures are refused, because the Tauri signer always prehashes.
 2. The signature's trusted comment must hold `version:<version>` equal to the version the manifest announced. The trusted comment is covered by the signature. Without this check a tampered manifest could pair a new version number with an older signed build. The Tauri plugin calls the same rule `requireSignedVersion`; the native client always applies it, since it has no older unsigned-version releases to stay compatible with.
@@ -38,11 +38,11 @@ The manifest URL is derived from the Tauri endpoint in the same config, so the t
 
 ### Install and relaunch
 
-The client downloads the artifact into memory, as the Tauri plugin does, then verifies and installs off the UI thread.
+The client streams the artifact. Each chunk goes to the staged file and to minisign's streaming verifier, then is dropped, so memory use stays flat however large the response is. No trusted size exists to cap the download: the manifest and `Content-Length` are untrusted and the signature carries no size. File writes, hashing and the install run off the UI thread and off the async workers. A download that fails or ends before its announced length never installs.
 
-- **Linux.** The payload must be an ELF file. The client writes it to a new hidden file beside the AppImage, copies the AppImage's permissions, syncs it and renames it over the AppImage. The path always holds a complete AppImage. Relaunch starts the AppImage.
-- **macOS.** The client unpacks the archive into a hidden directory beside the bundle, requires exactly one `.app` directory in it, moves the installed bundle aside, moves the new one into its place, and deletes the old one. If the second move fails it moves the installed bundle back. Relaunch runs `open -n` on the bundle.
-- **Windows.** The payload must be a PE file. The client saves it to the user's temporary directory. Relaunch runs it with `/P` (passive) and `/R` (restart the app), and the app quits so the installer can replace its files.
+- **Linux.** The staged file is a new hidden file beside the AppImage. After verification the payload must be an ELF file. The client copies the AppImage's permissions to the staged file, syncs it and renames it over the AppImage. The path always holds a complete AppImage. Relaunch starts the AppImage.
+- **macOS.** The staged file is a hidden file beside the bundle that holds the downloaded `.app.tar.gz`, and it is removed once the install ends. After verification the client unpacks it into a hidden directory beside the bundle, requires exactly one `.app` directory in it, moves the installed bundle aside, moves the new one into its place, and deletes the old one. If the second move fails it moves the installed bundle back. Relaunch runs `open -n` on the bundle.
+- **Windows.** The staged file is a hidden file in the user's temporary directory whose name does not end in `.exe`. After verification the payload must be a PE file, and the client renames it to `KubeCove-GPUI-<version>-setup.exe`, so an unverified file never sits at an installer's name. Relaunch runs it with `/P` (passive) and `/R` (restart the app), and the app quits so the installer can replace its files.
 
 Work files are created with `create_new`, so the client never writes through a link placed at a predictable path. A stale work file from an interrupted install is removed first, without following links.
 
