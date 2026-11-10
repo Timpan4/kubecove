@@ -23,7 +23,16 @@ export async function adapterAction(page: Page, step: Step): Promise<void> {
                 });
                 if (!line) throw new Error("Missing inline YAML diagnostic");
                 const marked = step.marked ?? "metadata:";
-                await page.locator(".cm-line").filter({ hasText: marked }).locator(".cm-yaml-error-lens").waitFor();
+                const markedLine = page.locator(".cm-line").filter({ hasText: marked }).filter({ has: page.locator(".cm-yaml-error-lens") });
+                await markedLine.locator(".cm-yaml-error-lens").waitFor();
+                // The line number gutter shows a line's number at the same height as the line, as foldYamlLine reads it.
+                const box = await markedLine.boundingBox();
+                let number: string | undefined;
+                for (const element of await page.locator(".cm-lineNumbers .cm-gutterElement").filter({ visible: true }).all()) {
+                    const numberBox = await element.boundingBox();
+                    if (box && numberBox && Math.abs(numberBox.y - box.y) < 1) number = (await element.textContent())?.trim();
+                }
+                if (number !== String(step.line)) throw new Error(`YAML error lens is on line ${number ?? "unknown"}, expected ${step.line}`);
             }
             break;
         }
