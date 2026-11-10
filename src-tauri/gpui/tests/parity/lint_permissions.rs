@@ -16,21 +16,22 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
         "expectYamlDiagnostic" => {
             reveal(window, "detail-body", "yaml-diagnostic:0", cx);
             let detail = detail(step);
-            assert!(
+            let row = window
+                .find_all_by_label(string(step, "message"))
+                .into_iter()
+                .find(|row| row.description() == Some(detail.as_str()))
+                .unwrap_or_else(|| panic!("no diagnostic row for {:?}", string(step, "message")));
+            // The badge shares the row's index, so another finding's badge cannot answer.
+            let row_id = locate::id(&row).to_string();
+            let index = row_id
+                .strip_prefix("yaml-diagnostic:")
+                .unwrap_or_else(|| panic!("unexpected diagnostic row ID {row_id}"));
+            assert_eq!(
                 window
-                    .find_all_by_label(string(step, "message"))
-                    .iter()
-                    .any(|row| row.description() == Some(detail.as_str())),
-                "no diagnostic row for {:?}",
-                string(step, "message")
-            );
-            assert!(
-                window
-                    .find_all_by_label(string(step, "severity"))
-                    .iter()
-                    .any(|badge| badge.description() == Some(detail.as_str())),
-                "no {} badge for {detail:?}",
-                string(step, "severity")
+                    .find(format!("yaml-diagnostic-severity:{index}"))
+                    .label(),
+                Some(string(step, "severity")),
+                "wrong severity badge for {detail:?}"
             );
         }
         "expectYamlApplyDescription" => {
