@@ -4,7 +4,7 @@ This is repetition 1 of the required three-run protocol. All 108 cases completed
 
 Artifact: `e2e/artifacts/gpui-frames-2026-11-06T10-34-20-723Z/run-1.json`. Measured Rust source: `5806142`. Binary SHA-256: `ebc8eeb3c0c9f48c16f1ff798db04e345b541487aa39c0444a0826a131d8f5cf`.
 
-Build: `/home/timpan4/.t3/worktrees/kubecove/t3-5c78a61c/src-tauri/gpui/build`. Target: `/home/timpan4/.t3/worktrees/kubecove/t3-5c78a61c/src-tauri/gpui/target`. Optimized, profiling disabled, debug assertions disabled.
+Build: `src-tauri/gpui/build`. Target: `src-tauri/gpui/target`. Optimized, profiling disabled, debug assertions disabled.
 
 Start uptime: `11:34:20 up 1:30, 1 user, load average: 9.93, 16.33, 14.96`. Repetition 2 began at `11:54:14 up 1:50, 1 user, load average: 1.85, 2.11, 5.43`.
 

@@ -158,7 +158,7 @@ The measured Rust source is `5806142`. The runner includes `9b0312f` and its sub
 
 SHA-256: `ebc8eeb3c0c9f48c16f1ff798db04e345b541487aa39c0444a0826a131d8f5cf`.
 
-Manifest directory: `/home/timpan4/.t3/worktrees/kubecove/t3-5c78a61c/src-tauri/gpui`. Target: `/home/timpan4/.t3/worktrees/kubecove/t3-5c78a61c/src-tauri/gpui/target`. Build: `/home/timpan4/.t3/worktrees/kubecove/t3-5c78a61c/src-tauri/gpui/build`. Optimized build, profiling disabled, debug assertions disabled. CPU: AMD Ryzen 7 9800X3D 8-Core Processor, 16 logical processors.
+Manifest directory: `src-tauri/gpui`. Target: `src-tauri/gpui/target`. Build: `src-tauri/gpui/build`. Optimized build, profiling disabled, debug assertions disabled. CPU: AMD Ryzen 7 9800X3D 8-Core Processor, 16 logical processors.
 
 | Repetition | Uptime before measurement, local CET | Load before | Load after | Observed child priority |
 | --- | --- | --- | --- | ---: |
