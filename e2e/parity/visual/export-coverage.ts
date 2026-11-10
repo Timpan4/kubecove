@@ -36,6 +36,10 @@ export async function exportCoverage(client: TauriClient, base: { helm: HelmRele
 			}
 			responses[script] = entries;
 			if (script !== "failed") {
+				// The mock picks a release by storage name, which this request has no value for, so a
+				// successful answer is the first release's details. No script changes successful
+				// details, so the per-release fixture answers each selection instead.
+				if (entries.get_helm_release_details?.result) delete entries.get_helm_release_details;
 				entries.list_helm_releases = { result: coverageHelm(base.helm) };
 				entries.list_rbac_inspection = { result: coverageRbac(base.rbac) };
 				entries.list_incident_cockpit = { result: coverageIncidents(base.incidents) };
