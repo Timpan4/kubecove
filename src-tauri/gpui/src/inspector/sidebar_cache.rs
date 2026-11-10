@@ -9,6 +9,7 @@ use gpui_kit::{
 struct Inputs {
     workspace_name: SharedString,
     context: String,
+    context_count: usize,
     namespace: Option<String>,
     namespaces: Vec<String>,
     selected: Option<String>,
@@ -64,6 +65,7 @@ impl Inspector {
         let inputs = Inputs {
             workspace_name: self.workspace_name.clone(),
             context: self.scope.context.clone(),
+            context_count: self.workspace_contexts().len(),
             namespace: self.scope.namespace.clone(),
             namespaces: self
                 .namespaces

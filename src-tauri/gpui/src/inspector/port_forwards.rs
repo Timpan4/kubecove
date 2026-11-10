@@ -21,6 +21,8 @@ pub(super) struct SessionsState {
     /// The workspace contexts of the last read. A change to the set cleans up
     /// sessions outside it, unless sessions are kept across workspaces.
     pub(super) scope_contexts: Option<Vec<String>>,
+    /// A scope change's cleanup has not succeeded yet, so the next read retries it.
+    cleanup_pending: bool,
     /// `ActiveLiveSessionsButton`'s popover, open from the header count.
     pub(super) popover: bool,
     poll: Option<Task<()>>,
@@ -34,6 +36,7 @@ impl SessionsState {
             load: Query::default(),
             action: SessionAction::Idle,
             scope_contexts: None,
+            cleanup_pending: false,
             popover: false,
             poll: None,
             rows: Default::default(),
@@ -137,7 +140,9 @@ impl Inspector {
             .as_deref()
             .is_some_and(|old| !super::scope_load::same_contexts(old, &contexts));
         state.scope_contexts = Some(contexts.clone());
-        let cleanup = changed && !keep;
+        // A failed or replaced read leaves the cleanup pending for the next one.
+        let cleanup = (changed || state.cleanup_pending) && !keep;
+        state.cleanup_pending = cleanup;
         let previous_source = state.load.data().and_then(|s| s.source_key.clone());
         let backend = self.backend.clone();
         let executor = cx.background_executor().clone();
@@ -175,6 +180,9 @@ impl Inspector {
                         .or(load.failure())
                         .is_some_and(|old| old.kind == new.kind && old.message == new.message),
                 };
+                if cleanup && result.is_ok() {
+                    this.sessions.cleanup_pending = false;
+                }
                 this.sessions.load.settle(result);
                 if !unchanged {
                     cx.notify();

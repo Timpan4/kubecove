@@ -382,10 +382,14 @@ pub fn view(
     if let Some(selected) = selected {
         // `filterFlowTopologyToSelectedRoot`, then `applyFlowTopologySelectionWithIndex`.
         let (subtree, subtree_edges) = root_subtree(&graph, selected);
+        // A rootless cycle, such as a self-loop, has no root subtree. The web keeps
+        // the whole graph then (`rootSubtree.nodeIds.size === 0`) and only highlights.
+        let keep_all = !subtree.contains(&true);
         let keep: Vec<bool> = flow
             .iter()
             .zip(&graph_nodes)
             .map(|(node, graph_node)| match (&node.item, graph_node) {
+                _ if keep_all => true,
                 (FlowItem::Group { members, .. }, _) => {
                     members.iter().any(|&member| subtree[member])
                 }
@@ -405,7 +409,7 @@ pub fn view(
         }
         flow_edges = flow_edges
             .into_iter()
-            .filter(|(at, _)| subtree_edges[*at])
+            .filter(|(at, _)| keep_all || subtree_edges[*at])
             .filter_map(|(at, edge)| {
                 Some((
                     at,

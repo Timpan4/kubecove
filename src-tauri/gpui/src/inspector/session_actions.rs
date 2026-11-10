@@ -27,6 +27,9 @@ impl Inspector {
         }
         self.sessions.action = SessionAction::Running;
         let context = self.scope.context.clone();
+        // Closing or switching the workspace keeps `scope.context`, so the
+        // workspace that started the forward must still be the open one.
+        let workspace = self.launcher.active;
         let source = self.sessions.load.data().and_then(|s| s.source_key.clone());
         let backend = self.backend.clone();
         cx.spawn_in(window, async move |this, cx| {
@@ -40,7 +43,8 @@ impl Inspector {
                                 .persisted
                                 .preferences
                                 .keep_live_sessions_on_workspace_switch
-                                || this.scope.context == context)
+                                || (this.scope.context == context
+                                    && this.launcher.active == workspace))
                     })
                     .unwrap_or(false);
                 if !belongs {
@@ -295,6 +299,11 @@ impl Inspector {
             )
     }
     pub(super) fn save_forward_preset(&mut self, cx: &mut Context<Self>) {
+        // Its feedback replaces the action state, which would drop a running
+        // start or stop and its single-action guard.
+        if self.sessions.action.running() {
+            return;
+        }
         let preset_key = self.preset_key();
         match self.forward_request(cx) {
             Ok(request) => {

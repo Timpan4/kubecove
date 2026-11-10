@@ -166,3 +166,64 @@ fn changing_workspace_cancels_every_old_context_read(cx: &mut TestAppContext) {
     })
     .unwrap();
 }
+/// The sidebar badge counts the workspace's contexts, so a multi-context
+/// workspace does not report a single cluster.
+#[gpui_kit::test]
+fn the_sidebar_badge_counts_every_workspace_context(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    backend.workspace.enabled.store(true, Ordering::SeqCst);
+    let handle = open(cx, backend);
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(window.find("workspace-context-count").label(), Some("1"));
+    })
+    .unwrap();
+    create_group(cx, handle);
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(window.find("workspace-context-count").label(), Some("2"));
+    })
+    .unwrap();
+}
+/// A recent namespace opens in the current context, as the web's
+/// `openEntryPoint` does, after the context picker left the context it was
+/// visited in. It has no kind, so resolving it as a resource always failed.
+#[gpui_kit::test]
+fn a_recent_namespace_opens_after_the_context_changes(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    let handle = open(cx, backend);
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window.click("namespace:payments", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window.within("context").click("input", cx);
+        window.press("down", cx);
+        window.press("enter", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window.click("nav:Workspace Overview", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(
+            window.find("entry:Recent:0").label(),
+            Some("Namespace / payments")
+        );
+        window.click("entry:Recent:0", cx);
+        window.render_frame(cx);
+        assert!(
+            window.try_find("notice").is_none(),
+            "a namespace entry must not report a missing object"
+        );
+    })
+    .unwrap();
+}

@@ -12,8 +12,8 @@ use crate::theme::Tokens;
 use crate::ui;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::{
-    AnyElement, App, Context, Div, Entity, KeyDownEvent, SharedString, Subscription, Window, div,
-    prelude::*, px,
+    AnyElement, App, Context, Div, Entity, KeyDownEvent, ScrollHandle, SharedString, Subscription,
+    Window, div, prelude::*, px,
 };
 use kubecove_lib::models::ResourceSummary;
 
@@ -42,6 +42,22 @@ impl Hit {
     }
 }
 
+/// The list child that shows `hits[position]`. Each non-empty group renders a
+/// 4px spacer before and after its rows, as `CommandGroup`'s `py-1`.
+fn list_child(hits: &[Hit], position: usize) -> usize {
+    let group = hits[position].group();
+    let earlier: usize = (0..group)
+        .map(|other| hits.iter().filter(|hit| hit.group() == other).count())
+        .filter(|&rows| rows > 0)
+        .map(|rows| rows + 2)
+        .sum();
+    let before = hits[..position]
+        .iter()
+        .filter(|hit| hit.group() == group)
+        .count();
+    earlier + 1 + before
+}
+
 pub(super) struct PaletteState {
     pub(super) open: bool,
     pub(super) kind: Option<&'static str>,
@@ -55,6 +71,8 @@ pub(super) struct PaletteState {
     namespace_hits: Vec<String>,
     /// The keyboard-highlighted hit; cmdk's default selection draws no highlight.
     active: Option<usize>,
+    /// Arrow keys scroll the highlighted hit into view, as cmdk does.
+    scroll: ScrollHandle,
     search: search::SearchRead,
     _subscriptions: [Subscription; 2],
 }
@@ -99,6 +117,7 @@ impl PaletteState {
             hits: vec![],
             namespace_hits: vec![],
             active: None,
+            scroll: ScrollHandle::new(),
             search: search::SearchRead::default(),
             _subscriptions: [change, shortcut],
         }
@@ -195,7 +214,7 @@ impl Inspector {
         match chosen {
             Chosen::Resource(resource) => {
                 if CLUSTER_KINDS.contains(&resource.kind.as_str()) {
-                    self.open_cluster_overview(window, cx);
+                    self.open_cluster_scope(window, cx);
                 } else {
                     self.select_namespace(None, window, cx);
                 }
@@ -206,6 +225,19 @@ impl Inspector {
         }
     }
 
+    /// Cluster Overview for a cluster kind. Like `select_namespace` for the
+    /// other kinds, it drops the sidebar's kind selection, which would
+    /// otherwise hide the palette's kind.
+    fn open_cluster_scope(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_cluster_overview(window, cx);
+        if self.page == Page::ClusterOverview {
+            self.kind_selection.chosen = None;
+            self.live.selected = None;
+            self.live.kind_locked = false;
+            self.filter(cx);
+        }
+    }
+
     fn go_to(&mut self, destination: Destination, window: &mut Window, cx: &mut Context<Self>) {
         self.palette.kind = None;
         match destination {
@@ -213,7 +245,7 @@ impl Inspector {
             Destination::ClusterOverview => self.open_cluster_overview(window, cx),
             Destination::Resources(kind) => {
                 if kind.is_some_and(|kind| CLUSTER_KINDS.contains(&kind)) {
-                    self.open_cluster_overview(window, cx);
+                    self.open_cluster_scope(window, cx);
                 } else {
                     self.select_namespace(None, window, cx);
                 }
@@ -225,6 +257,15 @@ impl Inspector {
                     .update(cx, |input, cx| input.set_value("", window, cx));
                 self.filter(cx);
             }
+            Destination::Category(label) => {
+                if let Some((_, kinds)) = super::sidebar_tree::GROUPS
+                    .iter()
+                    .find(|(name, _)| *name == label)
+                {
+                    self.tree_select(label.to_owned(), None, *kinds, window, cx);
+                }
+            }
+            Destination::CustomResources => self.select_custom_resources(window, cx),
             Destination::Incidents => self.open_page(Page::Incidents, cx),
             Destination::PortForwards => self.open_page(Page::PortForwards, cx),
             Destination::GitOps(focus) => self.open_gitops(focus, cx),
@@ -240,12 +281,16 @@ impl Inspector {
         let active = self.palette.active;
         match event.keystroke.key.as_str() {
             "escape" => self.close_palette(window, cx),
-            "down" if count > 0 => {
-                self.palette.active = Some(active.map_or(0, |index| (index + 1) % count))
-            }
-            "up" if count > 0 => {
-                self.palette.active =
-                    Some(active.map_or(count - 1, |index| (index + count - 1) % count))
+            "down" | "up" if count > 0 => {
+                let next = if event.keystroke.key == "down" {
+                    active.map_or(0, |index| (index + 1) % count)
+                } else {
+                    active.map_or(count - 1, |index| (index + count - 1) % count)
+                };
+                self.palette.active = Some(next);
+                self.palette
+                    .scroll
+                    .scroll_to_item(list_child(&self.palette.hits, next));
             }
             "enter" => {
                 if let Some(hit) = self.palette.hits.get(active.unwrap_or(0)).copied() {
@@ -268,7 +313,14 @@ impl Inspector {
                 let row = &state.resources[index];
                 let namespace = row.namespace.as_deref().unwrap_or("");
                 (
-                    format!("palette-resource:{}:{namespace}:{}", row.kind, row.name),
+                    // The search keeps same-named rows of other contexts and API groups.
+                    format!(
+                        "palette-resource:{}:{}:{}:{namespace}:{}",
+                        row.cluster,
+                        row.api_version.as_deref().unwrap_or_default(),
+                        row.kind,
+                        row.name
+                    ),
                     row.name.clone(),
                     Some(format!("{} {namespace}", row.kind)),
                     "box",
@@ -354,11 +406,18 @@ impl Inspector {
             .id("palette-list")
             .max_h(px(320.))
             .overflow_y_scroll()
+            .track_scroll(&self.palette.scroll)
+            // Rows are direct children so `list_child` can scroll to one.
             .children(
                 groups
                     .into_iter()
                     .filter(|items| !items.is_empty())
-                    .map(|items| div().py(px(4.)).children(items)),
+                    .flat_map(|items| {
+                        let spacer = || div().h(px(4.)).into_any_element();
+                        std::iter::once(spacer())
+                            .chain(items)
+                            .chain(std::iter::once(spacer()))
+                    }),
             )
             .when(empty && search_loading.ready(), |list| {
                 list.child(

@@ -40,15 +40,14 @@ impl Inspector {
             _ => None,
         };
         let widget = if let Some(checked) = checked {
-            // The web switch is `disabled` while the footer is hidden.
-            if row.title == "Measure working set (WSS)" && !p.show_usage_footer {
-                return switch(row.title, checked)
-                    .opacity(0.5)
-                    .cursor_default()
-                    .into_any_element();
-            }
+            // The web switch is `disabled` while the footer is hidden; its row stays.
+            let disabled = row.title == "Measure working set (WSS)" && !p.show_usage_footer;
             switch(row.title, checked)
+                .when(disabled, |switch| switch.opacity(0.5).cursor_default())
                 .on_click(cx.listener(move |this, _, window, cx| {
+                    if disabled {
+                        return;
+                    }
                     if row.title == "Skip change review"
                         && !this.persisted.preferences.skip_change_review
                     {
@@ -319,6 +318,7 @@ impl Inspector {
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.persisted.preferences.resource_kind_lanes =
                                     KindLanes::default();
+                                this.sync_kind_focus(cx);
                                 this.save_preferences(cx);
                             })),
                     ),

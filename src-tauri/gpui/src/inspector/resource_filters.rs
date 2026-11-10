@@ -71,6 +71,9 @@ impl Inspector {
         self.search
             .update(cx, |input, cx| input.set_value("", window, cx));
         self.filters.health = HealthFilter::from_incident(filter);
+        // The web passes an empty GitOps filter; the incident spans every context.
+        self.filters.gitops_owner = None;
+        self.filters.contexts.clear();
         self.filter(cx);
     }
 }

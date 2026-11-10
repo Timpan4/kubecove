@@ -16,6 +16,18 @@ impl gpui_kit::Render for DragKind {
 }
 
 impl Inspector {
+    /// Gives every kind in the lanes a focus handle, so each row takes Tab and
+    /// arrow keys. Reset can bring back kinds that a loaded custom order lacked.
+    pub(super) fn sync_kind_focus(&mut self, cx: &mut Context<Self>) {
+        let lanes = &self.persisted.preferences.resource_kind_lanes;
+        for kind in lanes.first.iter().chain(&lanes.normal).chain(&lanes.last) {
+            if !self.settings.kind_focus.contains_key(kind) {
+                self.settings
+                    .kind_focus
+                    .insert(kind.clone(), cx.focus_handle());
+            }
+        }
+    }
     /// Records the kind being dragged. Notifies only when it changes.
     pub(super) fn track_kind_drag(&mut self, kind: String, cx: &mut Context<Self>) {
         if self.settings.kind_drag.as_deref() != Some(kind.as_str()) {

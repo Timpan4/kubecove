@@ -142,7 +142,7 @@ impl Inspector {
             && self.cluster.context == context
     }
 
-    fn wants_cluster_rows(&self) -> bool {
+    pub(super) fn wants_cluster_rows(&self) -> bool {
         self.page == Page::ClusterOverview
             || self
                 .kind_selection

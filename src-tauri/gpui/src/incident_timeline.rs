@@ -5,9 +5,10 @@
 
 use crate::incident::{
     ConditionRow, SignalTone, completed_readiness, disruption_target, is_warning, millis, parse,
-    succeeded_pod, time_of_day,
+    succeeded_pod,
 };
-use chrono::Local;
+use crate::preferences::TimestampTimezone;
+use chrono::{DateTime, FixedOffset, Local, Utc};
 use kubecove_lib::models::{ResourceEventSummary, ResourceSummary};
 
 /// `IncidentTimelineItem`.
@@ -102,18 +103,25 @@ pub struct DayGroup<'a> {
     pub items: Vec<&'a TimelineItem>,
 }
 
-/// `groupIncidentTimelineByDay` in local time. Labels follow the en-GB
+/// `time` formatted in the Timestamp timezone setting.
+fn in_zone(time: DateTime<FixedOffset>, timezone: TimestampTimezone, format: &str) -> String {
+    match timezone {
+        TimestampTimezone::Local => time.with_timezone(&Local).format(format).to_string(),
+        TimestampTimezone::Utc => time.with_timezone(&Utc).format(format).to_string(),
+    }
+}
+
+/// `groupIncidentTimelineByDay` in the Timestamp timezone. Labels follow the en-GB
 /// `toLocaleDateString` the web captures render (`29 Jun 2026`); undated entries go last.
-pub fn group_by_day(items: &[TimelineItem]) -> Vec<DayGroup<'_>> {
+pub fn group_by_day(items: &[TimelineItem], timezone: TimestampTimezone) -> Vec<DayGroup<'_>> {
     let mut groups: Vec<DayGroup> = Vec::new();
     let mut unknown: Vec<&TimelineItem> = Vec::new();
     for item in items {
-        let Some(date) = parse(item.timestamp.as_deref()).map(|time| time.with_timezone(&Local))
-        else {
+        let Some(time) = parse(item.timestamp.as_deref()) else {
             unknown.push(item);
             continue;
         };
-        let key = date.format("%Y-%m-%d").to_string();
+        let key = in_zone(time, timezone, "%Y-%m-%d");
         match groups
             .iter_mut()
             .find(|group| group.key.as_deref() == Some(&key))
@@ -121,7 +129,7 @@ pub fn group_by_day(items: &[TimelineItem]) -> Vec<DayGroup<'_>> {
             Some(group) => group.items.push(item),
             None => groups.push(DayGroup {
                 key: Some(key),
-                label: date.format("%-d %b %Y").to_string(),
+                label: in_zone(time, timezone, "%-d %b %Y"),
                 items: vec![item],
             }),
         }
@@ -136,21 +144,29 @@ pub fn group_by_day(items: &[TimelineItem]) -> Vec<DayGroup<'_>> {
     groups
 }
 
-/// The single dated group's heading is hidden when it is today.
-pub fn hide_today_heading<'a>(groups: impl Iterator<Item = Option<&'a str>>) -> bool {
-    let today = Local::now().format("%Y-%m-%d").to_string();
+/// The single dated group's heading is hidden when it is today in the Timestamp timezone.
+pub fn hide_today_heading<'a>(
+    groups: impl Iterator<Item = Option<&'a str>>,
+    timezone: TimestampTimezone,
+) -> bool {
+    let today = in_zone(Utc::now().fixed_offset(), timezone, "%Y-%m-%d");
     let mut dated = groups.flatten();
     dated.next().is_some_and(|key| key == today) && dated.next().is_none()
 }
 
-/// `incidentTimelineTime`.
-pub fn timeline_time(item: &TimelineItem) -> String {
-    time_of_day(item.timestamp.as_deref(), "No time")
+/// `incidentTimelineTimeFormatter`.
+pub fn timeline_time(item: &TimelineItem, timezone: TimestampTimezone) -> String {
+    parse(item.timestamp.as_deref())
+        .map_or("No time".to_owned(), |time| in_zone(time, timezone, "%H:%M:%S"))
 }
 
+/// The text after `prefix`, matched ignoring ASCII case like the web's `/i`
+/// patterns. ASCII folding keeps byte offsets, so the match indexes `text`.
 fn after<'a>(text: &'a str, prefix: &str) -> Option<&'a str> {
-    let lower = text.to_lowercase();
-    let start = lower.find(&prefix.to_lowercase())? + prefix.len();
+    let start = text
+        .to_ascii_lowercase()
+        .find(&prefix.to_ascii_lowercase())?
+        + prefix.len();
     text.get(start..)
 }
 

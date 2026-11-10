@@ -65,8 +65,13 @@ impl Inspector {
                 self.map.zoom_focus =
                     Some(std::array::from_fn(|_| cx.focus_handle().tab_stop(true)));
             }
+            if self.map.mode_focus.is_none() {
+                self.map.mode_focus =
+                    Some(std::array::from_fn(|_| cx.focus_handle().tab_stop(true)));
+            }
             if self.map.skip_target.is_none() {
                 self.map.skip_target = Some(cx.focus_handle());
+                self.map.skip_link = Some(cx.focus_handle().tab_stop(true));
             }
             self.map.focus_view = self
                 .map

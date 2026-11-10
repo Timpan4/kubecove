@@ -190,6 +190,33 @@
       ]
     },
     {
+      "id": "palette.cluster-kind-replaces-sidebar-kind",
+      "title": "A cluster kind chosen in the palette replaces the kind the sidebar selected",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "collapseSidebar" },
+        { "action": "sidebarToggle", "path": ["Workloads"] },
+        { "action": "sidebarSelect", "path": ["Workloads", "Deployment"] },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "openPalette", "via": "button" },
+        { "action": "searchPalette", "value": "Cluster Overview › Node" },
+        { "action": "choosePaletteEntry", "label": "Cluster Overview › Node" },
+        { "action": "expectClusterResource", "kind": "Node", "name": "dev-control-plane" }
+      ]
+    },
+    {
+      "id": "palette.section-target",
+      "title": "Choosing a section from the palette opens that sidebar section's kinds",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openPalette", "via": "button" },
+        { "action": "searchPalette", "value": "Network" },
+        { "action": "choosePaletteEntry", "label": "Network" },
+        { "action": "expectResource", "kind": "Service", "name": "payments-api", "namespace": "payments" },
+        { "action": "expectNoResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" }
+      ]
+    },
+    {
       "id": "palette.navigation",
       "title": "Palette navigation and namespace results follow the query and open the chosen target",
       "steps": [

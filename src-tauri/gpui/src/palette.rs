@@ -13,6 +13,10 @@ pub enum Destination {
     WorkspaceOverview,
     ClusterOverview,
     Resources(Option<&'static str>),
+    /// A built-in sidebar category, such as Network, by its sidebar label.
+    Category(&'static str),
+    /// The sidebar's Custom Resources section.
+    CustomResources,
     Incidents,
     PortForwards,
     GitOps(crate::gitops_surface::Focus),
@@ -105,15 +109,19 @@ const SECTIONS: &[(&str, &str, &[&str])] = &[
     ),
 ];
 
-fn destination(section: &str, child: Option<&'static str>) -> Destination {
+fn destination(section: &str, label: &'static str, child: Option<&'static str>) -> Destination {
     match section {
         "workspaceOverview" => Destination::WorkspaceOverview,
         "clusterOverview" => child.map_or(Destination::ClusterOverview, |kind| {
             Destination::Resources(Some(kind))
         }),
-        "workloads" | "network" | "config" | "storage" | "discovered" => {
-            Destination::Resources(child)
-        }
+        // A section entry selects the sidebar section, as the web's
+        // `nodeId: { type: "section" }` does.
+        "workloads" | "network" | "config" | "storage" => child
+            .map_or(Destination::Category(label), |kind| {
+                Destination::Resources(Some(kind))
+            }),
+        "discovered" => Destination::CustomResources,
         "incidents" => Destination::Incidents,
         "portForwards" => Destination::PortForwards,
         "argo" => {
@@ -159,13 +167,13 @@ pub fn navigation(gitops_visible: bool) -> Vec<NavEntry> {
         entries.push(entry(
             format!("section:{section}"),
             (*label).to_owned(),
-            destination(section, None),
+            destination(section, label, None),
         ));
         for child in *children {
             entries.push(entry(
                 format!("kind:{section}:{child}"),
                 format!("{label} › {child}"),
-                destination(section, Some(child)),
+                destination(section, label, Some(child)),
             ));
         }
     }

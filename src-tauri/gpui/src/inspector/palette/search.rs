@@ -39,42 +39,93 @@ impl SearchRead {
 }
 
 impl Inspector {
-    /// Reads the whole workspace scope, even when the resource browser is
-    /// currently filtered to a namespace or its cluster page has not opened.
+    /// Reads the whole workspace scope in every workspace context, even when the
+    /// resource browser is currently filtered to a namespace or its cluster page
+    /// has not opened. Cluster rows come from the browser's context, as in the
+    /// snapshot the palette opened with.
     pub(super) fn warm_palette(&mut self, cx: &mut Context<Self>) {
         let context = self.scope.context.clone();
-        let backend = self.backend.clone();
-        let scope = Scope {
-            context: context.clone(),
-            namespace: None,
-        };
-        let workspace = crate::read_retry::read(cx.background_executor().clone(), move || {
-            backend.resources(scope.clone(), false)
-        });
+        let contexts = self.workspace_contexts();
+        let several = contexts.len() > 1;
+        let reads = contexts
+            .into_iter()
+            .map(|read_context| {
+                let backend = self.backend.clone();
+                let scope = Scope {
+                    context: read_context.clone(),
+                    namespace: None,
+                };
+                let read = crate::read_retry::read(cx.background_executor().clone(), move || {
+                    backend.resources(scope.clone(), false)
+                });
+                (read_context, read)
+            })
+            .collect();
+        let workspace = crate::workspaces::reads::settle(reads);
         let backend = self.backend.clone();
         let read_context = context.clone();
         let cluster = crate::read_retry::read(cx.background_executor().clone(), move || {
             backend.cluster_resources(read_context.clone(), false)
         });
         let read = cx.spawn(async move |this, cx| {
-            // NativeBackend starts both host tasks when the reads are created.
-            // Dropping this task drops both reads and aborts their host tasks.
-            let results = [workspace.await, cluster.await];
+            // NativeBackend starts the host tasks when the reads are created.
+            // Dropping this task drops the reads and aborts their host tasks.
+            let (workspace, cluster) = (workspace.await, cluster.await);
             let _ = this.update(cx, |this, cx| {
                 if this.scope.context != context {
                     return;
                 }
                 let mut rows = Vec::new();
                 let mut warnings = Vec::new();
-                for result in results {
+                let named = |read_context: &str, warning: String| {
+                    if several {
+                        format!("{read_context}: {warning}")
+                    } else {
+                        warning
+                    }
+                };
+                // A failed read keeps the rows the palette opened with, so a
+                // degraded backend does not take searchable resources away.
+                let mut failed = Vec::new();
+                for (read_context, result) in workspace {
                     match result {
                         Ok(result) => {
                             rows.extend(result.resources);
-                            warnings.extend(result.warnings);
+                            warnings.extend(
+                                result
+                                    .warnings
+                                    .into_iter()
+                                    .map(|warning| named(&read_context, warning)),
+                            );
                         }
-                        Err(error) => warnings.push(error.message),
+                        Err(error) => {
+                            warnings.push(named(&read_context, error.message));
+                            failed.push(read_context);
+                        }
                     }
                 }
+                let cluster_failed = match cluster {
+                    Ok(result) => {
+                        rows.extend(result.resources);
+                        warnings.extend(result.warnings);
+                        false
+                    }
+                    Err(error) => {
+                        warnings.push(error.message);
+                        true
+                    }
+                };
+                rows.extend(
+                    std::mem::take(&mut this.palette.resources)
+                        .into_iter()
+                        .filter(|row| {
+                            if CLUSTER_KINDS.contains(&row.kind.as_str()) {
+                                cluster_failed
+                            } else {
+                                failed.contains(&row.cluster)
+                            }
+                        }),
+                );
                 this.palette.search = if warnings.is_empty() {
                     SearchRead::Ready
                 } else {

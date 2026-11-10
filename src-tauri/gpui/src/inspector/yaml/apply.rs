@@ -131,6 +131,21 @@ impl YamlApply {
 }
 
 /// `isYamlApplyDisabled`.
+/// Shows the read-only view's shape in the picker. Starting an edit sets it to
+/// Apply clean, so leaving the draft must set it back.
+fn show_view_shape(detail: &mut ResourceDetail, window: &mut Window, cx: &mut Context<Inspector>) {
+    let selected =
+        gpui_kit::SharedString::from(if detail.yaml_view.mode == YamlViewMode::ApplyClean {
+            "Apply clean"
+        } else {
+            "Kubectl view"
+        });
+    detail
+        .yaml_view
+        .shape
+        .update(cx, |s, cx| s.set_selected_value(&selected, window, cx));
+}
+
 pub(super) fn disabled_reason(resource: &ResourceSummary) -> Option<&'static str> {
     (resource.kind == "Secret" && resource.api_version.as_deref().unwrap_or("v1") == "v1")
         .then_some("Secret YAML apply is disabled to avoid exposing sensitive data.")
@@ -197,16 +212,7 @@ impl Inspector {
         };
         detail.yaml = YamlApply::default();
         detail.lint.clear();
-        let selected =
-            gpui_kit::SharedString::from(if detail.yaml_view.mode == YamlViewMode::ApplyClean {
-                "Apply clean"
-            } else {
-                "Kubectl view"
-            });
-        detail
-            .yaml_view
-            .shape
-            .update(cx, |s, cx| s.set_selected_value(&selected, window, cx));
+        show_view_shape(detail, window, cx);
         let yaml = if detail.yaml_view.text.is_empty() {
             detail.data.yaml.clone()
         } else {
@@ -261,6 +267,8 @@ impl Inspector {
                     Err(error) => {
                         detail.yaml.enter(Phase::Viewing);
                         detail.yaml.feedback = Feedback::PrepareFailed(error);
+                        // The read-only view keeps its own shape, not the draft's.
+                        show_view_shape(detail, window, cx);
                     }
                 }
                 this.schedule_yaml_lint(window, cx);
@@ -357,6 +365,9 @@ impl Inspector {
                         if let Some(detail) = this.yaml_apply() {
                             detail.yaml.feedback = Feedback::Applied(message);
                         }
+                        // The web invalidates the YAML queries after an apply, so the
+                        // view shows the applied object instead of the pre-edit text.
+                        this.reload_yaml_view(window, cx);
                     }
                     Err(error) => {
                         let Some(detail) = this.yaml_apply() else {

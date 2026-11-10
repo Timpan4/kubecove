@@ -119,6 +119,10 @@
 					"action": "openSettings"
 				},
 				{
+					"action": "expectSettingRow",
+					"title": "Measure working set (WSS)"
+				},
+				{
 					"action": "toggleSetting",
 					"setting": "Show CPU and memory footer"
 				},

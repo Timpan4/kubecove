@@ -6,7 +6,7 @@ use super::table_columns::{
     Column, EMPTY, READINESS_NOT_REPORTED, RESTART_COUNT_NOT_REPORTED, cell, ready_chip,
     ready_text, resource_id, restart_text, text_cell, value_cell,
 };
-use super::table_status::{health_badge, lifecycle_status};
+use super::table_status::{health_badge, lifecycle_status, row_height_key};
 use super::{Inspector, surface, timestamp_text};
 use crate::model::{
     Entry, OwnerRef, TableView, group_visual, indexed_table_page, kind_visual, owner_ref,
@@ -80,7 +80,12 @@ impl Inspector {
     fn cell_text(&self, column: Column, row: &ResourceSummary) -> String {
         match column {
             Column::Name => row.name.clone(),
-            Column::Status => surface::health_state_label(row.health_assessment.state).into(),
+            // The lifecycle label replaces the health badge in the cell, so it labels it too.
+            Column::Status => crate::topology::node::lifecycle(&row.kind, row.status.as_deref())
+                .map_or_else(
+                    || surface::health_state_label(row.health_assessment.state).into(),
+                    |lifecycle| lifecycle.label.to_string(),
+                ),
             Column::Context => row.cluster.clone(),
             Column::Namespace => row.namespace.clone().unwrap_or_else(|| EMPTY.into()),
             Column::Kind => row.kind.clone(),
@@ -571,7 +576,10 @@ impl Inspector {
             let ids: Vec<u64> = page
                 .entries
                 .iter()
-                .map(|entry| super::windowed::row_id(std::mem::discriminant(entry)))
+                .map(|entry| match entry {
+                    Entry::Row(index) => row_height_key(&page.rows[*index]),
+                    _ => super::windowed::row_id(std::mem::discriminant(entry)),
+                })
                 .collect();
             if let Some(tops) = self.table_rows.fixed_tops(0, &ids) {
                 let owner = cx.entity();

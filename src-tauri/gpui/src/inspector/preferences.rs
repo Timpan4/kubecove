@@ -115,14 +115,8 @@ impl Inspector {
         self.launcher.transfer.documents =
             document.workspace_documents.clone().into_iter().collect();
         self.persisted = document;
-        let lanes = &self.persisted.preferences.resource_kind_lanes;
-        self.settings.kind_focus = lanes
-            .first
-            .iter()
-            .chain(&lanes.normal)
-            .chain(&lanes.last)
-            .map(|kind| (kind.clone(), cx.focus_handle()))
-            .collect();
+        self.settings.kind_focus.clear();
+        self.sync_kind_focus(cx);
         self.refresh_diagnostics(false, cx);
         self.timings
             .set_enabled(self.persisted.preferences.debug_mode_enabled);

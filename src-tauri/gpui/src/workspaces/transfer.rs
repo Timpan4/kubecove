@@ -29,7 +29,7 @@ pub fn parse(raw: &str) -> Result<Vec<ImportedWorkspace>, String> {
     };
     let mut keys = std::collections::HashSet::new();
     let mut imported = Vec::new();
-    for document in documents {
+    for mut document in documents {
         if document["apiVersion"] != API_VERSION || document["kind"] != "Workspace" {
             return Err("Invalid workspace item".into());
         }
@@ -112,6 +112,7 @@ pub fn parse(raw: &str) -> Result<Vec<ImportedWorkspace>, String> {
                 port(value)?;
             }
         }
+        normalize_shortcut_targets(&mut document);
         imported.push(ImportedWorkspace {
             document,
             name,
@@ -123,6 +124,35 @@ pub fn parse(raw: &str) -> Result<Vec<ImportedWorkspace>, String> {
         });
     }
     Ok(imported)
+}
+/// `optionalString` in the web parser: a shortcut's `namespace` or `argoApp`
+/// that is not a nonempty string is absent, so the saved shortcuts still load.
+fn normalize_shortcut_targets(document: &mut Value) {
+    let Some(shortcuts) = document
+        .get_mut("spec")
+        .and_then(|spec| spec.get_mut("shortcuts"))
+        .and_then(Value::as_array_mut)
+    else {
+        return;
+    };
+    for shortcut in shortcuts.iter_mut().filter_map(Value::as_object_mut) {
+        for key in ["namespace", "argoApp"] {
+            let value = shortcut
+                .get(key)
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned);
+            match value {
+                Some(value) => {
+                    shortcut.insert(key.to_owned(), Value::String(value));
+                }
+                None => {
+                    shortcut.remove(key);
+                }
+            }
+        }
+    }
 }
 fn required(value: &Value) -> Result<String, String> {
     value

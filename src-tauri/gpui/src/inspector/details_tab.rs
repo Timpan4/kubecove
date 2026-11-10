@@ -183,7 +183,7 @@ pub(super) fn details_tab(
                 }),
         )
         .child(incident_summary(detail, loading))
-        .child(timeline(detail, timeline_rows, cx))
+        .child(timeline(detail, timeline_rows, timezone, cx))
         .when_some(status::conditions(detail, timezone), |column, section| {
             column.child(section)
         })

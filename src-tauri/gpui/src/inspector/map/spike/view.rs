@@ -319,7 +319,11 @@ impl Inspector {
             }
         }
         let interactive = spike.interactive;
+        // xyflow's Controls sit outside the pane, so their clicks never reach
+        // the canvas click that clears the selection.
         let controls = div()
+            .id("topology-spike-controls")
+            .on_click(|_, _, cx| cx.stop_propagation())
             .absolute()
             .left(px(15.))
             .bottom(px(15.))

@@ -85,7 +85,25 @@ fn workspace_files_validate_before_the_import_preview() {
     let imported = parse(&document.to_string()).unwrap();
     assert_eq!(imported[0].context, "mock-dev");
     assert_eq!(imported[0].document, document);
-    let mut invalid = document;
+    let mut invalid = document.clone();
     invalid["spec"]["scope"]["clusterContext"] = serde_json::json!(false);
     assert!(parse(&invalid.to_string()).is_err());
+    // A non-string shortcut target is absent, as the web's `optionalString`
+    // reads it. Kept as-is, it made the saved shortcuts fail to load.
+    let mut loose = document;
+    loose["spec"]["shortcuts"] = serde_json::json!([
+        {"id":"resources:all","label":"Resources","kind":"resources","namespace":123},
+        {"id":"argo:web","label":"Web","kind":"argo","argoApp":" web "}
+    ]);
+    let imported = parse(&loose.to_string()).unwrap();
+    let shortcuts: Vec<kubecove_gpui::workspaces::shortcuts::Shortcut> =
+        serde_json::from_value(imported[0].document["spec"]["shortcuts"].clone()).unwrap();
+    assert!(matches!(
+        &shortcuts[0].target,
+        kubecove_gpui::workspaces::shortcuts::Target::Resources { namespace: None }
+    ));
+    assert!(matches!(
+        &shortcuts[1].target,
+        kubecove_gpui::workspaces::shortcuts::Target::Argo { argo_app: Some(app) } if app == "web"
+    ));
 }

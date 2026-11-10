@@ -78,6 +78,18 @@
       ]
     },
     {
+      "id": "resource-filters.incident-resources-clear-owner",
+      "title": "An incident's Open resources drops the earlier GitOps owner filter",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "chooseGitOpsOwner", "owner": "Owned by Argo CD: shop (partial evidence)" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "monitoring", "name": "grafana" },
+        { "action": "openPage", "page": "Incidents" },
+        { "action": "openIncidentResources" },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "monitoring", "name": "grafana" }
+      ]
+    },
+    {
       "id": "resource-filters.hide-historical-replicasets",
       "title": "The historical ReplicaSet checkbox hides only the historical ReplicaSet from the map",
       "steps": [

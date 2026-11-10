@@ -294,3 +294,59 @@ fn confirming_context_change_cancels_a_pending_exec(cx: &mut TestAppContext) {
     })
     .unwrap();
 }
+/// Before the fix the form kept the deleted preset's index, so Save changes
+/// panicked on the removed last entry or overwrote the one that moved into it.
+#[gpui_kit::test]
+fn deleting_the_edited_preset_closes_its_form(cx: &mut TestAppContext) {
+    let handle = open(cx, Arc::new(Controlled::default()));
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("nav:Port Forwards", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("save-forward", cx);
+        w.render_frame(cx);
+        for (id, text) in [
+            ("preset-namespace", "payments"),
+            ("preset-service", "payments-api"),
+            ("preset-remote", "80"),
+        ] {
+            w.click(id, cx);
+            w.input(text, cx);
+        }
+        w.click("preset-save", cx);
+        w.render_frame(cx);
+        w.click("edit-preset:0", cx);
+        w.render_frame(cx);
+        assert!(w.try_find("preset-save").is_some());
+        w.click("remove-preset:0", cx);
+        w.render_frame(cx);
+        assert!(w.try_find("preset:0").is_none());
+        assert!(w.try_find("preset-save").is_none());
+    })
+    .unwrap();
+}
+/// Opening the launcher closes the workspace but keeps `scope.context`. Before
+/// the fix a forward that finished after that exit cleanup kept running.
+#[gpui_kit::test]
+fn a_forward_that_finishes_after_the_workspace_closes_is_stopped(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    let (send, receive) = tokio::sync::oneshot::channel();
+    *backend.sessions.forward_pending.lock().unwrap() = Some(receive);
+    let handle = start_forward(cx, backend.clone());
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("header-workspaces", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    send.send(()).unwrap();
+    cx.run_until_parked();
+    assert_eq!(
+        *backend.sessions.stopped_forwards.lock().unwrap(),
+        ["delayed-forward"]
+    );
+}

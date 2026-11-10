@@ -82,11 +82,20 @@ fn units(text: &str, numeric: bool) -> Units<'_> {
 
 /// A sort key materializes the primary units once per row. Case and byte
 /// tie-breaks still read the original string, and only run for equal primaries.
-#[derive(Eq, PartialEq)]
 pub struct Key<'a> {
     primary: Vec<u8>,
     text: &'a str,
+    numeric: bool,
 }
+
+/// Equality follows `Ord`, so numeric keys that differ only in leading zeros are equal.
+impl PartialEq for Key<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other).is_eq()
+    }
+}
+
+impl Eq for Key<'_> {}
 
 impl<'a> Key<'a> {
     pub fn base_cmp(&self, other: &Self) -> Ordering {
@@ -98,7 +107,11 @@ impl<'a> Key<'a> {
     pub fn new(text: &'a str, numeric: bool) -> Self {
         let mut primary = Vec::with_capacity(text.len() * 2);
         append_units(&mut primary, text, numeric);
-        Self { primary, text }
+        Self {
+            primary,
+            text,
+            numeric,
+        }
     }
 }
 
@@ -122,16 +135,25 @@ impl Encoded {
     }
 }
 
-fn tie(a: &str, b: &str) -> Ordering {
-    let uppercase = |c: char| c.is_ascii_uppercase();
-    a.chars()
-        .map(uppercase)
-        .cmp(b.chars().map(uppercase))
-        .then_with(|| a.cmp(b))
+fn tie(a: &str, b: &str, numeric: bool) -> Ordering {
+    tie_chars(significant(a, numeric), significant(b, numeric))
 }
 
-/// `tie` for two texts read as characters, for a key that is never written out as one string.
-/// Strings order by byte as their characters order by code point, so the two agree.
+/// The characters the tie-breaks compare. Numeric collation ignores the
+/// leading zeros of a digit run, so `pod2` and `pod02` are equal names, as
+/// with `Intl.Collator(undefined, { numeric: true })`.
+fn significant(text: &str, numeric: bool) -> impl Iterator<Item = char> + Clone + '_ {
+    let mut in_number = false;
+    text.chars().filter(move |&c| {
+        let leading_zero = numeric && c == '0' && !in_number;
+        in_number = c.is_ascii_digit() && !leading_zero;
+        !leading_zero
+    })
+}
+
+/// The tie-break of two texts with equal collation units: ASCII uppercase after lowercase
+/// position by position, then code point order. It takes characters so that a layout key,
+/// which is never written out as one string, can be compared part by part.
 pub(crate) fn tie_chars(
     a: impl Iterator<Item = char> + Clone,
     b: impl Iterator<Item = char> + Clone,
@@ -167,7 +189,7 @@ impl Ord for Key<'_> {
     fn cmp(&self, other: &Self) -> Ordering {
         self.primary
             .cmp(&other.primary)
-            .then_with(|| tie(self.text, other.text))
+            .then_with(|| tie(self.text, other.text, self.numeric))
     }
 }
 

@@ -67,11 +67,16 @@ impl Inspector {
                                 .test_support()
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     let preset_key = this.preset_key();
-                                    if let Some(presets) =
-                                        this.persisted.saved_forward_presets.get_mut(&preset_key)
-                                    {
-                                        presets.remove(index);
-                                    }
+                                    let Some(presets) = this
+                                        .persisted
+                                        .saved_forward_presets
+                                        .get_mut(&preset_key)
+                                        .filter(|presets| index < presets.len())
+                                    else {
+                                        return;
+                                    };
+                                    presets.remove(index);
+                                    this.preset_removed(&preset_key, index);
                                     this.save_preferences(cx);
                                     cx.notify();
                                 })),

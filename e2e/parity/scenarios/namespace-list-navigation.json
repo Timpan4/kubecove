@@ -72,6 +72,11 @@
         { "action": "expectNavigationDrawer", "open": false },
         { "action": "expectHealthFilter", "label": "Total", "pressed": true },
         { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "openNavigationDrawer" },
+        { "action": "expectNavigationDrawer", "open": true },
+        { "action": "openNamespaceList" },
+        { "action": "expectNavigationDrawer", "open": false },
+        { "action": "expectNamespaceRow", "name": "payments", "age": "18d" },
         { "action": "resizeViewport", "width": 1440, "height": 900 },
         { "action": "expectSidebarRow", "path": ["Workloads"], "visible": true, "selected": false },
         { "action": "expectNavigationDrawer", "open": false }
