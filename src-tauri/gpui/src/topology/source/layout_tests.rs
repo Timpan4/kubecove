@@ -140,3 +140,16 @@ fn root_prefix_width_change_preserves_filtered_positions() {
     );
     check_layout(&topology, &source, &rows);
 }
+
+// `NAME_COLLATOR` in topology-layout.ts uses numeric collation, which ignores
+// leading zeros, so `pod2` and `pod02` share a rank. Failure mode: the case and
+// byte tie-breaks rank `pod2` first and the map orders them unlike the web.
+#[test]
+fn leading_zero_names_share_a_rank() {
+    let ranks = layout::node_ranks(&[
+        node("pod02", "Pod"),
+        node("pod2", "Pod"),
+        node("pod3", "Pod"),
+    ]);
+    assert_eq!(ranks, [0, 0, 1]);
+}
