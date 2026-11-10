@@ -22,12 +22,16 @@ export async function kubeconfigSettingsAction(page: Page, step: Step): Promise<
 			return;
 		}
 		case "expectKubeconfigPathBefore": {
-			const earlierText = page.getByText(step.value, { exact: true }).first();
-			const laterText = page.getByText(step.other, { exact: true }).first();
-			await Promise.all([earlierText.waitFor(), laterText.waitFor()]);
-			const earlier = await earlierText.boundingBox();
-			const later = await laterText.boundingBox();
-			if (!earlier || !later || earlier.y >= later.y) throw new Error(`${step.value} is not above ${step.other}`);
+			// Move applies the new order after an asynchronous source update, so wait for the order.
+			await page.waitForFunction(({ earlier, later }) => {
+				const top = (text: string) => {
+					const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+					for (let node = walker.nextNode(); node; node = walker.nextNode()) if (node.textContent?.trim() === text) return node.parentElement?.getBoundingClientRect().top;
+					return undefined;
+				};
+				const [first, second] = [top(earlier), top(later)];
+				return first !== undefined && second !== undefined && first < second;
+			}, { earlier: step.value, later: step.other }).catch((error) => { throw new Error(`${step.value} is not above ${step.other}: ${String(error)}`); });
 			return;
 		}
 		default:

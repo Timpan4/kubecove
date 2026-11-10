@@ -2,6 +2,8 @@ import type { Page } from "playwright-core";
 import { STARTUP_HOLDS_KEY, type TimingControl } from "../../src/lib/tauri-dev-mock-timing";
 import type { Scenario, Step } from "./contract";
 
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 /** The web driver creates its workspace through the launcher unless a scenario starts without one. */
 export function seedsWorkspace(scenario: Scenario): boolean {
     return scenario.steps[0]?.action !== "startWithoutWorkspace";
@@ -109,9 +111,10 @@ export async function shellAction(page: Page, step: Step): Promise<void> {
             break;
         }
         case "toggleResourcePin": {
-            const rows = page.getByRole("row").filter({ has: page.getByRole("button", { name: new RegExp(`^(?:Pin|Unpin) ${step.kind} ${step.name}$`) }) }).filter({ hasText: step.namespace });
+            const pin = new RegExp(`^(?:Pin|Unpin) ${escapeRegExp(step.kind)} ${escapeRegExp(step.name)}$`);
+            const rows = page.getByRole("row").filter({ has: page.getByRole("button", { name: pin }) }).filter({ hasText: step.namespace });
             const row = step.context === undefined ? rows : rows.filter({ has: page.getByRole("cell", { name: step.context, exact: true }) });
-            await row.getByRole("button", { name: new RegExp(`^(?:Pin|Unpin) ${step.kind} ${step.name}$`) }).click();
+            await row.getByRole("button", { name: pin }).click();
             break;
         }
         case "expectWorkspaceEntry": case "openWorkspaceEntry": {

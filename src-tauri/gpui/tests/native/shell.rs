@@ -122,6 +122,20 @@ fn failed_pin_save_keeps_the_edit_visible_and_the_store_unchanged(cx: &mut TestA
         assert!(window.try_find("notice").is_none());
     })
     .unwrap();
+    // The click above reverses the failed edit, which an empty store cannot tell from a
+    // no-op, so a second pin must reach the store once saves work again.
+    click(cx, handle, "pin:Deployment:payments:payments-api:mock-dev");
+    assert!(
+        backend
+            .shell
+            .preferences
+            .load()
+            .unwrap()
+            .workspace_entry_points
+            .values()
+            .any(|entries| !entries.pinned.is_empty()),
+        "a pin after recovery must be saved"
+    );
 }
 
 #[gpui_kit::test]

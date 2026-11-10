@@ -527,8 +527,7 @@ async function runScenario(browser: Browser, port: number, artifacts: string, sc
 		await page.screenshot({ path: join(artifacts, `web-${scenarioIndex}-failure.png`) }).catch(() => {});
 		return { id: scenario.id, status: "failed", error: String(error) };
 	} finally {
-		await writeFile(join(artifacts, `web-${scenarioIndex}.log`), browserLog.join("\n"));
-		await page.close();
+		try { await writeFile(join(artifacts, `web-${scenarioIndex}.log`), browserLog.join("\n")); } finally { await page.close(); }
 	}
 }
 
@@ -571,10 +570,13 @@ export async function runWeb(contract: Contract, artifacts: string, signal: Abor
 		for (const result of ordered) if (result) results.push(result);
 	} finally {
 		signal.removeEventListener("abort", cancel);
-		await browser?.close();
+		// Each cleanup step runs even when an earlier one fails, so Vite stops and the results are kept.
+		let closeError: unknown;
+		await browser?.close().catch((error) => { closeError = error; });
+		await writeFile(join(artifacts, "web.json"), JSON.stringify({ driver: "web", scenarios: results }, null, 2));
 		const stopped = await stopGroup(vite.pid, identity);
 		if (!stopped) throw new Error(`Could not stop owned Vite process group ${vite.pid}`);
 		await writeFile(join(artifacts, "vite.log"), (await logs).join("\n"));
-		await writeFile(join(artifacts, "web.json"), JSON.stringify({ driver: "web", scenarios: results }, null, 2));
+		if (closeError) throw closeError;
 	}
 }

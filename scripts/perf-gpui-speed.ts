@@ -37,44 +37,50 @@ for (const latencyMs of latencies) {
 	const home = join(directory, "home");
 	await mkdir(home, { recursive: true });
 	const fixture = await startMemoryFixture(fixtureSize, directory, { latencyMs });
-	const control = Bun.serve({
-		hostname: "127.0.0.1", port: 0,
-		fetch(request) {
-			const url = new URL(request.url);
-			if (url.pathname !== "/burst") return new Response("not found", { status: 404 });
-			const events = url.searchParams.get("events");
-			return Response.json(fixture.burst(Number(url.searchParams.get("restarts")), events ? Number(events) : undefined));
-		},
-	});
-	const cluster = "kubecove-speed";
-	const kubeconfig = join(directory, "kubeconfig");
-	await writeFile(kubeconfig, stringify({
-		"apiVersion": "v1", "kind": "Config",
-		"clusters": [{ name: cluster, cluster: { server: fixture.url, "certificate-authority-data": fixture.authority } }],
-		"contexts": ["admin", "restricted"].map((role) => ({ name: `${cluster}-${role}`, context: { cluster, user: `${cluster}-${role}` } })),
-		"current-context": `${cluster}-admin`,
-		"users": ["admin", "restricted"].map((role) => ({ name: `${cluster}-${role}`, user: { token: "redacted-speed-value" } })),
-	}));
 	const report = join(out, `speed-${latencyMs}.json`);
-	const child = Bun.spawn([binary], {
-		env: {
-			PATH: process.env.PATH ?? "",
-			HOME: home,
-			XDG_CONFIG_HOME: join(home, ".config"),
-			XDG_DATA_HOME: join(home, ".local", "share"),
-			KUBECONFIG: kubeconfig,
-			KUBECOVE_SPEED_REPORT: report,
-			KUBECOVE_SPEED_CONTROL: `127.0.0.1:${control.port}`,
-			KUBECOVE_SPEED_CONTEXTS: `${cluster}-admin,${cluster}-restricted`,
-			KUBECOVE_SPEED_LATENCY_MS: String(latencyMs),
-			KUBECOVE_SPEED_ROWS: String(fixture.rows),
-		},
-		stdout: "inherit",
-		stderr: Bun.file(join(out, `stderr-${latencyMs}.log`)),
-	});
-	const code = await child.exited;
-	control.stop(true);
-	fixture.stop();
+	// Both servers keep the runner alive, so they stop on every path out of this run.
+	let control: ReturnType<typeof Bun.serve> | undefined;
+	let code: number;
+	try {
+		control = Bun.serve({
+			hostname: "127.0.0.1", port: 0,
+			fetch(request) {
+				const url = new URL(request.url);
+				if (url.pathname !== "/burst") return new Response("not found", { status: 404 });
+				const events = url.searchParams.get("events");
+				return Response.json(fixture.burst(Number(url.searchParams.get("restarts")), events ? Number(events) : undefined));
+			},
+		});
+		const cluster = "kubecove-speed";
+		const kubeconfig = join(directory, "kubeconfig");
+		await writeFile(kubeconfig, stringify({
+			"apiVersion": "v1", "kind": "Config",
+			"clusters": [{ name: cluster, cluster: { server: fixture.url, "certificate-authority-data": fixture.authority } }],
+			"contexts": ["admin", "restricted"].map((role) => ({ name: `${cluster}-${role}`, context: { cluster, user: `${cluster}-${role}` } })),
+			"current-context": `${cluster}-admin`,
+			"users": ["admin", "restricted"].map((role) => ({ name: `${cluster}-${role}`, user: { token: "redacted-speed-value" } })),
+		}));
+		const child = Bun.spawn([binary], {
+			env: {
+				PATH: process.env.PATH ?? "",
+				HOME: home,
+				XDG_CONFIG_HOME: join(home, ".config"),
+				XDG_DATA_HOME: join(home, ".local", "share"),
+				KUBECONFIG: kubeconfig,
+				KUBECOVE_SPEED_REPORT: report,
+				KUBECOVE_SPEED_CONTROL: `127.0.0.1:${control.port}`,
+				KUBECOVE_SPEED_CONTEXTS: `${cluster}-admin,${cluster}-restricted`,
+				KUBECOVE_SPEED_LATENCY_MS: String(latencyMs),
+				KUBECOVE_SPEED_ROWS: String(fixture.rows),
+			},
+			stdout: "inherit",
+			stderr: Bun.file(join(out, `stderr-${latencyMs}.log`)),
+		});
+		code = await child.exited;
+	} finally {
+		control?.stop(true);
+		fixture.stop();
+	}
 	await writeFile(join(out, `requests-${latencyMs}.json`), JSON.stringify(fixture.requests));
 	if (code !== 0) throw new Error(`speed binary exited ${code}; see stderr-${latencyMs}.log`);
 	const actions: Action[] = (await Bun.file(report).json()).actions;

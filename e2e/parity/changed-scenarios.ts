@@ -21,14 +21,16 @@ const FULL_SUITE = [
 	/^\.github\/workflows\/parity[^/]*\.yml$/,
 ];
 const SCENARIO_FILE = /^e2e\/parity\/scenarios\/[^/]+\.json$/;
-const COMMENT = /^\s*(\/\/.*|\/\*.*|\*\/.*|\*(\s.*)?)?$/;
+// A line that is only comment text: code after a closing `*/` makes it a code line.
+const COMMENT_LINE = String.raw`\/\/.*|\/\*(?:(?!\*\/).)*(?:\*\/\s*)?|\*\/\s*|\*(?:\s(?:(?!\*\/).)*(?:\*\/\s*)?)?`;
+const COMMENT = new RegExp(`^\\s*(${COMMENT_LINE})?$`);
 const DECLARED = /\b(?:const|static|struct|enum|union|type|trait)\s+(?:mut\s+)?([A-Za-z_]\w*)|\bimpl(?:<[^>]*>)?\s+(?:[\w:]+\s+for\s+)?([A-Za-z_]\w*)/g;
 // Git's hunk header names the enclosing item. An `impl` header says only which type a method
 // belongs to, so it names no changed item.
 const DECLARED_CONTEXT = /\b(?:const|static|struct|enum|union|type|trait)\s+(?:mut\s+)?([A-Za-z_]\w*)/g;
 // Rust lines outside functions that change nothing by themselves: comments, blank lines,
 // braces, and `use` and `mod` declarations (a change reaches behavior through code that uses it).
-const SKIPPED = /^\s*(\/\/.*|\/\*.*|\*\/.*|\*(\s.*)?|[{}()[\];,]*|(pub(\([^)]*\))?\s+)?(use|mod)\s.*)$/;
+const SKIPPED = new RegExp(`^\\s*(${COMMENT_LINE}|[{}()[\\];,]*|(pub(\\([^)]*\\))?\\s+)?(use|mod)\\s.*)$`);
 
 type Hunk = { oldStart: number; oldCount: number; newStart: number; newCount: number; context: string; removed: string[]; added: string[] };
 type FileDiff = { oldPath?: string; newPath?: string; hunks: Hunk[]; binary: boolean };
@@ -50,8 +52,17 @@ function parseDiff(text: string): FileDiff[] {
 	let file: FileDiff | undefined;
 	let hunk: Hunk | undefined;
 	const path = (value: string) => value === "/dev/null" ? undefined : value.replace(/^[ab]\//, "");
+	// With --no-renames both sides of `diff --git a/<path> b/<path>` name one path. A binary
+	// diff has no ---/+++ lines, so its paths come from this header.
+	let headerPath: string | undefined;
 	for (const line of text.split("\n")) {
-		if (line.startsWith("diff --git ")) { file = { hunks: [], binary: false }; files.push(file); hunk = undefined; continue; }
+		if (line.startsWith("diff --git ")) {
+			file = { hunks: [], binary: false }; files.push(file); hunk = undefined;
+			const sides = line.slice("diff --git ".length);
+			const half = (sides.length - 1) / 2;
+			headerPath = sides.startsWith("a/") && sides.slice(half) === ` b/${sides.slice(2, half)}` ? sides.slice(2, half) : undefined;
+			continue;
+		}
 		if (!file) continue;
 		const header = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@ ?(.*)$/.exec(line);
 		if (header) {
@@ -59,7 +70,11 @@ function parseDiff(text: string): FileDiff[] {
 			file.hunks.push(hunk);
 		} else if (!hunk && line.startsWith("--- ")) file.oldPath = path(line.slice(4));
 		else if (!hunk && line.startsWith("+++ ")) file.newPath = path(line.slice(4));
-		else if (!hunk && line.startsWith("Binary files ")) file.binary = true;
+		else if (!hunk && line.startsWith("Binary files ")) {
+			file.binary = true;
+			if (!line.startsWith("Binary files /dev/null ")) file.oldPath = headerPath;
+			if (!line.endsWith(" and /dev/null differ")) file.newPath = headerPath;
+		}
 		else if (hunk && line.startsWith("-")) hunk.removed.push(line.slice(1));
 		else if (hunk && line.startsWith("+")) hunk.added.push(line.slice(1));
 	}
@@ -100,6 +115,7 @@ export async function changedScenarios(base: string, scenarioIds: string[], mapP
 	const show = async (path: string) => head ? gitOut(["show", `${head}:${path}`]) : readFile(path, "utf8");
 	const code: FileDiff[] = [];
 	for (const diff of diffs) {
+		if (!diff.oldPath && !diff.newPath) return full("a changed file's path could not be read from the diff");
 		const fullMatch = [diff.oldPath, diff.newPath].find((path) => path && FULL_SUITE.some((rule) => rule.test(path)));
 		if (fullMatch) return full(`${fullMatch} changed, which coverage cannot see`);
 		if (diff.newPath && SCENARIO_FILE.test(diff.newPath)) {
@@ -141,12 +157,15 @@ async function selectFile(diff: FileDiff, map: CoverageMap, compiled: Set<string
 	if (record && (diff.binary || !diff.hunks.length || (!record.lines.length && !record.code))) { pick(record.loaded, path); return undefined; }
 	const base = (await gitOut(["show", `${mergeBase}:${path}`])).split("\n");
 	const code = record?.code ?? [];
-	const lineLevel = (targets: number[], cause: string) => {
-		if (!record) return;
+	/** Picks the scenarios that executed any of `targets`, and says whether any did. */
+	const lineLevel = (targets: number[], cause: string): boolean => {
+		if (!record) return false;
+		let hit = false;
 		for (let offset = 0; offset + 2 < record.lines.length; offset += 3) {
 			const [set, start, end] = [record.lines[offset] ?? 0, record.lines[offset + 1] ?? 0, record.lines[offset + 2] ?? 0];
-			if (targets.some((target) => target >= start && target <= end)) pick(set, cause);
+			if (targets.some((target) => target >= start && target <= end)) { pick(set, cause); hit = true; }
 		}
+		return hit;
 	};
 	// A Rust line without a count of its own inside a function, such as a closing brace, a match
 	// pattern or a comment, runs whenever the innermost function around it runs.
@@ -162,17 +181,17 @@ async function selectFile(diff: FileDiff, map: CoverageMap, compiled: Set<string
 	for (const hunk of diff.hunks) {
 		const commentOnly = [...hunk.removed, ...hunk.added].every((line) => COMMENT.test(line));
 		if (commentOnly && /\.(rs|ts|js|mjs)$/.test(path)) continue;
-		let [reached, hunkOutside] = [false, false];
+		let [reached, hunkOutside, hit] = [false, false, false];
 		for (const line of touched(hunk)) {
 			const targets = await translate(path, line);
 			const cause = `${path}:${line}`;
 			if (path.endsWith(".svelte") && !targets.some((target) => within(code, target))) {
 				// Markup with no component code of its own, such as static elements or styles.
 				if (record) pick(record.active, `${cause} (markup)`);
-				reached = true;
+				reached = hit = true;
 				continue;
 			}
-			if (!rust) { lineLevel(targets, cause); reached = true; continue; }
+			if (!rust) { hit = lineLevel(targets, cause) || hit; reached = true; continue; }
 			for (const target of targets) {
 				const set = innermost(target);
 				if (within(code, target)) lineLevel([target], cause);
@@ -181,6 +200,11 @@ async function selectFile(diff: FileDiff, map: CoverageMap, compiled: Set<string
 				else continue;
 				reached = true;
 			}
+		}
+		// Lines inserted where no recorded code ran, such as top-level code between two
+		// functions no scenario called, run for every scenario that loads the module.
+		if (!rust && !hit && record && hunk.removed.every((line) => COMMENT.test(line))) {
+			pick(path.endsWith(".svelte") ? record.active : record.loaded, `${path}:${hunk.oldStart} (insertion outside recorded code)`);
 		}
 		// Rust lines outside functions: items such as constants, types and trait impls. A hunk
 		// that touches only skipped lines there still removes what it contains; a new function

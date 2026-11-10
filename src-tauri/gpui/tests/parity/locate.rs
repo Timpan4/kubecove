@@ -1,7 +1,7 @@
 //! Lookups for the workspace-surface steps, whose targets are found by their
 //! accessible label inside a scope instead of a fixed element ID.
 
-use gpui_kit::test::{ElementSnapshot, TestEventExt, TestWindowExt};
+use gpui_kit::test::{ElementSnapshot, TestEventExt, TestQueryExt, TestWindowExt};
 use gpui_kit::{App, ElementId, InputEvent, ScrollDelta, ScrollEvent, Window, point, px};
 
 /// The one element labeled `label` inside `scope` whose description matches,
@@ -32,6 +32,26 @@ pub fn id(element: &ElementSnapshot) -> ElementId {
         .last()
         .expect("observed element has an ID")
         .clone()
+}
+
+/// The mounted rows of a virtualized list as `(list position, label)`, top to
+/// bottom. A row keeps its list position in its `(name, position)` ID, so after
+/// a scroll the first mounted row need not be position 0.
+pub fn mounted_rows(window: &Window, name: &str) -> Vec<(usize, String)> {
+    let mut rows: Vec<(usize, String)> = window
+        .elements()
+        .iter()
+        .filter_map(|element| match element.path().last() {
+            Some(ElementId::NamedInteger(id, position)) if id.as_ref() == name => Some((
+                usize::try_from(*position).expect("list position fits usize"),
+                element.label().unwrap_or_default().to_owned(),
+            )),
+            _ => None,
+        })
+        .collect();
+    rows.sort_by_key(|(position, _)| *position);
+    rows.dedup_by_key(|(position, _)| *position);
+    rows
 }
 
 /// Scrolls `area`, a nested scroll area, until `target` sits at its middle,

@@ -46,12 +46,15 @@ if [ -n "$staged_files" ]; then
         ;;
     esac
 
-    # Kubeconfig section keys match anywhere in YAML and config files. In other files they
-    # are usually typed fields such as `contexts: Vec<...>`, so there only a key with nothing
-    # after the colon matches, as a kubeconfig embedded in a string would have.
+    # Kubeconfig section keys match anywhere, including inline values such as
+    # `users: [{...}]`. In code files they are usually typed fields such as
+    # `contexts: Vec<...>`, so there only a key with nothing after the colon matches,
+    # as a kubeconfig embedded in a string would have.
+    strict_keys='(^|[[:space:]])(clusters|contexts|users):'
     case "$file" in
-      *.yaml|*.yml|*config|*kubeconfig*) section_keys='(^|[[:space:]])(clusters|contexts|users):' ;;
-      *) section_keys='^[[:space:]]*(clusters|contexts|users):[[:space:]]*$' ;;
+      *.yaml|*.yml|*config|*kubeconfig*) section_keys=$strict_keys ;;
+      *.rs|*.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs|*.svelte) section_keys='^[[:space:]]*(clusters|contexts|users):[[:space:]]*$' ;;
+      *) section_keys=$strict_keys ;;
     esac
     if printf '%s\n' "$scan_content" | grep -Eiq '(^|[[:space:]])(client-key-data|client-certificate-data|certificate-authority-data|current-context):' \
       || printf '%s\n' "$scan_content" | grep -Eiq "$section_keys"; then

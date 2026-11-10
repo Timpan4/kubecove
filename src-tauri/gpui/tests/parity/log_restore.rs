@@ -68,12 +68,12 @@ pub fn apply(window: &mut Window, cx: &mut App, step: &Value) -> bool {
     true
 }
 
-/// The buffer's rendered rows are positions `0..` in the list. Rows that the
-/// list virtualizes away are not found, as the shared `expectLogLines` relies on.
+/// The list position of the mounted log row labeled `line`. Rows that the list
+/// virtualizes away are not found, as the shared `expectLogLines` relies on.
 fn row_position(window: &Window, line: &str) -> usize {
-    (0usize..)
-        .map_while(|index| window.try_find(("log-row", index)))
-        .position(|row| row.label() == Some(line))
+    super::locate::mounted_rows(window, "log-row")
+        .into_iter()
+        .find_map(|(position, label)| (label == line).then_some(position))
         .unwrap_or_else(|| panic!("no rendered log row labeled {line}"))
 }
 

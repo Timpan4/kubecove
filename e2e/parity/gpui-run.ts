@@ -8,6 +8,8 @@ type Spawned = { code: number; output: string };
 
 /** Runs a child in its own process group and stops the group when `signal` aborts. */
 async function spawnGroup(command: string[], env: Record<string, string | undefined>, signal: AbortSignal): Promise<Spawned> {
+	// An abort listener added after the abort never fires, so an earlier abort stops here.
+	signal.throwIfAborted();
 	const niced = process.platform === "win32" ? command : ["nice", ...command];
 	const child = Bun.spawn(niced, { env, detached: true, stdout: "pipe", stderr: "pipe" });
 	const identity = startIdentity(child.pid);

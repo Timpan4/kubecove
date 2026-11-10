@@ -1,5 +1,12 @@
 use super::*;
 
+/// Whether the virtualized `list` holds `id` anywhere, not only among its mounted rows.
+/// An empty result renders no list, which holds nothing.
+fn listed(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, list: &str, id: &str) -> bool {
+    let anchor = gpui_kit::ElementId::Name(list.to_owned().into());
+    window.try_find(anchor).is_some() && seek(window, cx, list, id)
+}
+
 pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) -> bool {
     match string(step, "action") {
         "openGitOps" => {
@@ -52,7 +59,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             );
         }
         "expectGitOpsItem" => assert!(seek(window, cx, "gitops-list", &gitops_details(step))),
-        "expectNoGitOpsItem" => assert!(window.try_find(gitops_details(step)).is_none()),
+        "expectNoGitOpsItem" => assert!(!listed(window, cx, "gitops-list", &gitops_details(step))),
         "openGitOpsDetails" => {
             let id = gitops_details(step);
             assert!(seek(window, cx, "gitops-list", &id));
@@ -81,7 +88,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             Some(item_count(number(step, "count")).as_str())
         ),
         "expectHelmRelease" => assert!(seek(window, cx, "helm-list", &helm_release(step))),
-        "expectNoHelmRelease" => assert!(window.try_find(helm_release(step)).is_none()),
+        "expectNoHelmRelease" => assert!(!listed(window, cx, "helm-list", &helm_release(step))),
         "openHelmRelease" => {
             let id = format!(
                 "helm-details:{}:{}",

@@ -40,6 +40,8 @@ export async function yamlPermissionAction(page: Page, step: Step) {
 		case "expectActionLock": {
 			const lock = page.locator(`[data-resource-action="${step.row}"] p`).filter({ hasText: "Needs " });
 			if (!step.locked) {
+				// A missing row also has no lock, so the row must be there.
+				await page.locator(`[data-resource-action="${step.row}"]`).waitFor();
 				await lock.waitFor({ state: "detached" });
 				break;
 			}

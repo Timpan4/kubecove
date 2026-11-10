@@ -1,8 +1,8 @@
 // The parity coverage map: which source lines each shared scenario executed, recorded by a
 // `PARITY_COVERAGE=1` run and read by `PARITY_CHANGED` selection (changed-scenarios.ts).
 // Usage: bun e2e/parity/coverage-map.ts merge <out.json> <shard-map.json>...
-import { readdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 /** Inclusive 1-based line range. */
 export type Range = [number, number];
@@ -218,6 +218,8 @@ export async function mergeMaps(out: string, inputs: string[]): Promise<Coverage
 		info.compiled.push(...decoded.info.compiled);
 	}
 	const map = encodeMap(maps[0]?.commit ?? "", [...records.values()], info);
+	// CI merges into e2e/artifacts/, which a fresh checkout lacks.
+	await mkdir(dirname(out), { recursive: true });
 	await writeFile(out, JSON.stringify(map));
 	return map;
 }

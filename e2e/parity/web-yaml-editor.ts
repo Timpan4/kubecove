@@ -33,6 +33,8 @@ export async function yamlEditorAction(page: Page, step: Step) {
 		case "foldYamlLine": {
 			// The fold gutter marks a line at the same height as its line number.
 			const number = page.locator(".cm-lineNumbers .cm-gutterElement").filter({ visible: true }).getByText(String(step.line), { exact: true });
+			// The editor mounts after its extensions load, which can follow the tab switch.
+			await number.waitFor();
 			const box = await number.boundingBox();
 			if (!box) throw new Error(`YAML line ${step.line} is not shown`);
 			const markers = page.locator(".cm-foldGutter .cm-gutterElement").filter({ visible: true });
@@ -46,9 +48,19 @@ export async function yamlEditorAction(page: Page, step: Step) {
 			throw new Error(`YAML line ${step.line} has no fold marker`);
 		}
 		case "expectYamlVisibleLines": {
-			const numbers = await page.locator(".cm-lineNumbers .cm-gutterElement").filter({ visible: true }).allTextContents();
-			const visible = numbers.map(Number);
-			if (!isDeepStrictEqual(visible, step.lines)) throw new Error(`Visible YAML lines ${visible.join(",")}, expected ${step.lines.join(",")}`);
+			// The editor mounts after its extensions load, and a fold redraws the gutter, so wait for the lines.
+			// Visible as Playwright counts it: a nonempty box without visibility: hidden.
+			await page.waitForFunction((want) => {
+				const numbers: number[] = [];
+				for (const element of document.querySelectorAll(".cm-lineNumbers .cm-gutterElement")) {
+					const box = element.getBoundingClientRect();
+					if (box.width > 0 && box.height > 0 && element.checkVisibility({ visibilityProperty: true })) numbers.push(Number(element.textContent));
+				}
+				return JSON.stringify(numbers) === want;
+			}, JSON.stringify(step.lines)).catch(async () => {
+				const visible = (await page.locator(".cm-lineNumbers .cm-gutterElement").filter({ visible: true }).allTextContents()).map(Number);
+				throw new Error(`Visible YAML lines ${visible.join(",")}, expected ${step.lines.join(",")}`);
+			});
 			break;
 		}
 		case "expectYamlEditorDiagnostics": await expectEditorDiagnostics(page, step.diagnostics); break;

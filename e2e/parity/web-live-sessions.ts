@@ -1,6 +1,8 @@
 import type { Page } from "playwright-core";
 import type { Step } from "./contract";
 
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 function forwardRows(page: Page, target: string) {
     const table = page.locator("table").filter({ has: page.getByRole("columnheader", { name: "Target", exact: true }) });
     return table.locator("tbody tr").or(page.locator("div.rounded-md.border.bg-background.p-3")).or(page.locator('[data-slot="popover-content"][data-state="open"] div.rounded-md.border.bg-background.p-2')).filter({ hasText: target });
@@ -76,10 +78,10 @@ export async function liveSessionAction(page: Page, step: Step): Promise<void> {
                 }
                 await start.click();
             }
-            else if (step.operation === "select") await page.getByRole("button", { name: new RegExp(` · ${step.container}, running$`) }).click();
+            else if (step.operation === "select") await page.getByRole("button", { name: new RegExp(` · ${escapeRegExp(step.container ?? "")}, running$`) }).click();
             else if (step.operation === "close") {
                 const close = page.getByRole("button", { name: /^Stop and close / });
-                if (step.container) await close.and(page.getByRole("button", { name: new RegExp(` · ${step.container}$`) })).click();
+                if (step.container) await close.and(page.getByRole("button", { name: new RegExp(` · ${escapeRegExp(step.container)}$`) })).click();
                 else await close.click();
             }
             else {
@@ -94,7 +96,7 @@ export async function liveSessionAction(page: Page, step: Step): Promise<void> {
         case "expectExecState":
             if (step.status === "closed") await page.getByText("No exec sessions", { exact: true }).waitFor();
             else {
-                await page.getByRole("button", { name: new RegExp(`${step.command ?? ""} · ${step.container}, ${step.status}$`) }).waitFor();
+                await page.getByRole("button", { name: new RegExp(`${escapeRegExp(step.command ?? "")} · ${escapeRegExp(step.container)}, ${escapeRegExp(step.status)}$`) }).waitFor();
                 await page.locator(".xterm:visible .xterm-rows").getByText(step.contains, { exact: false }).first().waitFor();
                 if (step.absent && (await page.locator(".xterm:visible .xterm-rows").textContent())?.includes(step.absent)) throw new Error("Output leaked from another session");
             }

@@ -46,14 +46,15 @@ fn click_label(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, label: &st
     window.click(target, cx);
 }
 
-/// The workload in `count` contexts, written beside the exported fixture.
-fn load_backend(count: usize) -> Arc<common::Fixture> {
+/// The workload in `count` contexts, written beside the exported fixture under a
+/// per-test name so benchmarks run together never share one written file.
+fn load_backend(test: &str, count: usize) -> Arc<common::Fixture> {
     let path = std::env::var_os("KUBECOVE_WATCH_BURST_FIXTURE")
         .expect("export-watch-burst.ts fixture required");
     let path = Path::new(&path);
     let watch: serde_json::Value =
         serde_json::from_slice(&std::fs::read(path).expect("fixture readable")).unwrap();
-    let written = path.with_extension(format!("contexts-{count}.json"));
+    let written = path.with_extension(format!("{test}.contexts-{count}.json"));
     std::fs::write(
         &written,
         serde_json::to_vec(&frames_fixture::contexts(&watch, count)).unwrap(),
@@ -139,7 +140,7 @@ fn open_resources(
 #[ignore = "requires the exported 10,000-row benchmark fixture"]
 fn watch_burst_frame_time(cx: &mut TestAppContext) {
     let count = context_count();
-    let backend = load_backend(count);
+    let backend = load_backend("watch-burst-frame-time", count);
     let handle = open_resources(cx, backend.clone(), count);
     let baseline = Instant::now();
     cx.update_window(handle, |_, window, cx| window.render_frame(cx))
@@ -222,7 +223,7 @@ fn report_memory(phase: &str, count: usize) {
 fn multi_context_rss(cx: &mut TestAppContext) {
     let count = context_count();
     report_memory("start", count);
-    let backend = load_backend(count);
+    let backend = load_backend("multi-context-rss", count);
     report_memory("fixture-loaded", count);
     let handle = open_resources(cx, backend, count);
     report_memory("initial-load", count);
