@@ -84,6 +84,8 @@ fn observation_errors_remain_pending(cx: &mut TestAppContext) {
     cx.background_executor
         .advance_clock(std::time::Duration::from_millis(15_000));
     cx.run_until_parked();
+    // Sync only requests a review, so the guard shows as no new review and no confirm button.
+    let reviews = backend.argo.reviews.lock().unwrap().len();
     argo::step(cx, h, |w, cx| {
         assert!(
             w.find("argo-outcome")
@@ -93,6 +95,14 @@ fn observation_errors_remain_pending(cx: &mut TestAppContext) {
         );
         scroll::reveal(w, "detail-body", "argo-operation:Sync", cx);
         w.click("argo-operation:Sync", cx);
+    });
+    assert_eq!(
+        backend.argo.reviews.lock().unwrap().len(),
+        reviews,
+        "Sync requested a review while observation was unresolved"
+    );
+    argo::step(cx, h, |w, _| {
+        assert!(w.try_find("argo-review-confirm").is_none());
     });
     assert_eq!(backend.argo.submitted.load(Ordering::SeqCst), 1);
     backend.argo.observation.store(5, Ordering::SeqCst);
