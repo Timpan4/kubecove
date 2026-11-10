@@ -349,13 +349,27 @@ impl RemoteConnection {
     }
 
     /// HTTP 401 means the sign-in is gone; 409 with kind Session means the
-    /// session is (ADR 0031 session-state table).
+    /// session is (ADR 0031 session-state table). The socket, its tunnel
+    /// relays and channel deliveries stop with it.
     fn observe_refusal(&self, status: StatusCode, error: &AppError) {
-        if status == StatusCode::UNAUTHORIZED {
-            self.end(RemoteSessionState::SignInExpired);
+        let state = if status == StatusCode::UNAUTHORIZED {
+            RemoteSessionState::SignInExpired
         } else if status == StatusCode::CONFLICT && error.kind == AppErrorKind::Session {
-            self.end(RemoteSessionState::SessionEnded);
+            RemoteSessionState::SessionEnded
+        } else {
+            return;
+        };
+        // Only HTTP command calls observe refusals, never the socket task, so
+        // stopping that task here cannot cut its own cleanup short.
+        if let Some(task) = self
+            .socket_task
+            .lock()
+            .expect("remote socket task lock")
+            .take()
+        {
+            task.abort();
         }
+        self.end_socket_session(state);
     }
 
     fn fail_controls(&self) {
@@ -561,6 +575,7 @@ async fn run_socket(
             .status
             .reconnecting
             .store(true, Ordering::Release);
+        signal_session_changed();
         loop {
             if Instant::now() >= reconnect_deadline {
                 connection.end_socket_session(RemoteSessionState::SessionExpired);
@@ -578,6 +593,7 @@ async fn run_socket(
                         .status
                         .reconnecting
                         .store(false, Ordering::Release);
+                    signal_session_changed();
                     break;
                 }
                 // A refused credential or session will not come back by retrying.

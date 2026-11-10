@@ -62,12 +62,17 @@ pub(super) async fn probe(http: &HttpClient, server_url: &str) -> Result<RemoteA
         #[serde(default)]
         native_sign_in: bool,
     }
-    let response = http
-        .get(api_url(server_url, "auth")?)
-        .send()
+    let read = async {
+        let response = http
+            .get(api_url(server_url, "auth")?)
+            .send()
+            .await
+            .map_err(network_error)?;
+        response_json::<Mode>(response).await
+    };
+    let mode = tokio::time::timeout(kubecove_kube::REQUEST_READ_TIMEOUT, read)
         .await
-        .map_err(network_error)?;
-    let mode: Mode = response_json(response).await?;
+        .unwrap_or_else(|_| Err(no_answer()))?;
     match (mode.mode.as_str(), mode.native_sign_in) {
         ("token", _) => Ok(RemoteAuthMode::Token),
         ("oidc", true) => Ok(RemoteAuthMode::Oidc),
@@ -249,26 +254,74 @@ impl PreparedSignIn {
             Ok(code) => code,
             Err(failure) => return Ok(Err(failure)),
         };
-        let mut exchanging = Box::pin(exchange(
-            http.clone(),
-            server_url.to_owned(),
-            code,
-            self.verifier,
-            self.redirect_uri,
-        ));
-        tokio::select! {
-            issued = &mut exchanging => issued.map(Ok),
-            _ = cancel => {
-                let (http, server_url) = (http.clone(), server_url.to_owned());
-                tokio::spawn(async move {
-                    if let Ok(credential) = exchanging.await {
-                        revoke(http, server_url, credential).await;
-                    }
-                });
-                Ok(Err(SignInFailure::Cancelled))
+        // The exchange runs in its own task, so it finishes, and a credential
+        // nobody receives is revoked, also when the caller drops this future.
+        let (sender, result) = oneshot::channel();
+        let (exchange_http, exchange_url) = (http.clone(), server_url.to_owned());
+        let (verifier, redirect_uri) = (self.verifier, self.redirect_uri);
+        tokio::spawn(async move {
+            let exchanging = exchange(
+                exchange_http.clone(),
+                exchange_url.clone(),
+                code,
+                verifier,
+                redirect_uri,
+            );
+            let issued = tokio::time::timeout(kubecove_kube::REQUEST_READ_TIMEOUT, exchanging)
+                .await
+                .unwrap_or_else(|_| Err(no_answer()));
+            if let Err(Ok(credential)) = sender.send(issued) {
+                revoke(exchange_http, exchange_url, credential).await;
             }
+        });
+        let mut exchanged = Exchanged {
+            result,
+            http: http.clone(),
+            server_url: server_url.to_owned(),
+        };
+        tokio::select! {
+            issued = &mut exchanged.result => issued
+                .unwrap_or_else(|_| Err(exchange_stopped()))
+                .map(Ok),
+            _ = cancel => Ok(Err(SignInFailure::Cancelled)),
         }
     }
+}
+
+/// The receiving end of a code exchange. A credential that arrived but was
+/// not read, because a cancel won or the caller dropped `finish`, is revoked.
+struct Exchanged {
+    result: oneshot::Receiver<Result<String, AppError>>,
+    http: HttpClient,
+    server_url: String,
+}
+
+impl Drop for Exchanged {
+    fn drop(&mut self) {
+        if let Ok(Ok(credential)) = self.result.try_recv()
+            && let Ok(runtime) = tokio::runtime::Handle::try_current()
+        {
+            runtime.spawn(revoke(
+                self.http.clone(),
+                std::mem::take(&mut self.server_url),
+                credential,
+            ));
+        }
+    }
+}
+
+/// A sign-in request the server did not finish within the per-request stall
+/// limit the Kubernetes clients use (`kubecove_kube::REQUEST_READ_TIMEOUT`).
+fn no_answer() -> AppError {
+    AppError::new(
+        "The server did not answer the sign-in in time.",
+        AppErrorKind::Network,
+    )
+}
+
+/// The exchange task ended without a result, as when the runtime shuts down.
+fn exchange_stopped() -> AppError {
+    AppError::new("The sign-in exchange stopped.", AppErrorKind::Internal)
 }
 
 /// Revokes `credential` at the server. Failures are dropped: the caller has

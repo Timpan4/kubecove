@@ -64,7 +64,8 @@ async fn connect(
         Some(connection),
     )
     .await;
-    Ok(store.summary().await.expect("connection selected above"))
+    // A Disconnect that ran meanwhile has removed the selection.
+    session::selected_summary(store).await
 }
 
 /// Returns to the local backend. The sign-in stays held for the next connect.

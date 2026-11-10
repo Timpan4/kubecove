@@ -9,7 +9,7 @@ mod contract;
 mod reads;
 mod streams;
 use reads::inventory;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// File picks read this desktop's filesystem, so remote mode offers server paths instead.
 const KUBECONFIG_PICKS_REMOTE: &str =
@@ -18,7 +18,6 @@ const KUBECONFIG_PICKS_REMOTE: &str =
 pub struct DesktopBackend {
     local: NativeBackend,
     remote: Arc<RemoteConnectionStore>,
-    selected: Arc<AtomicBool>,
     channel: AtomicU64,
     preferences: Arc<crate::preferences::Store>,
 }
@@ -28,13 +27,14 @@ impl DesktopBackend {
         Self {
             local,
             remote: Arc::default(),
-            selected: Arc::default(),
             channel: AtomicU64::new(1),
             preferences: Default::default(),
         }
     }
+    /// Follows the store's selection, which a connect can commit before it
+    /// fails or is cancelled.
     fn selected(&self) -> bool {
-        self.selected.load(Ordering::Acquire)
+        self.remote.is_selected()
     }
     fn call<T: DeserializeOwned + Send + 'static>(
         &self,
@@ -191,7 +191,6 @@ impl Backend for DesktopBackend {
     }
     fn connect_remote(&self, url: String, token: String) -> Read<RemoteConnectionSummary> {
         let remote = self.remote.clone();
-        let selected = self.selected.clone();
         let preferences = self.preferences.clone();
         self.local.read(async move {
             let summary = remote::remote_connect(url, token.clone(), State::new(&remote))
@@ -200,18 +199,15 @@ impl Backend for DesktopBackend {
                     AppError::new(error.message.replace(&token, "[redacted]"), error.kind)
                 })?;
             preferences.clear_memory()?;
-            selected.store(true, Ordering::Release);
             Ok(summary)
         })
     }
     fn disconnect_remote(&self) -> Read<()> {
         let remote = self.remote.clone();
-        let selected = self.selected.clone();
         let preferences = self.preferences.clone();
         self.local.read(async move {
             remote::remote_disconnect(State::new(&remote)).await?;
             preferences.clear_memory()?;
-            selected.store(false, Ordering::Release);
             Ok(())
         })
     }

@@ -1,8 +1,9 @@
 use super::super::models::RemoteConnectionSummary;
 use super::{RemoteConnection, api_url, normalize_server_url};
 use crate::remote::{models::RemoteCredentials, tunnels::RemoteTunnelRegistry};
+use kubecove_kube::runtime::Channel;
 use reqwest::Client as HttpClient;
-use serde_json::json;
+use serde_json::{json, value::RawValue};
 use std::sync::{Arc, Mutex, atomic::AtomicBool};
 use tokio::{
     io::AsyncWriteExt,
@@ -146,15 +147,9 @@ fn tunnel_error_removes_download_sender_and_reaches_control_waiter() {
     // Forward nested JSON verbatim, including escapes and number lexemes. A
     // parse into Value loses this representation and allocates the entire tree.
     let received = Arc::new(Mutex::new(Vec::new()));
-    let sent = Arc::clone(&received);
-    let channel = tauri::ipc::Channel::new(move |body| {
-        let tauri::ipc::InvokeResponseBody::Json(json) = body else {
-            panic!("channel payload must remain JSON");
-        };
-        sent.lock().unwrap().push(json);
-        Ok(())
-    });
-    connection.subscribe(42, channel).unwrap();
+    connection
+        .subscribe(42, recording_channel(Arc::clone(&received)))
+        .unwrap();
     let payload = r#"{ "nested": [1.00, {"line":"a\n\"b","unicode":"\u0061"}], "null": null }"#;
     assert!(!super::handle_text(
         &connection,
@@ -180,6 +175,28 @@ fn tunnel_error_removes_download_sender_and_reaches_control_waiter() {
             "null".to_string(),
         ]
     );
+}
+
+/// A channel that records each message's JSON text. The desktop build's
+/// channel is Tauri's; the `remote-client` build without `desktop` uses the
+/// headless one from `kubecove_kube::runtime`.
+#[cfg(feature = "desktop")]
+fn recording_channel(received: Arc<Mutex<Vec<String>>>) -> Channel<Box<RawValue>> {
+    Channel::new(move |body| {
+        let tauri::ipc::InvokeResponseBody::Json(json) = body else {
+            panic!("channel payload must remain JSON");
+        };
+        received.lock().unwrap().push(json);
+        Ok(())
+    })
+}
+
+#[cfg(not(feature = "desktop"))]
+fn recording_channel(received: Arc<Mutex<Vec<String>>>) -> Channel<Box<RawValue>> {
+    Channel::new(move |message: Box<RawValue>| {
+        received.lock().unwrap().push(message.get().to_owned());
+        Ok(())
+    })
 }
 
 #[test]

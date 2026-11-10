@@ -297,6 +297,34 @@ async fn a_moved_session_signals_the_views_to_read_it_again() {
     assert!(!summary.connected);
 }
 
+/// Waits for a session signal after which the state is `state`. Other tests
+/// signal too, so one signal alone proves nothing.
+async fn signalled(
+    harness: &Harness,
+    changes: &mut tokio::sync::watch::Receiver<u64>,
+    state: RemoteSessionState,
+) {
+    loop {
+        changes.changed().await.expect("session signal");
+        if harness.state().await == Some(state) {
+            return;
+        }
+    }
+}
+
+#[tokio::test]
+async fn reconnecting_and_recovering_signal_the_views() {
+    let harness = harness(Browser::Complete).await;
+    harness.signed_in().await;
+    let mut changes = subscribe_session_changes();
+    changes.borrow_and_update();
+    *harness.server.state.refuse_upgrades.lock().unwrap() = Some(503);
+    harness.server.drop_sockets();
+    signalled(&harness, &mut changes, RemoteSessionState::Reconnecting).await;
+    *harness.server.state.refuse_upgrades.lock().unwrap() = None;
+    signalled(&harness, &mut changes, RemoteSessionState::Connected).await;
+}
+
 #[tokio::test]
 async fn a_dropped_socket_reconnects_within_the_grace_window_or_expires() {
     let harness = harness(Browser::Complete).await;
@@ -334,6 +362,11 @@ async fn a_revoked_sign_in_is_forgotten_wherever_the_server_refuses_it() {
     );
     assert!(harness.stored().is_none());
     assert!(!harness.store.sign_ins.in_memory(&harness.server.url));
+    // The refused session's socket closes too, so no tunnel relay or channel
+    // delivery outlives it.
+    while harness.server.state.open_sockets.load(Ordering::Acquire) > 0 {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
 
     // Refused on the reconnect upgrade.
     let harness = self::harness(Browser::Complete).await;
@@ -389,6 +422,43 @@ async fn an_unavailable_credential_store_keeps_the_sign_in_in_memory() {
     assert!(summary.sign_in_memory_only);
     assert!(harness.stored().is_none());
     assert!(harness.store.sign_ins.in_memory(&harness.server.url));
+    // Reconnecting reuses the sign-in and still reports where it is kept.
+    disconnect(&harness.store).await;
+    let summary = harness.select().await.unwrap();
+    assert_eq!(summary.session_state, RemoteSessionState::Connected);
+    assert!(summary.sign_in_memory_only);
+}
+
+#[tokio::test]
+async fn a_sign_in_kept_in_memory_only_deletes_the_older_stored_one() {
+    let harness = harness(Browser::Complete).await;
+    let older = "older-sign-in-credential";
+    harness.secure.values.lock().unwrap().insert(
+        (SIGN_IN_SERVICE.to_owned(), harness.server.url.clone()),
+        older.to_owned(),
+    );
+    harness
+        .server
+        .state
+        .valid
+        .lock()
+        .unwrap()
+        .insert(older.to_owned());
+    assert_eq!(
+        harness.select().await.unwrap().session_state,
+        RemoteSessionState::Connected
+    );
+    harness.secure.refuse.store(true, Ordering::Release);
+    let summary = harness.sign_in().await.unwrap().unwrap();
+    assert_eq!(summary.session_state, RemoteSessionState::Connected);
+    assert!(summary.sign_in_memory_only);
+    assert!(harness.stored().is_none());
+    // A restart finds no sign-in, so it cannot bring the older one back.
+    let restarted = RemoteConnectionStore::new(
+        Arc::clone(&harness.secure) as _,
+        Arc::clone(&harness.browser) as _,
+    );
+    assert!(restarted.sign_ins.get(&harness.server.url).is_none());
 }
 
 #[tokio::test]

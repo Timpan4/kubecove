@@ -4,7 +4,7 @@ use super::client::{self, RemoteConnection};
 use super::http::{http_client, install_tls_provider, normalize_server_url, validation_error};
 use super::models::{RemoteAuthMode, RemoteConnectionSummary, RemoteSessionState};
 use super::sign_in::{self, NOT_COMPLETED, SignInFailure};
-use super::store::{PendingSignIn, RemoteConnectionStore, Selection};
+use super::store::{PendingSignIn, RemoteConnectionStore, Selection, next_generation};
 use kubecove_models::{AppError, AppErrorKind};
 use std::sync::{Arc, Mutex};
 use tokio::sync::oneshot;
@@ -61,8 +61,9 @@ pub(super) async fn replace_selection(
 }
 
 /// Opens a session with `bearer`. A refused sign-in moves to "Sign-in
-/// expired" and is forgotten. With `sign_in`, the session is kept only while
-/// that sign-in has not ended.
+/// expired" and is forgotten. The outcome applies only while the selection
+/// keeps the generation it had when the attempt started, and, with `sign_in`,
+/// while that sign-in has not ended.
 async fn open_session(
     store: &RemoteConnectionStore,
     server_url: &str,
@@ -70,20 +71,25 @@ async fn open_session(
     auth_mode: RemoteAuthMode,
     sign_in: Option<&PendingSignIn>,
 ) -> Result<(), AppError> {
-    let mut before = RemoteSessionState::SignInRequired;
+    let mut attempt = None;
     store.update_selection(server_url, |selected| {
-        before = selected.state;
+        attempt = Some((selected.generation, selected.state));
         selected.state = RemoteSessionState::Connecting;
     });
+    // Disconnected or replaced before the attempt started.
+    let Some((generation, before)) = attempt else {
+        return Ok(());
+    };
     match client::connect(server_url, bearer, None, auth_mode).await {
         Ok(connection) => {
-            // Sign out ends the sign-in before it takes `current`, so under
-            // this lock the session is either published for Sign out to
-            // close, or the ended sign-in is seen here.
+            // Sign out, a new sign-in and a new selection change the
+            // generation before they take `current`, so under this lock the
+            // session is either published for them to close, or the change is
+            // seen here.
             let mut current = store.current.write().await;
             let live = sign_in.is_none_or(|sign_in| !sign_in.is_cancelled());
             if live
-                && store.update_selection(server_url, |selected| {
+                && store.update_generation(generation, |selected| {
                     selected.state = RemoteSessionState::Connected;
                 })
             {
@@ -93,31 +99,38 @@ async fn open_session(
                     previous.close().await;
                 }
             } else {
-                // Disconnected or signed out while connecting.
                 drop(current);
                 connection.close().await;
             }
             Ok(())
         }
         Err(failure) if failure.unauthorized => {
-            if auth_mode == RemoteAuthMode::Oidc {
-                store.sign_ins.forget(server_url);
-            }
-            store.update_selection(server_url, |selected| {
+            let mut current = store.current.write().await;
+            // A refusal for an attempt that was superseded leaves the newer
+            // selection, sign-in and session alone.
+            if !store.update_generation(generation, |selected| {
                 selected.state = RemoteSessionState::SignInExpired;
-                selected.memory_only = false;
-            });
-            drop(store.current.write().await.take());
+            }) {
+                return Ok(());
+            }
+            if auth_mode == RemoteAuthMode::Oidc {
+                store.sign_ins.forget_refused(server_url, bearer);
+            }
+            let previous = current.take();
+            drop(current);
+            if let Some(previous) = previous {
+                previous.close().await;
+            }
             Ok(())
         }
         Err(failure) => {
-            store.update_selection(server_url, |selected| selected.state = before);
+            store.update_generation(generation, |selected| selected.state = before);
             Err(failure.error)
         }
     }
 }
 
-async fn selected_summary(
+pub(super) async fn selected_summary(
     store: &RemoteConnectionStore,
 ) -> Result<RemoteConnectionSummary, AppError> {
     store.summary().await.ok_or_else(not_selected)
@@ -150,6 +163,7 @@ pub(super) async fn sign_in(
         return Ok(store.summary().await);
     }
     let server_url = selected.server_url;
+    let started = selected.generation;
     let prepared = sign_in::prepare(&server_url, &sign_in::LOOPBACK).await?;
     install_tls_provider();
     let http = http_client()?;
@@ -158,10 +172,20 @@ pub(super) async fn sign_in(
         link: prepared.link.clone(),
         cancel: Mutex::new(Some(cancel)),
     });
-    if !store.update_selection(&server_url, |selected| {
-        selected.state = RemoteSessionState::WaitingForBrowser;
-        selected.pending = Some(Arc::clone(&pending));
-    }) {
+    // The check above ran before `prepare` awaited, so it runs again here
+    // under the lock: another sign-in, a sign-out or a new selection that came
+    // first keeps its place, and this sign-in ends without opening a browser.
+    let mut installed = false;
+    store.update_generation(started, |selected| {
+        if selected.pending.is_none() {
+            selected.state = RemoteSessionState::WaitingForBrowser;
+            selected.pending = Some(Arc::clone(&pending));
+            // A session that a held sign-in is still opening is not published.
+            selected.generation = next_generation();
+            installed = true;
+        }
+    });
+    if !installed {
         return Ok(store.summary().await);
     }
     // The sign-in stays pending until the guard drops, so Sign out, Cancel and
@@ -231,13 +255,13 @@ async fn publish(
     http: reqwest::Client,
     credential: String,
 ) -> Result<(), AppError> {
-    let Some(memory_only) =
-        pending.unless_cancelled(|| store.sign_ins.put(server_url, credential.clone()))
-    else {
+    if pending
+        .unless_cancelled(|| store.sign_ins.put(server_url, credential.clone()))
+        .is_none()
+    {
         tokio::spawn(sign_in::revoke(http, server_url.to_owned(), credential));
         return Ok(());
-    };
-    store.update_selection(server_url, |selected| selected.memory_only = memory_only);
+    }
     open_session(
         store,
         server_url,
@@ -302,17 +326,19 @@ pub(super) async fn sign_out(
     if let Some(pending) = selected.pending {
         pending.cancel();
     }
+    // A new generation before `current` is taken, so a session that a held
+    // sign-in is still opening closes instead of being published.
+    store.update_selection(&server_url, |selected| {
+        selected.state = RemoteSessionState::SignInRequired;
+        selected.pending = None;
+        selected.generation = next_generation();
+    });
     let connection = store.current.write().await.take();
     let held = match &connection {
         Some(_) => None,
         None => store.sign_ins.get(&server_url),
     };
     store.sign_ins.forget(&server_url);
-    store.update_selection(&server_url, |selected| {
-        selected.state = RemoteSessionState::SignInRequired;
-        selected.memory_only = false;
-        selected.pending = None;
-    });
     match (connection, held) {
         // Bounded by the session grace window.
         (Some(connection), _) => connection.sign_out().await,

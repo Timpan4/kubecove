@@ -7,13 +7,24 @@ use super::sign_in::{BrowserLauncher, SystemBrowser};
 use kubecove_gitops::commands::argo::{KeyringStore, SecureStore};
 use std::{
     collections::{HashMap, HashSet},
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 use tokio::sync::{RwLock, oneshot};
 
 /// Native credential storage service for desktop sign-ins, keyed by the
 /// normalized server URL.
 pub(super) const SIGN_IN_SERVICE: &str = "KubeCove remote sign-in";
+
+/// A new value for each selection, sign-in and sign-out. A session attempt
+/// publishes only while the selection still has the generation it started
+/// with, so one that finishes after any of them changes nothing.
+pub(super) fn next_generation() -> u64 {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    NEXT.fetch_add(1, Ordering::Relaxed)
+}
 
 pub struct RemoteConnectionStore {
     pub(super) current: RwLock<Option<Arc<RemoteConnection>>>,
@@ -43,6 +54,16 @@ impl RemoteConnectionStore {
         }
     }
 
+    /// Whether a remote server is selected, connected or not. A client routes
+    /// by this, so a selection that a failed or cancelled connect committed
+    /// never falls back to local credentials.
+    pub fn is_selected(&self) -> bool {
+        self.selection
+            .lock()
+            .expect("remote selection lock")
+            .is_some()
+    }
+
     pub(super) fn selection(&self) -> Option<Selection> {
         self.selection
             .lock()
@@ -67,11 +88,31 @@ impl RemoteConnectionStore {
         }
     }
 
+    /// Updates the selection only while it still has `generation`.
+    pub(super) fn update_generation(
+        &self,
+        generation: u64,
+        change: impl FnOnce(&mut Selection),
+    ) -> bool {
+        let mut selection = self.selection.lock().expect("remote selection lock");
+        match selection.as_mut() {
+            Some(selected) if selected.generation == generation => {
+                change(selected);
+                true
+            }
+            _ => false,
+        }
+    }
+
     /// The selected remote, with the open connection's state when there is one.
-    /// A refused OIDC sign-in is forgotten here, wherever it was noticed.
+    /// A sign-in an open connection saw refused is forgotten here, wherever it
+    /// was noticed.
     pub(super) async fn summary(&self) -> Option<RemoteConnectionSummary> {
         let connection = self.current.read().await.clone();
         let selection = self.selection();
+        let refused = connection
+            .as_ref()
+            .map(|connection| connection.credentials.bearer_token.clone());
         let summary = match (connection, &selection) {
             (Some(connection), _) => {
                 let mut summary = connection.summary.clone();
@@ -88,14 +129,16 @@ impl RemoteConnectionStore {
             (None, None) => return None,
         };
         let mut summary = summary;
-        summary.sign_in_memory_only = selection
-            .as_ref()
-            .is_some_and(|selected| selected.memory_only);
-        if summary.auth_mode == RemoteAuthMode::Oidc
+        // Only the credential this connection used: a sign-in that replaced
+        // the connection after the snapshot above is newer and stays.
+        if let Some(refused) = refused
+            && summary.auth_mode == RemoteAuthMode::Oidc
             && summary.session_state == RemoteSessionState::SignInExpired
         {
-            self.sign_ins.forget_refused(&summary.server_url);
+            self.sign_ins.forget_refused(&summary.server_url, &refused);
         }
+        summary.sign_in_memory_only = summary.auth_mode == RemoteAuthMode::Oidc
+            && self.sign_ins.memory_only(&summary.server_url);
         summary.sign_in_not_deleted = self.sign_ins.undeleted(&summary.server_url);
         Some(summary)
     }
@@ -107,8 +150,9 @@ pub(super) struct Selection {
     pub auth_mode: RemoteAuthMode,
     /// The state while no connection is open.
     pub state: RemoteSessionState,
-    pub memory_only: bool,
     pub pending: Option<Arc<PendingSignIn>>,
+    /// See [`next_generation`].
+    pub generation: u64,
 }
 
 impl Selection {
@@ -121,8 +165,8 @@ impl Selection {
             server_url,
             auth_mode,
             state,
-            memory_only: false,
             pending: None,
+            generation: next_generation(),
         }
     }
 }
@@ -157,11 +201,18 @@ impl PendingSignIn {
 
 pub(super) struct SignIns {
     secure: Arc<dyn SecureStore>,
-    memory: Mutex<HashMap<String, String>>,
+    memory: Mutex<HashMap<String, Held>>,
     /// Servers whose stored sign-in native storage could not delete. The
     /// entry is not read again in this process until a new sign-in for that
     /// server is stored over it. Lock after `memory`.
     undeleted: Mutex<HashSet<String>>,
+}
+
+/// A sign-in held in memory, and whether native storage refused it, so it
+/// lasts only as long as this process.
+struct Held {
+    credential: String,
+    memory_only: bool,
 }
 
 impl SignIns {
@@ -169,8 +220,8 @@ impl SignIns {
     /// memory has none and the stored entry was not meant to be deleted.
     pub(super) fn get(&self, server_url: &str) -> Option<String> {
         let mut memory = self.memory.lock().expect("remote sign-in lock");
-        if let Some(credential) = memory.get(server_url) {
-            return Some(credential.clone());
+        if let Some(held) = memory.get(server_url) {
+            return Some(held.credential.clone());
         }
         if self.undeleted(server_url) {
             return None;
@@ -180,13 +231,20 @@ impl SignIns {
             .read(SIGN_IN_SERVICE, server_url)
             .ok()
             .flatten()?;
-        memory.insert(server_url.to_owned(), stored.clone());
+        memory.insert(
+            server_url.to_owned(),
+            Held {
+                credential: stored.clone(),
+                memory_only: false,
+            },
+        );
         Some(stored)
     }
 
-    /// Keeps the sign-in and returns whether it is in memory only, because
-    /// native storage refused it.
-    pub(super) fn put(&self, server_url: &str, credential: String) -> bool {
+    /// Keeps the sign-in, in native storage when it accepts it. When it
+    /// refuses, an older stored sign-in is deleted, because a restart would
+    /// otherwise bring it back in place of this one.
+    pub(super) fn put(&self, server_url: &str, credential: String) {
         let mut memory = self.memory.lock().expect("remote sign-in lock");
         let memory_only = self
             .secure
@@ -197,9 +255,25 @@ impl SignIns {
                 .lock()
                 .expect("remote sign-in lock")
                 .remove(server_url);
+        } else if matches!(self.secure.read(SIGN_IN_SERVICE, server_url), Ok(Some(_))) {
+            self.delete_stored(server_url);
         }
-        memory.insert(server_url.to_owned(), credential);
-        memory_only
+        memory.insert(
+            server_url.to_owned(),
+            Held {
+                credential,
+                memory_only,
+            },
+        );
+    }
+
+    /// Whether the held sign-in for `server_url` is in memory only.
+    pub(super) fn memory_only(&self, server_url: &str) -> bool {
+        self.memory
+            .lock()
+            .expect("remote sign-in lock")
+            .get(server_url)
+            .is_some_and(|held| held.memory_only)
     }
 
     /// Drops the sign-in from memory and native storage, whether or not the
@@ -211,11 +285,16 @@ impl SignIns {
         self.delete_stored(server_url);
     }
 
-    /// Forgets a sign-in the server refused. Native storage is asked only
-    /// when memory held it, so repeated status reads stay local.
-    pub(super) fn forget_refused(&self, server_url: &str) {
+    /// Forgets `credential`, which the server refused, while it is still the
+    /// held sign-in. Native storage is asked only when memory held it, so
+    /// repeated status reads stay local. `connect` trims the bearer it uses.
+    pub(super) fn forget_refused(&self, server_url: &str, credential: &str) {
         let mut memory = self.memory.lock().expect("remote sign-in lock");
-        if memory.remove(server_url).is_some() {
+        let held = memory
+            .get(server_url)
+            .is_some_and(|held| held.credential.trim() == credential.trim());
+        if held {
+            memory.remove(server_url);
             self.delete_stored(server_url);
         }
     }

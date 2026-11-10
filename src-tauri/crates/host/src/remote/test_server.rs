@@ -12,7 +12,7 @@ use std::{
     collections::{HashMap, HashSet},
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
 use tokio::{
@@ -54,6 +54,8 @@ pub(super) struct FakeState {
     pub logout_requested: Notify,
     /// The logout endpoint fails without revoking while set.
     pub refuse_logouts: AtomicBool,
+    /// WebSocket connections the client has not closed yet.
+    pub open_sockets: AtomicUsize,
     sockets: Mutex<Vec<mpsc::UnboundedSender<Option<String>>>>,
 }
 
@@ -102,9 +104,18 @@ impl FakeServer {
 }
 
 async fn handle(stream: TcpStream, state: Arc<FakeState>) {
-    let mut start = [0_u8; 24];
-    let read = stream.peek(&mut start).await.unwrap_or(0);
-    if start[..read].starts_with(b"GET /api/v1/channels") {
+    const UPGRADE: &[u8] = b"GET /api/v1/channels";
+    let mut start = [0_u8; UPGRADE.len()];
+    // A peek can return part of the request line. Peek again until the bytes
+    // decide the route, so a split upgrade request still reaches `websocket`.
+    let read = loop {
+        let read = stream.peek(&mut start).await.unwrap_or(0);
+        if read == 0 || read == start.len() || !UPGRADE.starts_with(&start[..read]) {
+            break read;
+        }
+        tokio::task::yield_now().await;
+    };
+    if start[..read] == *UPGRADE {
         websocket(stream, state).await;
         return;
     }
@@ -268,21 +279,23 @@ async fn websocket(stream: TcpStream, state: Arc<FakeState>) {
     };
     let (sender, mut commands) = mpsc::unbounded_channel();
     state.sockets.lock().unwrap().push(sender);
+    state.open_sockets.fetch_add(1, Ordering::AcqRel);
     loop {
         tokio::select! {
             command = commands.recv() => match command {
                 Some(Some(frame)) => {
                     if socket.send(Message::Text(frame.into())).await.is_err() {
-                        return;
+                        break;
                     }
                 }
-                _ => return,
+                _ => break,
             },
             incoming = socket.next() => if incoming.is_none_or(|message| message.is_err()) {
-                return;
+                break;
             },
         }
     }
+    state.open_sockets.fetch_sub(1, Ordering::AcqRel);
 }
 
 /// What the fake browser does with a sign-in link.
