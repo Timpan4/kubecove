@@ -113,7 +113,12 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) {
         match action {
-            RemoteNoticeAction::SignIn => self.sign_in_remote(window, cx),
+            // A sign-in that opens a session resets the runtime, as Connect does.
+            RemoteNoticeAction::SignIn => {
+                if self.can_leave(cx) {
+                    self.sign_in_remote(window, cx);
+                }
+            }
             RemoteNoticeAction::CopySignInLink => self.copy_sign_in_link(window, cx),
             RemoteNoticeAction::CancelSignIn => {
                 // Detached, so no later status read or copy can drop the cancel.
@@ -131,6 +136,9 @@ impl Inspector {
                 .detach();
             }
             RemoteNoticeAction::StartNewSession => {
+                if self.settings.integrations.remote_call.is_some() || !self.can_leave(cx) {
+                    return;
+                }
                 let read = self.backend.remote_start_new_session();
                 self.run_remote_change(read, window, cx);
             }
