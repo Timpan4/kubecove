@@ -180,6 +180,19 @@ impl Inspector {
             }
         }
         self.argo.connections.reconnect.queue.retain(|p| p.id != id);
+        // A reconnect of this profile that finished after cleanup would install its
+        // connection and save it again, so it is cancelled and the queue moves on.
+        if self
+            .argo
+            .connections
+            .reconnect
+            .current
+            .as_ref()
+            .is_some_and(|(current, _)| current == &id)
+        {
+            self.argo.connections.reconnect.current = None;
+            self.reconnect_next_argo_profile(window, cx);
+        }
         for p in self
             .argo
             .connections
@@ -317,12 +330,13 @@ impl Inspector {
         let Preference::Connected(id) = &self.argo.connections.selected else {
             return None;
         };
-        let status = self
-            .argo
-            .connections
-            .profiles
-            .iter()
-            .find(|s| s.profile.as_ref().is_some_and(|p| &p.id == id));
+        // A preference restored by workspace can name a profile of another context or
+        // source. It is not eligible here, as in `resolveArgoConnectionPolicy`.
+        let status = self.argo.connections.profiles.iter().find(|s| {
+            s.profile
+                .as_ref()
+                .is_some_and(|p| &p.id == id && self.argo_profile_matches(p))
+        });
         match status {
             Some(status) if status.connected => None,
             Some(status) => Some(
@@ -360,6 +374,7 @@ impl Inspector {
             }),
             _ => None,
         };
+        let id = saved.id.clone();
         let profile = ArgoConnectionProfile {
             url: endpoint_url(&saved.endpoint),
             id: saved.id,
@@ -390,7 +405,7 @@ impl Inspector {
                 cx.notify();
             });
         });
-        self.argo.connections.reconnect.current = Some(task.into());
+        self.argo.connections.reconnect.current = Some((id, task.into()));
     }
     pub(super) fn sync_argo_picker(
         &mut self,

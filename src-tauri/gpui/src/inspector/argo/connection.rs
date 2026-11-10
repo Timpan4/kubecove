@@ -121,7 +121,8 @@ impl DialogFields {
 #[derive(Default)]
 pub(super) struct Reconnect {
     pub queue: std::collections::VecDeque<ArgoConnectionProfile>,
-    pub current: Option<InFlight>,
+    /// The profile ID whose reconnect runs, so Forget can cancel it before cleanup.
+    pub current: Option<(String, InFlight)>,
 }
 pub(super) struct Connections {
     /// The connection dialog is open, on the surface `host` names.
