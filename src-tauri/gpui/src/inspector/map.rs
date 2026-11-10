@@ -18,8 +18,8 @@ use crate::theme::Tokens;
 use crate::topology::{self, Viewport};
 use crate::ui;
 use gpui_kit::{
-    AnyElement, Context, Div, FocusHandle, Pixels, Point, SharedString, WeakFocusHandle, div,
-    prelude::*, px,
+    AnyElement, Context, Div, FocusHandle, KeyDownEvent, Pixels, Point, SharedString,
+    WeakFocusHandle, div, prelude::*, px,
 };
 use kubecove_lib::models::{AppError, AppErrorKind, ResourceSummary, ResourceTopology};
 use std::cell::{Cell, RefCell};
@@ -66,6 +66,10 @@ pub(super) struct MapState {
     focus_view: Weak<topology::View>,
     /// The zoom in, zoom out and fit controls, in Tab order.
     zoom_focus: Option<[FocusHandle; 3]>,
+    /// The Ownership and Network Flow mode buttons, in Tab order.
+    mode_focus: Option<[FocusHandle; 2]>,
+    /// The "skip graph" link, a tab stop before the graph nodes.
+    skip_link: Option<FocusHandle>,
     /// Where "skip graph" moves focus: the element right after the graph.
     pub skip_target: Option<FocusHandle>,
     /// The last built view and the inputs it was built from. Pan, zoom and
@@ -139,6 +143,8 @@ impl MapState {
             last_focus: None,
             focus_view: Weak::new(),
             zoom_focus: None,
+            mode_focus: None,
+            skip_link: None,
             skip_target: None,
             built: RefCell::default(),
             unselected_built: RefCell::default(),
@@ -330,15 +336,31 @@ impl Inspector {
         let warnings = topology.map_or(&[][..], |topology| &topology.warnings[..]);
         // Built before `segment` borrows `cx` for its click listeners.
         let context_select = self.map_context_select(cx);
+        let mode_focus = self.map.mode_focus.clone();
         let segment = |icon: &str, label: &'static str, active: bool| {
+            let network = label == "Network Flow";
+            let focus = mode_focus
+                .as_ref()
+                .map(|handles| handles[usize::from(network)].clone());
             div()
                 .id(SharedString::from(format!("map-mode:{label}")))
                 .test_support()
                 .aria_label(label)
                 .aria_selected(active)
                 .cursor_pointer()
+                .when_some(focus, |segment, focus| {
+                    segment
+                        .track_focus(&focus)
+                        .focus(|style| style.border_2().border_color(Tokens::ring()))
+                })
                 .on_click(cx.listener(move |this, _, window, cx| {
-                    this.set_map_mode(label == "Network Flow", window, cx)
+                    this.set_map_mode(network, window, cx)
+                }))
+                .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
+                    if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                        this.set_map_mode(network, window, cx);
+                        cx.stop_propagation();
+                    }
                 }))
                 .flex()
                 .items_center()
@@ -496,11 +518,28 @@ impl Inspector {
                                 .aria_label("skip graph")
                                 .text_color(Tokens::primary())
                                 .cursor_pointer()
+                                .when_some(self.map.skip_link.as_ref(), |link, focus| {
+                                    link.track_focus(focus).focus(|style| {
+                                        style.border_b_1().border_color(Tokens::ring())
+                                    })
+                                })
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     if let Some(target) = &this.map.skip_target {
                                         target.focus(window, cx);
                                     }
-                                })),
+                                }))
+                                .on_key_down(cx.listener(
+                                    |this, event: &KeyDownEvent, window, cx| {
+                                        if matches!(
+                                            event.keystroke.key.as_str(),
+                                            "enter" | "space"
+                                        ) && let Some(target) = &this.map.skip_target
+                                        {
+                                            target.focus(window, cx);
+                                            cx.stop_propagation();
+                                        }
+                                    },
+                                )),
                         )
                         .child(ui::muted(ui::text(".", 11., 16.)))
                         .into_any_element(),
