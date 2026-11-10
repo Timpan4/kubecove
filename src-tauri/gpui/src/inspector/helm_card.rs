@@ -442,7 +442,8 @@ pub(super) fn alert(title: &str, items: &[String]) -> Div {
 }
 
 /// `SimpleTable`-style table: `table-fixed` equal columns at least `min_width`
-/// wide, `px-3 py-2` uppercase heads and `border-b` rows, clipped to the box.
+/// wide, `px-3 py-2` uppercase heads and `border-b` rows, scrolled sideways as the
+/// web `Table`'s `overflow-x-auto` container is when the box is narrower.
 pub(super) fn table(
     headers: &[&str],
     rows: Vec<Vec<Div>>,
@@ -464,8 +465,8 @@ pub(super) fn table(
                     .py(px(8.))
             }))
     };
-    div()
-        .overflow_hidden()
+    let body = div()
+        .w(px(width.max(min_width)))
         .child(
             div()
                 .flex()
@@ -492,5 +493,12 @@ pub(super) fn table(
                     .border_color(Tokens::border()),
             )
         })
-        .children(rows.into_iter().map(row))
+        .children(rows.into_iter().map(row));
+    div().min_w_0().child(
+        div()
+            .id(SharedString::from(format!("helm-table:{}", headers.join("|"))))
+            .w_full()
+            .overflow_x_scroll()
+            .child(body),
+    )
 }
