@@ -160,7 +160,9 @@ impl ExecTab {
             start = prev;
         }
         loop {
-            if end.1 == wrap_end(end.0) {
+            // A click in the gap a wide character left before its wrap starts past
+            // the wrap end, so equality alone would never stop the scan.
+            if end.1 >= wrap_end(end.0) {
                 if end.0 + 1 < rows && wraps(end.0) {
                     end = (end.0 + 1, 0);
                 } else {
@@ -202,6 +204,16 @@ impl ExecTab {
             anchor_end: (top + usize::from(last), cols),
             ..Selection::at((top + usize::from(first), 0), false)
         }
+    }
+}
+/// Pasted text as the shell receives it. A bracketed paste drops ESC, so clipboard
+/// text cannot end the paste early with `ESC [201~` and have the shell run the rest.
+pub(super) fn paste_payload(text: &str, bracketed: bool) -> String {
+    let text = text.replace("\r\n", "\n").replace('\n', "\r");
+    if bracketed {
+        format!("\x1b[200~{}\x1b[201~", text.replace('\x1b', ""))
+    } else {
+        text
     }
 }
 impl Inspector {
@@ -285,15 +297,11 @@ impl Inspector {
         cx.notify();
     }
     pub(super) fn paste_exec(&mut self, text: &str, cx: &mut Context<Self>) {
-        let mut text = text.replace("\r\n", "\n").replace('\n', "\r");
-        if self
+        let bracketed = self
             .exec
             .active()
-            .is_some_and(|t| t.parser.screen().bracketed_paste())
-        {
-            text = format!("\x1b[200~{text}\x1b[201~");
-        }
-        self.exec_input(text, cx);
+            .is_some_and(|t| t.parser.screen().bracketed_paste());
+        self.exec_input(paste_payload(text, bracketed), cx);
     }
     pub(super) fn exec_mouse(
         &mut self,
