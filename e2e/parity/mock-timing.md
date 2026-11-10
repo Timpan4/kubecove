@@ -106,9 +106,11 @@ The stale-data notice of the resource browser ("Showing last observed state.")
 uses the same two times. The native driver advances its clock 300 ms before
 every `expectLiveState` check, so a notice that is due has appeared and a
 notice whose watches recovered has gone. `live-menu.notice-delay` checks both
-times with the web clock paused. The native driver also advances 250 ms after
-each `replayLiveData`, so that scenario checks the notice is absent straight
-after the replay and present after 300 ms more.
+times with the web clock paused. The native driver advances 250 ms after each
+`replayLiveData`, but not once a scenario has run `controlClock`, because the
+scenario then owns the clock in both drivers. That scenario checks the notice
+is absent straight after the replay, present 300 ms later, still present
+straight after recovery, and gone 1000 ms after that.
 
 The `loading-delay.` scenarios pause the web clock with `controlClock` before the
 resource table mounts, so both drivers measure the same intervals. The web mock
