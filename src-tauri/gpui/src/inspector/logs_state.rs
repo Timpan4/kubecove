@@ -57,6 +57,9 @@ pub(super) struct LogsState {
     pub hidden: [bool; 4],
     pub wrap: bool,
     pub latest_first: bool,
+    /// `buffer.has_levels()` when the rows were last measured. The level
+    /// column narrows every row, so a change remeasures the kept rows.
+    levels: bool,
     /// `expandAll`: one-line rows open unless the user toggled them away.
     pub expand_all: bool,
     /// Buffer indices whose state differs from `expand_all` (`toggledRows`).
@@ -161,6 +164,7 @@ impl LogsState {
             hidden: [false; 4],
             wrap: true,
             latest_first: false,
+            levels: false,
             expand_all: false,
             toggled: HashSet::new(),
             copied_line: None,
@@ -227,6 +231,9 @@ impl LogsState {
     /// and evictions splice; other changes remeasure.
     pub fn refilter(&mut self) {
         let pinned = self.pinned();
+        let levels = self.buffer.has_levels();
+        let levels_changed = levels != self.levels;
+        self.levels = levels;
         // The two index lists swap roles, so a refilter allocates only when
         // the visible rows outgrow both.
         std::mem::swap(&mut self.visible, &mut self.previous);
@@ -248,6 +255,9 @@ impl LogsState {
                 self.list.splice(0..evicted, 0);
                 self.list
                     .splice(kept.len()..kept.len(), next.len() - kept.len());
+                if levels_changed {
+                    self.list.remeasure();
+                }
                 return;
             }
         } else {
@@ -256,6 +266,9 @@ impl LogsState {
                 let kept_len = kept.len();
                 self.list.splice(kept_len..previous.len(), 0);
                 self.list.splice(0..0, next.len() - kept_len);
+                if levels_changed {
+                    self.list.remeasure();
+                }
                 if pinned {
                     self.list.scroll_to(ListOffset::default());
                 }
@@ -353,6 +366,9 @@ impl LogsState {
     pub fn set_latest_first(&mut self, latest_first: bool) {
         self.latest_first = latest_first;
         self.list = follow_list(latest_first);
+        // The new list has no rows, so `refilter` must not diff against the
+        // old ones: one unchanged row would otherwise splice nothing in.
+        self.visible.clear();
         self.refilter();
         self.jump_to_latest();
     }
