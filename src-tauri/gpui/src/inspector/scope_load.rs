@@ -16,6 +16,9 @@ pub(super) struct ScopeLoad {
     pub(super) rows: Load,
     /// The last settled custom-kind read. `custom` adds the pending one.
     custom: CustomLoad,
+    /// A refresh replaced, and so cancelled, a custom-kind read. If the
+    /// refresh fails, the custom kinds are reported as failed, not idle.
+    custom_interrupted: bool,
     read: Option<ScopeRead>,
     /// The contexts the rows come from, in rank order (`SavedWorkspace::contexts`).
     contexts: Vec<String>,
@@ -124,6 +127,7 @@ impl Default for ScopeLoad {
         Self {
             rows: Load::Loading,
             custom: CustomLoad::Idle,
+            custom_interrupted: false,
             read: None,
             contexts: Vec::new(),
             parts: Vec::new(),
@@ -136,6 +140,7 @@ impl ScopeLoad {
     /// any scope read. Each context's part starts empty.
     pub(super) fn start(&mut self, contexts: Vec<String>, custom: bool, task: Task<()>) {
         self.custom = CustomLoad::Idle;
+        self.custom_interrupted = false;
         self.parts = contexts.iter().map(|_| ContextRows::default()).collect();
         self.contexts = contexts;
         self.read = Some(ScopeRead::Builtin {
@@ -146,6 +151,7 @@ impl ScopeLoad {
 
     /// Starts the live menu's refresh, replacing and so cancelling any scope read.
     pub(super) fn start_refresh(&mut self, task: Task<()>) {
+        self.custom_interrupted |= self.custom() == CustomLoad::Loading;
         self.read = Some(ScopeRead::Refresh { _task: task.into() });
     }
 
@@ -315,12 +321,19 @@ impl ScopeLoad {
     /// rows, as when Refresh is pressed during a first load, it fails the load.
     pub(super) fn refresh_settled(&mut self, result: Result<(), String>) {
         self.read = None;
+        let interrupted = std::mem::take(&mut self.custom_interrupted);
         match result {
             Ok(()) => {
                 self.rows = Load::Ready;
                 self.custom = CustomLoad::Ready;
             }
-            Err(_) if matches!(self.rows, Load::Ready) => {}
+            // The kept rows lack the custom kinds the refresh cancelled; the
+            // summary reports them unavailable until a refresh succeeds.
+            Err(_) if matches!(self.rows, Load::Ready) => {
+                if interrupted {
+                    self.custom = CustomLoad::Failed;
+                }
+            }
             Err(error) => self.rows = Load::Failed(error),
         }
     }
