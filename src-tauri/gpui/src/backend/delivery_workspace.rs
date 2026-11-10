@@ -134,6 +134,9 @@ pub async fn resources(
             resource_kind: kind.clone(),
             namespace: namespace.clone(),
         };
+        // As in `live_data.rs`: a built-in kind fails the read unless access is
+        // denied, so `read_retry` retries it; a custom kind only warns.
+        let custom = dynamic.is_some();
         let result = if let Some(kind) = dynamic {
             commands::list_dynamic_resource_snapshot(
                 app.cluster.clone(),
@@ -160,7 +163,10 @@ pub async fn resources(
                     versions.insert(super::watch_signature(&key), version);
                 }
             }
-            Err(error) => warnings.push(format!("{}: {}", kind.kind, error.message)),
+            Err(error) if custom || error.kind == AppErrorKind::Forbidden => {
+                warnings.push(format!("{}: {}", kind.kind, error.message));
+            }
+            Err(error) => return Err(error),
         }
     }
     Ok(ScopeResult {

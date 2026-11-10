@@ -107,7 +107,7 @@ impl Backend for NativeBackend {
     }
 
     fn scope_custom_resources(&self, scope: Scope) -> Option<Read<ScopeResult>> {
-        Some(live_data::custom_resources(self, scope))
+        Some(live_data::custom_resources(self, scope, false))
     }
 
     fn details(&self, resource: ResourceSummary) -> Read<ResourceDetailsFull> {
