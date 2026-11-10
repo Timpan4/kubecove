@@ -6,8 +6,6 @@ import {
 import type { ArgoApplicationSummary } from "@/lib/gitops-types";
 import { kindLabel } from "@/lib/kind-identity";
 import {
-	resourceRefFromSummary,
-	resourceSummaryFromRef,
 	type PathStateHealthFilter,
 	type PathStateIncidentFilter,
 	type PathStateResourceBrowserState,
@@ -15,6 +13,8 @@ import {
 	type PathStateSurfacesState,
 	type PathStateWorkspaceSnapshot,
 	type PathStateWorkspaceViewMode,
+	resourceRefFromSummary,
+	resourceSummaryFromRef,
 } from "@/lib/path-state";
 import {
 	resolveTreeScope,
@@ -22,13 +22,15 @@ import {
 	type SectionName,
 	type TreeNodeId,
 } from "@/lib/tree-nav";
-import type { ResourceKindSelection, ResourceSummary } from "@/lib/types";
+import type { DiscoveredResourceKind, ResourceKindSelection, ResourceSummary } from "@/lib/types";
 import type { SavedWorkspace } from "@/lib/workspace-model";
 
 export interface ResourceBrowserScope {
 	canQuery: boolean;
 	namespaces: string[];
 	kinds: ResourceKindSelection[];
+	/** The kinds are a sidebar category's, so kinds discovered later, such as custom kinds, stay unselected. */
+	categoryKinds: boolean;
 }
 
 export interface WorkspaceNavigationModel {
@@ -76,9 +78,10 @@ function isNamespaceListView(state: NavigationScopeState): boolean {
 function resourceBrowserScope(
 	workspace: NavigationWorkspace,
 	state: NavigationScopeState,
+	customResourceKinds: DiscoveredResourceKind[],
 ): ResourceBrowserScope {
 	if (state.viewMode !== "resources" || isNamespaceListView(state)) {
-		return { canQuery: false, namespaces: [], kinds: [] };
+		return { canQuery: false, namespaces: [], kinds: [], categoryKinds: false };
 	}
 	const scope = resolveTreeScope(state.selectedNode);
 	if (
@@ -88,17 +91,27 @@ function resourceBrowserScope(
 		scope.portForwardMode ||
 		scope.rbacMode
 	) {
-		return { canQuery: false, namespaces: [], kinds: [] };
+		return { canQuery: false, namespaces: [], kinds: [], categoryKinds: false };
 	}
-	const kinds =
-		scope.kinds.length > 0 ? scope.kinds : [...workspace.scope.kinds];
+	// The "All namespaces" Custom Resources section selects the custom kinds present in the workspace.
+	const customSection = state.selectedNode?.type === "section" && scope.section === "discovered";
+	const kinds = customSection
+		? [...customResourceKinds]
+		: scope.kinds.length > 0
+			? scope.kinds
+			: [...workspace.scope.kinds];
 	const namespaces = state.resourceNamespaceOverride ??
 		(scope.namespace
 			? [scope.namespace]
 			: scope.section === "namespaces" || scope.clusterScoped
 				? []
 				: [...workspace.scope.namespaces]);
-	return { canQuery: kinds.length > 0, namespaces, kinds };
+	return {
+		canQuery: kinds.length > 0,
+		namespaces,
+		kinds,
+		categoryKinds: customSection || (state.selectedNode?.type !== "kind" && scope.group !== null),
+	};
 }
 
 function workspaceTitle(
@@ -160,6 +173,7 @@ function workspacePlaceholder(state: NavigationScopeState): string {
 export function buildWorkspaceNavigationModel(
 	workspace: NavigationWorkspace,
 	state: NavigationScopeState,
+	customResourceKinds: DiscoveredResourceKind[] = [],
 ): WorkspaceNavigationModel {
 	return {
 		activeSurface: state.viewMode,
@@ -167,7 +181,7 @@ export function buildWorkspaceNavigationModel(
 		placeholder: workspacePlaceholder(state),
 		isOverview: state.viewMode === "overview",
 		isNamespaceList: isNamespaceListView(state),
-		resourceBrowserScope: resourceBrowserScope(workspace, state),
+		resourceBrowserScope: resourceBrowserScope(workspace, state, customResourceKinds),
 	};
 }
 
@@ -252,6 +266,17 @@ export function workspacePathForWorkspace(
 	snapshot: PathStateWorkspaceSnapshot | null,
 ): PathStateWorkspaceSnapshot | null {
 	return snapshot?.workspaceId === workspace.id ? snapshot : null;
+}
+
+/** The latest path of each workspace opened in this app session, so reopening restores its view. */
+const sessionWorkspacePaths = new Map<string, PathStateWorkspaceSnapshot>();
+
+export function rememberWorkspacePath(snapshot: PathStateWorkspaceSnapshot): void {
+	sessionWorkspacePaths.set(snapshot.workspaceId, snapshot);
+}
+
+export function rememberedWorkspacePath(workspaceId: string): PathStateWorkspaceSnapshot | null {
+	return sessionWorkspacePaths.get(workspaceId) ?? null;
 }
 
 function clearHandoffs(state: WorkspaceNavigationState): WorkspaceNavigationState {
@@ -365,6 +390,7 @@ export function navigateWorkspace(
 	if (intent.type === "selectNode") {
 		return {
 			...cleared,
+			resourceBrowserPathState: null,
 			resourceGitOpsFocusApplication: null,
 			initialIncidentFilter:
 				intent.node.type === "section" && intent.node.section === "incidents"

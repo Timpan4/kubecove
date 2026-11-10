@@ -92,31 +92,63 @@ export function filterTopologyByKinds(
 	};
 }
 
-/** Keeps matching resources and their ownership explanation. */
+/**
+ * The kinds the map links from: the selection, when it leaves out one of the
+ * default kinds. Null keeps the map to table rows and their owners. Custom
+ * kinds added beyond the defaults do not narrow the selection.
+ */
+export function topologyLinkKinds(
+	selected: ResourceKindSelection[],
+	defaults: ResourceKindSelection[],
+): ResourceKindSelection[] | null {
+	const keys = new Set(selected.map(kindKey));
+	return defaults.some((kind) => !keys.has(kindKey(kind))) ? selected : null;
+}
+
+/**
+ * Keeps matching resources and their ownership explanation. With `linkKinds`,
+ * a narrowed kind selection, it keeps matching resources and the nodes one edge
+ * from them instead. A linked node of a selected kind that is not a row was
+ * filtered out of the table, so it stays out of the map too.
+ */
 export function filterTopologyByTableRows(
 	topology: ResourceTopology | undefined,
 	rows: ResourceSummary[],
+	linkKinds: ResourceKindSelection[] | null = null,
 ): ResourceTopology | undefined {
 	if (!topology) return undefined;
 	const rowKeys = new Set(rows.map(looseResourceKey));
 	const nodesById = new Map(topology.nodes.map((node) => [node.id, node]));
-	const incoming = new Map<string, string[]>();
-	for (const edge of topology.edges) {
-		const sources = incoming.get(edge.target) ?? [];
-		sources.push(edge.source);
-		incoming.set(edge.target, sources);
-	}
-	const nodeIds = new Set(
+	const matched = new Set(
 		topology.nodes
 			.filter((node) => rowKeys.has(looseResourceKey(node.summary)))
 			.map((node) => node.id),
 	);
-	const pending = [...nodeIds];
-	for (let index = 0; index < pending.length; index += 1) {
-		for (const parentId of incoming.get(pending[index]) ?? []) {
-			if (nodeIds.has(parentId) || !nodesById.has(parentId)) continue;
-			nodeIds.add(parentId);
-			pending.push(parentId);
+	const nodeIds = new Set(matched);
+	if (linkKinds) {
+		const selected = kindMatcher(linkKinds);
+		const link = (id: string) => {
+			const node = nodesById.get(id);
+			if (node && !selected(node.summary)) nodeIds.add(id);
+		};
+		for (const edge of topology.edges) {
+			if (matched.has(edge.source)) link(edge.target);
+			if (matched.has(edge.target)) link(edge.source);
+		}
+	} else {
+		const incoming = new Map<string, string[]>();
+		for (const edge of topology.edges) {
+			const sources = incoming.get(edge.target) ?? [];
+			sources.push(edge.source);
+			incoming.set(edge.target, sources);
+		}
+		const pending = [...nodeIds];
+		for (let index = 0; index < pending.length; index += 1) {
+			for (const parentId of incoming.get(pending[index]) ?? []) {
+				if (nodeIds.has(parentId) || !nodesById.has(parentId)) continue;
+				nodeIds.add(parentId);
+				pending.push(parentId);
+			}
 		}
 	}
 	return {
@@ -130,19 +162,27 @@ export function createTableTopologyFilter() {
 	let source: ResourceTopology | undefined;
 	let hideHistorical = false;
 	let keys = new Set<string>();
+	let links: string | null = null;
 	let result: ResourceTopology | undefined;
-	return (topology: ResourceTopology | undefined, rows: ResourceSummary[], hide: boolean) => {
+	return (
+		topology: ResourceTopology | undefined,
+		rows: ResourceSummary[],
+		hide: boolean,
+		linkKinds: ResourceKindSelection[] | null = null,
+	) => {
 		const nextKeys = new Set<string>();
 		for (const row of rows) nextKeys.add(looseResourceKey(row));
 		let sameKeys = nextKeys.size === keys.size;
 		for (const key of nextKeys) {
 			if (!keys.has(key)) { sameKeys = false; break; }
 		}
-		if (topology === source && hide === hideHistorical && sameKeys) return result;
+		const nextLinks = linkKinds ? linkKinds.map(kindKey).sort().join("\n") : null;
+		if (topology === source && hide === hideHistorical && sameKeys && nextLinks === links) return result;
 		source = topology;
 		hideHistorical = hide;
 		keys = nextKeys;
-		result = filterTopologyByTableRows(filterHistoricalReplicaSets(topology, hide), rows);
+		links = nextLinks;
+		result = filterTopologyByTableRows(filterHistoricalReplicaSets(topology, hide), rows, linkKinds);
 		return result;
 	};
 }

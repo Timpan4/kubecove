@@ -1,0 +1,32 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "yaml-edit.multi-error-diagnostics",
+      "title": "A draft with a duplicate key, an unresolved tag and a stray bracket marks both parser errors and the warning, each on its own range, and clears when fixed",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showYaml" },
+        { "action": "editYaml" },
+        { "action": "replaceYamlDraft", "value": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: payments-api\n  name: payments-api-v2\n  labels: !custom\n    app: payments\nspec: ]\n" },
+        {
+          "action": "expectYamlEditorDiagnostics",
+          "diagnostics": [
+            { "from": [1, 1], "to": [1, 2], "severity": "error", "source": "YAML", "message": "Map keys must be unique" },
+            { "from": [5, 3], "to": [5, 4], "severity": "error", "source": "YAML", "message": "Map keys must be unique" },
+            { "from": [6, 11], "to": [6, 18], "severity": "warning", "source": "YAML", "message": "Unresolved tag: !custom" },
+            { "from": [8, 7], "to": [8, 8], "severity": "error", "source": "YAML" }
+          ]
+        },
+        { "action": "expectYamlLens", "line": 5, "marked": "name: payments-api-v2" },
+        { "action": "expectYamlLens", "line": 8, "marked": "spec: ]" },
+        { "action": "replaceYamlDraft", "value": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: payments-api\n  namespace: payments\n" },
+        { "action": "expectYamlEditorDiagnostics", "diagnostics": [] },
+        { "action": "expectYamlLens", "line": 0 }
+      ]
+    }
+  ]
+}

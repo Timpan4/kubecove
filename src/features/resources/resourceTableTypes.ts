@@ -8,6 +8,7 @@ import type {
 
 export type ResourceSortColumn =
 	| "name"
+	| "context"
 	| "namespace"
 	| "kind"
 	| "status"
@@ -32,6 +33,10 @@ export interface ResourceTableState {
 	selectedResource?: ResourceSummary | null;
 	preferredGitOpsResourceKeys?: ReadonlySet<string>;
 	kindOrder?: readonly string[];
+	/** Workspace contexts in rank order. Ties under any sort column order by this rank. */
+	contexts?: readonly string[];
+	/** Contexts whose rows show. Empty or absent shows every context. */
+	contextFilter?: ReadonlySet<string>;
 }
 
 export type ResourceTableEntry =
@@ -59,6 +64,8 @@ export type ResourceTableEntry =
 export interface ResourceTableProjection {
 	searchIndex: ResourceSearchEntry[];
 	gitOpsFilters: GitOpsOwnershipFilter[];
+	/** The workspace has more than one context: owner and Helm groups and owner filters are per context. */
+	multiContext: boolean;
 }
 
 export interface ResourceTableModel {
@@ -71,6 +78,7 @@ export interface ResourceTableModel {
 	pageCount: number;
 	safePageIndex: number;
 	groupedByGitOps: boolean;
+	multiContext: boolean;
 	gitOpsFilters: GitOpsOwnershipFilter[];
 	healthSummary: HealthSummary;
 	columnVisibility: {
@@ -90,6 +98,7 @@ export type ResourceTableDisplay = Pick<
 	| "totalRows"
 	| "pageCount"
 	| "groupedByGitOps"
+	| "multiContext"
 	| "gitOpsFilters"
 	| "healthSummary"
 > & {

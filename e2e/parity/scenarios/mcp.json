@@ -1,0 +1,57 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    { "id": "settings-agents.defaults", "title": "AI agents defaults and unavailable command copy", "steps": [
+      { "action": "openSettings" }, { "action": "showSettingsSection", "section": "AI agents" },
+      { "action": "expectMcpState", "enabled": false, "port": "47615", "running": false, "save": false, "command": false },
+      { "action": "expectMcpRequests", "requests": ["status"] }
+    ] },
+    { "id": "settings-agents.port", "title": "MCP port validation, save and reopening", "steps": [
+      { "action": "openSettings" }, { "action": "showSettingsSection", "section": "AI agents" },
+      { "action": "fillMcpPort", "value": "0" },
+      { "action": "expectMcpState", "enabled": false, "port": "0", "running": false, "save": false, "command": false },
+      { "action": "fillMcpPort", "value": "65536" },
+      { "action": "expectMcpState", "enabled": false, "port": "65536", "running": false, "save": false, "command": false },
+      { "action": "fillMcpPort", "value": "abc" },
+      { "action": "expectMcpState", "enabled": false, "port": "abc", "running": false, "save": false, "command": false },
+      { "action": "fillMcpPort", "value": "47616" }, { "action": "mcpControl", "control": "Submit port" },
+      { "action": "closeSettings" }, { "action": "openSettings" }, { "action": "showSettingsSection", "section": "AI agents" },
+      { "action": "expectMcpState", "enabled": false, "port": "47616", "running": false, "save": false, "command": false },
+      { "action": "expectMcpRequests", "requests": ["status", "set:false:47616", "status"] }
+    ] },
+    { "id": "settings-agents.lifecycle", "title": "Enable, change running port and stop MCP", "steps": [
+      { "action": "openSettings" }, { "action": "showSettingsSection", "section": "AI agents" },
+      { "action": "mcpControl", "control": "MCP server" },
+      { "action": "expectMcpState", "enabled": true, "port": "47615", "running": true, "save": false, "command": true },
+      { "action": "fillMcpPort", "value": "47616" }, { "action": "mcpControl", "control": "Save" },
+      { "action": "expectMcpState", "enabled": true, "port": "47616", "running": true, "save": false, "command": true },
+      { "action": "mcpControl", "control": "MCP server" },
+      { "action": "expectMcpState", "enabled": false, "port": "47616", "running": false, "save": false, "command": false },
+      { "action": "expectMcpRequests", "requests": ["status", "set:true:47615", "set:true:47616", "set:false:47616"] }
+    ] },
+    { "id": "settings-agents.remote-local-host", "title": "MCP controls stay local while a remote runtime is selected", "steps": [
+      { "action": "openSettings" }, { "action": "showSettingsSection", "section": "Remote server" },
+      { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+      { "action": "fillSettingsField", "field": "Server token", "value": "parity-controlled-credential" },
+      { "action": "clickSettingsButton", "label": "Connect" },
+      { "action": "expectRuntimeEndpoint", "value": "http://127.0.0.1:43117" },
+      { "action": "showSettingsSection", "section": "AI agents" },
+      { "action": "mcpControl", "control": "MCP server" },
+      { "action": "expectMcpState", "enabled": true, "port": "47615", "running": true, "save": false, "command": true },
+      { "action": "mcpControl", "control": "Copy token" }, { "action": "expectMcpCopy", "kind": "token", "rotated": false },
+      { "action": "expectRuntimeEndpoint", "value": "http://127.0.0.1:43117" },
+      { "action": "expectMcpRequests", "requests": ["status", "set:true:47615", "reveal"] }
+    ] },
+    { "id": "settings-agents.token", "title": "Copy-only token and command use the rotated credential", "steps": [
+      { "action": "openSettings" }, { "action": "showSettingsSection", "section": "AI agents" },
+      { "action": "mcpControl", "control": "Copy token" }, { "action": "expectMcpCopy", "kind": "token", "rotated": false },
+      { "action": "mcpControl", "control": "MCP server" },
+      { "action": "mcpControl", "control": "Copy Claude Code command" }, { "action": "expectMcpCopy", "kind": "command", "rotated": false },
+      { "action": "mcpControl", "control": "Rotate token" },
+      { "action": "mcpControl", "control": "Copy token" }, { "action": "expectMcpCopy", "kind": "token", "rotated": true },
+      { "action": "mcpControl", "control": "Copy Claude Code command" }, { "action": "expectMcpCopy", "kind": "command", "rotated": true },
+      { "action": "expectMcpRequests", "requests": ["status", "reveal", "set:true:47615", "reveal", "rotate", "reveal", "reveal"] }
+    ] }
+  ]
+}

@@ -11,6 +11,7 @@ import {
 } from "@/lib/kind-identity";
 import {
 	createTauriClient,
+	isAppError,
 	listResourceScope,
 } from "@/lib/tauri";
 import type {
@@ -117,12 +118,16 @@ export async function fetchWorkspaceResources(
 			? [{ clusterContext: plans[index].clusterContext, reason: result.reason }]
 			: [],
 	);
-	if (failures.length > 0) {
+	if (failures.length === results.length && failures.length > 0) {
 		throw new WorkspaceResourceLoadError(failures);
 	}
 	return {
 		resources: results.flatMap((result) => result.status === "fulfilled" ? result.value.resources : []),
-		failures: results.flatMap((result) => result.status === "fulfilled" ? result.value.failures : []),
+		failures: results.flatMap((result, index) => result.status === "fulfilled" ? result.value.failures : plans[index].requests.map((request) => ({
+			clusterContext: plans[index].clusterContext,
+			request,
+			error: isAppError(result.reason) ? result.reason : { kind: "Cluster", message: messageFromFriendlyError(result.reason) },
+		}))),
 		coverage: results.flatMap((result, index) => result.status === "fulfilled"
 			? [{ clusterContext: plans[index].clusterContext, requests: result.value.completedRequests }]
 			: []),

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { tick } from "svelte";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import type { HealthAssessment } from "@/lib/types";
 	import {
 		healthSourceLabel,
@@ -24,11 +25,24 @@
 		await tick();
 		if (focused) document.getElementById(triggerId)?.focus({ preventScroll: true });
 	}
+	const pending = loadingDelay(() => loading);
 	const label = $derived(
-		loading ? "Loading" : assessment ? healthStateLabel(assessment.state) : "Assessment unavailable",
+		pending.shown
+			? "Loading"
+			: assessment
+				? healthStateLabel(assessment.state)
+				: pending.active
+					? ""
+					: "Assessment unavailable",
 	);
 	const source = $derived(
-		loading ? "Assessment pending" : assessment ? healthSourceSummary(assessment) : "Backend contract missing",
+		pending.shown
+			? "Assessment pending"
+			: assessment
+				? healthSourceSummary(assessment)
+				: pending.active
+					? ""
+					: "Backend contract missing",
 	);
 	const variant = $derived(healthState === "degraded" ? "destructive" : "outline");
 	const tone = $derived(

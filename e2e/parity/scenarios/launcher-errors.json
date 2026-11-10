@@ -1,0 +1,151 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "launcher-errors.contexts-retry-failure-keeps-namespaces",
+      "title": "A failed context Retry leaves the pending namespace read running, so its namespaces still arrive",
+      "steps": [
+        { "action": "configureShellRead", "phase": "sources-failed" },
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "list_namespaces", "context": "mock-dev" } },
+        { "action": "openLauncher" },
+        { "action": "expectLauncherRetry", "read": "contexts" },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_namespaces", "context": "mock-dev" } },
+        { "action": "mockTiming", "control": { "operation": "fail", "command": "list_kube_contexts", "context": "", "kind": "forbidden" } },
+        { "action": "retryLauncher", "read": "contexts" },
+        { "action": "expectLauncherRetry", "read": "contexts" },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "list_namespaces", "context": "mock-dev" } },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "list_kube_contexts", "context": "" } },
+        { "action": "configureShellRead", "phase": "ready" },
+        { "action": "nameWorkspace", "value": "Contexts retry" },
+        { "action": "toggleWorkspaceNamespace", "namespace": "payments" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Contexts retry", "context": "mock-dev" }
+      ]
+    },
+    {
+      "id": "launcher-errors.contexts-failure",
+      "title": "A failed context read shows its retry and blocks creation without listing namespaces",
+      "steps": [
+        { "action": "configureShellRead", "phase": "contexts-failed" },
+        { "action": "openLauncher" },
+        { "action": "expectLauncherRetry", "read": "contexts" },
+        { "action": "expectFriendlyError", "title": "Failed to load contexts", "next": "Copy the detail if this needs debugging." },
+        { "action": "expectPageText", "text": "Select context" },
+        { "action": "expectNoPageText", "text": "Cluster group" },
+        { "action": "expectPageText", "text": "Select a context before creating this workspace." },
+        { "action": "configureShellRead", "phase": "ready" }
+      ]
+    },
+    {
+      "id": "launcher-errors.namespaces-failure-retry",
+      "title": "A failed namespace read keeps the name, hides the list and recovers on Retry",
+      "steps": [
+        { "action": "configureShellRead", "phase": "namespaces-failed" },
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Namespace failure" },
+        { "action": "expectLauncherRetry", "read": "namespaces" },
+        { "action": "expectPageText", "text": "Retry namespace discovery before creating this workspace." },
+        { "action": "copyErrorDetail", "error": "namespaces", "expected": "Scripted namespaces read failure" },
+        { "action": "configureShellRead", "phase": "ready" },
+        { "action": "retryLauncher", "read": "namespaces" },
+        { "action": "toggleWorkspaceNamespace", "namespace": "payments" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Namespace failure", "context": "mock-dev" }
+      ]
+    },
+    {
+      "id": "launcher-errors.namespaces-empty",
+      "title": "An empty namespace list still creates an unscoped workspace",
+      "steps": [
+        { "action": "configureShellRead", "phase": "namespaces-empty" },
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Unscoped" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Unscoped", "context": "mock-dev" },
+        { "action": "configureShellRead", "phase": "ready" }
+      ]
+    },
+    {
+      "id": "launcher-errors.no-contexts",
+      "title": "A kubeconfig without contexts shows the placeholder and visible reason, not a read error",
+      "steps": [
+        { "action": "configureShellRead", "phase": "contexts-empty" },
+        { "action": "openLauncher" },
+        { "action": "expectEmptyLauncher" },
+        { "action": "expectPageText", "text": "Select context" },
+        { "action": "expectNoPageText", "text": "Cluster group" },
+        { "action": "expectPageText", "text": "Select a context before creating this workspace." },
+        { "action": "configureShellRead", "phase": "ready" }
+      ]
+    },
+    {
+      "id": "launcher-errors.sources-failure-retry",
+      "title": "A failed kubeconfig source read is reported as a kubeconfig error, and Retry refetches the source",
+      "steps": [
+        { "action": "configureShellRead", "phase": "sources-failed" },
+        { "action": "openLauncher" },
+        { "action": "expectLauncherRetry", "read": "contexts" },
+        { "action": "expectFriendlyError", "title": "KubeCove could not load the selected kubeconfig", "next": "Choose another kubeconfig source or fix the selected kubeconfig, then retry." },
+        { "action": "expectPageText", "text": "Cluster group" },
+        { "action": "configureShellRead", "phase": "ready" },
+        { "action": "retryLauncher", "read": "contexts" },
+        { "action": "expectNoPageText", "text": "KubeCove could not load the selected kubeconfig" },
+        { "action": "expectPageText", "text": "Cluster group" }
+      ]
+    },
+    {
+      "id": "launcher-errors.saved-context-unavailable",
+      "title": "A saved workspace whose primary context is missing is marked Context unavailable",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "choose-unavailable-workspace" },
+        { "action": "openLauncher" },
+        { "action": "clickSettingsButton", "label": "Import" },
+        { "action": "clickSettingsButton", "label": "Apply import" },
+        { "action": "configureShellRead", "phase": "primary-context-missing" },
+        { "action": "openLauncher" },
+        { "action": "expectContextUnavailable", "name": "Unavailable scope" },
+        { "action": "configureShellRead", "phase": "ready" }
+      ]
+    },
+    {
+      "id": "launcher-errors.no-saved-workspaces",
+      "title": "Deleting the open saved workspace from the launcher shows the empty state",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "deleteSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectPageText", "text": "No saved workspaces yet" }
+      ]
+    },
+    {
+      "id": "launcher-errors.startup-without-workspace",
+      "title": "With no saved workspace, startup shows only the launcher, with no shell, palette or RBAC",
+      "steps": [
+        { "action": "startWithoutWorkspace" },
+        { "action": "expectNoWorkspaceShell" },
+        { "action": "expectPageText", "text": "No saved workspaces yet" },
+        { "action": "expectPaletteUnavailable" }
+      ]
+    },
+    {
+      "id": "launcher-errors.startup-create-first-workspace",
+      "title": "A first workspace created from the startup launcher opens the shell",
+      "steps": [
+        { "action": "startWithoutWorkspace" },
+        { "action": "nameWorkspace", "value": "First workspace" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "First workspace", "context": "mock-dev" }
+      ]
+    },
+    {
+      "id": "rbac.deleted-open-hides-controls",
+      "title": "After the open saved workspace is deleted, no RBAC navigation remains",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "deleteSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectSidebarRow", "path": ["RBAC"], "visible": false, "selected": false },
+        { "action": "expectPageText", "text": "No saved workspaces yet" }
+      ]
+    }
+  ]
+}

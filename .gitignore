@@ -43,5 +43,7 @@ Thumbs.db
 .pi-lens
 
 # Local E2E tools, kubeconfigs, diagnostics, and ownership records
+.t/
 .e2e/
+.t/
 e2e/artifacts/

@@ -19,6 +19,7 @@
 		ArgoApplicationSummary,
 		ArgoManagedResource,
 	} from "@/lib/gitops-types";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import type { JsonObject, JsonValue } from "@/lib/types";
 	import { argoResourceCounts } from "./argo-workspace-model";
 
@@ -78,10 +79,14 @@
 	const errorMessage = $derived(
 		error instanceof Error ? error.message : error ? String(error) : null,
 	);
+	const loadingIndicator = loadingDelay(() => loading);
+	const refreshIndicator = loadingDelay(() => refreshing);
 	const connectionMessage = $derived(
-		loading
+		loadingIndicator.shown
 			? "Loading Application and managed resources…"
-			: errorMessage
+			: loadingIndicator.active
+				? null
+				: errorMessage
 				? `Argo data unavailable: ${errorMessage}`
 				: inspector?.connectedFallback
 						? `Kubernetes fallback after Connected ${inspector.connectedFallback.failure.kind}: ${inspector.connectedFallback.failure.message}`
@@ -131,6 +136,7 @@
 				</div>
 				<div class="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
 					<span class="text-[0.6875rem] text-muted-foreground">Raw Argo:</span>
+                    <Badge variant="outline">{inspector?.connected ? "Connected Argo CD API" : "Kubernetes Application status"}</Badge>
 					{#if operationProgress?.refreshing || operationProgress?.phase}<Badge variant="secondary">{operationProgress.refreshing ? "Refreshing" : `Operation: ${operationProgress.phase}`}</Badge>{/if}
 					<Badge variant={statusBadgeVariant(healthTone)} class={statusBadgeClass(healthTone)}>{healthStatus}</Badge>
 					<Badge variant={statusBadgeVariant(syncTone)} class={statusBadgeClass(syncTone)}>{syncStatus}</Badge>
@@ -148,7 +154,7 @@
 		<div class="max-w-full shrink-0 overflow-x-auto">
 			<div class="flex w-max items-center gap-1.5">
 				<Button type="button" size="sm" variant="outline" disabled={loading || refreshing || refreshDisabled} onclick={() => void onRefresh()}>
-					{#if refreshing}<Spinner />{:else}<RefreshCw data-icon="inline-start" />{/if}
+					{#if refreshIndicator.shown}<Spinner />{:else}<RefreshCw data-icon="inline-start" />{/if}
 					Refresh
 				</Button>
 				<Button type="button" size="sm" disabled aria-describedby="argo-overview-sync-gap">

@@ -35,10 +35,13 @@
 	}
 
 	onMount(() => {
+		// Measured once at the first settled frame, so a run started later from the button
+		// does not count the idle time before it.
+		const firstRender = settle().then(() => performance.now() - startedAt);
 		const run = async (): Promise<TopologySpikeRunResult> => {
+			const initialRenderMs = await firstRender;
 			await settle();
 			const usedJsHeapBeforeBytes = jsHeapBytes();
-			const initialRenderMs = performance.now() - startedAt;
 			const selectionStarted = performance.now();
 
 			for (const selectedId of graph.selectionIds) {

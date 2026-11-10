@@ -15,11 +15,12 @@ export function kindGroupRank(row: ResourceSummary, kindOrder: readonly string[]
 export function pageGitOpsGroupCounts(
 	rows: ResourceSummary[],
 	groupedByGitOps: boolean,
+	multiContext = false,
 ): Map<string, number> {
 	const counts = new Map<string, number>();
 	if (!groupedByGitOps) return counts;
 	for (const row of rows) {
-		const label = gitOpsOwnershipGroupLabel(row);
+		const label = gitOpsOwnershipGroupLabel(row, multiContext);
 		counts.set(label, (counts.get(label) ?? 0) + 1);
 	}
 	return counts;
@@ -28,11 +29,12 @@ export function pageGitOpsGroupCounts(
 export function pageTypeGroupCounts(
 	rows: ResourceSummary[],
 	groupedByGitOps: boolean,
+	multiContext = false,
 ): Map<string, number> {
 	const counts = new Map<string, number>();
 	if (!groupedByGitOps) return counts;
 	for (const row of rows) {
-		const key = `${gitOpsOwnershipGroupLabel(row)}::${formatResourceTypeGroupLabel(row)}`;
+		const key = `${gitOpsOwnershipGroupLabel(row, multiContext)}::${formatResourceTypeGroupLabel(row)}`;
 		counts.set(key, (counts.get(key) ?? 0) + 1);
 	}
 	return counts;

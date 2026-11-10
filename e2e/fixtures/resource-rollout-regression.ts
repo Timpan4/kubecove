@@ -53,7 +53,7 @@ export async function mountResourceRollout() {
 		list_resource_scope: async ({ requests }: { requests: ResourceListRequest[] }) => {
 			await readGate;
 			if (failing) throw new Error("Rollout list temporarily unavailable");
-			return { resources: snapshot(), completedRequests: requests, failures: [] };
+			return { resources: snapshot(), completedRequests: requests, resourceVersions: [], failures: [] };
 		},
 		list_resource_topology: async () => {
 			await readGate;
@@ -76,7 +76,7 @@ export async function mountResourceRollout() {
 	const component = mount(ResourceRolloutHarness, { target, props: {
 		queryClient, client, title: "Rollout regression", initialNamespaces: ["layercove"],
 		initialKinds: ["Deployment", "ReplicaSet", "Pod", "ConfigMap"], customResourcesEnabled: false,
-		workspaceReadContext: { workspaceId: "rollout-regression", clusterContext: "rollout-regression", namespaceScope: [], sourceReady: true, sourceError: null, showKubeconfigSourceLabels: false },
+		workspaceReadContext: { workspaceId: "rollout-regression", clusterContext: "rollout-regression", clusterContexts: ["rollout-regression"], namespaceScope: [], sourceReady: true, sourceError: null, showKubeconfigSourceLabels: false },
 	} });
 	control = {
 		switchScope() {

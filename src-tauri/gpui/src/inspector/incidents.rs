@@ -1,0 +1,491 @@
+//! Incident Cockpit, mirroring `IncidentSurface.svelte`, `IncidentView.svelte`
+//! and the filters. The queue lives in `incident_queue.rs` and guided
+//! investigation in `incident_guide.rs`.
+
+use super::request::{Fetch, Query};
+use super::{Inspector, surface};
+use crate::backend::Scope;
+use crate::incidents::{self, Empty, Filter, Queue, guidance::Enrichment};
+use crate::targets::TestSupportExt;
+use crate::theme::{Palette, Tokens};
+use crate::ui::{self, Tone};
+use gpui_kit::{
+    AnyElement, Context, ListAlignment, ListState, SharedString, Window, div, prelude::*, px,
+};
+use kubecove_lib::models::{
+    IncidentCockpitItem as Item, IncidentCockpitSummary, IncidentSeverity as Severity,
+    ResourceDetailsFull, ResourceTopology,
+};
+use std::sync::Arc;
+
+pub(super) struct IncidentsState {
+    load: Query<IncidentCockpitSummary, String>,
+    context: String,
+    filter: Filter,
+    /// The filtered queue, rebuilt by `settle` and `set_filter`.
+    pub(super) queue: Queue,
+    /// The queue's virtualized rows, one per entry of `queue.rows`.
+    pub(super) list: ListState,
+    selected: Option<String>,
+    enriched: Option<String>,
+    pub(super) details: Fetch<ResourceDetailsFull>,
+    pub(super) topology: Fetch<Arc<ResourceTopology>>,
+    pub(super) copied: Option<(String, bool)>,
+    pub(super) show_step_context: bool,
+    /// The incident whose guide shows its Health evidence list. Keyed, so a
+    /// new selection starts closed as the web's `<details>` does.
+    pub(super) evidence_open: Option<String>,
+}
+
+impl IncidentsState {
+    pub(super) fn new() -> Self {
+        Self {
+            load: Query::default(),
+            context: String::new(),
+            filter: Filter::All,
+            queue: Queue::new(&[], Filter::All),
+            // The overdraw the log list uses.
+            list: ListState::new(0, ListAlignment::Top, px(400.)),
+            selected: None,
+            enriched: None,
+            details: Fetch::Idle,
+            topology: Fetch::Idle,
+            copied: None,
+            show_step_context: false,
+            evidence_open: None,
+        }
+    }
+
+    pub(super) fn items(&self) -> &[Item] {
+        match self.load.data() {
+            Some(summary) => &summary.items,
+            None => &[],
+        }
+    }
+
+    pub(super) fn selected_key(&self) -> Option<&str> {
+        self.selected.as_deref()
+    }
+
+    pub(super) fn selected_item(&self) -> Option<&Item> {
+        self.queue.selected(self.items(), self.selected_key())
+    }
+
+    /// Applies a read and rebuilds the queue when the shown summary changed.
+    fn settle(&mut self, result: Result<IncidentCockpitSummary, String>) {
+        let replaces = result.is_ok() || self.load.data().is_none();
+        self.load.settle(result);
+        if replaces {
+            self.queue = Queue::new(self.items(), self.filter);
+            self.reset_rows();
+        }
+    }
+
+    fn set_filter(&mut self, filter: Filter) {
+        self.filter = filter;
+        let items = match self.load.data() {
+            Some(summary) => &summary.items[..],
+            None => &[],
+        };
+        self.queue.filter(items, filter);
+        self.reset_rows();
+    }
+
+    /// Resets the virtualized rows to the queue's, keeping the scroll position
+    /// on the same row so a refresh leaves the queue where it was.
+    fn reset_rows(&mut self) {
+        let top = self.list.logical_scroll_top();
+        let rows = self.queue.rows.len();
+        self.list.reset(rows);
+        if top.item_ix < rows {
+            self.list.scroll_to(top);
+        }
+    }
+}
+
+/// `IncidentEnrichmentState` for one enrichment read.
+pub(super) fn enrichment<T>(read: &Fetch<T>) -> Enrichment {
+    match read {
+        Fetch::Idle => Enrichment::Idle,
+        Fetch::Loading { .. } => Enrichment::Loading,
+        Fetch::Ready(_) => Enrichment::Ready,
+        Fetch::Failed(_) => Enrichment::Error,
+    }
+}
+
+pub(super) fn severity_badge(item: &Item) -> gpui_kit::Div {
+    let label = incidents::severity_label(item);
+    if item.severity == Severity::Degraded {
+        ui::status_badge(Tone::Error, label)
+    } else {
+        ui::outline_badge(label)
+    }
+}
+
+impl Inspector {
+    pub(super) fn open_incident_filter(&mut self, filter: Filter, cx: &mut Context<Self>) {
+        self.open_page(super::Page::Incidents, cx);
+        if self.page == super::Page::Incidents {
+            // Rebuilds a cached queue, which a failed refresh would otherwise keep.
+            self.incidents.set_filter(filter);
+            self.incidents.selected = None;
+            self.incidents.enriched = None;
+            self.enrich_incident(cx);
+            cx.notify();
+        }
+    }
+
+    /// Reads the cockpit for the current context; a context change discards
+    /// the previous selection and any stale reply.
+    pub(super) fn load_incidents(&mut self, cx: &mut Context<Self>) {
+        let state = &mut self.incidents;
+        if self.scope.context.is_empty() {
+            return;
+        }
+        if state.context != self.scope.context {
+            *state = IncidentsState::new();
+            state.context = self.scope.context.clone();
+        }
+        // An enrichment read that settles before this read ignores its result.
+        state.enriched = None;
+        let context = state.context.clone();
+        let backend = self.backend.clone();
+        let read_context = context.clone();
+        let read = crate::read_retry::read(cx.background_executor().clone(), move || {
+            backend.incidents(read_context.clone())
+        });
+        state.load.start(cx.spawn(async move |this, cx| {
+            let result = read.await;
+            let _ = this.update(cx, |this, cx| {
+                // `loadIncidents` prefixes each warning with its cluster.
+                let result = result
+                    .map(|mut summary| {
+                        for warning in &mut summary.warnings {
+                            *warning = format!("{context}: {warning}");
+                        }
+                        summary
+                    })
+                    .map_err(|error| error.message);
+                let success = result.is_ok();
+                this.incidents.settle(result);
+                this.enrich_incident(cx);
+                if success {
+                    this.page_read_finished(super::Page::Incidents, cx);
+                } else {
+                    this.invalidate_page_read(super::Page::Incidents);
+                }
+                cx.notify();
+            });
+        }));
+        cx.notify();
+    }
+
+    pub(super) fn cancel_incident_reads(&mut self) {
+        let state = &mut self.incidents;
+        state.load.cancel();
+        // Dropping an enrichment read cancels it, so the next selection reads it again.
+        if state.details.loading() || state.topology.loading() {
+            state.enriched = None;
+            state.details = Fetch::Idle;
+            state.topology = Fetch::Idle;
+        }
+    }
+
+    /// Loads details and, for Pods, the namespace's ownership graph for the
+    /// selected incident, like the web's detail and topology queries.
+    fn enrich_incident(&mut self, cx: &mut Context<Self>) {
+        let state = &mut self.incidents;
+        let Some(item) = state.selected_item() else {
+            state.enriched = None;
+            state.details = Fetch::Idle;
+            state.topology = Fetch::Idle;
+            return;
+        };
+        let key = incidents::item_key(item);
+        if state.enriched.as_deref() == Some(key.as_str()) {
+            return;
+        }
+        let resource = item.resource.clone();
+        state.selected = Some(key.clone());
+        state.enriched = Some(key);
+        let read = self.backend.details(resource.clone());
+        let selected = state.enriched.clone();
+        state.details = Fetch::start(cx.spawn(async move |this, cx| {
+            let result = read.await;
+            let _ = this.update(cx, |this, cx| {
+                let state = &mut this.incidents;
+                if state.enriched == selected {
+                    state.details = match result {
+                        Ok(details) => Fetch::Ready(details),
+                        Err(error) => Fetch::Failed(error.message),
+                    };
+                    cx.notify();
+                }
+            });
+        }));
+        let Some(namespace) = resource
+            .namespace
+            .clone()
+            .filter(|_| resource.kind == "Pod")
+        else {
+            state.topology = Fetch::Idle;
+            return;
+        };
+        let backend = self.backend.clone();
+        let scope = Scope {
+            context: resource.cluster.clone(),
+            namespace: Some(namespace),
+        };
+        let selected = state.enriched.clone();
+        state.topology = Fetch::start(cx.spawn(async move |this, cx| {
+            let result = crate::read_retry::cancelled_read(
+                || backend.topology(scope.clone()),
+                |delay| cx.background_executor().timer(delay),
+            )
+            .await;
+            let _ = this.update(cx, |this, cx| {
+                let state = &mut this.incidents;
+                if state.enriched == selected {
+                    state.topology = match result {
+                        Ok(topology) => Fetch::Ready(topology),
+                        Err(error) => Fetch::Failed(error.message),
+                    };
+                    cx.notify();
+                }
+            });
+        }));
+    }
+
+    pub(super) fn select_incident(&mut self, key: String, cx: &mut Context<Self>) {
+        self.incidents.selected = Some(key);
+        self.enrich_incident(cx);
+        cx.notify();
+    }
+
+    fn set_incident_filter(&mut self, filter: Filter, cx: &mut Context<Self>) {
+        self.incidents.set_filter(filter);
+        self.enrich_incident(cx);
+        cx.notify();
+    }
+
+    fn overview_section(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let counts = self.incidents.queue.counts;
+        let metrics = [
+            ("All", counts.total, Tokens::foreground()),
+            ("Degraded", counts.degraded, Tokens::destructive()),
+            ("Needs attention", counts.attention, Palette::amber400()),
+            ("Restart evidence", counts.restarted, Palette::sky400()),
+            ("Warnings", counts.warning, Tokens::muted_foreground()),
+        ]
+        .map(|(label, value, tone)| {
+            div()
+                .flex_1()
+                .min_w_0()
+                .bg(Tokens::background().opacity(0.8))
+                .px(px(12.))
+                .py(px(8.))
+                .child(ui::caps(label, 10.).line_height(px(15.)).truncate())
+                .child(
+                    ui::semibold(ui::text(value.to_string(), 16., 24.))
+                        .mt(px(2.))
+                        .text_color(tone),
+                )
+        });
+        let fetching = self.incidents.load.fetching();
+        let refreshing = self.loading.phase("incidents-refresh", fetching).shown();
+        // The incident scope is the workspace (every namespace), not the
+        // Resources page's namespace selection.
+        let scanning = "Scanning all namespaces";
+        div()
+            .flex()
+            .items_center()
+            .gap(px(12.))
+            .p(px(12.))
+            .rounded(px(8.))
+            .border_1()
+            .border_color(Tokens::border())
+            .bg(Tokens::card())
+            // `grid-cols-[minmax(12rem,1.5fr)_repeat(5,minmax(4.5rem,0.55fr))_auto]`:
+            // the metrics span five 0.55fr columns and their four 12px gaps.
+            .child(
+                div()
+                    .flex_basis(px(0.))
+                    .flex_grow(1.5)
+                    .min_w(px(192.))
+                    .child(ui::semibold(ui::sm(self.workspace_name.clone())).truncate())
+                    .child(ui::muted(ui::xs(scanning)).mt(px(4.)).truncate()),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_basis(px(48.))
+                    .flex_grow(2.75)
+                    .gap(px(1.))
+                    .overflow_hidden()
+                    .rounded(px(6.))
+                    .border_1()
+                    .border_color(Tokens::border())
+                    .bg(Tokens::border())
+                    .children(metrics),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_none()
+                    .gap(px(8.))
+                    .child(
+                        surface::small_button(
+                            Some(if refreshing {
+                                "loader-circle"
+                            } else {
+                                "rotate-ccw"
+                            }),
+                            "Refresh",
+                        )
+                        .id("incidents-refresh")
+                        .test_support()
+                        .when(fetching, surface::disabled)
+                        .when(!fetching, |button| {
+                            button
+                                .cursor_pointer()
+                                .on_click(cx.listener(|this, _, _, cx| this.load_incidents(cx)))
+                        }),
+                    )
+                    .child(
+                        surface::small_button(Some("external-link"), "Open resources")
+                            .id("incidents-open-resources")
+                            .test_support()
+                            .aria_label("Open resources")
+                            .cursor_pointer()
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.open_incident_resources(this.incidents.filter, window, cx)
+                            })),
+                    ),
+            )
+    }
+
+    fn filter_buttons(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let counts = self.incidents.queue.counts;
+        div()
+            .flex()
+            .flex_wrap()
+            .gap(px(8.))
+            .children(
+                incidents::filter_options(counts).map(|(filter, label, count)| {
+                    let active = self.incidents.filter == filter;
+                    let button = surface::small_button(None, label);
+                    let button = if active {
+                        button
+                            .border_color(gpui_kit::transparent_black())
+                            .bg(Tokens::primary())
+                            .text_color(Tokens::primary_foreground())
+                    } else {
+                        button
+                    };
+                    button
+                        .id(SharedString::from(format!("incident-filter:{label}")))
+                        .test_support()
+                        .cursor_pointer()
+                        .child(
+                            surface::secondary_badge(count.to_string())
+                                .ml(px(4.))
+                                .px(px(6.))
+                                .rounded(px(4.)),
+                        )
+                        .on_click(
+                            cx.listener(move |this, _, _, cx| this.set_incident_filter(filter, cx)),
+                        )
+                }),
+            )
+    }
+
+    pub(super) fn incidents_page(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let pending = surface::pending_slot(
+            self.loading
+                .phase("surface-incidents", self.incidents.load.pending()),
+        );
+        let body: AnyElement = match (self.incidents.load.settled(), pending) {
+            (_, Some(slot)) => slot,
+            (None, None) => div().into_any_element(),
+            (Some(Err(error)), None) => {
+                self.page_failure("Incidents unavailable", error.clone(), cx)
+            }
+            (Some(Ok(summary)), None) => {
+                let warnings = summary.warnings.join(" ");
+                let empty = self.incidents.queue.empty;
+                // `@5xl:h-[calc(100dvh-20rem)] @5xl:min-h-[32rem]`.
+                let height = (window.viewport_size().height - px(320.)).max(px(512.));
+                let content = match empty {
+                    Empty::Clean => self.empty_state(
+                        "No active incident signals",
+                        "Scope looks clean.",
+                        cx,
+                        true,
+                    ),
+                    Empty::Filtered => self.empty_state(
+                        "No matching incident signals",
+                        "Change severity filter to see other signals.",
+                        cx,
+                        false,
+                    ),
+                    Empty::Ready => div()
+                        .flex()
+                        .gap(px(12.))
+                        .h(height)
+                        // `grid-cols-[minmax(18rem,0.42fr)_minmax(0,0.58fr)]`.
+                        .child(
+                            div()
+                                .flex_basis(px(0.))
+                                .flex_grow(0.42)
+                                .min_w(px(288.))
+                                .h_full()
+                                .child(self.queue(cx)),
+                        )
+                        .child(
+                            div()
+                                .flex_basis(px(0.))
+                                .flex_grow(0.58)
+                                .min_w_0()
+                                .h_full()
+                                .child(self.incident_guide(cx)),
+                        )
+                        .into_any_element(),
+                };
+                div()
+                    .flex()
+                    .flex_col()
+                    .min_w_0()
+                    .gap(px(12.))
+                    .child(self.overview_section(cx))
+                    .when_some(
+                        self.incidents.load.refresh_error().cloned(),
+                        |body, error| {
+                            body.child(self.page_failure("Incident refresh failed", error, cx))
+                        },
+                    )
+                    .when(!warnings.is_empty(), |body| {
+                        body.child(
+                            ui::panel()
+                                .id("incident-warnings")
+                                .test_support()
+                                .aria_label("Partial incident data")
+                                .aria_description(warnings.clone())
+                                .px(px(12.))
+                                .py(px(8.))
+                                .border_color(Palette::amber500(0.4))
+                                .child(ui::semibold(ui::xs("Partial incident data")))
+                                .child(ui::muted(ui::xs(warnings))),
+                        )
+                    })
+                    .child(self.filter_buttons(cx))
+                    .child(content)
+                    .into_any_element()
+            }
+        };
+        surface::frame("triangle-alert", "Incident Cockpit", true, body)
+    }
+}

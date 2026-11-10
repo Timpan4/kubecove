@@ -1,0 +1,217 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "resources.multi-context-rows",
+      "title": "Resources merges every workspace context with a Context column, rows in context order and a context count",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "editSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "toggleWorkspaceContext", "context": "admin@solid-k8s" },
+        { "action": "saveWorkspace" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "expectResourceColumns", "columns": ["Name", "Status", "Context", "Namespace", "Kind", "Ready", "Restarts", "CPU", "Memory", "Owner", "Age"] },
+        { "action": "expectRowContexts", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "contexts": ["mock-dev", "admin@solid-k8s"] },
+        { "action": "expectResourceSummary", "text": "14 resources · 2 contexts · page 1 of 1" },
+        { "action": "search", "value": "edge-relay" },
+        { "action": "expectResourceCell", "kind": "Deployment", "namespace": "platform", "name": "edge-relay", "column": "Context", "text": "admin@solid-k8s" },
+        { "action": "expectRowContexts", "kind": "Deployment", "namespace": "platform", "name": "edge-relay", "contexts": ["admin@solid-k8s"] }
+      ]
+    },
+    {
+      "id": "resources.multi-context-single-context",
+      "title": "A one-context workspace has no Context column or context count, and search does not match the context name",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "expectResourceColumns", "columns": ["Name", "Status", "Namespace", "Kind", "Ready", "Restarts", "CPU", "Memory", "Owner", "Age"] },
+        { "action": "expectResourceSummary", "text": "7 resources · page 1 of 1" },
+        { "action": "search", "value": "mock-dev" },
+        { "action": "expectEmpty" }
+      ]
+    },
+    {
+      "id": "resources.multi-context-detail-target",
+      "title": "Opening the second context's row shows that context in the detail header and reads its YAML and events",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "editSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "toggleWorkspaceContext", "context": "admin@solid-k8s" },
+        { "action": "saveWorkspace" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "context": "admin@solid-k8s" },
+        { "action": "expectDetail", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectDetailContext", "context": "admin@solid-k8s" },
+        { "action": "showYaml" },
+        { "action": "expectYaml", "contains": ["kind: Deployment", "name: payments-api", "namespace: payments"] },
+        { "action": "showTab", "tab": "Events" },
+        { "action": "expectEventCount", "count": 2 },
+        { "action": "expectEvent", "index": 0, "reason": "Unhealthy", "message": "Deployment/payments-api failed a readiness probe in mock data." }
+      ]
+    },
+    {
+      "id": "resources.multi-context-filter-search",
+      "title": "The Context filter narrows rows, unchecking its last context or Clear restores every context, and search matches the context name",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "editSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "toggleWorkspaceContext", "context": "admin@solid-k8s" },
+        { "action": "saveWorkspace" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "filterContexts", "contexts": ["admin@solid-k8s"] },
+        { "action": "expectRowContexts", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "contexts": ["admin@solid-k8s"] },
+        { "action": "expectResourceSummary", "text": "7 resources · 2 contexts · page 1 of 1" },
+        { "action": "filterContexts", "contexts": [] },
+        { "action": "expectRowContexts", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "contexts": ["mock-dev", "admin@solid-k8s"] },
+        { "action": "filterContexts", "contexts": ["admin@solid-k8s"] },
+        { "action": "expectRowContexts", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "contexts": ["admin@solid-k8s"] },
+        { "action": "clearResourceFilters" },
+        { "action": "expectSearch", "value": "" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "expectRowContexts", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "contexts": ["mock-dev", "admin@solid-k8s"] },
+        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "search", "value": "solid-k8s" },
+        { "action": "expectRowContexts", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "contexts": ["admin@solid-k8s"] },
+        { "action": "expectResourceSummary", "text": "9 resources · 2 contexts · page 1 of 1" }
+      ]
+    },
+    {
+      "id": "resources.multi-context-sort",
+      "title": "Context sorts by context name, each context's owner group sorts its own rows, and ties order by workspace context rank in both directions",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "editSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "toggleWorkspaceContext", "context": "admin@solid-k8s" },
+        { "action": "saveWorkspace" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api-7d9c9b7f8d" },
+        { "action": "expectResourceOrder", "names": ["payments-api-7d9c9b7f8d-k2r9p", "payments-api-7d9c9b7f8d-x4m8v", "payments-api-7d9c9b7f8d-k2r9p", "payments-api-7d9c9b7f8d-x4m8v"] },
+        { "action": "expectRowContexts", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p", "contexts": ["mock-dev", "admin@solid-k8s"] },
+        { "action": "sortResourceTable", "column": "Context" },
+        { "action": "expectResourceOrder", "names": ["payments-api-7d9c9b7f8d-k2r9p", "payments-api-7d9c9b7f8d-x4m8v", "payments-api-7d9c9b7f8d-k2r9p", "payments-api-7d9c9b7f8d-x4m8v"] },
+        { "action": "expectRowContexts", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p", "contexts": ["admin@solid-k8s", "mock-dev"] },
+        { "action": "sortResourceTable", "column": "Context" },
+        { "action": "expectRowContexts", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p", "contexts": ["mock-dev", "admin@solid-k8s"] },
+        { "action": "sortResourceTable", "column": "Restarts" },
+        { "action": "expectResourceOrder", "names": ["payments-api-7d9c9b7f8d-x4m8v", "payments-api-7d9c9b7f8d-k2r9p", "payments-api-7d9c9b7f8d-x4m8v", "payments-api-7d9c9b7f8d-k2r9p"] },
+        { "action": "expectRowContexts", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-x4m8v", "contexts": ["mock-dev", "admin@solid-k8s"] },
+        { "action": "sortResourceTable", "column": "Restarts" },
+        { "action": "expectResourceOrder", "names": ["payments-api-7d9c9b7f8d-k2r9p", "payments-api-7d9c9b7f8d-x4m8v", "payments-api-7d9c9b7f8d-k2r9p", "payments-api-7d9c9b7f8d-x4m8v"] },
+        { "action": "expectRowContexts", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p", "contexts": ["mock-dev", "admin@solid-k8s"] },
+        { "action": "sortResourceTable", "column": "Name" },
+        { "action": "expectRowContexts", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p", "contexts": ["mock-dev", "admin@solid-k8s"] }
+      ]
+    },
+    {
+      "id": "resources.multi-context-owner-groups",
+      "title": "The same Argo CD Application or Helm release in two contexts makes one group and one owner filter per context",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "editSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "toggleWorkspaceContext", "context": "admin@solid-k8s" },
+        { "action": "saveWorkspace" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api-7d9c9b7f8d" },
+        { "action": "expectResourceGroup", "label": "Owned by Argo CD: shop (partial evidence) · mock-dev", "expanded": true },
+        { "action": "expectResourceGroup", "label": "Owned by Argo CD: shop (partial evidence) · admin@solid-k8s", "expanded": true },
+        { "action": "chooseGitOpsOwner", "owner": "Owned by Argo CD: shop (partial evidence) · admin@solid-k8s" },
+        { "action": "expectRowContexts", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p", "contexts": ["admin@solid-k8s"] },
+        { "action": "chooseGitOpsOwner", "owner": "All GitOps owners" },
+        { "action": "search", "value": "metrics-gateway" },
+        { "action": "expectResourceGroup", "label": "Helm release: metrics-gateway · mock-dev", "expanded": true },
+        { "action": "expectResourceGroup", "label": "Helm release: metrics-gateway · admin@solid-k8s", "expanded": true }
+      ]
+    },
+    {
+      "id": "resources.multi-context-partial-failure",
+      "title": "A failed group member leaves the primary context's rows and the Context column, with a warning naming the failed context",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "failWorkspaceContext", "context": "admin@solid-k8s" },
+        { "action": "editSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "toggleWorkspaceContext", "context": "admin@solid-k8s" },
+        { "action": "saveWorkspace" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "expectRowContexts", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "contexts": ["mock-dev"] },
+        { "action": "expectResourceColumns", "columns": ["Name", "Status", "Context", "Namespace", "Kind", "Ready", "Restarts", "CPU", "Memory", "Owner", "Age"] },
+        { "action": "expectWorkspaceReadWarning", "context": "admin@solid-k8s" }
+      ]
+    },
+    {
+      "id": "resources.multi-context-watch-isolation",
+      "title": "A watch deletion in one context leaves the same-named object of the other context",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "editSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "toggleWorkspaceContext", "context": "admin@solid-k8s" },
+        { "action": "saveWorkspace" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openResources" },
+        { "action": "expectLiveState", "label": "Live" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "expectRowContexts", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "contexts": ["mock-dev", "admin@solid-k8s"] },
+        { "action": "replayLiveData", "script": "delete-mock-dev" },
+        { "action": "expectRowContexts", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "contexts": ["admin@solid-k8s"] },
+        { "action": "expectRowContexts", "kind": "Service", "namespace": "payments", "name": "payments-api", "contexts": ["mock-dev", "admin@solid-k8s"] }
+      ]
+    },
+    {
+      "id": "resources.multi-context-action-target",
+      "title": "A guarded review started from the second context's row names that context",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "editSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "toggleWorkspaceContext", "context": "admin@solid-k8s" },
+        { "action": "saveWorkspace" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "context": "admin@solid-k8s" },
+        { "action": "showTab", "tab": "Actions" },
+        { "action": "editReplicas", "value": "3" },
+        { "action": "reviewAction", "label": "Check changes" },
+        { "action": "expectReview", "title": "Review edit for payments-api", "description": "edit Deployment payments/payments-api in context admin@solid-k8s", "contains": ["-  replicas: 2", "+  replicas: 3"] },
+        { "action": "closeReview" },
+        { "action": "expectNoReview" }
+      ]
+    },
+    {
+      "id": "map.multi-context-picker",
+      "title": "The ownership map shows one context, picked with a Map context select that only a multi-context workspace has",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "selectNamespace", "namespace": "platform" },
+        { "action": "selectTopologyNode", "id": "mock-dev:apps/v1:Deployment:platform:metrics-gateway" },
+        { "action": "expectMapContext", "shown": false },
+        { "action": "openLauncher" },
+        { "action": "editSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "toggleWorkspaceContext", "context": "admin@solid-k8s" },
+        { "action": "saveWorkspace" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openResources" },
+        { "action": "selectNamespace", "namespace": "platform" },
+        { "action": "expectMapContext", "shown": true, "context": "mock-dev" },
+        { "action": "selectTopologyNode", "id": "mock-dev:apps/v1:Deployment:platform:metrics-gateway" },
+        { "action": "closeDetail" },
+        { "action": "expectNoTopologyNode", "id": "admin@solid-k8s:apps/v1:Deployment:platform:metrics-gateway" },
+        { "action": "selectMapContext", "context": "admin@solid-k8s" },
+        { "action": "expectMapContext", "shown": true, "context": "admin@solid-k8s" },
+        { "action": "selectTopologyNode", "id": "admin@solid-k8s:apps/v1:Deployment:platform:metrics-gateway" },
+        { "action": "expectDetail", "kind": "Deployment", "namespace": "platform", "name": "metrics-gateway" },
+        { "action": "expectDetailContext", "context": "admin@solid-k8s" },
+        { "action": "expectNoTopologyNode", "id": "mock-dev:apps/v1:Deployment:platform:metrics-gateway" }
+      ]
+    }
+  ]
+}

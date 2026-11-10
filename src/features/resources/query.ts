@@ -1,3 +1,4 @@
+import { cancelledQueryRetry } from "@/lib/query-retry";
 import { diagnosticLog } from "@/lib/diagnostics";
 import { finiteRead } from "@/lib/finite-read-lifecycle";
 import { withForegroundLoad } from "@/lib/foreground-loading";
@@ -89,7 +90,7 @@ export function resourceTopologyQuery(client: TauriClient, read: ResourceTopolog
 				),
 		}),
 		staleTime: 30_000,
-		retry: false,
+		retry: cancelledQueryRetry,
 	};
 }
 

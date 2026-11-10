@@ -46,6 +46,7 @@
 		DiscoveredResourceKind,
 		ResourceSummary,
 		ResourceScopeResult,
+		VersionedList,
 	} from "@/lib/types";
 	import type { SavedWorkspace } from "@/lib/workspace-model";
 	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
@@ -99,21 +100,21 @@
 		enabled: open && sourceReady && !namespacesQuery.isPending,
 		staleTime: 60_000,
 	}));
-	const argoAppsQuery = createQuery<ArgoApplicationSummary[]>(() => ({
+	const argoAppsQuery = createQuery<VersionedList<ArgoApplicationSummary>>(() => ({
 		queryKey: queryKeys.argoApps(workspace.scope.clusterContext, kubeconfigSourceKey),
 		queryFn: () =>
 			listArgoApplications(client, workspace.scope.clusterContext, kubeconfigSourceKey),
 		enabled: open && sourceReady && argoDetectionQuery.data === true,
 		staleTime: 15_000,
 	}));
-	const argoAppSetsQuery = createQuery<ArgoApplicationSetSummary[]>(() => ({
+	const argoAppSetsQuery = createQuery<VersionedList<ArgoApplicationSetSummary>>(() => ({
 		queryKey: queryKeys.argoAppSets(workspace.scope.clusterContext, kubeconfigSourceKey),
 		queryFn: () =>
 			listArgoApplicationSets(client, workspace.scope.clusterContext, kubeconfigSourceKey),
 		enabled: open && sourceReady && argoDetectionQuery.data === true,
 		staleTime: 15_000,
 	}));
-	const argoProjectsQuery = createQuery<ArgoAppProjectSummary[]>(() => ({
+	const argoProjectsQuery = createQuery<VersionedList<ArgoAppProjectSummary>>(() => ({
 		queryKey: queryKeys.argoAppProjects(workspace.scope.clusterContext, kubeconfigSourceKey),
 		queryFn: () =>
 			listArgoAppProjects(client, workspace.scope.clusterContext, kubeconfigSourceKey),
@@ -152,9 +153,9 @@
 	);
 	const argoSearchResources = $derived(
 		buildArgoSearchResources(
-			argoAppsQuery.data ?? [],
-			argoAppSetsQuery.data ?? [],
-			argoProjectsQuery.data ?? [],
+			argoAppsQuery.data?.items ?? [],
+			argoAppSetsQuery.data?.items ?? [],
+			argoProjectsQuery.data?.items ?? [],
 		),
 	);
 

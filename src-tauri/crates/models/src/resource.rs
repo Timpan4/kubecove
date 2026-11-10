@@ -98,11 +98,43 @@ pub struct ResourceScopeFailure {
     pub error: AppError,
 }
 
+/// The `metadata.resourceVersion` of the list a completed request's rows came
+/// from. A view starts its watch of that kind and namespace at this version.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceListVersion {
+    pub request: ResourceListRequest,
+    pub resource_version: String,
+}
+
+/// One kind's list with the `metadata.resourceVersion` it came from. A view
+/// starts its watch of that kind at this version.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VersionedList<T> {
+    pub items: Vec<T>,
+    /// None when no list ran, such as when the kind is not installed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_version: Option<String>,
+}
+
+impl<T> Default for VersionedList<T> {
+    fn default() -> Self {
+        Self {
+            items: Vec::new(),
+            resource_version: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResourceScopeResult {
     pub resources: Vec<ResourceSummary>,
     pub completed_requests: Vec<ResourceListRequest>,
+    /// One entry per completed request whose list reported a version.
+    #[serde(default)]
+    pub resource_versions: Vec<ResourceListVersion>,
     pub failures: Vec<ResourceScopeFailure>,
 }
 

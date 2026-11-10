@@ -119,7 +119,7 @@ async fn oidc_metadata_reports_cookie_authentication_without_claims() {
                 .unwrap();
         assert_eq!(
             body,
-            serde_json::json!({"mode":"oidc", "authenticated":authenticated})
+            serde_json::json!({"mode":"oidc", "authenticated":authenticated, "nativeSignIn":true})
         );
     }
 }
@@ -237,7 +237,7 @@ async fn oidc_keeps_host_and_origin_checks_on_login_and_logout() {
 #[tokio::test]
 async fn oidc_websocket_closes_on_expiration_and_credential_revocation() {
     use tokio::io::AsyncReadExt;
-    for logout in [false, true] {
+    for (logout, desktop) in [(false, false), (true, false), (false, true), (true, true)] {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let origin = format!("http://{address}");
@@ -246,7 +246,15 @@ async fn oidc_websocket_closes_on_expiration_and_credential_revocation() {
         Arc::get_mut(&mut state).unwrap().policy.origins = vec![origin.clone()];
         let cookie = credential(&state, "subject", false);
         let mut headers = HeaderMap::new();
-        headers.insert(header::COOKIE, cookie.parse().unwrap());
+        if desktop {
+            let credential = cookie.split_once('=').unwrap().1;
+            headers.insert(
+                header::AUTHORIZATION,
+                format!("Bearer {credential}").parse().unwrap(),
+            );
+        } else {
+            headers.insert(header::COOKIE, cookie.parse().unwrap());
+        }
         let auth = state.oidc.as_ref().unwrap().verify(&headers).unwrap();
         let session = state
             .sessions
@@ -259,10 +267,11 @@ async fn oidc_websocket_closes_on_expiration_and_credential_revocation() {
             "{origin}/api/v1/channels?resumeToken={}",
             session.resume_token
         );
-        let response = reqwest::Client::new()
-            .get(&url)
-            .header(header::ORIGIN, &origin)
-            .header(header::COOKIE, &cookie)
+        let mut upgrade = reqwest::Client::new().get(&url).headers(headers.clone());
+        if !desktop {
+            upgrade = upgrade.header(header::ORIGIN, &origin);
+        }
+        let response = upgrade
             .header(header::CONNECTION, "upgrade")
             .header(header::UPGRADE, "websocket")
             .header("sec-websocket-version", "13")

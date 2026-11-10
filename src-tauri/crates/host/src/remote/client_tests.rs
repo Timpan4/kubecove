@@ -1,8 +1,9 @@
 use super::super::models::RemoteConnectionSummary;
 use super::{RemoteConnection, api_url, normalize_server_url};
 use crate::remote::{models::RemoteCredentials, tunnels::RemoteTunnelRegistry};
+use kubecove_kube::runtime::Channel;
 use reqwest::Client as HttpClient;
-use serde_json::json;
+use serde_json::{json, value::RawValue};
 use std::sync::{Arc, Mutex, atomic::AtomicBool};
 use tokio::{
     io::AsyncWriteExt,
@@ -45,6 +46,11 @@ async fn close_marks_connection_inactive_before_waiting_for_server() {
             server_version: "test".to_string(),
             session_grace_seconds: 30,
             connected: true,
+            credential_store: None,
+            auth_mode: crate::remote::RemoteAuthMode::Token,
+            session_state: crate::remote::RemoteSessionState::Connected,
+            sign_in_memory_only: false,
+            sign_in_not_deleted: false,
         },
         outgoing,
         channels: Mutex::new(std::collections::HashMap::default()),
@@ -53,6 +59,7 @@ async fn close_marks_connection_inactive_before_waiting_for_server() {
         tunnels: Arc::new(RemoteTunnelRegistry::default()),
         active: AtomicBool::new(true),
         socket_task: Mutex::new(None),
+        status: super::ConnectionStatus::default(),
     });
     let closing = {
         let connection = Arc::clone(&connection);
@@ -89,6 +96,11 @@ fn tunnel_error_removes_download_sender_and_reaches_control_waiter() {
             server_version: "test".to_string(),
             session_grace_seconds: 30,
             connected: true,
+            credential_store: None,
+            auth_mode: crate::remote::RemoteAuthMode::Token,
+            session_state: crate::remote::RemoteSessionState::Connected,
+            sign_in_memory_only: false,
+            sign_in_not_deleted: false,
         },
         outgoing,
         channels: Mutex::new(std::collections::HashMap::default()),
@@ -97,6 +109,7 @@ fn tunnel_error_removes_download_sender_and_reaches_control_waiter() {
         tunnels: Arc::new(RemoteTunnelRegistry::default()),
         active: AtomicBool::new(true),
         socket_task: Mutex::new(None),
+        status: super::ConnectionStatus::default(),
     };
     let connection_id = "550e8400-e29b-41d4-a716-446655440000";
     let (tunnel_sender, _tunnel_receiver) = mpsc::channel(1);
@@ -134,15 +147,9 @@ fn tunnel_error_removes_download_sender_and_reaches_control_waiter() {
     // Forward nested JSON verbatim, including escapes and number lexemes. A
     // parse into Value loses this representation and allocates the entire tree.
     let received = Arc::new(Mutex::new(Vec::new()));
-    let sent = Arc::clone(&received);
-    let channel = tauri::ipc::Channel::new(move |body| {
-        let tauri::ipc::InvokeResponseBody::Json(json) = body else {
-            panic!("channel payload must remain JSON");
-        };
-        sent.lock().unwrap().push(json);
-        Ok(())
-    });
-    connection.subscribe(42, channel).unwrap();
+    connection
+        .subscribe(42, recording_channel(Arc::clone(&received)))
+        .unwrap();
     let payload = r#"{ "nested": [1.00, {"line":"a\n\"b","unicode":"\u0061"}], "null": null }"#;
     assert!(!super::handle_text(
         &connection,
@@ -168,6 +175,28 @@ fn tunnel_error_removes_download_sender_and_reaches_control_waiter() {
             "null".to_string(),
         ]
     );
+}
+
+/// A channel that records each message's JSON text. The desktop build's
+/// channel is Tauri's; the `remote-client` build without `desktop` uses the
+/// headless one from `kubecove_kube::runtime`.
+#[cfg(feature = "desktop")]
+fn recording_channel(received: Arc<Mutex<Vec<String>>>) -> Channel<Box<RawValue>> {
+    Channel::new(move |body| {
+        let tauri::ipc::InvokeResponseBody::Json(json) = body else {
+            panic!("channel payload must remain JSON");
+        };
+        received.lock().unwrap().push(json);
+        Ok(())
+    })
+}
+
+#[cfg(not(feature = "desktop"))]
+fn recording_channel(received: Arc<Mutex<Vec<String>>>) -> Channel<Box<RawValue>> {
+    Channel::new(move |message: Box<RawValue>| {
+        received.lock().unwrap().push(message.get().to_owned());
+        Ok(())
+    })
 }
 
 #[test]

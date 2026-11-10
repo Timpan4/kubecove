@@ -18,7 +18,8 @@ pub use logs::benchmark_read_log_line;
 
 use crate::commands::{ClusterAccess, ClusterLiveStore};
 use crate::models::{
-    AggregatedLogStreamRequest, AppError, PodLogStreamRequest, StreamMessage, WatchResourceKey,
+    AggregatedLogStreamRequest, AppError, PodLogStreamRequest, ResourceWatchStart, StreamMessage,
+    WatchResourceKey,
 };
 use crate::runtime::{Channel, State};
 pub use registry::StreamRegistry;
@@ -29,11 +30,24 @@ fn send(channel: &Channel<StreamMessage>, message: StreamMessage) -> bool {
 
 fn validate_resource_watch_scope(
     cluster_context: &str,
-    keys: &[WatchResourceKey],
+    keys: &[ResourceWatchStart],
 ) -> Result<(), AppError> {
-    for key in keys {
+    for ResourceWatchStart {
+        key,
+        resource_version,
+    } in keys
+    {
         crate::commands::helpers::validate_namespace(key.namespace.as_deref())?;
         kinds::api_resource_from_kind(&key.resource_kind)?;
+        if resource_version
+            .as_deref()
+            .is_some_and(|version| version.trim().is_empty())
+        {
+            return Err(AppError::new(
+                "resource watch start version must not be empty",
+                AppErrorKind::Validation,
+            ));
+        }
     }
     if cluster_context.trim().is_empty() || keys.is_empty() {
         return Err(AppError::new(
@@ -160,7 +174,7 @@ pub async fn refresh_resource_cache(
 
 pub async fn start_resource_watch(
     cluster_context: String,
-    keys: Vec<WatchResourceKey>,
+    keys: Vec<ResourceWatchStart>,
     kubeconfig_env_var: Option<String>,
     channel: Channel<StreamMessage>,
     registry: State<'_, StreamRegistry>,
@@ -169,19 +183,19 @@ pub async fn start_resource_watch(
     validate_resource_watch_scope(&cluster_context, &keys)?;
     let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
     let stream_id = registry.stream_id("resources");
-    for key in keys {
+    for start in keys {
         let (watch_key, broadcaster, should_start) = registry.subscribe_resource(
             &stream_id,
             access.source_key(),
             &cluster_context,
-            &key,
+            &start,
             channel.clone(),
         );
         if should_start {
             let handle = crate::runtime::spawn(watch::run_resource_watch(
                 access.clone(),
                 cluster_context.clone(),
-                key,
+                start,
                 broadcaster.clone(),
                 live_store.inner().clone(),
             ));

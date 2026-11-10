@@ -22,18 +22,28 @@ function sameMetric(left: ResourceMetricSummary | undefined, right: ResourceMetr
 		left.sourcePods.every((pod, index) => pod === right.sourcePods[index]));
 }
 
-function metricKey(kind: string, namespace: string | null | undefined, name: string) {
-	return `${kind}:${namespace ?? ""}:${name}`;
+// The cluster keeps same-named objects of two workspace contexts apart.
+function metricKey(cluster: string, kind: string, namespace: string | null | undefined, name: string) {
+	return `${cluster}:${kind}:${namespace ?? ""}:${name}`;
 }
 
-export function resourceMetricIndex(
-	summary: ResourceMetricsSummary | undefined,
-): ResourceMetricIndex {
+/** One context's metrics read. Its samples join rows of the context that was read. */
+export interface ContextMetrics {
+	clusterContext: string;
+	summary: ResourceMetricsSummary | undefined;
+}
+
+const ownContext = (summary: ResourceMetricsSummary | undefined): ContextMetrics[] =>
+	summary ? [{ clusterContext: summary.cluster, summary }] : [];
+
+export function resourceMetricIndex(reads: readonly ContextMetrics[]): ResourceMetricIndex {
 	const index = new Map<string, ResourceMetricSummary>();
-	if (!summary) return index;
-	for (const metrics of [summary.pods, summary.nodes, summary.workloads]) {
-		for (const metric of metrics) {
-			index.set(metricKey(metric.kind, metric.namespace, metric.name), metric);
+	for (const { clusterContext, summary } of reads) {
+		if (!summary) continue;
+		for (const metrics of [summary.pods, summary.nodes, summary.workloads]) {
+			for (const metric of metrics) {
+				index.set(metricKey(clusterContext, metric.kind, metric.namespace, metric.name), metric);
+			}
 		}
 	}
 	return index;
@@ -42,7 +52,7 @@ export function resourceMetricIndex(
 export function mergeResourceMetrics(
 	resources: ResourceSummary[],
 	metrics: ResourceMetricsSummary | undefined,
-	index: ResourceMetricIndex = resourceMetricIndex(metrics),
+	index: ResourceMetricIndex = resourceMetricIndex(ownContext(metrics)),
 ): ResourceSummary[] {
 	if (index.size === 0) return resources;
 	const cachedTable = metricTables.get(resources);
@@ -52,7 +62,7 @@ export function mergeResourceMetrics(
 	let unchanged = true;
 	for (const resource of resources) {
 		const metric = index.get(
-			metricKey(resource.kind, resource.namespace, resource.name),
+			metricKey(resource.cluster, resource.kind, resource.namespace, resource.name),
 		);
 		let row = resource;
 		if (metric && !sameMetric(resource.metrics, metric)) {
@@ -72,7 +82,7 @@ function mergeTopologyNodeMetrics(
 	node: TopologyNode,
 	index: ResourceMetricIndex,
 ): TopologyNode {
-	const metric = index.get(metricKey(node.kind, node.namespace, node.name));
+	const metric = index.get(metricKey(node.summary.cluster, node.kind, node.namespace, node.name));
 	if (!metric) return node;
 	if (sameMetric(node.metrics, metric) && sameMetric(node.summary.metrics, metric)) return node;
 	const cached = metricNodes.get(node);
@@ -89,7 +99,7 @@ function mergeTopologyNodeMetrics(
 export function mergeTopologyMetrics(
 	topology: ResourceTopology | undefined,
 	metrics: ResourceMetricsSummary | undefined,
-	index: ResourceMetricIndex = resourceMetricIndex(metrics),
+	index: ResourceMetricIndex = resourceMetricIndex(ownContext(metrics)),
 ): ResourceTopology | undefined {
 	if (!topology || index.size === 0) return topology;
 	const cachedTopology = metricTopologies.get(topology);

@@ -1,4 +1,6 @@
-use crate::models::{StreamMessage, StreamStatus, WatchResourceKey, WatchResourceTarget};
+use crate::models::{
+    ResourceWatchStart, StreamMessage, StreamStatus, WatchResourceKey, WatchResourceTarget,
+};
 use crate::runtime::{Channel, JoinHandle};
 use std::{
     collections::HashMap,
@@ -11,7 +13,17 @@ use std::{
 #[derive(Clone)]
 pub(super) struct StreamBroadcaster {
     subscribers: Arc<Mutex<HashMap<String, Channel<StreamMessage>>>>,
-    connection: Arc<Mutex<ConnectionState>>,
+    connection: Arc<Mutex<Connection>>,
+}
+
+#[derive(Default)]
+struct Connection {
+    report: ConnectionState,
+    /// The resourceVersion up to which a resource watch has sent every change.
+    /// Known only while the watch runs without a gap from the version its first
+    /// subscriber gave. A start at "0" or a 410 reset replays objects to the
+    /// subscribers present then, so the position is unknown from there on.
+    position: Option<String>,
 }
 
 /// The last connection report, replayed to late subscribers. A status report
@@ -31,17 +43,57 @@ enum ConnectionState {
 
 impl StreamBroadcaster {
     fn new() -> Self {
+        Self::at(None)
+    }
+
+    /// A resource watch that first connects at `position`.
+    fn at(position: Option<String>) -> Self {
         Self {
             subscribers: Arc::new(Mutex::new(HashMap::new())),
-            connection: Arc::new(Mutex::new(ConnectionState::default())),
+            connection: Arc::new(Mutex::new(Connection {
+                report: ConnectionState::default(),
+                position,
+            })),
         }
     }
 
+    /// Adds a subscriber whose rows are at `resource_version`. When the watch
+    /// is not at that version, it may already have sent changes those rows
+    /// lack, so the subscriber gets `resync` once and re-lists. A subscriber
+    /// without a version keeps the behavior of a watch it joins.
+    fn add_at(
+        &self,
+        stream_id: String,
+        channel: Channel<StreamMessage>,
+        resource_version: Option<&str>,
+        resync: WatchResourceTarget,
+    ) {
+        let connection = self.connection.lock().expect("stream connection lock");
+        if resource_version.is_some_and(|version| connection.position.as_deref() != Some(version)) {
+            let _ = channel.send(StreamMessage::ResourceChanged {
+                stream_id: stream_id.clone(),
+                target: resync,
+                action: "resync".to_string(),
+            });
+        }
+        self.add_locked(&connection, stream_id, channel);
+    }
+
     fn add(&self, stream_id: String, channel: Channel<StreamMessage>) {
+        let connection = self.connection.lock().expect("stream connection lock");
+        self.add_locked(&connection, stream_id, channel);
+    }
+
+    fn add_locked(
+        &self,
+        connection: &Connection,
+        stream_id: String,
+        channel: Channel<StreamMessage>,
+    ) {
         // Serialize replay with status changes so a late subscriber cannot receive
         // an older connection state after a newer broadcast.
-        let connection = self.connection.lock().expect("stream connection lock");
-        let error = match &*connection {
+        let connection = &connection.report;
+        let error = match connection {
             ConnectionState::Failed(message) => Some(message),
             ConnectionState::Status { cause, .. } => cause.as_ref(),
             ConnectionState::Unreported => None,
@@ -54,7 +106,7 @@ impl StreamBroadcaster {
         }
         if let ConnectionState::Status {
             status, message, ..
-        } = &*connection
+        } = connection
         {
             let _ = channel.send(StreamMessage::Status {
                 stream_id: stream_id.clone(),
@@ -112,13 +164,13 @@ impl StreamBroadcaster {
 
     pub(super) fn status(&self, status: StreamStatus, message: String) -> bool {
         let mut connection = self.connection.lock().expect("stream connection lock");
-        let cause = match std::mem::take(&mut *connection) {
+        let cause = match std::mem::take(&mut connection.report) {
             _ if status == StreamStatus::Connected => None,
             ConnectionState::Failed(error) => Some(error),
             ConnectionState::Status { cause, .. } => cause,
             ConnectionState::Unreported => None,
         };
-        *connection = ConnectionState::Status {
+        connection.report = ConnectionState::Status {
             status,
             message: message.clone(),
             cause,
@@ -132,14 +184,41 @@ impl StreamBroadcaster {
 
     pub(super) fn error(&self, message: String) -> bool {
         let mut connection = self.connection.lock().expect("stream connection lock");
-        *connection = ConnectionState::Failed(message.clone());
+        connection.report = ConnectionState::Failed(message.clone());
         self.send(move |stream_id| StreamMessage::Error {
             stream_id: stream_id.to_string(),
             message: message.clone(),
         })
     }
 
-    pub(super) fn resource_changed(&self, target: WatchResourceTarget, action: String) -> bool {
+    /// Records that the watch has sent every change up to `version`. Under the
+    /// connection lock, so a joining subscriber compares against the position
+    /// of the changes it did not receive.
+    pub(super) fn advance(&self, version: Option<String>) {
+        let mut connection = self.connection.lock().expect("stream connection lock");
+        if connection.position.is_some() {
+            connection.position = version;
+        }
+    }
+
+    /// A 410 restarts the watch at "0", which replays every object.
+    pub(super) fn forget_position(&self) {
+        self.connection
+            .lock()
+            .expect("stream connection lock")
+            .position = None;
+    }
+
+    pub(super) fn resource_changed(
+        &self,
+        target: WatchResourceTarget,
+        action: String,
+        version: Option<String>,
+    ) -> bool {
+        let mut connection = self.connection.lock().expect("stream connection lock");
+        if connection.position.is_some() {
+            connection.position = version;
+        }
         self.send(move |stream_id| StreamMessage::ResourceChanged {
             stream_id: stream_id.to_string(),
             target: target.clone(),
@@ -206,9 +285,10 @@ impl StreamRegistry {
         stream_id: &str,
         source_key: &str,
         cluster_context: &str,
-        key: &WatchResourceKey,
+        start: &ResourceWatchStart,
         channel: Channel<StreamMessage>,
     ) -> (String, StreamBroadcaster, bool) {
+        let key = &start.key;
         let watch_key = resource_watch_key(source_key, cluster_context, key);
         let mut state = self.state.lock().expect("stream registry lock");
         remove_watch_when(
@@ -224,11 +304,21 @@ impl StreamRegistry {
             .or_insert_with(|| {
                 started = true;
                 SharedWatch {
-                    broadcaster: StreamBroadcaster::new(),
+                    broadcaster: StreamBroadcaster::at(start.resource_version.clone()),
                     handle: None,
                 }
             });
-        watch.broadcaster.add(stream_id.to_string(), channel);
+        watch.broadcaster.add_at(
+            stream_id.to_string(),
+            channel,
+            start.resource_version.as_deref(),
+            WatchResourceTarget {
+                cluster: cluster_context.to_string(),
+                kind: key.resource_kind.kind.clone(),
+                namespace: key.namespace.clone(),
+                name: None,
+            },
+        );
         let broadcaster = watch.broadcaster.clone();
         state
             .streams

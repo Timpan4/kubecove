@@ -110,38 +110,43 @@ pub async fn read_flux_ownership_index(
 /// [`filter_flux_ownership_index`] so callers can cache the fetched index and
 /// re-scope it per request without re-listing.
 pub async fn fetch_flux_ownership_index(client: Client) -> Result<FluxOwnershipIndex, AppError> {
-    let mut index = FluxOwnershipIndex::default();
-    for (group, version, kind, plural, _, _) in FLUX_KINDS
+    // The owner kinds are listed together and indexed in catalog order. A
+    // cancelled list ends the read at once; other failures mark it partial.
+    let lists = FLUX_KINDS
         .iter()
         .filter(|(_, _, kind, _, _, _)| *kind == "Kustomization" || *kind == "HelmRelease")
-    {
-        let resource = ApiResource {
-            group: group.to_string(),
-            version: version.to_string(),
-            api_version: format!("{group}/{version}"),
-            kind: kind.to_string(),
-            plural: plural.to_string(),
-        };
-        let mut objects = Vec::new();
-        let mut batch_partial = false;
-        // Owners are cluster-wide evidence; target namespaces only filter retained inventory identities.
-        let api = Api::<DynamicObject>::all_with(client.clone(), &resource);
-        match api
-            .list(&ListParams::default().limit(MAX_FLUX_OWNER_OBJECTS as u32))
-            .await
-        {
-            Ok(rows) => {
-                batch_partial |= has_continuation_token(rows.metadata.continue_.as_deref());
-                objects.extend(rows.items);
-            }
-            Err(e) => {
-                let error = AppError::from(e);
-                if error.kind == AppErrorKind::Cancelled {
-                    return Err(error);
+        .map(|(group, version, kind, plural, _, _)| {
+            let resource = ApiResource {
+                group: group.to_string(),
+                version: version.to_string(),
+                api_version: format!("{group}/{version}"),
+                kind: kind.to_string(),
+                plural: plural.to_string(),
+            };
+            // Owners are cluster-wide evidence; target namespaces only filter retained inventory identities.
+            let api = Api::<DynamicObject>::all_with(client.clone(), &resource);
+            async move {
+                match api
+                    .list(&ListParams::default().limit(MAX_FLUX_OWNER_OBJECTS as u32))
+                    .await
+                {
+                    Ok(rows) => Ok((
+                        *kind,
+                        rows.items,
+                        has_continuation_token(rows.metadata.continue_.as_deref()),
+                    )),
+                    Err(e) => {
+                        let error = AppError::from(e);
+                        if error.kind == AppErrorKind::Cancelled {
+                            return Err(error);
+                        }
+                        Ok((*kind, Vec::new(), true))
+                    }
                 }
-                batch_partial = true;
             }
-        }
+        });
+    let mut index = FluxOwnershipIndex::default();
+    for (kind, objects, batch_partial) in futures_util::future::try_join_all(lists).await? {
         index_flux_owner_objects(&mut index, kind, objects, batch_partial);
     }
     Ok(index)

@@ -1,0 +1,43 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "resources.search-refresh",
+      "title": "Search has an explicit empty state and survives refresh",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "no-such-parity-resource" },
+        { "action": "expectEmpty" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "refresh" },
+        { "action": "expectSearch", "value": "payments-api" },
+        { "action": "expectResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" }
+      ]
+    },
+    {
+      "id": "detail.open-close",
+      "title": "Open the exact Deployment when kinds share a name, then close it",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "expectResource", "kind": "Service", "name": "payments-api", "namespace": "payments" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "expectDetail", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "closeDetail" },
+        { "action": "expectDetailClosed" }
+      ]
+    },
+    {
+      "id": "yaml.identity",
+      "title": "The YAML tab shows the selected resource's identity",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showYaml" },
+        { "action": "expectYaml", "contains": ["kind: Deployment", "name: payments-api", "namespace: payments"] }
+      ]
+    }
+  ]
+}

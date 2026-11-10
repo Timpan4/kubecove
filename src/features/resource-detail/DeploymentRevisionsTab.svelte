@@ -10,6 +10,7 @@
 		TabsContent,
 	} from "@/components/ui/svelte";
 	import { listDeploymentRevisions, type TauriClient } from "@/lib/tauri";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import { queryKeys } from "@/lib/queryKeys";
 	import type { DeploymentRevision, ResourceSummary } from "@/lib/types";
 	import {
@@ -52,6 +53,7 @@
 	const viewState = $derived(
 		deploymentRevisionViewState(revisionsQuery.isPending, revisionsQuery.isError, revisions),
 	);
+	const loading = loadingDelay(() => viewState === "loading");
 	const selectedRevision = $derived(
 		revisions.find((revision) => revision.name === selectedRevisionName),
 	);
@@ -79,8 +81,8 @@
 </script>
 
 <TabsContent value="revisions" class="min-h-0 overflow-auto">
-	{#if viewState === "loading"}
-		<p class="p-4 text-sm text-muted-foreground">Loading Deployment revisions…</p>
+	{#if loading.active}
+		{#if loading.shown}<p class="p-4 text-sm text-muted-foreground">Loading Deployment revisions…</p>{/if}
 	{:else if viewState === "error"}
 		<p class="p-4 text-sm text-destructive">Unable to load Deployment revisions.</p>
 	{:else if viewState === "empty"}

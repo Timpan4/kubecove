@@ -1,0 +1,84 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "events.scroll-overflow",
+      "title": "A long event list scrolls through the detail pane",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "search",
+          "value": "payments-api"
+        },
+        {
+          "action": "openResource",
+          "kind": "Deployment",
+          "name": "payments-api",
+          "namespace": "payments"
+        },
+        {
+          "action": "showTab",
+          "tab": "Events"
+        },
+        {
+          "action": "replayLiveData",
+          "script": "events-overflow"
+        },
+        {
+          "action": "expectEvent",
+          "index": 0,
+          "reason": "Overflow",
+          "message": "Overflow event 0"
+        },
+        {
+          "action": "expectDetailScroll",
+          "view": "events"
+        }
+      ]
+    },
+    {
+      "id": "detail.timeline-scroll-overflow",
+      "title": "A long incident timeline scrolls through the detail pane",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "search",
+          "value": "payments-api"
+        },
+        {
+          "action": "openResource",
+          "kind": "Deployment",
+          "name": "payments-api",
+          "namespace": "payments"
+        },
+        {
+          "action": "showTab",
+          "tab": "Events"
+        },
+        {
+          "action": "replayLiveData",
+          "script": "events-overflow"
+        },
+        {
+          "action": "expectEvent",
+          "index": 0,
+          "reason": "Overflow",
+          "message": "Overflow event 0"
+        },
+        {
+          "action": "showTab",
+          "tab": "Details"
+        },
+        {
+          "action": "expectDetailScroll",
+          "view": "timeline"
+        }
+      ]
+    }
+  ]
+}

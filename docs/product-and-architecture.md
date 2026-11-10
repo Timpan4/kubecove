@@ -87,6 +87,8 @@ AI agents are a separate, opt-in client type. Each host can serve read-only MCP 
 
 ## Frontend shape
 
+An opt-in GPUI Kit client is being added alongside Svelte under [ADR 0029](decisions/0029-gpui-native-client-and-feature-parity.md). Its first delivery covers a native resource inspector. Full feature parity, platform packaging and footprint comparisons remain open. Both interfaces share Rust backend behavior and frontend-independent acceptance scenarios; see the [native client guide](../src-tauri/gpui/README.md).
+
 The Svelte application shell lives under `src/app/svelte/`. Feature code owns domain surfaces; shared components and pure logic remain separate.
 
 ```text

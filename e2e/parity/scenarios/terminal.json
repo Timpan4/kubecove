@@ -1,0 +1,816 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "exec-session.drag-hard-lines",
+      "title": "Drag copy preserves hard newlines and excludes terminal padding",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "openResource",
+          "kind": "Pod",
+          "namespace": "payments",
+          "name": "payments-api-7d9c9b7f8d-k2r9p"
+        },
+        {
+          "action": "showTab",
+          "tab": "Exec"
+        },
+        {
+          "action": "execControl",
+          "operation": "start",
+          "container": "app",
+          "command": "/bin/sh"
+        },
+        {
+          "action": "expectExecState",
+          "container": "app",
+          "status": "running",
+          "contains": "Controlled exec app"
+        },
+        {
+          "action": "terminalOutput",
+          "container": "app",
+          "data": "\u001b[2J\u001b[Halpha beta\r\nsecond line\r\n"
+        },
+        {
+          "action": "terminalSelect",
+          "row": 0,
+          "col": 0,
+          "endRow": 1,
+          "endCol": 11,
+          "word": false
+        },
+        {
+          "action": "terminalCopy",
+          "text": "alpha beta\nsecond line"
+        }
+      ]
+    },
+    {
+      "id": "exec-session.double-click-unicode",
+      "title": "Double click copies a word containing wide and combining characters",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "openResource",
+          "kind": "Pod",
+          "namespace": "payments",
+          "name": "payments-api-7d9c9b7f8d-k2r9p"
+        },
+        {
+          "action": "showTab",
+          "tab": "Exec"
+        },
+        {
+          "action": "execControl",
+          "operation": "start",
+          "container": "app",
+          "command": "/bin/sh"
+        },
+        {
+          "action": "expectExecState",
+          "container": "app",
+          "status": "running",
+          "contains": "Controlled exec app"
+        },
+        {
+          "action": "terminalOutput",
+          "container": "app",
+          "data": "\u001b[2J\u001b[Hhello 界é-world end\r\n"
+        },
+        {
+          "action": "terminalSelect",
+          "row": 0,
+          "col": 7,
+          "endRow": 0,
+          "endCol": 7,
+          "word": true
+        },
+        {
+          "action": "terminalCopy",
+          "text": "界é-world"
+        }
+      ]
+    },
+    {
+      "id": "exec-session.copy-after-output",
+      "title": "Selected buffer rows remain selected after output scrolls the viewport",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "openResource",
+          "kind": "Pod",
+          "namespace": "payments",
+          "name": "payments-api-7d9c9b7f8d-k2r9p"
+        },
+        {
+          "action": "showTab",
+          "tab": "Exec"
+        },
+        {
+          "action": "execControl",
+          "operation": "start",
+          "container": "app",
+          "command": "/bin/sh"
+        },
+        {
+          "action": "expectExecState",
+          "container": "app",
+          "status": "running",
+          "contains": "Controlled exec app"
+        },
+        {
+          "action": "terminalOutput",
+          "container": "app",
+          "data": "\u001b[2J\u001b[Halpha beta\r\n"
+        },
+        {
+          "action": "terminalSelect",
+          "row": 0,
+          "col": 0,
+          "endRow": 0,
+          "endCol": 10,
+          "word": false
+        },
+        {
+          "action": "terminalOutput",
+          "container": "app",
+          "data": "row 0\r\nrow 1\r\nrow 2\r\nrow 3\r\nrow 4\r\nrow 5\r\nrow 6\r\nrow 7\r\nrow 8\r\nrow 9\r\nrow 10\r\nrow 11\r\nrow 12\r\nrow 13\r\nrow 14\r\nrow 15\r\nrow 16\r\nrow 17\r\nrow 18\r\nrow 19\r\nrow 20\r\nrow 21\r\nrow 22\r\nrow 23\r\nrow 24\r\nrow 25\r\nrow 26\r\nrow 27\r\nrow 28\r\nrow 29\r\nrow 30\r\nrow 31\r\nrow 32\r\nrow 33\r\nrow 34\r\nrow 35\r\nrow 36\r\nrow 37\r\nrow 38\r\nrow 39\r\nrow 40\r\nrow 41\r\nrow 42\r\nrow 43\r\nrow 44\r\nrow 45\r\nrow 46\r\nrow 47\r\nrow 48\r\nrow 49\r\n"
+        },
+        {
+          "action": "terminalCopy",
+          "text": "alpha beta"
+        },
+        {
+          "action": "terminalScroll",
+          "rows": 50
+        },
+        {
+          "action": "terminalCopy",
+          "text": "alpha beta"
+        }
+      ]
+    },
+    {
+      "id": "exec-session.paste-guarded",
+      "title": "Paste normalizes newlines through the session stdin path",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "openResource",
+          "kind": "Pod",
+          "namespace": "payments",
+          "name": "payments-api-7d9c9b7f8d-k2r9p"
+        },
+        {
+          "action": "showTab",
+          "tab": "Exec"
+        },
+        {
+          "action": "execControl",
+          "operation": "start",
+          "container": "app",
+          "command": "/bin/sh"
+        },
+        {
+          "action": "expectExecState",
+          "container": "app",
+          "status": "running",
+          "contains": "Controlled exec app"
+        },
+        {
+          "action": "terminalOutput",
+          "container": "app",
+          "data": "\u001b[2J\u001b[H"
+        },
+        {
+          "action": "terminalSelect",
+          "row": 0,
+          "col": 0,
+          "endRow": 0,
+          "endCol": 0,
+          "word": false
+        },
+        {
+          "action": "terminalPaste",
+          "text": "paste-one\r\npaste-two"
+        },
+        {
+          "action": "expectExecState",
+          "container": "app",
+          "status": "running",
+          "contains": "paste-two"
+        }
+      ]
+    },
+    {
+      "id": "exec-session.selection-tab-isolation",
+      "title": "Copy stays session-local and remains available after Stop",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "openResource",
+          "kind": "Pod",
+          "namespace": "payments",
+          "name": "payments-api-7d9c9b7f8d-k2r9p"
+        },
+        {
+          "action": "showTab",
+          "tab": "Exec"
+        },
+        {
+          "action": "execControl",
+          "operation": "start",
+          "container": "app",
+          "command": "/bin/sh"
+        },
+        {
+          "action": "expectExecState",
+          "container": "app",
+          "status": "running",
+          "contains": "Controlled exec app"
+        },
+        {
+          "action": "terminalOutput",
+          "container": "app",
+          "data": "\u001b[2J\u001b[Happ-only\r\n"
+        },
+        {
+          "action": "terminalSelect",
+          "row": 0,
+          "col": 0,
+          "endRow": 0,
+          "endCol": 8,
+          "word": false
+        },
+        {
+          "action": "execControl",
+          "operation": "start",
+          "container": "sidecar",
+          "command": "/bin/bash"
+        },
+        {
+          "action": "expectExecState",
+          "container": "sidecar",
+          "status": "running",
+          "contains": "Controlled exec sidecar",
+          "command": "bash"
+        },
+        {
+          "action": "terminalCopy",
+          "text": ""
+        },
+        {
+          "action": "execControl",
+          "operation": "select",
+          "container": "app",
+          "tab": 0
+        },
+        {
+          "action": "terminalCopy",
+          "text": "app-only"
+        },
+        {
+          "action": "execControl",
+          "operation": "stop"
+        },
+        {
+          "action": "expectExecState",
+          "container": "app",
+          "status": "stopped",
+          "contains": "app-only"
+        },
+        {
+          "action": "terminalCopy",
+          "text": "app-only"
+        }
+      ]
+    },
+    {
+      "id": "exec-session.resize-wrapped-copy",
+      "title": "Completed wrapped lines reflow on fit and copy without inserted newlines",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "openResource",
+          "kind": "Pod",
+          "namespace": "payments",
+          "name": "payments-api-7d9c9b7f8d-k2r9p"
+        },
+        {
+          "action": "showTab",
+          "tab": "Exec"
+        },
+        {
+          "action": "execControl",
+          "operation": "start",
+          "container": "app",
+          "command": "/bin/sh"
+        },
+        {
+          "action": "expectExecState",
+          "container": "app",
+          "status": "running",
+          "contains": "Controlled exec app"
+        },
+        {
+          "action": "terminalOutput",
+          "container": "app",
+          "data": "\u001b[2J\u001b[Habcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\r\n"
+        },
+        {
+          "action": "terminalFit",
+          "width": 1700,
+          "height": 900
+        },
+        {
+          "action": "terminalSelect",
+          "row": 0,
+          "col": 1,
+          "endRow": 0,
+          "endCol": 1,
+          "word": true
+        },
+        {
+          "action": "terminalCopy",
+          "text": "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
+        },
+        {
+          "action": "terminalFit",
+          "width": 1440,
+          "height": 900
+        },
+        {
+          "action": "terminalSelect",
+          "row": 0,
+          "col": 1,
+          "endRow": 0,
+          "endCol": 1,
+          "word": true
+        },
+        {
+          "action": "terminalCopy",
+          "text": "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
+        }
+      ]
+    },
+    {
+      "id": "exec-session.drag-autoscroll",
+      "title": "A drag held below the rows scrolls and selects through the newest output",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "openResource",
+          "kind": "Pod",
+          "namespace": "payments",
+          "name": "payments-api-7d9c9b7f8d-k2r9p"
+        },
+        {
+          "action": "showTab",
+          "tab": "Exec"
+        },
+        {
+          "action": "execControl",
+          "operation": "start",
+          "container": "app",
+          "command": "/bin/sh"
+        },
+        {
+          "action": "expectExecState",
+          "container": "app",
+          "status": "running",
+          "contains": "Controlled exec app"
+        },
+        {
+          "action": "terminalOutput",
+          "container": "app",
+          "data": "\u001b[2J\u001b[Hline 0\r\nline 1\r\nline 2\r\nline 3\r\nline 4\r\nline 5\r\nline 6\r\nline 7\r\nline 8\r\nline 9\r\nline 10\r\nline 11\r\nline 12\r\nline 13\r\nline 14\r\nline 15\r\nline 16\r\nline 17\r\nline 18\r\nline 19\r\nline 20\r\nline 21\r\nline 22\r\nline 23\r\nline 24\r\nline 25\r\nline 26\r\nline 27\r\nline 28\r\nline 29\r\nline 30\r\nline 31\r\nline 32\r\nline 33\r\nline 34\r\nline 35\r\nline 36\r\nline 37\r\nline 38\r\nline 39\r\nline 40\r\nline 41\r\nline 42\r\nline 43\r\nline 44\r\nline 45\r\nline 46\r\nline 47\r\nline 48\r\nline 49\r\nline 50\r\nline 51\r\nline 52\r\nline 53\r\nline 54\r\nline 55\r\nline 56\r\nline 57\r\nline 58\r\nline 59\r\nline 60\r\nline 61\r\nline 62\r\nline 63\r\nline 64\r\nline 65\r\nline 66\r\nline 67\r\nline 68\r\nline 69\r\nline 70\r\nline 71\r\nline 72\r\nline 73\r\nline 74\r\nline 75\r\nline 76\r\nline 77\r\nline 78\r\nline 79\r\nline 80\r\nline 81\r\nline 82\r\nline 83\r\nline 84\r\nline 85\r\nline 86\r\nline 87\r\nline 88\r\nline 89\r\nline 90\r\nline 91\r\nline 92\r\nline 93\r\nline 94\r\nline 95\r\nline 96\r\nline 97\r\nline 98\r\nline 99"
+        },
+        {
+          "action": "terminalScroll",
+          "rows": 200
+        },
+        {
+          "action": "terminalDragOutside",
+          "row": 0,
+          "col": 0,
+          "edge": "below"
+        },
+        {
+          "action": "terminalRelease",
+          "ms": 2000
+        },
+        {
+          "action": "terminalCopy",
+          "text": "line 0\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29\nline 30\nline 31\nline 32\nline 33\nline 34\nline 35\nline 36\nline 37\nline 38\nline 39\nline 40\nline 41\nline 42\nline 43\nline 44\nline 45\nline 46\nline 47\nline 48\nline 49\nline 50\nline 51\nline 52\nline 53\nline 54\nline 55\nline 56\nline 57\nline 58\nline 59\nline 60\nline 61\nline 62\nline 63\nline 64\nline 65\nline 66\nline 67\nline 68\nline 69\nline 70\nline 71\nline 72\nline 73\nline 74\nline 75\nline 76\nline 77\nline 78\nline 79\nline 80\nline 81\nline 82\nline 83\nline 84\nline 85\nline 86\nline 87\nline 88\nline 89\nline 90\nline 91\nline 92\nline 93\nline 94\nline 95\nline 96\nline 97\nline 98\nline 99"
+        }
+      ]
+    },
+    {
+      "id": "exec-session.triple-click-line",
+      "title": "Triple click copies the whole logical line, including its wrapped rows",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "openResource",
+          "kind": "Pod",
+          "namespace": "payments",
+          "name": "payments-api-7d9c9b7f8d-k2r9p"
+        },
+        {
+          "action": "showTab",
+          "tab": "Exec"
+        },
+        {
+          "action": "execControl",
+          "operation": "start",
+          "container": "app",
+          "command": "/bin/sh"
+        },
+        {
+          "action": "expectExecState",
+          "container": "app",
+          "status": "running",
+          "contains": "Controlled exec app"
+        },
+        {
+          "action": "terminalOutput",
+          "container": "app",
+          "data": "\u001b[2J\u001b[Hfirst line here\r\nsecond\r\n"
+        },
+        {
+          "action": "terminalSelect",
+          "row": 0,
+          "col": 2,
+          "endRow": 0,
+          "endCol": 2,
+          "word": false,
+          "line": true
+        },
+        {
+          "action": "terminalCopy",
+          "text": "first line here"
+        },
+        {
+          "action": "terminalOutput",
+          "container": "app",
+          "data": "\u001b[2J\u001b[Hword00 word01 word02 word03 word04 word05 word06 word07 word08 word09 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29 word30 word31 word32 word33 word34 word35 word36 word37 word38 word39 word40 word41 word42 word43 word44 word45 word46 word47 word48 word49 word50 word51 word52 word53 word54 word55 word56 word57 word58 word59 word60 word61 word62 word63 word64 word65 word66 word67 word68 word69 word70 word71 word72 word73 word74 word75 word76 word77 word78 word79 word80 word81 word82 word83 word84 word85 word86 word87 word88 word89 word90 word91 word92 word93 word94 word95 word96 word97 word98 word99\r\nnext\r\n"
+        },
+        {
+          "action": "terminalSelect",
+          "row": 1,
+          "col": 0,
+          "endRow": 1,
+          "endCol": 0,
+          "word": false,
+          "line": true
+        },
+        {
+          "action": "terminalCopy",
+          "text": "word00 word01 word02 word03 word04 word05 word06 word07 word08 word09 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29 word30 word31 word32 word33 word34 word35 word36 word37 word38 word39 word40 word41 word42 word43 word44 word45 word46 word47 word48 word49 word50 word51 word52 word53 word54 word55 word56 word57 word58 word59 word60 word61 word62 word63 word64 word65 word66 word67 word68 word69 word70 word71 word72 word73 word74 word75 word76 word77 word78 word79 word80 word81 word82 word83 word84 word85 word86 word87 word88 word89 word90 word91 word92 word93 word94 word95 word96 word97 word98 word99"
+        }
+      ]
+    },
+    {
+      "id": "exec-session.alt-drag-column",
+      "title": "Alt drag copies a rectangle with one line per row",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "openResource",
+          "kind": "Pod",
+          "namespace": "payments",
+          "name": "payments-api-7d9c9b7f8d-k2r9p"
+        },
+        {
+          "action": "showTab",
+          "tab": "Exec"
+        },
+        {
+          "action": "execControl",
+          "operation": "start",
+          "container": "app",
+          "command": "/bin/sh"
+        },
+        {
+          "action": "expectExecState",
+          "container": "app",
+          "status": "running",
+          "contains": "Controlled exec app"
+        },
+        {
+          "action": "terminalOutput",
+          "container": "app",
+          "data": "\u001b[2J\u001b[Habcdef\r\nghijkl\r\nmnopqr\r\n"
+        },
+        {
+          "action": "terminalSelect",
+          "row": 0,
+          "col": 1,
+          "endRow": 2,
+          "endCol": 4,
+          "word": false,
+          "alt": true
+        },
+        {
+          "action": "terminalCopy",
+          "text": "bcd\nhij\nnop"
+        }
+      ]
+    },
+    {
+      "id": "exec-session.right-click-keeps-selection",
+      "title": "Right click keeps the selection so Copy still copies it",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "openResource",
+          "kind": "Pod",
+          "namespace": "payments",
+          "name": "payments-api-7d9c9b7f8d-k2r9p"
+        },
+        {
+          "action": "showTab",
+          "tab": "Exec"
+        },
+        {
+          "action": "execControl",
+          "operation": "start",
+          "container": "app",
+          "command": "/bin/sh"
+        },
+        {
+          "action": "expectExecState",
+          "container": "app",
+          "status": "running",
+          "contains": "Controlled exec app"
+        },
+        {
+          "action": "terminalOutput",
+          "container": "app",
+          "data": "\u001b[2J\u001b[Halpha beta\r\n"
+        },
+        {
+          "action": "terminalSelect",
+          "row": 0,
+          "col": 0,
+          "endRow": 0,
+          "endCol": 5,
+          "word": false
+        },
+        {
+          "action": "terminalRightClick",
+          "row": 0,
+          "col": 2
+        },
+        {
+          "action": "terminalCopy",
+          "text": "alpha"
+        }
+      ]
+    },
+    {
+      "id": "exec-session.alt-click-cursor",
+      "title": "Alt click sends arrow keys that move the shell cursor to the clicked cell",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "openResource",
+          "kind": "Pod",
+          "namespace": "payments",
+          "name": "payments-api-7d9c9b7f8d-k2r9p"
+        },
+        {
+          "action": "showTab",
+          "tab": "Exec"
+        },
+        {
+          "action": "execControl",
+          "operation": "start",
+          "container": "app",
+          "command": "/bin/sh"
+        },
+        {
+          "action": "expectExecState",
+          "container": "app",
+          "status": "running",
+          "contains": "Controlled exec app"
+        },
+        {
+          "action": "terminalOutput",
+          "container": "app",
+          "data": "\u001b[2J\u001b[Hhello world"
+        },
+        {
+          "action": "terminalFocus",
+          "focused": true
+        },
+        {
+          "action": "expectTerminalCursor",
+          "cursor": "block blink",
+          "row": 0,
+          "col": 11
+        },
+        {
+          "action": "terminalSelect",
+          "row": 0,
+          "col": 3,
+          "endRow": 0,
+          "endCol": 3,
+          "word": false,
+          "alt": true
+        },
+        {
+          "action": "expectTerminalCursor",
+          "cursor": "block blink",
+          "row": 0,
+          "col": 3
+        }
+      ]
+    },
+    {
+      "id": "exec-session.cursor-shapes",
+      "title": "DECSCUSR shapes the cursor and an unfocused terminal outlines it",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "openResource",
+          "kind": "Pod",
+          "namespace": "payments",
+          "name": "payments-api-7d9c9b7f8d-k2r9p"
+        },
+        {
+          "action": "showTab",
+          "tab": "Exec"
+        },
+        {
+          "action": "execControl",
+          "operation": "start",
+          "container": "app",
+          "command": "/bin/sh"
+        },
+        {
+          "action": "expectExecState",
+          "container": "app",
+          "status": "running",
+          "contains": "Controlled exec app"
+        },
+        {
+          "action": "terminalOutput",
+          "container": "app",
+          "data": "\u001b[2J\u001b[H$ "
+        },
+        {
+          "action": "terminalFocus",
+          "focused": true
+        },
+        {
+          "action": "expectTerminalCursor",
+          "cursor": "block blink",
+          "row": 0,
+          "col": 2
+        },
+        {
+          "action": "terminalOutput",
+          "container": "app",
+          "data": "\u001b[5 q"
+        },
+        {
+          "action": "expectTerminalCursor",
+          "cursor": "bar blink"
+        },
+        {
+          "action": "terminalOutput",
+          "container": "app",
+          "data": "\u001b[4 q"
+        },
+        {
+          "action": "expectTerminalCursor",
+          "cursor": "underline"
+        },
+        {
+          "action": "terminalFocus",
+          "focused": false
+        },
+        {
+          "action": "expectTerminalCursor",
+          "cursor": "outline",
+          "row": 0,
+          "col": 2
+        },
+        {
+          "action": "terminalFocus",
+          "focused": true
+        },
+        {
+          "action": "expectTerminalCursor",
+          "cursor": "underline"
+        },
+        {
+          "action": "terminalOutput",
+          "container": "app",
+          "data": "\u001b[2 q"
+        },
+        {
+          "action": "expectTerminalCursor",
+          "cursor": "block"
+        },
+        {
+          "action": "terminalOutput",
+          "container": "app",
+          "data": "\u001b[0 q"
+        },
+        {
+          "action": "expectTerminalCursor",
+          "cursor": "block blink"
+        }
+      ]
+    },
+    {
+      "id": "exec-session.primary-paste",
+      "title": "On Linux a mouse selection becomes the primary selection that middle click pastes",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "openResource",
+          "kind": "Pod",
+          "namespace": "payments",
+          "name": "payments-api-7d9c9b7f8d-k2r9p"
+        },
+        {
+          "action": "showTab",
+          "tab": "Exec"
+        },
+        {
+          "action": "execControl",
+          "operation": "start",
+          "container": "app",
+          "command": "/bin/sh"
+        },
+        {
+          "action": "expectExecState",
+          "container": "app",
+          "status": "running",
+          "contains": "Controlled exec app"
+        },
+        {
+          "action": "terminalOutput",
+          "container": "app",
+          "data": "\u001b[2J\u001b[Halpha beta\r\n"
+        },
+        {
+          "action": "terminalSelect",
+          "row": 0,
+          "col": 0,
+          "endRow": 0,
+          "endCol": 5,
+          "word": false
+        },
+        {
+          "action": "terminalPrimaryPaste",
+          "text": "alpha"
+        },
+        {
+          "action": "terminalSelect",
+          "row": 1,
+          "col": 1,
+          "endRow": 1,
+          "endCol": 1,
+          "word": true
+        },
+        {
+          "action": "terminalCopy",
+          "text": "alpha"
+        }
+      ]
+    }
+  ]
+}

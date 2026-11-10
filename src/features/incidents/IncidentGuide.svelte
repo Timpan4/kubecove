@@ -12,6 +12,7 @@
 		EmptyTitle,
 		Spinner,
 	} from "@/components/ui/svelte";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import type { PathStateDetailTab } from "@/lib/path-state";
 	import type { IncidentCockpitItem, ResourceSummary } from "@/lib/types";
 	import { cnfast } from "@/lib/utils";
@@ -38,7 +39,7 @@
 		onResourceSelect: (resource: ResourceSummary) => void;
 	} = $props();
 
-	const enriching = $derived(detailsState === "loading" || topologyState === "loading");
+	const enriching = loadingDelay(() => detailsState === "loading" || topologyState === "loading");
 	const enrichmentFailed = $derived(detailsState === "error" || topologyState === "error");
 	let showStepContext = $state(false);
 
@@ -85,7 +86,7 @@
 		</header>
 
 		<div class="grid gap-3 p-4">
-			{#if enriching || enrichmentFailed}
+			{#if enriching.shown || enrichmentFailed}
 				<div
 					class={cnfast(
 						"flex items-center gap-2 rounded-md border px-3 py-2 text-xs",
@@ -94,7 +95,7 @@
 							: "bg-background/35 text-muted-foreground",
 					)}
 				>
-					{#if enriching}<Spinner />{/if}
+					{#if enriching.shown}<Spinner />{/if}
 					{enrichmentFailed
 						? "Some live evidence is unavailable. Snapshot guidance remains usable."
 						: "Loading live conditions and controller ownership…"}

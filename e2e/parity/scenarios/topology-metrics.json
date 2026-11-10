@@ -1,0 +1,188 @@
+{
+	"fixture": "browser-mocks",
+	"context": "mock-dev",
+	"scenarios": [
+		{
+			"id": "network-flow.scope-and-edges",
+			"title": "Network Flow keeps namespace and traffic endpoints when switching modes",
+			"steps": [
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "selectNamespace",
+					"namespace": "payments"
+				},
+				{
+					"action": "setTopologyMode",
+					"mode": "Network Flow"
+				},
+				{
+					"action": "expectTopology",
+					"nodes": 6,
+					"edges": 4
+				},
+				{
+					"action": "expectTopologyEdge",
+					"source": "mock-dev:networking.k8s.io/v1:Ingress:payments:payments-api",
+					"target": "mock-dev:v1:Service:payments:payments-api"
+				},
+				{
+					"action": "expectTopologyEdge",
+					"source": "mock-dev:discovery.k8s.io/v1:EndpointSlice:payments:payments-api-mock",
+					"target": "mock-dev:v1:Pod:payments:payments-api-7d9c9b7f8d-k2r9p"
+				},
+				{
+					"action": "setTopologyMode",
+					"mode": "Ownership"
+				},
+				{
+					"action": "expectNoTopologyNode",
+					"id": "mock-dev:discovery.k8s.io/v1:EndpointSlice:payments:payments-api-mock"
+				},
+				{
+					"action": "setTopologyMode",
+					"mode": "Network Flow"
+				},
+				{
+					"action": "expectTopology",
+					"nodes": 6,
+					"edges": 4
+				},
+				{
+					"action": "selectTopologyNode",
+					"id": "mock-dev:v1:Service:payments:payments-api"
+				},
+				{
+					"action": "expectDetail",
+					"kind": "Service",
+					"namespace": "payments",
+					"name": "payments-api"
+				},
+				{
+					"action": "closeDetail"
+				}
+			]
+		},
+		{
+			"id": "metrics.resource-identity-and-units",
+			"title": "Metrics belong to the selected kind and resource with binary memory units",
+			"steps": [
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "search",
+					"value": "payments-api"
+				},
+				{
+					"action": "expectResourceMetrics",
+					"kind": "Deployment",
+					"namespace": "payments",
+					"name": "payments-api",
+					"cpu": "42m",
+					"memory": "92 Mi"
+				},
+				{
+					"action": "expectResourceMetrics",
+					"kind": "Pod",
+					"namespace": "payments",
+					"name": "payments-api-7d9c9b7f8d-k2r9p",
+					"cpu": "180m",
+					"memory": "210 Mi"
+				}
+			]
+		},
+		{
+			"id": "metrics.unavailable-is-not-zero",
+			"title": "A resource without samples shows missing metrics rather than zero",
+			"steps": [
+				{
+					"action": "openPage",
+					"page": "Cluster Overview"
+				},
+				{
+					"action": "expectResourceMetrics",
+					"kind": "StorageClass",
+					"namespace": "",
+					"name": "local-path",
+					"cpu": "—",
+					"memory": "—"
+				}
+			]
+		},
+		{
+			"id": "usage-footer.toggle",
+			"title": "App process usage footer toggles, shows WSS, RSS and PSS, opens the process tree, and its working set setting toggles",
+			"steps": [
+				{
+					"action": "openSettings"
+				},
+				{
+					"action": "expectSettingRow",
+					"title": "Measure working set (WSS)"
+				},
+				{
+					"action": "toggleSetting",
+					"setting": "Show CPU and memory footer"
+				},
+				{
+					"action": "expectUsageFooter",
+					"text": "CPU 3.8% · WSS -- · RSS 370 MB · PSS 287 MB · 3 processes"
+				},
+				{
+					"action": "expectSetting",
+					"setting": "Measure working set (WSS)",
+					"checked": false
+				},
+				{
+					"action": "toggleSetting",
+					"setting": "Measure working set (WSS)"
+				},
+				{
+					"action": "expectSetting",
+					"setting": "Measure working set (WSS)",
+					"checked": true
+				},
+				{
+					"action": "openUsageTree"
+				},
+				{
+					"action": "expectUsageProcess",
+					"label": "KubeCove browser mock"
+				},
+				{
+					"action": "openUsageTree"
+				},
+				{
+					"action": "toggleSetting",
+					"setting": "Show CPU and memory footer"
+				},
+				{
+					"action": "expectNoUsageFooter"
+				}
+			]
+		},
+		{
+			"id": "network-flow.empty",
+			"title": "The traffic map clears when no resources match the scope and filter",
+			"steps": [
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "setTopologyMode",
+					"mode": "Network Flow"
+				},
+				{
+					"action": "search",
+					"value": "no-such-traffic-resource"
+				},
+				{
+					"action": "expectTopologyEmpty",
+					"title": "No network flow"
+				}
+			]
+		}
+	]
+}

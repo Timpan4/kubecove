@@ -1,0 +1,120 @@
+[workspace]
+resolver = "2"
+
+[package]
+name = "kubecove-gpui"
+# The in-app updater compares this with the release manifest, so
+# `scripts/release-versions.ts` keeps it equal to the app version.
+version = "0.13.3"
+edition = "2024"
+rust-version = "1.99"
+license = "AGPL-3.0-or-later"
+publish = false
+
+# Release bundles built by `cargo packager` in .github/workflows/gpui-release.yml. The
+# product name and identifier differ from the Tauri app's so both install side by side;
+# settings still live in the `com.timpan.kubecove` config directory.
+[package.metadata.packager]
+productName = "KubeCove GPUI"
+identifier = "com.timpan.kubecove.gpui"
+description = "Native KubeCove Kubernetes workspace"
+category = "DeveloperTool"
+icons = [
+  "../icons/32x32.png",
+  "../icons/128x128.png",
+  "../icons/128x128@2x.png",
+  "../icons/icon.icns",
+  "../icons/icon.ico",
+]
+
+# A per-user install needs no elevation, so the in-app updater can run it passively.
+[package.metadata.packager.nsis]
+installMode = "currentUser"
+
+[features]
+frame-profile = []
+
+# `scripts/e2e-parity.ts` sets this cfg with -C instrument-coverage when PARITY_COVERAGE=1.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kubecove_coverage)"] }
+
+[dependencies]
+gpui-kit = { version = "=0.9.0", default-features = false, features = ["component", "assets", "tree-sitter-yaml"] }
+kubecove = { path = "..", default-features = false, features = ["mcp-host"] }
+kubecove-host = { path = "../crates/host", features = ["remote-client"] }
+rfd = "=0.17.2"
+dirs = "=7.0.0"
+reqwest = { version = "=0.13.5", default-features = false, features = ["json", "rustls-no-provider"] }
+# reqwest uses `rustls-no-provider`; `main` installs the ring provider before the update check.
+rustls = { version = "=0.23.46", default-features = false, features = ["ring"] }
+semver = "=1.0.28"
+# Update installation (ADR 0034), at the versions the desktop app's updater plugin locks:
+# the signature check, and the macOS `.app.tar.gz` unpacking.
+minisign-verify = "=0.3.0"
+tar = { version = "=0.4.46", default-features = false }
+flate2 = "=1.1.10"
+tokio = { version = "=1.54.1", features = ["rt-multi-thread", "sync", "time"] }
+# Shares one in-flight resource scope read between the Overview and the browser.
+futures-util = "=0.3.34"
+similar = "=3.2.1"
+# GPUI Kit has no VT terminal; parse remote output without starting a local PTY.
+vt100 = "=0.18.1"
+chrono = "=0.4.45"
+serde_json = "=1.0.154"
+base64 = { version = "=0.23.1", default-features = false, features = ["std"] }
+# Both are already in the lockfile through the backend. `regex` ports the web
+# log-structure patterns; `serde` reads JSON log fields in document order.
+regex = "=1.13.1"
+serde = "=1.0.229"
+# The backend's YAML crate, which the Argo CD tab uses to read the Application
+# spec and print comparison documents, as `yaml` does in the web.
+serde_yaml = { package = "yaml_serde", version = "=0.10.7" }
+# GPUI Kit's tree-sitter feature already uses this version. The YAML editor
+# walks the syntax tree that GPUI Kit's `SyntaxHighlighter` returns.
+tree-sitter = "=0.26.13"
+# Already in the lockfile through `regex`. The resource search scans all rows'
+# text in one buffer with its SIMD substring finder.
+memchr = "=2.8.3"
+# Already in the lockfile through GPUI Kit's `tree-sitter-yaml` feature. Its
+# error recovery lets the editor report every YAML parser error, as the web's
+# `yaml` package does, where serde_yaml stops at the first.
+tree-sitter-yaml = "=0.7.2"
+
+[dev-dependencies]
+tokio-tungstenite = "=0.30.0"
+gpui-kit = { version = "=0.9.0", default-features = false, features = ["test-support"] }
+# Enable the locked engine's public headless benchmark platform and frame profiler.
+gpui-frame-engine = { package = "gpui-pre", version = "=0.3.11", default-features = false, features = ["bench-support"] }
+futures = { version = "=0.3.34", default-features = false, features = ["std"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+
+# The frames harness reads the UI thread's CPU clock; already in the lockfile.
+[target.'cfg(unix)'.dev-dependencies]
+libc = "=0.2.191"
+
+[[test]]
+name = "visual"
+harness = false
+
+# Text-fit checks with the real text system; see the file's header.
+[[test]]
+name = "text_fit"
+harness = false
+
+# Frame timing, built with the release profile by `scripts/gpui-frames.ts`.
+[[test]]
+name = "frames"
+harness = false
+
+# Dependency debug info made up 846 MB of the 1 GB visual test binary, and
+# linking it peaked at 4.7 GB RSS. KubeCove's own crates keep full debug info.
+[profile.dev.package."*"]
+debug = false
+
+[profile.dev.package.kubecove]
+debug = true
+
+# Action-to-settled latency on the real backend, run by `scripts/perf-gpui-speed.ts`.
+[[test]]
+name = "speed"
+harness = false

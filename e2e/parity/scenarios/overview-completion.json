@@ -1,0 +1,198 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "overview.namespace-application-recents",
+      "title": "Application and namespace visits preserve recency order and reopen their exact scope",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsResources", "kind": "Application", "name": "platform-argocd", "namespace": "argocd" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectWorkspaceEntry", "panel": "Recent", "label": "Application / platform-argocd", "index": 0, "count": 1 },
+        { "action": "openResources" },
+        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectWorkspaceEntry", "panel": "Recent", "label": "Namespace / payments", "index": 0, "count": 2 }
+      ]
+    },
+    {
+      "id": "overview.saved-namespace-comparison",
+      "title": "Compare separates saved namespace health without merging their resources",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Namespace compare" },
+        { "action": "toggleWorkspaceNamespace", "namespace": "payments" },
+        { "action": "toggleWorkspaceNamespace", "namespace": "todo" },
+        { "action": "createWorkspace" },
+        { "action": "expectOverviewScope", "labels": ["mock-dev", "2 namespaces", "Pod, Deployment, ReplicaSet, Job, CronJob, Service, Ingress, ConfigMap, Secret"] },
+        { "action": "expectCompareTotal", "title": "Compare namespaces", "side": "payments", "total": 9 },
+        { "action": "expectCompareTotal", "title": "Compare namespaces", "side": "todo", "total": 7 },
+        { "action": "expectOverviewHealth", "total": 16 }
+      ]
+    },
+    {
+      "id": "overview.saved-shortcut-preferences",
+      "title": "Imported shortcuts stay empty until editing regenerates the enabled namespace shortcut",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "choose-workspace" },
+        { "action": "openLauncher" },
+        { "action": "clickSettingsButton", "label": "Import" },
+        { "action": "clickSettingsButton", "label": "Apply import" },
+        { "action": "openSavedWorkspace", "name": "Controlled import" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectOverviewShortcuts", "labels": [] },
+        { "action": "openLauncher" },
+        { "action": "editSavedWorkspace", "name": "Controlled import" },
+        { "action": "saveWorkspace" },
+        { "action": "openSavedWorkspace", "name": "Controlled import" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectOverviewShortcuts", "labels": ["payments"] },
+        { "action": "overviewShortcut", "label": "payments" },
+        { "action": "expectNoResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectWorkspaceEntry", "panel": "Recent", "label": "Namespace / payments", "index": 0, "count": 1 }
+      ]
+    },
+    {
+      "id": "overview.unavailable-saved-scope",
+      "title": "Missing saved group members and namespaces stay visible after import",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "choose-unavailable-workspace" },
+        { "action": "openLauncher" },
+        { "action": "clickSettingsButton", "label": "Import" },
+        { "action": "clickSettingsButton", "label": "Apply import" },
+        { "action": "openSavedWorkspace", "name": "Unavailable scope" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectOverviewScope", "labels": ["Unavailable group (2)", "1 namespaces", "Pod"] },
+        { "action": "expectSettingsText", "value": "Unavailable saved scope" },
+        { "action": "expectSettingsText", "value": "Group members: missing-context" },
+        { "action": "expectSettingsText", "value": "Namespaces: missing-space" }
+      ]
+    },
+    {
+      "id": "overview.saved-context-comparison",
+      "title": "Overview shows saved group scope and separates context health totals",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Compare scope" },
+        { "action": "toggleWorkspaceContext", "context": "admin@solid-k8s" },
+        { "action": "toggleWorkspaceNamespace", "namespace": "payments" },
+        { "action": "createWorkspace" },
+        { "action": "expectOverviewScope", "labels": ["Compare scope group (2)", "1 namespaces", "Pod, Deployment, ReplicaSet, Job, CronJob, Service, Ingress, ConfigMap, Secret"] },
+        { "action": "expectCompareTotal", "title": "Compare contexts", "side": "mock-dev", "total": 9 },
+        { "action": "expectCompareTotal", "title": "Compare contexts", "side": "admin@solid-k8s", "total": 9 },
+        { "action": "expectOverviewHealth", "total": 18 },
+        { "action": "openResources" },
+        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectOverviewScope", "labels": ["Compare scope group (2)", "1 namespaces", "Pod, Deployment, ReplicaSet, Job, CronJob, Service, Ingress, ConfigMap, Secret"] },
+        { "action": "expectCompareTotal", "title": "Compare contexts", "side": "mock-dev", "total": 9 },
+        { "action": "openLauncher" },
+        { "action": "exportSavedWorkspace", "name": "Compare scope" },
+        { "action": "expectExportedShortcut", "name": "Compare scope", "shortcut": { "id": "compare:ctx:mock-dev:admin@solid-k8s", "label": "Compare", "kind": "compare", "compare": { "id": "ctx:mock-dev:admin@solid-k8s", "kind": "contexts", "label": "Compare contexts", "leftLabel": "mock-dev", "rightLabel": "admin@solid-k8s", "clusterContexts": ["mock-dev", "admin@solid-k8s"], "namespaces": ["payments"] } } }
+      ]
+    },
+    {
+      "id": "overview.compare-shortcut-roundtrip",
+      "title": "An imported Compare shortcut keeps its metadata through export, regenerates from scope on edit and survives reimport, while the cards follow the saved scope",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "choose-compare-workspace" },
+        { "action": "openLauncher" },
+        { "action": "clickSettingsButton", "label": "Import" },
+        { "action": "clickSettingsButton", "label": "Apply import" },
+        { "action": "openSavedWorkspace", "name": "Imported compare" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectOverviewShortcuts", "labels": ["Compare"] },
+        { "action": "expectCompareTotal", "title": "Compare contexts", "side": "mock-dev", "total": 9 },
+        { "action": "expectCompareTotal", "title": "Compare contexts", "side": "admin@solid-k8s", "total": 9 },
+        { "action": "openLauncher" },
+        { "action": "exportSavedWorkspace", "name": "Imported compare" },
+        { "action": "expectExportedShortcut", "name": "Imported compare", "shortcut": { "id": "compare:namespaces:kube-system:payments", "label": "Compare", "kind": "compare", "compare": { "id": "namespaces:kube-system:payments", "kind": "namespaces", "label": "Compare namespaces", "leftLabel": "kube-system", "rightLabel": "payments", "clusterContexts": ["mock-dev"], "namespaces": ["kube-system", "payments"] } } },
+        { "action": "editSavedWorkspace", "name": "Imported compare" },
+        { "action": "toggleWorkspaceNamespace", "namespace": "kube-system" },
+        { "action": "saveWorkspace" },
+        { "action": "exportSavedWorkspace", "name": "Imported compare" },
+        { "action": "expectExportedShortcut", "name": "Imported compare", "shortcut": { "id": "compare:ctx:mock-dev:admin@solid-k8s", "label": "Compare", "kind": "compare", "compare": { "id": "ctx:mock-dev:admin@solid-k8s", "kind": "contexts", "label": "Compare contexts", "leftLabel": "mock-dev", "rightLabel": "admin@solid-k8s", "clusterContexts": ["mock-dev", "admin@solid-k8s"], "namespaces": ["kube-system", "payments"] } } },
+        { "action": "configureSettingsMock", "script": "choose-last-export" },
+        { "action": "clickSettingsButton", "label": "Import" },
+        { "action": "importDecision", "choice": "Replace" },
+        { "action": "clickSettingsButton", "label": "Apply import" },
+        { "action": "exportSavedWorkspace", "name": "Imported compare" },
+        { "action": "expectExportedShortcut", "name": "Imported compare", "shortcut": { "id": "compare:ctx:mock-dev:admin@solid-k8s", "label": "Compare", "kind": "compare", "compare": { "id": "ctx:mock-dev:admin@solid-k8s", "kind": "contexts", "label": "Compare contexts", "leftLabel": "mock-dev", "rightLabel": "admin@solid-k8s", "clusterContexts": ["mock-dev", "admin@solid-k8s"], "namespaces": ["kube-system", "payments"] } } }
+      ]
+    },
+    {
+      "id": "overview.scoped-resource-retry",
+      "title": "Resource retry recovers the current saved workspace and clears its failure",
+      "steps": [
+        { "action": "configureShellRead", "phase": "resources-failed" },
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Scoped retry" },
+        { "action": "toggleWorkspaceNamespace", "namespace": "payments" },
+        { "action": "createWorkspace" },
+        { "action": "expectOverviewRetry" },
+        { "action": "configureShellRead", "phase": "ready" },
+        { "action": "retryOverview" },
+        { "action": "expectSettingsText", "value": "Workspace resources loaded successfully after retry." },
+        { "action": "expectOverviewHealth", "total": 9 },
+        { "action": "expectOpenWorkspace", "name": "Scoped retry", "context": "mock-dev" }
+      ]
+    },
+    {
+      "id": "settings-appearance.pointer-kind-order",
+      "title": "Pointer drag reorders a kind and persists movement between lanes",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Appearance" },
+        { "action": "dragKind", "kind": "Pod", "target": "Deployment" },
+        { "action": "expectResourceKindPosition", "kind": "Pod", "lane": "Show first", "index": 1 },
+        { "action": "dragKind", "kind": "Pod", "target": "lane:normal" },
+        { "action": "expectResourceKindPosition", "kind": "Pod", "lane": "Normal", "index": 8 },
+        { "action": "closeSettings" },
+        { "action": "restartClient" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Appearance" },
+        { "action": "expectResourceKindPosition", "kind": "Pod", "lane": "Normal", "index": 8 }
+      ]
+    },
+    {
+      "id": "workspaces.empty-context-launcher",
+      "title": "An empty context inventory blocks creation without reporting a read error",
+      "steps": [
+        { "action": "configureShellRead", "phase": "contexts-empty" },
+        { "action": "openLauncher" },
+        { "action": "expectEmptyLauncher" }
+      ]
+    },
+    {
+      "id": "overview.pin-restart-isolation-unpin",
+      "title": "Pins survive restart, stay workspace scoped and can be removed",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "toggleResourcePin", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "restartClient" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectWorkspaceEntry", "panel": "Pinned", "label": "Deployment / payments-api", "index": 0, "count": 1 },
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Isolated pins" },
+        { "action": "createWorkspace" },
+        { "action": "expectEntryCount", "panel": "Pinned", "count": 0 },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openResources" },
+        { "action": "toggleResourcePin", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectEntryCount", "panel": "Pinned", "count": 0 },
+        { "action": "restartClient" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectEntryCount", "panel": "Pinned", "count": 0 }
+      ]
+    }
+  ]
+}

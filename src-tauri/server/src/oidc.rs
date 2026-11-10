@@ -34,10 +34,23 @@ pub const AUTH_COOKIE: &str = "__Host-kubecove_oidc";
 #[path = "oidc_refresh.rs"]
 mod refresh;
 
+#[path = "oidc_validate.rs"]
+mod validate;
+pub(crate) use validate::validate_public_origin;
+#[cfg(test)]
+use validate::{test_metadata, test_origin};
+use validate::{validate_issuer, validate_metadata};
+
+#[path = "oidc_native.rs"]
+mod native;
+use native::{NativeCodes, NativeRequest};
+pub use native::{NativeStart, NativeToken};
+
 #[path = "oidc_cookies.rs"]
 mod cookies;
 pub use cookies::clear_cookie_header;
-use cookies::{auth_cookie, cookie_header, cookie_value, transaction_cookie};
+pub use cookies::names_cookie;
+use cookies::{auth_cookie, cookie_header, cookie_value, presented_credential, transaction_cookie};
 
 type OidcClient = CoreClient<
     EndpointSet,
@@ -126,6 +139,8 @@ pub struct Oidc {
     metadata: CoreProviderMetadata,
     transaction_key: [u8; 32],
     credentials: Mutex<HashMap<String, Credential>>,
+    /// Desktop authorization codes (ADR 0031). Lock after `credentials`.
+    codes: Mutex<NativeCodes>,
     /// The open sessions, each with the sign-in whose ID token its
     /// Kubernetes requests carry.
     bound: Mutex<Vec<Binding>>,
@@ -160,6 +175,8 @@ struct Verified {
     subject: String,
     exp: u64,
     tokens: Option<Tokens>,
+    /// The desktop request and its deadline, for a native transaction.
+    native: Option<(NativeRequest, u64)>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -169,6 +186,8 @@ struct Transaction {
     verifier: String,
     #[serde(rename = "exp")]
     expires_at: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    native: Option<NativeRequest>,
 }
 
 #[derive(Clone, Deserialize)]
@@ -185,6 +204,8 @@ struct TransactionClaims {
     verifier: String,
     #[serde(rename = "exp")]
     exp: u64,
+    #[serde(default)]
+    native: Option<NativeRequest>,
 }
 
 impl Oidc {
@@ -215,12 +236,34 @@ impl Oidc {
             metadata,
             transaction_key,
             credentials: Mutex::new(HashMap::new()),
+            codes: Mutex::default(),
             bound: Mutex::new(Vec::new()),
             allow_http_test: false,
         })
     }
 
     pub fn start(&self) -> Result<Response, ApiError> {
+        let (auth_url, signed) = self.begin(None)?;
+        let mut response = (
+            StatusCode::OK,
+            Json(serde_json::json!({ "authorizationUrl": auth_url.as_str() })),
+        )
+            .into_response();
+        response.headers_mut().append(
+            header::SET_COOKIE,
+            cookie_header(&transaction_cookie(&signed))?,
+        );
+        response
+            .headers_mut()
+            .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+        Ok(response)
+    }
+
+    /// The provider authorization URL and the signed transaction cookie value.
+    fn begin(
+        &self,
+        native: Option<NativeRequest>,
+    ) -> Result<(openidconnect::url::Url, String), ApiError> {
         let client = self
             .client(&self.metadata)
             .map_err(|_| oidc_unavailable())?;
@@ -241,22 +284,11 @@ impl Oidc {
             nonce: nonce.secret().to_owned(),
             verifier: verifier.secret().to_owned(),
             expires_at,
+            native,
         };
         let signed = sign_transaction(&transaction, &self.transaction_key)
             .map_err(|_| oidc_unavailable())?;
-        let mut response = (
-            StatusCode::OK,
-            Json(serde_json::json!({ "authorizationUrl": auth_url.as_str() })),
-        )
-            .into_response();
-        response.headers_mut().append(
-            header::SET_COOKIE,
-            cookie_header(&transaction_cookie(&signed))?,
-        );
-        response
-            .headers_mut()
-            .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-        Ok(response)
+        Ok((auth_url, signed))
     }
 
     pub async fn callback(
@@ -264,6 +296,12 @@ impl Oidc {
         headers: &HeaderMap,
         query: Callback,
     ) -> Result<Response, ApiError> {
+        if query.error.is_some()
+            && let Some(response) = self.native_denial(headers, query.state.as_deref())
+        {
+            observe::oidc_callback_failed(StatusCode::SEE_OTHER);
+            return Ok(response);
+        }
         let verified = match self.callback_inner(headers, query).await {
             Ok(verified) => verified,
             Err(error) => {
@@ -285,6 +323,7 @@ impl Oidc {
             subject,
             exp,
             tokens,
+            native,
         } = verified;
         let issuer = &self.config.issuer;
         // Without a refresh token the session ends with the ID token, as it
@@ -323,10 +362,15 @@ impl Oidc {
         let mut credentials = self.credentials.lock().map_err(|_| oidc_unavailable())?;
         self.prune_expired(&mut credentials);
         credentials.insert(opaque.clone(), credential);
-        let mut response = Redirect::to("/").into_response();
-        response
-            .headers_mut()
-            .append(header::SET_COOKIE, cookie_header(&auth_cookie(&opaque))?);
+        let response = match native {
+            Some((request, deadline)) => self.issue_code(&opaque, request, deadline),
+            None => browser_sign_in(&opaque),
+        };
+        if response.is_err() {
+            credentials.remove(&opaque);
+        }
+        drop(credentials);
+        let mut response = response?;
         response.headers_mut().append(
             header::SET_COOKIE,
             cookie_header(&clear_cookie_header(TRANSACTION_COOKIE))?,
@@ -405,6 +449,7 @@ impl Oidc {
             subject,
             exp,
             tokens,
+            native: transaction.native.map(|request| (request, transaction.exp)),
         })
     }
 
@@ -490,6 +535,7 @@ impl Oidc {
             metadata,
             transaction_key: key,
             credentials: Mutex::new(HashMap::new()),
+            codes: Mutex::default(),
             bound: Mutex::new(Vec::new()),
             allow_http_test: true,
         })
@@ -523,52 +569,6 @@ impl Oidc {
     }
 }
 
-fn authority_has_userinfo(value: &str) -> bool {
-    value
-        .split_once("://")
-        .and_then(|(_, rest)| rest.split(['/', '?', '#']).next())
-        .is_some_and(|authority| authority.contains('@'))
-}
-
-fn validate_issuer(issuer: &str) -> Result<(), String> {
-    let url = openidconnect::url::Url::parse(issuer)
-        .map_err(|_| "OIDC issuer must be a valid HTTPS URL")?;
-    if url.scheme() != "https"
-        || url.host_str().is_none()
-        || !url.username().is_empty()
-        || url.password().is_some()
-        || url.query().is_some()
-        || url.fragment().is_some()
-        || authority_has_userinfo(issuer)
-    {
-        return Err("OIDC issuer must be HTTPS without credentials, query, or fragment".into());
-    }
-    Ok(())
-}
-
-pub(crate) fn validate_public_origin(origin: &str) -> Result<String, String> {
-    let url = openidconnect::url::Url::parse(origin)
-        .map_err(|_| "OIDC public origin must be an exact HTTPS origin")?;
-    if url.scheme() != "https"
-        || url.host_str().is_none()
-        || !url.username().is_empty()
-        || url.password().is_some()
-        || url.path() != "/"
-        || url.query().is_some()
-        || url.fragment().is_some()
-        || authority_has_userinfo(origin)
-    {
-        return Err("OIDC public origin must be an exact HTTPS origin".into());
-    }
-    Ok(format!(
-        "https://{}{}",
-        url.host_str().unwrap_or_default(),
-        url.port()
-            .map(|port| format!(":{port}"))
-            .unwrap_or_default()
-    ))
-}
-
 async fn discover_metadata(
     issuer: &str,
     http: &reqwest::Client,
@@ -580,48 +580,6 @@ async fn discover_metadata(
     })
     .await
     .map_err(|_| "OIDC provider discovery failed".into())
-}
-
-#[cfg(test)]
-fn test_origin(origin: &str) -> Result<String, String> {
-    if origin.starts_with("https://") {
-        return validate_public_origin(origin);
-    }
-    crate::oidc::mock::test_loopback_origin(origin)
-}
-
-fn validate_metadata(
-    issuer: &str,
-    metadata: &CoreProviderMetadata,
-    allow_loopback_http: bool,
-) -> Result<(), String> {
-    if metadata.issuer().as_str() != issuer {
-        return Err("OIDC provider issuer does not match configured issuer".into());
-    }
-    let token_endpoint = metadata
-        .token_endpoint()
-        .ok_or("OIDC provider omitted its token endpoint")?;
-    let endpoints = [
-        metadata.authorization_endpoint().url(),
-        token_endpoint.url(),
-        metadata.jwks_uri().url(),
-    ];
-    for endpoint in endpoints {
-        let url = openidconnect::url::Url::parse(endpoint.as_str())
-            .map_err(|_| "invalid OIDC metadata endpoint")?;
-        let local_http = allow_loopback_http
-            && url.scheme() == "http"
-            && url.host_str().is_some_and(|host| {
-                host == "localhost"
-                    || host
-                        .parse::<std::net::IpAddr>()
-                        .is_ok_and(|ip| ip.is_loopback())
-            });
-        if (url.scheme() != "https" && !local_http) || url.host_str().is_none() {
-            return Err("OIDC metadata endpoints must use HTTPS".into());
-        }
-    }
-    Ok(())
 }
 
 fn client(timeout: Duration, https_only: bool) -> Result<reqwest::Client, String> {
@@ -711,6 +669,14 @@ fn timeout_seconds_ceil(timeout: Duration) -> u64 {
         .saturating_add(u64::from(timeout.subsec_nanos() > 0))
 }
 
+fn browser_sign_in(credential: &str) -> Result<Response, ApiError> {
+    let mut response = Redirect::to("/").into_response();
+    response
+        .headers_mut()
+        .append(header::SET_COOKIE, cookie_header(&auth_cookie(credential))?);
+    Ok(response)
+}
+
 fn callback_failure(denied: bool) -> Response {
     let mut response = if denied {
         Redirect::to("/").into_response()
@@ -746,20 +712,6 @@ fn oidc_unavailable() -> ApiError {
         "OIDC sign-in is temporarily unavailable",
         AppErrorKind::Internal,
     )
-}
-
-#[cfg(test)]
-fn test_metadata(issuer: &str) -> Result<CoreProviderMetadata, String> {
-    serde_json::from_value(serde_json::json!({
-        "issuer": issuer,
-        "authorization_endpoint": format!("{issuer}/auth"),
-        "token_endpoint": format!("{issuer}/token"),
-        "jwks_uri": format!("{issuer}/jwks"),
-        "response_types_supported": ["code"],
-        "subject_types_supported": ["public"],
-        "id_token_signing_alg_values_supported": ["RS256"]
-    }))
-    .map_err(|_| "invalid test provider metadata".into())
 }
 
 #[cfg(test)]

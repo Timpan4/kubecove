@@ -1,0 +1,106 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "yaml-apply.lint-failure",
+      "title": "A failed lint of the YAML draft shows the friendly lint failure until a later lint succeeds",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showYaml" },
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "lint_kubernetes_yaml", "context": "mock-dev" } },
+        { "action": "editYaml" },
+        { "action": "replaceYamlDraft", "value": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: payments-api\n  namespace: payments\n" },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "lint_kubernetes_yaml", "context": "mock-dev" } },
+        { "action": "mockTiming", "control": { "operation": "failOnce", "command": "lint_kubernetes_yaml", "context": "mock-dev", "kind": "transport" } },
+        { "action": "expectYamlNotice", "title": "KubeCove could not reach the Kubernetes API" },
+        { "action": "replaceYamlDraft", "value": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: payments-api\n  namespace: payments\nspec: {}\n" },
+        { "action": "expectNoYamlNotice", "title": "KubeCove could not reach the Kubernetes API" }
+      ]
+    },
+    {
+      "id": "yaml-apply.secret-disabled-message",
+      "title": "A Secret's YAML tab states why apply is disabled",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api-secrets" },
+        { "action": "openResource", "kind": "Secret", "name": "payments-api-secrets", "namespace": "payments" },
+        { "action": "showYaml" },
+        { "action": "expectYamlNotice", "title": "YAML apply unavailable" },
+        { "action": "expectYamlNotice", "title": "Secret YAML apply is disabled to avoid exposing sensitive data." }
+      ]
+    },
+    {
+      "id": "yaml-apply.dry-run-hint",
+      "title": "Apply names the dry run it needs and drops that description once a dry run reviews the draft",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showYaml" },
+        { "action": "editYaml" },
+        { "action": "expectYamlApplyDescription", "text": "Run a dry run before applying." },
+        { "action": "dryRunYaml" },
+        { "action": "expectDryRun", "contains": ["+# dry-run: browser mock", "  force-conflicts: false"] },
+        { "action": "expectNoYamlApplyDescription" }
+      ]
+    },
+    {
+      "id": "yaml-apply.dry-run-failure",
+      "title": "A failed dry run shows its friendly error instead of the raw message, and a later dry run clears it",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showYaml" },
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "prepare_yaml_apply", "context": "mock-dev" } },
+        { "action": "editYaml" },
+        { "action": "dryRunYaml" },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "prepare_yaml_apply", "context": "mock-dev" } },
+        { "action": "mockTiming", "control": { "operation": "failOnce", "command": "prepare_yaml_apply", "context": "mock-dev", "kind": "transport" } },
+        {
+          "action": "expectFriendlyError",
+          "title": "KubeCove could not reach the Kubernetes API",
+          "next": "Check the selected context's API endpoint, network or VPN path, and TLS certificate trust, then retry."
+        },
+        { "action": "expectNoYamlNotice", "title": "Dry run failed" },
+        { "action": "dryRunYaml" },
+        { "action": "expectDryRun", "contains": ["+# dry-run: browser mock"] },
+        { "action": "expectNoYamlNotice", "title": "KubeCove could not reach the Kubernetes API" }
+      ]
+    },
+    {
+      "id": "yaml-apply.unsaved-draft-guard",
+      "title": "A changed YAML draft refuses closing, opening another resource and changing scope until the draft is discarded",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showYaml" },
+        { "action": "editYaml" },
+        { "action": "replaceYamlDraft", "value": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: payments-api\n  namespace: payments\n  labels:\n    draft: kept\n" },
+        { "action": "closeDetail" },
+        { "action": "expectYamlNotice", "title": "This local draft has unsaved changes. Discard the local draft before changing target or closing." },
+        { "action": "expectDetail", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "openResource", "kind": "Service", "name": "payments-api", "namespace": "payments" },
+        { "action": "expectDetail", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "openPage", "page": "Helm" },
+        { "action": "expectDetail", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "selectNamespace", "namespace": "platform" },
+        { "action": "expectDetail", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "openLauncher" },
+        { "action": "expectDetail", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "expectYamlNotice", "title": "This local draft has unsaved changes. Discard the local draft before changing target or closing." },
+        { "action": "expectYamlDocument", "value": "{\"apiVersion\":\"apps/v1\",\"kind\":\"Deployment\",\"metadata\":{\"name\":\"payments-api\",\"namespace\":\"payments\",\"labels\":{\"draft\":\"kept\"}}}" },
+        { "action": "cancelYamlEdit" },
+        { "action": "expectNoYamlNotice", "title": "This local draft has unsaved changes. Discard the local draft before changing target or closing." },
+        { "action": "closeDetail" },
+        { "action": "expectDetailClosed" },
+        { "action": "openPage", "page": "Helm" },
+        { "action": "expectHelmRelease", "name": "grafana", "namespace": "monitoring" }
+      ]
+    }
+  ]
+}

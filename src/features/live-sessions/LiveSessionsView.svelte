@@ -40,7 +40,7 @@
 	import type { SavedPortForwardFormState, SavedPortForwardFormValues } from "./portForwardForms";
 
 	type LiveSessionStatus = {
-		query: { isPending: boolean; isError: boolean; error: unknown };
+		query: { data?: unknown; isPending: boolean; isError: boolean; error: unknown };
 		actionError: unknown;
 		actionMessage: string | null;
 		showKubeconfigSourceLabels: boolean;

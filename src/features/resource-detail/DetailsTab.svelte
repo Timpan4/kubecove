@@ -23,6 +23,7 @@
 		resourceStatusTone,
 	} from "./helpers";
 	import type { IncidentSignal, IncidentSignalValuePart } from "./helpers";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 
 	let {
 		detailsQuery,
@@ -52,6 +53,8 @@
 		containerReadyLabel,
 		containerStateLabel,
 	} = $props();
+	const detailsLoading = loadingDelay(() => detailsQuery.isPending);
+	const signalsLoading = loadingDelay(() => eventsQuery.isPending);
 
 	function signalValueParts(signal: IncidentSignal): IncidentSignalValuePart[] {
 		return signal.valueParts ?? [{ kind: "text", text: signal.value }];
@@ -59,11 +62,13 @@
 </script>
 
 <TabsContent value="details" class="min-h-0">
-		{#if detailsQuery.isPending}
-			<div class="flex min-h-32 items-center justify-center gap-2 text-muted-foreground">
-				<Spinner />
-				<span>Loading details</span>
-			</div>
+		{#if detailsLoading.active}
+			{#if detailsLoading.shown}
+				<div class="flex min-h-32 items-center justify-center gap-2 text-muted-foreground">
+					<Spinner />
+					<span>Loading details</span>
+				</div>
+			{/if}
 		{:else if detailsQuery.isError}
 			<FriendlyError
 				error={detailsQuery.error}
@@ -148,9 +153,11 @@
 						</div>
 					</div>
 					<div class="mt-3 flex flex-col gap-2">
-						{#if topIncidentSignals.length === 0}
+						{#if signalsLoading.active && !signalsLoading.shown}
+							<!-- The events read has not passed the loading delay. -->
+						{:else if topIncidentSignals.length === 0}
 							<div class="rounded-md border bg-surface-0 px-3 py-2 text-xs text-muted-foreground">
-								{eventsQuery.isPending
+								{signalsLoading.shown
 									? "Checking events and status signals..."
 									: eventsQuery.isError
 										? "Status loaded; event signals are unavailable."

@@ -1,0 +1,33 @@
+{
+  "apiVersion": "kubecove.dev/workspace/v1",
+  "kind": "Workspace",
+  "metadata": { "name": "imported-compare" },
+  "spec": {
+    "displayName": "Imported compare",
+    "scope": {
+      "clusterContext": "mock-dev",
+      "clusterGroup": { "id": "cluster-group:mock-dev|admin@solid-k8s", "name": "Imported compare contexts", "members": ["mock-dev", "admin@solid-k8s"] },
+      "namespaces": ["payments"],
+      "kinds": ["Pod", "Deployment", "ReplicaSet", "Job", "CronJob", "Service", "Ingress", "ConfigMap", "Secret"],
+      "layout": "overview",
+      "argoAppFilter": ""
+    },
+    "shortcuts": [
+      {
+        "id": "compare:namespaces:kube-system:payments",
+        "label": "Compare",
+        "kind": "compare",
+        "compare": {
+          "id": "namespaces:kube-system:payments",
+          "kind": "namespaces",
+          "label": "Compare namespaces",
+          "leftLabel": "kube-system",
+          "rightLabel": "payments",
+          "clusterContexts": ["mock-dev"],
+          "namespaces": ["kube-system", "payments"]
+        }
+      }
+    ],
+    "portForwards": []
+  }
+}

@@ -39,6 +39,7 @@
 	import SettingsRow from "./SettingsRow.svelte";
 	import { getSettingsSnapshot, settingsStore } from "@/lib/settings-store";
 	import { KUBECONFIG_SOURCES_QUERY_KEY, kubeconfigSourcesQueryOptions } from "@/lib/kubeconfig-sources-query";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 
 	const client = createTauriClient();
 	const remoteFilesystem = $derived(isBrowserRuntime() || $desktopRemoteConnection !== null);
@@ -50,6 +51,7 @@
 	const settings = $derived($settingsStore);
 	const sourceQuery = createQuery(() => kubeconfigSourcesQueryOptions(client));
 	const sources = $derived(sourceQuery.data ?? null);
+	const sourcesLoading = loadingDelay(() => sourceQuery.isPending);
 	const sourceBusy = $derived(sourceActionBusy || sourceQuery.isFetching);
 	const sourceError = $derived(
 		sourceActionError ??
@@ -65,6 +67,7 @@
 	}
 
 	function sourceDescription(): string {
+		if (sourcesLoading.active) return sourcesLoading.shown ? "Loading kubeconfig sources." : "";
 		if (!sources) return "Loading kubeconfig sources.";
 		return remoteFilesystem
 			? `${sources.sourceLabel}. Paths refer to files on the KubeCove server.`
@@ -170,7 +173,6 @@
 				bind:value={envDraft}
 				placeholder={DEFAULT_KUBECONFIG_ENV_VAR}
 				aria-label="Kubeconfig env var"
-				oninput={() => getSettingsSnapshot().setKubeconfigEnvVar(envDraft)}
 			/>
 			<Button
 				type="button"

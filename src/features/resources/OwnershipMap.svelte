@@ -15,6 +15,7 @@
 		EmptyTitle,
 		Spinner,
 	} from "@/components/ui/svelte";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import type { ResourceSummary, ResourceTopology, TopologyMode } from "@/lib/types";
 	import {
 		buildFlowTopologyLayoutState,
@@ -23,6 +24,7 @@
 		type FlowTopologyNode,
 	} from "./topology";
 	import { buildFlowTopologyEdgeLayer } from "./topology-edge-layer";
+	import MapContextSelect from "./MapContextSelect.svelte";
 	import OwnershipMapEdgeLayer from "./OwnershipMapEdgeLayer.svelte";
 	import OwnershipMapViewport from "./OwnershipMapViewport.svelte";
 	import OwnershipResourceNode from "./OwnershipResourceNode.svelte";
@@ -48,6 +50,9 @@
 		onNodeSelect,
 		onMapToggle,
 		updatesCurrent = true,
+		contexts = [],
+		mapContext = "",
+		onMapContextChange = () => {},
 	}: {
 		topology: ResourceTopology | undefined;
 		isLoading: boolean;
@@ -61,8 +66,13 @@
 		onNodeSelect: (nodeId: string, resource: ResourceSummary | null) => void;
 		onMapToggle?: () => void;
 		updatesCurrent?: boolean;
+		/** Workspace contexts in rank order; more than one shows the Map context select. */
+		contexts?: readonly string[];
+		mapContext?: string;
+		onMapContextChange?: (context: string) => void;
 	} = $props();
 	setContext(RESOURCE_ACTIVITY_CURRENT, () => updatesCurrent);
+	const loading = loadingDelay(() => isLoading);
 
 	let viewportWidth = $state(0);
 	let viewportHeight = $state(0);
@@ -181,6 +191,9 @@
 			</div>
 		</div>
 		<div class="flex items-center gap-2">
+			{#if contexts.length > 1}
+				<MapContextSelect {contexts} value={mapContext} onChange={onMapContextChange} />
+			{/if}
 			<div class="inline-flex h-8 overflow-hidden rounded-md border bg-background p-0.5">
 				<Button
 					variant={mode === "ownership" ? "secondary" : "ghost"}
@@ -209,10 +222,12 @@
 		</div>
 	</div>
 
-	{#if isLoading}
+	{#if loading.active}
 		<div class="flex min-h-80 flex-1 items-center justify-center gap-2 text-xs text-muted-foreground">
-			<Spinner />
-			<span>Loading topology</span>
+			{#if loading.shown}
+				<Spinner />
+				<span>Loading topology</span>
+			{/if}
 		</div>
 	{:else if isError}
 		<div class="p-3">
@@ -230,7 +245,7 @@
 		</Empty>
 	{:else}
 		<p class="border-b px-3 py-1.5 text-[0.6875rem] text-muted-foreground">
-			Drag to pan. Use controls to zoom. Press Tab to reach graph nodes, or
+			Drag to pan. Scroll or use controls to zoom. Press Tab to reach graph nodes, or
 			<Button
 				variant="link"
 				size="xs"
@@ -256,10 +271,10 @@
 					nodesConnectable={false}
 					panOnDrag={true}
 					panOnScroll={false}
-					preventScrolling={false}
+					preventScrolling={true}
 					edgesFocusable={false}
 					zoomOnDoubleClick={false}
-					zoomOnScroll={false}
+					zoomOnScroll={true}
 					{onlyRenderVisibleElements}
 					proOptions={{ hideAttribution: true }}
 					onnodeclick={handleNodeClick}

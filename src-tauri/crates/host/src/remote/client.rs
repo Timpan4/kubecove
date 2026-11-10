@@ -1,4 +1,11 @@
-use super::models::{RemoteConnectionSummary, RemoteCredentials, ServerSession};
+use super::http::{
+    api_url, http_client, install_tls_provider, network_error, normalize_server_url, redact,
+    response_json, response_value, session_error, validation_error,
+};
+use super::models::{
+    RemoteAuthMode, RemoteConnectionSummary, RemoteCredentials, RemoteSessionState, ServerSession,
+};
+use super::session_signal::signal_session_changed;
 use super::tunnels::RemoteTunnelRegistry;
 use futures_util::{SinkExt, StreamExt};
 use kubecove_kube::runtime::Channel;
@@ -6,7 +13,7 @@ use kubecove_models::{
     AppError, AppErrorKind, MAX_TUNNEL_PAYLOAD_BYTES, MAX_WEBSOCKET_MESSAGE_BYTES,
     decode_tunnel_frame, encode_tunnel_frame, is_tunnel_connection_id,
 };
-use reqwest::{Client as HttpClient, Url, header::HeaderValue};
+use reqwest::{Client as HttpClient, StatusCode, header::HeaderValue};
 use serde::Deserialize;
 use serde_json::{Value, json, value::RawValue};
 use std::{
@@ -18,7 +25,7 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    sync::{RwLock, mpsc, oneshot},
+    sync::{mpsc, oneshot},
     task::JoinHandle,
     time::Instant,
 };
@@ -29,18 +36,6 @@ use tokio_tungstenite::{
         protocol::WebSocketConfig,
     },
 };
-
-pub struct RemoteConnectionStore {
-    pub(super) current: RwLock<Option<Arc<RemoteConnection>>>,
-}
-
-impl Default for RemoteConnectionStore {
-    fn default() -> Self {
-        Self {
-            current: RwLock::new(None),
-        }
-    }
-}
 
 pub struct RemoteConnection {
     pub(super) credentials: RemoteCredentials,
@@ -53,6 +48,40 @@ pub struct RemoteConnection {
     pub(super) tunnels: Arc<RemoteTunnelRegistry>,
     active: AtomicBool,
     socket_task: Mutex<Option<JoinHandle<()>>>,
+    pub(super) status: ConnectionStatus,
+}
+
+/// Why the session stopped, and whether the socket is reconnecting.
+#[derive(Default)]
+pub(super) struct ConnectionStatus {
+    ended: Mutex<Option<RemoteSessionState>>,
+    reconnecting: AtomicBool,
+}
+
+/// A failed `connect`. `unauthorized` marks a refused sign-in credential.
+pub(super) struct ConnectFailure {
+    pub error: AppError,
+    pub unauthorized: bool,
+}
+
+impl From<AppError> for ConnectFailure {
+    fn from(error: AppError) -> Self {
+        Self {
+            error,
+            unauthorized: false,
+        }
+    }
+}
+
+enum UpgradeFailure {
+    Refused(StatusCode),
+    Failed(AppError),
+}
+
+impl From<AppError> for UpgradeFailure {
+    fn from(error: AppError) -> Self {
+        Self::Failed(error)
+    }
 }
 
 impl RemoteConnection {
@@ -67,7 +96,24 @@ impl RemoteConnection {
             .send()
             .await
             .map_err(network_error)?;
-        response_value(response).await
+        let status = response.status();
+        let result = response_value(response)
+            .await
+            .map_err(|error| self.redact(error));
+        if let Err(error) = &result {
+            self.observe_refusal(status, error);
+        }
+        result
+    }
+
+    fn redact(&self, error: AppError) -> AppError {
+        redact(
+            error,
+            &[
+                &self.credentials.bearer_token,
+                &self.credentials.resume_token,
+            ],
+        )
     }
 
     pub fn subscribe(
@@ -107,7 +153,12 @@ impl RemoteConnection {
             .send()
             .await
             .map_err(network_error)?;
-        response_value(response).await?;
+        let status = response.status();
+        if let Err(error) = response_value(response).await {
+            let error = self.redact(error);
+            self.observe_refusal(status, &error);
+            return Err(error);
+        }
         Ok(removed)
     }
 
@@ -136,10 +187,10 @@ impl RemoteConnection {
             .await
             .map_err(|_| session_error("remote server WebSocket is closed"))?;
         if response.get("type").and_then(Value::as_str) == Some("tunnel_error") {
-            return Err(serde_json::from_value(
-                response.get("error").cloned().unwrap_or(Value::Null),
-            )
-            .unwrap_or_else(|_| session_error("remote tunnel request failed")));
+            return Err(self.redact(
+                serde_json::from_value(response.get("error").cloned().unwrap_or(Value::Null))
+                    .unwrap_or_else(|_| session_error("remote tunnel request failed")),
+            ));
         }
         Ok(response)
     }
@@ -196,8 +247,8 @@ impl RemoteConnection {
 
     /// Ends the session after the socket is lost for good. Subscribed channels stay
     /// registered; only `close` clears them.
-    fn end_socket_session(&self) {
-        self.active.store(false, Ordering::Release);
+    fn end_socket_session(&self, state: RemoteSessionState) {
+        self.end(state);
         self.fail_controls();
         self.tunnel_senders
             .lock()
@@ -207,6 +258,18 @@ impl RemoteConnection {
     }
 
     pub async fn close(&self) {
+        drop(self.close_on("session/close"));
+    }
+
+    /// Signs out at the server, which revokes the sign-in and closes this
+    /// session, and closes the connection here (ADR 0031).
+    pub(super) async fn sign_out(&self) {
+        let _ = self.close_on("oidc/logout").await;
+    }
+
+    /// Stops local use at once; the server request runs in the background
+    /// within the session grace window.
+    fn close_on(&self, endpoint: &'static str) -> JoinHandle<()> {
         self.active.store(false, Ordering::Release);
         if let Some(task) = self
             .socket_task
@@ -234,7 +297,7 @@ impl RemoteConnection {
         let grace = Duration::from_secs(self.summary.session_grace_seconds);
         tokio::spawn(async move {
             let close_result = async {
-                let url = api_url(&server_url, "session/close")?;
+                let url = api_url(&server_url, endpoint)?;
                 let response = http
                     .post(url)
                     .bearer_auth(&bearer_token)
@@ -253,11 +316,60 @@ impl RemoteConnection {
                     error.kind.as_str()
                 );
             }
-        });
+        })
     }
 
     pub fn is_active(&self) -> bool {
         self.active.load(Ordering::Acquire)
+    }
+
+    pub(super) fn session_state(&self) -> RemoteSessionState {
+        if let Some(ended) = *self.status.ended.lock().expect("remote status lock") {
+            return ended;
+        }
+        if !self.is_active() {
+            RemoteSessionState::SessionEnded
+        } else if self.status.reconnecting.load(Ordering::Acquire) {
+            RemoteSessionState::Reconnecting
+        } else {
+            RemoteSessionState::Connected
+        }
+    }
+
+    /// Records the first reason the session stopped, then tells the views.
+    fn end(&self, state: RemoteSessionState) {
+        self.status
+            .ended
+            .lock()
+            .expect("remote status lock")
+            .get_or_insert(state);
+        self.active.store(false, Ordering::Release);
+        self.fail_controls();
+        signal_session_changed();
+    }
+
+    /// HTTP 401 means the sign-in is gone; 409 with kind Session means the
+    /// session is (ADR 0031 session-state table). The socket, its tunnel
+    /// relays and channel deliveries stop with it.
+    fn observe_refusal(&self, status: StatusCode, error: &AppError) {
+        let state = if status == StatusCode::UNAUTHORIZED {
+            RemoteSessionState::SignInExpired
+        } else if status == StatusCode::CONFLICT && error.kind == AppErrorKind::Session {
+            RemoteSessionState::SessionEnded
+        } else {
+            return;
+        };
+        // Only HTTP command calls observe refusals, never the socket task, so
+        // stopping that task here cannot cut its own cleanup short.
+        if let Some(task) = self
+            .socket_task
+            .lock()
+            .expect("remote socket task lock")
+            .take()
+        {
+            task.abort();
+        }
+        self.end_socket_session(state);
     }
 
     fn fail_controls(&self) {
@@ -268,21 +380,19 @@ impl RemoteConnection {
     }
 }
 
-pub async fn connect(
+pub(super) async fn connect(
     server_url: &str,
     bearer_token: &str,
     resume_token: Option<&str>,
-) -> Result<Arc<RemoteConnection>, AppError> {
+    auth_mode: RemoteAuthMode,
+) -> Result<Arc<RemoteConnection>, ConnectFailure> {
     let server_url = normalize_server_url(server_url)?;
     let bearer_token = bearer_token.trim();
     if bearer_token.is_empty() {
-        return Err(validation_error("server token is required"));
+        return Err(validation_error("server token is required").into());
     }
     install_tls_provider();
-    let http = HttpClient::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .map_err(network_error)?;
+    let http = http_client()?;
     let session_url = api_url(&server_url, "session")?;
     let mut login = json!({});
     if let Some(resume_token) = resume_token {
@@ -295,7 +405,13 @@ pub async fn connect(
         .send()
         .await
         .map_err(network_error)?;
-    let session: ServerSession = response_json(response).await?;
+    let unauthorized = response.status() == StatusCode::UNAUTHORIZED;
+    let session: ServerSession = response_json(response)
+        .await
+        .map_err(|error| ConnectFailure {
+            error: redact(error, &[bearer_token, resume_token.unwrap_or_default()]),
+            unauthorized,
+        })?;
     let credentials = RemoteCredentials {
         server_url,
         bearer_token: bearer_token.to_string(),
@@ -306,8 +422,24 @@ pub async fn connect(
         server_version: session.server_version,
         session_grace_seconds: session.session_grace_seconds,
         connected: true,
+        credential_store: session.credential_store,
+        auth_mode,
+        session_state: RemoteSessionState::Connected,
+        sign_in_memory_only: false,
+        sign_in_not_deleted: false,
     };
-    let socket = connect_websocket(&credentials).await?;
+    let socket = connect_websocket(&credentials)
+        .await
+        .map_err(|failure| match failure {
+            UpgradeFailure::Refused(status) => ConnectFailure {
+                error: AppError::new(
+                    "the remote server refused the WebSocket connection",
+                    AppErrorKind::Session,
+                ),
+                unauthorized: status == StatusCode::UNAUTHORIZED,
+            },
+            UpgradeFailure::Failed(error) => error.into(),
+        })?;
     let (outgoing, receiver) = mpsc::channel(32);
     let connection = Arc::new(RemoteConnection {
         credentials,
@@ -320,6 +452,7 @@ pub async fn connect(
         tunnels: Arc::new(RemoteTunnelRegistry::default()),
         active: AtomicBool::new(true),
         socket_task: Mutex::new(None),
+        status: ConnectionStatus::default(),
     });
     let connection_for_task = Arc::clone(&connection);
     let task = tokio::spawn(async move {
@@ -336,7 +469,7 @@ async fn connect_websocket(
     credentials: &RemoteCredentials,
 ) -> Result<
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
-    AppError,
+    UpgradeFailure,
 > {
     let mut url = api_url(&credentials.server_url, "channels")?;
     let scheme = if url.scheme() == "https" { "wss" } else { "ws" };
@@ -367,12 +500,17 @@ async fn connect_websocket(
     connect_async_with_config(request, Some(config), false)
         .await
         .map(|(socket, _)| socket)
-        .map_err(|error| {
-            AppError::new(
-                "could not connect to the remote server WebSocket",
-                AppErrorKind::Network,
-            )
-            .with_source(error)
+        .map_err(|error| match error {
+            tokio_tungstenite::tungstenite::Error::Http(response) => {
+                UpgradeFailure::Refused(response.status())
+            }
+            error => UpgradeFailure::Failed(
+                AppError::new(
+                    "could not connect to the remote server WebSocket",
+                    AppErrorKind::Network,
+                )
+                .with_source(error),
+            ),
         })
 }
 
@@ -427,15 +565,20 @@ async fn run_socket(
         drop(reader);
 
         if moved {
-            connection.end_socket_session();
+            connection.end_socket_session(RemoteSessionState::SessionEnded);
             return;
         }
 
         let disconnected_at = Instant::now();
         let reconnect_deadline = disconnected_at + grace;
+        connection
+            .status
+            .reconnecting
+            .store(true, Ordering::Release);
+        signal_session_changed();
         loop {
             if Instant::now() >= reconnect_deadline {
-                connection.end_socket_session();
+                connection.end_socket_session(RemoteSessionState::SessionExpired);
                 return;
             }
             match tokio::time::timeout_at(
@@ -446,7 +589,21 @@ async fn run_socket(
             {
                 Ok(Ok(reconnected)) => {
                     socket = reconnected;
+                    connection
+                        .status
+                        .reconnecting
+                        .store(false, Ordering::Release);
+                    signal_session_changed();
                     break;
+                }
+                // A refused credential or session will not come back by retrying.
+                Ok(Err(UpgradeFailure::Refused(StatusCode::UNAUTHORIZED))) => {
+                    connection.end_socket_session(RemoteSessionState::SignInExpired);
+                    return;
+                }
+                Ok(Err(UpgradeFailure::Refused(StatusCode::CONFLICT))) => {
+                    connection.end_socket_session(RemoteSessionState::SessionEnded);
+                    return;
                 }
                 Ok(Err(_)) => {
                     let retry_at =
@@ -454,7 +611,7 @@ async fn run_socket(
                     tokio::time::sleep_until(retry_at).await;
                 }
                 Err(_) => {
-                    connection.end_socket_session();
+                    connection.end_socket_session(RemoteSessionState::SessionExpired);
                     return;
                 }
             }
@@ -513,8 +670,7 @@ fn handle_text(connection: &RemoteConnection, text: &str) -> bool {
         .and_then(Value::as_str)
         .unwrap_or_default();
     if kind == "session_moved" {
-        connection.active.store(false, Ordering::Release);
-        connection.fail_controls();
+        connection.end(RemoteSessionState::SessionEnded);
         return true;
     }
     if (kind == "tunnel_closed" || kind == "tunnel_error")
@@ -568,102 +724,6 @@ fn control_key(value: &Value) -> Option<String> {
         "tunnel_error" => Some(format!("tunnel_registered:{forward_id}")),
         _ => None,
     }
-}
-
-fn normalize_server_url(value: &str) -> Result<String, AppError> {
-    let value = value.trim();
-    let url = Url::parse(value).map_err(|error| {
-        AppError::new(
-            "server URL must be a valid HTTP or HTTPS URL",
-            AppErrorKind::Validation,
-        )
-        .with_source(error)
-    })?;
-    if !matches!(url.scheme(), "http" | "https")
-        || url.host_str().is_none()
-        || !url.username().is_empty()
-        || url.password().is_some()
-        || url.query().is_some()
-        || url.fragment().is_some()
-    {
-        return Err(validation_error(
-            "server URL must use HTTP or HTTPS and cannot include credentials, query, or fragment",
-        ));
-    }
-    if url.scheme() == "http" {
-        let host = url.host_str().expect("host validated above");
-        let is_loopback = host == "localhost"
-            || host
-                .trim_start_matches('[')
-                .trim_end_matches(']')
-                .parse::<std::net::IpAddr>()
-                .is_ok_and(|address| address.is_loopback());
-        if !is_loopback {
-            return Err(validation_error("non-loopback server URLs require HTTPS"));
-        }
-    }
-    Ok(value.trim_end_matches('/').to_string())
-}
-
-fn api_url(server_url: &str, path: &str) -> Result<Url, AppError> {
-    Url::parse(&format!(
-        "{}/api/v1/{path}",
-        server_url.trim_end_matches('/')
-    ))
-    .map_err(|error| {
-        AppError::new("server URL is invalid", AppErrorKind::Validation).with_source(error)
-    })
-}
-
-async fn response_value(response: reqwest::Response) -> Result<Value, AppError> {
-    let status = response.status();
-    let value = response.json::<Value>().await.map_err(network_error)?;
-    if status.is_success() {
-        return Ok(value);
-    }
-    let error = serde_json::from_value::<AppError>(value).unwrap_or_else(|_| {
-        AppError::new(
-            "remote server returned an invalid error response",
-            AppErrorKind::Transport,
-        )
-    });
-    Err(error)
-}
-
-async fn response_json<T: serde::de::DeserializeOwned>(
-    response: reqwest::Response,
-) -> Result<T, AppError> {
-    let status = response.status();
-    if !status.is_success() {
-        let error = response.json::<AppError>().await.unwrap_or_else(|_| {
-            AppError::new(
-                "remote server rejected the connection request",
-                AppErrorKind::Transport,
-            )
-        });
-        return Err(error);
-    }
-    response.json::<T>().await.map_err(network_error)
-}
-
-fn install_tls_provider() {
-    let _ = rustls::crypto::ring::default_provider().install_default();
-}
-
-fn network_error(error: impl std::error::Error + Send + Sync + 'static) -> AppError {
-    AppError::new(
-        "remote server network request failed",
-        AppErrorKind::Network,
-    )
-    .with_source(error)
-}
-
-fn validation_error(message: &str) -> AppError {
-    AppError::new(message, AppErrorKind::Validation)
-}
-
-fn session_error(message: &str) -> AppError {
-    AppError::new(message, AppErrorKind::Session)
 }
 
 #[cfg(test)]

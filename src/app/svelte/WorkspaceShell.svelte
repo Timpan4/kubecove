@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { cancelledQueryRetry } from "@/lib/query-retry";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import ArgoAutoReconnect from "@/features/gitops/ArgoAutoReconnect.svelte";
 	import ArgoOperationMonitor from "@/features/gitops/ArgoOperationMonitor.svelte";
 	import { markStartup } from "@/lib/startup-marks";
@@ -60,6 +62,9 @@
 		confirmStoppingExecSessions,
 		hasOpenExecSessions,
 	} from "@/features/live-sessions/openExecSessions.svelte";
+	import { canLeaveYamlDraft } from "@/features/resource-detail/yamlDraftGuard.svelte";
+	import { installYamlDraftCloseGuard } from "@/features/resource-detail/yamlDraftCloseGuard";
+	import YamlDraftNotice from "@/features/resource-detail/YamlDraftNotice.svelte";
 	import NamespaceList from "@/features/resources/NamespaceList.svelte";
 	import ResourceBrowser from "@/features/resources/ResourceBrowser.svelte";
 	import type { HealthFilter } from "@/features/resources/helpers";
@@ -73,6 +78,9 @@
 	import { gitOpsSelectionResource } from "@/lib/gitops-resource";
 	import { workspaceStore } from "@/features/workspaces/workspaceStore";
 	import AppSurfaces from "./AppSurfaces.svelte";
+	import RemoteWorkspaceNotice from "@/features/remote-connection/RemoteWorkspaceNotice.svelte";
+	import { remoteNotice } from "@/lib/remote-notice";
+	import { desktopRemoteConnection } from "@/lib/remote-runtime";
 	import AppUsageFooter from "./AppUsageFooter.svelte";
 	import CommandPalette from "./CommandPalette.svelte";
 	import DetailPanelFrame from "./DetailPanelFrame.svelte";
@@ -89,6 +97,8 @@
 		createWorkspaceNavigation,
 		navigateWorkspace,
 		treeNodeForResource,
+		rememberedWorkspacePath,
+		rememberWorkspacePath,
 		workspacePathForWorkspace,
 		workspaceNavigationSnapshot,
 		type WorkspaceNavigationIntent,
@@ -125,7 +135,10 @@
 		}),
 	);
 	function initialPathSnapshotForWorkspace() {
-		return workspacePathForWorkspace(workspace, initialPathState);
+		return workspacePathForWorkspace(
+			workspace,
+			initialPathState ?? rememberedWorkspacePath(workspace.id),
+		);
 	}
 	const initialPathSnapshot = initialPathSnapshotForWorkspace();
 	function initialWorkspaceNavigation() {
@@ -169,25 +182,6 @@
 	let rbacVerifierReturnLabel = $state<string | undefined>();
 	const kubeconfigSourceKey = $derived($settingsStore.kubeconfigSourceKey);
 	const showCustomResources = $derived($settingsStore.showCustomResources);
-
-	const navigationWorkspaceName = $derived(workspace.name);
-	const navigationWorkspaceScope = $derived(workspace.scope);
-	const navigationModel = $derived(
-		buildWorkspaceNavigationModel(
-			{ name: navigationWorkspaceName, scope: navigationWorkspaceScope },
-			{ selectedNode, viewMode, resourceNamespaceOverride },
-		),
-	);
-	const title = $derived(navigationModel.title);
-	const placeholder = $derived(navigationModel.placeholder);
-	const scopeSummary = $derived(summarizeWorkspaceScope(workspace.scope));
-	const isOverview = $derived(navigationModel.isOverview);
-	const isNamespaceList = $derived(navigationModel.isNamespaceList);
-	const resourceBrowserScope = $derived(navigationModel.resourceBrowserScope);
-	const resourceBrowserNamespaces = $derived(resourceBrowserScope.namespaces);
-	const fixedResourceKindScope = $derived(
-		selectedNode?.type === "kind",
-	);
 	const workspaceCustomResourcePrewarmQuery = createQuery<DiscoveredResourceKind[]>(() => ({
 		queryKey: queryKeys.presentCustomResourceKinds(
 			workspace.scope.clusterContext,
@@ -203,8 +197,30 @@
 		),
 		enabled: showCustomResources && workspaceReadContext.sourceReady && Boolean(workspace.scope.clusterContext),
 		staleTime: 30_000,
-		retry: false,
+		retry: cancelledQueryRetry,
 	}));
+
+	const navigationWorkspaceName = $derived(workspace.name);
+	const navigationWorkspaceScope = $derived(workspace.scope);
+	const navigationModel = $derived(
+		buildWorkspaceNavigationModel(
+			{ name: navigationWorkspaceName, scope: navigationWorkspaceScope },
+			{ selectedNode, viewMode, resourceNamespaceOverride },
+			// The workspace-wide read, as the Custom Resources section spans every workspace namespace.
+			showCustomResources ? (workspaceCustomResourcePrewarmQuery.data ?? []) : [],
+		),
+	);
+	const title = $derived(navigationModel.title);
+	const placeholder = $derived(navigationModel.placeholder);
+	const scopeSummary = $derived(summarizeWorkspaceScope(workspace.scope));
+	const isOverview = $derived(navigationModel.isOverview);
+	const remoteNoticeShown = $derived(viewMode !== "settings" && $desktopRemoteConnection !== null && remoteNotice($desktopRemoteConnection) !== null);
+	const isNamespaceList = $derived(navigationModel.isNamespaceList);
+	const resourceBrowserScope = $derived(navigationModel.resourceBrowserScope);
+	const resourceBrowserNamespaces = $derived(resourceBrowserScope.namespaces);
+	const fixedResourceKindScope = $derived(
+		selectedNode?.type === "kind",
+	);
 	const includePresentCustomResources = $derived(
 		resourceBrowserScope.canQuery &&
 			(resourceGitOpsFocusApplication !== null ||
@@ -230,7 +246,7 @@
 			Boolean(workspace.scope.clusterContext) &&
 			includePresentCustomResources,
 		staleTime: 30_000,
-		retry: false,
+		retry: cancelledQueryRetry,
 	}));
 	const presentCustomResourceKinds = $derived(
 		!showCustomResources
@@ -239,19 +255,24 @@
 				? (presentCustomResourceKindsQuery.data ?? workspaceCustomResourcePrewarmQuery.data ?? [])
 				: (workspaceCustomResourcePrewarmQuery.data ?? []),
 	);
+	const customResourcesLoading = loadingDelay(
+		() =>
+			workspaceCustomResourcePrewarmQuery.isPending ||
+			workspaceCustomResourcePrewarmQuery.isFetching ||
+			(includePresentCustomResources &&
+				(presentCustomResourceKindsQuery.isPending || presentCustomResourceKindsQuery.isFetching)),
+	);
 	const customResourcesStatus = $derived(
 		!showCustomResources
 			? "Custom Resources off"
 			: workspaceCustomResourcePrewarmQuery.isError ||
 				  (includePresentCustomResources && presentCustomResourceKindsQuery.isError)
 				? "Custom Resources unavailable"
-				: workspaceCustomResourcePrewarmQuery.isPending ||
-					  workspaceCustomResourcePrewarmQuery.isFetching ||
-					  (includePresentCustomResources &&
-							(presentCustomResourceKindsQuery.isPending ||
-								presentCustomResourceKindsQuery.isFetching))
+				: customResourcesLoading.shown
 					? "Loading Custom Resources"
-					: presentCustomResourceKinds.length > 0
+					: customResourcesLoading.active
+						? null
+						: presentCustomResourceKinds.length > 0
 						? "Custom Resources added"
 						: null,
 	);
@@ -300,6 +321,7 @@
 		};
 		window.addEventListener("resize", closeNarrowNavigation);
 		window.addEventListener("pagehide", flushPathStateWrite);
+		const stopYamlDraftCloseGuard = installYamlDraftCloseGuard();
 		window.addEventListener("beforeunload", flushPathStateWrite);
 		const flushWhenHidden = () => {
 			if (document.visibilityState === "hidden") flushPathStateWrite();
@@ -310,6 +332,7 @@
 			stopRbacHandoff();
 			window.removeEventListener("resize", closeNarrowNavigation);
 			window.removeEventListener("pagehide", flushPathStateWrite);
+			stopYamlDraftCloseGuard();
 			window.removeEventListener("beforeunload", flushPathStateWrite);
 			document.removeEventListener("visibilitychange", flushWhenHidden);
 		};
@@ -327,6 +350,7 @@
 		const next = navigateWorkspace(navigation, intent).focusedResource;
 		const leavesFocusedResource =
 			current !== null && (next === null || resourceKey(next) !== resourceKey(current));
+		if (leavesFocusedResource && !canLeaveYamlDraft()) return;
 		if (!leavesFocusedResource || !hasOpenExecSessions()) {
 			commitWorkspaceNavigation(intent, revealSidebar);
 			return;
@@ -338,21 +362,24 @@
 
 	function commitWorkspaceNavigation(intent: WorkspaceNavigationIntent, revealSidebar: boolean) {
 		navigation = navigateWorkspace(navigation, intent);
+		// A closed detail's tab must not carry over to the next resource opened without one.
+		if (intent.type === "clearResource") resourceDetailPathState = null;
 		if (revealSidebar && ["selectNode", "selectResource", "openResources", "openHelmRelease", "openArgo", "openIncidents", "openPortForwards"].includes(intent.type)) {
 			sidebarNavigationRevision += 1;
 		}
 	}
 
 	function openLauncher() {
+		if (!canLeaveYamlDraft()) return;
 		void confirmStoppingExecSessions().then((stop) => {
 			if (!stop) return;
-			applyWorkspaceNavigation({ type: "openLauncher" });
+			rememberWorkspacePath(currentPathState());
 			onOpenLauncher();
 		});
 	}
 
 	function changeClusterContext(clusterContext: string) {
-		if (clusterContext === workspace.scope.clusterContext) return;
+		if (clusterContext === workspace.scope.clusterContext || !canLeaveYamlDraft()) return;
 		onChangeClusterContext(workspace.id, {
 			name: workspace.name,
 			clusterContext,
@@ -373,11 +400,13 @@
 	}
 
 	$effect(() => {
+		const workspacePath = currentPathState();
+		rememberWorkspacePath(workspacePath);
 		schedulePathStateWrite({
 			version: 1,
 			runtime: "svelte",
 			launcherView: "workspaces",
-			workspace: currentPathState(),
+			workspace: workspacePath,
 		});
 	});
 
@@ -466,6 +495,11 @@
 				nodeId.namespace,
 			);
 		}
+		// Selecting Custom Resources also lists its kinds.
+		const key = nodeIdToString(nodeId);
+		if (nodeId.type === "section" && nodeId.section === "discovered" && !expandedSections.includes(key)) {
+			expandedSections = [...expandedSections, key];
+		}
 		applyWorkspaceNavigation({ type: "selectNode", node: nodeId }, revealSidebar);
 	}
 
@@ -550,6 +584,7 @@
 			onOpenSearch={() => (commandOpen = true)}
 		/>
 
+		<YamlDraftNotice />
 		{#if liveSessionCleanupMessage}
 			<Alert class="shrink-0 rounded-none border-x-0 border-t-0">
 				<AlertTitle>Live sessions updated</AlertTitle>
@@ -588,7 +623,9 @@
 					{/if}
 				{/snippet}
 			<ScrollArea class="h-full">
-				{#if isOverview}
+				{#if remoteNoticeShown}
+					<RemoteWorkspaceNotice />
+				{:else if isOverview}
 					<WorkspaceOverview
 						{workspace}
 						{workspaceReadContext}
@@ -620,7 +657,9 @@
 							initialNamespaces={resourceBrowserNamespaces}
 							initialKinds={resourceBrowserInitialKinds}
 							availableKinds={resourceBrowserKinds}
+							defaultKinds={resourceGitOpsFocusApplication ? GITOPS_RESOURCE_KINDS : workspace.scope.kinds}
 							kindScopeLocked={fixedResourceKindScope}
+							selectAddedKinds={!resourceBrowserScope.categoryKinds}
 							customResourcesEnabled={showCustomResources}
 							{customResourcesStatus}
 							initialSearch={resourceInitialSearch}
@@ -635,6 +674,7 @@
 							onPathStateChange={(pathState) =>
 								applyWorkspaceNavigation({ type: "updateResourceBrowserPath", pathState })}
 							onResourceSelect={focusResource}
+							canCloseResource={canLeaveYamlDraft}
 							onResourcePinToggle={togglePinnedResource}
 							onResourceClose={() =>
 								applyWorkspaceNavigation({ type: "clearResource" })}

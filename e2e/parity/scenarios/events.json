@@ -1,0 +1,25 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "events.sort-and-filter",
+      "title": "Warnings sort first and the type filter narrows the list",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showTab", "tab": "Events" },
+        { "action": "expectEventCount", "count": 2 },
+        { "action": "expectEvent", "index": 0, "reason": "Unhealthy", "message": "Deployment/payments-api failed a readiness probe in mock data." },
+        { "action": "expectEvent", "index": 1, "reason": "Pulled", "message": "Container image already present on machine." },
+        { "action": "filterEvents", "filter": "Normal" },
+        { "action": "expectEventCount", "count": 1 },
+        { "action": "expectEvent", "index": 0, "reason": "Pulled", "message": "Container image already present on machine." },
+        { "action": "filterEvents", "filter": "Warnings" },
+        { "action": "expectEventCount", "count": 1 },
+        { "action": "expectEvent", "index": 0, "reason": "Unhealthy", "message": "Deployment/payments-api failed a readiness probe in mock data." }
+      ]
+    }
+  ]
+}

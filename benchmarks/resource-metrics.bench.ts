@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe } from "vitest";
 import {
+	type ContextMetrics,
 	describeMetricsAvailability,
 	mergeResourceMetrics,
 	mergeTopologyMetrics,
@@ -16,6 +17,10 @@ import type {
 import { benchmark } from "./benchmark";
 
 const total = 10_000;
+
+const oneContext = (summary: ResourceMetricsSummary): ContextMetrics[] => [
+	{ clusterContext: summary.cluster, summary },
+];
 const kinds = ["Pod", "Node", "Deployment"] as const;
 
 function metric(index: number): ResourceMetricSummary {
@@ -87,14 +92,14 @@ const topology: ResourceTopology = {
 	edges: [],
 	warnings: [],
 };
-const sparseIndex = resourceMetricIndex(sparseMetrics);
-const unavailableIndex = resourceMetricIndex(unavailableMetrics);
-const unsupportedIndex = resourceMetricIndex(unsupportedMetrics);
+const sparseIndex = resourceMetricIndex(oneContext(sparseMetrics));
+const unavailableIndex = resourceMetricIndex(oneContext(unavailableMetrics));
+const unsupportedIndex = resourceMetricIndex(oneContext(unsupportedMetrics));
 const unmatchedResources = resources.map((resource) => ({
 	...resource,
 	name: `unmatched-${resource.name}`,
 }));
-const emptyIndex = resourceMetricIndex(undefined);
+const emptyIndex = resourceMetricIndex([]);
 const sparseTableResult = mergeResourceMetrics(
 	resources,
 	sparseMetrics,
@@ -154,7 +159,7 @@ assert.equal(
 
 describe("F05 resource metric arrival and retained sparse joins (10k rows)", () => {
 	benchmark("F05 cold shared index + table and topology joins", () => {
-		const index = resourceMetricIndex(metrics);
+		const index = resourceMetricIndex(oneContext(metrics));
 		mergeResourceMetrics(resources, metrics, index);
 		mergeTopologyMetrics(topology, metrics, index);
 	});

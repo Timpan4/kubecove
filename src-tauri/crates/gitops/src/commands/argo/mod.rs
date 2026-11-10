@@ -42,6 +42,7 @@ pub use credential_store::{
     CredentialStoreDescription, active_credential_store_description,
     initialize_server_credential_store,
 };
+pub use credential_store::{KeyringStore, SecureStore};
 pub use operations::{preflight_argo_operation, run_argo_operation};
 
 /// Detect if Argo CD CRDs are present in the cluster.

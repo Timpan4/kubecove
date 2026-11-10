@@ -1,0 +1,126 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "mock-timing.cancelled-topology",
+      "title": "A cancelled topology read recovers without a manual refresh",
+      "steps": [
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_topology", "context": "mock-dev" } },
+        { "action": "openResources" },
+        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "setTopologyMode", "mode": "Ownership", "pending": true },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_topology", "context": "mock-dev" } },
+        { "action": "replayLiveData", "script": "update" },
+        { "action": "mockTiming", "control": { "operation": "contend", "command": "list_resource_topology", "context": "mock-dev" } },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_topology", "context": "mock-dev" } },
+        { "action": "selectTopologyNode", "id": "mock-dev:apps/v1:Deployment:payments:payments-api" },
+        { "action": "expectDetail", "kind": "Deployment", "namespace": "payments", "name": "payments-api" }
+      ]
+    },
+    {
+      "id": "mock-timing.late-topology",
+      "title": "An older namespace topology cannot replace the current graph",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_topology", "context": "mock-dev" } },
+        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "setTopologyMode", "mode": "Ownership", "pending": true },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_topology", "context": "mock-dev", "namespace": "payments" } },
+        { "action": "selectNamespace", "namespace": "monitoring" },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_topology", "context": "mock-dev", "namespace": "monitoring" } },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_topology", "context": "mock-dev", "namespace": "monitoring" } },
+        { "action": "selectTopologyNode", "id": "mock-dev:apps/v1:Deployment:monitoring:grafana" },
+        { "action": "closeDetail" },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_topology", "context": "mock-dev", "namespace": "payments" } },
+        { "action": "expectNoTopologyNode", "id": "mock-dev:apps/v1:Deployment:payments:payments-api" },
+        { "action": "selectTopologyNode", "id": "mock-dev:apps/v1:Deployment:monitoring:grafana" }
+      ]
+    },
+    {
+      "id": "mock-timing.credentials",
+      "title": "Context reads resume together after credential resolution",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "credential", "context": "mock-dev" } },
+        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "credential", "context": "mock-dev" } },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "credential", "context": "mock-dev" } },
+        { "action": "setTopologyMode", "mode": "Ownership" },
+        { "action": "selectTopologyNode", "id": "mock-dev:apps/v1:Deployment:payments:payments-api" },
+        { "action": "expectDetail", "kind": "Deployment", "namespace": "payments", "name": "payments-api" }
+      ]
+    },
+    {
+      "id": "mock-timing.forbidden",
+      "title": "A forbidden topology read does not retry through the backoff window",
+      "steps": [
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_topology", "context": "mock-dev" } },
+        { "action": "openResources" },
+        { "action": "setTopologyMode", "mode": "Ownership", "pending": true },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_topology", "context": "mock-dev" } },
+        { "action": "mockTiming", "control": { "operation": "fail", "command": "list_resource_topology", "context": "mock-dev", "kind": "forbidden" } },
+        { "action": "mockTiming", "control": { "operation": "expectNoRetry", "command": "list_resource_topology", "context": "mock-dev" } },
+        { "action": "expectTopologyDenied" }
+      ]
+    },
+    {
+      "id": "mock-timing.context-switch",
+      "title": "Leaving a context with a pending list cannot reinsert its rows",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_scope", "context": "mock-dev" } },
+        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_scope", "context": "mock-dev" } },
+        { "action": "openLauncher" },
+        { "action": "editSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "selectWorkspaceContext", "context": "docker-desktop" },
+        { "action": "toggleWorkspaceNamespace", "namespace": "default" },
+        { "action": "saveWorkspace" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openResources" },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "default", "name": "registry" },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_scope", "context": "mock-dev" } },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "namespace": "default", "name": "registry" },
+        { "action": "expectDetailContext", "context": "docker-desktop" }
+      ]
+    },
+    {
+      "id": "mock-timing.list-watch-gap",
+      "title": "A change while a list is pending reaches the view after watch startup",
+      "steps": [
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_scope", "context": "mock-dev" } },
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "start_resource_watch", "context": "mock-dev" } },
+        { "action": "openResources" },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_scope", "context": "mock-dev" } },
+        { "action": "replayLiveData", "script": "update" },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_scope", "context": "mock-dev" } },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "start_resource_watch", "context": "mock-dev" } },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "start_resource_watch", "context": "mock-dev" } },
+        { "action": "expectResourceStatus", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "status": "Degraded" }
+      ]
+    },
+    {
+      "id": "mock-timing.watch-start-version",
+      "title": "A newly checked kind's watch starts at the list version of its rows and delivers a change made before it opened",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "panelControl", "control": "Collapse ownership map" },
+        { "action": "openKindPicker" },
+        { "action": "searchKindPicker", "value": "Deployment" },
+        { "action": "toggleKind", "kind": "Deployment", "checked": false },
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "start_resource_watch", "context": "mock-dev" } },
+        { "action": "toggleKind", "kind": "Deployment", "checked": true },
+        { "action": "closeKindPicker" },
+        { "action": "expectResourceStatus", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "status": "Healthy" },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "start_resource_watch", "context": "mock-dev" } },
+        { "action": "replayLiveData", "script": "update" },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "start_resource_watch", "context": "mock-dev" } },
+        { "action": "expectWatchStart", "kind": "Deployment", "resourceVersion": "1" },
+        { "action": "expectResourceStatus", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "status": "Degraded" }
+      ]
+    }
+  ]
+}

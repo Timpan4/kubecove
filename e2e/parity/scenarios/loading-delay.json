@@ -1,0 +1,48 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "loading-delay.fast-read",
+      "title": "A read that finishes within 300 ms never shows its loading indicator",
+      "steps": [
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_scope", "context": "mock-dev" } },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "controlClock" },
+        { "action": "openResources" },
+        { "action": "advanceClock", "ms": 100 },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_scope", "context": "mock-dev" } },
+        { "action": "advanceClock", "ms": 150 },
+        { "action": "expectNoPageText", "text": "Loading resources" },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_scope", "context": "mock-dev" } },
+        { "action": "advanceClock", "ms": 40 },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectNoPageText", "text": "Loading resources" },
+        { "action": "advanceClock", "ms": 500 },
+        { "action": "expectNoPageText", "text": "Loading resources" }
+      ]
+    },
+    {
+      "id": "loading-delay.slow-read",
+      "title": "A read still pending at 300 ms shows its indicator for at least 300 ms",
+      "steps": [
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_scope", "context": "mock-dev" } },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "controlClock" },
+        { "action": "openResources" },
+        { "action": "advanceClock", "ms": 100 },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_scope", "context": "mock-dev" } },
+        { "action": "expectNoPageText", "text": "Loading resources" },
+        { "action": "advanceClock", "ms": 200 },
+        { "action": "expectPageText", "text": "Loading resources" },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_scope", "context": "mock-dev" } },
+        { "action": "advanceClock", "ms": 250 },
+        { "action": "expectPageText", "text": "Loading resources" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "advanceClock", "ms": 50 },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectNoPageText", "text": "Loading resources" }
+      ]
+    }
+  ]
+}

@@ -115,7 +115,7 @@ describe("resource metrics helpers", () => {
 			warnings: [],
 		};
 		const rows = [pod, { ...pod, kind: "ReplicaSet", name: "api-7d9" }];
-		const index = resourceMetricIndex(metrics);
+		const index = resourceMetricIndex([{ clusterContext: metrics.cluster, summary: metrics }]);
 
 		expect(mergeResourceMetrics(rows, metrics, index)).toEqual(
 			mergeResourceMetrics(rows, metrics),
@@ -128,7 +128,7 @@ describe("resource metrics helpers", () => {
 	test("keeps inputs when metrics index is empty", () => {
 		const rows = [pod];
 		const topology: ResourceTopology = { nodes: [], edges: [], warnings: [] };
-		const emptyIndex = resourceMetricIndex(undefined);
+		const emptyIndex = resourceMetricIndex([]);
 
 		expect(mergeResourceMetrics(rows, undefined, emptyIndex)).toBe(rows);
 		expect(mergeTopologyMetrics(topology, undefined, emptyIndex)).toBe(topology);

@@ -1,0 +1,243 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "rbac.risk-flags",
+      "title": "The RBAC cockpit flags risky objects, inherits binding and role risks, and the risk filter keeps only matching objects",
+      "steps": [
+        { "action": "openPage", "page": "RBAC" },
+        { "action": "expectRbacCategory", "category": "Service Accounts" },
+        { "action": "expectRbacItem", "title": "ServiceAccount/argocd-application-controller", "risk": "HIGH: 3 flags" },
+        { "action": "expectRbacItem", "title": "ServiceAccount/payments-api", "risk": "MEDIUM: 1 flag" },
+        { "action": "expectRbacItem", "title": "ServiceAccount/grafana", "risk": "No flags" },
+        { "action": "selectRbacCategory", "category": "Cluster Roles" },
+        { "action": "expectRbacItem", "title": "ClusterRole/argocd-app-controller", "risk": "HIGH: 1 flag" },
+        { "action": "selectRbacCategory", "category": "Bindings" },
+        { "action": "filterRbacRisk", "filter": "High" },
+        { "action": "expectRbacItem", "title": "ClusterRoleBinding/argocd-application-controller", "risk": "HIGH: 2 flags" },
+        { "action": "expectNoRbacItem", "title": "RoleBinding/payments-api-reader" },
+        { "action": "filterRbacRisk", "filter": "No flags" },
+        { "action": "expectRbacItem", "title": "RoleBinding/payments-api-reader", "risk": "No flags" },
+        { "action": "expectNoRbacItem", "title": "ClusterRoleBinding/argocd-application-controller" }
+      ]
+    },
+    {
+      "id": "rbac.subject-permissions",
+      "title": "The RBAC inspector shows the selected or investigated subject's grants and verifies access for that subject",
+      "steps": [
+        { "action": "openPage", "page": "RBAC" },
+        { "action": "selectRbacItem", "title": "ServiceAccount/payments-api" },
+        { "action": "expectRbacIdentity", "identity": "system:serviceaccount:payments:payments-api" },
+        { "action": "expectRbacGrant", "grant": "get, list, watch · core/pods, services, configmaps" },
+        { "action": "expectNoRbacGrant", "grant": "get, list, watch, update · argoproj.io/applications" },
+        { "action": "selectRbacCategory", "category": "Bindings" },
+        { "action": "selectRbacItem", "title": "RoleBinding/grafana-config" },
+        { "action": "investigateRbacSubject", "subject": "ServiceAccount/monitoring/grafana" },
+        { "action": "expectRbacIdentity", "identity": "system:serviceaccount:monitoring:grafana" },
+        { "action": "expectRbacGrant", "grant": "get · core/secrets, configmaps" },
+        { "action": "expectNoRbacGrant", "grant": "get, list, watch · core/pods, services, configmaps" },
+        { "action": "verifyRbacAccess", "verb": "delete" },
+        { "action": "expectRbacVerdict", "outcome": "denied" }
+      ]
+    },
+    {
+      "id": "rbac.review-context",
+      "title": "Manual reviews belong to one object and workspace and preserve the original risk",
+      "steps": [
+        { "action": "openPage", "page": "RBAC" },
+        { "action": "selectRbacItem", "title": "ServiceAccount/payments-api" },
+        { "action": "editRbacReviewNote", "value": "Expected token\nOwned by payments" },
+        { "action": "saveRbacReview", "disposition": "expected" },
+        { "action": "expectRbacReview", "label": "Expected" },
+        { "action": "expectRbacItem", "title": "ServiceAccount/payments-api", "risk": "MEDIUM: 1 flag" },
+        { "action": "selectRbacItem", "title": "ServiceAccount/grafana" },
+        { "action": "expectRbacReview", "label": "Unreviewed" },
+        { "action": "expectRbacReviewNote", "value": "" },
+        { "action": "selectRbacItem", "title": "ServiceAccount/payments-api" },
+        { "action": "expectRbacReviewNote", "value": "Expected token\nOwned by payments" },
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Other review scope" },
+        { "action": "createWorkspace" },
+        { "action": "openPage", "page": "RBAC" },
+        { "action": "selectRbacItem", "title": "ServiceAccount/payments-api" },
+        { "action": "expectRbacReview", "label": "Unreviewed" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openPage", "page": "RBAC" },
+        { "action": "selectRbacItem", "title": "ServiceAccount/payments-api" },
+        { "action": "expectRbacReview", "label": "Expected" },
+        { "action": "clearRbacReview" },
+        { "action": "expectRbacReview", "label": "Unreviewed" },
+        { "action": "expectRbacReviewNote", "value": "" }
+      ]
+    },
+    {
+      "id": "workspaces.open-scope",
+      "title": "A new workspace opens with its chosen context and namespaces, and reopening a saved workspace restores its scope",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "expectSavedWorkspace", "name": "Parity mock workspace", "summary": "mock-dev / All namespaces / Pod, Deployment +7" },
+        { "action": "nameWorkspace", "value": "Payments on solid" },
+        { "action": "selectWorkspaceContext", "context": "admin@solid-k8s" },
+        { "action": "toggleWorkspaceNamespace", "namespace": "payments" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Payments on solid", "context": "admin@solid-k8s" },
+        { "action": "openResources" },
+        { "action": "expectResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "expectNoResource", "kind": "Deployment", "name": "grafana", "namespace": "monitoring" },
+        { "action": "openLauncher" },
+        { "action": "expectSavedWorkspace", "name": "Payments on solid", "summary": "admin@solid-k8s / payments / Pod, Deployment +7" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectOpenWorkspace", "name": "Parity mock workspace", "context": "mock-dev" },
+        { "action": "openResources" },
+        { "action": "expectResource", "kind": "Deployment", "name": "grafana", "namespace": "monitoring" }
+      ]
+    },
+    {
+      "id": "settings.kubeconfig-persists",
+      "title": "Kubeconfig source settings save through the backend and survive leaving Settings",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "expectSettingsHeading", "heading": "General" },
+        { "action": "showSettingsSection", "section": "Kubeconfig" },
+        { "action": "expectSettingsHeading", "heading": "Kubeconfig" },
+        { "action": "expectSetting", "setting": "Show kubeconfig source labels", "checked": true },
+        { "action": "setKubeconfigEnvVar", "value": "KUBECONFIG_PARITY" },
+        { "action": "toggleSetting", "setting": "Show kubeconfig source labels" },
+        { "action": "closeSettings" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Kubeconfig" },
+        { "action": "expectKubeconfigEnvVar", "value": "KUBECONFIG_PARITY" },
+        { "action": "expectSetting", "setting": "Show kubeconfig source labels", "checked": false }
+      ]
+    },
+    {
+      "id": "settings.section-surfaces",
+      "title": "Settings categories retain their controls and reports when the native host cannot run them",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Appearance" },
+        { "action": "expectSettingRow", "title": "Resource group order" },
+        { "action": "expectSettingRow", "title": "Log layout" },
+        { "action": "showSettingsSection", "section": "Updates" },
+        { "action": "expectSettingRow", "title": "KubeCove version" },
+        { "action": "showSettingsSection", "section": "Diagnostics" },
+        { "action": "expectSettingRow", "title": "Record interactions" },
+        { "action": "expectSettingRow", "title": "Interaction report" },
+        { "action": "expectSettingRow", "title": "Latency report" },
+        { "action": "showSettingsSection", "section": "Advanced" },
+        { "action": "expectSettingRow", "title": "Skip change review" },
+        { "action": "showSettingsSection", "section": "Live sessions" },
+        { "action": "expectSettingRow", "title": "Keep live sessions across workspace switches" }
+      ]
+    },
+    {
+      "id": "settings.search",
+      "title": "Settings search shows only categories with matching rows and reports no matches",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "searchSettings", "value": "yaml" },
+        { "action": "expectSettingsHeading", "heading": "Search results" },
+        { "action": "expectSettingRow", "title": "YAML shape" },
+        { "action": "expectSettingRow", "title": "Allow YAML force-conflicts" },
+        { "action": "expectNoSettingRow", "title": "Show exact timestamps" },
+        { "action": "searchSettings", "value": "no-such-setting" },
+        { "action": "expectNoSettingRow", "title": "YAML shape" },
+        { "action": "expectSettingsEmpty", "value": "no-such-setting" }
+      ]
+    },
+    {
+      "id": "palette.resource-results",
+      "title": "The command palette lists only resources matching the query and opens the chosen resource",
+      "steps": [
+        { "action": "openPalette", "via": "shortcut" },
+        { "action": "searchPalette", "value": "payments-api" },
+        { "action": "expectPaletteResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "expectNoPaletteResource", "kind": "Deployment", "name": "grafana", "namespace": "monitoring" },
+        { "action": "expectNoPaletteEntry", "label": "Settings" },
+        { "action": "choosePaletteResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "expectDetail", "kind": "Deployment", "name": "payments-api", "namespace": "payments" }
+      ]
+    },
+    {
+      "id": "palette.cluster-resource",
+      "title": "The palette finds and opens cluster resources before their page has been visited",
+      "steps": [
+        { "action": "openPalette", "via": "shortcut" },
+        { "action": "searchPalette", "value": "dev-control-plane" },
+        { "action": "expectPaletteResource", "kind": "Node", "name": "dev-control-plane", "namespace": "" },
+        { "action": "choosePaletteResource", "kind": "Node", "name": "dev-control-plane", "namespace": "" },
+        { "action": "expectClusterResource", "kind": "Node", "name": "dev-control-plane" },
+        { "action": "showYaml" },
+        { "action": "expectYaml", "contains": ["kind: Node", "name: dev-control-plane"] }
+      ]
+    },
+    {
+      "id": "palette.kind-target",
+      "title": "Choosing a kind from the palette opens only that kind",
+      "steps": [
+        { "action": "openPalette", "via": "button" },
+        { "action": "searchPalette", "value": "Workloads › Deployment" },
+        { "action": "choosePaletteEntry", "label": "Workloads › Deployment" },
+        { "action": "expectResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "expectNoResource", "kind": "Pod", "name": "payments-api-7d9c9b7f8d-k2r9p", "namespace": "payments" },
+        { "action": "openPalette", "via": "button" },
+        { "action": "searchPalette", "value": "Cluster Overview › Node" },
+        { "action": "choosePaletteEntry", "label": "Cluster Overview › Node" },
+        { "action": "expectClusterResource", "kind": "Node", "name": "dev-control-plane" },
+        { "action": "expectNoClusterResource", "kind": "StorageClass", "name": "local-path" }
+      ]
+    },
+    {
+      "id": "palette.cluster-kind-replaces-sidebar-kind",
+      "title": "A cluster kind chosen in the palette replaces the kind the sidebar selected",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "collapseSidebar" },
+        { "action": "sidebarToggle", "path": ["Workloads"] },
+        { "action": "sidebarSelect", "path": ["Workloads", "Deployment"] },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "openPalette", "via": "button" },
+        { "action": "searchPalette", "value": "Cluster Overview › Node" },
+        { "action": "choosePaletteEntry", "label": "Cluster Overview › Node" },
+        { "action": "expectClusterResource", "kind": "Node", "name": "dev-control-plane" }
+      ]
+    },
+    {
+      "id": "palette.section-target",
+      "title": "Choosing a section from the palette opens that sidebar section's kinds",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openPalette", "via": "button" },
+        { "action": "searchPalette", "value": "Network" },
+        { "action": "choosePaletteEntry", "label": "Network" },
+        { "action": "expectResource", "kind": "Service", "name": "payments-api", "namespace": "payments" },
+        { "action": "expectNoResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" }
+      ]
+    },
+    {
+      "id": "palette.navigation",
+      "title": "Palette navigation and namespace results follow the query and open the chosen target",
+      "steps": [
+        { "action": "openPalette", "via": "button" },
+        { "action": "searchPalette", "value": "roles" },
+        { "action": "expectPaletteEntry", "label": "RBAC › Roles" },
+        { "action": "expectPaletteEntry", "label": "RBAC › Cluster Roles" },
+        { "action": "expectNoPaletteEntry", "label": "Settings" },
+        { "action": "choosePaletteEntry", "label": "RBAC › Cluster Roles" },
+        { "action": "expectRbacCategory", "category": "Cluster Roles" },
+        { "action": "expectRbacItem", "title": "ClusterRole/argocd-app-controller", "risk": "HIGH: 1 flag" },
+        { "action": "openPalette", "via": "shortcut" },
+        { "action": "searchPalette", "value": "monitoring" },
+        { "action": "choosePaletteEntry", "label": "monitoring" },
+        { "action": "expectResource", "kind": "Deployment", "name": "grafana", "namespace": "monitoring" },
+        { "action": "expectNoResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "openPalette", "via": "button" },
+        { "action": "searchPalette", "value": "settings" },
+        { "action": "choosePaletteEntry", "label": "Settings" },
+        { "action": "expectSettingsHeading", "heading": "General" }
+      ]
+    }
+  ]
+}

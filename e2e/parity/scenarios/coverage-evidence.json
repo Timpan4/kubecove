@@ -1,0 +1,326 @@
+{
+	"fixture": "browser-mocks",
+	"context": "mock-dev",
+	"scenarios": [
+		{
+			"id": "coverage-table.pagination",
+			"title": "Grouped resource table changes rows on Next and restores the same rows on Previous",
+			"steps": [
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "pagination"
+				}
+			]
+		},
+		{
+			"id": "coverage-detail.timeline",
+			"title": "Timeline shows selected resource evidence and supports all and individual expansion",
+			"steps": [
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "search",
+					"value": "payments-api"
+				},
+				{
+					"action": "openResource",
+					"kind": "Deployment",
+					"name": "payments-api",
+					"namespace": "payments"
+				},
+				{
+					"action": "showTab",
+					"tab": "Details"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "timeline"
+				}
+			]
+		},
+		{
+			"id": "coverage-yaml.editor-selection",
+			"title": "YAML undo and redo restore each edit, keyboard selection replaces one line, and document-end insertion preserves earlier lines",
+			"steps": [
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "search",
+					"value": "payments-api"
+				},
+				{
+					"action": "openResource",
+					"kind": "Deployment",
+					"name": "payments-api",
+					"namespace": "payments"
+				},
+				{
+					"action": "showTab",
+					"tab": "YAML"
+				},
+				{
+					"action": "editYaml"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "yaml-undo"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "yaml-editor"
+				},
+				{
+					"action": "cancelYamlEdit"
+				}
+			]
+		},
+		{
+			"id": "coverage-yaml.diff-expansion",
+			"title": "YAML reviewed lines survive full and compact expansion",
+			"steps": [
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "search",
+					"value": "payments-api"
+				},
+				{
+					"action": "openResource",
+					"kind": "Deployment",
+					"name": "payments-api",
+					"namespace": "payments"
+				},
+				{
+					"action": "showTab",
+					"tab": "YAML"
+				},
+				{
+					"action": "editYaml"
+				},
+				{
+					"action": "dryRunYaml"
+				},
+				{
+					"action": "coverageClick",
+					"label": "Show full diff"
+				},
+				{
+					"action": "expectDryRun",
+					"contains": [
+						" apiVersion: apps/v1"
+					]
+				},
+				{
+					"action": "coverageClick",
+					"label": "Collapse diff"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "diff-compact"
+				},
+				{
+					"action": "expectDryRun",
+					"contains": [
+						"+# dry-run: browser mock"
+					]
+				},
+				{
+					"action": "cancelYamlEdit"
+				}
+			]
+		},
+		{
+			"id": "coverage-helm.detail-resources",
+			"title": "Helm detail Resources opens the chosen release namespace and name filter",
+			"steps": [
+				{
+					"action": "openPage",
+					"page": "Helm"
+				},
+				{
+					"action": "openHelmRelease",
+					"name": "metrics-gateway",
+					"namespace": "platform"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "helm-resources"
+				},
+				{
+					"action": "expectSearch",
+					"value": "metrics-gateway"
+				},
+				{
+					"action": "expectResource",
+					"kind": "Deployment",
+					"namespace": "platform",
+					"name": "metrics-gateway"
+				},
+				{
+					"action": "expectNoResource",
+					"kind": "Deployment",
+					"name": "payments-api",
+					"namespace": "payments"
+				}
+			]
+		},
+		{
+			"id": "coverage-exec.clear-stop-restart",
+			"title": "Clear preserves a live terminal while Stop and Restart control its exact session",
+			"steps": [
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "openResource",
+					"kind": "Pod",
+					"namespace": "payments",
+					"name": "payments-api-7d9c9b7f8d-k2r9p"
+				},
+				{
+					"action": "showTab",
+					"tab": "Exec"
+				},
+				{
+					"action": "execControl",
+					"operation": "start",
+					"container": "app",
+					"command": "/bin/sh"
+				},
+				{
+					"action": "expectExecState",
+					"container": "app",
+					"status": "running",
+					"contains": "Controlled exec app"
+				},
+				{
+					"action": "coverageClick",
+					"label": "Clear terminal"
+				},
+				{
+					"action": "expectExecState",
+					"container": "app",
+					"status": "running",
+					"contains": "",
+					"absent": "Controlled exec app"
+				},
+				{
+					"action": "coverageClick",
+					"label": "Stop session"
+				},
+				{
+					"action": "expectExecState",
+					"container": "app",
+					"status": "stopped",
+					"contains": ""
+				},
+				{
+					"action": "coverageClick",
+					"label": "Restart session"
+				},
+				{
+					"action": "expectExecState",
+					"container": "app",
+					"status": "running",
+					"contains": "Controlled exec app"
+				},
+				{
+					"action": "execControl",
+					"operation": "close",
+					"tab": 1
+				}
+			]
+		},
+		{
+			"id": "coverage-sessions.keep-across-workspaces",
+			"title": "Keep sessions preserves the exact forward across context changes and returning",
+			"steps": [
+				{
+					"action": "openSettings"
+				},
+				{
+					"action": "showSettingsSection",
+					"section": "Live sessions"
+				},
+				{
+					"action": "toggleSetting",
+					"setting": "Keep live sessions across workspace switches"
+				},
+				{
+					"action": "closeSettings"
+				},
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "openResource",
+					"kind": "Pod",
+					"namespace": "payments",
+					"name": "payments-api-7d9c9b7f8d-k2r9p"
+				},
+				{
+					"action": "showTab",
+					"tab": "Forward"
+				},
+				{
+					"action": "configureForward",
+					"remote": "9090",
+					"local": "19090"
+				},
+				{
+					"action": "forwardControl",
+					"operation": "start"
+				},
+				{
+					"action": "expectForwardState",
+					"target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090",
+					"local": "19090",
+					"status": "listening",
+					"count": 1
+				},
+				{
+					"action": "closeDetail"
+				},
+				{
+					"action": "openLauncher"
+				},
+				{
+					"action": "selectWorkspaceContext",
+					"context": "docker-desktop"
+				},
+				{
+					"action": "createWorkspace",
+					"name": "Session cleanup workspace"
+				},
+				{
+					"action": "openPage",
+					"page": "Port Forwards"
+				},
+				{
+					"action": "openLauncher"
+				},
+				{
+					"action": "openSavedWorkspace",
+					"name": "Parity mock workspace"
+				},
+				{
+					"action": "openPage",
+					"page": "Port Forwards"
+				},
+				{
+					"action": "expectForwardState",
+					"target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090",
+					"local": "19090",
+					"status": "listening",
+					"count": 1
+				}
+			]
+		}
+	]
+}

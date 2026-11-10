@@ -14,8 +14,8 @@ use kubecove_lib::{
         ArgoOperationRequest, ArgoServerEndpoint, CommandArgs, DiscoveredResourceKind,
         FluxResourceKind, LiveSessionCleanupRequest, PodExecSessionRequest, PodExecTerminalSize,
         PodLogStreamRequest, PortForwardRequest, RbacAccessReviewRequest, ResourceActionRequest,
-        ResourceActionStateRequest, ResourceListRequest, WatchResourceKey, YamlApplyRequest,
-        YamlEncoding, YamlViewMode,
+        ResourceActionStateRequest, ResourceListRequest, ResourceWatchStart, WatchResourceKey,
+        YamlApplyRequest, YamlEncoding, YamlViewMode,
     },
     runtime::{Channel, State},
 };

@@ -1,13 +1,43 @@
-import { Channel, type InvokeOptions, invoke } from "@tauri-apps/api/core";
+import { Channel, type InvokeArgs, type InvokeOptions, invoke as nativeInvoke } from "@tauri-apps/api/core";
 import { writable } from "svelte/store";
-import { getChannelId, type TauriClient } from "./tauri-runtime";
+import { getChannelId, shouldUseBrowserDevMocks, type TauriClient } from "./tauri-runtime";
 import type { JsonObject, JsonValue } from "./types";
+
+async function invoke<T>(command: string, args?: InvokeArgs): Promise<T> {
+	if (shouldUseBrowserDevMocks()) {
+		const { createDevMockTauriClient } = await import("./tauri-dev-mocks");
+		return createDevMockTauriClient().invoke<T>(command, args);
+	}
+	return nativeInvoke<T>(command, args);
+}
+
+/** How the selected server authenticates this desktop (ADR 0031). */
+export type RemoteAuthMode = "token" | "oidc";
+
+/** The selected remote's session state, mirroring `kubecove_host::remote::RemoteSessionState`. */
+export type RemoteSessionState =
+	| "connected"
+	| "signInRequired"
+	| "connecting"
+	| "waitingForBrowser"
+	| "reconnecting"
+	| "sessionEnded"
+	| "signInExpired"
+	| "sessionExpired";
 
 export interface RemoteConnectionSummary {
 	serverUrl: string;
 	serverVersion: string;
 	sessionGraceSeconds: number;
 	connected: boolean;
+	/** The server's credential store kind, or null when the server does not report one. */
+	credentialStore: string | null;
+	authMode: RemoteAuthMode;
+	sessionState: RemoteSessionState;
+	/** Native credential storage is unavailable, so the sign-in lasts until the app closes. */
+	signInMemoryOnly: boolean;
+	/** Native credential storage could not delete an ended sign-in; the app does not use it again until a new sign-in replaces it. */
+	signInNotDeleted: boolean;
 }
 
 type RemoteChannel = {
@@ -31,6 +61,47 @@ export async function connectDesktopRemote(
 		token,
 	});
 	setRemoteState(summary);
+	return summary;
+}
+
+/**
+ * Signs in through the system browser. The call returns when the sign-in finishes or is
+ * cancelled, so the notice shows the wait until then.
+ */
+export async function signInDesktopRemote(): Promise<RemoteConnectionSummary | null> {
+	if (desktopRemoteSummary) setRemoteState({ ...desktopRemoteSummary, sessionState: "waitingForBrowser", connected: false });
+	try {
+		const summary = await invoke<RemoteConnectionSummary | null>("remote_sign_in");
+		if (summary) setRemoteState(summary);
+		else clearRemoteState();
+		return summary;
+	} catch (error) {
+		await initializeDesktopRemote().catch(() => null);
+		throw error;
+	}
+}
+
+export async function cancelDesktopRemoteSignIn(): Promise<void> {
+	await invoke("remote_cancel_sign_in");
+	await initializeDesktopRemote();
+}
+
+/** The pending sign-in's browser link. It carries no secret. */
+export async function desktopRemoteSignInLink(): Promise<string | null> {
+	return invoke<string | null>("remote_sign_in_link");
+}
+
+export async function startNewDesktopRemoteSession(): Promise<RemoteConnectionSummary> {
+	const summary = await invoke<RemoteConnectionSummary>("remote_start_new_session");
+	setRemoteState(summary);
+	return summary;
+}
+
+/** Revokes the sign-in at the server and forgets it here. The server stays selected. */
+export async function signOutDesktopRemote(): Promise<RemoteConnectionSummary> {
+	const summary = await invoke<RemoteConnectionSummary>("remote_sign_out");
+	setRemoteState(summary);
+	if (!summary.connected) clearRemoteChannels();
 	return summary;
 }
 
@@ -110,6 +181,13 @@ function subscribe<T>(onMessage: (message: T) => void): Channel<T> {
 	return channel;
 }
 
+const DISCONNECTED_REMOTE = "The selected remote KubeCove server is disconnected. Reconnect or explicitly disconnect to use a local cluster.";
+
+/** Refuses a command while the selected remote is disconnected, as the remote client does, so nothing falls back to this laptop. */
+export function assertSelectedRemoteConnected(): void {
+	if (desktopRemoteSummary && !desktopRemoteSummary.connected) throw new Error(DISCONNECTED_REMOTE);
+}
+
 const desktopRemoteClient: TauriClient = {
 	createChannel: subscribe,
 	invoke: async <Result, Args extends object = object>(
@@ -118,7 +196,7 @@ const desktopRemoteClient: TauriClient = {
 		_options?: InvokeOptions,
 	): Promise<Result> => {
 		if (!desktopRemoteSummary?.connected) {
-			throw new Error("The selected remote KubeCove server is disconnected. Reconnect or explicitly disconnect to use a local cluster.");
+			throw new Error(DISCONNECTED_REMOTE);
 		}
 		if (command === "save_workspace_export_json" || command === "pick_workspace_import_json") {
 			if (!args) return invoke<Result>(command);

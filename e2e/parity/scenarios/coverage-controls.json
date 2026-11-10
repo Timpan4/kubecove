@@ -1,0 +1,598 @@
+{
+	"fixture": "browser-mocks",
+	"context": "mock-dev",
+	"scenarios": [
+		{
+			"id": "coverage-workspaces.delete-inactive",
+			"title": "Deleting one inactive workspace preserves the active workspace through restart",
+			"steps": [
+				{
+					"action": "openLauncher"
+				},
+				{
+					"action": "nameWorkspace",
+					"value": "Disposable workspace"
+				},
+				{
+					"action": "createWorkspace"
+				},
+				{
+					"action": "openLauncher"
+				},
+				{
+					"action": "openSavedWorkspace",
+					"name": "Parity mock workspace"
+				},
+				{
+					"action": "openLauncher"
+				},
+				{
+					"action": "deleteSavedWorkspace",
+					"name": "Disposable workspace"
+				},
+				{
+					"action": "expectNoSavedWorkspace",
+					"name": "Disposable workspace"
+				},
+				{
+					"action": "openSavedWorkspace",
+					"name": "Parity mock workspace"
+				},
+				{
+					"action": "expectOpenWorkspace",
+					"name": "Parity mock workspace",
+					"context": "mock-dev"
+				},
+				{
+					"action": "restartClient"
+				},
+				{
+					"action": "openLauncher"
+				},
+				{
+					"action": "expectNoSavedWorkspace",
+					"name": "Disposable workspace"
+				}
+			]
+		},
+		{
+			"id": "coverage-workspaces.import-decisions",
+			"title": "Import collision choices cancel, skip, replace or add a separate copy",
+			"steps": [
+				{
+					"action": "openLauncher"
+				},
+				{
+					"action": "configureSettingsMock",
+					"script": "choose-workspace"
+				},
+				{
+					"action": "clickSettingsButton",
+					"label": "Import"
+				},
+				{
+					"action": "clickSettingsButton",
+					"label": "Apply import"
+				},
+				{
+					"action": "editSavedWorkspace",
+					"name": "Controlled import"
+				},
+				{
+					"action": "nameWorkspace",
+					"value": "Locally edited import"
+				},
+				{
+					"action": "saveWorkspace"
+				},
+				{
+					"action": "clickSettingsButton",
+					"label": "Import"
+				},
+				{
+					"action": "importDecision",
+					"choice": "Replace"
+				},
+				{
+					"action": "importDecision",
+					"choice": "Skip"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "import-skip"
+				},
+				{
+					"action": "cancelImport"
+				},
+				{
+					"action": "expectSavedWorkspace",
+					"name": "Locally edited import",
+					"summary": "mock-dev / payments / Pod"
+				},
+				{
+					"action": "clickSettingsButton",
+					"label": "Import"
+				},
+				{
+					"action": "importDecision",
+					"choice": "Replace"
+				},
+				{
+					"action": "clickSettingsButton",
+					"label": "Apply import"
+				},
+				{
+					"action": "expectNoSavedWorkspace",
+					"name": "Locally edited import"
+				},
+				{
+					"action": "expectSavedWorkspace",
+					"name": "Controlled import",
+					"summary": "mock-dev / payments / Pod"
+				},
+				{
+					"action": "editSavedWorkspace",
+					"name": "Controlled import"
+				},
+				{
+					"action": "nameWorkspace",
+					"value": "Kept local import"
+				},
+				{
+					"action": "saveWorkspace"
+				},
+				{
+					"action": "clickSettingsButton",
+					"label": "Import"
+				},
+				{
+					"action": "importDecision",
+					"choice": "Add as new"
+				},
+				{
+					"action": "clickSettingsButton",
+					"label": "Apply import"
+				},
+				{
+					"action": "expectSavedWorkspace",
+					"name": "Kept local import",
+					"summary": "mock-dev / payments / Pod"
+				},
+				{
+					"action": "expectSavedWorkspace",
+					"name": "Controlled import",
+					"summary": "mock-dev / payments / Pod"
+				}
+			]
+		},
+		{
+			"id": "coverage-overview.resources-operation",
+			"title": "Overview Resources operation opens the resource table",
+			"steps": [
+				{
+					"action": "coverageClick",
+					"label": "Resources"
+				},
+				{
+					"action": "expectResource",
+					"kind": "Deployment",
+					"name": "payments-api",
+					"namespace": "payments"
+				}
+			]
+		},
+		{
+			"id": "coverage-palette.keys-and-empty",
+			"title": "Palette arrows and Enter activate the selected destination and Escape clears an empty search",
+			"steps": [
+				{
+					"action": "openPalette",
+					"via": "shortcut"
+				},
+				{
+					"action": "searchPalette",
+					"value": "Helm › Releases"
+				},
+				{
+					"action": "expectPaletteEntry",
+					"label": "Helm › Releases"
+				},
+				{
+					"action": "paletteKey",
+					"key": "ArrowDown"
+				},
+				{
+					"action": "paletteKey",
+					"key": "ArrowUp"
+				},
+				{
+					"action": "paletteKey",
+					"key": "Enter"
+				},
+				{
+					"action": "expectPaletteOpen",
+					"open": false
+				},
+				{
+					"action": "expectHelmRelease",
+					"name": "metrics-gateway",
+					"namespace": "platform"
+				},
+				{
+					"action": "openPalette",
+					"via": "button"
+				},
+				{
+					"action": "searchPalette",
+					"value": "no-such-palette-result"
+				},
+				{
+					"action": "coverageText",
+					"text": "No results found.",
+					"visible": true
+				},
+				{
+					"action": "paletteKey",
+					"key": "Escape"
+				},
+				{
+					"action": "expectPaletteOpen",
+					"open": false
+				},
+				{
+					"action": "openPalette",
+					"via": "button"
+				},
+				{
+					"action": "expectPaletteEntry",
+					"label": "Helm"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "palette-outside"
+				},
+				{
+					"action": "expectPaletteOpen",
+					"open": false
+				}
+			]
+		},
+		{
+			"id": "coverage-events.search-and-summary",
+			"title": "Event text search filters messages and clears to all events",
+			"steps": [
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "search",
+					"value": "payments-api"
+				},
+				{
+					"action": "openResource",
+					"kind": "Deployment",
+					"name": "payments-api",
+					"namespace": "payments"
+				},
+				{
+					"action": "showTab",
+					"tab": "Events"
+				},
+				{
+					"action": "expectEventCount",
+					"count": 2
+				},
+				{
+					"action": "coverageCheck",
+					"check": "event-summary"
+				},
+				{
+					"action": "searchEvents",
+					"value": "Pulled"
+				},
+				{
+					"action": "expectEventCount",
+					"count": 1
+				},
+				{
+					"action": "coverageCheck",
+					"check": "event-summary"
+				},
+				{
+					"action": "searchEvents",
+					"value": "already present"
+				},
+				{
+					"action": "expectEventCount",
+					"count": 1
+				},
+				{
+					"action": "coverageCheck",
+					"check": "event-summary"
+				},
+				{
+					"action": "searchEvents",
+					"value": "kubelet"
+				},
+				{
+					"action": "expectEventCount",
+					"count": 2
+				},
+				{
+					"action": "coverageCheck",
+					"check": "event-summary"
+				},
+				{
+					"action": "searchEvents",
+					"value": "no-such-event"
+				},
+				{
+					"action": "expectEventCount",
+					"count": 0
+				},
+				{
+					"action": "coverageText",
+					"text": "No matching events",
+					"visible": true
+				},
+				{
+					"action": "searchEvents",
+					"value": ""
+				},
+				{
+					"action": "expectEventCount",
+					"count": 2
+				}
+			]
+		},
+		{
+			"id": "coverage-logs.order-pause-clear",
+			"title": "Log order reverses exact rows, filtering shows empty feedback and clear leaves a paused buffer empty",
+			"steps": [
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "search",
+					"value": "payments-api"
+				},
+				{
+					"action": "openResource",
+					"kind": "Deployment",
+					"name": "payments-api",
+					"namespace": "payments"
+				},
+				{
+					"action": "showTab",
+					"tab": "Logs"
+				},
+				{
+					"action": "expectLogLines",
+					"lines": [
+						"boot payments-api",
+						"handled GET /healthz 200",
+						"downstream retry budget at 82%"
+					]
+				},
+				{
+					"action": "coverageClick",
+					"label": "Oldest first"
+				},
+				{
+					"action": "expectLogLines",
+					"lines": [
+						"downstream retry budget at 82%",
+						"handled GET /healthz 200",
+						"boot payments-api"
+					]
+				},
+				{
+					"action": "coverageClick",
+					"label": "Latest first"
+				},
+				{
+					"action": "filterLogs",
+					"value": "no-such-log"
+				},
+				{
+					"action": "coverageText",
+					"text": "No log lines match the current filters.",
+					"visible": true
+				},
+				{
+					"action": "filterLogs",
+					"value": ""
+				},
+				{
+					"action": "coverageClick",
+					"label": "Pause"
+				},
+				{
+					"action": "coverageClick",
+					"label": "Clear"
+				},
+				{
+					"action": "expectLogLines",
+					"lines": []
+				},
+				{
+					"action": "coverageText",
+					"text": "Paused. New lines are held until you resume.",
+					"visible": true
+				},
+				{
+					"action": "coverageClick",
+					"label": "Resume"
+				}
+			]
+		},
+		{
+			"id": "coverage-helm.clear-filters",
+			"title": "Helm clear search retains namespace while Clear filters restores all releases",
+			"steps": [
+				{
+					"action": "openPage",
+					"page": "Helm"
+				},
+				{
+					"action": "selectHelmNamespace",
+					"namespace": "platform"
+				},
+				{
+					"action": "searchHelm",
+					"value": "no-such-release"
+				},
+				{
+					"action": "expectHelmCount",
+					"count": 0
+				},
+				{
+					"action": "coverageClick",
+					"label": "Clear filters"
+				},
+				{
+					"action": "expectHelmRelease",
+					"name": "grafana",
+					"namespace": "monitoring"
+				},
+				{
+					"action": "expectHelmRelease",
+					"name": "metrics-gateway",
+					"namespace": "platform"
+				}
+			]
+		},
+		{
+			"id": "coverage-actions.revert-discard",
+			"title": "Reverting replicas and discarding pending edits restore live values without applying",
+			"steps": [
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "search",
+					"value": "payments-api"
+				},
+				{
+					"action": "openResource",
+					"kind": "Deployment",
+					"name": "payments-api",
+					"namespace": "payments"
+				},
+				{
+					"action": "showTab",
+					"tab": "Actions"
+				},
+				{
+					"action": "editReplicas",
+					"value": "3"
+				},
+				{
+					"action": "coverageClick",
+					"label": "Revert"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "replicas-reset"
+				},
+				{
+					"action": "expectNoReview"
+				},
+				{
+					"action": "expectNoActionResult"
+				},
+				{
+					"action": "coverageFill",
+					"label": "Desired replicas",
+					"value": "4"
+				},
+				{
+					"action": "coverageClick",
+					"label": "Discard"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "replicas-reset"
+				},
+				{
+					"action": "coverageFill",
+					"label": "Desired replicas",
+					"value": "3"
+				},
+				{
+					"action": "reviewAction",
+					"label": "Check changes"
+				},
+				{
+					"action": "expectReview",
+					"title": "Review edit for payments-api",
+					"description": "edit Deployment payments/payments-api in context mock-dev",
+					"contains": [
+						"-  replicas: 2",
+						"+  replicas: 3"
+					]
+				},
+				{
+					"action": "closeReview"
+				}
+			]
+		},
+		{
+			"id": "coverage-actions.pause-resume",
+			"title": "Pause and Resume use the current rollout state and require review",
+			"steps": [
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "search",
+					"value": "payments-api"
+				},
+				{
+					"action": "openResource",
+					"kind": "Deployment",
+					"name": "payments-api",
+					"namespace": "payments"
+				},
+				{
+					"action": "showTab",
+					"tab": "Actions"
+				},
+				{
+					"action": "reviewAction",
+					"label": "Pause"
+				},
+				{
+					"action": "expectReview",
+					"title": "Review pause for payments-api",
+					"description": "pause Deployment payments/payments-api in context mock-dev",
+					"contains": [
+						"+  paused: true"
+					]
+				},
+				{
+					"action": "executeReview"
+				},
+				{
+					"action": "expectActionResult",
+					"text": "Simulated pause of Deployment payments/payments-api in context mock-dev in browser mock mode."
+				},
+				{
+					"action": "reviewAction",
+					"label": "Resume"
+				},
+				{
+					"action": "expectReview",
+					"title": "Review resume for payments-api",
+					"description": "resume Deployment payments/payments-api in context mock-dev",
+					"contains": [
+						"-  paused: true"
+					]
+				},
+				{
+					"action": "closeReview"
+				}
+			]
+		}
+	]
+}

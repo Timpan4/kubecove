@@ -83,7 +83,7 @@ impl ResourceCacheFixture {
                 CONTEXT.to_string(),
                 "Pod".to_string(),
                 None,
-                || async { Err(cache_isolation_error()) },
+                || async { Err::<Vec<ResourceSummary>, _>(cache_isolation_error()) },
             ))
             .is_err()
         );
@@ -93,7 +93,7 @@ impl ResourceCacheFixture {
                 other_context.to_string(),
                 "Pod".to_string(),
                 None,
-                || async { Err(cache_isolation_error()) },
+                || async { Err::<Vec<ResourceSummary>, _>(cache_isolation_error()) },
             ))
             .is_err()
         );
@@ -246,12 +246,13 @@ impl ResourceCacheFixture {
             "Pod".to_string(),
             None,
             || async {
-                Err(AppError::new(
+                Err::<Vec<ResourceSummary>, _>(AppError::new(
                     "ready cache hit unexpectedly loaded",
                     crate::models::AppErrorKind::Cluster,
                 ))
             },
         ))
+        .map(|list| list.rows)
     }
 
     pub fn named_scope_from_all_hit(&self) -> Result<Arc<Vec<ResourceSummary>>, AppError> {
@@ -261,12 +262,13 @@ impl ResourceCacheFixture {
             "Pod".to_string(),
             Some("tenant-42".to_string()),
             || async {
-                Err(AppError::new(
+                Err::<Vec<ResourceSummary>, _>(AppError::new(
                     "all-scope hit unexpectedly loaded",
                     crate::models::AppErrorKind::Cluster,
                 ))
             },
         ))
+        .map(|list| list.rows)
     }
 
     pub fn topology_hit(&self) -> Result<Arc<crate::models::ResourceTopology>, AppError> {
@@ -317,6 +319,7 @@ impl ResourceCacheFixture {
             None,
             move || async move { Ok::<_, AppError>(replacement) },
         ))
+        .map(|list| list.rows)
     }
 
     pub fn expected_rows(&self) -> &[ResourceSummary] {

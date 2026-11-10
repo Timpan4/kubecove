@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { cancelledQueryRetry } from "@/lib/query-retry";
 	import { tick, untrack } from "svelte";
 	import { createQueries, createQuery } from "@tanstack/svelte-query";
 	import FriendlyError from "@/components/FriendlyError.svelte";
@@ -11,6 +12,7 @@
 		TooltipTrigger,
 	} from "@/components/ui/svelte";
 	import { cnfast } from "@/lib/utils";
+	import { loadingDelay, loadingDelays } from "@/lib/loading-delay.svelte";
 	import {
 		createTauriClient,
 		detectArgoCD,
@@ -107,7 +109,7 @@
 		queryKey: queryKeys.resourceKinds(clusterContext, kubeconfigSourceKey),
 		queryFn: () => listResourceKinds(client, clusterContext, kubeconfigSourceKey),
 		enabled: showCustomResources && Boolean(clusterContext) && sourceReady,
-		retry: false,
+		retry: cancelledQueryRetry,
 	}));
 
 	const argoDetectionQuery = createQuery<boolean>(() => ({
@@ -176,22 +178,26 @@
 	let customResourceSearch = $state("");
 	function getLazyChildren(node: TreeNode) {
 		if (node.id.type !== "namespace" || !node.id.namespace) return node.children;
-		if (!showCustomResources) return node.children;
-		const customResources = customResourcesByNamespace.get(node.id.namespace) ?? [];
+		const loading = namespaceKindsLoading.active(node.id.namespace);
+		const customResources =
+			showCustomResources && !loading ? (customResourcesByNamespace.get(node.id.namespace) ?? []) : [];
 		return buildExpandedNamespaceChildren(
 			node.id.namespace,
 			customResources,
-			customResourceErrorsByNamespace.get(node.id.namespace),
-			pendingCustomResourceNamespaces.has(node.id.namespace),
+			loading ? undefined : customResourceErrorsByNamespace.get(node.id.namespace),
+			namespaceKindsLoading.shown(node.id.namespace),
 		);
 	}
+	const gitOpsDetecting = loadingDelay(() => argoDetectionQuery.isPending || fluxDetectionQuery.isPending);
+	const resourceKindsLoading = loadingDelay(() => resourceKindsQuery.isPending);
+	const namespaceKindsLoading = loadingDelays(() => pendingCustomResourceNamespaces);
 	const groups = $derived(buildSidebarTree({
 		namespaces: namespacesQuery.data ?? [],
 		resourceKinds: resourceKindsQuery.data ?? [],
-		argoDetected: argoDetectionQuery.data,
-		fluxDetection: fluxDetectionQuery.data,
-		detectingGitOps: argoDetectionQuery.isPending || fluxDetectionQuery.isPending,
-		resourceKindsPending: resourceKindsQuery.isPending,
+		argoDetected: gitOpsDetecting.active ? undefined : argoDetectionQuery.data,
+		fluxDetection: gitOpsDetecting.active ? undefined : fluxDetectionQuery.data,
+		detectingGitOps: gitOpsDetecting.shown,
+		resourceKindsLoading: resourceKindsLoading.shown ? "shown" : resourceKindsLoading.active ? "waiting" : null,
 		resourceKindsError,
 		showUnavailableGitOpsProviders,
 		showCustomResources,

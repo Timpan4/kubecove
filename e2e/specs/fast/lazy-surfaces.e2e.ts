@@ -10,6 +10,9 @@ describe("deferred application screens", () => {
 		await $("#workspace-name").waitForDisplayed();
 		const loaded = () => browser.execute(() => performance.getEntriesByType("resource").map((entry) => entry.name));
 		expect((await loaded()).some((name) => name.includes("/WorkspaceShell.svelte"))).toBe(false);
+		// The launcher's modules nearly fill the browser's resource timing buffer (249 of 250 entries
+		// at the time of writing), and a full buffer drops the workspace's entry.
+		await browser.execute(() => performance.clearResourceTimings());
 		await $("#workspace-name").setValue("Deferred screens");
 		const create = await $("button=Create workspace");
 		await create.waitForEnabled();

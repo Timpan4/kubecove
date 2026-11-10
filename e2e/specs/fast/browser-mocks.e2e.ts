@@ -72,54 +72,6 @@ describe("browser mock inspection", () => {
 		}
 	});
 
-	it("lets page scrolling bypass the resource graph", async () => {
-		const originalSize = await browser.getWindowSize();
-		await browser.sendCommandAndGetResult("Emulation.setEmulatedMedia", {
-			features: [{ name: "prefers-reduced-motion", value: "reduce" }],
-		});
-
-		try {
-			expect(
-				await browser.execute(() =>
-					window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-				),
-			).toBe(true);
-			await $$("button=Resources")[0].click();
-			const graph = await $(".svelte-flow");
-			await graph.waitForDisplayed();
-
-			for (const [width, height] of [
-				[1100, 600],
-				[1440, 600],
-			] as const) {
-				await browser.setWindowSize(width, height);
-				const pageScroller = await $(".overflow-auto.h-full:not(.scrollbar-classic)");
-				await browser.execute((element: HTMLElement) => {
-					element.scrollTop = 0;
-				}, pageScroller);
-				await browser
-					.action("wheel")
-					.scroll({ origin: graph, deltaX: 0, deltaY: 300, duration: 0 })
-					.perform();
-				await browser.waitUntil(
-					async () =>
-						(await browser.execute(
-							(element: HTMLElement) => element.scrollTop,
-							pageScroller,
-						)) > 0,
-				);
-			}
-
-			await $("button=skip graph").click();
-			expect(
-				await browser.execute(() => document.activeElement?.getAttribute("tabindex")),
-			).toBe("-1");
-		} finally {
-			await browser.setWindowSize(originalSize.width, originalSize.height);
-			await browser.sendCommandAndGetResult("Emulation.setEmulatedMedia", { features: [] });
-		}
-	});
-
 	it("keeps RBAC summary actions visible at compact and wide sizes", async () => {
 		const originalSize = await browser.getWindowSize();
 

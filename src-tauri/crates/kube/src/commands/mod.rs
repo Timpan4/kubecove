@@ -16,7 +16,7 @@ pub mod live_store;
 
 pub use api_discovery::{DiscoveredResources, discover_resources};
 pub use cancellation::{BackendCancellationRegistry, cancel_backend_requests};
-pub use cluster_access::{ClientIntent, ClusterAccess};
+pub use cluster_access::{ClientIntent, ClusterAccess, REQUEST_READ_TIMEOUT};
 #[cfg(feature = "test-support")]
 pub use cluster_access::{FIXED_SOURCE_KEY, FixedClusterAccess};
 pub use contexts::list_kube_contexts;
@@ -35,4 +35,4 @@ pub use kubeconfig::{
     init_kubeconfig_settings_path, remove_kubeconfig_path, reorder_kubeconfig_paths,
     set_kubeconfig_env_var, set_show_kubeconfig_source_labels,
 };
-pub use live_store::ClusterLiveStore;
+pub use live_store::{ClusterLiveStore, WatchOrigin};

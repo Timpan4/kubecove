@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { tick } from "svelte";
 	import { foregroundLoading } from "@/lib/foreground-loading-svelte";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import { cnfast } from "@/lib/utils";
 
-	const active = $derived($foregroundLoading > 0);
+	const loading = loadingDelay(() => $foregroundLoading > 0);
+	const active = $derived(loading.shown);
 	let animating = $state(false);
 	let host: HTMLDivElement;
 	$effect(() => {
@@ -24,6 +26,8 @@
 
 <div
 	aria-hidden="true"
+	data-foreground-loading
+	data-active={active ? "true" : "false"}
 	bind:this={host}
 	class={cnfast(
 		"h-0.5 overflow-hidden bg-transparent opacity-0 transition-opacity",

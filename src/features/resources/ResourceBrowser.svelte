@@ -13,11 +13,8 @@
 
 <script lang="ts">
 	import ResourceScopeWarnings from "./ResourceScopeWarnings.svelte";
-	import type { ResourceScopeResult } from "@/lib/types";
 	import ResourceLiveStatusMenu from "@/components/ResourceLiveStatusMenu.svelte";
-	import { liveViewRefresh } from "@/lib/live-view-refresh.svelte";
 	import { markStartup } from "@/lib/startup-marks";
-	import { createQuery } from "@tanstack/svelte-query";
 	import {
 		ArrowDown,
 		ArrowUp,
@@ -60,7 +57,7 @@
 		RESTART_COUNT_NOT_REPORTED,
 	} from "./operational-data";
 	import { argoApplicationInspection } from "@/lib/argo-application-inspection.svelte";
-	import { diagnosticLog } from "@/lib/diagnostics";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import { STATUS_BADGE_STYLES } from "@/components/status-badge-styles";
 	import type { ChipVariant } from "@/features/argo/status";
 	import ArgoApplicationWorkspaceHeader from "@/features/gitops/ArgoApplicationWorkspaceHeader.svelte";
@@ -71,12 +68,10 @@
 		type ArgoResourceFilter,
 	} from "@/features/gitops/argo-workspace-model";
 	import {
-		describeMetricsAvailability,
 		formatCpuMillicores,
 		formatMemoryBytes,
 		mergeResourceMetrics,
 		mergeTopologyMetrics,
-		resourceMetricIndex,
 	} from "@/lib/resource-metrics";
 	import { gitOpsOwnership } from "@/lib/gitops-ownership-evidence";
 		import { cnfast } from "@/lib/utils";
@@ -84,16 +79,8 @@
 	import { getSettingsSnapshot, settingsStore } from "@/lib/settings-store";
 	import { resourceKindOrder } from "@/lib/resource-kind-order";
 	import type { PathStateResourceBrowserState } from "@/lib/path-state";
-	import { createTauriClient, listNamespaces, listResourceKinds } from "@/lib/tauri";
-	import type {
-		DiscoveredResourceKind,
-		NamespaceSummary,
-		ResourceKindSelection,
-		ResourceMetricsSummary,
-		ResourceSummary,
-		ResourceTopology,
-		TopologyMode,
-	} from "@/lib/types";
+	import { createTauriClient } from "@/lib/tauri";
+	import type { ResourceKindSelection, ResourceSummary, TopologyMode } from "@/lib/types";
 	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
 	import { findResourceIndex, resourceKey } from "@/lib/resource-identity";
 	import {
@@ -118,8 +105,9 @@
 		nextNamespaceSelection,
 		shouldLoadOwnershipMap,
 		syncedTopologyNodeId as resolveSyncedTopologyNodeId,
+		topologyLinkKinds,
 	} from "./resourceBrowserModel";
-	import { buildResourceBrowserReadSpecs, resourceBrowserLiveView } from "./resourceBrowserReadSpecs";
+	import { resourceBrowserReads } from "./resourceBrowserReads.svelte";
 	import {
 		buildResourceTableDisplay,
 		buildResourceTablePage,
@@ -128,7 +116,6 @@
 	} from "./resourceTableModel";
 	import { createResourceTableEntryBuilder } from "./resourceTableEntries";
 
-	const BACKGROUND_METRICS_DELAY_MS = 1_500;
 	const EMPTY_CELL = "—";
 
 	let {
@@ -137,7 +124,9 @@
 		initialNamespaces,
 		initialKinds,
 		availableKinds = initialKinds,
+		defaultKinds = initialKinds,
 		kindScopeLocked = false,
+		selectAddedKinds = true,
 		customResourcesEnabled = true,
 		customResourcesStatus = null,
 		initialSearch = "",
@@ -152,6 +141,7 @@
 		onResourceSelect = () => {},
 		onResourcePinToggle = () => {},
 		onResourceClose = () => {},
+		canCloseResource = () => true,
 		onArgoApplicationInspect = () => {},
 		onPathStateChange = () => {},
 	}: {
@@ -160,7 +150,11 @@
 		initialNamespaces: string[];
 		initialKinds: ResourceKindSelection[];
 		availableKinds?: ResourceKindSelection[];
+		/** The workspace's default kinds. A selection that leaves one out also maps resources one edge from the selected kinds. */
+		defaultKinds?: ResourceKindSelection[];
 		kindScopeLocked?: boolean;
+		/** Whether available kinds beyond the initial ones, such as discovered custom kinds, join the selection. */
+		selectAddedKinds?: boolean;
 		customResourcesEnabled?: boolean;
 		customResourcesStatus?: string | null;
 		initialSearch?: string;
@@ -175,6 +169,8 @@
 		onResourceSelect?: (resource: ResourceSummary, source?: "explicit" | "restore") => void;
 		onResourcePinToggle?: (resource: ResourceSummary) => void;
 		onResourceClose?: () => void;
+		/** False keeps the selection and the scope, such as while the open YAML draft has unsaved changes. */
+		canCloseResource?: () => boolean;
 		onArgoApplicationInspect?: (app: ArgoApplicationSummary) => void;
 		onPathStateChange?: (state: PathStateResourceBrowserState) => void;
 	} = $props();
@@ -206,9 +202,7 @@
 	let ownershipMapLoadError = $state<unknown>(null);
 	let tablePanelOpen = $state(true);
 	let appliedTargetResourceKey = $state("");
-	let appliedMetricsScopeKey = $state("");
 	let appliedSelectionScrollKey = $state("");
-	let metricsQueryReady = $state(false);
 	let tableViewportElement = $state<HTMLDivElement | null>(null);
 	let initialPathStateConsumed = $state(false);
 	const showFullTopologyOnSelection = $derived($settingsStore.showFullTopologyOnSelection);
@@ -259,7 +253,7 @@
 		selectedNamespaces = pathState ? [...pathState.selectedNamespaces] : [...initialNamespaces];
 		selectedKinds = pathState ? [...pathState.selectedKinds] : [...initialKinds];
 		appliedScopeKey = incomingScopeKey;
-		appliedAvailableKinds = initialKinds;
+		appliedAvailableKinds = selectAddedKinds ? initialKinds : availableKinds;
 		search = pathState?.search ?? initialSearch;
 		filterSearch = search;
 		gitOpsFilter = pathState?.gitOpsFilter ?? initialGitOpsFilter;
@@ -279,7 +273,9 @@
 	/** Selects kinds that became available since they were last applied. */
 	function selectNewlyAvailableKinds() {
 		if (sameKinds(appliedAvailableKinds, availableKinds)) return;
-		const additions = newlyAvailableKinds(availableKinds, appliedAvailableKinds, selectedKinds);
+		const additions = selectAddedKinds
+			? newlyAvailableKinds(availableKinds, appliedAvailableKinds, selectedKinds)
+			: [];
 		appliedAvailableKinds = availableKinds;
 		if (additions.length > 0) selectedKinds = [...selectedKinds, ...additions];
 	}
@@ -289,55 +285,23 @@
 
 	const clusterContext = $derived(workspaceReadContext.clusterContext);
 	const sourceReady = $derived(workspaceReadContext.sourceReady);
-	const kubeconfigSourceKey = $derived(workspaceReadContext.kubeconfigSourceKey);
 	const fetchKeys = $derived(kindFetchKeys(selectedNamespaces, selectedKinds));
-	const readSpecs = $derived(
-		buildResourceBrowserReadSpecs({
-			client,
-			clusterContext,
-			kubeconfigSourceKey,
-			fetchKeys,
-			namespaces: selectedNamespaces,
-			topologyMode,
-			mapPanelOpen,
-			sourceReady,
-			customResourcesEnabled,
-		}),
-	);
 	const focusedArgo = argoApplicationInspection(client, () => ({
 		readContext: workspaceReadContext,
 		application: gitOpsFocusApplication,
 	}));
-	const workspaceId = $derived(workspaceReadContext.workspaceId);
-	const live = liveViewRefresh(client, () =>
-		resourceBrowserLiveView({ workspaceId, clusterContext, kubeconfigSourceKey, sourceReady }, readSpecs, {
-			fetchKeys,
-			namespaces: selectedNamespaces,
-			mapPanelOpen,
-			focusedApplication: gitOpsFocusApplication,
-		}),
-	);
-	const namespacesQuery = createQuery<NamespaceSummary[]>(() => ({
-		queryKey: readSpecs.namespacesQueryKey,
-		queryFn: () => listNamespaces(client, clusterContext, kubeconfigSourceKey),
-		enabled: readSpecs.namespacesEnabled,
-		staleTime: 30_000,
-		retry: false,
+	const reads = resourceBrowserReads(client, () => ({
+		readContext: workspaceReadContext, fetchKeys, namespaces: selectedNamespaces, topologyMode, mapPanelOpen,
+		customResourcesEnabled, focusedApplication: gitOpsFocusApplication,
 	}));
-	const resourceKindsQuery = createQuery<DiscoveredResourceKind[]>(() => ({
-		queryKey: readSpecs.resourceKindsQueryKey,
-		queryFn: () => listResourceKinds(client, clusterContext, kubeconfigSourceKey),
-		enabled: readSpecs.resourceKindsEnabled,
-		staleTime: 30_000,
-		retry: false,
-	}));
+	const live = reads.live;
+	// The Context column, filter and search show only when the workspace has more than one context.
+	const multiContext = $derived(reads.contexts.length > 1);
+	let contextFilter = $state<string[]>([]);
 	$effect(() => {
-		if (sourceReady && namespacesQuery.isSuccess && resourceKindsQuery.isSuccess) {
-			markStartup("base-scope-ready");
-		}
+		if (sourceReady && reads.namespacesReady && reads.kindsReady) markStartup("base-scope-ready");
 	});
-	const topologyFitViewKey = $derived(readSpecs.topologyFitViewKey);
-	const resourcesQuery = createQuery<ResourceScopeResult>(() => readSpecs.resources);
+	const resourcesQuery = $derived(reads.scope);
 	$effect(() => {
 		if (kindScopeLocked) {
 			if (selectedKinds.length !== initialKinds.length ||
@@ -357,59 +321,24 @@
 			selectNewlyAvailableKinds();
 		}
 	});
-	const topologyQuery = createQuery<ResourceTopology>(() => readSpecs.topology);
+	const topologyQuery = reads.topology;
 	const updatesCurrent = $derived(live.state.status === "connected" && !live.state.catchingUp && !live.state.reloadError
 		&& !resourcesQuery.isError && !resourcesQuery.isPlaceholderData
 		&& (!mapPanelOpen || (!topologyQuery.isError && !topologyQuery.isPlaceholderData)));
-	$effect(() => {
-		const metricsScopeKey = JSON.stringify(readSpecs.metrics.queryKey);
-		if (appliedMetricsScopeKey === metricsScopeKey) return;
-		appliedMetricsScopeKey = metricsScopeKey;
-		metricsQueryReady = false;
-	});
-	$effect(() => {
-		const rowCount = resourcesQuery.data?.resources.length ?? 0;
-		if (
-			metricsQueryReady ||
-			!clusterContext ||
-			!resourcesQuery.isSuccess ||
-			resourcesQuery.isPlaceholderData ||
-			(mapPanelOpen && topologyQuery.isPending) ||
-			!globalThis.window
-		) return;
-		diagnosticLog("resources.metrics.defer", {
-			ms: BACKGROUND_METRICS_DELAY_MS,
-			rows: rowCount,
-			mapOpen: mapPanelOpen,
-		});
-		const timer = window.setTimeout(() => {
-			diagnosticLog("resources.metrics.enable", {
-				rows: rowCount,
-				mapOpen: mapPanelOpen,
-			});
-			metricsQueryReady = true;
-		}, BACKGROUND_METRICS_DELAY_MS);
-		return () => window.clearTimeout(timer);
-	});
-	const metricsQuery = createQuery<ResourceMetricsSummary>(() => ({
-		...readSpecs.metrics,
-		enabled: metricsQueryReady && Boolean(clusterContext),
-	}));
 
-	const namespaceOptions = $derived(namespacesQuery.data ?? []);
+	const namespaceOptions = $derived(reads.namespaces);
 	const kindOptions = $derived(
 		kindScopeLocked
 			? [...initialKinds]
-			: allKindOptions(customResourcesEnabled ? (resourceKindsQuery.data ?? []) : []),
+			: allKindOptions(customResourcesEnabled ? reads.kinds : []),
 	);
 	const selectedNamespaceSet = $derived(new Set(selectedNamespaces));
 	const selectedKindSet = $derived(new Set(selectedKinds.map(kindKey)));
-	const metricsIndex = $derived(resourceMetricIndex(metricsQuery.data));
 	const scopedRows = $derived(
 		filterResourcesByKinds(resourcesQuery.data?.resources ?? [], selectedKinds),
 	);
 	const rowsWithMetrics = $derived(
-		mergeResourceMetrics(scopedRows, metricsQuery.data, metricsIndex),
+		mergeResourceMetrics(scopedRows, undefined, reads.metricsIndex),
 	);
 	const focusedArgoResources = $derived(focusedArgo.current.data?.resources ?? []);
 	const focusedArgoFilterSummary = $derived(
@@ -441,7 +370,7 @@
 			firstResourceRowsMarked = true;
 		}
 	});
-	const tableProjection = $derived(buildResourceTableProjection(tableRows));
+	const tableProjection = $derived(buildResourceTableProjection(tableRows, multiContext));
 	$effect(() => {
 		const value = search;
 		const frame = requestAnimationFrame(() => {
@@ -463,6 +392,8 @@
 					? focusedArgoResourceKeys
 					: undefined,
 				kindOrder: resourceKindOrder($settingsStore.resourceKindLanes),
+				contexts: reads.contexts,
+				contextFilter: new Set(contextFilter),
 			},
 		),
 	);
@@ -479,14 +410,15 @@
 				topologyQuery.data,
 				tableDisplay.filteredRows,
 				hideHistoricalReplicaSets,
+				topologyLinkKinds(selectedKinds, defaultKinds),
 			),
-			metricsQuery.data,
-			metricsIndex,
+			undefined,
+			reads.metricsIndex,
 		),
 	);
 	const pinnedResourceKeySet = $derived(new Set(pinnedResourceKeys));
 	const tableVisibleColumnCount = $derived(
-		6 +
+		6 + Number(multiContext) +
 			Number(tableModel.columnVisibility.ready) +
 			Number(tableModel.columnVisibility.restarts) +
 			Number(tableModel.columnVisibility.cpu) +
@@ -495,9 +427,9 @@
 	);
 	const tableMinWidth = $derived(
 		250 +
-			130 +
+			130 + (multiContext ? 130 : 0) +
 			105 +
-			95 +
+			100 +
 			(tableModel.columnVisibility.ready ? 70 : 0) +
 			(tableModel.columnVisibility.restarts ? 75 : 0) +
 			(tableModel.columnVisibility.cpu ? 65 : 0) +
@@ -528,16 +460,13 @@
 	const targetResourceKey = $derived(
 		targetResource ? resourceKey(targetResource) : "",
 	);
-	const metricsMessage = $derived(
-		metricsQuery.isError
-			? "metrics API unavailable"
-			: describeMetricsAvailability(metricsQuery.data?.availability),
-	);
-	const loading = $derived(
-		Boolean(clusterContext) &&
+	const loading = loadingDelay(
+		() =>
+			Boolean(clusterContext) &&
 			fetchKeys.length > 0 &&
 			(!sourceReady || (resourcesQuery.isPending && !resourcesQuery.isPlaceholderData)),
 	);
+	const ownershipMapLoading = loadingDelay(() => !OwnershipMapComponent && !ownershipMapLoadError);
 	const resourceError = $derived(
 		workspaceReadContext.sourceError
 			? workspaceReadContext.sourceError
@@ -626,6 +555,7 @@
 	});
 
 	function toggleNamespace(namespace: string, checked: boolean) {
+		if (!canCloseResource()) return;
 		selectedNamespaces = nextNamespaceSelection(
 			selectedNamespaces,
 			namespaceOptions.map((option) => option.name),
@@ -638,6 +568,7 @@
 	}
 
 	function toggleKind(kind: ResourceKindSelection, checked: boolean) {
+		if (!canCloseResource()) return;
 		const key = kindKey(kind);
 		selectedKinds = checked
 			? [...selectedKinds, kind]
@@ -675,6 +606,7 @@
 
 	function clearFilters() {
 		search = "";
+		contextFilter = [];
 		gitOpsFilter = "";
 		healthFilter = "all";
 		argoResourceFilter = "none";
@@ -739,9 +671,9 @@
 
 <div class="flex h-full min-h-0 min-w-0 flex-col gap-3">
 	{#if resourcesQuery.isSuccess && !resourcesQuery.isPlaceholderData}
-		<ResourceScopeWarnings failures={resourcesQuery.data?.failures ?? []} />
+		<ResourceScopeWarnings failures={resourcesQuery.data?.failures ?? []} contextFailures={resourcesQuery.contextFailures} />
 	{/if}
-	{#if !clusterContext || fetchKeys.length === 0 || resourceError || loading}
+	{#if !clusterContext || fetchKeys.length === 0 || resourceError || loading.active}
 		<div class="flex justify-end">{@render refreshControls()}</div>
 	{/if}
 	{#if gitOpsFocusApplication}
@@ -777,10 +709,12 @@
 			error={resourceError}
 			context={{ operation: "resourcesLoad", fallbackTitle: "Failed to load resources" }}
 		/>
-	{:else if loading}
+	{:else if loading.active}
 		<div class="flex min-h-52 items-center justify-center gap-2 text-xs text-muted-foreground">
-			<Spinner />
-			<span>Loading resources</span>
+			{#if loading.shown}
+				<Spinner />
+				<span>Loading resources</span>
+			{/if}
 		</div>
 	{:else}
 		<ResourceBrowserTopBar
@@ -799,16 +733,21 @@
 			argoSummary={focusedArgoFilterSummary}
 			argoFilter={argoResourceFilter}
 			{hideHistoricalReplicaSets}
-			{metricsMessage}
+			metricsMessage={reads.metricsMessage}
+			contexts={multiContext ? reads.contexts : []}
+			{contextFilter}
+			onContextFilterChange={(next) => { contextFilter = next; pageIndex = 0; }}
 			{customResourcesStatus}
 			{refreshControls}
 			onAllNamespacesSelect={() => {
+				if (!canCloseResource()) return;
 				selectedNamespaces = [];
 				pageIndex = 0;
 				onResourceClose();
 				selectedTopologyNodeId = null;
 			}}
 			onAllKindsSelect={() => {
+				if (!canCloseResource()) return;
 				selectedKinds = [...kindOptions];
 				pageIndex = 0;
 				onResourceClose();
@@ -852,7 +791,7 @@
 		>
 			{#if mapPanelOpen}
 				<div class="h-full min-h-[400px] min-w-0">
-					{#if OwnershipMapComponent}
+					{#if OwnershipMapComponent && !ownershipMapLoading.active}
 						<OwnershipMapComponent
 							topology={topologyWithMetrics}
 							{updatesCurrent}
@@ -862,7 +801,10 @@
 							mode={topologyMode}
 							selectedNodeId={syncedTopologyNodeId}
 							{showFullTopologyOnSelection}
-							fitViewKey={topologyFitViewKey}
+							fitViewKey={reads.topologyFitViewKey}
+							contexts={reads.contexts}
+							mapContext={reads.mapContext}
+							onMapContextChange={(context) => { reads.selectMapContext(context); selectedTopologyNodeId = null; }}
 							onModeChange={(mode) => {
 								topologyMode = mode;
 								selectedTopologyNodeId = null;
@@ -877,8 +819,10 @@
 						</div>
 					{:else}
 						<div class="flex h-full items-center justify-center gap-2 text-xs text-muted-foreground">
-							<Spinner />
-							<span>Loading ownership map</span>
+							{#if ownershipMapLoading.shown}
+								<Spinner />
+								<span>Loading ownership map</span>
+							{/if}
 						</div>
 					{/if}
 				</div>
@@ -922,7 +866,7 @@
 								<h2 class="truncate text-sm font-semibold">Resource Table</h2>
 							</div>
 							<p class="mt-0.5 text-xs text-muted-foreground">
-								{tableModel.totalRows} resources · page {tableModel.safePageIndex + 1} of {tableModel.pageCount}
+								{tableModel.totalRows} resources{multiContext ? ` · ${reads.contexts.length} contexts` : ""} · page {tableModel.safePageIndex + 1} of {tableModel.pageCount}
 							</p>
 						</div>
 						<Button
@@ -944,8 +888,9 @@
 							<colgroup>
 								<col />
 								<col style="width: 130px;" />
+								{#if multiContext}<col style="width: 130px;" />{/if}
 								<col style="width: 105px;" />
-								<col style="width: 95px;" />
+								<col style="width: 100px;" />
 								{#if tableModel.columnVisibility.ready}<col style="width: 70px;" />{/if}
 								{#if tableModel.columnVisibility.restarts}<col style="width: 75px;" />{/if}
 								{#if tableModel.columnVisibility.cpu}<col style="width: 65px;" />{/if}
@@ -958,6 +903,7 @@
 								<TableRow>
 									<TableHead>{@render SortButton("name", "Name")}</TableHead>
 									<TableHead>{@render SortButton("status", "Status")}</TableHead>
+									{#if multiContext}<TableHead>{@render SortButton("context", "Context")}</TableHead>{/if}
 									<TableHead>{@render SortButton("namespace", "Namespace")}</TableHead>
 									<TableHead>{@render SortButton("kind", "Kind")}</TableHead>
 									{#if tableModel.columnVisibility.ready}<TableHead>{@render SortButton("ready", "Ready")}</TableHead>{/if}
@@ -1061,8 +1007,13 @@
 												<TableCell>
 												<ResourceTableStatus resource={row} active={updatesCurrent} />
 												</TableCell>
-											<TableCell>{row.namespace ?? EMPTY_CELL}</TableCell>
-											<TableCell>{row.kind}</TableCell>
+											{#if multiContext}<TableCell><span class="block min-w-0 truncate" title={row.cluster}>{row.cluster}</span></TableCell>{/if}
+											<TableCell>
+												<span class="block min-w-0 truncate" title={row.namespace ?? EMPTY_CELL}>{row.namespace ?? EMPTY_CELL}</span>
+											</TableCell>
+											<TableCell>
+												<span class="block min-w-0 truncate" title={row.kind}>{row.kind}</span>
+											</TableCell>
 												{#if tableModel.columnVisibility.ready}
 													<TableCell>
 														{@const ready = resourceReadyChip(row)}
@@ -1099,9 +1050,8 @@
 												{/if}
 												{#if tableModel.columnVisibility.gitOps}
 													<TableCell>
-														<span class="block min-w-0 truncate">
-															{gitOpsOwnership(row)?.ownerName ?? row.helmRelease ?? EMPTY_CELL}
-														</span>
+														{@const owner = gitOpsOwnership(row)?.ownerName ?? row.helmRelease ?? EMPTY_CELL}
+														<span class="block min-w-0 truncate" title={owner}>{owner}</span>
 													</TableCell>
 												{/if}
 												<TableCell><TimestampText value={row.createdAt} relative={row.age} /></TableCell>

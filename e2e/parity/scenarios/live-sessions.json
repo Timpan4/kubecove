@@ -1,0 +1,412 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "forward-start.exact-pod-ports",
+      "title": "A Pod forward starts on the selected target and ports and disappears on stop",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Forward" },
+        { "action": "configureForward", "remote": "9090", "local": "19090" },
+        { "action": "forwardControl", "operation": "start" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "listening", "count": 1 },
+        { "action": "forwardControl", "operation": "stop", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "stopped", "count": 0 }
+      ]
+    },
+    {
+      "id": "forward-save.preset-notice",
+      "title": "Saving a Service preset reports success as a neutral notice, and saving it again says it is already saved",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Service", "namespace": "payments", "name": "payments-api" },
+        { "action": "showTab", "tab": "Forward" },
+        { "action": "configureForward", "remote": "80", "local": "18083" },
+        { "action": "forwardControl", "operation": "save" },
+        { "action": "expectForwardNotice", "title": "Service preset", "text": "Saved Service forward to this workspace." },
+        { "action": "forwardControl", "operation": "save" },
+        { "action": "expectForwardNotice", "title": "Service preset", "text": "Preset already saved for this Service." }
+      ]
+    },
+    {
+      "id": "forward-active.service-reconnect-preset",
+      "title": "A saved Service forward preserves ports, resolves its selector and reconnects without duplication",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Service", "namespace": "payments", "name": "payments-api" },
+        { "action": "showTab", "tab": "Forward" },
+        { "action": "configureForward", "remote": "80", "local": "18081" },
+        { "action": "forwardControl", "operation": "save" },
+        { "action": "closeDetail" },
+        { "action": "openPage", "page": "Port Forwards" },
+        { "action": "forwardControl", "operation": "restore" },
+        { "action": "expectForwardState", "target": "Service/payments-api:80", "local": "18081", "status": "listening", "resolved": "payments-api-7d9c9b7f8d-k2r9p:8080", "count": 1 },
+        { "action": "replaySessions", "script": "reconnecting" },
+        { "action": "expectForwardState", "target": "Service/payments-api:80", "local": "18081", "status": "reconnecting", "count": 1 },
+        { "action": "replaySessions", "script": "failed" },
+        { "action": "expectForwardState", "target": "Service/payments-api:80", "local": "18081", "status": "error", "count": 1 },
+        { "action": "forwardControl", "operation": "reconnect", "target": "Service/payments-api:80" },
+        { "action": "expectForwardState", "target": "Service/payments-api:80", "local": "18081", "status": "listening", "resolved": "payments-api-7d9c9b7f8d-k2r9p:8080", "count": 1 },
+        { "action": "forwardControl", "operation": "stop", "target": "Service/payments-api:80" },
+        { "action": "expectForwardState", "target": "Service/payments-api:80", "local": "18081", "status": "stopped", "count": 0 }
+      ]
+    },
+    {
+      "id": "exec-session.container-output-cleanup",
+      "title": "Exec uses the confirmed container, isolates output and stops when its session closes",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "start", "container": "app", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "replaySessions", "script": "foreign-output" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app", "absent": "FOREIGN SESSION OUTPUT" },
+        { "action": "execControl", "operation": "input", "data": "printf parity\r" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "parity" },
+        { "action": "execControl", "operation": "close" },
+        { "action": "expectExecState", "container": "app", "status": "closed", "contains": "" },
+        { "action": "closeDetail" }
+      ]
+    },
+    {
+      "id": "exec-session.sidecar-isolation",
+      "title": "Container selection and tab switching keep each terminal's output separate",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "start", "container": "sidecar", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "sidecar", "status": "running", "contains": "Controlled exec sidecar", "absent": "Controlled exec app" },
+        { "action": "execControl", "operation": "start", "container": "app", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app", "absent": "Controlled exec sidecar" },
+        { "action": "execControl", "operation": "select", "container": "sidecar", "tab": 0 },
+        { "action": "expectExecState", "container": "sidecar", "status": "running", "contains": "Controlled exec sidecar", "absent": "Controlled exec app" },
+        { "action": "execControl", "operation": "close", "container": "sidecar", "tab": 0 },
+        { "action": "execControl", "operation": "close", "container": "app", "tab": 1 },
+        { "action": "expectExecState", "container": "app", "status": "closed", "contains": "" }
+      ]
+    },
+    {
+      "id": "forward-active.context-cleanup",
+      "title": "Switching workspaces stops forwards outside the new context",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Forward" },
+        { "action": "configureForward", "remote": "9090", "local": "19090" },
+        { "action": "forwardControl", "operation": "start" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "listening", "count": 1 },
+        { "action": "closeDetail" },
+        { "action": "openLauncher" },
+        { "action": "selectWorkspaceContext", "context": "docker-desktop" },
+        { "action": "createWorkspace", "name": "Session cleanup workspace" },
+        { "action": "openPage", "page": "Port Forwards" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "stopped", "count": 0 },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openPage", "page": "Port Forwards" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "stopped", "count": 0 }
+      ]
+    },
+    {
+      "id": "exec-session.custom-argv",
+      "title": "Custom argv runs in the chosen container without shell parsing",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "custom", "container": "sidecar" },
+        { "action": "execControl", "operation": "arguments", "command": "/usr/bin/env\nprintenv" },
+        { "action": "execControl", "operation": "run", "container": "sidecar", "command": "env" },
+        { "action": "expectExecState", "container": "sidecar", "command": "env", "status": "running", "contains": "Controlled exec sidecar" },
+        { "action": "execControl", "operation": "close" }
+      ]
+    },
+    {
+      "id": "forward-active.edit-remove-preset",
+      "title": "Editing a named preset changes its restored port and removal deletes it",
+      "steps": [
+        { "action": "openPage", "page": "Port Forwards" },
+        { "action": "presetControl", "operation": "add" },
+        { "action": "configurePreset", "label": "Parity preset", "context": "mock-dev", "namespace": "payments", "service": "payments-api", "remote": "80", "local": "18081" },
+        { "action": "presetControl", "operation": "save" },
+        { "action": "presetControl", "operation": "edit", "label": "Parity preset" },
+        { "action": "configurePreset", "label": "Edited preset", "context": "mock-dev", "namespace": "payments", "service": "payments-api", "remote": "80", "local": "18082" },
+        { "action": "presetControl", "operation": "save" },
+        { "action": "presetControl", "operation": "start", "label": "Edited preset" },
+        { "action": "expectForwardState", "target": "Service/payments-api:80", "local": "18082", "status": "listening", "count": 1 },
+        { "action": "forwardControl", "operation": "stop", "target": "Service/payments-api:80" },
+        { "action": "presetControl", "operation": "remove", "label": "Edited preset" },
+        { "action": "presetControl", "operation": "absent", "label": "Edited preset" }
+      ]
+    },
+    {
+      "id": "forward-active.auto-start-saved",
+      "title": "Restoring a workspace auto-starts its saved Service ports when enabled",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Service", "namespace": "payments", "name": "payments-api" },
+        { "action": "showTab", "tab": "Forward" },
+        { "action": "configureForward", "remote": "80", "local": "18081" },
+        { "action": "forwardControl", "operation": "save" },
+        { "action": "closeDetail" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Live sessions" },
+        { "action": "toggleSetting", "setting": "Auto-start saved port forwards" },
+        { "action": "expectSetting", "setting": "Auto-start saved port forwards", "checked": true },
+        { "action": "closeSettings" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openPage", "page": "Port Forwards" },
+        { "action": "expectForwardState", "target": "Service/payments-api:80", "local": "18081", "status": "listening", "count": 1 }
+      ]
+    },
+    {
+      "id": "exec-session.confirm-leave",
+      "title": "Leaving a running terminal requires confirmation and stops only its session",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "start", "container": "app", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "closeDetail" },
+        { "action": "confirmExecLeave", "choice": "stay" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "closeDetail" },
+        { "action": "confirmExecLeave", "choice": "stop" },
+        { "action": "expectDetailClosed" },
+        { "action": "openPage", "page": "Port Forwards" },
+        { "action": "expectLiveSessionCount", "count": 3 }
+      ]
+    },
+    {
+      "id": "exec-session.leave-stop-failure",
+      "title": "A failed stop closes the leave dialog and keeps the Pod open with the error in its terminal, and the next leave stops it",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "start", "container": "app", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "coverageScript", "script": "stop-failed" },
+        { "action": "closeDetail" },
+        { "action": "confirmExecLeave", "choice": "stop" },
+        { "action": "expectNoPageText", "text": "Stop 1 exec session?" },
+        { "action": "expectExecState", "container": "app", "status": "error", "contains": "stop failed" },
+        { "action": "coverageScript", "script": "base" },
+        { "action": "closeDetail" },
+        { "action": "confirmExecLeave", "choice": "stop" },
+        { "action": "expectDetailClosed" }
+      ]
+    },
+    {
+      "id": "exec-session.stop-failure",
+      "title": "A failed Stop marks the terminal as errored with a note, and the next Stop ends the session and clears the error",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "start", "container": "app", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "coverageScript", "script": "stop-failed" },
+        { "action": "execControl", "operation": "stop" },
+        { "action": "expectExecState", "container": "app", "status": "error", "contains": "[stop failed; the session may still be running]" },
+        { "action": "expectExecState", "container": "app", "status": "error", "contains": "Controlled exec app" },
+        { "action": "replaySessions", "script": "exec-output" },
+        { "action": "expectExecState", "container": "app", "status": "error", "contains": "LATE EXEC OUTPUT" },
+        { "action": "coverageScript", "script": "base" },
+        { "action": "execControl", "operation": "stop" },
+        { "action": "expectExecState", "container": "app", "status": "stopped", "contains": "[stop failed; the session may still be running]" },
+        { "action": "expectExecState", "container": "app", "status": "stopped", "contains": "Controlled exec app" },
+        { "action": "expectNoPageText", "text": "Controlled stop failure" },
+        { "action": "closeDetail" },
+        { "action": "expectDetailClosed" }
+      ]
+    },
+    {
+      "id": "exec-session.stop-notes",
+      "title": "Stop writes the stopping note to the terminal and the stopped note once the stop succeeds",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "start", "container": "app", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "execControl", "operation": "stop" },
+        { "action": "expectExecState", "container": "app", "status": "stopped", "contains": "[stopping session]" },
+        { "action": "expectExecState", "container": "app", "status": "stopped", "contains": "[session stopped]" },
+        { "action": "closeDetail" },
+        { "action": "expectDetailClosed" }
+      ]
+    },
+    {
+      "id": "exec-session.stop-pending-status",
+      "title": "Stop marks the terminal as stopped while the backend stop is still running",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "start", "container": "app", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "coverageScript", "script": "stop-pending" },
+        { "action": "execControl", "operation": "stop" },
+        { "action": "expectExecState", "container": "app", "status": "stopped", "contains": "[stopping session]", "absent": "[session stopped]" },
+        { "action": "coverageScript", "script": "base" },
+        { "action": "expectExecState", "container": "app", "status": "stopped", "contains": "[session stopped]" },
+        { "action": "closeDetail" },
+        { "action": "expectDetailClosed" }
+      ]
+    },
+    {
+      "id": "exec-session.exit-note",
+      "title": "A session that exits ends its terminal with the exit code note",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "start", "container": "app", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "replaySessions", "script": "exec-exited" },
+        { "action": "expectExecState", "container": "app", "status": "exited", "contains": "[exited with code 0]" },
+        { "action": "closeDetail" },
+        { "action": "expectDetailClosed" }
+      ]
+    },
+    {
+      "id": "exec-session.failure-note",
+      "title": "A session that fails ends its terminal with the failure as a note and shows the exec failure panel",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "start", "container": "app", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "replaySessions", "script": "exec-failed" },
+        { "action": "expectExecState", "container": "app", "status": "error", "contains": "[Controlled exec failure]" },
+        { "action": "expectPageText", "text": "Exec failed" },
+        { "action": "closeDetail" },
+        { "action": "expectDetailClosed" }
+      ]
+    },
+    {
+      "id": "exec-session.outside-stop-note",
+      "title": "A session stopped outside its tab ends the terminal with the stopped note",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "start", "container": "app", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "replaySessions", "script": "exec-stopped" },
+        { "action": "expectExecState", "container": "app", "status": "stopped", "contains": "[session stopped]" },
+        { "action": "closeDetail" },
+        { "action": "expectDetailClosed" }
+      ]
+    },
+    {
+      "id": "exec-session.stop-failure-friendly-error",
+      "title": "A failed Stop shows the exec failure panel with the technical detail collapsed",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "start", "container": "app", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "coverageScript", "script": "stop-failed" },
+        { "action": "execControl", "operation": "stop" },
+        { "action": "expectExecState", "container": "app", "status": "error", "contains": "[stop failed; the session may still be running]" },
+        { "action": "expectPageText", "text": "Exec failed" },
+        { "action": "expectNoPageText", "text": "Controlled stop failure" },
+        { "action": "coverageScript", "script": "base" },
+        { "action": "execControl", "operation": "stop" },
+        { "action": "expectExecState", "container": "app", "status": "stopped", "contains": "[session stopped]" },
+        { "action": "expectNoPageText", "text": "Exec failed" },
+        { "action": "closeDetail" },
+        { "action": "expectDetailClosed" }
+      ]
+    },
+    {
+      "id": "exec-session.leave-during-stop",
+      "title": "Stop and leave closes the dialog while the stops run, and leaves once they finish",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "start", "container": "app", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "coverageScript", "script": "stop-pending" },
+        { "action": "closeDetail" },
+        { "action": "confirmExecLeave", "choice": "stop" },
+        { "action": "expectNoPageText", "text": "Stop 1 exec session?" },
+        { "action": "coverageScript", "script": "base" },
+        { "action": "expectDetailClosed" }
+      ]
+    },
+    {
+      "id": "live-sessions.workspace-delete-stops-forwards",
+      "title": "Deleting the open workspace stops its live forwards and shows the cleanup notice in the next workspace",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Forward" },
+        { "action": "configureForward", "remote": "9090", "local": "19090" },
+        { "action": "forwardControl", "operation": "start" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "listening", "count": 1 },
+        { "action": "closeDetail" },
+        { "action": "openLauncher" },
+        { "action": "deleteSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "nameWorkspace", "value": "After delete" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "After delete", "context": "mock-dev" },
+        { "action": "expectPageText", "text": "Stopped 3 port forwards and 1 exec session outside this workspace." },
+        { "action": "openPage", "page": "Port Forwards" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "stopped", "count": 0 }
+      ]
+    },
+    {
+      "id": "live-sessions.launcher-open-stops-forwards",
+      "title": "Opening the launcher over a workspace stops its forwards and shows the cleanup notice when it reopens",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Forward" },
+        { "action": "configureForward", "remote": "9090", "local": "19090" },
+        { "action": "forwardControl", "operation": "start" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "listening", "count": 1 },
+        { "action": "closeDetail" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectPageText", "text": "Stopped 3 port forwards and 1 exec session outside this workspace." },
+        { "action": "openPage", "page": "Port Forwards" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "stopped", "count": 0 }
+      ]
+    },
+    {
+      "id": "live-sessions.launcher-open-keeps-when-enabled",
+      "title": "With keep live sessions on, opening the launcher leaves forwards running",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Live sessions" },
+        { "action": "toggleSetting", "setting": "Keep live sessions across workspace switches" },
+        { "action": "expectSetting", "setting": "Keep live sessions across workspace switches", "checked": true },
+        { "action": "closeSettings" },
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Forward" },
+        { "action": "configureForward", "remote": "9090", "local": "19090" },
+        { "action": "forwardControl", "operation": "start" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "listening", "count": 1 },
+        { "action": "closeDetail" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectNoPageText", "text": "outside this workspace." },
+        { "action": "openPage", "page": "Port Forwards" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "listening", "count": 1 }
+      ]
+    }
+  ]
+}

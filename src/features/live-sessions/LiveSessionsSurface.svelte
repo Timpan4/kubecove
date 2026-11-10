@@ -64,10 +64,15 @@
 			refetchInterval: 2_500,
 		}),
 	);
-	const liveSessionsQuery = $derived({
-		isPending: portForwardsQuery.isPending || execSessionsQuery.isPending,
-		isError: portForwardsQuery.isError || execSessionsQuery.isError,
-		error: portForwardsQuery.error ?? execSessionsQuery.error,
+	const liveSessionsQuery = $derived.by(() => {
+		const portForwards = portForwardsQuery.data;
+		const execSessions = execSessionsQuery.data;
+		return {
+			data: portForwards !== undefined || execSessions !== undefined ? { portForwards, execSessions } : undefined,
+			isPending: portForwardsQuery.isPending || execSessionsQuery.isPending,
+			isError: portForwardsQuery.isError || execSessionsQuery.isError,
+			error: portForwardsQuery.error ?? execSessionsQuery.error,
+		};
 	});
 	const liveSessionReadModel = $derived(
 		buildLiveSessionReadModel(

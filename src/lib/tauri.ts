@@ -2,7 +2,7 @@ import { Channel, type InvokeOptions } from "@tauri-apps/api/core";
 import { IS_DEV_BUILD } from "./build-env";
 import { cancellableArg, kubeconfigArg } from "./tauri-args";
 import { createBrowserTauriClient } from "./browser-runtime";
-import { getDesktopRemoteTauriClient, isDesktopRemoteSelected } from "./remote-runtime";
+import { assertSelectedRemoteConnected, getDesktopRemoteTauriClient, isDesktopRemoteSelected } from "./remote-runtime";
 import type {
 	ClusterContext,
 	NamespaceSummary,
@@ -112,7 +112,15 @@ export function createTauriClient(): TauriClient {
 	if (isBrowserRuntime()) return createBrowserTauriClient();
 	if (IS_DEV_BUILD && shouldUseBrowserDevMocks()) {
 		if (!createDevMockClient) throw new Error("Browser dev mocks must initialize before mounting the app");
-		return createDevMockClient();
+		// The mocks answer a selected remote's commands directly, so they apply the remote client's disconnected refusal here.
+		const mockClient = createDevMockClient();
+		return {
+			...mockClient,
+			invoke: async <T, Args extends object = object>(cmd: string, args?: Args, options?: InvokeOptions) => {
+				assertSelectedRemoteConnected();
+				return mockClient.invoke<T, Args>(cmd, args, options);
+			},
+		};
 	}
 	return {
 		createChannel: <T>(onMessage: (message: T) => void) => {

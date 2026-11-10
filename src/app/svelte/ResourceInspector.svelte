@@ -5,7 +5,7 @@
 <script lang="ts">
 	import { Pin, X } from "lucide-svelte";
 	import DeferredSurface from "@/components/DeferredSurface.svelte";
-	import { Button } from "@/components/ui/svelte";
+	import { Badge, Button } from "@/components/ui/svelte";
 	import type { ArgoApplicationSummary } from "@/lib/gitops-types";
 	import type { PathStateResourceDetailState } from "@/lib/path-state";
 	import { resourceKey } from "@/lib/resource-identity";
@@ -42,8 +42,14 @@
 	<header class="flex shrink-0 items-start justify-between gap-3 border-b px-4 py-3">
 		<div class="min-w-0">
 			<h2 class="truncate text-sm font-semibold">{resource.name}</h2>
-			<div class="truncate text-xs text-muted-foreground">
-				{resource.kind} / {resource.namespace ?? "cluster"}
+			<div class="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+				<span class="truncate">{resource.kind} / {resource.namespace ?? "cluster"}</span>
+				<!-- The target context is visible with several contexts and announced with one. -->
+				{#if workspaceReadContext.clusterContexts.length > 1}
+					<Badge variant="outline" class="max-w-40 shrink-0 truncate" title={resource.cluster}><span class="sr-only">{"Context: "}</span>{resource.cluster}</Badge>
+				{:else}
+					<span class="sr-only">Context: {resource.cluster}</span>
+				{/if}
 			</div>
 		</div>
 		<div class="flex shrink-0 items-center gap-1">

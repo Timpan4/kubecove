@@ -1,0 +1,112 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "palette.delivery-destinations",
+      "title": "Palette GitOps and Helm destinations open their requested pages and kinds",
+      "steps": [
+        {
+          "action": "openPalette",
+          "via": "button"
+        },
+        {
+          "action": "searchPalette",
+          "value": "GitOps"
+        },
+        {
+          "action": "choosePaletteEntry",
+          "label": "GitOps"
+        },
+        {
+          "action": "expectGitOpsTable",
+          "title": "Argo CD Applications",
+          "count": 8
+        },
+        {
+          "action": "openPalette",
+          "via": "shortcut"
+        },
+        {
+          "action": "searchPalette",
+          "value": "GitOps › Argo CD AppProjects"
+        },
+        {
+          "action": "choosePaletteEntry",
+          "label": "GitOps › Argo CD AppProjects"
+        },
+        {
+          "action": "expectGitOpsTable",
+          "title": "Argo CD AppProjects",
+          "count": 2
+        },
+        {
+          "action": "expectGitOpsItem",
+          "kind": "AppProject",
+          "name": "platform",
+          "namespace": "argocd"
+        },
+        {
+          "action": "openPalette",
+          "via": "button"
+        },
+        {
+          "action": "searchPalette",
+          "value": "GitOps › Flux Helm Releases"
+        },
+        {
+          "action": "choosePaletteEntry",
+          "label": "GitOps › Flux Helm Releases"
+        },
+        {
+          "action": "expectGitOpsTable",
+          "title": "Flux HelmRelease",
+          "count": 1
+        },
+        {
+          "action": "expectGitOpsItem",
+          "kind": "HelmRelease",
+          "name": "metrics-gateway",
+          "namespace": "flux-system"
+        },
+        {
+          "action": "openPalette",
+          "via": "shortcut"
+        },
+        {
+          "action": "searchPalette",
+          "value": "Helm"
+        },
+        {
+          "action": "choosePaletteEntry",
+          "label": "Helm"
+        },
+        {
+          "action": "expectHelmCount",
+          "count": 3
+        },
+        {
+          "action": "openPalette",
+          "via": "button"
+        },
+        {
+          "action": "searchPalette",
+          "value": "Helm › Releases"
+        },
+        {
+          "action": "choosePaletteEntry",
+          "label": "Helm › Releases"
+        },
+        {
+          "action": "expectHelmCount",
+          "count": 3
+        },
+        {
+          "action": "expectHelmRelease",
+          "name": "metrics-gateway",
+          "namespace": "platform"
+        }
+      ]
+    }
+  ]
+}

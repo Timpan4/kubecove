@@ -1,0 +1,61 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "settings-diagnostics.presentation-timings",
+      "title": "Diagnostics times the view a navigation shows and reports render counters",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Diagnostics" },
+        { "action": "toggleSetting", "setting": "Enable diagnostics" },
+        { "action": "closeSettings" },
+        { "action": "openResources" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Diagnostics" },
+        { "action": "refreshLatencyReport" },
+        { "action": "expectViewTiming", "view": "resources" },
+        { "action": "copyLatencyReport" },
+        { "action": "expectLatencyReportCopy", "contains": "\"counters\"" },
+        { "action": "clearLatencyReport" },
+        { "action": "expectLatencyEmpty" }
+      ]
+    },
+    {
+      "id": "settings-diagnostics.interaction-recorder",
+      "title": "The interaction recorder records a click, copies JSON lines, and clears",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Diagnostics" },
+        { "action": "toggleSetting", "setting": "Record interactions" },
+        { "action": "expectSetting", "setting": "Record interactions", "checked": true },
+        { "action": "refreshLatencyReport" },
+        { "action": "toggleSetting", "setting": "Record interactions" },
+        { "action": "expectSetting", "setting": "Record interactions", "checked": false },
+        { "action": "copyInteractions" },
+        { "action": "expectSettingsText", "value": "Copied " },
+        { "action": "expectInteractionCopy", "contains": "\"kind\":\"click\"" },
+        { "action": "expectInteractionCopy", "contains": "\"droppedFrames\"" },
+        { "action": "clearInteractions" },
+        { "action": "expectSettingsText", "value": "Interactions cleared." },
+        { "action": "expectSettingsText", "value": "0 interactions recorded." }
+      ]
+    },
+    {
+      "id": "settings-diagnostics.interaction-recorder-redaction",
+      "title": "The interaction recorder records keys in a credential field without the typed text",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Diagnostics" },
+        { "action": "toggleSetting", "setting": "Record interactions" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "typeSettingsField", "field": "Server token", "value": "parityControlledCredential" },
+        { "action": "showSettingsSection", "section": "Diagnostics" },
+        { "action": "toggleSetting", "setting": "Record interactions" },
+        { "action": "copyInteractions" },
+        { "action": "expectInteractionCopy", "contains": "\"kind\":\"key\"" },
+        { "action": "expectInteractionCopy", "excludes": "parityControlledCredential" }
+      ]
+    }
+  ]
+}

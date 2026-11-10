@@ -15,6 +15,7 @@
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import { SvelteSet } from "svelte/reactivity";
 	import { Button, Spinner, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/svelte";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import {
 		formatExactTimeOnly,
 		formatExactTimestamp,
@@ -145,6 +146,7 @@
 	let resourceRefreshVersion = $state(0);
 	let ExecTabComponent = $state<typeof import("./ExecTab.svelte").default | null>(null);
 	let execTabLoadError = $state<unknown>(null);
+	const execModuleLoading = loadingDelay(() => activeTab === "exec" && !ExecTabComponent && !execTabLoadError);
 
 	const readSpec = $derived(
 		buildResourceDetailReadSpec(resource, kubeconfigSourceKey, yamlViewMode, yamlEncoding),
@@ -610,7 +612,7 @@
 	{/if}
 
 	{#if canShowExec}<TabsContent value="exec" class="flex min-h-0 flex-col">
-		{#if ExecTabComponent}
+		{#if ExecTabComponent && !execModuleLoading.active}
 			<ExecTabComponent
 				{client}
 				{resource}
@@ -625,7 +627,7 @@
 				<span>Failed to load Exec.</span>
 				<Button type="button" variant="outline" size="sm" onclick={retryExecTab}>Retry</Button>
 			</div>
-		{:else if activeTab === "exec"}
+		{:else if activeTab === "exec" && execModuleLoading.shown}
 			<div class="flex min-h-32 items-center justify-center gap-2 text-muted-foreground">
 				<Spinner />
 				<span>Loading Exec</span>

@@ -1,0 +1,48 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "argo-review.sync-options-defaults",
+      "title": "Sync with these options reviews the Application defaults without name confirmation",
+      "steps": [
+        {
+          "action": "openPage",
+          "page": "GitOps"
+        },
+        {
+          "action": "openGitOpsDetails",
+          "kind": "Application",
+          "name": "tenant-ledger",
+          "namespace": "argocd"
+        },
+        {
+          "action": "connectArgoProfile",
+          "url": "https://argocd.example.test"
+        },
+        {
+          "action": "argoControl",
+          "control": "Sync options"
+        },
+        {
+          "action": "expectArgoText",
+          "text": "Main Sync uses Application defaults"
+        },
+        {
+          "action": "argoControl",
+          "control": "Sync with these options"
+        },
+        {
+          "action": "expectArgoReview",
+          "operation": "sync",
+          "name": "tenant-ledger",
+          "namespace": "argocd",
+          "transport": "connected"
+        },
+        {
+          "action": "cancelArgoReview"
+        }
+      ]
+    }
+  ]
+}

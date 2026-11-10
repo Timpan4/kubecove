@@ -6,13 +6,15 @@ import {
 import type { LiveRead, LiveView } from "@/lib/live-view-refresh";
 import { queryKeys, queryMatchers } from "@/lib/queryKeys";
 import type { TauriClient } from "@/lib/tauri";
-import type { TopologyMode } from "@/lib/types";
+import { watchKeySignature } from "@/lib/resource-watch";
+import type { ResourceListVersion, TopologyMode, WatchResourceKey } from "@/lib/types";
 import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
 import {
 	isCustomResourceKind,
 	type KindFetchKey,
 	kindKey,
 	kindWatchKeys,
+	listRequestWatchKey,
 	mergeWatchKeys,
 } from "@/lib/kind-identity";
 import { topologyWatchKeys } from "./helpers";
@@ -108,11 +110,14 @@ export function resourceBrowserLiveView(
 		namespaces,
 		mapPanelOpen,
 		focusedApplication,
+		shownVersions,
 	}: {
 		fetchKeys: KindFetchKey[];
 		namespaces: string[];
 		mapPanelOpen: boolean;
 		focusedApplication: ArgoApplicationTarget | null;
+		/** The list versions of the settled scope read the table shows, or null while it loads. */
+		shownVersions: ResourceListVersion[] | null;
 	},
 ): LiveView | null {
 	const { clusterContext, kubeconfigSourceKey } = readContext;
@@ -127,11 +132,20 @@ export function resourceBrowserLiveView(
 	const keys = mergeWatchKeys(resourceKeys, mapKeys, argoKeys);
 	const topology = queryMatchers.exact(specs.topology.queryKey);
 	const reads: LiveRead[] = [
-		{ keys: resourceKeys, match: queryMatchers.exact(specs.resources.queryKey) },
+		{ keys: resourceKeys, match: queryMatchers.exact(specs.resources.queryKey), versions: keyVersions(resourceKeys, shownVersions) },
 		mapPanelOpen ? { keys: mapKeys, match: topology } : { keys, match: topology, refetch: false },
 	];
 	if (focusedApplication) {
-		reads.push({ keys: [...resourceKeys, ...argoKeys], match: argoApplicationReads(readContext, focusedApplication) });
+		// The inspection reads the Application, not lists of the kinds it manages,
+		// so those kinds' watches keep the table's list versions.
+		reads.push({ keys: argoKeys, refreshedBy: resourceKeys, match: argoApplicationReads(readContext, focusedApplication) });
 	}
 	return { ...view, keys, reads };
+}
+
+/** Each key's list version in the rows the table shows. Every key waits while those rows load. */
+function keyVersions(keys: WatchResourceKey[], shown: ResourceListVersion[] | null): Map<string, string | null> {
+	if (!shown) return new Map(keys.map((key) => [watchKeySignature(key), null]));
+	return new Map(shown.map(({ request, resourceVersion }) =>
+		[watchKeySignature(listRequestWatchKey(request)), resourceVersion]));
 }

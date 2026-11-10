@@ -1,0 +1,180 @@
+{
+	"fixture": "browser-mocks",
+	"context": "mock-dev",
+	"scenarios": [
+		{
+			"id": "coverage-map.ownerless-groups",
+			"title": "Expanding an ownerless kind reveals its resources and collapsing restores the grouped map",
+			"steps": [
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "openPage",
+					"page": "Cluster Overview"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "map-groups"
+				}
+			]
+		},
+		{
+			"id": "coverage-map.selection-focus",
+			"title": "Selection focuses the graph unless the full-map preference is enabled",
+			"steps": [
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "openResource",
+					"kind": "Deployment",
+					"name": "payments-api",
+					"namespace": "payments"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "map-focused"
+				},
+				{
+					"action": "openSettings"
+				},
+				{
+					"action": "toggleSetting",
+					"setting": "Keep full map visible during selection"
+				},
+				{
+					"action": "closeSettings"
+				},
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "openResource",
+					"kind": "Deployment",
+					"namespace": "payments",
+					"name": "payments-api"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "map-full-selection"
+				}
+			]
+		},
+		{
+			"id": "coverage-map.custom-kind-scope",
+			"title": "A custom-kind table scope removes unrelated built-in ownership branches and a built-in scope restores them",
+			"steps": [
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "openCustomKind",
+					"kind": "Kustomization",
+					"surface": "sidebar"
+				},
+				{
+					"action": "expectResource",
+					"kind": "Kustomization",
+					"namespace": "flux-system",
+					"name": "platform"
+				},
+				{
+					"action": "coverageText",
+					"text": "No ownership graph",
+					"visible": true
+				},
+				{
+					"action": "openPage",
+					"page": "Workloads"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "map-full"
+				}
+			]
+		},
+		{
+			"id": "coverage-map.group-reset-on-collapse",
+			"title": "Collapsing the ownership map forgets expanded kind groups when it reopens",
+			"steps": [
+				{ "action": "openResources" },
+				{ "action": "openPage", "page": "Cluster Overview" },
+				{ "action": "coverageCheck", "check": "map-group-expand" },
+				{ "action": "panelControl", "control": "Collapse ownership map" },
+				{ "action": "panelControl", "control": "Show ownership map" },
+				{ "action": "coverageCheck", "check": "map-group-collapsed" }
+			]
+		},
+		{
+			"id": "coverage-kubeconfig.failed-read",
+			"title": "A source read failure is visible in Kubeconfig settings",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "startup-failed"
+				},
+				{
+					"action": "openSettings"
+				},
+				{
+					"action": "showSettingsSection",
+					"section": "Kubeconfig"
+				},
+				{
+					"action": "coverageText",
+					"text": "Kubeconfig sources failed",
+					"visible": true
+				}
+			]
+		},
+		{
+			"id": "coverage-kubeconfig.failed-write",
+			"title": "A failed source write shows the failure and preserves the active backend source",
+			"steps": [
+				{
+					"action": "openSettings"
+				},
+				{
+					"action": "showSettingsSection",
+					"section": "Kubeconfig"
+				},
+				{
+					"action": "setKubeconfigEnvVar",
+					"value": "PARITY_ORIGINAL_SOURCE"
+				},
+				{
+					"action": "coverageScript",
+					"script": "failed"
+				},
+				{
+					"action": "setKubeconfigEnvVar",
+					"value": "REJECTED_PARITY_SOURCE"
+				},
+				{
+					"action": "coverageText",
+					"text": "Kubeconfig sources failed",
+					"visible": true
+				},
+				{
+					"action": "coverageScript",
+					"script": "base"
+				},
+				{
+					"action": "closeSettings"
+				},
+				{
+					"action": "openSettings"
+				},
+				{
+					"action": "showSettingsSection",
+					"section": "Kubeconfig"
+				},
+				{
+					"action": "expectKubeconfigEnvVar",
+					"value": "PARITY_ORIGINAL_SOURCE"
+				}
+			]
+		}
+	]
+}

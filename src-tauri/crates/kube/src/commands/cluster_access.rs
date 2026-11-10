@@ -16,6 +16,7 @@ use super::{
     },
 };
 use crate::models::{AppError, AppErrorKind, ClusterContext};
+pub use clients::REQUEST_READ_TIMEOUT;
 #[cfg(feature = "test-support")]
 pub use fixed::{FIXED_SOURCE_KEY, FixedClusterAccess};
 use kube::Client;

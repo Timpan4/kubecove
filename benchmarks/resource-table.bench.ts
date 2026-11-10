@@ -66,10 +66,11 @@ function metricSummary(
 	name: string,
 	namespace: string,
 	index: number,
+	cluster: string,
 ): ResourceMetricSummary {
 	return {
 		kind,
-		cluster: "prod",
+		cluster,
 		name,
 		namespace,
 		cpuMillicores: (index % 64) * 10,
@@ -78,14 +79,14 @@ function metricSummary(
 	};
 }
 
-function resourceSummary(index: number): ResourceSummary {
+function resourceSummary(index: number, cluster = "prod"): ResourceSummary {
 	const kind = kinds[index % kinds.length] ?? "Pod";
 	const namespace = `namespace-${index % 100}`;
 	const app = `checkout-${index % 250}`;
 	const healthState = index % 17 === 0 ? "degraded" : "healthy";
 	const name = `${app}-${kind.toLowerCase()}-${index}`;
 	return {
-		cluster: "prod",
+		cluster,
 		apiVersion:
 			kind === "Pod" || kind === "Service" || kind === "ConfigMap"
 				? "v1"
@@ -114,7 +115,7 @@ function resourceSummary(index: number): ResourceSummary {
 						confidence: "metadata",
 					}
 				: undefined,
-		metrics: metricSummary(kind, name, namespace, index),
+		metrics: metricSummary(kind, name, namespace, index, cluster),
 	};
 }
 
@@ -215,7 +216,7 @@ const ownershipRows: ResourceSummary[] = Array.from(
 				apiVersion: "apps/v1",
 				kind: "Deployment",
 				name: deploymentName,
-				metrics: metricSummary("Deployment", deploymentName, namespace, index),
+				metrics: metricSummary("Deployment", deploymentName, namespace, index, shared.cluster),
 				argoApp: app,
 				gitOpsOwner: {
 					provider: "argo" as const,
@@ -230,7 +231,7 @@ const ownershipRows: ResourceSummary[] = Array.from(
 				apiVersion: "apps/v1",
 				kind: "ReplicaSet",
 				name: replicaSetName,
-				metrics: metricSummary("ReplicaSet", replicaSetName, namespace, index),
+				metrics: metricSummary("ReplicaSet", replicaSetName, namespace, index, shared.cluster),
 				ownerRef: deploymentName,
 			},
 			{
@@ -238,7 +239,7 @@ const ownershipRows: ResourceSummary[] = Array.from(
 				apiVersion: "v1",
 				kind: "Pod",
 				name: `${app}-pod`,
-				metrics: metricSummary("Pod", `${app}-pod`, namespace, index),
+				metrics: metricSummary("Pod", `${app}-pod`, namespace, index, shared.cluster),
 				ownerRef: replicaSetName,
 				restarts: unhealthy ? 5 : 0,
 			},
@@ -247,7 +248,7 @@ const ownershipRows: ResourceSummary[] = Array.from(
 				apiVersion: "v1",
 				kind: "Service",
 				name: `${app}-service`,
-				metrics: metricSummary("Service", `${app}-service`, namespace, index),
+				metrics: metricSummary("Service", `${app}-service`, namespace, index, shared.cluster),
 				ownerRef: deploymentName,
 			},
 		] satisfies ResourceSummary[];
@@ -366,7 +367,7 @@ const ownershipProjectedRows = ownershipProjection.searchIndex.map(
 );
 const expectedOwnershipNames = ownershipFixtureRows.map((row) => row.name);
 const ownershipGroupLabels = new Set(
-	ownershipInteractionModel.displayRows.map(gitOpsOwnershipGroupLabel),
+	ownershipInteractionModel.displayRows.map((row) => gitOpsOwnershipGroupLabel(row)),
 );
 const expectedInteractionNames = ownershipInteractionModel.scopedRows.map(
 	(row) => row.name,
@@ -488,3 +489,50 @@ describe("F01 F02 F03 resource arrival and retained table state (10k rows)", () 
 		buildResourceTableModel(ownershipProjection, ownershipInteractionState);
 	});
 });
+
+// The same 10,000 rows in each of N workspace contexts, as the GPUI frames
+// cases `multi-context-<N>` load them. List another count to measure it.
+for (const count of [1, 2, 4]) {
+	const contexts = Array.from({ length: count }, (_, rank) =>
+		rank === 0 ? "prod" : `prod-${rank}`,
+	);
+	const contextRows = contexts.flatMap((cluster) =>
+		Array.from({ length: 10_000 }, (_, index) => resourceSummary(index, cluster)),
+	);
+	const multiContext = count > 1;
+	const contextProjection = buildResourceTableProjection(contextRows, multiContext);
+	const contextState: ResourceTableState = { ...state, contexts };
+	const contextNameState: ResourceTableState = {
+		...contextState,
+		search: "",
+		healthFilter: "all",
+		sort: { id: "name", desc: false },
+	};
+	assert.equal(contextProjection.searchIndex.length, count * 10_000);
+
+	describe(`multi-context resource table (10k rows x ${count} contexts)`, () => {
+		// Rows already indexed hit the per-row cache, as in the suite above.
+		benchmark(`buildResourceSearchIndex, cached rows (${count} contexts)`, () => {
+			buildResourceSearchIndex(contextRows, multiContext);
+		});
+
+		benchmark(`copy rows, control for the fresh-rows index (${count} contexts)`, () => {
+			contextRows.map((row) => ({ ...row }));
+		});
+
+		benchmark(`buildResourceSearchIndex, fresh rows incl. copy (${count} contexts)`, () => {
+			buildResourceSearchIndex(
+				contextRows.map((row) => ({ ...row })),
+				multiContext,
+			);
+		});
+
+		benchmark(`buildResourceTableDisplay (search + health + sort + groups, ${count} contexts)`, () => {
+			buildResourceTableDisplay(contextProjection, contextState);
+		});
+
+		benchmark(`buildResourceTableDisplay (all rows by name, ${count} contexts)`, () => {
+			buildResourceTableDisplay(contextProjection, contextNameState);
+		});
+	});
+}

@@ -1,0 +1,87 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "sidebar.category-scope",
+      "title": "An All namespaces category selects only its kinds across all namespaces in the table and kind picker",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "collapseSidebar" },
+        { "action": "sidebarSelect", "path": ["Network"] },
+        { "action": "expectSidebarRow", "path": ["Network"], "visible": true, "selected": true },
+        { "action": "expectResource", "kind": "Service", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectResource", "kind": "Ingress", "namespace": "monitoring", "name": "grafana" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectNoResource", "kind": "Secret", "namespace": "payments", "name": "payments-api-secrets" },
+        { "action": "selectTopologyNode", "id": "mock-dev:v1:Service:payments:payments-api" },
+        { "action": "closeDetail" },
+        { "action": "openKindPicker" },
+        { "action": "expectKindChecked", "kind": "Service", "checked": true },
+        { "action": "expectKindChecked", "kind": "Ingress", "checked": true },
+        { "action": "expectKindChecked", "kind": "Application", "checked": false },
+        { "action": "closeKindPicker" },
+        { "action": "sidebarSelect", "path": ["Config"] },
+        { "action": "expectResource", "kind": "Secret", "namespace": "payments", "name": "payments-api-secrets" },
+        { "action": "expectNoResource", "kind": "Service", "namespace": "payments", "name": "payments-api" }
+      ]
+    },
+    {
+      "id": "sidebar.custom-resources-scope",
+      "title": "All namespaces Custom Resources selects only the present custom kinds across all namespaces and lists them",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "sidebarSelect", "path": ["Custom Resources"] },
+        { "action": "expectSidebarBranch", "page": "Custom Resources", "expanded": true },
+        { "action": "expectSidebarRow", "path": ["Custom Resources"], "visible": true, "selected": true },
+        { "action": "expectResource", "kind": "Kustomization", "namespace": "flux-system", "name": "platform" },
+        { "action": "expectResource", "kind": "HelmRelease", "namespace": "flux-system", "name": "metrics-gateway" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "openKindPicker" },
+        { "action": "expectKindChecked", "kind": "Kustomization", "checked": true },
+        { "action": "expectKindChecked", "kind": "Deployment", "checked": false },
+        { "action": "closeKindPicker" },
+        { "action": "expectSidebarRow", "path": ["payments"], "visible": true, "selected": false }
+      ]
+    },
+    {
+      "id": "sidebar.scope-after-overview",
+      "title": "Opening Resources from Workspace Overview after a namespace shows the workspace scope, not that namespace",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "tenant-catalog", "name": "catalog" },
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "overviewOperation", "destination": "Resources" },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "tenant-catalog", "name": "catalog" },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectSidebarRow", "path": ["payments"], "visible": true, "selected": false }
+      ]
+    },
+    {
+      "id": "sidebar.scope-after-gitops",
+      "title": "A category or kind picked after leaving a namespace through GitOps or Workspace Overview spans all namespaces",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "collapseSidebar" },
+        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "tenant-catalog", "name": "catalog" },
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "sidebarToggle", "path": ["Workloads"] },
+        { "action": "sidebarSelect", "path": ["Workloads", "Deployment"] },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "tenant-catalog", "name": "catalog" },
+        { "action": "expectSidebarRow", "path": ["payments"], "visible": true, "selected": false },
+        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "expectNoResource", "kind": "Service", "namespace": "monitoring", "name": "grafana" },
+        { "action": "scrollSidebar", "to": "top" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "sidebarSelect", "path": ["Network"] },
+        { "action": "expectResource", "kind": "Service", "namespace": "monitoring", "name": "grafana" },
+        { "action": "expectResource", "kind": "Service", "namespace": "payments", "name": "payments-api" }
+      ]
+    }
+  ]
+}

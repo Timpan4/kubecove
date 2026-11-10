@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { getArgoOperationTracker, argoTrackingKey } from "./argo-operation-tracker";
 	import { argoOperationProgress } from "./argo-operation-progress";
+	import FriendlyError from "@/components/FriendlyError.svelte";
 	import ArgoConnectionDialog from "./ArgoConnectionDialog.svelte";
 	import ArgoOperationProgress from "./ArgoOperationProgress.svelte";
 	import ArgoResourceDiff from "./ArgoResourceDiff.svelte";
@@ -57,6 +58,7 @@
 	} from "./argo-resource-display";
 	import { finiteRead } from "@/lib/finite-read-lifecycle";
 	import { queryKeys } from "@/lib/queryKeys";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import { settingsStore } from "@/lib/settings-store";
 	import { argoApplicationRef } from "@/lib/argo-application-inspection";
 	import { argoApplicationInspection } from "@/lib/argo-application-inspection.svelte";
@@ -154,8 +156,9 @@
 	const observationPending = $derived(trackedOperation?.phase === "unknown");
 	const lastOperationRequest = $derived(trackedOperation?.request ?? null);
 
-	let selectedResource = $state<ArgoManagedResource | null>(null);
+	let selectedResource = $state.raw<ArgoManagedResource | null>(null);
 	let selectedHistoryKey = $state<string | null>(null);
+	let rollbackHistoryId = $state<number | null>(null);
 	let diffView = $state<DiffView>("changes");
 	let expandedRemovalKeys = $state<string[]>([]);
 	let refreshMenuOpen = $state(false);
@@ -341,6 +344,7 @@
 			].filter(Boolean).join(" · "),
 	);
 	const loading = $derived(inspection.current.loading);
+	const loadingIndicator = loadingDelay(() => loading);
 	const dataError = $derived(inspection.current.error);
 	const snapshotFreshness = $derived(
 		snapshot?.connectedFallback
@@ -370,6 +374,7 @@
 		if (appliedScopeKey && appliedScopeKey !== nextScopeKey) {
 			selectedResource = null;
 			selectedHistoryKey = null;
+			rollbackHistoryId = null;
 			diffView = "changes";
 			expandedRemovalKeys = [];
 			closeSyncConfirmation();
@@ -434,8 +439,22 @@
 		};
 	}
 
+	let review = $state<import("@/lib/types").ArgoOperationPreflight | null>(null);
+	let resolveReview: ((confirmed: boolean) => void) | undefined;
+	function closeOperationReview(confirmed = false) {
+		resolveReview?.(confirmed);
+		resolveReview = undefined;
+		review = null;
+	}
+	$effect(() => {
+		void scopeKey;
+		return () => closeOperationReview();
+	});
 	async function executeOperation(requested: ArgoOperationRequest) {
-		if (!busy) await tracker.run(requested);
+		if (!busy) await tracker.run(requested, (next) => new Promise<boolean>((resolve) => {
+			review = next;
+			resolveReview = resolve;
+		}));
 	}
 
 	async function retryAcceptedRefresh() {
@@ -451,6 +470,16 @@
 		void executeOperation(
 			withArgoSyncSettings(operation("sync"), applicationSyncDefaults),
 		);
+	}
+
+	function selectHistory(value: string) {
+		selectedHistoryKey = value;
+		rollbackHistoryId = snapshot?.history.find(entry => argoHistoryKey(application, entry) === value)?.id ?? null;
+	}
+
+	function rollbackPrevious() {
+		const historyId = rollbackHistoryId ?? snapshot?.history[1]?.id;
+		if (historyId != null) void executeOperation({ ...operation("rollback"), historyId });
 	}
 
 	function requestAdvancedSync() {
@@ -605,7 +634,7 @@
 						{#if operationStateMessage}<Badge variant="secondary">{operationStateMessage}</Badge>{/if}
 					</div>
 					<div class="mt-1 max-w-xl text-xs leading-relaxed text-muted-foreground">
-						{loading ? "Loading Application and managed resources…" : `Revision ${resolvedRevision}`}
+						{loadingIndicator.shown ? "Loading Application and managed resources…" : loadingIndicator.active ? "" : `Revision ${resolvedRevision}`}
 					</div>
 					<OperationScopeCard
 						class="mt-3"
@@ -619,6 +648,7 @@
 					/>
 				</div>
 				<div class="flex max-w-full shrink-0 flex-wrap gap-1.5">
+					<Button type="button" size="sm" variant="outline" disabled={busy || !snapshot?.history[1]} onclick={rollbackPrevious}>Rollback</Button>
 					<div class="inline-flex shrink-0">
 						<Button type="button" size="sm" variant="outline" class="rounded-r-none" disabled={!canOperate || busy} onclick={() => refresh(false)}>
 							{#if operationPhase === "refreshing" && lastOperationRequest?.action !== "sync"}<Spinner />{:else}<RefreshCw data-icon="inline-start" />{/if}
@@ -671,6 +701,16 @@
 				{snapshot.connectedFallback.failure.message}. Kubernetes watch keeps this snapshot fresh.
 			</AlertDescription>
 		</Alert>
+	{/if}
+
+	{#if review?.reviewedRequest}
+		<section aria-label="Review Argo CD operation" class="rounded-lg border bg-surface-1 p-3 text-xs space-y-2">
+			<h3>Review Argo CD operation</h3>
+			<p>{review.action} {review.transport} {review.reviewedRequest.application.context} Application {review.reviewedRequest.application.namespace} {review.reviewedRequest.application.name}</p>
+			<p>Revision: {review.reviewedRequest.revision ?? "Application default"}. History: {review.reviewedRequest.historyId ?? "none"}. Prune: {String(review.reviewedRequest.prune)}. Dry run: {String(review.reviewedRequest.dryRun)}. Force: {String(review.reviewedRequest.force)}.</p>
+			<Button size="sm" onclick={() => closeOperationReview(true)}>Confirm Argo CD operation</Button>
+			<Button size="sm" variant="outline" onclick={() => closeOperationReview()}>Cancel review</Button>
+		</section>
 	{/if}
 
 	<div class="flex min-w-0 flex-wrap items-center gap-2 rounded-lg border bg-surface-1 p-3">
@@ -735,10 +775,14 @@
 		</Alert>
 	{/if}
 	{#if dataError}
-		<Alert variant="destructive">
-			<AlertTitle>{transport === "connected" ? "Connected Argo CD snapshot unavailable" : "Kubernetes Application snapshot unavailable"}</AlertTitle>
-			<AlertDescription class="flex flex-wrap items-center justify-between gap-2"><span>{dataError instanceof Error ? dataError.message : String(dataError)}</span><Button type="button" size="sm" variant="outline" onclick={() => void inspection.refresh()}>Retry snapshot</Button></AlertDescription>
-		</Alert>
+		<FriendlyError
+			error={dataError}
+			context={{
+				operation: "detailsLoad",
+				fallbackTitle: transport === "connected" ? "Connected Argo CD snapshot unavailable" : "Kubernetes Application snapshot unavailable",
+			}}
+		/>
+		<Button type="button" size="sm" variant="outline" onclick={() => void inspection.refresh()}>Retry snapshot</Button>
 	{/if}
 
 	{#each conditionRows as condition}
@@ -775,7 +819,7 @@
 			<div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><GitCommitHorizontal class="size-3.5" /> Recent deployment</div>
 			{#if snapshot?.history.length}
 				{#if snapshot.history.length > 1}
-					<Select value={selectedHistoryKey ?? ""} onValueChange={(value: string) => (selectedHistoryKey = value)}>
+					<Select value={selectedHistoryKey ?? ""} onValueChange={selectHistory}>
 						<SelectTrigger class="mt-3 w-full" ariaLabel="Recent deployment"><SelectValue>{selectedHistory ? historyRevision(selectedHistory) : "Select deployment"}</SelectValue></SelectTrigger>
 						<SelectContent><SelectGroup>{#each snapshot.history as entry}<SelectItem value={argoHistoryKey(application, entry)} label={historyRevision(entry)}>{historyRevision(entry)}</SelectItem>{/each}</SelectGroup></SelectContent>
 					</Select>
@@ -793,8 +837,8 @@
 			<div class="flex max-w-full flex-wrap items-center gap-2">{#if selectedResource}<Button type="button" size="xs" variant="outline" onclick={showAllChanges}>All changes</Button>{/if}<SegmentedControl value={diffView} options={diffViewOptions} onChange={(value) => (diffView = value)} ariaLabel="Reconciliation document view" size="sm" /></div>
 		</div>
 		<div class="mt-3 space-y-4">
-			{#if loading}
-				<div class="flex items-center gap-2 rounded-lg border p-3 text-xs text-muted-foreground" role="status"><Spinner /> Loading Application snapshot</div>
+			{#if loadingIndicator.active}
+				{#if loadingIndicator.shown}<div class="flex items-center gap-2 rounded-lg border p-3 text-xs text-muted-foreground" role="status"><Spinner /> Loading Application snapshot</div>{/if}
 			{:else if dataError}
 				<Empty><EmptyHeader><EmptyTitle>Application snapshot unavailable</EmptyTitle><EmptyDescription>Retry Application data before evaluating reconciliation state.</EmptyDescription></EmptyHeader></Empty>
 			{:else}

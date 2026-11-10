@@ -1,15 +1,11 @@
 import { evictedWorkerName } from "./tauri-dev-mock-incidents";
 import type {
-	ArgoApplicationSummary,
 	ClusterContext,
 	DeploymentRevision,
 	DiscoveredResourceKind,
-	FluxResourceKind,
-	FluxResourceSummary,
 	HealthAssessment,
 	HealthAssessmentSource,
 	HealthAssessmentState,
-	HelmReleaseSummary,
 	KubeconfigSourcesSummary,
 	NamespaceSummary,
 	PodExecSessionSummary,
@@ -66,7 +62,7 @@ export const deploymentRevisions: DeploymentRevision[] = [
 export const source: KubeconfigSourcesSummary = {
 	kubeconfigEnvVar: "kubeconfigSource=browser-mock",
 	paths: [],
-	sourceKey: "browser-mock",
+    sourceKey: "kubeconfigSource=browser-mock",
 	sourceLabel: "Browser mock",
 	showSourceLabels: true,
 	warnings: [],
@@ -115,15 +111,17 @@ export const kinds: DiscoveredResourceKind[] = [
 	kind("cilium.io", "v2", "CiliumNetworkPolicy", "ciliumnetworkpolicies", true),
 	kind("kustomize.toolkit.fluxcd.io", "v1", "Kustomization", "kustomizations", true),
 	kind("helm.toolkit.fluxcd.io", "v2", "HelmRelease", "helmreleases", true),
+    { ...kind("testing.example.io", "v1", "Widget", "widgets", true), shortNames: ["wgt"] },
 ];
 
 export const resources: ResourceSummary[] = [
 	res("Deployment", "argocd-server", "argocd", "healthy", "1/1", "Synced", 0, "argocd"),
 	res("Pod", "argocd-server-8c9869674-xj9p", "argocd", "healthy", "1/1", "Running", 0, "argocd"),
+	res("Pod", "argocd-dex-server-6d7f9c5b8-q4w2n", "argocd", "healthy", "3/3", "Running", 0, "argocd"),
 	res("Service", "argocd-server", "argocd", "healthy", undefined, "ClusterIP", 0, "argocd"),
-	res("ConfigMap", "argocd-cm", "argocd", "healthy", undefined, "Active", 0, "argocd"),
+	res("ConfigMap", "argocd-cm", "argocd", "healthy", "true", "Active", 0, "argocd"),
 	res("Secret", "argocd-secret", "argocd", "unknown", undefined, "Redacted", 0, "argocd"),
-	res("ConfigMap", "kube-root-ca.crt", "argocd", "unknown", undefined, "Active", 0, "argocd"),
+	res("ConfigMap", "kube-root-ca.crt", "argocd", "unknown", "false", "Active", 0, "argocd"),
 	res("Deployment", "cert-manager", "cert-manager", "healthy", "1/1", "Ready", 0, "platform"),
 	res("Pod", "cert-manager-65b765f58f-2w8cs", "cert-manager", "healthy", "1/1", "Running", 0, "platform"),
 	res("Service", "cert-manager", "cert-manager", "healthy", undefined, "ClusterIP", 0, "platform"),
@@ -150,14 +148,20 @@ export const resources: ResourceSummary[] = [
 	res("Service", "traefik", "traefik", "healthy", undefined, "LoadBalancer", 0, "platform"),
 	res("Secret", "traefik-gateway-tls", "traefik", "unknown", undefined, "Redacted", 0, "platform"),
 	res("Deployment", "payments-api", "payments", "healthy", "3/3", "Synced", 0, "shop"),
-	res("Pod", "payments-api-7d9c9b7f8d-k2r9p", "payments", "attention", "1/1", "Running", 2, "shop"),
+	res("Pod", "payments-api-7d9c9b7f8d-k2r9p", "payments", "attention", "1/1", "Running", 2, "shop", {
+		// Partial completeness drives the table's Partial marker in parity scenarios.
+		healthAssessment: { ...mockHealthAssessment("needsAttention", "attention"), completeness: "partial" },
+	}),
 	res("Pod", "payments-api-7d9c9b7f8d-x4m8v", "payments", "healthy", "1/1", "Running", 0, "shop"),
 	res("Service", "payments-api", "payments", "healthy", undefined, "ClusterIP", 0, "shop"),
 	res("Ingress", "payments-api", "payments", "degraded", undefined, "MissingBackend", 0, "shop", { apiVersion: "networking.k8s.io/v1" }),
 	res("ConfigMap", "payments-api-config", "payments", "healthy", undefined, "Active", 0, "shop"),
+	res("PersistentVolumeClaim", "checkout-media-cache", "payments-production-eu-west-2", "healthy", "Bound", "Bound", 0, "argocd", { gitOpsOwner: { provider: "argo", kind: "Application", name: "payments-production-eu-west-2-checkout-media", namespace: "argocd", confidence: "metadata" } }),
 	res("Secret", "payments-api-secrets", "payments", "unknown", undefined, "Redacted", 0, "shop"),
 	res("Deployment", "checkout-worker", "payments", "restarted", "2/2", "Synced", 4, "shop"),
-	res("Pod", "checkout-worker-6bfbd7d5dd-9qj2f", "payments", "restarted", "1/1", "Running", 4, "shop"),
+	// No GitOps evidence of its own: it inherits checkout-worker's owner through ownerRef.
+	// No other payments row is named checkout-worker, so the reference resolves to the Deployment.
+	res("Pod", "checkout-worker-6bfbd7d5dd-9qj2f", "payments", "restarted", "1/1", "Running", 4, "none", { ownerRef: "checkout-worker" }),
 	res("Deployment", "todo-web", "todo", "healthy", "1/1", "Synced", 0, "todo"),
 	res("Pod", "todo-web-54b7f7bdbc-5g7dz", "todo", "healthy", "1/1", "Running", 0, "todo"),
 	res("Service", "todo-web", "todo", "healthy", undefined, "ClusterIP", 0, "todo"),
@@ -222,6 +226,12 @@ export const dockerResources: ResourceSummary[] = [
 	res("ConfigMap", "ingress-nginx-controller", "ingress-nginx", "healthy", undefined, "Active", 0, "edge", { cluster: "docker-desktop" }),
 	res("Secret", "registry-pull-secret", "default", "unknown", undefined, "Redacted", 0, "local", { cluster: "docker-desktop" }),
 	res("Node", "docker-desktop", null, "healthy", "Ready", "Ready", 0, "local", { cluster: "docker-desktop" }),
+];
+
+// admin@solid-k8s lists every `resources` row plus these, so multi-context
+// scenarios can tell its rows from mock-dev's.
+export const solidOnlyResources: ResourceSummary[] = [
+	res("Deployment", "edge-relay", "platform", "healthy", "1/1", "Ready", 0, "edge", { cluster: "admin@solid-k8s" }),
 ];
 
 export const ownershipDependencyHints: Array<{
@@ -303,206 +313,14 @@ export const networkIngressTargets: Array<{
 	{ namespace: "todo", ingress: "todo-web", service: "todo-web" },
 ];
 
-const labArgoApplications = [
-	["root-application", "e2e-root", "argocd"],
-	["platform-argocd", "e2e-platform", "argocd"],
-	["platform-cilium", "e2e-platform", "kube-system"],
-	["platform-metrics", "e2e-platform", "kube-system"],
-	["platform-storage", "e2e-platform", "local-path-storage"],
-	["platform-ingress", "e2e-platform", "traefik"],
-	["tenant-catalog", "e2e-tenants", "tenant-catalog"],
-	["tenant-ledger", "e2e-tenants", "tenant-ledger"],
-] as const;
-
-export const argoApps: ArgoApplicationSummary[] = labArgoApplications.map(([name, project, destinationNamespace]) => ({
-	name,
-	cluster: "mock-dev",
-	namespace: "argocd",
-	project,
-	syncStatus: "Synced",
-	healthStatus: "Healthy",
-	healthAssessment: mockArgoHealthyAssessment,
-	destinationNamespace,
-	destinationServer: "https://kubernetes.default.svc",
-	sourceRepo: name.startsWith("platform-") ? "pinned Helm or internal Git" : "git://git-server.e2e-system.svc.cluster.local:9418/fixtures.git",
-	sourceRevision: "main",
-	sourceMode: "git",
-	sourceCount: 1,
-	sources: [
-		{
-			repoUrl: name.startsWith("platform-")
-				? "pinned Helm or internal Git"
-				: "git://git-server.e2e-system.svc.cluster.local:9418/fixtures.git",
-			targetRevision: "main",
-			resolvedRevision: "8f4c2d1",
-			path: `apps/${name}`,
-			chart: null,
-			reference: null,
-		},
-	],
-	resourceNamespaces: [destinationNamespace],
-	trackedResourceCount: name.startsWith("tenant-") ? 12 : 8,
-	age: "12d",
-	createdAt: "2026-06-17T08:00:00Z",
-}));
-
-interface ArgoManagedResources {
-	[applicationName: string]: readonly Pick<
-		ResourceSummary,
-		"kind" | "name" | "namespace"
-	>[];
-}
-
-export const argoManagedResourceRefs: ArgoManagedResources = {
-	"root-application": [{ kind: "Application", name: "shop", namespace: "argocd" }],
-	"platform-argocd": [
-		{ kind: "Deployment", name: "argocd-server", namespace: "argocd" },
-		{ kind: "Pod", name: "argocd-server-8c9869674-xj9p", namespace: "argocd" },
-		{ kind: "Service", name: "argocd-server", namespace: "argocd" },
-		{ kind: "ConfigMap", name: "argocd-cm", namespace: "argocd" },
-		{ kind: "Secret", name: "argocd-secret", namespace: "argocd" },
-	],
-	"platform-cilium": [
-		{ kind: "Deployment", name: "coredns", namespace: "kube-system" },
-		{ kind: "Pod", name: "coredns-7859998f6-lf7hm", namespace: "kube-system" },
-		{ kind: "Service", name: "kube-dns", namespace: "kube-system" },
-		{ kind: "ConfigMap", name: "coredns", namespace: "kube-system" },
-		{ kind: "Secret", name: "sh.helm.release.v1.cilium.v2", namespace: "kube-system" },
-	],
-	"platform-metrics": [
-		{ kind: "Deployment", name: "metrics-gateway", namespace: "platform" },
-		{ kind: "Service", name: "metrics-gateway", namespace: "platform" },
-		{ kind: "Pod", name: "metrics-gateway-9f6d4f7c9-7j2p4", namespace: "platform" },
-		{ kind: "PersistentVolumeClaim", name: "metrics-gateway-cache", namespace: "platform" },
-	],
-	"platform-storage": [
-		{ kind: "PersistentVolume", name: "pv-metrics-gateway-cache", namespace: null },
-		{ kind: "StorageClass", name: "local-path", namespace: null },
-	],
-	"platform-ingress": [
-		{ kind: "Deployment", name: "traefik", namespace: "traefik" },
-		{ kind: "Pod", name: "traefik-6d89b8d6f8-mk7r5", namespace: "traefik" },
-		{ kind: "Service", name: "traefik", namespace: "traefik" },
-		{ kind: "Secret", name: "traefik-gateway-tls", namespace: "traefik" },
-	],
-	"tenant-catalog": [
-		{ kind: "Deployment", name: "catalog", namespace: "tenant-catalog" },
-		{ kind: "HorizontalPodAutoscaler", name: "catalog", namespace: "tenant-catalog" },
-	],
-	"tenant-ledger": [
-		{ kind: "StatefulSet", name: "ledger", namespace: "tenant-ledger" },
-		{ kind: "PersistentVolumeClaim", name: "data-ledger-0", namespace: "tenant-ledger" },
-	],
-};
-
-export const fluxKind: FluxResourceKind = {
-	group: "kustomize.toolkit.fluxcd.io",
-	version: "v1",
-	apiVersion: "kustomize.toolkit.fluxcd.io/v1",
-	kind: "Kustomization",
-	plural: "kustomizations",
-	namespaced: true,
-	category: "Kustomize",
-};
-
-export const fluxHelmKind: FluxResourceKind = {
-	group: "helm.toolkit.fluxcd.io",
-	version: "v2",
-	apiVersion: "helm.toolkit.fluxcd.io/v2",
-	kind: "HelmRelease",
-	plural: "helmreleases",
-	namespaced: true,
-	category: "Helm",
-};
-
-export const fluxResources: FluxResourceSummary[] = [
-	{
-		cluster: "mock-dev",
-		name: "platform",
-		namespace: "flux-system",
-		age: "31d",
-		createdAt: "2026-05-29T08:00:00Z",
-		resourceKind: fluxKind,
-		healthAssessment: mockHealthAssessment("healthy", "True"),
-		readyStatus: "True",
-		suspended: false,
-		sourceKind: "GitRepository",
-		sourceName: "platform",
-		sourceNamespace: "flux-system",
-		interval: "5m",
-		lastAppliedRevision: "main@sha1:6f2d1c8",
-		message: "Applied revision main@sha1:6f2d1c8",
-		inventory: [{ id: "platform_metrics-gateway_apps_Deployment" }],
-	},
-	{
-		cluster: "mock-dev",
-		name: "metrics-gateway",
-		namespace: "flux-system",
-		age: "12d",
-		createdAt: "2026-06-17T08:00:00Z",
-		resourceKind: fluxHelmKind,
-		healthAssessment: mockHealthAssessment("healthy", "True"),
-		readyStatus: "True",
-		suspended: false,
-		sourceKind: "HelmRepository",
-		sourceName: "platform-charts",
-		sourceNamespace: "flux-system",
-		interval: "10m",
-		lastAppliedRevision: "metrics-gateway-1.4.2",
-		message: "Release reconciliation succeeded",
-		inventory: [{ id: "platform_metrics-gateway_apps_Deployment" }, { id: "platform_metrics-gateway__Service" }],
-	},
-];
-
-export const helmReleases: HelmReleaseSummary[] = [
-	{
-		cluster: "mock-dev",
-		name: "operations",
-		namespace: "operations",
-		age: "12d",
-		updatedAt: now,
-		createdAt: "2026-06-17T08:00:00Z",
-		chart: "kubecove-operations-0.1.0",
-		appVersion: "1.0.0",
-		revision: 1,
-		status: "deployed",
-		storageKind: "Secret",
-		storageName: "sh.helm.release.v1.operations.v1",
-	},
-	{
-		cluster: "mock-dev",
-		name: "metrics-gateway",
-		namespace: "platform",
-		age: "12d",
-		updatedAt: now,
-		createdAt: "2026-06-17T08:00:00Z",
-		chart: "metrics-gateway-1.4.2",
-		appVersion: "1.4.2",
-		revision: 7,
-		status: "deployed",
-		storageKind: "Secret",
-		storageName: "sh.helm.release.v1.metrics-gateway.v7",
-	},
-	{
-		cluster: "mock-dev",
-		name: "grafana",
-		namespace: "monitoring",
-		age: "31d",
-		updatedAt: now,
-		createdAt: "2026-05-29T08:00:00Z",
-		chart: "grafana-8.5.1",
-		appVersion: "11.6.0",
-		revision: 14,
-		status: "deployed",
-		storageKind: "Secret",
-		storageName: "sh.helm.release.v1.grafana.v14",
-	},
-];
-
+// Sessions carry the mock kubeconfig source so the Live Sessions page, which
+// shows only sessions from the active source, lists them.
 export const mockPortForwards: PortForwardSessionSummary[] = [
 	{
 		id: "mock-pf-grafana",
+        kubeconfigSourceKey: source.sourceKey,
 		clusterContext: "mock-dev",
+		kubeconfigEnvVar: source.sourceKey,
 		namespace: "monitoring",
 		targetKind: "Service",
 		targetName: "grafana",
@@ -518,7 +336,9 @@ export const mockPortForwards: PortForwardSessionSummary[] = [
 	},
 	{
 		id: "mock-pf-payments",
+        kubeconfigSourceKey: source.sourceKey,
 		clusterContext: "mock-dev",
+		kubeconfigEnvVar: source.sourceKey,
 		namespace: "payments",
 		targetKind: "Pod",
 		targetName: "payments-api-7d9c9b7f8d-k2r9p",
@@ -537,7 +357,9 @@ export const mockPortForwards: PortForwardSessionSummary[] = [
 export const mockExecSessions: PodExecSessionSummary[] = [
 	{
 		id: "mock-exec-payments",
+        kubeconfigSourceKey: source.sourceKey,
 		clusterContext: "mock-dev",
+		kubeconfigEnvVar: source.sourceKey,
 		namespace: "payments",
 		podName: "payments-api-7d9c9b7f8d-k2r9p",
 		container: "api",
@@ -570,6 +392,7 @@ export function res(kindName: string, name: string, namespace: string | null, he
 		namespace,
 		age: namespace === "payments" ? "18d" : "12d",
 		apiVersion: extra.apiVersion ?? (kindName === "Deployment" ? "apps/v1" : "v1"),
+		plural: kinds.find((kind) => kind.kind === kindName)?.plural,
 		namespaced: namespace !== null,
 		health,
 		healthAssessment: extra.healthAssessment ?? mockHealthAssessment(assessmentState, health),

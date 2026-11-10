@@ -1,0 +1,225 @@
+{
+	"fixture": "browser-mocks",
+	"context": "mock-dev",
+	"scenarios": [
+		{
+			"id": "coverage-yaml.force-conflict",
+			"title": "A dry-run ownership conflict requires an explicit resource override and resets it on a new draft",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "conflict"
+				},
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "search",
+					"value": "payments-api"
+				},
+				{
+					"action": "openResource",
+					"kind": "Deployment",
+					"namespace": "payments",
+					"name": "payments-api"
+				},
+				{
+					"action": "showTab",
+					"tab": "YAML"
+				},
+				{
+					"action": "editYaml"
+				},
+				{
+					"action": "dryRunYaml"
+				},
+				{
+					"action": "coverageClick",
+					"label": "Allow force-conflicts for this resource"
+				},
+				{
+					"action": "expectDryRun",
+					"contains": [
+						"+# dry-run: browser mock"
+					]
+				},
+				{
+					"action": "cancelYamlEdit"
+				},
+				{
+					"action": "editYaml"
+				},
+				{
+					"action": "dryRunYaml"
+				},
+				{
+					"action": "coverageClick",
+					"label": "Allow force-conflicts for this resource"
+				},
+				{
+					"action": "expectDryRun",
+					"contains": [
+						"+# dry-run: browser mock"
+					]
+				}
+			]
+		},
+		{
+			"id": "coverage-logs.container-tail-time",
+			"title": "Container, tail and time-window controls restart the selected stream with the chosen options",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "logs-options"
+				},
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "openResource",
+					"kind": "Pod",
+					"namespace": "payments",
+					"name": "payments-api-7d9c9b7f8d-k2r9p"
+				},
+				{
+					"action": "showTab",
+					"tab": "Logs"
+				},
+				{
+					"action": "expectLogLines",
+					"lines": [
+						"Selected app tail 200 since any"
+					]
+				},
+				{
+					"action": "coverageSelect",
+					"label": "Log container",
+					"value": "sidecar"
+				},
+				{
+					"action": "expectLogLines",
+					"lines": [
+						"Selected sidecar tail 200 since any"
+					]
+				},
+				{
+					"action": "coverageClick",
+					"label": "Log tail and time window"
+				},
+				{
+					"action": "coverageFill",
+					"label": "Tail log lines",
+					"value": "2"
+				},
+				{
+					"action": "coverageClick",
+					"label": "5m"
+				},
+				{
+					"action": "coverageClick",
+					"label": "Log tail and time window"
+				},
+				{
+					"action": "expectLogLines",
+					"lines": [
+						"Selected sidecar tail 2 since 300"
+					]
+				}
+			]
+		},
+		{
+			"id": "coverage-logs.empty-stream",
+			"title": "A connected stream without lines shows its connection message instead of old logs",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "logs-empty"
+				},
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "openResource",
+					"kind": "Pod",
+					"namespace": "payments",
+					"name": "payments-api-7d9c9b7f8d-k2r9p"
+				},
+				{
+					"action": "showTab",
+					"tab": "Logs"
+				},
+				{
+					"action": "expectLogLines",
+					"lines": []
+				},
+				{
+					"action": "coverageText",
+					"text": "Controlled log stream connected",
+					"visible": true
+				}
+			]
+		},
+		{
+			"id": "coverage-logs.failed-stream",
+			"title": "A stream failure is visible and never retains another resource's log rows",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "logs-failed"
+				},
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "openResource",
+					"kind": "Pod",
+					"namespace": "payments",
+					"name": "payments-api-7d9c9b7f8d-k2r9p"
+				},
+				{
+					"action": "showTab",
+					"tab": "Logs"
+				},
+				{
+					"action": "expectLogLines",
+					"lines": []
+				},
+				{
+					"action": "coverageText",
+					"text": "Log stream failed",
+					"visible": true
+				}
+			]
+		},
+		{
+			"id": "coverage-map.warnings",
+			"title": "Refreshing topology replaces the prior warning and keeps the partial graph usable",
+			"steps": [
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "coverageText",
+					"text": "Browser mock ownership map includes curated support-resource ownership.",
+					"visible": true
+				},
+				{
+					"action": "coverageScript",
+					"script": "partial"
+				},
+				{
+					"action": "refresh"
+				},
+				{
+					"action": "coverageText",
+					"text": "Controlled topology warning",
+					"visible": true
+				},
+				{
+					"action": "coverageCheck",
+					"check": "map-full"
+				}
+			]
+		}
+	]
+}

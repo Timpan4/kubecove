@@ -1,0 +1,466 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "workspaces.native-dialog-import-export",
+      "title": "Preview the chosen workspace file and export the imported scope",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "choose-workspace" },
+        { "action": "openLauncher" },
+        { "action": "clickSettingsButton", "label": "Import" },
+        { "action": "expectSettingsText", "value": "Import preview" },
+        { "action": "clickSettingsButton", "label": "Apply import" },
+        { "action": "expectSavedWorkspace", "name": "Controlled import", "summary": "mock-dev / payments / Pod" },
+        { "action": "clickSettingsButton", "label": "Export all" },
+        { "action": "expectWorkspaceExport", "name": "Controlled import" }
+      ]
+    },
+    {
+      "id": "workspaces.native-dialog-cancellation",
+      "title": "Cancelling a workspace import preserves saved workspaces",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "cancel-dialog" },
+        { "action": "openLauncher" },
+        { "action": "clickSettingsButton", "label": "Import" },
+        { "action": "expectSettingsText", "value": "Import canceled." },
+        { "action": "expectSavedWorkspace", "name": "Parity mock workspace", "summary": "mock-dev / All namespaces / Pod, Deployment +7" }
+      ]
+    },
+    {
+      "id": "settings-remote.endpoint-and-disconnect",
+      "title": "Connect to the entered host, hide the credential, and explicitly return to local runtime",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "fillSettingsField", "field": "Server token", "value": "parity-controlled-credential" },
+        { "action": "expectMaskedToken" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "expectSettingsText", "value": "http://127.0.0.1:43117" },
+        { "action": "expectNoSettingsText", "value": "parity-controlled-credential" },
+        { "action": "expectRuntimeEndpoint", "value": "http://127.0.0.1:43117" },
+        { "action": "expectRemoteHost", "url": "http://127.0.0.1:43117" },
+        { "action": "expectSettingsText", "value": "Server 0.13.0. Session grace: 300 seconds." },
+        { "action": "expectSettingsText", "value": "Forwarded ports listen only on 127.0.0.1 on this laptop." },
+        { "action": "closeSettings" },
+        { "action": "expectRemoteHost", "url": "http://127.0.0.1:43117" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "clickSettingsButton", "label": "Disconnect" },
+        { "action": "expectRuntimeEndpoint", "value": "local" },
+        { "action": "expectSettingsText", "value": "Server token" }
+      ]
+    },
+    {
+      "id": "settings-kubeconfig.dialog-and-reopen",
+      "title": "Apply selected files only to kubeconfig sources, preserve cancellation and reopen stored settings",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Kubeconfig" },
+        { "action": "expectAccessibleName", "name": "Paste kubeconfig paths" },
+        { "action": "setKubeconfigEnvVar", "value": "PARITY_KUBECONFIG" },
+        { "action": "configureSettingsMock", "script": "choose-kubeconfig" },
+        { "action": "clickSettingsButton", "label": "Choose files" },
+        { "action": "expectSettingsText", "value": "/controlled/parity.config" },
+        { "action": "expectKubeconfigEnvVar", "value": "PARITY_KUBECONFIG" },
+        { "action": "configureSettingsMock", "script": "cancel-dialog" },
+        { "action": "clickSettingsButton", "label": "Choose files" },
+        { "action": "expectSettingsText", "value": "/controlled/parity.config" },
+        { "action": "reopenStoredSettings" },
+        { "action": "showSettingsSection", "section": "Kubeconfig" },
+        { "action": "expectKubeconfigEnvVar", "value": "PARITY_KUBECONFIG" },
+        { "action": "expectSettingsText", "value": "/controlled/parity.config" },
+        { "action": "clickKubeconfigPathButton", "value": "/controlled/parity.config", "label": "Remove kubeconfig path" },
+        { "action": "expectNoSettingsText", "value": "/controlled/parity.config" }
+      ]
+    },
+    {
+      "id": "settings-kubeconfig.remote-env-and-server-path",
+      "title": "Remote mode saves the KUBECONFIG name and a server path, and both survive reopening Settings",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "fillSettingsField", "field": "Server token", "value": "parity-controlled-credential" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "expectRemoteHost", "url": "http://127.0.0.1:43117" },
+        { "action": "showSettingsSection", "section": "Kubeconfig" },
+        { "action": "expectNoSettingsText", "value": "Choose files" },
+        { "action": "setKubeconfigEnvVar", "value": "PARITY_REMOTE_KUBECONFIG" },
+        { "action": "addServerKubeconfigPath", "value": "/srv/parity-remote.yaml" },
+        { "action": "expectSettingsText", "value": "/srv/parity-remote.yaml" },
+        { "action": "expectKubeconfigEnvVar", "value": "PARITY_REMOTE_KUBECONFIG" },
+        { "action": "closeSettings" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Kubeconfig" },
+        { "action": "expectKubeconfigEnvVar", "value": "PARITY_REMOTE_KUBECONFIG" },
+        { "action": "expectSettingsText", "value": "/srv/parity-remote.yaml" },
+        { "action": "expectNoSettingsText", "value": "parity-controlled-credential" }
+      ]
+    },
+    {
+      "id": "settings-kubeconfig.remote-paths-reorder-remove-labels",
+      "title": "Remote mode orders, removes and labels server kubeconfig sources, and the saved order survives reopening Settings",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "fillSettingsField", "field": "Server token", "value": "parity-controlled-credential" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "expectRemoteHost", "url": "http://127.0.0.1:43117" },
+        { "action": "showSettingsSection", "section": "Kubeconfig" },
+        { "action": "addServerKubeconfigPath", "value": "/srv/parity-remote.yaml" },
+        { "action": "addServerKubeconfigPath", "value": "/srv/parity-second.yaml" },
+        { "action": "expectKubeconfigPathBefore", "value": "/srv/parity-remote.yaml", "other": "/srv/parity-second.yaml" },
+        { "action": "clickKubeconfigPathButton", "value": "/srv/parity-second.yaml", "label": "Move kubeconfig path up" },
+        { "action": "expectKubeconfigPathBefore", "value": "/srv/parity-second.yaml", "other": "/srv/parity-remote.yaml" },
+        { "action": "toggleSetting", "setting": "Show kubeconfig source labels" },
+        { "action": "expectSetting", "setting": "Show kubeconfig source labels", "checked": false },
+        { "action": "clickKubeconfigPathButton", "value": "/srv/parity-second.yaml", "label": "Remove kubeconfig path" },
+        { "action": "expectNoSettingsText", "value": "/srv/parity-second.yaml" },
+        { "action": "closeSettings" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Kubeconfig" },
+        { "action": "expectSettingsText", "value": "/srv/parity-remote.yaml" },
+        { "action": "expectNoSettingsText", "value": "/srv/parity-second.yaml" },
+        { "action": "expectSetting", "setting": "Show kubeconfig source labels", "checked": false }
+      ]
+    },
+    {
+      "id": "settings-remote.header-badge-and-session",
+      "title": "The header badge names the connected host with its status tooltip, and Settings shows the server and grace period while connected",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "expectSettingsText", "value": "The token stays in native Rust memory until you disconnect or close the app." },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "fillSettingsField", "field": "Server token", "value": "parity-controlled-credential" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "expectSettingsText", "value": "Connected to http://127.0.0.1:43117." },
+        { "action": "expectSettingsText", "value": "Server 0.13.0. Session grace: 300 seconds." },
+        { "action": "expectRemoteHostTooltip", "value": "Cluster access runs on this remote host" },
+        { "action": "closeSettings" },
+        { "action": "expectRemoteHost", "url": "http://127.0.0.1:43117" },
+        { "action": "expectRemoteHostTooltip", "value": "Cluster access runs on this remote host" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "clickSettingsButton", "label": "Disconnect" },
+        { "action": "expectNoRemoteHost" },
+        { "action": "expectRuntimeEndpoint", "value": "local" }
+      ]
+    },
+    {
+      "id": "settings-updates.no-update",
+      "title": "An empty update response offers no install",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "no-update" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Updates" },
+        { "action": "clickSettingsButton", "label": "Check" },
+        { "action": "expectSettingsText", "value": "KubeCove version" },
+        { "action": "expectNoSettingsText", "value": "Update available" },
+        { "action": "expectNoSettingsText", "value": "Install" }
+      ]
+    },
+    {
+      "id": "settings-updates.signature-refusal",
+      "title": "An unverified update is never installed",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "invalid-signature" },
+        { "action": "restartClient" },
+        { "action": "expectSettingsText", "value": "KubeCove 0.14.0 is available." },
+        { "action": "updateStatusControl", "control": "Later" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Updates" },
+        { "action": "expectSettingsText", "value": "Update available" },
+        { "action": "clickSettingsButton", "label": "Install" },
+        { "action": "expectSettingsText", "value": "Invalid update signature" },
+        { "action": "expectNoSettingsText", "value": "Relaunch required" }
+      ]
+    },
+    {
+      "id": "settings-updates.download-progress",
+      "title": "An update that is downloading shows its progress in Settings and on the header control",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "update-download-waits" },
+        { "action": "restartClient" },
+        { "action": "expectSettingsText", "value": "KubeCove 0.14.0 is available." },
+        { "action": "updateStatusControl", "control": "Later" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Updates" },
+        { "action": "clickSettingsButton", "label": "Install" },
+        { "action": "expectSettingsText", "value": "Installing update" },
+        { "action": "expectSettingsText", "value": "Download progress: 40%." },
+        { "action": "expectNoSettingsText", "value": "Update available" },
+        { "action": "expectUpdateControl", "label": "Downloading update" }
+      ]
+    },
+    {
+      "id": "settings-updates.install-and-relaunch",
+      "title": "An installed update asks for a relaunch, and a relaunch that fails says why",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "update-installs" },
+        { "action": "restartClient" },
+        { "action": "expectSettingsText", "value": "KubeCove 0.14.0 is available." },
+        { "action": "updateStatusControl", "control": "Later" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Updates" },
+        { "action": "clickSettingsButton", "label": "Install" },
+        { "action": "expectSettingsText", "value": "Relaunch required" },
+        { "action": "expectSettingsText", "value": "Update is installed. Relaunch KubeCove to finish." },
+        { "action": "expectUpdateControl", "label": "Restart to finish update" },
+        { "action": "clickSettingsButton", "label": "Relaunch" },
+        { "action": "expectSettingsText", "value": "Tests cannot relaunch" },
+        { "action": "expectNoSettingsText", "value": "Relaunch required" }
+      ]
+    },
+    {
+      "id": "settings-updates.header-install",
+      "title": "The header popover installs the offered update and then offers the relaunch",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "update-installs" },
+        { "action": "restartClient" },
+        { "action": "expectSettingsText", "value": "KubeCove 0.14.0 is available." },
+        { "action": "updateStatusControl", "control": "Install" },
+        { "action": "expectSettingsText", "value": "Update installed. Restart KubeCove to finish." },
+        { "action": "expectUpdateControl", "label": "Restart to finish update" },
+        { "action": "updateStatusControl", "control": "Relaunch" },
+        { "action": "expectSettingsText", "value": "Tests cannot relaunch" }
+      ]
+    },
+    {
+      "id": "settings-remote.disconnected-selected",
+      "title": "A selected remote that drops shows a disconnected header, tooltip and Settings status",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "fillSettingsField", "field": "Server token", "value": "parity-controlled-credential" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "expectSettingsText", "value": "Connected to http://127.0.0.1:43117." },
+        { "action": "closeSettings" },
+        { "action": "expectRemoteHost", "url": "http://127.0.0.1:43117" },
+        { "action": "dropRemoteConnection" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "expectSettingsText", "value": "http://127.0.0.1:43117 is selected but disconnected. Cluster commands will not fall back to this laptop." },
+        { "action": "expectNoSettingsText", "value": "Connected to http://127.0.0.1:43117." },
+        { "action": "closeSettings" },
+        { "action": "expectRemoteHost", "url": "http://127.0.0.1:43117", "disconnected": true },
+        { "action": "expectRemoteHostTooltip", "value": "This remote host remains selected, but is disconnected" },
+        { "action": "expectRemoteNotice", "value": "The server session expired. Reconnect with the server token." }
+      ]
+    },
+    {
+      "id": "settings-remote.disconnected-selected-resources",
+      "title": "Resources after a selected remote drops show the session notice instead of the rows from before the drop",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "expectResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "fillSettingsField", "field": "Server token", "value": "parity-controlled-credential" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "expectSettingsText", "value": "Connected to http://127.0.0.1:43117." },
+        { "action": "closeSettings" },
+        { "action": "dropRemoteConnection" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "expectSettingsText", "value": "http://127.0.0.1:43117 is selected but disconnected. Cluster commands will not fall back to this laptop." },
+        { "action": "closeSettings" },
+        { "action": "expectRemoteNotice", "value": "The server session expired. Reconnect with the server token." },
+        { "action": "expectNoResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" }
+      ]
+    },
+    {
+      "id": "settings-remote.oidc-sign-in-disconnect-and-sign-out",
+      "title": "An OIDC server signs in through the browser, Disconnect keeps the sign-in for the next connect, and Sign out forgets it",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "oidc-server" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "expectSettingsText", "value": "Sign in to KubeCove" },
+        { "action": "expectSettingsText", "value": "Sign in through your browser to use this server." },
+        { "action": "expectNoSettingsText", "value": "The token stays in native Rust memory" },
+        { "action": "expectRuntimeEndpoint", "value": "http://127.0.0.1:43117" },
+        { "action": "clickSettingsButton", "label": "Sign in" },
+        { "action": "expectSettingsText", "value": "Connected to http://127.0.0.1:43117." },
+        { "action": "clickSettingsButton", "label": "Disconnect" },
+        { "action": "expectRuntimeEndpoint", "value": "local" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "expectSettingsText", "value": "Connected to http://127.0.0.1:43117." },
+        { "action": "clickSettingsButton", "label": "Sign out" },
+        { "action": "expectSettingsText", "value": "Sign in through your browser to use this server." },
+        { "action": "expectSettingsText", "value": "http://127.0.0.1:43117 is selected but disconnected. Cluster commands will not fall back to this laptop." }
+      ]
+    },
+    {
+      "id": "settings-remote.oidc-waiting-copy-and-cancel",
+      "title": "A pending browser sign-in shows in the workspace, copies its link, and Cancel keeps the server selected",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "oidc-browser-waits" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "clickSettingsButton", "label": "Sign in" },
+        { "action": "expectSettingsText", "value": "Finish signing in in your browser." },
+        { "action": "closeSettings" },
+        { "action": "expectRemoteNotice", "value": "Finish signing in in your browser." },
+        { "action": "clickRemoteNoticeButton", "label": "Copy sign-in link" },
+        { "action": "expectCopyToast", "text": "Copied sign-in link." },
+        { "action": "clickRemoteNoticeButton", "label": "Cancel" },
+        { "action": "expectRemoteNotice", "value": "Sign in through your browser to use this server." },
+        { "action": "expectRemoteHost", "url": "http://127.0.0.1:43117", "disconnected": true }
+      ]
+    },
+    {
+      "id": "settings-remote.failed-sign-in-copy-keeps-status-refresh",
+      "title": "Copy sign-in link during the status read after a failed sign-in does not drop that read, so the notice catches up",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "oidc-sign-in-fails" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "expectSettingsText", "value": "Sign in through your browser to use this server." },
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "remote_connection_status", "context": "" } },
+        { "action": "clickSettingsButton", "label": "Sign in" },
+        { "action": "expectSettingsText", "value": "Finish signing in in your browser." },
+        { "action": "clickSettingsButton", "label": "Copy sign-in link" },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "remote_connection_status", "context": "" } },
+        { "action": "expectSettingsText", "value": "Sign in through your browser to use this server." },
+        { "action": "expectSettingsText", "value": "Sign-in was not completed." }
+      ]
+    },
+    {
+      "id": "settings-remote.oidc-session-notices",
+      "title": "Server signals show their notice in Settings and in place of the workspace, and each notice action recovers the session",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "oidc-server" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "clickSettingsButton", "label": "Sign in" },
+        { "action": "expectSettingsText", "value": "Connected to http://127.0.0.1:43117." },
+        { "action": "closeSettings" },
+        { "action": "expectNoRemoteNotice" },
+        { "action": "remoteSessionSignal", "state": "sessionEnded" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "expectSettingsText", "value": "This app's server session closed or expired. Start a new session to continue. Other sessions on the server are not affected." },
+        { "action": "closeSettings" },
+        { "action": "expectRemoteNotice", "value": "Session ended" },
+        { "action": "clickRemoteNoticeButton", "label": "Start a new session" },
+        { "action": "expectNoRemoteNotice" },
+        { "action": "remoteSessionSignal", "state": "reconnecting" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "expectSettingsText", "value": "Connection interrupted. Reconnecting to the current session." },
+        { "action": "closeSettings" },
+        { "action": "expectRemoteNotice", "value": "Connection interrupted. Reconnecting to the current session." },
+        { "action": "remoteSessionSignal", "state": "signInExpired" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "expectSettingsText", "value": "Your sign-in has expired. Sign in again." },
+        { "action": "closeSettings" },
+        { "action": "expectRemoteNotice", "value": "Your sign-in has expired. Sign in again." },
+        { "action": "clickRemoteNoticeButton", "label": "Sign in" },
+        { "action": "expectNoRemoteNotice" },
+        { "action": "expectRemoteHost", "url": "http://127.0.0.1:43117" }
+      ]
+    },
+    {
+      "id": "settings-remote.oidc-memory-only-and-access",
+      "title": "A sign-in without a credential store says it lasts until the app closes, and a Cloudflare Access server is refused with its reason",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "oidc-memory-only" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "clickSettingsButton", "label": "Sign in" },
+        { "action": "expectSettingsText", "value": "This computer's credential store is unavailable, so the sign-in lasts only until KubeCove closes." },
+        { "action": "clickSettingsButton", "label": "Disconnect" },
+        { "action": "configureSettingsMock", "script": "access-server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43118" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "expectSettingsText", "value": "Desktop sign-in for Cloudflare Access is not supported. Use a token or OIDC server." },
+        { "action": "expectRuntimeEndpoint", "value": "local" }
+      ]
+    },
+    {
+      "id": "settings-remote.oidc-sign-out-not-deleted",
+      "title": "Sign out says so when the credential store could not delete the sign-in, and a new sign-in clears the note",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "oidc-store-keeps-sign-in" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "clickSettingsButton", "label": "Sign in" },
+        { "action": "expectSettingsText", "value": "Connected to http://127.0.0.1:43117." },
+        { "action": "clickSettingsButton", "label": "Sign out" },
+        { "action": "expectSettingsText", "value": "Sign in through your browser to use this server." },
+        { "action": "expectSettingsText", "value": "This computer's credential store could not delete the sign-in, so it may still be stored. KubeCove will not use it while it runs. Remove any \"KubeCove remote sign-in\" entry for this server from the credential store." },
+        { "action": "clickSettingsButton", "label": "Sign in" },
+        { "action": "expectSettingsText", "value": "Connected to http://127.0.0.1:43117." },
+        { "action": "expectNoSettingsText", "value": "could not delete the sign-in" }
+      ]
+    },
+    {
+      "id": "settings-updates.startup-dismissal-and-recheck",
+      "title": "Startup offers a new version once, a dismissed version stays dismissed after client recreation, and Check again updates the status",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "update-available" },
+        { "action": "restartClient" },
+        { "action": "expectSettingsText", "value": "KubeCove 0.14.0 is available." },
+        { "action": "expectSettingsText", "value": "Fixes topology edges." },
+        { "action": "updateStatusControl", "control": "Later" },
+        { "action": "expectNoSettingsText", "value": "KubeCove 0.14.0 is available." },
+        { "action": "restartClient" },
+        { "action": "expectUpdateControl", "label": "Update available" },
+        { "action": "expectNoSettingsText", "value": "KubeCove 0.14.0 is available." },
+        { "action": "updateStatusControl", "control": "Open" },
+        { "action": "expectSettingsText", "value": "KubeCove 0.14.0 is available." },
+        { "action": "configureSettingsMock", "script": "no-update" },
+        { "action": "updateStatusControl", "control": "Check" },
+        { "action": "expectSettingsText", "value": "KubeCove is up to date." },
+        { "action": "expectUpdateControl", "label": "Check for updates" }
+      ]
+    },
+    {
+      "id": "settings.server-information-while-connected",
+      "title": "General shows the connected server's version and credential storage, as the browser runtime does, and hides them on the local runtime",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "expectNoSettingRow", "title": "Server information" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "fillSettingsField", "field": "Server token", "value": "parity-controlled-credential" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "expectRemoteHost", "url": "http://127.0.0.1:43117" },
+        { "action": "showSettingsSection", "section": "General" },
+        { "action": "expectSettingRow", "title": "Server information" },
+        { "action": "expectSettingsText", "value": "Server 0.13.0" },
+        { "action": "expectSettingsText", "value": "Encrypted file storage" },
+        { "action": "searchSettings", "value": "credential storage" },
+        { "action": "expectSettingRow", "title": "Server information" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "clickSettingsButton", "label": "Disconnect" },
+        { "action": "expectRuntimeEndpoint", "value": "local" },
+        { "action": "showSettingsSection", "section": "General" },
+        { "action": "expectNoSettingRow", "title": "Server information" },
+        { "action": "expectNoSettingsText", "value": "Encrypted file storage" },
+        { "action": "searchSettings", "value": "credential storage" },
+        { "action": "expectSettingsEmpty", "value": "credential storage" }
+      ]
+    }
+  ]
+}

@@ -35,6 +35,7 @@
 		helmReleaseKey,
 		helmStatusTone,
 	} from "@/features/helm/helpers";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import { settingsStore } from "@/lib/settings-store";
 	import type { HelmViewMode } from "@/lib/settings";
 	import type {
@@ -91,6 +92,8 @@
 	const selectedHelmReleaseKey = $derived(list.selectedKey);
 	const helmDetailsQuery = $derived(details.query);
 	const helmReconciliationQuery = $derived(reconciliation.query);
+	const detailsLoading = loadingDelay(() => helmDetailsQuery.isPending);
+	const reconciliationLoading = loadingDelay(() => helmReconciliationQuery.isPending);
 	const helmReconciliationRows = $derived(reconciliation.rows);
 	const onOpenResources = $derived(actions.openResources);
 	const helmStatusVariant = $derived(actions.statusVariant);
@@ -456,11 +459,13 @@
 				{/if}
 			</CardHeader>
 			<CardContent>
-				{#if helmDetailsQuery.isPending}
-			<p class="inline-flex items-center gap-2 text-sm text-muted-foreground">
-				<Spinner class="size-4" />
-				Loading Helm release details...
-			</p>
+				{#if detailsLoading.active}
+					{#if detailsLoading.shown}
+						<p class="inline-flex items-center gap-2 text-sm text-muted-foreground">
+							<Spinner class="size-4" />
+							Loading Helm release details...
+						</p>
+					{/if}
 				{:else if helmDetailsQuery.isError}
 					<FriendlyError
 						error={helmDetailsQuery.error}
@@ -541,11 +546,13 @@
 										</span>
 									{/if}
 								</div>
-								{#if helmReconciliationQuery.isPending}
-									<p class="inline-flex items-center gap-2 text-sm text-muted-foreground">
-										<Spinner class="size-4" />
-										Loading reconciliation...
-								</p>
+								{#if reconciliationLoading.active}
+									{#if reconciliationLoading.shown}
+										<p class="inline-flex items-center gap-2 text-sm text-muted-foreground">
+											<Spinner class="size-4" />
+											Loading reconciliation...
+										</p>
+									{/if}
 							{:else if helmReconciliationQuery.isError}
 								<FriendlyError
 									mode="compact"

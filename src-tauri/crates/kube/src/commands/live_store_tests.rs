@@ -1,5 +1,5 @@
 use super::*;
-use crate::models::AppErrorKind;
+use crate::models::{AppErrorKind, ResourceSummary};
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
@@ -244,7 +244,8 @@ fn all_namespace_resources_cover_named_namespace_reads() {
                 || async { Ok::<_, AppError>(Vec::new()) },
             )
             .await
-            .expect("covered namespace read");
+            .expect("covered namespace read")
+            .rows;
 
         assert_eq!(default_rows.len(), 1);
         assert_eq!(default_rows[0].name, "api");
@@ -326,7 +327,8 @@ fn normalized_builtin_watch_invalidates_typed_resource_cache() {
                 || async { Ok::<_, AppError>(vec![resource("worker", "default")]) },
             )
             .await
-            .expect("typed reload");
+            .expect("typed reload")
+            .rows;
 
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].name, "worker");

@@ -205,7 +205,7 @@ function getMockActionObject(request: ResourceActionStateRequest): MockActionObj
 	};
 	const template: MockActionTemplate = {
 		metadata: { labels: { app: request.name }, annotations: { "mock.example/template": "preserved" } },
-		spec: { containers: [container], volumes: [{ name: "data", emptyDir: {} }] },
+		spec: { containers: request.name === "payments-api" ? [container, { name: "sidecar", image: "registry.example/sidecar:v1", env: [{ name: "KEEP", value: "yes" }] }] : [container], volumes: [{ name: "data", emptyDir: {} }] },
 	};
 	const object: MockActionObject = {
 		apiVersion,

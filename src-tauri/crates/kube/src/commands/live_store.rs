@@ -1,8 +1,7 @@
 use crate::commands::builtin_kinds::builtin_kind;
 use crate::commands::helpers::FluxOwnershipIndex;
 use crate::models::{
-    AppError, DiscoveredResourceKind, NamespaceSummary, ResourceSummary, ResourceTopology,
-    WatchResourceKind,
+    AppError, DiscoveredResourceKind, NamespaceSummary, ResourceTopology, WatchResourceKind,
 };
 use futures_util::future::{BoxFuture, FutureExt, Shared};
 use std::{
@@ -35,6 +34,14 @@ mod refresh;
 #[path = "live_store_diagnostics.rs"]
 mod cache_diagnostics;
 use cache_diagnostics::CacheCounters;
+
+#[path = "live_store_list.rs"]
+mod list;
+pub use list::{ListSnapshot, ListedResources};
+
+#[path = "live_store_watch.rs"]
+mod watch;
+pub use watch::{WatchOrigin, WatchedRow};
 
 type SharedLoad<T> = Shared<BoxFuture<'static, Result<Arc<T>, AppError>>>;
 
@@ -194,20 +201,17 @@ where
                 }
                 _ => {
                     self.counters.misses.fetch_add(1, Ordering::Relaxed);
+                    // A dirty load is detached, not cancelled: its waiters still
+                    // get their read, and dropping the last of them ends it.
+                    // Cancelling it made every waiter retry after a second.
                     let previous = entries.remove(&key).and_then(|entry| match entry {
                         CacheEntry::Ready(ready) => Some(ready),
                         CacheEntry::Loading {
-                            previous,
-                            cancellation,
-                            dirty,
-                            ..
-                        } => {
-                            cancellation.cancel();
-                            previous.map(|mut ready| {
-                                ready.dirty |= dirty;
-                                ready
-                            })
-                        }
+                            previous, dirty, ..
+                        } => previous.map(|mut ready| {
+                            ready.dirty |= dirty;
+                            ready
+                        }),
                     });
                     let load_id = self.next_load_id.fetch_add(1, Ordering::Relaxed) + 1;
                     let cancellation = CancellationToken::new();
@@ -401,9 +405,10 @@ pub struct ClusterLiveStore {
     namespaces: Arc<SharedCache<Vec<NamespaceSummary>>>,
     resource_kinds: Arc<SharedCache<Vec<DiscoveredResourceKind>>>,
     present_custom_resource_kinds: Arc<SharedCache<Vec<DiscoveredResourceKind>>>,
-    resources: Arc<SharedCache<Vec<ResourceSummary>>>,
+    resources: Arc<SharedCache<ListSnapshot>>,
     topologies: Arc<SharedCache<ResourceTopology>>,
     flux_ownership_indexes: Arc<SharedCache<FluxOwnershipIndex>>,
+    watched_rows: Option<WatchedRow>,
 }
 
 impl Default for ClusterLiveStore {
@@ -417,6 +422,7 @@ impl Default for ClusterLiveStore {
             resources: Arc::new(SharedCache::new("resources")),
             topologies: Arc::new(SharedCache::new("topologies")),
             flux_ownership_indexes: Arc::new(SharedCache::new("flux_ownership_indexes")),
+            watched_rows: None,
         }
     }
 }
@@ -484,9 +490,9 @@ impl ClusterLiveStore {
         Fut: Future<Output = Result<Vec<DiscoveredResourceKind>, AppError>> + Send + 'static,
     {
         self.resource_kinds
-            .get_or_load(
+            .get_or_revalidate(
                 context_cache_key(&source_key, &cluster_context),
-                CacheMode::LiveFor(RESOURCE_FRESHNESS),
+                RESOURCE_FRESHNESS,
                 loader,
             )
             .await
@@ -522,17 +528,18 @@ impl ClusterLiveStore {
         )
     }
 
-    pub async fn typed_resources<F, Fut>(
+    pub async fn typed_resources<F, Fut, Listed>(
         &self,
         source_key: String,
         cluster_context: String,
         kind: String,
         namespace: Option<String>,
         loader: F,
-    ) -> Result<Arc<Vec<ResourceSummary>>, AppError>
+    ) -> Result<ListSnapshot, AppError>
     where
         F: FnOnce() -> Fut + Send + 'static,
-        Fut: Future<Output = Result<Vec<ResourceSummary>, AppError>> + Send + 'static,
+        Fut: Future<Output = Result<Listed, AppError>> + Send + 'static,
+        Listed: Into<ListedResources>,
     {
         let kind_key = typed_kind_key(&kind);
         let namespace_key = namespace_key_for_typed(&kind, namespace.as_deref());
@@ -540,17 +547,18 @@ impl ClusterLiveStore {
             .await
     }
 
-    pub async fn dynamic_resources<F, Fut>(
+    pub async fn dynamic_resources<F, Fut, Listed>(
         &self,
         source_key: String,
         cluster_context: String,
         resource_kind: DiscoveredResourceKind,
         namespace: Option<String>,
         loader: F,
-    ) -> Result<Arc<Vec<ResourceSummary>>, AppError>
+    ) -> Result<ListSnapshot, AppError>
     where
         F: FnOnce() -> Fut + Send + 'static,
-        Fut: Future<Output = Result<Vec<ResourceSummary>, AppError>> + Send + 'static,
+        Fut: Future<Output = Result<Listed, AppError>> + Send + 'static,
+        Listed: Into<ListedResources>,
     {
         let kind_key = dynamic_kind_key(
             &resource_kind.api_version,
@@ -563,17 +571,18 @@ impl ClusterLiveStore {
             .await
     }
 
-    async fn resources_for_scope<F, Fut>(
+    async fn resources_for_scope<F, Fut, Listed>(
         &self,
         source_key: String,
         cluster_context: String,
         kind_key: String,
         namespace_key: ScopeNamespace,
         loader: F,
-    ) -> Result<Arc<Vec<ResourceSummary>>, AppError>
+    ) -> Result<ListSnapshot, AppError>
     where
         F: FnOnce() -> Fut + Send + 'static,
-        Fut: Future<Output = Result<Vec<ResourceSummary>, AppError>> + Send + 'static,
+        Fut: Future<Output = Result<Listed, AppError>> + Send + 'static,
+        Listed: Into<ListedResources>,
     {
         if let ScopeNamespace::Named(namespace) = &namespace_key {
             let all_key = resource_cache_key(
@@ -582,26 +591,32 @@ impl ClusterLiveStore {
                 &kind_key,
                 &ScopeNamespace::All,
             );
-            if let Some(rows) = self
+            if let Some(list) = self
                 .resources
                 .peek(&all_key, CacheMode::LiveFor(RESOURCE_FRESHNESS))
             {
-                return Ok(Arc::new(
-                    rows.iter()
-                        .filter(|row| row.namespace.as_deref() == Some(namespace.as_str()))
-                        .cloned()
-                        .collect(),
+                return Ok(ListSnapshot::new(
+                    Arc::new(
+                        list.rows
+                            .iter()
+                            .filter(|row| row.namespace.as_deref() == Some(namespace.as_str()))
+                            .cloned()
+                            .collect(),
+                    ),
+                    list.resource_version.clone(),
                 ));
             }
         }
 
-        self.resources
+        let list = self
+            .resources
             .get_or_load(
                 resource_cache_key(&source_key, &cluster_context, &kind_key, &namespace_key),
                 CacheMode::LiveFor(RESOURCE_FRESHNESS),
-                loader,
+                move || async move { Ok(ListSnapshot::from(loader().await?.into())) },
             )
-            .await
+            .await?;
+        Ok(ListSnapshot::clone(&list))
     }
 
     pub async fn topology<F, Fut>(
@@ -639,6 +654,11 @@ impl ClusterLiveStore {
             self.resources.mark_dirty(&exact_key);
             self.resources.mark_dirty(&all_key);
         }
+        self.mark_derived_dirty(source_key, cluster_context);
+    }
+
+    /// Marks the context's topologies and present custom kinds dirty.
+    fn mark_derived_dirty(&self, source_key: &str, cluster_context: &str) {
         let prefix = format!("{source_key}|context={cluster_context}|");
         self.topologies
             .mark_dirty_where(|key| key.starts_with(&prefix));

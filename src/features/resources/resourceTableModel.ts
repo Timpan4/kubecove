@@ -52,6 +52,8 @@ function valueForSort(
 	column: ResourceSortColumn,
 ): string | number {
 	switch (column) {
+		case "context":
+			return row.cluster;
 		case "namespace":
 			return row.namespace ?? "";
 		case "kind":
@@ -84,17 +86,23 @@ function isNumber<Value>(value: Value): value is Value & number {
 	return Number(value) === value;
 }
 
+// Sort tie rule, in both directions: name, then workspace context rank, then input
+// order. Without the rank, a watch refetch of one context could reorder
+// same-named rows of two contexts by merge order. A context outside the
+// workspace ranks last.
 function sortedResourceRows(
 	rows: ResourceSummary[],
 	sort: ResourceSort,
+	contexts: readonly string[],
 ): ResourceSummary[] {
+	const ranks = new Map(contexts.map((context, index) => [context, index]));
 	const decorated = [];
 	for (const row of rows)
-		decorated.push({ row, value: valueForSort(row, sort.id) });
+		decorated.push({ row, value: valueForSort(row, sort.id), rank: ranks.get(row.cluster) ?? contexts.length });
 	decorated.sort((left, right) => {
 		const compare = compareValues(left.value, right.value);
 		if (compare !== 0) return sort.desc ? -compare : compare;
-		return nameCollator.compare(left.row.name, right.row.name);
+		return nameCollator.compare(left.row.name, right.row.name) || left.rank - right.rank;
 	});
 	const sorted = [];
 	for (const entry of decorated) sorted.push(entry.row);
@@ -124,6 +132,7 @@ function kindGroupedRows(
 function gitOpsGroupedRows(
 	rows: ResourceSummary[],
 	kindOrder: readonly string[],
+	multiContext: boolean,
 	preferredGitOpsResourceKeys?: ReadonlySet<string>,
 ): ResourceSummary[] {
 	const isPreferred = (row: ResourceSummary) =>
@@ -138,7 +147,7 @@ function gitOpsGroupedRows(
 		{ rank: number; rows: ResourceSummary[] }
 	>();
 	for (const row of preferredRows) {
-		const { label, rank } = gitOpsOwnershipGroup(row);
+		const { label, rank } = gitOpsOwnershipGroup(row, multiContext);
 		const group = ownershipGroups.get(label);
 		if (group) group.rows.push(row);
 		else
@@ -181,13 +190,20 @@ function typeGroupedRows(
 	return grouped;
 }
 
+/**
+ * `multiContext`, for workspaces with more than one context: search also
+ * matches each row's context name, and owner and Helm groups and owner
+ * filters stay inside one context.
+ */
 export function buildResourceTableProjection(
 	rows: ResourceSummary[],
+	multiContext = false,
 ): ResourceTableProjection {
 	const inheritedRows = inheritGitOpsOwnership(rows);
 	return {
-		searchIndex: buildResourceSearchIndex(inheritedRows),
-		gitOpsFilters: gitOpsOwnershipFilters(inheritedRows),
+		searchIndex: buildResourceSearchIndex(inheritedRows, multiContext),
+		gitOpsFilters: gitOpsOwnershipFilters(inheritedRows, multiContext),
+		multiContext,
 	};
 }
 
@@ -198,13 +214,18 @@ export function buildResourceTableDisplay(
 		"pageIndex" | "collapsedGroups" | "selectedResource"
 	>,
 ): ResourceTableDisplay {
-	const scopedRows = filterResourceSearchIndex(
+	const searchedRows = filterResourceSearchIndex(
 		projection.searchIndex,
 		state.search,
 		state.gitOpsFilter,
 	);
+	// The Context filter narrows display only; every context is still read.
+	const contextFilter = state.contextFilter;
+	const scopedRows = contextFilter?.size
+		? searchedRows.filter((row) => contextFilter.has(row.cluster))
+		: searchedRows;
 	const filteredRows = filterResourcesByHealth(scopedRows, state.healthFilter);
-	const sortedRows = sortedResourceRows(filteredRows, state.sort);
+	const sortedRows = sortedResourceRows(filteredRows, state.sort, state.contexts ?? []);
 	const groupedByGitOps = filteredRows.some(
 		(row) => gitOpsOwnership(row) !== null,
 	);
@@ -213,6 +234,7 @@ export function buildResourceTableDisplay(
 		? gitOpsGroupedRows(
 				sortedRows,
 				kindOrder,
+				projection.multiContext,
 				state.preferredGitOpsResourceKeys,
 			)
 		: typeGroupedRows(sortedRows, kindOrder);
@@ -247,6 +269,7 @@ export function buildResourceTableDisplay(
 		pageCount,
 		totalRows: displayRows.length,
 		groupedByGitOps,
+		multiContext: projection.multiContext,
 		gitOpsFilters: projection.gitOpsFilters,
 		healthSummary: buildResourceHealthSummary(scopedRows),
 		rowForResource,

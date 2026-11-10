@@ -2,6 +2,7 @@
 	import { ChevronDown, RefreshCw } from "lucide-svelte";
 	import { Button, Popover, PopoverContent, PopoverTrigger, Spinner } from "@/components/ui/svelte";
 	import { messageFromError } from "@/lib/error-redaction";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import type { LiveViewControls } from "@/lib/live-view-refresh";
 	let { live, disabled = false }: { live: LiveViewControls; disabled?: boolean } = $props();
 	const { status, message, error: connectionError, reloadError, warnings, catchingUp } = $derived(live.state);
@@ -11,8 +12,9 @@
 	let refreshWarnings = $state<string[]>([]);
 	const permissionWarnings = $derived([...new Set([...warnings, ...refreshWarnings])]);
 	const connectionProblem = $derived(Boolean(connectionError) || status === "reconnecting");
+	const refreshIndicator = loadingDelay(() => refreshing);
 	const label = $derived(
-		refreshing ? "Refreshing…"
+		refreshIndicator.shown ? "Refreshing…"
 			: error || reloadError ? "Refresh failed"
 			: disabled ? "Unavailable"
 			: connectionProblem ? "Reconnecting"
@@ -42,7 +44,7 @@
 
 <Popover bind:open>
 	<PopoverTrigger class="inline-flex h-8 shrink-0 items-center gap-2 rounded-md border border-border bg-background/50 px-2.5 text-xs hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring" aria-label="Live updates and refresh options">
-		{#if refreshing}<Spinner />{:else}<span class={`size-1.5 rounded-full ${dotClass}`} aria-hidden="true"></span>{/if}
+		{#if refreshIndicator.shown}<Spinner />{:else}<span class={`size-1.5 rounded-full ${dotClass}`} aria-hidden="true"></span>{/if}
 		<span class={error || reloadError ? "text-destructive" : connectionProblem ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground"} aria-live="polite">{label}</span>
 		<ChevronDown class="size-3 text-muted-foreground" aria-hidden="true" />
 	</PopoverTrigger>
@@ -60,8 +62,8 @@
 		{#if reloadError}<p role="alert" class="break-words text-xs text-destructive">Automatic reload failed: {reloadError}. Retrying.</p>{/if}
 		<p class="text-xs leading-relaxed text-muted-foreground">Clear cached data for this view and fetch it again. Filters and selection are preserved.</p>
 		<Button type="button" variant="outline" size="sm" class="w-full" disabled={disabled || refreshing} onclick={() => void refresh()}>
-			{#if refreshing}<Spinner />{:else}<RefreshCw data-icon="inline-start" />{/if}
-			{refreshing ? "Refreshing…" : "Refresh (clear cache)"}
+			{#if refreshIndicator.shown}<Spinner />{:else}<RefreshCw data-icon="inline-start" />{/if}
+			{refreshIndicator.shown ? "Refreshing…" : "Refresh (clear cache)"}
 		</Button>
 	</PopoverContent>
 </Popover>

@@ -1,0 +1,175 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "logs.expand-rows",
+      "title": "One-line log rows expand one at a time and Expand all opens or closes every row",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Appearance" },
+        { "action": "selectSettingOption", "setting": "Log layout", "value": "One line" },
+        { "action": "closeSettings" },
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showTab", "tab": "Logs" },
+        { "action": "expectLogRowOpen", "line": "handled GET /healthz 200", "open": false },
+        { "action": "toggleLogRow", "line": "handled GET /healthz 200" },
+        { "action": "expectLogRowOpen", "line": "handled GET /healthz 200", "open": true },
+        { "action": "toggleLogRow", "line": "handled GET /healthz 200", "key": "Enter" },
+        { "action": "expectLogRowOpen", "line": "handled GET /healthz 200", "open": false },
+        { "action": "toggleLogRow", "line": "handled GET /healthz 200", "key": "Space" },
+        { "action": "expectLogRowOpen", "line": "handled GET /healthz 200", "open": true },
+        { "action": "expectLogRowOpen", "line": "boot payments-api", "open": false },
+        { "action": "toggleLogExpandAll" },
+        { "action": "expectLogRowOpen", "line": "boot payments-api", "open": true },
+        { "action": "expectLogRowOpen", "line": "downstream retry budget at 82%", "open": true },
+        { "action": "toggleLogRow", "line": "boot payments-api" },
+        { "action": "expectLogRowOpen", "line": "boot payments-api", "open": false },
+        { "action": "expectLogRowOpen", "line": "handled GET /healthz 200", "open": true },
+        { "action": "toggleLogExpandAll" },
+        { "action": "expectLogRowOpen", "line": "handled GET /healthz 200", "open": false },
+        { "action": "expectLogRowOpen", "line": "downstream retry budget at 82%", "open": false }
+      ]
+    },
+    {
+      "id": "logs.copy-raw-line",
+      "title": "Copy line on an expanded one-line row copies the streamed line, timestamp included",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Appearance" },
+        { "action": "selectSettingOption", "setting": "Log layout", "value": "One line" },
+        { "action": "closeSettings" },
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showTab", "tab": "Logs" },
+        { "action": "toggleLogRow", "line": "handled GET /healthz 200" },
+        { "action": "copyLogLine", "line": "handled GET /healthz 200", "contains": "2026-06-29T10:00:02Z handled GET /healthz 200" }
+      ]
+    },
+    {
+      "id": "logs.timestamp-tooltip-stacked",
+      "title": "A stacked log row titles its time with the exact timestamp in the saved timezone",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "General" },
+        { "action": "selectSettingOption", "setting": "Timestamp timezone", "value": "UTC" },
+        { "action": "showSettingsSection", "section": "Appearance" },
+        { "action": "selectSettingOption", "setting": "Log layout", "value": "Stacked" },
+        { "action": "closeSettings" },
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showTab", "tab": "Logs" },
+        { "action": "expectLogTimestampTooltip", "line": "handled GET /healthz 200", "value": "2026-06-29 10:00:02.000 UTC" }
+      ]
+    },
+    {
+      "id": "logs.timestamp-tooltip-gutter",
+      "title": "A gutter log row titles its time with the exact timestamp in the saved timezone",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "General" },
+        { "action": "selectSettingOption", "setting": "Timestamp timezone", "value": "UTC" },
+        { "action": "showSettingsSection", "section": "Appearance" },
+        { "action": "selectSettingOption", "setting": "Log layout", "value": "Gutter" },
+        { "action": "closeSettings" },
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showTab", "tab": "Logs" },
+        { "action": "expectLogTimestampTooltip", "line": "handled GET /healthz 200", "value": "2026-06-29 10:00:02.000 UTC" }
+      ]
+    },
+    {
+      "id": "logs.timestamp-tooltip-one-line",
+      "title": "A one-line log row titles its time with the exact timestamp in the saved timezone",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "General" },
+        { "action": "selectSettingOption", "setting": "Timestamp timezone", "value": "UTC" },
+        { "action": "showSettingsSection", "section": "Appearance" },
+        { "action": "selectSettingOption", "setting": "Log layout", "value": "One line" },
+        { "action": "closeSettings" },
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showTab", "tab": "Logs" },
+        { "action": "expectLogTimestampTooltip", "line": "handled GET /healthz 200", "value": "2026-06-29 10:00:02.000 UTC" }
+      ]
+    },
+    {
+      "id": "exec-custom.shortcut-run",
+      "title": "Cmd or Ctrl with Enter in the custom command runs it in the chosen container",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "custom", "container": "sidecar" },
+        { "action": "execControl", "operation": "arguments", "command": "/usr/bin/env\nprintenv" },
+        { "action": "execControl", "operation": "shortcut" },
+        { "action": "expectExecState", "container": "sidecar", "status": "running", "contains": "Controlled exec sidecar", "command": "env" }
+      ]
+    },
+    {
+      "id": "forward-restore.prompt-review-skip",
+      "title": "The saved forward prompt on a workspace offers Review and Skip, and Skip hides it for that workspace",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Service", "namespace": "payments", "name": "payments-api" },
+        { "action": "showTab", "tab": "Forward" },
+        { "action": "configureForward", "remote": "80", "local": "18081" },
+        { "action": "forwardControl", "operation": "save" },
+        { "action": "closeDetail" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectRestorePrompt", "visible": true, "count": 1 },
+        { "action": "restorePromptControl", "control": "Review" },
+        { "action": "expectRestorePrompt", "visible": true, "count": 1 },
+        { "action": "restorePromptControl", "control": "Skip" },
+        { "action": "expectRestorePrompt", "visible": false }
+      ]
+    },
+    {
+      "id": "forward-restore.prompt-start-saved",
+      "title": "Start saved in the workspace prompt starts its saved Service forwards and closes the prompt",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Service", "namespace": "payments", "name": "payments-api" },
+        { "action": "showTab", "tab": "Forward" },
+        { "action": "configureForward", "remote": "80", "local": "18081" },
+        { "action": "forwardControl", "operation": "save" },
+        { "action": "closeDetail" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectRestorePrompt", "visible": true, "count": 1 },
+        { "action": "restorePromptControl", "control": "Start saved" },
+        { "action": "expectRestorePrompt", "visible": false },
+        { "action": "openPage", "page": "Port Forwards" },
+        { "action": "expectForwardState", "target": "Service/payments-api:80", "local": "18081", "status": "listening", "resolved": "payments-api-7d9c9b7f8d-k2r9p:8080", "count": 1 },
+        { "action": "expectRestorePrompt", "visible": false }
+      ]
+    },
+    {
+      "id": "forward-restore.prompt-auto-start",
+      "title": "Enabling auto-start in the prompt starts saved forwards immediately",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Service", "namespace": "payments", "name": "payments-api" },
+        { "action": "showTab", "tab": "Forward" },
+        { "action": "configureForward", "remote": "80", "local": "18081" },
+        { "action": "forwardControl", "operation": "save" },
+        { "action": "closeDetail" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectRestorePrompt", "visible": true, "count": 1 },
+        { "action": "restorePromptControl", "control": "Auto-start" },
+        { "action": "expectRestorePrompt", "visible": false },
+        { "action": "openPage", "page": "Port Forwards" },
+        { "action": "expectForwardState", "target": "Service/payments-api:80", "local": "18081", "status": "listening", "resolved": "payments-api-7d9c9b7f8d-k2r9p:8080", "count": 1 }
+      ]
+    }
+  ]
+}

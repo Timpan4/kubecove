@@ -39,6 +39,17 @@ body,
 	font-variant-numeric: tabular-nums;
 }
 
+.topology-spike-run {
+	margin-left: auto;
+	padding: 4px 10px;
+	border: 1px solid rgba(148, 163, 184, 0.4);
+	border-radius: 6px;
+	background: #1e293b;
+	color: #e5e7eb;
+	font: inherit;
+	cursor: pointer;
+}
+
 .topology-spike-canvas {
 	min-height: 0;
 }

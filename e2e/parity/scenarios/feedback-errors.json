@@ -1,0 +1,56 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "feedback.foreground-loading",
+      "title": "The foreground loading bar runs while a resource topology read is pending",
+      "steps": [
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_topology", "context": "mock-dev" } },
+        { "action": "openResources" },
+        { "action": "setTopologyMode", "mode": "Ownership", "pending": true },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_topology", "context": "mock-dev" } },
+        { "action": "advanceClock", "ms": 300 },
+        { "action": "expectForegroundLoading", "active": true },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_topology", "context": "mock-dev" } },
+        { "action": "advanceClock", "ms": 300 },
+        { "action": "expectForegroundLoading", "active": false }
+      ]
+    },
+    {
+      "id": "feedback.friendly-error-launcher",
+      "title": "A context read failure shows its friendly title and next step",
+      "steps": [
+        { "action": "configureShellRead", "phase": "contexts-failed" },
+        { "action": "openLauncher" },
+        { "action": "expectFriendlyError", "title": "Failed to load contexts", "next": "Copy the detail if this needs debugging." }
+      ]
+    },
+    {
+      "id": "feedback.friendly-error-permission",
+      "title": "A forbidden detail read hands its exact permission to RBAC and returns to the resource",
+      "steps": [
+        { "action": "mockTiming", "control": { "operation": "fail", "command": "get_resource_details", "context": "mock-dev", "kind": "forbidden" } },
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectFriendlyError", "title": "KubeCove does not have permission for this", "next": "Use a context with the required permission or ask a cluster admin to grant access." },
+        { "action": "copyErrorDetail", "error": "details", "expected": "Scripted read: forbidden" },
+        { "action": "inspectRequiredPermission" },
+        { "action": "expectPermissionTarget", "verb": "get", "resource": "deployments" },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "get_resource_details", "context": "mock-dev" } },
+        { "action": "returnToSource" },
+        { "action": "expectDetail", "kind": "Deployment", "namespace": "payments", "name": "payments-api" }
+      ]
+    },
+    {
+      "id": "feedback.copy-resource-name",
+      "title": "Copying a resource name shows the copy toast until it is dismissed",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "copyResourceName", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectCopyToast", "text": "Copied resource name: payments-api" },
+        { "action": "dismissCopyToast" }
+      ]
+    }
+  ]
+}

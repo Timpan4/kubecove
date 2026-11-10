@@ -30,6 +30,8 @@ The desktop `commands/` module composes domain APIs and coordinates workspace ca
 
 `src-tauri/server/` is the headless binary's separate workspace. It owns authenticated HTTP and WebSocket adapters, session ownership, and server startup. It calls the existing backend facade through `crates/kube/src/runtime.rs`'s transport seam with the `desktop` feature disabled.
 
+`src-tauri/gpui/` is the opt-in native client's separate Cargo workspace. It owns GPUI Kit presentation and its host runtime, and calls shared Rust commands with Tauri features disabled. Shared frontend acceptance scenarios live in `e2e/parity/`. See [ADR 0029](../decisions/0029-gpui-native-client-and-feature-parity.md).
+
 `deploy/` contains operator-applied deployment examples for the headless server. The root `Dockerfile` builds its container image; these files are not app runtime installation paths.
 
 `.oss-scanner/` contains the offline security-audit build environment, threat model, and maintainer enrollment instructions for Anthropic OSS Scanner.

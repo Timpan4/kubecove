@@ -31,8 +31,9 @@ use axum::{
     routing::{any, get, post},
 };
 use kubecove_lib::models::{AppError, AppErrorKind};
-use observe::{AuthMode, AuthRefusal, CloseReason, CommandOutcome, RequestRefusal, SignInFailure};
-use security::{NetworkPolicy, authenticated, equal_secret};
+use observe::{AuthMode, AuthRefusal, CloseReason, CommandOutcome, SignInFailure};
+use oidc::names_cookie;
+use security::{MissingOrigin, NetworkPolicy, authenticated, equal_secret};
 use serde::Deserialize;
 use serde_json::Value;
 use sessions::Sessions;
@@ -97,6 +98,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/v1/auth", get(authentication_mode))
         .route("/api/v1/oidc/login", post(oidc_login))
         .route("/api/v1/oidc/callback", get(oidc_callback))
+        .route("/api/v1/oidc/native/start", get(oidc_native_start))
+        .route("/api/v1/oidc/native/token", post(oidc_native_token))
         .route("/api/v1/oidc/logout", post(oidc_logout))
         .route("/api/v1/session", post(login))
         .route("/api/v1/session/close", post(close_session))
@@ -136,25 +139,30 @@ async fn guard(
     // Agents send no Origin; a browser's Origin must still match. The MCP handler checks
     // its own bearer token, so a missing Origin never falls back to the server token.
     let mcp_request = path == "/mcp" && state.mcp.is_some();
+    // The desktop's code exchange carries no cookie and no header credential;
+    // the PKCE verifier in its body authenticates it (ADR 0031).
+    let cookieless_code_exchange = state.oidc.is_some()
+        && path == NATIVE_TOKEN_PATH
+        && !request.headers().contains_key(header::ORIGIN)
+        && !request.headers().contains_key(header::COOKIE);
     let needs_origin = if mcp_request {
         request.headers().contains_key(header::ORIGIN)
+    } else if cookieless_code_exchange {
+        false
     } else {
         request.method() == axum::http::Method::POST || path == "/api/v1/channels"
     };
+    // Access stays as it is until its desktop sign-in is verified (ADR 0031).
+    let missing_origin = if state.oidc.is_some() {
+        MissingOrigin::HeaderCredential
+    } else if state.access.is_some() {
+        MissingOrigin::Refused
+    } else {
+        MissingOrigin::StartupToken(&state.token)
+    };
     let checked = state
         .policy
-        .check(request.headers(), needs_origin, &state.token)
-        .and_then(|()| {
-            if (state.access.is_some() || state.oidc.is_some())
-                && !mcp_request
-                && needs_origin
-                && !request.headers().contains_key(header::ORIGIN)
-            {
-                Err(RequestRefusal::Origin)
-            } else {
-                Ok(())
-            }
-        });
+        .check(request.headers(), needs_origin, missing_origin);
     if let Err(reason) = checked {
         observe::request_refused(
             reason,
@@ -173,7 +181,11 @@ async fn guard(
         if path.starts_with("/api/")
             && !matches!(
                 path,
-                "/api/v1/auth" | "/api/v1/oidc/login" | "/api/v1/oidc/callback"
+                "/api/v1/auth"
+                    | "/api/v1/oidc/login"
+                    | "/api/v1/oidc/callback"
+                    | "/api/v1/oidc/native/start"
+                    | NATIVE_TOKEN_PATH
             )
         {
             match oidc.verify(request.headers()) {
@@ -185,7 +197,8 @@ async fn guard(
                     request.extensions_mut().insert(session.credential);
                 }
                 Err(error) => {
-                    let carried = names_cookie(request.headers(), oidc::AUTH_COOKIE);
+                    let carried = names_cookie(request.headers(), oidc::AUTH_COOKIE)
+                        || request.headers().contains_key(header::AUTHORIZATION);
                     observe::authentication_refused(AuthMode::Oidc, refusal(&error, carried));
                     return error.into_response();
                 }
@@ -267,9 +280,11 @@ async fn authentication_mode(
     headers: HeaderMap,
 ) -> Json<Value> {
     if let Some(oidc) = &state.oidc {
-        return Json(
-            serde_json::json!({"mode":"oidc", "authenticated":oidc.verify(&headers).is_ok()}),
-        );
+        return Json(serde_json::json!({
+            "mode": "oidc",
+            "authenticated": oidc.verify(&headers).is_ok(),
+            "nativeSignIn": true,
+        }));
     }
     Json(
         serde_json::json!({"mode": if state.access.is_some() { "cloudflareAccess" } else { "token" }}),
@@ -308,10 +323,7 @@ async fn oidc_callback(
     .await;
     let mut response = response.unwrap_or_else(IntoResponse::into_response);
     if !response.status().is_redirection() {
-        response = (
-            response.status(),
-            axum::response::Html("<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Sign-in failed</title><main><h1>Could not sign in</h1><p>The sign-in request was invalid, expired, or could not be verified.</p><a href=\"/\">Return to KubeCove and try again</a></main></html>"),
-        ).into_response();
+        response = (response.status(), axum::response::Html(SIGN_IN_FAILED_PAGE)).into_response();
     }
     response.headers_mut().append(
         header::SET_COOKIE,
@@ -320,6 +332,38 @@ async fn oidc_callback(
             .expect("static cookie"),
     );
     response
+}
+
+const NATIVE_TOKEN_PATH: &str = "/api/v1/oidc/native/token";
+const SIGN_IN_FAILED_PAGE: &str = "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Sign-in failed</title><main><h1>Could not sign in</h1><p>The sign-in request was invalid, expired, or could not be verified.</p><a href=\"/\">Return to KubeCove and try again</a></main></html>";
+
+/// The desktop's browser sign-in starts here (ADR 0031). It is a top-level
+/// navigation, so failures render a page.
+async fn oidc_native_start(
+    State(state): State<Arc<AppState>>,
+    query: Result<Query<oidc::NativeStart>, QueryRejection>,
+) -> Response {
+    let response = query
+        .map_err(|_| {
+            ApiError::new(
+                StatusCode::BAD_REQUEST,
+                "desktop sign-in request is invalid",
+                AppErrorKind::Validation,
+            )
+        })
+        .and_then(|Query(query)| configured_oidc(&state)?.native_start(query));
+    match response {
+        Ok(response) => response,
+        Err(error) => (error.0, axum::response::Html(SIGN_IN_FAILED_PAGE)).into_response(),
+    }
+}
+
+async fn oidc_native_token(
+    State(state): State<Arc<AppState>>,
+    payload: Result<Json<oidc::NativeToken>, JsonRejection>,
+) -> Result<Response, ApiError> {
+    let Json(request) = payload.map_err(json_error)?;
+    configured_oidc(&state)?.native_token(request)
 }
 
 async fn oidc_logout(
@@ -540,20 +584,6 @@ async fn close_session(
     Ok(Json(true))
 }
 
-/// Whether the request names `name` in a Cookie header, whatever its value.
-fn names_cookie(headers: &HeaderMap, name: &str) -> bool {
-    headers.get_all(header::COOKIE).iter().any(|cookie| {
-        cookie.to_str().is_ok_and(|cookie| {
-            cookie.split(';').any(|entry| {
-                entry
-                    .trim()
-                    .split_once('=')
-                    .is_some_and(|(key, _)| key == name)
-            })
-        })
-    })
-}
-
 fn refusal(error: &ApiError, carried: bool) -> AuthRefusal {
     if error.0 == StatusCode::SERVICE_UNAVAILABLE {
         AuthRefusal::Unavailable
@@ -612,3 +642,6 @@ mod oidc_router_tests;
 
 #[cfg(test)]
 mod mcp_tests;
+
+#[cfg(test)]
+mod oidc_native_router_tests;

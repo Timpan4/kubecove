@@ -1,0 +1,239 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "argo-connection.dialog-focus-dismiss",
+      "title": "The Argo CD connection dialog keeps Tab and Shift-Tab inside, cycles back to its first control, closes on Escape, and closes on an outside press",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "argoConnectionDialog", "operation": "open" },
+        { "action": "argoConnectionDialog", "operation": "expectFocusIn" },
+        { "action": "argoConnectionDialog", "operation": "tabCycle" },
+        { "action": "argoConnectionDialog", "operation": "expectFocusIn" },
+        { "action": "argoConnectionDialog", "operation": "shiftTabCycle" },
+        { "action": "argoConnectionDialog", "operation": "expectFocusIn" },
+        { "action": "argoConnectionDialog", "operation": "escape" },
+        { "action": "argoConnectionDialog", "operation": "expectOpen", "open": false },
+        { "action": "argoConnectionDialog", "operation": "open" },
+        { "action": "argoConnectionDialog", "operation": "outsideClick" },
+        { "action": "argoConnectionDialog", "operation": "expectOpen", "open": false }
+      ]
+    },
+    {
+      "id": "argo-connection.close-keeps-disconnect",
+      "title": "Closing the connection dialog during a disconnect lets the disconnect finish",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test" },
+        { "action": "expectArgoText", "text": "Connected Argo CD API" },
+        { "action": "configureArgoMock", "script": "disconnect-pending" },
+        { "action": "argoControl", "control": "Open connection" },
+        { "action": "argoControl", "control": "Disconnect" },
+        { "action": "argoControl", "control": "Close connection" },
+        { "action": "configureArgoMock", "script": "base" },
+        { "action": "expectArgoText", "text": "Kubernetes Application status" }
+      ]
+    },
+    {
+      "id": "argo-connection.keeps-remember-choice",
+      "title": "The connection dialog keeps the Remember credential choice when it opens again",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test", "remember": true },
+        { "action": "expectArgoText", "text": "Connected Argo CD API" },
+        { "action": "argoControl", "control": "Open connection" },
+        { "action": "argoConnectionDialog", "operation": "expectRemember", "checked": true },
+        { "action": "argoControl", "control": "Close connection" }
+      ]
+    },
+    {
+      "id": "argo-connection.keeps-login-and-tls-choices",
+      "title": "The connection dialog keeps the sign-in method and the invalid-certificate choice when it opens again",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test", "local": true, "insecure": true, "customCa": "parity fixture CA" },
+        { "action": "expectArgoText", "text": "Connected Argo CD API" },
+        { "action": "argoControl", "control": "Open connection" },
+        { "action": "argoConnectionDialog", "operation": "expectLocalLogin", "checked": true },
+        { "action": "argoConnectionDialog", "operation": "expectInsecure", "checked": true },
+        { "action": "argoControl", "control": "Close connection" }
+      ]
+    },
+    {
+      "id": "argo-connection.choices-per-dialog",
+      "title": "The GitOps page dialog and the Application detail dialog keep their own choices, and closing the detail resets its dialog",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test", "remember": true, "surface": "page" },
+        { "action": "expectArgoText", "text": "Connected Argo CD API" },
+        { "action": "argoControl", "control": "Open connection" },
+        { "action": "argoConnectionDialog", "operation": "expectRemember", "checked": false },
+        { "action": "argoConnectionDialog", "operation": "chooseLocalLogin" },
+        { "action": "argoConnectionDialog", "operation": "chooseInsecure" },
+        { "action": "argoControl", "control": "Close connection" },
+        { "action": "argoControl", "control": "Open connection" },
+        { "action": "argoConnectionDialog", "operation": "expectLocalLogin", "checked": true },
+        { "action": "argoConnectionDialog", "operation": "expectInsecure", "checked": true },
+        { "action": "argoControl", "control": "Close connection" },
+        { "action": "argoConnectionDialog", "operation": "open" },
+        { "action": "argoConnectionDialog", "operation": "expectRemember", "checked": true },
+        { "action": "argoConnectionDialog", "operation": "expectLocalLogin", "checked": false },
+        { "action": "argoConnectionDialog", "operation": "expectInsecure", "checked": false },
+        { "action": "argoConnectionDialog", "operation": "escape" },
+        { "action": "closeDetail" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "argoControl", "control": "Open connection" },
+        { "action": "argoConnectionDialog", "operation": "expectLocalLogin", "checked": false },
+        { "action": "argoConnectionDialog", "operation": "expectInsecure", "checked": false },
+        { "action": "argoControl", "control": "Close connection" }
+      ]
+    },
+    {
+      "id": "argo-connection.defaults-to-found-in-cluster",
+      "title": "The connection dialog selects Found in cluster and its first server when no source was chosen",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "argoConnectionDialog", "operation": "openDetail" },
+        { "action": "argoConnectionDialog", "operation": "expectFoundInCluster", "checked": true },
+        { "action": "argoControl", "control": "Close connection" }
+      ]
+    },
+    {
+      "id": "argo-connection.page-dialog-shows-form",
+      "title": "The GitOps page's connection dialog shows the connection form at once, under the saved connections",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "argoConnectionDialog", "operation": "open" },
+        { "action": "argoConnectionDialog", "operation": "expectConnectForm" },
+        { "action": "argoControl", "control": "Close connection" }
+      ]
+    },
+    {
+      "id": "argo-connection.page-choices-reset-on-context-change",
+      "title": "The GitOps page dialog starts from its default choices after the workspace's context changes, as the web's page dialog remounts",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "argoConnectionDialog", "operation": "open" },
+        { "action": "argoConnectionDialog", "operation": "chooseLocalLogin" },
+        { "action": "argoControl", "control": "Close connection" },
+        { "action": "openLauncher" },
+        { "action": "editSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "selectWorkspaceContext", "context": "docker-desktop" },
+        { "action": "saveWorkspace" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "argoConnectionDialog", "operation": "open" },
+        { "action": "argoConnectionDialog", "operation": "expectLocalLogin", "checked": false },
+        { "action": "argoControl", "control": "Close connection" }
+      ]
+    },
+    {
+      "id": "argo-connection.keeps-server-source",
+      "title": "The connection dialog keeps the chosen server source when it opens again",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "argoConnectionDialog", "operation": "openDetail" },
+        { "action": "argoConnectionDialog", "operation": "chooseFoundInCluster" },
+        { "action": "argoControl", "control": "Close connection" },
+        { "action": "argoConnectionDialog", "operation": "openDetail" },
+        { "action": "argoConnectionDialog", "operation": "expectFoundInCluster", "checked": true },
+        { "action": "argoConnectionDialog", "operation": "chooseExternalUrl" },
+        { "action": "argoControl", "control": "Close connection" },
+        { "action": "argoConnectionDialog", "operation": "openDetail" },
+        { "action": "argoConnectionDialog", "operation": "expectFoundInCluster", "checked": false },
+        { "action": "argoControl", "control": "Close connection" }
+      ]
+    },
+    {
+      "id": "argo-connection.close-keeps-auto-reconnect",
+      "title": "Closing the connection dialog during automatic reconnects lets every remembered profile reconnect",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test", "remember": true },
+        { "action": "expectArgoText", "text": "Connected Argo CD API" },
+        { "action": "connectArgoProfile", "url": "https://argocd-server.argocd.svc", "tunnel": true, "remember": true },
+        { "action": "confirmArgoTunnel" },
+        { "action": "configureArgoMock", "script": "connect-pending" },
+        { "action": "restartClient" },
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "argoControl", "control": "Open connection" },
+        { "action": "argoControl", "control": "Close connection" },
+        { "action": "configureArgoMock", "script": "base" },
+        { "action": "expectArgoText", "text": "Connected Argo CD API" },
+        { "action": "argoControl", "control": "Open connection" },
+        { "action": "expectNoArgoControl", "control": "Reconnect" },
+        { "action": "argoControl", "control": "Close connection" }
+      ]
+    },
+    {
+      "id": "argo-connection.fields-per-dialog",
+      "title": "The GitOps page dialog and the Application detail dialog keep their own server URL, root path and TLS server name",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "argoConnectionDialog", "operation": "openDetail" },
+        { "action": "argoConnectionDialog", "operation": "chooseFoundInCluster" },
+        { "action": "fillArgoConnectionField", "field": "rootPath", "value": "/detail-only" },
+        { "action": "fillArgoConnectionField", "field": "tlsServerName", "value": "detail-only.argocd.example.test" },
+        { "action": "argoConnectionDialog", "operation": "escape" },
+        { "action": "argoConnectionDialog", "operation": "open" },
+        { "action": "argoConnectionDialog", "operation": "chooseFoundInCluster" },
+        { "action": "expectArgoConnectionField", "field": "rootPath", "value": "" },
+        { "action": "expectArgoConnectionField", "field": "tlsServerName", "value": "" },
+        { "action": "argoConnectionDialog", "operation": "chooseExternalUrl" },
+        { "action": "fillArgoConnectionField", "field": "url", "value": "https://page-only.argocd.example.test" },
+        { "action": "argoConnectionDialog", "operation": "escape" },
+        { "action": "argoConnectionDialog", "operation": "openDetail" },
+        { "action": "argoConnectionDialog", "operation": "chooseExternalUrl" },
+        { "action": "expectArgoConnectionField", "field": "url", "value": "" },
+        { "action": "argoConnectionDialog", "operation": "chooseFoundInCluster" },
+        { "action": "expectArgoConnectionField", "field": "rootPath", "value": "/detail-only" },
+        { "action": "argoConnectionDialog", "operation": "escape" }
+      ]
+    },
+    {
+      "id": "argo-connection.keeps-typed-token-until-submit",
+      "title": "A typed token stays in the connection dialog after it closes, and a successful connect clears it",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "argoConnectionDialog", "operation": "open" },
+        { "action": "fillArgoConnectionField", "field": "token", "value": "parity-fixture-token" },
+        { "action": "argoConnectionDialog", "operation": "escape" },
+        { "action": "argoConnectionDialog", "operation": "open" },
+        { "action": "expectArgoConnectionField", "field": "token", "value": "parity-fixture-token" },
+        { "action": "argoConnectionDialog", "operation": "escape" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test", "surface": "page" },
+        { "action": "expectArgoText", "text": "Connected Argo CD API" },
+        { "action": "argoConnectionDialog", "operation": "open" },
+        { "action": "expectArgoConnectionField", "field": "token", "value": "" },
+        { "action": "argoConnectionDialog", "operation": "escape" }
+      ]
+    },
+    {
+      "id": "argo-connection.fits-constrained-window",
+      "title": "The connection dialog stays inside a short, narrow window, and its form controls and Connect button are reachable by scrolling",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "argoConnectionDialog", "operation": "open" },
+        { "action": "resizeViewport", "width": 480, "height": 420 },
+        { "action": "argoConnectionDialog", "operation": "expectInWindow" },
+        { "action": "argoConnectionDialog", "operation": "expectReachable", "control": "External URL" },
+        { "action": "argoConnectionDialog", "operation": "expectReachable", "control": "Token" },
+        { "action": "argoConnectionDialog", "operation": "expectReachable", "control": "Remember credential" },
+        { "action": "argoConnectionDialog", "operation": "expectReachable", "control": "Connect" },
+        { "action": "argoControl", "control": "Close connection" },
+        { "action": "argoConnectionDialog", "operation": "expectOpen", "open": false }
+      ]
+    }
+  ]
+}

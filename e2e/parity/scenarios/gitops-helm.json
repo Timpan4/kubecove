@@ -1,0 +1,191 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "argo-workspace.managed-resource-workspace",
+      "title": "View resources focuses the chosen Application's managed identities instead of searching its name",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsResources", "kind": "Application", "name": "platform-argocd", "namespace": "argocd" },
+        { "action": "expectArgoWorkspace", "name": "platform-argocd" },
+        { "action": "expectResource", "kind": "Deployment", "name": "argocd-server", "namespace": "argocd" },
+        { "action": "expectNoResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "filterArgoResources", "filter": "Prune" },
+        { "action": "expectNoResource", "kind": "Deployment", "name": "argocd-server", "namespace": "argocd" },
+        { "action": "clearResourceFilters" },
+        { "action": "expectResource", "kind": "Deployment", "name": "argocd-server", "namespace": "argocd" },
+        { "action": "filterArgoResources", "filter": "All managed" },
+        { "action": "expectResource", "kind": "Deployment", "name": "argocd-server", "namespace": "argocd" }
+      ]
+    },
+    {
+      "id": "argo-workspace.watch-start-version",
+      "title": "A focused Application's resource watches start at the list version of the rows the table shows",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "General" },
+        { "action": "toggleSetting", "setting": "Show ownership map by default" },
+        { "action": "expectSetting", "setting": "Show ownership map by default", "checked": false },
+        { "action": "closeSettings" },
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsResources", "kind": "Application", "name": "platform-argocd", "namespace": "argocd" },
+        { "action": "expectArgoWorkspace", "name": "platform-argocd" },
+        { "action": "expectResource", "kind": "Deployment", "name": "argocd-server", "namespace": "argocd" },
+        { "action": "expectWatchStart", "kind": "Deployment", "resourceVersion": "1" }
+      ]
+    },
+    {
+      "id": "argo-workspace.storage-kinds",
+      "title": "The Application workspace includes storage kinds outside the saved workspace defaults",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsResources", "kind": "Application", "name": "platform-metrics", "namespace": "argocd" },
+        { "action": "expectArgoWorkspace", "name": "platform-metrics" },
+        { "action": "filterArgoResources", "filter": "All managed" },
+        { "action": "search", "value": "metrics-gateway-cache" },
+        { "action": "expectResource", "kind": "PersistentVolumeClaim", "name": "metrics-gateway-cache", "namespace": "platform" }
+      ]
+    },
+    {
+      "id": "argo-app.distinct-sync-health",
+      "title": "Changing Applications replaces the raw sync and health state",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "expectArgoApplication", "name": "tenant-ledger", "health": "Degraded", "sync": "OutOfSync" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "root-application", "namespace": "argocd" },
+        { "action": "expectArgoApplication", "name": "root-application", "health": "Healthy", "sync": "Synced" }
+      ]
+    },
+    {
+      "id": "gitops-list.selection",
+      "title": "List mode preserves the GitOps selection and its details action",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "setDeliveryView", "page": "GitOps", "mode": "List" },
+        { "action": "expectGitOpsTable", "title": "Argo CD Applications", "count": 8 },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "root-application", "namespace": "argocd" },
+        { "action": "expectArgoApplication", "name": "root-application", "health": "Healthy", "sync": "Synced" }
+      ]
+    },
+    {
+      "id": "helm-list.search-empty",
+      "title": "List mode applies the Helm namespace and search together and clears obsolete rows",
+      "steps": [
+        { "action": "openPage", "page": "Helm" },
+        { "action": "setDeliveryView", "page": "Helm", "mode": "List" },
+        { "action": "selectHelmNamespace", "namespace": "platform" },
+        { "action": "searchHelm", "value": "grafana" },
+        { "action": "expectHelmCount", "count": 0 },
+        { "action": "expectNoHelmRelease", "name": "grafana", "namespace": "monitoring" },
+        { "action": "expectNoHelmRelease", "name": "metrics-gateway", "namespace": "platform" }
+      ]
+    },
+    {
+      "id": "gitops.argo-applications",
+      "title": "GitOps lists Argo CD Applications by default and not Flux resources",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "expectGitOpsTable", "title": "Argo CD Applications", "count": 8 },
+        { "action": "expectGitOpsItem", "kind": "Application", "name": "root-application", "namespace": "argocd" },
+        { "action": "expectGitOpsItem", "kind": "Application", "name": "platform-argocd", "namespace": "argocd" },
+        { "action": "expectNoGitOpsItem", "kind": "Kustomization", "name": "platform", "namespace": "flux-system" }
+      ]
+    },
+    {
+      "id": "gitops.overview-button",
+      "title": "The overview's Open GitOps button opens the GitOps page",
+      "steps": [
+        { "action": "openGitOps" },
+        { "action": "expectGitOpsTable", "title": "Argo CD Applications", "count": 8 }
+      ]
+    },
+    {
+      "id": "flux.resources",
+      "title": "The Flux provider lists every Flux kind and no Argo CD Applications",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "expandNav", "page": "GitOps" },
+        { "action": "openPage", "page": "Flux" },
+        { "action": "expectGitOpsTable", "title": "Flux Resources", "count": 2 },
+        { "action": "expectGitOpsItem", "kind": "Kustomization", "name": "platform", "namespace": "flux-system" },
+        { "action": "expectGitOpsItem", "kind": "HelmRelease", "name": "metrics-gateway", "namespace": "flux-system" },
+        { "action": "expectNoGitOpsItem", "kind": "Application", "name": "root-application", "namespace": "argocd" },
+        { "action": "openGitOpsDetails", "kind": "Kustomization", "name": "platform", "namespace": "flux-system" },
+        { "action": "expectDetail", "kind": "Kustomization", "name": "platform", "namespace": "flux-system" },
+        { "action": "closeDetail" }
+      ]
+    },
+    {
+      "id": "gitops.flux-kind-filter",
+      "title": "A Flux kind node keeps only that kind",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "expandNav", "page": "GitOps" },
+        { "action": "expandNav", "page": "Flux" },
+        { "action": "expandNav", "page": "Workloads" },
+        { "action": "openPage", "page": "Flux Helm Releases" },
+        { "action": "expectGitOpsTable", "title": "Flux HelmRelease", "count": 1 },
+        { "action": "expectGitOpsItem", "kind": "HelmRelease", "name": "metrics-gateway", "namespace": "flux-system" },
+        { "action": "expectNoGitOpsItem", "kind": "Kustomization", "name": "platform", "namespace": "flux-system" }
+      ]
+    },
+    {
+      "id": "gitops.argo-projects",
+      "title": "The AppProjects node lists projects instead of Applications",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "expandNav", "page": "GitOps" },
+        { "action": "expandNav", "page": "Argo CD" },
+        { "action": "openPage", "page": "Argo CD AppProjects" },
+        { "action": "expectGitOpsTable", "title": "Argo CD AppProjects", "count": 2 },
+        { "action": "expectGitOpsItem", "kind": "AppProject", "name": "platform", "namespace": "argocd" },
+        { "action": "expectNoGitOpsItem", "kind": "Application", "name": "root-application", "namespace": "argocd" }
+      ]
+    },
+    {
+      "id": "argo-app.selected-application",
+      "title": "Application details show the chosen Application's sync, health and managed resources",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "platform-argocd", "namespace": "argocd" },
+        { "action": "expectArgoApplication", "name": "platform-argocd", "health": "Healthy", "sync": "Synced" },
+        { "action": "expectArgoSignal", "label": "Out of sync", "count": 4 },
+        { "action": "expectArgoSignal", "label": "Needs attention", "count": 2 },
+        { "action": "expectArgoSignal", "label": "Prune", "count": 1 },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "root-application", "namespace": "argocd" },
+        { "action": "expectArgoApplication", "name": "root-application", "health": "Healthy", "sync": "Synced" },
+        { "action": "expectArgoSignal", "label": "Out of sync", "count": 1 },
+        { "action": "expectArgoSignal", "label": "Prune", "count": 0 }
+      ]
+    },
+    {
+      "id": "helm.namespace-filter",
+      "title": "Helm releases filter by namespace and search without leaking other namespaces",
+      "steps": [
+        { "action": "openPage", "page": "Helm" },
+        { "action": "expectHelmCount", "count": 3 },
+        { "action": "expectHelmRelease", "name": "grafana", "namespace": "monitoring" },
+        { "action": "selectHelmNamespace", "namespace": "platform" },
+        { "action": "expectHelmCount", "count": 1 },
+        { "action": "expectHelmRelease", "name": "metrics-gateway", "namespace": "platform" },
+        { "action": "expectNoHelmRelease", "name": "grafana", "namespace": "monitoring" },
+        { "action": "selectHelmNamespace", "namespace": "All releases" },
+        { "action": "searchHelm", "value": "grafana" },
+        { "action": "expectHelmCount", "count": 1 },
+        { "action": "expectHelmRelease", "name": "grafana", "namespace": "monitoring" },
+        { "action": "expectNoHelmRelease", "name": "operations", "namespace": "operations" }
+      ]
+    },
+    {
+      "id": "helm-release.details",
+      "title": "Helm release details read the chosen release's storage and reconciliation",
+      "steps": [
+        { "action": "openPage", "page": "Helm" },
+        { "action": "openHelmRelease", "name": "metrics-gateway", "namespace": "platform" },
+        { "action": "expectHelmDetails", "title": "metrics-gateway", "description": "platform / Secret:sh.helm.release.v1.metrics-gateway.v7", "totals": "4 tracked, 1 missing, 0 label-only" }
+      ]
+    }
+  ]
+}

@@ -246,7 +246,8 @@ async fn list_details_and_topology_share_one_summary_per_builtin_kind() {
 
         let rows = resources_summary_from(&access, CONTEXT.into(), kind.clone(), namespace.clone())
             .await
-            .unwrap_or_else(|error| panic!("{label}: list failed: {}", error.message));
+            .unwrap_or_else(|error| panic!("{label}: list failed: {}", error.message))
+            .rows;
         let [list] = rows.as_slice() else {
             panic!("{label}: expected one list row, got {}", rows.len());
         };
@@ -283,6 +284,14 @@ async fn list_details_and_topology_share_one_summary_per_builtin_kind() {
         .unwrap_or_else(|error| panic!("{label}: details failed: {}", error.message));
         let details = comparable(&details.summary);
         assert_eq!(details, comparable(list), "{label}: details");
+
+        // A watch event carries the object as a dynamic object, and a cached
+        // list takes its row in place of listing again.
+        let watched: kube::api::DynamicObject = serde_json::from_value(case.object.clone())
+            .unwrap_or_else(|error| panic!("{label}: watch object: {error}"));
+        let watched = super::super::watched_resource_summary(&kind, CONTEXT, &watched)
+            .unwrap_or_else(|| panic!("{label}: no watch row"));
+        assert_eq!(comparable(&watched), comparable(list), "{label}: watch");
 
         if case.topology == Topology::Absent {
             continue;

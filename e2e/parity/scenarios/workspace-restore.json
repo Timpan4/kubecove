@@ -1,0 +1,233 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "workspace-restore.health-and-owner",
+      "title": "Reopening a workspace restores its health filter and GitOps owner, and a new workspace starts unfiltered",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "selectHealthFilter", "label": "Needs attention" },
+        { "action": "chooseGitOpsOwner", "owner": "Owned by Argo CD: shop (partial evidence)" },
+        { "action": "expectHealthFilter", "label": "Needs attention", "pressed": true },
+        { "action": "expectResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "opensearch", "name": "opensearch-dashboards" },
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Restore check" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Restore check", "context": "mock-dev" },
+        { "action": "openResources" },
+        { "action": "expectHealthFilter", "label": "Total", "pressed": true },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "opensearch", "name": "opensearch-dashboards" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectHealthFilter", "label": "Needs attention", "pressed": true },
+        { "action": "expectResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "opensearch", "name": "opensearch-dashboards" }
+      ]
+    },
+    {
+      "id": "workspace-restore.sidebar-kind-node",
+      "title": "Reopening a workspace restores the selected sidebar kind but not its health filter, as the web keeps kind nodes unfiltered",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "sidebarToggle", "path": ["Workloads"] },
+        { "action": "sidebarSelect", "path": ["Workloads", "Pod"] },
+        { "action": "expectSidebarRow", "path": ["Workloads", "Pod"], "visible": true, "selected": true },
+        { "action": "selectHealthFilter", "label": "Needs attention" },
+        { "action": "expectHealthFilter", "label": "Needs attention", "pressed": true },
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Restore check" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Restore check", "context": "mock-dev" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectSidebarRow", "path": ["Workloads", "Pod"], "visible": true, "selected": true },
+        { "action": "expectHealthFilter", "label": "Total", "pressed": true },
+        { "action": "expectResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-x4m8v" }
+      ]
+    },
+    {
+      "id": "workspace-restore.toolbar-namespaces",
+      "title": "Reopening a workspace restores its toolbar namespace selection, and a new workspace starts with all namespaces",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "openNamespacePicker" },
+        { "action": "toggleNamespace", "namespace": "monitoring", "checked": true },
+        { "action": "toggleNamespace", "namespace": "payments", "checked": true },
+        { "action": "closeNamespacePicker" },
+        { "action": "expectNamespaceTrigger", "label": "monitoring, payments" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "opensearch", "name": "opensearch-dashboards" },
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Restore check" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Restore check", "context": "mock-dev" },
+        { "action": "openResources" },
+        { "action": "expectNamespaceTrigger", "label": "All" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectNamespaceTrigger", "label": "monitoring, payments" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "opensearch", "name": "opensearch-dashboards" }
+      ]
+    },
+    {
+      "id": "workspace-restore.table-sort",
+      "title": "Reopening a workspace restores its table sort order",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api-7d9c9b7f8d" },
+        { "action": "sortResourceTable", "column": "Name" },
+        { "action": "expectResourceOrder", "names": ["payments-api-7d9c9b7f8d-x4m8v", "payments-api-7d9c9b7f8d-k2r9p"] },
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Restore check" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Restore check", "context": "mock-dev" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectSearch", "value": "payments-api-7d9c9b7f8d" },
+        { "action": "expectResourceOrder", "names": ["payments-api-7d9c9b7f8d-x4m8v", "payments-api-7d9c9b7f8d-k2r9p"] }
+      ]
+    },
+    {
+      "id": "workspace-restore.table-page",
+      "title": "Reopening a workspace restores the resource table page it was on",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "coverageClick", "label": "Next" },
+        { "action": "expectPageText", "text": "Page 2 of 2" },
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Restore check" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Restore check", "context": "mock-dev" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectPageText", "text": "Page 2 of 2" }
+      ]
+    },
+    {
+      "id": "workspace-restore.collapsed-group",
+      "title": "Reopening a workspace restores collapsed resource groups",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api-7d9c9b7f8d" },
+        { "action": "toggleResourceGroup", "label": "Pods" },
+        { "action": "expectResourceGroup", "label": "Pods", "expanded": false },
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Restore check" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Restore check", "context": "mock-dev" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectResourceGroup", "label": "Pods", "expanded": false },
+        { "action": "expectNoResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" }
+      ]
+    },
+    {
+      "id": "workspace-restore.map-panel",
+      "title": "Reopening a workspace restores a collapsed ownership map",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "panelControl", "control": "Collapse ownership map" },
+        { "action": "expectPanelControl", "control": "Show ownership map", "present": true },
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Restore check" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Restore check", "context": "mock-dev" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectPanelControl", "control": "Show ownership map", "present": true },
+        { "action": "expectPanelControl", "control": "Collapse ownership map", "present": false }
+      ]
+    },
+    {
+      "id": "workspace-restore.table-panel",
+      "title": "Reopening a workspace restores a collapsed resource table",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "panelControl", "control": "Collapse resource table" },
+        { "action": "expectPanelControl", "control": "Show resource table", "present": true },
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Restore check" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Restore check", "context": "mock-dev" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectPanelControl", "control": "Show resource table", "present": true },
+        { "action": "expectPanelControl", "control": "Collapse resource table", "present": false }
+      ]
+    },
+    {
+      "id": "workspace-restore.network-flow-mode",
+      "title": "Reopening a namespace restores the Network Flow map mode",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "setTopologyMode", "mode": "Network Flow" },
+        { "action": "expectTopology", "nodes": 6, "edges": 4 },
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Restore check" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Restore check", "context": "mock-dev" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectTopology", "nodes": 6, "edges": 4 }
+      ]
+    },
+    {
+      "id": "workspace-restore.sidebar-branches",
+      "title": "Reopening a workspace restores the expanded sidebar branches",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "expectSidebarRow", "path": ["Network", "Service"], "visible": false, "selected": false },
+        { "action": "sidebarToggle", "path": ["Network"] },
+        { "action": "expectSidebarRow", "path": ["Network", "Service"], "visible": true, "selected": false },
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Restore check" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Restore check", "context": "mock-dev" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectSidebarRow", "path": ["Network", "Service"], "visible": true, "selected": false }
+      ]
+    },
+    {
+      "id": "workspace-restore.kind-node-browser-state",
+      "title": "Reopening a single-kind sidebar node restores its search and selection but not its table sort, as the web does",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "sidebarToggle", "path": ["Workloads"] },
+        { "action": "sidebarSelect", "path": ["Workloads", "Pod"] },
+        { "action": "search", "value": "payments-api-7d9c9b7f8d" },
+        { "action": "sortResourceTable", "column": "Name" },
+        { "action": "expectResourceOrder", "names": ["payments-api-7d9c9b7f8d-x4m8v", "payments-api-7d9c9b7f8d-k2r9p"] },
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Restore check" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Restore check", "context": "mock-dev" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectSidebarRow", "path": ["Workloads", "Pod"], "visible": true, "selected": true },
+        { "action": "expectSearch", "value": "" },
+        { "action": "expectResourceOrder", "names": ["payments-api-7d9c9b7f8d-k2r9p", "payments-api-7d9c9b7f8d-x4m8v"] }
+      ]
+    },
+    {
+      "id": "workspace-restore.detail-open",
+      "title": "Reopening a workspace reopens the resource detail it was showing",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api-7d9c9b7f8d" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-x4m8v" },
+        { "action": "expectDetail", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-x4m8v" },
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Restore check" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Restore check", "context": "mock-dev" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectDetail", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-x4m8v" }
+      ]
+    }
+  ]
+}

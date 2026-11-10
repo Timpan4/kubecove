@@ -1,8 +1,8 @@
 use super::{
     AUTH_COOKIE, AuthSession, Binding, Credential, Oidc, OidcCredential, REFRESH_INTERVAL,
     REFRESH_MARGIN_SECONDS, TRANSACTION_COOKIE, Tokens, clear_cookie_header, cookie_header,
-    cookie_value, discover_metadata, invalid_auth, oidc_unavailable, send_request, unix_now,
-    validate_metadata,
+    discover_metadata, invalid_auth, oidc_unavailable, presented_credential, send_request,
+    unix_now, validate_metadata,
 };
 use crate::{
     ApiError,
@@ -294,11 +294,12 @@ impl Oidc {
 
     pub(super) fn prune_expired(&self, credentials: &mut HashMap<String, Credential>) {
         let now = unix_now();
-        let expired = credentials
+        let mut expired = credentials
             .iter()
             .filter(|(_, credential)| credential.expires_unix <= now)
             .map(|(key, _)| key.clone())
             .collect::<Vec<_>>();
+        expired.extend(self.prune_codes(now, credentials));
         for key in expired {
             if let Some(credential) = credentials.remove(&key) {
                 credential.revoked.cancel();
@@ -308,7 +309,7 @@ impl Oidc {
     }
 
     pub fn verify(&self, headers: &HeaderMap) -> Result<AuthSession, ApiError> {
-        let token = cookie_value(headers, AUTH_COOKIE).ok_or_else(invalid_auth)?;
+        let token = presented_credential(headers).ok_or_else(invalid_auth)?;
         let mut credentials = self.credentials.lock().map_err(|_| oidc_unavailable())?;
         self.prune_expired(&mut credentials);
         let credential = credentials.get(token).ok_or_else(invalid_auth)?;
@@ -320,7 +321,7 @@ impl Oidc {
     }
 
     pub fn logout(&self, headers: &HeaderMap) -> Result<Option<String>, ApiError> {
-        let token = cookie_value(headers, AUTH_COOKIE);
+        let token = presented_credential(headers);
         let mut credentials = self.credentials.lock().map_err(|_| oidc_unavailable())?;
         let subject = token
             .and_then(|token| credentials.remove(token))

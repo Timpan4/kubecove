@@ -8,9 +8,9 @@ import {
 	type LiveViewState,
 } from "./live-view-refresh";
 import { configureQueryCatalog, queryKeys, queryMatchers } from "./queryKeys";
-import { RESOURCE_RECOVERY_INTERVAL } from "./resource-watch";
+import { RESOURCE_RECOVERY_INTERVAL, watchKeySignature } from "./resource-watch";
 import { createMockChannel, createMockTauriClient } from "./tauri-runtime";
-import type { StreamMessage, StreamStatus, WatchResourceKey } from "./types";
+import type { ResourceWatchStart, StreamMessage, StreamStatus, WatchResourceKey } from "./types";
 
 const cleanups: (() => void)[] = [];
 
@@ -108,9 +108,13 @@ function liveHarness() {
 	const evicted: WatchResourceKey[][] = [];
 	const states: LiveViewState[] = [];
 	const fetches = new Map<string, number>();
+	const started: ResourceWatchStart[] = [];
 	let streams = 0;
 	const client = createMockTauriClient({
-		start_resource_watch: () => `watch-${++streams}`,
+		start_resource_watch: ({ keys }: { keys: ResourceWatchStart[] }) => {
+			started.push(...keys);
+			return `watch-${++streams}`;
+		},
 		stop_stream: ({ streamId }: { streamId: string }) => {
 			stopped.push(streamId);
 			return true;
@@ -124,6 +128,7 @@ function liveHarness() {
 	return {
 		queryClient,
 		channels,
+		started,
 		stopped,
 		evicted,
 		states,
@@ -316,6 +321,23 @@ describe("live view refresh binding", () => {
 		live.change(0, "Pod");
 		await settle();
 		expect(live.fetches("pods")).toBe(1);
+	});
+
+	// Failure mode: a view's first watch starts before its rows load, or at "0",
+	// which cannot replay a delete made between the list and the watch.
+	test("a new view's watch waits for its rows and starts at their list version", async () => {
+		const live = liveHarness();
+		const view = (version: string | null): LiveView => ({
+			clusterContext: "dev", namespaces: ["shop"], keys: [pods], refreshScope: "view",
+			reads: [{ keys: [pods], match: queryMatchers.exact(podsKey), versions: new Map([[watchKeySignature(pods), version]]) }],
+		});
+		const binding = live.bind(view(null));
+		await settle();
+		expect(live.started).toEqual([]);
+
+		binding.update(view("7"));
+		await settle();
+		expect(live.started).toEqual([{ ...pods, resourceVersion: "7" }]);
 	});
 
 	test("permission recovery rereads only what the denied kind keeps fresh", async () => {

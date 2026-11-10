@@ -12,7 +12,7 @@ import {
 	runArgoOperation,
 	type TauriClient,
 } from "@/lib/tauri";
-import type { ArgoApplicationRef, ArgoOperationRequest } from "@/lib/types";
+import type { ArgoApplicationRef, ArgoOperationPreflight, ArgoOperationRequest } from "@/lib/types";
 import {
 	argoObservation,
 	argoOperationOutcome,
@@ -169,7 +169,7 @@ export function createArgoOperationTracker(
 			if (current(key, job)) publish();
 		}
 	}
-	async function run(request: ArgoOperationRequest) {
+	async function run(request: ArgoOperationRequest, confirm?: (review: ArgoOperationPreflight) => Promise<boolean>) {
 		const key = argoTrackingKey(request.application, request.kubeconfigEnvVar);
 		if (
 			jobs.get(key)?.state.busy ||
@@ -231,6 +231,12 @@ export function createArgoOperationTracker(
 				!Array.isArray(review.reviewedRequest?.resources)
 			)
 				throw new Error(review.reason ?? "Operation unavailable");
+			if (confirm && !(await confirm(review))) {
+				jobs.delete(key);
+				publish();
+				return;
+			}
+			if (!current(key, job)) return;
 			job.state = {
 				...job.state,
 				phase: "submitting",

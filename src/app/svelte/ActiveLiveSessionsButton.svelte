@@ -25,6 +25,7 @@
 		reconnectPortForward as reconnectPortForwardLifecycle,
 		stopPortForward as stopPortForwardLifecycle,
 	} from "@/features/live-sessions/portForwardLifecycle";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import { settingsStore } from "@/lib/settings-store";
 	import { createTauriClient } from "@/lib/tauri";
 	import type { PodExecSessionSummary, PortForwardSessionSummary } from "@/lib/types";
@@ -56,8 +57,8 @@
 	const execSessions = $derived(liveSessionModel.podExecSessions);
 	const showableExecSessionIds = $derived(new Set(openExecSessions().map((session) => session.id)));
 	const sessionCount = $derived(liveSessionModel.counts.total);
-	const loading = $derived(portForwardsQuery.isLoading || execSessionsQuery.isLoading);
-	const fetching = $derived(portForwardsQuery.isFetching || execSessionsQuery.isFetching);
+	const loading = loadingDelay(() => portForwardsQuery.isLoading || execSessionsQuery.isLoading);
+	const fetching = loadingDelay(() => portForwardsQuery.isFetching || execSessionsQuery.isFetching);
 	const showKubeconfigSourceLabels = $derived(
 		$settingsStore.showKubeconfigSourceLabels,
 	);
@@ -121,7 +122,7 @@
 	}
 </script>
 
-{#if sessionCount > 0 || loading}
+{#if sessionCount > 0 || loading.shown}
 	<Popover bind:open={popoverOpen}>
 		<PopoverTrigger
 			type="button"
@@ -132,7 +133,7 @@
 			})}
 			aria-label={`Open live sessions (${sessionCount} active)`}
 		>
-			{#if fetching}
+			{#if fetching.shown}
 				<Spinner class="size-3.5" />
 			{:else}
 				<Cable data-icon="inline-start" />
@@ -148,7 +149,7 @@
 							Active port-forwards and Pod exec sessions
 						</div>
 					</div>
-					{#if fetching}
+					{#if fetching.shown}
 						<Spinner class="size-3.5" />
 					{/if}
 				</div>

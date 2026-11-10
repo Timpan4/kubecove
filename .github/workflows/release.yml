@@ -5,6 +5,15 @@ on:
     tags:
       - "app-v*"
   workflow_dispatch:
+    inputs:
+      # `gh workflow run release.yml --ref <branch> -f gpui-dry-run=true` builds, signs and
+      # verifies the GPUI bundles as workflow artifacts. Every other job carries
+      # `!inputs.gpui-dry-run`, so the dry run never reads a release or treats the branch as a tag.
+      gpui-dry-run:
+        description: Only build, sign and verify the GPUI client bundles; touch no release.
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -16,6 +25,7 @@ concurrency:
 jobs:
   prepare:
     name: Prepare release
+    if: ${{ !inputs.gpui-dry-run }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -45,6 +55,7 @@ jobs:
 
   metadata:
     name: Release metadata
+    if: ${{ !inputs.gpui-dry-run }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -79,6 +90,7 @@ jobs:
 
   frontend:
     name: Frontend release checks
+    if: ${{ !inputs.gpui-dry-run }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -124,6 +136,7 @@ jobs:
 
   rust:
     name: Rust release checks
+    if: ${{ !inputs.gpui-dry-run }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -132,6 +145,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      # The cache action never updates the package lists on a hosted runner. A list older than
+      # the archive asks for package versions the mirror has dropped, the install fails with 404,
+      # and the action then saves an empty cache.
+      - name: Refresh apt package lists
+        run: sudo apt-get update
 
       - name: Install Linux Tauri dependencies
         uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
@@ -163,6 +182,7 @@ jobs:
 
   e2e:
     name: Kubernetes ${{ matrix.kubernetes }} release E2E
+    if: ${{ !inputs.gpui-dry-run }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -175,6 +195,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      # See the note on the same step in the rust job.
+      - name: Refresh apt package lists
+        run: sudo apt-get update
 
       - name: Install Tauri Linux dependencies
         uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
@@ -256,14 +280,32 @@ jobs:
   server-packaging:
     name: Server packaging
     needs: metadata
+    if: ${{ !inputs.gpui-dry-run }}
     uses: ./.github/workflows/server-packaging.yml
     permissions:
       contents: read
     with:
       release-tag: ${{ github.ref_name }}
 
+  # The only job a GPUI dry run starts. It gets read-only contents and uploads workflow
+  # artifacts; publish uploads them to the release. A dry run passes no tag, so the
+  # manifest points at app-v<version> instead of the branch name.
+  gpui:
+    name: GPUI client bundles
+    needs: metadata
+    if: ${{ !cancelled() && (inputs.gpui-dry-run || needs.metadata.result == 'success') }}
+    uses: ./.github/workflows/gpui-release.yml
+    permissions:
+      contents: read
+    with:
+      release-tag: ${{ !inputs.gpui-dry-run && github.ref_name || '' }}
+    secrets:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
   nix:
     name: Nix ${{ matrix.label }} release build
+    if: ${{ !inputs.gpui-dry-run }}
     strategy:
       fail-fast: false
       matrix:
@@ -305,7 +347,7 @@ jobs:
       - rust
       - e2e
       - server-packaging
-    if: always()
+    if: ${{ always() && !inputs.gpui-dry-run }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -336,6 +378,7 @@ jobs:
       - prepare
       - metadata
       - verify
+    if: ${{ !inputs.gpui-dry-run }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -364,6 +407,7 @@ jobs:
       - metadata
       - verify
       - draft
+    if: ${{ !inputs.gpui-dry-run }}
     strategy:
       fail-fast: false
       matrix:
@@ -392,6 +436,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      # See the note on the same step in the rust job.
+      - name: Refresh apt package lists
+        if: matrix.platform == 'ubuntu-latest'
+        run: sudo apt-get update
 
       - name: Install Linux Tauri dependencies
         if: matrix.platform == 'ubuntu-latest'
@@ -497,6 +546,8 @@ jobs:
       - verify
       - build
       - server-packaging
+      - gpui
+    if: ${{ !inputs.gpui-dry-run }}
     permissions:
       actions: read
       contents: write
@@ -510,19 +561,27 @@ jobs:
         with:
           node-version: 26
 
-      - name: Download headless server archives
+      - name: Download release build artifacts
         env:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUN_ID: ${{ github.run_id }}
-        run: gh run download "$RUN_ID" --repo "$GH_REPO" --dir server-assets
+        run: gh run download "$RUN_ID" --repo "$GH_REPO" --dir run-assets
 
       - name: Upload headless server release assets
         env:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}
-        run: gh release upload "$TAG_NAME" server-assets/kubecove-server-*/kubecove-server_* --clobber
+        run: gh release upload "$TAG_NAME" run-assets/kubecove-server-*/kubecove-server_* --clobber
+
+      # Signed and verified in gpui-release.yml: the GPUI bundles, their `.sig` files and latest-gpui.json.
+      - name: Upload GPUI release assets
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: gh release upload "$TAG_NAME" run-assets/kubecove-gpui-release/* --clobber
 
       - name: Verify final updater platform coverage
         env:
@@ -534,7 +593,7 @@ jobs:
           version="${TAG_NAME#app-v}"
           tmp="$(mktemp -d)"
           gh release view "$TAG_NAME" --json assets --jq '.assets[].name' > "$tmp/assets.txt"
-          gh release download "$TAG_NAME" --pattern latest.json --clobber --dir "$tmp"
+          gh release download "$TAG_NAME" --pattern latest.json --pattern latest-gpui.json --clobber --dir "$tmp"
           UPDATER_CHECK_DIR="$tmp" RELEASE_VERSION="$version" node <<'EOF'
           const { readFileSync } = require("node:fs");
 
@@ -545,6 +604,8 @@ jobs:
             .filter(Boolean));
           const latest = JSON.parse(readFileSync(`${dir}/latest.json`, "utf8"));
           const platforms = latest.platforms ?? {};
+          const gpui = JSON.parse(readFileSync(`${dir}/latest-gpui.json`, "utf8"));
+          const gpuiPlatforms = gpui.platforms ?? {};
 
           const requiredAssets = [
             `KubeCove_${version}_universal.app.tar.gz`,
@@ -558,7 +619,10 @@ jobs:
                 const archive = `kubecove-server_${version}_${target}${suffix}.tar.gz`;
                 return [archive, `${archive}.sha256`];
               })),
+            ...[`kubecove-gpui_${version}_universal.app.tar.gz`, `kubecove-gpui_${version}_x86_64.AppImage`,
+              `kubecove-gpui_${version}_x64-setup.exe`].flatMap((bundle) => [bundle, `${bundle}.sig`]),
             "latest.json",
+            "latest-gpui.json",
           ];
           const requiredPlatforms = [
             "darwin-aarch64",
@@ -568,14 +632,21 @@ jobs:
             "windows-x86_64",
             "windows-x86_64-nsis",
           ];
+          const requiredGpuiPlatforms = ["darwin-aarch64", "darwin-x86_64", "linux-x86_64", "windows-x86_64"];
 
           const missingAssets = requiredAssets.filter((asset) => !assets.has(asset));
           const missingPlatforms = requiredPlatforms.filter((platform) => !platforms[platform]);
+          // Each GPUI entry must name this version and point at an asset of this release.
+          const badGpuiPlatforms = requiredGpuiPlatforms.filter((platform) => {
+            const entry = gpuiPlatforms[platform];
+            return gpui.version !== version || !entry?.signature || !assets.has(String(entry.url).split("/").pop());
+          });
 
-          if (missingAssets.length > 0 || missingPlatforms.length > 0) {
+          if (missingAssets.length > 0 || missingPlatforms.length > 0 || badGpuiPlatforms.length > 0) {
             throw new Error([
               missingAssets.length ? `missing assets: ${missingAssets.join(", ")}` : null,
               missingPlatforms.length ? `missing platforms: ${missingPlatforms.join(", ")}` : null,
+              badGpuiPlatforms.length ? `missing GPUI platforms: ${badGpuiPlatforms.join(", ")}` : null,
             ].filter(Boolean).join("; "));
           }
           EOF
@@ -597,7 +668,7 @@ jobs:
             if [[ "$variant" == slim ]]; then suffix="-slim"; fi
             image="${registry_image}:${version}${suffix}"
             for arch in amd64 arm64; do
-              docker load --input "server-assets/kubecove-container-${variant}-${arch}/kubecove-container-${variant}-${arch}.tar"
+              docker load --input "run-assets/kubecove-container-${variant}-${arch}/kubecove-container-${variant}-${arch}.tar"
               docker tag "kubecove:release-${variant}-${arch}" "$image-${arch}"
               docker push "$image-${arch}"
             done

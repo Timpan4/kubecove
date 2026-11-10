@@ -2,9 +2,11 @@
 	import type { ComponentType, Snippet, SvelteComponent } from "svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
 	import { Spinner } from "@/components/ui/svelte";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 
 	type LucideComponent = ComponentType<SvelteComponent>;
 	type QueryLike = {
+		data?: unknown;
 		isPending: boolean;
 		isError: boolean;
 		error: unknown;
@@ -27,7 +29,7 @@
 		children: Snippet;
 		headerActions?: Snippet;
 	} = $props();
-
+	const loading = loadingDelay(() => query.isPending);
 </script>
 
 <section
@@ -42,16 +44,21 @@
 		</div>
 		{@render headerActions?.()}
 	</header>
-	{#if query.isPending}
-		<div class="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground">
-			<Spinner class="size-4" /> Loading...
-		</div>
-	{:else if query.isError}
-		<FriendlyError
-			error={query.error}
-			context={{ operation: "surfaceLoad", fallbackTitle: errorLabel }}
-		/>
+	{#if loading.active}
+		{#if loading.shown}
+			<div class="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground">
+				<Spinner class="size-4" /> Loading...
+			</div>
+		{/if}
 	{:else}
-		{@render children()}
+		{#if query.isError}
+			<FriendlyError
+				error={query.error}
+				context={{ operation: "surfaceLoad", fallbackTitle: errorLabel }}
+			/>
+		{/if}
+		{#if !query.isError || query.data !== undefined}
+			{@render children()}
+		{/if}
 	{/if}
 </section>

@@ -10,6 +10,7 @@
 	import { Badge, Button, Popover, PopoverContent, PopoverTrigger, buttonClass } from "@/components/ui/svelte";
 	import { isAppUpdatesEnabled } from "@/lib/release-channel";
 	import { cnfast } from "@/lib/utils";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import { canCheckForUpdates, type AppUpdateState } from "@/features/app-updates/store";
 	import { appUpdateStore } from "./appUpdateStore";
 
@@ -31,7 +32,8 @@
 			? update.availableVersion
 			: null,
 	);
-	const tooltip = $derived(updateTooltip(update));
+	const checking = loadingDelay(() => update.status === "checking");
+	const tooltip = $derived(update.status === "checking" && !checking.shown ? "Check for updates" : updateTooltip(update));
 
 	$effect(() => {
 		if (autoOpenVersion !== null && autoOpenedVersion !== autoOpenVersion) panelOpen = true;
@@ -81,7 +83,7 @@
 			aria-label={tooltip}
 			aria-expanded={panelOpen}
 		>
-			<RotateCw class={cnfast(update.status === "checking" && "animate-spin")} />
+			<RotateCw class={cnfast(checking.shown && "animate-spin")} />
 			{#if hasUpdate || update.status === "installed"}
 				<span class="absolute right-1 top-1 size-2 rounded-full bg-primary"></span>
 			{/if}
@@ -165,7 +167,7 @@
 					</div>
 				{:else}
 					<div class="text-sm text-muted-foreground">
-						{update.status === "checking" ? "Checking for updates..." : "Ready to check."}
+						{checking.shown ? "Checking for updates..." : checking.active ? "" : "Ready to check."}
 					</div>
 				{/if}
 

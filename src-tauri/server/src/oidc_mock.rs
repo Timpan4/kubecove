@@ -195,6 +195,7 @@ pub(crate) async fn fixture_with(
         metadata,
         transaction_key,
         credentials: Mutex::new(HashMap::new()),
+        codes: Mutex::default(),
         bound: Mutex::new(Vec::new()),
         allow_http_test: true,
     };

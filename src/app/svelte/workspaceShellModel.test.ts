@@ -54,7 +54,7 @@ describe("Custom Resources tree model", () => {
 			argoDetected: false,
 			fluxDetection: undefined,
 			detectingGitOps: false,
-			resourceKindsPending: false,
+			resourceKindsLoading: null,
 			resourceKindsError: "",
 			showUnavailableGitOpsProviders: false,
 		});
@@ -75,7 +75,7 @@ describe("Custom Resources tree model", () => {
 			argoDetected: false,
 			fluxDetection: undefined,
 			detectingGitOps: false,
-			resourceKindsPending: false,
+			resourceKindsLoading: null,
 			resourceKindsError: "",
 			showUnavailableGitOpsProviders: false,
 			showCustomResources: false,
@@ -97,7 +97,7 @@ describe("Custom Resources tree model", () => {
 			argoDetected: false,
 			fluxDetection: undefined,
 			detectingGitOps: false,
-			resourceKindsPending: false,
+			resourceKindsLoading: null,
 			resourceKindsError: "",
 			showUnavailableGitOpsProviders: false,
 			customResourceSearch: "missing",
@@ -126,7 +126,7 @@ describe("Sidebar groups", () => {
 	test("resolves external custom-resource and GitOps kinds to their sidebar rows", () => {
 		const groups = buildSidebarTree({
 			namespaces: [], resourceKinds: [widget], argoDetected: true,
-			fluxDetection: undefined, detectingGitOps: false, resourceKindsPending: false,
+			fluxDetection: undefined, detectingGitOps: false, resourceKindsLoading: null,
 			resourceKindsError: "", showUnavailableGitOpsProviders: false,
 		});
 		const custom = sidebarSelectionNode({ type: "kind", section: "discovered", namespace: "default", kind: "Widget" }, groups);
@@ -142,7 +142,7 @@ describe("Sidebar groups", () => {
 		const groups = buildSidebarTree({
 			namespaces: [], resourceKinds: [widget, { ...widget, group: "other.com", apiVersion: "other.com/v1" }],
 			argoDetected: false, fluxDetection: undefined, detectingGitOps: false,
-			resourceKindsPending: false, resourceKindsError: "", showUnavailableGitOpsProviders: false,
+			resourceKindsLoading: null, resourceKindsError: "", showUnavailableGitOpsProviders: false,
 		});
 		const custom = sidebarSelectionNode({ type: "kind", section: "discovered", kind: "Widget" }, groups);
 		expect(custom).toEqual({ type: "section", section: "discovered" });
@@ -169,7 +169,7 @@ describe("Sidebar groups", () => {
 			argoDetected: false,
 			fluxDetection: undefined,
 			detectingGitOps: false,
-			resourceKindsPending: false,
+			resourceKindsLoading: null,
 			resourceKindsError: "",
 			showUnavailableGitOpsProviders: false,
 		});

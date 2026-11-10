@@ -3,6 +3,7 @@ import type {
 	ArgoApplicationSummary,
 	ArgoAppProjectSummary,
 	FluxResourceSummary,
+	VersionedList,
 } from "@/lib/types";
 import type { GitOpsData } from "./surfaceModel";
 
@@ -15,7 +16,7 @@ type DetectionQuery<T> = {
 };
 
 type ListQuery<T> = {
-	data?: T;
+	data?: VersionedList<T>;
 	isPending: boolean;
 	error: unknown;
 };
@@ -23,10 +24,10 @@ type ListQuery<T> = {
 export interface GitOpsQuerySnapshots {
 	argoDetection: DetectionQuery<boolean>;
 	fluxDetection: DetectionQuery<{ detected: boolean }>;
-	argoApps: ListQuery<ArgoApplicationSummary[]>;
-	argoAppSets: ListQuery<ArgoApplicationSetSummary[]>;
-	argoProjects: ListQuery<ArgoAppProjectSummary[]>;
-	fluxResources: Array<ListQuery<FluxResourceSummary[]>>;
+	argoApps: ListQuery<ArgoApplicationSummary>;
+	argoAppSets: ListQuery<ArgoApplicationSetSummary>;
+	argoProjects: ListQuery<ArgoAppProjectSummary>;
+	fluxResources: Array<ListQuery<FluxResourceSummary>>;
 }
 
 export function buildGitOpsReadState(snapshots: GitOpsQuerySnapshots) {
@@ -38,16 +39,22 @@ export function buildGitOpsReadState(snapshots: GitOpsQuerySnapshots) {
 		argoProjects,
 		fluxResources,
 	} = snapshots;
+	// Read every pending flag before branching so query observers track each
+	// transition, including lists that settle while detection is still pending.
+	const argoPending = argoDetection.isPending;
+	const fluxPending = fluxDetection.isPending;
+	const appListsPending = [argoApps.isPending, argoAppSets.isPending, argoProjects.isPending].some(Boolean);
+	const fluxListsPending = fluxResources.map(query => query.isPending).some(Boolean);
 	const detectionReady =
 		(argoDetection.isSuccess || argoDetection.isError) &&
 		(fluxDetection.isSuccess || fluxDetection.isError);
 	const data: GitOpsData | undefined = detectionReady
 		? {
 				argoDetected: argoDetection.data === true,
-				apps: argoApps.data ?? [],
-				appSets: argoAppSets.data ?? [],
-				projects: argoProjects.data ?? [],
-				flux: fluxResources.flatMap((query) => query.data ?? []),
+				apps: argoApps.data?.items ?? [],
+				appSets: argoAppSets.data?.items ?? [],
+				projects: argoProjects.data?.items ?? [],
+				flux: fluxResources.flatMap((query) => query.data?.items ?? []),
 				fluxDetected: fluxDetection.data?.detected === true,
 			}
 		: undefined;
@@ -62,12 +69,9 @@ export function buildGitOpsReadState(snapshots: GitOpsQuerySnapshots) {
 		query: {
 			data,
 			isPending:
-				argoDetection.isPending ||
-				fluxDetection.isPending ||
-				(argoDetection.data === true &&
-					(argoApps.isPending || argoAppSets.isPending || argoProjects.isPending)) ||
-				(fluxDetection.data?.detected === true &&
-					fluxResources.some((query) => query.isPending)),
+				argoPending || fluxPending ||
+				(argoDetection.data === true && appListsPending) ||
+				(fluxDetection.data?.detected === true && fluxListsPending),
 			isError: false,
 			error: null,
 		},

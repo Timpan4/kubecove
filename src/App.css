@@ -1,4 +1,5 @@
-@import "tailwindcss";
+/* Browser profiles and build output must not become CSS dependencies or trigger reloads. */
+@import "tailwindcss" source("./");
 @import "tw-animate-css";
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";

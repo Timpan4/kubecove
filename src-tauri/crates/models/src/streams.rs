@@ -45,6 +45,19 @@ pub struct WatchResourceKey {
     pub namespace: Option<String>,
 }
 
+/// One key of `start_resource_watch` and the `resourceVersion` of the rows the
+/// caller shows for it. A new watch first connects at that version, so it
+/// delivers every change after the caller's list and replays nothing before
+/// it. Without one it connects at "0", which replays every object as ADDED.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceWatchStart {
+    #[serde(flatten)]
+    pub key: WatchResourceKey,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_version: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PodLogStreamRequest {

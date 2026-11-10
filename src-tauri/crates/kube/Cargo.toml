@@ -27,6 +27,8 @@ futures-util = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tower = { workspace = true }
+bytes = { workspace = true }
+http-body = { workspace = true }
 http = { workspace = true }
 tauri = { workspace = true, optional = true }
 tauri-plugin-dialog = { workspace = true, optional = true }

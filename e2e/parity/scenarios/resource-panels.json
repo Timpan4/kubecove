@@ -1,0 +1,115 @@
+{
+	"fixture": "browser-mocks",
+	"context": "mock-dev",
+	"scenarios": [
+		{
+			"id": "resources.panels-collapse-restore",
+			"title": "The ownership map and resource table collapse and restore independently",
+			"steps": [
+				{ "action": "openResources" },
+				{ "action": "expectPanelControl", "control": "Collapse ownership map", "present": true },
+				{ "action": "expectPanelControl", "control": "Collapse resource table", "present": true },
+				{ "action": "panelControl", "control": "Collapse ownership map" },
+				{ "action": "expectPanelControl", "control": "Show ownership map", "present": true },
+				{ "action": "expectPanelControl", "control": "Collapse ownership map", "present": false },
+				{ "action": "expectPanelControl", "control": "Collapse resource table", "present": true },
+				{ "action": "panelControl", "control": "Collapse resource table" },
+				{ "action": "expectPanelControl", "control": "Show resource table", "present": true },
+				{ "action": "expectPanelControl", "control": "Show ownership map", "present": true },
+				{ "action": "panelControl", "control": "Show ownership map" },
+				{ "action": "expectPanelControl", "control": "Collapse ownership map", "present": true },
+				{ "action": "expectPanelControl", "control": "Show resource table", "present": true },
+				{ "action": "panelControl", "control": "Show resource table" },
+				{ "action": "expectPanelControl", "control": "Collapse resource table", "present": true }
+			]
+		},
+		{
+			"id": "resources.graph-keyboard-skip",
+			"title": "Graph nodes take focus in order with Tab, and skip graph moves focus past the graph",
+			"steps": [
+				{ "action": "openResources" },
+				{ "action": "selectNamespace", "namespace": "payments" },
+				{ "action": "selectTopologyNode", "id": "mock-dev:apps/v1:Deployment:payments:payments-api" },
+				{ "action": "expectMapFocus", "id": "mock-dev:apps/v1:Deployment:payments:payments-api" },
+				{ "action": "mapKey", "key": "Tab" },
+				{ "action": "expectNoMapFocus", "id": "mock-dev:apps/v1:Deployment:payments:payments-api" },
+				{ "action": "skipGraph" },
+				{ "action": "expectNoMapFocus", "id": "mock-dev:apps/v1:Deployment:payments:payments-api" }
+			]
+		},
+		{
+			"id": "resources.graph-keyboard-zoom-and-pan",
+			"title": "Zoom In takes Tab focus, and Enter zooms the map to its maximum zoom",
+			"steps": [
+				{ "action": "openResources" },
+				{ "action": "clickMapControl", "control": "Zoom In" },
+				{ "action": "expectMapControlFocus", "control": "Zoom In" },
+				{ "action": "mapKey", "key": "Enter" },
+				{ "action": "mapKey", "key": "Enter" },
+				{ "action": "mapKey", "key": "Enter" },
+				{ "action": "mapKey", "key": "Enter" },
+				{ "action": "mapKey", "key": "Enter" },
+				{ "action": "mapKey", "key": "Enter" },
+				{ "action": "mapKey", "key": "Enter" },
+				{ "action": "mapKey", "key": "Enter" },
+				{ "action": "mapKey", "key": "Enter" },
+				{ "action": "mapKey", "key": "Enter" },
+				{ "action": "mapKey", "key": "Enter" },
+				{ "action": "mapKey", "key": "Enter" },
+				{ "action": "mapKey", "key": "Enter" },
+				{ "action": "expectMapZoom", "zoom": 1.4 }
+			]
+		},
+		{
+			"id": "resources.graph-focus-pans-node-into-view",
+			"title": "Shift+Tab from the zoom controls reaches an offscreen node, and its keyboard focus pans it into view",
+			"steps": [
+				{ "action": "openResources" },
+				{ "action": "selectNamespace", "namespace": "payments" },
+				{ "action": "clickMapControl", "control": "Zoom In" },
+				{ "action": "panMap", "dx": 600, "dy": 0 },
+				{ "action": "clickMapControl", "control": "Zoom In" },
+				{ "action": "expectMapNodeInView", "id": "mock-dev:v1:Pod:payments:payments-api-7d9c9b7f8d-x4m8v", "inView": false },
+				{ "action": "mapKey", "key": "Shift+Tab" },
+				{ "action": "expectMapFocus", "id": "mock-dev:v1:Pod:payments:payments-api-7d9c9b7f8d-x4m8v" },
+				{ "action": "expectMapNodeInView", "id": "mock-dev:v1:Pod:payments:payments-api-7d9c9b7f8d-x4m8v", "inView": true }
+			]
+		},
+		{
+			"id": "resources.detail-size-per-layout",
+			"title": "The detail pane size resets when the page moves between GitOps and other pages",
+			"steps": [
+				{ "action": "openResources" },
+				{ "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+				{ "action": "expectDetailResize", "value": 40 },
+				{ "action": "resizeDetail", "key": "ArrowLeft" },
+				{ "action": "expectDetailResize", "value": 42 },
+				{ "action": "openPage", "page": "GitOps" },
+				{ "action": "openPage", "page": "Workspace Overview" },
+				{ "action": "openResources" },
+				{ "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+				{ "action": "expectDetailResize", "value": 40 }
+			]
+		},
+		{
+			"id": "resources.detail-resize-keys",
+			"title": "The detail splitter resizes with the arrow, Home and End keys within the web's limits",
+			"steps": [
+				{ "action": "openResources" },
+				{ "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+				{ "action": "expectDetailResize", "value": 40 },
+				{ "action": "resizeDetail", "key": "ArrowLeft" },
+				{ "action": "expectDetailResize", "value": 42 },
+				{ "action": "resizeDetail", "key": "ArrowRight" },
+				{ "action": "resizeDetail", "key": "ArrowRight" },
+				{ "action": "expectDetailResize", "value": 38 },
+				{ "action": "resizeDetail", "key": "End" },
+				{ "action": "expectDetailResize", "value": 70 },
+				{ "action": "resizeDetail", "key": "Home" },
+				{ "action": "expectDetailResize", "value": 33 },
+				{ "action": "resizeDetail", "key": "ArrowRight" },
+				{ "action": "expectDetailResize", "value": 33 }
+			]
+		}
+	]
+}

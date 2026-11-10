@@ -1,0 +1,27 @@
+# ADR 0030: GPUI local preferences and saved workspace state
+
+## Status
+
+Accepted 2026-11-05 for the native desktop client. Extends [ADR 0029](0029-gpui-native-client-and-feature-parity.md) and the local review boundary in [ADR 0019](0019-reviewed-rbac-risk-context.md). The server-owned multi-user profile proposed by [ADR 0023](0023-multi-user-sessions-and-persistence.md) remains separate.
+
+## Decision
+
+The Backend seam owns a typed versioned JSON document named `live-sessions.json` in the existing `settings_integrations::config_directory()` directory. This reuses the desktop app identifier and platform config-directory helper on Linux, macOS and Windows. Only the production entry point chooses that directory. Fixtures use memory; storage tests supply a worktree-local directory. This extends the incoming live-session store rather than introducing another preference file. The previous `kubecove-gpui/live-sessions.json` location is a read-only migration source, resolved from the same platform config root. Its original file is preserved; all later writes use the desktop settings directory.
+
+Version 1 contains `preferences`, `updates`, `workspaces`, workspace import documents and saved port-forward presets. Presets retain their source, workspace and context association. The two live-session defaults live only in `preferences`; no second copy can drift. Preferences cover all 24 fields selected by the browser's `partializeSettings`. Updates contain only `lastCheckedAt` and `dismissedVersion`. Missing fields use the browser defaults. Version 0 is the initial native preferences-only envelope and migrates by filling the remaining fields. The incoming unversioned live-session document also migrates, preserving presets and translating `autoStart` and `keep` into the corresponding preference fields. Future versions refuse reads and writes rather than being downgraded. Unknown envelope and preference fields are rejected at the persistence boundary. Invalid enums, malformed documents and invalid workspace identities are errors.
+
+Presentation settings belong to the local runtime on this installation. Remote presentation edits last only for their selected session. Saved workspace scopes, retained workspace documents, RBAC review notes and evidence fingerprints, and Argo endpoint/profile metadata and saved port-forward targets are cluster-derived. This decision permits their local persistence for the local runtime. Notes remain workspace-scoped annotations, never authorization or a substitute for fresh evidence. Workspace export continues to exclude private review records. User-authored text must not contain credentials.
+
+Remote runtime data is session-only until ADR 0023 supplies a verified durable owner. Selecting or disconnecting a remote runtime clears its workspace, review and profile memory; remote failures never hydrate local cluster-derived state. The local document is restored only after explicit disconnect. This is local desktop persistence, with no upload, server synchronization or account migration.
+
+Preference documents never contain tokens, passwords, private keys, certificate contents, raw Kubernetes objects, logs, Secret values, connection handles or operation approvals. Argo profiles store only typed endpoint metadata, source/workspace associations and remember-credential choices. URL metadata must not contain user information, queries or fragments. Credentials retain their existing Rust-only adapters.
+
+There is no automatic browser import. GPUI never reads browser profiles or localStorage. Existing explicit workspace JSON import retains its preview and add/replace/skip choices. A future browser preference import needs a user-selected sanitized export and preview; it cannot infer ownership from a browser profile. Existing browser data is left intact.
+
+Writes serialize under the store lock, validate before touching disk, write a private temporary sibling, sync the file, and replace the document atomically using the standard library's platform replacement. Readers see the old or new complete document. On Unix new files use owner-only permissions. Windows files inherit the existing user config directory's access policy. Lock acquisition is nonblocking; a busy writer produces a visible save error. Replacement follows the [std::fs::rename contract](https://doc.rust-lang.org/std/fs/fn.rename.html), including its Windows replacement implementation. No claim of power-loss durability beyond the file sync and platform replacement is made.
+
+Missing files mean defaults. Corruption, unsupported versions and permission errors remain visible and preserve the original file. Failed saves keep the edit in memory with a visible unsaved notice and can be retried by the next edit. A failed load blocks writes so an unreadable existing document cannot be overwritten with defaults. No automatic deletion, quarantine or silent reset occurs. Records remain until explicitly removed through the existing workspace/review controls or the user manages the document outside the app. Concurrent app instances must detect stale revisions rather than silently overwriting each other's edits.
+
+## Verification
+
+Shared acceptance scenarios exercise the settings controls in both clients. Native tests cover restart, migration, malformed and future documents, failed writes, retained originals, runtime isolation and credential rejection using worktree-local directories. No test reads user settings or opens desktop windows.

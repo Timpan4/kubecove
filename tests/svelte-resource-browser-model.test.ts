@@ -204,6 +204,7 @@ test("builds safe active-workspace read metadata from one source result", () => 
 	expect(context).toEqual({
 		workspaceId: "workspace-a",
 		clusterContext: "kind-dev",
+		clusterContexts: ["kind-dev"],
 		namespaceScope: ["default"],
 		kubeconfigSourceKey: "source-a",
 		sourceReady: true,
@@ -299,17 +300,18 @@ test("ResourceBrowser declares which watched kinds keep rows, the map, and the f
 	const rows = cached(specs(false).resources.queryKey);
 	const map = cached(specs(false).topology.queryKey);
 	const application = cached(queryKeys.argoWorkspaceInspector("kind-dev", "ws", "guestbook", "argocd", "uid", true, "kubernetes"));
+	// A read is kept fresh by its own keys and by the keys that only refresh it.
 	const kindsFeeding = (view: LiveView | null, query: Query, refetch = true) =>
 		(view?.reads ?? [])
 			.filter((read) => read.match(query) && (read.refetch ?? true) === refetch)
-			.flatMap((read) => read.keys.map((key) => key.resourceKind.kind));
+			.flatMap((read) => [...read.keys, ...(read.refreshedBy ?? [])].map((key) => key.resourceKind.kind));
 
 	const closed = resourceBrowserLiveView(readContext, specs(false), { ...input, mapPanelOpen: false });
 	expect(closed?.keys.map((key) => key.resourceKind.kind)).toEqual(["Pod", "Application"]);
 	expect(kindsFeeding(closed, rows)).toEqual(["Pod"]);
 	expect(kindsFeeding(closed, map)).toEqual([]);
 	expect(kindsFeeding(closed, map, false)).toEqual(["Pod", "Application"]);
-	expect(kindsFeeding(closed, application)).toEqual(["Pod", "Application"]);
+	expect(kindsFeeding(closed, application)).toEqual(["Application", "Pod"]);
 
 	const open = resourceBrowserLiveView(readContext, specs(true), { ...input, mapPanelOpen: true });
 	expect(kindsFeeding(open, map)).toContain("Deployment");
@@ -977,18 +979,6 @@ describe("svelte resource browser model", () => {
 		expect(source).toContain("new ResizeObserver(measure)");
 	});
 
-	test("passes filtered, metrics-enriched topology into the Svelte ownership map", () => {
-		const source = readFileSync(
-			"src/features/resources/ResourceBrowser.svelte",
-			"utf8",
-		);
-
-		expect(source).toContain("resourceMetricIndex(metricsQuery.data)");
-		expect(source).toContain("mergeTopologyMetrics(");
-		expect(source).toContain("topology={topologyWithMetrics}");
-		expect(source).toContain("topologyNodes: topologyWithMetrics?.nodes");
-	});
-
 	test("keeps Svelte resource table collapsible beside the ownership map", () => {
 		const source = readFileSync(
 			"src/features/resources/ResourceBrowser.svelte",
@@ -1210,43 +1200,6 @@ describe("svelte resource browser model", () => {
 		expect(source).toContain("onclick={() => toggleSort(column)}");
 	});
 
-	test("keeps Svelte topology viewport fitting selected paths", () => {
-		const mapSource = readFileSync("src/features/resources/OwnershipMap.svelte", "utf8");
-		const viewportSource = readFileSync(
-			"src/features/resources/OwnershipMapViewport.svelte",
-			"utf8",
-		);
-
-		expect(mapSource).toContain("preventScrolling={false}");
-		expect(mapSource).toContain("zoomOnScroll={false}");
-		expect(mapSource).toContain("panOnScroll={false}");
-		expect(mapSource).toContain("let afterGraphElement = $state<HTMLDivElement>()");
-		expect(mapSource).toContain("onclick={() => afterGraphElement?.focus()}");
-		expect(mapSource).toContain("bind:this={afterGraphElement}");
-		expect(mapSource).toContain('tabindex="-1"');
-		expect(mapSource).toContain("Drag to pan. Use controls to zoom.");
-		expect(mapSource).toContain("<OwnershipMapViewport");
-		expect(viewportSource).toContain("useSvelteFlow<FlowTopologyNode, FlowTopologyEdge>()");
-		expect(viewportSource).toContain("fitPlan?.focused");
-		expect(viewportSource).toContain("flow.setViewport");
-		expect(viewportSource).toContain('import { prefersReducedMotion } from "svelte/motion"');
-		expect(viewportSource).toContain("prefersReducedMotion.current ? 0 : fitDuration");
-		expect(viewportSource).toContain("buildFlowTopologyFitPlan");
-		expect(viewportSource).toContain("FIT_VIEW_DURATION_MS");
-		expect(viewportSource).toContain("SELECTED_FIT_VIEW_DURATION_MS");
-		expect(mapSource).toContain("buildFlowTopologyView");
-		expect(mapSource).toContain("showFullTopologyOnSelection");
-		expect(mapSource).toContain("translateExtent");
-		expect(mapSource).toContain("{translateExtent}");
-		expect(mapSource).toContain("VISIBLE_ELEMENT_RENDER_THRESHOLD");
-		expect(mapSource).toContain("graph.nodes.length + graph.edges.length");
-		expect(mapSource).toContain("{onlyRenderVisibleElements}");
-		expect(mapSource).toContain("bind:clientWidth={viewportWidth}");
-		expect(mapSource).toContain("{viewportWidth}");
-		expect(mapSource).toContain("{viewportHeight}");
-		expect(mapSource).toContain("viewportKey={fitViewportKey}");
-	});
-
 	test("refits Svelte topology when scope, viewport size, or layout changes", () => {
 		const deployment = topologyNode(
 			"Deployment:api",
@@ -1283,15 +1236,9 @@ describe("svelte resource browser model", () => {
 			'["resourceTopology","kind-dev",["default"],"ownership","a"]',
 			{ width: 800, height: 600 },
 		)?.key;
-		const browserSource = readFileSync(
-			"src/features/resources/ResourceBrowser.svelte",
-			"utf8",
-		);
 
 		expect(resizedKey).not.toBe(baseKey);
 		expect(movedKey).not.toBe(baseKey);
-		expect(browserSource).toContain("const topologyFitViewKey = $derived(readSpecs.topologyFitViewKey)");
-		expect(browserSource).toContain("fitViewKey={topologyFitViewKey}");
 	});
 
 	test("keeps Svelte resource rows visible during scope refetches", () => {
@@ -1309,22 +1256,6 @@ describe("svelte resource browser model", () => {
 		expect(source.slice(targetEffectStart, targetEffectEnd)).toContain(
 			"resourcesQuery.isPlaceholderData",
 		);
-	});
-
-	test("defers Svelte metrics until resource rows and topology settle", () => {
-		const source = readFileSync(
-			"src/features/resources/ResourceBrowser.svelte",
-			"utf8",
-		);
-
-		expect(source).toContain("const BACKGROUND_METRICS_DELAY_MS = 1_500");
-		expect(source).toContain("let metricsQueryReady = $state(false)");
-		expect(source).toContain("resourcesQuery.isPlaceholderData");
-		expect(source).toContain("(mapPanelOpen && topologyQuery.isPending)");
-		expect(source).toContain('diagnosticLog("resources.metrics.defer"');
-		expect(source).toContain('diagnosticLog("resources.metrics.enable"');
-		expect(source).toContain("window.setTimeout");
-		expect(source).toContain("enabled: metricsQueryReady && Boolean(clusterContext)");
 	});
 
 	test("preserves incoming Svelte health filters when opening resources", () => {

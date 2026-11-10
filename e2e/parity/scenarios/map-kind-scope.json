@@ -1,0 +1,57 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "map.category-kind-links",
+      "title": "A narrowed kind selection maps its resources and the nodes one edge away in both map modes",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "collapseSidebar" },
+        { "action": "sidebarSelect", "path": ["Network"] },
+        { "action": "expectTopology", "nodes": 22, "edges": 13 },
+        { "action": "expectTopologyEdge", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:v1:Service:payments:payments-api" },
+        { "action": "expectNoTopologyNode", "id": "mock-dev:v1:ConfigMap:payments:payments-api-config" },
+        { "action": "setTopologyMode", "mode": "Network Flow" },
+        { "action": "expectTopology", "nodes": 22, "edges": 13 },
+        { "action": "expectTopologyEdge", "source": "mock-dev:v1:Service:payments:payments-api", "target": "mock-dev:discovery.k8s.io/v1:EndpointSlice:payments:payments-api-mock" },
+        { "action": "expectTopologyEdge", "source": "mock-dev:v1:Service:cert-manager:cert-manager", "target": "mock-dev:v1:Pod:cert-manager:cert-manager-65b765f58f-2w8cs" },
+        { "action": "expectNoTopologyNode", "id": "mock-dev:v1:Pod:payments:payments-api-7d9c9b7f8d-k2r9p" }
+      ]
+    },
+    {
+      "id": "map.category-links-one-edge",
+      "title": "A narrowed kind selection links one edge out, not along the whole owner chain",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "collapseSidebar" },
+        { "action": "sidebarSelect", "path": ["Workloads"] },
+        { "action": "setTopologyMode", "mode": "Network Flow" },
+        { "action": "expectTopology", "nodes": 23, "edges": 10 },
+        { "action": "expectTopologyEdge", "source": "mock-dev:discovery.k8s.io/v1:EndpointSlice:payments:payments-api-mock", "target": "mock-dev:v1:Pod:payments:payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "expectNoTopologyNode", "id": "mock-dev:v1:Service:payments:payments-api" },
+        { "action": "expectNoTopologyNode", "id": "mock-dev:networking.k8s.io/v1:Ingress:payments:payments-api" }
+      ]
+    },
+    {
+      "id": "map.picker-kind-links",
+      "title": "Kinds picker changes move the map's linked nodes with the selection",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "collapseSidebar" },
+        { "action": "sidebarSelect", "path": ["Network"] },
+        { "action": "expectTopology", "nodes": 22, "edges": 13 },
+        { "action": "openKindPicker" },
+        { "action": "toggleKind", "kind": "Deployment", "checked": true },
+        { "action": "closeKindPicker" },
+        { "action": "expectTopology", "nodes": 52, "edges": 40 },
+        { "action": "expectTopologyEdge", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:v1:ConfigMap:payments:payments-api-config" },
+        { "action": "openKindPicker" },
+        { "action": "toggleKind", "kind": "Deployment", "checked": false },
+        { "action": "closeKindPicker" },
+        { "action": "expectTopology", "nodes": 22, "edges": 13 },
+        { "action": "expectNoTopologyNode", "id": "mock-dev:v1:ConfigMap:payments:payments-api-config" }
+      ]
+    }
+  ]
+}

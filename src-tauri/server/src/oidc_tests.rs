@@ -332,6 +332,7 @@ fn transaction_cookie_is_signed_expiring_and_bound_to_its_state() {
         nonce: "nonce-1".into(),
         verifier: "verifier-1".into(),
         expires_at: unix_now() + 60,
+        native: None,
     };
     let token = sign_transaction(&transaction, &key).unwrap();
     assert_eq!(

@@ -1,0 +1,133 @@
+{
+	"fixture": "browser-mocks",
+	"context": "mock-dev",
+	"scenarios": [
+		{
+			"id": "coverage-incidents.no-matching",
+			"title": "A severity filter with no matches clears the queue and guide",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "attention-only"
+				},
+				{
+					"action": "openPage",
+					"page": "Incidents"
+				},
+				{
+					"action": "filterIncidents",
+					"filter": "Degraded"
+				},
+				{
+					"action": "coverageText",
+					"text": "No matching incident signals",
+					"visible": true
+				},
+				{
+					"action": "coverageText",
+					"text": "Status: CrashLoopBackOff",
+					"visible": false
+				}
+			]
+		},
+		{
+			"id": "coverage-incidents.enrichment-loading",
+			"title": "Incident loading live evidence leaves snapshot guidance visible",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "enrichment-loading"
+				},
+				{
+					"action": "openPage",
+					"page": "Incidents"
+				},
+				{
+					"action": "advanceClock",
+					"ms": 300
+				},
+				{
+					"action": "coverageText",
+					"text": "Loading live conditions and controller ownership…",
+					"visible": true
+				},
+				{
+					"action": "coverageScript",
+					"script": "base"
+				},
+				{
+					"action": "advanceClock",
+					"ms": 300
+				},
+				{
+					"action": "expectIncidentGuide",
+					"title": "Status: CrashLoopBackOff"
+				}
+			]
+		},
+		{
+			"id": "coverage-incidents.enrichment-failed",
+			"title": "Incident failed live evidence leaves snapshot guidance visible",
+			"steps": [
+				{
+					"action": "coverageScript",
+					"script": "enrichment-failed"
+				},
+				{
+					"action": "openPage",
+					"page": "Incidents"
+				},
+				{
+					"action": "coverageText",
+					"text": "Some live evidence is unavailable. Snapshot guidance remains usable.",
+					"visible": true
+				},
+				{
+					"action": "coverageScript",
+					"script": "base"
+				},
+				{
+					"action": "coverageClick",
+					"label": "Open in Resources"
+				},
+				{
+					"action": "expectDetail",
+					"kind": "Pod",
+					"name": "operations-crashloop-7f468cd8b8-lab01",
+					"namespace": "operations"
+				}
+			]
+		},
+		{
+			"id": "coverage-sessions.action-failure",
+			"title": "A refused Stop reports failure and preserves the target session",
+			"steps": [
+				{
+					"action": "openPage",
+					"page": "Port Forwards"
+				},
+				{
+					"action": "expectPortForward",
+					"title": "Service/grafana:80"
+				},
+				{
+					"action": "coverageScript",
+					"script": "stop-failed"
+				},
+				{
+					"action": "forwardControl",
+					"operation": "stop",
+					"target": "Service/grafana:80"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "session-action-failure"
+				},
+				{
+					"action": "expectPortForward",
+					"title": "Service/grafana:80"
+				}
+			]
+		}
+	]
+}

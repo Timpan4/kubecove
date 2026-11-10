@@ -2,6 +2,8 @@ use super::*;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
 use serde_json::json;
 
+const NO_REPLICASETS: &[ReplicaSet] = &[];
+
 #[tokio::test]
 async fn metrics_api_is_found_beside_an_api_with_null_verbs() {
     use kubecove_kube::commands::discovery_fixture::{self, FixtureKind};
@@ -77,7 +79,7 @@ fn workload_overflow_stays_unavailable_after_later_valid_samples() {
             source_pods: Vec::new(),
         });
     }
-    let workloads = aggregate_workload_metrics("dev", &pods, &[], &samples);
+    let workloads = aggregate_workload_metrics("dev", &pods, NO_REPLICASETS, &samples);
     assert_eq!(workloads.len(), 1);
     assert_eq!(workloads[0].memory_bytes, None);
     assert_eq!(workloads[0].cpu_millicores, None);
@@ -178,7 +180,7 @@ fn aggregates_workload_metrics_from_owned_pods() {
         source_pods: Vec::new(),
     };
 
-    let workloads = aggregate_workload_metrics("kind-dev", &[pod], &[], &[pod_metric]);
+    let workloads = aggregate_workload_metrics("kind-dev", &[pod], NO_REPLICASETS, &[pod_metric]);
 
     assert_eq!(workloads.len(), 1);
     assert_eq!(workloads[0].kind, "ReplicaSet");
@@ -263,7 +265,7 @@ fn leaves_workload_metrics_empty_when_pod_sample_has_no_usage() {
         source_pods: Vec::new(),
     };
 
-    let workloads = aggregate_workload_metrics("kind-dev", &[pod], &[], &[pod_metric]);
+    let workloads = aggregate_workload_metrics("kind-dev", &[pod], NO_REPLICASETS, &[pod_metric]);
 
     assert_eq!(workloads.len(), 1);
     assert_eq!(workloads[0].cpu_millicores, None);

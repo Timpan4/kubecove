@@ -31,6 +31,7 @@ export default defineConfig(({ command }) => {
 		optimizeDeps: {
 			include: [
 				...(runtime === "web" ? [] : ["@tauri-apps/plugin-opener"]),
+				"@codemirror/commands",
 				"@codemirror/lang-yaml",
 				"@codemirror/language",
 				"@codemirror/lint",
@@ -38,6 +39,9 @@ export default defineConfig(({ command }) => {
 				"@codemirror/view",
 				"@lezer/highlight",
 				"@tanstack/svelte-virtual",
+				"@tauri-apps/api/window",
+				"@xterm/addon-fit",
+				"@xterm/xterm",
 				"diff",
 				"yaml",
 			],
@@ -71,7 +75,7 @@ export default defineConfig(({ command }) => {
 			strictPort: true,
 			host: host || "localhost",
 			hmr: host ? { host } : undefined,
-			watch: { ignored: ["**/src-tauri/**", "**/.e2e/**", "**/e2e/artifacts/**"] },
+			watch: { ignored: ["**/src-tauri/**", "**/.e2e/**", "**/.t/**", "**/e2e/artifacts/**"] },
 		},
 		preview: { host: "127.0.0.1", port: Number(process.env.PORT ?? 4173), strictPort: true },
 	};

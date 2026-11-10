@@ -1,0 +1,88 @@
+//! Log row expansion, Copy line and the saved forward restore prompt. A log row
+//! is labeled with its headline. Its details exist only while it is open.
+
+use super::string;
+use gpui_kit::test::TestWindowExt;
+use gpui_kit::{App, ClipboardItem, Window};
+use serde_json::Value;
+
+pub fn apply(window: &mut Window, cx: &mut App, step: &Value) -> bool {
+    match string(step, "action") {
+        "toggleLogRow" => {
+            let position = row_position(window, string(step, "line"));
+            if let Some(key) = step["key"].as_str() {
+                window
+                    .within(("log-row", position))
+                    .press(if key == "Enter" { "enter" } else { "space" }, cx);
+            } else {
+                window.click(("log-summary", position), cx);
+            }
+        }
+        "toggleLogExpandAll" => window.click("log-expand-all", cx),
+        "expectLogRowOpen" => {
+            let position = row_position(window, string(step, "line"));
+            let open = step["open"].as_bool().expect("open flag");
+            assert_eq!(
+                window.try_find(("log-details", position)).is_some(),
+                open,
+                "open state of {}",
+                string(step, "line")
+            );
+        }
+        "copyLogLine" => {
+            let position = row_position(window, string(step, "line"));
+            // The test clipboard starts empty, so a copy must write the text.
+            cx.write_to_clipboard(ClipboardItem::new_string(String::new()));
+            window.click(("log-copy", position), cx);
+            assert!(
+                cx.read_from_clipboard()
+                    .and_then(|item| item.text())
+                    .is_some_and(|text| text.contains(string(step, "contains"))),
+                "wrong clipboard for {}",
+                string(step, "line")
+            );
+        }
+        "expectLogTimestampTooltip" => {
+            let position = row_position(window, string(step, "line"));
+            assert_eq!(
+                window.find(format!("log-time:{position}")).description(),
+                Some(string(step, "value")),
+                "timestamp tooltip of {}",
+                string(step, "line")
+            );
+        }
+        "expectRestorePrompt" => {
+            let visible = step["visible"].as_bool().expect("visible flag");
+            let prompt = window.try_find("restore-prompt");
+            assert_eq!(prompt.is_some(), visible, "restore prompt visibility");
+            if let (Some(prompt), Some(count)) = (prompt, step["count"].as_u64()) {
+                let noun = if count == 1 { "forward" } else { "forwards" };
+                let text =
+                    format!("This workspace has {count} saved Service {noun} ready to start.");
+                assert_eq!(prompt.label(), Some(text.as_str()));
+            }
+        }
+        "restorePromptControl" => window.click(prompt_control(string(step, "control")), cx),
+        _ => return false,
+    }
+    true
+}
+
+/// The list position of the mounted log row labeled `line`. Rows that the list
+/// virtualizes away are not found, as the shared `expectLogLines` relies on.
+fn row_position(window: &Window, line: &str) -> usize {
+    super::locate::mounted_rows(window, "log-row")
+        .into_iter()
+        .find_map(|(position, label)| (label == line).then_some(position))
+        .unwrap_or_else(|| panic!("no rendered log row labeled {line}"))
+}
+
+fn prompt_control(control: &str) -> &'static str {
+    match control {
+        "Start saved" => "restore-prompt-start",
+        "Review" => "restore-prompt-review",
+        "Skip" => "restore-prompt-skip",
+        "Auto-start" => "restore-prompt-auto-start",
+        other => panic!("unknown restore prompt control: {other}"),
+    }
+}

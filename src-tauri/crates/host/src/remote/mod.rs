@@ -1,46 +1,136 @@
 mod client;
+mod http;
 mod models;
+mod notice;
+mod session;
+mod session_signal;
+mod sign_in;
+mod store;
 mod tunnels;
 
-pub use client::RemoteConnectionStore;
-pub use models::RemoteConnectionSummary;
+#[cfg(test)]
+#[path = "revocation_tests.rs"]
+mod revocation_tests;
+#[cfg(test)]
+#[path = "session_tests.rs"]
+mod session_tests;
+#[cfg(test)]
+mod test_server;
 
-use client::connect;
+pub use models::{RemoteAuthMode, RemoteConnectionSummary, RemoteSessionState};
+pub use notice::{RemoteNotice, RemoteNoticeAction, SIGN_IN_MEMORY_ONLY, SIGN_IN_NOT_DELETED};
+pub use session_signal::{signal_session_changed, subscribe_session_changes};
+pub use sign_in::BrowserLauncher;
+pub use store::RemoteConnectionStore;
+
 use kubecove_kube::runtime::{Channel, State};
 use kubecove_models::{AppError, AppErrorKind};
 use serde_json::{Value, value::RawValue};
 use std::sync::Arc;
 
+// The commands take Tauri state; the functions they call take the store, so
+// tests can drive them without a Tauri app.
+
+/// Connects with the server token, or, when `token` is empty, selects the
+/// server by its sign-in mode: an OIDC server reuses a held sign-in or waits
+/// for `remote_sign_in` (ADR 0031).
 pub async fn remote_connect(
     server_url: String,
     token: String,
     store: State<'_, RemoteConnectionStore>,
 ) -> Result<RemoteConnectionSummary, AppError> {
-    let connection = connect(&server_url, &token, None).await?;
-    let summary = connection.summary.clone();
-    let previous = store.current.write().await.replace(connection);
-    if let Some(previous) = previous {
-        previous.close().await;
-    }
-    Ok(summary)
+    connect(server_url, token, &store).await
 }
 
+async fn connect(
+    server_url: String,
+    token: String,
+    store: &RemoteConnectionStore,
+) -> Result<RemoteConnectionSummary, AppError> {
+    if token.trim().is_empty() {
+        return session::select_server(&server_url, store).await;
+    }
+    let connection = client::connect(&server_url, &token, None, RemoteAuthMode::Token)
+        .await
+        .map_err(|failure| failure.error)?;
+    let server_url = connection.summary.server_url.clone();
+    session::replace_selection(
+        store,
+        store::Selection::new(
+            server_url,
+            RemoteAuthMode::Token,
+            RemoteSessionState::Connected,
+        ),
+        Some(connection),
+    )
+    .await;
+    // A Disconnect that ran meanwhile has removed the selection.
+    session::selected_summary(store).await
+}
+
+/// Returns to the local backend. The sign-in stays held for the next connect.
 pub async fn remote_disconnect(store: State<'_, RemoteConnectionStore>) -> Result<(), AppError> {
+    disconnect(&store).await;
+    Ok(())
+}
+
+async fn disconnect(store: &RemoteConnectionStore) {
+    let selection = store
+        .selection
+        .lock()
+        .expect("remote selection lock")
+        .take();
+    if let Some(pending) = selection.and_then(|selection| selection.pending) {
+        pending.cancel();
+    }
     let connection = store.current.write().await.take();
     if let Some(connection) = connection {
         connection.close().await;
     }
-    Ok(())
 }
 
 pub async fn remote_connection_status(
     store: State<'_, RemoteConnectionStore>,
 ) -> Result<Option<RemoteConnectionSummary>, AppError> {
-    Ok(store.current.read().await.as_ref().map(|connection| {
-        let mut summary = connection.summary.clone();
-        summary.connected = connection.is_active();
-        summary
-    }))
+    Ok(store.summary().await)
+}
+
+/// Signs in through the system browser and opens a session. It returns when
+/// the session opens, the user cancels or disconnects, or the sign-in fails.
+pub async fn remote_sign_in(
+    store: State<'_, RemoteConnectionStore>,
+) -> Result<Option<RemoteConnectionSummary>, AppError> {
+    session::sign_in(&store).await
+}
+
+pub async fn remote_cancel_sign_in(
+    store: State<'_, RemoteConnectionStore>,
+) -> Result<(), AppError> {
+    session::cancel_sign_in(&store);
+    Ok(())
+}
+
+/// The pending sign-in's browser link, for "Copy sign-in link".
+pub async fn remote_sign_in_link(
+    store: State<'_, RemoteConnectionStore>,
+) -> Result<Option<String>, AppError> {
+    Ok(session::sign_in_link(&store))
+}
+
+/// Opens a new session without a resume token, with the credential this app
+/// still holds, as the browser's "Start a new session" does.
+pub async fn remote_start_new_session(
+    store: State<'_, RemoteConnectionStore>,
+) -> Result<RemoteConnectionSummary, AppError> {
+    session::start_new_session(&store).await
+}
+
+/// Revokes the sign-in at the server and forgets it here. The server stays
+/// selected.
+pub async fn remote_sign_out(
+    store: State<'_, RemoteConnectionStore>,
+) -> Result<RemoteConnectionSummary, AppError> {
+    session::sign_out(&store).await
 }
 
 pub async fn remote_invoke(
@@ -48,7 +138,20 @@ pub async fn remote_invoke(
     args: Value,
     store: State<'_, RemoteConnectionStore>,
 ) -> Result<Value, AppError> {
-    invoke_remote(&current_connection(&store).await?, &command, args).await
+    invoke(command, args, &store).await
+}
+
+async fn invoke(
+    command: String,
+    args: Value,
+    store: &RemoteConnectionStore,
+) -> Result<Value, AppError> {
+    let result = invoke_remote(&current_connection(store).await?, &command, args).await;
+    if result.is_err() {
+        // Forgets a sign-in the server refused during this call.
+        store.summary().await;
+    }
+    result
 }
 
 /// Runs `command` on the remote server, except `remote_intercepted` commands,

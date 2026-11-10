@@ -34,6 +34,7 @@
 		SelectValue,
 	} from "@/components/ui/svelte";
 	import { cnfast } from "@/lib/utils";
+	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import {
 		summarizeWorkspaceScope,
 		workspaceScopeContexts,
@@ -54,7 +55,7 @@
 		pickWorkspaceImportJson,
 		saveWorkspaceExportJson,
 	} from "@/lib/tauri";
-	import { isBrowserRuntime } from "@/lib/tauri-runtime";
+	import { isBrowserRuntime, shouldUseBrowserDevMocks } from "@/lib/tauri-runtime";
 	import { queryKeys } from "@/lib/queryKeys";
 	import { kubeconfigSourcesQueryOptions } from "@/lib/kubeconfig-sources-query";
 	import type { ClusterContext, NamespaceSummary } from "@/lib/types";
@@ -98,7 +99,7 @@
 	];
 
 	const client = createTauriClient();
-	const browserRuntime = isBrowserRuntime();
+	const browserRuntime = isBrowserRuntime() && !shouldUseBrowserDevMocks();
 	let importFileInput = $state<HTMLInputElement | null>(null);
 	const sourceQuery = createQuery(() => kubeconfigSourcesQueryOptions(client));
 	const sourceReady = $derived(sourceQuery.isSuccess || sourceQuery.isError);
@@ -113,7 +114,7 @@
 	$effect(() => {
 		if (sourceQuery.isSuccess && contextsQuery.isSuccess) markStartup("launcher-ready");
 	});
-	const contextsPending = $derived(!sourceReady || contextsQuery.isPending);
+	const contextsLoading = loadingDelay(() => !sourceReady || contextsQuery.isPending);
 	const contextsError = $derived(
 		sourceQuery.isError
 			? sourceQuery.error
@@ -153,8 +154,8 @@
 		retry: false,
 	}));
 	const namespaces = $derived(namespacesQuery.data ?? []);
-	const namespacesPending = $derived(
-		effectiveContext.length > 0 && (!sourceReady || namespacesQuery.isPending),
+	const namespacesLoading = loadingDelay(
+		() => effectiveContext.length > 0 && (!sourceReady || namespacesQuery.isPending),
 	);
 	const namespacesError = $derived(
 		namespacesQuery.isError ? namespacesQuery.error : null,
@@ -483,7 +484,7 @@
 			{/if}
 
 			<div class="grid gap-2">
-				{#if contextsPending}
+				{#if contextsLoading.shown}
 					<Card size="sm">
 						<CardContent class="text-xs text-muted-foreground">
 							Loading contexts...
@@ -509,7 +510,7 @@
 					</div>
 				{/if}
 
-				{#if sortedWorkspaces.length === 0 && !contextsPending}
+				{#if sortedWorkspaces.length === 0 && !contextsLoading.active}
 					<!-- First-run empty state: welcoming, not a bare box. -->
 					<Empty class="min-h-52 border border-dashed bg-surface-1/50">
 						<EmptyHeader>
@@ -649,7 +650,7 @@
 							>
 								<SelectTrigger class="w-full">
 									<SelectValue
-										placeholder={contextsPending
+										placeholder={contextsLoading.shown
 											? "Loading contexts"
 											: "Select context"}
 									/>
@@ -708,7 +709,7 @@
 							</FieldLegend>
 							<ScrollArea class="h-52 rounded-md border bg-background/40">
 								<div class="p-1">
-									{#if namespacesPending && effectiveContext}
+									{#if namespacesLoading.shown && effectiveContext}
 										<div class="px-2 py-1.5 text-xs text-muted-foreground">
 											Loading namespaces...
 										</div>
@@ -735,7 +736,7 @@
 											</Button>
 										</div>
 									{/if}
-									{#if !namespacesPending && !namespacesError && namespaces.length === 0}
+									{#if !namespacesLoading.active && !namespacesError && namespaces.length === 0}
 										<div class="px-2 py-1.5 text-xs text-muted-foreground">
 											All namespaces
 										</div>

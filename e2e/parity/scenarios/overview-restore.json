@@ -1,0 +1,164 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "overview.restore-warning-without-resources",
+      "title": "Unavailable saved scope stays visible when the workspace resource load fails",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "choose-unavailable-workspace" },
+        { "action": "openLauncher" },
+        { "action": "clickSettingsButton", "label": "Import" },
+        { "action": "clickSettingsButton", "label": "Apply import" },
+        { "action": "configureShellRead", "phase": "resources-failed" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Unavailable scope" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectOverviewRetry" },
+        { "action": "expectSettingsText", "value": "Unavailable saved scope" },
+        { "action": "expectSettingsText", "value": "Group members: missing-context" },
+        { "action": "expectSettingsText", "value": "Namespaces: missing-space" },
+        { "action": "configureShellRead", "phase": "ready" }
+      ]
+    },
+    {
+      "id": "overview.missing-primary-context",
+      "title": "A missing primary context is reported as unavailable saved scope",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "choose-unavailable-workspace" },
+        { "action": "openLauncher" },
+        { "action": "clickSettingsButton", "label": "Import" },
+        { "action": "clickSettingsButton", "label": "Apply import" },
+        { "action": "configureShellRead", "phase": "primary-context-missing" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Unavailable scope" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectSettingsText", "value": "Unavailable saved scope" },
+        { "action": "expectSettingsText", "value": "Context missing: mock-dev" },
+        { "action": "configureShellRead", "phase": "ready" }
+      ]
+    },
+    {
+      "id": "overview.missing-kind-warning",
+      "title": "A saved custom kind missing from discovery is reported as unavailable scope",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "choose-application-workspace" },
+        { "action": "openLauncher" },
+        { "action": "clickSettingsButton", "label": "Import" },
+        { "action": "clickSettingsButton", "label": "Apply import" },
+        { "action": "configureShellRead", "phase": "kind-missing" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Application shortcut" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectSettingsText", "value": "Unavailable saved scope" },
+        { "action": "expectSettingsText", "value": "Kinds: Application" },
+        { "action": "configureShellRead", "phase": "ready" }
+      ]
+    },
+    {
+      "id": "overview.application-shortcut-focus",
+      "title": "An Application shortcut opens GitOps focused on that Application, not Resources",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "choose-application-workspace" },
+        { "action": "openLauncher" },
+        { "action": "clickSettingsButton", "label": "Import" },
+        { "action": "clickSettingsButton", "label": "Apply import" },
+        { "action": "openSavedWorkspace", "name": "Application shortcut" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectOverviewShortcuts", "labels": ["platform-argocd"] },
+        { "action": "overviewShortcut", "label": "platform-argocd" },
+        { "action": "expectActivePage", "page": "GitOps" },
+        { "action": "expectGitOpsSelection", "name": "platform-argocd" }
+      ]
+    },
+    {
+      "id": "overview.application-entry-focus",
+      "title": "A recent Application entry opens GitOps focused on that Application",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsResources", "kind": "Application", "name": "platform-argocd", "namespace": "argocd" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectWorkspaceEntry", "panel": "Recent", "label": "Application / platform-argocd", "index": 0, "count": 1 },
+        { "action": "openWorkspaceEntry", "panel": "Recent", "label": "Application / platform-argocd", "index": 0, "count": 1 },
+        { "action": "expectActivePage", "page": "GitOps" },
+        { "action": "expectGitOpsSelection", "name": "platform-argocd" }
+      ]
+    },
+    {
+      "id": "overview.pinned-resource-removed",
+      "title": "A pinned resource deleted from the cluster leaves Pinned after the next Overview read",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openResources" },
+        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "toggleResourcePin", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectWorkspaceEntry", "panel": "Pinned", "label": "Deployment / payments-api", "index": 0, "count": 1 },
+        { "action": "configureShellRead", "phase": "payments-deployments-forbidden" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectWorkspaceEntry", "panel": "Pinned", "label": "Deployment / payments-api", "index": 0, "count": 1 },
+        { "action": "configureShellRead", "phase": "payments-api-removed" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectEntryCount", "panel": "Pinned", "count": 0 },
+        { "action": "configureShellRead", "phase": "ready" }
+      ]
+    },
+    {
+      "id": "overview.pinned-resource-version",
+      "title": "A pinned resource leaves Pinned once a completed list serves it only at another API version",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openResources" },
+        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "toggleResourcePin", "kind": "Ingress", "namespace": "payments", "name": "payments-api" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectWorkspaceEntry", "panel": "Pinned", "label": "Ingress / payments-api", "index": 0, "count": 1 },
+        { "action": "configureShellRead", "phase": "payments-ingress-version-changed" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectEntryCount", "panel": "Pinned", "count": 0 },
+        { "action": "configureShellRead", "phase": "ready" }
+      ]
+    },
+    {
+      "id": "overview.imported-entry-state",
+      "title": "Replacing a workspace from a file keeps its pins, and a copy added from the file starts without pins",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "choose-compare-workspace" },
+        { "action": "openLauncher" },
+        { "action": "clickSettingsButton", "label": "Import" },
+        { "action": "clickSettingsButton", "label": "Apply import" },
+        { "action": "openSavedWorkspace", "name": "Imported compare" },
+        { "action": "openResources" },
+        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "toggleResourcePin", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "context": "mock-dev" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectWorkspaceEntry", "panel": "Pinned", "label": "Deployment / payments-api", "index": 0, "count": 1 },
+        { "action": "openLauncher" },
+        { "action": "clickSettingsButton", "label": "Import" },
+        { "action": "importDecision", "choice": "Replace" },
+        { "action": "clickSettingsButton", "label": "Apply import" },
+        { "action": "openSavedWorkspace", "name": "Imported compare" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectWorkspaceEntry", "panel": "Pinned", "label": "Deployment / payments-api", "index": 0, "count": 1 },
+        { "action": "openLauncher" },
+        { "action": "clickSettingsButton", "label": "Import" },
+        { "action": "importDecision", "choice": "Add as new" },
+        { "action": "clickSettingsButton", "label": "Apply import" },
+        { "action": "openSavedWorkspace", "name": "Imported compare (2)" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectEntryCount", "panel": "Pinned", "count": 0 }
+      ]
+    }
+  ]
+}

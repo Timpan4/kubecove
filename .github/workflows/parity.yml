@@ -1,0 +1,102 @@
+name: Parity
+
+# The shared Svelte and GPUI acceptance scenarios (e2e/parity/README.md), split across
+# PARITY_SUITE_SHARD jobs. Each shard runs both drivers on its scenarios. Pull requests run
+# the scenarios their diff can affect; main runs the full suite and records the coverage map
+# that selection reads.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  pull-request:
+    name: Parity (pull request)
+    # Release PRs change only versions and changelogs, so they skip it as in ci.yml.
+    if: ${{ github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    # Every shard selects the same scenarios from the diff (PARITY_CHANGED), then takes its share.
+    uses: ./.github/workflows/parity-suite.yml
+    with:
+      shard: ${{ matrix.shard }}
+      shards: 4
+
+  main:
+    name: Parity (main)
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    uses: ./.github/workflows/parity-suite.yml
+    with:
+      shard: ${{ matrix.shard }}
+      shards: 4
+      coverage: true
+
+  # The main shards build an instrumented binary, so this seeds the uninstrumented build
+  # cache that pull requests restore.
+  main-build-cache:
+    name: Parity build cache (main)
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    uses: ./.github/workflows/parity-suite.yml
+    with:
+      shard: 0
+      shards: 1
+      build-only: true
+
+  # Pull requests restore this map from the cache (parity-suite.yml). Caches saved on the
+  # default branch are readable from pull requests:
+  # https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#restrictions-for-accessing-a-cache
+  coverage-map:
+    name: Parity coverage map (main)
+    needs: main
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Download shard coverage maps
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: parity-coverage-shard-*
+          path: shard-maps
+
+      # Scenarios a shard did not record stay out of the map, so selection always runs them.
+      - name: Merge coverage maps
+        run: bun e2e/parity/coverage-map.ts merge e2e/artifacts/parity-coverage-map.json shard-maps/*/*/coverage-map.json
+
+      - name: Save coverage map
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: e2e/artifacts/parity-coverage-map.json
+          key: parity-coverage-map-${{ github.sha }}
+
+      # For local PARITY_CHANGED runs; e2e/parity/README.md shows the download command.
+      - name: Upload coverage map
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: parity-coverage-map
+          path: e2e/artifacts/parity-coverage-map.json
+          if-no-files-found: error

@@ -2,6 +2,7 @@
 //! loopback listener. MCP is off until the user enables it in Settings.
 
 use crate::models::{AppError, AppErrorKind, McpStatus};
+use crate::runtime::State;
 use kubecove_kube::commands::ClusterLiveStore;
 use kubecove_mcp::{
     EndpointPolicy, McpContext, McpEndpoint, TOOL_NAMES, load_or_create_token, rotate_token,
@@ -13,7 +14,6 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, OnceLock},
 };
-use tauri::State;
 use tokio::{
     sync::{Mutex, OwnedMutexGuard},
     task::JoinHandle,
@@ -46,11 +46,19 @@ struct Listener {
     task: JoinHandle<()>,
 }
 
+impl Drop for Listener {
+    fn drop(&mut self) {
+        self.shutdown.cancel();
+        self.task.abort();
+    }
+}
+
 #[derive(Default)]
 struct HostState {
     settings: McpSettings,
     listener: Option<Listener>,
     error: Option<String>,
+    load_error: Option<String>,
 }
 
 struct Paths {
@@ -84,7 +92,10 @@ impl McpHost {
                 live_store,
             })
             .ok()?;
-        state.settings = settings;
+        match settings {
+            Ok(settings) => state.settings = settings,
+            Err(error) => state.load_error = Some(error.message),
+        }
         Some(McpStartup(state))
     }
 
@@ -100,15 +111,15 @@ impl McpHost {
     }
 
     async fn restart(&self, state: &mut HostState) {
-        if let Some(listener) = state.listener.take() {
+        if let Some(mut listener) = state.listener.take() {
             listener.shutdown.cancel();
             // Graceful drain would wait on any client that holds a connection open, so the
             // accept loop is aborted; rebinding the port waits only for that.
             listener.task.abort();
-            let _ = listener.task.await;
+            let _ = (&mut listener.task).await;
         }
         state.error = None;
-        if !state.settings.enabled {
+        if state.load_error.is_some() || !state.settings.enabled {
             return;
         }
         match self.listen(state.settings.port).await {
@@ -154,11 +165,35 @@ fn status(state: &HostState) -> McpStatus {
     }
 }
 
-fn load_settings(config_dir: &Path) -> McpSettings {
-    std::fs::read_to_string(config_dir.join(SETTINGS_FILE_NAME))
-        .ok()
-        .and_then(|content| serde_json::from_str(&content).ok())
-        .unwrap_or_default()
+fn load_settings(config_dir: &Path) -> Result<McpSettings, AppError> {
+    let content = match std::fs::read_to_string(config_dir.join(SETTINGS_FILE_NAME)) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(McpSettings::default());
+        }
+        Err(error) => {
+            return Err(AppError::new(
+                format!("failed to read MCP settings: {error}"),
+                AppErrorKind::Io,
+            ));
+        }
+    };
+    let settings: McpSettings = serde_json::from_str(&content)
+        .map_err(|_| AppError::new("Invalid MCP settings file", AppErrorKind::Serialization))?;
+    if settings.port == 0 {
+        return Err(AppError::new(
+            "Invalid MCP port in settings file",
+            AppErrorKind::Validation,
+        ));
+    }
+    Ok(settings)
+}
+
+fn ensure_loaded(state: &HostState) -> Result<(), AppError> {
+    match &state.load_error {
+        Some(error) => Err(AppError::new(error.clone(), AppErrorKind::Io)),
+        None => Ok(()),
+    }
 }
 
 fn save_settings(config_dir: &Path, settings: McpSettings) -> Result<(), AppError> {
@@ -190,7 +225,9 @@ fn token_error(error: std::io::Error) -> AppError {
 }
 
 pub async fn get_mcp_status(host: State<'_, McpHost>) -> Result<McpStatus, AppError> {
-    Ok(status(&*host.state.lock().await))
+    let state = host.state.lock().await;
+    ensure_loaded(&state)?;
+    Ok(status(&state))
 }
 
 pub async fn set_mcp_settings(
@@ -207,6 +244,7 @@ pub async fn set_mcp_settings(
     }
     let settings = McpSettings { enabled, port };
     let mut state = host.state.lock().await;
+    ensure_loaded(&state)?;
     save_settings(&host.paths()?.config_dir, settings)?;
     state.settings = settings;
     host.restart(&mut state).await;
@@ -217,13 +255,15 @@ pub async fn set_mcp_settings(
 /// The frontend calls this only on an explicit reveal (ADR 0028). Token file access holds
 /// the host lock so it never overlaps a rotation.
 pub async fn reveal_mcp_token(host: State<'_, McpHost>) -> Result<String, AppError> {
-    let _state = host.state.lock().await;
+    let state = host.state.lock().await;
+    ensure_loaded(&state)?;
     load_or_create_token(&host.paths()?.config_dir).map_err(token_error)
 }
 
 /// Replaces the token. A running listener restarts so the old token stops working.
 pub async fn rotate_mcp_token(host: State<'_, McpHost>) -> Result<McpStatus, AppError> {
     let mut state = host.state.lock().await;
+    ensure_loaded(&state)?;
     rotate_token(&host.paths()?.config_dir).map_err(token_error)?;
     host.restart(&mut state).await;
     Ok(status(&state))

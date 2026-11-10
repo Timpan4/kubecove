@@ -46,7 +46,18 @@ if [ -n "$staged_files" ]; then
         ;;
     esac
 
-    if printf '%s\n' "$scan_content" | grep -Eiq '(^|[[:space:]])(client-key-data|client-certificate-data|certificate-authority-data|current-context|clusters|contexts|users):'; then
+    # Kubeconfig section keys match anywhere, including inline values such as
+    # `users: [{...}]`. In code files they are usually typed fields such as
+    # `contexts: Vec<...>`, so there only a key with nothing after the colon matches,
+    # as a kubeconfig embedded in a string would have.
+    strict_keys='(^|[[:space:]])(clusters|contexts|users):'
+    case "$file" in
+      *.yaml|*.yml|*config|*kubeconfig*) section_keys=$strict_keys ;;
+      *.rs|*.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs|*.svelte) section_keys='^[[:space:]]*(clusters|contexts|users):[[:space:]]*$' ;;
+      *) section_keys=$strict_keys ;;
+    esac
+    if printf '%s\n' "$scan_content" | grep -Eiq '(^|[[:space:]])(client-key-data|client-certificate-data|certificate-authority-data|current-context):' \
+      || printf '%s\n' "$scan_content" | grep -Eiq "$section_keys"; then
       echo "pre-commit: possible kubeconfig or credential material staged in $file"
       echo "Move credentials out of the repo or add a narrow exception after review."
       exit 1
@@ -156,7 +167,12 @@ if [ -f package.json ]; then
 fi
 
 if [ -f src-tauri/Cargo.toml ]; then
-  cargo check --workspace --manifest-path src-tauri/Cargo.toml
+  # The workspace excludes gpui and server, so only staged paths elsewhere under src-tauri/ can break it.
+  all_staged=$(git diff --cached --name-only)
+  workspace_paths=$(printf '%s\n' "$all_staged" | grep -E '^src-tauri/' | grep -Ev '^src-tauri/(gpui|server)/' || true)
+  if [ -n "$workspace_paths" ]; then
+    cargo check --workspace --manifest-path src-tauri/Cargo.toml
+  fi
 elif [ -f Cargo.toml ]; then
   cargo check
 fi

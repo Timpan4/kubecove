@@ -45,4 +45,8 @@ export function isTransientQueryError(cause: unknown): boolean {
 export function queryRetry(failureCount: number, cause: unknown): boolean {
 	return isTransientQueryError(cause) && failureCount < 2;
 }
+/** Explicit opt-outs recover only a backend snapshot superseded by another load. */
+export function cancelledQueryRetry(failureCount: number, cause: unknown): boolean {
+	return isRecord(cause) && cause.kind === "cancelled" && queryRetry(failureCount, cause);
+}
 import type { JsonObject } from "./types";

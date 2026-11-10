@@ -1,0 +1,104 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "settings-appearance.keyboard-kind-order",
+      "title": "Arrow keys reorder within a lane and move between lanes without losing the kind",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Appearance" },
+        { "action": "reorderKindKey", "kind": "Pod", "key": "ArrowRight" },
+        { "action": "expectResourceKindPosition", "kind": "Pod", "lane": "Normal", "index": 0 },
+        { "action": "reorderKindKey", "kind": "Pod", "key": "ArrowLeft" },
+        { "action": "expectResourceKindPosition", "kind": "Pod", "lane": "Show first", "index": 0 },
+        { "action": "reorderKindKey", "kind": "Pod", "key": "ArrowDown" },
+        { "action": "expectResourceKindPosition", "kind": "Pod", "lane": "Show first", "index": 1 }
+      ]
+    },
+    {
+      "id": "workspaces.retry-contexts",
+      "title": "Context read failure offers a retry that recovers the form",
+      "steps": [
+        { "action": "configureShellRead", "phase": "contexts-failed" },
+        { "action": "openLauncher" },
+        { "action": "expectLauncherRetry", "read": "contexts" },
+        { "action": "copyErrorDetail", "error": "contexts", "expected": "Scripted contexts read failure" },
+        { "action": "configureShellRead", "phase": "ready" },
+        { "action": "retryLauncher", "read": "contexts" },
+        { "action": "nameWorkspace", "value": "Recovered contexts" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Recovered contexts", "context": "mock-dev" }
+      ]
+    },
+    {
+      "id": "workspaces.retry-namespaces",
+      "title": "Namespace retry preserves the selected context and form name",
+      "steps": [
+        { "action": "configureShellRead", "phase": "namespaces-failed" },
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Recovered namespaces" },
+        { "action": "expectLauncherRetry", "read": "namespaces" },
+        { "action": "copyErrorDetail", "error": "namespaces", "expected": "Scripted namespaces read failure" },
+        { "action": "configureShellRead", "phase": "ready" },
+        { "action": "retryLauncher", "read": "namespaces" },
+        { "action": "toggleWorkspaceNamespace", "namespace": "payments" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Recovered namespaces", "context": "mock-dev" }
+      ]
+    },
+    {
+      "id": "overview.operation-resources",
+      "title": "Overview Resources operation opens the resource browser",
+      "steps": [
+        { "action": "overviewOperation", "destination": "Resources" },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" }
+      ]
+    },
+    {
+      "id": "overview.operation-workspaces",
+      "title": "Overview Workspaces operation opens the launcher without losing scope",
+      "steps": [
+        { "action": "overviewOperation", "destination": "Workspaces" },
+        { "action": "expectSavedWorkspace", "name": "Parity mock workspace", "summary": "mock-dev / All namespaces / Pod, Deployment +7" }
+      ]
+    },
+    {
+      "id": "overview.operation-forwards",
+      "title": "Overview Port Forwards operation opens live sessions",
+      "steps": [
+        { "action": "overviewOperation", "destination": "Port Forwards" },
+        { "action": "expectPortForward", "title": "Service/grafana:80" }
+      ]
+    },
+    {
+      "id": "overview.operation-incidents",
+      "title": "Overview Incidents operation opens investigation",
+      "steps": [
+        { "action": "overviewOperation", "destination": "Incidents" },
+        { "action": "expectIncidentGuide", "title": "Status: CrashLoopBackOff" }
+      ]
+    },
+    {
+      "id": "overview.incident-attention",
+      "title": "Overview attention shortcut opens filtered investigation",
+      "steps": [
+        { "action": "overviewIncident", "filter": "Needs attention" },
+        { "action": "expectIncidentGuide", "title": "OutOfSync: shop needs attention in mock data." }
+      ]
+    },
+    {
+      "id": "incidents.review-actions",
+      "title": "Incident action handoff opens the exact target in Actions without running it",
+      "steps": [
+        { "action": "openPage", "page": "Incidents" },
+        { "action": "expectIncidentGuide", "title": "Status: CrashLoopBackOff" },
+        { "action": "reviewIncidentAction", "index": 0 },
+        { "action": "expectDetail", "kind": "Pod", "namespace": "operations", "name": "operations-crashloop-7f468cd8b8-lab01" },
+        { "action": "expectDetailTab", "tab": "Actions" },
+        { "action": "expectNoReview" },
+        { "action": "expectNoActionResult" }
+      ]
+    }
+  ]
+}

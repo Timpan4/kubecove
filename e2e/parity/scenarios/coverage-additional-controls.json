@@ -1,0 +1,252 @@
+{
+	"fixture": "browser-mocks",
+	"context": "mock-dev",
+	"scenarios": [
+		{
+			"id": "coverage-yaml.git-diff",
+			"title": "Git diff appearance renders file headers and retains changed lines in full and compact views",
+			"steps": [
+				{
+					"action": "openSettings"
+				},
+				{
+					"action": "showSettingsSection",
+					"section": "YAML"
+				},
+				{
+					"action": "selectSettingOption",
+					"setting": "YAML diff appearance",
+					"value": "Git"
+				},
+				{
+					"action": "closeSettings"
+				},
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "search",
+					"value": "payments-api"
+				},
+				{
+					"action": "openResource",
+					"kind": "Deployment",
+					"namespace": "payments",
+					"name": "payments-api"
+				},
+				{
+					"action": "showTab",
+					"tab": "YAML"
+				},
+				{
+					"action": "editYaml"
+				},
+				{
+					"action": "dryRunYaml"
+				},
+				{
+					"action": "expectDryRun",
+					"contains": [
+						"--- current",
+						"+++ dry-run",
+						"+# dry-run: browser mock"
+					]
+				},
+				{
+					"action": "coverageClick",
+					"label": "Show full diff"
+				},
+				{
+					"action": "expectDryRun",
+					"contains": [
+						" apiVersion: apps/v1"
+					]
+				},
+				{
+					"action": "expectDryRun",
+					"contains": [
+						" apiVersion: apps/v1",
+						"+# dry-run: browser mock"
+					]
+				},
+				{
+					"action": "coverageClick",
+					"label": "Collapse diff"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "diff-compact"
+				},
+				{
+					"action": "expectDryRun",
+					"contains": [
+						"--- current",
+						"+# dry-run: browser mock"
+					]
+				}
+			]
+		},
+		{
+			"id": "coverage-actions.filter-collapse",
+			"title": "Action filtering hides other rows and collapsing an editor preserves its pending edit for review",
+			"steps": [
+				{
+					"action": "openResources"
+				},
+				{
+					"action": "search",
+					"value": "payments-api"
+				},
+				{
+					"action": "openResource",
+					"kind": "Deployment",
+					"namespace": "payments",
+					"name": "payments-api"
+				},
+				{
+					"action": "showTab",
+					"tab": "Actions"
+				},
+				{
+					"action": "editReplicas",
+					"value": "3"
+				},
+				{
+					"action": "coverageClick",
+					"label": "Done"
+				},
+				{
+					"action": "coverageText",
+					"text": "Desired replicas",
+					"visible": false
+				},
+				{
+					"action": "coverageFill",
+					"label": "Resource action filter",
+					"value": "absent-action"
+				},
+				{
+					"action": "coverageText",
+					"text": "No action matches “absent-action”.",
+					"visible": true
+				},
+				{
+					"action": "coverageFill",
+					"label": "Resource action filter",
+					"value": "replicas"
+				},
+				{
+					"action": "coverageCheck",
+					"check": "action-filter"
+				},
+				{
+					"action": "coverageText",
+					"text": "Rollout",
+					"visible": false
+				},
+				{
+					"action": "coverageFill",
+					"label": "Resource action filter",
+					"value": ""
+				},
+				{
+					"action": "reviewAction",
+					"label": "Check changes"
+				},
+				{
+					"action": "expectReview",
+					"title": "Review edit for payments-api",
+					"description": "edit Deployment payments/payments-api in context mock-dev",
+					"contains": [
+						"+  replicas: 3"
+					]
+				},
+				{
+					"action": "closeReview"
+				}
+			]
+		},
+		{
+			"id": "coverage-helm.detail-failure",
+			"title": "A failed selected release read shows a detail error without losing the release list",
+			"steps": [
+				{
+					"action": "openPage",
+					"page": "Helm"
+				},
+				{
+					"action": "coverageScript",
+					"script": "detail-loading"
+				},
+				{
+					"action": "openHelmRelease",
+					"name": "metrics-gateway",
+					"namespace": "platform"
+				},
+				{
+					"action": "advanceClock",
+					"ms": 300
+				},
+				{
+					"action": "coverageText",
+					"text": "Loading Helm release details...",
+					"visible": true
+				},
+				{
+					"action": "coverageScript",
+					"script": "failed"
+				},
+				{
+					"action": "coverageText",
+					"text": "Helm details unavailable",
+					"visible": true
+				},
+				{
+					"action": "expectHelmRelease",
+					"name": "grafana",
+					"namespace": "monitoring"
+				}
+			]
+		},
+		{
+			"id": "coverage-palette.multiple-keyboard",
+			"title": "Arrows move among several navigation results and Enter opens the highlighted destination",
+			"steps": [
+				{
+					"action": "openPalette",
+					"via": "button"
+				},
+				{
+					"action": "searchPalette",
+					"value": "Cluster Overview ›"
+				},
+				{
+					"action": "paletteKey",
+					"key": "ArrowDown"
+				},
+				{
+					"action": "paletteKey",
+					"key": "ArrowDown"
+				},
+				{
+					"action": "paletteKey",
+					"key": "ArrowUp"
+				},
+				{
+					"action": "paletteKey",
+					"key": "Enter"
+				},
+				{
+					"action": "expectClusterResource",
+					"kind": "Node",
+					"name": "dev-control-plane"
+				},
+				{
+					"action": "expectNoClusterResource",
+					"kind": "StorageClass",
+					"name": "local-path"
+				}
+			]
+		}
+	]
+}

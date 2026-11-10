@@ -32,14 +32,14 @@ test("metrics retain equal rows but publish every changed sample field and remov
 	};
 	const input = [row];
 	const index = (value: ResourceMetricSummary) =>
-		resourceMetricIndex({
+		resourceMetricIndex([{ clusterContext: "dev", summary: {
 			cluster: "dev",
 			availability: { status: "available" },
 			pods: [value],
 			nodes: [],
 			workloads: [],
 			warnings: [],
-		});
+		} }]);
 	const first = mergeResourceMetrics(input, undefined, index(metric));
 	expect(
 		mergeResourceMetrics(
@@ -102,19 +102,19 @@ test("unchanged topology samples preserve the graph, changed samples update node
 	const first = mergeTopologyMetrics(
 		topology,
 		undefined,
-		new Map([["Node::node", metric]]),
+		new Map([["dev:Node::node", metric]]),
 	);
 	expect(
 		mergeTopologyMetrics(
 			topology,
 			undefined,
-			new Map([["Node::node", { ...metric }]]),
+			new Map([["dev:Node::node", { ...metric }]]),
 		),
 	).toBe(first);
 	const changed = mergeTopologyMetrics(
 		topology,
 		undefined,
-		new Map([["Node::node", { ...metric, memoryBytes: 2 }]]),
+		new Map([["dev:Node::node", { ...metric, memoryBytes: 2 }]]),
 	);
 	expect(changed?.nodes[0].summary.metrics?.memoryBytes).toBe(2);
 	expect(changed?.edges).toBe(topology.edges);

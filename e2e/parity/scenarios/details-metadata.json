@@ -1,0 +1,94 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "details-metadata.ownership",
+      "title": "Details shows the controller owner and the Helm release that manages the Pod",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "metrics-gateway-9f6d4f7c9-7j2p4" },
+        { "action": "openResource", "kind": "Pod", "name": "metrics-gateway-9f6d4f7c9-7j2p4", "namespace": "platform" },
+        { "action": "expectDetail", "kind": "Pod", "name": "metrics-gateway-9f6d4f7c9-7j2p4", "namespace": "platform" },
+        { "action": "expectPageText", "text": "Owner metrics-gateway-9f6d4f7c9" },
+        { "action": "expectPageText", "text": "Controller" },
+        { "action": "expectPageText", "text": "ReplicaSet" },
+        { "action": "expectPageText", "text": "mock-uid-metrics-gateway-rs" }
+      ]
+    },
+    {
+      "id": "details-metadata.helm-release",
+      "title": "Open Helm release selects the Pod's release in the Helm page",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "metrics-gateway-9f6d4f7c9-7j2p4" },
+        { "action": "openResource", "kind": "Pod", "name": "metrics-gateway-9f6d4f7c9-7j2p4", "namespace": "platform" },
+        { "action": "clickDetailControl", "label": "Open Helm release" },
+        { "action": "expectHelmDetails", "title": "metrics-gateway", "description": "platform / Secret:sh.helm.release.v1.metrics-gateway.v7", "totals": "4 tracked, 1 missing, 0 label-only" }
+      ]
+    },
+    {
+      "id": "details-metadata.labels-annotations",
+      "title": "Labels and annotations show the first badges and expand to every inline value",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "metrics-gateway-9f6d4f7c9-7j2p4" },
+        { "action": "openResource", "kind": "Pod", "name": "metrics-gateway-9f6d4f7c9-7j2p4", "namespace": "platform" },
+        { "action": "expectPageText", "text": "Show 2 more" },
+        { "action": "expectNoPageText", "text": "team" },
+        { "action": "clickDetailControl", "label": "Show 2 more" },
+        { "action": "expectPageText", "text": "team" },
+        { "action": "expectPageText", "text": "Show less" },
+        { "action": "clickDetailControl", "label": "Show less" },
+        { "action": "expectNoPageText", "text": "tier" },
+        { "action": "expectPageText", "text": "Show 1 more" },
+        { "action": "clickDetailControl", "label": "Show 1 more" },
+        { "action": "expectPageText", "text": "reloader.stakater.com/auto" },
+        { "action": "expectPageText", "text": "2 long or structured annotations in Advanced metadata." }
+      ]
+    },
+    {
+      "id": "details-metadata.management",
+      "title": "Annotations and Management list the first managers with a count of the rest",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "metrics-gateway-9f6d4f7c9-7j2p4" },
+        { "action": "openResource", "kind": "Pod", "name": "metrics-gateway-9f6d4f7c9-7j2p4", "namespace": "platform" },
+        { "action": "expectPageText", "text": "Managers" },
+        { "action": "expectPageText", "text": "kube-controller-manager, kubelet, helm, kubectl-client-side-apply +1 more" },
+        { "action": "expectPageText", "text": "Raw managedFields" },
+        { "action": "expectPageText", "text": "advanced metadata" }
+      ]
+    },
+    {
+      "id": "details-metadata.advanced",
+      "title": "Advanced metadata lists the raw top-level object fields when opened",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "metrics-gateway-9f6d4f7c9-7j2p4" },
+        { "action": "openResource", "kind": "Pod", "name": "metrics-gateway-9f6d4f7c9-7j2p4", "namespace": "platform" },
+        { "action": "expectNoPageText", "text": "managedFields" },
+        { "action": "clickDetailControl", "label": "Advanced metadata" },
+        { "action": "expectPageText", "text": "managedFields" },
+        { "action": "expectPageText", "text": "resourceVersion" },
+        { "action": "expectPageText", "text": "ownerReferences" }
+      ]
+    },
+    {
+      "id": "details-metadata.containers",
+      "title": "Containers list init, regular and ephemeral containers with state and restart evidence",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "metrics-gateway-9f6d4f7c9-7j2p4" },
+        { "action": "openResource", "kind": "Pod", "name": "metrics-gateway-9f6d4f7c9-7j2p4", "namespace": "platform" },
+        { "action": "expectPageText", "text": "Containers" },
+        { "action": "expectPageText", "text": "wait-for-db" },
+        { "action": "expectPageText", "text": "terminated - Completed" },
+        { "action": "expectPageText", "text": "Completed" },
+        { "action": "expectPageText", "text": "sidecar" },
+        { "action": "expectPageText", "text": "waiting - CrashLoopBackOff" },
+        { "action": "expectPageText", "text": "debugger" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "overview.gitops-counts",
+      "title": "The workspace overview counts Argo CD and Flux resources",
+      "steps": [
+        { "action": "expectGitOpsCount", "label": "Applications", "count": 8 },
+        { "action": "expectGitOpsCount", "label": "Out of sync", "count": 1 },
+        { "action": "expectGitOpsCount", "label": "Flux resources", "count": 2 },
+        { "action": "expectLiveSessionCount", "count": 3 }
+      ]
+    },
+    {
+      "id": "cluster-overview.cluster-scope",
+      "title": "Cluster Overview lists cluster-scoped resources and leaving it drops them",
+      "steps": [
+        { "action": "openPage", "page": "Cluster Overview" },
+        { "action": "expectClusterResource", "kind": "Node", "name": "dev-control-plane" },
+        { "action": "expectClusterResource", "kind": "StorageClass", "name": "local-path" },
+        { "action": "openPage", "page": "Workloads" },
+        { "action": "expectResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "expectNoClusterResource", "kind": "Node", "name": "dev-control-plane" }
+      ]
+    },
+    {
+      "id": "incidents.filter-guide",
+      "title": "The incident guide follows the signal filter",
+      "steps": [
+        { "action": "openPage", "page": "Incidents" },
+        { "action": "expectIncidentGuide", "title": "Status: CrashLoopBackOff" },
+        { "action": "filterIncidents", "filter": "Needs attention" },
+        { "action": "expectIncidentGuide", "title": "OutOfSync: shop needs attention in mock data." }
+      ]
+    },
+    {
+      "id": "port-forwards.active-sessions",
+      "title": "Port Forwards lists the workspace's sessions",
+      "steps": [
+        { "action": "openPage", "page": "Port Forwards" },
+        { "action": "expectPortForward", "title": "Service/grafana:80" },
+        { "action": "expectPortForward", "title": "Pod/payments-api-7d9c9b7f8d-k2r9p:8080" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "workspaces.open-launcher-clears-shell",
+      "title": "Opening the launcher clears the open workspace's shell and palette until a workspace opens",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "expectNoWorkspaceShell" },
+        { "action": "expectPaletteUnavailable" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectOpenWorkspace", "name": "Parity mock workspace", "context": "mock-dev" }
+      ]
+    },
+    {
+      "id": "workspaces.deleted-open-no-palette",
+      "title": "Deleting the open workspace removes its shell and palette and leaves the launcher",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "deleteSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectNoWorkspaceShell" },
+        { "action": "expectPaletteUnavailable" },
+        { "action": "expectPageText", "text": "No saved workspaces yet" }
+      ]
+    }
+  ]
+}
