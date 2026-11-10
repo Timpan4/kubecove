@@ -134,9 +134,11 @@ impl Inspector {
     /// toggling, as the web's `selectNode` does.
     fn activate_row(&mut self, row: RowTarget, window: &mut Window, cx: &mut Context<Self>) {
         self.sidebar_tree.cancel_reveal();
-        if self.can_leave(cx) {
-            self.navigation_open = false;
+        // A refused leave changes nothing, so the open draft keeps its target.
+        if !self.can_leave(cx) {
+            return;
         }
+        self.navigation_open = false;
         let RowTarget {
             path: target,
             label,
@@ -341,6 +343,7 @@ impl Inspector {
             namespace,
             is_namespace,
         };
+        let key_row = target.clone();
         let click_row = target;
         div()
             .id(SharedString::from(id))
@@ -424,13 +427,17 @@ impl Inspector {
             .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
                 this.activate_row(click_row.clone(), window, cx);
             }))
-            .on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
+            .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
                 match event.keystroke.key.as_str() {
                     "right" if expandable && !expanded => {
                         this.toggle_tree_row(&key_toggle, cx);
                     }
                     "left" if expandable && expanded => {
                         this.toggle_tree_row(&key_toggle, cx);
+                    }
+                    "enter" | "space" => {
+                        cx.stop_propagation();
+                        this.activate_row(key_row.clone(), window, cx);
                     }
                     _ => {}
                 }

@@ -222,10 +222,17 @@ impl Inspector {
                     .track_focus(&focus)
                     .tab_index(0)
                     .on_key_down(
-                        cx.listener(move |this, event: &gpui_kit::KeyDownEvent, _, cx| {
-                            if custom && matches!(event.keystroke.key.as_str(), "left" | "right") {
-                                this.live.custom_open = event.keystroke.key == "right";
-                                cx.notify();
+                        cx.listener(move |this, event: &gpui_kit::KeyDownEvent, window, cx| {
+                            match event.keystroke.key.as_str() {
+                                "left" | "right" if custom => {
+                                    this.live.custom_open = event.keystroke.key == "right";
+                                    cx.notify();
+                                }
+                                "enter" | "space" => {
+                                    cx.stop_propagation();
+                                    this.activate_navigation(target, custom, window, cx);
+                                }
+                                _ => {}
                             }
                         }),
                     )
@@ -247,9 +254,10 @@ impl Inspector {
         window: &mut gpui_kit::Window,
         cx: &mut Context<Self>,
     ) {
-        if self.can_leave(cx) {
-            self.navigation_open = false;
+        if !self.can_leave(cx) {
+            return;
         }
+        self.navigation_open = false;
         if custom {
             self.select_custom_resources(window, cx);
             return;
@@ -395,7 +403,13 @@ impl Inspector {
                             .flex()
                             .items_center()
                             .gap(px(4.))
-                            .child(ui::outline_badge("1"))
+                            .child({
+                                let count = self.workspace_contexts().len().to_string();
+                                ui::outline_badge(count.clone())
+                                    .id("workspace-context-count")
+                                    .test_support()
+                                    .aria_label(count)
+                            })
                             .child(
                                 ui::ghost_icon("chevrons-down-up", 24., 12.)
                                     .id("collapse-sidebar")
@@ -451,6 +465,10 @@ impl Inspector {
                                     .cursor_pointer()
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.open_namespace_list(cx);
+                                        // A refused leave keeps the drawer open.
+                                        if this.page == Page::Namespaces {
+                                            this.navigation_open = false;
+                                        }
                                     }))
                                     .into_any_element(),
                             ),

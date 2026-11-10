@@ -377,3 +377,18 @@ fn a_dry_run_of_an_old_draft_is_dropped(cx: &mut TestAppContext) {
         );
     });
 }
+
+/// Failure mode: a sidebar row refused by the draft guard still moves the
+/// sidebar selection and RBAC view, so the tree shows a target the draft never left.
+#[gpui_kit::test]
+fn a_refused_sidebar_row_keeps_its_selection(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    let handle = open_tab(cx, backend, "yaml");
+    step(cx, handle, |window, cx| window.click("edit-draft", cx));
+    step(cx, handle, |window, cx| edit_draft(window, cx, DRAFT));
+    step(cx, handle, |window, cx| window.click("nav:RBAC", cx));
+    step(cx, handle, |window, _| {
+        assert_eq!(window.find("nav:RBAC").description(), Some("unselected"));
+        assert!(window.find("discard-draft").visible());
+    });
+}

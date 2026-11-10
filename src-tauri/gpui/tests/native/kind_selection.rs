@@ -37,3 +37,29 @@ fn a_checked_kind_watch_waits_for_its_read(cx: &mut TestAppContext) {
     cx.run_until_parked();
     assert_eq!(backend.live.open_watches("Deployment"), 1);
 }
+
+/// Enter on a sidebar row reached by Tab selects it, as a click does. A press
+/// that only expanded or collapsed left keyboard users unable to pick a scope.
+#[gpui_kit::test]
+fn enter_on_a_tabbed_sidebar_row_selects_it(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    let handle = open(cx, backend);
+    click(cx, handle, "nav:Network");
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(window.find("nav:Network").description(), Some("selected"));
+        window.press("tab", cx);
+        window.press("enter", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(
+            window.find("nav:Network").description(),
+            Some("unselected"),
+            "Enter must select the row Tab focused"
+        );
+    })
+    .unwrap();
+}

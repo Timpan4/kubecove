@@ -105,3 +105,22 @@ fn changing_workspace_cancels_every_old_context_read(cx: &mut TestAppContext) {
     })
     .unwrap();
 }
+/// The sidebar badge counts the workspace's contexts, so a multi-context
+/// workspace does not report a single cluster.
+#[gpui_kit::test]
+fn the_sidebar_badge_counts_every_workspace_context(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    backend.workspace.enabled.store(true, Ordering::SeqCst);
+    let handle = open(cx, backend);
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(window.find("workspace-context-count").label(), Some("1"));
+    })
+    .unwrap();
+    create_group(cx, handle);
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(window.find("workspace-context-count").label(), Some("2"));
+    })
+    .unwrap();
+}
