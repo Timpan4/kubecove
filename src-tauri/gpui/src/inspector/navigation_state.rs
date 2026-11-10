@@ -45,6 +45,8 @@ struct Snapshot {
     kind_node: bool,
     health: HealthFilter,
     gitops_owner: Option<String>,
+    /// The ownership filter a resource shortcut set, which applies only in its workspace.
+    shortcut_owner: Option<(u64, String, String)>,
     /// The sidebar row path, as `WorkspaceNavigationState.selectedNode` on the web.
     sidebar_node: Option<String>,
     /// The custom kind a namespace's Custom Resources row selected, and whether
@@ -67,9 +69,16 @@ impl Memory {
     }
 }
 
+/// Custom resources of two API groups can share a kind, namespace and name, so
+/// two known API versions must match. A summary that omits it still matches.
 fn same_resource(row: &ResourceSummary, target: &ResourceSummary) -> bool {
+    let api_version = match (&row.api_version, &target.api_version) {
+        (Some(row), Some(target)) => row == target,
+        _ => true,
+    };
     row.cluster == target.cluster
         && row.kind == target.kind
+        && api_version
         && row.namespace == target.namespace
         && row.name == target.name
 }
@@ -129,6 +138,7 @@ impl Inspector {
             kind_node: self.sidebar_kind_node(),
             health: self.filters.health,
             gitops_owner: self.filters.gitops_owner.clone(),
+            shortcut_owner: self.shortcut_owner.clone(),
             sidebar_node: self.sidebar_tree.selected.clone(),
             custom_kind: self.live.selected.clone(),
             custom_kind_locked: self.live.kind_locked,
@@ -163,6 +173,7 @@ impl Inspector {
         let restored = saved.as_ref().filter(|saved| !saved.kind_node);
         self.filters.health = restored.map_or(HealthFilter::All, |saved| saved.health);
         self.filters.gitops_owner = restored.and_then(|saved| saved.gitops_owner.clone());
+        self.shortcut_owner = restored.and_then(|saved| saved.shortcut_owner.clone());
         let browser = restored.map(|saved| saved.browser.clone());
         self.sidebar_tree.selected = saved.as_ref().and_then(|saved| saved.sidebar_node.clone());
         self.live.selected = saved.as_ref().and_then(|saved| saved.custom_kind.clone());
@@ -201,9 +212,11 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // Cluster-scoped rows such as Nodes join `visible` only when their own read lands.
         if self.navigation.pending_detail.is_none()
             || self.scope_load.loading()
             || matches!(self.scope_load.rows, Load::Loading)
+            || (self.wants_cluster_rows() && self.cluster_loading())
         {
             return;
         }

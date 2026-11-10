@@ -125,7 +125,7 @@ impl Inspector {
         matches!(self.cluster.load, Some(Load::Loading))
     }
 
-    fn wants_cluster_rows(&self) -> bool {
+    pub(super) fn wants_cluster_rows(&self) -> bool {
         self.page == Page::ClusterOverview
             || self
                 .kind_selection
