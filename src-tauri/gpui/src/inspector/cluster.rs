@@ -6,7 +6,7 @@
 use super::{Inspector, Load, Page};
 use crate::backend::CLUSTER_KINDS;
 use gpui_kit::{Context, Task, Window};
-use kubecove_lib::models::ResourceSummary;
+use kubecove_lib::models::{ResourceSummary, WatchResourceKey};
 use std::rc::Rc;
 
 #[derive(Default)]
@@ -34,6 +34,13 @@ impl Inspector {
         self.close_detail(cx);
         self.set_page(Page::ClusterOverview);
         self.table_page = 0;
+        // The palette and section links arrive without `select_namespace`, so
+        // a kind or custom-kind selection from Resources would filter out the
+        // cluster kinds. A sidebar kind row sets its kinds after this call.
+        self.sidebar_tree.selected = None;
+        self.kind_selection.chosen = None;
+        self.live.selected = None;
+        self.live.kind_locked = false;
         // The section has no namespace; the web scope falls back to the
         // workspace namespaces, which are all namespaces here.
         if self.scope.namespace.take().is_some() {
@@ -123,6 +130,16 @@ impl Inspector {
     /// waits for the version of the rows it will show.
     pub(super) fn cluster_loading(&self) -> bool {
         matches!(self.cluster.load, Some(Load::Loading))
+    }
+
+    /// Whether the cluster read's rows show `key` in `context`: a cluster kind
+    /// in the context that read covers, wherever its rows join the view. Watch
+    /// patches for it go to those rows, so the kind never shows twice.
+    pub(super) fn cluster_source(&self, context: &str, key: &WatchResourceKey) -> bool {
+        CLUSTER_KINDS.contains(&key.resource_kind.kind.as_str())
+            && self.wants_cluster_rows()
+            && context == self.scope.context
+            && self.cluster.context == context
     }
 
     fn wants_cluster_rows(&self) -> bool {
