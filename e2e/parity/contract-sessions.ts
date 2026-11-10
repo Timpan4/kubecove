@@ -1,7 +1,7 @@
 import { LIVE_SCRIPTS } from "../../src/lib/tauri-dev-mock-live";
 import type { JsonObject } from "../../src/lib/types";
 import type { Step } from "./contract-steps";
-import { boolean, count, isString, oneOf, optionalBoolean, string } from "./contract-values";
+import { boolean, count, oneOf, optionalBoolean, plainString, string } from "./contract-values";
 
 /** Parses terminal, port-forward, exec and live-data steps; returns undefined for any other action. */
 export function sessionStep(item: JsonObject): Step | undefined {
@@ -30,7 +30,7 @@ export function sessionStep(item: JsonObject): Step | undefined {
 		}
 		case "replaySessions": return { action: item.action, script: oneOf(["reconnecting", "failed", "foreign-output", "exec-output", "exec-exited", "exec-failed", "exec-stopped"], item.script, "a session script") };
 		case "confirmExecLeave": return { action: item.action, choice: oneOf(["stay", "stop"], item.choice, "a leave choice") };
-		case "configureForward": return { action: item.action, remote: string(item.remote), local: isString(item.local) ? item.local : "" };
+		case "configureForward": return { action: item.action, remote: string(item.remote), local: item.local === undefined ? "" : plainString(item.local) };
 		case "forwardControl": {
 			const control: Extract<Step, { action: "forwardControl" }> = { action: item.action, operation: oneOf(["start", "save", "restore", "stop", "reconnect"], item.operation, "a forward control") };
 			if (item.target !== undefined) control.target = string(item.target);
@@ -54,7 +54,7 @@ export function sessionStep(item: JsonObject): Step | undefined {
 			return control;
 		}
 		case "expectExecState": {
-			const state: Extract<Step, { action: "expectExecState" }> = { action: item.action, container: string(item.container), status: string(item.status), contains: isString(item.contains) ? item.contains : "" };
+			const state: Extract<Step, { action: "expectExecState" }> = { action: item.action, container: string(item.container), status: string(item.status), contains: item.contains === undefined ? "" : plainString(item.contains) };
 			if (item.absent !== undefined) state.absent = string(item.absent);
 			if (item.command !== undefined) state.command = string(item.command);
 			return state;
