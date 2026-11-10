@@ -96,6 +96,16 @@ pub(super) async fn gitops(context: String) -> Result<GitOpsInventory, AppError>
         Ok(None) => {}
         Err(error) => errors.push(error),
     }
+    with_list_errors(inventory, errors)
+}
+
+/// Reports the failed GitOps reads in `errors`. With no provider detected the
+/// first failure is the result; otherwise the lists that succeeded stay and
+/// `list_error` carries the failures. The remote backend shares this.
+pub(super) fn with_list_errors(
+    mut inventory: GitOpsInventory,
+    errors: Vec<AppError>,
+) -> Result<GitOpsInventory, AppError> {
     if !inventory.detected() {
         if let Some(error) = errors.into_iter().next() {
             return Err(error);

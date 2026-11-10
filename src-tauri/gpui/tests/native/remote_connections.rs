@@ -58,6 +58,14 @@ fn scope_result(arguments: &serde_json::Value) -> serde_json::Value {
         .collect();
     json!({"resources":[],"completedRequests":requests,"resourceVersions":resource_versions,"failures":[]})
 }
+/// Every list on `same-kind-host` returns two custom resources that share kind, name and
+/// namespace but come from different API groups.
+fn same_kind_rows(cluster: &str) -> serde_json::Value {
+    let rows = ["a.example.com", "b.example.com"].map(|group| {
+        json!({"kind":"Widget","group":group,"cluster":cluster,"name":"shared","namespace":"payments","age":"1d"})
+    });
+    json!({"resources":rows,"completedRequests":[],"resourceVersions":[],"failures":[]})
+}
 async fn server(name: &'static str) -> (String, tokio::task::JoinHandle<()>, Requests) {
     let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
         .await
@@ -92,14 +100,20 @@ async fn server(name: &'static str) -> (String, tokio::task::JoinHandle<()>, Req
                 } else if matches!(command, Some("list_namespaces" | "list_resource_kinds" | "list_resources")) {
                     json!([])
                 } else if command == Some("start_resource_watch") { json!("controlled-stream") }
+                else if command == Some("list_resource_scope") && name == "same-kind-host" { same_kind_rows(name) }
                 else if command == Some("list_resource_scope") { scope_result(&serde_json::from_slice(&body).unwrap()) }
+                else if matches!(command, Some("list_argocd_applications" | "list_argocd_appsets" | "list_argocd_appprojects")) { json!({"items": []}) }
+                else if command == Some("detect_flux") { json!({"detected": false, "kinds": [], "missingKinds": []}) }
                 else if let Some(command @ ("set_kubeconfig_env_var"| "add_kubeconfig_paths" | "remove_kubeconfig_path" | "reorder_kubeconfig_paths" | "set_show_kubeconfig_source_labels")) = command {
                     saved_sources(command, &serde_json::from_slice(&body).unwrap())
                 }
                 else { json!(true) };
-                // A server that revoked the sign-in refuses the next read.
+                // A server that revoked the sign-in refuses the next read, and one whose
+                // user may not list ApplicationSets refuses that list alone.
                 let (status, response) = if name == "revoking-host" && command == Some("list_resource_kinds") {
                     ("401 Unauthorized", json!({"message":"Sign in again.","kind":"unauthenticated"}))
+                } else if name == "gitops-host" && command == Some("list_argocd_appsets") {
+                    ("403 Forbidden", json!({"message":"ApplicationSets are forbidden.","kind":"forbidden"}))
                 } else { ("200 OK", response) };
                 let body = response.to_string();
                 let response = format!("HTTP/1.1 {status}\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",body.len());
@@ -476,6 +490,65 @@ fn a_sign_in_revoked_during_a_read_ends_the_session_without_local_fallback() {
         // Later reads fail instead of reaching this laptop's kubeconfig.
         let error = backend.contexts(None).await.unwrap_err();
         assert_eq!(error.kind, AppErrorKind::Session);
+        backend.disconnect_remote().await.unwrap();
+        task.abort();
+        let _ = task.await;
+    });
+}
+
+#[test]
+fn remote_application_read_keeps_same_kind_resources_from_two_api_groups() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let backend = DesktopBackend::new(NativeBackend::new().unwrap());
+    runtime.block_on(async {
+        let (url, task, _) = server("same-kind-host").await;
+        backend
+            .connect_remote(url, "controlled-test-credential".into())
+            .await
+            .unwrap();
+        let application = serde_json::from_value(json!({
+            "cluster": "same-kind-host",
+            "name": "widgets",
+            "age": "1d",
+            "healthAssessment": kubecove_lib::models::HealthAssessment::default(),
+            "sources": [],
+            "resourceNamespaces": ["payments", "shop"],
+        }))
+        .unwrap();
+        let read = backend
+            .application_resources(application, false)
+            .await
+            .unwrap();
+        let mut groups: Vec<_> = read.resources.iter().map(|row| row.group.clone()).collect();
+        groups.sort();
+        assert_eq!(
+            groups,
+            [
+                Some("a.example.com".to_owned()),
+                Some("b.example.com".to_owned())
+            ]
+        );
+        backend.disconnect_remote().await.unwrap();
+        task.abort();
+        let _ = task.await;
+    });
+}
+
+#[test]
+fn a_forbidden_gitops_list_keeps_the_rest_of_the_remote_inventory() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let backend = DesktopBackend::new(NativeBackend::new().unwrap());
+    runtime.block_on(async {
+        let (url, task, _) = server("gitops-host").await;
+        backend
+            .connect_remote(url, "controlled-test-credential".into())
+            .await
+            .unwrap();
+        let inventory = backend.gitops("gitops-host".into()).await.unwrap();
+        assert!(inventory.argo.as_ref().is_some_and(Vec::is_empty));
+        let error = inventory.list_error.expect("the refused list is reported");
+        assert_eq!(error.kind, AppErrorKind::Forbidden);
+        assert!(inventory.flux.is_none());
         backend.disconnect_remote().await.unwrap();
         task.abort();
         let _ = task.await;
