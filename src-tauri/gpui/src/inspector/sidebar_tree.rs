@@ -95,7 +95,7 @@ struct RowTarget {
 }
 
 impl Inspector {
-    fn tree_select(
+    pub(super) fn tree_select(
         &mut self,
         path: String,
         namespace: Option<String>,
