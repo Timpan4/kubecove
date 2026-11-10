@@ -35,4 +35,4 @@ pub use kubeconfig::{
     init_kubeconfig_settings_path, remove_kubeconfig_path, reorder_kubeconfig_paths,
     set_kubeconfig_env_var, set_show_kubeconfig_source_labels,
 };
-pub use live_store::ClusterLiveStore;
+pub use live_store::{ClusterLiveStore, WatchOrigin};

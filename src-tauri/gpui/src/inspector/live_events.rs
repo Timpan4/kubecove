@@ -28,6 +28,9 @@ impl Inspector {
                 {
                     Ok(stream) => stream,
                     Err(error) => {
+                        // Events may change while no watch runs, so the next
+                        // Connected status lists them again.
+                        catch_up = true;
                         let _ = this.update(cx, |this, cx| {
                             if let Detail::Ready(detail) = &mut this.detail {
                                 detail.events.watch_error = Some(error.message);
@@ -71,6 +74,7 @@ impl Inspector {
                         Some(StreamMessage::Status { .. }) => catch_up = true,
                         _ => {}
                     }
+                    let mut number = 0;
                     let updated = this.update(cx, |this, cx| {
                         if let Detail::Ready(detail) = &mut this.detail {
                             refresh |= tick && matches!(detail.events.load, EventsLoad::Failed(_));
@@ -79,6 +83,9 @@ impl Inspector {
                             }
                             if let Some(error) = error {
                                 detail.events.watch_error = Some(error);
+                            }
+                            if refresh {
+                                number = detail.events.begin_read();
                             }
                         }
                         // A recovery tick changes nothing shown unless it refreshes.
@@ -99,7 +106,9 @@ impl Inspector {
                             if let Detail::Ready(detail) = &mut this.detail {
                                 match result {
                                     Ok(rows) => {
-                                        detail.events.set_ready(rows);
+                                        if detail.events.current(number) {
+                                            detail.events.set_ready(number, rows);
+                                        }
                                         detail.events.watch_error = None;
                                     }
                                     Err(error) => detail.events.watch_error = Some(error.message),

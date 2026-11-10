@@ -1,6 +1,6 @@
 use super::*;
 use kubecove_gpui::backend::WatchTarget;
-use kubecove_lib::models::{StreamMessage, StreamStatus};
+use kubecove_lib::models::{StreamMessage, StreamStatus, WatchResourceTarget};
 use tokio::sync::mpsc;
 
 #[gpui_kit::test]
@@ -300,6 +300,48 @@ fn closed_channels_recover_at_the_existing_tick(cx: &mut TestAppContext) {
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
         assert_eq!(window.find("live-label").label(), Some("Live"));
+    })
+    .unwrap();
+}
+
+// Failure mode: a named reload fails, the next notice names other rows, and
+// its named reload succeeds. That clears the failure and stops recovery, so
+// the rows the failed reload missed stay stale while the watch shows Live.
+#[gpui_kit::test]
+fn a_notice_after_a_failed_reload_lists_the_whole_kind(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    let handle = open(cx, backend.clone());
+    let changed = |name: &str| StreamMessage::ResourceChanged {
+        stream_id: "native".into(),
+        target: WatchResourceTarget {
+            cluster: "mock-dev".into(),
+            kind: "Deployment".into(),
+            namespace: Some("payments".into()),
+            name: Some(name.into()),
+        },
+        action: "modified".into(),
+    };
+    // live_data.rs::COALESCE, the pause after each reload.
+    let coalesce = std::time::Duration::from_millis(250);
+    backend.fail.store(true, Ordering::SeqCst);
+    backend.live.send(changed("payments-api"));
+    cx.run_until_parked();
+    cx.background_executor.advance_clock(coalesce);
+    cx.run_until_parked();
+    // The change the failed reload missed: the Deployment is gone.
+    backend.fail.store(false, Ordering::SeqCst);
+    backend.sessions.enabled.store(true, Ordering::SeqCst);
+    backend.live.send(changed("other-api"));
+    cx.run_until_parked();
+    cx.background_executor.advance_clock(coalesce);
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(
+            window
+                .try_find("resource:Deployment:payments:payments-api:mock-dev")
+                .is_none()
+        );
     })
     .unwrap();
 }

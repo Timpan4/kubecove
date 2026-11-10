@@ -45,12 +45,17 @@ impl Inspector {
         if !self.patch_in_scope(scope) {
             return rows;
         }
-        let cluster_rows = self.page == super::Page::ClusterOverview
-            && crate::backend::CLUSTER_KINDS.contains(&key.resource_kind.kind.as_str());
+        let cluster_kind = crate::backend::CLUSTER_KINDS.contains(&key.resource_kind.kind.as_str());
         // The Cluster Overview's cluster read covers the selected context only.
-        if cluster_rows && scope.context != self.scope.context {
+        if cluster_kind
+            && self.page == super::Page::ClusterOverview
+            && scope.context != self.scope.context
+        {
             return rows;
         }
+        // Where the cluster read's rows show, its kinds patch there, so a
+        // selected cluster kind on Resources never shows a second, stale copy.
+        let cluster_rows = self.cluster_source(&scope.context, key);
         // The version moves with the rows it describes, so a watch never starts past them.
         let versions = if cluster_rows {
             Some(&mut self.cluster.versions)
@@ -85,7 +90,9 @@ impl Inspector {
         let id = crate::backend::watch_id(context, key);
         let cluster_kind = crate::backend::CLUSTER_KINDS.contains(&key.resource_kind.kind.as_str());
         let cluster = || self.cluster.versions.get(&id);
-        let version = if cluster_kind && self.page == super::Page::ClusterOverview {
+        let version = if cluster_kind
+            && (self.page == super::Page::ClusterOverview || self.cluster_source(context, key))
+        {
             cluster()
         } else if cluster_kind {
             self.scope_load.version(&id).or_else(cluster)

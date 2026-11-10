@@ -45,9 +45,22 @@ fn age(event: &ResourceEventSummary) -> String {
     }
 }
 
-/// `formatEventCompactTime`.
-fn compact_time(event: &ResourceEventSummary) -> String {
-    incident::time_of_day(event.last_seen_at.as_deref(), &event.last_seen)
+/// `formatEventCompactTime`: `formatExactTimeOnly(..., "second")` in the saved
+/// timezone, as the exact-time tooltip uses, else the relative label.
+fn compact_time(event: &ResourceEventSummary, timezone: TimestampTimezone) -> String {
+    let Some(time) = incident::parse(event.last_seen_at.as_deref()) else {
+        return event.last_seen.clone();
+    };
+    match timezone {
+        TimestampTimezone::Local => time
+            .with_timezone(&chrono::Local)
+            .format("%H:%M:%S")
+            .to_string(),
+        TimestampTimezone::Utc => time
+            .with_timezone(&chrono::Utc)
+            .format("%H:%M:%S UTC")
+            .to_string(),
+    }
 }
 
 /// `Empty class="border border-dashed"` with a title and description.
@@ -135,7 +148,7 @@ fn event_row(event: &ResourceEventSummary, index: usize, timezone: TimestampTime
                 .child(timestamp_text::with_tooltip(
                     format!("event-time:{index}"),
                     Some(exact_time(event, timezone)),
-                    ui::muted(ui::xs(compact_time(event))).whitespace_nowrap(),
+                    ui::muted(ui::xs(compact_time(event, timezone))).whitespace_nowrap(),
                 )),
         )
         .child(
@@ -248,7 +261,7 @@ pub(super) fn events_tab(
     let latest = summary.latest.map_or(tile_value("-"), |event| {
         // The reason and its `ml-1 text-xs font-normal` time truncate as one line.
         let reason = event.reason.clone();
-        let text = format!("{reason} {}", compact_time(event));
+        let text = format!("{reason} {}", compact_time(event, timezone));
         let time = reason.len() + 1..text.len();
         ui::semibold(div().text_size(px(14.)).line_height(px(20.)))
             .truncate()

@@ -11,6 +11,7 @@ use http_body::{Body as HttpBody, Frame};
 use kube::client::Body;
 use std::{
     future::Future,
+    io::Write,
     pin::Pin,
     sync::{Mutex, MutexGuard, PoisonError},
     task::{Context, Poll},
@@ -134,7 +135,10 @@ impl Drop for Interval {
         let status = self
             .status
             .map_or_else(|| "none".to_owned(), |code| code.to_string());
-        eprintln!(
+        // Drop also runs on cancellation and unwinding, where a failed write
+        // must not panic, so the error is discarded instead of `eprintln!`.
+        let _ = writeln!(
+            std::io::stderr(),
             "[kubecove:http] {} {} status={status} bytes={} ms={}",
             self.method,
             self.path,

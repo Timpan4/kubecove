@@ -304,8 +304,14 @@ pub(super) fn watch(backend: &NativeBackend, target: WatchTarget) -> Read<LogStr
 
 /// Built-in resources and namespaces. The web stages these before custom kinds.
 pub(super) fn resources(backend: &NativeBackend, scope: Scope, refresh: bool) -> Read<ScopeResult> {
-    let builtin = builtin_resources(backend, scope.clone(), refresh);
-    let custom = custom_resources(backend, scope);
+    // Both reads start when created, so a refresh evicts the view first:
+    // otherwise custom discovery can reuse the presence cache before the
+    // built-in read clears it.
+    if refresh && let Err(error) = refresh_view(&backend.store, &scope) {
+        return Box::pin(async move { Err::<ScopeResult, _>(error) });
+    }
+    let builtin = builtin_resources(backend, scope.clone(), false);
+    let custom = custom_resources(backend, scope, refresh);
     backend.read(async move {
         let mut result = builtin.await?;
         let custom = custom.await?;
@@ -317,6 +323,37 @@ pub(super) fn resources(backend: &NativeBackend, scope: Scope, refresh: bool) ->
     })
 }
 
+fn builtin_keys(scope: &Scope) -> Vec<WatchResourceKey> {
+    INSPECTION_KINDS
+        .iter()
+        .map(|kind| WatchResourceKey {
+            resource_kind: WatchResourceKind {
+                kind: (*kind).to_owned(),
+                group: None,
+                version: None,
+                api_version: None,
+                plural: None,
+                namespaced: Some(true),
+            },
+            namespace: scope.namespace.clone(),
+        })
+        .collect()
+}
+
+/// Evicts the built-in rows of `scope` and its context's namespaces, kinds,
+/// topologies and present custom kinds.
+fn refresh_view(store: &ClusterLiveStore, scope: &Scope) -> Result<(), AppError> {
+    let access = ClusterAccess::resolve(None)?;
+    let namespaces: Vec<_> = scope.namespace.iter().cloned().collect();
+    store.refresh_view(
+        access.source_key(),
+        &scope.context,
+        &builtin_keys(scope),
+        &namespaces,
+    );
+    Ok(())
+}
+
 pub(super) fn builtin_resources(
     backend: &NativeBackend,
     scope: Scope,
@@ -325,24 +362,9 @@ pub(super) fn builtin_resources(
     let store = backend.store.clone();
     backend.read(async move {
         let kinds = INSPECTION_KINDS.to_vec();
-        let keys: Vec<_> = kinds
-            .iter()
-            .map(|kind| WatchResourceKey {
-                resource_kind: WatchResourceKind {
-                    kind: (*kind).to_owned(),
-                    group: None,
-                    version: None,
-                    api_version: None,
-                    plural: None,
-                    namespaced: Some(true),
-                },
-                namespace: scope.namespace.clone(),
-            })
-            .collect();
+        let keys = builtin_keys(&scope);
         if refresh {
-            let access = ClusterAccess::resolve(None)?;
-            let namespaces: Vec<_> = scope.namespace.iter().cloned().collect();
-            store.refresh_view(access.source_key(), &scope.context, &keys, &namespaces);
+            refresh_view(&store, &scope)?;
         }
         let mut warnings = Vec::new();
         // The web reads a scope in one `list_resource_scope` call, which lists
@@ -411,8 +433,13 @@ pub(super) fn builtin_resources(
 /// Custom kinds present in the scope and their rows, read after the built-in
 /// resources. The web lists only present kinds (`presentCustomResourceKinds`
 /// in WorkspaceShell.svelte), so empty kinds cost one shared presence probe
-/// instead of a list each.
-pub(super) fn custom_resources(backend: &NativeBackend, scope: Scope) -> Read<ScopeResult> {
+/// instead of a list each. With `refresh`, the rows of each present kind are
+/// listed again; the caller has already evicted the presence cache.
+pub(super) fn custom_resources(
+    backend: &NativeBackend,
+    scope: Scope,
+    refresh: bool,
+) -> Read<ScopeResult> {
     let store = backend.store.clone();
     backend.read(async move {
         let mut warnings = Vec::new();
@@ -441,6 +468,14 @@ pub(super) fn custom_resources(backend: &NativeBackend, scope: Scope) -> Read<Sc
         .await;
         match discovered {
             Ok(discovered) => {
+                if refresh {
+                    let access = ClusterAccess::resolve(None)?;
+                    let keys: Vec<_> = discovered
+                        .iter()
+                        .map(|kind| discovered_key(kind, scope.namespace.clone()))
+                        .collect();
+                    store.refresh_resources(access.source_key(), &scope.context, &keys);
+                }
                 let reads: Vec<_> = discovered
                     .iter()
                     .map(|kind| {
