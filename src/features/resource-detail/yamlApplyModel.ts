@@ -1,4 +1,10 @@
-import type { ResourceSummary, YamlApplyRequest, YamlApplyResult, YamlEncoding } from "@/lib/types";
+import type {
+	ResourceSummary,
+	YamlApplyPreview,
+	YamlApplyRequest,
+	YamlApplyResult,
+	YamlEncoding,
+} from "@/lib/types";
 
 export function isYamlApplyDisabled(resource: ResourceSummary): string | null {
 	return resource.kind === "Secret" && (resource.apiVersion ?? "v1") === "v1"
@@ -55,6 +61,17 @@ export function sameYamlApplyRequest(
 		left.yamlEncoding === right.yamlEncoding &&
 		left.forceConflicts === right.forceConflicts
 	);
+}
+
+export function reviewedYamlApplyRequest(
+	request: YamlApplyRequest,
+	preview: YamlApplyPreview,
+): YamlApplyRequest {
+	return {
+		...request,
+		expectedUid: preview.uid,
+		expectedResourceVersion: preview.resourceVersion,
+	};
 }
 
 export function resolveYamlForceConflicts<Override>(

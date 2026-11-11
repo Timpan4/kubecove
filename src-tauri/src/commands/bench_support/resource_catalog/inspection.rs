@@ -296,6 +296,8 @@ fn apply_request(
         yaml,
         yaml_encoding: YamlEncoding::Yaml,
         force_conflicts: false,
+        expected_uid: None,
+        expected_resource_version: None,
     }
 }
 

@@ -28,6 +28,10 @@ The apply flow must:
 - run server-side apply dry-run with `fieldManager=kubecove`
 - show a line diff between current `applyClean` YAML and the dry-run result
 - require a second explicit Apply action after dry-run succeeds
+- carry the reviewed resource UID and `resourceVersion` into execution
+- re-read and reject a changed resource before execution, then repeat the dry-run
+- include the reviewed `resourceVersion` in the dry-run and live apply payloads so
+  Kubernetes rejects a change that races the final patch
 - perform server-side apply with `force-conflicts` only when the global YAML
   force-conflicts setting or current selected-resource override allows it
 - invalidate the selected resource details and YAML after success

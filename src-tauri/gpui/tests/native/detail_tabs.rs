@@ -163,6 +163,8 @@ impl DetailControls {
                 target: target(&request),
                 current_yaml: "metadata:\n  name: payments-api\n".into(),
                 dry_run_yaml: request.yaml,
+                uid: "payments-api-uid".into(),
+                resource_version: "7".into(),
             })
         })
     }
