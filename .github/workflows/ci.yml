@@ -237,7 +237,7 @@ jobs:
           cache-generation: kubecove-rust-ci
 
       - name: Audit desktop Rust dependencies
-        uses: rustsec/audit-check@v2.0.0
+        uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           working-directory: src-tauri
@@ -245,13 +245,13 @@ jobs:
           ignore: RUSTSEC-2024-0429
 
       - name: Audit GPUI Rust dependencies
-        uses: rustsec/audit-check@v2.0.0
+        uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           working-directory: src-tauri/gpui
 
       - name: Audit server Rust dependencies
-        uses: rustsec/audit-check@v2.0.0
+        uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           working-directory: src-tauri/server
