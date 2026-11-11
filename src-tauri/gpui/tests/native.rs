@@ -215,6 +215,13 @@ impl Backend for Controlled {
     fn watch(&self, target: kubecove_gpui::backend::WatchTarget) -> Read<LogStream> {
         self.live.open(target)
     }
+    fn watch_start_version(
+        &self,
+        _scope: Scope,
+        _key: kubecove_lib::models::WatchResourceKey,
+    ) -> Option<Read<String>> {
+        self.live.start_version()
+    }
     fn contexts(&self, _kubeconfig_source_key: Option<String>) -> Read<Vec<ClusterContext>> {
         Box::pin(async {
             Ok(vec![
@@ -230,6 +237,7 @@ impl Backend for Controlled {
         })
     }
     fn resources(&self, scope: Scope, _: bool) -> Read<ScopeResult> {
+        self.live.reads.lock().unwrap().push("list");
         self.default_retry.calls.fetch_add(1, Ordering::SeqCst);
         if let Some(kind) = self.default_retry.errors.lock().unwrap().pop_front() {
             return Box::pin(async move { Err(AppError::new("scripted resource failure", kind)) });

@@ -1,6 +1,6 @@
 //! View-owned streams. Recovery follows resource-watch.ts; Rust owns transport backoff.
 use super::{
-    Inspector, Page,
+    Inspector,
     live_status::WatchReport,
     request::InFlight,
     watch_status::{self, Link, LiveStatus, WatchLink, WatchSummary},
@@ -48,6 +48,10 @@ pub(super) struct LiveData {
     /// Each watch by `watch_id`, so the same kind in two contexts has two watches.
     watches: HashMap<String, Registration>,
     pending: Vec<super::live_rows::Patch>,
+    /// Each watch's start version read before its rows were listed, by
+    /// `watch_id`, or `None` while the read runs (`live_start.rs`).
+    pub(super) starts: HashMap<String, Option<String>>,
+    pub(super) start_tasks: Vec<Task<()>>,
 }
 
 #[derive(Default)]
@@ -122,6 +126,8 @@ impl LiveData {
     pub fn reset_scope(&mut self) {
         self.watches.clear();
         self.pending.clear();
+        self.starts.clear();
+        self.start_tasks.clear();
         self.owner.clear();
         self.refresh_error = None;
     }
@@ -328,27 +334,9 @@ impl Inspector {
         );
         let kinds_changed = kind_scope != self.live.kind_scope;
         self.live.kind_scope = kind_scope;
-        if !self.workspace_open()
-            || self.scope.context.is_empty()
-            || !matches!(
-                self.page,
-                Page::Resources | Page::ClusterOverview | Page::Overview
-            )
-        {
+        let Some(keys) = self.live_keys() else {
             return;
-        }
-        let mut keys: Vec<_> = self
-            .available_kind_keys()
-            .into_iter()
-            .filter(|(id, _, _)| self.kind_selected(id))
-            .map(|(_, _, key)| key)
-            .collect();
-        if let Some(kind) = &self.live.selected {
-            keys = vec![crate::backend::discovered_key(
-                kind,
-                self.scope.namespace.clone(),
-            )];
-        }
+        };
         // One watch per context and kind, so each context's rows patch alone.
         let contexts = self.watch_contexts();
         let pairs: Vec<_> = contexts
@@ -377,11 +365,17 @@ impl Inspector {
                 continue;
             }
             // A watch starts at the version of the rows the view shows, so it
-            // waits until they settle. Until then it reports as connecting.
-            if !self.rows_settled(context, key) {
+            // waits until they settle, unless its start version was read
+            // before those rows were listed. Until then it reports as connecting.
+            let start = if self.rows_settled(context, key) {
+                self.live.starts.remove(&watch);
+                None
+            } else if let Some(Some(_)) = self.live.starts.get(&watch) {
+                self.live.starts.remove(&watch).flatten()
+            } else {
                 self.live.registration(watch, context);
                 continue;
-            }
+            };
             let key = key.clone();
             let scope = Scope {
                 context: context.clone(),
@@ -391,13 +385,17 @@ impl Inspector {
             let owner = self.live.owner.clone();
             let id = watch.clone();
             let task = cx.spawn_in(window, async move |this, cx| {
+                let mut start = start;
                 let mut lost = false;
                 let mut timer = Box::pin(cx.background_executor().timer(RECOVERY));
                 loop {
-                    let resource_version = this
-                        .update(cx, |this, _| this.shown_version(&scope.context, &key))
-                        .ok()
-                        .flatten();
+                    let resource_version = match start.take() {
+                        Some(version) => Some(version),
+                        None => this
+                            .update(cx, |this, _| this.shown_version(&scope.context, &key))
+                            .ok()
+                            .flatten(),
+                    };
                     let read = {
                         let _span = crate::frame_profile::scope("watch", "open_factory");
                         backend.watch(WatchTarget::Resource {

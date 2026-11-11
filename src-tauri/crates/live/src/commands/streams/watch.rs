@@ -125,7 +125,7 @@ fn watch_resource_version<K: kube::Resource>(event: &WatchEvent<K>) -> Option<St
     }
 }
 
-fn scoped_dynamic_api(
+pub(super) fn scoped_dynamic_api(
     client: Client,
     key: &WatchResourceKey,
     namespaced: bool,

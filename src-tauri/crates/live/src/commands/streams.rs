@@ -212,6 +212,50 @@ pub async fn start_resource_watch(
     Ok(stream_id)
 }
 
+/// The current list version of `key`, so a watch can open before the caller
+/// lists the rows it keeps fresh. A one-object metadata list returns the
+/// version of the whole collection. The cached rows of `key` are then marked
+/// stale, so a list read after this returns is at or past the version and
+/// holds every change the watch starts after.
+pub async fn resource_watch_start_version(
+    cluster_context: String,
+    key: WatchResourceKey,
+    kubeconfig_env_var: Option<String>,
+    live_store: State<'_, ClusterLiveStore>,
+) -> Result<String, AppError> {
+    let start = ResourceWatchStart {
+        key,
+        resource_version: None,
+    };
+    validate_resource_watch_scope(&cluster_context, std::slice::from_ref(&start))?;
+    let key = start.key;
+    let kind = kinds::normalize_resource_kind(&key.resource_kind)?;
+    let api_resource = kinds::api_resource_from_kind(&kind)?;
+    let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
+    let client = access.read_client(&cluster_context).await?;
+    let api =
+        watch::scoped_dynamic_api(client, &key, kind.namespaced.unwrap_or(true), &api_resource);
+    let list = api
+        .list_metadata(&kube::api::ListParams::default().limit(1))
+        .await?;
+    let version = list
+        .metadata
+        .resource_version
+        .filter(|version| !version.trim().is_empty())
+        .ok_or_else(|| {
+            AppError::new(
+                format!("{} list returned no resource version", kind.kind),
+                AppErrorKind::Cluster,
+            )
+        })?;
+    live_store.refresh_resources(
+        access.source_key(),
+        &cluster_context,
+        std::slice::from_ref(&key),
+    );
+    Ok(version)
+}
+
 pub async fn start_resource_event_watch(
     cluster_context: String,
     kind: String,

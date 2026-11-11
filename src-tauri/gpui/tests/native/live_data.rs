@@ -58,6 +58,143 @@ pub(super) struct LiveControls {
     pub events_fail: AtomicBool,
     gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
     streams: Mutex<Vec<(WatchTarget, mpsc::UnboundedSender<StreamMessage>)>>,
+    /// Whether the backend reads watch start versions, and whether the read fails.
+    start_versions: Option<bool>,
+    /// The order of start-version reads and scope reads.
+    pub reads: Mutex<Vec<&'static str>>,
+}
+
+const START_VERSION: &str = "42";
+
+impl LiveControls {
+    pub fn start_version(&self) -> Option<Read<String>> {
+        let fails = self.start_versions?;
+        self.reads.lock().unwrap().push("version");
+        Some(Box::pin(async move {
+            if fails {
+                return Err(AppError::new("list denied", AppErrorKind::Forbidden));
+            }
+            Ok(START_VERSION.into())
+        }))
+    }
+    fn resource_watch_versions(&self) -> Vec<Option<String>> {
+        self.streams
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|(target, tx)| match target {
+                WatchTarget::Resource {
+                    resource_version, ..
+                } if !tx.is_closed() => Some(resource_version.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+}
+
+fn label(cx: &mut TestAppContext, handle: gpui_kit::AnyWindowHandle) -> Option<String> {
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window.find("live-label").label().map(str::to_owned)
+    })
+    .unwrap()
+}
+
+fn shows_rows(cx: &mut TestAppContext, handle: gpui_kit::AnyWindowHandle) -> bool {
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window
+            .try_find("resource:Deployment:payments:payments-api:mock-other")
+            .is_some()
+    })
+    .unwrap()
+}
+
+/// Opens the other context with its rows held, and returns their release.
+fn load_other_context(
+    cx: &mut TestAppContext,
+    backend: &Controlled,
+    handle: gpui_kit::AnyWindowHandle,
+) -> tokio::sync::oneshot::Sender<()> {
+    let (release, pending) = tokio::sync::oneshot::channel();
+    *backend.pending.lock().unwrap() = Some(pending);
+    backend.live.reads.lock().unwrap().clear();
+    cx.update_window(handle, |_, window, cx| {
+        window.within("context").click("input", cx);
+        window.press("down", cx);
+        window.press("enter", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    release
+}
+
+// Failure modes: the watches wait for the rows again; a watch opens without
+// its start version, which replays every object; the rows are listed before
+// the versions are read, so changes between the list and the watch are lost;
+// a failed version read leaves the watch waiting for good.
+#[gpui_kit::test]
+fn watches_open_at_their_start_version_while_rows_load(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled {
+        live: LiveControls {
+            start_versions: Some(false),
+            ..Default::default()
+        },
+        ..Default::default()
+    });
+    let handle = open(cx, backend.clone());
+    let release = load_other_context(cx, &backend, handle);
+    assert!(!shows_rows(cx, handle), "the rows are still loading");
+    assert_eq!(label(cx, handle).as_deref(), Some("Live"));
+    let versions = backend.live.resource_watch_versions();
+    assert!(!versions.is_empty());
+    assert!(
+        versions
+            .iter()
+            .all(|version| version.as_deref() == Some(START_VERSION)),
+        "{versions:?}"
+    );
+    let reads = backend.live.reads.lock().unwrap().clone();
+    let first_list = reads.iter().position(|read| *read == "list");
+    assert!(
+        first_list
+            .is_some_and(|list| reads[..list].iter().all(|read| *read == "version") && list > 0),
+        "every version is read before the rows are listed: {reads:?}"
+    );
+    assert!(
+        !reads[first_list.unwrap()..].contains(&"version"),
+        "{reads:?}"
+    );
+    release.send(()).unwrap();
+    cx.run_until_parked();
+    assert!(shows_rows(cx, handle));
+    assert_eq!(label(cx, handle).as_deref(), Some("Live"));
+}
+
+#[gpui_kit::test]
+fn a_failed_start_version_waits_for_the_rows(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled {
+        live: LiveControls {
+            start_versions: Some(true),
+            ..Default::default()
+        },
+        ..Default::default()
+    });
+    let handle = open(cx, backend.clone());
+    let release = load_other_context(cx, &backend, handle);
+    assert_eq!(label(cx, handle).as_deref(), Some("Connecting"));
+    assert!(backend.live.resource_watch_versions().is_empty());
+    release.send(()).unwrap();
+    cx.run_until_parked();
+    assert!(shows_rows(cx, handle));
+    assert_eq!(label(cx, handle).as_deref(), Some("Live"));
+    assert!(
+        backend
+            .live
+            .resource_watch_versions()
+            .iter()
+            .all(|version| version.as_deref() != Some(START_VERSION))
+    );
 }
 
 #[gpui_kit::test]
