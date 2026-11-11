@@ -82,7 +82,7 @@ No cluster resources were deployed or modified. Native desktop launch/cluster E2
 
 ## GPUI client edit loop
 
-Measured 2026-11-10 on main at `1b278cc`: Linux x64, 16 threads, 30 GiB RAM, rustc 1.99.1, Cargo through mbx 1.29.2, per-checkout target and build directories, `nice -n 10`. The crate `kubecove-gpui` held 71,696 lines in 254 files. Each row is one sample taken after a one-line comment edit in `src-tauri/gpui/src/inspector/helm_page.rs` unless the row says otherwise. Other work held the load average between 1 and 11, so treat differences of a few seconds as noise.
+Measured 2026-11-10 on main at `1b278cc`: Linux x64, 16 threads, 30 GiB RAM, rustc 1.99.1, Cargo through mbx 1.29.2, per-checkout target and build directories, `nice -n 10`. The crate `kubecove-gpui` held 71,696 lines in 254 files. Each row is one sample taken after a one-line comment edit in `src-tauri/gpui/src/inspector/helm_page.rs` unless the row says otherwise. CPU time is user plus system time. Other work held the load average between 1 and 11, so treat differences of a few seconds as noise.
 
 | Loop | 1 job | 14 jobs |
 | --- | --- | --- |
@@ -92,11 +92,11 @@ Measured 2026-11-10 on main at `1b278cc`: Linux x64, 16 threads, 30 GiB RAM, rus
 | Same build after a comment edit in `src/inspector.rs` | 12.2 s | 9.4 s |
 | Same build, first edit in the checkout | not measured | 29.8 s, 61 s of CPU time |
 | Same build, fresh worktree with unedited sources | not measured | 27.6 s, 71 s of CPU time |
-| `cargo test --lib --test native`, run only | 15.7 s | same |
+| `cargo test --lib --test native`, run only | 15.7 s | not measured, the run compiles nothing |
 | `cargo test --test parity --no-run`, later edit | 10.8 s | 6.6 s |
 | `PARITY_PREFIX=helm. bun run e2e:parity`, six scenarios, run only | not measured | 11.1 s |
-| `cargo test --release --test frames --no-run`, fresh worktree | not measured | 70.4 s, 474 s of CPU time |
-| `cargo test --release --test frames --no-run`, later edit | not measured | 48.1 s, 279 s of CPU time |
+| `cargo test --release --test frames --no-run`, fresh worktree | not measured | 70.4 s, 491 s of CPU time |
+| `cargo test --release --test frames --no-run`, later edit | not measured | 48.1 s, 285 s of CPU time |
 
 What the samples show:
 
@@ -104,7 +104,7 @@ What the samples show:
 - In the 16.8 second build at one job, the library took 7.1 seconds, and the native test crate, the application binary and the unit-test harness about 3 seconds each. With 14 jobs the library took 4.7 seconds and the other three overlapped.
 - Each link took 0.5 to 2.0 seconds with rust-lld.
 - mbx compiles workspace crates without incremental state until the first source edit in a checkout, which is why the first edit costs about 30 seconds and later edits about 8.
-- The release profile has no incremental state. Every release rebuild compiles the whole library again: 10.5 seconds of frontend and 23.7 seconds of code generation with 14 jobs. The CPU time of 279 seconds is a lower bound for the same rebuild at one job.
+- The release profile has no incremental state. Every release rebuild compiles the whole library again: 10.5 seconds of frontend and 23.7 seconds of code generation with 14 jobs. The CPU time of 285 seconds is a lower bound for the same rebuild at one job.
 - Type checking the whole library after an edit took 1.9 to 4.6 seconds, so splitting the crate would save a few seconds per edit at most.
 - At 14 jobs the release rebuild's compilers held at most 3.4 GiB of resident memory in total, and the machine's available memory stayed above 20 GiB. The largest single process in the debug builds held 3.0 GB at both job counts.
 

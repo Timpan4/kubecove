@@ -184,7 +184,7 @@ Run the smallest tier that covers the change, from the checkout root with the bu
 
 `PARITY_PREFIX` (comma-separated scenario ID prefixes) still narrows any run, such as one failing scenario or one area.
 
-While iterating on one area, `cargo test --manifest-path src-tauri/gpui/Cargo.toml --test native <module>::` runs one module of `src-tauri/gpui/tests/native/`, such as `shell::`. The full native run takes about 14 seconds, as long as the build before it, and tier 2 still runs all of it.
+While iterating on one area, `cargo test --manifest-path src-tauri/gpui/Cargo.toml --test native <module>::` runs one module of `src-tauri/gpui/tests/native/`, such as `shell::`. The full native run takes about 14 seconds, and tier 2 still runs all of it.
 
 Between PRs, run `bun scripts/gpui-frames.ts <case,case>` only for frame cases whose GPUI render or layout code changed.
 
