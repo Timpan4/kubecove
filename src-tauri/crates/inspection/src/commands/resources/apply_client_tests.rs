@@ -144,7 +144,7 @@ async fn apply_requires_reviewed_identity_before_cluster_access() {
 
     assert_eq!(error.kind, AppErrorKind::Validation);
     assert!(error.message.contains("reviewed UID and resourceVersion"));
-    assert!(cluster.intents().is_empty());
+    assert_eq!(cluster.intents(), Vec::<ClientIntent>::new());
 }
 
 #[tokio::test]
