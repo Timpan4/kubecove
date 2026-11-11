@@ -95,7 +95,8 @@ Run through [docs/handbook/pr-checklist.md](docs/handbook/pr-checklist.md) befor
 The native client lives in `src-tauri/gpui`. These rules come from parallel agent work on it.
 
 - Give every checkout its own build directories, from the checkout root: `CARGO_TARGET_DIR=$PWD/src-tauri/gpui/target CARGO_BUILD_BUILD_DIR=$PWD/src-tauri/gpui/build`. Path crates get the same artifact names in every checkout, so a shared directory lets one build overwrite another's crates ("multiple different versions of crate kubecove_kube").
-- On the shared workstation, run cargo as `CARGO_BUILD_JOBS=1 nice -n 10` with `RUSTC_WRAPPER=` empty, and wrap builds, tests and parity runs in `flock <coordinating checkout>/src-tauri/gpui/target/heavy.lock`. Child checkouts use the lock path from their brief, so every agent queues on one lock.
+- On the shared workstation, run cargo as `nice -n 10` with `RUSTC_WRAPPER=` empty, and wrap builds, tests and parity runs in `flock <coordinating checkout>/src-tauri/gpui/target/heavy.lock`. Child checkouts use the lock path from their brief, so every agent queues on one lock.
+- Do not set `CARGO_BUILD_JOBS` for GPUI builds. The job count comes from the machine's cargo configuration, and on the shared workstation mbx admits compilers from one pool with a memory budget. One job doubled the debug build after an edit and makes a release rebuild take minutes. See "GPUI client edit loop" in `docs/rust-build-measurements.md`.
 - Cargo on that workstation resolves to the `mbx` shim, which shares compiled work across checkouts. A set `RUSTC_WRAPPER` bypasses it.
 - Keep build outputs, binary copies, logs and ledgers inside the checkout, under `src-tauri/gpui/target/` or `e2e/artifacts/`. Never put them in `/tmp`.
 - The parity work ledger is `src-tauri/gpui/target/plan.md` in the coordinating checkout. `target/` is ignored, so the ledger is not committed.
@@ -182,6 +183,8 @@ Run the smallest tier that covers the change, from the checkout root with the bu
 4. Full suite: CI runs the same change-based selection on the PR and the full suite after each merge to main (`.github/workflows/parity.yml`), so developers and agents run tiers 1 to 3 locally. Run `bun scripts/gpui-frames.ts --runs 3` only before a PR.
 
 `PARITY_PREFIX` (comma-separated scenario ID prefixes) still narrows any run, such as one failing scenario or one area.
+
+While iterating on one area, `cargo test --manifest-path src-tauri/gpui/Cargo.toml --test native <module>::` runs one module of `src-tauri/gpui/tests/native/`, such as `shell::`. The full native run takes about 14 seconds, and tier 2 still runs all of it.
 
 Between PRs, run `bun scripts/gpui-frames.ts <case,case>` only for frame cases whose GPUI render or layout code changed.
 

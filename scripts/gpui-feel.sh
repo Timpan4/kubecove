@@ -27,7 +27,6 @@ fi
 # Per-worktree build directories, so concurrent checkouts do not overwrite each other's crates.
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$gpui/target}"
 export CARGO_BUILD_BUILD_DIR="${CARGO_BUILD_BUILD_DIR:-$gpui/build}"
-export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}"
 export RUSTC_WRAPPER=
 echo "Building release binary; log: $feel/build.log"
 # 9>&- keeps the launch lock out of the build, whose helper processes may outlive it.

@@ -27,7 +27,7 @@ Run new scenarios in each driver before the full suite. This catches missing nat
    KUBECOVE_PARITY_SCENARIO_PREFIX=kind-picker \
    CARGO_TARGET_DIR="$PWD/src-tauri/gpui/target" \
    CARGO_BUILD_BUILD_DIR="$PWD/src-tauri/gpui/build" \
-   CARGO_BUILD_JOBS=1 nice -n 10 \
+   nice -n 10 \
    cargo test --manifest-path src-tauri/gpui/Cargo.toml --test parity
    ```
 

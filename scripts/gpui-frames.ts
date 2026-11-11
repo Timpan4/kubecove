@@ -123,10 +123,10 @@ const sourceRelative = relative(realpathSync("."), sourceDirectory);
 if (sourceRelative.split(sep)[0] === ".." || isAbsolute(sourceRelative)) {
 	throw new Error("The source manifest must stay inside this worktree");
 }
-// One build job by default, as `gpui-visual.ts` does on a shared workstation.
+// Build directories specific to this worktree. The job count comes from the machine's
+// cargo configuration, or from CARGO_BUILD_JOBS when the caller sets it.
 const env = {
 	...process.env,
-	CARGO_BUILD_JOBS: process.env.CARGO_BUILD_JOBS ?? "1",
 	CARGO_TARGET_DIR: process.env.CARGO_TARGET_DIR ?? join(workspace, "target"),
 	CARGO_BUILD_BUILD_DIR:
 		process.env.CARGO_BUILD_BUILD_DIR ?? join(workspace, "build"),
