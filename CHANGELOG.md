@@ -3,6 +3,11 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.14.1 - 2026-11-11
+### Fixed
+
+- Steady live updates, Tauri live menu, app icon and map selection pan (#664).
+
 ## 0.14.0 - 2026-11-10
 ### Added
 
