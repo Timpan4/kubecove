@@ -52,7 +52,7 @@ semver = "=1.0.28"
 # the signature check, and the macOS `.app.tar.gz` unpacking.
 minisign-verify = "=0.3.0"
 tar = { version = "=0.4.46", default-features = false }
-flate2 = "=1.1.10"
+flate2 = "=1.1.11"
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "sync", "time"] }
 # Shares one in-flight resource scope read between the Overview and the browser.
 futures-util = "=0.3.34"
