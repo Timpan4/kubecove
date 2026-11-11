@@ -236,13 +236,28 @@ jobs:
           working-directory: src-tauri
           cache-generation: kubecove-rust-ci
 
-      - name: Audit Rust dependencies
+      - name: Audit desktop Rust dependencies
         uses: rustsec/audit-check@v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           working-directory: src-tauri
           # Owner: @Timpan4. Remove when stable Tauri resolves glib >=0.20.
           ignore: RUSTSEC-2024-0429
+
+      - name: Audit GPUI Rust dependencies
+        uses: rustsec/audit-check@v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: src-tauri/gpui
+
+      - name: Audit server Rust dependencies
+        uses: rustsec/audit-check@v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: src-tauri/server
+          # Owner: @Timpan4. Production uses this chain only for public-signature verification.
+          # Remove after jsonwebtoken supports rsa >=0.10 and crypto-bigint >=0.7.6.
+          ignore: RUSTSEC-2023-0071,RUSTSEC-2026-0387
 
       - name: Test Rust
         run: mbx test --workspace --manifest-path src-tauri/Cargo.toml

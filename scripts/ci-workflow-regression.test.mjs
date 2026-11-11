@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -221,6 +221,27 @@ test("Rust verification selects all workspace members despite root-only default-
     assert.ok(cargoArgs.includes("--workspace"), command);
     assert.equal(cargoArgs[cargoArgs.indexOf("--manifest-path") + 1], "src-tauri/Cargo.toml", command);
   }
+});
+test("Rust dependency audits cover every checked-in lockfile with narrow exceptions", () => {
+  const root = new URL("../src-tauri/", import.meta.url);
+  const lockfileDirectories = [];
+  const collectLockfiles = (directory, relative) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      if (entry.name === "target") continue;
+      const path = `${relative}/${entry.name}`;
+      if (entry.isDirectory()) collectLockfiles(new URL(`${entry.name}/`, directory), path);
+      else if (entry.isFile() && entry.name === "Cargo.lock") lockfileDirectories.push(relative);
+    }
+  };
+  collectLockfiles(root, "src-tauri");
+
+  const auditSteps = job("rust").split("\n      - name: ").filter((step) => step.includes("uses: rustsec/audit-check@"));
+  const auditedDirectories = auditSteps.map((step) => /working-directory: ([^\n]+)/.exec(step)?.[1]).sort();
+  assert.deepEqual(auditedDirectories, lockfileDirectories.sort());
+
+  const serverAudit = auditSteps.find((step) => step.includes("working-directory: src-tauri/server"));
+  assert.match(serverAudit, /ignore: RUSTSEC-2023-0071,RUSTSEC-2026-0387/);
+  assert.match(serverAudit, /public-signature verification/);
 });
 test("server packaging follows the relocated kubeconform source without changing its standalone build", () => {
   const packaging = readFileSync(new URL("../.github/workflows/server-packaging.yml", import.meta.url), "utf8");
