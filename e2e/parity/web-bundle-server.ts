@@ -25,8 +25,12 @@ const pages = [...DEFERRED_PAGES.values()].map(path => ({ path, name: basename(p
 const imports = new Map(mocks.map(name => [`/src/lib/${name}.ts`, `/assets/${name}.js`]));
 imports.set("/node_modules/.vite/deps/@tanstack_svelte-query.js", "/assets/parity-query.js");
 for (const page of pages) imports.set(page.path, `/assets/${page.name}.js`);
+// Diagnostics navigates to the topology harness page by its source path. Vite emits an HTML
+// entry at its path from the project root, so the preview server answers that same URL.
+const topologyHarness = "src/features/resources/topology-spike/svelte.html";
 const input = Object.fromEntries([
     ["index", join(process.cwd(), "index.html")], ["parity-query", "@tanstack/svelte-query"],
+    ["topology-harness", join(process.cwd(), topologyHarness)],
     ...mocks.map(name => [name, join(process.cwd(), "src/lib", `${name}.ts`)]),
     ...pages.map(page => [page.name, join(process.cwd(), page.path)]),
 ]);
