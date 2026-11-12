@@ -49,7 +49,8 @@ pub(super) struct LiveData {
     watches: HashMap<String, Registration>,
     pending: Vec<super::live_rows::Patch>,
     /// Each watch's start version read before its rows were listed, by
-    /// `watch_id`, or `None` while the read runs (`live_start.rs`).
+    /// `watch_id`, or `None` while the read runs (`live_start.rs`). It is
+    /// dropped once those rows settle.
     pub(super) starts: HashMap<String, Option<String>>,
     pub(super) start_tasks: Vec<Task<()>>,
 }
@@ -360,6 +361,12 @@ impl Inspector {
                 .retain(|id, _| wanted.contains(id.as_str()));
         }
         for (context, key, watch) in pairs {
+            // A start version serves only the load it was read for. A later
+            // refresh unsettles the rows again, but their version is newer.
+            let settled = self.rows_settled(context, key);
+            if settled {
+                self.live.starts.remove(&watch);
+            }
             if self
                 .live
                 .watches
@@ -371,15 +378,10 @@ impl Inspector {
             // A watch starts at the version of the rows the view shows, so it
             // waits until they settle, unless its start version was read
             // before those rows were listed. Until then it reports as connecting.
-            let start = if self.rows_settled(context, key) {
-                self.live.starts.remove(&watch);
-                None
-            } else if let Some(Some(_)) = self.live.starts.get(&watch) {
-                self.live.starts.remove(&watch).flatten()
-            } else {
+            if !settled && !matches!(self.live.starts.get(&watch), Some(Some(_))) {
                 self.live.registration(watch, context);
                 continue;
-            };
+            }
             let key = key.clone();
             let scope = Scope {
                 context: context.clone(),
@@ -392,11 +394,11 @@ impl Inspector {
                 let mut lost = false;
                 let mut timer = Box::pin(cx.background_executor().timer(RECOVERY));
                 loop {
-                    // Until the rows settle, a reopened watch resumes at the
-                    // version read before them; then the rows' version takes over.
+                    // Until the rows first settle, a reopened watch resumes at
+                    // the version read before them; then the rows' version takes over.
                     let resource_version = this
-                        .update(cx, |this, _| match &start {
-                            Some(start) if !this.rows_settled(&scope.context, &key) => {
+                        .update(cx, |this, _| match this.live.starts.get(&id) {
+                            Some(Some(start)) if !this.rows_settled(&scope.context, &key) => {
                                 Some(start.clone())
                             }
                             _ => this.shown_version(&scope.context, &key),

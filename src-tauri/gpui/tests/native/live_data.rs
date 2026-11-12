@@ -282,6 +282,64 @@ fn a_watch_reopened_while_rows_load_keeps_its_start_version(cx: &mut TestAppCont
     assert!(shows_rows(cx, handle));
 }
 
+// Failure mode: a refresh unsettles the rows again, and a watch that reopens
+// during it goes back to the first load's start version, which can be hours
+// old, instead of the version of the rows the view shows.
+#[gpui_kit::test]
+fn a_watch_reopened_during_a_refresh_uses_the_rows_version(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled {
+        live: LiveControls {
+            start_versions: Some(false),
+            ..Default::default()
+        },
+        ..Default::default()
+    });
+    let handle = open(cx, backend.clone());
+    let release = load_other_context(cx, &backend, handle);
+    let signatures: Vec<_> = backend
+        .live
+        .streams
+        .lock()
+        .unwrap()
+        .iter()
+        .filter_map(|(target, tx)| match target {
+            WatchTarget::Resource { key, .. } if !tx.is_closed() => {
+                Some(kubecove_gpui::backend::watch_signature(key))
+            }
+            _ => None,
+        })
+        .collect();
+    assert!(!signatures.is_empty());
+    backend.live.list_versions.lock().unwrap().extend(
+        signatures
+            .into_iter()
+            .map(|signature| (signature, "50".into())),
+    );
+    release.send(()).unwrap();
+    cx.run_until_parked();
+    assert!(shows_rows(cx, handle));
+    let (_hold, pending) = tokio::sync::oneshot::channel();
+    *backend.pending.lock().unwrap() = Some(pending);
+    refresh(cx, handle);
+    cx.run_until_parked();
+    backend.live.send(StreamMessage::Stopped {
+        stream_id: "native".into(),
+    });
+    cx.run_until_parked();
+    // resource-watch.ts::RESOURCE_RECOVERY_INTERVAL.
+    cx.background_executor
+        .advance_clock(std::time::Duration::from_millis(15_000));
+    cx.run_until_parked();
+    let versions = backend.live.resource_watch_versions();
+    assert!(!versions.is_empty());
+    assert!(
+        versions
+            .iter()
+            .all(|version| version.as_deref() == Some("50")),
+        "{versions:?}"
+    );
+}
+
 #[gpui_kit::test]
 fn a_failed_start_version_waits_for_the_rows(cx: &mut TestAppContext) {
     let backend = Arc::new(Controlled {
