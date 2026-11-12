@@ -1046,10 +1046,13 @@ performance metrics.
 The long files retain their paths, names, callbacks and fixtures.
 `topology.bench.ts` splits into its two slow cases and its four remaining
 cases. Their test durations are 108.537, 118.083 and 11.848 seconds.
-Each chunk adds the file's observed 5.800 seconds of preparation.
+Each chunk adds 6.076 seconds for the rest of the observed file interval,
+including preparation and per-file harness overhead.
 `resource-table.bench.ts` splits into the first 19 cases and the five cases
 for four contexts. Their test durations are 100.684 and 58.051 seconds;
-each repeats 11.050 seconds of file preparation. Per-case numbers come from
+each repeats 11.606 seconds for the rest of its file interval. These remainders
+are 244.544 - 238.468 seconds for topology and 170.341 - 158.735 seconds for
+the table. Per-case numbers come from
 Vitest's duration in milliseconds divided by 1,000. Consecutive CodSpeed
 completion timestamps corroborate them, but include small handoff costs.
 
@@ -1060,13 +1063,13 @@ and upload outside Vitest.
 | Frontend group | Predicted `Run benchmarks` |
 | ---: | ---: |
 | 0 | 146.258 s |
-| 1 | 148.112 s |
-| 2 | 141.713 s |
-| 3 | 147.454 s |
-| 4 | 148.077 s |
+| 1 | 148.540 s |
+| 2 | 141.989 s |
+| 3 | 140.843 s |
+| 4 | 148.481 s |
 | 5 | 141.170 s |
-| 6 | 140.510 s |
-| 7 | 147.600 s |
+| 6 | 147.844 s |
+| 7 | 147.709 s |
 
 These are projections from one hosted run, with no measured run-to-run spread.
 The changed grouping has not run in CI. Setup varies: the old group 3 spent

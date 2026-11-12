@@ -35,20 +35,22 @@ const benchmarkDurationSeconds = {
 // Run 43322953935 group 0: 287 s step minus 271.59 s Vitest duration.
 // This observed warm-action overhead is a projection, not an enforced timeout.
 const actionOverheadSeconds = 15.41;
+// Repeat the remainder of the observed file interval after subtracting all
+// per-case durations: topology 244.544 - 238.468, table 170.341 - 158.735.
 const splitBenchmarks = [
 	{
 		"file": "benchmarks/topology.bench.ts",
 		"names": [
 			"F07 graph layout and F09 retained topology selection (500 apps / 1k nodes) > F07 layout construction per selection (50 full rebuilds)"
 		],
-		"seconds": 114.337
+		"seconds": 114.613
 	},
 	{
 		"file": "benchmarks/topology.bench.ts",
 		"names": [
 			"F07 graph layout and F09 retained topology selection (500 apps / 1k nodes) > F09 selection + resize (rebuild view, 50 updates)"
 		],
-		"seconds": 123.883
+		"seconds": 124.159
 	},
 	{
 		"file": "benchmarks/topology.bench.ts",
@@ -58,7 +60,7 @@ const splitBenchmarks = [
 			"F07 graph layout and F09 retained topology selection (500 apps / 1k nodes) > F09 selection + resize (retained layout, 50 updates)",
 			"F07 graph layout and F09 retained topology selection (500 apps / 1k nodes) > F10 full and focused fit plans across viewport geometry"
 		],
-		"seconds": 17.648
+		"seconds": 17.924
 	},
 	{
 		"file": "benchmarks/resource-table.bench.ts",
@@ -83,7 +85,7 @@ const splitBenchmarks = [
 			"multi-context resource table (10k rows x 2 contexts) > buildResourceTableDisplay (search + health + sort + groups, 2 contexts)",
 			"multi-context resource table (10k rows x 2 contexts) > buildResourceTableDisplay (all rows by name, 2 contexts)"
 		],
-		"seconds": 111.734
+		"seconds": 112.29
 	},
 	{
 		"file": "benchmarks/resource-table.bench.ts",
@@ -94,7 +96,7 @@ const splitBenchmarks = [
 			"multi-context resource table (10k rows x 4 contexts) > buildResourceTableDisplay (search + health + sort + groups, 4 contexts)",
 			"multi-context resource table (10k rows x 4 contexts) > buildResourceTableDisplay (all rows by name, 4 contexts)"
 		],
-		"seconds": 69.101
+		"seconds": 69.657
 	}
 ];
 
