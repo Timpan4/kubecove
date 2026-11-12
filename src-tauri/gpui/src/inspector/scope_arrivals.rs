@@ -76,6 +76,7 @@ impl Inspector {
         }
         let apply_started = Instant::now();
         self.scope_load.set_preparing(false);
+        let was_shown = self.scope_load.shows(context);
         // The context's watches start at the versions of the rows it read.
         self.live
             .starts
@@ -89,8 +90,11 @@ impl Inspector {
         }
         // The picker lists the namespaces of every context whose rows show,
         // kept ones included, so a slow context's namespaces stay with its rows.
-        if let Some(namespaces) = self.scope_load.shown_namespaces() {
-            self.namespaces = namespaces;
+        // When the last such context fails, its namespaces leave with its rows.
+        match self.scope_load.shown_namespaces() {
+            Some(namespaces) => self.namespaces = namespaces,
+            None if was_shown => self.namespaces.clear(),
+            None => {}
         }
         if !self.scope_load.loading() && !self.scope_load.any_shown() {
             let contexts = self.scope_load.contexts();
