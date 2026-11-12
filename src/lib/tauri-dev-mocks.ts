@@ -58,6 +58,13 @@ import { formatYamlDocument } from "./yamlFormat";
 
 let failedWorkspaceContext: string | undefined;
 export function failWorkspaceContext(context: string) { failedWorkspaceContext = context; }
+// A held context answers its scope reads only when released, as a slow API server does.
+let heldWorkspaceContext: { context: string; release: () => void; released: Promise<void> } | undefined;
+export function holdWorkspaceContext(context: string) {
+	const { promise, resolve } = Promise.withResolvers<void>();
+	heldWorkspaceContext = { context, release: resolve, released: promise };
+}
+export function releaseWorkspaceContext() { heldWorkspaceContext?.release(); heldWorkspaceContext = undefined; }
 interface LiveSessionArgs {
 	request: PortForwardRequest & PodExecSessionRequest & LiveSessionCleanupRequest;
 	sessionId: string;
@@ -161,14 +168,19 @@ const handlers = {
 	list_resource_scope: (args) => {
         shellRead("resources", []);
         if (failedWorkspaceContext && args.clusterContext === failedWorkspaceContext) throw new Error("Context unavailable");
-        const { completed, forbidden } = shellScopeRequests<ResourceListRequest>(args?.requests ?? []);
-        return {
-		resources: shellWithoutRemoved(listScope(completed, args?.clusterContext)),
-		completedRequests: completed,
-		// Read with the rows it describes, so a held read keeps its version.
-		resourceVersions: completed.map((request) => ({ request, resourceVersion: mockListVersion() })),
-		failures: forbidden.map((request) => ({ clusterContext: args?.clusterContext ?? "mock-dev", request, error: { kind: "forbidden", message: "deployments.apps is forbidden" } })),
-	}; },
+        const held = heldWorkspaceContext && heldWorkspaceContext.context === args.clusterContext ? heldWorkspaceContext.released : undefined;
+        const read = () => {
+            const { completed, forbidden } = shellScopeRequests<ResourceListRequest>(args?.requests ?? []);
+            return {
+                resources: shellWithoutRemoved(listScope(completed, args?.clusterContext)),
+                completedRequests: completed,
+                // Read with the rows it describes, so a held read keeps its version.
+                resourceVersions: completed.map((request) => ({ request, resourceVersion: mockListVersion() })),
+                failures: forbidden.map((request) => ({ clusterContext: args?.clusterContext ?? "mock-dev", request, error: { kind: "forbidden", message: "deployments.apps is forbidden" } })),
+            };
+        };
+        return held ? held.then(read) : read();
+    },
 	get_resource_yaml: (args) => builtInYamlFor(args),
 	get_resource_details: (args) => withDetailStatusFixture(detailsFor(args)),
 	get_dynamic_resource_details: (args) => withDetailStatusFixture(detailsFor(args)),
@@ -178,7 +190,7 @@ const handlers = {
 	list_resource_events: (args) => eventsFor(args),
 	list_resource_topology: (args) => coverageTopology(topologyFor(args)),
 	refresh_resource_cache: () => ({ clearedEntries: 1 }),
-	start_resource_watch: (args) => registerMockWatch({ channel: args.channel, context: args.clusterContext ?? "mock-dev", keys: args.keys }),
+	start_resource_watch: (args) => registerMockWatch({ channel: args.channel, context: args.clusterContext ?? "mock-dev", keys: args.keys, unavailable: args.clusterContext === failedWorkspaceContext }),
 	start_resource_event_watch: (args) => registerMockWatch({ channel: args.channel, context: args.clusterContext ?? "mock-dev", kind: args.kind, name: args.name, namespace: args.namespace }),
 	start_pod_log_stream: (args) => startLogStream(args?.channel, false, args?.request?.batchLines === true, args?.request),
 	start_aggregated_log_stream: (args) => startLogStream(args?.channel, true, args?.request?.batchLines === true),

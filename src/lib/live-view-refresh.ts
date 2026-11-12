@@ -110,6 +110,8 @@ export function combineLiveViewStates(states: readonly { clusterContext: string;
 /** A component's live view: its state, the identity of its watched scope, and manual refresh. */
 export interface LiveViewControls {
 	readonly state: LiveViewState;
+	/** The combined state of only these contexts' views. */
+	stateOf(contexts: readonly string[]): LiveViewState;
 	readonly key: string;
 	refresh(): Promise<string[]>;
 }

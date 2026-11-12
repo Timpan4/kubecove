@@ -97,6 +97,12 @@ pub fn context_versions(context: &str, versions: ListVersions) -> ListVersions {
         .collect()
 }
 
+/// Whether `id`, a [`watch_id`], names a watch in `context`.
+pub fn watch_id_in(context: &str, id: &str) -> bool {
+    id.strip_prefix(context)
+        .is_some_and(|rest| rest.starts_with('\u{1f}'))
+}
+
 /// A unit separator joins the two: a context name may contain any printable
 /// character, and a signature contains `:` and `/`.
 fn context_watch_id(context: &str, signature: &str) -> String {

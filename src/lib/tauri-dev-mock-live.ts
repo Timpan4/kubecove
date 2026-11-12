@@ -9,7 +9,7 @@ export const LIVE_EVENTS: ResourceEventSummary[] = [
 ];
 export const LIVE_SCRIPTS = ["update", "rollout", "delete", "delete-mock-dev", "add", "ownership", "reconnecting", "connected", "events", "events-overflow", "forbidden", "failed", "missed-delete"] as const;
 export type LiveScript = typeof LIVE_SCRIPTS[number];
-type Watch = { id: string; channel: Pick<Channel<StreamMessage>, "onmessage">; context: string; keys?: ResourceWatchStart[]; kind?: string; name?: string; namespace?: string | null };
+type Watch = { id: string; channel: Pick<Channel<StreamMessage>, "onmessage">; context: string; unavailable?: boolean; keys?: ResourceWatchStart[]; kind?: string; name?: string; namespace?: string | null };
 const watches = new Map<string, Watch>();
 const watchStarts: ResourceWatchStart[] = [];
 let serial = 0;
@@ -52,6 +52,11 @@ export function registerMockWatch(args: Omit<Watch, "id" | "channel"> & { channe
     const replays = (start: ResourceWatchStart) => changedAt !== undefined
         && (start.resourceVersion === undefined || Number(start.resourceVersion) < changedAt);
     queueMicrotask(() => {
+        // A failed context is unreachable, so its watch keeps reconnecting.
+        if (args.unavailable) {
+            channel.onmessage({ type: "status", streamId: id, status: "reconnecting", message: "Context unavailable" });
+            return;
+        }
         channel.onmessage({ type: "status", streamId: id, status: "connected", message: "Live updates connected" });
         if (!args.keys?.some((key) => key.resourceKind.kind === "Deployment" && replays(key))) return;
         const deletedHere = deleted || (deletedInMockDev && args.context === "mock-dev");

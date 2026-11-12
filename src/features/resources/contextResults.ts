@@ -8,7 +8,8 @@ import { WorkspaceResourceLoadError } from "@/features/workspaces/query";
 // 3. One failed context hides the other contexts' rows or turns into a page error.
 // 4. A context whose refresh fails drops the rows it showed before.
 // 5. Every context failing shows rows, or an error that omits a context.
-// 6. A context still loading lets the table settle on a partial merge.
+// 6. A context still loading holds back the rows of contexts that answered,
+//    or the table hides that the context is still loading.
 // 7. A context showing placeholder rows hands their list versions to its watches.
 // 8. One context keeps another context's error or versions.
 
@@ -33,6 +34,10 @@ export interface ContextReadFailure {
 export interface MergedScopeRead {
 	data: ResourceScopeResult | undefined;
 	contextFailures: ContextReadFailure[];
+	/** Contexts with no rows yet while other contexts' rows show, in rank order. */
+	loadingContexts: string[];
+	/** Contexts whose rows the table shows, settled, placeholder or stale, in rank order. */
+	shownContexts: string[];
 	/** Each context's settled list versions, or null while its shown rows are placeholders or loading. */
 	versions: ReadonlyMap<string, ResourceListVersion[] | null>;
 	isPending: boolean;
@@ -59,12 +64,15 @@ export function mergeContextResults(reads: readonly ContextScopeRead[]): MergedS
 			});
 		}
 	}
-	const isPending = reads.some((read) => read.isPending);
+	// The table waits only while no context has answered; a slower context joins when it answers.
+	const isPending = reads.length > 0 && reads.every((read) => read.isPending);
 	const isError = reads.length > 0 && reads.every((read) => read.isError);
 	return {
 		data: mergeData(withData),
 		// One context keeps its own error; several name every context.
 		contextFailures: reads.length > 1 ? contextFailures : [],
+		loadingContexts: isPending ? [] : reads.filter((read) => read.isPending).map((read) => read.clusterContext),
+		shownContexts: reads.filter((read) => read.data !== undefined).map((read) => read.clusterContext),
 		versions,
 		isPending,
 		isSuccess: !isPending && !isError && reads.length > 0,
@@ -87,4 +95,10 @@ function mergeData(results: ResourceScopeResult[]): ResourceScopeResult | undefi
 		for (const failure of result.failures) merged.failures.push(failure);
 	}
 	return merged;
+}
+
+/** The notice for contexts still loading while other contexts' rows show. */
+export function contextsLoadingNotice(contexts: readonly string[]): string {
+	const names = contexts.map((context) => `"${context}"`).join(", ");
+	return `Waiting for context${contexts.length > 1 ? "s" : ""} ${names}. Showing resources from the contexts that answered.`;
 }

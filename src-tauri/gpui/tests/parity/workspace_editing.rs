@@ -2,7 +2,27 @@ use super::*;
 
 pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) -> bool {
     match string(step, "action") {
-        "failWorkspaceContext" => {}
+        "failWorkspaceContext" | "holdWorkspaceContext" | "releaseWorkspaceContext" => {}
+        "expectContextsLoading" => {
+            let contexts = strings(step, "contexts");
+            let notice = window.try_find("contexts-waiting");
+            if contexts.is_empty() {
+                assert!(notice.is_none(), "contexts still shown as loading");
+            } else {
+                let names = contexts
+                    .iter()
+                    .map(|context| format!("\"{context}\""))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let plural = if contexts.len() > 1 { "s" } else { "" };
+                let expected = format!(
+                    "Waiting for context{plural} {names}. Showing resources from the contexts that answered."
+                );
+                let notice = notice.expect("no loading contexts notice");
+                assert_eq!(notice.label(), Some(expected.as_str()));
+                assert!(notice.visible(), "loading contexts notice is hidden");
+            }
+        }
         // The Overview labels its warning "<context>: <message>"; the Resources
         // page names the context in quotes, as `Context "<context>": <message>`.
         "expectWorkspaceReadWarning" => {

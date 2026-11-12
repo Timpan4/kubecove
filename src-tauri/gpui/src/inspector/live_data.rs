@@ -141,6 +141,17 @@ impl LiveData {
         )
     }
 
+    /// [`Self::settled_status`] of the watches whose context `keep` accepts.
+    pub fn settled_status_where(&self, keep: impl Fn(&str) -> bool) -> LiveStatus {
+        watch_status::aggregate(
+            self.refresh_error.is_some(),
+            self.watches
+                .values()
+                .filter(|watch| keep(&watch.context))
+                .map(Registration::summary),
+        )
+    }
+
     pub fn messages(&self) -> impl Iterator<Item = &String> {
         self.refresh_error
             .iter()
@@ -694,11 +705,17 @@ impl Inspector {
 
     pub(super) fn flush_live_patches(&mut self, cx: &mut Context<Self>) {
         let _span = crate::frame_profile::scope("watch", "flush");
-        if self.scope_load.loading() {
+        if self.scope_load.holds_patches() {
             return;
         }
         let mut pending = std::mem::take(&mut self.live.pending);
         pending.retain(|patch| self.patch_in_scope(&patch.scope));
+        // A context still reading its rows keeps its patches until they land;
+        // the contexts that answered patch now.
+        let (held, pending): (Vec<_>, Vec<_>) = pending
+            .into_iter()
+            .partition(|patch| self.scope_load.context_loading(&patch.scope.context));
+        self.live.pending = held;
         if pending.is_empty() {
             return;
         }

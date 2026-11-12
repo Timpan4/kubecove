@@ -127,8 +127,9 @@ impl Inspector {
         }
         let custom = key.resource_kind.plural.is_some();
         let cluster_kind = crate::backend::CLUSTER_KINDS.contains(&key.resource_kind.kind.as_str());
-        !self.scope_load.loading()
-            && !(custom && self.scope_load.custom() == super::custom_resources::CustomLoad::Loading)
+        // Each context's watches wait only for that context's read.
+        !self.scope_load.context_loading(context)
+            && !(custom && self.scope_load.custom_loading(context))
             && !(cluster_kind && self.cluster_loading())
     }
 

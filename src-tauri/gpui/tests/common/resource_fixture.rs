@@ -18,8 +18,27 @@ impl Fixture {
         Box::pin(async move { read.await.await })
     }
 
-    /// Filters and copies the scope's rows, then returns the timed read.
+    /// Filters and copies the scope's rows, then returns the timed read. A
+    /// held context's read answers once the scenario releases it.
     fn build_resource_read(&self, scope: Scope) -> Read<ScopeResult> {
+        let held = self
+            .held_workspace_context
+            .lock()
+            .unwrap()
+            .as_ref()
+            .filter(|(context, _)| *context == scope.context)
+            .map(|(_, release)| release.subscribe());
+        let read = self.unheld_resource_read(scope);
+        match held {
+            Some(mut released) => Box::pin(async move {
+                let _ = released.wait_for(|released| *released).await;
+                read.await
+            }),
+            None => read,
+        }
+    }
+
+    fn unheld_resource_read(&self, scope: Scope) -> Read<ScopeResult> {
         let phase = self.shell_read_phase.lock().unwrap().clone();
         if phase == "resources-failed" {
             return Box::pin(async {
