@@ -270,6 +270,12 @@ pub trait Backend: Send + Sync + 'static {
             ))
         })
     }
+    /// The current list version of `key`, so its watch opens before the view
+    /// lists the rows: a list read after this settles is at or past it. `None`
+    /// when the backend reads no such version; the watch then waits for the rows.
+    fn watch_start_version(&self, _scope: Scope, _key: WatchResourceKey) -> Option<Read<String>> {
+        None
+    }
     /// `list_kube_contexts` for the kubeconfig source key the web passes, or the default source.
     fn contexts(&self, kubeconfig_source_key: Option<String>) -> Read<Vec<ClusterContext>>;
     fn resources(&self, scope: Scope, refresh: bool) -> Read<ScopeResult>;

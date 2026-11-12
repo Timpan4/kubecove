@@ -6,7 +6,10 @@ use super::{Inspector, Load, map};
 use crate::backend::{Read, Scope, ScopeResult};
 use crate::model::PreparedRows;
 use crate::workspaces::reads::{ContextResults, Settled, settle};
-use futures_util::{FutureExt, future::Shared};
+use futures_util::{
+    FutureExt,
+    future::{BoxFuture, Shared},
+};
 use gpui_kit::component::select::SearchableVec;
 use gpui_kit::{BackgroundExecutor, Context, SharedString, Window};
 use kubecove_lib::models::{AppError, ResourceSummary};
@@ -166,8 +169,9 @@ impl Inspector {
         self.close_detail(cx);
         self.request = Rc::new(());
         let request = self.request.clone();
+        let starts = self.read_watch_starts(&contexts, cx);
         // Shared, so the Overview's read of the same contexts joins this request instead of issuing another.
-        let reads = self.scope_reads(&contexts, refresh, cx);
+        let reads = self.scope_reads(&contexts, starts, refresh, cx);
         self.load_workspace_overview(refresh, Some(reads.clone()), cx);
         // As the web's keepPreviousData does, rows of the same contexts stay visible until the new read settles.
         if !(self.scope_load.same_contexts(&contexts) && !self.rows.is_empty()) {
@@ -191,6 +195,7 @@ impl Inspector {
                 }
                 let apply_started = Instant::now();
                 let awaits_custom = custom.is_some();
+                this.live.starts.clear();
                 let ready = match result {
                     Ok(ScopeRows { results, rows }) => {
                         let applied = this.scope_load.apply_parts(results, false);
@@ -332,6 +337,9 @@ impl Inspector {
                         return;
                     }
                     let apply_started = Instant::now();
+                    // A refresh that replaced a first load still in flight
+                    // settles that load's start versions too.
+                    this.live.starts.clear();
                     match result {
                         Ok(ScopeRows { results, rows }) => {
                             let span = crate::frame_profile::scope("scope", "apply_parts");
@@ -389,10 +397,13 @@ impl Inspector {
     /// The resource scope read of every context in two stages: built-ins
     /// first, then custom kinds. Every context starts at once: each one is its
     /// own API server, and the backend already bounds the lists within one.
+    /// A context's built-ins list after its entry in `starts` settles, the
+    /// start versions of their watches (`live_start.rs`).
     /// A focused GitOps application keeps its single application read.
     fn scope_reads(
         &self,
         contexts: &[String],
+        starts: Vec<Option<BoxFuture<'static, ()>>>,
         refresh: bool,
         cx: &Context<Self>,
     ) -> SharedScopeReads {
@@ -407,7 +418,7 @@ impl Inspector {
         }
         let mut builtin = Vec::with_capacity(contexts.len());
         let mut custom = Vec::new();
-        for context in contexts {
+        for (context, start) in contexts.iter().zip(starts) {
             let scope = Scope {
                 context: context.clone(),
                 namespace: self.scope.namespace.clone(),
@@ -427,10 +438,21 @@ impl Inspector {
             }
             let backend = self.backend.clone();
             let mut refresh = refresh;
-            let read = crate::read_retry::read(cx.background_executor().clone(), move || {
-                backend.scope_builtin_resources(scope.clone(), std::mem::take(&mut refresh))
-            });
-            let read = self.timings.measure("list_resource_scope", read);
+            let executor = cx.background_executor().clone();
+            let timings = self.timings.clone();
+            let list = move || {
+                let read = crate::read_retry::read(executor, move || {
+                    backend.scope_builtin_resources(scope.clone(), std::mem::take(&mut refresh))
+                });
+                timings.measure("list_resource_scope", read)
+            };
+            let read: Read<ScopeResult> = match start {
+                Some(start) => Box::pin(async move {
+                    start.await;
+                    list().await
+                }),
+                None => list(),
+            };
             builtin.push((context.clone(), read));
         }
         SharedScopeReads {

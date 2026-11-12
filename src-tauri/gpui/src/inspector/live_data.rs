@@ -1,6 +1,6 @@
 //! View-owned streams. Recovery follows resource-watch.ts; Rust owns transport backoff.
 use super::{
-    Inspector, Page,
+    Inspector,
     live_status::WatchReport,
     request::InFlight,
     watch_status::{self, Link, LiveStatus, WatchLink, WatchSummary},
@@ -48,6 +48,12 @@ pub(super) struct LiveData {
     /// Each watch by `watch_id`, so the same kind in two contexts has two watches.
     watches: HashMap<String, Registration>,
     pending: Vec<super::live_rows::Patch>,
+    /// Each watch's start version read before its rows were listed, by
+    /// `watch_id`, or `None` while the read runs (`live_start.rs`). The scope
+    /// read that lists those rows drops them all when it settles, since a
+    /// later refresh lists newer rows.
+    pub(super) starts: HashMap<String, Option<String>>,
+    pub(super) start_tasks: Vec<Task<()>>,
 }
 
 #[derive(Default)]
@@ -122,6 +128,8 @@ impl LiveData {
     pub fn reset_scope(&mut self) {
         self.watches.clear();
         self.pending.clear();
+        self.starts.clear();
+        self.start_tasks.clear();
         self.owner.clear();
         self.refresh_error = None;
     }
@@ -328,27 +336,9 @@ impl Inspector {
         );
         let kinds_changed = kind_scope != self.live.kind_scope;
         self.live.kind_scope = kind_scope;
-        if !self.workspace_open()
-            || self.scope.context.is_empty()
-            || !matches!(
-                self.page,
-                Page::Resources | Page::ClusterOverview | Page::Overview
-            )
-        {
+        let Some(keys) = self.live_keys() else {
             return;
-        }
-        let mut keys: Vec<_> = self
-            .available_kind_keys()
-            .into_iter()
-            .filter(|(id, _, _)| self.kind_selected(id))
-            .map(|(_, _, key)| key)
-            .collect();
-        if let Some(kind) = &self.live.selected {
-            keys = vec![crate::backend::discovered_key(
-                kind,
-                self.scope.namespace.clone(),
-            )];
-        }
+        };
         // One watch per context and kind, so each context's rows patch alone.
         let contexts = self.watch_contexts();
         let pairs: Vec<_> = contexts
@@ -366,6 +356,10 @@ impl Inspector {
             self.live
                 .pending
                 .retain(|patch| patch.watch.as_deref().is_none_or(|id| wanted.contains(id)));
+            // A kind selected again later opens at its rows' version, not this read's.
+            self.live
+                .starts
+                .retain(|id, _| wanted.contains(id.as_str()));
         }
         for (context, key, watch) in pairs {
             if self
@@ -377,8 +371,11 @@ impl Inspector {
                 continue;
             }
             // A watch starts at the version of the rows the view shows, so it
-            // waits until they settle. Until then it reports as connecting.
-            if !self.rows_settled(context, key) {
+            // waits until they settle, unless its start version was read
+            // before those rows were listed. Until then it reports as connecting.
+            if !self.rows_settled(context, key)
+                && !matches!(self.live.starts.get(&watch), Some(Some(_)))
+            {
                 self.live.registration(watch, context);
                 continue;
             }
@@ -394,8 +391,15 @@ impl Inspector {
                 let mut lost = false;
                 let mut timer = Box::pin(cx.background_executor().timer(RECOVERY));
                 loop {
+                    // Until the rows first settle, a reopened watch resumes at
+                    // the version read before them; then the rows' version takes over.
                     let resource_version = this
-                        .update(cx, |this, _| this.shown_version(&scope.context, &key))
+                        .update(cx, |this, _| match this.live.starts.get(&id) {
+                            Some(Some(start)) if !this.rows_settled(&scope.context, &key) => {
+                                Some(start.clone())
+                            }
+                            _ => this.shown_version(&scope.context, &key),
+                        })
                         .ok()
                         .flatten();
                     let read = {

@@ -41,6 +41,7 @@ mod interaction_report;
 mod live_events;
 mod live_rows;
 mod live_session_popover;
+mod live_start;
 mod live_status;
 mod load_trace;
 mod loading;
