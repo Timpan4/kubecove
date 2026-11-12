@@ -122,7 +122,8 @@ jobs:
           PARITY_STEP_SCREENSHOTS: "0"
           CARGO_TARGET_DIR: ${{ github.workspace }}/src-tauri/gpui/target
           CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/src-tauri/gpui/target
-        run: CARGO_BUILD_JOBS="$(nproc)" PARITY_JOBS=1 PARITY_WEB_JOBS="$(( $(nproc) > 1 ? $(nproc) - 1 : 1 ))" bun run e2e:parity
+        run: |
+          CARGO_BUILD_JOBS="$(nproc)" PARITY_JOBS=1 PARITY_WEB_JOBS="$(( $(nproc) > 1 ? $(nproc) - 1 : 1 ))" bun run e2e:parity
 
       - name: Upload parity artifacts
         if: ${{ always() && !inputs.build-only }}

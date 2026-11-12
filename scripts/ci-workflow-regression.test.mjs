@@ -413,7 +413,8 @@ test("parity jobs run the full suite on pull requests and on main, and keep the 
   assert.match(suite, /^ {10}PARITY_STEP_SCREENSHOTS: "0"$/m);
   // Pull requests run the full suite: change selection fell back to it on every recent PR.
   assert.doesNotMatch(suite, /^ +PARITY_CHANGED:|parity-coverage-map-|fetch-depth/m);
-  const command = /^ {8}run: (CARGO_BUILD_JOBS=.* bun run e2e:parity)$/m.exec(suite)?.[1];
+  // A block scalar: the command's ": " would end a plain YAML scalar and invalidate the file.
+  const command = /^ {8}run: \|\n {10}(CARGO_BUILD_JOBS=.* bun run e2e:parity)$/m.exec(suite)?.[1];
   assert.ok(command, "Missing parity run command");
   // One GPUI process and web pages on the other CPUs, at least one each.
   const runners = (cpus) => spawnSync("bash", ["-c", `nproc() { echo ${cpus}; }; ${command.replace("bun run e2e:parity", "printenv PARITY_JOBS PARITY_WEB_JOBS")}`], { encoding: "utf8" }).stdout.trim().replace("\n", " ");
