@@ -1,0 +1,64 @@
+name: Run CodSpeed benchmarks
+description: Run a benchmark command under the CodSpeed runner in simulation mode.
+
+# The same steps as CodSpeedHQ/action v5.6.3, except that the runner installer comes from
+# the runner's GitHub release. The upstream action downloads the same file (same SHA-256)
+# from codspeed.io, which answered HTTP 429 or 504 in five workflow runs between
+# 2026-10-29 and 2026-11-12 and failed the required check each time.
+#
+# To upgrade: set both defaults below from the new CodSpeedHQ/codspeed release, then
+# compare the steps with the action.yml of the CodSpeedHQ/action release that ships that
+# runner version.
+
+inputs:
+  run:
+    description: The command that runs the benchmarks.
+    required: true
+  runner-version:
+    description: The CodSpeedHQ/codspeed release to install.
+    default: "5.6.3"
+  installer-sha256:
+    description: SHA-256 of that release's codspeed-runner-installer.sh asset.
+    default: d83f7e2f64e2f9d65fc1ca76e633a4b9cefa217f1cb21f944133fbd562439a6b
+
+runs:
+  using: composite
+  steps:
+    - name: Describe the runner
+      id: runner
+      shell: bash
+      run: |
+        # Instruments are built against one kernel and one distribution release.
+        echo "kernel=$(uname -r)" >> "${GITHUB_OUTPUT}"
+        echo "distro=$(. /etc/os-release && echo "${ID}-${VERSION_ID}")" >> "${GITHUB_OUTPUT}"
+
+    - name: Restore CodSpeed instruments
+      uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+      with:
+        path: ~/.cache/codspeed-action
+        key: codspeed-instruments-simulation-${{ steps.runner.outputs.distro }}-${{ runner.arch }}-${{ steps.runner.outputs.kernel }}-${{ inputs.runner-version }}
+        restore-keys: |
+          codspeed-instruments-simulation-${{ steps.runner.outputs.distro }}-${{ runner.arch }}-${{ steps.runner.outputs.kernel }}-
+
+    - name: Install the CodSpeed runner
+      shell: bash
+      env:
+        VERSION: ${{ inputs.runner-version }}
+        SHA256: ${{ inputs.installer-sha256 }}
+      run: |
+        set -euo pipefail
+        installer="${RUNNER_TEMP}/codspeed-runner-installer.sh"
+        curl --fail --location --silent --show-error --output "${installer}" \
+          "https://github.com/CodSpeedHQ/codspeed/releases/download/v${VERSION}/codspeed-runner-installer.sh"
+        echo "${SHA256}  ${installer}" | sha256sum --check --status
+        bash "${installer}" --quiet
+
+    - name: Run the benchmarks
+      shell: bash
+      env:
+        # The runner names each matrix job's upload from these, so one workflow run's
+        # shards merge into one report.
+        GH_MATRIX: "${{ toJson(matrix) }}"
+        GH_STRATEGY: "${{ toJson(strategy) }}"
+        CODSPEED_INPUT_RUN: ${{ inputs.run }}
+      run: codspeed run --mode=simulation --setup-cache-dir="${HOME}/.cache/codspeed-action" -- "${CODSPEED_INPUT_RUN}"

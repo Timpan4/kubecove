@@ -128,9 +128,8 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Run benchmarks
-        uses: CodSpeedHQ/action@af75f77f17a054769abefaa42fe8dc2975469b5f # v5.6.3
+        uses: ./.github/actions/codspeed-run
         with:
-          mode: simulation
           run: bunx vitest bench --run
 
   rust:
@@ -142,24 +141,29 @@ jobs:
       - changes
     if: ${{ needs.changes.outputs.rust == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
     runs-on: ubuntu-latest
-    # Simulation mode costs about 7 s per benchmark whatever it measures (run 43308253138),
+    # Simulation mode costs about 7.5 s per benchmark whatever it measures (run 43316700493),
     # so one job ran 117 benchmarks for 13 to 16 minutes. Each shard runs the benchmarks whose
-    # last divan path segment starts with its characters; CodSpeed merges the uploads of one
-    # workflow run into one report. Divan tests each benchmark (or generic argument) against
-    # one path, and the last class is the complement of the others, so the shards are disjoint
-    # and complete (scripts/codspeed-workflow-regression.test.mjs).
+    # last divan path segment starts with one of its letters; CodSpeed merges the uploads of
+    # one workflow run into one report. Divan tests each benchmark (or generic argument)
+    # against one path, and the last class is the complement of the others, so the shards are
+    # disjoint and complete (scripts/codspeed-workflow-regression.test.mjs). The letters are
+    # paired so each shard ran 144 to 159 s of benchmarks in that run.
     strategy:
       fail-fast: false
       matrix:
         include:
-          - shard: a-c
-            filter: "(?:^|::)[a-c][^:]*$"
-          - shard: d-h
-            filter: "(?:^|::)[d-h][^:]*$"
-          - shard: i-o
-            filter: "(?:^|::)[i-o][^:]*$"
+          - shard: ac
+            filter: "(?:^|::)[ac][^:]*$"
+          - shard: dl
+            filter: "(?:^|::)[dl][^:]*$"
+          - shard: es
+            filter: "(?:^|::)[es][^:]*$"
+          - shard: hr
+            filter: "(?:^|::)[hr][^:]*$"
+          - shard: jn
+            filter: "(?:^|::)[jn][^:]*$"
           - shard: other
-            filter: "(?:^|::)[^a-o:][^:]*$"
+            filter: "(?:^|::)[^acdehjlnrs:][^:]*$"
 
     steps:
       - name: Checkout
@@ -186,7 +190,13 @@ jobs:
           workspaces: "./src-tauri -> target"
           prefix-key: dependency-rust
           cache-targets: false
-          save-if: ${{ github.ref == 'refs/heads/main' && matrix.shard == 'a-c' }}
+          save-if: ${{ github.ref == 'refs/heads/main' && matrix.shard == 'ac' }}
+
+      # An unchanged build restores its exact cache and skips the save
+      # (scripts/ci-rust-cache-key.mjs).
+      - name: Key the Rust cache by its inputs
+        id: rust-cache
+        run: node scripts/ci-rust-cache-key.mjs codspeed .github/workflows/codspeed.yml src-tauri ':!src-tauri/gpui' ':!src-tauri/server'
 
       # Every shard builds the same benchmark binary. A cached target directory does not
       # survive a fresh checkout, because Cargo compares file times, so the object cache
@@ -196,11 +206,12 @@ jobs:
         with:
           version: "1.30.0"
           working-directory: src-tauri
-          cache-generation: kubecove-rust-codspeed-objects
+          cache-key: ${{ steps.rust-cache.outputs.key }}
+          restore-keys: ${{ steps.rust-cache.outputs.prefix }}
           github-cache-mode: objects
           isolate-objects-cache: true
           clean-target-before-export: true
-          save-on-pull-request: ${{ matrix.shard == 'a-c' }}
+          save-on-pull-request: ${{ matrix.shard == 'ac' }}
 
       # Puts the mbx Cargo shim first on PATH, so the build cargo-codspeed starts is cached.
       - name: Activate Cargo caching
@@ -223,9 +234,8 @@ jobs:
         run: cargo codspeed build --features bench-support --bench backend_hot_paths --locked
 
       - name: Run benchmarks
-        uses: CodSpeedHQ/action@af75f77f17a054769abefaa42fe8dc2975469b5f # v5.6.3
+        uses: ./.github/actions/codspeed-run
         with:
-          mode: simulation
           # cargo-codspeed passes the filter to the divan binary as its regex filter argument.
           run: cd src-tauri && cargo codspeed run --bench backend_hot_paths '${{ matrix.filter }}'
 

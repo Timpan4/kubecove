@@ -137,7 +137,7 @@ for (const domain of ["FRONTEND", "RUST"]) {
 // `::` (a benchmark at the bench crate root) matches no shard.
 test("Rust benchmark shard filters split every benchmark path into exactly one shard", () => {
   const filters = [...job("rust").matchAll(/^ {12}filter: "(.+)"$/gm)].map((match) => new RegExp(match[1]));
-  assert.equal(filters.length, 4);
+  assert.equal(filters.length, 6);
   assert.match(job("rust"), /cargo codspeed run --bench backend_hot_paths '\$\{\{ matrix\.filter \}\}'/);
   const leading = [...Array.from({ length: 95 }, (_, index) => String.fromCharCode(32 + index)), "é", "Ω"].filter((character) => character !== ":");
   for (const character of leading) {
@@ -151,18 +151,44 @@ test("Rust benchmark shard filters split every benchmark path into exactly one s
   // Rust benchmarks gate the required check through one aggregated matrix result.
   assert.match(job("check"), /RUST_RESULT: \$\{\{ needs\.rust\.result \}\}/);
   assert.match(job("rust"), /cache-targets: false/);
-  assert.match(job("rust"), /cache-generation: kubecove-rust-codspeed-objects/);
+  // The key follows the build inputs, so an unchanged build skips the export and upload.
+  assert.ok(job("rust").includes("run: node scripts/ci-rust-cache-key.mjs codspeed .github/workflows/codspeed.yml src-tauri ':!src-tauri/gpui' ':!src-tauri/server'"));
+  assert.ok(job("rust").includes("cache-key: ${{ steps.rust-cache.outputs.key }}"));
+  assert.ok(job("rust").includes("restore-keys: ${{ steps.rust-cache.outputs.prefix }}"));
+  assert.ok(job("rust").indexOf("dtolnay/rust-toolchain@") < job("rust").indexOf("scripts/ci-rust-cache-key.mjs"));
+  assert.ok(job("rust").indexOf("scripts/ci-rust-cache-key.mjs") < job("rust").indexOf("jdx/mr-boxington-action@"));
   assert.match(job("rust"), /github-cache-mode: objects/);
   // The cache is inactive unless the shim is on PATH, and one shard saving is enough: every shard builds the same binary.
   assert.match(job("rust"), /version: "1\.30\.0"/);
   assert.match(job("rust"), /isolate-objects-cache: true/);
   assert.match(job("rust"), /clean-target-before-export: true/);
-  assert.match(job("rust"), /save-on-pull-request: \$\{\{ matrix\.shard == 'a-c' \}\}/);
-  assert.match(job("rust"), /save-if: \$\{\{ github\.ref == 'refs\/heads\/main' && matrix\.shard == 'a-c' \}\}/);
+  assert.match(job("rust"), /save-on-pull-request: \$\{\{ matrix\.shard == 'ac' \}\}/);
+  assert.match(job("rust"), /save-if: \$\{\{ github\.ref == 'refs\/heads\/main' && matrix\.shard == 'ac' \}\}/);
+  assert.match(job("rust"), /^ {10}- shard: ac$/m);
   assert.ok(job("rust").indexOf("run: node scripts/ci-mbx-cargo.mjs") < job("rust").indexOf("cargo codspeed build"));
   assert.notEqual(job("rust").indexOf("run: node scripts/ci-mbx-cargo.mjs"), -1);
   assert.match(job("rust"), /cargo-codspeed-x86_64-unknown-linux-musl/);
   assert.match(job("rust"), /CARGO_CODSPEED_SHA256/);
+});
+
+// Failure modes: the upstream action downloads the runner installer from codspeed.io, which
+// answered HTTP 429 or 504 in five runs in two weeks; a version that differs from the pinned
+// digest fails every job; uploads without the matrix context do not merge into one report.
+test("benchmark jobs install the CodSpeed runner from its pinned GitHub release", () => {
+  const action = readFileSync(new URL("../.github/actions/codspeed-run/action.yml", import.meta.url), "utf8").replaceAll("\r\n", "\n");
+  assert.doesNotMatch(workflow, /CodSpeedHQ\/action@|codspeed\.io/);
+  assert.doesNotMatch(action.replaceAll(/^#.*$/gm, ""), /codspeed\.io/);
+  for (const name of ["frontend", "rust"]) {
+    assert.match(job(name), /^ {6}- name: Run benchmarks\n {8}uses: \.\/\.github\/actions\/codspeed-run\n/m);
+    assert.ok(job(name).indexOf("actions/checkout@") < job(name).indexOf("./.github/actions/codspeed-run"));
+    assert.match(job(name), /id-token: write/);
+  }
+  assert.match(action, /^ {4}default: "\d+\.\d+\.\d+"$/m);
+  assert.match(action, /^ {4}default: [0-9a-f]{64}$/m);
+  assert.ok(action.includes('"https://github.com/CodSpeedHQ/codspeed/releases/download/v${VERSION}/codspeed-runner-installer.sh"'));
+  assert.ok(action.indexOf("sha256sum --check --status") < action.indexOf('bash "${installer}" --quiet'));
+  assert.ok(action.includes('GH_MATRIX: "${{ toJson(matrix) }}"') && action.includes('GH_STRATEGY: "${{ toJson(strategy) }}"'));
+  assert.ok(action.includes('codspeed run --mode=simulation --setup-cache-dir="${HOME}/.cache/codspeed-action" -- "${CODSPEED_INPUT_RUN}"'));
 });
 
 test("release PRs still require both benchmark jobs to be skipped", () => {
