@@ -507,7 +507,7 @@ fn argo_tab(
             selected.unavailable.is_some(),
             cx,
         ));
-    let counts = view.map(|view| view.counts).unwrap_or_default();
+    let counts = view.map_or_default(|view| view.counts);
     let signals = div()
         .mt(px(12.))
         .flex()

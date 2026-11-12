@@ -192,8 +192,7 @@ pub(crate) fn resource_permission(
             .api_version
             .as_deref()
             .and_then(|version| version.split_once('/'))
-            .map(|(group, _)| group.to_owned())
-            .unwrap_or_default(),
+            .map_or_default(|(group, _)| group.to_owned()),
     };
     Some(RbacAccessReviewTarget::Resource {
         verb: verb.trim().to_owned(),
@@ -214,8 +213,7 @@ fn subject(context: &Context<'_>) -> &'static str {
 fn target_suffix(context: &Context<'_>) -> String {
     context
         .target
-        .map(|target| format!(" for {target}"))
-        .unwrap_or_default()
+        .map_or_default(|target| format!(" for {target}"))
 }
 
 /// `partialTitle`: partial failures may replace the fixed title.

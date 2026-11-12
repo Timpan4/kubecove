@@ -180,8 +180,7 @@ impl Inspector {
         self.live.kind_locked = saved.as_ref().is_some_and(|saved| saved.custom_kind_locked);
         self.sidebar_tree.open = saved
             .as_ref()
-            .map(|saved| saved.sidebar_open.clone())
-            .unwrap_or_default();
+            .map_or_default(|saved| saved.sidebar_open.clone());
         let search = browser
             .as_ref()
             .map_or_else(String::new, |b| b.search.clone());

@@ -281,8 +281,7 @@ pub fn type_label(row: &ResourceSummary) -> String {
             let mut chars = plural.chars();
             chars
                 .next()
-                .map(|first| first.to_uppercase().chain(chars).collect())
-                .unwrap_or_default()
+                .map_or_default(|first| first.to_uppercase().chain(chars).collect())
         };
     }
     let lower = kind.to_ascii_lowercase();

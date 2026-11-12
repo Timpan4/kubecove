@@ -159,8 +159,7 @@ fn action_row(
                     .current_labels
                     .iter()
                     .find(|(id, _)| *id == row.id)
-                    .map(|(_, label)| label.clone())
-                    .unwrap_or_default(),
+                    .map_or_default(|(_, label)| label.clone()),
             ))
             .mt(px(4.)),
         );

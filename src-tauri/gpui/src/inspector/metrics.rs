@@ -132,7 +132,7 @@ impl Inspector {
                 if !Rc::ptr_eq(&this.request, &request) {
                     return;
                 }
-                this.metrics.slots = result.as_ref().map(slots).unwrap_or_default();
+                this.metrics.slots = result.as_ref().map_or_default(slots);
                 this.metrics.summary = Some(result);
                 cx.notify();
             });

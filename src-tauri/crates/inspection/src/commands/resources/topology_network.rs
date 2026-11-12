@@ -57,8 +57,7 @@ pub(crate) fn build_network_flow_topology(inputs: NetworkTopologyInputs) -> Reso
     let cluster = resources_by_id
         .values()
         .next()
-        .map(|input| input.summary.cluster.clone())
-        .unwrap_or_default();
+        .map_or_default(|input| input.summary.cluster.clone());
     let resource_id = |kind: &str, api_version: &str, namespace: &str, name: &str| {
         topology_node_id(&cluster, api_version, kind, Some(namespace), name)
     };

@@ -286,8 +286,7 @@ fn event_time_ms(event: &ResourceEventSummary) -> i64 {
 pub(super) fn rfc3339_millis(value: Option<&str>) -> i64 {
     value
         .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
-        .map(|dt| dt.timestamp_millis())
-        .unwrap_or_default()
+        .map_or_default(|dt| dt.timestamp_millis())
 }
 
 pub(super) fn resource_match_key(

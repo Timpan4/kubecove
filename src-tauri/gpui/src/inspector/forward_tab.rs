@@ -41,12 +41,11 @@ impl ForwardForm {
                             .collect::<Vec<_>>()
                     })
                 })
-                .map(|mut ports| {
+                .map_or_default(|mut ports| {
                     ports.sort_unstable();
                     ports.dedup();
                     ports.into_iter().map(|p| p.to_string().into()).collect()
                 })
-                .unwrap_or_default()
         } else {
             Vec::new()
         };
@@ -144,23 +143,18 @@ impl Inspector {
         };
         let resource = &detail.data.summary;
         let service = resource.kind == "Service";
-        let sessions: Vec<_> = self
-            .sessions
-            .load
-            .data()
-            .map(|sessions| {
-                sessions
-                    .for_contexts(std::slice::from_ref(&resource.cluster))
-                    .0
-                    .into_iter()
-                    .filter(|s| {
-                        s.target_kind == resource.kind
-                            && s.target_name == resource.name
-                            && Some(&s.namespace) == resource.namespace.as_ref()
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+        let sessions: Vec<_> = self.sessions.load.data().map_or_default(|sessions| {
+            sessions
+                .for_contexts(std::slice::from_ref(&resource.cluster))
+                .0
+                .into_iter()
+                .filter(|s| {
+                    s.target_kind == resource.kind
+                        && s.target_name == resource.name
+                        && Some(&s.namespace) == resource.namespace.as_ref()
+                })
+                .collect()
+        });
         div()
             .flex()
             .flex_col()

@@ -129,8 +129,7 @@ impl Inspector {
         self.gitops_page.rows = self
             .gitops
             .inventory()
-            .map(|data| model::rows(data, self.gitops_page.focus))
-            .unwrap_or_default();
+            .map_or_default(|data| model::rows(data, self.gitops_page.focus));
         self.gitops_page.rows_for = Some(key);
         self.resolve_gitops_selection();
     }
