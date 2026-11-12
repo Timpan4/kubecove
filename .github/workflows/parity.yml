@@ -33,6 +33,28 @@ jobs:
       shard: ${{ matrix.shard }}
       shards: 4
 
+  # One check name a ruleset can require; the matrix jobs carry their shard in their names.
+  # Release PRs pass only when the shards were deliberately skipped, as in ci.yml.
+  pull-request-result:
+    name: Parity result
+    needs: pull-request
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify parity shards
+        env:
+          PARITY_RESULT: ${{ needs.pull-request.result }}
+          RELEASE_PR: ${{ github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release/app-v') && contains(github.event.pull_request.labels.*.name, 'release') }}
+        run: |
+          set -euo pipefail
+          echo "Parity shards: ${PARITY_RESULT}"
+          if [[ "${RELEASE_PR}" == "true" ]]; then
+            test "${PARITY_RESULT}" = "skipped"
+          else
+            test "${PARITY_RESULT}" = "success"
+          fi
+
   main:
     name: Parity (main)
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}

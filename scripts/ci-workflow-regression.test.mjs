@@ -364,7 +364,17 @@ test("parity jobs run every suite shard on pull requests and on main, and keep t
   const read = (name) => readFileSync(new URL(`../.github/workflows/${name}`, import.meta.url), "utf8").replaceAll("\r\n", "\n");
   const parity = read("parity.yml");
   const suite = read("parity-suite.yml");
-  assert.deepEqual([...parity.slice(parity.indexOf("\njobs:\n")).matchAll(/^ {2}([\w-]+):$/gm)].map((match) => match[1]), ["pull-request", "main", "main-build-cache", "coverage-map"]);
+  assert.deepEqual([...parity.slice(parity.indexOf("\njobs:\n")).matchAll(/^ {2}([\w-]+):$/gm)].map((match) => match[1]), ["pull-request", "pull-request-result", "main", "main-build-cache", "coverage-map"]);
+  // The stable check fails on any shard failure, cancellation or unexpected skip.
+  const result = job("pull-request-result", parity);
+  assert.match(result, /^ {4}name: Parity result$/m);
+  assert.match(result, /^ {4}needs: pull-request$/m);
+  assert.ok(result.includes("if: ${{ always() && github.event_name == 'pull_request' }}"));
+  const verify = (env) => spawnSync("bash", ["-e", "-o", "pipefail", "-c", block(result, "run", 8)], { env: { ...process.env, ...env }, encoding: "utf8", timeout: 2000 }).status;
+  assert.equal(verify({ PARITY_RESULT: "success", RELEASE_PR: "false" }), 0);
+  for (const outcome of ["failure", "cancelled", "skipped", ""]) assert.notEqual(verify({ PARITY_RESULT: outcome, RELEASE_PR: "false" }), 0);
+  assert.equal(verify({ PARITY_RESULT: "skipped", RELEASE_PR: "true" }), 0);
+  assert.notEqual(verify({ PARITY_RESULT: "success", RELEASE_PR: "true" }), 0);
   for (const name of ["pull-request", "main"]) {
     const text = job(name, parity);
     const matrices = [...text.matchAll(/^ {8}shard: \[([\d, ]+)\]$/gm)].map((match) => match[1].split(",").map(Number));
