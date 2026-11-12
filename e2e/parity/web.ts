@@ -502,6 +502,9 @@ async function containsLines(locator: Locator, lines: string[]) {
 }
 
 type WebResult = { id: string; status: "passed" | "failed"; durationMs?: number; error?: string };
+// PARITY_STEP_SCREENSHOTS=0 keeps only failure screenshots. CI sets it: step screenshots took
+// about ten captures per scenario and 205 MB of artifacts per shard.
+const stepScreenshots = process.env.PARITY_STEP_SCREENSHOTS !== "0";
 type Browser = Awaited<ReturnType<typeof chromium.launch>>;
 
 async function runScenario(browser: Browser, port: number, artifacts: string, scenarioIndex: number, scenario: Contract["scenarios"][number], signal: AbortSignal): Promise<WebResult> {
@@ -511,6 +514,8 @@ async function runScenario(browser: Browser, port: number, artifacts: string, sc
 	page.on("console", (message) => browserLog.push(`${message.type()}: ${message.text()}`));
 	page.on("pageerror", (error) => browserLog.push(`pageerror: ${error.message}`));
 	page.setDefaultTimeout(readinessTimeoutMs);
+	// The step that failed, named in the error because CI keeps only the failure screenshot.
+	let current = "startup";
 	try {
 		signal.throwIfAborted();
 		// Fake timers must exist before the app loads: the Argo tracker's recovery timer and loading indicator delays start before later steps.
@@ -523,14 +528,15 @@ async function runScenario(browser: Browser, port: number, artifacts: string, sc
 		if (seedsWorkspace(scenario)) await seedWorkspace(page);
 		for (const [index, step] of scenario.steps.entries()) {
 			signal.throwIfAborted();
+			current = `step ${index} (${step.action})`;
 			if (index >= startupSteps) { await storeReloadHolds(page, scenario.steps, index); await action(page, step); }
-			await page.screenshot({ path: join(artifacts, `web-${scenarioIndex}-${index}.png`) });
+			if (stepScreenshots) await page.screenshot({ path: join(artifacts, `web-${scenarioIndex}-${index}.png`) });
 		}
 		await coverage?.save(artifacts, scenarioIndex, scenario.id);
 		return { id: scenario.id, status: "passed" };
 	} catch (error) {
 		await page.screenshot({ path: join(artifacts, `web-${scenarioIndex}-failure.png`) }).catch(() => {});
-		return { id: scenario.id, status: "failed", error: String(error) };
+		return { id: scenario.id, status: "failed", error: `${current}: ${String(error)}` };
 	} finally {
 		try { await writeFile(join(artifacts, `web-${scenarioIndex}.log`), browserLog.join("\n")); } finally { await page.close(); }
 	}

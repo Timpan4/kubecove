@@ -179,7 +179,7 @@ Run the smallest tier that covers the change, from the checkout root with the bu
 1. Agent patch from a parallel child agent: no compilation. The child runs no cargo command (check, clippy, test or build), no parity and no frames run. It edits, runs `bun run typecheck` and `bun run lint` for TypeScript changes, commits, and lists in its report what was never compiled or run. The parent merges the batch and runs tier 2 once for all of it. Never give a child `PARITY_CHANGED`: without the coverage map at `e2e/artifacts/parity-coverage-map.json` it runs the full suite. `e2e/parity/README.md` ("Change-based selection") shows how to download the map from CI or record it.
 2. Merge of a batch into the working branch, run by the parent once per batch: `cargo clippy --manifest-path src-tauri/gpui/Cargo.toml --all-targets -- -D warnings`, `cargo test --manifest-path src-tauri/gpui/Cargo.toml --lib --test native`, and `PARITY_CHANGED=<working branch> bun run e2e:parity`.
 3. After a fix: `PARITY_RERUN=last bun run e2e:parity` runs only the scenarios either driver did not pass in the newest run. Give an artifacts directory instead of `last` to use another run.
-4. Full suite: CI runs the same change-based selection on the PR and the full suite after each merge to main (`.github/workflows/parity.yml`), so developers and agents run tiers 1 to 3 locally. Run `bun scripts/gpui-frames.ts --runs 3` only before a PR.
+4. Full suite: CI runs the full suite on the PR and after each merge to main (`.github/workflows/parity.yml`), so developers and agents run tiers 1 to 3 locally. Run `bun scripts/gpui-frames.ts --runs 3` only before a PR.
 
 `PARITY_PREFIX` (comma-separated scenario ID prefixes) still narrows any run, such as one failing scenario or one area.
 

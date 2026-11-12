@@ -1,7 +1,7 @@
 name: Parity suite
 
-# One shard of `bun run e2e:parity`, called by parity.yml. Pull requests run the scenarios
-# their diff can affect (PARITY_CHANGED); main records the coverage map that selection reads
+# One shard of `bun run e2e:parity`, called by parity.yml. Pull requests and main run the full
+# suite; main also records the coverage map that local PARITY_CHANGED runs read
 # (PARITY_COVERAGE). See "Change-based selection" in e2e/parity/README.md.
 on:
   workflow_call:
@@ -24,24 +24,32 @@ on:
         required: false
         type: boolean
         default: false
+      prefix:
+        description: PARITY_PREFIX, for a job that runs only the scenarios with these ID prefixes.
+        required: false
+        type: string
+        default: ""
+      exclude:
+        description: PARITY_EXCLUDE, the scenario ID prefixes another job runs.
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
 
 jobs:
   suite:
-    name: ${{ inputs.build-only && 'Build cache' || format('Shard {0} of {1}', inputs.shard, inputs.shards) }}
+    name: ${{ inputs.build-only && 'Build cache' || inputs.prefix && format('Scenarios {0}', inputs.prefix) || format('Shard {0} of {1}', inputs.shard, inputs.shards) }}
     runs-on: ubuntu-latest
     # The same limit as the real Kubernetes suites in e2e.yml.
     timeout-minutes: 60
 
     steps:
-      # Pull requests need history for the merge base and the coverage map's commit.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: ${{ (inputs.coverage || inputs.build-only) && 1 || 0 }}
 
       # yeslogic-fontconfig-sys finds fontconfig through pkg-config at build time.
       # The linker needs libxcb and both xkbcommon libraries for GPUI's X11 backend.
@@ -92,17 +100,6 @@ jobs:
         if: ${{ !inputs.build-only }}
         run: bunx playwright-core install --with-deps --no-shell chromium
 
-      # Main saves one map per commit (parity.yml). A pull request takes the map of its base
-      # commit, or else the newest one; a missing map runs the full suite.
-      - name: Restore parity coverage map
-        if: ${{ github.event_name == 'pull_request' && !inputs.coverage && !inputs.build-only }}
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: e2e/artifacts/parity-coverage-map.json
-          key: parity-coverage-map-${{ github.event.pull_request.base.sha }}
-          restore-keys: |
-            parity-coverage-map-
-
       - name: Build parity test
         if: ${{ inputs.build-only }}
         env:
@@ -116,7 +113,10 @@ jobs:
         env:
           PARITY_SUITE_SHARD: ${{ inputs.shard }}/${{ inputs.shards }}
           PARITY_COVERAGE: ${{ inputs.coverage && '1' || '0' }}
-          PARITY_CHANGED: ${{ !inputs.coverage && github.event.pull_request.base.sha || '' }}
+          PARITY_PREFIX: ${{ inputs.prefix }}
+          PARITY_EXCLUDE: ${{ inputs.exclude }}
+          # Failure screenshots only; step screenshots cost about ten captures per scenario.
+          PARITY_STEP_SCREENSHOTS: "0"
           CARGO_TARGET_DIR: ${{ github.workspace }}/src-tauri/gpui/target
           CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/src-tauri/gpui/target
         run: CARGO_BUILD_JOBS="$(nproc)" bun run e2e:parity

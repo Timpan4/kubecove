@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
@@ -358,24 +358,31 @@ test("whitespace check rejects bad diffs even without an available base", () => 
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 // Failure modes: a matrix that misses a PARITY_SUITE_SHARD index silently drops that share of
-// the parity suite; a job that runs on the other event runs the suite twice or never; a shard
-// that fails without uploading its artifacts leaves nothing to inspect.
-test("parity jobs run every suite shard on pull requests and on main, and keep the artifacts", () => {
+// the parity suite; a job that runs on the other event runs the suite twice or never; a
+// scenario that the shards exclude but no separate job runs never runs; a shard that fails
+// without uploading its artifacts leaves nothing to inspect.
+test("parity jobs run the full suite on pull requests and on main, and keep the artifacts", () => {
   const read = (name) => readFileSync(new URL(`../.github/workflows/${name}`, import.meta.url), "utf8").replaceAll("\r\n", "\n");
   const parity = read("parity.yml");
   const suite = read("parity-suite.yml");
-  assert.deepEqual([...parity.slice(parity.indexOf("\njobs:\n")).matchAll(/^ {2}([\w-]+):$/gm)].map((match) => match[1]), ["pull-request", "pull-request-result", "main", "main-build-cache", "coverage-map"]);
-  // The stable check fails on any shard failure, cancellation or unexpected skip.
+  assert.deepEqual([...parity.slice(parity.indexOf("\njobs:\n")).matchAll(/^ {2}([\w-]+):$/gm)].map((match) => match[1]), ["pull-request", "pull-request-spike", "pull-request-result", "main", "main-spike", "main-build-cache", "coverage-map"]);
+  // The stable check fails on any shard or spike failure, cancellation or unexpected skip.
   const result = job("pull-request-result", parity);
   assert.match(result, /^ {4}name: Parity result$/m);
-  assert.match(result, /^ {4}needs: pull-request$/m);
+  assert.match(result, /^ {4}needs:\n {6}- pull-request\n {6}- pull-request-spike$/m);
   assert.ok(result.includes("if: ${{ always() && github.event_name == 'pull_request' }}"));
-  const verify = (env) => spawnSync("bash", ["-e", "-o", "pipefail", "-c", block(result, "run", 8)], { env: { ...process.env, ...env }, encoding: "utf8", timeout: 2000 }).status;
-  assert.equal(verify({ PARITY_RESULT: "success", RELEASE_PR: "false" }), 0);
-  for (const outcome of ["failure", "cancelled", "skipped", ""]) assert.notEqual(verify({ PARITY_RESULT: outcome, RELEASE_PR: "false" }), 0);
-  assert.equal(verify({ PARITY_RESULT: "skipped", RELEASE_PR: "true" }), 0);
-  assert.notEqual(verify({ PARITY_RESULT: "success", RELEASE_PR: "true" }), 0);
-  for (const name of ["pull-request", "main"]) {
+  const verify = (env) => spawnSync("bash", ["-e", "-o", "pipefail", "-c", block(result, "run", 8)], { env: { ...process.env, RELEASE_PR: "false", PARITY_RESULT: "success", SPIKE_RESULT: "success", ...env }, encoding: "utf8", timeout: 2000 }).status;
+  assert.equal(verify({}), 0);
+  for (const outcome of ["failure", "cancelled", "skipped", ""]) {
+    assert.notEqual(verify({ PARITY_RESULT: outcome }), 0);
+    assert.notEqual(verify({ SPIKE_RESULT: outcome }), 0);
+  }
+  assert.equal(verify({ PARITY_RESULT: "skipped", SPIKE_RESULT: "skipped", RELEASE_PR: "true" }), 0);
+  assert.notEqual(verify({ PARITY_RESULT: "success", SPIKE_RESULT: "skipped", RELEASE_PR: "true" }), 0);
+  // Each sharded job leaves out exactly the scenarios its spike job runs, and that ID exists.
+  const ids = readdirSync(new URL("../e2e/parity/scenarios/", import.meta.url)).filter((name) => name.endsWith(".json"))
+    .flatMap((name) => JSON.parse(readFileSync(new URL(`../e2e/parity/scenarios/${name}`, import.meta.url), "utf8")).scenarios.map((scenario) => scenario.id));
+  for (const [name, spike] of [["pull-request", "pull-request-spike"], ["main", "main-spike"]]) {
     const text = job(name, parity);
     const matrices = [...text.matchAll(/^ {8}shard: \[([\d, ]+)\]$/gm)].map((match) => match[1].split(",").map(Number));
     const count = Number(/^ {6}shards: (\d+)$/m.exec(text)?.[1]);
@@ -385,6 +392,14 @@ test("parity jobs run every suite shard on pull requests and on main, and keep t
     assert.match(text, /^ {4}uses: \.\/\.github\/workflows\/parity-suite\.yml$/m, name);
     assert.match(text, /^ {6}shard: \$\{\{ matrix\.shard \}\}$/m, name);
     assert.match(text, /^ {6}fail-fast: false$/m, name);
+    assert.doesNotMatch(text, /^ {6}prefix:/m, name);
+    const excluded = /^ {6}exclude: (\S+)$/m.exec(text)?.[1];
+    const spikeText = job(spike, parity);
+    assert.match(spikeText, /^ {6}shard: 0\n {6}shards: 1$/m, spike);
+    assert.equal(/^ {6}prefix: (\S+)$/m.exec(spikeText)?.[1], excluded, spike);
+    assert.equal(/if: (.+)$/m.exec(spikeText)?.[1], /if: (.+)$/m.exec(text)?.[1], `${spike} runs on the same events as ${name}`);
+    assert.equal(/^ {6}coverage: (\w+)$/m.exec(spikeText)?.[1], /^ {6}coverage: (\w+)$/m.exec(text)?.[1], spike);
+    assert.deepEqual(ids.filter((id) => id.startsWith(excluded)), ["settings-diagnostics.topology-spike-harness"]);
   }
   const pullRequest = job("pull-request", parity);
   assert.ok(pullRequest.includes("if: ${{ github.event_name == 'pull_request' && ("), "pull request job runs only on pull requests");
@@ -393,21 +408,25 @@ test("parity jobs run every suite shard on pull requests and on main, and keep t
   }
   assert.ok(job("main", parity).includes("if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}"));
   assert.match(suite, /^ {10}PARITY_SUITE_SHARD: \$\{\{ inputs\.shard \}\}\/\$\{\{ inputs\.shards \}\}$/m);
+  assert.match(suite, /^ {10}PARITY_PREFIX: \$\{\{ inputs\.prefix \}\}$/m);
+  assert.match(suite, /^ {10}PARITY_EXCLUDE: \$\{\{ inputs\.exclude \}\}$/m);
+  assert.match(suite, /^ {10}PARITY_STEP_SCREENSHOTS: "0"$/m);
+  // Pull requests run the full suite: change selection fell back to it on every recent PR.
+  assert.doesNotMatch(suite, /^ +PARITY_CHANGED:|parity-coverage-map-|fetch-depth/m);
   assert.match(suite, /^ {8}run: CARGO_BUILD_JOBS="\$\(nproc\)" bun run e2e:parity$/m);
   assert.match(suite, /sudo apt-get install -y libfontconfig-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev pkg-config/);
   assert.match(suite, /run: bunx playwright-core install --with-deps --no-shell chromium/);
   const upload = suite.slice(suite.indexOf("- name: Upload parity artifacts"));
   assert.match(upload, /^ {8}if: \$\{\{ always\(\) && !inputs\.build-only \}\}$/m);
   assert.match(upload, /^ {10}path: e2e\/artifacts\/parity-\*$/m);
-  assert.match(upload, /^ {10}name: .*\$\{\{ inputs\.shard \}\}.*\$\{\{ github\.run_attempt \}\}$/m);
+  assert.match(upload, /^ {10}name: .*\$\{\{ inputs\.shard \}\}.*\$\{\{ inputs\.shards \}\}.*\$\{\{ github\.run_attempt \}\}$/m);
 });
 
-// Failure modes: change selection on main narrows the full suite that must run after every
-// merge; a main run without PARITY_COVERAGE records no map; a shallow pull request checkout
-// has no merge base; a cache key, path or artifact name that differs between the jobs keeps
-// the map from pull requests, which then silently run the full suite; the instrumented build
-// saved under the pull request cache key makes every pull request rebuild from scratch.
-test("main records the parity coverage map and pull requests select scenarios from it", () => {
+// Failure modes: a main run without PARITY_COVERAGE records no map; the map leaves out the
+// spike job's scenario; a path or artifact name that differs between the jobs leaves local
+// PARITY_CHANGED runs without a map; the instrumented build saved under the pull request cache
+// key makes every pull request rebuild from scratch.
+test("main records the parity coverage map from every parity job", () => {
   const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8").replaceAll("\r\n", "\n");
   const parity = read(".github/workflows/parity.yml");
   const suite = read(".github/workflows/parity-suite.yml");
@@ -424,9 +443,7 @@ test("main records the parity coverage map and pull requests select scenarios fr
   };
   // GitHub expressions here use only operators that JavaScript evaluates the same way.
   const evaluate = (source, inputs, event) => {
-    const github = event === "pull_request"
-      ? { event_name: event, ref: "refs/pull/7/merge", event: { pull_request: { base: { sha: base } } } }
-      : { event_name: event, ref: "refs/heads/main", event: { pull_request: { base: {} } } };
+    const github = { event_name: event, ref: event === "pull_request" ? "refs/pull/7/merge" : "refs/heads/main" };
     return new Function("inputs", "github", "always", "cancelled", `return (${source.replaceAll("build-only", "buildOnly").replaceAll(/'([^']*)'/g, "\"$1\"")});`)(inputs, github, () => true, () => false);
   };
   const modes = {
@@ -435,17 +452,13 @@ test("main records the parity coverage map and pull requests select scenarios fr
     buildCache: [{ coverage: false, buildOnly: true }, "push"],
   };
   const run = step("Run parity suite");
-  const restore = step("Restore parity coverage map");
   const results = Object.fromEntries(Object.entries(modes).map(([mode, [inputs, event]]) => [mode, {
-    fetchDepth: evaluate(expression(step("Checkout"), "fetch-depth"), inputs, event),
-    changed: evaluate(expression(run, "PARITY_CHANGED"), inputs, event),
     coverage: evaluate(expression(run, "PARITY_COVERAGE"), inputs, event),
-    restores: evaluate(expression(restore, "if"), inputs, event),
     cacheKey: `kubecove-parity${evaluate(/shared-key: kubecove-parity\$\{\{ (.+) \}\}/.exec(step("Cache Rust builds"))?.[1] ?? "''", inputs, event)}`,
     runs: evaluate(expression(run, "if"), inputs, event),
   }]));
-  assert.deepEqual(results.pullRequest, { fetchDepth: 0, changed: base, coverage: "0", restores: true, cacheKey: "kubecove-parity", runs: true });
-  assert.deepEqual(results.main, { fetchDepth: 1, changed: "", coverage: "1", restores: false, cacheKey: "kubecove-parity-coverage", runs: true });
+  assert.deepEqual(results.pullRequest, { coverage: "0", cacheKey: "kubecove-parity", runs: true });
+  assert.deepEqual(results.main, { coverage: "1", cacheKey: "kubecove-parity-coverage", runs: true });
   assert.equal(results.buildCache.runs, false);
   assert.equal(results.buildCache.cacheKey, "kubecove-parity");
   assert.match(step("Build parity test"), /cargo test --manifest-path src-tauri\/gpui\/Cargo\.toml --test parity --no-run/);
@@ -457,17 +470,17 @@ test("main records the parity coverage map and pull requests select scenarios fr
   const buildCache = job("main-build-cache", parity);
   assert.match(buildCache, /^ {6}build-only: true$/m);
   assert.ok(buildCache.includes("if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}"));
-  // One map path and key family from the shard uploads through the merge to the pull request restore.
+  // One map path from the shard and spike uploads through the merge to the uploaded artifact.
   const merge = job("coverage-map", parity);
   const mapPath = /^export const DEFAULT_MAP = "(.+)";$/m.exec(read("e2e/parity/changed-scenarios.ts"))?.[1];
   assert.equal(mapPath, "e2e/artifacts/parity-coverage-map.json");
-  assert.match(merge, /^ {4}needs: main$/m);
+  assert.match(merge, /^ {4}needs:\n {6}- main\n {6}- main-spike$/m);
   assert.ok(merge.includes("if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}"));
   const shardArtifact = /name: (parity-coverage-shard-)\$\{\{/.exec(step("Upload shard coverage map"))?.[1];
   assert.ok(shardArtifact && merge.includes(`pattern: ${shardArtifact}*`), "merge downloads the shard maps the suite uploads");
   assert.match(step("Upload shard coverage map"), /path: e2e\/artifacts\/parity-\*\/coverage-map\.json/);
+  assert.match(step("Upload shard coverage map"), /\$\{\{ inputs\.shard \}\}-of-\$\{\{ inputs\.shards \}\}/);
   assert.ok(merge.includes(`run: bun e2e/parity/coverage-map.ts merge ${mapPath} shard-maps/*/*/coverage-map.json`));
-  const saved = merge.slice(merge.indexOf("- name: Save coverage map"));
-  assert.ok(saved.includes(`path: ${mapPath}`) && saved.includes("key: parity-coverage-map-${{ github.sha }}"));
-  assert.ok(restore.includes(`path: ${mapPath}`) && restore.includes("key: parity-coverage-map-${{ github.event.pull_request.base.sha }}") && restore.includes("parity-coverage-map-\n"));
+  const uploaded = merge.slice(merge.indexOf("- name: Upload coverage map"));
+  assert.ok(uploaded.includes(`path: ${mapPath}`) && uploaded.includes("name: parity-coverage-map\n"));
 });

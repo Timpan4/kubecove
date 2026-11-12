@@ -1,9 +1,13 @@
 name: Parity
 
 # The shared Svelte and GPUI acceptance scenarios (e2e/parity/README.md), split across
-# PARITY_SUITE_SHARD jobs. Each shard runs both drivers on its scenarios. Pull requests run
-# the scenarios their diff can affect; main runs the full suite and records the coverage map
-# that selection reads.
+# PARITY_SUITE_SHARD jobs. Each shard runs both drivers on its scenarios. Pull requests and
+# main run the full suite; main also records the coverage map that local PARITY_CHANGED runs
+# read. Change selection fell back to the full suite on every recent pull request, because
+# each one changed harness files that coverage cannot see.
+#
+# The topology spike harness renders a 4,000-node map and took 4 to 7 minutes of one web
+# page, so it runs in a job of its own instead of setting one shard's minimum time.
 on:
   push:
     branches:
@@ -27,33 +31,44 @@ jobs:
       fail-fast: false
       matrix:
         shard: [0, 1, 2, 3]
-    # Every shard selects the same scenarios from the diff (PARITY_CHANGED), then takes its share.
     uses: ./.github/workflows/parity-suite.yml
     with:
       shard: ${{ matrix.shard }}
       shards: 4
+      exclude: settings-diagnostics.topology-spike-harness
+
+  pull-request-spike:
+    name: Parity (pull request)
+    if: ${{ github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
+    uses: ./.github/workflows/parity-suite.yml
+    with:
+      shard: 0
+      shards: 1
+      prefix: settings-diagnostics.topology-spike-harness
 
   # One check name a ruleset can require; the matrix jobs carry their shard in their names.
-  # Release PRs pass only when the shards were deliberately skipped, as in ci.yml.
+  # Release PRs pass only when the parity jobs were deliberately skipped, as in ci.yml.
   pull-request-result:
     name: Parity result
-    needs: pull-request
+    needs:
+      - pull-request
+      - pull-request-spike
     if: ${{ always() && github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Verify parity shards
+      - name: Verify parity jobs
         env:
           PARITY_RESULT: ${{ needs.pull-request.result }}
+          SPIKE_RESULT: ${{ needs.pull-request-spike.result }}
           RELEASE_PR: ${{ github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release/app-v') && contains(github.event.pull_request.labels.*.name, 'release') }}
         run: |
           set -euo pipefail
-          echo "Parity shards: ${PARITY_RESULT}"
-          if [[ "${RELEASE_PR}" == "true" ]]; then
-            test "${PARITY_RESULT}" = "skipped"
-          else
-            test "${PARITY_RESULT}" = "success"
-          fi
+          echo "Parity shards: ${PARITY_RESULT}; topology spike: ${SPIKE_RESULT}"
+          expected=success
+          if [[ "${RELEASE_PR}" == "true" ]]; then expected=skipped; fi
+          test "${PARITY_RESULT}" = "${expected}"
+          test "${SPIKE_RESULT}" = "${expected}"
 
   main:
     name: Parity (main)
@@ -67,6 +82,17 @@ jobs:
       shard: ${{ matrix.shard }}
       shards: 4
       coverage: true
+      exclude: settings-diagnostics.topology-spike-harness
+
+  main-spike:
+    name: Parity (main)
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    uses: ./.github/workflows/parity-suite.yml
+    with:
+      shard: 0
+      shards: 1
+      coverage: true
+      prefix: settings-diagnostics.topology-spike-harness
 
   # The main shards build an instrumented binary, so this seeds the uninstrumented build
   # cache that pull requests restore.
@@ -79,12 +105,11 @@ jobs:
       shards: 1
       build-only: true
 
-  # Pull requests restore this map from the cache (parity-suite.yml). Caches saved on the
-  # default branch are readable from pull requests:
-  # https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#restrictions-for-accessing-a-cache
   coverage-map:
     name: Parity coverage map (main)
-    needs: main
+    needs:
+      - main
+      - main-spike
     if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -108,12 +133,6 @@ jobs:
       # Scenarios a shard did not record stay out of the map, so selection always runs them.
       - name: Merge coverage maps
         run: bun e2e/parity/coverage-map.ts merge e2e/artifacts/parity-coverage-map.json shard-maps/*/*/coverage-map.json
-
-      - name: Save coverage map
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: e2e/artifacts/parity-coverage-map.json
-          key: parity-coverage-map-${{ github.sha }}
 
       # For local PARITY_CHANGED runs; e2e/parity/README.md shows the download command.
       - name: Upload coverage map

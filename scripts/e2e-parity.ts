@@ -19,6 +19,8 @@ type Scenario = Contract["scenarios"][number];
  * The scenarios this run executes, in contract order. Each optional filter narrows the one
  * before it.
  * - PARITY_PREFIX: comma-separated scenario ID prefixes.
+ * - PARITY_EXCLUDE: comma-separated scenario ID prefixes to leave out, such as a scenario that
+ *   CI runs in a job of its own.
  * - PARITY_CHANGED=<base ref>: the scenarios the changes since the merge base with that ref can
  *   affect, from the coverage map at PARITY_COVERAGE_MAP (e2e/parity/changed-scenarios.ts).
  * - PARITY_SUITE_SHARD=<index>/<count>: every `count`-th scenario from position `index`, so
@@ -26,8 +28,11 @@ type Scenario = Contract["scenarios"][number];
  * - PARITY_RERUN, resolved to `rerun`: only the scenarios either driver did not pass there.
  */
 async function selectScenarios(scenarios: Scenario[], rerun: string | undefined): Promise<Scenario[]> {
-	const prefixes = (process.env.PARITY_PREFIX ?? "").split(",").map((prefix) => prefix.trim()).filter(Boolean);
+	const list = (name: string) => (process.env[name] ?? "").split(",").map((prefix) => prefix.trim()).filter(Boolean);
+	const prefixes = list("PARITY_PREFIX");
+	const excluded = list("PARITY_EXCLUDE");
 	let selected = prefixes.length ? scenarios.filter((scenario) => prefixes.some((prefix) => scenario.id.startsWith(prefix))) : scenarios;
+	selected = selected.filter((scenario) => !excluded.some((prefix) => scenario.id.startsWith(prefix)));
 	const base = process.env.PARITY_CHANGED;
 	if (base) {
 		const selection = await changedScenarios(base, selected.map((scenario) => scenario.id), process.env.PARITY_COVERAGE_MAP || DEFAULT_MAP);
@@ -134,7 +139,7 @@ async function runDrivers(contract: Contract) {
 		const map = await writeRunMap(artifacts, join(artifacts, "coverage-map.json"));
 		mark("coverageMap");
 		console.log(`Coverage map: ${map.scenarios.length} scenarios, ${Object.keys(map.files).length} files`);
-		const narrowed = ["PARITY_PREFIX", "PARITY_CHANGED", "PARITY_RERUN", "PARITY_SUITE_SHARD"].some((name) => process.env[name]);
+		const narrowed = ["PARITY_PREFIX", "PARITY_EXCLUDE", "PARITY_CHANGED", "PARITY_RERUN", "PARITY_SUITE_SHARD"].some((name) => process.env[name]);
 		if (!narrowed) await copyFile(join(artifacts, "coverage-map.json"), resolve(DEFAULT_MAP));
 	}
 }
