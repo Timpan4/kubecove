@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import type { Page } from "playwright-core";
 import { checkLogCoverage } from "./web-log-coverage";
-import { checkMapGesture, checkMapViewport } from "./web-map-gestures";
+import { checkMapGesture, checkMapViewport, waitForFitToSettle } from "./web-map-gestures";
 
 /** The ownerless StorageClass kind group on the Cluster Overview map. */
 function ownerlessStorageGroup(page: Page) {
@@ -88,10 +88,14 @@ export async function checkCoverage(page: Page, check: string) {
 			const nodes = page.locator(".svelte-flow__node-ownershipResource");
 			const group = ownerlessStorageGroup(page);
 			await group.waitFor();
+			// Each toggle refits the map. A click during that animation hit where the group had been
+			// and failed full-suite runs, so every click waits for the fit to settle.
+			await waitForFitToSettle(page);
 			const before = await nodes.count();
 			await group.click({ position: { x: 5, y: 5 } });
 			await page.waitForFunction((count) => document.querySelectorAll(".svelte-flow__node-ownershipResource").length > count, before);
 			await page.getByTitle("StorageClass/local-path", { exact: true }).waitFor();
+			await waitForFitToSettle(page);
 			await group.click({ position: { x: 5, y: 5 } });
 			await page.waitForFunction((count) => document.querySelectorAll(".svelte-flow__node-ownershipResource").length === count, before);
 			break;
