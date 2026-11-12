@@ -241,11 +241,26 @@ test("Rust dependency audits cover every checked-in lockfile with narrow excepti
     /run: node --test --test-name-pattern="Rust dependency audits cover every checked-in lockfile with narrow exceptions" scripts\/ci-workflow-regression\.test\.mjs/,
   );
   const auditSteps = rustJob.split("\n      - name: ").filter((step) => step.includes("uses: rustsec/audit-check@"));
-  const auditedDirectories = auditSteps.map((step) => /working-directory: ([^\n]+)/.exec(step)?.[1]).sort();
+  const audits = auditSteps
+    .map((step) => {
+      const directory = /working-directory: ([^\n]+)/.exec(step)?.[1];
+      assert.ok(directory, `Audit step must name its working directory:\n${step}`);
+      const ignoredAdvisories = /\n\s+ignore: ([^\n]+)/.exec(step)?.[1].split(",") ?? [];
+      return { directory, ignoredAdvisories };
+    })
+    .sort((left, right) => left.directory.localeCompare(right.directory));
+  const auditedDirectories = audits.map(({ directory }) => directory);
   assert.deepEqual(auditedDirectories, lockfileDirectories);
+  assert.deepEqual(
+    audits.map(({ directory, ignoredAdvisories }) => [directory, ignoredAdvisories]),
+    [
+      ["src-tauri", ["RUSTSEC-2024-0429"]],
+      ["src-tauri/gpui", []],
+      ["src-tauri/server", ["RUSTSEC-2023-0071", "RUSTSEC-2026-0387"]],
+    ],
+  );
 
   const serverAudit = auditSteps.find((step) => step.includes("working-directory: src-tauri/server"));
-  assert.match(serverAudit, /ignore: RUSTSEC-2023-0071,RUSTSEC-2026-0387/);
   assert.match(serverAudit, /public-signature verification/);
 });
 test("server packaging follows the relocated kubeconform source without changing its standalone build", () => {
