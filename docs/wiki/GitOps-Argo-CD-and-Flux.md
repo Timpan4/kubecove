@@ -2,7 +2,7 @@
 
 Use the GitOps screen to inspect provider CRDs in the selected Kubernetes context. See the [KubeCove Wiki](https://github.com/Timpan4/kubecove/wiki) for related guides.
 
-![KubeCove GitOps view showing Argo CD applications, Flux detection, and Helm-related resources](https://raw.githubusercontent.com/Timpan4/kubecove/main/docs/assets/wiki/gitops-overview.png)
+![KubeCove GitOps view showing the Argo CD summary, Flux detection, and Application cards](https://raw.githubusercontent.com/Timpan4/kubecove/main/docs/assets/wiki/gitops-overview.png)
 
 ## Detect providers and inventory
 
@@ -12,7 +12,7 @@ Use the GitOps screen to inspect provider CRDs in the selected Kubernetes contex
 
 Argo CD inventory includes **Applications**, **ApplicationSets**, and **AppProjects**. Application rows expose sync and health status, source and destination details, and tracked-resource counts when the CRD supplies them. ApplicationSet and AppProject details are CRD-backed YAML, metadata, and status views.
 
-Flux inventory is grouped into Sources, Kustomize, Helm, Notifications, and Image Automation. Each installed kind can show readiness, suspension, source reference, interval, applied revision, status message, and inventory entries when its CRD reports them.
+Flux inventory is grouped into Sources, Workloads (Kustomizations and HelmReleases), Notifications, and Image Automation. Each installed kind can show readiness, suspension, source reference, interval, applied revision, status message, and inventory entries when its CRD reports them.
 
 ```mermaid
 flowchart LR
@@ -44,7 +44,7 @@ Operations are typed, allowlisted, scoped to one Application, and reviewed by pr
 
 | Transport | Available screen operations |
 | --- | --- |
-| Connected Argo CD | Refresh, hard refresh, and sync with optional revision, prune, dry-run, or force settings |
+| Connected Argo CD | Refresh, hard refresh, sync with optional revision, prune, dry-run, or force settings, and rollback to the previous or a selected history entry |
 | Kubernetes | Refresh, hard refresh, and sync with the same reviewed settings |
 
 Use this sequence:

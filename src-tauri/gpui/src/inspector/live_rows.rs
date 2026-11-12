@@ -42,7 +42,8 @@ impl Inspector {
         names: Option<ObservedNames>,
     ) -> Vec<ResourceSummary> {
         let _span = crate::frame_profile::scope("watch", "patch");
-        if !self.patch_in_scope(scope) {
+        if !self.patch_in_scope(scope) || self.behind_shown(scope, key, resource_version.as_deref())
+        {
             return rows;
         }
         let cluster_kind = crate::backend::CLUSTER_KINDS.contains(&key.resource_kind.kind.as_str());
@@ -73,6 +74,11 @@ impl Inspector {
             crate::model::reconcile(&mut self.cluster.rows, &scope.context, key, rows, names);
             Vec::new()
         } else {
+            // A context whose read failed shows the rows its watch installs.
+            // An empty patch installs none, so a load whose every read failed still fails.
+            if !rows.is_empty() {
+                self.scope_load.mark_shown(&scope.context);
+            }
             Rc::get_mut(&mut self.rows)
                 .expect("visible source released before patching")
                 .patch(&scope.context, key, rows, names)
@@ -81,6 +87,19 @@ impl Inspector {
             self.scope_load.rows = Load::Ready;
         }
         retired
+    }
+
+    /// Whether rows read at `version` are older than the rows the view shows,
+    /// as when a watch reloads a kind while the scope list is held and the
+    /// list then installs newer rows. Versions compare as numbers, as the live
+    /// store's watch patching compares them; others never count as older.
+    fn behind_shown(&self, scope: &Scope, key: &WatchResourceKey, version: Option<&str>) -> bool {
+        let number = |version: &str| version.parse::<u64>().ok();
+        let shown = self.shown_version(&scope.context, key);
+        matches!(
+            (version.and_then(number), shown.as_deref().and_then(number)),
+            (Some(version), Some(shown)) if version < shown
+        )
     }
 
     /// The list version of the rows the view shows for `key` in `context`,
@@ -113,8 +132,9 @@ impl Inspector {
         }
         let custom = key.resource_kind.plural.is_some();
         let cluster_kind = crate::backend::CLUSTER_KINDS.contains(&key.resource_kind.kind.as_str());
-        !self.scope_load.loading()
-            && !(custom && self.scope_load.custom() == super::custom_resources::CustomLoad::Loading)
+        // Each context's watches wait only for that context's read.
+        !self.scope_load.context_loading(context)
+            && !(custom && self.scope_load.custom_loading(context))
             && !(cluster_kind && self.cluster_loading())
     }
 

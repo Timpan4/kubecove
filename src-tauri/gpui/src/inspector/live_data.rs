@@ -1,6 +1,6 @@
 //! View-owned streams. Recovery follows resource-watch.ts; Rust owns transport backoff.
 use super::{
-    Inspector, Page,
+    Inspector,
     live_status::WatchReport,
     request::InFlight,
     watch_status::{self, Link, LiveStatus, WatchLink, WatchSummary},
@@ -45,9 +45,17 @@ pub(super) struct LiveData {
     pub error_open: bool,
     discovery: Option<Task<()>>,
     catalog_task: Option<Task<()>>,
+    /// Kind discovery's warnings, which join the scope read's on each apply.
+    pub(super) discovery_warnings: Vec<String>,
     /// Each watch by `watch_id`, so the same kind in two contexts has two watches.
     watches: HashMap<String, Registration>,
     pending: Vec<super::live_rows::Patch>,
+    /// Each watch's start version read before its rows were listed, by
+    /// `watch_id`, or `None` while the read runs (`live_start.rs`). The scope
+    /// read that lists those rows drops them all when it settles, since a
+    /// later refresh lists newer rows.
+    pub(super) starts: HashMap<String, Option<String>>,
+    pub(super) start_tasks: Vec<Task<()>>,
 }
 
 #[derive(Default)]
@@ -116,12 +124,13 @@ impl LiveData {
     fn take_buffer(&mut self, id: &str) -> Vec<kubecove_lib::models::ResourceSummary> {
         self.watches
             .get_mut(id)
-            .map(|watch| std::mem::take(&mut watch.recycled))
-            .unwrap_or_default()
+            .map_or_default(|watch| std::mem::take(&mut watch.recycled))
     }
     pub fn reset_scope(&mut self) {
         self.watches.clear();
         self.pending.clear();
+        self.starts.clear();
+        self.start_tasks.clear();
         self.owner.clear();
         self.refresh_error = None;
     }
@@ -130,6 +139,17 @@ impl LiveData {
         watch_status::aggregate(
             self.refresh_error.is_some(),
             self.watches.values().map(Registration::summary),
+        )
+    }
+
+    /// [`Self::settled_status`] of the watches whose context `keep` accepts.
+    pub fn settled_status_where(&self, keep: impl Fn(&str) -> bool) -> LiveStatus {
+        watch_status::aggregate(
+            self.refresh_error.is_some(),
+            self.watches
+                .values()
+                .filter(|watch| keep(&watch.context))
+                .map(Registration::summary),
         )
     }
 
@@ -232,6 +252,7 @@ impl Inspector {
     pub(super) fn discover_kinds(&mut self, contexts: Vec<String>, cx: &mut Context<Self>) {
         self.live.kinds.clear();
         self.live.catalog.clear();
+        self.live.discovery_warnings.clear();
         let namespace = self.scope.namespace.clone();
         let backend = self.backend.clone();
         let timings = self.timings.clone();
@@ -255,6 +276,9 @@ impl Inspector {
                 }
                 let (kinds, warnings) = union_kinds(&catalog_contexts, results);
                 this.live.catalog = kinds;
+                this.live
+                    .discovery_warnings
+                    .extend(warnings.iter().cloned());
                 this.warnings.extend(warnings);
                 cx.notify();
             });
@@ -288,6 +312,9 @@ impl Inspector {
                 if this.fill_custom_selection() {
                     this.filter(cx);
                 }
+                this.live
+                    .discovery_warnings
+                    .extend(warnings.iter().cloned());
                 this.warnings.extend(warnings);
                 cx.notify();
             });
@@ -328,27 +355,9 @@ impl Inspector {
         );
         let kinds_changed = kind_scope != self.live.kind_scope;
         self.live.kind_scope = kind_scope;
-        if !self.workspace_open()
-            || self.scope.context.is_empty()
-            || !matches!(
-                self.page,
-                Page::Resources | Page::ClusterOverview | Page::Overview
-            )
-        {
+        let Some(keys) = self.live_keys() else {
             return;
-        }
-        let mut keys: Vec<_> = self
-            .available_kind_keys()
-            .into_iter()
-            .filter(|(id, _, _)| self.kind_selected(id))
-            .map(|(_, _, key)| key)
-            .collect();
-        if let Some(kind) = &self.live.selected {
-            keys = vec![crate::backend::discovered_key(
-                kind,
-                self.scope.namespace.clone(),
-            )];
-        }
+        };
         // One watch per context and kind, so each context's rows patch alone.
         let contexts = self.watch_contexts();
         let pairs: Vec<_> = contexts
@@ -366,6 +375,10 @@ impl Inspector {
             self.live
                 .pending
                 .retain(|patch| patch.watch.as_deref().is_none_or(|id| wanted.contains(id)));
+            // A kind selected again later opens at its rows' version, not this read's.
+            self.live
+                .starts
+                .retain(|id, _| wanted.contains(id.as_str()));
         }
         for (context, key, watch) in pairs {
             if self
@@ -377,8 +390,11 @@ impl Inspector {
                 continue;
             }
             // A watch starts at the version of the rows the view shows, so it
-            // waits until they settle. Until then it reports as connecting.
-            if !self.rows_settled(context, key) {
+            // waits until they settle, unless its start version was read
+            // before those rows were listed. Until then it reports as connecting.
+            if !self.rows_settled(context, key)
+                && !matches!(self.live.starts.get(&watch), Some(Some(_)))
+            {
                 self.live.registration(watch, context);
                 continue;
             }
@@ -394,8 +410,15 @@ impl Inspector {
                 let mut lost = false;
                 let mut timer = Box::pin(cx.background_executor().timer(RECOVERY));
                 loop {
+                    // Until the rows first settle, a reopened watch resumes at
+                    // the version read before them; then the rows' version takes over.
                     let resource_version = this
-                        .update(cx, |this, _| this.shown_version(&scope.context, &key))
+                        .update(cx, |this, _| match this.live.starts.get(&id) {
+                            Some(Some(start)) if !this.rows_settled(&scope.context, &key) => {
+                                Some(start.clone())
+                            }
+                            _ => this.shown_version(&scope.context, &key),
+                        })
                         .ok()
                         .flatten();
                     let read = {
@@ -690,11 +713,22 @@ impl Inspector {
 
     pub(super) fn flush_live_patches(&mut self, cx: &mut Context<Self>) {
         let _span = crate::frame_profile::scope("watch", "flush");
-        if self.scope_load.loading() {
+        if self.scope_load.holds_patches() {
             return;
         }
         let mut pending = std::mem::take(&mut self.live.pending);
         pending.retain(|patch| self.patch_in_scope(&patch.scope));
+        // A context still reading its rows keeps its patches until they land,
+        // and its discovered kinds' patches until its custom read lands, so
+        // that read never re-adds rows a patch installed. The contexts that
+        // answered patch now. Built-in watch keys carry no API version.
+        let (held, pending): (Vec<_>, Vec<_>) = pending.into_iter().partition(|patch| {
+            let context = &patch.scope.context;
+            self.scope_load.context_loading(context)
+                || (patch.key.resource_kind.api_version.is_some()
+                    && self.scope_load.custom_loading(context))
+        });
+        self.live.pending = held;
         if pending.is_empty() {
             return;
         }

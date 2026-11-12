@@ -541,6 +541,13 @@ impl Backend for DesktopBackend {
             }
         }
     }
+    /// The remote host offers no start version, so its watches wait for the rows.
+    fn watch_start_version(&self, scope: Scope, key: WatchResourceKey) -> Option<Read<String>> {
+        if self.selected() {
+            return None;
+        }
+        self.local.watch_start_version(scope, key)
+    }
     fn log_stream(&self, target: LogTarget) -> Read<LogStream> {
         if !self.selected() {
             return self.local.log_stream(target);

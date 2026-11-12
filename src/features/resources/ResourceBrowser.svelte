@@ -93,6 +93,7 @@
 		TABLE_CLASS,
 	} from "./constants";
 	import { isCustomResourceKind, kindFetchKeys, kindKey, sameKinds } from "@/lib/kind-identity";
+	import { contextsLoadingNotice } from "./contextResults";
 	import { resourceReadyChip } from "./helpers";
 	import type { HealthFilter } from "./helpers";
 	import ResourceBrowserTopBar from "./ResourceBrowserTopBar.svelte";
@@ -322,9 +323,18 @@
 		}
 	});
 	const topologyQuery = reads.topology;
-	const updatesCurrent = $derived(live.state.status === "connected" && !live.state.catchingUp && !live.state.reloadError
+	// Only contexts whose rows show weigh in: a context that failed or still loads has no rows to call stale.
+	const shownLive = $derived(live.stateOf(resourcesQuery.shownContexts));
+	const updatesCurrent = $derived(shownLive.status === "connected" && !shownLive.catchingUp && !shownLive.reloadError
 		&& !resourcesQuery.isError && !resourcesQuery.isPlaceholderData
 		&& (!mapPanelOpen || (!topologyQuery.isError && !topologyQuery.isPlaceholderData)));
+	// The map shows its context's topology even while that context's rows load or failed, so its watches count too.
+	const mapLive = $derived(live.stateOf([...resourcesQuery.shownContexts, reads.mapContext]));
+	const mapUpdatesCurrent = $derived(updatesCurrent && mapLive.status === "connected" && !mapLive.catchingUp && !mapLive.reloadError);
+	// The live notice explains whatever paused activity: the map's context too while its topology shows.
+	const mapShown = $derived(mapPanelOpen && Boolean(topologyQuery.data));
+	const noticeLive = $derived(mapShown ? mapLive : shownLive);
+	const noticeCurrent = $derived(mapShown ? mapUpdatesCurrent : updatesCurrent);
 
 	const namespaceOptions = $derived(reads.namespaces);
 	const kindOptions = $derived(
@@ -466,10 +476,12 @@
 			fetchKeys.length > 0 &&
 			(!sourceReady || (resourcesQuery.isPending && !resourcesQuery.isPlaceholderData)),
 	);
+	const contextsLoading = loadingDelay(() => resourcesQuery.loadingContexts.length > 0);
+	const contextsLoadingText = $derived(contextsLoadingNotice(resourcesQuery.loadingContexts));
 	const ownershipMapLoading = loadingDelay(() => !OwnershipMapComponent && !ownershipMapLoadError);
 	// Watches that connect or recover within the show delay show no notice. Limited and failed states are not transient.
-	const staleNotice = loadingDelay(() => !updatesCurrent && !live.state.reloadError
-		&& live.state.status !== "partial" && live.state.status !== "polling");
+	const staleNotice = loadingDelay(() => !noticeCurrent && !noticeLive.reloadError
+		&& noticeLive.status !== "partial" && noticeLive.status !== "polling");
 	const resourceError = $derived(
 		workspaceReadContext.sourceError
 			? workspaceReadContext.sourceError
@@ -676,6 +688,12 @@
 	{#if resourcesQuery.isSuccess && !resourcesQuery.isPlaceholderData}
 		<ResourceScopeWarnings failures={resourcesQuery.data?.failures ?? []} contextFailures={resourcesQuery.contextFailures} />
 	{/if}
+	{#if contextsLoading.shown && resourcesQuery.loadingContexts.length > 0}
+		<p role="status" class="flex items-center gap-2 text-xs text-muted-foreground" data-contexts-loading>
+			<Spinner class="size-3.5" />
+			<span>{contextsLoadingText}</span>
+		</p>
+	{/if}
 	{#if !clusterContext || fetchKeys.length === 0 || resourceError || loading.active}
 		<div class="flex justify-end">{@render refreshControls()}</div>
 	{/if}
@@ -765,16 +783,16 @@
 			onClearFilters={clearFilters}
 		/>
 
-		{#if live.state.reloadError}
+		{#if noticeLive.reloadError}
 			<details class="rounded-md border border-amber-500/30 text-xs text-amber-700 dark:text-amber-300" data-refresh-error>
 				<summary class="cursor-pointer px-3 py-2"><span role="status">Refresh failed. Showing last observed state. Activity indicators are paused until live updates recover.</span></summary>
-				<div class="px-3 pb-3"><FriendlyError error={live.state.reloadError} context={{ operation: "resourcesLoad", fallbackTitle: "Resource refresh failed. Retrying." }} /></div>
+				<div class="px-3 pb-3"><FriendlyError error={noticeLive.reloadError} context={{ operation: "resourcesLoad", fallbackTitle: "Resource refresh failed. Retrying." }} /></div>
 			</details>
-		{:else if (resourcesQuery.data || topologyQuery.data) && (live.state.status === "partial" || live.state.status === "polling" || staleNotice.shown)}
+		{:else if (resourcesQuery.data || topologyQuery.data) && (noticeLive.status === "partial" || noticeLive.status === "polling" || staleNotice.shown)}
 			<p role="status" class="rounded-md border border-amber-500/30 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-				{#if live.state.status === "partial"}
+				{#if noticeLive.status === "partial"}
 					Live updates are limited. Readable resources without watch access refresh periodically. Activity indicators are paused.
-				{:else if live.state.status === "polling"}
+				{:else if noticeLive.status === "polling"}
 					Live updates are unavailable. Readable resources refresh periodically. Activity indicators are paused.
 				{:else}
 					Showing last observed state. Activity indicators are paused until live updates recover.
@@ -797,7 +815,7 @@
 					{#if OwnershipMapComponent && !ownershipMapLoading.active}
 						<OwnershipMapComponent
 							topology={topologyWithMetrics}
-							{updatesCurrent}
+							updatesCurrent={mapUpdatesCurrent}
 							isLoading={topologyQuery.isPending && !topologyQuery.data}
 							isError={topologyQuery.isError && !topologyQuery.data}
 							error={topologyQuery.error}

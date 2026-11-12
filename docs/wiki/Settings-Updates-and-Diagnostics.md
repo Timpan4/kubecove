@@ -6,16 +6,16 @@ Open **Settings** from app navigation. Settings are global preferences. Argo CD 
 
 | Control | Default | Effect and risk |
 | --- | --- | --- |
-| Exact timestamps | Off | Adds absolute times beside relative ages. |
+| Show exact timestamps | Off | Adds absolute times beside relative ages. |
 | Timestamp timezone | Local | Changes exact timestamps and tooltips to local time or UTC. |
-| CPU and memory footer | Off | Shows app-process CPU, WSS, RSS, and PSS. Windows reports WSS, Linux and macOS report RSS, and Linux reports PSS. Figures a platform lacks show `--`. |
+| Show CPU and memory footer | Off | Shows app-process CPU, WSS, RSS, and PSS. Windows reports WSS, Linux and macOS report RSS, and Linux reports PSS. Figures a platform lacks show `--`. |
 | Measure working set (WSS) | Off | Linux only, while the footer is on. Each footer refresh resets the kernel's referenced-page bits for KubeCove processes, so WSS shows memory touched since the previous refresh. The kernel may then reclaim those pages sooner. |
-| Ownership map by default | On | Opens ownership map in resource views. |
+| Show ownership map by default | On | Opens the ownership map in resource views. |
 | Expand timeline by default | Off | Opens resource timeline messages and facts. Individual entries can still be collapsed. |
 | Redact secrets | On | Keeps Secret values hidden by default. Connected Argo Secret values remain masked. |
-| Full map during selection | Off | Keeps unrelated ownership branches visible; large namespaces can render more slowly. |
-| Unavailable GitOps providers | Off | Shows disabled Argo CD and Flux groups when their CRDs are absent. |
-| Custom Resources | On | Loads Custom Resources after native resources are visible. |
+| Keep full map visible during selection | Off | Keeps unrelated ownership branches visible; large namespaces can render more slowly. |
+| Show unavailable GitOps providers | Off | Shows disabled Argo CD and Flux groups when their CRDs are absent. |
+| Show Custom Resources | On | Loads Custom Resources after native resources are visible. |
 
 ## Live sessions
 
@@ -23,6 +23,19 @@ Open **Settings** from app navigation. Settings are global preferences. Argo CD 
 | --- | --- | --- |
 | Auto-start saved port forwards | Off | Starts saved Service port-forward presets when restoring a workspace. Verify target and local port before enabling. |
 | Keep live sessions across workspace switches | Off | Leaves port-forward and Pod exec sessions running after leaving their scope. Stop sessions explicitly when no longer needed. |
+
+## Appearance
+
+- **Log layout** sets how entries appear in the Logs tab: Stacked, Gutter, or One line.
+- **Resource group order** orders the groups in the Resource Table. Drag kinds between lanes, or focus a kind and use the arrow keys. Column sorting still orders rows inside each group.
+
+## Advanced
+
+**Skip change review** is off by default and warns before you enable it. When it is on, a successful dry-run in the Actions tab applies without showing its diff, in every context. Dry-run still runs, and delete always asks. See [Guarded Operations](https://github.com/Timpan4/kubecove/wiki/Guarded-Operations).
+
+## Remote server
+
+The desktop app can connect to a KubeCove server with a token or OIDC sign-in. See [Run KubeCove on a remote host](https://github.com/Timpan4/kubecove/wiki/Remote-Server).
 
 ## YAML
 
@@ -42,9 +55,9 @@ Changing source, paths, or order changes contexts available to workspaces. Remov
 
 ## Updates
 
-Open **Updates**, select **Check**, then select **Install** only after reviewing available release information. Installation downloads updater artifact, then requires **Relaunch** to finish. Development builds disable update checks.
+Open **Updates** and select **Check**. Review the release information, then select **Install**. KubeCove downloads the update and needs **Relaunch** to finish. Development builds do not check for updates.
 
-If a check fails, retry after confirming network access to GitHub release downloads. Do not replace application files manually while installer is running.
+If a check fails, confirm network access to GitHub release downloads and retry. Do not replace application files by hand while the installer is running.
 
 ## AI agents
 
@@ -52,9 +65,9 @@ If a check fails, retry after confirming network access to GitHub release downlo
 
 ## Diagnostics
 
-![KubeCove Settings diagnostics view showing local latency report controls](https://raw.githubusercontent.com/Timpan4/kubecove/main/docs/assets/wiki/settings-diagnostics-report.png)
+![KubeCove Settings showing the category list and the Diagnostics switches and interaction report](https://raw.githubusercontent.com/Timpan4/kubecove/main/docs/assets/wiki/settings-diagnostics-report.png)
 
-Diagnostics are off by default. Enable them to collect frontend and backend latency timings, render counters, and bounded trace events in memory. They are intended for local investigation; disable them when finished.
+Diagnostics are off by default. Enable them to collect frontend and backend latency timings, render counters, and bounded trace events in memory. They are intended for local investigation; disable them when finished. **Record interactions** also measures input-to-paint time, dropped frames, and DOM changes for each click, drag, key, and scroll.
 
 **Latency report** shows frontend timings, render counters, and backend timings. **Copy** creates identifier-redacted output by default. Leave **Include identifiers** unchecked unless recipient and destination are trusted. **Clear** removes frontend and backend trace data from memory.
 

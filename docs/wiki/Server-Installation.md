@@ -68,7 +68,7 @@ The bundled unit runs the server as a dedicated `kubecove` user, keeps state in 
    sudo install -m 0640 -o root -g kubecove /path/to/kubeconfig /etc/kubecove/config
    ```
 
-   Exec credential plugins must be installed system-wide, for example in `/usr/local/bin`. Their caches go to `/var/lib/kubecove`.
+   Exec credential plugins must be installed system-wide, for example in `/usr/local/bin`. Their caches go to `/var/cache/kubecove`.
 
 4. Install and start the unit:
 

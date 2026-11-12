@@ -93,6 +93,9 @@ impl Backend for NativeBackend {
     fn watch(&self, target: WatchTarget) -> Read<LogStream> {
         live_data::watch(self, target)
     }
+    fn watch_start_version(&self, scope: Scope, key: WatchResourceKey) -> Option<Read<String>> {
+        Some(live_data::watch_start_version(self, scope, key))
+    }
 
     fn contexts(&self, kubeconfig_source_key: Option<String>) -> Read<Vec<ClusterContext>> {
         self.read(async move { commands::list_kube_contexts(kubeconfig_source_key) })

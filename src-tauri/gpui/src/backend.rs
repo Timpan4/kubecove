@@ -97,6 +97,12 @@ pub fn context_versions(context: &str, versions: ListVersions) -> ListVersions {
         .collect()
 }
 
+/// Whether `id`, a [`watch_id`], names a watch in `context`.
+pub fn watch_id_in(context: &str, id: &str) -> bool {
+    id.strip_prefix(context)
+        .is_some_and(|rest| rest.starts_with('\u{1f}'))
+}
+
 /// A unit separator joins the two: a context name may contain any printable
 /// character, and a signature contains `:` and `/`.
 fn context_watch_id(context: &str, signature: &str) -> String {
@@ -269,6 +275,12 @@ pub trait Backend: Send + Sync + 'static {
                 AppErrorKind::UnsupportedOperation,
             ))
         })
+    }
+    /// The current list version of `key`, so its watch opens before the view
+    /// lists the rows: a list read after this settles is at or past it. `None`
+    /// when the backend reads no such version; the watch then waits for the rows.
+    fn watch_start_version(&self, _scope: Scope, _key: WatchResourceKey) -> Option<Read<String>> {
+        None
     }
     /// `list_kube_contexts` for the kubeconfig source key the web passes, or the default source.
     fn contexts(&self, kubeconfig_source_key: Option<String>) -> Read<Vec<ClusterContext>>;

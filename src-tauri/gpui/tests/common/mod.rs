@@ -84,6 +84,10 @@ pub struct Fixture {
     context_resources: Vec<ResourceSummary>,
     #[serde(skip)]
     pub failed_workspace_context: Mutex<Option<String>>,
+    /// A context whose scope reads wait until the sender sends `true`, as
+    /// `holdWorkspaceContext` holds them in the browser mocks.
+    #[serde(skip)]
+    pub held_workspace_context: Mutex<Option<(String, tokio::sync::watch::Sender<bool>)>>,
     /// Set by the frames harness: scope reads build their rows on the background
     /// executor, as `NativeBackend` builds them on its runtime, and the dispatcher
     /// drain still waits for them. UI tests leave it unset and build them inline.

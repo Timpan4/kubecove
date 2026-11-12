@@ -2,7 +2,7 @@ Kubeconform sidecars pinned to v0.7.0.
 
 Source: https://github.com/yannh/kubeconform/releases/tag/v0.7.0
 
-Tauri bundles `bin/kubeconform` by selecting the file whose suffix matches the target triple.
+Tauri bundles `bin/kubeconform` by selecting the file whose suffix matches the target triple. This directory holds one binary each for macOS arm64 and x64, Linux arm64 and x64, and Windows x64.
 
 Linux ARM64 uses `kubeconform-aarch64-unknown-linux-gnu`, downloaded from the
 same v0.7.0 release as the existing sidecars. Its upstream archive SHA256 is

@@ -57,8 +57,7 @@ impl Fixture {
         let shortcuts = items
             .iter()
             .find(|item| item["spec"]["displayName"] == name)
-            .map(|item| item["spec"]["shortcuts"].clone())
-            .unwrap_or_default();
+            .map_or_default(|item| item["spec"]["shortcuts"].clone());
         assert!(
             shortcuts
                 .as_array()

@@ -32,4 +32,4 @@
 - [Safety, data handling, and architecture](https://github.com/Timpan4/kubecove/wiki/Safety-Data-and-Architecture)
 - [Troubleshooting](https://github.com/Timpan4/kubecove/wiki/Troubleshooting)
 - [Glossary](https://github.com/Timpan4/kubecove/wiki/Glossary)
-- [Open a documentation issue](https://github.com/Timpan4/kubecove/issues/new)
+- [Open a documentation issue](https://github.com/Timpan4/kubecove/issues/new?template=documentation.yml)

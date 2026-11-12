@@ -58,8 +58,7 @@ pub(super) fn normalize_resource_kind(
 fn group_from_api_version(api_version: &str) -> String {
     api_version
         .split_once('/')
-        .map(|(group, _)| group.to_string())
-        .unwrap_or_default()
+        .map_or_default(|(group, _)| group.to_string())
 }
 
 pub(super) fn api_resource_from_kind(kind: &WatchResourceKind) -> Result<ApiResource, AppError> {

@@ -3,6 +3,11 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.14.2 - 2026-11-12
+### Fixed
+
+- Open live watches before the rows load (#670).
+
 ## 0.14.1 - 2026-11-11
 ### Fixed
 

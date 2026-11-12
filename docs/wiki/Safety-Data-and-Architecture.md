@@ -1,6 +1,6 @@
 # Safety, data handling, and architecture
 
-KubeCove is local desktop software. It reads Kubernetes data through selected kubeconfig contexts and performs exposed typed operations. It deploys no cluster agent and provides no general local-shell bridge.
+KubeCove reads Kubernetes data through the kubeconfig contexts you select and changes a cluster only through typed, confirmed operations. It deploys no cluster agent and has no general shell bridge. This page describes the desktop app. For the headless server's sign-in, sessions, and storage, see [Run KubeCove on a remote host](https://github.com/Timpan4/kubecove/wiki/Remote-Server).
 
 ```mermaid
 flowchart LR
@@ -16,32 +16,34 @@ flowchart LR
 
 ## Local data
 
-Local settings persist global display, YAML, session, and Secret-redaction preferences plus saved Argo server profile metadata and workspace identity. Argo credentials are not stored in settings.
+Local settings store display, YAML, live-session, and Secret-redaction preferences, saved Argo CD server profile metadata, and workspaces. Argo CD credentials are not stored in settings.
 
-Kubeconfig source settings persist in application configuration: selected environment-variable name, added file paths, and source-label preference. Kubeconfig files, client credentials, tokens, and certificates remain backend-side and are not returned in command payloads.
+Kubeconfig source settings are stored in the application configuration: the selected environment-variable name, the added file paths, and the source-label preference. Kubeconfig files, client credentials, tokens, and certificates stay in the backend and are not returned to the interface.
 
-Workspace export is user-directed through native file dialogs. Treat exported workspace files as operational metadata; inspect before sharing.
+You export a workspace through a native file dialog. An exported file holds operational metadata such as context and namespace names, so read it before sharing it.
 
 ## Credentials and Argo CD
 
-Argo CD connections are set up per workspace from the GitOps view or Application details. A server profile can be saved without credential. Selecting **Remember credential in native keyring** stores credential in operating-system keyring and lets KubeCove reconnect when the workspace opens; otherwise credential is session-only. HTTPS through a cluster Service accepts only the certificate fingerprint you confirmed, which is stored with a remembered credential. For external URLs, custom CA material and invalid-certificate acceptance are session-only. Enabling invalid-certificate acceptance disables certificate validation for that session; use only for trusted diagnosis, then disconnect.
+Argo CD connections are set up per workspace from the GitOps view or from Application details. A server profile can be saved without a credential. **Remember credential in native keyring** stores the credential in the operating-system keyring and reconnects when the workspace opens. Without it, the credential lasts for the session only.
 
-Argo API and Kubernetes CRD access are separate transports. Connected inspection can visibly fall back to Kubernetes when a required connected read fails; the result preserves the connected failure and its Kubernetes provenance. Reviewed operations do not switch transports after confirmation.
+HTTPS through a cluster Service accepts only the certificate fingerprint you confirmed. The fingerprint is stored with a remembered credential. For an external URL, custom CA material and invalid-certificate acceptance last for the session only. Accepting invalid certificates turns off certificate validation for that session, so use it only to diagnose a server you trust, then disconnect.
+
+The Argo CD API and the Kubernetes CRDs are separate transports. Connected inspection can fall back to Kubernetes when a required connected read fails. The result then shows the connected failure and that the data came from Kubernetes. A reviewed operation does not switch transports after confirmation.
 
 ## Secrets
 
-Secret values are redacted by default in resource details and YAML. Reveal reads one selected Secret key through backend command path. Reveal only when authorized; do not copy value into logs, tickets, or shared reports.
+Secret values are redacted by default in resource details and YAML. A reveal reads one selected Secret key through the backend. Reveal a value only when you are authorized to, and do not copy it into logs, tickets, or shared reports.
 
-Selected-resource YAML apply blocks core `v1` Secrets because redacted values could corrupt live data. Connected Argo Secret fields remain redacted.
+Selected-resource YAML apply blocks core `v1` Secrets, because applying redacted values could overwrite live data. Secret fields from a connected Argo CD server stay redacted.
 
 ## Diagnostics and reports
 
-Diagnostics are disabled by default and bounded in memory. Clearing diagnostics removes collected frontend and backend events. Copied latency reports redact identifiers by default; **Include identifiers** opts into sharing them. Review copied report before sending outside trusted support channel.
+Diagnostics are off by default, bounded, and held in memory. Clearing them removes the collected frontend and backend events. A copied latency report redacts identifiers unless you select **Include identifiers**. Review a copied report before sending it outside a trusted support channel.
 
-## Local listeners and desktop boundary
+## Local listeners and the desktop boundary
 
-Service port forwards bind loopback address only, so local processes can reach forwarded port but network peers cannot. Pod exec, port-forward, resource inspection, YAML, and guarded operations cross webview boundary only through registered typed Tauri commands. Backend validates scope and returns frontend-safe data; it exposes no generic shell or raw-kubeconfig endpoint.
+Port forwards listen on the loopback address only, so local processes can reach the forwarded port and other hosts cannot. Pod exec, port forwarding, resource inspection, YAML, and guarded operations cross the webview boundary only through registered typed Tauri commands. The backend validates the scope and returns frontend-safe data. It exposes no general shell and no endpoint that returns raw kubeconfig contents.
 
-## Report issue safely
+## Report an issue safely
 
-Open [documentation issue](https://github.com/Timpan4/kubecove/issues/new) with symptom, sanitized context, operation, and safe reproduction steps. Remove Secret values, tokens, kubeconfig contents, private hostnames, and copied identifiers unless disclosure is necessary and channel is approved. For vulnerabilities, use [security policy](https://github.com/Timpan4/kubecove/security/policy).
+Open a [documentation issue](https://github.com/Timpan4/kubecove/issues/new?template=documentation.yml) or a [product issue](https://github.com/Timpan4/kubecove/issues) with the symptom, the sanitized context, the operation, and reproduction steps. Remove Secret values, tokens, kubeconfig contents, private hostnames, and copied identifiers. For vulnerabilities, follow the [security policy](https://github.com/Timpan4/kubecove/security/policy).

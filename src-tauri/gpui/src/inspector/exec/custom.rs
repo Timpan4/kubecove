@@ -103,8 +103,7 @@ impl Inspector {
             .container
             .read(cx)
             .selected_value()
-            .map(|s| s.to_string())
-            .unwrap_or_default();
+            .map_or_default(|s| s.to_string());
         let executable = argv
             .first()
             .map(|s| s.rsplit('/').next().unwrap_or(s))

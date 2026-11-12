@@ -28,10 +28,10 @@ A Service `targetPort` is resolved to its numeric target, named container port, 
 1. Check the target and remote port.
 2. Enter an optional local port, or leave it blank for an automatic local port.
 3. Select **Start**.
-4. After the session reports **listening**, copy or open the displayed local URL, such as `http://127.0.0.1:18080`.
+4. After the session reports **listening**, select **Copy** to copy the displayed local URL, such as `http://127.0.0.1:18080`.
 5. Test the local endpoint, then inspect the active session's target, resolved Pod, local address, and status.
 
-Each local connection opens a Kubernetes port-forward. Service sessions resolve a ready backing Pod again when a connection reconnects or when you select **Reconnect**; the resolved Pod can change. The session stays visible in Resource Details, **Live Sessions**, and the live-session indicator.
+Each local connection opens a Kubernetes port-forward. Service sessions resolve a ready backing Pod again when a connection reconnects or when you select **Reconnect**; the resolved Pod can change. The session stays visible in Resource Details, the **Live Sessions** view, and the live-session indicator. Open that view from **Port Forwards** in the sidebar. **Reconnect** is in the view and the indicator, not in the Forward tab.
 
 ## Save Service presets
 

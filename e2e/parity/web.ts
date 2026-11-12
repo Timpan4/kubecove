@@ -64,7 +64,7 @@ export async function action(page: Page, step: Step) {
         case "panelControl": case "expectPanelControl": case "skipGraph": case "mapKey": case "expectMapFocus": case "expectNoMapFocus": case "expectMapNodeInView": case "panMap": case "clickMapControl": case "expectMapControlFocus": case "expectMapZoom": case "resizeDetail": case "expectDetailResize": await panelAction(page, step); break;
         case "terminalFit": case "terminalOutput": case "terminalSelect": case "terminalCopy": case "terminalPaste": case "terminalScroll": case "terminalPrimaryPaste": case "terminalDragOutside": case "terminalRelease": case "terminalFocus": case "terminalRightClick": case "expectTerminalCursor":
             await terminalAction(page, step); break;
-        case "failWorkspaceContext": case "expectWorkspaceReadWarning": case "expectContextUnavailable":
+        case "failWorkspaceContext": case "expectWorkspaceReadWarning": case "expectContextUnavailable": case "holdWorkspaceContext": case "releaseWorkspaceContext": case "expectContextsLoading":
             await workspaceAction(page, step); break;
         case "editSavedWorkspace": case "expectNoSavedWorkspace": case "saveWorkspace": case "cancelWorkspaceEdit": case "toggleWorkspaceContext": case "expectOverviewHealth": case "expectDetailContext": case "exportSavedWorkspace": case "expectExportedShortcut":
             await workspaceAction(page, step); break;

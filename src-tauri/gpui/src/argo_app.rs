@@ -76,8 +76,7 @@ fn resource_label(resource: &ArgoManagedResource) -> String {
         resource
             .namespace
             .as_deref()
-            .map(|namespace| format!("{namespace}/"))
-            .unwrap_or_default(),
+            .map_or_default(|namespace| format!("{namespace}/")),
         resource.name.as_deref().unwrap_or("unknown")
     )
 }

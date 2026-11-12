@@ -16,6 +16,21 @@ export async function workspaceAction(page: Page, step: Step): Promise<void> {
     switch (step.action) {
         case "failWorkspaceContext":
             await page.evaluate(`import('/src/lib/tauri-dev-mocks.ts').then(m => m.failWorkspaceContext(${JSON.stringify(step.context)}))`); break;
+        case "holdWorkspaceContext":
+            await page.evaluate(`import('/src/lib/tauri-dev-mocks.ts').then(m => m.holdWorkspaceContext(${JSON.stringify(step.context)}))`); break;
+        case "releaseWorkspaceContext":
+            await page.evaluate(`import('/src/lib/tauri-dev-mocks.ts').then(m => m.releaseWorkspaceContext(${JSON.stringify(step.context)}))`); break;
+        case "expectContextsLoading": {
+            const notice = page.locator("[data-contexts-loading]");
+            if (!step.contexts.length) {
+                await notice.waitFor({ state: "hidden" });
+                break;
+            }
+            const names = step.contexts.map((context) => `"${context}"`).join(", ");
+            const text = `Waiting for context${step.contexts.length > 1 ? "s" : ""} ${names}. Showing resources from the contexts that answered.`;
+            await notice.filter({ hasText: text }).waitFor();
+            break;
+        }
         case "expectWorkspaceReadWarning":
             await page.getByRole("alert").filter({ hasText: step.context }).filter({ hasText: "Context unavailable" }).waitFor(); break;
         case "expectContextUnavailable":

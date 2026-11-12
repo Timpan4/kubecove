@@ -42,9 +42,9 @@ Rules:
 
 Rust:
 
-- Move command handlers into `commands/<domain>.rs` or `commands/<domain>/`.
-- Move shared helpers into `commands/helpers.rs` or a helper submodule.
-- Re-export through `commands/mod.rs`.
+- Move command handlers into `commands/<domain>.rs` or `commands/<domain>/` inside the owning crate under `src-tauri/crates/`.
+- Move shared helpers into a helper submodule of that crate.
+- Re-export through the crate's `commands/mod.rs`. `src-tauri/src/commands/mod.rs` re-exports the crates' commands.
 - Run `bun run rust:check` after each coherent move.
 
 TypeScript and Svelte:

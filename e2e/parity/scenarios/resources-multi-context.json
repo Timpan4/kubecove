@@ -149,6 +149,42 @@
       ]
     },
     {
+      "id": "resources.multi-context-slow-context",
+      "title": "A context that has not answered leaves the rows of the contexts that did, with a notice naming the waiting context",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "holdWorkspaceContext", "context": "admin@solid-k8s" },
+        { "action": "editSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "toggleWorkspaceContext", "context": "admin@solid-k8s" },
+        { "action": "saveWorkspace" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "expectRowContexts", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "contexts": ["mock-dev"] },
+        { "action": "expectContextsLoading", "contexts": ["admin@solid-k8s"] },
+        { "action": "releaseWorkspaceContext", "context": "admin@solid-k8s" },
+        { "action": "expectRowContexts", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "contexts": ["mock-dev", "admin@solid-k8s"] },
+        { "action": "expectContextsLoading", "contexts": [] }
+      ]
+    },
+    {
+      "id": "resources.multi-context-failed-context-live",
+      "title": "An unreachable context's reconnecting watch leaves row activity of the contexts that answered running",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "failWorkspaceContext", "context": "admin@solid-k8s" },
+        { "action": "editSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "toggleWorkspaceContext", "context": "admin@solid-k8s" },
+        { "action": "saveWorkspace" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "expectRowContexts", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "contexts": ["mock-dev"] },
+        { "action": "replayLiveData", "script": "rollout" },
+        { "action": "expectResourceActivity", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "state": "active" }
+      ]
+    },
+    {
       "id": "resources.multi-context-watch-isolation",
       "title": "A watch deletion in one context leaves the same-named object of the other context",
       "steps": [

@@ -277,7 +277,7 @@ impl Inspector {
     }
 
     pub(super) fn live_notice(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let status = self.resource_live_status();
+        let status = self.shown_live_status();
         // Watches that connect or recover within the show delay show no notice,
         // and a shown notice stays for the minimum visible time, as loading
         // indicators do. Failed and limited states are not transient.
@@ -353,6 +353,37 @@ impl Inspector {
                         ),
                     )
                 })
+                .into_any_element(),
+        )
+    }
+}
+
+impl Inspector {
+    /// The notice for workspace contexts still reading their rows while other
+    /// contexts' rows show, delayed like other loading indicators, as
+    /// `contextsLoadingNotice` in `contextResults.ts` words it.
+    pub(super) fn contexts_waiting_notice(&self) -> Option<AnyElement> {
+        let waiting = self.scope_load.waiting_contexts();
+        let phase = self.loading.phase("contexts-waiting", !waiting.is_empty());
+        if !phase.shown() || waiting.is_empty() {
+            return None;
+        }
+        let names = waiting
+            .iter()
+            .map(|context| format!("\"{context}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let plural = if waiting.len() > 1 { "s" } else { "" };
+        let label = format!(
+            "Waiting for context{plural} {names}. Showing resources from the contexts that answered."
+        );
+        Some(
+            div()
+                .id("contexts-waiting")
+                .test_support()
+                .role(gpui_kit::Role::Status)
+                .aria_label(label.clone())
+                .child(ui::muted(ui::xs(label)))
                 .into_any_element(),
         )
     }

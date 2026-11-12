@@ -302,6 +302,17 @@ pub(super) fn watch(backend: &NativeBackend, target: WatchTarget) -> Read<LogStr
     })
 }
 
+pub(super) fn watch_start_version(
+    backend: &NativeBackend,
+    scope: Scope,
+    key: WatchResourceKey,
+) -> Read<String> {
+    let store = backend.store.clone();
+    backend.read(async move {
+        commands::resource_watch_start_version(scope.context, key, None, State::new(&store)).await
+    })
+}
+
 /// Built-in resources and namespaces. The web stages these before custom kinds.
 pub(super) fn resources(backend: &NativeBackend, scope: Scope, refresh: bool) -> Read<ScopeResult> {
     // Both reads start when created, so a refresh evicts the view first:

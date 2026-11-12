@@ -38,7 +38,7 @@ export const ACTIONS = [
     "openNamespaceList", "expectNamespaceRow", "resizeViewport", "openNavigationDrawer", "expectNavigationDrawer", "sidebarKey",
     "terminalOutput", "terminalSelect", "terminalCopy", "terminalPaste", "terminalScroll", "terminalPrimaryPaste", "terminalDragOutside", "terminalRelease", "terminalFocus", "terminalRightClick", "expectTerminalCursor",
     "configureArgoMock", "argoControl", "focusArgoResource", "expectNoSavedArgoProfile", "copyArgoValue", "configureArgoInventory", "expandArgoDiff", "reconnectArgoProfile", "controlClock", "advanceClock",
-    "failWorkspaceContext", "expectWorkspaceReadWarning",
+    "failWorkspaceContext", "expectWorkspaceReadWarning", "holdWorkspaceContext", "releaseWorkspaceContext", "expectContextsLoading",
     "editSavedWorkspace", "expectNoSavedWorkspace", "saveWorkspace", "cancelWorkspaceEdit", "toggleWorkspaceContext", "expectOverviewHealth", "expectDetailContext",
     "sidebarToggle", "sidebarSelect", "expectSidebarRow", "collapseSidebar", "expectSidebarBranch", "scrollSidebar", "expectSidebarReveal", "refreshPage",
     "replayPageReads", "focusStalePage", "expectPageText",
@@ -172,7 +172,8 @@ function step<Value>(value: Value): Step {
         case "importDecision": return { action: item.action, choice: oneOf(["Add as new", "Replace", "Skip"], item.choice, "an import decision") };
         case "cancelImport": return { action: item.action };
         case "searchEvents": return { action: item.action, value: item.value === "" ? "" : string(item.value) };
-        case "failWorkspaceContext": case "expectWorkspaceReadWarning": return { action: item.action, context: string(item.context) };
+        case "failWorkspaceContext": case "expectWorkspaceReadWarning": case "holdWorkspaceContext": case "releaseWorkspaceContext": return { action: item.action, context: string(item.context) };
+        case "expectContextsLoading": return { action: item.action, contexts: strings(item.contexts, true) };
         case "editSavedWorkspace": case "expectNoSavedWorkspace": return { action: item.action, name: string(item.name) };
         case "saveWorkspace": case "cancelWorkspaceEdit": return { action: item.action };
         case "toggleWorkspaceContext": case "expectDetailContext": return { action: item.action, context: string(item.context) };

@@ -1,8 +1,8 @@
 # Agent Skill Backlog
 
-Potential project-specific skills. Do not install casually: define pressure scenario, observe work without skill, write smallest `SKILL.md`, validate it, then install through normal skill path.
+Candidate project-specific skills. Before installing one, define a pressure scenario, observe the work without the skill, write the smallest `SKILL.md` that fixes the observed problem, and validate it. Then install it through the normal skill path.
 
-Read [product and architecture](product-and-architecture.md), [development workflow](development-workflow.md), [GitHub issue tracker](agents/issue-tracker.md), and relevant ADRs before creating domain skill. Track skill proposals and validation follow-up in GitHub Issues; use Milestones for delivery grouping.
+Read [product and architecture](product-and-architecture.md), [development workflow](development-workflow.md), [GitHub issue tracker](agents/issue-tracker.md), and the relevant ADRs before creating a domain skill. Track skill proposals and validation follow-up in GitHub Issues, and use Milestones for delivery grouping.
 
 ## First Batch
 
@@ -13,8 +13,8 @@ Use for Tauri commands, plugins, capabilities, filesystem or shell access, Kuber
 - No broad frontend shell access.
 - No kubeconfig, token, certificate, or Secret leakage to frontend.
 - Prefer narrow typed Tauri commands over generic bridges.
-- Review capabilities and permissions when adding plugin.
-- Require ADR for shell plugin, broad filesystem access, cluster-changing command, or long-lived sensitive state.
+- Review capabilities and permissions when adding a plugin.
+- Require an ADR for a shell plugin, broad filesystem access, a cluster-changing command, or long-lived sensitive state.
 
 ### `kube-rs-resource-api`
 
@@ -40,12 +40,12 @@ Use for Argo CD detection, grouping, CRD views, connected inspection, comparison
 - Start with Kubernetes API access to Argo CRDs and tracking metadata.
 - Keep Kubernetes and connected transports explicit; never silently fall back.
 - Apply ADR 0013 to credentials, TLS, redaction, comparison, preflight, and allowlisted operations.
-- Keep Argo CLI, arbitrary manifests, deletes, and spec editing outside connected path; Flux remains inspection-only without ADR.
+- Keep the Argo CLI, arbitrary manifests, deletes, and spec editing outside the connected path. Flux remains inspection-only unless an ADR says otherwise.
 
 ## Future Candidates
 
-- `frontend-state-table-patterns`: add after repeated Svelte query, table, and local-state conventions prove stable.
-- `safe-k8s-mutations`: add when repeated work exceeds ADR 0003–0006 and ADR 0013 guardrails.
-- `agent-task-discipline`: keep in `AGENTS.md` unless repeated drift proves dedicated skill useful.
+- `frontend-state-table-patterns`: add once the Svelte query, table, and local-state conventions are stable.
+- `safe-k8s-mutations`: add when repeated work goes beyond the guardrails in ADRs 0003 to 0006 and ADR 0013.
+- `agent-task-discipline`: keep these rules in `AGENTS.md` unless repeated drift shows that a dedicated skill helps.
 
-Create and validate one skill before next.
+Create and validate one skill before starting the next.

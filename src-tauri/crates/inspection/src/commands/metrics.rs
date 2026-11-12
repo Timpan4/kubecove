@@ -175,8 +175,7 @@ fn container_usage_totals(data: &Value) -> (Option<f64>, Option<i64>) {
     let containers = data
         .get("containers")
         .and_then(Value::as_array)
-        .map(Vec::as_slice)
-        .unwrap_or_default();
+        .map_or_default(Vec::as_slice);
     let mut cpu = Some(0.0_f64);
     let mut has_cpu = false;
     let mut memory = Some(0_i64);

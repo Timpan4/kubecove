@@ -12,6 +12,7 @@ Current areas:
 - `incidents/`
 - `live-sessions/`
 - `rbac/`
+- `remote-connection/`
 - `resource-detail/`
 - `resources/`
 - `workspaces/`

@@ -253,13 +253,16 @@ impl Inspector {
                             },
                             cx,
                         ),
-                        Err(error) => {
+                        // A context whose rows don't show has nothing to call stale;
+                        // its own read failure is already its warning.
+                        Err(error) if this.scope_load.shows(&context) => {
                             this.live.refresh_error = Some(super::scope_load::context_message(
                                 several,
                                 &context,
                                 &error.message,
                             ))
                         }
+                        Err(_) => {}
                     }
                 }
                 cx.notify();

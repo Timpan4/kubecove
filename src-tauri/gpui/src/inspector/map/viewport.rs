@@ -280,68 +280,64 @@ impl Inspector {
         )
         .absolute()
         .size_full();
-        let nodes: Vec<AnyElement> = viewport
-            .map(|viewport| {
-                let z = viewport.zoom;
-                view.nodes
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, node)| {
-                        shown((node.x, node.y, node.x + node.width, node.y + node.height))
-                    })
-                    .map(|(index, node)| {
-                        let content = match &node.item {
-                            FlowItem::Resource(index) => {
-                                let resource = &topology.nodes[*index];
-                                resource_card(
-                                    node,
-                                    resource,
-                                    z,
-                                    self.map.network,
-                                    self.resource_metric(&resource.summary),
-                                )
+        let nodes: Vec<AnyElement> = viewport.map_or_default(|viewport| {
+            let z = viewport.zoom;
+            view.nodes
+                .iter()
+                .enumerate()
+                .filter(|(_, node)| {
+                    shown((node.x, node.y, node.x + node.width, node.y + node.height))
+                })
+                .map(|(index, node)| {
+                    let content = match &node.item {
+                        FlowItem::Resource(index) => {
+                            let resource = &topology.nodes[*index];
+                            resource_card(
+                                node,
+                                resource,
+                                z,
+                                self.map.network,
+                                self.resource_metric(&resource.summary),
+                            )
+                        }
+                        FlowItem::Group {
+                            kind,
+                            members,
+                            expanded,
+                        } => group_card(kind, members.len(), *expanded, node.dimmed, z),
+                    };
+                    let id = node_id(&node.item, &self.map);
+                    div()
+                        .id(id.clone())
+                        .test_support()
+                        .absolute()
+                        .left(px(node.x * z + viewport.x))
+                        .top(px(node.y * z + viewport.y))
+                        .w(px(node.width * z))
+                        .h(px(node.height * z))
+                        .cursor_pointer()
+                        .when_some(self.map.node_focus(&node.item), |item, focus| {
+                            item.track_focus(focus)
+                                .focus(|style| style.border_2().border_color(Tokens::ring()))
+                        })
+                        .children(selection_ring(node, z))
+                        .child(content)
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            // The release of a pan lands on the node that moved under the pointer.
+                            if !this.map.pan_moved {
+                                this.activate_map_node(index, window, cx);
                             }
-                            FlowItem::Group {
-                                kind,
-                                members,
-                                expanded,
-                            } => group_card(kind, members.len(), *expanded, node.dimmed, z),
-                        };
-                        let id = node_id(&node.item, &self.map);
-                        div()
-                            .id(id.clone())
-                            .test_support()
-                            .absolute()
-                            .left(px(node.x * z + viewport.x))
-                            .top(px(node.y * z + viewport.y))
-                            .w(px(node.width * z))
-                            .h(px(node.height * z))
-                            .cursor_pointer()
-                            .when_some(self.map.node_focus(&node.item), |item, focus| {
-                                item.track_focus(focus)
-                                    .focus(|style| style.border_2().border_color(Tokens::ring()))
-                            })
-                            .children(selection_ring(node, z))
-                            .child(content)
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                // The release of a pan lands on the node that moved under the pointer.
-                                if !this.map.pan_moved {
-                                    this.activate_map_node(index, window, cx);
-                                }
-                            }))
-                            .on_key_down(cx.listener(
-                                move |this, event: &KeyDownEvent, window, cx| {
-                                    if matches!(event.keystroke.key.as_str(), "enter" | "space") {
-                                        this.activate_map_node(index, window, cx);
-                                        cx.stop_propagation();
-                                    }
-                                },
-                            ))
-                            .into_any_element()
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+                        }))
+                        .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
+                            if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                                this.activate_map_node(index, window, cx);
+                                cx.stop_propagation();
+                            }
+                        }))
+                        .into_any_element()
+                })
+                .collect()
+        });
         let zoom_focus = self.map.zoom_focus.as_ref();
         let focus_at = |index: usize| zoom_focus.map(|handles| &handles[index]);
         div()
