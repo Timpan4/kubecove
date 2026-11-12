@@ -464,7 +464,7 @@ test("parity jobs run the full suite on pull requests and on main, and keep the 
   assert.equal(shardCount("pull-request-web"), 4);
   assert.equal(shardCount("pull-request-gpui"), 2);
   assert.equal(shardCount("pull-request-web") + shardCount("pull-request-gpui") + 2, 8);
-  for (const name of ["Install GPUI build dependencies", "Setup Rust", "Cache Rust builds"]) {
+  for (const name of ["Install GPUI build dependencies", "Setup Rust", "Cache Rust builds", "Activate Cargo caching"]) {
     const start = suite.indexOf(`- name: ${name}\n`);
     const end = suite.indexOf("\n      - name: ", start + 1);
     assert.match(suite.slice(start, end), /if: \$\{\{ inputs\.driver != 'web' \}\}/);
@@ -511,15 +511,23 @@ test("main records the parity coverage map from every parity job", () => {
   const run = step("Run parity suite");
   const results = Object.fromEntries(Object.entries(modes).map(([mode, [inputs, event]]) => [mode, {
     coverage: evaluate(expression(run, "PARITY_COVERAGE"), inputs, event),
-    cacheKey: `kubecove-parity${evaluate(/shared-key: kubecove-parity\$\{\{ (.+) \}\}/.exec(step("Cache Rust builds"))?.[1] ?? "''", inputs, event)}`,
+    cacheKey: `kubecove-parity-objects${evaluate(/cache-generation: kubecove-parity-objects\$\{\{ (.+) \}\}/.exec(step("Cache Rust builds"))?.[1] ?? "''", inputs, event)}`,
     runs: evaluate(expression(run, "if"), inputs, event),
   }]));
-  assert.deepEqual(results.pullRequest, { coverage: "0", cacheKey: "kubecove-parity", runs: true });
-  assert.deepEqual(results.main, { coverage: "1", cacheKey: "kubecove-parity-coverage", runs: true });
+  assert.deepEqual(results.pullRequest, { coverage: "0", cacheKey: "kubecove-parity-objects", runs: true });
+  assert.deepEqual(results.main, { coverage: "1", cacheKey: "kubecove-parity-objects-coverage", runs: true });
   assert.equal(results.buildCache.runs, false);
-  assert.equal(results.buildCache.cacheKey, "kubecove-parity");
+  assert.equal(results.buildCache.cacheKey, "kubecove-parity-objects");
   assert.match(step("Build parity test"), /cargo test --manifest-path src-tauri\/gpui\/Cargo\.toml --test parity --no-run/);
-  assert.match(step("Cache Rust builds"), /save-if: \$\{\{ github\.ref == 'refs\/heads\/main' && inputs\.shard == 0 \}\}/);
+  // A cached target directory does not survive a fresh checkout (ci.yml has the reason), and
+  // one pull request job saving is enough: every GPUI job builds the same test binary.
+  const cache = step("Cache Rust builds");
+  assert.match(cache, /uses: jdx\/mr-boxington-action@[a-f0-9]{40} # v1\n/);
+  for (const line of ['version: "1.30.0"', "working-directory: src-tauri/gpui", "github-cache-mode: objects", "isolate-objects-cache: true", "clean-target-before-export: true", "save-on-pull-request: ${{ inputs.shard == 0 && inputs.prefix == '' }}"]) {
+    assert.ok(cache.includes(`\n          ${line}\n`) || cache.endsWith(`\n          ${line}`), `Missing cache setting: ${line}`);
+  }
+  assert.match(step("Activate Cargo caching"), /run: node scripts\/ci-mbx-cargo\.mjs/);
+  assert.doesNotMatch(suite, /swatinem\/rust-cache/i);
   assert.match(step("Install LLVM tools"), /if: \$\{\{ inputs\.coverage \}\}\n {8}run: rustup component add llvm-tools/);
   // The jobs that call the suite on main pass the inputs these modes assume.
   assert.match(job("main", parity), /^ {6}coverage: true$/m);
