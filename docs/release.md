@@ -74,10 +74,10 @@ The release also ships the native GPUI client (`src-tauri/gpui`) as `KubeCove GP
 | Platform | Release asset |
 | --- | --- |
 | Linux x64 | `kubecove-gpui_<version>_x86_64.AppImage` |
-| macOS universal | `kubecove-gpui_<version>_universal.app.tar.gz`, with `KubeCove GPUI.app` at the archive root |
+| macOS Apple silicon | `kubecove-gpui_<version>_aarch64.dmg` to install, and `kubecove-gpui_<version>_aarch64.app.tar.gz`, with `KubeCove GPUI.app` at the archive root, for the updater. There is no Intel macOS build. |
 | Windows x64 | `kubecove-gpui_<version>_x64-setup.exe`, a per-user NSIS installer |
 
-One Linux job signs each asset with `tauri signer sign --app-version <version>` and the same `TAURI_SIGNING_PRIVATE_KEY`, then `scripts/gpui-release-manifest.mjs` checks every `.sig` against the public key in `src-tauri/tauri.conf.json` and checks that its trusted comment names `version:<version>`. It writes `latest-gpui.json` in Tauri's static updater format, with `linux-x86_64`, `darwin-x86_64`, `darwin-aarch64` and `windows-x86_64` entries. Both darwin entries point at the universal archive. The publish job uploads the assets, their signatures and `latest-gpui.json` to the release. `latest.json` stays the Tauri app's feed.
+The DMG is the first-install download. Like the Tauri DMG, it is not in the updater feed and gets no `.sig`. One Linux job signs each updater asset with `tauri signer sign --app-version <version>` and the same `TAURI_SIGNING_PRIVATE_KEY`, then `scripts/gpui-release-manifest.mjs` checks every `.sig` against the public key in `src-tauri/tauri.conf.json` and checks that its trusted comment names `version:<version>`. It writes `latest-gpui.json` in Tauri's static updater format, with `linux-x86_64`, `darwin-aarch64` and `windows-x86_64` entries. The publish job uploads the assets, their signatures and `latest-gpui.json` to the release. `latest.json` stays the Tauri app's feed.
 
 The NSIS installer accepts `/P` for a passive install, `/R` to start the app after a silent or passive install, and `/NS` to skip shortcuts. In passive mode it closes a running `kubecove-gpui.exe` without asking.
 

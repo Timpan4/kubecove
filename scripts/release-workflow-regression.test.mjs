@@ -370,12 +370,11 @@ test("GPUI bundles build on all three platforms and only the signing job holds t
   const bundle = job("bundle", gpuiRelease);
   assert.deepEqual(bundle.strategy.matrix.include.map(({ platform, "bundle-target": target, format }) => `${platform}/${target}/${format}`), [
     "ubuntu-latest/x86_64-unknown-linux-gnu/appimage",
-    "macos-latest/universal-apple-darwin/app",
+    "macos-latest/aarch64-apple-darwin/app,dmg",
     "windows-latest/x86_64-pc-windows-msvc/nsis",
   ]);
   const built = step(bundle, "Build GPUI client").run;
-  assert.match(built, /cargo build --locked --release --manifest-path src-tauri\/gpui\/Cargo\.toml --bin kubecove-gpui --target "\$target"/);
-  assert.match(built, /lipo -create/);
+  assert.match(built, /cargo build --locked --release --manifest-path src-tauri\/gpui\/Cargo\.toml --bin kubecove-gpui --target "\$BUNDLE_TARGET"/);
   assert.match(step(bundle, "Install cargo-packager").run, /^cargo install cargo-packager --version \d+\.\d+\.\d+ --locked$/);
   assert.match(step(bundle, "Bundle GPUI client").run, /cargo packager --manifest-path src-tauri\/gpui\/Cargo\.toml --release --target "\$BUNDLE_TARGET"/);
   assert.equal(step(bundle, "Bundle GPUI client").env.APPIMAGE_EXTRACT_AND_RUN, undefined);
@@ -384,6 +383,9 @@ test("GPUI bundles build on all three platforms and only the signing job holds t
   assert.equal(signing.env.TAURI_SIGNING_PRIVATE_KEY, "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}");
   // The GPUI client rejects a signature whose trusted comment lacks the manifest version.
   assert.match(signing.run, /bun x tauri signer sign --app-version "\$version" "\$file"/);
+  // The DMG is a manual download outside the updater feed, so it is not signed.
+  assert.match(signing.run, /\[\[ "\$file" == \*\.dmg \]\] && continue/);
+  assert.match(step(bundle, "Bundle GPUI client").run, /cp "\$out\/KubeCove GPUI_\$\{version\}_aarch64\.dmg" "gpui-updater\/kubecove-gpui_\$\{version\}_aarch64\.dmg"/);
   assert.match(step(job("sign", gpuiRelease), "Verify signatures and write latest-gpui.json").run, /node scripts\/gpui-release-manifest\.mjs/);
   for (const gpuiJob of Object.values(gpuiRelease.jobs)) {
     for (const { uses } of gpuiJob.steps.filter(({ uses }) => uses)) {
@@ -395,11 +397,11 @@ test("GPUI bundles build on all three platforms and only the signing job holds t
 // Produced by `tauri signer sign --app-version 1.2.3` with a throwaway key generated for these
 // tests. The signer records the signed file's name, so each asset name has its own signature
 // over a file of that name holding `fixtureData`.
-const fixtureKey = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU4NzNCNTAxQTkzMzE2NEYKUldSUEZqT3BBYlZ6Nk42RW1rS2tEekNobVdxZUgxVUV3NklnWVF6ZTkydnhuQWtVL3IyZHBzMzkK";
+const fixtureKey = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc0MTIwMzA0Mjc2RjdCREMKUldUY2UyOG5CQU1TZEkveUVLZWVLU3pwUlRZTzRiTVMrRk94Q0V2U3ZTcm01TkRteEV1ZFY4b04K";
 const fixtureSignatures = {
-  "kubecove-gpui_1.2.3_x86_64.AppImage": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUEZqT3BBYlZ6NkUvajhqZ0ROY2VGcVpPdmJjNC9Pc1RTZUxZTWFobURwNW9kaitqOUJDMnVyRkRYb2xCbnlxSlBYN0Q5U3VPSFk5a0YwL1dtWFpoY0JieWxWL3VBaWdZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MjYzNzI0CWZpbGU6a3ViZWNvdmUtZ3B1aV8xLjIuM194ODZfNjQuQXBwSW1hZ2UJdmVyc2lvbjoxLjIuMwpXR1Nsd2VPTE85ZTRXd2xQRXlOUkVheER1YVJOMFpOVzVuUS90VFRSNVRhcVVmY3BJa05WY0F5M2xVZHh0aFpESlMwYnFMS09LRWVtNGl1NHlSbHhDQT09Cg==",
-  "kubecove-gpui_1.2.3_universal.app.tar.gz": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUEZqT3BBYlZ6Nkw4b2k2b1A3b2EramZHNUNOZ1RkOVpsa0ZYY3hrampGa2drdllOS3BlTDFSZ2tiUFNiZ2plYVdMMXFLellRb0ozUUtHL0Y2clVwOGc2VUx3aHBYaGd3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MjYzNzI0CWZpbGU6a3ViZWNvdmUtZ3B1aV8xLjIuM191bml2ZXJzYWwuYXBwLnRhci5negl2ZXJzaW9uOjEuMi4zCnZYamRtMitQTU1RLzVHM2o3V2pIY3NCUkJvZHBmWGlTa1EzMU9zYUM2bm1WWDZnRkZiZDBCd3pnNFgveGQ5MDEzNGUwRkRONVFUOU0xQ0doaGN4MEFnPT0K",
-  "kubecove-gpui_1.2.3_x64-setup.exe": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUEZqT3BBYlZ6Nk5wVGdmWWlXMm8wSDRkckwrNDFvaUFValNOa2VsOG9saTFrczZINXZwYU1JUjZiNGNXOFkza0VickppUDRnZ2txK04ra0ZZN3BZWHFDN2Q1QXJXU1EwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MjYzNzI0CWZpbGU6a3ViZWNvdmUtZ3B1aV8xLjIuM194NjQtc2V0dXAuZXhlCXZlcnNpb246MS4yLjMKZ0czMit6bmk1L1M5blE0aE4wT243SkJ2ZmNCZXhkSDE1NXdjVkFaRGZobHhLUUwwVEUwSkZwVFRVZk1mM29scHpyL3R3ZWVIK0x4VTdjMWd3aVF0QVE9PQo=",
+  "kubecove-gpui_1.2.3_x86_64.AppImage": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUY2UyOG5CQU1TZEhtdnJwZng2cG1LdU9sZDFsUFFSVUVZb0xmYTY2UE5OZzVLaW95Sm5FRlBxRHB2VWVoNEd6ZnlLTU12TlZxUDMzSnA1RWdIZlI0WDRWTnFZejdLMXdNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NDY4Nzk0CWZpbGU6a3ViZWNvdmUtZ3B1aV8xLjIuM194ODZfNjQuQXBwSW1hZ2UJdmVyc2lvbjoxLjIuMwpwWk1BNExYc3RFN203eWJtMkphanl1djg2Wk9xTHZsVys2UC85MGppQWJ3cE4wSGRRdHRVcGIwUDY5QnBaemVSQy9RbnExK3oxeXJNMFBxK0kwQlhCUT09Cg==",
+  "kubecove-gpui_1.2.3_aarch64.app.tar.gz": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUY2UyOG5CQU1TZE50ZFkyQU10bXlmY1B5Yy9jTFhoVEdYTVF0M1FMcEFGQzFWdmwwMkI2MXdRbmNlaW9PbEw4aFhidTZVbkdkNURzODFyc2hmYTVSRVBXL0FLdmN6endZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NDY4Nzk1CWZpbGU6a3ViZWNvdmUtZ3B1aV8xLjIuM19hYXJjaDY0LmFwcC50YXIuZ3oJdmVyc2lvbjoxLjIuMwpmdXdYWVdtalFZMm9VTFJZdDZUVGdkQVVrQ3BmWUovdkFOTTU4TlBCTjJWSHcvWnFDZHU3MUJSTGlqV3ExcnF5SEwwcitHSkhRNzgxWHRwelRmV2lBZz09Cg==",
+  "kubecove-gpui_1.2.3_x64-setup.exe": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUY2UyOG5CQU1TZERRUGV1ekNCY0M4L0Q5U1NwbnJ4djhFTmdFZTVkYmJYS0gzZ1duNXdhOXVKWEJXR2sxWmU5eU1ybkRkanB4YXRyWnNaSllIeGlVb09pME0xMlpwT3c0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NDY4Nzk1CWZpbGU6a3ViZWNvdmUtZ3B1aV8xLjIuM194NjQtc2V0dXAuZXhlCXZlcnNpb246MS4yLjMKTkdSUG9GUUhYai9Ud3YxSU0ySnZCRjcyTjVsd0ZhYW41QmxhRGY4TjhOaTJ6a0hwN0xpUkw0OWdCZm9yQUxTUXY1Z0NyeEQ2dDZxN3hSMDJsREY4QlE9PQo=",
 };
 const fixtureName = "kubecove-gpui_1.2.3_x86_64.AppImage";
 const fixtureSignature = fixtureSignatures[fixtureName];
@@ -430,9 +432,9 @@ test("latest-gpui.json lists every platform with its release URL and signature, 
   });
   const manifest = build(Object.keys(files));
   assert.deepEqual(Object.keys(manifest), ["version", "notes", "pub_date", "platforms"]);
-  assert.deepEqual(Object.keys(manifest.platforms).sort(), ["darwin-aarch64", "darwin-x86_64", "linux-x86_64", "windows-x86_64"]);
+  assert.deepEqual(Object.keys(manifest.platforms).sort(), ["darwin-aarch64", "linux-x86_64", "windows-x86_64"]);
   assert.equal(manifest.platforms["linux-x86_64"].url, "https://github.com/owner/repo/releases/download/app-v1.2.3/kubecove-gpui_1.2.3_x86_64.AppImage");
-  assert.equal(manifest.platforms["darwin-aarch64"].url, manifest.platforms["darwin-x86_64"].url);
+  assert.equal(manifest.platforms["darwin-aarch64"].url, "https://github.com/owner/repo/releases/download/app-v1.2.3/kubecove-gpui_1.2.3_aarch64.app.tar.gz");
   assert.equal(manifest.platforms["windows-x86_64"].signature, fixtureSignatures["kubecove-gpui_1.2.3_x64-setup.exe"]);
   for (const missing of Object.keys(files)) {
     assert.throws(() => build(Object.keys(files).filter((name) => name !== missing)), new RegExp(`Missing ${missing.replaceAll(".", "\\.")}\\.`));
@@ -454,6 +456,7 @@ test("final verification rejects every missing archive, checksum, installer or u
       return [archive, `${archive}.sha256`];
     })),
     ...[...new Set(Object.values(gpuiUpdaterAssets(version)))].flatMap((bundle) => [bundle, `${bundle}.sig`]),
+    `kubecove-gpui_${version}_aarch64.dmg`,
     "latest-gpui.json",
   ];
   const platforms = Object.fromEntries(["darwin-aarch64", "darwin-x86_64", "linux-x86_64",

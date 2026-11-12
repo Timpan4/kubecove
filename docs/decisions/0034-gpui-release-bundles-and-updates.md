@@ -17,10 +17,14 @@ The release workflow (`.github/workflows/gpui-release.yml`, called from `release
 | Platform | Asset | How the client installs it |
 | --- | --- | --- |
 | Linux x64 | `kubecove-gpui_<version>_x86_64.AppImage` | Replaces the file at `$APPIMAGE` |
-| macOS, universal | `kubecove-gpui_<version>_universal.app.tar.gz` with `KubeCove GPUI.app` at the archive root | Swaps the bundle that holds the running executable |
+| macOS, Apple silicon | `kubecove-gpui_<version>_aarch64.app.tar.gz` with `KubeCove GPUI.app` at the archive root | Swaps the bundle that holds the running executable |
 | Windows x64 | `kubecove-gpui_<version>_x64-setup.exe` (NSIS, per-user install) | Runs the installer in passive mode on relaunch |
 
-One Linux job signs all three assets, so the updater key reaches one runner. Each asset gets a `.sig` file made with `tauri signer sign --app-version <version>` and the existing updater key (`TAURI_SIGNING_PRIVATE_KEY`). `latest-gpui.json` lists the assets in the Tauri updater's static format: `version`, `notes`, `pub_date`, and `platforms` keyed `linux-x86_64`, `darwin-x86_64`, `darwin-aarch64` and `windows-x86_64`, each with `url` and `signature`. Both `darwin` keys name the universal archive. The Tauri feed `latest.json` is unchanged, so neither client can be offered the other's artifact by its own feed.
+On Linux and Windows the updater asset is also the first-install download. On macOS the release also ships `kubecove-gpui_<version>_aarch64.dmg`, built by cargo-packager from the same bundle. It is outside the updater feed and has no `.sig`, as the Tauri DMG has none.
+
+The native client has no Intel macOS build; the owner dropped it after 0.14.1, which shipped a universal bundle. An Intel Mac running 0.14.1 finds no `darwin-x86_64` entry and reports that the newer release has no build for its platform.
+
+One Linux job signs all three assets, so the updater key reaches one runner. Each asset gets a `.sig` file made with `tauri signer sign --app-version <version>` and the existing updater key (`TAURI_SIGNING_PRIVATE_KEY`). `latest-gpui.json` lists the assets in the Tauri updater's static format: `version`, `notes`, `pub_date`, and `platforms` keyed `linux-x86_64`, `darwin-aarch64` and `windows-x86_64`, each with `url` and `signature`. The Tauri feed `latest.json` is unchanged, so neither client can be offered the other's artifact by its own feed.
 
 The product is named KubeCove GPUI with the bundle identifier `com.timpan.kubecove.gpui`, so it installs beside the Tauri app. It keeps reading settings from the `com.timpan.kubecove` config directory (ADR 0030). The GPUI crate version follows the app version, because the client compares its own version with the manifest's.
 

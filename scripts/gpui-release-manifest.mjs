@@ -15,13 +15,11 @@ import { pathToFileURL } from "node:url";
 
 export const MANIFEST_NAME = "latest-gpui.json";
 
-// One universal macOS bundle serves both darwin keys.
+// macOS ships for Apple silicon only, so there is no darwin-x86_64 entry.
 export function gpuiUpdaterAssets(version) {
-  const mac = `kubecove-gpui_${version}_universal.app.tar.gz`;
   return {
     "linux-x86_64": `kubecove-gpui_${version}_x86_64.AppImage`,
-    "darwin-x86_64": mac,
-    "darwin-aarch64": mac,
+    "darwin-aarch64": `kubecove-gpui_${version}_aarch64.app.tar.gz`,
     "windows-x86_64": `kubecove-gpui_${version}_x64-setup.exe`,
   };
 }
