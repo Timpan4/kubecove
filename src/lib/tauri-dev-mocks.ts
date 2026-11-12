@@ -61,6 +61,7 @@ export function failWorkspaceContext(context: string) { failedWorkspaceContext =
 // A held context answers its scope reads only when released, as a slow API server does.
 let heldWorkspaceContext: { context: string; release: () => void; released: Promise<void> } | undefined;
 export function holdWorkspaceContext(context: string) {
+	if (heldWorkspaceContext) throw new Error(`Context "${heldWorkspaceContext.context}" is already held`);
 	const { promise, resolve } = Promise.withResolvers<void>();
 	heldWorkspaceContext = { context, release: resolve, released: promise };
 }

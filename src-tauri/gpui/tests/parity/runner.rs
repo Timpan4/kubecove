@@ -245,7 +245,9 @@ pub(super) fn run_scenario(
                 Some(string(step, "context").to_owned());
         }
         if step["action"] == "holdWorkspaceContext" {
-            *backend.held_workspace_context.lock().unwrap() = Some((
+            let mut held = backend.held_workspace_context.lock().unwrap();
+            assert!(held.is_none(), "a context is already held");
+            *held = Some((
                 string(step, "context").to_owned(),
                 tokio::sync::watch::channel(false).0,
             ));
