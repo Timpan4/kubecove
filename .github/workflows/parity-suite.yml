@@ -14,6 +14,11 @@ on:
         description: The PARITY_SUITE_SHARD count.
         required: true
         type: number
+      driver:
+        description: PARITY_DRIVER, web or gpui. Empty runs both drivers for local parity and main coverage.
+        required: false
+        type: string
+        default: ""
       coverage:
         description: Record the coverage map for this shard's scenarios instead of selecting by changes.
         required: false
@@ -40,7 +45,7 @@ permissions:
 
 jobs:
   suite:
-    name: ${{ inputs.build-only && 'Build cache' || inputs.prefix && format('Scenarios {0}', inputs.prefix) || format('Shard {0} of {1}', inputs.shard, inputs.shards) }}
+    name: ${{ inputs.build-only && 'Build cache' || format('{0} shard {1} of {2} {3}', inputs.driver || 'Both', inputs.shard, inputs.shards, inputs.prefix) }}
     runs-on: ubuntu-latest
     # The same limit as the real Kubernetes suites in e2e.yml.
     timeout-minutes: 60
@@ -55,6 +60,7 @@ jobs:
       # The linker needs libxcb and both xkbcommon libraries for GPUI's X11 backend.
       # GPUI loads Wayland at run time, and its test platform needs no display.
       - name: Install GPUI build dependencies
+        if: ${{ inputs.driver != 'web' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y libfontconfig-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev pkg-config
@@ -66,6 +72,7 @@ jobs:
           bun-version: "1.4.4"
 
       - name: Setup Rust
+        if: ${{ inputs.driver != 'web' }}
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
       # llvm-profdata and llvm-cov matching the toolchain's LLVM read the GPUI profiles.
@@ -76,6 +83,7 @@ jobs:
       # The GPUI crate is its own workspace. Main seeds the cache for pull requests; the
       # instrumented coverage build keeps its own cache so the two never evict each other.
       - name: Cache Rust builds
+        if: ${{ inputs.driver != 'web' }}
         uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           shared-key: kubecove-parity${{ inputs.coverage && '-coverage' || '' }}
@@ -97,7 +105,7 @@ jobs:
 
       # The web driver launches the full Chromium build that playwright-core pins.
       - name: Install Chromium
-        if: ${{ !inputs.build-only }}
+        if: ${{ !inputs.build-only && inputs.driver != 'gpui' }}
         run: bunx playwright-core install --with-deps --no-shell chromium
 
       - name: Build parity test
@@ -108,13 +116,13 @@ jobs:
         run: CARGO_BUILD_JOBS="$(nproc)" cargo test --manifest-path src-tauri/gpui/Cargo.toml --test parity --no-run
 
       # Build intermediates stay in the cached target directory. CI uses every CPU.
-      # One GPUI process and a web page on every other CPU: a shard's web scenarios took about
-      # five times the CPU time of its GPUI scenarios (2026-11-12), and one process per CPU
-      # was the fastest local setting (scripts/e2e-parity.ts).
+      # A single driver owns every CPU. Combined coverage jobs retain one GPUI process and
+      # web pages on the other CPUs, based on the 2026-11-12 scenario timings.
       - name: Run parity suite
         if: ${{ !inputs.build-only }}
         env:
           PARITY_SUITE_SHARD: ${{ inputs.shard }}/${{ inputs.shards }}
+          PARITY_DRIVER: ${{ inputs.driver }}
           PARITY_COVERAGE: ${{ inputs.coverage && '1' || '0' }}
           PARITY_PREFIX: ${{ inputs.prefix }}
           PARITY_EXCLUDE: ${{ inputs.exclude }}
@@ -123,13 +131,18 @@ jobs:
           CARGO_TARGET_DIR: ${{ github.workspace }}/src-tauri/gpui/target
           CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/src-tauri/gpui/target
         run: |
-          CARGO_BUILD_JOBS="$(nproc)" PARITY_JOBS=1 PARITY_WEB_JOBS="$(( $(nproc) > 1 ? $(nproc) - 1 : 1 ))" bun run e2e:parity
+          if [[ -n "${PARITY_DRIVER}" ]]; then
+            export PARITY_JOBS="$(nproc)" PARITY_WEB_JOBS="$(nproc)"
+          else
+            export PARITY_JOBS=1 PARITY_WEB_JOBS="$(( $(nproc) > 1 ? $(nproc) - 1 : 1 ))"
+          fi
+          CARGO_BUILD_JOBS="$(nproc)" bun run e2e:parity
 
       - name: Upload parity artifacts
         if: ${{ always() && !inputs.build-only }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: parity-${{ github.event_name }}-shard-${{ inputs.shard }}-of-${{ inputs.shards }}-attempt-${{ github.run_attempt }}
+          name: parity-${{ github.event_name }}-${{ inputs.driver || 'both' }}-shard-${{ inputs.shard }}-of-${{ inputs.shards }}-attempt-${{ github.run_attempt }}
           path: e2e/artifacts/parity-*
           if-no-files-found: error
 

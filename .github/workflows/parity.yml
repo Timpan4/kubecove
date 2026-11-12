@@ -1,8 +1,8 @@
 name: Parity
 
 # The shared Svelte and GPUI acceptance scenarios (e2e/parity/README.md), split across
-# PARITY_SUITE_SHARD jobs. Each shard runs both drivers on its scenarios. Pull requests and
-# main run the full suite; main also records the coverage map that local PARITY_CHANGED runs
+# PARITY_SUITE_SHARD jobs. PR drivers use separate runners to avoid cargo contention. Both
+# events run the full suite; main also records the coverage map that local PARITY_CHANGED runs
 # read. Change selection fell back to the full suite on every recent pull request, because
 # each one changed harness files that coverage cannot see.
 #
@@ -23,8 +23,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  pull-request:
-    name: Parity (pull request)
+  pull-request-web:
+    name: Parity web (pull request)
     # Release PRs change only versions and changelogs, so they skip it as in ci.yml.
     if: ${{ github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
     strategy:
@@ -35,23 +35,45 @@ jobs:
     with:
       shard: ${{ matrix.shard }}
       shards: 4
+      driver: web
       exclude: settings-diagnostics.topology-spike-harness
 
   pull-request-spike:
     name: Parity (pull request)
     if: ${{ github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        driver: [web, gpui]
     uses: ./.github/workflows/parity-suite.yml
     with:
       shard: 0
       shards: 1
+      driver: ${{ matrix.driver }}
       prefix: settings-diagnostics.topology-spike-harness
+
+  # Four web jobs + two GPUI jobs + two spike halves use the eight-job parity budget.
+  pull-request-gpui:
+    name: Parity GPUI (pull request)
+    if: ${{ github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1]
+    uses: ./.github/workflows/parity-suite.yml
+    with:
+      shard: ${{ matrix.shard }}
+      shards: 2
+      driver: gpui
+      exclude: settings-diagnostics.topology-spike-harness
 
   # One check name a ruleset can require; the matrix jobs carry their shard in their names.
   # Release PRs pass only when the parity jobs were deliberately skipped, as in ci.yml.
   pull-request-result:
     name: Parity result
     needs:
-      - pull-request
+      - pull-request-web
+      - pull-request-gpui
       - pull-request-spike
     if: ${{ always() && github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
@@ -59,16 +81,41 @@ jobs:
     steps:
       - name: Verify parity jobs
         env:
-          PARITY_RESULT: ${{ needs.pull-request.result }}
+          WEB_RESULT: ${{ needs.pull-request-web.result }}
+          GPUI_RESULT: ${{ needs.pull-request-gpui.result }}
           SPIKE_RESULT: ${{ needs.pull-request-spike.result }}
           RELEASE_PR: ${{ github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release/app-v') && contains(github.event.pull_request.labels.*.name, 'release') }}
         run: |
           set -euo pipefail
-          echo "Parity shards: ${PARITY_RESULT}; topology spike: ${SPIKE_RESULT}"
+          echo "Web: ${WEB_RESULT}; GPUI: ${GPUI_RESULT}; topology spike: ${SPIKE_RESULT}"
           expected=success
           if [[ "${RELEASE_PR}" == "true" ]]; then expected=skipped; fi
-          test "${PARITY_RESULT}" = "${expected}"
+          test "${WEB_RESULT}" = "${expected}"
+          test "${GPUI_RESULT}" = "${expected}"
           test "${SPIKE_RESULT}" = "${expected}"
+
+      - name: Checkout
+        if: ${{ needs.pull-request-web.result == 'success' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Bun
+        if: ${{ needs.pull-request-web.result == 'success' }}
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Download driver reports
+        if: ${{ needs.pull-request-web.result == 'success' }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: parity-pull_request-*-attempt-${{ github.run_attempt }}
+          path: parity-reports
+
+      - name: Validate merged driver reports
+        if: ${{ needs.pull-request-web.result == 'success' }}
+        run: bun e2e/parity/merge-reports.ts parity-reports
 
   main:
     name: Parity (main)

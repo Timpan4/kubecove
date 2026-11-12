@@ -365,24 +365,25 @@ test("parity jobs run the full suite on pull requests and on main, and keep the 
   const read = (name) => readFileSync(new URL(`../.github/workflows/${name}`, import.meta.url), "utf8").replaceAll("\r\n", "\n");
   const parity = read("parity.yml");
   const suite = read("parity-suite.yml");
-  assert.deepEqual([...parity.slice(parity.indexOf("\njobs:\n")).matchAll(/^ {2}([\w-]+):$/gm)].map((match) => match[1]), ["pull-request", "pull-request-spike", "pull-request-result", "main", "main-spike", "main-build-cache", "coverage-map"]);
+  assert.deepEqual([...parity.slice(parity.indexOf("\njobs:\n")).matchAll(/^ {2}([\w-]+):$/gm)].map((match) => match[1]), ["pull-request-web", "pull-request-spike", "pull-request-gpui", "pull-request-result", "main", "main-spike", "main-build-cache", "coverage-map"]);
   // The stable check fails on any shard or spike failure, cancellation or unexpected skip.
   const result = job("pull-request-result", parity);
   assert.match(result, /^ {4}name: Parity result$/m);
-  assert.match(result, /^ {4}needs:\n {6}- pull-request\n {6}- pull-request-spike$/m);
+  assert.match(result, /^ {4}needs:\n {6}- pull-request-web\n {6}- pull-request-gpui\n {6}- pull-request-spike$/m);
   assert.ok(result.includes("if: ${{ always() && github.event_name == 'pull_request' }}"));
-  const verify = (env) => spawnSync("bash", ["-e", "-o", "pipefail", "-c", block(result, "run", 8)], { env: { ...process.env, RELEASE_PR: "false", PARITY_RESULT: "success", SPIKE_RESULT: "success", ...env }, encoding: "utf8", timeout: 2000 }).status;
+  const verify = (env) => spawnSync("bash", ["-e", "-o", "pipefail", "-c", block(result, "run", 8)], { env: { ...process.env, RELEASE_PR: "false", WEB_RESULT: "success", GPUI_RESULT: "success", SPIKE_RESULT: "success", ...env }, encoding: "utf8", timeout: 2000 }).status;
   assert.equal(verify({}), 0);
   for (const outcome of ["failure", "cancelled", "skipped", ""]) {
-    assert.notEqual(verify({ PARITY_RESULT: outcome }), 0);
+    assert.notEqual(verify({ WEB_RESULT: outcome }), 0);
+    assert.notEqual(verify({ GPUI_RESULT: outcome }), 0);
     assert.notEqual(verify({ SPIKE_RESULT: outcome }), 0);
   }
-  assert.equal(verify({ PARITY_RESULT: "skipped", SPIKE_RESULT: "skipped", RELEASE_PR: "true" }), 0);
-  assert.notEqual(verify({ PARITY_RESULT: "success", SPIKE_RESULT: "skipped", RELEASE_PR: "true" }), 0);
+  assert.equal(verify({ WEB_RESULT: "skipped", GPUI_RESULT: "skipped", SPIKE_RESULT: "skipped", RELEASE_PR: "true" }), 0);
+  assert.notEqual(verify({ WEB_RESULT: "success", GPUI_RESULT: "skipped", SPIKE_RESULT: "skipped", RELEASE_PR: "true" }), 0);
   // Each sharded job leaves out exactly the scenarios its spike job runs, and that ID exists.
   const ids = readdirSync(new URL("../e2e/parity/scenarios/", import.meta.url)).filter((name) => name.endsWith(".json"))
     .flatMap((name) => JSON.parse(readFileSync(new URL(`../e2e/parity/scenarios/${name}`, import.meta.url), "utf8")).scenarios.map((scenario) => scenario.id));
-  for (const [name, spike] of [["pull-request", "pull-request-spike"], ["main", "main-spike"]]) {
+  for (const [name, spike] of [["pull-request-web", "pull-request-spike"], ["pull-request-gpui", "pull-request-spike"], ["main", "main-spike"]]) {
     const text = job(name, parity);
     const matrices = [...text.matchAll(/^ {8}shard: \[([\d, ]+)\]$/gm)].map((match) => match[1].split(",").map(Number));
     const count = Number(/^ {6}shards: (\d+)$/m.exec(text)?.[1]);
@@ -401,7 +402,7 @@ test("parity jobs run the full suite on pull requests and on main, and keep the 
     assert.equal(/^ {6}coverage: (\w+)$/m.exec(spikeText)?.[1], /^ {6}coverage: (\w+)$/m.exec(text)?.[1], spike);
     assert.deepEqual(ids.filter((id) => id.startsWith(excluded)), ["settings-diagnostics.topology-spike-harness"]);
   }
-  const pullRequest = job("pull-request", parity);
+  const pullRequest = job("pull-request-web", parity);
   assert.ok(pullRequest.includes("if: ${{ github.event_name == 'pull_request' && ("), "pull request job runs only on pull requests");
   for (const condition of ["github.event.pull_request.head.repo.full_name != github.repository", "!startsWith(github.head_ref, 'release/app-v')", "!contains(github.event.pull_request.labels.*.name, 'release')"]) {
     assert.ok(pullRequest.includes(condition), condition);
@@ -413,13 +414,33 @@ test("parity jobs run the full suite on pull requests and on main, and keep the 
   assert.match(suite, /^ {10}PARITY_STEP_SCREENSHOTS: "0"$/m);
   // Pull requests run the full suite: change selection fell back to it on every recent PR.
   assert.doesNotMatch(suite, /^ +PARITY_CHANGED:|parity-coverage-map-|fetch-depth/m);
-  // A block scalar: the command's ": " would end a plain YAML scalar and invalidate the file.
-  const command = /^ {8}run: \|\n {10}(CARGO_BUILD_JOBS=.* bun run e2e:parity)$/m.exec(suite)?.[1];
-  assert.ok(command, "Missing parity run command");
-  // One GPUI process and web pages on the other CPUs, at least one each.
-  const runners = (cpus) => spawnSync("bash", ["-c", `nproc() { echo ${cpus}; }; ${command.replace("bun run e2e:parity", "printenv PARITY_JOBS PARITY_WEB_JOBS")}`], { encoding: "utf8" }).stdout.trim().replaceAll("\n", " ");
-  assert.equal(runners(4), "1 3");
-  assert.equal(runners(1), "1 1");
+  const run = suite.slice(suite.indexOf("- name: Run parity suite"), suite.indexOf("- name: Upload parity artifacts"));
+  const command = block(run, "run", 8);
+  const runners = (cpus, driver) => spawnSync("bash", ["-c", `nproc() { echo ${cpus}; }; ${command.replace("bun run e2e:parity", "printenv PARITY_JOBS PARITY_WEB_JOBS")}`], { env: { ...process.env, PARITY_DRIVER: driver }, encoding: "utf8" }).stdout.trim().replaceAll("\n", " ");
+  for (const driver of ["web", "gpui"]) assert.equal(runners(4, driver), "4 4");
+  assert.equal(runners(4, ""), "1 3");
+  assert.equal(runners(1, ""), "1 1");
+  assert.match(suite, /^ {10}PARITY_DRIVER: \$\{\{ inputs\.driver \}\}$/m);
+  assert.match(result, /pattern: parity-pull_request-\*-attempt-\$\{\{ github\.run_attempt \}\}/);
+  assert.match(result, /run: bun e2e\/parity\/merge-reports\.ts parity-reports/);
+  for (const name of ["Checkout", "Setup Bun", "Download driver reports", "Validate merged driver reports"]) {
+    assert.ok(result.includes(`- name: ${name}\n        if: \${{ needs.pull-request-web.result == 'success' }}`));
+  }
+  assert.match(job("pull-request-spike", parity), /^ {8}driver: \[web, gpui\]$/m);
+  assert.match(job("pull-request-web", parity), /^ {6}driver: web$/m);
+  assert.match(job("pull-request-gpui", parity), /^ {6}driver: gpui$/m);
+  // Four web shards, two GPUI shards and two spike halves use the task's eight-job budget.
+  const shardCount = (name) => Number(/^ {6}shards: (\d+)$/m.exec(job(name, parity))?.[1]);
+  assert.equal(shardCount("pull-request-web"), 4);
+  assert.equal(shardCount("pull-request-gpui"), 2);
+  assert.equal(shardCount("pull-request-web") + shardCount("pull-request-gpui") + 2, 8);
+  for (const name of ["Install GPUI build dependencies", "Setup Rust", "Cache Rust builds"]) {
+    const start = suite.indexOf(`- name: ${name}\n`);
+    const end = suite.indexOf("\n      - name: ", start + 1);
+    assert.match(suite.slice(start, end), /if: \$\{\{ inputs\.driver != 'web' \}\}/);
+  }
+  const chromium = suite.slice(suite.indexOf("- name: Install Chromium"), suite.indexOf("- name: Build parity test"));
+  assert.match(chromium, /if: \$\{\{ !inputs\.build-only && inputs\.driver != 'gpui' \}\}/);
   assert.match(suite, /sudo apt-get install -y libfontconfig-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev pkg-config/);
   assert.match(suite, /run: bunx playwright-core install --with-deps --no-shell chromium/);
   const upload = suite.slice(suite.indexOf("- name: Upload parity artifacts"));
@@ -472,7 +493,7 @@ test("main records the parity coverage map from every parity job", () => {
   assert.match(step("Install LLVM tools"), /if: \$\{\{ inputs\.coverage \}\}\n {8}run: rustup component add llvm-tools/);
   // The jobs that call the suite on main pass the inputs these modes assume.
   assert.match(job("main", parity), /^ {6}coverage: true$/m);
-  assert.doesNotMatch(job("pull-request", parity), /coverage:|build-only:/);
+  assert.doesNotMatch(job("pull-request-web", parity), /coverage:|build-only:/);
   const buildCache = job("main-build-cache", parity);
   assert.match(buildCache, /^ {6}build-only: true$/m);
   assert.ok(buildCache.includes("if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}"));
