@@ -244,6 +244,29 @@ pub(super) fn run_scenario(
             *backend.failed_workspace_context.lock().unwrap() =
                 Some(string(step, "context").to_owned());
         }
+        if step["action"] == "holdWorkspaceContext" {
+            let mut held = backend.held_workspace_context.lock().unwrap();
+            assert!(held.is_none(), "a context is already held");
+            *held = Some((
+                string(step, "context").to_owned(),
+                tokio::sync::watch::channel(false).0,
+            ));
+        }
+        if step["action"] == "releaseWorkspaceContext" {
+            let (context, release) = backend
+                .held_workspace_context
+                .lock()
+                .unwrap()
+                .take()
+                .expect("no context is held");
+            assert_eq!(
+                context,
+                string(step, "context"),
+                "released a context not held"
+            );
+            release.send_replace(true);
+            cx.run_until_parked();
+        }
         if step["action"] == "expectMcpRequests" {
             assert_eq!(backend.mcp_requests(), strings(step, "requests"));
         }
@@ -397,10 +420,13 @@ pub(super) fn run_scenario(
         if step["action"] == "terminalRelease" {
             terminal::advance_drag_scroll(cx, number(step, "ms"));
         }
-        if step["action"] == "expectLiveState" {
-            // The stale-data notice appears after the show delay in
-            // `inspector/loading.rs` and stays for its minimum visible time.
-            // Both are 300 ms.
+        if matches!(
+            string(step, "action"),
+            "expectLiveState" | "expectContextsLoading"
+        ) {
+            // The stale-data and loading-contexts notices appear after the
+            // show delay in `inspector/loading.rs` and stay for its minimum
+            // visible time. Both are 300 ms.
             cx.background_executor
                 .advance_clock(std::time::Duration::from_millis(300));
             cx.run_until_parked();

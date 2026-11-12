@@ -44,13 +44,38 @@ test("one context keeps its own error and result identity", () => {
 	expect(mergeContextResults([error]).contextFailures).toEqual([]);
 });
 
+const loading = (clusterContext: string): ContextScopeRead => ({
+	clusterContext, data: undefined, error: null, isError: false, isPending: true, isPlaceholderData: false,
+});
+
 test("placeholder or loading contexts hold their watches while settled contexts start at their own version", () => {
 	const placeholder = { ...settled("b", "old"), isPlaceholderData: true };
-	const loading: ContextScopeRead = { clusterContext: "c", data: undefined, error: null, isError: false, isPending: true, isPlaceholderData: false };
-	const merged = mergeContextResults([settled("a", "1"), placeholder, loading]);
+	const merged = mergeContextResults([settled("a", "1"), placeholder, loading("c")]);
 	expect(merged.versions.get("a")?.map((version) => version.resourceVersion)).toEqual(["1"]);
 	expect(merged.versions.get("b")).toBeNull();
 	expect(merged.versions.get("c")).toBeNull();
-	expect(merged.isPending).toBe(true);
-	expect(merged.isSuccess).toBe(false);
+});
+
+test("a context still loading leaves the rows of contexts that answered and is named until it answers", () => {
+	const merged = mergeContextResults([loading("a"), settled("b", "1"), failed("c")]);
+	expect(merged.isPending).toBe(false);
+	expect(merged.isSuccess).toBe(true);
+	expect(merged.data?.resources.map((row) => row.cluster)).toEqual(["b"]);
+	expect(merged.loadingContexts).toEqual(["a"]);
+	expect(merged.shownContexts).toEqual(["b"]);
+	expect(mergeContextResults([settled("a", "1"), settled("b", "2")]).loadingContexts).toEqual([]);
+});
+
+test("the table waits while a context loads and none has rows, and every failure but a loading context is no page error", () => {
+	expect(mergeContextResults([loading("a"), loading("b")]).isPending).toBe(true);
+	const waiting = mergeContextResults([loading("a"), failed("b")]);
+	expect(waiting.isPending).toBe(true);
+	expect(waiting.isError).toBe(false);
+	expect(waiting.data).toBeUndefined();
+	expect(waiting.loadingContexts).toEqual([]);
+	expect(waiting.contextFailures.map((failure) => failure.clusterContext)).toEqual(["b"]);
+});
+
+test("a context whose stale rows stay after a failed refresh counts as shown", () => {
+	expect(mergeContextResults([settled("a", "1"), failed("b", result("b", "7")), failed("c")]).shownContexts).toEqual(["a", "b"]);
 });

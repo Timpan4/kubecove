@@ -22,7 +22,9 @@ When the workspace has more than one context, KubeCove reads each context and me
 
 The status line reads `{N} resources · {C} contexts · page {p} of {P}`. `C` counts the contexts the workspace reads, even when the Context filter narrows the rows. With one context, the status line shows no context count.
 
-If one context fails to load, the rows from the other contexts stay visible and a warning names the failed context. If every context fails, the view names each context.
+Each context's rows appear as soon as that context answers. While a slow context is still loading, the table shows the rows of the contexts that answered, and a line under the toolbar names the contexts KubeCove is still waiting for.
+
+If one context fails to load, the rows from the other contexts stay visible and a warning names the failed context. If every context fails, the view names each context. A context that cannot be reached does not pause live updates or row activity for the other contexts. The live status menu still reports its reconnecting watches.
 
 Realtime updates apply per context. A change in one context updates only that context's rows. If one context deletes an object, the same-named object in another context stays in the table.
 

@@ -77,6 +77,7 @@ mod revisions_tab;
 mod row_index;
 mod saved_forward_form;
 mod scope;
+mod scope_arrivals;
 mod scope_load;
 mod secret_data;
 mod session_actions;

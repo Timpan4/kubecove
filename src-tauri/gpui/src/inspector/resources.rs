@@ -478,7 +478,7 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let width = self.section_width(window);
-        if self.resource_live_status() != LiveStatus::RefreshFailed {
+        if self.shown_live_status() != LiveStatus::RefreshFailed {
             self.live.error_open = false;
         }
         let stacked = !matches!(self.detail, Detail::Closed);
@@ -534,6 +534,7 @@ impl Inspector {
                         .gap(px(12.))
                         .child(self.top_bar(width, cx))
                         .children(self.live_notice(cx))
+                        .children(self.contexts_waiting_notice())
                         .children(self.page_warnings().enumerate().map(|(index, warning)| {
                             div()
                                 .id(("warning", index))

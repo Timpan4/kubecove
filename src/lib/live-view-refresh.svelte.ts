@@ -69,6 +69,7 @@ export function liveViewRefresh(client: TauriClient, view: () => LiveView | read
 		get state() {
 			return state;
 		},
+		stateOf: (contexts) => combineLiveViewStates(states.filter(({ clusterContext }) => contexts.includes(clusterContext))),
 		get key() {
 			return key;
 		},

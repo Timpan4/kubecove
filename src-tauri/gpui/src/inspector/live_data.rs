@@ -45,6 +45,8 @@ pub(super) struct LiveData {
     pub error_open: bool,
     discovery: Option<Task<()>>,
     catalog_task: Option<Task<()>>,
+    /// Kind discovery's warnings, which join the scope read's on each apply.
+    pub(super) discovery_warnings: Vec<String>,
     /// Each watch by `watch_id`, so the same kind in two contexts has two watches.
     watches: HashMap<String, Registration>,
     pending: Vec<super::live_rows::Patch>,
@@ -138,6 +140,17 @@ impl LiveData {
         watch_status::aggregate(
             self.refresh_error.is_some(),
             self.watches.values().map(Registration::summary),
+        )
+    }
+
+    /// [`Self::settled_status`] of the watches whose context `keep` accepts.
+    pub fn settled_status_where(&self, keep: impl Fn(&str) -> bool) -> LiveStatus {
+        watch_status::aggregate(
+            self.refresh_error.is_some(),
+            self.watches
+                .values()
+                .filter(|watch| keep(&watch.context))
+                .map(Registration::summary),
         )
     }
 
@@ -240,6 +253,7 @@ impl Inspector {
     pub(super) fn discover_kinds(&mut self, contexts: Vec<String>, cx: &mut Context<Self>) {
         self.live.kinds.clear();
         self.live.catalog.clear();
+        self.live.discovery_warnings.clear();
         let namespace = self.scope.namespace.clone();
         let backend = self.backend.clone();
         let timings = self.timings.clone();
@@ -263,6 +277,9 @@ impl Inspector {
                 }
                 let (kinds, warnings) = union_kinds(&catalog_contexts, results);
                 this.live.catalog = kinds;
+                this.live
+                    .discovery_warnings
+                    .extend(warnings.iter().cloned());
                 this.warnings.extend(warnings);
                 cx.notify();
             });
@@ -296,6 +313,9 @@ impl Inspector {
                 if this.fill_custom_selection() {
                     this.filter(cx);
                 }
+                this.live
+                    .discovery_warnings
+                    .extend(warnings.iter().cloned());
                 this.warnings.extend(warnings);
                 cx.notify();
             });
@@ -694,11 +714,22 @@ impl Inspector {
 
     pub(super) fn flush_live_patches(&mut self, cx: &mut Context<Self>) {
         let _span = crate::frame_profile::scope("watch", "flush");
-        if self.scope_load.loading() {
+        if self.scope_load.holds_patches() {
             return;
         }
         let mut pending = std::mem::take(&mut self.live.pending);
         pending.retain(|patch| self.patch_in_scope(&patch.scope));
+        // A context still reading its rows keeps its patches until they land,
+        // and its discovered kinds' patches until its custom read lands, so
+        // that read never re-adds rows a patch installed. The contexts that
+        // answered patch now. Built-in watch keys carry no API version.
+        let (held, pending): (Vec<_>, Vec<_>) = pending.into_iter().partition(|patch| {
+            let context = &patch.scope.context;
+            self.scope_load.context_loading(context)
+                || (patch.key.resource_kind.api_version.is_some()
+                    && self.scope_load.custom_loading(context))
+        });
+        self.live.pending = held;
         if pending.is_empty() {
             return;
         }

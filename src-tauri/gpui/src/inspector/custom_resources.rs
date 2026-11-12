@@ -2,9 +2,9 @@
 use super::{Inspector, Page, sidebar_discovery::ClusterRead};
 use crate::backend::ScopeResult;
 use crate::targets::TestSupportExt;
-use crate::workspaces::reads::ContextResults;
 use crate::{theme::Tokens, ui};
 use gpui_kit::{AnyElement, Context, SharedString, deferred, div, prelude::*, px};
+use kubecove_lib::models::AppError;
 
 /// The custom-resource read that follows the built-in resource read.
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
@@ -40,14 +40,15 @@ impl Inspector {
         }
     }
 
-    /// Adds each context's custom rows after the built-in rows have rendered,
+    /// Adds a context's custom rows after its built-in rows have rendered,
     /// keeping the rows in context rank order.
     pub(super) fn apply_custom_resources(
         &mut self,
-        results: ContextResults<ScopeResult>,
+        context: &str,
+        result: Result<ScopeResult, AppError>,
         cx: &mut Context<Self>,
     ) {
-        let (added, warnings) = self.scope_load.custom_settled(results);
+        let added = self.scope_load.custom_settled(context, result);
         if !added.is_empty() {
             let contexts = self.scope_load.contexts();
             let mut rows = self.rows.backend_rows();
@@ -57,7 +58,7 @@ impl Inspector {
                 rows, contexts,
             ));
         }
-        self.warnings.extend(warnings);
+        self.warnings = self.scope_warnings(self.scope_load.warnings());
         self.prepare_rows();
         self.filter(cx);
         cx.notify();

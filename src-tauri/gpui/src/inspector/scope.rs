@@ -1,19 +1,41 @@
 //! Context and resource-scope reads, refresh, and visible resource filtering.
 
 use super::load_trace::{LoadKind, LoadTrace};
+use super::scope_arrivals::prepare_arrival;
 use super::scope_load::{all_failed, union_namespaces};
 use super::{Inspector, Load, map};
 use crate::backend::{Read, Scope, ScopeResult};
 use crate::model::PreparedRows;
 use crate::workspaces::reads::{ContextResults, Settled, settle};
 use futures_util::{
-    FutureExt,
+    FutureExt, StreamExt,
     future::{BoxFuture, Shared},
+    stream::FuturesUnordered,
 };
 use gpui_kit::component::select::SearchableVec;
 use gpui_kit::{BackgroundExecutor, Context, SharedString, Window};
 use kubecove_lib::models::{AppError, ResourceSummary};
 use std::{rc::Rc, time::Instant};
+
+/// One context's read, shareable while in flight with the Overview's read.
+type SharedRead = Shared<Read<ScopeResult>>;
+
+/// Which of a context's two reads answered.
+#[derive(PartialEq, Eq)]
+enum Stage {
+    Builtin,
+    Custom,
+}
+
+/// `read`'s result, named after its stage and context.
+async fn arrive(
+    stage: Stage,
+    context: String,
+    read: SharedRead,
+) -> (Stage, String, Result<ScopeResult, AppError>) {
+    let result = read.await;
+    (stage, context, result)
+}
 
 /// Every context's read with the rows taken out, and those rows prepared.
 struct ScopeRows {
@@ -55,8 +77,20 @@ async fn prepare_off_thread(
 pub(super) struct SharedScopeReads {
     /// The contexts read, in rank order.
     pub(super) contexts: Vec<String>,
-    builtin: Shared<Settled<ScopeResult>>,
-    custom: Option<Shared<Settled<ScopeResult>>>,
+    /// Each context's built-in read, in rank order.
+    builtin: Vec<(String, SharedRead)>,
+    /// The custom-kind read of each context that has one.
+    custom: Vec<(String, SharedRead)>,
+}
+
+/// The reads of `reads`, each settled as one, in order.
+fn settle_shared(reads: &[(String, SharedRead)]) -> Settled<ScopeResult> {
+    settle(
+        reads
+            .iter()
+            .map(|(context, read)| (context.clone(), Box::pin(read.clone()) as Read<ScopeResult>))
+            .collect(),
+    )
 }
 
 impl SharedScopeReads {
@@ -64,8 +98,8 @@ impl SharedScopeReads {
     /// its custom kinds, merged as the backend's combined read merges them,
     /// then the contexts merged as the Overview's own read merges them.
     pub(super) fn overview_read(&self) -> Read<ScopeResult> {
-        let builtin = self.builtin.clone();
-        let custom = self.custom.clone();
+        let builtin = settle_shared(&self.builtin);
+        let custom = (!self.custom.is_empty()).then(|| settle_shared(&self.custom));
         Box::pin(async move {
             let mut results = builtin.await;
             if let Some(custom) = custom {
@@ -173,8 +207,10 @@ impl Inspector {
         // Shared, so the Overview's read of the same contexts joins this request instead of issuing another.
         let reads = self.scope_reads(&contexts, starts, refresh, cx);
         self.load_workspace_overview(refresh, Some(reads.clone()), cx);
-        // As the web's keepPreviousData does, rows of the same contexts stay visible until the new read settles.
-        if !(self.scope_load.same_contexts(&contexts) && !self.rows.is_empty()) {
+        // As the web's keepPreviousData does, rows of the same contexts stay
+        // visible until each context's new read answers.
+        let kept = self.scope_load.same_contexts(&contexts) && !self.rows.is_empty();
+        if !kept {
             self.scope_load.rows = Load::Loading;
             self.rows = Rc::default();
             self.warnings.clear();
@@ -182,61 +218,57 @@ impl Inspector {
         self.prepare_rows();
         self.filter(cx);
         let SharedScopeReads {
-            builtin, custom, ..
+            builtin,
+            mut custom,
+            ..
         } = reads;
-        let awaits_custom = custom.is_some();
+        let custom_contexts: Vec<String> =
+            custom.iter().map(|(context, _)| context.clone()).collect();
         let plan = contexts.clone();
-        // One task, so dropping it (a newer scope or refresh) cancels the custom read too.
+        // One task, so dropping it (a newer scope or refresh) cancels every read.
         let task = cx.spawn_in(window, async move |this, cx| {
-            let result = prepare_off_thread(cx.background_executor(), plan, builtin.await).await;
-            let applied = this.update(cx, |this, cx| {
-                if !Rc::ptr_eq(&this.request, &request) {
-                    return false;
+            let mut arrivals: FuturesUnordered<_> = builtin
+                .into_iter()
+                .map(|(context, read)| arrive(Stage::Builtin, context, read))
+                .collect();
+            let mut failures = Vec::new();
+            while let Some((stage, context, result)) = arrivals.next().await {
+                if stage == Stage::Custom {
+                    if this
+                        .update(cx, |this, cx| {
+                            this.apply_custom_arrival(&request, &context, result, cx)
+                        })
+                        .is_err()
+                    {
+                        return;
+                    }
+                    continue;
                 }
-                let apply_started = Instant::now();
-                let awaits_custom = custom.is_some();
-                this.live.starts.clear();
-                let ready = match result {
-                    Ok(ScopeRows { results, rows }) => {
-                        let applied = this.scope_load.apply_parts(results, false);
-                        this.namespaces = applied.namespaces;
-                        this.rows = Rc::new(rows);
-                        this.warnings = applied.warnings;
-                        this.scope_load.builtin_settled(Ok(()));
-                        true
-                    }
-                    Err(error) => {
-                        this.live.refresh_error = Some(error.message.clone());
-                        this.scope_load.builtin_settled(Err(error.message));
-                        this.rows = Rc::default();
-                        this.warnings.clear();
-                        false
-                    }
+                let Ok(Some(rows)) =
+                    this.update(cx, |this, _| this.begin_arrival(&request, &context))
+                else {
+                    return;
                 };
-                this.prepare_rows();
-                this.filter(cx);
-                cx.notify();
-                // A pending custom read still has to apply before the load is final.
-                let complete = !(ready && awaits_custom);
-                this.note_apply(LoadKind::Scope, apply_started.elapsed(), complete);
-                ready
-            });
-            let Some(custom) = custom else {
-                return;
-            };
-            if !matches!(applied, Ok(true)) {
-                return;
-            }
-            let result = custom.await;
-            let _ = this.update(cx, |this, cx| {
-                if Rc::ptr_eq(&this.request, &request) {
-                    let apply_started = Instant::now();
-                    this.apply_custom_resources(result, cx);
-                    this.note_apply(LoadKind::Scope, apply_started.elapsed(), true);
+                let succeeded = result.is_ok();
+                let (result, rows) =
+                    prepare_arrival(cx.background_executor(), plan.clone(), rows, result).await;
+                let applied = this.update(cx, |this, cx| {
+                    this.apply_arrival(&request, &context, result, rows, &mut failures, cx)
+                });
+                if !matches!(applied, Ok(true)) {
+                    return;
                 }
-            });
+                // A context's custom kinds apply after its built-ins have rendered.
+                if succeeded
+                    && let Some(index) = custom.iter().position(|(other, _)| *other == context)
+                {
+                    let (context, read) = custom.swap_remove(index);
+                    arrivals.push(arrive(Stage::Custom, context, read));
+                }
+            }
         });
-        self.scope_load.start(contexts, awaits_custom, task);
+        self.scope_load
+            .start(contexts, &custom_contexts, kept, task);
         // The map loads on its own, like the web's topology query, so a
         // topology failure leaves the table usable.
         self.load_metrics(window, cx);
@@ -353,7 +385,7 @@ impl Inspector {
                             } else {
                                 union_namespaces(applied.namespaces, &this.namespaces)
                             };
-                            this.warnings = applied.warnings;
+                            this.warnings = this.scope_warnings(applied.warnings);
                             this.scope_load.refresh_settled(Ok(()));
                             let span = crate::frame_profile::scope("scope", "prepare_rows");
                             this.prepare_rows();
@@ -412,8 +444,8 @@ impl Inspector {
             let read = self.timings.measure("list_resource_scope", read);
             return SharedScopeReads {
                 contexts: contexts.to_vec(),
-                builtin: settle(vec![(self.scope.context.clone(), read)]).shared(),
-                custom: None,
+                builtin: vec![(self.scope.context.clone(), read.shared())],
+                custom: Vec::new(),
             };
         }
         let mut builtin = Vec::with_capacity(contexts.len());
@@ -434,7 +466,7 @@ impl Inspector {
                             .expect("custom read remains available")
                     })
                 });
-                custom.push((context.clone(), read));
+                custom.push((context.clone(), read.shared()));
             }
             let backend = self.backend.clone();
             let mut refresh = refresh;
@@ -453,12 +485,12 @@ impl Inspector {
                 }),
                 None => list(),
             };
-            builtin.push((context.clone(), read));
+            builtin.push((context.clone(), read.shared()));
         }
         SharedScopeReads {
             contexts: contexts.to_vec(),
-            builtin: settle(builtin).shared(),
-            custom: (!custom.is_empty()).then(|| settle(custom).shared()),
+            builtin,
+            custom,
         }
     }
 

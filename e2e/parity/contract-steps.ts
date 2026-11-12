@@ -91,6 +91,10 @@ export type Step =
     // `cursor` is the shape with " blink" when it blinks, or "outline" without focus.
     | { action: "expectTerminalCursor"; cursor: string; row?: number; col?: number }
     | { action: "failWorkspaceContext" | "expectWorkspaceReadWarning"; context: string }
+    // A held context's scope reads answer only once `releaseWorkspaceContext` names it.
+    | { action: "holdWorkspaceContext" | "releaseWorkspaceContext"; context: string }
+    // The contexts the "Waiting for context" notice names; empty means no notice.
+    | { action: "expectContextsLoading"; contexts: string[] }
     | { action: "editSavedWorkspace" | "expectNoSavedWorkspace"; name: string }
     | { action: "saveWorkspace" | "cancelWorkspaceEdit" }
     | { action: "toggleWorkspaceContext"; context: string }

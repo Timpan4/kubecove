@@ -74,6 +74,11 @@ impl Inspector {
             crate::model::reconcile(&mut self.cluster.rows, &scope.context, key, rows, names);
             Vec::new()
         } else {
+            // A context whose read failed shows the rows its watch installs.
+            // An empty patch installs none, so a load whose every read failed still fails.
+            if !rows.is_empty() {
+                self.scope_load.mark_shown(&scope.context);
+            }
             Rc::get_mut(&mut self.rows)
                 .expect("visible source released before patching")
                 .patch(&scope.context, key, rows, names)
@@ -127,8 +132,9 @@ impl Inspector {
         }
         let custom = key.resource_kind.plural.is_some();
         let cluster_kind = crate::backend::CLUSTER_KINDS.contains(&key.resource_kind.kind.as_str());
-        !self.scope_load.loading()
-            && !(custom && self.scope_load.custom() == super::custom_resources::CustomLoad::Loading)
+        // Each context's watches wait only for that context's read.
+        !self.scope_load.context_loading(context)
+            && !(custom && self.scope_load.custom_loading(context))
             && !(cluster_kind && self.cluster_loading())
     }
 

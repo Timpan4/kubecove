@@ -445,9 +445,22 @@ impl Fixture {
         };
         let opening = self.timing.read("start_resource_watch", &context, "", ());
         let live = self.live.state.clone();
+        // A failed context is unreachable, so its watch keeps reconnecting.
+        let unavailable =
+            self.failed_workspace_context.lock().unwrap().as_deref() == Some(context.as_str());
         Box::pin(async move {
             opening.await?;
             let (sender, receiver) = mpsc::unbounded_channel();
+            if unavailable {
+                sender
+                    .send(StreamMessage::Status {
+                        stream_id: "fixture".into(),
+                        status: StreamStatus::Reconnecting,
+                        message: "Context unavailable".into(),
+                    })
+                    .unwrap();
+                return Ok(LogStream::new(receiver, sender));
+            }
             sender
                 .send(StreamMessage::Status {
                     stream_id: "fixture".into(),
