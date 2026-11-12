@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { benchmarkFiles, benchmarkSelection } from "./codspeed-benchmark-suites.mjs";
+import { benchmarkFiles, benchmarkGroups, benchmarkSelection } from "./codspeed-benchmark-suites.mjs";
 
 const workflow = readFileSync(new URL("../.github/workflows/codspeed.yml", import.meta.url), "utf8").replaceAll("\r\n", "\n");
 
@@ -132,7 +132,7 @@ for (const domain of ["FRONTEND", "RUST"]) {
 // `::` (a benchmark at the bench crate root) matches no shard.
 test("Rust benchmark shard filters split every benchmark path into exactly one shard", () => {
   const filters = [...job("rust").matchAll(/^ {12}filter: "(.+)"$/gm)].map((match) => new RegExp(match[1]));
-  assert.equal(filters.length, 4);
+  assert.equal(filters.length, 2);
   assert.match(job("rust"), /cargo codspeed run --bench backend_hot_paths '\$\{\{ matrix\.filter \}\}'/);
   const leading = [...Array.from({ length: 95 }, (_, index) => String.fromCharCode(32 + index)), "é", "Ω"].filter((character) => character !== ":");
   for (const character of leading) {
@@ -145,7 +145,12 @@ test("Rust benchmark shard filters split every benchmark path into exactly one s
   }
   // Rust benchmarks gate the required check through one aggregated matrix result.
   assert.match(job("check"), /RUST_RESULT: \$\{\{ needs\.rust\.result \}\}/);
-  assert.match(job("rust"), /save-if: \$\{\{ github\.ref == 'refs\/heads\/main' && matrix\.shard == 'a-c' \}\}/);
+  assert.match(job("rust"), /cache-targets: false/);
+  assert.match(job("rust"), /cache-generation: kubecove-rust-codspeed-objects/);
+  assert.match(job("rust"), /github-cache-mode: objects/);
+  assert.match(job("rust"), /save-on-pull-request: \$\{\{ github\.event_name == 'pull_request' && github\.event\.pull_request\.head\.repo\.full_name == github\.repository && matrix\.shard == 'a-h' \}\}/);
+  assert.match(job("rust"), /cargo-codspeed-x86_64-unknown-linux-musl/);
+  assert.match(job("rust"), /CARGO_CODSPEED_SHA256/);
 });
 
 test("release PRs still require both benchmark jobs to be skipped", () => {
@@ -167,6 +172,9 @@ test("frontend group jobs form a complete, disjoint partition of actual benchmar
 	).sort();
 	assert.deepEqual(selected, files);
 	assert.equal(new Set(selected).size, selected.length);
+	const durations = groups.map((group) => benchmarkGroups(files, count)[group].seconds);
+	assert.deepEqual(durations.toSorted((left, right) => left - right), [405, 424, 425, 426]);
+	assert.match(job("frontend"), /43308253138/);
 	for (const file of files) assert.deepEqual(benchmarkSelection({ KUBECOVE_BENCHMARK_FILE: file }).include, [file]);
 	assert.deepEqual(benchmarkSelection({}).include, files);
 	const legacy = ["topology", "other"]
