@@ -49,8 +49,9 @@ pub(super) struct LiveData {
     watches: HashMap<String, Registration>,
     pending: Vec<super::live_rows::Patch>,
     /// Each watch's start version read before its rows were listed, by
-    /// `watch_id`, or `None` while the read runs (`live_start.rs`). It is
-    /// dropped once those rows settle.
+    /// `watch_id`, or `None` while the read runs (`live_start.rs`). The scope
+    /// read that lists those rows drops them all when it settles, since a
+    /// later refresh lists newer rows.
     pub(super) starts: HashMap<String, Option<String>>,
     pub(super) start_tasks: Vec<Task<()>>,
 }
@@ -361,12 +362,6 @@ impl Inspector {
                 .retain(|id, _| wanted.contains(id.as_str()));
         }
         for (context, key, watch) in pairs {
-            // A start version serves only the load it was read for. A later
-            // refresh unsettles the rows again, but their version is newer.
-            let settled = self.rows_settled(context, key);
-            if settled {
-                self.live.starts.remove(&watch);
-            }
             if self
                 .live
                 .watches
@@ -378,7 +373,9 @@ impl Inspector {
             // A watch starts at the version of the rows the view shows, so it
             // waits until they settle, unless its start version was read
             // before those rows were listed. Until then it reports as connecting.
-            if !settled && !matches!(self.live.starts.get(&watch), Some(Some(_))) {
+            if !self.rows_settled(context, key)
+                && !matches!(self.live.starts.get(&watch), Some(Some(_)))
+            {
                 self.live.registration(watch, context);
                 continue;
             }

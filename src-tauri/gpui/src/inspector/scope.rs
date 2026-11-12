@@ -195,6 +195,7 @@ impl Inspector {
                 }
                 let apply_started = Instant::now();
                 let awaits_custom = custom.is_some();
+                this.live.starts.clear();
                 let ready = match result {
                     Ok(ScopeRows { results, rows }) => {
                         let applied = this.scope_load.apply_parts(results, false);
@@ -336,6 +337,9 @@ impl Inspector {
                         return;
                     }
                     let apply_started = Instant::now();
+                    // A refresh that replaced a first load still in flight
+                    // settles that load's start versions too.
+                    this.live.starts.clear();
                     match result {
                         Ok(ScopeRows { results, rows }) => {
                             let span = crate::frame_profile::scope("scope", "apply_parts");

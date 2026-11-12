@@ -282,20 +282,14 @@ fn a_watch_reopened_while_rows_load_keeps_its_start_version(cx: &mut TestAppCont
     assert!(shows_rows(cx, handle));
 }
 
-// Failure mode: a refresh unsettles the rows again, and a watch that reopens
-// during it goes back to the first load's start version, which can be hours
-// old, instead of the version of the rows the view shows.
-#[gpui_kit::test]
-fn a_watch_reopened_during_a_refresh_uses_the_rows_version(cx: &mut TestAppContext) {
-    let backend = Arc::new(Controlled {
-        live: LiveControls {
-            start_versions: Some(false),
-            ..Default::default()
-        },
-        ..Default::default()
-    });
-    let handle = open(cx, backend.clone());
-    let release = load_other_context(cx, &backend, handle);
+/// Opens the other context with start version 42 and its rows held, and makes
+/// those rows list at version 50 when released.
+fn load_at_list_version(
+    cx: &mut TestAppContext,
+    backend: &Controlled,
+    handle: gpui_kit::AnyWindowHandle,
+) -> tokio::sync::oneshot::Sender<()> {
+    let release = load_other_context(cx, backend, handle);
     let signatures: Vec<_> = backend
         .live
         .streams
@@ -315,6 +309,27 @@ fn a_watch_reopened_during_a_refresh_uses_the_rows_version(cx: &mut TestAppConte
             .into_iter()
             .map(|signature| (signature, "50".into())),
     );
+    release
+}
+
+fn start_versions_backend() -> Arc<Controlled> {
+    Arc::new(Controlled {
+        live: LiveControls {
+            start_versions: Some(false),
+            ..Default::default()
+        },
+        ..Default::default()
+    })
+}
+
+// Failure mode: a refresh unsettles the rows again, and a watch that reopens
+// during it goes back to the first load's start version, which can be hours
+// old, instead of the version of the rows the view shows.
+#[gpui_kit::test]
+fn a_watch_reopened_during_a_refresh_uses_the_rows_version(cx: &mut TestAppContext) {
+    let backend = start_versions_backend();
+    let handle = open(cx, backend.clone());
+    let release = load_at_list_version(cx, &backend, handle);
     release.send(()).unwrap();
     cx.run_until_parked();
     assert!(shows_rows(cx, handle));
@@ -336,6 +351,40 @@ fn a_watch_reopened_during_a_refresh_uses_the_rows_version(cx: &mut TestAppConte
         versions
             .iter()
             .all(|version| version.as_deref() == Some("50")),
+        "{versions:?}"
+    );
+}
+
+// Failure mode: the rows settle while a page that watches nothing is open, so
+// nothing drops their start version. After a refresh there, a watching page
+// opens its watches at that old version instead of waiting for the new rows.
+#[gpui_kit::test]
+fn rows_settled_off_a_watching_page_drop_their_start_version(cx: &mut TestAppContext) {
+    let backend = start_versions_backend();
+    let handle = open(cx, backend.clone());
+    let release = load_at_list_version(cx, &backend, handle);
+    let open_page = |cx: &mut TestAppContext, id: &'static str| {
+        cx.update_window(handle, |_, window, cx| {
+            window.render_frame(cx);
+            window.click(id, cx);
+            window.render_frame(cx);
+        })
+        .unwrap();
+        cx.run_until_parked();
+    };
+    open_page(cx, "nav:GitOps");
+    release.send(()).unwrap();
+    cx.run_until_parked();
+    let (_hold, pending) = tokio::sync::oneshot::channel();
+    *backend.pending.lock().unwrap() = Some(pending);
+    refresh(cx, handle);
+    cx.run_until_parked();
+    open_page(cx, "nav:Workspace Overview");
+    let versions = backend.live.resource_watch_versions();
+    assert!(
+        versions
+            .iter()
+            .all(|version| version.as_deref() != Some(START_VERSION)),
         "{versions:?}"
     );
 }
