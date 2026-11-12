@@ -211,15 +211,22 @@ export async function checkCoverage(page: Page, check: string) {
 		case "yaml-undo": {
 			const editor = page.locator(".cm-content[contenteditable=true]");
 			const lines = () => editor.locator(".cm-line").allTextContents();
+			// The editor renders a key press after the press returns, so each read waits for its text.
+			const settled = (want: string[], problem: string) => page.waitForFunction((expected) => {
+				const text = Array.from(document.querySelectorAll(".cm-content[contenteditable=true] .cm-line"), (line) => line.textContent ?? "");
+				return JSON.stringify(text) === expected;
+			}, JSON.stringify(want)).catch(() => { throw new Error(problem); });
+			// The resource's YAML arrives after the editor opens; an empty document is not the original.
+			await editor.locator(".cm-line").filter({ hasText: /\S/ }).first().waitFor();
 			const original = await lines();
 			await editor.press(process.platform === "darwin" ? "Meta+ArrowDown" : "Control+End");
 			await page.keyboard.insertText("undo: probe");
+			await editor.locator(".cm-line").filter({ hasText: "undo: probe" }).first().waitFor().catch(() => { throw new Error("The probe edit did not change the YAML"); });
 			const edited = await lines();
-			if (isDeepStrictEqual(edited, original)) throw new Error("The probe edit did not change the YAML");
 			await editor.press(process.platform === "darwin" ? "Meta+z" : "Control+z");
-			if (!isDeepStrictEqual(await lines(), original)) throw new Error("Undo did not restore the original YAML");
+			await settled(original, "Undo did not restore the original YAML");
 			await editor.press(process.platform === "darwin" ? "Meta+Shift+z" : "Control+y");
-			if (!isDeepStrictEqual(await lines(), edited)) throw new Error("Redo did not restore the edited YAML");
+			await settled(edited, "Redo did not restore the edited YAML");
 			break;
 		}
 		case "yaml-editor": {

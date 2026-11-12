@@ -28,6 +28,7 @@ import { multiContextAction } from "./web-multi-context";
 import { resourceFilterAction } from "./web-resource-filters";
 import { resourceRow, resourceTableAction } from "./web-resource-table";
 import { sessionHealthAction } from "./web-session-health";
+import { loadDeferredPage } from "./web-deferred";
 import { seedsWorkspace, seedWorkspace, shellAction, storeReloadHolds } from "./web-shell";
 import { sidebarLiveAction } from "./web-sidebar-live";
 import { terminalAction } from "./web-terminal";
@@ -215,6 +216,7 @@ export async function action(page: Page, step: Step) {
 		case "openPage": {
 			// Rows with children also name their expand toggle.
 			const label = literal(step.page);
+			await loadDeferredPage(page, step.page);
 			await page.getByRole("treeitem", { name: new RegExp(`^(?:(?:Expand|Collapse) ${label} )?${label}$`) }).click();
 			break;
 		}
