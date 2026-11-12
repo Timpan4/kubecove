@@ -519,7 +519,11 @@ export async function runWeb(contract: Contract, artifacts: string, signal: Abor
 	const results: WebResult[] = [];
 	const port = await freePort();
 	const env = { ...process.env }; delete env.KUBECONFIG; delete env.ARGV0;
-	const vite = Bun.spawn([process.execPath, join(process.cwd(), "node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", String(port), "--strictPort"], { cwd: process.cwd(), env, detached: true, stdout: "pipe", stderr: "pipe" });
+	// Coverage needs Vite's per-source inline maps; normal runs load the bundled dev app.
+	const command = process.env.PARITY_COVERAGE === "1"
+		? [process.execPath, join(process.cwd(), "node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", String(port), "--strictPort"]
+		: [process.execPath, join(process.cwd(), "e2e/parity/web-bundle-server.ts"), String(port), artifacts];
+	const vite = Bun.spawn(command, { cwd: process.cwd(), env, detached: true, stdout: "pipe", stderr: "pipe" });
 	const identity = startIdentity(vite.pid);
 	const logs = Promise.all([new Response(vite.stdout).text(), new Response(vite.stderr).text()]);
 	let browser: Browser | undefined;
