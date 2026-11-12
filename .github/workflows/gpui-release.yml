@@ -34,12 +34,14 @@ jobs:
             rust-targets: "x86_64-unknown-linux-gnu"
             bundle-target: x86_64-unknown-linux-gnu
             format: appimage
-          - label: macOS universal
-            key: macos-universal
+          # Apple silicon only; the GPUI client ships no Intel macOS build.
+          - label: macOS arm64
+            key: macos-arm64
             platform: macos-latest
-            rust-targets: "aarch64-apple-darwin x86_64-apple-darwin"
-            bundle-target: universal-apple-darwin
-            format: app
+            rust-targets: "aarch64-apple-darwin"
+            bundle-target: aarch64-apple-darwin
+            # The app bundle feeds the updater archive; the DMG is the first-install download.
+            format: app,dmg
           - label: Windows x64
             key: windows-x64
             platform: windows-latest
@@ -94,22 +96,11 @@ jobs:
 
       - name: Build GPUI client
         env:
-          RUST_TARGETS: ${{ matrix.rust-targets }}
           BUNDLE_TARGET: ${{ matrix.bundle-target }}
         run: |
           set -euo pipefail
-          for target in $RUST_TARGETS; do
-            cargo build --locked --release --manifest-path src-tauri/gpui/Cargo.toml --bin kubecove-gpui --target "$target"
-          done
-          # cargo-packager reads binaries from target/<bundle target>/release.
-          if [[ "$BUNDLE_TARGET" == universal-apple-darwin ]]; then
-            universal=src-tauri/gpui/target/universal-apple-darwin/release
-            mkdir -p "$universal"
-            lipo -create \
-              src-tauri/gpui/target/aarch64-apple-darwin/release/kubecove-gpui \
-              src-tauri/gpui/target/x86_64-apple-darwin/release/kubecove-gpui \
-              -output "$universal/kubecove-gpui"
-          fi
+          # cargo-packager reads the binary from target/<bundle target>/release.
+          cargo build --locked --release --manifest-path src-tauri/gpui/Cargo.toml --bin kubecove-gpui --target "$BUNDLE_TARGET"
 
       # The bundle settings live in `[package.metadata.packager]` of src-tauri/gpui/Cargo.toml.
       - name: Bundle GPUI client
@@ -130,7 +121,11 @@ jobs:
             appimage) cp "$out/kubecove-gpui_${version}_x86_64.AppImage" gpui-updater/ ;;
             nsis) cp "$out/kubecove-gpui_${version}_x64-setup.exe" gpui-updater/ ;;
             # The updater archive holds the bundle at its root, as Tauri's `.app.tar.gz` does.
-            app) tar -czf "gpui-updater/kubecove-gpui_${version}_universal.app.tar.gz" -C "$out" "KubeCove GPUI.app" ;;
+            # cargo-packager names the DMG after the product; rename it to match the other GPUI assets.
+            app,dmg)
+              tar -czf "gpui-updater/kubecove-gpui_${version}_aarch64.app.tar.gz" -C "$out" "KubeCove GPUI.app"
+              cp "$out/KubeCove GPUI_${version}_aarch64.dmg" "gpui-updater/kubecove-gpui_${version}_aarch64.dmg"
+              ;;
           esac
           ls -l gpui-updater
 
@@ -192,6 +187,8 @@ jobs:
           set -euo pipefail
           version="$(node -p 'require("./src-tauri/tauri.conf.json").version')"
           for file in gpui-release/*; do
+            # The DMG is a manual download, not an updater asset, so it gets no `.sig`, as Tauri's DMG.
+            [[ "$file" == *.dmg ]] && continue
             # The version in the trusted comment is what the GPUI client checks against the manifest.
             bun x tauri signer sign --app-version "$version" "$file"
           done
