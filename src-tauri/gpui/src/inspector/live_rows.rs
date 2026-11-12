@@ -75,7 +75,10 @@ impl Inspector {
             Vec::new()
         } else {
             // A context whose read failed shows the rows its watch installs.
-            self.scope_load.mark_shown(&scope.context);
+            // An empty patch installs none, so a load whose every read failed still fails.
+            if !rows.is_empty() {
+                self.scope_load.mark_shown(&scope.context);
+            }
             Rc::get_mut(&mut self.rows)
                 .expect("visible source released before patching")
                 .patch(&scope.context, key, rows, names)
