@@ -417,7 +417,7 @@ test("parity jobs run the full suite on pull requests and on main, and keep the 
   const command = /^ {8}run: \|\n {10}(CARGO_BUILD_JOBS=.* bun run e2e:parity)$/m.exec(suite)?.[1];
   assert.ok(command, "Missing parity run command");
   // One GPUI process and web pages on the other CPUs, at least one each.
-  const runners = (cpus) => spawnSync("bash", ["-c", `nproc() { echo ${cpus}; }; ${command.replace("bun run e2e:parity", "printenv PARITY_JOBS PARITY_WEB_JOBS")}`], { encoding: "utf8" }).stdout.trim().replace("\n", " ");
+  const runners = (cpus) => spawnSync("bash", ["-c", `nproc() { echo ${cpus}; }; ${command.replace("bun run e2e:parity", "printenv PARITY_JOBS PARITY_WEB_JOBS")}`], { encoding: "utf8" }).stdout.trim().replaceAll("\n", " ");
   assert.equal(runners(4), "1 3");
   assert.equal(runners(1), "1 1");
   assert.match(suite, /sudo apt-get install -y libfontconfig-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev pkg-config/);
