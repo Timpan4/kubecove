@@ -60,8 +60,8 @@ impl Inspector {
     }
 
     /// Applies one context's built-in read with the rows `prepare_arrival`
-    /// built. Once every context answered and none succeeded, the load fails
-    /// with every context's error. Returns false when a newer request replaced `request`.
+    /// built. Once every context answered and no context's rows show, the load
+    /// fails with every context's error. Returns false when a newer request replaced `request`.
     pub(super) fn apply_arrival(
         &mut self,
         request: &Rc<()>,
@@ -92,7 +92,7 @@ impl Inspector {
         if let Some(namespaces) = self.scope_load.shown_namespaces() {
             self.namespaces = namespaces;
         }
-        if !self.scope_load.loading() && !self.scope_load.any_ready() {
+        if !self.scope_load.loading() && !self.scope_load.any_shown() {
             let contexts = self.scope_load.contexts();
             failures.sort_by_key(|(context, _)| contexts.iter().position(|other| other == context));
             let error = all_failed(

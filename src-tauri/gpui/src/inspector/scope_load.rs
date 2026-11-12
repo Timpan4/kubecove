@@ -485,9 +485,10 @@ impl ScopeLoad {
             .any(|part| part.pending || part.custom_pending)
     }
 
-    /// A context's built-in read in this load succeeded.
-    pub(super) fn any_ready(&self) -> bool {
-        self.parts.iter().any(|part| part.ready)
+    /// The table shows some context's rows: its read in this load succeeded,
+    /// its rows were kept, or its watch installed them after its read failed.
+    pub(super) fn any_shown(&self) -> bool {
+        self.parts.iter().any(|part| part.shown)
     }
 
     /// The table shows rows of `context`, settled or kept from the previous load.
