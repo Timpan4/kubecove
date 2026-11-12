@@ -328,6 +328,9 @@
 	const updatesCurrent = $derived(shownLive.status === "connected" && !shownLive.catchingUp && !shownLive.reloadError
 		&& !resourcesQuery.isError && !resourcesQuery.isPlaceholderData
 		&& (!mapPanelOpen || (!topologyQuery.isError && !topologyQuery.isPlaceholderData)));
+	// The map shows its context's topology even while that context's rows load or failed, so its watches count too.
+	const mapLive = $derived(live.stateOf([...resourcesQuery.shownContexts, reads.mapContext]));
+	const mapUpdatesCurrent = $derived(updatesCurrent && mapLive.status === "connected" && !mapLive.catchingUp && !mapLive.reloadError);
 
 	const namespaceOptions = $derived(reads.namespaces);
 	const kindOptions = $derived(
@@ -808,7 +811,7 @@
 					{#if OwnershipMapComponent && !ownershipMapLoading.active}
 						<OwnershipMapComponent
 							topology={topologyWithMetrics}
-							{updatesCurrent}
+							updatesCurrent={mapUpdatesCurrent}
 							isLoading={topologyQuery.isPending && !topologyQuery.data}
 							isError={topologyQuery.isError && !topologyQuery.data}
 							error={topologyQuery.error}

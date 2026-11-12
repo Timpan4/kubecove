@@ -64,15 +64,16 @@ export function mergeContextResults(reads: readonly ContextScopeRead[]): MergedS
 			});
 		}
 	}
-	// The table waits only while no context has answered; a slower context joins when it answers.
-	const isPending = reads.length > 0 && reads.every((read) => read.isPending);
+	const shownContexts = reads.filter((read) => read.data !== undefined).map((read) => read.clusterContext);
+	// The table waits only while a context still loads and none has rows to show; a slower context joins when it answers.
+	const isPending = shownContexts.length === 0 && reads.some((read) => read.isPending);
 	const isError = reads.length > 0 && reads.every((read) => read.isError);
 	return {
 		data: mergeData(withData),
 		// One context keeps its own error; several name every context.
 		contextFailures: reads.length > 1 ? contextFailures : [],
 		loadingContexts: isPending ? [] : reads.filter((read) => read.isPending).map((read) => read.clusterContext),
-		shownContexts: reads.filter((read) => read.data !== undefined).map((read) => read.clusterContext),
+		shownContexts,
 		versions,
 		isPending,
 		isSuccess: !isPending && !isError && reads.length > 0,

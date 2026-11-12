@@ -19,7 +19,7 @@ export async function workspaceAction(page: Page, step: Step): Promise<void> {
         case "holdWorkspaceContext":
             await page.evaluate(`import('/src/lib/tauri-dev-mocks.ts').then(m => m.holdWorkspaceContext(${JSON.stringify(step.context)}))`); break;
         case "releaseWorkspaceContext":
-            await page.evaluate(`import('/src/lib/tauri-dev-mocks.ts').then(m => m.releaseWorkspaceContext())`); break;
+            await page.evaluate(`import('/src/lib/tauri-dev-mocks.ts').then(m => m.releaseWorkspaceContext(${JSON.stringify(step.context)}))`); break;
         case "expectContextsLoading": {
             const notice = page.locator("[data-contexts-loading]");
             if (!step.contexts.length) {

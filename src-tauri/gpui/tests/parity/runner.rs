@@ -251,9 +251,18 @@ pub(super) fn run_scenario(
             ));
         }
         if step["action"] == "releaseWorkspaceContext" {
-            if let Some((_, release)) = backend.held_workspace_context.lock().unwrap().take() {
-                release.send_replace(true);
-            }
+            let (context, release) = backend
+                .held_workspace_context
+                .lock()
+                .unwrap()
+                .take()
+                .expect("no context is held");
+            assert_eq!(
+                context,
+                string(step, "context"),
+                "released a context not held"
+            );
+            release.send_replace(true);
             cx.run_until_parked();
         }
         if step["action"] == "expectMcpRequests" {

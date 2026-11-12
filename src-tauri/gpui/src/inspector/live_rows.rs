@@ -74,6 +74,8 @@ impl Inspector {
             crate::model::reconcile(&mut self.cluster.rows, &scope.context, key, rows, names);
             Vec::new()
         } else {
+            // A context whose read failed shows the rows its watch installs.
+            self.scope_load.mark_shown(&scope.context);
             Rc::get_mut(&mut self.rows)
                 .expect("visible source released before patching")
                 .patch(&scope.context, key, rows, names)

@@ -385,7 +385,7 @@ impl Inspector {
                             } else {
                                 union_namespaces(applied.namespaces, &this.namespaces)
                             };
-                            this.warnings = applied.warnings;
+                            this.warnings = this.scope_warnings(applied.warnings);
                             this.scope_load.refresh_settled(Ok(()));
                             let span = crate::frame_profile::scope("scope", "prepare_rows");
                             this.prepare_rows();

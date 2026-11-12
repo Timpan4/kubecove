@@ -3,7 +3,7 @@
 //! the contexts that answered.
 use super::Inspector;
 use super::load_trace::LoadKind;
-use super::scope_load::{all_failed, rank_order, union_namespaces};
+use super::scope_load::{all_failed, rank_order};
 use crate::backend::ScopeResult;
 use crate::model::PreparedRows;
 use gpui_kit::{BackgroundExecutor, Context};
@@ -32,6 +32,13 @@ pub(super) async fn prepare_arrival(
 }
 
 impl Inspector {
+    /// The page's warnings: the scope read's `read` warnings, then kind
+    /// discovery's, which may have settled before the read applied.
+    pub(super) fn scope_warnings(&self, mut read: Vec<String>) -> Vec<String> {
+        read.extend(self.live.discovery_warnings.iter().cloned());
+        read
+    }
+
     /// The rows of every context but `context`, which its arrival replaces,
     /// or `None` when a newer request replaced `request`. Watch patches wait
     /// until the arrival applies, so none is lost to the rows being prepared.
@@ -73,21 +80,17 @@ impl Inspector {
         self.live
             .starts
             .retain(|id, _| !crate::backend::watch_id_in(context, id));
-        let first = !self.scope_load.any_ready();
-        let namespaces = match result {
+        match result {
             Ok(result) => self.scope_load.context_settled(context, Ok(result)),
             Err(error) => {
-                let namespaces = self.scope_load.context_settled(context, Err(&error));
+                self.scope_load.context_settled(context, Err(&error));
                 failures.push((context.to_owned(), error));
-                namespaces
             }
-        };
-        if let Some(namespaces) = namespaces {
-            self.namespaces = if first {
-                namespaces
-            } else {
-                union_namespaces(namespaces, &self.namespaces)
-            };
+        }
+        // The picker lists the namespaces of every context whose rows show,
+        // kept ones included, so a slow context's namespaces stay with its rows.
+        if let Some(namespaces) = self.scope_load.shown_namespaces() {
+            self.namespaces = namespaces;
         }
         if !self.scope_load.loading() && !self.scope_load.any_ready() {
             let contexts = self.scope_load.contexts();
@@ -104,7 +107,7 @@ impl Inspector {
             self.warnings.clear();
         } else {
             self.rows = Rc::new(rows);
-            self.warnings = self.scope_load.warnings();
+            self.warnings = self.scope_warnings(self.scope_load.warnings());
         }
         self.prepare_rows();
         self.filter(cx);

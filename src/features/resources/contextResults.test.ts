@@ -66,13 +66,13 @@ test("a context still loading leaves the rows of contexts that answered and is n
 	expect(mergeContextResults([settled("a", "1"), settled("b", "2")]).loadingContexts).toEqual([]);
 });
 
-test("the table waits only while no context has answered, and every failure but a loading context is no page error", () => {
+test("the table waits while a context loads and none has rows, and every failure but a loading context is no page error", () => {
 	expect(mergeContextResults([loading("a"), loading("b")]).isPending).toBe(true);
 	const waiting = mergeContextResults([loading("a"), failed("b")]);
-	expect(waiting.isPending).toBe(false);
+	expect(waiting.isPending).toBe(true);
 	expect(waiting.isError).toBe(false);
 	expect(waiting.data).toBeUndefined();
-	expect(waiting.loadingContexts).toEqual(["a"]);
+	expect(waiting.loadingContexts).toEqual([]);
 	expect(waiting.contextFailures.map((failure) => failure.clusterContext)).toEqual(["b"]);
 });
 

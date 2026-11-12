@@ -64,7 +64,11 @@ export function holdWorkspaceContext(context: string) {
 	const { promise, resolve } = Promise.withResolvers<void>();
 	heldWorkspaceContext = { context, release: resolve, released: promise };
 }
-export function releaseWorkspaceContext() { heldWorkspaceContext?.release(); heldWorkspaceContext = undefined; }
+export function releaseWorkspaceContext(context: string) {
+	if (heldWorkspaceContext?.context !== context) throw new Error(`Context "${context}" is not held`);
+	heldWorkspaceContext.release();
+	heldWorkspaceContext = undefined;
+}
 interface LiveSessionArgs {
 	request: PortForwardRequest & PodExecSessionRequest & LiveSessionCleanupRequest;
 	sessionId: string;

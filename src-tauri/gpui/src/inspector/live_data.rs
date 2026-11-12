@@ -45,6 +45,8 @@ pub(super) struct LiveData {
     pub error_open: bool,
     discovery: Option<Task<()>>,
     catalog_task: Option<Task<()>>,
+    /// Kind discovery's warnings, which join the scope read's on each apply.
+    pub(super) discovery_warnings: Vec<String>,
     /// Each watch by `watch_id`, so the same kind in two contexts has two watches.
     watches: HashMap<String, Registration>,
     pending: Vec<super::live_rows::Patch>,
@@ -251,6 +253,7 @@ impl Inspector {
     pub(super) fn discover_kinds(&mut self, contexts: Vec<String>, cx: &mut Context<Self>) {
         self.live.kinds.clear();
         self.live.catalog.clear();
+        self.live.discovery_warnings.clear();
         let namespace = self.scope.namespace.clone();
         let backend = self.backend.clone();
         let timings = self.timings.clone();
@@ -274,6 +277,9 @@ impl Inspector {
                 }
                 let (kinds, warnings) = union_kinds(&catalog_contexts, results);
                 this.live.catalog = kinds;
+                this.live
+                    .discovery_warnings
+                    .extend(warnings.iter().cloned());
                 this.warnings.extend(warnings);
                 cx.notify();
             });
@@ -307,6 +313,9 @@ impl Inspector {
                 if this.fill_custom_selection() {
                     this.filter(cx);
                 }
+                this.live
+                    .discovery_warnings
+                    .extend(warnings.iter().cloned());
                 this.warnings.extend(warnings);
                 cx.notify();
             });

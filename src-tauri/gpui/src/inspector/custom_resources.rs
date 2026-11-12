@@ -58,7 +58,7 @@ impl Inspector {
                 rows, contexts,
             ));
         }
-        self.warnings = self.scope_load.warnings();
+        self.warnings = self.scope_warnings(self.scope_load.warnings());
         self.prepare_rows();
         self.filter(cx);
         cx.notify();

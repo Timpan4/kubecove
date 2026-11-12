@@ -49,6 +49,8 @@ struct ContextRows {
     versions: ListVersions,
     /// The read's warnings, named after the context when the page reads several.
     warnings: Vec<String>,
+    /// The namespaces of the context's rows, for the namespace picker.
+    namespaces: Vec<NamespaceSummary>,
 }
 
 /// What applying every context's read changes outside `ScopeLoad`.
@@ -164,13 +166,22 @@ impl ScopeLoad {
         self.custom_interrupted = false;
         self.custom_ok = false;
         self.preparing = false;
+        let mut previous = std::mem::take(&mut self.parts);
         let parts = contexts
             .iter()
-            .map(|context| ContextRows {
-                shown: kept && self.shows(context),
-                pending: true,
-                custom_pending: custom.contains(context),
-                ..ContextRows::default()
+            .map(|context| {
+                // A kept context keeps its namespaces with its rows.
+                let kept = self
+                    .position(context)
+                    .filter(|&index| kept && previous[index].shown)
+                    .map(|index| std::mem::take(&mut previous[index].namespaces));
+                ContextRows {
+                    shown: kept.is_some(),
+                    pending: true,
+                    custom_pending: custom.contains(context),
+                    namespaces: kept.unwrap_or_default(),
+                    ..ContextRows::default()
+                }
             })
             .collect();
         self.parts = parts;
@@ -204,16 +215,17 @@ impl ScopeLoad {
         self.preparing = preparing;
     }
 
-    /// Applies one context's built-in read, whose rows the caller took.
-    /// Returns the context's namespaces when it succeeded. A failed context
-    /// shows no rows, one warning and no custom kinds.
+    /// Applies one context's built-in read, whose rows the caller took. A
+    /// failed context shows no rows, one warning and no custom kinds.
     pub(super) fn context_settled(
         &mut self,
         context: &str,
         result: Result<ScopeResult, &AppError>,
-    ) -> Option<Vec<NamespaceSummary>> {
+    ) {
         let several = self.contexts.len() > 1;
-        let index = self.position(context)?;
+        let Some(index) = self.position(context) else {
+            return;
+        };
         let part = &mut self.parts[index];
         match result {
             Ok(result) => {
@@ -228,9 +240,9 @@ impl ScopeLoad {
                         .iter()
                         .map(|warning| context_message(several, context, warning))
                         .collect(),
+                    namespaces: result.namespaces,
                 };
                 self.rows = Load::Ready;
-                Some(result.namespaces)
             }
             Err(error) => {
                 // A failed context reads no custom kinds.
@@ -242,9 +254,33 @@ impl ScopeLoad {
                 if custom {
                     self.finish_custom();
                 }
-                None
             }
         }
+    }
+
+    /// The table shows rows of `context`, as when a watch installed them
+    /// after its read failed, so its live status counts.
+    pub(super) fn mark_shown(&mut self, context: &str) {
+        if let Some(index) = self.position(context) {
+            self.parts[index].shown = true;
+        }
+    }
+
+    /// The namespaces of every context whose rows show, once each by name,
+    /// in context rank order. `None` while no context's rows show.
+    pub(super) fn shown_namespaces(&self) -> Option<Vec<NamespaceSummary>> {
+        if !self.parts.iter().any(|part| part.shown) {
+            return None;
+        }
+        let mut namespaces: Vec<NamespaceSummary> = Vec::new();
+        for part in self.parts.iter().filter(|part| part.shown) {
+            for namespace in &part.namespaces {
+                if !namespaces.iter().any(|other| other.name == namespace.name) {
+                    namespaces.push(namespace.clone());
+                }
+            }
+        }
+        Some(namespaces)
     }
 
     /// Once no context's custom read runs, the custom kinds fail only when no context read them.
@@ -334,6 +370,7 @@ impl ScopeLoad {
                             .iter()
                             .map(|warning| context_message(several, &context, warning))
                             .collect(),
+                        namespaces: result.namespaces.clone(),
                         ..ContextRows::default()
                     };
                     applied.warnings.extend(part.warnings.iter().cloned());
