@@ -488,6 +488,8 @@ async function runScenario(browser: Browser, port: number, artifacts: string, sc
 	let current = "startup";
 	try {
 		signal.throwIfAborted();
+		// Explicit mock holds control ordering; ordinary parity commands need no artificial delay.
+		await page.addInitScript(() => { globalThis.__kubecoveParityNoLatency = true; });
 		// Fake timers must exist before the app loads: the Argo tracker's recovery timer and loading indicator delays start before later steps.
 		if (scenario.steps.some((step) => step.action === "controlClock" || step.action === "advanceClock")) await page.clock.install();
 		const coverage = await startCodeCoverage(page);
