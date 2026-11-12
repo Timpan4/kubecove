@@ -9,6 +9,7 @@ import { coverageAction } from "./web-coverage";
 import { checkCoverage } from "./web-coverage-checks";
 import { startCodeCoverage } from "./web-coverage-map";
 import { detailStatusAction } from "./web-detail-status";
+import { gitOpsDetails, revealGitOps, helmCard, revisionButton } from "./web-delivery-helpers";
 import { detailsAction } from "./web-details";
 import { diagnosticsAction } from "./web-diagnostics";
 import { topologySpikeAction } from "./web-topology-spike";
@@ -462,37 +463,6 @@ async function loadSettingsMocks(page: Page) {
 function eventRows(page: Page) { return page.locator("div.grid:has(> time[datetime])"); }
 function literal(text: string) { return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 function itemCount(count: number) { return `${count} item${count === 1 ? "" : "s"}`; }
-/** A GitOps card or list row, by the label of its Details button. */
-function gitOpsDetails(page: Page, item: { kind: string; name: string; namespace: string }) {
-	return page.getByRole("button", { name: `Open details for ${item.kind} ${item.name} in ${item.namespace}`, exact: true });
-}
-/** Scrolls virtual rows until the requested Application mounts or both ends are reached. */
-async function revealGitOps(page: Page, target: Locator) {
-	await page.getByRole("heading", { level: 2 }).first().waitFor();
-	for (const direction of [1, -1]) {
-		while (await target.count() === 0) {
-			const moved = await page.locator("[data-virtual-row]").first().evaluate(async (row, direction) => {
-				const viewport = row.closest(".overflow-y-auto, .overflow-auto");
-				if (!(viewport instanceof HTMLElement)) throw new Error("GitOps scroll viewport missing");
-				const previous = viewport.scrollTop;
-				viewport.scrollTop += direction * viewport.clientHeight;
-				await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-				return viewport.scrollTop !== previous;
-			}, direction);
-			if (!moved) break;
-		}
-		if (await target.count()) return;
-	}
-	throw new Error("GitOps details target missing after scrolling the collection");
-}
-/** A Helm release card, by its title and namespace description. */
-function helmCard(page: Page, name: string, namespace: string) {
-	return page.locator('[data-slot="card"]')
-		.filter({ has: page.locator('[data-slot="card-title"]').getByText(name, { exact: true }) })
-		.filter({ has: page.locator('[data-slot="card-description"]').getByText(namespace, { exact: true }) });
-}
-/** A revision in the Revisions list; its comparison picker shows the same label. */
-function revisionButton(page: Page, label: string) { return page.locator("button.w-full.p-3").filter({ has: page.locator("div.font-medium", { hasText: new RegExp(`^${literal(label)}$`) }) }); }
 /** Waits until the element's rendered lines include every expected diff line. */
 async function containsLines(locator: Locator, lines: string[]) {
 	const element = await locator.first().elementHandle();
@@ -520,6 +490,8 @@ async function runScenario(browser: Browser, port: number, artifacts: string, sc
 	let current = "startup";
 	try {
 		signal.throwIfAborted();
+		// Explicit mock holds control ordering; ordinary parity commands need no artificial delay.
+		await page.addInitScript(() => { globalThis.__kubecoveParityNoLatency = true; });
 		// Fake timers must exist before the app loads: the Argo tracker's recovery timer and loading indicator delays start before later steps.
 		if (scenario.steps.some((step) => step.action === "controlClock" || step.action === "advanceClock")) await page.clock.install();
 		const coverage = await startCodeCoverage(page);
@@ -549,7 +521,11 @@ export async function runWeb(contract: Contract, artifacts: string, signal: Abor
 	const results: WebResult[] = [];
 	const port = await freePort();
 	const env = { ...process.env }; delete env.KUBECONFIG; delete env.ARGV0;
-	const vite = Bun.spawn([process.execPath, join(process.cwd(), "node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", String(port), "--strictPort"], { cwd: process.cwd(), env, detached: true, stdout: "pipe", stderr: "pipe" });
+	// Coverage needs Vite's per-source inline maps; normal runs load the bundled dev app.
+	const command = process.env.PARITY_COVERAGE === "1"
+		? [process.execPath, join(process.cwd(), "node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", String(port), "--strictPort"]
+		: [process.execPath, join(process.cwd(), "e2e/parity/web-bundle-server.ts"), String(port), artifacts];
+	const vite = Bun.spawn(command, { cwd: process.cwd(), env, detached: true, stdout: "pipe", stderr: "pipe" });
 	const identity = startIdentity(vite.pid);
 	const logs = Promise.all([new Response(vite.stdout).text(), new Response(vite.stderr).text()]);
 	let browser: Browser | undefined;

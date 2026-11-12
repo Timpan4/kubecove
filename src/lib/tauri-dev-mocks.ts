@@ -88,11 +88,13 @@ const liveSessionHandlers = new Map<string, (live: LiveSessionArgs) => MockResul
 	["stop_live_sessions_outside_scope", (live) => cleanupMockSessions(live.request)],
 ]);
 
+declare global { var __kubecoveParityNoLatency: boolean | undefined; }
+
 /**
- * `latencyMs` simulates each command's round trip for the browser app. The parity fixture
- * export passes 0: it reads every command in sequence and only needs the responses.
+ * `latencyMs` simulates each command's round trip for the browser app. Parity disables
+ * that artificial delay; explicit MockTiming holds still control request ordering.
  */
-export function createDevMockTauriClient({ latencyMs = 35 }: { latencyMs?: number } = {}): TauriClient {
+export function createDevMockTauriClient({ latencyMs = globalThis.__kubecoveParityNoLatency ? 0 : 35 }: { latencyMs?: number } = {}): TauriClient {
 	return {
 		createChannel: (onMessage) => createMockChannel(onMessage),
 		invoke: async <T, Args extends object = object>(
