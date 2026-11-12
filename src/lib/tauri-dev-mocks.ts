@@ -194,7 +194,7 @@ const handlers = {
 	list_resource_events: (args) => eventsFor(args),
 	list_resource_topology: (args) => coverageTopology(topologyFor(args)),
 	refresh_resource_cache: () => ({ clearedEntries: 1 }),
-	start_resource_watch: (args) => registerMockWatch({ channel: args.channel, context: args.clusterContext ?? "mock-dev", keys: args.keys, unavailable: args.clusterContext === failedWorkspaceContext }),
+	start_resource_watch: (args) => registerMockWatch({ channel: args.channel, context: args.clusterContext ?? "mock-dev", keys: args.keys, unavailable: failedWorkspaceContext !== undefined && (args.clusterContext ?? "mock-dev") === failedWorkspaceContext }),
 	start_resource_event_watch: (args) => registerMockWatch({ channel: args.channel, context: args.clusterContext ?? "mock-dev", kind: args.kind, name: args.name, namespace: args.namespace }),
 	start_pod_log_stream: (args) => startLogStream(args?.channel, false, args?.request?.batchLines === true, args?.request),
 	start_aggregated_log_stream: (args) => startLogStream(args?.channel, true, args?.request?.batchLines === true),

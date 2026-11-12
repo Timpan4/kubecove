@@ -70,8 +70,10 @@ export function registerMockWatch(args: Omit<Watch, "id" | "channel"> & { channe
     return id;
 }
 export function stopMockWatch(id: string): boolean { return watches.delete(id); }
+/** The watches that reach their cluster; an unavailable context's watch delivers nothing. */
+function reachableWatches(): Watch[] { return [...watches.values()].filter((watch) => !watch.unavailable); }
 export function emitMockKindChange(kind: string): void {
-    for (const watch of watches.values()) {
+    for (const watch of reachableWatches()) {
         if (watch.keys?.some((key) => key.resourceKind.kind === kind)) {
             watch.channel.onmessage({ type: "resourceChanged", streamId: watch.id, target: { cluster: watch.context, kind }, action: "applied" });
         }
@@ -116,7 +118,7 @@ export function replayLiveData(script: LiveScript): void {
     }
     if (script === "events") events = LIVE_EVENTS;
     if (script === "events-overflow") events = OVERFLOW_EVENTS;
-    for (const watch of watches.values()) {
+    for (const watch of reachableWatches()) {
         const streamId = watch.id;
         if (script === "failed") watch.channel.onmessage({ type: "status", streamId, status: "reconnecting", message: "Scripted connection loss" });
         if (script === "connected" || script === "reconnecting" || script === "forbidden") {
