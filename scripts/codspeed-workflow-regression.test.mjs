@@ -72,6 +72,10 @@ for (const [path, frontend, rust] of [
   ["src-tauri/Cargo.toml", false, true],
   ["src-tauri/Cargo.lock", false, true],
   ["src-tauri/tauri.conf.json", false, true],
+  ["src-tauri/gpui/src/model.rs", false, false],
+  ["src-tauri/gpui/Cargo.lock", false, false],
+  ["src-tauri/server/src/main.rs", false, false],
+  ["src-tauri/server/Cargo.toml", false, false],
   [".cargo/config.toml", false, true],
   ["rust-toolchain.toml", false, true],
   [".github/workflows/codspeed.yml", true, true],
@@ -122,6 +126,27 @@ for (const domain of ["FRONTEND", "RUST"]) {
     assert.notEqual(gate({ [`${domain}_REQUIRED`]: "", [`${domain}_RESULT`]: "skipped" }), 0);
   });
 }
+
+// Failure modes: a gap between shard filters silently drops benchmarks from the report; an
+// overlap runs a benchmark twice in one CodSpeed run, which CodSpeed rejects; a path without
+// `::` (a benchmark at the bench crate root) matches no shard.
+test("Rust benchmark shard filters split every benchmark path into exactly one shard", () => {
+  const filters = [...job("rust").matchAll(/^ {12}filter: "(.+)"$/gm)].map((match) => new RegExp(match[1]));
+  assert.equal(filters.length, 4);
+  assert.match(job("rust"), /cargo codspeed run --bench backend_hot_paths '\$\{\{ matrix\.filter \}\}'/);
+  const leading = [...Array.from({ length: 95 }, (_, index) => String.fromCharCode(32 + index)), "é", "Ω"].filter((character) => character !== ":");
+  for (const character of leading) {
+    for (const path of [`${character}bench`, `module::${character}bench`, `a::b::${character}bench::Type`]) {
+      const last = path.split("::").at(-1);
+      const shards = filters.filter((filter) => filter.test(path));
+      assert.equal(shards.length, 1, `${path} matched ${shards.length} shards`);
+      assert.ok(shards[0].test(`x::${last}`), `${path} must be judged by its last segment`);
+    }
+  }
+  // Rust benchmarks gate the required check through one aggregated matrix result.
+  assert.match(job("check"), /RUST_RESULT: \$\{\{ needs\.rust\.result \}\}/);
+  assert.match(job("rust"), /save-if: \$\{\{ github\.ref == 'refs\/heads\/main' && matrix\.shard == 'a-c' \}\}/);
+});
 
 test("release PRs still require both benchmark jobs to be skipped", () => {
   const release = { RELEASE_PR: "true", FRONTEND_RESULT: "skipped", RUST_RESULT: "skipped" };

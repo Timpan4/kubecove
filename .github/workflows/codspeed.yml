@@ -72,6 +72,9 @@ jobs:
             if [[ "${path}" == .github/* || "${path}" == fixtures/* || "${path}" == */fixtures/* ]]; then
               frontend=true
               rust=true
+            elif [[ "${path}" == src-tauri/gpui/* || "${path}" == src-tauri/server/* ]]; then
+              # Separate Cargo workspaces (src-tauri/Cargo.toml excludes both); the benchmarks cannot depend on them.
+              continue
             elif [[ "${path}" == src-tauri/* ]]; then
               rust=true
             else
@@ -131,7 +134,7 @@ jobs:
           run: bunx vitest bench --run
 
   rust:
-    name: Run Rust benchmarks
+    name: Run Rust benchmarks (${{ matrix.shard }})
     permissions:
       contents: read
       id-token: write
@@ -139,6 +142,24 @@ jobs:
       - changes
     if: ${{ needs.changes.outputs.rust == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
     runs-on: ubuntu-latest
+    # Simulation mode costs about 7 s per benchmark whatever it measures, so one job ran
+    # 117 benchmarks for 13 to 16 minutes. Each shard runs the benchmarks whose last divan
+    # path segment starts with its characters; CodSpeed merges the uploads of one workflow
+    # run into one report. Divan tests each benchmark (or generic argument) against one path,
+    # and the last class is the complement of the others, so the shards are disjoint and
+    # complete (scripts/codspeed-workflow-regression.test.mjs).
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: a-c
+            filter: "(?:^|::)[a-c][^:]*$"
+          - shard: d-h
+            filter: "(?:^|::)[d-h][^:]*$"
+          - shard: i-o
+            filter: "(?:^|::)[i-o][^:]*$"
+          - shard: other
+            filter: "(?:^|::)[^a-o:][^:]*$"
 
     steps:
       - name: Checkout
@@ -164,7 +185,8 @@ jobs:
           shared-key: kubecove-rust-codspeed
           workspaces: "./src-tauri -> target"
           prefix-key: dependency-rust
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          # Every shard builds the same target tree, so one shard saves it.
+          save-if: ${{ github.ref == 'refs/heads/main' && matrix.shard == 'a-c' }}
 
       - name: Install cargo-codspeed
         run: cargo install cargo-codspeed --version 5.0.1 --locked
@@ -177,7 +199,8 @@ jobs:
         uses: CodSpeedHQ/action@af75f77f17a054769abefaa42fe8dc2975469b5f # v5.6.3
         with:
           mode: simulation
-          run: cd src-tauri && cargo codspeed run --bench backend_hot_paths
+          # cargo-codspeed passes the filter to the divan binary as its regex filter argument.
+          run: cd src-tauri && cargo codspeed run --bench backend_hot_paths '${{ matrix.filter }}'
 
   check:
     name: CodSpeed Performance Analysis
