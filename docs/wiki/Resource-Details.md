@@ -29,11 +29,11 @@ Use **Expand all** or **Collapse all** for the current timeline. **Settings > Ge
 | --- | --- |
 | **Events** | Review Kubernetes events associated with the exact object. Events expire and may be unavailable. |
 | **Logs** | Read supported Pod or container logs. Choose the exact container and relevant time range. |
-| **Exec** | Start a guarded terminal session to an exact Pod and container. |
+| **Exec** | Open terminal sessions, one per tab, in an exact Pod and container. |
 | **Forward** | Start a localhost port forward for a supported Pod or selector-backed Service. |
 | **Revisions** | Inspect available Deployment revision history and related ReplicaSets. |
 | **Argo CD** | Inspect Argo ownership or Application data when available. |
-| **Actions** | Preview and confirm supported scale, restart, or delete operations. |
+| **Actions** | Scale, pause, restart, roll back, edit containers and metadata, or delete. Every change is dry-run by the API server and reviewed before it applies. See [Guarded Operations](https://github.com/Timpan4/kubecove/wiki/Guarded-Operations). |
 | **YAML** | Read rendered object YAML or enter the guarded edit-and-apply flow. |
 
 Not every tab appears for every kind. For example, Exec and logs need an appropriate Pod/container target; revisions apply to supported workload history; guarded actions support only their documented kind matrix.

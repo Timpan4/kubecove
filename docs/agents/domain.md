@@ -1,6 +1,6 @@
 # Domain Docs
 
-How agent skills consume domain docs before code exploration.
+What agent skills read before exploring code.
 
 ## Read First
 
@@ -9,21 +9,22 @@ How agent skills consume domain docs before code exploration.
 - `docs/development-workflow.md` for commands and verification.
 - `docs/agents/issue-tracker.md` for GitHub Issues tracking.
 - Relevant `docs/decisions/` before Kubernetes access, Tauri boundaries, guarded operations, Argo CD, or security-sensitive paths.
-- `CONTEXT.md` at repo root when present.
+- `CONTEXT.md` at the repository root for terms.
 
-If `CONTEXT.md` is absent, proceed silently. Do not suggest creating it before unresolved terms or decisions need it.
+`CONTEXT.md` defines the project vocabulary.
 
 ## Tracking
 
-Use GitHub Issues for planned work, follow-ups, and issue status. Use GitHub Milestones for delivery grouping. Do not treat repository markdown checklists as issue tracker.
+Use GitHub Issues for planned work, follow-ups, and issue status. Use GitHub Milestones for delivery grouping. Repository Markdown checklists are not the issue tracker.
 
 ## File Structure
 
-This is single-context repo:
+This is a single-context repository:
 
 ```text
 /
 |-- AGENTS.md
+|-- CONTEXT.md
 |-- docs/
 |   |-- product-and-architecture.md
 |   |-- development-workflow.md
@@ -34,7 +35,7 @@ This is single-context repo:
 
 ## Vocabulary and ADRs
 
-Use terms defined by `AGENTS.md`, product and architecture docs, ADRs, and `CONTEXT.md` when present. If concept is undocumented, reconsider term or record gap in GitHub Issue.
+Use the terms defined by `CONTEXT.md`, `AGENTS.md`, the product and architecture document, and the ADRs. If a concept is undocumented, reconsider the term or record the gap in a GitHub Issue.
 
 Surface ADR conflicts instead of silently overriding them:
 

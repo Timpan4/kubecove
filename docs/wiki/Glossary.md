@@ -2,76 +2,80 @@
 
 ## Application
 
-Argo CD custom resource that declares desired delivery state and reports sync and health status.
+An Argo CD custom resource that declares a desired delivery state and reports sync and health status.
+
+## Cluster group
+
+One or more extra contexts saved with a workspace. The Resource browser reads them together with the primary context. It is local navigation data, not a Kubernetes object.
 
 ## Context
 
-Named kubeconfig entry selecting Kubernetes cluster, user, and namespace defaults.
+A named kubeconfig entry that selects a cluster, a user, and a default namespace.
 
 ## Custom Resource Definition (CRD)
 
-Kubernetes extension defining custom resource API type. Custom Resource discovery requires CRD presence and permitted discovery/list access.
+A Kubernetes extension that defines a custom resource type. KubeCove lists custom resources only when the CRD exists and your account can discover and list it.
 
 ## Diagnostics
 
-Optional bounded in-memory timing, counter, and trace collection for local investigation.
+Optional timing, counter, and trace collection for local investigation. The data is bounded and held in memory.
 
 ## Dry run
 
-Server-side validation request that returns expected effect without persisting change. Guarded YAML workflows show dry-run diff before final confirmation.
+A server-side request that validates a change and returns its result without saving it. Guarded YAML and Actions flows show a dry-run diff before the final step.
 
 ## GitOps transport
 
-Data path used for GitOps views: Kubernetes CRDs or explicit connected Argo CD API session. These transports are separate.
+The data path a GitOps view uses: Kubernetes CRDs, or a connected Argo CD API session. The two are never mixed in one result.
 
 ## Helm reconciliation
 
-Read-only comparison between decoded Helm release intent and live Kubernetes objects. It reports tracked, missing, unlabeled, label-only, or unavailable evidence.
+A read-only comparison between the manifest stored with a Helm release and the live Kubernetes objects. Results are tracked, unlabeled live, missing, label-only, or unavailable.
 
 ## Kubeconfig source
 
-Context discovery reads ordered inputs from the selected environment variable, or from standard `KUBECONFIG` when set and the platform-default kubeconfig otherwise, followed by application-added kubeconfig paths.
+The ordered inputs KubeCove reads contexts from: the selected environment variable, or standard `KUBECONFIG` when set and the platform-default kubeconfig otherwise, followed by kubeconfig paths added in Settings.
 
 ## Live session
 
-Running port-forward or Pod exec session. It is not equivalent to workspace identity and can be stopped when leaving scope.
+A running port forward or Pod exec session. It belongs to the scope it was started in and stops when you leave that scope, unless the setting to keep live sessions is on.
 
 ## Namespace scope
 
-Workspace filter defining namespaces included in namespaced resource queries. It does not apply to cluster-scoped resources.
+The workspace filter that limits namespaced resource requests. It does not apply to cluster-scoped resources.
 
 ## Ownership map
 
-Graph of resource ownership and related workload structure. Full-map mode retains unrelated branches during selection.
+A graph of ownership and related workload structure for the loaded objects. Full-map mode keeps unrelated branches visible while an object is selected.
 
 ## Pod exec
 
-Guarded terminal session targeting one selected Pod and optional container through Kubernetes `pods/exec` API.
+A guarded terminal session in one selected Pod and container through the Kubernetes `pods/exec` API.
 
 ## Port forward
 
-Loopback-only local listener forwarding a selected Service target to Kubernetes workload endpoint.
+A loopback-only local listener that forwards connections to one Pod, or to a ready Pod behind one selector-backed Service.
 
 ## RBAC
 
-Kubernetes role-based access control. KubeCove can only read or operate within permissions granted to selected credentials.
+Kubernetes role-based access control. KubeCove can read and change only what the selected credentials are permitted to.
 
 ## Resource scope
 
-Combination of selected context, namespace scope, resource kind, and resource identity used to bound query or operation.
+The contexts, namespaces, and kinds that bound a request, plus the resource identity that bounds an operation.
 
 ## Secret redaction
 
-Hiding Secret data values from normal details and YAML output. Reveal reads selected key through backend path; core `v1` Secret YAML apply remains blocked.
+Secret values are hidden in details and YAML. A reveal reads one selected key through the backend. Applying YAML for a core `v1` Secret stays blocked.
 
 ## Server-side apply force-conflicts
 
-Option allowing guarded YAML operation to take ownership of fields owned by another field manager. Review target and dry-run diff before use.
+An option that lets a guarded YAML apply take ownership of fields owned by another field manager. Review the target and the dry-run diff before using it.
 
 ## Tauri boundary
 
-Typed desktop command boundary between webview and Rust backend. Kubeconfig contents, raw credentials, and generic local-shell access do not cross it.
+The typed command boundary between the desktop webview and the Rust backend. Kubeconfig contents, raw credentials, and general shell access do not cross it.
 
 ## Workspace
 
-Local working identity containing selected context and filters used to bound inspection and operations.
+A locally saved inspection scope: a primary context, an optional cluster group, namespaces, kinds, shortcuts, and saved Service port-forward presets.

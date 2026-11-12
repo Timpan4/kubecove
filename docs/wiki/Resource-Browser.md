@@ -2,7 +2,7 @@
 
 The Resource browser lists Kubernetes objects inside the workspace's saved contexts, namespaces, and kinds. A workspace with more than one context shows their objects in one merged table. Opening or filtering a row is read-only. Changes live behind the separate guarded-operation flows.
 
-![KubeCove Kubernetes resource browser showing ownership map, resource health, and workload metrics](https://raw.githubusercontent.com/Timpan4/kubecove/main/docs/assets/resources-view.png)
+![KubeCove Kubernetes resource browser showing resource health counts, the ownership map, and the resource table](https://raw.githubusercontent.com/Timpan4/kubecove/main/docs/assets/resources-view.png)
 
 ## Find a resource
 

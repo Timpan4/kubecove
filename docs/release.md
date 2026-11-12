@@ -1,18 +1,18 @@
 # Releases
 
-KubeCove installers publish through [GitHub Releases](https://github.com/Timpan4/kubecove/releases). GitHub Releases is authoritative for published installers; source features are unreleased until matching release tag completes its gates.
+KubeCove installers publish through [GitHub Releases](https://github.com/Timpan4/kubecove/releases). GitHub Releases is authoritative for published installers. A feature in source is unreleased until the matching release tag completes its gates.
 
 ## Installer Guide
 
-- macOS: download `.dmg`. Unsigned beta builds may require right-click Open or System Settings approval.
-- Windows: download NSIS setup executable. Unsigned beta builds may require SmartScreen's More info then Run anyway.
-- Linux: download `.AppImage`, `.deb`, or `.rpm` when present. AppImage may need `chmod +x`.
+- macOS: download the `.dmg`. Unsigned beta builds may require right-click Open or System Settings approval.
+- Windows: download the NSIS setup executable. Unsigned beta builds may require SmartScreen's More info, then Run anyway.
+- Linux: download the `.AppImage`, `.deb`, or `.rpm` when present. The AppImage may need `chmod +x`.
 
 Installers contain the desktop app and normal Tauri runtime files. They do not bundle `kubectl`, Helm, Argo CD, kubeconfigs, tokens, or cluster credentials.
 
-The release workflow also builds standalone `kubecove-server` archives for Linux x64 and Linux arm64, each in a full variant with the browser assets embedded and a `-slim` API-only variant, with SHA-256 checksum files. Linux archives include a systemd unit. It also builds full and slim distroless container images for `linux/amd64` and `linux/arm64`, then publishes each tag as a multi-architecture image. The server runs without Tauri or webview GUI dependencies and is intended for a single OS user on a remote host, normally reached through SSH forwarding. See [the remote-host operations guide](wiki/Remote-Server.md) and [the install guide](wiki/Server-Installation.md). Server assets are available only after the matching release completes its publish gates.
+The release workflow also builds standalone `kubecove-server` archives for Linux x64 and Linux arm64, each in a full variant with the browser assets embedded and a `-slim` API-only variant, with SHA-256 checksum files. Linux archives include a systemd unit. It also builds full and slim distroless container images for `linux/amd64` and `linux/arm64`, then publishes each version tag as a multi-architecture image beside per-architecture tags. There is no `latest` tag. The server runs without Tauri or webview GUI dependencies and is intended for a single OS user on a remote host, normally reached through SSH forwarding. See [the remote-host operations guide](wiki/Remote-Server.md) and [the install guide](wiki/Server-Installation.md). Server assets are available only after the matching release completes its publish gates.
 
-Windows releases use NSIS so in-app updates share one installer path. An older MSI install may require one uninstall before NSIS install.
+Windows releases use NSIS so in-app updates share one installer path. An older MSI install may need to be uninstalled once before the NSIS install.
 
 ### Linux AppImage WebKitGTK
 
@@ -31,9 +31,9 @@ KubeCove is inspection-first outside ADR-approved live sessions and guarded oper
 
 ## Maintainer Release Flow
 
-1. Run GitHub Actions **Prepare Release PR** with `patch`, `minor`, or `major` bump.
-2. Review version metadata, generated `CHANGELOG.md` section, `bun run docs:check`, and release claims against implemented guarded-operation contracts.
-3. Merge release PR to `main`.
+1. Run the GitHub Actions workflow **Prepare Release PR** with a `patch`, `minor`, or `major` bump.
+2. Review the version metadata, the generated `CHANGELOG.md` section and `bun run docs:check`, and check release claims against the implemented guarded-operation contracts.
+3. Merge the release PR to `main`.
 
 Preparation commits the generated files through GitHub's signed-commit API and verifies the signature before opening the PR. Reruns append to an existing release branch without rewriting its history.
 
@@ -45,13 +45,13 @@ GitHub puts pull-request workflows created by `GITHUB_TOKEN` into an approval-re
 
 If signature verification fails after commit creation, the branch may already contain that commit. Preparation preserves the branch and stops. Reruns check every commit introduced since the checked-out `main` and reject unverified history before appending. Verify the rejected signature or prepare a new signed release branch before rerunning.
 
-Trusted release PRs skip frontend, Rust, and CodSpeed checks. The exemption requires the same-repository `release/app-v*` branch and `release` label. The Nix check builds the frontend and desktop app and verifies server dependencies directly from the committed Cargo lockfiles. Tag builds still run every automated release gate below before publishing.
+Trusted release PRs skip frontend, Rust, and CodSpeed checks. The exemption requires the same-repository `release/app-v*` branch and `release` label. The Nix build does not run on pull requests. After merge or on manual dispatch, it builds the frontend and desktop app and verifies server dependencies directly from the committed Cargo lockfiles. Tag builds still run every automated release gate below before publishing.
 
-After merge, GitHub Actions finds merged `release` PR, creates matching annotated `app-vX.Y.Z` tag, runs release workflow, builds desktop installers and headless server archives, verifies required assets and updater coverage, then publishes the release.
+After the merge, GitHub Actions finds the merged `release` PR, creates the matching annotated `app-vX.Y.Z` tag and runs the release workflow. The workflow builds the desktop installers, server archives and container images, verifies the required assets and updater coverage, then publishes the release.
 
-Manual release-workflow dispatch only reruns an existing `app-v*` tag and preserves release visibility.
+A manual dispatch of the release workflow only reruns an existing `app-v*` tag and preserves the release's visibility.
 
-Validate `origin/main` release metadata locally:
+Validate the `origin/main` release metadata locally:
 
 ```sh
 bun run release:dry-run
@@ -61,11 +61,11 @@ bun run release:dry-run
 
 ## In-App Updates
 
-In-app updates run only in release-workflow builds. Local development and ad hoc builds use `dev` channel and do not check GitHub.
+In-app updates run only in release-workflow builds. Local development and ad hoc builds use the `dev` channel and do not check GitHub.
 
-Updater artifacts require GitHub Actions `TAURI_SIGNING_PRIVATE_KEY`; password is optional. Public key is committed in `src-tauri/tauri.conf.json`. Installer packages may remain unsigned beta builds, but updater artifacts and `latest.json` must be signed.
+Updater artifacts require the GitHub Actions secret `TAURI_SIGNING_PRIVATE_KEY`. Its password is optional. The public key is committed in `src-tauri/tauri.conf.json`. Installer packages may remain unsigned beta builds, but updater artifacts and `latest.json` must be signed.
 
-Release notes mirror matching [CHANGELOG.md](../CHANGELOG.md) section.
+Release notes mirror the matching [CHANGELOG.md](../CHANGELOG.md) section.
 
 ### Native GPUI client
 
@@ -93,25 +93,25 @@ Every other release job skips a dry run, so nothing reads or writes a release or
 
 ## Automated Release Gates
 
-Release tags run type checks, unit tests, Rust tests and checks, deterministic fast E2E, and real E2E across the supported Kubernetes matrix before installers build. Native Nix builds for `x86_64-linux` and `aarch64-linux` run in parallel as advisory checks, use the GitHub Actions Nix cache, and do not delay or block publishing. Workflow verifies installer assets, updater signatures, `latest.json`, and updater platform coverage before publishing. Nix users run the tagged source flake; releases do not attach a separate Nix archive.
+Release tags run type checks, unit tests, Rust tests and checks, deterministic fast E2E, and real E2E across the supported Kubernetes matrix before installers build. Native Nix builds for `x86_64-linux` and `aarch64-linux` run in parallel as advisory checks, use the GitHub Actions Nix cache, and do not delay or block publishing. The workflow verifies installer assets, updater signatures, `latest.json`, and updater platform coverage before publishing. Nix users run the tagged source flake; releases do not attach a separate Nix archive.
 
 Support window and matrix changes follow [ADR 0011](decisions/0011-rolling-kubernetes-support.md). Real E2E uses [ADR 0012](decisions/0012-production-shaped-e2e-lab.md).
 
 ## Manual Smoke Test
 
-1. Install and start target release artifact.
-2. Confirm context listing never exposes raw kubeconfig contents.
-3. Open readable workspace; confirm namespace and resource browsing.
+1. Install and start the target release artifact.
+2. Confirm that the context list never exposes raw kubeconfig contents.
+3. Open a readable workspace and confirm namespace and resource browsing.
 4. Confirm selected-resource details, YAML, events, and logs when available.
-5. Confirm guarded exec shows exact Pod target and command, requires confirmation, streams output, accepts stdin, resizes, and stops.
-6. Confirm guarded operations show exact targets, previews or preflight where required, and final confirmation.
-7. Check Argo CD and Helm sections when matching cluster metadata exists.
-8. Confirm per-key Secret reveal is transient; connected Argo Secret payloads remain redacted.
+5. Confirm that guarded exec shows the exact Pod target and command, requires confirmation, streams output, accepts stdin, resizes, and stops.
+6. Confirm that guarded operations show exact targets, previews or preflight where required, and a final confirmation.
+7. Check the Argo CD and Helm sections when matching cluster metadata exists.
+8. Confirm that per-key Secret reveal is transient and that connected Argo Secret payloads remain redacted.
 
 ## Publishing Checklist
 
-- Confirm release PR version, changelog, docs check, and release notes are accurate.
-- Confirm every claimed operation has typed command, required preview or preflight, confirmation UX, and ADR coverage.
-- After publish, optionally smoke installer against context listing, resource browsing, and unavailable-cluster errors.
+- Confirm that the release PR version, changelog, docs check, and release notes are accurate.
+- Confirm that every claimed operation has a typed command, the required preview or preflight, confirmation UX, and ADR coverage.
+- After publishing, optionally smoke-test the installer against context listing, resource browsing, and unavailable-cluster errors.
 
-For a bad release, use **Yank Release** for bad `app-v*` tag: `draft` hides release while retaining artifacts; `delete-release` removes GitHub Release. Ship patch through normal release PR flow.
+For a bad release, run **Yank Release** on the bad `app-v*` tag. `draft` hides the release and keeps its artifacts. `delete-release` removes the GitHub Release. Ship the patch through the normal release PR flow.

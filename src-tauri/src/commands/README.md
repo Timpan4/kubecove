@@ -1,25 +1,8 @@
 # `src-tauri/src/commands/`
 
-Tauri command handlers live here, split by domain.
+This folder holds `mod.rs` and benchmark support. Command handlers live in the domain crates under `src-tauri/crates/<crate>/src/commands/` (`kube`, `inspection`, `live`, `gitops`, `host`); see the [crates guide](../../crates/README.md). `mod.rs` re-exports the command functions that `command_contract!` in `kubecove-models` declares. Tauri IPC (`src/ipc.rs`) and the server HTTP dispatch are generated from that declaration; see [ADR 0025](../../../docs/decisions/0025-single-command-contract.md).
 
-Current domains include:
-
-- `contexts`
-- `namespaces`
-- `resources`
-- `events`
-- `discovery`
-- `streams`
-- `metrics`
-- `argo`
-- `helm`
-- `rbac`
-- `sessions`
-- `usage`
-
-Shared command helpers belong in `helpers.rs` or a focused helper submodule. `mod.rs` re-exports the command functions that `command_contract!` in `kubecove-models` declares. Tauri IPC (`src/ipc.rs`) and the server HTTP dispatch are generated from that declaration; see [ADR 0025](../../../docs/decisions/0025-single-command-contract.md).
-
-Rules:
+Rules for command code in those crates:
 
 - One command domain per file or folder.
 - Do not add unrelated commands to a file just because it is already open.

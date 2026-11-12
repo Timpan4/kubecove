@@ -4,19 +4,19 @@ KubeCove is a fast, local Kubernetes desktop GUI for cluster inspection and trou
 
 Kubernetes credentials remain on the Rust side of the desktop boundary. KubeCove does not deploy cluster agents, expose raw kubeconfig contents to the frontend, or provide arbitrary shell execution. Operations are narrow, typed, target-scoped, and explicitly confirmed.
 
-![KubeCove Kubernetes resource browser showing ownership map, resource health, and topology](https://raw.githubusercontent.com/Timpan4/kubecove/main/docs/assets/resources-view.png)
+![KubeCove Kubernetes resource browser showing resource health counts, the ownership map, and the resource table](https://raw.githubusercontent.com/Timpan4/kubecove/main/docs/assets/resources-view.png)
 
 ## Start
 
 1. [Download latest installer](https://github.com/Timpan4/kubecove/releases/latest). Installers are beta builds; OS trust prompts may require approval.
-2. To keep cluster credentials and connectivity on a remote operations host or an operator-deployed Kubernetes container, follow [Run KubeCove on a remote host](https://github.com/Timpan4/kubecove/wiki/Remote-Server). The server has one active owner and requires authenticated access.
+2. To keep cluster credentials and connectivity on a remote operations host or an operator-deployed Kubernetes container, follow [Run KubeCove on a remote host](https://github.com/Timpan4/kubecove/wiki/Remote-Server). The server requires sign-in, and each client gets its own session.
 3. Make a readable kubeconfig context available through `$KUBECONFIG` or your default kubeconfig location.
 4. Create a workspace. Choose a context, then narrow namespaces and resource kinds when useful.
 5. Open a resource. Inspect details, events, logs, metrics, YAML, ownership, and related GitOps or Helm metadata before using a guarded action.
 
 ## Safety boundary
 
-Inspection is default. Guarded workflows include Pod and selector-backed Service port forwarding, exact-Pod exec, selected-resource YAML apply, narrow scale/restart/delete actions, and reviewed Argo CD refresh and sync operations.
+Inspection is default. Guarded workflows include Pod and selector-backed Service port forwarding, exact-Pod exec, selected-resource YAML apply, reviewed resource actions (scale, pause, restart, rollback, container and metadata edits, delete), and reviewed Argo CD refresh, sync and rollback operations.
 
 YAML apply is limited to selected resources, validates identity, dry-runs before final confirmation, and blocks v1 Secret apply. Argo CD operations use the reviewed transport, while connected inspection can visibly fall back to a complete Kubernetes view when a required connected read fails. Flux remains inspection-only.
 
@@ -51,6 +51,6 @@ YAML apply is limited to selected resources, validates identity, dry-runs before
 
 ## Help and documentation
 
-[Get support or report a product issue](https://github.com/Timpan4/kubecove/issues). [Read security policy and privately report vulnerabilities](https://github.com/Timpan4/kubecove/security/policy). [Open a documentation issue](https://github.com/Timpan4/kubecove/issues/new).
-
-Maintainers own documentation source edits. Readers should report documentation gaps or errors through a documentation issue.
+- [Report a product issue](https://github.com/Timpan4/kubecove/issues)
+- [Report a documentation gap or error](https://github.com/Timpan4/kubecove/issues/new?template=documentation.yml)
+- [Report a vulnerability privately](https://github.com/Timpan4/kubecove/security/policy)
