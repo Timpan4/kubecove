@@ -248,6 +248,8 @@ mod tests {
             yaml: yaml.to_string(),
             yaml_encoding: crate::models::YamlEncoding::default(),
             force_conflicts: false,
+            expected_uid: None,
+            expected_resource_version: None,
         }
     }
 

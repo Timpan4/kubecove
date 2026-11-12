@@ -171,16 +171,20 @@ pub(super) fn apply_request(
         yaml,
         yaml_encoding: Default::default(),
         force_conflicts: force,
+        expected_uid: None,
+        expected_resource_version: None,
     }
 }
 
 fn review(
-    request: YamlApplyRequest,
+    mut request: YamlApplyRequest,
     preview: &YamlApplyPreview,
     style: crate::preferences::DiffStyle,
 ) -> Review {
     let (current, dry_run) = (&preview.current_yaml, &preview.dry_run_yaml);
     let force = request.force_conflicts;
+    request.expected_uid = Some(preview.uid.clone());
+    request.expected_resource_version = Some(preview.resource_version.clone());
     Review {
         show_full: false,
         lines: if style == crate::preferences::DiffStyle::Git {

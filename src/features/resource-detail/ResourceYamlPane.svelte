@@ -40,6 +40,7 @@ import { mapKubernetesYamlDiagnostics } from "./yamlLintDiagnostics";
 	import {
 		buildYamlApplyRequest as createYamlApplyRequest,
 		isYamlApplyDisabled,
+		reviewedYamlApplyRequest,
 		resolveYamlForceConflicts,
 		sameYamlApplyRequest,
 		yamlAppliedMessage as formatYamlAppliedMessage,
@@ -371,7 +372,10 @@ import { mapKubernetesYamlDiagnostics } from "./yamlLintDiagnostics";
 			yamlEncoding,
 		});
 		try {
-			const result = await applyYaml(client, review.request);
+			const result = await applyYaml(
+				client,
+				reviewedYamlApplyRequest(review.request, review.preview),
+			);
 			void queryClient.invalidateQueries({ predicate: appliedQueries });
 			if (phase !== applying) return;
 			phase = { kind: "viewing" };

@@ -258,6 +258,8 @@ impl DetailTabs {
         self.yaml_apply.iter().find(|entry| {
             let mut actual = request.clone();
             actual.kubeconfig_env_var = None;
+            actual.expected_uid = None;
+            actual.expected_resource_version = None;
             serde_json::to_value(&entry.request).unwrap() == serde_json::to_value(actual).unwrap()
         })
     }

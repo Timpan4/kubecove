@@ -213,7 +213,11 @@ describe("native Kind command boundary", () => {
 		const preview = await tauri.prepareYamlApply(request);
 		expect(preview.currentYaml).toContain("before-apply");
 		expect(preview.dryRunYaml).toContain("after-apply");
-		await tauri.applyYaml(request);
+		await tauri.applyYaml({
+			...request,
+			expectedUid: preview.uid,
+			expectedResourceVersion: preview.resourceVersion,
+		});
 		expect(await runKubectl(["get", "configmap", "apply-target", "-n", "e2e-apply", "-o", "jsonpath={.data.e2eApplied}"])).toBe("after-apply");
 	});
 

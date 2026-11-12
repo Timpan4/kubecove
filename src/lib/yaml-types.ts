@@ -15,6 +15,8 @@ export interface YamlApplyRequest {
 	yaml: string;
 	yamlEncoding?: YamlEncoding;
 	forceConflicts?: boolean;
+	expectedUid?: string;
+	expectedResourceVersion?: string;
 }
 
 export interface YamlApplyTarget {
@@ -29,6 +31,8 @@ export interface YamlApplyPreview {
 	target: YamlApplyTarget;
 	currentYaml: string;
 	dryRunYaml: string;
+	uid: string;
+	resourceVersion: string;
 }
 
 export interface YamlApplyResult {

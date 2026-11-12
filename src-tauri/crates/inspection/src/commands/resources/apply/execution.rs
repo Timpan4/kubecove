@@ -1,8 +1,9 @@
-use crate::models::{AppError, AppErrorKind};
+use crate::models::{AppError, AppErrorKind, YamlApplyRequest};
 use kube::{
     Error as KubeError,
     api::{Api, DynamicObject, PatchParams},
 };
+use serde_json::Value;
 
 use super::validation::ValidatedApply;
 
@@ -36,6 +37,63 @@ pub(super) fn apply_api(
     } else {
         Ok(Api::all_with(client, &validated.api_resource))
     }
+}
+
+pub(super) fn apply_identity(object: &DynamicObject) -> Result<(String, String), AppError> {
+    let uid = object
+        .metadata
+        .uid
+        .clone()
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| AppError::new("resource UID is missing", AppErrorKind::InvalidResource))?;
+    let resource_version = object
+        .metadata
+        .resource_version
+        .clone()
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            AppError::new("resourceVersion is missing", AppErrorKind::InvalidResource)
+        })?;
+    Ok((uid, resource_version))
+}
+
+pub(super) fn reviewed_apply_identity(
+    request: &YamlApplyRequest,
+) -> Result<(&str, &str), AppError> {
+    request
+        .expected_uid
+        .as_deref()
+        .zip(request.expected_resource_version.as_deref())
+        .ok_or_else(|| {
+            AppError::new(
+                "reviewed UID and resourceVersion are required",
+                AppErrorKind::Validation,
+            )
+        })
+}
+
+pub(super) fn validate_apply_identity(
+    expected_uid: &str,
+    expected_resource_version: &str,
+    uid: &str,
+    resource_version: &str,
+) -> Result<(), AppError> {
+    if expected_uid != uid || expected_resource_version != resource_version {
+        return Err(AppError::new(
+            "resource changed since the YAML apply was reviewed",
+            AppErrorKind::Validation,
+        ));
+    }
+    Ok(())
+}
+
+pub(super) fn guard_apply_manifest(mut manifest: Value, resource_version: &str) -> Value {
+    manifest
+        .get_mut("metadata")
+        .and_then(Value::as_object_mut)
+        .expect("validated apply manifest has object metadata")
+        .insert("resourceVersion".into(), Value::String(resource_version.into()));
+    manifest
 }
 
 pub(super) fn apply_error(error: KubeError) -> AppError {

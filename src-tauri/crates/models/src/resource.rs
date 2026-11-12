@@ -200,6 +200,10 @@ pub struct YamlApplyRequest {
     pub yaml_encoding: YamlEncoding,
     #[serde(default)]
     pub force_conflicts: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_uid: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_resource_version: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -220,6 +224,8 @@ pub struct YamlApplyPreview {
     pub target: YamlApplyTarget,
     pub current_yaml: String,
     pub dry_run_yaml: String,
+    pub uid: String,
+    pub resource_version: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

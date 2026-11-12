@@ -304,6 +304,8 @@ function applyPreview(args: MockArgs): YamlApplyPreview {
 		target: { clusterContext: request?.clusterContext ?? "mock-dev", kind: request?.kind ?? "Deployment", name: request?.name ?? "payments-api", namespace: request?.namespace },
 		currentYaml: request?.yaml ?? genericYaml("Deployment", "payments-api", "payments", "apps/v1"),
 		dryRunYaml: `${request?.yaml ?? genericYaml("Deployment", "payments-api", "payments", "apps/v1")}# dry-run: browser mock\n`,
+		uid: "mock-yaml-uid",
+		resourceVersion: "7",
 	};
 }
 
