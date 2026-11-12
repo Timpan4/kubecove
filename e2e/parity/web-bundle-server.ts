@@ -1,5 +1,6 @@
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { build, loadConfigFromFile, preview } from "vite";
+import { DEFERRED_PAGES } from "./web-deferred";
 
 // Separate entry points preserve the exports the driver imports while sharing the app's
 // mock instances through the bundler's common chunks. The query entry likewise shares
@@ -18,9 +19,17 @@ const loaded = await loadConfigFromFile({ command: "build", mode: "development" 
 if (!loaded) throw new Error("Vite config not found");
 const config = loaded.config;
 const outDir = join(artifacts, "web-app");
+// The driver imports a deferred page before the click that opens it (web-deferred.ts). As an
+// entry, the page keeps the chunk the app's own import loads.
+const pages = Object.values(DEFERRED_PAGES).map(path => ({ path, name: basename(path, ".svelte") }));
 const imports = new Map(mocks.map(name => [`/src/lib/${name}.ts`, `/assets/${name}.js`]));
 imports.set("/node_modules/.vite/deps/@tanstack_svelte-query.js", "/assets/parity-query.js");
-const input = Object.fromEntries([["index", join(process.cwd(), "index.html")], ["parity-query", "@tanstack/svelte-query"], ...mocks.map(name => [name, join(process.cwd(), "src/lib", `${name}.ts`)])]);
+for (const page of pages) imports.set(page.path, `/assets/${page.name}.js`);
+const input = Object.fromEntries([
+    ["index", join(process.cwd(), "index.html")], ["parity-query", "@tanstack/svelte-query"],
+    ...mocks.map(name => [name, join(process.cwd(), "src/lib", `${name}.ts`)]),
+    ...pages.map(page => [page.name, join(process.cwd(), page.path)]),
+]);
 await build({
     ...config,
     configFile: false,

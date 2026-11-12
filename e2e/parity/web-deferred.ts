@@ -1,7 +1,10 @@
 import type { Page } from "playwright-core";
 
-/** The sidebar pages the app imports on first use (src/app/svelte/AppSurfaces.svelte), by tree label. */
-const DEFERRED_PAGES: Record<string, string> = {
+/**
+ * The sidebar pages the app imports on first use (src/app/svelte/AppSurfaces.svelte), by tree
+ * label. The bundled app serves each module under its source path (web-bundle-server.ts).
+ */
+export const DEFERRED_PAGES: Record<string, string> = {
 	GitOps: "/src/features/gitops/GitOpsSurface.svelte",
 	Helm: "/src/features/helm/HelmSurface.svelte",
 	RBAC: "/src/features/rbac/RbacSurface.svelte",

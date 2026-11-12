@@ -1,4 +1,5 @@
 import type { Locator, Page } from "playwright-core";
+import { waitFor } from "../../.agents/skills/verify-kubecove/scripts/processes";
 
 function literal(text: string) { return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
@@ -6,24 +7,31 @@ function literal(text: string) { return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$
 export function gitOpsDetails(page: Page, item: { kind: string; name: string; namespace: string }) {
 	return page.getByRole("button", { name: `Open details for ${item.kind} ${item.name} in ${item.namespace}`, exact: true });
 }
-/** Scrolls virtual rows until the requested Application mounts or both ends are reached. */
+/**
+ * Scrolls virtual rows until the requested Application mounts. A sweep that reaches both ends
+ * proves nothing while the collection is still loading or laying out, so sweeps repeat until
+ * the target mounts.
+ */
 export async function revealGitOps(page: Page, target: Locator) {
 	await page.getByRole("heading", { level: 2 }).first().waitFor();
-	for (const direction of [1, -1]) {
-		while (await target.count() === 0) {
-			const moved = await page.locator("[data-virtual-row]").first().evaluate(async (row, direction) => {
-				const viewport = row.closest(".overflow-y-auto, .overflow-auto");
-				if (!(viewport instanceof HTMLElement)) throw new Error("GitOps scroll viewport missing");
-				const previous = viewport.scrollTop;
-				viewport.scrollTop += direction * viewport.clientHeight;
-				await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-				return viewport.scrollTop !== previous;
-			}, direction);
-			if (!moved) break;
+	const sweep = async () => {
+		for (const direction of [1, -1]) {
+			while (await target.count() === 0) {
+				const moved = await page.locator("[data-virtual-row]").first().evaluate(async (row, direction) => {
+					const viewport = row.closest(".overflow-y-auto, .overflow-auto");
+					if (!(viewport instanceof HTMLElement)) throw new Error("GitOps scroll viewport missing");
+					const previous = viewport.scrollTop;
+					viewport.scrollTop += direction * viewport.clientHeight;
+					await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+					return viewport.scrollTop !== previous;
+				}, direction);
+				if (!moved) break;
+			}
+			if (await target.count()) return true;
 		}
-		if (await target.count()) return;
-	}
-	throw new Error("GitOps details target missing after scrolling the collection");
+		return false;
+	};
+	await waitFor("GitOps details target", sweep).catch(() => { throw new Error("GitOps details target missing after scrolling the collection"); });
 }
 /** A Helm release card, by its title and namespace description. */
 export function helmCard(page: Page, name: string, namespace: string) {
