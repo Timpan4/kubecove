@@ -389,17 +389,20 @@ impl Inspector {
             let owner = self.live.owner.clone();
             let id = watch.clone();
             let task = cx.spawn_in(window, async move |this, cx| {
-                let mut start = start;
                 let mut lost = false;
                 let mut timer = Box::pin(cx.background_executor().timer(RECOVERY));
                 loop {
-                    let resource_version = match start.take() {
-                        Some(version) => Some(version),
-                        None => this
-                            .update(cx, |this, _| this.shown_version(&scope.context, &key))
-                            .ok()
-                            .flatten(),
-                    };
+                    // Until the rows settle, a reopened watch resumes at the
+                    // version read before them; then the rows' version takes over.
+                    let resource_version = this
+                        .update(cx, |this, _| match &start {
+                            Some(start) if !this.rows_settled(&scope.context, &key) => {
+                                Some(start.clone())
+                            }
+                            _ => this.shown_version(&scope.context, &key),
+                        })
+                        .ok()
+                        .flatten();
                     let read = {
                         let _span = crate::frame_profile::scope("watch", "open_factory");
                         backend.watch(WatchTarget::Resource {

@@ -56,6 +56,8 @@ fn ended_streams_restart_on_the_web_recovery_tick(cx: &mut TestAppContext) {
 #[derive(Default)]
 pub(super) struct LiveControls {
     pub events_fail: AtomicBool,
+    /// Whether opening a watch fails.
+    open_fails: AtomicBool,
     gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
     streams: Mutex<Vec<(WatchTarget, mpsc::UnboundedSender<StreamMessage>)>>,
     /// Whether the backend reads watch start versions, and whether the read fails.
@@ -245,6 +247,41 @@ fn a_reload_older_than_the_list_leaves_the_listed_rows(cx: &mut TestAppContext) 
     assert!(shows_rows(cx, handle), "the newer list's row stays");
 }
 
+// Failure mode: a watch that fails to open while the rows load reopens on the
+// recovery tick without its start version, because the rows have none yet,
+// and replays every object of its kind.
+#[gpui_kit::test]
+fn a_watch_reopened_while_rows_load_keeps_its_start_version(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled {
+        live: LiveControls {
+            start_versions: Some(false),
+            ..Default::default()
+        },
+        ..Default::default()
+    });
+    let handle = open(cx, backend.clone());
+    backend.live.open_fails.store(true, Ordering::SeqCst);
+    let release = load_other_context(cx, &backend, handle);
+    assert!(backend.live.resource_watch_versions().is_empty());
+    backend.live.open_fails.store(false, Ordering::SeqCst);
+    // resource-watch.ts::RESOURCE_RECOVERY_INTERVAL.
+    cx.background_executor
+        .advance_clock(std::time::Duration::from_millis(15_000));
+    cx.run_until_parked();
+    assert!(!shows_rows(cx, handle), "the rows are still loading");
+    let versions = backend.live.resource_watch_versions();
+    assert!(!versions.is_empty());
+    assert!(
+        versions
+            .iter()
+            .all(|version| version.as_deref() == Some(START_VERSION)),
+        "{versions:?}"
+    );
+    release.send(()).unwrap();
+    cx.run_until_parked();
+    assert!(shows_rows(cx, handle));
+}
+
 #[gpui_kit::test]
 fn a_failed_start_version_waits_for_the_rows(cx: &mut TestAppContext) {
     let backend = Arc::new(Controlled {
@@ -349,6 +386,9 @@ impl LiveControls {
         })
     }
     pub fn open(&self, target: WatchTarget) -> Read<LogStream> {
+        if self.open_fails.load(Ordering::SeqCst) {
+            return Box::pin(async { Err(AppError::new("watch refused", AppErrorKind::Network)) });
+        }
         let (sender, messages) = mpsc::unbounded_channel();
         sender
             .send(StreamMessage::Status {
