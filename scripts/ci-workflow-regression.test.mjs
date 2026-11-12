@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
 const workflow = readFileSync(process.env.CI_WORKFLOW_PATH ?? new URL("../.github/workflows/ci.yml", import.meta.url), "utf8").replaceAll("\r\n", "\n");
 const base = "a".repeat(40);
@@ -69,6 +70,7 @@ for (const [path, selected] of [
   ["e2e/fixtures/resource.yaml", ["frontend"]],
   ["scripts/check-docs.ts", ["frontend"]],
   ["scripts/ci-mbx-cargo.mjs", domains],
+  ["scripts/ci-rust-cache-key.mjs", domains],
   ["bun.lock", ["frontend", "nix"]],
   ["src-tauri/src/lib.rs", ["rust"]],
   ["src-tauri/crates/models/src/lib.rs", ["rust"]],
@@ -158,11 +160,12 @@ test("fast-forward pushes use before and after SHAs", async () => {
   assert.equal(result.requests[0].params.basehead, `${base}...${head}`);
 });
 // Failure modes: a task omitted from the selected matrix drops its check; fail-fast drops
-// independent checks; a matrix above the owner's seven-job budget starves other workflows.
+// independent checks; a task per command pays one setup and one build cache per command and
+// takes a runner slot from the other workflows under GitHub's limit of 20 concurrent jobs.
 const tasksByScope = {
   docs: ["docs"],
-  frontend: ["frontend-e2e", "server-backend", "server-test", "server-api", "server-runtime"],
-  rust: ["rust-test", "rust-clippy", "gpui-clippy", "gpui-test", "server-backend", "server-test", "server-api", "server-runtime"],
+  frontend: ["frontend-e2e", "server-backend", "server"],
+  rust: ["rust", "gpui-clippy", "gpui-test", "server-backend", "server"],
   nix: [],
 };
 test("change detection selects every required task without duplicate jobs", async () => {
@@ -174,7 +177,8 @@ test("change detection selects every required task without duplicate jobs", asyn
       if (task.workspace) assert.ok(["src-tauri", "src-tauri/server", "src-tauri/gpui"].includes(task.workspace));
     }
   }
-  assert.match(job("checks"), /max-parallel: 6/);
+  // A limit below the task count starts the last tasks only after the first ones finish.
+  assert.doesNotMatch(job("checks"), /max-parallel/);
   assert.match(job("checks"), /fail-fast: false/);
   assert.ok(job("checks").includes("matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}"));
   assert.match(job("nix"), /needs:\n {6}- changes\n {6}- checks/);
@@ -192,14 +196,15 @@ test("each existing check remains in its selected task", () => {
   const commands = {
     frontend: ["node --test scripts/ci-workflow-regression.test.mjs", "node --test scripts/release-workflow-regression.test.mjs", ...["audit", "docs:check", "typecheck", "typecheck:bench", "svelte:check", "lint", "lint:anti-slop", "test:svelte"].map((name) => `bun run ${name}`), "bun test"],
     "frontend-e2e": ["bun run e2e:fast"],
-    "rust-test": ["mbx test --workspace --manifest-path src-tauri/Cargo.toml"],
-    "rust-clippy": ["mbx clippy --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings"],
+    rust: ["mbx test --workspace --manifest-path src-tauri/Cargo.toml", "mbx clippy --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings"],
     "gpui-clippy": ["mbx clippy --manifest-path src-tauri/gpui/Cargo.toml --locked --all-targets -- -D warnings"],
     "gpui-test": ["mbx test --manifest-path src-tauri/gpui/Cargo.toml --locked --lib --test native"],
     "server-backend": ["cargo tree --manifest-path src-tauri/server/Cargo.toml --locked --edges normal,build --prefix none > server-dependencies.txt", "mbx test --locked --workspace --no-default-features --manifest-path src-tauri/Cargo.toml"],
-    "server-test": ["mbx test --manifest-path src-tauri/server/Cargo.toml --locked", "mbx clippy --manifest-path src-tauri/server/Cargo.toml --all-targets --locked -- -D warnings"],
-    "server-api": ["mbx test --manifest-path src-tauri/server/Cargo.toml --locked --no-default-features", "mbx clippy --manifest-path src-tauri/server/Cargo.toml --locked --no-default-features --all-targets -- -D warnings"],
-    "server-runtime": ["bun run build", "mbx build --manifest-path src-tauri/server/Cargo.toml --locked", "bun e2e/headless-smoke.ts"],
+    server: [
+      "mbx test --manifest-path src-tauri/server/Cargo.toml --locked", "mbx clippy --manifest-path src-tauri/server/Cargo.toml --all-targets --locked -- -D warnings",
+      "mbx test --manifest-path src-tauri/server/Cargo.toml --locked --no-default-features", "mbx clippy --manifest-path src-tauri/server/Cargo.toml --locked --no-default-features --all-targets -- -D warnings",
+      "bun run build", "mbx build --manifest-path src-tauri/server/Cargo.toml --locked", "bun e2e/headless-smoke.ts",
+    ],
   };
   for (const [task, expected] of Object.entries(commands)) {
     const source = job(task === "frontend" ? "frontend" : "checks");
@@ -216,10 +221,12 @@ test("each existing check remains in its selected task", () => {
     if (match[1] !== "Checkout") assert.match(match[2], /^ +if: \$\{\{ .+ \}\}$/m, match[1]);
   }
   assert.ok(step("Build browser UI").includes("KUBECOVE_PUBLIC_RUNTIME: web"));
-  assert.ok(step("Build browser UI").includes("matrix.task == 'server-test' || matrix.task == 'server-runtime'"));
+  assert.ok(step("Build browser UI").includes("matrix.task == 'server'"));
   assert.ok(job("checks").indexOf("- name: Build browser UI") < job("checks").indexOf("- name: Test headless server"));
+  // The API-only server must build in a checkout that has no built browser UI.
+  assert.ok(job("checks").indexOf("- name: Verify API-only server") < job("checks").indexOf("- name: Build browser UI"));
   const report = step("Upload headless verification report");
-  assert.ok(report.includes("always() && matrix.task == 'server-runtime'"));
+  assert.ok(report.includes("always() && matrix.task == 'server'"));
   assert.match(report, /if-no-files-found: error/);
   assert.match(report, /path: e2e\/artifacts\/headless\/\*\*/);
   assert.match(step("Verify GUI-free dependency tree"), /if grep -E '\^\(tauri /);
@@ -227,14 +234,14 @@ test("each existing check remains in its selected task", () => {
 test("lightweight tasks avoid Rust and package setup; CI regressions precede installs", () => {
   assert.doesNotMatch(job("changes"), /actions\/checkout|git diff|fetch-depth/);
   assert.match(job("changes"), /actions\/github-script@[a-f0-9]{40}/);
-  assert.ok(step("Install frontend dependencies").includes("matrix.task == 'frontend-e2e' || matrix.task == 'server-test' || matrix.task == 'server-runtime'"));
+  assert.ok(step("Install frontend dependencies").includes("matrix.task == 'frontend-e2e' || matrix.task == 'server'"));
   assert.ok(job("frontend").indexOf("- name: Test CI orchestration") < job("frontend").indexOf("- name: Install frontend dependencies"));
   assert.ok(step("Setup Rust").includes("matrix.workspace"));
   assert.ok(step("Check documentation").includes("matrix.task == 'docs'"));
   for (const name of ["Install Tauri Linux dependencies", "Install GPUI build dependencies"]) {
     assert.match(step(name), /if ! pkg-config --exists/);
   }
-  assert.ok(step("Install Tauri Linux dependencies").includes("matrix.task == 'rust-test' || matrix.task == 'rust-clippy'"));
+  assert.ok(step("Install Tauri Linux dependencies").includes("matrix.task == 'rust'"));
   assert.ok(step("Install GPUI build dependencies").includes("matrix.task == 'gpui-clippy' || matrix.task == 'gpui-test'"));
 });
 function gate(overrides = {}) {
@@ -304,7 +311,7 @@ test("Rust dependency audits cover every checked-in lockfile with narrow excepti
   assert.match(step("Install cargo-audit"), /uses: taiki-e\/install-action@[a-f0-9]{40}/);
   assert.match(step("Install cargo-audit"), /tool: cargo-audit@0\.22\.2/);
   const audits = job("checks").split("\n      - name: ").filter((source) => source.includes("run: cargo-audit audit ")).map((source) => {
-    assert.ok(source.includes("matrix.task == 'rust-test'"));
+    assert.ok(source.includes("matrix.task == 'rust'"));
     const command = /run: cargo-audit audit (--file \S+(?: --ignore \S+)*)\n/.exec(`${source}\n`)?.[1];
     assert.ok(command, source);
     return [dirname(/--file (\S+)/.exec(command)[1]), [...command.matchAll(/--ignore (\S+)/g)].map((match) => match[1])];
@@ -349,18 +356,76 @@ test("Mr Boxington uses isolated object bundles for all Rust workspaces", async 
   assert.match(setup, /isolate-objects-cache: true/);
   assert.match(setup, /clean-target-before-export: true/);
   assert.match(setup, /save-on-pull-request: true/);
-  assert.ok(setup.includes("cache-generation: kubecove-ci-objects-${{ matrix.task }}"));
+  // Each task keys its own cache by its inputs; the action's generated key is unique per
+  // run, so every run would export and upload again.
+  assert.ok(setup.includes("cache-key: ${{ steps.rust-cache.outputs.key }}"));
+  assert.ok(setup.includes("restore-keys: ${{ steps.rust-cache.outputs.prefix }}"));
+  assert.doesNotMatch(setup, /cache-generation/);
+  assert.ok(step("Key the Rust cache by its inputs").includes("run: node scripts/ci-rust-cache-key.mjs ci-${{ matrix.task }} .github/workflows/ci.yml ${{ matrix.inputs }}"));
+  assert.ok(job("checks").indexOf("- name: Key the Rust cache by its inputs") < job("checks").indexOf("- name: Setup Mr Boxington"));
+  assert.ok(job("checks").indexOf("- name: Setup Rust") < job("checks").indexOf("- name: Key the Rust cache by its inputs"));
+  assert.match(job("checks"), /^ {6}CARGO_PROFILE_DEV_DEBUG: line-tables-only$/m);
   const { matrix } = await detect([".github/workflows/ci.yml"]);
-  const workspaces = Object.fromEntries(matrix.include.filter(({ workspace }) => workspace).map(({ task, workspace }) => [task, workspace]));
+  const workspaces = Object.fromEntries(matrix.include.filter(({ workspace }) => workspace).map(({ task, workspace, inputs }) => [task, [workspace, inputs]]));
+  // The GPUI and server crates are separate workspaces that both build the desktop crates.
+  const [desktop, gpui, server] = ["src-tauri :!src-tauri/gpui :!src-tauri/server", "src-tauri :!src-tauri/server", "src-tauri :!src-tauri/gpui"];
   assert.deepEqual(workspaces, {
-    "rust-test": "src-tauri", "rust-clippy": "src-tauri", "gpui-clippy": "src-tauri/gpui", "gpui-test": "src-tauri/gpui",
-    "server-backend": "src-tauri", "server-test": "src-tauri/server", "server-api": "src-tauri/server", "server-runtime": "src-tauri/server",
+    rust: ["src-tauri", desktop], "gpui-clippy": ["src-tauri/gpui", gpui], "gpui-test": ["src-tauri/gpui", gpui],
+    "server-backend": ["src-tauri", desktop], server: ["src-tauri/server", server],
   });
   assert.equal((job("checks").match(/uses: jdx\/mr-boxington-action@/g) ?? []).length, 1);
   assert.doesNotMatch(job("checks"), /swatinem\/rust-cache|save-on-(?:protected-branch|workflow-dispatch)/i);
   assert.doesNotMatch(job("checks"), /(?:run: |^\s+)cargo (?:build|test|clippy)\b/m);
   assert.ok(job("checks").indexOf("dtolnay/rust-toolchain@") < job("checks").indexOf("jdx/mr-boxington-action@"));
   assert.match(step("Activate Cargo caching"), /node scripts\/ci-mbx-cargo\.mjs/);
+});
+// Failure modes: an input change that keeps the key leaves the new compiler output unsaved
+// for good; a change outside the inputs that moves the key uploads the same cache again; a
+// new compiler or runner image that keeps the key never refreshes the cache; a compiler
+// change that keeps the prefix downloads a cache the build cannot use; a mistyped pathspec
+// keys the cache on nothing.
+test("the Rust cache key follows the build inputs, the compiler and the runner image", () => {
+  const root = mkdtempSync(join(tmpdir(), "kubecove-ci-cache-key-"));
+  const { GITHUB_OUTPUT: _, ...inherited } = process.env;
+  const env = { ...inherited, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", PATH: `${join(root, "bin")}${delimiter}${process.env.PATH}`, RUSTC_VERSION: "1", ImageVersion: "1" };
+  const write = (path, text) => {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), text);
+    assert.equal(spawnSync("git", ["add", "--", path], { cwd: root, env }).status, 0);
+  };
+  const run = (overrides, pathspecs = ["workflow.yml", "src-tauri", ":!src-tauri/gpui"]) => spawnSync(
+    process.execPath, [fileURLToPath(new URL("./ci-rust-cache-key.mjs", import.meta.url)), "ci-rust", ...pathspecs],
+    { cwd: root, env: { ...env, ...overrides }, encoding: "utf8" },
+  );
+  const key = (overrides = {}) => {
+    const result = run(overrides);
+    assert.equal(result.status, 0, result.stderr);
+    const output = Object.fromEntries(result.stdout.trim().split("\n").map((line) => line.split("=")));
+    assert.ok(output.prefix.startsWith("mbx-ci-rust-") && output.key.startsWith(output.prefix) && output.key.length > output.prefix.length);
+    return output;
+  };
+  try {
+    assert.equal(spawnSync("git", ["init", "-q"], { cwd: root, env }).status, 0);
+    // The script asks the compiler on PATH for its identity.
+    mkdirSync(join(root, "bin"));
+    writeFileSync(join(root, "bin", "rustc"), "#!/bin/sh\necho \"rustc $RUSTC_VERSION\"\n");
+    chmodSync(join(root, "bin", "rustc"), 0o755);
+    write("workflow.yml", "one\n"); write("src-tauri/src/lib.rs", "one\n"); write("src-tauri/gpui/src/main.rs", "one\n"); write("README.md", "one\n");
+    const first = key();
+    assert.deepEqual(key(), first);
+    write("src-tauri/gpui/src/main.rs", "two\n"); write("README.md", "two\n");
+    assert.deepEqual(key(), first);
+    write("src-tauri/src/lib.rs", "two\n");
+    const source = key();
+    assert.notEqual(source.key, first.key);
+    assert.equal(source.prefix, first.prefix);
+    write("workflow.yml", "two\n");
+    assert.notEqual(key().key, source.key);
+    assert.notEqual(key({ ImageVersion: "2" }).key, key().key);
+    assert.equal(key({ ImageVersion: "2" }).prefix, first.prefix);
+    assert.notEqual(key({ RUSTC_VERSION: "2" }).prefix, first.prefix);
+    assert.notEqual(run({}, ["missing"]).status, 0);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 test("whitespace check rejects bad diffs even without an available base", () => {
   const root = mkdtempSync(join(tmpdir(), "kubecove-ci-whitespace-"));
@@ -459,12 +524,12 @@ test("parity jobs run the full suite on pull requests and on main, and keep the 
   assert.match(job("pull-request-spike", parity), /^ {8}driver: \[web, gpui\]$/m);
   assert.match(job("pull-request-web", parity), /^ {6}driver: web$/m);
   assert.match(job("pull-request-gpui", parity), /^ {6}driver: gpui$/m);
-  // Four web shards, two GPUI shards and two spike halves use the task's eight-job budget.
-  const shardCount = (name) => Number(/^ {6}shards: (\d+)$/m.exec(job(name, parity))?.[1]);
-  assert.equal(shardCount("pull-request-web"), 4);
-  assert.equal(shardCount("pull-request-gpui"), 2);
-  assert.equal(shardCount("pull-request-web") + shardCount("pull-request-gpui") + 2, 8);
-  for (const name of ["Install GPUI build dependencies", "Setup Rust", "Cache Rust builds", "Activate Cargo caching"]) {
+  // A shard count that differs from its matrix leaves scenarios out or runs a job twice.
+  for (const [name, count] of [["pull-request-web", 4], ["pull-request-gpui", 3]]) {
+    assert.equal(Number(/^ {6}shards: (\d+)$/m.exec(job(name, parity))?.[1]), count);
+    assert.match(job(name, parity), new RegExp(`^ {8}shard: \\[${Array.from({ length: count }, (_, index) => index).join(", ")}\\]$`, "m"));
+  }
+  for (const name of ["Install GPUI build dependencies", "Setup Rust", "Key the Rust cache by its inputs", "Cache Rust builds", "Activate Cargo caching"]) {
     const start = suite.indexOf(`- name: ${name}\n`);
     const end = suite.indexOf("\n      - name: ", start + 1);
     assert.match(suite.slice(start, end), /if: \$\{\{ inputs\.driver != 'web' \}\}/);
@@ -511,19 +576,19 @@ test("main records the parity coverage map from every parity job", () => {
   const run = step("Run parity suite");
   const results = Object.fromEntries(Object.entries(modes).map(([mode, [inputs, event]]) => [mode, {
     coverage: evaluate(expression(run, "PARITY_COVERAGE"), inputs, event),
-    cacheKey: `kubecove-parity-objects${evaluate(/cache-generation: kubecove-parity-objects\$\{\{ (.+) \}\}/.exec(step("Cache Rust builds"))?.[1] ?? "''", inputs, event)}`,
+    cacheKey: `parity${evaluate(/run: node scripts\/ci-rust-cache-key\.mjs parity\$\{\{ (.+) \}\} \.github\/workflows\/parity-suite\.yml src-tauri ':!src-tauri\/server'$/m.exec(step("Key the Rust cache by its inputs"))?.[1] ?? "'missing'", inputs, event)}`,
     runs: evaluate(expression(run, "if"), inputs, event),
   }]));
-  assert.deepEqual(results.pullRequest, { coverage: "0", cacheKey: "kubecove-parity-objects", runs: true });
-  assert.deepEqual(results.main, { coverage: "1", cacheKey: "kubecove-parity-objects-coverage", runs: true });
+  assert.deepEqual(results.pullRequest, { coverage: "0", cacheKey: "parity", runs: true });
+  assert.deepEqual(results.main, { coverage: "1", cacheKey: "parity-coverage", runs: true });
   assert.equal(results.buildCache.runs, false);
-  assert.equal(results.buildCache.cacheKey, "kubecove-parity-objects");
+  assert.equal(results.buildCache.cacheKey, "parity");
   assert.match(step("Build parity test"), /cargo test --manifest-path src-tauri\/gpui\/Cargo\.toml --test parity --no-run/);
   // A cached target directory does not survive a fresh checkout (ci.yml has the reason), and
   // one pull request job saving is enough: every GPUI job builds the same test binary.
   const cache = step("Cache Rust builds");
   assert.match(cache, /uses: jdx\/mr-boxington-action@[a-f0-9]{40} # v1\n/);
-  for (const line of ['version: "1.30.0"', "working-directory: src-tauri/gpui", "github-cache-mode: objects", "isolate-objects-cache: true", "clean-target-before-export: true", "save-on-pull-request: ${{ inputs.shard == 0 && inputs.prefix == '' }}"]) {
+  for (const line of ['version: "1.30.0"', "working-directory: src-tauri/gpui", "cache-key: ${{ steps.rust-cache.outputs.key }}", "restore-keys: ${{ steps.rust-cache.outputs.prefix }}", "github-cache-mode: objects", "isolate-objects-cache: true", "clean-target-before-export: true", "save-on-pull-request: ${{ inputs.shard == 0 && inputs.prefix == '' }}"]) {
     assert.ok(cache.includes(`\n          ${line}\n`) || cache.endsWith(`\n          ${line}`), `Missing cache setting: ${line}`);
   }
   assert.match(step("Activate Cargo caching"), /run: node scripts\/ci-mbx-cargo\.mjs/);

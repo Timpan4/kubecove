@@ -52,18 +52,19 @@ jobs:
       driver: ${{ matrix.driver }}
       prefix: settings-diagnostics.topology-spike-harness
 
-  # Four web jobs + two GPUI jobs + two spike halves use the eight-job parity budget.
+  # With two shards a warm GPUI job took 326 to 359 s: about 100 s to build the test and
+  # 150 s of scenarios (run 43322953853). A third shard shortens the scenario share.
   pull-request-gpui:
     name: Parity GPUI (pull request)
     if: ${{ github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1]
+        shard: [0, 1, 2]
     uses: ./.github/workflows/parity-suite.yml
     with:
       shard: ${{ matrix.shard }}
-      shards: 2
+      shards: 3
       driver: gpui
       exclude: settings-diagnostics.topology-spike-harness
 

@@ -1,0 +1,31 @@
+// Writes the cache key of one Rust build to GITHUB_OUTPUT.
+//
+// The key names the compiler, the runner image and the Git blob of every tracked input. A
+// build whose inputs did not change restores its exact cache, and the cache action then
+// skips the export and upload, which cost up to 200 s per job when every run saved. A
+// changed build restores the newest cache that shares the prefix and saves its own.
+//
+// Usage: node scripts/ci-rust-cache-key.mjs <name> <pathspec>...
+// Pathspecs are Git pathspecs, so ":!src-tauri/gpui" leaves a tree out. Pass the calling
+// workflow as one of them: its build settings decide what the compiler produces.
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { appendFileSync } from "node:fs";
+
+const [name, ...pathspecs] = process.argv.slice(2);
+if (!name || !pathspecs.length) throw new Error("Expected a cache name and at least one pathspec");
+
+const capture = (command, args) => execFileSync(command, args, { encoding: "utf8", maxBuffer: Infinity });
+const digest = (...parts) => createHash("sha256").update(parts.join("\n")).digest("hex");
+
+const toolchain = digest(capture("rustc", ["-Vv"]));
+const scripts = ["scripts/ci-rust-cache-key.mjs", "scripts/ci-mbx-cargo.mjs"];
+const inputs = capture("git", ["ls-files", "--stage", "--", ...scripts, ...pathspecs]);
+if (!inputs) throw new Error(`No tracked file matches: ${pathspecs.join(" ")}`);
+
+// The prefix keeps the compiler, so a toolchain update does not download a cache it cannot use.
+const prefix = `mbx-${name}-${toolchain}-`;
+const key = `${prefix}${digest(process.env.ImageVersion ?? "", inputs)}`;
+const output = `key=${key}\nprefix=${prefix}\n`;
+if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, output);
+else process.stdout.write(output);

@@ -73,7 +73,7 @@ jobs:
                 for (const path of [file.filename, file.previous_filename].filter((value) => value !== undefined)) {
                   if (typeof path !== 'string' || !path) throw new Error('Invalid changed path.');
                   // Workflow and shared action changes must validate the pipeline itself.
-                  if (path.startsWith('.github/') || path === 'scripts/ci-mbx-cargo.mjs') { all(); continue; }
+                  if (path.startsWith('.github/') || path === 'scripts/ci-mbx-cargo.mjs' || path === 'scripts/ci-rust-cache-key.mjs') { all(); continue; }
                   const scope = {
                     docs: /\.md$|^docs\//i.test(path),
                     frontend: /\.(css|html|js|jsx|json|mjs|cjs|svelte|ts|tsx|mts|cts)$|(^|\/)bun\.lock$|^(src|public|e2e|scripts)\//i.test(path),
@@ -92,17 +92,21 @@ jobs:
             for (const [key, value] of Object.entries(required)) core.setOutput(key, String(value));
             // These tasks share one matrix; frontend checks keep their own job.
             // The matrix budget leaves one of the owner's seven slots for frontend.
+            const desktop = 'src-tauri :!src-tauri/gpui :!src-tauri/server';
+            const gpui = 'src-tauri :!src-tauri/server';
+            const server = 'src-tauri :!src-tauri/gpui';
             const tasks = [
               { task: 'docs', scope: 'docs' },
               { task: 'frontend-e2e', scope: 'frontend' },
-              { task: 'rust-test', scope: 'rust', workspace: 'src-tauri' },
-              { task: 'rust-clippy', scope: 'rust', workspace: 'src-tauri' },
-              { task: 'gpui-clippy', scope: 'rust', workspace: 'src-tauri/gpui' },
-              { task: 'gpui-test', scope: 'rust', workspace: 'src-tauri/gpui' },
-              { task: 'server-backend', scope: 'server', workspace: 'src-tauri' },
-              { task: 'server-test', scope: 'server', workspace: 'src-tauri/server' },
-              { task: 'server-api', scope: 'server', workspace: 'src-tauri/server' },
-              { task: 'server-runtime', scope: 'server', workspace: 'src-tauri/server' },
+              // A task is one runner. Tasks that build the same workspace with the same
+              // settings share a job, so they share one setup and one build cache.
+              // `inputs` are the Git pathspecs the build reads; the GPUI and server crates
+              // are separate workspaces that both depend on the desktop crates.
+              { task: 'rust', scope: 'rust', workspace: 'src-tauri', inputs: desktop },
+              { task: 'gpui-clippy', scope: 'rust', workspace: 'src-tauri/gpui', inputs: gpui },
+              { task: 'gpui-test', scope: 'rust', workspace: 'src-tauri/gpui', inputs: gpui },
+              { task: 'server-backend', scope: 'server', workspace: 'src-tauri', inputs: desktop },
+              { task: 'server', scope: 'server', workspace: 'src-tauri/server', inputs: server },
             ];
             const include = tasks.filter(({ scope }) => scope === 'server'
               ? required.frontend || required.rust : required[scope]);
@@ -182,10 +186,12 @@ jobs:
     runs-on: ubuntu-latest
     # Retain the existing Rust cold-cache allowance; this is not a timing target.
     timeout-minutes: 30
+    env:
+      # Line tables keep file and line in backtraces. Full debug information roughly doubled
+      # the compiler output that each job links, caches and restores, and no CI step reads it.
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
     strategy:
       fail-fast: false
-      # Owner's seven-job budget minus the independent frontend job.
-      max-parallel: 6
       matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
 
     steps:
@@ -196,17 +202,17 @@ jobs:
           fetch-depth: ${{ matrix.task == 'docs' && '0' || '1' }}
 
       - name: Verify Rust audit coverage
-        if: ${{ matrix.task == 'rust-test' }}
+        if: ${{ matrix.task == 'rust' }}
         run: node --test --test-name-pattern="Rust dependency audits cover every checked-in lockfile with narrow exceptions" scripts/ci-workflow-regression.test.mjs
 
       - name: Setup Bun
-        if: ${{ matrix.task == 'docs' || matrix.task == 'frontend-e2e' || matrix.task == 'server-test' || matrix.task == 'server-runtime' }}
+        if: ${{ matrix.task == 'docs' || matrix.task == 'frontend-e2e' || matrix.task == 'server' }}
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.4.4"
 
       - name: Cache Bun dependencies
-        if: ${{ matrix.task == 'frontend-e2e' || matrix.task == 'server-test' || matrix.task == 'server-runtime' }}
+        if: ${{ matrix.task == 'frontend-e2e' || matrix.task == 'server' }}
         uses: actions/cache@v6.1.0
         with:
           path: ~/.bun/install/cache
@@ -215,7 +221,7 @@ jobs:
             ${{ runner.os }}-bun-
 
       - name: Install frontend dependencies
-        if: ${{ matrix.task == 'frontend-e2e' || matrix.task == 'server-test' || matrix.task == 'server-runtime' }}
+        if: ${{ matrix.task == 'frontend-e2e' || matrix.task == 'server' }}
         run: bun install --frozen-lockfile
 
       - name: Check documentation
@@ -243,7 +249,7 @@ jobs:
       # These packages are often already present on the hosted runner. Only
       # update apt and install when pkg-config cannot resolve the required set.
       - name: Install Tauri Linux dependencies
-        if: ${{ matrix.task == 'rust-test' || matrix.task == 'rust-clippy' }}
+        if: ${{ matrix.task == 'rust' }}
         run: |
           if ! pkg-config --exists webkit2gtk-4.1 ayatana-appindicator3-0.1 librsvg-2.0 || ! command -v patchelf >/dev/null; then
             sudo apt-get update
@@ -264,6 +270,13 @@ jobs:
         with:
           components: clippy
 
+      # An unchanged build restores its exact cache and skips the save, which took up to
+      # 200 s per job when every run saved (scripts/ci-rust-cache-key.mjs).
+      - name: Key the Rust cache by its inputs
+        id: rust-cache
+        if: ${{ matrix.workspace }}
+        run: node scripts/ci-rust-cache-key.mjs ci-${{ matrix.task }} .github/workflows/ci.yml ${{ matrix.inputs }}
+
       # Cargo 1.100 puts unit state under build/, which the pinned action's target
       # scanner skips. Objects transport exports completed mbx commands instead.
       # One action/store per job also avoids cross-workspace post-step pruning.
@@ -273,7 +286,8 @@ jobs:
         with:
           version: "1.30.0"
           working-directory: ${{ matrix.workspace }}
-          cache-generation: kubecove-ci-objects-${{ matrix.task }}
+          cache-key: ${{ steps.rust-cache.outputs.key }}
+          restore-keys: ${{ steps.rust-cache.outputs.prefix }}
           github-cache-mode: objects
           isolate-objects-cache: true
           clean-target-before-export: true
@@ -284,22 +298,22 @@ jobs:
         run: node scripts/ci-mbx-cargo.mjs
 
       - name: Install cargo-audit
-        if: ${{ matrix.task == 'rust-test' }}
+        if: ${{ matrix.task == 'rust' }}
         uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
         with:
           tool: cargo-audit@0.22.2
 
       - name: Audit desktop Rust dependencies
-        if: ${{ matrix.task == 'rust-test' }}
+        if: ${{ matrix.task == 'rust' }}
         # Owner: @Timpan4. Remove when stable Tauri resolves glib >=0.20.
         run: cargo-audit audit --file src-tauri/Cargo.lock --ignore RUSTSEC-2024-0429
 
       - name: Audit GPUI Rust dependencies
-        if: ${{ matrix.task == 'rust-test' }}
+        if: ${{ matrix.task == 'rust' }}
         run: cargo-audit audit --file src-tauri/gpui/Cargo.lock
 
       - name: Audit server Rust dependencies
-        if: ${{ matrix.task == 'rust-test' }}
+        if: ${{ matrix.task == 'rust' }}
         # Owner: @Timpan4. Production uses this chain only for public-signature verification.
         # Remove after jsonwebtoken supports rsa >=0.10 and crypto-bigint >=0.7.6.
         run: cargo-audit audit --file src-tauri/server/Cargo.lock --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2026-0387
@@ -309,11 +323,11 @@ jobs:
         run: bun run e2e:fast
 
       - name: Test Rust
-        if: ${{ matrix.task == 'rust-test' }}
+        if: ${{ matrix.task == 'rust' }}
         run: mbx test --workspace --manifest-path src-tauri/Cargo.toml
 
       - name: Lint Rust
-        if: ${{ matrix.task == 'rust-clippy' }}
+        if: ${{ matrix.task == 'rust' }}
         run: mbx clippy --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
 
       - name: Lint GPUI
@@ -324,8 +338,15 @@ jobs:
         if: ${{ matrix.task == 'gpui-test' }}
         run: mbx test --manifest-path src-tauri/gpui/Cargo.toml --locked --lib --test native
 
+      # Runs before the browser UI is built: the API-only server must build without it.
+      - name: Verify API-only server
+        if: ${{ matrix.task == 'server' }}
+        run: |
+          mbx test --manifest-path src-tauri/server/Cargo.toml --locked --no-default-features
+          mbx clippy --manifest-path src-tauri/server/Cargo.toml --locked --no-default-features --all-targets -- -D warnings
+
       - name: Build browser UI
-        if: ${{ matrix.task == 'server-test' || matrix.task == 'server-runtime' }}
+        if: ${{ matrix.task == 'server' }}
         env:
           KUBECOVE_PUBLIC_RUNTIME: web
         run: bun run build
@@ -344,29 +365,23 @@ jobs:
         run: mbx test --locked --workspace --no-default-features --manifest-path src-tauri/Cargo.toml
 
       - name: Test headless server
-        if: ${{ matrix.task == 'server-test' }}
+        if: ${{ matrix.task == 'server' }}
         run: mbx test --manifest-path src-tauri/server/Cargo.toml --locked
 
-      - name: Verify API-only server
-        if: ${{ matrix.task == 'server-api' }}
-        run: |
-          mbx test --manifest-path src-tauri/server/Cargo.toml --locked --no-default-features
-          mbx clippy --manifest-path src-tauri/server/Cargo.toml --locked --no-default-features --all-targets -- -D warnings
-
       - name: Lint headless server
-        if: ${{ matrix.task == 'server-test' }}
+        if: ${{ matrix.task == 'server' }}
         run: mbx clippy --manifest-path src-tauri/server/Cargo.toml --all-targets --locked -- -D warnings
 
       - name: Build headless server
-        if: ${{ matrix.task == 'server-runtime' }}
+        if: ${{ matrix.task == 'server' }}
         run: mbx build --manifest-path src-tauri/server/Cargo.toml --locked
 
       - name: Verify HTTP and WebSocket lifecycle
-        if: ${{ matrix.task == 'server-runtime' }}
+        if: ${{ matrix.task == 'server' }}
         run: bun e2e/headless-smoke.ts
 
       - name: Upload headless verification report
-        if: ${{ always() && matrix.task == 'server-runtime' }}
+        if: ${{ always() && matrix.task == 'server' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: headless-verification
