@@ -375,6 +375,42 @@ fn a_watch_reopened_during_a_refresh_uses_the_rows_version(cx: &mut TestAppConte
     );
 }
 
+// Failure mode: a refresh replaces a first load still in flight, so that
+// load never settles to drop its start versions. During a later refresh, a
+// watching page opens its watches at them instead of waiting for the rows.
+#[gpui_kit::test]
+fn a_refresh_that_replaced_the_first_load_drops_its_start_version(cx: &mut TestAppContext) {
+    let backend = start_versions_backend();
+    let handle = open(cx, backend.clone());
+    let _first_load = load_at_list_version(cx, &backend, handle);
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window.click("nav:GitOps", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    refresh(cx, handle);
+    cx.run_until_parked();
+    let (_hold, pending) = tokio::sync::oneshot::channel();
+    *backend.pending.lock().unwrap() = Some(pending);
+    refresh(cx, handle);
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window.click("nav:Workspace Overview", cx);
+        window.render_frame(cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    let versions = backend.live.resource_watch_versions();
+    assert!(
+        versions
+            .iter()
+            .all(|version| version.as_deref() != Some(START_VERSION)),
+        "{versions:?}"
+    );
+}
+
 // Failure mode: the rows settle while a page that watches nothing is open, so
 // nothing drops their start version. After a refresh there, a watching page
 // opens its watches at that old version instead of waiting for the new rows.
