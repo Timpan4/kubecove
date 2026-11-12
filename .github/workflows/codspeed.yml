@@ -21,7 +21,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       frontend: ${{ steps.detect.outputs.frontend }}
-      frontend_suites: ${{ steps.suites.outputs.files }}
       rust: ${{ steps.detect.outputs.rust }}
 
     steps:
@@ -32,10 +31,6 @@ jobs:
 
       - name: Test benchmark orchestration
         run: node --test scripts/codspeed-workflow-regression.test.mjs
-
-      - name: Enumerate frontend benchmark files
-        id: suites
-        run: echo "files=$(node scripts/codspeed-benchmark-suites.mjs)" >> "${GITHUB_OUTPUT}"
 
       - name: Detect frontend and Rust benchmark changes
         id: detect
@@ -90,7 +85,7 @@ jobs:
           echo "rust=${rust}" >> "${GITHUB_OUTPUT}"
 
   frontend:
-    name: Run frontend benchmarks (${{ matrix.file }})
+    name: Run frontend benchmarks (${{ matrix.group }})
     permissions:
       contents: read
       id-token: write
@@ -100,10 +95,12 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      # One job per file (25) left most of them queued behind the account's concurrent-job limit
+      # on PR #678, and each spent most of its minute on setup. Each group runs every fourth file.
       matrix:
-        file: ${{ fromJSON(needs.changes.outputs.frontend_suites) }}
+        group: [0, 1, 2, 3]
     env:
-      KUBECOVE_BENCHMARK_FILE: ${{ matrix.file }}
+      KUBECOVE_BENCHMARK_GROUP: ${{ matrix.group }}/4
 
     steps:
       - name: Checkout

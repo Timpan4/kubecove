@@ -156,14 +156,18 @@ test("release PRs still require both benchmark jobs to be skipped", () => {
   assert.notEqual(gate({ ...release, RELEASE_PR: "false" }), 0);
 });
 
-test("frontend file jobs form a complete, disjoint partition of actual benchmark files", () => {
+test("frontend group jobs form a complete, disjoint partition of actual benchmark files", () => {
 	const files = benchmarkFiles();
 	assert.ok(files.length);
-	const selected = files.flatMap(
-		(file) => benchmarkSelection({ KUBECOVE_BENCHMARK_FILE: file }).include,
-	);
+	const groups = /^ {8}group: \[([\d, ]+)\]$/m.exec(job("frontend"))?.[1].split(",").map(Number);
+	const count = Number(/KUBECOVE_BENCHMARK_GROUP: \$\{\{ matrix\.group \}\}\/(\d+)$/m.exec(job("frontend"))?.[1]);
+	assert.deepEqual(groups, Array.from({ length: count }, (_, index) => index));
+	const selected = groups.flatMap(
+		(group) => benchmarkSelection({ KUBECOVE_BENCHMARK_GROUP: `${group}/${count}` }).include,
+	).sort();
 	assert.deepEqual(selected, files);
 	assert.equal(new Set(selected).size, selected.length);
+	for (const file of files) assert.deepEqual(benchmarkSelection({ KUBECOVE_BENCHMARK_FILE: file }).include, [file]);
 	assert.deepEqual(benchmarkSelection({}).include, files);
 	const legacy = ["topology", "other"]
 		.flatMap(
@@ -172,14 +176,6 @@ test("frontend file jobs form a complete, disjoint partition of actual benchmark
 		)
 		.sort();
 	assert.deepEqual(legacy, files);
-	assert.match(
-		job("frontend"),
-		/fromJSON\(needs\.changes\.outputs\.frontend_suites\)/,
-	);
-	assert.match(
-		job("frontend"),
-		/KUBECOVE_BENCHMARK_FILE: \$\{\{ matrix\.file \}\}/,
-	);
 });
 
 test("invalid or conflicting frontend selectors fail instead of running every benchmark", () => {
@@ -200,6 +196,13 @@ test("invalid or conflicting frontend selectors fail instead of running every be
 				KUBECOVE_BENCHMARK_FILE: benchmarkFiles()[0],
 				KUBECOVE_BENCHMARK_SUITE: "other",
 			}),
-		/not both/,
+		/only one/,
+	);
+	for (const group of ["4/4", "1", "a/4", "0/0", "1/2/3"]) {
+		assert.throws(() => benchmarkSelection({ KUBECOVE_BENCHMARK_GROUP: group }), /KUBECOVE_BENCHMARK_GROUP must be/);
+	}
+	assert.throws(
+		() => benchmarkSelection({ KUBECOVE_BENCHMARK_GROUP: "0/4", KUBECOVE_BENCHMARK_FILE: benchmarkFiles()[0] }),
+		/only one/,
 	);
 });

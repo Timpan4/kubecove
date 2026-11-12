@@ -20,8 +20,20 @@ export function benchmarkSelection(env = process.env) {
 	const files = benchmarkFiles();
 	const file = env.KUBECOVE_BENCHMARK_FILE;
 	const suite = env.KUBECOVE_BENCHMARK_SUITE;
-	if (file && suite)
-		throw new Error("Select a benchmark file or suite, not both");
+	const group = env.KUBECOVE_BENCHMARK_GROUP;
+	if ([file, suite, group].filter(Boolean).length > 1)
+		throw new Error("Select only one benchmark file, suite or group");
+	if (group) {
+		// CI jobs each run every `count`-th file from position `index`.
+		const match = /^(\d+)\/(\d+)$/.exec(group);
+		const [index, count] = [Number(match?.[1]), Number(match?.[2])];
+		if (!match || count < 1 || index >= count)
+			throw new Error(`KUBECOVE_BENCHMARK_GROUP must be <index>/<count>: ${group}`);
+		return {
+			include: files.filter((_, position) => position % count === index),
+			exclude: [],
+		};
+	}
 	if (file) {
 		if (!files.includes(file))
 			throw new Error(`Unknown benchmark file: ${file}`);
