@@ -108,6 +108,9 @@ jobs:
         run: CARGO_BUILD_JOBS="$(nproc)" cargo test --manifest-path src-tauri/gpui/Cargo.toml --test parity --no-run
 
       # Build intermediates stay in the cached target directory. CI uses every CPU.
+      # One GPUI process and a web page on every other CPU: a shard's web scenarios took about
+      # five times the CPU time of its GPUI scenarios (2026-11-12), and one process per CPU
+      # was the fastest local setting (scripts/e2e-parity.ts).
       - name: Run parity suite
         if: ${{ !inputs.build-only }}
         env:
@@ -119,7 +122,7 @@ jobs:
           PARITY_STEP_SCREENSHOTS: "0"
           CARGO_TARGET_DIR: ${{ github.workspace }}/src-tauri/gpui/target
           CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/src-tauri/gpui/target
-        run: CARGO_BUILD_JOBS="$(nproc)" bun run e2e:parity
+        run: CARGO_BUILD_JOBS="$(nproc)" PARITY_JOBS=1 PARITY_WEB_JOBS="$(( $(nproc) > 1 ? $(nproc) - 1 : 1 ))" bun run e2e:parity
 
       - name: Upload parity artifacts
         if: ${{ always() && !inputs.build-only }}

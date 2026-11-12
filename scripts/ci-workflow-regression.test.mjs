@@ -413,7 +413,12 @@ test("parity jobs run the full suite on pull requests and on main, and keep the 
   assert.match(suite, /^ {10}PARITY_STEP_SCREENSHOTS: "0"$/m);
   // Pull requests run the full suite: change selection fell back to it on every recent PR.
   assert.doesNotMatch(suite, /^ +PARITY_CHANGED:|parity-coverage-map-|fetch-depth/m);
-  assert.match(suite, /^ {8}run: CARGO_BUILD_JOBS="\$\(nproc\)" bun run e2e:parity$/m);
+  const command = /^ {8}run: (CARGO_BUILD_JOBS=.* bun run e2e:parity)$/m.exec(suite)?.[1];
+  assert.ok(command, "Missing parity run command");
+  // One GPUI process and web pages on the other CPUs, at least one each.
+  const runners = (cpus) => spawnSync("bash", ["-c", `nproc() { echo ${cpus}; }; ${command.replace("bun run e2e:parity", "printenv PARITY_JOBS PARITY_WEB_JOBS")}`], { encoding: "utf8" }).stdout.trim().replace("\n", " ");
+  assert.equal(runners(4), "1 3");
+  assert.equal(runners(1), "1 1");
   assert.match(suite, /sudo apt-get install -y libfontconfig-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev pkg-config/);
   assert.match(suite, /run: bunx playwright-core install --with-deps --no-shell chromium/);
   const upload = suite.slice(suite.indexOf("- name: Upload parity artifacts"));

@@ -10,8 +10,9 @@ import { runWeb } from "../e2e/parity/web";
 
 // PARITY_JOBS: parallel web pages and GPUI processes each. The default splits the CPUs
 // between the two drivers. Measured on 16 CPUs (2026-11-06): 16 per driver finished no
-// sooner than 8 per driver and timed out more web scenarios. `selectScenarios` lists the
-// selection variables.
+// sooner than 8 per driver and timed out more web scenarios. PARITY_WEB_JOBS sets the web pages
+// alone: a CI shard's web scenarios took about five times the CPU time of its GPUI scenarios
+// (2026-11-12). `selectScenarios` lists the selection variables.
 
 type Scenario = Contract["scenarios"][number];
 
@@ -115,15 +116,20 @@ const fail = (message: string) => { failure = failure ? `${failure}; ${message}`
 async function runDrivers(contract: Contract) {
 	// The selection is what PARITY_RERUN reads back, and the GPUI processes run exactly these IDs.
 	await writeFile(join(artifacts, "scenarios.txt"), contract.scenarios.map((scenario) => scenario.id).join("\n"));
-	const jobs = Number(process.env.PARITY_JOBS ?? Math.max(1, Math.floor(availableParallelism() / 2)));
-	if (!Number.isInteger(jobs) || jobs < 1) throw new Error(`PARITY_JOBS must be a positive integer: ${process.env.PARITY_JOBS}`);
+	const positive = (name: string, fallback: number) => {
+		const value = Number(process.env[name] ?? fallback);
+		if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be a positive integer: ${process.env[name]}`);
+		return value;
+	};
+	const jobs = positive("PARITY_JOBS", Math.max(1, Math.floor(availableParallelism() / 2)));
+	const webJobs = positive("PARITY_WEB_JOBS", jobs);
 	// The GPUI test processes render the same browser-mock responses the web driver reads.
 	// Only they read the fixture, so the web driver and the GPUI build start during the export.
 	const fixture = join(artifacts, "fixture.json");
 	const exported = Bun.spawn(["bun", "e2e/parity/visual/export-fixture.ts", fixture], { stdout: "inherit", stderr: "inherit" });
 	const exportExit = exported.exited.then((code) => { mark("fixture"); return code; });
 	await Promise.all([
-		runWeb(contract, artifacts, controller.signal, jobs).catch((error) => fail(`Web driver: ${String(error)}`)).finally(() => mark("web")),
+		runWeb(contract, artifacts, controller.signal, webJobs).catch((error) => fail(`Web driver: ${String(error)}`)).finally(() => mark("web")),
 		runGpui(contract, artifacts, { path: fixture, exit: exportExit }, jobs, controller.signal, mark, coverage).then((problem) => { if (problem) fail(problem); }, (error) => fail(`GPUI driver: ${String(error)}`)),
 	]);
 	controller.signal.throwIfAborted();
