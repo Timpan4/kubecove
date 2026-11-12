@@ -60,6 +60,10 @@ impl Inspector {
         contexts
             .iter()
             .map(|context| {
+                // The Cluster Overview watches the selected context alone.
+                if self.page == Page::ClusterOverview && *context != self.scope.context {
+                    return None;
+                }
                 let scope = Scope {
                     context: context.clone(),
                     namespace: self.scope.namespace.clone(),

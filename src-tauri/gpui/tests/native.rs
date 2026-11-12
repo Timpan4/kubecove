@@ -250,10 +250,12 @@ impl Backend for Controlled {
         let pod = self.sessions.enabled.load(Ordering::SeqCst);
         let argo = self.argo.enabled.load(Ordering::SeqCst);
         let secret = self.secret.enabled.load(Ordering::SeqCst);
+        let versions = self.live.list_versions.clone();
         Box::pin(async move {
             if let Some(pending) = pending {
                 let _ = pending.await;
             }
+            let versions = versions.lock().unwrap().clone();
             if fail {
                 return Err(AppError::new(
                     "Resource read denied",
@@ -287,7 +289,7 @@ impl Backend for Controlled {
                     }]
                 },
                 warnings: vec![],
-                versions: Default::default(),
+                versions,
                 listed: vec![],
             })
         })

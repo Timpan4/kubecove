@@ -42,7 +42,8 @@ impl Inspector {
         names: Option<ObservedNames>,
     ) -> Vec<ResourceSummary> {
         let _span = crate::frame_profile::scope("watch", "patch");
-        if !self.patch_in_scope(scope) {
+        if !self.patch_in_scope(scope) || self.behind_shown(scope, key, resource_version.as_deref())
+        {
             return rows;
         }
         let cluster_kind = crate::backend::CLUSTER_KINDS.contains(&key.resource_kind.kind.as_str());
@@ -81,6 +82,19 @@ impl Inspector {
             self.scope_load.rows = Load::Ready;
         }
         retired
+    }
+
+    /// Whether rows read at `version` are older than the rows the view shows,
+    /// as when a watch reloads a kind while the scope list is held and the
+    /// list then installs newer rows. Versions compare as numbers, as the live
+    /// store's watch patching compares them; others never count as older.
+    fn behind_shown(&self, scope: &Scope, key: &WatchResourceKey, version: Option<&str>) -> bool {
+        let number = |version: &str| version.parse::<u64>().ok();
+        let shown = self.shown_version(&scope.context, key);
+        matches!(
+            (version.and_then(number), shown.as_deref().and_then(number)),
+            (Some(version), Some(shown)) if version < shown
+        )
     }
 
     /// The list version of the rows the view shows for `key` in `context`,

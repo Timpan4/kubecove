@@ -60,8 +60,10 @@ pub(super) struct LiveControls {
     streams: Mutex<Vec<(WatchTarget, mpsc::UnboundedSender<StreamMessage>)>>,
     /// Whether the backend reads watch start versions, and whether the read fails.
     start_versions: Option<bool>,
-    /// The order of start-version reads and scope reads.
-    pub reads: Mutex<Vec<&'static str>>,
+    /// The order in which start-version reads settle and scope reads start.
+    pub reads: Arc<Mutex<Vec<&'static str>>>,
+    /// The list versions a scope read reports when it returns.
+    pub list_versions: Arc<Mutex<kubecove_gpui::backend::ListVersions>>,
 }
 
 const START_VERSION: &str = "42";
@@ -69,8 +71,11 @@ const START_VERSION: &str = "42";
 impl LiveControls {
     pub fn start_version(&self) -> Option<Read<String>> {
         let fails = self.start_versions?;
-        self.reads.lock().unwrap().push("version");
+        let reads = self.reads.clone();
+        // Logged when the read settles, so a list that does not wait for it
+        // logs first.
         Some(Box::pin(async move {
+            reads.lock().unwrap().push("version");
             if fails {
                 return Err(AppError::new("list denied", AppErrorKind::Forbidden));
             }
@@ -170,6 +175,65 @@ fn watches_open_at_their_start_version_while_rows_load(cx: &mut TestAppContext) 
     cx.run_until_parked();
     assert!(shows_rows(cx, handle));
     assert_eq!(label(cx, handle).as_deref(), Some("Live"));
+}
+
+// Failure mode: a change arrives while the rows are listed, and its reload
+// returns before the list. The list is newer, but the reload's patch waits for
+// it and then overwrites it, so a row the list shows disappears.
+#[gpui_kit::test]
+fn a_reload_older_than_the_list_leaves_the_listed_rows(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled {
+        live: LiveControls {
+            start_versions: Some(false),
+            ..Default::default()
+        },
+        ..Default::default()
+    });
+    let handle = open(cx, backend.clone());
+    let release = load_other_context(cx, &backend, handle);
+    let signature = backend
+        .live
+        .streams
+        .lock()
+        .unwrap()
+        .iter()
+        .find_map(|(target, tx)| match target {
+            WatchTarget::Resource { key, .. }
+                if !tx.is_closed() && key.resource_kind.kind == "Deployment" =>
+            {
+                Some(kubecove_gpui::backend::watch_signature(key))
+            }
+            _ => None,
+        })
+        .expect("the Deployment watch opened while the rows load");
+    let set_version = |version: &str| {
+        let mut versions = backend.live.list_versions.lock().unwrap();
+        versions.insert(signature.clone(), version.into());
+    };
+    // The reload reads the kind at version 43, when the Deployment is gone.
+    set_version("43");
+    backend.sessions.enabled.store(true, Ordering::SeqCst);
+    backend.live.send(StreamMessage::ResourceChanged {
+        stream_id: "native".into(),
+        target: WatchResourceTarget {
+            cluster: "mock-other".into(),
+            kind: "Deployment".into(),
+            namespace: Some("payments".into()),
+            name: Some("payments-api".into()),
+        },
+        action: "deleted".into(),
+    });
+    cx.run_until_parked();
+    // live_data.rs::COALESCE, the pause after each reload.
+    cx.background_executor
+        .advance_clock(std::time::Duration::from_millis(250));
+    cx.run_until_parked();
+    // The held list, read before the flag changed, shows it again at 44.
+    backend.sessions.enabled.store(false, Ordering::SeqCst);
+    set_version("44");
+    release.send(()).unwrap();
+    cx.run_until_parked();
+    assert!(shows_rows(cx, handle), "the newer list's row stays");
 }
 
 #[gpui_kit::test]
