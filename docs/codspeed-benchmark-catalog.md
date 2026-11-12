@@ -1084,7 +1084,7 @@ cases would need measured per-case timings and a split that preserves their
 names and callback bodies, and the Rust object cache would need a successful
 hosted warm hit. The workflow uses Mr Boxington's documented objects mode
 because stable Cargo path-crate freshness uses source mtimes, which change in
-fresh checkouts. Its target scanner also skips Cargo 1.100's build/ unit-state
+fresh checkouts. The [Mr Boxington action documentation](https://mr-boxington.jdx.dev/github-action) describes this transport. Its target scanner also skips Cargo 1.100's build/ unit-state
 subtree, so the ordinary target cache does not preserve that state. Object mode
 keys rustc invocations by content and avoids the mtime failure. Integration
 with cargo codspeed through the Cargo shim remains unverified until a hosted
