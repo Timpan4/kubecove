@@ -719,11 +719,16 @@ impl Inspector {
         }
         let mut pending = std::mem::take(&mut self.live.pending);
         pending.retain(|patch| self.patch_in_scope(&patch.scope));
-        // A context still reading its rows keeps its patches until they land;
-        // the contexts that answered patch now.
-        let (held, pending): (Vec<_>, Vec<_>) = pending
-            .into_iter()
-            .partition(|patch| self.scope_load.context_loading(&patch.scope.context));
+        // A context still reading its rows keeps its patches until they land,
+        // and its discovered kinds' patches until its custom read lands, so
+        // that read never re-adds rows a patch installed. The contexts that
+        // answered patch now. Built-in watch keys carry no API version.
+        let (held, pending): (Vec<_>, Vec<_>) = pending.into_iter().partition(|patch| {
+            let context = &patch.scope.context;
+            self.scope_load.context_loading(context)
+                || (patch.key.resource_kind.api_version.is_some()
+                    && self.scope_load.custom_loading(context))
+        });
         self.live.pending = held;
         if pending.is_empty() {
             return;

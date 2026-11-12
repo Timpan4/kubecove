@@ -344,7 +344,8 @@ impl ScopeLoad {
 
     /// Applies each context's read, whose rows the caller took, to its part.
     /// A failed context shows no rows and one warning. In a `refresh`, a
-    /// context that failed after a successful read keeps its part and rows.
+    /// context whose rows show keeps its part and rows when it fails, kept
+    /// rows whose reload the refresh cancelled included.
     pub(super) fn apply_parts(
         &mut self,
         results: ContextResults<ScopeResult>,
@@ -384,7 +385,7 @@ impl ScopeLoad {
                         }
                     }
                 }
-                Err(error) if refresh && part.ready => {
+                Err(error) if refresh && part.shown => {
                     applied.warnings.push(format!(
                         "Context \"{context}\": {}. Showing the last loaded data.",
                         error.message
