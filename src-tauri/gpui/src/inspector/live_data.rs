@@ -354,6 +354,10 @@ impl Inspector {
             self.live
                 .pending
                 .retain(|patch| patch.watch.as_deref().is_none_or(|id| wanted.contains(id)));
+            // A kind selected again later opens at its rows' version, not this read's.
+            self.live
+                .starts
+                .retain(|id, _| wanted.contains(id.as_str()));
         }
         for (context, key, watch) in pairs {
             if self

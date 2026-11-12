@@ -72,9 +72,18 @@ impl LiveControls {
     pub fn start_version(&self) -> Option<Read<String>> {
         let fails = self.start_versions?;
         let reads = self.reads.clone();
-        // Logged when the read settles, so a list that does not wait for it
-        // logs first.
+        // Settles on its second poll and logs then, so a list that does not
+        // wait for it logs first.
         Some(Box::pin(async move {
+            let mut polled = false;
+            std::future::poll_fn(|cx| {
+                if std::mem::replace(&mut polled, true) {
+                    return std::task::Poll::Ready(());
+                }
+                cx.waker().wake_by_ref();
+                std::task::Poll::Pending
+            })
+            .await;
             reads.lock().unwrap().push("version");
             if fails {
                 return Err(AppError::new("list denied", AppErrorKind::Forbidden));
