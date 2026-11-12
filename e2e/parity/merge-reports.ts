@@ -6,13 +6,14 @@ import { object, string } from "./contract-values";
 export type Driver = "web" | "gpui";
 type Report = { driver: Driver; scenarios: unknown[] };
 
-export function parseDriver(value: unknown): Driver {
-	if (value !== "web" && value !== "gpui") throw new Error(`Invalid parity driver: ${String(value)}`);
-	return value;
+export function parseDriver<Value>(value: Value): Driver {
+	if (value === "web") return "web";
+	if (value === "gpui") return "gpui";
+	throw new Error(`Invalid parity driver: ${String(value)}`);
 }
 
 /** Requires exactly one passing result for every selected scenario from this driver. */
-export function validateDriverReport(contract: Contract, driver: Driver, report: unknown): void {
+export function validateDriverReport<Report>(contract: Contract, driver: Driver, report: Report): void {
 	const input = object(report);
 	if (input.driver !== driver) throw new Error(`Expected ${driver} report`);
 	if (!Array.isArray(input.scenarios)) throw new Error(`Missing scenarios: ${driver}`);

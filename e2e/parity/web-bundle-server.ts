@@ -21,7 +21,7 @@ const config = loaded.config;
 const outDir = join(artifacts, "web-app");
 // The driver imports a deferred page before the click that opens it (web-deferred.ts). As an
 // entry, the page keeps the chunk the app's own import loads.
-const pages = Object.values(DEFERRED_PAGES).map(path => ({ path, name: basename(path, ".svelte") }));
+const pages = [...DEFERRED_PAGES.values()].map(path => ({ path, name: basename(path, ".svelte") }));
 const imports = new Map(mocks.map(name => [`/src/lib/${name}.ts`, `/assets/${name}.js`]));
 imports.set("/node_modules/.vite/deps/@tanstack_svelte-query.js", "/assets/parity-query.js");
 for (const page of pages) imports.set(page.path, `/assets/${page.name}.js`);
@@ -35,9 +35,7 @@ await build({
     configFile: false,
     mode: "development",
     define: { ...config.define, "process.env.KUBECOVE_PUBLIC_DEV": JSON.stringify("true") },
-    plugins: [
-        ...(config.plugins ?? []).flat().filter(plugin => !(plugin && typeof plugin === "object" && "name" in plugin && plugin.name === "kubecove-bundle-report")),
-    ],
+    plugins: (config.plugins ?? []).flat().filter(plugin => !(plugin && "name" in plugin && plugin.name === "kubecove-bundle-report")),
     build: {
         ...config.build, outDir, emptyOutDir: false, minify: false, reportCompressedSize: false,
         rolldownOptions: {
