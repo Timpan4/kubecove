@@ -167,7 +167,9 @@ test("change gate has no checkout; docs install no application dependencies", ()
 });
 
 function gate(overrides = {}) {
-  const env = { ...process.env, CHANGES_RESULT: "success", RELEASE_PR: "false", SERVER_RESULT: "success" };
+  // The GPUI checks run exactly when the Rust checks do.
+  const gpui = overrides.RUST_REQUIRED === "false" ? "skipped" : "success";
+  const env = { ...process.env, CHANGES_RESULT: "success", RELEASE_PR: "false", SERVER_RESULT: "success", GPUI_RESULT: gpui };
   for (const key of domains) { env[`${key.toUpperCase()}_REQUIRED`] = "true"; env[`${key.toUpperCase()}_RESULT`] = "success"; }
   return spawnSync("bash", ["-e", "-o", "pipefail", "-c", block(job("check"), "run", 8)], {
     env: { ...env, ...overrides }, encoding: "utf8", timeout: 2000,
@@ -188,6 +190,16 @@ for (const domain of domains) {
     assert.notEqual(gate({ [`${key}_REQUIRED`]: "", [`${key}_RESULT`]: "skipped" }), 0);
   });
 }
+// Failure mode: GPUI is a separate Cargo workspace, so a Rust change that breaks its lints or
+// native tests passes every other job.
+test("Rust changes require the GPUI checks, which lint and test the GPUI workspace", () => {
+  for (const result of ["failure", "cancelled", "skipped", ""]) assert.notEqual(gate({ GPUI_RESULT: result }), 0);
+  assert.equal(gate({ RUST_REQUIRED: "false", RUST_RESULT: "skipped", GPUI_RESULT: "skipped" }), 0);
+  assert.notEqual(gate({ RUST_REQUIRED: "false", RUST_RESULT: "skipped", GPUI_RESULT: "success" }), 0);
+  assert.match(job("gpui"), /needs\.changes\.outputs\.rust == 'true'/);
+  assert.match(job("gpui"), /run: mbx clippy --manifest-path src-tauri\/gpui\/Cargo\.toml --locked --all-targets -- -D warnings/);
+  assert.match(job("gpui"), /run: mbx test --manifest-path src-tauri\/gpui\/Cargo\.toml --locked --lib --test native/);
+});
 test("pull requests skip Nix without failing the required gate", () => {
   const condition = "github.event_name != 'pull_request' && needs.changes.outputs.nix == 'true'";
   assert.ok(job("nix").includes(`if: \${{ ${condition} }}`));
@@ -195,12 +207,13 @@ test("pull requests skip Nix without failing the required gate", () => {
   assert.equal(gate({ NIX_REQUIRED: "false", NIX_RESULT: "skipped" }), 0);
 });
 test("release PRs skip Nix along with the other expensive checks", () => {
-  const release = { RELEASE_PR: "true", DOCS_RESULT: "skipped", FRONTEND_RESULT: "skipped", NIX_REQUIRED: "false", NIX_RESULT: "skipped", RUST_RESULT: "skipped", SERVER_RESULT: "skipped" };
+  const release = { RELEASE_PR: "true", DOCS_RESULT: "skipped", FRONTEND_RESULT: "skipped", GPUI_RESULT: "skipped", NIX_REQUIRED: "false", NIX_RESULT: "skipped", RUST_RESULT: "skipped", SERVER_RESULT: "skipped" };
   assert.equal(gate(release), 0);
   for (const result of ["failure", "cancelled", "success"]) assert.notEqual(gate({ ...release, NIX_RESULT: result }), 0);
   assert.notEqual(gate({ ...release, FRONTEND_RESULT: "success" }), 0);
+  assert.notEqual(gate({ ...release, GPUI_RESULT: "success" }), 0);
   assert.notEqual(gate({ ...release, RELEASE_PR: "false" }), 0);
-  for (const name of ["docs", "frontend", "rust"]) {
+  for (const name of ["docs", "frontend", "gpui", "rust"]) {
     assert.ok(job(name).includes("github.event.pull_request.head.repo.full_name != github.repository"));
     assert.ok(job(name).includes("!startsWith(github.head_ref, 'release/app-v')"));
     assert.ok(job(name).includes("!contains(github.event.pull_request.labels.*.name, 'release')"));
@@ -240,12 +253,16 @@ test("Rust dependency audits cover every checked-in lockfile with narrow excepti
     rustJob,
     /run: node --test --test-name-pattern="Rust dependency audits cover every checked-in lockfile with narrow exceptions" scripts\/ci-workflow-regression\.test\.mjs/,
   );
-  const auditSteps = rustJob.split("\n      - name: ").filter((step) => step.includes("uses: rustsec/audit-check@"));
+  assert.doesNotMatch(rustJob, /uses: rustsec\/audit-check@/,"audit-check compiles cargo-audit and fails on check-run API errors");
+  assert.match(rustJob, /uses: taiki-e\/install-action@[a-f0-9]{40} # v[\d.]+\n {8}with:\n {10}tool: cargo-audit@\d+\.\d+\.\d+\n/);
+  const auditSteps = rustJob.split("\n      - name: ").filter((step) => step.includes("run: cargo-audit audit "));
   const audits = auditSteps
     .map((step) => {
-      const directory = /working-directory: ([^\n]+)/.exec(step)?.[1];
-      assert.ok(directory, `Audit step must name its working directory:\n${step}`);
-      const ignoredAdvisories = /\n\s+ignore: ([^\n]+)/.exec(step)?.[1].split(",") ?? [];
+      const command = /run: cargo-audit audit (--file \S+(?: --ignore \S+)*)\n/.exec(`${step}\n`)?.[1];
+      assert.ok(command, `Audit step must name only its lockfile and ignored advisories:\n${step}`);
+      const directory = dirname(/--file (\S+)/.exec(command)[1]);
+      assert.match(command, /--file \S+\/Cargo\.lock/);
+      const ignoredAdvisories = [...command.matchAll(/--ignore (\S+)/g)].map((match) => match[1]);
       return { directory, ignoredAdvisories };
     })
     .sort((left, right) => left.directory.localeCompare(right.directory));
@@ -260,7 +277,7 @@ test("Rust dependency audits cover every checked-in lockfile with narrow excepti
     ],
   );
 
-  const serverAudit = auditSteps.find((step) => step.includes("working-directory: src-tauri/server"));
+  const serverAudit = auditSteps.find((step) => step.includes("--file src-tauri/server/Cargo.lock"));
   assert.match(serverAudit, /public-signature verification/);
 });
 test("server packaging follows the relocated kubeconform source without changing its standalone build", () => {
@@ -301,7 +318,7 @@ test("headless checks run without GUI packages and the gate requires their succe
 // Running Cargo directly bypasses mbx; save opt-ins would expand the trusted write policy.
 test("Mr Boxington covers CI workspaces with separate caches and default-branch-only writes", () => {
   const generations = new Set();
-  for (const [name, directories] of [["rust", ["src-tauri"]], ["server", ["src-tauri", "src-tauri/server"]]]) {
+  for (const [name, directories] of [["rust", ["src-tauri"]], ["server", ["src-tauri", "src-tauri/server"]], ["gpui", ["src-tauri/gpui"]]]) {
     const source = job(name);
     assert.doesNotMatch(source, /swatinem\/rust-cache|save-on-(?:pull-request|protected-branch|workflow-dispatch)/i);
     assert.doesNotMatch(source, /(?:run: |^\s+)cargo (?:build|test|clippy)\b/m);

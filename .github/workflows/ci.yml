@@ -207,9 +207,6 @@ jobs:
     if: ${{ needs.changes.outputs.rust == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    permissions:
-      checks: write
-      contents: read
 
     steps:
       - name: Checkout
@@ -239,28 +236,25 @@ jobs:
           working-directory: src-tauri
           cache-generation: kubecove-rust-ci
 
-      - name: Audit desktop Rust dependencies
-        uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
+      # rustsec/audit-check compiled cargo-audit on every run (about 3 minutes) and failed
+      # runs when its check-run update returned Not Found. A prebuilt binary does neither.
+      # cargo-audit fails on vulnerabilities and reports unmaintained or yanked crates as warnings.
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          working-directory: src-tauri
-          # Owner: @Timpan4. Remove when stable Tauri resolves glib >=0.20.
-          ignore: RUSTSEC-2024-0429
+          tool: cargo-audit@0.22.2
+
+      - name: Audit desktop Rust dependencies
+        # Owner: @Timpan4. Remove when stable Tauri resolves glib >=0.20.
+        run: cargo-audit audit --file src-tauri/Cargo.lock --ignore RUSTSEC-2024-0429
 
       - name: Audit GPUI Rust dependencies
-        uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          working-directory: src-tauri/gpui
+        run: cargo-audit audit --file src-tauri/gpui/Cargo.lock
 
       - name: Audit server Rust dependencies
-        uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          working-directory: src-tauri/server
-          # Owner: @Timpan4. Production uses this chain only for public-signature verification.
-          # Remove after jsonwebtoken supports rsa >=0.10 and crypto-bigint >=0.7.6.
-          ignore: RUSTSEC-2023-0071,RUSTSEC-2026-0387
+        # Owner: @Timpan4. Production uses this chain only for public-signature verification.
+        # Remove after jsonwebtoken supports rsa >=0.10 and crypto-bigint >=0.7.6.
+        run: cargo-audit audit --file src-tauri/server/Cargo.lock --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2026-0387
 
       - name: Test Rust
         run: mbx test --workspace --manifest-path src-tauri/Cargo.toml
@@ -341,6 +335,47 @@ jobs:
           path: e2e/artifacts/headless/**
           if-no-files-found: error
 
+  # src-tauri/gpui is its own Cargo workspace, so the Rust checks above never lint or test it.
+  # These are the GPUI checks of the verification tiers in AGENTS.md; parity.yml runs the
+  # parity scenarios.
+  gpui:
+    name: GPUI checks
+    needs:
+      - changes
+    if: ${{ needs.changes.outputs.rust == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The same GPUI build dependencies as parity-suite.yml.
+      - name: Install GPUI build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfontconfig-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev pkg-config
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy
+
+      - name: Setup Mr Boxington for GPUI checks
+        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
+        with:
+          version: "1.29.2"
+          working-directory: src-tauri/gpui
+          cache-generation: kubecove-gpui-ci
+
+      - name: Lint GPUI
+        run: mbx clippy --manifest-path src-tauri/gpui/Cargo.toml --locked --all-targets -- -D warnings
+
+      - name: Test GPUI
+        run: mbx test --manifest-path src-tauri/gpui/Cargo.toml --locked --lib --test native
+
   nix:
     name: Nix build
     needs:
@@ -400,6 +435,7 @@ jobs:
       - changes
       - docs
       - frontend
+      - gpui
       - nix
       - rust
       - server
@@ -413,6 +449,7 @@ jobs:
           DOCS_RESULT: ${{ needs.docs.result }}
           FRONTEND_REQUIRED: ${{ needs.changes.outputs.frontend }}
           FRONTEND_RESULT: ${{ needs.frontend.result }}
+          GPUI_RESULT: ${{ needs.gpui.result }}
           NIX_REQUIRED: ${{ github.event_name != 'pull_request' && needs.changes.outputs.nix == 'true' }}
           NIX_RESULT: ${{ needs.nix.result }}
           RELEASE_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release/app-v') && contains(github.event.pull_request.labels.*.name, 'release') }}
@@ -426,10 +463,12 @@ jobs:
           echo "Frontend checks: ${FRONTEND_RESULT}"
           echo "Nix build: ${NIX_RESULT}"
           echo "Rust checks: ${RUST_RESULT}"
+          echo "GPUI checks: ${GPUI_RESULT}"
           test "${CHANGES_RESULT}" = "success"
           if [[ "${RELEASE_PR}" == "true" ]]; then
             test "${DOCS_RESULT}" = "skipped"
             test "${FRONTEND_RESULT}" = "skipped"
+            test "${GPUI_RESULT}" = "skipped"
             test "${NIX_RESULT}" = "skipped"
             test "${RUST_RESULT}" = "skipped"
             test "${SERVER_RESULT}" = "skipped"
@@ -449,6 +488,7 @@ jobs:
             verify_result "${FRONTEND_REQUIRED}" "${FRONTEND_RESULT}"
             verify_result "${NIX_REQUIRED}" "${NIX_RESULT}"
             verify_result "${RUST_REQUIRED}" "${RUST_RESULT}"
+            verify_result "${RUST_REQUIRED}" "${GPUI_RESULT}"
             if [[ "${FRONTEND_REQUIRED}" == "true" || "${RUST_REQUIRED}" == "true" ]]; then
               test "${SERVER_RESULT}" = "success"
             else
