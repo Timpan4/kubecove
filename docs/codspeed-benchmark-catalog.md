@@ -1026,42 +1026,75 @@ Inline `cfg(test)` code was likewise treated as correctness evidence. Dialog/fil
 
 ## CI execution cost, 2026-11-12
 
-The current CI frontend selector balances files by longest measured duration first.
-Its weights are the `Run benchmarks` step durations for each file from GitHub
-Actions run [43308253138](https://github.com/Timpan4/kubecove/actions/runs/43308253138),
-retrieved from each job's timing JSON. The 25 files sum to 1,680 seconds. A
-four-group greedy assignment has predicted loads of 426, 425, 424 and 405 seconds.
-The workflow runs four frontend groups and four Rust shards, for eight concurrent
-CodSpeed jobs. They share GitHub's limit of 20 concurrent jobs with the CI,
-Parity and CodeQL workflows of the same pull request.
+The frontend matrix runs eight groups. The selector in
+[scripts/codspeed-benchmark-suites.mjs](../scripts/codspeed-benchmark-suites.mjs)
+balances measured chunks from run
+[43322953935](https://github.com/Timpan4/kubecove/actions/runs/43322953935).
+That run's four frontend `Run benchmarks` steps took 287, 241, 261 and 343
+seconds. The earlier per-file job weights from run 43308253138 counted action
+setup and upload once per file and predicted 405 to 426 seconds per group.
+The new weights count that overhead once per group.
 
-The same run logged 117 Rust benchmark completion lines. Their timestamps were
-roughly seven seconds apart, for about 819 seconds of aggregate simulation work.
-With two shards, the larger shard is estimated at 62 × 7 = 434 seconds. With
-the four the workflow runs it is 30 × 7 = 210 seconds for an even split; the
-shards split by the first letter of the benchmark name, so they are not exactly
-even. This estimate uses the observed log cadence,
-not CodSpeed's reported benchmark metric.
+File weights are elapsed seconds from the previous file's completion to the
+current file's completion, starting at Vitest's start timestamp for the first
+file. They include imports, fixture preparation and test execution. The test
+execution durations sum to 875.028 seconds across 25 files. The file intervals sum to
+1,015.796 seconds, with the first-file timestamps rounded to whole seconds
+in the log. These are wall-clock execution costs under simulation, not CodSpeed
+performance metrics.
 
-| Concurrent CodSpeed jobs | Frontend groups | Rust shards | Frontend workload | Rust workload | Benchmark work floor | With observed Rust build |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 4 | 2 | 2 | 840 s | 434 s | 840 s | 840 s |
-| 5 | 3 | 2 | 573 s | 434 s | 573 s | 737–754 s |
-| 6 | 4 | 2 | 426 s | 434 s | 434 s | 737–754 s |
-| 7 | 4 | 3 | 426 s | 273 s | 426 s | 576–593 s |
-| 8 | 5 | 3 | 343 s | 273 s | 343 s | 576–593 s |
-| 9 | 6 | 3 | 343 s | 273 s | 343 s | 576–593 s |
-| 10 | 7 | 3 | 343 s | 273 s | 343 s | 576–593 s |
-| 11 | 7 | 4 | 343 s | 210 s | 343 s | 513–530 s |
-| 12 | 8 | 4 | 343 s | 210 s | 343 s | 513–530 s |
+The long files retain their paths, names, callbacks and fixtures.
+`topology.bench.ts` splits into its two slow cases and its four remaining
+cases. Their test durations are 108.537, 118.083 and 11.848 seconds.
+Each chunk adds the file's observed 5.800 seconds of preparation.
+`resource-table.bench.ts` splits into the first 19 cases and the five cases
+for four contexts. Their test durations are 100.684 and 58.051 seconds;
+each repeats 11.050 seconds of file preparation. Per-case numbers come from
+Vitest's duration in milliseconds divided by 1,000. Consecutive CodSpeed
+completion timestamps corroborate them, but include small handoff costs.
 
-Table arithmetic uses longest-processing-time-first assignment of measured
-frontend file seconds and `ceil(117 / Rust shards) × 7` for Rust. The benchmark
-work floor is the maximum of those two lane workloads. It excludes runner setup,
-cache restore, Rust build, queueing, and upload. The last column adds the last
-measured Rust build step of 303–320 seconds to the Rust workload and takes the
-maximum with the frontend workload. These are floors/projections from specific
-hosted run data, not promises of CI duration.
+The projection adds 15.410 seconds to every group. This is group 0's measured
+287-second step minus its 271.590-second Vitest run, covering runner setup
+and upload outside Vitest.
+
+| Frontend group | Predicted `Run benchmarks` |
+| ---: | ---: |
+| 0 | 146.258 s |
+| 1 | 148.112 s |
+| 2 | 141.713 s |
+| 3 | 147.454 s |
+| 4 | 148.077 s |
+| 5 | 141.170 s |
+| 6 | 140.510 s |
+| 7 | 147.600 s |
+
+These are projections from one hosted run, with no measured run-to-run spread.
+The changed grouping has not run in CI. Setup varies: the old group 3 spent
+63.790 seconds outside Vitest, including a package installation from
+22:47:06.889 to 22:47:50.051 UTC, despite an instrument cache hit.
+That overhead would exceed the target even with the new groups. The grouping
+targets about 150 seconds with the observed group 0 overhead; it cannot
+guarantee that bound when action setup or uploads stall.
+
+Vitest 5.1.0's [name filter](https://vitest.dev/config/testnamepattern.html)
+marks nonmatching tests skipped without changing their full names.
+The [CodSpeed plugin 6.1.1 provider](https://github.com/CodSpeedHQ/codspeed-node/blob/v6.1.1/packages/vitest-plugin/src/v5/provider.ts#L72)
+builds each identity from the git-relative file path, unchanged full test
+name and registration name. Local full and filtered topology runs emitted
+the same URI for the selected case. The regression test collects actual
+Vitest benchmark names, including generated context cases, and checks every
+case runs in exactly one group and every group matches something. It also
+checks that a new uncovered case in a split file fails coverage.
+
+The workflow currently runs eight frontend groups and six Rust shards, for
+14 CodSpeed jobs. They share GitHub's limit of 20 concurrent jobs with the
+CI, Parity and CodeQL workflows of the same pull request.
+
+Run 43308253138 logged 117 Rust benchmark completion lines roughly seven
+seconds apart, about 819 seconds of aggregate simulation work. Six evenly
+balanced shards would have a 20 × 7 = 140-second longest workload. The
+name-based shard split can be uneven. This remains a cadence estimate,
+not CodSpeed's reported benchmark metric or a measured six-shard result.
 
 The CodSpeed runner log's `Measured:` timestamps measure completion spacing,
 not only instrument startup. CPU simulation executes each benchmark once, and
@@ -1077,21 +1110,10 @@ separate those components, so a precise instrumentation-startup cost is unknown.
 If fixture generation is moved into a measured callback, it is part of the
 measured body and should remain there when it represents production work.
 
-The frontend `topology.bench.ts` job took 343 seconds in that run. Splitting its
-existing cases across files could expose more parallelism without renaming a
-case or changing its callback body. That is a proposal only: the supplied
-per-file timing cannot establish individual case weights, and another module
-load/startup adds overhead. To approach three to four minutes, the eight
-CodSpeed jobs would need to rise to at least 12, the topology
-cases would need measured per-case timings and a split that preserves their
-names and callback bodies, and the Rust object cache would need a successful
-hosted warm hit. The workflow uses Mr Boxington's documented objects mode
+The workflow uses Mr Boxington's documented objects mode
 because stable Cargo path-crate freshness uses source mtimes, which change in
 fresh checkouts. The [Mr Boxington action documentation](https://mr-boxington.jdx.dev/github-action) describes this transport. Its target scanner also skips Cargo 1.100's build/ unit-state
 subtree, so the ordinary target cache does not preserve that state. Object mode
 keys rustc invocations by content and avoids the mtime failure. Integration
 with cargo codspeed through the Cargo shim remains unverified until a hosted
-run. At 12 jobs, eight frontend groups and four Rust shards have a
-210-second ideal average lane load before setup and compilation. No evidence
-currently proves the longest topology case fits that average, so the target
-remains unverified and costs at least four additional simultaneous jobs.
+run.
