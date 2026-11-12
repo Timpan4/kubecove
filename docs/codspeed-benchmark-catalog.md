@@ -1031,13 +1031,16 @@ Its weights are the `Run benchmarks` step durations for each file from GitHub
 Actions run [43308253138](https://github.com/Timpan4/kubecove/actions/runs/43308253138),
 retrieved from each job's timing JSON. The 25 files sum to 1,680 seconds. A
 four-group greedy assignment has predicted loads of 426, 425, 424 and 405 seconds.
-The workflow runs four frontend groups and two Rust shards, for six concurrent
-CodSpeed jobs under the current account budget.
+The workflow runs four frontend groups and four Rust shards, for eight concurrent
+CodSpeed jobs. They share GitHub's limit of 20 concurrent jobs with the CI,
+Parity and CodeQL workflows of the same pull request.
 
 The same run logged 117 Rust benchmark completion lines. Their timestamps were
 roughly seven seconds apart, for about 819 seconds of aggregate simulation work.
 With two shards, the larger shard is estimated at 62 × 7 = 434 seconds. With
-four it is 30 × 7 = 210 seconds. This estimate uses the observed log cadence,
+the four the workflow runs it is 30 × 7 = 210 seconds for an even split; the
+shards split by the first letter of the benchmark name, so they are not exactly
+even. This estimate uses the observed log cadence,
 not CodSpeed's reported benchmark metric.
 
 | Concurrent CodSpeed jobs | Frontend groups | Rust shards | Frontend workload | Rust workload | Benchmark work floor | With observed Rust build |
@@ -1078,8 +1081,8 @@ The frontend `topology.bench.ts` job took 343 seconds in that run. Splitting its
 existing cases across files could expose more parallelism without renaming a
 case or changing its callback body. That is a proposal only: the supplied
 per-file timing cannot establish individual case weights, and another module
-load/startup adds overhead. To approach three to four minutes, the six-job
-budget would need to rise to at least 12 concurrent CodSpeed jobs, the topology
+load/startup adds overhead. To approach three to four minutes, the eight
+CodSpeed jobs would need to rise to at least 12, the topology
 cases would need measured per-case timings and a split that preserves their
 names and callback bodies, and the Rust object cache would need a successful
 hosted warm hit. The workflow uses Mr Boxington's documented objects mode
@@ -1091,4 +1094,4 @@ with cargo codspeed through the Cargo shim remains unverified until a hosted
 run. At 12 jobs, eight frontend groups and four Rust shards have a
 210-second ideal average lane load before setup and compilation. No evidence
 currently proves the longest topology case fits that average, so the target
-remains unverified and costs at least six additional simultaneous jobs.
+remains unverified and costs at least four additional simultaneous jobs.

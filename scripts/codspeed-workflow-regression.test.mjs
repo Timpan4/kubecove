@@ -83,6 +83,11 @@ for (const [path, frontend, rust] of [
   ["shared/fixtures/resource.json", true, true],
   ["shared/fixtures/stream.txt", true, true],
   ["scripts/codspeed-benchmark-suites.mjs", true, false],
+  // No benchmark imports from the E2E or unit test trees; their fixtures still select both.
+  ["e2e/parity/web.ts", false, false],
+  ["e2e/parity/scenarios/argo-gaps.json", false, false],
+  ["tests/release.test.ts", false, false],
+  ["e2e/fixtures/chart/values.yaml", true, true],
 ]) {
   test(`selects affected benchmarks for ${path}`, () => {
     assert.deepEqual(detect([path]), { frontend: String(frontend), rust: String(rust) });
@@ -132,7 +137,7 @@ for (const domain of ["FRONTEND", "RUST"]) {
 // `::` (a benchmark at the bench crate root) matches no shard.
 test("Rust benchmark shard filters split every benchmark path into exactly one shard", () => {
   const filters = [...job("rust").matchAll(/^ {12}filter: "(.+)"$/gm)].map((match) => new RegExp(match[1]));
-  assert.equal(filters.length, 2);
+  assert.equal(filters.length, 4);
   assert.match(job("rust"), /cargo codspeed run --bench backend_hot_paths '\$\{\{ matrix\.filter \}\}'/);
   const leading = [...Array.from({ length: 95 }, (_, index) => String.fromCharCode(32 + index)), "é", "Ω"].filter((character) => character !== ":");
   for (const character of leading) {
@@ -148,7 +153,14 @@ test("Rust benchmark shard filters split every benchmark path into exactly one s
   assert.match(job("rust"), /cache-targets: false/);
   assert.match(job("rust"), /cache-generation: kubecove-rust-codspeed-objects/);
   assert.match(job("rust"), /github-cache-mode: objects/);
-  assert.match(job("rust"), /save-on-pull-request: \$\{\{ github\.event_name == 'pull_request' && github\.event\.pull_request\.head\.repo\.full_name == github\.repository && matrix\.shard == 'a-h' \}\}/);
+  // The cache is inactive unless the shim is on PATH, and one shard saving is enough: every shard builds the same binary.
+  assert.match(job("rust"), /version: "1\.30\.0"/);
+  assert.match(job("rust"), /isolate-objects-cache: true/);
+  assert.match(job("rust"), /clean-target-before-export: true/);
+  assert.match(job("rust"), /save-on-pull-request: \$\{\{ matrix\.shard == 'a-c' \}\}/);
+  assert.match(job("rust"), /save-if: \$\{\{ github\.ref == 'refs\/heads\/main' && matrix\.shard == 'a-c' \}\}/);
+  assert.ok(job("rust").indexOf("run: node scripts/ci-mbx-cargo.mjs") < job("rust").indexOf("cargo codspeed build"));
+  assert.notEqual(job("rust").indexOf("run: node scripts/ci-mbx-cargo.mjs"), -1);
   assert.match(job("rust"), /cargo-codspeed-x86_64-unknown-linux-musl/);
   assert.match(job("rust"), /CARGO_CODSPEED_SHA256/);
 });
