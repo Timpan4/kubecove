@@ -1,5 +1,14 @@
 # Server verification contract
 
+The dated sections below record evidence from 2026-10-09 to 2026-10-11, before the first server release. They are kept as history and describe the server as it was then. Since then:
+
+- Clients run in independent concurrent sessions. The single-owner model, ownership takeover and **Take over session** described below no longer apply (see [ADR 0023](../../docs/decisions/0023-multi-user-sessions-and-persistence.md)).
+- Releases publish server archives and container images.
+- The desktop remote client signs in to OIDC servers as well as token servers ([ADR 0031](../../docs/decisions/0031-gpui-remote-sign-in.md)).
+- Test counts have grown past the numbers quoted.
+
+## What the tests must reject
+
 The security boundary can fail by accepting a missing or wrong startup token, a duplicate or wrong Host, a missing or cross-origin browser POST or WebSocket, a non-loopback plaintext listener, a native dialog command, an oversized body, or a stale owner's resume token. Tests must reject these inputs before any backend command runs. Valid same-origin cookie requests and native bearer requests must still work.
 
 The session lifecycle can fail by allowing an old request to mutate a new owner's state, retaining streams or exec after takeover, expiring a reconnected owner, stopping forwards during the approved grace window, or leaving listeners alive after expiry. Lifecycle tests use explicit notifications and Tokio's controlled clock, not fixed sleeps.
@@ -14,7 +23,7 @@ The native remote client can fail by dropping the `/api/v1` route prefix, losing
 
 Browser verification must use real server responses. It covers authentication, kubeconfig source settings, workspace import/export, channel delivery, and ownership takeover. A token link must strip its fragment and authenticate even when bundling moves the runtime into a shared chunk. Kubernetes-backed live sessions additionally require the existing isolated E2E cluster and artifact reports.
 
-## Current evidence, 2026-10-09
+## Initial evidence, 2026-10-09
 
 - Standalone server build, all 21 server tests and all-target Clippy pass. Complete desktop command registration is compared with the server dispatch table.
 - `bun e2e/headless-smoke.ts` passes against the actual server and a local Kubernetes WebSocket echo fixture. It proves authentication, exact-origin CSP, typed results/errors, channels, reconnect, takeover, binary tunnel delivery beyond the bounded queue, server-loopback forward transfer and listener cleanup. Its report lives at `e2e/artifacts/headless/report.json`.

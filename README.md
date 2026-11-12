@@ -48,7 +48,7 @@ KubeCove has a Tauri desktop app and a separate `kubecove-server` for concurrent
 - The application deploys no cluster agent and exposes no generic local-shell bridge. Pod exec is a specific, target-scoped workflow.
 - Cluster-changing actions identify one exact target and require explicit confirmation. Port forwards bind to loopback on the client or server host.
 - Connected Argo CD credentials and operation review sessions use native credential storage when available. The headless Unix server can use the protected encrypted file store in [ADR 0021](docs/decisions/0021-file-credential-store-without-keyring.md) when native storage is unavailable.
-- The headless server runs independent concurrent sessions on a remote host or as an operator-built container in Kubernetes. Each server uses one sign-in mode: a per-start token, Cloudflare Access, or OIDC. Browsers support all three; the desktop remote client supports token mode. Kubernetes uses the server's credentials by default; opt-in OIDC forwarding uses each signed-in user's ID token. Kubeconfig sources remain operator-managed. Non-loopback TCP requires explicit remote mode and TLS. The [container and k0s example](deploy/README.md) uses a dedicated read-only account and private port forwarding.
+- The headless server runs independent concurrent sessions on a remote host or as an operator-built container in Kubernetes. Each server uses one sign-in mode: a per-start token, Cloudflare Access, or OIDC. Browsers support all three; the desktop remote client supports token and OIDC. Kubernetes uses the server's credentials by default; opt-in OIDC forwarding uses each signed-in user's ID token. Kubeconfig sources remain operator-managed. Non-loopback TCP requires explicit remote mode and TLS. The [container and k0s example](deploy/README.md) uses a dedicated read-only account and private port forwarding.
 
 ## Getting started
 
@@ -73,11 +73,11 @@ Installers are beta builds and may show platform trust prompts. KubeCove does no
 
 ## Screenshots
 
-![KubeCove Kubernetes desktop UI showing workspace health, resource scope, and Argo CD inventory](docs/assets/workspace-overview.png)
+![KubeCove Kubernetes desktop UI showing workspace health, incident shortcuts, and entry points](docs/assets/workspace-overview.png)
 
-![KubeCove Kubernetes desktop UI showing workloads, resource health, ownership, and topology](docs/assets/resources-view.png)
+![KubeCove Kubernetes desktop UI showing resource health counts, the ownership map, and the resource table](docs/assets/resources-view.png)
 
-![KubeCove GitOps view showing Argo CD applications, Flux detection, and Helm-related resources](docs/assets/wiki/gitops-overview.png)
+![KubeCove GitOps view showing the Argo CD summary, Flux detection, and Application cards](docs/assets/wiki/gitops-overview.png)
 
 ## Documentation
 

@@ -2,7 +2,7 @@
 
 ## Package Manager
 
-Use Bun for frontend dependencies and scripts. Use version pinned by CI; dependency versions belong in lockfiles and manifests, not this guide.
+Use Bun for frontend dependencies and scripts, at the version CI pins. Dependency versions belong in lockfiles and manifests, not in this guide.
 
 ```sh
 bun install
@@ -96,7 +96,7 @@ Run isolated server checks with `cargo test --locked --manifest-path src-tauri/s
 
 `bun run tauri dev` starts Vite on Bun at `http://localhost:1430`. Opening it in a normal browser runs Svelte with browser-only mock Tauri responses for frontend inspection and automation.
 
-Tauri webview uses real IPC and Rust Kubernetes commands. On Windows, development does not expose Chrome DevTools Protocol by default. Set `KUBECOVE_DEVTOOLS=1` before `tauri dev` to expose it at `http://127.0.0.1:9222`, and set `KUBECOVE_DEVTOOLS_PORT` to change the port. Packaged apps do not expose this endpoint.
+The Tauri webview uses real IPC and Rust Kubernetes commands. On Windows, development does not expose Chrome DevTools Protocol by default. Set `KUBECOVE_DEVTOOLS=1` before `tauri dev` to expose it at `http://127.0.0.1:9222`, and set `KUBECOVE_DEVTOOLS_PORT` to change the port. Packaged apps do not expose this endpoint.
 
 Browser mock mode never receives kubeconfig contents, calls a local Rust bridge, or accesses a real cluster. Treat all browser data as fake.
 
@@ -130,13 +130,13 @@ bun run e2e:real -- --keep
 bun run e2e:cleanup -- --run-id <id>
 ```
 
-Runner downloads checksum-verified tools and assets, creates one uniquely named Kind cluster, builds E2E-only Tauri flavor, and runs native WDIO serially. It bootstraps production-shaped Cilium, Git, Argo CD, Helm, and tenant fixtures; fake GitOps CRDs and fabricated status are not fixtures.
+The runner downloads checksum-verified tools and assets, creates one uniquely named Kind cluster, builds the E2E-only Tauri flavor, and runs native WDIO serially. It installs real Cilium, Git, Argo CD, Helm, and tenant fixtures. It does not use fake GitOps CRDs or fabricated status.
 
-Runner gathers allowlisted redacted diagnostics, then deletes only its exact cluster on success, failure, SIGINT, or SIGTERM. Local `--keep` preserves exact run for inspection and is rejected in CI. Cleanup requires recorded exact run ID; it never deletes by prefix or reads user kubeconfig.
+The runner gathers allowlisted, redacted diagnostics, then deletes only its own cluster on success, failure, SIGINT, or SIGTERM. A local `--keep` preserves that run for inspection and is rejected in CI. Cleanup requires the recorded run ID. It never deletes by prefix or reads the user kubeconfig.
 
-Generated E2E kubeconfig contains only dedicated contexts. Startup rejects non-absolute paths, unexpected contexts, non-loopback API servers, cluster mismatches, persisted sources, and fallback to user default kubeconfig. Artifacts never include raw kubeconfig, tokens, keys, or certificate data.
+The generated E2E kubeconfig contains only dedicated contexts. Startup rejects non-absolute paths, unexpected contexts, non-loopback API servers, cluster mismatches, persisted sources, and fallback to the user default kubeconfig. Artifacts never include raw kubeconfig, tokens, keys, or certificate data.
 
-For manual development against same fixtures:
+For manual development against the same fixtures:
 
 ```sh
 bun run dev:kind
@@ -150,7 +150,7 @@ credential subprocess. It checks IPC responsiveness and workspace cancellation
 without a cluster or real provider login. The desktop runner accepts WDIO's
 `--spec` selection; artifacts still go under `e2e/artifacts/desktop-<run-id>/`.
 
-`dev:kind` uses a workspace-derived cluster name and temporary app profile. Cluster remains until `dev:kind:down`; app profile disappears on exit.
+`dev:kind` uses a cluster name derived from the checkout and a temporary app profile. The cluster stays until `dev:kind:down`. The app profile is removed on exit.
 
 See [ADR 0010](decisions/0010-e2e-only-wdio-security-boundary.md), [ADR 0011](decisions/0011-rolling-kubernetes-support.md), and [ADR 0012](decisions/0012-production-shaped-e2e-lab.md).
 
@@ -200,7 +200,7 @@ hits or an end-to-end speedup.
 
 ## Verification Before Completion
 
-Run smallest checks matching work:
+Run the smallest checks that cover the work:
 
 - docs-only: `bun run docs:check` and `git diff --check`
 - frontend: `bun run typecheck` and nearest `bun test`
@@ -210,7 +210,7 @@ Run smallest checks matching work:
 - release change: `bun run release:dry-run`
 - guarded operation: relevant ADR checklist plus nearest frontend/backend checks
 
-If a check cannot run, record exact blocker and remaining unverified behavior.
+If a check cannot run, record the exact blocker and what remains unverified.
 
 ## Interaction recordings
 

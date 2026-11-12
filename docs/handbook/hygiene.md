@@ -16,7 +16,7 @@ Quick local checks:
 
 ```sh
 rg "from .*/<filename>" src
-rg "mod <module>|use .*::<module>" src-tauri/src
+rg "mod <module>|use .*::<module>" src-tauri
 ```
 
 ## Superseded Files

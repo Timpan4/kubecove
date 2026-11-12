@@ -4,9 +4,9 @@ Generic, feature-agnostic UI belongs here.
 
 Allowed:
 
-- shadcn primitives under `ui/`
+- shadcn primitives under `ui/svelte/`
 - shared layout chrome
-- reusable display helpers such as `MetadataBadges`, `StatusBadge`, and `TimestampText`
+- reusable display helpers such as `TimestampText`, `CopyableText`, `StatGrid`, and `SimpleTable`
 - generic skeletons, empty states, badges, tooltips, and form controls
 
 Not allowed:
@@ -16,6 +16,6 @@ Not allowed:
 - feature-specific wrappers kept here for convenience
 - operation-specific confirmation flows that belong to a product feature
 
-Older flat components (`ClusterSelector`, `NamespaceList`, `KindList`, `SidebarTree`) still live here. Move them into feature folders when touching their structure. New feature-specific components should start in `src/features/<area>/`.
+The older flat component `ClusterSelector` still lives here. Move it into a feature folder when touching its structure. New feature-specific components should start in `src/features/<area>/`.
 
 See [docs/handbook/code-organization.md](../../docs/handbook/code-organization.md).

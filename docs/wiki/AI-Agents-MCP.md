@@ -6,7 +6,7 @@ KubeCove can serve read-only tools to AI agents such as Claude Code, Codex and C
 
 | Tool | Returns |
 | --- | --- |
-| `find_problems` | Unhealthy Pods, workloads, Jobs, PersistentVolumeClaims and, without a namespace, Nodes, with their signals and latest Warning event, most severe first. Start here. |
+| `find_problems` | Unhealthy Pods, workloads, Jobs, CronJobs, PersistentVolumeClaims and, without a namespace, Nodes, with their signals and latest Warning event, most severe first. Start here. |
 | `list_contexts` | Kubeconfig contexts and which one is current. |
 | `list_namespaces` | Namespaces in a context. |
 | `list_resource_kinds` | Built-in and custom resource kinds. |
@@ -37,7 +37,7 @@ The listener accepts only loopback connections and refuses requests from web pag
 
 ## Server
 
-Start `kubecove-server` with `--mcp` to serve the tools at `/mcp` on its existing listener. At startup it prints the endpoint and the path of its token file, `<data-dir>/mcp-token`, but not the token. Read the token from that file on the server host, then register the endpoint with your agent, for example:
+Start `kubecove-server` with `--mcp` to serve the tools at `/mcp` on its existing listener. The token is in `<data-dir>/mcp-token`. Startup prints the endpoint and that path, never the token. With `--quiet`, which the systemd unit and the container images use, it prints nothing. Read the token from that file on the server host, then register the endpoint with your agent, for example:
 
 ```sh
 claude mcp add --transport http kubecove https://kubecove.example.com/mcp --header "Authorization: Bearer <token>"

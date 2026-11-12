@@ -1,6 +1,6 @@
 # Code Organization
 
-App shape lives in [product-and-architecture.md](../product-and-architecture.md).
+The app shape is described in [product-and-architecture.md](../product-and-architecture.md).
 
 ## Svelte Frontend
 
@@ -10,13 +10,13 @@ App shell, surfaces, settings, navigation, and cross-feature wiring. Keep produc
 
 ### `src/features/<area>/`
 
-Feature folders own product-area Svelte components, helpers, tests, and types. Import another feature only through its public entry point. Current areas include `argo`, `app-updates`, `command-palette`, `gitops`, `helm`, `incidents`, `live-sessions`, `rbac`, `resource-detail`, `resources`, and `workspaces`.
+Feature folders own product-area Svelte components, helpers, tests, and types. Import another feature only through its public entry point. Current areas include `argo`, `app-updates`, `command-palette`, `gitops`, `helm`, `incidents`, `live-sessions`, `rbac`, `remote-connection`, `resource-detail`, `resources`, and `workspaces`.
 
-Create feature folder when product area has multiple components or helpers not reusable elsewhere.
+Create a feature folder when a product area has several components or helpers that are not reusable elsewhere.
 
 ### `src/components/`
 
-Generic Svelte UI only: shared layout, generic displays, and primitives in `ui/svelte/`. Component used by one feature belongs in that feature. Component importing feature code is not generic.
+Generic Svelte UI only: shared layout, generic displays, and primitives in `ui/svelte/`. A component used by one feature belongs in that feature. A component that imports feature code is not generic.
 
 ### `src/lib/`
 
@@ -40,9 +40,9 @@ The desktop `commands/` module composes domain APIs and coordinates workspace ca
 
 ## Cross-Cutting Rules
 
-- Frontend uses typed Tauri wrappers; it never calls Kubernetes or local shell directly.
-- Cluster data crosses typed Tauri boundary only.
+- The frontend uses typed Tauri wrappers. It never calls Kubernetes or a local shell directly.
+- Cluster data crosses the typed Tauri boundary only.
 - Live sessions follow [ADR 0003](../decisions/0003-guarded-live-sessions.md); other changing operations follow [ADR 0004](../decisions/0004-guarded-cluster-operations.md).
-- Security-boundary changes require ADR.
-- New top-level `src/` or `src-tauri/src/` directory requires one-line entry here first.
+- Security-boundary changes require an ADR.
+- A new top-level `src/` or `src-tauri/src/` directory requires a one-line entry here first.
 - `scripts/` is maintainer automation, never app runtime code.

@@ -16,7 +16,7 @@ cargo build --locked --release --manifest-path src-tauri/server/Cargo.toml
 src-tauri/server/target/release/kubecove-server --listen 127.0.0.1:8080
 ```
 
-The server reads Kubernetes configuration on its own host. It uses exactly one authentication mode: a per-start token (default), Cloudflare Access, or OIDC. Browsers support all three; the native desktop remote client supports token mode only. In token mode, startup prints a login URL containing a fresh token. Open that URL in a browser, or enter the token in the connection screen. The browser removes the token fragment after loading. The token also lives in the server data directory as `server-token`, with Unix mode `0600`. Treat startup output as a credential.
+The server reads Kubernetes configuration on its own host. It uses exactly one authentication mode: a per-start token (default), Cloudflare Access, or OIDC. Browsers support all three; the desktop remote client supports token and OIDC ([ADR 0031](../../docs/decisions/0031-gpui-remote-sign-in.md)). In token mode, startup prints a login URL containing a fresh token. Open that URL in a browser, or enter the token in the connection screen. The browser removes the token fragment after loading. The token also lives in the server data directory as `server-token`, with Unix mode `0600`. Treat startup output as a credential.
 
 For SSH forwarding, keep the server on loopback. This example uses the same port on both machines.
 
@@ -32,11 +32,11 @@ Clients run in independent sessions. Reconnects retain their session during `--s
 
 ## MCP
 
-`--mcp` serves read-only MCP tools for AI agents at `/mcp` on the main listener ([ADR 0028](../../docs/decisions/0028-read-only-mcp-server.md)). `src/mcp.rs` mounts the `kubecove-mcp` endpoint in the router. Requests need the bearer token stored in `<data-dir>/mcp-token`, created on first start with mode `0600` and reused afterwards; startup prints its path, never the token. The MCP token opens only `/mcp`. The router guard still applies the Host policy, the Origin policy when an `Origin` header is present, and Cloudflare Access when configured. Tool calls run in one session scope with the operator's kubeconfig source. With OIDC browser sign-in, `/mcp` needs only the MCP token, not an OIDC session, so treat that file as a service credential. `--mcp` with `--oidc-kubernetes-credentials` fails at startup.
+`--mcp` serves read-only MCP tools for AI agents at `/mcp` on the main listener ([ADR 0028](../../docs/decisions/0028-read-only-mcp-server.md)). `src/mcp.rs` mounts the `kubecove-mcp` endpoint in the router. Requests need the bearer token stored in `<data-dir>/mcp-token`, created on first start with mode `0600` and reused afterwards. Without `--quiet`, startup prints its path, never the token. The MCP token opens only `/mcp`. The router guard still applies the Host policy, the Origin policy when an `Origin` header is present, and Cloudflare Access when configured. Tool calls run in one session scope with the operator's kubeconfig source. With OIDC browser sign-in, `/mcp` needs only the MCP token, not an OIDC session, so treat that file as a service credential. `--mcp` with `--oidc-kubernetes-credentials` fails at startup.
 
 ## Logs
 
-Log events follow [ADR 0027](../../docs/decisions/0027-server-observability.md). `src/observe.rs` is the only module that emits them, and it owns the redaction rules. Events go to stderr as text by default, or as one JSON object per line with `--log-format json`. `RUST_LOG` sets levels; the default is `warn,kubecove_server=info`. Each event has an `event` field: `server_started`, `server_failed`, `session_opened`, `session_resumed`, `session_closed`, `session_expired`, `session_cleanup_failed`, `sign_in`, `authentication_refused`, `request_refused`, `oidc_refresh` or `command_completed`. Set `RUST_LOG=kubecove_server=debug` to add successful commands, token renewals and the Host and Origin values of refused requests. The startup login URL stays on stdout.
+Log events follow [ADR 0027](../../docs/decisions/0027-server-observability.md). `src/observe.rs` is the only module that emits them, and it owns the redaction rules. Events go to stderr as text by default, or as one JSON object per line with `--log-format json`. `RUST_LOG` sets levels; the default is `warn,kubecove_server=info`. Each event has an `event` field: `server_started`, `server_failed`, `session_opened`, `session_resumed`, `session_closed`, `session_expired`, `session_cleanup_failed`, `sign_in`, `authentication_refused`, `request_refused`, `oidc_refresh`, `command_completed`, `metrics_listening` or `metrics_listener_failed`. Set `RUST_LOG=kubecove_server=debug` to add successful commands, token renewals and the Host and Origin values of refused requests. The startup login URL stays on stdout.
 
 ## Metrics
 
@@ -87,8 +87,7 @@ Channel payloads are serialized once on enqueue; desktop remote channels forward
 raw JSON without constructing a payload tree. WebSocket compression remains
 unavailable because [Tungstenite does not support permessage-deflate](https://github.com/snapview/tungstenite-rs#features).
 
-The server uses native credential storage when available. Unix hosts without it use the encrypted file store approved in [ADR 0021](../../docs/decisions/0021-file-credential-store-without-keyring.md). Desktop remote-client integration and release packaging are tracked in [verification.md](verification.md).
-
+The server uses native credential storage when available. Unix hosts without it use the encrypted file store approved in [ADR 0021](../../docs/decisions/0021-file-credential-store-without-keyring.md).
 Local transport verification uses an isolated Kubernetes WebSocket echo fixture. It creates no cluster resources.
 
 ```sh
@@ -122,9 +121,10 @@ tokens and retry within the existing sign-in deadline. Browser logout revokes th
 current sign-in, clears its bound Kubernetes bearer slots and cookies, and closes
 the session identified by a matching resume token. Other sockets using that sign-in
 close and follow the disconnect grace policy; separate sign-ins remain valid.
-Native desktop remote connections
-require token mode. The [deployment guide](../../deploy/README.md#openid-connect-with-authentik)
+Desktop clients sign in through the system browser with the native flow in
+[ADR 0031](../../docs/decisions/0031-gpui-remote-sign-in.md). The [deployment guide](../../deploy/README.md#openid-connect-with-authentik)
 has an Authentik example behind Cloudflare Tunnel.
 
-No release has published server archives or a container image yet. Build from source
-as above, or build the image described in [deploy/README.md](../../deploy/README.md).
+Releases publish Linux archives and container images. See
+[Install the server](../../docs/wiki/Server-Installation.md) for asset names and image tags.
+[verification.md](verification.md) holds the evidence recorded before the first server release.

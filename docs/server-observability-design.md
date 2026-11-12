@@ -52,7 +52,7 @@ These extend the backend diagnostics rules (#419):
 
 ### Logging (#522)
 
-- Dependencies: `tracing` (pin to the lockfile's 0.1.44), `tracing-subscriber` 0.3.23 (latest stable, 2026-03-13) with `fmt`, `json`, `env-filter`, `std`, `tracing-log`, default features off.
+- Dependencies: `tracing` (pin to the lockfile's 0.1.44), `tracing-subscriber` 0.3.23 (latest stable, 2026-03-13) with `fmt`, `json`, `env-filter`, `std`, default features off.
 - `--log-format text|json`, default `text`. Both write to stderr. JSON uses one flattened object per line.
 - Filtering reads `RUST_LOG`. The default directive is `warn,kubecove_server=info`. Raising dependency targets to `debug` can log Kubernetes request URIs, which include namespaces and resource names. The operator docs state this.
 - The startup login URL, `--quiet` and `--print-token` stay as `println!` on stdout, unchanged. The two `eprintln!` cleanup lines become `session_cleanup_failed`.
@@ -60,7 +60,7 @@ These extend the backend diagnostics rules (#419):
 
 ### Metrics (#523)
 
-- Dependency: `prometheus-client` (the Prometheus project's Rust client, `github.com/prometheus/client_rust`). Its latest release, 0.25.2, came out 2026-10-30; pin the newest 0.25.x at implementation time. It supports scrape-time custom collectors, which the cache and session gauges need. `sysinfo` is reused at the workspace's pinned 0.39.6.
+- Dependency: `prometheus-client` (the Prometheus project's Rust client, `github.com/prometheus/client_rust`). Its latest release, 0.25.2, came out 2026-10-30; pin the newest 0.25.x at implementation time. It supports scrape-time custom collectors, which the cache and session gauges need. `sysinfo` is reused at the workspace's pinned version.
 - `--metrics-listen <IP:PORT>`, off by default. It starts a second `axum::serve` with a router that has only `GET /metrics`. That router shares no state with the main router except the metrics registry and a read handle to `Sessions`. No sign-in, cookie, or main-API route is reachable through it.
 - Scrape-time values:
   - `kubecove_server_sessions_open`: count of live owners.

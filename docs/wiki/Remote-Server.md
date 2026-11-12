@@ -13,13 +13,13 @@
 | Client | How it connects | Supported authentication | Where port forwards listen |
 | --- | --- | --- | --- |
 | Browser | Opens the web app served by `kubecove-server` | Token, Cloudflare Access, OIDC | Loopback on the server host |
-| Desktop app | Settings → Remote server; desktop Rust sends HTTP and WebSocket requests | Token only | Loopback on the laptop, tunnelled through the server |
+| Desktop app | Settings → Remote server; desktop Rust sends HTTP and WebSocket requests | Token, OIDC | Loopback on the laptop, tunnelled through the server |
 
 A browser port forward listens on `127.0.0.1` on the server. To reach it from a laptop, add a separate SSH forward to that server port. A desktop remote forward listens on the laptop and tunnels each connection through the server session.
 
-The desktop app does not perform Cloudflare Access or OIDC sign-in. To use the desktop app against a server, run that server in token mode.
+The desktop app signs in to token and OIDC servers. It does not sign in to Cloudflare Access servers, so use a browser with those.
 
-Releases provide full and slim variants of both archives and container images. Full includes the browser app. Slim includes only the server API, supports the desktop remote client in token mode, and serves no browser assets. A separate browser frontend must share the API's exact origin through a reverse proxy. See [Install the server](https://github.com/Timpan4/kubecove/wiki/Server-Installation#choose-full-or-slim).
+Releases provide full and slim variants of both archives and container images. Full includes the browser app. Slim includes only the server API for the desktop remote client and serves no browser assets. A separate browser frontend must share the API's exact origin through a reverse proxy. See [Install the server](https://github.com/Timpan4/kubecove/wiki/Server-Installation#choose-full-or-slim).
 
 ## Choose an authentication mode
 
@@ -27,7 +27,7 @@ Releases provide full and slim variants of both archives and container images. F
 | --- | --- | --- | --- |
 | Token (default) | none | SSH local forward, `kubectl port-forward` | A new random token on every start. Works with browser and desktop clients. |
 | Cloudflare Access | `--cloudflare-access-team`, `--cloudflare-access-aud` | Cloudflare Tunnel with an Access application | Browser only. Requires native TLS and an HTTPS `--public-origin`. |
-| OIDC | `--oidc-issuer`, `--oidc-client-id`, `--oidc-login-timeout`, optional `--oidc-client-secret-file` | Any HTTPS route to the server, such as Cloudflare Tunnel | Browser only. Requires native TLS and an HTTPS `--public-origin`. |
+| OIDC | `--oidc-issuer`, `--oidc-client-id`, `--oidc-login-timeout`, optional `--oidc-client-secret-file` | Any HTTPS route to the server, such as Cloudflare Tunnel | Works with browser and desktop clients. Requires native TLS and an HTTPS `--public-origin`. |
 
 Cloudflare Access and OIDC modes create no startup token and ignore an old `server-token` file. `--print-token` cannot be used with them. Loopback listeners still require the selected mode, because other users on a shared host can reach loopback ports.
 
@@ -67,13 +67,16 @@ Direct non-loopback TCP is an advanced alternative. It requires `--allow-remote`
 
 ## Connect from the desktop app
 
-1. Start the server in token mode and make it reachable from the laptop through an SSH tunnel or a trusted TLS endpoint.
+1. Start the server in token or OIDC mode and make it reachable from the laptop through an SSH tunnel or a trusted TLS endpoint.
 2. In KubeCove desktop, open Settings → Remote server.
-3. Enter the **Server URL** as seen from the laptop, for example `http://localhost:8080`, and the **Server token**.
+3. Enter the **Server URL** as seen from the laptop, for example `http://localhost:8080`.
+4. For a token server, enter the **Server token** and select **Connect**. For an OIDC server, leave the token empty and select **Connect**. KubeCove opens your browser for sign-in. Use **Copy sign-in link** when no browser opens.
 
-The token stays in desktop Rust memory for the active connection. It is not saved across app restarts or passed through frontend Kubernetes commands. HTTP is accepted only for loopback hosts; other hosts require HTTPS with a certificate the laptop trusts for that hostname.
+HTTP is accepted only for loopback hosts. Other hosts require HTTPS with a certificate the laptop trusts for that hostname.
 
-The remote desktop session uses the server's kubeconfig and cluster connectivity. Workspace import and export stay on the laptop. **Disconnect** clears the active remote credentials and closes the owner's live sessions and forwards.
+A server token stays in desktop Rust memory for the active connection. It is not saved across app restarts, and **Disconnect** clears it. An OIDC sign-in is stored in the operating system's credential storage, so it survives an app restart and **Disconnect**. **Sign out** revokes it. Sign in again after a server restart or when the sign-in expires on the server.
+
+The remote desktop session uses the server's kubeconfig and cluster connectivity. Workspace import and export stay on the laptop. **Disconnect** closes that session's live sessions and forwards.
 
 ## Sign in through Cloudflare Access
 

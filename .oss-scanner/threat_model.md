@@ -16,7 +16,7 @@ Protect Kubernetes and connected Argo CD credentials, server authentication and 
 
 Prioritize these areas:
 
-1. `src-tauri/server/src/`: token, Cloudflare Access and OIDC authentication; Host and Origin checks; cookies, logout, expiry and refresh; command dispatch and WebSocket admission; session ownership and cleanup. With OIDC Kubernetes credential forwarding enabled, a user's requests must not fall back to the operator's credentials.
+1. `src-tauri/server/src/`: token, Cloudflare Access and OIDC authentication, including the desktop sign-in routes `/api/v1/oidc/native/start` and `/api/v1/oidc/native/token`; Host and Origin checks; cookies, logout, expiry and refresh; command dispatch and WebSocket admission; session ownership and cleanup. With OIDC Kubernetes credential forwarding enabled, a user's requests must not fall back to the operator's credentials.
 2. `src-tauri/crates/` and `src-tauri/src/`: frontend command boundaries and secret redaction; bounded YAML/base64/gzip and API payload processing; connected Argo TLS, destinations and credential use; local credential files; desktop remote adapters; cancellation and retained sessions.
 3. Guarded Kubernetes and Argo operations: exact target scope, permission checks, dry-run and confirmation requirements, UID/resourceVersion preconditions, and single-use transport-bound Argo operation reviews. Inspect current contracts in ADRs 0003, 0004, 0005, 0006, 0013, 0014, 0017, 0021 and 0024.
 4. `src/` and `src-tauri/capabilities/`: cluster-data injection into Svelte, YAML and terminal surfaces; navigation or link handling; unintended command or filesystem capability exposure.

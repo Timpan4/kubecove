@@ -25,11 +25,11 @@ Risk levels are policy heuristics that highlight broad verbs, resources, or bind
 
 ## Record reviewed context
 
-Roles, ClusterRoles, bindings, and ServiceAccounts can carry an independent **Expected** or **Anomalous** review. Enter a note, then choose the matching disposition. **Unreviewed** means no record exists for the exact object.
+Roles, ClusterRoles, bindings, and ServiceAccounts can carry an independent **Expected** or **Anomalous** review. Enter a note, then select **Mark expected** or **Mark anomalous**. **Unreviewed** means no record exists for the exact object.
 
 Review context never changes risk severity, removes a finding, or hides it from the default queue. KubeCove does not trust controller names, labels, owner references, or GitOps metadata automatically. Related objects keep independent review states, so reviewing a ClusterRole does not review its bindings or ServiceAccounts.
 
-KubeCove binds each review to the workspace, cluster context, object identity, permission evidence, affected scope, binding path, and subjects. A policy change marks the review **Stale**. The old note remains visible, but Expected or Anomalous becomes inactive until you review the current evidence again.
+KubeCove binds each review to the workspace, cluster context, object identity, permission evidence, affected scope, binding path, and subjects. A policy change marks the review **Review stale**. The old note remains visible, but Expected or Anomalous becomes inactive until you review the current evidence again.
 
 Review records stay in local workspace storage and are not included in shared workspace exports. They contain a compact evidence fingerprint and review note, not raw RBAC objects or live authorization results.
 

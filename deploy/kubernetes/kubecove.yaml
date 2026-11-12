@@ -55,7 +55,7 @@ metadata:
   name: kubecove
   namespace: kubecove
 spec:
-  # One process owns the session and writes this data directory.
+  # One process writes this data directory.
   replicas: 1
   strategy:
     type: Recreate
