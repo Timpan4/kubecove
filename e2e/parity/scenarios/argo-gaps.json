@@ -547,6 +547,13 @@
           "operation": "Sync"
         },
         {
+          "action": "expectArgoReview",
+          "operation": "sync",
+          "name": "tenant-ledger",
+          "namespace": "argocd",
+          "transport": "connected"
+        },
+        {
           "action": "controlClock"
         },
         {
@@ -606,6 +613,13 @@
         {
           "action": "reviewArgoOperation",
           "operation": "Sync"
+        },
+        {
+          "action": "expectArgoReview",
+          "operation": "sync",
+          "name": "tenant-ledger",
+          "namespace": "argocd",
+          "transport": "connected"
         },
         {
           "action": "controlClock"
