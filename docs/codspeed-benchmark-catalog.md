@@ -1023,3 +1023,72 @@ commands/streams/watch_renewal_tests.rs
 ```
 
 Inline `cfg(test)` code was likewise treated as correctness evidence. Dialog/file export, startup registration, fixed allowlists, command wrappers, tiny getters, and one-target guarded-operation validation do not warrant separate CodSpeed targets from the inspected workloads. Workspace import’s bounded UTF-8 conversion is locally measurable, but its dialog/filesystem path and infrequent trigger make it low priority.
+
+## CI execution cost, 2026-11-12
+
+The current CI frontend selector balances files by longest measured duration first.
+Its weights are the `Run benchmarks` step durations for each file from GitHub
+Actions run [43308253138](https://github.com/Timpan4/kubecove/actions/runs/43308253138),
+retrieved from each job's timing JSON. The 25 files sum to 1,680 seconds. A
+four-group greedy assignment has predicted loads of 426, 425, 424 and 405 seconds.
+The workflow runs four frontend groups and two Rust shards, for six concurrent
+CodSpeed jobs under the current account budget.
+
+The same run logged 117 Rust benchmark completion lines. Their timestamps were
+roughly seven seconds apart, for about 819 seconds of aggregate simulation work.
+With two shards, the larger shard is estimated at 62 × 7 = 434 seconds. With
+four it is 30 × 7 = 210 seconds. This estimate uses the observed log cadence,
+not CodSpeed's reported benchmark metric.
+
+| Concurrent CodSpeed jobs | Frontend groups | Rust shards | Frontend workload | Rust workload | Benchmark work floor | With observed Rust build |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 4 | 2 | 2 | 840 s | 434 s | 840 s | 840 s |
+| 5 | 3 | 2 | 573 s | 434 s | 573 s | 737–754 s |
+| 6 | 4 | 2 | 426 s | 434 s | 434 s | 737–754 s |
+| 7 | 4 | 3 | 426 s | 273 s | 426 s | 576–593 s |
+| 8 | 5 | 3 | 343 s | 273 s | 343 s | 576–593 s |
+| 9 | 6 | 3 | 343 s | 273 s | 343 s | 576–593 s |
+| 10 | 7 | 3 | 343 s | 273 s | 343 s | 576–593 s |
+| 11 | 7 | 4 | 343 s | 210 s | 343 s | 513–530 s |
+| 12 | 8 | 4 | 343 s | 210 s | 343 s | 513–530 s |
+
+Table arithmetic uses longest-processing-time-first assignment of measured
+frontend file seconds and `ceil(117 / Rust shards) × 7` for Rust. The benchmark
+work floor is the maximum of those two lane workloads. It excludes runner setup,
+cache restore, Rust build, queueing, and upload. The last column adds the last
+measured Rust build step of 303–320 seconds to the Rust workload and takes the
+maximum with the frontend workload. These are floors/projections from specific
+hosted run data, not promises of CI duration.
+
+The CodSpeed runner log's `Measured:` timestamps measure completion spacing,
+not only instrument startup. CPU simulation executes each benchmark once, and
+accounts for simulated instruction, cache and memory costs. It has no statistical
+warm-up loop. The Rust bench target forces its shared `LazyLock` fixtures before
+Divan starts. Benchmarks using Divan `with_inputs` also generate their input
+outside benchmark timing. Per CodSpeed's [CPU simulation documentation](https://codspeed.io/docs/instruments/cpu)
+and [Divan-compatible input documentation](https://docs.rs/codspeed-divan-compat/latest/codspeed_divan_compat/struct.Bencher.html),
+these fixture paths are excluded from measured work. The remaining roughly
+seven-second completion spacing includes running the instrumented benchmark,
+CodSpeed/Divan per-benchmark setup and profiling/report work. The logs do not
+separate those components, so a precise instrumentation-startup cost is unknown.
+If fixture generation is moved into a measured callback, it is part of the
+measured body and should remain there when it represents production work.
+
+The frontend `topology.bench.ts` job took 343 seconds in that run. Splitting its
+existing cases across files could expose more parallelism without renaming a
+case or changing its callback body. That is a proposal only: the supplied
+per-file timing cannot establish individual case weights, and another module
+load/startup adds overhead. To approach three to four minutes, the six-job
+budget would need to rise to at least 12 concurrent CodSpeed jobs, the topology
+cases would need measured per-case timings and a split that preserves their
+names and callback bodies, and the Rust object cache would need a successful
+hosted warm hit. The workflow uses Mr Boxington's documented objects mode
+because stable Cargo path-crate freshness uses source mtimes, which change in
+fresh checkouts. The [Mr Boxington action documentation](https://mr-boxington.jdx.dev/github-action) describes this transport. Its target scanner also skips Cargo 1.100's build/ unit-state
+subtree, so the ordinary target cache does not preserve that state. Object mode
+keys rustc invocations by content and avoids the mtime failure. Integration
+with cargo codspeed through the Cargo shim remains unverified until a hosted
+run. At 12 jobs, eight frontend groups and four Rust shards have a
+210-second ideal average lane load before setup and compilation. No evidence
+currently proves the longest topology case fits that average, so the target
+remains unverified and costs at least six additional simultaneous jobs.

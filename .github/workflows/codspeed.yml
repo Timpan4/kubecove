@@ -95,8 +95,9 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      # One job per file (25) left most of them queued behind the account's concurrent-job limit
-      # on PR #678, and each spent most of its minute on setup. Each group runs every fourth file.
+      # Four measured-duration-balanced groups leave two slots for Rust under the
+      # current six-job CodSpeed concurrency budget. Weights come from run
+      # 43308253138 "Run benchmarks" step durations, maintained in the selector.
       matrix:
         group: [0, 1, 2, 3]
     env:
@@ -139,24 +140,17 @@ jobs:
       - changes
     if: ${{ needs.changes.outputs.rust == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
     runs-on: ubuntu-latest
-    # Simulation mode costs about 7 s per benchmark whatever it measures, so one job ran
-    # 117 benchmarks for 13 to 16 minutes. Each shard runs the benchmarks whose last divan
-    # path segment starts with its characters; CodSpeed merges the uploads of one workflow
-    # run into one report. Divan tests each benchmark (or generic argument) against one path,
-    # and the last class is the complement of the others, so the shards are disjoint and
-    # complete (scripts/codspeed-workflow-regression.test.mjs).
+    # Simulation took about 7 s per Rust benchmark in run 43308253138. Two
+    # disjoint shards leave four slots for frontend groups under the six-job
+    # budget; CodSpeed merges both shard uploads into one report.
     strategy:
       fail-fast: false
       matrix:
         include:
-          - shard: a-c
-            filter: "(?:^|::)[a-c][^:]*$"
-          - shard: d-h
-            filter: "(?:^|::)[d-h][^:]*$"
-          - shard: i-o
-            filter: "(?:^|::)[i-o][^:]*$"
+          - shard: a-h
+            filter: "(?:^|::)[a-h][^:]*$"
           - shard: other
-            filter: "(?:^|::)[^a-o:][^:]*$"
+            filter: "(?:^|::)[^a-h:][^:]*$"
 
     steps:
       - name: Checkout
@@ -176,17 +170,35 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Rust
+      - name: Cache Cargo dependencies
         uses: swatinem/rust-cache@v2
         with:
-          shared-key: kubecove-rust-codspeed
+          shared-key: kubecove-codspeed-registry
           workspaces: "./src-tauri -> target"
           prefix-key: dependency-rust
-          # Every shard builds the same target tree, so one shard saves it.
-          save-if: ${{ github.ref == 'refs/heads/main' && matrix.shard == 'a-c' }}
+          cache-targets: false
+          save-if: ${{ github.ref == 'refs/heads/main' && matrix.shard == 'a-h' }}
+
+      - name: Setup Mr Boxington for CodSpeed builds
+        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
+        with:
+          version: "1.29.2"
+          working-directory: src-tauri
+          cache-generation: kubecove-rust-codspeed-objects
+          github-cache-mode: objects
+          save-on-pull-request: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && matrix.shard == 'a-h' }}
 
       - name: Install cargo-codspeed
-        run: cargo install cargo-codspeed --version 5.0.1 --locked
+        env:
+          CARGO_CODSPEED_SHA256: df4b2618fda2aa19f8b92e8d745548a49d9ce20785472eeb584fdc2c99624395
+        run: |
+          set -euo pipefail
+          binary="$RUNNER_TEMP/cargo-codspeed"
+          curl --fail --location --silent --show-error \
+            --output "$binary" \
+            https://github.com/CodSpeedHQ/codspeed-rust/releases/download/v5.0.1/cargo-codspeed-x86_64-unknown-linux-musl
+          echo "$CARGO_CODSPEED_SHA256  $binary" | sha256sum --check --status
+          install -m 0755 "$binary" "$HOME/.cargo/bin/cargo-codspeed"
 
       - name: Build Rust benchmarks
         working-directory: src-tauri
