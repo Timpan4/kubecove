@@ -66,6 +66,8 @@ pub(super) struct LiveControls {
     pub reads: Arc<Mutex<Vec<&'static str>>>,
     /// The list versions a scope read reports when it returns.
     pub list_versions: Arc<Mutex<kubecove_gpui::backend::ListVersions>>,
+    /// The versions each scope read returned, in the order they returned.
+    pub returned_lists: Arc<Mutex<Vec<kubecove_gpui::backend::ListVersions>>>,
 }
 
 const START_VERSION: &str = "42";
@@ -222,6 +224,7 @@ fn a_reload_older_than_the_list_leaves_the_listed_rows(cx: &mut TestAppContext) 
         versions.insert(signature.clone(), version.into());
     };
     // The reload reads the kind at version 43, when the Deployment is gone.
+    backend.live.returned_lists.lock().unwrap().clear();
     set_version("43");
     backend.sessions.enabled.store(true, Ordering::SeqCst);
     backend.live.send(StreamMessage::ResourceChanged {
@@ -239,6 +242,23 @@ fn a_reload_older_than_the_list_leaves_the_listed_rows(cx: &mut TestAppContext) 
     cx.background_executor
         .advance_clock(std::time::Duration::from_millis(250));
     cx.run_until_parked();
+    // The reloads returned before the held list, so their patches wait for it.
+    // The notice reaches every open watch, so each kind reloads.
+    let returned: Vec<_> = backend
+        .live
+        .returned_lists
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|versions| versions.get(&signature).cloned())
+        .collect();
+    assert!(
+        !returned.is_empty()
+            && returned
+                .iter()
+                .all(|version| version.as_deref() == Some("43")),
+        "only reloads at 43 returned while the list was held: {returned:?}"
+    );
     // The held list, read before the flag changed, shows it again at 44.
     backend.sessions.enabled.store(false, Ordering::SeqCst);
     set_version("44");

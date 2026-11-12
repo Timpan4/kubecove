@@ -251,11 +251,13 @@ impl Backend for Controlled {
         let argo = self.argo.enabled.load(Ordering::SeqCst);
         let secret = self.secret.enabled.load(Ordering::SeqCst);
         let versions = self.live.list_versions.clone();
+        let returned = self.live.returned_lists.clone();
         Box::pin(async move {
             if let Some(pending) = pending {
                 let _ = pending.await;
             }
             let versions = versions.lock().unwrap().clone();
+            returned.lock().unwrap().push(versions.clone());
             if fail {
                 return Err(AppError::new(
                     "Resource read denied",
