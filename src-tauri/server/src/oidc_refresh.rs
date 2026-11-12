@@ -140,9 +140,9 @@ impl Oidc {
         loop {
             tokio::select! {
                 _ = ticks.tick() => {
-                    let credentials = self.bound.lock().map(|bound| {
+                    let credentials = self.bound.lock().map_or_default(|bound| {
                         bound.iter().map(|binding| binding.credential.clone()).collect::<Vec<_>>()
-                    }).unwrap_or_default();
+                    });
                     for credential in credentials {
                         // Keep one background renewal per sign-in while other
                         // users and subsequent ticks continue independently.

@@ -124,9 +124,7 @@ pub fn match_kind(
         (None, _) => Err(AppError::new(
             format!(
                 "unknown kind {query}{}; call list_resource_kinds to see available kinds",
-                api_version
-                    .map(|version| format!(" in {version}"))
-                    .unwrap_or_default()
+                api_version.map_or_default(|version| format!(" in {version}"))
             ),
             AppErrorKind::Validation,
         )),

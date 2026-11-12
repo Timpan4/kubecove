@@ -37,8 +37,7 @@ pub fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) 
             let tooltip = window
                 .find(format!("health:{key}"))
                 .description()
-                .map(str::to_owned)
-                .unwrap_or_default();
+                .map_or_default(str::to_owned);
             assert!(
                 tooltip.starts_with(string(step, "state")),
                 "health tooltip was {tooltip:?}"
@@ -62,8 +61,7 @@ pub fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) 
             let tooltip = window
                 .find(format!("event-time:{}", number(step, "index")))
                 .description()
-                .map(str::to_owned)
-                .unwrap_or_default();
+                .map_or_default(str::to_owned);
             assert!(is_exact_timestamp(&tooltip), "event time was {tooltip:?}");
         }
         _ => return false,

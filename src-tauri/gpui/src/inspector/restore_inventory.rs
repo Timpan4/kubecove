@@ -40,8 +40,7 @@ impl Inspector {
         let namespace_task = cx.spawn(async move |this, cx| {
             let names: Vec<String> = namespaces
                 .await
-                .map(|items| items.into_iter().map(|item| item.name).collect())
-                .unwrap_or_default();
+                .map_or_default(|items| items.into_iter().map(|item| item.name).collect());
             let _ = this.update(cx, |this, cx| {
                 if !Rc::ptr_eq(&this.request, &namespace_request) {
                     return;
@@ -60,8 +59,7 @@ impl Inspector {
         let kind_task = cx.spawn(async move |this, cx| {
             let kinds: Vec<String> = kinds
                 .await
-                .map(|items| items.into_iter().map(|item| item.kind).collect())
-                .unwrap_or_default();
+                .map_or_default(|items| items.into_iter().map(|item| item.kind).collect());
             let _ = this.update(cx, |this, cx| {
                 if !Rc::ptr_eq(&this.request, &kind_request) {
                     return;

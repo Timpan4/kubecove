@@ -41,9 +41,7 @@ pub(crate) fn validate_public_origin(origin: &str) -> Result<String, String> {
     Ok(format!(
         "https://{}{}",
         url.host_str().unwrap_or_default(),
-        url.port()
-            .map(|port| format!(":{port}"))
-            .unwrap_or_default()
+        url.port().map_or_default(|port| format!(":{port}"))
     ))
 }
 

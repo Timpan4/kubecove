@@ -99,8 +99,7 @@ pub(super) fn sample_process_memory(
     let mut memory = Vec::with_capacity(processes.len());
     for (pid, process) in processes {
         let rollup = std::fs::read_to_string(format!("/proc/{pid}/smaps_rollup"))
-            .map(|text| parse_smaps_rollup(&text))
-            .unwrap_or_default();
+            .map_or_default(|text| parse_smaps_rollup(&text));
         let has_baseline = previous.start_times.get(pid) == Some(&process.start_time());
         let wss_bytes = if measure_working_set && has_baseline {
             rollup.referenced_bytes

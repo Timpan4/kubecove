@@ -340,8 +340,7 @@ impl Inspector {
             .persisted
             .saved_forward_presets
             .get(&self.preset_key())
-            .map(|presets| presets.iter().map(|p| p.request.clone()).collect())
-            .unwrap_or_default();
+            .map_or_default(|presets| presets.iter().map(|p| p.request.clone()).collect());
         self.restore_forward_requests(requests, window, cx);
     }
     pub(super) fn start_saved_forward(

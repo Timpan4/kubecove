@@ -124,8 +124,7 @@ impl LiveData {
     fn take_buffer(&mut self, id: &str) -> Vec<kubecove_lib::models::ResourceSummary> {
         self.watches
             .get_mut(id)
-            .map(|watch| std::mem::take(&mut watch.recycled))
-            .unwrap_or_default()
+            .map_or_default(|watch| std::mem::take(&mut watch.recycled))
     }
     pub fn reset_scope(&mut self) {
         self.watches.clear();

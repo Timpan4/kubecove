@@ -274,7 +274,7 @@ impl Inspector {
                     .test_support()
                     .track_focus(&self.exec.focus)
                     .tab_index(0)
-                    .aria_label(active.map(|t| t.accessible.clone()).unwrap_or_default())
+                    .aria_label(active.map_or_default(|t| t.accessible.clone()))
                     .flex_1()
                     .min_h(px(288.))
                     .bg(rgb(0x101113))

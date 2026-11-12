@@ -37,22 +37,19 @@ impl Inspector {
                 .and_then(|p| p.get(i))
         });
         let editing = editing.filter(|_| saved.is_some());
-        let label = saved.map(|p| p.label.clone()).unwrap_or_default();
+        let label = saved.map_or_default(|p| p.label.clone());
         let request = saved.map(|p| &p.request);
         let context = request
             .map(|p| p.cluster_context.clone())
             .unwrap_or_else(|| self.scope.context.clone());
-        let namespace = request.map(|p| p.namespace.clone()).unwrap_or_default();
+        let namespace = request.map_or_default(|p| p.namespace.clone());
         let service = request
             .and_then(|p| p.target_name.clone())
             .unwrap_or_default();
-        let remote = request
-            .map(|p| p.remote_port.to_string())
-            .unwrap_or_default();
+        let remote = request.map_or_default(|p| p.remote_port.to_string());
         let local = request
             .and_then(|p| p.local_port)
-            .map(|p| p.to_string())
-            .unwrap_or_default();
+            .map_or_default(|p| p.to_string());
         self.sessions.form = Some(PresetForm {
             key,
             editing,

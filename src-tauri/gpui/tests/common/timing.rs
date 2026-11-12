@@ -200,8 +200,7 @@ impl Fixture {
             .lock()
             .unwrap()
             .get(&(command.into(), context.into()))
-            .map(|rule| rule.loads.keys().cloned().collect())
-            .unwrap_or_default();
+            .map_or_default(|rule| rule.loads.keys().cloned().collect());
         keys.into_iter()
             .map(|key| -> Read<()> {
                 let scope = Scope {

@@ -210,7 +210,7 @@ pub(crate) fn inventory(data: &Value) -> Vec<FluxInventoryResource> {
         .and_then(|status| status.get("inventory"))
         .and_then(|inventory| inventory.get("entries"))
         .and_then(Value::as_array)
-        .map(|entries| {
+        .map_or_default(|entries| {
             entries
                 .iter()
                 .take(MAX_FLUX_INVENTORY_ENTRIES)
@@ -227,7 +227,6 @@ pub(crate) fn inventory(data: &Value) -> Vec<FluxInventoryResource> {
                 })
                 .collect()
         })
-        .unwrap_or_default()
 }
 
 fn inventory_partial(data: &Value) -> bool {

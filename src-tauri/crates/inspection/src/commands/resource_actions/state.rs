@@ -38,9 +38,7 @@ pub(super) async fn access_review(
     verb: &str,
     resource: &str,
 ) -> Result<bool, AppError> {
-    let group = builtin_kind(&target.kind)
-        .map(|kind| kind.group.to_string())
-        .unwrap_or_default();
+    let group = builtin_kind(&target.kind).map_or_default(|kind| kind.group.to_string());
     let api = Api::<SelfSubjectAccessReview>::all(client);
     let review = SelfSubjectAccessReview {
         metadata: ObjectMeta::default(),
@@ -284,7 +282,7 @@ pub(super) fn state_from_value(
                 resources
                     .and_then(|value| value.get(field))
                     .and_then(Value::as_object)
-                    .map(|values| {
+                    .map_or_default(|values| {
                         values
                             .iter()
                             .filter_map(|(name, value)| {
@@ -292,7 +290,6 @@ pub(super) fn state_from_value(
                             })
                             .collect()
                     })
-                    .unwrap_or_default()
             };
             ResourceActionContainer {
                 name: container
@@ -315,14 +312,13 @@ pub(super) fn state_from_value(
         value
             .pointer(&format!("/metadata/{key}"))
             .and_then(Value::as_object)
-            .map(|map| {
+            .map_or_default(|map| {
                 map.iter()
                     .filter_map(|(key, value)| {
                         value.as_str().map(|value| (key.clone(), value.to_string()))
                     })
                     .collect()
             })
-            .unwrap_or_default()
     };
     ResourceActionState {
         target,

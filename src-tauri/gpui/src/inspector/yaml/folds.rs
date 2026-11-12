@@ -118,8 +118,7 @@ impl InputHighlighter for YamlHighlighter {
         self.inner
             .borrow()
             .tree()
-            .map(|tree| fold_ranges(tree, text, 0..usize::MAX))
-            .unwrap_or_default()
+            .map_or_default(|tree| fold_ranges(tree, text, 0..usize::MAX))
     }
 
     fn fold_ranges_for_edit(&self, range: Range<usize>, text: &Rope) -> Vec<FoldRange> {
@@ -131,8 +130,7 @@ impl InputHighlighter for YamlHighlighter {
         self.inner
             .borrow()
             .tree()
-            .map(|tree| fold_ranges(tree, text, start..range.end))
-            .unwrap_or_default()
+            .map_or_default(|tree| fold_ranges(tree, text, start..range.end))
     }
 }
 

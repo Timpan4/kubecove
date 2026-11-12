@@ -205,13 +205,12 @@ fn application_sources(
         .and_then(|status| status.get("sync"))
         .and_then(|sync| sync.get("revisions"))
         .and_then(|revisions| revisions.as_array())
-        .map(|revisions| {
+        .map_or_default(|revisions| {
             revisions
                 .iter()
                 .map(|revision| revision.as_str().map(String::from))
                 .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+        });
     let single_resolved_revision = data
         .get("status")
         .and_then(|status| status.get("sync"))
@@ -237,8 +236,7 @@ fn application_sources(
 
     spec.get("source")
         .and_then(|source| source.as_object())
-        .map(|source| vec![source_summary(source, single_resolved_revision)])
-        .unwrap_or_default()
+        .map_or_default(|source| vec![source_summary(source, single_resolved_revision)])
 }
 
 fn source_summary(
