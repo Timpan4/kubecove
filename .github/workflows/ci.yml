@@ -217,6 +217,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Verify Rust audit coverage
+        run: node --test --test-name-pattern="Rust dependency audits cover every checked-in lockfile with narrow exceptions" scripts/ci-workflow-regression.test.mjs
+
       - name: Install Tauri Linux dependencies
         run: |
           sudo apt-get update

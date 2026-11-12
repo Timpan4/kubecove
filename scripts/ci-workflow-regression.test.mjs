@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
 
 const workflow = readFileSync(process.env.CI_WORKFLOW_PATH ?? new URL("../.github/workflows/ci.yml", import.meta.url), "utf8").replaceAll("\r\n", "\n");
@@ -78,6 +78,7 @@ for (const [path, selected] of [
   ["src-tauri/capabilities/default.yaml", ["rust"]],
   ["src-tauri/tauri.conf.json", ["frontend", "rust"]],
   ["src-tauri/Cargo.lock", ["nix", "rust"]],
+  ["tools/new-cli/Cargo.lock", ["nix", "rust"]],
   ["Cargo.toml", ["nix", "rust"]],
   [".cargo/config.toml", ["rust"]],
   ["rust-toolchain.toml", ["rust"]],
@@ -223,21 +224,25 @@ test("Rust verification selects all workspace members despite root-only default-
   }
 });
 test("Rust dependency audits cover every checked-in lockfile with narrow exceptions", () => {
-  const root = new URL("../src-tauri/", import.meta.url);
-  const lockfileDirectories = [];
-  const collectLockfiles = (directory, relative) => {
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      if (entry.name === "target") continue;
-      const path = `${relative}/${entry.name}`;
-      if (entry.isDirectory()) collectLockfiles(new URL(`${entry.name}/`, directory), path);
-      else if (entry.isFile() && entry.name === "Cargo.lock") lockfileDirectories.push(relative);
-    }
-  };
-  collectLockfiles(root, "src-tauri");
+  const trackedFiles = spawnSync("git", ["ls-files", "-z"], {
+    cwd: new URL("../", import.meta.url),
+    encoding: "utf8",
+  });
+  assert.equal(trackedFiles.status, 0, trackedFiles.stderr);
+  const lockfileDirectories = trackedFiles.stdout
+    .split("\0")
+    .filter((path) => path === "Cargo.lock" || path.endsWith("/Cargo.lock"))
+    .map(dirname)
+    .sort();
 
-  const auditSteps = job("rust").split("\n      - name: ").filter((step) => step.includes("uses: rustsec/audit-check@"));
+  const rustJob = job("rust");
+  assert.match(
+    rustJob,
+    /run: node --test --test-name-pattern="Rust dependency audits cover every checked-in lockfile with narrow exceptions" scripts\/ci-workflow-regression\.test\.mjs/,
+  );
+  const auditSteps = rustJob.split("\n      - name: ").filter((step) => step.includes("uses: rustsec/audit-check@"));
   const auditedDirectories = auditSteps.map((step) => /working-directory: ([^\n]+)/.exec(step)?.[1]).sort();
-  assert.deepEqual(auditedDirectories, lockfileDirectories.sort());
+  assert.deepEqual(auditedDirectories, lockfileDirectories);
 
   const serverAudit = auditSteps.find((step) => step.includes("working-directory: src-tauri/server"));
   assert.match(serverAudit, /ignore: RUSTSEC-2023-0071,RUSTSEC-2026-0387/);
