@@ -90,8 +90,8 @@ jobs:
               all();
             }
             for (const [key, value] of Object.entries(required)) core.setOutput(key, String(value));
-            // The owner budgets seven concurrent CI jobs. Every selected task runs in
-            // one matrix, with no fail-fast cancellation of the other checks.
+            // These tasks share one matrix; frontend checks keep their own job.
+            // The matrix budget leaves one of the owner's seven slots for frontend.
             const tasks = [
               { task: 'docs', scope: 'docs' },
               { task: 'frontend-e2e', scope: 'frontend' },
@@ -173,7 +173,6 @@ jobs:
 
       - name: Test Svelte compiler integration
         run: bun run test:svelte
-
 
   checks:
     name: CI ${{ matrix.task }}

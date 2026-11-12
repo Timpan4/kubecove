@@ -156,15 +156,58 @@ See [ADR 0010](decisions/0010-e2e-only-wdio-security-boundary.md), [ADR 0011](de
 
 ## CI caching
 
-CI uses standard GitHub-hosted runners. The main CI workflow uses
+CI uses standard GitHub-hosted Ubuntu runners. The main CI workflow uses
 [Mr Boxington](https://mr-boxington.jdx.dev/github-action) for Rust tests, Clippy,
 and headless server builds. The action and mbx version are pinned in the workflow.
-Each Cargo workspace has an explicit `working-directory` and a separate cache
-generation for desktop, GUI-free backend, and server checks. The default `target`
-payload carries the workspace's pruned target tree and Cargo downloads.
-Only successful pushes to the default branch publish these caches; pull requests
-and manual runs restore without saving. Builds run through `mbx`, while
-`cargo tree` remains a direct inspection command.
+Each verification phase has a separate cache generation and an explicit Cargo
+workspace, covering `src-tauri`, `src-tauri/server` and `src-tauri/gpui`.
+
+CI uses the action's `objects` payload with one isolated store per job.
+Cargo 1.100 moved unit state under `build/<package>/<hash>/`; the pinned action's
+`target` payload scanner skips that subtree and refuses to save it. Object
+export/import avoids that scanner. The post step cleans the consumed target before
+exporting the completed commands' compiler objects, then removes its isolated
+store before uploading the bundle. Its new `kubecove-ci-objects-<task>` generations
+also avoid importing old workspace snapshots when enabling clean-before-export,
+as required by [the upstream migration caveat](https://github.com/jdx/mr-boxington-action/issues/91).
+
+Successful default-branch pushes and same-repository PRs publish these caches.
+Fork PRs remain restore-only under the action's policy. The key includes the
+compiler identity, so a stable Rust update starts a new cache. A first run still
+compiles; later compatible runs can reuse it. Builds run through `mbx`, while
+`cargo tree` remains a direct inspection command. The Cargo shim also wraps Rust
+builds launched by Bun.
+
+Change detection selects a verification matrix with `max-parallel: 6`, leaving
+one slot for the independent frontend job within the owner's seven-job CI budget.
+It disables fail-fast so
+a failed task does not cancel the remaining checks. The tasks preserve:
+
+- documentation and whitespace checks;
+- frontend checks and compiler integration tests, separate from `e2e:fast`;
+- desktop Rust tests and dependency audits, separate from Clippy;
+- GPUI Clippy, separate from library and native tests;
+- GUI-free backend tests and dependency-tree verification;
+- default-feature server tests and Clippy;
+- API-only server tests and Clippy;
+- browser UI and server builds plus HTTP/WebSocket lifecycle verification.
+
+The default-feature server tasks build the real browser assets that
+`src-tauri/server/build.rs` embeds. API-only and GUI-free backend tasks need
+neither those assets nor GUI packages. Native build prerequisites are installed
+only when `pkg-config` cannot resolve them. Caching compiler outputs does not
+supply missing system libraries.
+
+Nix retains its existing push/manual gate and runs after the matrix, so it does
+not exceed the same concurrency budget. The required check remains
+`Typecheck and test`. It requires successful change detection, the frontend job,
+every selected matrix task and Nix job to pass. Unexpected skips, failures and cancellations
+fail the gate. Same-repository labeled release PRs retain their existing skip
+policy.
+
+The short jobs target warm PR feedback. Hosted cold/warm runs must confirm the
+cache transfer time, hit rates and wall time; local regression tests do not prove
+a three-minute job or the overall three-to-four-minute goal.
 
 Standalone and release E2E use mbx with separate desktop and headless server
 workspace caches. The primary Kubernetes version publishes the Linux E2E cache
