@@ -261,6 +261,7 @@ test("frontend group jobs form a complete, disjoint partition of actual benchmar
 		assert.throws(() => assertBenchmarkPartition([...benchmarks, added], selections), /newly added benchmark matched 0 groups/);
 	});
 	const durations = groups.map((group) => benchmarkGroups(files, count)[group].seconds);
+	t.diagnostic(`Predicted Run benchmarks seconds by group: ${durations.map((seconds) => seconds.toFixed(3)).join(", ")}`);
 	assert.equal(count, 8);
 	assert.ok(durations.every((seconds) => seconds <= 150), `predicted seconds: ${durations}`);
 	assert.match(job("frontend"), /43322953935/);

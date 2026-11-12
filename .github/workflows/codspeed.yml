@@ -98,12 +98,12 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      # Four groups balanced by measured duration. Weights come from run
-      # 43308253138 "Run benchmarks" step durations, maintained in the selector.
+      # Eight groups balanced by run 43322953935 file and benchmark durations.
+      # Name filters split long files while preserving CodSpeed identities.
       matrix:
-        group: [0, 1, 2, 3]
+        group: [0, 1, 2, 3, 4, 5, 6, 7]
     env:
-      KUBECOVE_BENCHMARK_GROUP: ${{ matrix.group }}/4
+      KUBECOVE_BENCHMARK_GROUP: ${{ matrix.group }}/8
 
     steps:
       - name: Checkout

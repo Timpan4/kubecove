@@ -6,7 +6,8 @@ import { benchmarkSelection } from "./scripts/codspeed-benchmark-suites.mjs";
 // Dedicated Vitest configuration for CodSpeed benchmarks.
 // Unit tests continue to run through `bun test`; this config only powers the
 // `*.bench.ts` files under `benchmarks/`. CI selects a complete, disjoint
-// duration-balanced file group through `benchmarkSelection()`.
+// duration-balanced group through `benchmarkSelection()`, including name filters.
+const { testNamePattern, ...benchmark } = benchmarkSelection();
 export default defineConfig({
 	plugins: [codspeedPlugin()],
 	resolve: {
@@ -15,6 +16,7 @@ export default defineConfig({
 		},
 	},
 	test: {
-		benchmark: benchmarkSelection(),
+		testNamePattern,
+		benchmark,
 	},
 });
