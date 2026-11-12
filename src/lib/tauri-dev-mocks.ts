@@ -117,12 +117,11 @@ export function createDevMockTauriClient({ latencyMs = 35 }: { latencyMs?: numbe
 	};
 }
 
+declare global { var __kubecoveParityKubeconfigSources: KubeconfigSourcesSummary | undefined; }
 // The page's kubeconfig settings, so saved values read back like the desktop settings file.
-const kubeconfigSource = { ...source };
+// The parity driver seeds stored settings before a reload, as the desktop reads its file at startup.
+const kubeconfigSource = { ...source, ...globalThis.__kubecoveParityKubeconfigSources };
 const kubeconfigSources = () => shellKubeconfigSourcesRead({ ...kubeconfigSource });
-export function restoreMockKubeconfigSources(sources: KubeconfigSourcesSummary): void {
-    Object.assign(kubeconfigSource, sources);
-}
 
 const handlers = {
 	remote_connect: (args) => connectRemoteMock(args.serverUrl ?? "", args.token ?? ""),

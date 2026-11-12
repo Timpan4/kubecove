@@ -125,8 +125,11 @@ export async function action(page: Page, step: Step) {
                     const path = join(directory, "sources.json");
                     await writeFile(path, JSON.stringify(snapshot));
                     await page.getByRole("button", { name: "Back to app", exact: true }).click();
+                    // The app reads and caches kubeconfig sources at startup. Restoring them after the
+                    // reload raced that read and failed full-suite runs, so seed them before the app loads.
+                    const stored: unknown = JSON.parse(await readFile(path, "utf8"));
+                    await page.addInitScript((sources) => { Object.assign(globalThis, { __kubecoveParityKubeconfigSources: sources }); }, stored);
                     await page.reload();
-                    await page.evaluate(`import('/src/lib/tauri-dev-mocks.ts').then(m => m.restoreMockKubeconfigSources(${await readFile(path, "utf8")}))`);
                     await page.getByRole("button", { name: "Open settings", exact: true }).click();
                 } finally { await rm(directory, { recursive: true }); }
             }
