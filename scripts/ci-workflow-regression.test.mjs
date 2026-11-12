@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
 
 const workflow = readFileSync(process.env.CI_WORKFLOW_PATH ?? new URL("../.github/workflows/ci.yml", import.meta.url), "utf8").replaceAll("\r\n", "\n");
@@ -78,6 +78,7 @@ for (const [path, selected] of [
   ["src-tauri/capabilities/default.yaml", ["rust"]],
   ["src-tauri/tauri.conf.json", ["frontend", "rust"]],
   ["src-tauri/Cargo.lock", ["nix", "rust"]],
+  ["tools/new-cli/Cargo.lock", ["nix", "rust"]],
   ["Cargo.toml", ["nix", "rust"]],
   [".cargo/config.toml", ["rust"]],
   ["rust-toolchain.toml", ["rust"]],
@@ -221,6 +222,46 @@ test("Rust verification selects all workspace members despite root-only default-
     assert.ok(cargoArgs.includes("--workspace"), command);
     assert.equal(cargoArgs[cargoArgs.indexOf("--manifest-path") + 1], "src-tauri/Cargo.toml", command);
   }
+});
+test("Rust dependency audits cover every checked-in lockfile with narrow exceptions", () => {
+  const trackedFiles = spawnSync("git", ["ls-files", "-z"], {
+    cwd: new URL("../", import.meta.url),
+    encoding: "utf8",
+  });
+  assert.equal(trackedFiles.status, 0, trackedFiles.stderr);
+  const lockfileDirectories = trackedFiles.stdout
+    .split("\0")
+    .filter((path) => path === "Cargo.lock" || path.endsWith("/Cargo.lock"))
+    .map(dirname)
+    .sort();
+
+  const rustJob = job("rust");
+  assert.match(
+    rustJob,
+    /run: node --test --test-name-pattern="Rust dependency audits cover every checked-in lockfile with narrow exceptions" scripts\/ci-workflow-regression\.test\.mjs/,
+  );
+  const auditSteps = rustJob.split("\n      - name: ").filter((step) => step.includes("uses: rustsec/audit-check@"));
+  const audits = auditSteps
+    .map((step) => {
+      const directory = /working-directory: ([^\n]+)/.exec(step)?.[1];
+      assert.ok(directory, `Audit step must name its working directory:\n${step}`);
+      const ignoredAdvisories = /\n\s+ignore: ([^\n]+)/.exec(step)?.[1].split(",") ?? [];
+      return { directory, ignoredAdvisories };
+    })
+    .sort((left, right) => left.directory.localeCompare(right.directory));
+  const auditedDirectories = audits.map(({ directory }) => directory);
+  assert.deepEqual(auditedDirectories, lockfileDirectories);
+  assert.deepEqual(
+    audits.map(({ directory, ignoredAdvisories }) => [directory, ignoredAdvisories]),
+    [
+      ["src-tauri", ["RUSTSEC-2024-0429"]],
+      ["src-tauri/gpui", []],
+      ["src-tauri/server", ["RUSTSEC-2023-0071", "RUSTSEC-2026-0387"]],
+    ],
+  );
+
+  const serverAudit = auditSteps.find((step) => step.includes("working-directory: src-tauri/server"));
+  assert.match(serverAudit, /public-signature verification/);
 });
 test("server packaging follows the relocated kubeconform source without changing its standalone build", () => {
   const packaging = readFileSync(new URL("../.github/workflows/server-packaging.yml", import.meta.url), "utf8");
