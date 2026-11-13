@@ -169,6 +169,7 @@
 	const healthLoading = loadingDelay(() => resourcesQuery.isPending);
 	const model = $derived(buildOverviewModel(rows));
 	const view = $derived({
+		workspaceId: JSON.stringify([workspace.id, workspace.scope, kubeconfigSourceKey]),
 		model, health, hasData: resourcesQuery.data !== undefined,
 		partial: resourcesQuery.isError || hasRestoreWarning || (resourcesQuery.data?.failures.length ?? 0) > 0,
 		multiContext: workspaceScopeContexts(workspace.scope).length > 1, primaryContext: workspace.scope.clusterContext,

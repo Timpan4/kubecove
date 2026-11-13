@@ -8,6 +8,7 @@ import type { OverviewModel, ProblemTone, Tone } from "./model";
 import type { EntryRow } from "./entries";
 
 export interface OverviewView {
+    workspaceId: string;
 	model: OverviewModel;
 	health: WorkspaceHealthSummary;
 	/** False until a resource load has succeeded, so no count or verdict is shown before then. */

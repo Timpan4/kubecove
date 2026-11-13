@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { createQueries, createQuery } from "@tanstack/svelte-query";
 	import { GitBranch } from "lucide-svelte";
+	import { PAGE_SIZE } from "@/features/resources/constants";
 	import FriendlyError from "@/components/FriendlyError.svelte";
 	import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Separator, Spinner } from "@/components/ui/svelte";
 	import { healthStateLabel } from "@/lib/resource-health";
@@ -61,6 +62,16 @@
 
 	const detectionError = $derived(argoDetectedQuery.error ?? fluxDetectedQuery.error);
 	const troubled = $derived((argoAppsQuery.data?.items ?? []).filter(app => app.healthAssessment?.state === "degraded" || app.healthAssessment?.state === "needsAttention"));
+	let page = $state(0);
+	let scope = $state<string>();
+	const pages = $derived(Math.max(1, Math.ceil(troubled.length / PAGE_SIZE)));
+	const currentPage = $derived(Math.min(page, pages - 1));
+	const visible = $derived(troubled.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE));
+	$effect(() => {
+		const nextScope = JSON.stringify([clusterContext, kubeconfigSourceKey]);
+		if (scope !== nextScope) { page = 0; scope = nextScope; }
+		if (page >= pages) page = pages - 1;
+	});
 </script>
 <Card size="sm" elevation="flat">
 	<CardHeader class="border-b"><CardTitle>GitOps</CardTitle><CardDescription>Argo CD and Flux inventory.</CardDescription></CardHeader>
@@ -79,12 +90,19 @@
 		{/if}
 		<div class="grid gap-2">
 			{#if !argoAppsQuery.isPending && !argoAppsQuery.isError}
-				{#each troubled as app (`${app.namespace}/${app.name}`)}
+				{#each visible as app (`${app.namespace}/${app.name}`)}
 					<Button variant="ghost" aria-label={`Inspect Application ${app.name} in ${app.namespace}`} class="h-auto justify-start whitespace-normal text-left" onclick={() => onOpenResource(gitOpsSelectionResource({ type: "argoApp", item: app }))}>
 						<span class="min-w-0 flex-1 font-mono break-all">{app.name}</span>
 						<Badge variant="outline" class={app.healthAssessment?.state === "degraded" ? "text-red-300" : "text-amber-300"}>{healthStateLabel(app.healthAssessment?.state ?? "unknown")}</Badge>
 					</Button>
 				{/each}
+				{#if pages > 1}
+					<div class="flex items-center justify-between gap-2 text-xs">
+						<Button variant="outline" size="sm" aria-label="Previous applications" disabled={currentPage === 0} onclick={() => page = currentPage - 1}>Previous</Button>
+						<span class="text-muted-foreground">Applications page {currentPage + 1} of {pages}</span>
+						<Button variant="outline" size="sm" aria-label="Next applications" disabled={currentPage + 1 === pages} onclick={() => page = currentPage + 1}>Next</Button>
+					</div>
+				{/if}
 			{/if}
 			{#if argoDetectedQuery.data === true && applicationsLoading.active}
 				{#if applicationsLoading.shown}

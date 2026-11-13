@@ -158,7 +158,7 @@ fn workspace_change_cancels_overview_retry_and_rejects_old_success(cx: &mut Test
         window.render_frame(cx);
         assert_eq!(
             window.find("overview-description:Resource Health").label(),
-            Some("1 resources loaded from the saved scope.")
+            Some("1 resource loaded from the saved scope.")
         );
         assert!(window.try_find("overview-retry-success").is_none());
         assert!(window.try_find("retry-overview").is_none());

@@ -2,6 +2,42 @@
 use kubecove_lib::models::{HealthAssessmentState, ResourceSummary};
 use std::collections::{HashMap, HashSet};
 
+pub fn identity(row: &ResourceSummary) -> String {
+    let group = row
+        .group
+        .as_deref()
+        .filter(|group| !group.is_empty())
+        .or_else(|| api_group(row.api_version.as_deref()));
+    serde_json::to_string(&(
+        &row.cluster,
+        &row.namespace,
+        &row.kind,
+        &row.api_version,
+        group,
+        &row.name,
+    ))
+    .expect("resource identity serializes")
+}
+pub fn entry_identity(entry: &super::entries::Entry) -> String {
+    let kind = if entry.kind == super::entries::EntryKind::App {
+        "Application"
+    } else {
+        entry.resource_kind.as_deref().unwrap_or("Resource")
+    };
+    serde_json::to_string(&(
+        &entry.cluster_context,
+        &entry.namespace,
+        kind,
+        &entry.api_version,
+        api_group(entry.api_version.as_deref()),
+        &entry.name,
+    ))
+    .expect("entry identity serializes")
+}
+fn api_group(version: Option<&str>) -> Option<&str> {
+    version.and_then(|version| version.split_once('/').map(|(group, _)| group))
+}
+
 pub struct Problem {
     pub root: usize,
     pub cause: usize,
@@ -97,24 +133,33 @@ pub fn build(rows: &[&ResourceSummary]) -> Overview {
         let mut current = index;
         let mut seen = HashSet::from([index]);
         while let Some(reference) = rows[current].controller_owner.as_ref() {
-            let Some(Some(owner)) = owners.get(&key(rows[current], &reference.uid)) else {
+            let local = owners.get(&key(rows[current], &reference.uid));
+            let cluster = rows[current].namespace.as_ref().and_then(|_| {
+                owners.get(&(rows[current].cluster.clone(), None, reference.uid.clone()))
+            });
+            let candidate = match (local, cluster) {
+                (Some(local), None) => *local,
+                (None, Some(cluster)) => *cluster,
+                _ => None,
+            };
+            let Some(owner) = candidate else {
                 break;
             };
-            let parent = rows[*owner];
+            let parent = rows[owner];
             if parent.name != reference.name
                 || parent.kind != reference.kind
                 || parent.api_version.as_deref() != Some(&reference.api_version)
             {
                 break;
             }
-            if !seen.insert(*owner) {
+            if !seen.insert(owner) {
                 root = index;
                 break;
             }
-            if failing(rows[*owner].health_assessment.state) {
-                root = *owner;
+            if failing(rows[owner].health_assessment.state) {
+                root = owner;
             }
-            current = *owner;
+            current = owner;
         }
         groups.entry(root).or_default().push(index);
     }

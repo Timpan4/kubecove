@@ -8,6 +8,12 @@
 	const flagged = $derived(view.model.namespaces.filter(findings));
 	const quiet = $derived(view.model.namespaces.filter(row => !findings(row)));
 	const quietOpen = $derived(showQuiet || flagged.length === 0);
+	function openNamespace(row: NamespaceRow) {
+		if (row.degraded > 0 && row.attention > 0) view.onOpenResources(row.namespace);
+		else if (row.degraded > 0) view.onOpenResources(row.namespace, "degraded");
+		else if (row.attention > 0) view.onOpenResources(row.namespace, "attention");
+		else view.onOpenResources(row.namespace);
+	}
 </script>
 {#if view.model.namespaces.length > 0}
 	<Card size="sm" elevation="flat">
@@ -28,7 +34,7 @@
 {/if}
 {#snippet Namespace(row: NamespaceRow)}
 	<Button variant="ghost" class={ROW} aria-label={`Open namespace ${row.namespace}`}
-		onclick={() => view.onOpenResources(row.namespace, row.degraded > 0 ? "degraded" : row.attention > 0 ? "attention" : undefined)}>
+		onclick={() => openNamespace(row)}>
 		<span class={["size-2 shrink-0 rounded-full", row.degraded > 0 ? DOT.degraded : row.attention > 0 ? DOT.needsAttention : HOLLOW_DOT]} aria-hidden="true"></span>
 		<span class="min-w-0 flex-1 font-mono break-all">{row.namespace}</span>
 		{#if row.degraded > 0}<span class="text-red-300 tabular-nums">{row.degraded} degraded</span>{/if}

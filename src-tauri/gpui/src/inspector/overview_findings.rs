@@ -18,15 +18,7 @@ enum FindingRow<'a> {
     Child(&'a ResourceSummary),
 }
 
-fn identity(row: &ResourceSummary) -> String {
-    format!(
-        "{}:{}:{}:{}",
-        row.kind,
-        row.namespace.as_deref().unwrap_or(""),
-        row.name,
-        row.cluster
-    )
-}
+use crate::workspaces::overview::identity;
 fn cell(width: f32, content: Div) -> Div {
     content
         .w(px(width))
@@ -64,7 +56,8 @@ impl Inspector {
                 ),
         );
         let pages = problems.len().div_ceil(crate::model::PAGE_SIZE).max(1);
-        let page = self.overview_ui.page.min(pages - 1);
+        let page = self.overview_ui.page.get().min(pages - 1);
+        self.overview_ui.page.set(page);
         for problem in problems
             .iter()
             .skip(page * crate::model::PAGE_SIZE)
@@ -118,7 +111,7 @@ impl Inspector {
                                 page > 0,
                                 cx,
                                 move |this, _, cx| {
-                                    this.overview_ui.page = page - 1;
+                                    this.overview_ui.page.set(page - 1);
                                     cx.notify();
                                 },
                             )
@@ -131,7 +124,7 @@ impl Inspector {
                                 page + 1 < pages,
                                 cx,
                                 move |this, _, cx| {
-                                    this.overview_ui.page = page + 1;
+                                    this.overview_ui.page.set(page + 1);
                                     cx.notify();
                                 },
                             )
@@ -418,7 +411,9 @@ impl Inspector {
                 continue;
             }
             let namespace = row.name.clone();
-            let health = if row.degraded > 0 {
+            let health = if row.degraded > 0 && row.attention > 0 {
+                HealthFilter::All
+            } else if row.degraded > 0 {
                 HealthFilter::Degraded
             } else if row.attention > 0 {
                 HealthFilter::Attention

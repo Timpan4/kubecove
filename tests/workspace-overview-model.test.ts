@@ -11,6 +11,15 @@ function row(kind: string, name: string, state: HealthAssessmentState = "degrade
 function owner(kind: string, name: string) { return { apiVersion: "apps/v1", kind, name, uid: `${kind}/${name}` }; }
 
 describe("workspace overview findings", () => {
+	test("namespaced dependents can fold into a cluster-scoped controller", () => {
+		const controller = row("Controller", "global", "degraded", { namespace: null });
+		const pod = row("Pod", "child", "degraded", { controllerOwner: owner("Controller", "global") });
+		const model = buildOverviewModel([controller, pod]);
+		expect(model.problems).toHaveLength(1);
+		expect(model.problems[0]?.related.map(member => member.resource)).toEqual([pod]);
+		controller.namespace = "other";
+		expect(buildOverviewModel([controller, pod]).problems).toHaveLength(2);
+	});
 	test("a name-only reference cannot fold an absent owner into an unrelated controller", () => {
 		const deployment = row("Deployment", "api");
 		const pod = row("Pod", "api-0", "degraded", { ownerRef: "api" });

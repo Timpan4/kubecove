@@ -13,6 +13,11 @@
 	const pages = $derived(Math.max(1, Math.ceil(problems.length / PAGE_SIZE)));
 	const currentPage = $derived(Math.min(page, pages - 1));
 	const visible = $derived(problems.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE));
+	let workspaceId = $state<string>();
+	$effect(() => {
+		if (workspaceId !== view.workspaceId) { page = 0; expanded = {}; workspaceId = view.workspaceId; }
+		if (page >= pages) page = pages - 1;
+	});
 	const label = (row: ResourceSummary) => `Open ${row.kind} ${row.name} in ${row.namespace ?? "cluster scope"} on ${row.cluster}`;
 </script>
 <Table aria-label="Workspace findings" class="min-w-[40rem] table-fixed">

@@ -56,6 +56,27 @@ impl Fixture {
                     result.projects.clear();
                 }
                 "empty" => result.argo = Some(vec![]),
+                "many" => {
+                    let app = result
+                        .argo
+                        .as_ref()
+                        .and_then(|apps| {
+                            apps.iter().find(|app| {
+                                app.health_assessment.state
+                                    == kubecove_lib::models::HealthAssessmentState::Degraded
+                            })
+                        })
+                        .expect("fixture has a degraded Application");
+                    result.argo = Some(
+                        (0..=kubecove_gpui::model::PAGE_SIZE)
+                            .map(|index| {
+                                let mut app = app.clone();
+                                app.name = format!("overview-application-{index:03}");
+                                app
+                            })
+                            .collect(),
+                    );
+                }
                 "partial" => {
                     result.argo = Some(vec![]);
                     result.list_error = Some(AppError::new(

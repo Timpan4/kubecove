@@ -37,9 +37,36 @@ impl Inspector {
             .get_or_insert_with(|| {
                 let rows: Vec<_> = self.workspace_rows().cloned().collect();
                 let references: Vec<_> = rows.iter().collect();
+                let model = crate::workspaces::overview::build(&references);
+                let entry_health = rows
+                    .iter()
+                    .map(|row| {
+                        (
+                            crate::workspaces::overview::identity(row),
+                            row.health_assessment.state,
+                        )
+                    })
+                    .collect();
+                let namespace_health = model
+                    .namespaces
+                    .iter()
+                    .filter_map(|namespace| {
+                        use kubecove_lib::models::HealthAssessmentState as Health;
+                        let state = if namespace.degraded > 0 {
+                            Health::Degraded
+                        } else if namespace.attention > 0 {
+                            Health::NeedsAttention
+                        } else {
+                            return None;
+                        };
+                        Some((namespace.name.clone(), state))
+                    })
+                    .collect();
                 Rc::new(super::overview_state::Projection {
                     health: HealthSummary::of(references.iter().copied()),
-                    model: crate::workspaces::overview::build(&references),
+                    model,
+                    entry_health,
+                    namespace_health,
                     rows,
                 })
             })
@@ -51,6 +78,19 @@ impl Inspector {
             .launcher
             .active
             .and_then(|id| self.launcher.saved.iter().find(|saved| saved.id == id));
+        let workspace = serde_json::to_string(&(
+            self.launcher.active,
+            &self.scope.context,
+            saved.map(|saved| (&saved.namespaces, &saved.kinds, saved.contexts())),
+        ))
+        .expect("workspace scope serializes");
+        if self.overview_ui.workspace.as_ref() != Some(&workspace) {
+            self.overview_ui.workspace = Some(workspace);
+            self.overview_ui.page.set(0);
+            self.overview_ui.application_page.set(0);
+            self.overview_ui.expanded.clear();
+            self.overview_ui.quiet = false;
+        }
         let scope = if let Some(saved) = saved {
             let contexts = saved.contexts();
             [

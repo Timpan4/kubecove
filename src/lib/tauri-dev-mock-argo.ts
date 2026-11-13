@@ -1,4 +1,5 @@
 import type { ArgoConnectionProfile, ArgoServerEndpoint } from "./gitops-types";
+import { PAGE_SIZE } from "@/features/resources/constants";
 import type { MockArgs, MockHandler } from "./tauri-dev-mock-contract";
 import { kinds, now, resources, source } from "./tauri-dev-mock-data";
 import { argoApps, argoManagedResourceRefs, fluxHelmKind, fluxKind, fluxResources } from "./tauri-dev-mock-gitops-data";
@@ -40,7 +41,7 @@ export function configureArgoMock(script: ArgoMockScript) {
 	argoScript = script;
 	for (const release of heldArgo.splice(0)) release();
 }
-export type ArgoInventoryMode = "base" | "absent" | "empty" | "partial" | "unavailable";
+export type ArgoInventoryMode = "base" | "absent" | "empty" | "partial" | "unavailable" | "many";
 let argoInventoryMode: ArgoInventoryMode = "base";
 export function configureArgoInventory(mode: ArgoInventoryMode) { argoInventoryMode = mode; }
 export function completeMockArgoOperation() { argoOutcomeComplete = true; }
@@ -136,6 +137,7 @@ return {
 	run_argo_operation: () => ({ accepted: true, transport: "kubernetes", message: "Mock operation accepted", operation: null }),
 	list_argocd_applications: () => {
         if (argoInventoryMode === "partial") throw new Error("Fixture Argo inventory unavailable");
+        if (argoInventoryMode === "many") return listed(argoApps.filter(app => app.healthAssessment?.state === "degraded").flatMap(app => Array.from({ length: PAGE_SIZE + 1 }, (_, index) => ({ ...app, name: `overview-application-${String(index).padStart(3, "0")}` }))));
         return listed(argoInventoryMode === "empty" ? [] : argoApps);
     },
 	get_argocd_application_details: (args) => argoDetails(args),

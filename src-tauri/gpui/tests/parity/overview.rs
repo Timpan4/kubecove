@@ -6,6 +6,8 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             let id = match label {
                 "Next findings" => "overview-next".into(),
                 "Previous findings" => "overview-previous".into(),
+                "Next applications" => "overview-applications-next".into(),
+                "Previous applications" => "overview-applications-previous".into(),
                 _ if label.starts_with("Inspect Application ") => {
                     locate::id(&window.find_by_label(label))
                 }
@@ -29,21 +31,30 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
         | "openOverviewProblem"
         | "toggleOverviewProblem"
         | "expectNoOverviewProblem" => {
-            let key = format!(
-                "{}:{}:{}:{}",
+            let label = format!(
+                "{} / {} in {} on {}",
                 string(step, "kind"),
-                string(step, "namespace"),
                 string(step, "name"),
+                string(step, "namespace"),
                 step["context"].as_str().unwrap_or("mock-dev")
             );
+            if step["action"] == "expectNoOverviewProblem" {
+                assert!(window.try_find_by_label(&label).is_none());
+                return true;
+            }
+            let row = window.find_by_label(&label);
+            let gpui_kit::ElementId::Name(id) = locate::id(&row) else {
+                panic!("finding has a named identity")
+            };
+            let key = id
+                .strip_prefix("overview-problem:")
+                .expect("finding row identity");
             if step["action"] == "openOverviewProblem" {
                 locate::click_in(window, "page", format!("overview-open:{key}").into(), cx);
             } else if step["action"] == "toggleOverviewProblem" {
                 let target = format!("overview-expand:{key}");
                 reveal(window, "page", &target, cx);
                 window.click(target, cx);
-            } else if step["action"] == "expectNoOverviewProblem" {
-                assert!(window.try_find(format!("overview-problem:{key}")).is_none());
             } else {
                 let id = format!("overview-problem:{key}");
                 assert!(seek(window, cx, "page", &id));

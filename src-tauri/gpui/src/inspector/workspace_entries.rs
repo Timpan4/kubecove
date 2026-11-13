@@ -87,6 +87,7 @@ impl Inspector {
             }
         });
         let entries = entries.map_or(&[][..], Vec::as_slice);
+        let projection = self.overview_projection();
         div()
             .id(SharedString::from(format!("entries:{panel}")))
             .test_support()
@@ -111,31 +112,12 @@ impl Inspector {
                 let label = format!("{kind} / {}", entry.name);
                 let health = if entry.kind == EntryKind::Namespace {
                     let namespace = entry.namespace.as_deref().unwrap_or(&entry.name);
-                    let summary = crate::model::HealthSummary::of(
-                        self.workspace_rows()
-                            .filter(|row| row.namespace.as_deref() == Some(namespace)),
-                    );
-                    if summary.degraded > 0 {
-                        Some(Health::Degraded)
-                    } else if summary.attention > 0 {
-                        Some(Health::NeedsAttention)
-                    } else {
-                        None
-                    }
+                    projection.namespace_health.get(namespace).copied()
                 } else {
-                    self.workspace_rows()
-                        .find(|row| {
-                            if entry.kind == EntryKind::App {
-                                row.kind == "Application"
-                                    && row.cluster == entry.cluster_context
-                                    && row.namespace == entry.namespace
-                                    && row.name == entry.name
-                                    && row.api_version == entry.api_version
-                            } else {
-                                entry.identifies(row)
-                            }
-                        })
-                        .map(|row| row.health_assessment.state)
+                    projection
+                        .entry_health
+                        .get(&crate::workspaces::overview::entry_identity(entry))
+                        .copied()
                 };
                 let (color, state) = match health {
                     Some(Health::Degraded) => (crate::theme::Palette::red300(), ", degraded"),

@@ -3,6 +3,35 @@
   "context": "mock-dev",
   "scenarios": [
     {
+      "id": "overview.gitops-application-pages",
+      "title": "Troubled applications remain reachable across pages",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "configureArgoInventory", "mode": "many" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectAccessibleName", "name": "Inspect Application overview-application-000 in argocd" },
+        { "action": "coverageClick", "label": "Next applications" },
+        { "action": "expectAccessibleName", "name": "Inspect Application overview-application-050 in argocd" },
+        { "action": "coverageClick", "label": "Previous applications" },
+        { "action": "expectAccessibleName", "name": "Inspect Application overview-application-000 in argocd" },
+        { "action": "coverageClick", "label": "Next applications" },
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "configureArgoInventory", "mode": "base" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectAccessibleName", "name": "Inspect Application tenant-ledger in argocd" }
+      ]
+    },
+    {
+      "id": "overview.mixed-namespace-findings",
+      "title": "A namespace with both health severities opens both sets of findings",
+      "steps": [
+        { "action": "overviewNamespace", "namespace": "payments" },
+        { "action": "expectHealthFilter", "label": "Total", "pressed": true },
+        { "action": "expectResource", "kind": "Ingress", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" }
+      ]
+    },
+    {
       "id": "overview.single-resource-total",
       "title": "A scope with one resource uses the singular count",
       "steps": [

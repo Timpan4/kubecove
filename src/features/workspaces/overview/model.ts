@@ -27,7 +27,7 @@ function problemTone(row: ResourceSummary): ProblemTone | null {
 	const state = toneOf(row);
 	return state === "degraded" || state === "needsAttention" ? state : null;
 }
-const ownerKey = (row: ResourceSummary, uid: string) => JSON.stringify([row.cluster, row.namespace, uid]);
+const ownerKey = (row: ResourceSummary, uid: string, namespace = row.namespace) => JSON.stringify([row.cluster, namespace, uid]);
 
 export function buildOverviewModel(rows: readonly ResourceSummary[]): OverviewModel {
 	// Only the Kubernetes controller reference and the loaded object's UID establish ownership.
@@ -59,7 +59,12 @@ export function buildOverviewModel(rows: readonly ResourceSummary[]): OverviewMo
 		const seen = new Set<ResourceSummary>([row]);
 		while (current.controllerOwner) {
 			const reference = current.controllerOwner;
-			const owner = owners.get(ownerKey(current, reference.uid));
+			let owner = owners.get(ownerKey(current, reference.uid));
+			if (current.namespace !== null) {
+				const clusterOwner = owners.get(ownerKey(current, reference.uid, null));
+				if (owner === undefined) owner = clusterOwner;
+				else if (clusterOwner !== undefined) owner = null;
+			}
 			if (!owner || owner.name !== reference.name || owner.kind !== reference.kind || owner.apiVersion !== reference.apiVersion) break;
 			if (seen.has(owner)) { root = row; break; }
 			seen.add(owner);

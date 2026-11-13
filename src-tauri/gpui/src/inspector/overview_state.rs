@@ -3,7 +3,7 @@ use super::{Inspector, Page};
 use crate::{targets::TestSupportExt, theme::Tokens, ui};
 use gpui_kit::{Context, Div, FocusHandle, KeyDownEvent, SharedString, Window, prelude::*, px};
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::{HashMap, HashSet},
     rc::Rc,
 };
@@ -12,13 +12,17 @@ pub(super) struct Projection {
     pub rows: Vec<kubecove_lib::models::ResourceSummary>,
     pub health: crate::model::HealthSummary,
     pub model: crate::workspaces::overview::Overview,
+    pub entry_health: HashMap<String, kubecove_lib::models::HealthAssessmentState>,
+    pub namespace_health: HashMap<String, kubecove_lib::models::HealthAssessmentState>,
 }
 
 #[derive(Default)]
 pub(super) struct State {
     pub expanded: HashSet<String>,
     pub quiet: bool,
-    pub page: usize,
+    pub page: Cell<usize>,
+    pub application_page: Cell<usize>,
+    pub workspace: Option<String>,
     focus: RefCell<HashMap<String, ButtonFocus>>,
 }
 struct ButtonFocus {

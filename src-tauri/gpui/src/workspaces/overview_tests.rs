@@ -1,6 +1,28 @@
 use super::*;
 use serde_json::json;
 
+#[test]
+fn namespaced_dependents_fold_into_cluster_scoped_controllers_only() {
+    let mut controller = row(
+        "Controller",
+        "global",
+        HealthAssessmentState::Degraded,
+        None,
+    );
+    controller.namespace = None;
+    let pod = row(
+        "Pod",
+        "child",
+        HealthAssessmentState::Degraded,
+        Some(("Controller", "global")),
+    );
+    let model = build(&[&controller, &pod]);
+    assert_eq!(model.problems.len(), 1);
+    assert_eq!(model.problems[0].related, vec![1]);
+    controller.namespace = Some("other".into());
+    assert_eq!(build(&[&controller, &pod]).problems.len(), 2);
+}
+
 fn row(
     kind: &str,
     name: &str,

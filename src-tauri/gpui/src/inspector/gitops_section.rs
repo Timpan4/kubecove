@@ -170,11 +170,18 @@ impl Inspector {
                 .flex_col()
                 .gap(px(8.))
                 .when_some(inventory.argo.as_ref(), |list, apps| {
+                    let troubled = || {
+                        apps.iter().filter(|app| {
+                            crate::workspaces::overview::failing(app.health_assessment.state)
+                        })
+                    };
+                    let pages = troubled().count().div_ceil(crate::model::PAGE_SIZE).max(1);
+                    let page = self.overview_ui.application_page.get().min(pages - 1);
+                    self.overview_ui.application_page.set(page);
                     list.children(
-                        apps.iter()
-                            .filter(|app| {
-                                crate::workspaces::overview::failing(app.health_assessment.state)
-                            })
+                        troubled()
+                            .skip(page * crate::model::PAGE_SIZE)
+                            .take(crate::model::PAGE_SIZE)
                             .map(|app| {
                                 let resource =
                                     crate::gitops_surface::Selection::App(app).resource();
@@ -207,6 +214,45 @@ impl Inspector {
                                 )
                             }),
                     )
+                    .when(pages > 1, |list| {
+                        list.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .gap(px(8.))
+                                .child(
+                                    self.overview_button(
+                                        "overview-applications-previous",
+                                        "Previous applications",
+                                        page > 0,
+                                        cx,
+                                        move |this, _, cx| {
+                                            this.overview_ui.application_page.set(page - 1);
+                                            cx.notify();
+                                        },
+                                    )
+                                    .child(ui::xs("Previous")),
+                                )
+                                .child(ui::muted(ui::xs(format!(
+                                    "Applications page {} of {pages}",
+                                    page + 1
+                                ))))
+                                .child(
+                                    self.overview_button(
+                                        "overview-applications-next",
+                                        "Next applications",
+                                        page + 1 < pages,
+                                        cx,
+                                        move |this, _, cx| {
+                                            this.overview_ui.application_page.set(page + 1);
+                                            cx.notify();
+                                        },
+                                    )
+                                    .child(ui::xs("Next")),
+                                ),
+                        )
+                    })
                     .child(count("Applications", apps.len(), None))
                     .child(separator())
                     .child(count(
