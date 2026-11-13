@@ -1,5 +1,6 @@
 // A pass record is separate from mbx's compiler cache. A cache miss always runs.
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 
 const taskSteps = {
   rust: ["test-rust", "lint-rust"],
@@ -13,6 +14,7 @@ const path = ".ci-rust-pass/record.json";
 const { PASS_TASK: task, PASS_KEY: key, PASS_EVENT: event, PASS_CACHE_HIT: hit } = process.env;
 const environment = Object.fromEntries(["RUNNER_OS", "RUNNER_ARCH", "ImageOS", "ImageVersion"].map((name) => [name, process.env[name]]));
 const hasIdentity = Object.values(environment).every(Boolean);
+const cacheKey = hasIdentity ? `passed-${key}-${createHash("sha256").update(JSON.stringify(environment)).digest("hex")}` : "";
 const runPrefix = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/`;
 function validRun(value) {
   try {
@@ -57,17 +59,20 @@ async function sourceJobPassed(record) {
 }
 
 const [mode] = process.argv.slice(2);
-if (!Object.hasOwn(taskSteps, task) || !new RegExp(`^mbx-ci-${task}-[a-f0-9]{64}-[a-f0-9]{64}$`).test(key ?? "")) {
+if (!Object.hasOwn(taskSteps, task) || !new RegExp(`^mbx-ci-${task}-pass-[a-f0-9]{64}-[a-f0-9]{64}$`).test(key ?? "")) {
   // Invalid lookup inputs cannot justify a skip. Verification rejects them below.
   if (mode !== "decide") throw new Error("Invalid Rust task or cache key");
   appendFileSync(process.env.GITHUB_OUTPUT, "skip=false\n");
+} else if (mode === "cache-key") {
+  // Missing runner identity can never seed a shared, image-independent pass.
+  appendFileSync(process.env.GITHUB_OUTPUT, `key=${cacheKey}\n`);
 } else if (mode === "decide") {
   const record = readPass();
   const skip = Boolean(record && await sourceJobPassed(record));
   appendFileSync(process.env.GITHUB_OUTPUT, `skip=${skip}\n`);
   console.log(skip
-    ? `${task}: passed-${key} matched ${record.run}; skipping build and test work.`
-    : `${task}: no reusable passed-${key}; running verification.`);
+    ? `${task}: ${cacheKey} matched ${record.run}; skipping build and test work.`
+    : `${task}: no reusable ${cacheKey || key}; running verification.`);
 } else if (mode === "verify") {
   const steps = JSON.parse(process.env.PASS_STEPS);
   const decision = process.env.PASS_SKIP;
@@ -78,7 +83,7 @@ if (!Object.hasOwn(taskSteps, task) || !new RegExp(`^mbx-ci-${task}-[a-f0-9]{64}
   const requireOutcome = (id, outcome) => {
     if (steps[id]?.outcome !== outcome) throw new Error(`${task}: ${id} did not ${outcome}`);
   };
-  for (const id of ["setup-rust", "rust-cache", "decide-pass"]) requireOutcome(id, "success");
+  for (const id of ["setup-rust", "rust-cache", "rust-pass", "pass-cache", "decide-pass"]) requireOutcome(id, "success");
   for (const id of ["setup-mbx", "activate-cargo", ...taskSteps[task]]) requireOutcome(id, skip ? "skipped" : "success");
   if (task === "rust") for (const id of auditSteps) requireOutcome(id, "success");
   for (const [id, step] of Object.entries(steps)) {
@@ -89,8 +94,8 @@ if (!Object.hasOwn(taskSteps, task) || !new RegExp(`^mbx-ci-${task}-[a-f0-9]{64}
     if (!validRun(run)) throw new Error("Missing workflow run identity");
     mkdirSync(".ci-rust-pass", { recursive: true });
     writeFileSync(path, `${JSON.stringify({ task, key, environment, run })}\n`);
-    console.log(`${task}: verified passed-${key} in ${run}`);
+    console.log(`${task}: verified ${cacheKey || key} in ${run}`);
   }
 } else {
-  throw new Error("Expected decide or verify");
+  throw new Error("Expected cache-key, decide or verify");
 }

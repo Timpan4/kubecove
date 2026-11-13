@@ -91,16 +91,26 @@ jobs:
             }
             for (const [key, value] of Object.entries(required)) core.setOutput(key, String(value));
             // These tasks share one matrix; frontend checks keep their own job.
-            // Pass reuse needs every verification input, including root configuration.
-            // Root dot-directories also cover a future .cargo/config.toml.
-            const common = "tests scripts/ci-rust-pass.mjs ':(top,glob)*' ':(top,glob).*/**'";
-            const desktop = `src-tauri :!src-tauri/gpui :!src-tauri/server ${common}`;
-            const gpui = `src-tauri :!src-tauri/server src/lib/*-workspace.json ${common}`;
+            const desktop = 'src-tauri :!src-tauri/gpui :!src-tauri/server';
+            // The GPUI tests compile in the workspace fixtures the web client uses.
+            const gpui = 'src-tauri :!src-tauri/server src/lib/*-workspace.json';
+            // The server also embeds the browser build. The frontend tree is left out on
+            // purpose: with it, every frontend push to main would upload the server cache
+            // again (896 MB after run 43325597142). Without it, a build recompiles the
+            // crates that embed the assets: each Cargo step of the server task finished
+            // in under 20 s that way in run 43393348258.
+            const server = 'src-tauri :!src-tauri/gpui';
+            // Pass reuse covers verification inputs separately from compiler bundles.
+            // Root .c* trees cover .cargo/.config, without unrelated .github workflows.
+            // ci.yml is explicit in both key steps; CI uses no local actions/workflows.
+            const common = "tests scripts/ci-rust-pass.mjs ':(top,glob)*' ':(top,glob).c*/**'";
+            const desktopPass = `${desktop} ${common}`;
+            const gpuiPass = `${gpui} ${common}`;
             // cargo tree reads the separate server manifest and lockfile.
-            const backend = `src-tauri :!src-tauri/gpui ${common}`;
+            const backendPass = `${server} ${common}`;
             // The server embeds dist/, builds and typechecks the browser, runs the
             // local HTTP/WS harness, and checks the Grafana dashboard's queries.
-            const server = `${backend} src public e2e scripts deploy`;
+            const serverPass = `${backendPass} src public e2e scripts deploy`;
             const tasks = [
               { task: 'docs', scope: 'docs' },
               { task: 'frontend-e2e', scope: 'frontend' },
@@ -108,11 +118,11 @@ jobs:
               // settings share a job, so they share one setup and one build cache.
               // `inputs` are the Git pathspecs the build reads; the GPUI and server crates
               // are separate workspaces that both depend on the desktop crates.
-              { task: 'rust', scope: 'rust', workspace: 'src-tauri', inputs: desktop },
-              { task: 'gpui-clippy', scope: 'rust', workspace: 'src-tauri/gpui', inputs: gpui },
-              { task: 'gpui-test', scope: 'rust', workspace: 'src-tauri/gpui', inputs: gpui },
-              { task: 'server-backend', scope: 'server', workspace: 'src-tauri', inputs: backend },
-              { task: 'server', scope: 'server', workspace: 'src-tauri/server', inputs: server },
+              { task: 'rust', scope: 'rust', workspace: 'src-tauri', inputs: desktop, passInputs: desktopPass },
+              { task: 'gpui-clippy', scope: 'rust', workspace: 'src-tauri/gpui', inputs: gpui, passInputs: gpuiPass },
+              { task: 'gpui-test', scope: 'rust', workspace: 'src-tauri/gpui', inputs: gpui, passInputs: gpuiPass },
+              { task: 'server-backend', scope: 'server', workspace: 'src-tauri', inputs: desktop, passInputs: backendPass },
+              { task: 'server', scope: 'server', workspace: 'src-tauri/server', inputs: server, passInputs: serverPass },
             ];
             const include = tasks.filter(({ scope }) => scope === 'server'
               ? required.frontend || required.rust : required[scope]);
@@ -237,16 +247,29 @@ jobs:
         if: ${{ matrix.workspace }}
         run: node scripts/ci-rust-cache-key.mjs ci-${{ matrix.task }} .github/workflows/ci.yml ${{ matrix.inputs }}
 
+      - name: Key the Rust pass by its inputs
+        id: rust-pass
+        if: ${{ matrix.workspace }}
+        run: node scripts/ci-rust-cache-key.mjs ci-${{ matrix.task }}-pass .github/workflows/ci.yml ${{ matrix.passInputs }}
+
+      - name: Key the Rust pass by its runner image
+        id: pass-cache
+        if: ${{ matrix.workspace }}
+        env:
+          PASS_TASK: ${{ matrix.task }}
+          PASS_KEY: ${{ steps.rust-pass.outputs.key }}
+        run: node scripts/ci-rust-pass.mjs cache-key
+
       # A tiny pass record avoids restoring compiler objects or installing build
       # dependencies on a hit. Cache errors and partial matches run verification.
       - name: Restore Rust task pass
         id: restore-pass
-        if: ${{ matrix.workspace && github.event_name == 'pull_request' }}
+        if: ${{ matrix.workspace && steps.pass-cache.outputs.key != '' && github.event_name == 'pull_request' }}
         continue-on-error: true
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .ci-rust-pass/record.json
-          key: passed-${{ steps.rust-cache.outputs.key }}
+          key: ${{ steps.pass-cache.outputs.key }}
 
       - name: Decide Rust task reuse
         id: decide-pass
@@ -254,7 +277,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PASS_TASK: ${{ matrix.task }}
-          PASS_KEY: ${{ steps.rust-cache.outputs.key }}
+          PASS_KEY: ${{ steps.rust-pass.outputs.key }}
           PASS_EVENT: ${{ github.event_name }}
           PASS_CACHE_HIT: ${{ steps.restore-pass.outputs.cache-hit }}
         run: node scripts/ci-rust-pass.mjs decide
@@ -456,7 +479,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PASS_TASK: ${{ matrix.task }}
-          PASS_KEY: ${{ steps.rust-cache.outputs.key }}
+          PASS_KEY: ${{ steps.rust-pass.outputs.key }}
           PASS_EVENT: ${{ github.event_name }}
           PASS_CACHE_HIT: ${{ steps.restore-pass.outputs.cache-hit }}
           PASS_SKIP: ${{ steps.decide-pass.outputs.skip }}
@@ -464,11 +487,11 @@ jobs:
         run: node scripts/ci-rust-pass.mjs verify
 
       - name: Save Rust task pass
-        if: ${{ success() && matrix.workspace && steps.decide-pass.outputs.skip != 'true' && steps.verify-pass.outcome == 'success' }}
+        if: ${{ success() && matrix.workspace && steps.pass-cache.outputs.key != '' && steps.decide-pass.outputs.skip != 'true' && steps.verify-pass.outcome == 'success' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .ci-rust-pass/record.json
-          key: passed-${{ steps.rust-cache.outputs.key }}
+          key: ${{ steps.pass-cache.outputs.key }}
 
   nix:
     name: Nix build

@@ -211,51 +211,70 @@ and line, and the compiler output that each job links, caches and restores is
 smaller. Builds run through `mbx`, while `cargo tree` remains a direct inspection
 command. The Cargo shim also wraps Rust builds launched by Bun.
 
-CI also records successful Rust verification separately from compiler objects.
-The five Rust tasks save a tiny `passed-<full mbx cache key>` entry after all
-their verification steps succeed. Only `pull_request` events read these records.
-Action cleanup hooks run after that save, so reuse also checks the recorded run
-attempt through GitHub's jobs API. The originating `CI <task>` job must have
-completed successfully. An unfinished source job, a later cleanup failure, an
-unavailable API or an unlisted job runs verification again. The matrix job has
-read-only Actions permission for this check. It uses the API's default page;
-a task beyond that page causes a safe missed skip.
-Relevant main pushes and manual dispatches always run the selected tasks and
-record passes, so main keeps refreshing compiler bundles. No job's `cache-mode`
-or mbx restore/save policy changes.
+CI records successful Rust verification separately from compiler objects. Each
+matrix entry carries `inputs` for its compiler bundle and `passInputs` for
+result reuse. `scripts/ci-rust-cache-key.mjs` computes both keys, using names
+`ci-<task>` and `ci-<task>-pass`. Both include `ci.yml` explicitly, the actual
+compiler identity and the existing key/wrapper scripts. Compiler-bundle inputs
+retain the lists from before pass reuse. Wider pass inputs never refresh a
+compiler bundle.
 
-Each task looks up its record immediately after checkout, Rust setup and key
-generation. An exact hit must contain the same task, key, runner OS,
-architecture and hosted image identity. Missing image identity, partial hits,
-missing or malformed records, cache errors and environment changes run the
-checks. Image identity stays outside the compiler-cache key; an immutable pass
-record saved by another image can therefore cause a missed skip until repository
-inputs change. This is deliberate: a wrong skip hides a failure.
+In this table, `shared` means `tests scripts/ci-rust-pass.mjs ':(top,glob)*'
+':(top,glob).c*/**'`. Root files cover package, lockfile, environment and toolchain
+configuration; the dot-directory pattern covers `.cargo` and `.config` and also
+matches the tracked `.claude` tree. Other `.github` files are excluded. The only
+GitHub input is the explicit `.github/workflows/ci.yml`: CI currently uses no
+local actions or reusable workflows. Introducing one must add its source to pass
+inputs, which the workflow regression checks enforce.
+
+| Task | Compiler-bundle inputs | Pass inputs |
+| --- | --- | --- |
+| rust | `src-tauri :!src-tauri/gpui :!src-tauri/server` | Compiler inputs plus `shared` |
+| gpui-clippy | `src-tauri :!src-tauri/server src/lib/*-workspace.json` | Compiler inputs plus `shared` |
+| gpui-test | `src-tauri :!src-tauri/server src/lib/*-workspace.json` | Compiler inputs plus `shared` |
+| server-backend | `src-tauri :!src-tauri/gpui :!src-tauri/server` | `src-tauri :!src-tauri/gpui` plus `shared` |
+| server | `src-tauri :!src-tauri/gpui` | Compiler inputs plus `shared src public e2e scripts deploy` |
+
+The server's generated `dist/` comes from its audited browser inputs. The
+backend pass includes the server manifest and lockfile that `cargo tree` reads.
+GPUI pass inputs include embedded workspace JSON, and every pass includes root
+test fixtures. These wider inputs affect only pass records. The edited workflow
+itself changes all five compiler keys once because it was already a build input.
+
+The pass-record cache key is
+`passed-<pass-input key>-<runner-environment SHA-256>`. The environment digest
+includes `RUNNER_OS`, `RUNNER_ARCH`, `ImageOS` and `ImageVersion`, so two
+hosted images in a rollout can each record a pass for identical repository
+inputs. Those fields are also compared inside the tiny record. No stored pass
+key starts with `mbx-`, so the compiler-cache cleanup script ignores it.
+
+Only `pull_request` events restore records. Relevant main pushes and manual
+dispatches always run the selected tasks and record passes, so main keeps
+refreshing compiler bundles. No job's `cache-mode` or mbx save/restore policy
+changes. Each task looks up its pass after checkout, Rust setup and both key
+computations. Exact hits require matching task, pass-input key, environment and
+originating run-attempt URL. Missing image identity, partial hits, malformed
+records, cache errors or an unavailable source-job API run verification.
+
+Action cleanup hooks run after the record save. Reuse therefore asks GitHub's
+jobs API whether the originating `CI <task>` job completed successfully,
+including its post hooks. The checks job has read-only Actions permission. It
+uses the API's default page; an unlisted or unfinished task runs again.
+Completion consumes that successful decision without another API request.
 
 A hit skips system-package setup, Bun setup and installation, compiler-cache
-restore, builds, tests, Clippy and the headless report upload. Desktop dependency
-audits and their lockfile-coverage check still run in the selected `rust` task:
-the advisory database changes independently of repository files. The final
-completion step checks every required verification step's outcome, or validates
-the exact record for skipped build steps, before the matrix job can succeed.
-The skip log names the task, full pass key and the run URL that recorded it.
-
-Pass input pathspecs include root files and dot-directories for toolchain and
-Cargo configuration, the pass helper, and root test fixtures. GPUI also includes
-its embedded `src/lib/*-workspace.json` fixtures. The GUI-free backend includes
-the server manifest and lockfile read by `cargo tree`. The server includes the
-browser source and public assets, Bun lockfile, package and TypeScript/Vite
-configuration, scripts, E2E harness and Grafana dashboard. Its generated `dist/`
-comes from those inputs. These wider pathspecs change all five CI compiler-cache
-keys once; frontend changes now also change the server bundle key.
+restore, builds, tests, Clippy and the headless report upload. Dependency audits
+and their lockfile-coverage check still run in the selected `rust` task because
+the advisory database changes independently. The final task guard requires
+successful verification outcomes or the proved pass decision with matching
+skipped build steps. The log names the task, full image-specific pass cache key
+and the source run URL.
 
 [GitHub cache scopes](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#restrictions-for-accessing-a-cache)
 isolate PR records from other PRs and from main. Main's records are available to
 PRs, while a PR's saved record is available to later runs of that PR. Cache
-eviction only causes verification to run again. The lookup stays inside each
-task rather than adding checkout and compiler setup to change detection. Hits
-still briefly occupy a job slot, but release it before compiler work; hosted runs
-must measure that overhead and the resulting queue savings.
+eviction only causes verification to run again. Hits still briefly occupy a
+job slot for setup and lookup; hosted runs must measure the queue savings.
 
 Change detection selects a verification matrix. It disables fail-fast so a
 failed task does not cancel the remaining checks. Checks that build the same

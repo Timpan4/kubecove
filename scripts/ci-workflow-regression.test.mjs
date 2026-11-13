@@ -18,7 +18,7 @@ const all = flags(...domains);
 // source job that failed in its post hooks must all run verification.
 test("Rust pass records require exact inputs, runner identity and a pull request", () => {
   const root = mkdtempSync(join(tmpdir(), "kubecove-ci-pass-"));
-  const key = `mbx-ci-gpui-test-${"a".repeat(64)}-${"b".repeat(64)}`;
+  const key = `mbx-ci-gpui-test-pass-${"a".repeat(64)}-${"b".repeat(64)}`;
   const output = join(root, "output");
   const env = {
     ...process.env, PASS_TASK: "gpui-test", PASS_KEY: key, PASS_CACHE_HIT: "true", PASS_EVENT: "pull_request",
@@ -38,7 +38,7 @@ test("Rust pass records require exact inputs, runner identity and a pull request
     '  return { ok: process.env.SOURCE_RESULT !== "denied", json: async () => ({ jobs: process.env.SOURCE_MALFORMED ? null : jobs }) };',
     '};',
   ].join("\n"));
-  const steps = Object.fromEntries(["setup-rust", "rust-cache", "decide-pass", "setup-mbx", "activate-cargo", "test-gpui"].map((id) => [id, { outcome: "success", conclusion: "success" }]));
+  const steps = Object.fromEntries(["setup-rust", "rust-cache", "rust-pass", "pass-cache", "decide-pass", "setup-mbx", "activate-cargo", "test-gpui"].map((id) => [id, { outcome: "success", conclusion: "success" }]));
   steps["decide-pass"].outputs = { skip: "false" };
   const run = (mode, overrides = {}) => spawnSync(process.execPath, ["--import", preload, fileURLToPath(new URL("./ci-rust-pass.mjs", import.meta.url)), mode], {
     cwd: root, env: { ...env, ...overrides }, encoding: "utf8",
@@ -274,15 +274,15 @@ test("Rust pass reuse skips expensive steps but always runs advisory audits and 
   assert.ok(save.includes(`uses: actions/cache/save@${pin}`));
   assert.match(lookup, /continue-on-error: true/);
   for (const source of [lookup, save]) {
-    assert.ok(source.includes("key: passed-${{ steps.rust-cache.outputs.key }}"));
+    assert.ok(source.includes("key: ${{ steps.pass-cache.outputs.key }}"));
     assert.ok(source.includes("path: .ci-rust-pass/record.json"));
     assert.doesNotMatch(source, /restore-keys:|lookup-only:/);
   }
   const condition = (name, task, skip, event = "pull_request", successful = true) => {
     const expression = /if: \$\{\{ (.+) \}\}/.exec(step(name))[1];
-    const normalized = expression.replaceAll("steps.decide-pass", "steps.decidePass").replaceAll("steps.verify-pass", "steps.verifyPass");
+    const normalized = expression.replaceAll("steps.decide-pass", "steps.decidePass").replaceAll("steps.verify-pass", "steps.verifyPass").replaceAll("steps.pass-cache", "steps.passCache");
     return new Function("matrix", "steps", "github", "always", "success", `return Boolean(${normalized})`)(
-      task, { decidePass: { outputs: { skip: String(skip) } }, verifyPass: { outcome: successful ? "success" : "failure" } },
+      task, { decidePass: { outputs: { skip: String(skip) } }, verifyPass: { outcome: successful ? "success" : "failure" }, passCache: { outputs: { key: "passed-key" } } },
       { event_name: event }, () => true, () => successful,
     );
   };
@@ -315,13 +315,13 @@ test("every Rust task rejects a missing, failed or cancelled verification step b
     for (const task of matrix.include.filter(({ workspace }) => workspace)) {
       const steps = {};
       for (const { source, id } of definitions) {
-        const expression = /^ {8}if: \$\{\{ (.+) \}\}$/m.exec(source)[1].replaceAll("steps.decide-pass", "steps.decidePass");
-        const selected = new Function("matrix", "steps", "github", "always", `return Boolean(${expression})`)(task, { decidePass: { outputs: { skip: "false" } } }, { event_name: "push" }, () => true);
+        const expression = /^ {8}if: \$\{\{ (.+) \}\}$/m.exec(source)[1].replaceAll("steps.decide-pass", "steps.decidePass").replaceAll("steps.pass-cache", "steps.passCache");
+        const selected = new Function("matrix", "steps", "github", "always", `return Boolean(${expression})`)(task, { decidePass: { outputs: { skip: "false" } }, passCache: { outputs: { key: "passed-key" } } }, { event_name: "push" }, () => true);
         steps[id] = { outcome: selected ? "success" : "skipped", conclusion: selected ? "success" : "skipped" };
         if (id === "decide-pass") steps[id].outputs = { skip: "false" };
       }
       const run = (outcomes) => spawnSync(process.execPath, [helper, "verify"], { cwd: root, encoding: "utf8", env: {
-        ...process.env, PASS_TASK: task.task, PASS_KEY: `mbx-ci-${task.task}-${"a".repeat(64)}-${"b".repeat(64)}`,
+        ...process.env, PASS_TASK: task.task, PASS_KEY: `mbx-ci-${task.task}-pass-${"a".repeat(64)}-${"b".repeat(64)}`,
         PASS_EVENT: "push", PASS_CACHE_HIT: "", PASS_SKIP: "false", PASS_STEPS: JSON.stringify(outcomes),
         GITHUB_SERVER_URL: "https://github.com", GITHUB_REPOSITORY: "Timpan4/kubecove", GITHUB_RUN_ID: "123", GITHUB_RUN_ATTEMPT: "1",
       } });
@@ -348,13 +348,69 @@ test("Rust task keys cover the audited inputs outside each workspace", async () 
   };
   for (const task of matrix.include.filter(({ workspace }) => workspace)) {
     // Exercise the exact shell pathspec arguments supplied to the key writer.
-    const result = spawnSync("bash", ["-c", `git ls-files -z -- ${task.inputs}`], { cwd: new URL("../", import.meta.url), encoding: "utf8" });
+    const result = spawnSync("bash", ["-c", `git ls-files -z -- ${task.passInputs}`], { cwd: new URL("../", import.meta.url), encoding: "utf8" });
     assert.equal(result.status, 0, result.stderr);
     const files = new Set(result.stdout.split("\0"));
     for (const path of expected[task.task]) assert.ok(files.has(path), `${task.task} misses ${path}`);
   }
   assert.equal((await detect(["tests/fixtures/kubernetes/pod-running.json"])).output.rust, "true");
   assert.equal((await detect(["src/lib/settings-integration-workspace.json"])).output.rust, "true");
+});
+// Result inputs must not refresh compiler bundles, unrelated workflows must not
+// invalidate passes, and images must not compete for an immutable pass entry.
+test("compiler bundles keep the original inputs while pass keys use the full audit", async () => {
+  const { matrix } = await detect([".github/workflows/ci.yml"]);
+  const desktop = "src-tauri :!src-tauri/gpui :!src-tauri/server";
+  const gpui = "src-tauri :!src-tauri/server src/lib/*-workspace.json";
+  const server = "src-tauri :!src-tauri/gpui";
+  assert.deepEqual(Object.fromEntries(matrix.include.filter(({ workspace }) => workspace).map(({ task, inputs }) => [task, inputs])), {
+    rust: desktop, "gpui-clippy": gpui, "gpui-test": gpui, "server-backend": desktop, server,
+  });
+  assert.ok(step("Key the Rust cache by its inputs").includes("ci-${{ matrix.task }} .github/workflows/ci.yml ${{ matrix.inputs }}"));
+  assert.ok(step("Key the Rust pass by its inputs").includes("ci-${{ matrix.task }}-pass .github/workflows/ci.yml ${{ matrix.passInputs }}"));
+  for (const task of matrix.include.filter(({ workspace }) => workspace)) {
+    assert.ok(task.passInputs && task.passInputs !== task.inputs, task.task);
+  }
+});
+test("pass inputs retain CI and local actions without unrelated workflows", async () => {
+  const { matrix } = await detect([".github/workflows/ci.yml"]);
+  const uses = [...workflow.matchAll(/uses: (\.\/\.github\/\S+)/g)].map(([, path]) => path.slice(2));
+  for (const task of matrix.include.filter(({ workspace }) => workspace)) {
+    const result = spawnSync("bash", ["-c", `git ls-files -z -- .github/workflows/ci.yml ${task.passInputs ?? task.inputs}`], { cwd: new URL("../", import.meta.url), encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    const githubFiles = result.stdout.split("\0").filter((path) => path.startsWith(".github/"));
+    assert.ok(githubFiles.includes(".github/workflows/ci.yml"), task.task);
+    for (const path of githubFiles) {
+      assert.ok(path === ".github/workflows/ci.yml" || uses.some((used) => path === used || path.startsWith(`${used}/`)), `${task.task} includes unrelated ${path}`);
+    }
+    for (const path of uses) assert.ok(githubFiles.some((file) => file === path || file.startsWith(`${path}/`)), `${task.task} misses ${path}`);
+  }
+});
+test("pass cache keys partition both hosted images and never match compiler-cache cleanup", () => {
+  const root = mkdtempSync(join(tmpdir(), "kubecove-ci-pass-image-"));
+  const output = join(root, "output");
+  const env = { ...process.env, PASS_TASK: "gpui-test", PASS_KEY: `mbx-ci-gpui-test-pass-${"a".repeat(64)}-${"b".repeat(64)}`, RUNNER_OS: "Linux", RUNNER_ARCH: "X64", ImageOS: "ubuntu24", ImageVersion: "20261028.624", GITHUB_OUTPUT: output };
+  const key = (overrides = {}) => {
+    writeFileSync(output, "");
+    const result = spawnSync(process.execPath, [fileURLToPath(new URL("./ci-rust-pass.mjs", import.meta.url)), "cache-key"], { cwd: root, encoding: "utf8", env: { ...env, ...overrides } });
+    assert.equal(result.status, 0, result.stderr);
+    return readFileSync(output, "utf8").trim().replace(/^key=/, "");
+  };
+  try {
+    const first = key();
+    const second = key({ ImageVersion: "20261103.629" });
+    assert.ok(first.startsWith(`passed-${env.PASS_KEY}-`));
+    assert.notEqual(first, second);
+    assert.notEqual(first, key({ ImageOS: "another-image-os" }));
+    assert.equal(first, key());
+    assert.equal(key({ ImageVersion: "" }), "", "missing identity cannot seed an image-independent pass");
+    for (const saved of [first, second]) assert.equal(cacheName(saved), undefined);
+    assert.deepEqual(supersededCaches([first, second].map((saved, id) => ({ id, key: saved, ref: "refs/heads/main", created_at: `2026-11-13T10:00:0${id}Z` }))), []);
+    for (const source of [step("Restore Rust task pass"), step("Save Rust task pass")]) {
+      assert.ok(source.includes("key: ${{ steps.pass-cache.outputs.key }}"));
+      assert.doesNotMatch(source, /steps\.rust-cache\.outputs/);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 test("each existing check remains in its selected task", () => {
   const commands = {
