@@ -1,26 +1,18 @@
 use super::*;
 
 fn owned_pod() -> Value {
-    json!({"apiVersion":"v1","kind":"Pod","metadata":{"name":"api","namespace":"default","uid":"pod-uid","resourceVersion":"7","ownerReferences":[{"apiVersion":"apps/v1","kind":"ReplicaSet","name":"api-7d9c9b7f8d","uid":"rs-uid","controller":true}]},"status":{"phase":"Running"}})
+    json!({"apiVersion":"v1","kind":"Pod","metadata":{"name":"api","namespace":"default","uid":"pod-uid","resourceVersion":"7","labels":{"app":"api"},"ownerReferences":[{"apiVersion":"apps/v1","kind":"ReplicaSet","name":"api-rs","uid":"owner-uid","controller":true}]},"status":{"phase":"Running"}})
 }
 
-/// Previews a Pod delete and answers the owner read with `owner`.
-async fn preview_pod_delete(
-    owner: Response<Body>,
-) -> Option<crate::models::ResourceActionController> {
-    preview_owned_pod_delete(
-        owned_pod(),
-        owner,
-        "/apis/apps/v1/namespaces/default/replicasets/api-7d9c9b7f8d",
-    )
-    .await
+fn replica_set() -> Value {
+    json!({"apiVersion":"apps/v1","kind":"ReplicaSet","metadata":{"name":"api-rs","namespace":"default","uid":"owner-uid"},"spec":{"replicas":1,"selector":{"matchLabels":{"app":"api"}}}})
 }
 
-async fn preview_owned_pod_delete(
+async fn preview(
     pod: Value,
-    owner: Response<Body>,
-    owner_path: &str,
-) -> Option<crate::models::ResourceActionController> {
+    owner: Option<Response<Body>>,
+    pods: Option<Response<Body>>,
+) -> crate::models::ResourceActionController {
     let (cluster, mut handle) = mock_cluster();
     let mut delete = request("Pod", "delete");
     delete.target.name = pod["metadata"]["name"].as_str().unwrap().to_owned();
@@ -28,118 +20,103 @@ async fn preview_owned_pod_delete(
     let responder = async move {
         let (_, send) = handle.next_request().await.expect("target read");
         send.send_response(json_response(200, pod.clone()));
-        let (_, send) = handle.next_request().await.expect("delete dry-run");
+        let (request, send) = handle.next_request().await.expect("delete dry-run");
+        assert_eq!(request.method(), Method::DELETE);
         send.send_response(json_response(200, pod));
-        let (request, send) = handle.next_request().await.expect("owner read");
-        assert_eq!(request.method(), Method::GET);
-        assert_eq!(request.uri().path(), owner_path);
-        send.send_response(owner);
+        if let Some(owner) = owner {
+            let (request, send) = handle.next_request().await.expect("owner read");
+            assert_eq!(request.method(), Method::GET);
+            send.send_response(owner);
+        }
+        if let Some(pods) = pods {
+            let (request, send) = handle.next_request().await.expect("Pod demand read");
+            assert_eq!(request.method(), Method::GET);
+            assert_eq!(request.uri().path(), "/api/v1/namespaces/default/pods");
+            assert!(
+                request
+                    .uri()
+                    .query()
+                    .unwrap()
+                    .contains("labelSelector=app%3Dapi")
+            );
+            send.send_response(pods);
+        }
+        // Keep the responder alive: an unexpected extra read cannot pass.
+        handle
     };
-    let (result, ()) = Box::pin(await_mock(async { tokio::join!(operation, responder) })).await;
-    result.expect("delete preview").controller
+    let (result, _handle) =
+        Box::pin(await_mock(async { tokio::join!(operation, responder) })).await;
+    result
+        .expect("delete preview")
+        .controller
+        .expect("controlling owner")
 }
 
-async fn preview_controller_pod(pod_name: &str, owner: Value, path: &str) -> bool {
-    let mut pod = owned_pod();
-    pod["metadata"]["name"] = json!(pod_name);
-    pod["metadata"]["ownerReferences"][0] = json!({
-        "apiVersion": owner["apiVersion"],
-        "kind": owner["kind"],
-        "name": owner["metadata"]["name"],
-        "uid": owner["metadata"]["uid"],
-        "controller": true,
-    });
-    preview_owned_pod_delete(pod, json_response(200, owner), path)
+fn pod_list(pods: Vec<Value>) -> Response<Body> {
+    json_response(
+        200,
+        json!({"apiVersion":"v1","kind":"PodList","items":pods}),
+    )
+}
+
+// Failure modes: live owner identity and lifecycle can be stale; Pod demand
+// can exceed desired replicas, omit this target, or be unavailable through RBAC.
+#[tokio::test]
+async fn replica_preview_requires_live_demand_for_the_exact_pod() {
+    let pod = owned_pod();
+    assert!(
+        preview(
+            pod.clone(),
+            Some(json_response(200, replica_set())),
+            Some(pod_list(vec![pod.clone()]))
+        )
         .await
-        .expect("controller")
         .recreates
-}
-
-// Failure modes: positive replicas can exclude a Pod after scale-down or a
-// changed start ordinal. A malformed name cannot establish a desired ordinal.
-#[tokio::test]
-async fn statefulset_preview_requires_a_desired_pod_ordinal() {
-    let mut owner = json!({"apiVersion":"apps/v1","kind":"StatefulSet","metadata":{"name":"web","namespace":"default","uid":"ss-uid"},"spec":{"replicas":1}});
-    let path = "/apis/apps/v1/namespaces/default/statefulsets/web";
-    assert!(preview_controller_pod("web-0", owner.clone(), path).await);
-    assert!(!preview_controller_pod("web-2", owner.clone(), path).await);
-    owner["spec"]["ordinals"] = json!({"start":5});
-    assert!(!preview_controller_pod("web-4", owner.clone(), path).await);
-    assert!(preview_controller_pod("web-5", owner.clone(), path).await);
-    assert!(!preview_controller_pod("web-6", owner.clone(), path).await);
-    for name in ["other-5", "web-no-index", "web-05", "web--5"] {
-        assert!(
-            !preview_controller_pod(name, owner.clone(), path).await,
-            "{name}"
-        );
-    }
-}
-
-// Failure modes: Job termination conditions precede terminal Pod phases;
-// paused, completed, externally managed or indexed work may not be replaced.
-#[tokio::test]
-async fn job_preview_requires_active_replacement_work() {
-    let owner = json!({"apiVersion":"batch/v1","kind":"Job","metadata":{"name":"batch","namespace":"default","uid":"job-uid"},"spec":{"parallelism":1,"completions":1}});
-    let path = "/apis/batch/v1/namespaces/default/jobs/batch";
-    assert!(preview_controller_pod("batch-abc", owner.clone(), path).await);
-    for condition in ["FailureTarget", "Failed", "SuccessCriteriaMet", "Complete"] {
-        let mut inactive = owner.clone();
-        inactive["status"] = json!({"conditions":[{"type":condition,"status":"True"}]});
-        assert!(
-            !preview_controller_pod("batch-abc", inactive.clone(), path).await,
-            "{condition}"
-        );
-        inactive["status"]["conditions"][0]["status"] = json!("False");
-        assert!(
-            preview_controller_pod("batch-abc", inactive, path).await,
-            "{condition}=False"
-        );
-    }
-    for (field, value) in [
-        ("parallelism", json!(0)),
-        ("suspend", json!(true)),
-        ("managedBy", json!("example.com/job-controller")),
-        ("completionMode", json!("Indexed")),
-    ] {
-        let mut inactive = owner.clone();
-        inactive["spec"][field] = value;
-        assert!(
-            !preview_controller_pod("batch-abc", inactive, path).await,
-            "{field}"
-        );
-    }
-    let mut completed = owner.clone();
-    completed["status"] = json!({"succeeded":1});
-    assert!(!preview_controller_pod("batch-abc", completed, path).await);
-    let mut work_queue = owner;
-    work_queue["spec"]
-        .as_object_mut()
-        .unwrap()
-        .remove("completions");
-    work_queue["status"] = json!({"succeeded":1});
-    assert!(!preview_controller_pod("batch-abc", work_queue, path).await);
-}
-
-// Failure modes, written before the code: the owner read can find the owner
-// active, find it terminating, find nothing (deleted with orphaning), or be
-// refused by RBAC. Only the first may skip the typed name.
-#[tokio::test]
-async fn pod_delete_preview_trusts_only_a_live_active_owner() {
-    let replica_set = |metadata: Value| json!({"apiVersion":"apps/v1","kind":"ReplicaSet","metadata":metadata,"spec":{"replicas":2}});
-    let live = replica_set(json!({"name":"api-7d9c9b7f8d","namespace":"default","uid":"rs-uid"}));
-    let controller = preview_pod_delete(json_response(200, live))
+    );
+    let mut surplus = pod.clone();
+    surplus["metadata"]["name"] = json!("surplus");
+    surplus["metadata"]["uid"] = json!("surplus-uid");
+    assert!(
+        !preview(
+            pod.clone(),
+            Some(json_response(200, replica_set())),
+            Some(pod_list(vec![pod.clone(), surplus.clone()]))
+        )
         .await
-        .expect("controller");
-    assert_eq!(
-        (controller.name.as_str(), controller.recreates),
-        ("api-7d9c9b7f8d", true)
+        .recreates
+    );
+    assert!(
+        !preview(
+            pod.clone(),
+            Some(json_response(200, replica_set())),
+            Some(pod_list(vec![surplus]))
+        )
+        .await
+        .recreates
+    );
+    assert!(
+        !preview(
+            pod.clone(),
+            Some(json_response(200, replica_set())),
+            Some(json_response(
+                403,
+                json!({"kind":"Status","status":"Failure","reason":"Forbidden","code":403})
+            ))
+        )
+        .await
+        .recreates
     );
 
-    let terminating = replica_set(
-        json!({"name":"api-7d9c9b7f8d","namespace":"default","uid":"rs-uid","deletionTimestamp":"2026-11-13T19:00:00Z"}),
-    );
-    for owner in [
+    let mut terminating = replica_set();
+    terminating["metadata"]["deletionTimestamp"] = json!("2026-11-13T19:00:00Z");
+    let mut different_uid = replica_set();
+    different_uid["metadata"]["uid"] = json!("different-owner");
+    let mut scaled_zero = replica_set();
+    scaled_zero["spec"]["replicas"] = json!(0);
+    for response in [
         json_response(200, terminating),
+        json_response(200, different_uid),
+        json_response(200, scaled_zero),
         json_response(
             404,
             json!({"kind":"Status","status":"Failure","reason":"NotFound","code":404}),
@@ -149,7 +126,114 @@ async fn pod_delete_preview_trusts_only_a_live_active_owner() {
             json!({"kind":"Status","status":"Failure","reason":"Forbidden","code":403}),
         ),
     ] {
-        let controller = preview_pod_delete(owner).await.expect("controller");
+        let controller = preview(pod.clone(), Some(response), None).await;
+        assert_eq!(controller.name, "api-rs");
+        assert!(!controller.recreates);
+    }
+
+    let mut mismatch = pod.clone();
+    mismatch["metadata"]["labels"]["app"] = json!("other");
+    assert!(
+        !preview(mismatch, Some(json_response(200, replica_set())), None)
+            .await
+            .recreates
+    );
+}
+
+// Terminal/deleting Pods, selector mismatches and unrelated owners do not
+// count toward the controller's active selected population.
+#[tokio::test]
+async fn replica_demand_counts_only_active_owned_selected_pods() {
+    let pod = owned_pod();
+    let mut adoptable = pod.clone();
+    adoptable["metadata"]["uid"] = json!("adoptable");
+    adoptable["metadata"]
+        .as_object_mut()
+        .unwrap()
+        .remove("ownerReferences");
+    assert!(
+        !preview(
+            pod.clone(),
+            Some(json_response(200, replica_set())),
+            Some(pod_list(vec![pod.clone(), adoptable])),
+        )
+        .await
+        .recreates
+    );
+    let mut terminal = pod.clone();
+    terminal["metadata"]["uid"] = json!("finished");
+    terminal["status"]["phase"] = json!("Succeeded");
+    let mut deleting = pod.clone();
+    deleting["metadata"]["uid"] = json!("deleting");
+    deleting["metadata"]["deletionTimestamp"] = json!("2026-11-13T19:00:00Z");
+    let mut unrelated = pod.clone();
+    unrelated["metadata"]["uid"] = json!("unrelated");
+    unrelated["metadata"]["ownerReferences"][0]["uid"] = json!("other-owner");
+    assert!(
+        preview(
+            pod.clone(),
+            Some(json_response(200, replica_set())),
+            Some(pod_list(vec![pod, terminal, deleting, unrelated]))
+        )
+        .await
+        .recreates
+    );
+
+    let mut rc_pod = owned_pod();
+    rc_pod["metadata"]["ownerReferences"][0]["apiVersion"] = json!("v1");
+    rc_pod["metadata"]["ownerReferences"][0]["kind"] = json!("ReplicationController");
+    let rc = json!({"apiVersion":"v1","kind":"ReplicationController","metadata":{"name":"api-rs","namespace":"default","uid":"owner-uid"},"spec":{"replicas":1,"selector":{"app":"api"}}});
+    assert!(
+        preview(
+            rc_pod.clone(),
+            Some(json_response(200, rc)),
+            Some(pod_list(vec![rc_pod]))
+        )
+        .await
+        .recreates
+    );
+}
+
+// A StatefulSet only replaces a canonical ordinal inside its desired interval.
+#[tokio::test]
+async fn statefulset_preview_requires_a_desired_pod_ordinal() {
+    let mut owner = json!({"apiVersion":"apps/v1","kind":"StatefulSet","metadata":{"name":"web","namespace":"default","uid":"owner-uid"},"spec":{"replicas":1}});
+    for (start, name, expected) in [
+        (0, "web-0", true),
+        (0, "web-2", false),
+        (5, "web-4", false),
+        (5, "web-5", true),
+        (5, "web-6", false),
+        (5, "other-5", false),
+        (5, "web-no-index", false),
+        (5, "web-05", false),
+        (5, "web--5", false),
+    ] {
+        owner["spec"]["ordinals"] = json!({"start":start});
+        let mut pod = owned_pod();
+        pod["metadata"]["name"] = json!(name);
+        pod["metadata"]["ownerReferences"][0]["kind"] = json!("StatefulSet");
+        pod["metadata"]["ownerReferences"][0]["name"] = json!("web");
+        assert_eq!(
+            preview(pod, Some(json_response(200, owner.clone())), None)
+                .await
+                .recreates,
+            expected,
+            "{name}"
+        );
+    }
+}
+
+// Job retry/deadline state and DaemonSet node eligibility need more than
+// owner evidence. They retain typed confirmation without claiming replacement.
+#[tokio::test]
+async fn job_and_daemonset_pods_keep_typed_confirmation() {
+    for (api_version, kind) in [("batch/v1", "Job"), ("apps/v1", "DaemonSet")] {
+        let mut pod = owned_pod();
+        pod["metadata"]["ownerReferences"][0]["apiVersion"] = json!(api_version);
+        pod["metadata"]["ownerReferences"][0]["kind"] = json!(kind);
+        let controller = preview(pod, None, None).await;
+        assert_eq!(controller.kind, kind);
         assert!(!controller.recreates);
     }
 }
