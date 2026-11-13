@@ -355,7 +355,11 @@ test("Mr Boxington uses isolated object bundles for all Rust workspaces", async 
   assert.match(setup, /github-cache-mode: objects/);
   assert.match(setup, /isolate-objects-cache: true/);
   assert.match(setup, /clean-target-before-export: true/);
-  assert.match(setup, /save-on-pull-request: true/);
+  // Pull requests restore main's cache and never save: one saving push stored about 7 GB
+  // of the 10 GB quota, which evicts the caches every other pull request restores.
+  for (const file of ["ci.yml", "parity-suite.yml", "codspeed.yml"]) {
+    assert.doesNotMatch(readFileSync(new URL(`../.github/workflows/${file}`, import.meta.url), "utf8"), /save-on-pull-request/, file);
+  }
   // Each task keys its own cache by its inputs; the action's generated key is unique per
   // run, so every run would export and upload again.
   assert.ok(setup.includes("cache-key: ${{ steps.rust-cache.outputs.key }}"));
@@ -588,7 +592,7 @@ test("main records the parity coverage map from every parity job", () => {
   // one pull request job saving is enough: every GPUI job builds the same test binary.
   const cache = step("Cache Rust builds");
   assert.match(cache, /uses: jdx\/mr-boxington-action@[a-f0-9]{40} # v1\n/);
-  for (const line of ['version: "1.30.0"', "working-directory: src-tauri/gpui", "cache-key: ${{ steps.rust-cache.outputs.key }}", "restore-keys: ${{ steps.rust-cache.outputs.prefix }}", "github-cache-mode: objects", "isolate-objects-cache: true", "clean-target-before-export: true", "save-on-pull-request: ${{ inputs.shard == 0 && inputs.prefix == '' }}"]) {
+  for (const line of ['version: "1.30.0"', "working-directory: src-tauri/gpui", "cache-key: ${{ steps.rust-cache.outputs.key }}", "restore-keys: ${{ steps.rust-cache.outputs.prefix }}", "github-cache-mode: objects", "isolate-objects-cache: true", "clean-target-before-export: true"]) {
     assert.ok(cache.includes(`\n          ${line}\n`) || cache.endsWith(`\n          ${line}`), `Missing cache setting: ${line}`);
   }
   assert.match(step("Activate Cargo caching"), /run: node scripts\/ci-mbx-cargo\.mjs/);

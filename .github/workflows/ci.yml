@@ -276,7 +276,10 @@ jobs:
           components: clippy
 
       # An unchanged build restores its exact cache and skips the save, which took up to
-      # 200 s per job when every run saved (scripts/ci-rust-cache-key.mjs).
+      # 200 s per job when every run saved (scripts/ci-rust-cache-key.mjs). Only pushes to
+      # main save. A pull request restores main's newest cache and rebuilds what it changed:
+      # one pull request push that saved stored about 7 GB of the 10 GB cache quota, which
+      # evicts the caches main keeps for every other pull request.
       - name: Key the Rust cache by its inputs
         id: rust-cache
         if: ${{ matrix.workspace }}
@@ -296,7 +299,6 @@ jobs:
           github-cache-mode: objects
           isolate-objects-cache: true
           clean-target-before-export: true
-          save-on-pull-request: true
 
       - name: Activate Cargo caching
         if: ${{ matrix.workspace }}

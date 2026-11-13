@@ -86,10 +86,10 @@ jobs:
       # The GPUI crate is its own workspace. The object cache reuses compiler output by
       # content, so the workspace crates are not recompiled after a fresh checkout as they
       # are with a cached target directory (Cargo compares file times). Same settings as
-      # ci.yml. Main seeds the cache for pull requests, and the first ordinary GPUI shard of
-      # a pull request saves one for its later runs. The instrumented coverage build keeps
-      # its own key so the two never replace each other. An unchanged build restores its
-      # exact cache and skips the save (scripts/ci-rust-cache-key.mjs).
+      # ci.yml. Main saves the cache and pull requests only restore it, as in ci.yml. The
+      # instrumented coverage build keeps its own key so the two never replace each other.
+      # An unchanged build restores its exact cache and skips the save
+      # (scripts/ci-rust-cache-key.mjs).
       - name: Key the Rust cache by its inputs
         id: rust-cache
         if: ${{ inputs.driver != 'web' }}
@@ -106,7 +106,6 @@ jobs:
           github-cache-mode: objects
           isolate-objects-cache: true
           clean-target-before-export: true
-          save-on-pull-request: ${{ inputs.shard == 0 && inputs.prefix == '' }}
 
       - name: Activate Cargo caching
         if: ${{ inputs.driver != 'web' }}

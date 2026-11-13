@@ -162,7 +162,6 @@ test("Rust benchmark shard filters split every benchmark path into exactly one s
   assert.match(job("rust"), /version: "1\.30\.0"/);
   assert.match(job("rust"), /isolate-objects-cache: true/);
   assert.match(job("rust"), /clean-target-before-export: true/);
-  assert.match(job("rust"), /save-on-pull-request: \$\{\{ matrix\.shard == 'ac' \}\}/);
   assert.match(job("rust"), /save-if: \$\{\{ github\.ref == 'refs\/heads\/main' && matrix\.shard == 'ac' \}\}/);
   assert.match(job("rust"), /^ {10}- shard: ac$/m);
   assert.ok(job("rust").indexOf("run: node scripts/ci-mbx-cargo.mjs") < job("rust").indexOf("cargo codspeed build"));

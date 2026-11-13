@@ -178,8 +178,10 @@ the workflow file. A build whose inputs did not change restores its exact cache,
 and the action then skips the export and upload. When every run saved, that step
 took 14 to 200 seconds per job, and one pull request run stored 6 GB of the
 repository's 10 GB cache quota. A changed build restores the newest cache with
-the same compiler and saves its own. Default-branch pushes and same-repository
-PRs save. Fork PRs remain restore-only under the action's policy.
+the same compiler and rebuilds what changed. Only default-branch pushes save.
+Pull requests restore main's cache and never save: one pull request push that
+saved stored about 7 GB, and GitHub evicts the least recently used caches above
+the quota, which would remove the caches main keeps for other pull requests.
 
 CI builds set `CARGO_PROFILE_DEV_DEBUG=line-tables-only`. Backtraces keep file
 and line, and the compiler output that each job links, caches and restores is
