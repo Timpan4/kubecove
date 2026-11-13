@@ -141,19 +141,26 @@ jobs:
       - changes
     if: ${{ needs.changes.outputs.rust == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
     runs-on: ubuntu-latest
+    # Every shard builds the same benchmark binary under one cache key, and the cache action
+    # fails a job whose save loses GitHub's reservation of the key to another job (four of
+    # six shards in run 43397675100). These shards get read-only cache access and the
+    # `rust-saver` job below saves. `cache-mode` takes one literal value per job, which is
+    # why the saving shard is a job of its own. Setting ACTIONS_CACHE_MODE on the step does
+    # nothing: the runner sets that variable for actions from the job's cache-mode (run
+    # 43407667697). Each job's "Set up job" log prints the access it got as "Cache mode".
+    cache-mode: read
     # Simulation mode costs about 7.5 s per benchmark whatever it measures (run 43316700493),
     # so one job ran 117 benchmarks for 13 to 16 minutes. Each shard runs the benchmarks whose
     # last divan path segment starts with one of its letters; CodSpeed merges the uploads of
     # one workflow run into one report. Divan tests each benchmark (or generic argument)
     # against one path, and the last class is the complement of the others, so the shards are
     # disjoint and complete (scripts/codspeed-workflow-regression.test.mjs). The letters are
-    # paired so each shard ran 144 to 159 s of benchmarks in that run.
+    # paired so each shard ran 144 to 159 s of benchmarks in that run. The sixth shard, `ac`,
+    # is the `rust-saver` job.
     strategy:
       fail-fast: false
       matrix:
         include:
-          - shard: ac
-            filter: "(?:^|::)[ac][^:]*$"
           - shard: dl
             filter: "(?:^|::)[dl][^:]*$"
           - shard: es
@@ -165,7 +172,7 @@ jobs:
           - shard: other
             filter: "(?:^|::)[^acdehjlnrs:][^:]*$"
 
-    steps:
+    steps: &rust-steps
       - name: Checkout
         uses: actions/checkout@v7.0.1
         with:
@@ -195,14 +202,8 @@ jobs:
       # survive a fresh checkout, because Cargo compares file times, so the object cache
       # reuses compiler output by content, with the settings ci.yml uses. Main saves it and
       # pull requests only restore it, as in ci.yml.
-      # Every shard has the same cache key, so one shard saves. In run 43397675100 all six
-      # tried, GitHub reserved the key for one, and the action failed the others' jobs. The
-      # action skips its save when ACTIONS_CACHE_MODE, GitHub's cache-mode for the job, is
-      # `read`. The job-level `cache-mode` key takes no matrix expression, so the step sets it.
       - name: Setup Mr Boxington for CodSpeed builds
         uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
-        env:
-          ACTIONS_CACHE_MODE: ${{ matrix.shard != 'ac' && 'read' || '' }}
         with:
           version: "1.30.0"
           working-directory: src-tauri
@@ -242,6 +243,26 @@ jobs:
           # cargo-codspeed passes the filter to the divan binary as its regex filter argument.
           run: cd src-tauri && cargo codspeed run --bench backend_hot_paths '${{ matrix.filter }}'
 
+  # The shard that saves the Rust build cache on main. It runs the same steps as `rust` with
+  # GitHub's default cache access.
+  rust-saver:
+    name: Run Rust benchmarks (${{ matrix.shard }})
+    permissions:
+      contents: read
+      id-token: write
+    needs:
+      - changes
+    if: ${{ needs.changes.outputs.rust == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: ac
+            filter: "(?:^|::)[ac][^:]*$"
+
+    steps: *rust-steps
+
   check:
     name: CodSpeed Performance Analysis
     runs-on: ubuntu-latest
@@ -250,6 +271,7 @@ jobs:
       - changes
       - frontend
       - rust
+      - rust-saver
     if: always()
 
     steps:
@@ -261,15 +283,17 @@ jobs:
           RELEASE_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release/app-v') && contains(github.event.pull_request.labels.*.name, 'release') }}
           RUST_REQUIRED: ${{ needs.changes.outputs.rust }}
           RUST_RESULT: ${{ needs.rust.result }}
+          RUST_SAVER_RESULT: ${{ needs.rust-saver.result }}
         run: |
           set -euo pipefail
           echo "Change detection: ${CHANGES_RESULT}"
           echo "Frontend benchmarks: ${FRONTEND_RESULT} (required: ${FRONTEND_REQUIRED})"
-          echo "Rust benchmarks: ${RUST_RESULT} (required: ${RUST_REQUIRED})"
+          echo "Rust benchmarks: ${RUST_RESULT} and ${RUST_SAVER_RESULT} (required: ${RUST_REQUIRED})"
           test "${CHANGES_RESULT}" = "success"
           if [[ "${RELEASE_PR}" == "true" ]]; then
             test "${FRONTEND_RESULT}" = "skipped"
             test "${RUST_RESULT}" = "skipped"
+            test "${RUST_SAVER_RESULT}" = "skipped"
           else
             verify_result() {
               local required="$1"
@@ -283,4 +307,5 @@ jobs:
             }
             verify_result "${FRONTEND_REQUIRED}" "${FRONTEND_RESULT}"
             verify_result "${RUST_REQUIRED}" "${RUST_RESULT}"
+            verify_result "${RUST_REQUIRED}" "${RUST_SAVER_RESULT}"
           fi

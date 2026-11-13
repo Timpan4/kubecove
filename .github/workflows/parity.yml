@@ -32,6 +32,9 @@ jobs:
       matrix:
         shard: [0, 1, 2, 3]
     uses: ./.github/workflows/parity-suite.yml
+    # Pull request jobs restore main's caches and save none, so every pull request also
+    # exercises the read-only cache access that the main shards below depend on.
+    cache-mode: read
     with:
       shard: ${{ matrix.shard }}
       shards: 4
@@ -46,6 +49,7 @@ jobs:
       matrix:
         driver: [web, gpui]
     uses: ./.github/workflows/parity-suite.yml
+    cache-mode: read
     with:
       shard: 0
       shards: 1
@@ -62,6 +66,7 @@ jobs:
       matrix:
         shard: [0, 1, 2]
     uses: ./.github/workflows/parity-suite.yml
+    cache-mode: read
     with:
       shard: ${{ matrix.shard }}
       shards: 3
@@ -129,14 +134,16 @@ jobs:
       matrix:
         shard: [0, 1, 2, 3]
     uses: ./.github/workflows/parity-suite.yml
+    # The four shards and the spike job build the same instrumented binary under one cache
+    # key. The spike job saves it and these restore only.
+    cache-mode: read
     with:
       shard: ${{ matrix.shard }}
       shards: 4
       coverage: true
-      # The four shards and the spike job build the same instrumented binary.
-      save-cache: ${{ matrix.shard == 0 }}
       exclude: settings-diagnostics.topology-spike-harness
 
+  # Saves the instrumented build cache that the four shards above restore.
   main-spike:
     name: Parity (main)
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
@@ -145,7 +152,6 @@ jobs:
       shard: 0
       shards: 1
       coverage: true
-      save-cache: false
       prefix: settings-diagnostics.topology-spike-harness
 
   # The main shards build an instrumented binary, so this seeds the uninstrumented build

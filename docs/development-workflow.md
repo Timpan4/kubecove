@@ -183,9 +183,16 @@ Pull requests restore main's cache and never save: one pull request push that
 saved stored about 7 GB, and GitHub evicts the least recently used caches above
 the quota, which would remove the caches main keeps for other pull requests.
 Jobs that share one cache key, such as the CodSpeed Rust shards and the main
-parity shards, let one job save. The others run the cache action with
-`ACTIONS_CACHE_MODE: read`, because the action fails a job whose save loses
-GitHub's reservation of the key to another job.
+parity shards, let one job save, because the action fails a job whose save loses
+GitHub's reservation of the key to another job. The others set GitHub's
+`cache-mode: read` on the job, which gives them read-only cache access.
+`cache-mode` takes one literal value per job, so the saving CodSpeed shard is the
+`rust-saver` job, and in `parity.yml` the spike job saves for the main shards.
+Setting `ACTIONS_CACHE_MODE` in a step's `env` does nothing: the runner sets that
+variable from the job's `cache-mode`, and only for actions, so a `run` step
+cannot read it. The "Set up job" log of every job prints the access it got as
+"Cache mode". The pull request parity jobs are read-only too,
+so every pull request exercises that path before main depends on it.
 
 CI builds set `CARGO_PROFILE_DEV_DEBUG=line-tables-only`. Backtraces keep file
 and line, and the compiler output that each job links, caches and restores is

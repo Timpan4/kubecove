@@ -604,14 +604,23 @@ test("main records the parity coverage map from every parity job", () => {
   // Failure mode: the main shards and the main spike job build the same instrumented binary
   // under one cache key, and a second saver fails its job when GitHub has reserved the key
   // for the first. Exactly one of those jobs may save.
-  // The mode is `read` for every job but the saver, whose empty value leaves the action's
-  // own save policy in force.
-  assert.equal(expression(cache, "ACTIONS_CACHE_MODE"), "!inputs.save-cache && 'read' || ''");
-  assert.match(suite, /^ {6}save-cache:\n(?: {8}.+\n)* {8}default: true$/m);
-  const mainShards = JSON.parse(/^ {8}shard: (\[.+\])$/m.exec(job("main", parity))?.[1] ?? "[]");
-  assert.equal(expression(job("main", parity), "save-cache"), "matrix.shard == 0");
-  assert.deepEqual([mainShards.length, mainShards.filter((shard) => shard === 0)], [4, [0]]);
-  assert.match(job("main-spike", parity), /^ {6}save-cache: false$/m);
+  // GitHub's `cache-mode` on the calling job decides it. A step cannot: the runner sets
+  // ACTIONS_CACHE_MODE from the job's cache-mode and ignores a step's value (run 43407667697).
+  const readOnly = (name) => /^ {4}cache-mode: read$/m.test(job(name, parity));
+  assert.deepEqual(["main", "main-spike", "main-build-cache"].map(readOnly), [true, false, false]);
+  // Each saver writes its own cache: the spike job the instrumented build, the build cache
+  // job the uninstrumented one. A second `coverage: true` saver would bring the conflict back
+  // and leave pull requests without a cache.
+  assert.match(job("main-spike", parity), /^ {6}coverage: true$/m);
+  assert.match(job("main-build-cache", parity), /^ {6}build-only: true$/m);
+  assert.doesNotMatch(job("main-build-cache", parity), /coverage:/);
+  // Pull request jobs never save, and with the same access they exercise the main shards' path.
+  assert.deepEqual(["pull-request-web", "pull-request-gpui", "pull-request-spike"].map(readOnly), [true, true, true]);
+  // Those four jobs are the only place that sets the mode. One at the top of either workflow
+  // would take the two savers' access as well.
+  assert.equal(parity.match(/^ *cache-mode:/gm)?.length, 4);
+  assert.doesNotMatch(suite, /^ *cache-mode:/m);
+  assert.doesNotMatch(`${suite}${parity}`, /ACTIONS_CACHE_MODE: |save-cache|^ +cache-mode: (?!read$)/m);
   assert.match(step("Activate Cargo caching"), /run: node scripts\/ci-mbx-cargo\.mjs/);
   assert.doesNotMatch(suite, /swatinem\/rust-cache/i);
   assert.match(step("Install LLVM tools"), /if: \$\{\{ inputs\.coverage \}\}\n {8}run: rustup component add llvm-tools/);
