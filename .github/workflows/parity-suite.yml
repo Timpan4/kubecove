@@ -93,7 +93,7 @@ jobs:
       - name: Key the Rust cache by its inputs
         id: rust-cache
         if: ${{ inputs.driver != 'web' }}
-        run: node scripts/ci-rust-cache-key.mjs parity${{ inputs.coverage && '-coverage' || '' }} .github/workflows/parity-suite.yml src-tauri ':!src-tauri/server'
+        run: node scripts/ci-rust-cache-key.mjs parity${{ inputs.coverage && '-coverage' || '' }} .github/workflows/parity-suite.yml src-tauri ':!src-tauri/server' 'src/lib/*-workspace.json'
 
       - name: Cache Rust builds
         if: ${{ inputs.driver != 'web' }}

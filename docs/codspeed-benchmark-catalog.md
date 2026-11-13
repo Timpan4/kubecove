@@ -679,12 +679,12 @@ The inspected paths below do not justify standalone production benchmarks:
 
 ## CI and parallelism
 
-[The workflow](../.github/workflows/codspeed.yml) enumerates every frontend `.bench.ts` file into an independent matrix job and runs Rust in parallel. The partition grows with the catalog rather than relying on a manually maintained job count. All jobs stay in one workflow for CodSpeed aggregation.
+[The workflow](../.github/workflows/codspeed.yml) runs the frontend benchmarks in eight groups and the Rust benchmarks in six shards. The workflow fixes both counts, and regression tests check that every benchmark runs in exactly one job. All jobs stay in one workflow for CodSpeed aggregation.
 
 - [Vitest filtering](../vitest.config.ts) uses the same [file enumerator](../scripts/codspeed-benchmark-suites.mjs) as CI. `KUBECOVE_BENCHMARK_FILE` selects one known file. `KUBECOVE_BENCHMARK_GROUP=<index>/<count>` selects one of `count` groups balanced by measured duration; CI runs eight. Unknown files, unknown legacy suites, malformed groups, and conflicting selectors fail. Legacy `topology` selects all topology benchmark files; `other` selects the complement. `bun run test:bench-groups` collects the declared benchmarks with Vitest and proves each runs in exactly one CI group. It runs in the `Frontend checks` job of `ci.yml`, because it needs installed dependencies.
 - Rust CI explicitly builds/runs `backend_hot_paths`. Add cases to that target for automatic inclusion. A new target needs Cargo, workflow and local-script wiring.
-- Existing hosted measurements above show frontend measurement dominates each former frontend job. File jobs remove sequential suite measurement from that job's critical path. Runner availability and repeated setup still affect total hosted time. [CodSpeed sharding](https://codspeed.io/docs/features/sharded-benchmarks)
-- Shared `fixtures/` paths of any extension trigger both lanes. [Workflow regression tests](../scripts/codspeed-workflow-regression.test.mjs) cover fixture selection, actual file partitions, workflow matrix wiring and required-job completion. Missing comparison SHAs are fetched individually with depth one. Rust caches workspace artifacts and retains one target to avoid repeating Tauri linking across targets.
+- Existing hosted measurements above show frontend measurement dominates each former frontend job. Groups remove sequential suite measurement from that job's critical path. Runner availability and repeated setup still affect total hosted time. [CodSpeed sharding](https://codspeed.io/docs/features/sharded-benchmarks)
+- Shared `fixtures/` paths of any extension trigger both lanes. [Workflow regression tests](../scripts/codspeed-workflow-regression.test.mjs) cover fixture selection, actual file partitions, workflow matrix wiring and required-job completion. Missing comparison SHAs are fetched individually with depth one. Rust CI builds the benchmarks without the `desktop` feature, so no shard compiles or links Tauri, and restores an mbx object cache that only `main` saves.
 - The final `CodSpeed Performance Analysis` job verifies selected-job success. It defines no numerical regression threshold. External CodSpeed check configuration was not inspected.
 
 ## Existing commands
@@ -1074,7 +1074,8 @@ and upload outside Vitest.
 | 7 | 147.709 s |
 
 These are projections from one hosted run, with no measured run-to-run spread.
-The changed grouping has not run in CI. Setup varies: the old group 3 spent
+In run 43393348341, the first with this grouping and a restored cache, the
+`Run benchmarks` step took 108 to 179 seconds per group. Setup varies: the old group 3 spent
 63.790 seconds outside Vitest, including a package installation from
 22:47:06.889 to 22:47:50.051 UTC, despite an instrument cache hit.
 That overhead would exceed the target even with the new groups. The grouping
@@ -1119,6 +1120,7 @@ The workflow uses Mr Boxington's documented objects mode
 because stable Cargo path-crate freshness uses source mtimes, which change in
 fresh checkouts. The [Mr Boxington action documentation](https://mr-boxington.jdx.dev/github-action) describes this transport. Its target scanner also skips Cargo 1.100's build/ unit-state
 subtree, so the ordinary target cache does not preserve that state. Object mode
-keys rustc invocations by content and avoids the mtime failure. Integration
-with cargo codspeed through the Cargo shim remains unverified until a hosted
-run.
+keys rustc invocations by content and avoids the mtime failure. `cargo
+codspeed build` runs through the Cargo shim: in run 43393348341 each shard
+restored the cache and built the benchmarks in 67 to 100 seconds. Run
+43391917982 had no cache and took 224 to 369 seconds per shard for the build.

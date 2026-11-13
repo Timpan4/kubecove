@@ -372,7 +372,7 @@ test("Mr Boxington uses isolated object bundles for all Rust workspaces", async 
   const { matrix } = await detect([".github/workflows/ci.yml"]);
   const workspaces = Object.fromEntries(matrix.include.filter(({ workspace }) => workspace).map(({ task, workspace, inputs }) => [task, [workspace, inputs]]));
   // The GPUI and server crates are separate workspaces that both build the desktop crates.
-  const [desktop, gpui, server] = ["src-tauri :!src-tauri/gpui :!src-tauri/server", "src-tauri :!src-tauri/server", "src-tauri :!src-tauri/gpui"];
+  const [desktop, gpui, server] = ["src-tauri :!src-tauri/gpui :!src-tauri/server", "src-tauri :!src-tauri/server src/lib/*-workspace.json", "src-tauri :!src-tauri/gpui"];
   assert.deepEqual(workspaces, {
     rust: ["src-tauri", desktop], "gpui-clippy": ["src-tauri/gpui", gpui], "gpui-test": ["src-tauri/gpui", gpui],
     "server-backend": ["src-tauri", desktop], server: ["src-tauri/server", server],
@@ -580,7 +580,7 @@ test("main records the parity coverage map from every parity job", () => {
   const run = step("Run parity suite");
   const results = Object.fromEntries(Object.entries(modes).map(([mode, [inputs, event]]) => [mode, {
     coverage: evaluate(expression(run, "PARITY_COVERAGE"), inputs, event),
-    cacheKey: `parity${evaluate(/run: node scripts\/ci-rust-cache-key\.mjs parity\$\{\{ (.+) \}\} \.github\/workflows\/parity-suite\.yml src-tauri ':!src-tauri\/server'$/m.exec(step("Key the Rust cache by its inputs"))?.[1] ?? "'missing'", inputs, event)}`,
+    cacheKey: `parity${evaluate(/run: node scripts\/ci-rust-cache-key\.mjs parity\$\{\{ (.+) \}\} \.github\/workflows\/parity-suite\.yml src-tauri ':!src-tauri\/server' 'src\/lib\/\*-workspace\.json'$/m.exec(step("Key the Rust cache by its inputs"))?.[1] ?? "'missing'", inputs, event)}`,
     runs: evaluate(expression(run, "if"), inputs, event),
   }]));
   assert.deepEqual(results.pullRequest, { coverage: "0", cacheKey: "parity", runs: true });
