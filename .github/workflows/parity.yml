@@ -133,6 +133,8 @@ jobs:
       shard: ${{ matrix.shard }}
       shards: 4
       coverage: true
+      # The four shards and the spike job build the same instrumented binary.
+      save-cache: ${{ matrix.shard == 0 }}
       exclude: settings-diagnostics.topology-spike-harness
 
   main-spike:
@@ -143,6 +145,7 @@ jobs:
       shard: 0
       shards: 1
       coverage: true
+      save-cache: false
       prefix: settings-diagnostics.topology-spike-harness
 
   # The main shards build an instrumented binary, so this seeds the uninstrumented build

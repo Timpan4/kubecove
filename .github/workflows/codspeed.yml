@@ -195,8 +195,14 @@ jobs:
       # survive a fresh checkout, because Cargo compares file times, so the object cache
       # reuses compiler output by content, with the settings ci.yml uses. Main saves it and
       # pull requests only restore it, as in ci.yml.
+      # Every shard has the same cache key, so one shard saves. In run 43397675100 all six
+      # tried, GitHub reserved the key for one, and the action failed the others' jobs. The
+      # action skips its save when ACTIONS_CACHE_MODE, GitHub's cache-mode for the job, is
+      # `read`. The job-level `cache-mode` key takes no matrix expression, so the step sets it.
       - name: Setup Mr Boxington for CodSpeed builds
         uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
+        env:
+          ACTIONS_CACHE_MODE: ${{ matrix.shard != 'ac' && 'read' || '' }}
         with:
           version: "1.30.0"
           working-directory: src-tauri
