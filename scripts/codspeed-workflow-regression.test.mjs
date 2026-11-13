@@ -124,6 +124,18 @@ for (const overrides of [{ EVENT_NAME: "push" }, { EVENT_NAME: "workflow_dispatc
   });
 }
 
+// Failure mode: a selector setup step that fails the detection job skips every benchmark job
+// and fails the gate, where the fallback would have run everything.
+test("a failed selector setup step still reaches the detection step", () => {
+  const changes = job("changes");
+  for (const name of ["Setup Bun", "Install selector dependencies", "Test benchmark orchestration"]) {
+    const start = changes.indexOf(`      - name: ${name}\n`);
+    assert.notEqual(start, -1, name);
+    assert.match(changes.slice(start, changes.indexOf("\n      - name: ", start + 1)), /^ {8}continue-on-error: true$/m, name);
+  }
+  assert.match(changes.slice(changes.indexOf("      - name: Detect frontend and Rust benchmark changes\n")), /^ {8}if: \$\{\{ !cancelled\(\) \}\}$/m);
+});
+
 test("release selection summaries explain the existing release skip policy", () => {
   assert.deepEqual(detect(["bun.lock"], { RELEASE_PR: "true" }), { frontend: "false", rust: "false" });
 });
