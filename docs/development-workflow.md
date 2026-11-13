@@ -189,8 +189,9 @@ GitHub's reservation of the key to another job. The others set GitHub's
 `cache-mode` takes one literal value per job, so the saving CodSpeed shard is the
 `rust-saver` job, and in `parity.yml` the spike job saves for the main shards.
 Setting `ACTIONS_CACHE_MODE` in a step's `env` does nothing: the runner sets that
-variable from the job's `cache-mode`. Each of these jobs prints the access it got
-in its "Show cache access" step. The pull request parity jobs are read-only too,
+variable from the job's `cache-mode`, and only for actions, so a `run` step
+cannot read it. The "Set up job" log of every job prints the access it got as
+"Cache mode". The pull request parity jobs are read-only too,
 so every pull request exercises that path before main depends on it.
 
 CI builds set `CARGO_PROFILE_DEV_DEBUG=line-tables-only`. Backtraces keep file

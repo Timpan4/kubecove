@@ -59,10 +59,6 @@ jobs:
         with:
           persist-credentials: false
 
-      # `read` in the jobs that only restore; a job that saves shows GitHub's default.
-      - name: Show cache access
-        run: echo "${ACTIONS_CACHE_MODE:-not set}"
-
       # yeslogic-fontconfig-sys finds fontconfig through pkg-config at build time.
       # The linker needs libxcb and both xkbcommon libraries for GPUI's X11 backend.
       # GPUI loads Wayland at run time, and its test platform needs no display.
@@ -102,7 +98,7 @@ jobs:
       # Jobs with the same cache key must not all save: GitHub reserves the key for one and
       # the action fails the others (three of four main shards in run 43397675113). The
       # caller decides with `cache-mode` on its job: parity.yml gives every job read-only
-      # cache access except the two that save.
+      # cache access except the two that save. The "Set up job" log prints it as "Cache mode".
       - name: Cache Rust builds
         if: ${{ inputs.driver != 'web' }}
         uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
