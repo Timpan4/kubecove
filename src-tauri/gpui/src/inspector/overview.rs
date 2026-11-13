@@ -35,8 +35,9 @@ pub(super) fn titled_card(title: &str, description: &str, content: impl IntoElem
 }
 impl Inspector {
     pub(super) fn overview(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.begin_overview_buttons();
         let projection = self.overview_projection();
-        let rows: Vec<_> = projection.rows.iter().collect();
+        let rows = &projection.rows;
         let model = &projection.model;
         let health = projection.health;
         let has_data = matches!(self.overview_load(), Load::Ready) || !rows.is_empty();
@@ -77,7 +78,7 @@ impl Inspector {
                 .flex_1()
                 .min_w_0(),
             );
-        div()
+        let view = div()
             .id("overview")
             .flex()
             .flex_col()
@@ -133,12 +134,14 @@ impl Inspector {
                             .flex_1()
                             .min_w_0()
                             .gap(px(16.))
-                            .child(self.overview_findings(&rows, model, has_data, main_width, cx))
+                            .child(self.overview_findings(rows, model, has_data, main_width, cx))
                             .children(self.overview_namespaces(model, cx)),
                     )
                     .child(rail),
             )
-            .children(self.compare_cards())
+            .children(self.compare_cards());
+        self.finish_overview_buttons();
+        view
     }
     fn overview_health(
         &self,
@@ -147,7 +150,11 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) -> Div {
         let summary = if has_data {
-            format!("{} resources loaded from the saved scope.", health.total)
+            format!(
+                "{} resource{} loaded from the saved scope.",
+                health.total,
+                if health.total == 1 { "" } else { "s" }
+            )
         } else {
             "Counts appear once workspace resources load.".into()
         };
@@ -300,7 +307,7 @@ impl Inspector {
     }
     fn overview_findings(
         &self,
-        rows: &[&kubecove_lib::models::ResourceSummary],
+        rows: &[kubecove_lib::models::ResourceSummary],
         model: &overview::Overview,
         has_data: bool,
         width: f32,

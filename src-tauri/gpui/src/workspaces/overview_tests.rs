@@ -5,17 +5,23 @@ fn row(
     kind: &str,
     name: &str,
     state: HealthAssessmentState,
-    owner: Option<&str>,
+    owner: Option<(&str, &str)>,
 ) -> ResourceSummary {
     serde_json::from_value(json!({
         "kind": kind, "name": name, "cluster": "dev", "namespace": "apps", "age": "1d",
-        "ownerRef": owner,
+        "uid": format!("{kind}/{name}"), "apiVersion": "apps/v1",
+        "controllerOwner": owner.map(|(kind, name)| json!({ "apiVersion": "apps/v1", "kind": kind, "name": name, "uid": format!("{kind}/{name}") })),
         "healthAssessment": { "state": state, "completeness": "complete", "winningSources": ["kubernetes"], "reasons": [], "evidence": [] }
     })).unwrap()
 }
 #[test]
 fn folds_an_owner_chain_and_uses_the_winning_pod_cause() {
-    let mut pod = row("Pod", "pod", HealthAssessmentState::Degraded, Some("rs"));
+    let mut pod = row(
+        "Pod",
+        "pod",
+        HealthAssessmentState::Degraded,
+        Some(("ReplicaSet", "rs")),
+    );
     pod.restarts = Some(12);
     let rows = [
         row("Deployment", "api", HealthAssessmentState::Degraded, None),
@@ -23,7 +29,7 @@ fn folds_an_owner_chain_and_uses_the_winning_pod_cause() {
             "ReplicaSet",
             "rs",
             HealthAssessmentState::Degraded,
-            Some("api"),
+            Some(("Deployment", "api")),
         ),
         pod,
     ];
@@ -38,7 +44,12 @@ fn folds_an_owner_chain_and_uses_the_winning_pod_cause() {
 fn never_merges_contexts_namespaces_ambiguous_or_cyclic_owners() {
     let mut rows = vec![
         row("Deployment", "api", HealthAssessmentState::Degraded, None),
-        row("Pod", "pod", HealthAssessmentState::Degraded, Some("api")),
+        row(
+            "Pod",
+            "pod",
+            HealthAssessmentState::Degraded,
+            Some(("Deployment", "api")),
+        ),
     ];
     let mut other = rows.clone();
     for row in &mut other {
@@ -56,29 +67,24 @@ fn never_merges_contexts_namespaces_ambiguous_or_cyclic_owners() {
     let rows = [
         row("Deployment", "same", HealthAssessmentState::Degraded, None),
         row("StatefulSet", "same", HealthAssessmentState::Degraded, None),
-        row(
-            "Pod",
-            "ambiguous",
-            HealthAssessmentState::Degraded,
-            Some("same"),
-        ),
+        row("Pod", "ambiguous", HealthAssessmentState::Degraded, None),
         row(
             "Pod",
             "orphan",
             HealthAssessmentState::Degraded,
-            Some("missing"),
+            Some(("Deployment", "missing")),
         ),
         row(
             "ReplicaSet",
             "cycle-a",
             HealthAssessmentState::Degraded,
-            Some("cycle-b"),
+            Some(("ReplicaSet", "cycle-b")),
         ),
         row(
             "ReplicaSet",
             "cycle-b",
             HealthAssessmentState::Degraded,
-            Some("cycle-a"),
+            Some(("ReplicaSet", "cycle-a")),
         ),
     ];
     assert_eq!(
@@ -94,13 +100,13 @@ fn healthy_intermediates_do_not_hide_findings_or_replace_a_degraded_cause() {
             "ReplicaSet",
             "rs",
             HealthAssessmentState::Healthy,
-            Some("api"),
+            Some(("Deployment", "api")),
         ),
         row(
             "Pod",
             "pod",
             HealthAssessmentState::NeedsAttention,
-            Some("rs"),
+            Some(("ReplicaSet", "rs")),
         ),
     ];
     let model = build(&rows.iter().collect::<Vec<_>>());

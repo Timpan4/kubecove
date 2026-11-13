@@ -82,6 +82,8 @@ fn resource(name: &str, namespace: &str) -> ResourceSummary {
         ready: None,
         restarts: None,
         owner_ref: None,
+        uid: None,
+        controller_owner: None,
         argo_app: None,
         helm_release: None,
         git_ops_owner: None,

@@ -27,15 +27,14 @@ function problemTone(row: ResourceSummary): ProblemTone | null {
 	const state = toneOf(row);
 	return state === "degraded" || state === "needsAttention" ? state : null;
 }
-const OWNER_KINDS = new Set(["Deployment", "ReplicaSet", "StatefulSet", "DaemonSet", "Job", "CronJob", "ReplicationController"]);
-const ownerKey = (row: ResourceSummary, name: string) => JSON.stringify([row.cluster, row.namespace, name]);
+const ownerKey = (row: ResourceSummary, uid: string) => JSON.stringify([row.cluster, row.namespace, uid]);
 
 export function buildOverviewModel(rows: readonly ResourceSummary[]): OverviewModel {
-	// Summaries carry only an owner's name. An ambiguous name is not evidence of ownership.
+	// Only the Kubernetes controller reference and the loaded object's UID establish ownership.
 	const owners = new Map<string, ResourceSummary | null>();
 	for (const row of rows) {
-		if (!OWNER_KINDS.has(row.kind)) continue;
-		const key = ownerKey(row, row.name);
+		if (!row.uid) continue;
+		const key = ownerKey(row, row.uid);
 		owners.set(key, owners.has(key) ? null : row);
 	}
 	const groups = new Map<ResourceSummary, ProblemMember[]>();
@@ -58,9 +57,10 @@ export function buildOverviewModel(rows: readonly ResourceSummary[]): OverviewMo
 		let root = row;
 		let current = row;
 		const seen = new Set<ResourceSummary>([row]);
-		while (current.ownerRef) {
-			const owner = owners.get(ownerKey(current, current.ownerRef));
-			if (!owner) break;
+		while (current.controllerOwner) {
+			const reference = current.controllerOwner;
+			const owner = owners.get(ownerKey(current, reference.uid));
+			if (!owner || owner.name !== reference.name || owner.kind !== reference.kind || owner.apiVersion !== reference.apiVersion) break;
 			if (seen.has(owner)) { root = row; break; }
 			seen.add(owner);
 			if (problemTone(owner)) root = owner;

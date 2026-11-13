@@ -49,6 +49,8 @@ fn resource(kind: &str, name: &str, namespace: &str, uid: &str) -> TopologyInput
             ready: Some("true".to_string()),
             restarts: None,
             owner_ref: None,
+            uid: None,
+            controller_owner: None,
             argo_app: None,
             helm_release: None,
             git_ops_owner: None,

@@ -172,6 +172,8 @@ impl Fixture {
                         row.status = patch["status"].as_str().map(str::to_owned);
                         row.ready = patch["ready"].as_str().map(str::to_owned);
                         row.owner_ref = patch["ownerRef"].as_str().map(str::to_owned);
+                        row.uid = patch["uid"].as_str().map(str::to_owned);
+                        row.controller_owner = serde_json::from_value(patch["controllerOwner"].clone()).unwrap();
                         row.health_assessment = serde_json::from_value(serde_json::json!({
                             "state": "degraded", "completeness": "complete", "winningSources": ["kubernetes"], "reasons": ["Controlled owner-chain failure"], "evidence": []
                         })).unwrap();

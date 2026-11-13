@@ -380,6 +380,8 @@ impl<'a> Selection<'a> {
             status,
             restarts: None,
             owner_ref: None,
+            uid: None,
+            controller_owner: None,
             argo_app: None,
             helm_release: None,
             git_ops_ownership_partial: false,

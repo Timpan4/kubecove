@@ -4,12 +4,18 @@ import type { HealthAssessmentState } from "../src/lib/health-types";
 import type { ResourceSummary } from "../src/lib/types";
 
 function row(kind: string, name: string, state: HealthAssessmentState = "degraded", extra: Partial<ResourceSummary> = {}): ResourceSummary {
-	return { kind, name, cluster: "dev", namespace: "apps", age: "1d", health: "unknown",
+	return { kind, name, uid: `${kind}/${name}`, apiVersion: "apps/v1", cluster: "dev", namespace: "apps", age: "1d", health: "unknown",
 		healthAssessment: { state, completeness: "complete", winningSources: ["kubernetes"], reasons: [state], evidence: [] },
 		...extra };
 }
+function owner(kind: string, name: string) { return { apiVersion: "apps/v1", kind, name, uid: `${kind}/${name}` }; }
 
 describe("workspace overview findings", () => {
+	test("a name-only reference cannot fold an absent owner into an unrelated controller", () => {
+		const deployment = row("Deployment", "api");
+		const pod = row("Pod", "api-0", "degraded", { ownerRef: "api" });
+		expect(buildOverviewModel([deployment, pod]).problems).toHaveLength(2);
+	});
 	test("same-named kinds have a stable order independent of list order", () => {
 		const ingress = row("Ingress", "api");
 		const deployment = row("Deployment", "api");
@@ -17,8 +23,8 @@ describe("workspace overview findings", () => {
 	});
 	test("folds a failing owner chain once and reports the Pod cause and its own restart count", () => {
 		const deployment = row("Deployment", "api");
-		const replica = row("ReplicaSet", "api-rs", "degraded", { ownerRef: "api" });
-		const pod = row("Pod", "api-pod", "degraded", { ownerRef: "api-rs", restarts: 12 });
+		const replica = row("ReplicaSet", "api-rs", "degraded", { controllerOwner: owner("Deployment", "api") });
+		const pod = row("Pod", "api-pod", "degraded", { controllerOwner: owner("ReplicaSet", "api-rs"), restarts: 12 });
 		const model = buildOverviewModel([pod, deployment, replica]);
 		expect(model.problems).toHaveLength(1);
 		expect(model.problemResources).toBe(3);
@@ -30,7 +36,7 @@ describe("workspace overview findings", () => {
 	test("does not merge same names across namespaces or contexts", () => {
 		const rows = ["dev", "prod"].flatMap(cluster => ["a", "b"].flatMap(namespace => [
 			row("Deployment", "api", "degraded", { cluster, namespace }),
-			row("Pod", "api-pod", "degraded", { cluster, namespace, ownerRef: "api" }),
+			row("Pod", "api-pod", "degraded", { cluster, namespace, controllerOwner: owner("Deployment", "api") }),
 		]));
 		const model = buildOverviewModel(rows);
 		expect(model.problems).toHaveLength(4);
@@ -41,15 +47,15 @@ describe("workspace overview findings", () => {
 			row("Pod", "orphan", "degraded", { ownerRef: "missing" }),
 			row("Deployment", "same"), row("StatefulSet", "same"),
 			row("Pod", "ambiguous", "degraded", { ownerRef: "same" }),
-			row("ReplicaSet", "cycle-a", "degraded", { ownerRef: "cycle-b" }),
-			row("ReplicaSet", "cycle-b", "degraded", { ownerRef: "cycle-a" }),
+			row("ReplicaSet", "cycle-a", "degraded", { controllerOwner: owner("ReplicaSet", "cycle-b") }),
+			row("ReplicaSet", "cycle-b", "degraded", { controllerOwner: owner("ReplicaSet", "cycle-a") }),
 		];
 		expect(buildOverviewModel(rows).problems).toHaveLength(rows.length);
 	});
 	test("walks healthy intermediates while keeping the cause at the winning severity", () => {
 		const deployment = row("Deployment", "api");
-		const replica = row("ReplicaSet", "api-rs", "healthy", { ownerRef: "api" });
-		const pod = row("Pod", "api-pod", "needsAttention", { ownerRef: "api-rs", restarts: 9 });
+		const replica = row("ReplicaSet", "api-rs", "healthy", { controllerOwner: owner("Deployment", "api") });
+		const pod = row("Pod", "api-pod", "needsAttention", { controllerOwner: owner("ReplicaSet", "api-rs"), restarts: 9 });
 		const problem = buildOverviewModel([deployment, replica, pod]).problems[0];
 		expect(problem?.related.map(member => member.resource)).toEqual([pod]);
 		expect(problem?.cause).toBe(deployment);

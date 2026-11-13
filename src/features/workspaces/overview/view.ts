@@ -33,25 +33,25 @@ export interface OverviewView {
 	onOpenPortForwards: () => void;
 }
 
-export const DOT: Record<Tone, string> = {
+export const DOT = {
 	degraded: "bg-red-400",
 	needsAttention: "bg-amber-400",
 	healthy: "bg-emerald-400",
 	unknown: "bg-muted-foreground/60",
 	notEvaluated: "bg-muted-foreground/30",
-};
+} satisfies Record<Tone, string>;
 export const HOLLOW_DOT = "border border-muted-foreground/50";
-export const TONE_LABEL: Record<Tone, string> = {
+export const TONE_LABEL = {
 	degraded: "Degraded",
 	needsAttention: "Needs attention",
 	healthy: "Healthy",
 	unknown: "Unknown",
 	notEvaluated: "Not evaluated",
-};
-export const STATUS_BADGE: Record<ProblemTone, string> = {
+} satisfies Record<Tone, string>;
+export const STATUS_BADGE = {
 	degraded: "border-red-500/40 text-red-300",
 	needsAttention: "border-amber-500/40 text-amber-300",
-};
+} satisfies Record<ProblemTone, string>;
 // The link variant's primary color is too dim on a card, so names use the foreground color.
 export const LINK =
 	"h-auto max-w-full justify-start p-0 text-left font-mono break-all whitespace-normal text-foreground underline decoration-muted-foreground/40 hover:decoration-foreground";

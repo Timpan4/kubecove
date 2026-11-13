@@ -47,7 +47,7 @@ export async function workspaceAction(page: Page, step: Step): Promise<void> {
         case "toggleWorkspaceContext":
             await page.getByRole("checkbox", { name: step.context, exact: true }).click(); break;
         case "expectOverviewHealth": {
-            await page.locator("[data-overview-total]").getByText(`${step.total} resources loaded from the saved scope.`, { exact: true }).waitFor();
+            await page.locator("[data-overview-total]").getByText(`${step.total} resource${step.total === 1 ? "" : "s"} loaded from the saved scope.`, { exact: true }).waitFor();
             break;
         }
         case "exportSavedWorkspace":

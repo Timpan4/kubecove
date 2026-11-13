@@ -52,6 +52,8 @@ pub fn application_owner(row: &ResourceSummary) -> Option<ResourceSummary> {
         ready: None,
         restarts: None,
         owner_ref: None,
+        uid: None,
+        controller_owner: None,
         argo_app: None,
         helm_release: None,
         git_ops_ownership_partial: false,
@@ -59,23 +61,14 @@ pub fn application_owner(row: &ResourceSummary) -> Option<ResourceSummary> {
     })
 }
 pub fn build(rows: &[&ResourceSummary]) -> Overview {
-    let key = |row: &ResourceSummary, name: &str| {
-        (row.cluster.clone(), row.namespace.clone(), name.to_owned())
+    let key = |row: &ResourceSummary, uid: &str| {
+        (row.cluster.clone(), row.namespace.clone(), uid.to_owned())
     };
     let mut owners = HashMap::<_, Option<usize>>::new();
     for (index, row) in rows.iter().enumerate() {
-        if matches!(
-            row.kind.as_str(),
-            "Deployment"
-                | "ReplicaSet"
-                | "StatefulSet"
-                | "DaemonSet"
-                | "Job"
-                | "CronJob"
-                | "ReplicationController"
-        ) {
+        if let Some(uid) = row.uid.as_deref().filter(|uid| !uid.is_empty()) {
             owners
-                .entry(key(row, &row.name))
+                .entry(key(row, uid))
                 .and_modify(|entry| *entry = None)
                 .or_insert(Some(index));
         }
@@ -103,10 +96,17 @@ pub fn build(rows: &[&ResourceSummary]) -> Overview {
         let mut root = index;
         let mut current = index;
         let mut seen = HashSet::from([index]);
-        while let Some(name) = rows[current].owner_ref.as_deref() {
-            let Some(Some(owner)) = owners.get(&key(rows[current], name)) else {
+        while let Some(reference) = rows[current].controller_owner.as_ref() {
+            let Some(Some(owner)) = owners.get(&key(rows[current], &reference.uid)) else {
                 break;
             };
+            let parent = rows[*owner];
+            if parent.name != reference.name
+                || parent.kind != reference.kind
+                || parent.api_version.as_deref() != Some(&reference.api_version)
+            {
+                break;
+            }
             if !seen.insert(*owner) {
                 root = index;
                 break;

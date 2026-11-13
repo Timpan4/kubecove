@@ -63,7 +63,7 @@
 				<TableCell class="text-right align-top tabular-nums">{problem.resource.ready ?? "-"}</TableCell>
 				<TableCell class="pr-5 text-right align-top tabular-nums">{problem.restarts}</TableCell>
 				<TableCell class="pr-3 align-top whitespace-normal">
-					{#if app && (!owner || (owner.provider === "argo" && owner.kind === "Application")) && (owner?.namespace || problem.resource.cluster === view.primaryContext)}
+					{#if app && owner?.provider === "argo" && owner.kind === "Application" && owner.namespace}
 						<Button variant="link" class={LINK} onclick={() => view.onOpenApp(problem.resource)}>{app}</Button>
 					{:else}<span class="font-mono break-all text-muted-foreground">{app ?? "None"}</span>{/if}
 				</TableCell>

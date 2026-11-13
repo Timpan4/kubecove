@@ -19,9 +19,24 @@ pub(super) struct State {
     pub expanded: HashSet<String>,
     pub quiet: bool,
     pub page: usize,
-    focus: RefCell<HashMap<String, FocusHandle>>,
+    focus: RefCell<HashMap<String, ButtonFocus>>,
+}
+struct ButtonFocus {
+    handle: FocusHandle,
+    rendered: bool,
 }
 impl Inspector {
+    pub(super) fn begin_overview_buttons(&self) {
+        for focus in self.overview_ui.focus.borrow_mut().values_mut() {
+            focus.rendered = false;
+        }
+    }
+    pub(super) fn finish_overview_buttons(&self) {
+        self.overview_ui
+            .focus
+            .borrow_mut()
+            .retain(|_, focus| focus.rendered);
+    }
     pub(super) fn overview_button(
         &self,
         id: impl Into<String>,
@@ -31,14 +46,20 @@ impl Inspector {
         action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
     ) -> crate::targets::ObservedElement<gpui_kit::Stateful<Div>> {
         let id = id.into();
-        let focus = self
-            .overview_ui
-            .focus
-            .borrow_mut()
-            .entry(id.clone())
-            .or_insert_with(|| cx.focus_handle())
-            .clone()
-            .tab_stop(enabled);
+        let mut buttons = self.overview_ui.focus.borrow_mut();
+        if !buttons.contains_key(&id) {
+            buttons.insert(
+                id.clone(),
+                ButtonFocus {
+                    handle: cx.focus_handle(),
+                    rendered: true,
+                },
+            );
+        }
+        let button = buttons.get_mut(&id).expect("button focus was inserted");
+        button.rendered = true;
+        let focus = button.handle.clone().tab_stop(enabled);
+        drop(buttons);
         let action = Rc::new(action);
         let clicked = action.clone();
         ui::outline_button()

@@ -84,6 +84,8 @@ pub fn base_resource_summary(
         ready: None,
         restarts: None,
         owner_ref: extract_owner_ref(metadata),
+        uid: metadata.uid.clone(),
+        controller_owner: extract_owner_ref_summary(metadata),
         argo_app,
         helm_release: extract_helm_release(metadata),
         git_ops_owner,

@@ -124,7 +124,17 @@ impl Inspector {
                     }
                 } else {
                     self.workspace_rows()
-                        .find(|row| entry.identifies(row))
+                        .find(|row| {
+                            if entry.kind == EntryKind::App {
+                                row.kind == "Application"
+                                    && row.cluster == entry.cluster_context
+                                    && row.namespace == entry.namespace
+                                    && row.name == entry.name
+                                    && row.api_version == entry.api_version
+                            } else {
+                                entry.identifies(row)
+                            }
+                        })
                         .map(|row| row.health_assessment.state)
                 };
                 let (color, state) = match health {

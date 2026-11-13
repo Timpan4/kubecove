@@ -3,6 +3,23 @@
   "context": "mock-dev",
   "scenarios": [
     {
+      "id": "overview.single-resource-total",
+      "title": "A scope with one resource uses the singular count",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "choose-workspace" },
+        { "action": "openLauncher" },
+        { "action": "clickSettingsButton", "label": "Import" },
+        { "action": "clickSettingsButton", "label": "Apply import" },
+        { "action": "editSavedWorkspace", "name": "Controlled import" },
+        { "action": "toggleWorkspaceNamespace", "namespace": "payments" },
+        { "action": "toggleWorkspaceNamespace", "namespace": "todo" },
+        { "action": "saveWorkspace" },
+        { "action": "openSavedWorkspace", "name": "Controlled import" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectOverviewHealth", "total": 1 }
+      ]
+    },
+    {
       "id": "overview.findings-pages",
       "title": "Findings remain reachable across pages",
       "steps": [

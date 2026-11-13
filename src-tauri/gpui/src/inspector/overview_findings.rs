@@ -39,7 +39,7 @@ fn cell(width: f32, content: impl IntoElement) -> Div {
 impl Inspector {
     pub(super) fn overview_problem_table(
         &self,
-        rows: &[&ResourceSummary],
+        rows: &[ResourceSummary],
         problems: &[Problem],
         width: f32,
         cx: &mut Context<Self>,
@@ -71,13 +71,13 @@ impl Inspector {
             .skip(page * crate::model::PAGE_SIZE)
             .take(crate::model::PAGE_SIZE)
         {
-            let row = rows[problem.root];
+            let row = &rows[problem.root];
             let key = identity(row);
             let open = self.overview_ui.expanded.contains(&key);
             body = body.child(self.overview_problem_row(
                 FindingRow::Root {
                     resource: row,
-                    cause: rows[problem.cause],
+                    cause: &rows[problem.cause],
                     problem,
                     open,
                 },
@@ -87,7 +87,7 @@ impl Inspector {
             if open {
                 for &index in &problem.related {
                     body = body.child(self.overview_problem_row(
-                        FindingRow::Child(rows[index]),
+                        FindingRow::Child(&rows[index]),
                         width,
                         cx,
                     ));
@@ -310,7 +310,7 @@ impl Inspector {
             .or(row.argo_app.as_deref());
         let application = application_owner(row);
         let app_cell = if let Some(app) = app.filter(|_| {
-            (application.is_some() || row.cluster == self.scope.context)
+            application.is_some()
                 && owner.is_none_or(|owner| owner.provider == "argo" && owner.kind == "Application")
         }) {
             let app = app.to_owned();
@@ -326,8 +326,6 @@ impl Inspector {
                     if let Some(target) = application.clone() {
                         this.open_page(super::Page::Resources, cx);
                         this.open_resource(target, window, cx);
-                    } else {
-                        this.open_page(super::Page::GitOps, cx);
                     }
                 },
             )

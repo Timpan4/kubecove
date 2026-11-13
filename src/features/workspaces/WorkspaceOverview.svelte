@@ -183,7 +183,7 @@
 				onOpenResource({ kind: "Application", name: owner.name, namespace: owner.namespace, cluster: resource.cluster,
 					apiVersion: "argoproj.io/v1alpha1", group: "argoproj.io", version: "v1alpha1", plural: "applications",
 					namespaced: true, dynamic: true, age: "", health: "unknown", healthAssessment: null });
-			} else onOpenArgo();
+			}
 		}, onOpenPortForwards,
 	});
 </script>

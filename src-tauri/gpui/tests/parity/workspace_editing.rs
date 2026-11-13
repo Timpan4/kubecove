@@ -65,8 +65,9 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             window.find("overview-description:Resource Health").label(),
             Some(
                 format!(
-                    "{} resources loaded from the saved scope.",
-                    number(step, "total")
+                    "{} resource{} loaded from the saved scope.",
+                    number(step, "total"),
+                    if number(step, "total") == 1 { "" } else { "s" }
                 )
                 .as_str()
             )

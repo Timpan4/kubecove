@@ -73,9 +73,10 @@
 		{/if}
 	{:else if !gitOpsDetected && !detectionError}
 		<div class="text-xs text-muted-foreground">Not detected</div>
-	{:else if detectionError}
-		<FriendlyError mode="compact" error={detectionError} context={{ operation: "providerDetection", fallbackTitle: "Failed to detect GitOps providers", partial: true }} />
 	{:else}
+		{#if detectionError}
+			<FriendlyError mode="compact" error={detectionError} context={{ operation: "providerDetection", fallbackTitle: "Failed to detect GitOps providers", partial: true }} />
+		{/if}
 		<div class="grid gap-2">
 			{#if !argoAppsQuery.isPending && !argoAppsQuery.isError}
 				{#each troubled as app (`${app.namespace}/${app.name}`)}
