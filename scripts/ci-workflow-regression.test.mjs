@@ -384,11 +384,13 @@ test("Mr Boxington uses isolated object bundles for all Rust workspaces", async 
   assert.match(step("Activate Cargo caching"), /node scripts\/ci-mbx-cargo\.mjs/);
 });
 // Failure modes: an input change that keeps the key leaves the new compiler output unsaved
-// for good; a change outside the inputs that moves the key uploads the same cache again; a
-// new compiler or runner image that keeps the key never refreshes the cache; a compiler
-// change that keeps the prefix downloads a cache the build cannot use; a mistyped pathspec
-// keys the cache on nothing.
-test("the Rust cache key follows the build inputs, the compiler and the runner image", () => {
+// for good; a change outside the inputs that moves the key uploads the same cache again,
+// and the runner image is such a change: two images run side by side during a rollout, so
+// a key that follows the image stores every cache twice and overruns the cache quota; a
+// new compiler that keeps the key never refreshes the cache; a compiler change that keeps
+// the prefix downloads a cache the build cannot use; a mistyped pathspec keys the cache on
+// nothing.
+test("the Rust cache key follows the build inputs and the compiler, not the runner image", () => {
   const root = mkdtempSync(join(tmpdir(), "kubecove-ci-cache-key-"));
   const { GITHUB_OUTPUT: _, ...inherited } = process.env;
   const env = { ...inherited, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", PATH: `${join(root, "bin")}${delimiter}${process.env.PATH}`, RUSTC_VERSION: "1", ImageVersion: "1" };
@@ -427,8 +429,7 @@ test("the Rust cache key follows the build inputs, the compiler and the runner i
     assert.equal(source.prefix, first.prefix);
     write("workflow.yml", "two\n");
     assert.notEqual(key().key, source.key);
-    assert.notEqual(key({ ImageVersion: "2" }).key, key().key);
-    assert.equal(key({ ImageVersion: "2" }).prefix, first.prefix);
+    assert.deepEqual(key({ ImageVersion: "2" }), key());
     assert.notEqual(key({ RUSTC_VERSION: "2" }).prefix, first.prefix);
     assert.notEqual(run({}, ["missing"]).status, 0);
     assert.notEqual(run({}, ["workflow.yml", "src-tauri", "missing"]).status, 0);

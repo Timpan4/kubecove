@@ -172,9 +172,12 @@ store before uploading the bundle. The cache keys share no prefix with the earli
 target snapshots, so enabling clean-before-export never imports one, as required by
 [the upstream migration caveat](https://github.com/jdx/mr-boxington-action/issues/91).
 
-`scripts/ci-rust-cache-key.mjs` writes each cache key. The key names the compiler,
-the runner image and the Git blob of every tracked file the build reads, including
-the workflow file. A build whose inputs did not change restores its exact cache,
+`scripts/ci-rust-cache-key.mjs` writes each cache key. The key names the compiler
+and the Git blob of every tracked file the build reads, including the workflow
+file. It leaves out the runner image: GitHub runs two image versions side by side
+during a rollout, and a key that followed the image stored every cache twice,
+about 14 GB against the 10 GB quota, after which GitHub evicted caches main still
+used. A build whose inputs did not change restores its exact cache,
 and the action then skips the export and upload. When every run saved, that step
 took 14 to 200 seconds per job, and one pull request run stored 6 GB of the
 repository's 10 GB cache quota. A changed build restores the newest cache with
