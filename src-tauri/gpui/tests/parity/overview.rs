@@ -49,7 +49,40 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             let key = id
                 .strip_prefix("overview-problem:")
                 .expect("finding row identity");
-            if step["action"] == "openOverviewProblem" {
+            if let Some(activation) = step["key"].as_str() {
+                use gpui_kit::InputEvent;
+                let prefix = if step["action"] == "openOverviewProblem" {
+                    "overview-open"
+                } else {
+                    "overview-expand"
+                };
+                let target = format!("{prefix}:{key}");
+                reveal(window, "page", &target, cx);
+                for _ in 0..window.elements().len() {
+                    if window.find(target.clone()).focused() == Some(true) {
+                        break;
+                    }
+                    window.press("tab", cx);
+                    window.render_frame(cx);
+                }
+                assert_eq!(window.find(target).focused(), Some(true));
+                let keystroke = match activation {
+                    "enter" => gpui_kit::Keystroke::parse("enter"),
+                    "space" => gpui_kit::Keystroke::parse("space"),
+                    _ => panic!("activation key was validated by the shared contract"),
+                }
+                .unwrap();
+                window.dispatch_event(
+                    gpui_kit::KeyDownEvent {
+                        keystroke: keystroke.clone(),
+                        is_held: false,
+                        prefer_character_input: false,
+                    }
+                    .to_platform_input(),
+                    cx,
+                );
+                window.dispatch_event(gpui_kit::KeyUpEvent { keystroke }.to_platform_input(), cx);
+            } else if step["action"] == "openOverviewProblem" {
                 locate::click_in(window, "page", format!("overview-open:{key}").into(), cx);
             } else if step["action"] == "toggleOverviewProblem" {
                 let target = format!("overview-expand:{key}");

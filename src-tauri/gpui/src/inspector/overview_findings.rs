@@ -56,8 +56,7 @@ impl Inspector {
                 ),
         );
         let pages = problems.len().div_ceil(crate::model::PAGE_SIZE).max(1);
-        let page = self.overview_ui.page.get().min(pages - 1);
-        self.overview_ui.page.set(page);
+        let page = self.overview_ui.page.get();
         for problem in problems
             .iter()
             .skip(page * crate::model::PAGE_SIZE)

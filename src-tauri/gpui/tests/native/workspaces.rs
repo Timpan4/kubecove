@@ -3,9 +3,10 @@ use gpui_kit::test::TestQueryExt;
 
 #[derive(Default)]
 pub(super) struct WorkspaceControls {
-    enabled: AtomicBool,
+    pub(super) enabled: AtomicBool,
     fail_other: AtomicBool,
     pending: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+    pub(super) rows: Mutex<Option<Vec<ResourceSummary>>>,
     /// The file the next Import dialog returns.
     pub import: Mutex<Option<String>>,
 }
@@ -19,6 +20,12 @@ impl WorkspaceControls {
             return None;
         }
         let context = scope.context.clone();
+        let resources = self
+            .rows
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or_else(|| vec![resource(&context)]);
         let fail = context == "mock-other" && self.fail_other.load(Ordering::SeqCst);
         let pending = if context == "mock-other" {
             self.pending.lock().unwrap().take()
@@ -33,7 +40,7 @@ impl WorkspaceControls {
                 return Err(AppError::new("Context unavailable", AppErrorKind::Cluster));
             }
             Ok(ScopeResult {
-                resources: vec![resource(&context)],
+                resources,
                 namespaces: vec![],
                 warnings: vec![],
                 versions: Default::default(),

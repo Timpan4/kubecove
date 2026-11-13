@@ -38,6 +38,14 @@ impl Inspector {
                 let rows: Vec<_> = self.workspace_rows().cloned().collect();
                 let references: Vec<_> = rows.iter().collect();
                 let model = crate::workspaces::overview::build(&references);
+                let pages = model
+                    .problems
+                    .len()
+                    .div_ceil(crate::model::PAGE_SIZE)
+                    .max(1);
+                self.overview_ui
+                    .page
+                    .set(self.overview_ui.page.get().min(pages - 1));
                 let entry_health = rows
                     .iter()
                     .map(|row| {

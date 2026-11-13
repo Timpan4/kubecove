@@ -1,11 +1,10 @@
 use super::resource_filters::HealthFilter;
 use super::{Inspector, Page};
 use crate::{targets::TestSupportExt, theme::Tokens, ui};
-use gpui_kit::{Context, Div, FocusHandle, KeyDownEvent, SharedString, Window, prelude::*, px};
+use gpui_kit::{Context, Div, FocusHandle, SharedString, Window, prelude::*, px};
 use std::{
     cell::{Cell, RefCell},
     collections::{HashMap, HashSet},
-    rc::Rc,
 };
 
 pub(super) struct Projection {
@@ -64,8 +63,6 @@ impl Inspector {
         button.rendered = true;
         let focus = button.handle.clone().tab_stop(enabled);
         drop(buttons);
-        let action = Rc::new(action);
-        let clicked = action.clone();
         ui::outline_button()
             .id(SharedString::from(id))
             .test_support()
@@ -78,13 +75,7 @@ impl Inspector {
             .when(enabled, |button| button.cursor_pointer())
             .on_click(cx.listener(move |this, _, window, cx| {
                 if enabled {
-                    clicked(this, window, cx);
-                }
-            }))
-            .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
-                if enabled && matches!(event.keystroke.key.as_str(), "enter" | "space") {
                     action(this, window, cx);
-                    cx.stop_propagation();
                 }
             }))
             .px(px(8.))

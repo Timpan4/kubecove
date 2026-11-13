@@ -15,8 +15,11 @@ export async function overviewAction(page: Page, step: OverviewStep): Promise<vo
 				.locator(`[data-overview-resource^=${JSON.stringify(`${step.context}:`)}][data-overview-resource$=${JSON.stringify(suffix)}]`);
 			if (step.action === "expectNoOverviewProblem") { await row.waitFor({ state: "hidden" }); break; }
 			await row.waitFor();
-			if (step.action === "openOverviewProblem") await row.locator("td").first().getByRole("button").first().click();
-			else if (step.action === "toggleOverviewProblem") await row.getByRole("button", { name: /^Owned resources of / }).click();
+			if (step.action === "openOverviewProblem" || step.action === "toggleOverviewProblem") {
+				const button = step.action === "openOverviewProblem" ? row.locator("td").first().getByRole("button").first() : row.getByRole("button", { name: /^Owned resources of / });
+				if (step.key) { await button.focus(); await button.press(step.key === "enter" ? "Enter" : "Space"); }
+				else await button.click();
+			}
 			else {
 				await row.locator("td").nth(1).getByText(step.status, { exact: true }).waitFor();
 				await row.locator("td").nth(2).getByText(step.ready, { exact: true }).waitFor();
