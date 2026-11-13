@@ -152,7 +152,7 @@ test("Rust benchmark shard filters split every benchmark path into exactly one s
   assert.match(job("check"), /RUST_RESULT: \$\{\{ needs\.rust\.result \}\}/);
   assert.match(job("rust"), /cache-targets: false/);
   // The key follows the build inputs, so an unchanged build skips the export and upload.
-  assert.ok(job("rust").includes("run: node scripts/ci-rust-cache-key.mjs codspeed .github/workflows/codspeed.yml src-tauri ':!src-tauri/gpui' ':!src-tauri/server'"));
+  assert.ok(job("rust").includes("run: node scripts/ci-rust-cache-key.mjs codspeed-backend .github/workflows/codspeed.yml src-tauri ':!src-tauri/gpui' ':!src-tauri/server'"));
   assert.ok(job("rust").includes("cache-key: ${{ steps.rust-cache.outputs.key }}"));
   assert.ok(job("rust").includes("restore-keys: ${{ steps.rust-cache.outputs.prefix }}"));
   assert.ok(job("rust").indexOf("dtolnay/rust-toolchain@") < job("rust").indexOf("scripts/ci-rust-cache-key.mjs"));
@@ -165,6 +165,15 @@ test("Rust benchmark shard filters split every benchmark path into exactly one s
   assert.match(job("rust"), /save-if: \$\{\{ github\.ref == 'refs\/heads\/main' && matrix\.shard == 'ac' \}\}/);
   assert.match(job("rust"), /^ {10}- shard: ac$/m);
   assert.ok(job("rust").indexOf("run: node scripts/ci-mbx-cargo.mjs") < job("rust").indexOf("cargo codspeed build"));
+  // The benchmark build leaves out the desktop feature, so it needs no GUI packages and
+  // links no GUI stack. `bench-support` must not turn the feature back on in any crate.
+  assert.match(job("rust"), /^ {8}run: cargo codspeed build --no-default-features --features bench-support --bench backend_hot_paths --locked$/m);
+  assert.doesNotMatch(job("rust"), /apt-get|webkit/);
+  for (const manifest of ["", "crates/kube/", "crates/inspection/", "crates/live/", "crates/gitops/", "crates/host/"]) {
+    const features = /^bench-support = \[[^\]]*\]/m.exec(readFileSync(new URL(`../src-tauri/${manifest}Cargo.toml`, import.meta.url), "utf8"))?.[0];
+    assert.ok(features, `${manifest}Cargo.toml has no bench-support feature`);
+    assert.doesNotMatch(features, /"desktop"/, `${manifest}Cargo.toml`);
+  }
   assert.notEqual(job("rust").indexOf("run: node scripts/ci-mbx-cargo.mjs"), -1);
   assert.match(job("rust"), /cargo-codspeed-x86_64-unknown-linux-musl/);
   assert.match(job("rust"), /CARGO_CODSPEED_SHA256/);

@@ -1,6 +1,6 @@
 use super::{fixed_now, planning, summaries, topology};
 use crate::{
-    commands::{live_store::ClusterLiveStore, resources},
+    commands::{bench_support::block_on, live_store::ClusterLiveStore, resources},
     models::{AppError, ResourceSummary, WatchResourceKind},
 };
 use std::sync::Arc;
@@ -34,7 +34,7 @@ pub fn resource_cache_fixture() -> ResourceCacheFixture {
     let resources_seed = rows.clone();
     let topology_seed = topology.clone();
     let index_seed = index;
-    tauri::async_runtime::block_on(async {
+    block_on(async {
         store
             .typed_resources(
                 SOURCE.to_string(),
@@ -78,7 +78,7 @@ impl ResourceCacheFixture {
         let other_context = "cache-catalog-other-context";
 
         assert!(
-            tauri::async_runtime::block_on(self.store.typed_resources(
+            block_on(self.store.typed_resources(
                 other_source.to_string(),
                 CONTEXT.to_string(),
                 "Pod".to_string(),
@@ -88,7 +88,7 @@ impl ResourceCacheFixture {
             .is_err()
         );
         assert!(
-            tauri::async_runtime::block_on(self.store.typed_resources(
+            block_on(self.store.typed_resources(
                 SOURCE.to_string(),
                 other_context.to_string(),
                 "Pod".to_string(),
@@ -98,7 +98,7 @@ impl ResourceCacheFixture {
             .is_err()
         );
         assert!(
-            tauri::async_runtime::block_on(self.store.topology(
+            block_on(self.store.topology(
                 other_source.to_string(),
                 CONTEXT.to_string(),
                 Vec::new(),
@@ -108,7 +108,7 @@ impl ResourceCacheFixture {
             .is_err()
         );
         assert!(
-            tauri::async_runtime::block_on(self.store.topology(
+            block_on(self.store.topology(
                 SOURCE.to_string(),
                 other_context.to_string(),
                 Vec::new(),
@@ -118,7 +118,7 @@ impl ResourceCacheFixture {
             .is_err()
         );
         assert!(
-            tauri::async_runtime::block_on(self.store.topology(
+            block_on(self.store.topology(
                 SOURCE.to_string(),
                 CONTEXT.to_string(),
                 Vec::new(),
@@ -128,7 +128,7 @@ impl ResourceCacheFixture {
             .is_err()
         );
         assert!(
-            tauri::async_runtime::block_on(self.store.flux_ownership_index(
+            block_on(self.store.flux_ownership_index(
                 other_source.to_string(),
                 CONTEXT.to_string(),
                 || async { Err(cache_isolation_error()) },
@@ -136,7 +136,7 @@ impl ResourceCacheFixture {
             .is_err()
         );
         assert!(
-            tauri::async_runtime::block_on(self.store.flux_ownership_index(
+            block_on(self.store.flux_ownership_index(
                 SOURCE.to_string(),
                 other_context.to_string(),
                 || async { Err(cache_isolation_error()) },
@@ -167,7 +167,7 @@ impl ResourceCacheFixture {
         let lookup_namespaces = vec!["tenant-7".to_string(), "tenant-42".to_string()];
         let topology = self.topology.clone();
         let expected_nodes = topology.nodes.len();
-        tauri::async_runtime::block_on(self.store.topology(
+        block_on(self.store.topology(
             SOURCE.to_string(),
             CONTEXT.to_string(),
             seeded_namespaces,
@@ -175,7 +175,7 @@ impl ResourceCacheFixture {
             move || async move { Ok::<_, AppError>(topology) },
         ))
         .expect("seed normalized topology cache key");
-        let hit = tauri::async_runtime::block_on(self.store.topology(
+        let hit = block_on(self.store.topology(
             SOURCE.to_string(),
             CONTEXT.to_string(),
             lookup_namespaces,
@@ -186,7 +186,7 @@ impl ResourceCacheFixture {
         assert_eq!(hit.nodes.len(), expected_nodes);
 
         let topology = self.topology.clone();
-        tauri::async_runtime::block_on(self.store.topology(
+        block_on(self.store.topology(
             SOURCE.to_string(),
             CONTEXT.to_string(),
             Vec::new(),
@@ -194,7 +194,7 @@ impl ResourceCacheFixture {
             move || async move { Ok::<_, AppError>(topology) },
         ))
         .expect("seed empty topology namespace key");
-        let hit = tauri::async_runtime::block_on(self.store.topology(
+        let hit = block_on(self.store.topology(
             SOURCE.to_string(),
             CONTEXT.to_string(),
             Vec::new(),
@@ -211,7 +211,7 @@ impl ResourceCacheFixture {
             "tenant-7".to_string(),
             "tenant-42".to_string(),
         ];
-        tauri::async_runtime::block_on(self.store.present_custom_resource_kinds(
+        block_on(self.store.present_custom_resource_kinds(
             SOURCE.to_string(),
             CONTEXT.to_string(),
             seeded_namespaces,
@@ -225,7 +225,7 @@ impl ResourceCacheFixture {
                 .is_some_and(|kinds| kinds.is_empty())
         );
 
-        tauri::async_runtime::block_on(self.store.present_custom_resource_kinds(
+        block_on(self.store.present_custom_resource_kinds(
             SOURCE.to_string(),
             CONTEXT.to_string(),
             Vec::new(),
@@ -240,7 +240,7 @@ impl ResourceCacheFixture {
     }
 
     pub fn ready_resource_hit(&self) -> Result<Arc<Vec<ResourceSummary>>, AppError> {
-        tauri::async_runtime::block_on(self.store.typed_resources(
+        block_on(self.store.typed_resources(
             SOURCE.to_string(),
             CONTEXT.to_string(),
             "Pod".to_string(),
@@ -256,7 +256,7 @@ impl ResourceCacheFixture {
     }
 
     pub fn named_scope_from_all_hit(&self) -> Result<Arc<Vec<ResourceSummary>>, AppError> {
-        tauri::async_runtime::block_on(self.store.typed_resources(
+        block_on(self.store.typed_resources(
             SOURCE.to_string(),
             CONTEXT.to_string(),
             "Pod".to_string(),
@@ -272,7 +272,7 @@ impl ResourceCacheFixture {
     }
 
     pub fn topology_hit(&self) -> Result<Arc<crate::models::ResourceTopology>, AppError> {
-        tauri::async_runtime::block_on(self.store.topology(
+        block_on(self.store.topology(
             SOURCE.to_string(),
             CONTEXT.to_string(),
             Vec::new(),
@@ -287,7 +287,7 @@ impl ResourceCacheFixture {
     }
 
     pub fn flux_index_hit(&self) -> Result<usize, AppError> {
-        tauri::async_runtime::block_on(self.store.flux_ownership_index(
+        block_on(self.store.flux_ownership_index(
             SOURCE.to_string(),
             CONTEXT.to_string(),
             || async {
@@ -312,7 +312,7 @@ impl ResourceCacheFixture {
         self.store
             .mark_watch_resource_dirty(SOURCE, CONTEXT, &kind, None);
         let replacement = std::mem::take(&mut self.replacement);
-        tauri::async_runtime::block_on(self.store.typed_resources(
+        block_on(self.store.typed_resources(
             SOURCE.to_string(),
             CONTEXT.to_string(),
             "Pod".to_string(),

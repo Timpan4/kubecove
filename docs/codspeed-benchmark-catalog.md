@@ -712,9 +712,11 @@ On PowerShell, set `$env:KUBECOVE_BENCHMARK_SUITE` or `$env:KUBECOVE_BENCHMARK_F
 The existing CI Rust commands, from `src-tauri`, are:
 
 ```sh
-cargo codspeed build --features bench-support --bench backend_hot_paths --locked
+cargo codspeed build --no-default-features --features bench-support --bench backend_hot_paths --locked
 cargo codspeed run --bench backend_hot_paths
 ```
+
+CI builds the benchmarks without the `desktop` feature. They measure backend code, and the desktop build made every benchmark job install WebKitGTK and then compile and link the Tauri stack into the root library, which the build cache cannot store. The `bench-support` feature therefore enables `desktop` in no crate, and the benchmark bridge drives futures on its own tokio runtime instead of `tauri::async_runtime`. Local `cargo bench --features bench-support` keeps the default features, so it still measures the desktop build.
 
 Ordinary local Vitest/Divan runs report native harness measurements. Bare `cargo codspeed run` outside an instrumented environment can check execution without producing CodSpeed measurements. [Divan integration](https://codspeed.io/docs/benchmarks/rust/divan)
 

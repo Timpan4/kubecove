@@ -9,6 +9,20 @@ use std::collections::BTreeMap;
 pub mod domain_catalog;
 pub mod resource_catalog;
 
+/// Drives a future on one shared multi-thread tokio runtime, which is what
+/// `tauri::async_runtime::block_on` does. Owning the runtime here lets the benchmarks build
+/// without the `desktop` feature, so CI does not compile and link the GUI stack to measure
+/// backend code.
+pub(crate) fn block_on<F: std::future::Future>(future: F) -> F::Output {
+    static RUNTIME: std::sync::LazyLock<tokio::runtime::Runtime> = std::sync::LazyLock::new(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("benchmark runtime")
+    });
+    RUNTIME.block_on(future)
+}
+
 pub fn decode_crd_catalog(text: &str) -> Vec<DiscoveredResourceKind> {
     discovery::decode_crd_catalog(text).expect("benchmark CRD list")
 }
@@ -22,7 +36,7 @@ pub fn cached_topology_fixture(apps: usize) -> live_store::ClusterLiveStore {
         .filter(|node| node.kind == "Pod")
         .map(|node| node.summary.clone())
         .collect::<Vec<_>>();
-    tauri::async_runtime::block_on(async {
+    block_on(async {
         store
             .typed_resources(
                 "fixture".into(),

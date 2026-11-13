@@ -171,15 +171,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Tauri Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            patchelf
-
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -194,9 +185,11 @@ jobs:
 
       # An unchanged build restores its exact cache and skips the save
       # (scripts/ci-rust-cache-key.mjs).
+      # The name differs from the earlier desktop build's `codspeed` cache, so a run never
+      # restores that 2.2 GB cache for objects this build cannot use.
       - name: Key the Rust cache by its inputs
         id: rust-cache
-        run: node scripts/ci-rust-cache-key.mjs codspeed .github/workflows/codspeed.yml src-tauri ':!src-tauri/gpui' ':!src-tauri/server'
+        run: node scripts/ci-rust-cache-key.mjs codspeed-backend .github/workflows/codspeed.yml src-tauri ':!src-tauri/gpui' ':!src-tauri/server'
 
       # Every shard builds the same benchmark binary. A cached target directory does not
       # survive a fresh checkout, because Cargo compares file times, so the object cache
@@ -212,6 +205,9 @@ jobs:
           github-cache-mode: objects
           isolate-objects-cache: true
           clean-target-before-export: true
+          # Temporary: main has no cache of the build without the desktop feature yet, so
+          # this pull request seeds one to measure the warm build.
+          save-on-pull-request: ${{ matrix.shard == 'ac' }}
 
       # Puts the mbx Cargo shim first on PATH, so the build cargo-codspeed starts is cached.
       - name: Activate Cargo caching
@@ -229,9 +225,13 @@ jobs:
           echo "$CARGO_CODSPEED_SHA256  $binary" | sha256sum --check --status
           install -m 0755 "$binary" "$HOME/.cargo/bin/cargo-codspeed"
 
+      # The benchmarks measure backend code, so they build without the `desktop` feature.
+      # With it, every shard compiled and linked the Tauri and WebKitGTK stack into the
+      # root library, which the object cache cannot store: 277 to 383 s per shard in run
+      # 43389328493, after installing the WebKitGTK packages.
       - name: Build Rust benchmarks
         working-directory: src-tauri
-        run: cargo codspeed build --features bench-support --bench backend_hot_paths --locked
+        run: cargo codspeed build --no-default-features --features bench-support --bench backend_hot_paths --locked
 
       - name: Run benchmarks
         uses: ./.github/actions/codspeed-run
