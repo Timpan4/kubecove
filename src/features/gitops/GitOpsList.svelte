@@ -74,7 +74,7 @@
 	// Actions holds Details alone below 68rem, Details and Resources above.
 	const minWidth = "53.75rem";
 	const columnsClass =
-		"grid min-w-[53.75rem] grid-cols-[minmax(10.5rem,0.9fr)_7.5rem_5rem_minmax(7.5rem,2.2fr)_4.5rem_minmax(5.5rem,0.8fr)_2.5rem_4rem] items-center gap-3 px-3 @min-[68rem]:grid-cols-[minmax(10.5rem,0.9fr)_7.5rem_5rem_minmax(7.5rem,2.2fr)_4.5rem_minmax(5.5rem,0.8fr)_2.5rem_9rem]";
+		"grid min-w-[53.75rem] grid-cols-[minmax(10.5rem,1.2fr)_7.5rem_5rem_minmax(7.5rem,2.2fr)_4.5rem_minmax(5.5rem,0.8fr)_2.5rem_4rem] items-center gap-3 px-3 @min-[68rem]:grid-cols-[minmax(10.5rem,1.2fr)_7.5rem_5rem_minmax(7.5rem,2.2fr)_4.5rem_minmax(5.5rem,0.8fr)_2.5rem_9rem]";
 	const healthTooltipClass =
 		"max-w-sm flex-col items-stretch rounded-lg border border-border bg-surface-2 p-3 text-popover-foreground shadow-xl";
 

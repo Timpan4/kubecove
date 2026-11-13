@@ -18,11 +18,11 @@ use crate::{
 use gpui_kit::{Context, Div, Hsla, ScrollHandle, SharedString, div, prelude::*, px};
 use kubecove_lib::models::{HealthAssessmentCompleteness, HealthAssessmentState};
 
-/// The list's columns: `minmax(10.5rem,0.9fr) 7.5rem 5rem minmax(7.5rem,2.2fr)
+/// The list's columns: `minmax(10.5rem,1.2fr) 7.5rem 5rem minmax(7.5rem,2.2fr)
 /// 4.5rem minmax(5.5rem,0.8fr) 2.5rem 4rem` with `gap-3 px-3`. Flexible tracks
 /// below their minimum freeze there.
 const TRACKS: [(f32, f32); 8] = [
-    (168., 0.9),
+    (168., 1.2),
     (120., 0.),
     (80., 0.),
     (120., 2.2),
