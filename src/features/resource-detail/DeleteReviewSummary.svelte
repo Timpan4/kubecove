@@ -10,10 +10,10 @@
 	const controller = $derived(preview.controller);
 	const consequence = $derived(
 		controller?.recreates
-			? `${controller.kind} ${controller.name} creates a replacement ${target.kind}.`
+			? `${controller.kind} ${controller.name} normally creates a replacement ${target.kind}.`
 			: controller
-				? `${controller.kind} ${controller.name} controls this ${target.kind}. KubeCove cannot tell whether it creates a replacement.`
-				: `Nothing recreates this ${target.kind}. The delete is permanent.`,
+				? `${controller.kind} ${controller.name} controls this ${target.kind}, but KubeCove cannot confirm it will create a replacement.`
+				: "No controlling owner was found. The delete is permanent unless other automation, such as GitOps, recreates it.",
 	);
 </script>
 

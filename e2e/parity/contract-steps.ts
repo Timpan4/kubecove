@@ -260,7 +260,8 @@ export type Step =
     | { action: "selectRevision" | "reviewAction"; label: string }
     | { action: "expectRevisionDiff"; selected: string; comparison: string; contains: string[] }
     | { action: "expectReview"; title: string; description: string; contains: string[] }
-    | { action: "showReviewDiff" }
+    // Without `key` the disclosure is clicked; with it, focused and activated from the keyboard.
+    | { action: "showReviewDiff"; key?: "Enter" | "Space" }
     // `controller` is "" when the target has no controlling owner; `typed` says whether the name input shows.
     | { action: "expectDeleteReview"; name: string; context: string; namespace: string; controller: string; consequence: string; typed: boolean }
     | { action: "expectActionResult"; text: string }

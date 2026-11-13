@@ -12,7 +12,7 @@ use gpui_kit::component::{
     WindowExt,
     input::{InputEvent, InputState},
 };
-use gpui_kit::{App, AppContext, Context, Entity, SharedString, Subscription, Window};
+use gpui_kit::{App, AppContext, Context, Entity, FocusHandle, SharedString, Subscription, Window};
 use kubecove_lib::models::{
     ResourceActionEdits, ResourceActionKind, ResourceActionPreview, ResourceActionRequest,
     ResourceActionState, ResourceSummary,
@@ -55,6 +55,8 @@ pub(super) struct Review {
     pub confirmation: Entity<InputState>,
     /// A delete review folds its diff behind the target summary.
     pub diff_open: bool,
+    /// Tab stop of the diff disclosure, so Enter or Space can open it.
+    pub diff_focus: FocusHandle,
     _subscription: Subscription,
 }
 
@@ -418,6 +420,7 @@ impl Inspector {
             step: ReviewStep::Checking { _read: task.into() },
             confirmation,
             diff_open: false,
+            diff_focus: cx.focus_handle().tab_stop(true),
             _subscription: subscription,
         });
         self.open_review_dialog(window, cx);
@@ -509,6 +512,17 @@ impl Inspector {
         review.diff_open = !review.diff_open;
         cx.notify();
         window.refresh();
+    }
+
+    /// Enter in the review dialog, which the dialog delivers as Confirm.
+    pub(super) fn review_enter(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let on_disclosure = self
+            .actions_state()
+            .and_then(|actions| actions.review.as_ref())
+            .is_some_and(|review| review.diff_focus.is_focused(window));
+        if on_disclosure {
+            self.toggle_review_diff(window, cx);
+        }
     }
 
     /// `closeReview`: an executing review stays open.

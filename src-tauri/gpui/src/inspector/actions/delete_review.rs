@@ -13,14 +13,14 @@ pub(super) fn consequence(preview: &ResourceActionPreview) -> String {
     let kind = &preview.target.kind;
     match &preview.controller {
         Some(controller) if controller.recreates => format!(
-            "{} {} creates a replacement {kind}.",
+            "{} {} normally creates a replacement {kind}.",
             controller.kind, controller.name
         ),
         Some(controller) => format!(
-            "{} {} controls this {kind}. KubeCove cannot tell whether it creates a replacement.",
+            "{} {} controls this {kind}, but KubeCove cannot confirm it will create a replacement.",
             controller.kind, controller.name
         ),
-        None => format!("Nothing recreates this {kind}. The delete is permanent."),
+        None => "No controlling owner was found. The delete is permanent unless other automation, such as GitOps, recreates it.".to_owned(),
     }
 }
 

@@ -334,7 +334,8 @@ function step<Value>(value: Value): Step {
 			return { action: item.action, selected: string(item.selected), comparison: string(item.comparison), contains: strings(item.contains, false) };
 		case "expectReview":
 			return { action: item.action, title: string(item.title), description: string(item.description), contains: strings(item.contains, false) };
-		case "showReviewDiff": return { action: item.action };
+		case "showReviewDiff":
+			return item.key === undefined ? { action: item.action } : { action: item.action, key: oneOf(["Enter", "Space"] as const, item.key, "a disclosure key") };
 		case "expectDeleteReview":
 			if (!isString(item.controller)) throw new Error("Expected a controller, empty when the target has none");
 			return { action: item.action, name: string(item.name), context: string(item.context), namespace: string(item.namespace), controller: item.controller, consequence: string(item.consequence), typed: boolean(item.typed) };

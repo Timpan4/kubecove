@@ -5,7 +5,15 @@ use super::*;
 
 pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) -> bool {
     match string(step, "action") {
-        "showReviewDiff" => window.click("review-diff-toggle", cx),
+        "showReviewDiff" => match step["key"].as_str() {
+            Some(key) => {
+                resource_table::tab_to(window, "review-diff-toggle", cx);
+                window
+                    .within("review-diff-toggle")
+                    .press(if key == "Enter" { "enter" } else { "space" }, cx);
+            }
+            None => window.click("review-diff-toggle", cx),
+        },
         "expectDeleteReview" => {
             let label = |id: &'static str| window.find(id).label().map(str::to_owned);
             assert_eq!(

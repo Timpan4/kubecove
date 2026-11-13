@@ -126,6 +126,10 @@ fn review_body(review: &Review, entity: &Entity<Inspector>, cx: &App) -> Div {
                 .id("review-diff-toggle")
                 .test_support()
                 .aria_label("API server result")
+                .role(gpui_kit::Role::Button)
+                .aria_expanded(review.diff_open)
+                .track_focus(&review.diff_focus)
+                .tab_index(0)
                 .on_click(toggle)
                 .into_any_element()
         } else {
@@ -255,6 +259,7 @@ impl Inspector {
                 )
             };
             let close = on_close.clone();
+            let confirm = on_close.clone();
             dialog
                 .w(px(896.))
                 .title(
@@ -263,6 +268,13 @@ impl Inspector {
                         .test_support()
                         .aria_label(title),
                 )
+                // The dialog binds Enter to Confirm, which would close the
+                // review; Enter activates the focused diff disclosure instead,
+                // as in the web dialog, and otherwise does nothing.
+                .on_ok(move |_, window, cx| {
+                    confirm.update(cx, |this, cx| this.review_enter(window, cx));
+                    false
+                })
                 .on_close(move |_, window, cx| {
                     close.update(cx, |this, cx| this.close_review(window, cx));
                 })

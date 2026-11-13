@@ -10,9 +10,15 @@ async function expectText(page: Page, selector: string, expected: string) {
 export async function deleteReviewAction(page: Page, step: Step) {
 	const dialog = page.getByRole("dialog");
 	switch (step.action) {
-		case "showReviewDiff":
-			await dialog.getByRole("button", { name: "API server result", exact: true }).click();
+		case "showReviewDiff": {
+			const disclosure = dialog.getByRole("button", { name: "API server result", exact: true });
+			if (step.key) {
+				await disclosure.focus();
+				await disclosure.press(step.key === "Space" ? " " : "Enter");
+			} else await disclosure.click();
+			if ((await disclosure.getAttribute("aria-expanded")) !== "true") throw new Error("The API server result did not expand");
 			break;
+		}
 		case "expectDeleteReview": {
 			const target = dialog.getByRole("region", { name: "Delete target" });
 			await target.waitFor();

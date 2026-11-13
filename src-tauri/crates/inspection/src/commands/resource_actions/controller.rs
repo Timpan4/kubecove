@@ -33,11 +33,18 @@ pub(super) fn action_controller(
     let group = api_version
         .rsplit_once('/')
         .map_or("", |(group, _version)| group);
-    let recreates = RECREATING_OWNERS
-        .iter()
-        .any(|&(target, owner_group, owner_kind)| {
-            target == target_kind && owner_group == group && owner_kind == kind
-        });
+    // A finished Pod keeps its owner reference, but its controller has already
+    // counted it as done or replaced it, so deleting it creates nothing new.
+    let finished = matches!(
+        object.pointer("/status/phase").and_then(Value::as_str),
+        Some("Succeeded" | "Failed")
+    );
+    let recreates = !finished
+        && RECREATING_OWNERS
+            .iter()
+            .any(|&(target, owner_group, owner_kind)| {
+                target == target_kind && owner_group == group && owner_kind == kind
+            });
     Some(ResourceActionController {
         kind: kind.to_owned(),
         name: name.to_owned(),
@@ -64,7 +71,8 @@ mod tests {
     // 3. the controller may follow other owner references;
     // 4. a CRD that reuses a built-in kind name in another group is not trusted;
     // 5. a built-in controller only recreates the kind it manages;
-    // 6. a malformed owner reference must not count as a controller.
+    // 6. a malformed owner reference must not count as a controller;
+    // 7. a finished Pod keeps its owner reference but is never replaced.
     #[test]
     fn only_built_in_controllers_of_the_target_kind_recreate() {
         assert_eq!(
@@ -126,5 +134,20 @@ mod tests {
         let malformed =
             owned(json!([{ "apiVersion": "apps/v1", "kind": "ReplicaSet", "controller": true }]));
         assert_eq!(action_controller("Pod", &malformed), None);
+        for (api_version, kind, phase) in [
+            ("batch/v1", "Job", "Succeeded"),
+            ("apps/v1", "ReplicaSet", "Failed"),
+        ] {
+            let mut object = owned(
+                json!([{ "apiVersion": api_version, "kind": kind, "name": "owner", "controller": true }]),
+            );
+            object["status"] = json!({ "phase": phase });
+            assert_eq!(recreates("Pod", &object), Some(false), "{kind} {phase}");
+        }
+        let mut running = owned(
+            json!([{ "apiVersion": "batch/v1", "kind": "Job", "name": "owner", "controller": true }]),
+        );
+        running["status"] = json!({ "phase": "Running" });
+        assert_eq!(recreates("Pod", &running), Some(true));
     }
 }
