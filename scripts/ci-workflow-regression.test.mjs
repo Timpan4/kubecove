@@ -604,12 +604,13 @@ test("main records the parity coverage map from every parity job", () => {
   // Failure mode: the main shards and the main spike job build the same instrumented binary
   // under one cache key, and a second saver fails its job when GitHub has reserved the key
   // for the first. Exactly one of those jobs may save.
-  const cacheMode = (saveCache) => new Function("inputs", `return (${expression(cache, "ACTIONS_CACHE_MODE").replaceAll("save-cache", "saveCache")});`)({ saveCache });
-  assert.deepEqual([cacheMode(true), cacheMode(false)], ["", "read"]);
+  // The mode is `read` for every job but the saver, whose empty value leaves the action's
+  // own save policy in force.
+  assert.equal(expression(cache, "ACTIONS_CACHE_MODE"), "!inputs.save-cache && 'read' || ''");
   assert.match(suite, /^ {6}save-cache:\n(?: {8}.+\n)* {8}default: true$/m);
   const mainShards = JSON.parse(/^ {8}shard: (\[.+\])$/m.exec(job("main", parity))?.[1] ?? "[]");
-  const mainSavers = mainShards.filter((shard) => new Function("matrix", `return (${expression(job("main", parity), "save-cache")});`)({ shard }));
-  assert.deepEqual([mainShards.length, mainSavers], [4, [0]]);
+  assert.equal(expression(job("main", parity), "save-cache"), "matrix.shard == 0");
+  assert.deepEqual([mainShards.length, mainShards.filter((shard) => shard === 0)], [4, [0]]);
   assert.match(job("main-spike", parity), /^ {6}save-cache: false$/m);
   assert.match(step("Activate Cargo caching"), /run: node scripts\/ci-mbx-cargo\.mjs/);
   assert.doesNotMatch(suite, /swatinem\/rust-cache/i);

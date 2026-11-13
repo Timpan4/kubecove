@@ -167,9 +167,9 @@ test("Rust benchmark shard filters split every benchmark path into exactly one s
   // Failure mode: the shards share one cache key, and a second saver fails its job when
   // GitHub has reserved the key for the first. Exactly one shard may save.
   const cacheMode = /^ {8}env:\n {10}ACTIONS_CACHE_MODE: \$\{\{ (.+) \}\}\n {8}with:\n {10}version: "1\.30\.0"$/m.exec(job("rust"))?.[1];
-  assert.ok(cacheMode, "the cache step sets the cache mode");
-  const modes = [...job("rust").matchAll(/^ {10}- shard: (\w+)$/gm)].map(([, shard]) => new Function("matrix", `return (${cacheMode});`)({ shard }));
-  assert.deepEqual(modes.toSorted(), ["", "read", "read", "read", "read", "read"]);
+  assert.equal(cacheMode, "matrix.shard != 'ac' && 'read' || ''", "every shard but ac restores only");
+  const shards = [...job("rust").matchAll(/^ {10}- shard: (\w+)$/gm)].map(([, shard]) => shard);
+  assert.deepEqual([shards.length, shards.filter((shard) => shard === "ac")], [6, ["ac"]]);
   assert.ok(job("rust").indexOf("run: node scripts/ci-mbx-cargo.mjs") < job("rust").indexOf("cargo codspeed build"));
   // The benchmark build leaves out the desktop feature, so it needs no GUI packages and
   // links no GUI stack. `bench-support` must not turn the feature back on in any crate.

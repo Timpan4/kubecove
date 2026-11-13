@@ -1075,7 +1075,8 @@ and upload outside Vitest.
 
 These are projections from one hosted run, with no measured run-to-run spread.
 In run 43393348341, the first with this grouping and a restored cache, the
-`Run benchmarks` step took 108 to 179 seconds per group. Setup varies: the old group 3 spent
+`Run benchmarks` step took 139 to 196 seconds per group by the job's step timestamps.
+Setup varies: the old group 3 spent
 63.790 seconds outside Vitest, including a package installation from
 22:47:06.889 to 22:47:50.051 UTC, despite an instrument cache hit.
 That overhead would exceed the target even with the new groups. The grouping
