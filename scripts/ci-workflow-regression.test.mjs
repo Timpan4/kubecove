@@ -357,7 +357,7 @@ test("Mr Boxington uses isolated object bundles for all Rust workspaces", async 
   assert.match(setup, /clean-target-before-export: true/);
   // Pull requests restore main's cache and never save: one saving push stored about 7 GB
   // of the 10 GB quota, which evicts the caches every other pull request restores.
-  for (const file of ["ci.yml", "parity-suite.yml"]) {
+  for (const file of ["ci.yml", "parity-suite.yml", "codspeed.yml"]) {
     assert.doesNotMatch(readFileSync(new URL(`../.github/workflows/${file}`, import.meta.url), "utf8"), /save-on-pull-request/, file);
   }
   // Each task keys its own cache by its inputs; the action's generated key is unique per

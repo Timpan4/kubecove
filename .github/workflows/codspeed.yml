@@ -205,9 +205,6 @@ jobs:
           github-cache-mode: objects
           isolate-objects-cache: true
           clean-target-before-export: true
-          # Temporary: main has no cache of the build without the desktop feature yet, so
-          # this pull request seeds one to measure the warm build.
-          save-on-pull-request: ${{ matrix.shard == 'ac' }}
 
       # Puts the mbx Cargo shim first on PATH, so the build cargo-codspeed starts is cached.
       - name: Activate Cargo caching
