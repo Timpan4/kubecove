@@ -105,6 +105,69 @@ test("setup files and deleted modules that another file replaces select their be
   }
 });
 
+// Failure modes: the benchmark configuration decides resolution, and the selector reads
+// it differently from the benchmark run: in another mode, without its extensions, or
+// without the file it reads when it runs.
+test("the benchmark configuration's mode, extensions and run-time reads decide selection", async () => {
+  const fixture = async (sources, check) => {
+    const root = mkdtempSync(join(tmpdir(), "codspeed-selection-"));
+    try {
+      for (const [path, source] of Object.entries(sources)) {
+        mkdirSync(join(root, path, ".."), { recursive: true });
+        writeFileSync(join(root, path), source);
+      }
+      await check(root, async (paths) => (await selectBenchmarks(paths, { root, files: ["benchmarks/a.bench.ts", "benchmarks/b.bench.ts"] })).selected);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  };
+  const other = { "benchmarks/b.bench.ts": 'import "../src/other";', "src/other.ts": "export const other = 1;" };
+  const all = ["benchmarks/a.bench.ts", "benchmarks/b.bench.ts"];
+
+  // `vitest bench` runs in mode "test".
+  await fixture({
+    ...other,
+    "vitest.config.ts": 'export default ({ mode }) => ({ resolve: { alias: { value: new URL(mode === "test" ? "./src/test-value.ts" : "./src/dev-value.ts", import.meta.url).pathname } } });',
+    "benchmarks/a.bench.ts": 'import "value";',
+    "src/test-value.ts": "export const value = 1;",
+    "src/dev-value.ts": "export const value = 2;",
+  }, async (_root, select) => {
+    assert.deepEqual(await select(["src/test-value.ts"]), [all[0]]);
+    assert.deepEqual(await select(["src/dev-value.ts"]), []);
+  });
+
+  // A deleted file whose extension only the configuration names.
+  await fixture({
+    ...other,
+    "vitest.config.ts": 'export default { resolve: { extensions: [".cts", ".ts"] } };',
+    "benchmarks/a.bench.ts": 'import "../src/value";',
+    "src/value.cts": "export const value = 1;",
+    "src/value.ts": "export const value = 2;",
+  }, async (root, select) => {
+    assert.deepEqual(await select(["src/value.cts"]), [all[0]]);
+    rmSync(join(root, "src/value.cts"));
+    assert.deepEqual(await select(["src/value.cts"]), all);
+    assert.deepEqual(await select(["src/gone.cts", "src/gone.mjs"]), []);
+  });
+
+  // A configuration that reads a file, directly or through a module it imports, can
+  // depend on any file, so no closure is trusted.
+  for (const config of [
+    { "vitest.config.ts": 'import { readFileSync } from "node:fs"; export default { resolve: { alias: { value: new URL(readFileSync(new URL("./alias.txt", import.meta.url), "utf8").trim(), import.meta.url).pathname } } };' },
+    { "vitest.config.ts": 'import { target } from "./config/target.mjs"; export default { resolve: { alias: { value: new URL(target, import.meta.url).pathname } } };', "config/target.mjs": 'import { readFileSync } from "node:fs"; export const target = readFileSync(new URL("../alias.txt", import.meta.url), "utf8").trim();' },
+  ]) {
+    await fixture({
+      ...other, ...config,
+      "alias.txt": "./src/value.ts\n",
+      "benchmarks/a.bench.ts": 'import "value";',
+      "src/value.ts": "export const value = 1;",
+    }, async (_root, select) => {
+      assert.deepEqual(await select(["alias.txt"]), all);
+      assert.deepEqual(await select(["docs/unrelated.md"]), all);
+    });
+  }
+});
+
 test("selected files use the fewest groups meeting the measured full-run duration", () => {
   const files = benchmarkFiles();
   const ceiling = Math.max(...benchmarkGroups(files, 8).map((group) => group.seconds));

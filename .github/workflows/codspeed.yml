@@ -70,6 +70,18 @@ jobs:
               git ls-files 'benchmarks/*.bench.ts' || echo 'Benchmark file listing unavailable; the benchmark runner will discover all files.'
             } >> "${GITHUB_STEP_SUMMARY}"
           }
+          if [[ "${RELEASE_PR}" == true ]]; then
+            {
+              echo 'frontend=false'
+              echo 'rust=false'
+              echo 'frontend_matrix={"include":[]}'
+            } >> "${GITHUB_OUTPUT}"
+            {
+              echo '## Benchmark selection'
+              echo 'Labeled same-repository release PR. Frontend benchmarks and Rust shards skipped.'
+            } >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
           if [[ "${DEPENDENCIES_RESULT}" != "success" || "${SELECTION_CHECK_RESULT}" != "success" ]]; then
             fallback
             exit 0
@@ -92,14 +104,7 @@ jobs:
           selection="${RUNNER_TEMP}/codspeed-selection"
           : > "${selection}"
           valid() {
-            local frontend rust
-            [[ "$(grep -c '' "${selection}")" == 3 ]] || return 1
-            frontend="$(sed -n 's/^frontend=//p' "${selection}")"
-            rust="$(sed -n 's/^rust=//p' "${selection}")"
-            [[ "${frontend}" == true || "${frontend}" == false ]] || return 1
-            [[ "${rust}" == true || "${rust}" == false ]] || return 1
-            sed -n 's/^frontend_matrix=//p' "${selection}" | jq -e --arg frontend "${frontend}" \
-              '(.include | type == "array") and ((.include | length > 0) == ($frontend == "true")) and all(.include[]; (.group | type == "number") and (.selection | type == "string"))' > /dev/null
+            node scripts/codspeed-validate-selection.mjs "${selection}"
           }
           if GITHUB_OUTPUT="${selection}" node scripts/codspeed-detect.mjs "${changed}" && valid; then
             cat "${selection}" >> "${GITHUB_OUTPUT}"

@@ -42,10 +42,10 @@ function detect(paths, overrides = {}) {
   const root = mkdtempSync(join(tmpdir(), "kubecove-codspeed-"));
   const output = join(root, "output").replaceAll("\\", "/");
   try {
-    const result = bash(`git() { if [[ "$1" == "diff" ]]; then if [[ "$GIT_FAILURE" == true ]]; then return 1; fi; printf '%s' "$CHANGED_PATHS" | tr '\\n' '\\0'; fi; }\nnode() { if [[ "$NODE_FAILURE" == true ]]; then return 1; fi; if [[ -n "\${NODE_OUTPUT+set}" ]]; then printf '%s' "$NODE_OUTPUT" >> "$GITHUB_OUTPUT"; return 0; fi; command node "$@"; }\n${runBlock(job("changes"))}`, {
+    const result = bash(`git() { if [[ "$1" == "diff" ]]; then if [[ "$GIT_FAILURE" == true ]]; then return 1; fi; printf '%s' "$CHANGED_PATHS" | tr '\\n' '\\0'; fi; }\nnode() { if [[ "$NODE_FAILURE" == true ]]; then return 1; fi; if [[ "$1" == scripts/codspeed-detect.mjs && -n "\${NODE_OUTPUT+set}" ]]; then printf '%s' "$NODE_OUTPUT" >> "$GITHUB_OUTPUT"; return 0; fi; command node "$@"; }\n${runBlock(job("changes"))}`, {
       BASE_SHA: "a".repeat(40), HEAD_SHA: "b".repeat(40), EVENT_NAME: "pull_request",
       DEPENDENCIES_RESULT: "success", SELECTION_CHECK_RESULT: "success",
-      GIT_FAILURE: "false", NODE_FAILURE: "false",
+      GIT_FAILURE: "false", NODE_FAILURE: "false", RELEASE_PR: "false",
       CHANGED_PATHS: paths.join("\n"), GITHUB_OUTPUT: output, RUNNER_TEMP: root,
       GITHUB_STEP_SUMMARY: join(root, "summary"), ...overrides,
     });
@@ -53,9 +53,11 @@ function detect(paths, overrides = {}) {
     const outputs = Object.fromEntries(readFileSync(output, "utf8").trim().split("\n").map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]));
     const matrix = JSON.parse(outputs.frontend_matrix);
     assert.equal(matrix.include.length > 0, outputs.frontend === "true");
-    const summary = readFileSync(join(root, "summary"), "utf8");
-    assert.match(summary, /Rust shards/);
-    for (const file of benchmarkFiles()) assert.ok(summary.includes(file) || summary.includes("Running every frontend file"), file);
+    if (overrides.NODE_OUTPUT === undefined) {
+      const summary = readFileSync(join(root, "summary"), "utf8");
+      assert.match(summary, /Rust shards/);
+      for (const file of benchmarkFiles()) assert.ok(summary.includes(file) || summary.includes("Running every frontend file") || summary.includes("Labeled same-repository release PR"), file);
+    }
     return { frontend: outputs.frontend, rust: outputs.rust };
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -124,6 +126,8 @@ for (const overrides of [{ EVENT_NAME: "push" }, { EVENT_NAME: "workflow_dispatc
   });
 }
 
+const jobs = (selection) => JSON.stringify({ include: [{ group: 0, selection }] });
+
 // Failure mode: the selector exits 0 with missing, extra or contradictory outputs, and the
 // benchmark jobs read them: an unparsable matrix, or a frontend lane switched off by accident.
 for (const [name, output] of [
@@ -136,11 +140,27 @@ for (const [name, output] of [
   ["a flag that is not a boolean", 'frontend=false\nrust=maybe\nfrontend_matrix={"include":[]}\n'],
   ["a missing Rust flag", 'frontend=false\nfrontend_matrix={"include":[]}\n'],
   ["a fourth output", 'frontend=false\nrust=false\nfrontend_matrix={"include":[]}\nrust=true\n'],
+  // Failure mode: the benchmark run rejects its job's selection, so the job fails where
+  // the fallback would have run everything.
+  ["a job selection that is not JSON", `frontend=true\nrust=false\nfrontend_matrix=${jobs("not-json")}\n`],
+  ["a job selection without files", `frontend=true\nrust=false\nfrontend_matrix=${jobs("{}")}\n`],
+  ["a job selection with no file", `frontend=true\nrust=false\nfrontend_matrix=${jobs('{"include":[]}')}\n`],
+  ["a job selection naming an unknown file", `frontend=true\nrust=false\nfrontend_matrix=${jobs('{"include":["benchmarks/gone.bench.ts"]}')}\n`],
+  ["a job selection with a name filter that is not text", `frontend=true\nrust=false\nfrontend_matrix=${jobs('{"include":["benchmarks/topology.bench.ts"],"testNamePattern":null}')}\n`],
+  ["two matrix documents", 'frontend=false\nrust=false\nfrontend_matrix={"include":[{}]} {"include":[]}\n'],
 ]) {
   test(`runs both suites when the selector succeeds with ${name}`, () => {
     assert.deepEqual(detect([], { NODE_OUTPUT: output }), { frontend: "true", rust: "true" });
   });
 }
+
+// Failure mode: the check above rejects what the benchmark run accepts, and every pull
+// request runs everything.
+test("keeps a selection the benchmark run accepts", () => {
+  const selection = '{"include":["benchmarks/topology.bench.ts"],"exclude":[],"testNamePattern":"F07"}';
+  assert.deepEqual(benchmarkSelection({ KUBECOVE_BENCHMARK_SELECTION: selection }).include, ["benchmarks/topology.bench.ts"]);
+  assert.deepEqual(detect([], { NODE_OUTPUT: `frontend=true\nrust=false\nfrontend_matrix=${jobs(selection)}\n` }), { frontend: "true", rust: "false" });
+});
 
 // Failure mode: the selector's own error handling selects nothing instead of everything.
 test("the selector runs everything when it cannot read the changed paths", () => {
@@ -167,9 +187,13 @@ test("a failed selector setup step still reaches the detection step", () => {
   assert.match(changes.slice(changes.indexOf("      - name: Detect frontend and Rust benchmark changes\n")), /^ {8}if: \$\{\{ !cancelled\(\) \}\}$/m);
 });
 
-test("release selection summaries explain the existing release skip policy", () => {
-  assert.deepEqual(detect(["bun.lock"], { RELEASE_PR: "true" }), { frontend: "false", rust: "false" });
-});
+// Failure mode: a release pull request whose selector setup failed reports that every
+// benchmark runs, while the benchmark jobs skip a release pull request.
+for (const overrides of [{}, { DEPENDENCIES_RESULT: "failure" }, { SELECTION_CHECK_RESULT: "failure" }, { GIT_FAILURE: "true" }, { NODE_FAILURE: "true" }]) {
+  test(`a release pull request selects nothing: ${JSON.stringify(overrides)}`, () => {
+    assert.deepEqual(detect(["bun.lock"], { RELEASE_PR: "true", ...overrides }), { frontend: "false", rust: "false" });
+  });
+}
 
 function gate(overrides = {}) {
   const root = mkdtempSync(join(tmpdir(), "codspeed-gate-"));

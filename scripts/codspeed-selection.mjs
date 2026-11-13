@@ -5,7 +5,7 @@ import { benchmarkFiles, benchmarkGroups } from "./codspeed-benchmark-suites.mjs
 
 const repository = fileURLToPath(new URL("../", import.meta.url));
 const sharedWorkflow = (path) => path === ".github/workflows/codspeed.yml" || path.startsWith(".github/actions/codspeed-run/");
-const sharedSelector = (path) => ["scripts/codspeed-detect.mjs", "scripts/codspeed-selection.mjs", "scripts/codspeed-selection.test.mjs", "scripts/codspeed-workflow-regression.test.mjs"].includes(path);
+const sharedSelector = (path) => ["scripts/codspeed-detect.mjs", "scripts/codspeed-selection.mjs", "scripts/codspeed-validate-selection.mjs", "scripts/codspeed-selection.test.mjs", "scripts/codspeed-workflow-regression.test.mjs"].includes(path);
 const fixture = (path) => /(^|\/)fixtures\//.test(path);
 const frontendGlobal = (path) => sharedWorkflow(path) ||
   /(^|\/)(package\.json|bun\.lock|(?:vitest|vite|svelte)\.config\.[^/]+|tsconfig[^/]*\.json|\.env(?:\.[^/]+)?)$/.test(path) ||
@@ -19,28 +19,27 @@ export function rustAffected(path) {
     /\.rs$|(^|\/)(Cargo\.(lock|toml)|rust-toolchain(\.toml)?)$|(^|\/)\.cargo\//.test(path);
 }
 
-// Vite's default resolve.extensions, the ones an import may leave out.
-const resolvedExtensions = ["mjs", "js", "mts", "ts", "jsx", "tsx", "json"];
-
 // Closures come from the current tree, so they cannot name a deleted file. When another file
 // answers the same extensionless import, such as value/index.ts after value.ts is deleted, the
 // importers stay unchanged and resolve, and nothing else reports the new implementation.
-function replacedByAnotherFile(root, path) {
-  const stem = new RegExp(`^(.*)\\.(${resolvedExtensions.join("|")})$`).exec(path)?.[1];
+function replacedByAnotherFile(root, path, extensions) {
+  const extension = extensions.find((extension) => path.endsWith(extension));
+  const stem = extension === undefined ? undefined : path.slice(0, -extension.length);
   if (stem === undefined || existsSync(join(root, path))) return false;
   const stems = [stem, `${stem}/index`, ...(stem.endsWith("/index") ? [stem.slice(0, -"/index".length)] : [])];
-  return stems.some((candidate) => resolvedExtensions.some((extension) => existsSync(join(root, `${candidate}.${extension}`))));
+  return stems.some((candidate) => extensions.some((extension) => existsSync(join(root, `${candidate}${extension}`))));
 }
 
 export async function selectBenchmarks(paths, { root = repository, files = benchmarkFiles(), fullReason } = {}) {
   const global = paths.filter(frontendGlobal);
-  const replaced = paths.filter((path) => replacedByAnotherFile(root, path));
-  const reason = fullReason || (global.length ? `shared benchmark input: ${global.join(", ")}` : undefined) ||
-    (replaced.length ? `deleted module that another file now resolves for: ${replaced.join(", ")}` : undefined);
+  let reason = fullReason || (global.length ? `shared benchmark input: ${global.join(", ")}` : undefined);
   const rustPaths = paths.filter(rustAffected);
   const rust = Boolean(fullReason || rustPaths.length);
   const decisions = [];
-  const closures = reason || !files.length ? new Map() : await (await import("./codspeed-import-closure.mjs")).importClosures(root, files);
+  const { closures, extensions } = reason || !files.length ? { closures: new Map(), extensions: [] } :
+    await (await import("./codspeed-import-closure.mjs")).importClosures(root, files);
+  const replaced = paths.filter((path) => replacedByAnotherFile(root, path, extensions));
+  if (replaced.length) reason = `deleted module that another file now resolves for: ${replaced.join(", ")}`;
   for (const file of files) {
     const closure = closures.get(file);
     const changed = closure ? paths.filter((path) => closure.paths.has(path)) : [];
