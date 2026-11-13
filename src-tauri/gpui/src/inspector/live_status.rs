@@ -180,7 +180,7 @@ impl Inspector {
         // The delayed indicator, as the web button shows it; the read itself
         // disables the button at once.
         let refreshing = status == LiveStatus::Refreshing;
-        let busy = self.scope_load.refreshing();
+        let busy = self.observation.refreshing();
         let (icon, label) = if refreshing {
             ("loader-circle", "Refreshing…")
         } else {
@@ -363,7 +363,7 @@ impl Inspector {
     /// contexts' rows show, delayed like other loading indicators, as
     /// `contextsLoadingNotice` in `contextResults.ts` words it.
     pub(super) fn contexts_waiting_notice(&self) -> Option<AnyElement> {
-        let waiting = self.scope_load.waiting_contexts();
+        let waiting = self.observation.waiting_contexts();
         let phase = self.loading.phase("contexts-waiting", !waiting.is_empty());
         if !phase.shown() || waiting.is_empty() {
             return None;
@@ -386,5 +386,21 @@ impl Inspector {
                 .child(ui::muted(ui::xs(label)))
                 .into_any_element(),
         )
+    }
+}
+
+impl Inspector {
+    /// Only contexts with shown rows contribute to table freshness.
+    pub(super) fn shown_live_status(&self) -> LiveStatus {
+        if self.observation.refreshing() {
+            LiveStatus::Refreshing
+        } else {
+            self.live
+                .settled_status_where(|context| self.observation.shows(context))
+        }
+    }
+
+    pub(super) fn updates_current(&self) -> bool {
+        !self.observation.shown_loading() && self.shown_live_status() == LiveStatus::Live
     }
 }

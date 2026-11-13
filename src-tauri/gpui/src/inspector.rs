@@ -69,6 +69,7 @@ mod remote_notice;
 mod request;
 mod resource_filter_controls;
 mod resource_filters;
+mod resource_observation;
 mod resource_order;
 mod resources;
 mod restore_inventory;
@@ -78,7 +79,6 @@ mod row_index;
 mod saved_forward_form;
 mod scope;
 mod scope_arrivals;
-mod scope_load;
 mod secret_data;
 mod session_actions;
 mod session_cleanup;
@@ -170,7 +170,6 @@ pub struct Inspector {
     table_sort: crate::table_sort::Sort,
     /// Group and kind-group keys the table has collapsed, as `collapsedGroups` on the web.
     collapsed_groups: std::collections::HashSet<String>,
-    rows: Rc<crate::model::PreparedRows>,
     visible: crate::model::Visible,
     row_index: row_index::RowIndex,
     table_page: usize,
@@ -178,7 +177,7 @@ pub struct Inspector {
     /// One focus handle per table row's name control, kept while the row is on the page.
     table_focus: std::cell::RefCell<std::collections::HashMap<String, gpui_kit::FocusHandle>>,
     timeline: timeline::State,
-    scope_load: scope_load::ScopeLoad,
+    observation: resource_observation::ResourceObservation,
     warnings: Vec<String>,
     detail: Detail,
     map: map::MapState,
@@ -305,14 +304,13 @@ impl Inspector {
             namespaces: vec![],
             table_sort: Default::default(),
             collapsed_groups: Default::default(),
-            rows: Rc::default(),
             visible: Default::default(),
             row_index: Default::default(),
             table_page: 0,
             table_rows: windowed::Windowed::unwrapped(),
             table_focus: Default::default(),
             timeline: Default::default(),
-            scope_load: Default::default(),
+            observation: Default::default(),
             warnings: vec![],
             detail: Detail::Closed,
             map: map::MapState::new(),

@@ -323,18 +323,10 @@
 		}
 	});
 	const topologyQuery = reads.topology;
-	// Only contexts whose rows show weigh in: a context that failed or still loads has no rows to call stale.
-	const shownLive = $derived(live.stateOf(resourcesQuery.shownContexts));
-	const updatesCurrent = $derived(shownLive.status === "connected" && !shownLive.catchingUp && !shownLive.reloadError
-		&& !resourcesQuery.isError && !resourcesQuery.isPlaceholderData
-		&& (!mapPanelOpen || (!topologyQuery.isError && !topologyQuery.isPlaceholderData)));
-	// The map shows its context's topology even while that context's rows load or failed, so its watches count too.
-	const mapLive = $derived(live.stateOf([...resourcesQuery.shownContexts, reads.mapContext]));
-	const mapUpdatesCurrent = $derived(updatesCurrent && mapLive.status === "connected" && !mapLive.catchingUp && !mapLive.reloadError);
-	// The live notice explains whatever paused activity: the map's context too while its topology shows.
-	const mapShown = $derived(mapPanelOpen && Boolean(topologyQuery.data));
-	const noticeLive = $derived(mapShown ? mapLive : shownLive);
-	const noticeCurrent = $derived(mapShown ? mapUpdatesCurrent : updatesCurrent);
+	const updatesCurrent = $derived(reads.freshness.tableCurrent);
+	const mapUpdatesCurrent = $derived(reads.freshness.mapCurrent);
+	const noticeLive = $derived(reads.freshness.notice.live);
+	const noticeCurrent = $derived(reads.freshness.notice.current);
 
 	const namespaceOptions = $derived(reads.namespaces);
 	const kindOptions = $derived(

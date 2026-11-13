@@ -44,7 +44,7 @@ impl Inspector {
             // ResourceLiveStatusMenu.svelte delays and holds "Refreshing…" like other indicators.
             let refreshing = self
                 .loading
-                .phase("live-refresh", self.scope_load.refreshing());
+                .phase("live-refresh", self.observation.refreshing());
             return if refreshing.shown() {
                 LiveStatus::Refreshing
             } else {

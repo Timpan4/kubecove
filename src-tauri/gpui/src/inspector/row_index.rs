@@ -75,11 +75,11 @@ impl Inspector {
         let in_context =
             |row: &ResourceSummary| contexts.as_ref().is_none_or(|c| c.contains(&row.cluster));
         let source = self.row_index.source(
-            &self.rows,
+            self.observation.rows(),
             self.cluster_prepared(),
             &self.request,
             &self.cluster.request,
-            self.scope_load.contexts(),
+            self.observation.contexts(),
         );
         let mut visible = std::mem::take(&mut self.visible);
         let kind_filter = KindFilter {

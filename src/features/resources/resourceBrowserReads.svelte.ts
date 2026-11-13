@@ -170,6 +170,22 @@ export function resourceBrowserReads(client: TauriClient, input: () => ResourceB
 		return view ? [view] : [];
 	}));
 
+	// A context without shown rows has no table evidence to call stale.
+	const shown = $derived(live.stateOf(scope.shownContexts));
+	const tableCurrent = $derived(shown.status === "connected" && !shown.catchingUp && !shown.reloadError
+		&& !scope.isError && !scope.isPlaceholderData
+		&& (!current.mapPanelOpen || (!topology.isError && !topology.isPlaceholderData)));
+	// The map can show its context's topology before that context's rows arrive.
+	const map = $derived(live.stateOf([...scope.shownContexts, mapContext]));
+	const mapCurrent = $derived(tableCurrent && map.status === "connected" && !map.catchingUp && !map.reloadError);
+	const mapShown = $derived(current.mapPanelOpen && Boolean(topology.data));
+	const notice = $derived({ live: mapShown ? map : shown, current: mapShown ? mapCurrent : tableCurrent });
+	const freshness = {
+		get tableCurrent() { return tableCurrent; },
+		get mapCurrent() { return mapCurrent; },
+		get notice() { return notice; },
+	};
+
 	return {
 		/** Read contexts in workspace rank order. */
 		get contexts() { return contexts; },
@@ -184,6 +200,7 @@ export function resourceBrowserReads(client: TauriClient, input: () => ResourceB
 		get topologyFitViewKey() { return mapSpecs.topologyFitViewKey; },
 		get metricsIndex() { return metricsIndex; },
 		get metricsMessage() { return metricsMessage; },
+		get freshness() { return freshness; },
 		live,
 	};
 }

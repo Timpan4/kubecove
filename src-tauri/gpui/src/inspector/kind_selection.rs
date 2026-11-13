@@ -86,7 +86,7 @@ impl Inspector {
                 self.base_kinds().contains(&key)
                     || self.live.kinds.iter().any(|kind| {
                         identity(kind) == key
-                            && self.rows.iter().any(|row| {
+                            && self.observation.rows().iter().any(|row| {
                                 row.kind == kind.kind
                                     && row.api_version.as_ref() == Some(&kind.api_version)
                             })
@@ -240,7 +240,7 @@ impl Inspector {
                             rows,
                             resource_version,
                         }) => this.queue_live_patch(
-                            super::live_rows::Patch {
+                            super::resource_observation::Patch {
                                 scope: Scope {
                                     context,
                                     namespace: scope.namespace.clone(),
@@ -255,12 +255,13 @@ impl Inspector {
                         ),
                         // A context whose rows don't show has nothing to call stale;
                         // its own read failure is already its warning.
-                        Err(error) if this.scope_load.shows(&context) => {
-                            this.live.refresh_error = Some(super::scope_load::context_message(
-                                several,
-                                &context,
-                                &error.message,
-                            ))
+                        Err(error) if this.observation.shows(&context) => {
+                            this.live.refresh_error =
+                                Some(super::resource_observation::context_message(
+                                    several,
+                                    &context,
+                                    &error.message,
+                                ))
                         }
                         Err(_) => {}
                     }

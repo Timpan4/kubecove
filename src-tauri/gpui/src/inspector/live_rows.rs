@@ -1,19 +1,8 @@
 //! Snapshot reconciliation patches listed and visible rows without rebuilding the table.
-use super::{Inspector, Load};
+use super::Inspector;
 use crate::backend::Scope;
 use crate::model::ObservedNames;
 use kubecove_lib::models::{ResourceSummary, WatchResourceKey};
-use std::rc::Rc;
-
-pub(super) struct Patch {
-    pub scope: Scope,
-    pub key: WatchResourceKey,
-    pub rows: Vec<ResourceSummary>,
-    /// The version of the list `rows` came from.
-    pub resource_version: Option<String>,
-    pub names: Option<ObservedNames>,
-    pub watch: Option<String>,
-}
 
 impl Inspector {
     /// The contexts whose rows the page's watches patch: every context of the
@@ -23,14 +12,8 @@ impl Inspector {
         if self.page == super::Page::ClusterOverview {
             vec![self.scope.context.clone()]
         } else {
-            self.scope_load.contexts().to_vec()
+            self.observation.contexts().to_vec()
         }
-    }
-
-    /// Whether a patch read in `scope` belongs to the rows the page shows: one
-    /// of the scope read's contexts, in the selected namespace.
-    pub(super) fn patch_in_scope(&self, scope: &Scope) -> bool {
-        scope.namespace == self.scope.namespace && self.scope_load.has_context(&scope.context)
     }
 
     pub(super) fn patch_kind(
@@ -42,7 +25,8 @@ impl Inspector {
         names: Option<ObservedNames>,
     ) -> Vec<ResourceSummary> {
         let _span = crate::frame_profile::scope("watch", "patch");
-        if !self.patch_in_scope(scope) || self.behind_shown(scope, key, resource_version.as_deref())
+        if !self.observation.accepts(scope)
+            || self.behind_shown(scope, key, resource_version.as_deref())
         {
             return rows;
         }
@@ -57,36 +41,19 @@ impl Inspector {
         // Where the cluster read's rows show, its kinds patch there, so a
         // selected cluster kind on Resources never shows a second, stale copy.
         let cluster_rows = self.cluster_source(&scope.context, key);
-        // The version moves with the rows it describes, so a watch never starts past them.
-        let versions = if cluster_rows {
-            Some(&mut self.cluster.versions)
-        } else {
-            self.scope_load.versions_mut(&scope.context)
-        };
-        if let Some(versions) = versions {
+        if cluster_rows {
             let id = crate::backend::watch_id(&scope.context, key);
             match resource_version {
-                Some(version) => versions.insert(id, version),
-                None => versions.remove(&id),
+                Some(version) => self.cluster.versions.insert(id, version),
+                None => self.cluster.versions.remove(&id),
             };
-        }
-        let retired = if cluster_rows {
             crate::model::reconcile(&mut self.cluster.rows, &scope.context, key, rows, names);
+            self.observation.rows_patched();
             Vec::new()
         } else {
-            // A context whose read failed shows the rows its watch installs.
-            // An empty patch installs none, so a load whose every read failed still fails.
-            if !rows.is_empty() {
-                self.scope_load.mark_shown(&scope.context);
-            }
-            Rc::get_mut(&mut self.rows)
-                .expect("visible source released before patching")
-                .patch(&scope.context, key, rows, names)
-        };
-        if !matches!(self.scope_load.rows, Load::Ready) && !self.rows.is_empty() {
-            self.scope_load.rows = Load::Ready;
+            self.observation
+                .patch(scope, key, rows, resource_version, names)
         }
-        retired
     }
 
     /// Whether rows read at `version` are older than the rows the view shows,
@@ -114,9 +81,9 @@ impl Inspector {
         {
             cluster()
         } else if cluster_kind {
-            self.scope_load.version(&id).or_else(cluster)
+            self.observation.version(&id).or_else(cluster)
         } else {
-            self.scope_load.version(&id)
+            self.observation.version(&id)
         };
         version.cloned()
     }
@@ -133,8 +100,8 @@ impl Inspector {
         let custom = key.resource_kind.plural.is_some();
         let cluster_kind = crate::backend::CLUSTER_KINDS.contains(&key.resource_kind.kind.as_str());
         // Each context's watches wait only for that context's read.
-        !self.scope_load.context_loading(context)
-            && !(custom && self.scope_load.custom_loading(context))
+        !self.observation.context_loading(context)
+            && !(custom && self.observation.custom_loading(context))
             && !(cluster_kind && self.cluster_loading())
     }
 

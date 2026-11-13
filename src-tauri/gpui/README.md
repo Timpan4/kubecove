@@ -18,6 +18,14 @@ They do not read the user's kubeconfig or change a cluster. Reports and screensh
 are retained under `e2e/artifacts/`. A passing scenario proves the UI interaction
 through the command boundary, not a packaged app or a live Kubernetes request.
 
+The [resource observation module](src/inspector/resource_observation.rs) owns the
+shown resource rows, their list versions, initial watch versions, and held watch
+patches. Context arrivals, custom-kind reads, refreshes, and watch patches install
+their evidence through that owner. Presentation reads its rows and status without
+mutating snapshot state. Stream tasks use the existing Backend adapters; topology
+reads retain their separate owner. Domain terms are defined in the
+[glossary](../../GLOSSARY.md).
+
 RBAC inspection, exact access verification, workspace scope selection, settings
 search and command-palette navigation have shared scenarios. Preferences, saved
 workspaces with their RBAC review notes, and port-forward presets persist in one
