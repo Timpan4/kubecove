@@ -49,7 +49,9 @@ test("Rust pass records require exact inputs, runner identity and a pull request
     writeFileSync(output, "");
     const result = run("decide", overrides);
     assert.equal(result.status, 0, result.stderr);
-    return { skip: readFileSync(output, "utf8").trim() === "skip=true", log: result.stdout };
+    const decision = readFileSync(output, "utf8").trim();
+    assert.ok(decision === "skip=true" || decision === "skip=false", decision);
+    return { skip: decision === "skip=true", log: result.stdout };
   };
   const cache = (overrides = {}) => {
     writeFileSync(output, "");
@@ -84,6 +86,10 @@ test("Rust pass records require exact inputs, runner identity and a pull request
       // Same length as the repository, so only the prefix comparison can reject it.
       record.replace("Timpan4/kubecove", "Timpan4/kubecovf"),
       record.replace('"task":"gpui-test"', '"task":"gpui-clippy"'),
+      JSON.stringify({ ...JSON.parse(record), key: key.replace(/b{64}$/, "c".repeat(64)) }),
+      ...["RUNNER_OS", "RUNNER_ARCH", "ImageOS", "ImageVersion"].map((field) => JSON.stringify({
+        ...JSON.parse(record), environment: { ...JSON.parse(record).environment, [field]: "other" },
+      })),
     ];
     for (const content of forged) assert.notEqual(content, record);
     for (const content of ["not JSON", "null", "{}", "[]", JSON.stringify({ ...JSON.parse(record), run: [JSON.parse(record).run] }), ...forged]) {

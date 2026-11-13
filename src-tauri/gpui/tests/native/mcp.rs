@@ -133,6 +133,8 @@ fn running_rotation_revokes_old_token_and_restart_reuses_saved_settings() {
         client
             .post(&url)
             .bearer_auth(token)
+            // Rotation restarts the listener. Reach the current listener on a fresh socket.
+            .header(reqwest::header::CONNECTION, "close")
             .header("accept", "application/json, text/event-stream")
             .json(&serde_json::json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}))
             .send()
