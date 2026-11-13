@@ -261,7 +261,9 @@ jobs:
         run: node scripts/ci-rust-pass.mjs cache-key
 
       # A tiny pass record avoids restoring compiler objects or installing build
-      # dependencies on a hit. Cache errors and partial matches run verification.
+      # dependencies on a hit. Cache errors and invalid records run verification.
+      # Every run saves under its own key, so the lookup restores the newest
+      # record under the prefix, and a later pass replaces a rejected one.
       - name: Restore Rust task pass
         id: restore-pass
         if: ${{ matrix.workspace && steps.pass-cache.outputs.key != '' && github.event_name == 'pull_request' }}
@@ -270,6 +272,7 @@ jobs:
         with:
           path: .ci-rust-pass/record.json
           key: ${{ steps.pass-cache.outputs.key }}
+          restore-keys: ${{ steps.pass-cache.outputs.prefix }}
 
       - name: Decide Rust task reuse
         id: decide-pass
@@ -279,7 +282,7 @@ jobs:
           PASS_TASK: ${{ matrix.task }}
           PASS_KEY: ${{ steps.rust-pass.outputs.key }}
           PASS_EVENT: ${{ github.event_name }}
-          PASS_CACHE_HIT: ${{ steps.restore-pass.outputs.cache-hit }}
+          PASS_CACHE_MATCH: ${{ steps.restore-pass.outputs.cache-matched-key }}
         run: node scripts/ci-rust-pass.mjs decide
 
       - name: Setup Bun
@@ -481,7 +484,7 @@ jobs:
           PASS_TASK: ${{ matrix.task }}
           PASS_KEY: ${{ steps.rust-pass.outputs.key }}
           PASS_EVENT: ${{ github.event_name }}
-          PASS_CACHE_HIT: ${{ steps.restore-pass.outputs.cache-hit }}
+          PASS_CACHE_MATCH: ${{ steps.restore-pass.outputs.cache-matched-key }}
           PASS_SKIP: ${{ steps.decide-pass.outputs.skip }}
           PASS_STEPS: ${{ toJSON(steps) }}
         run: node scripts/ci-rust-pass.mjs verify

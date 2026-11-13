@@ -242,24 +242,35 @@ test fixtures. These wider inputs affect only pass records. The edited workflow
 itself changes all five compiler keys once because it was already a build input.
 
 The pass-record cache key is
-`passed-<pass-input key>-<runner-environment SHA-256>`. The environment digest
-includes `RUNNER_OS`, `RUNNER_ARCH`, `ImageOS` and `ImageVersion`, so two
-hosted images in a rollout can each record a pass for identical repository
-inputs. Those fields are also compared inside the tiny record. No stored pass
-key starts with `mbx-`, so the compiler-cache cleanup script ignores it.
+`passed-<pass-input key>-<runner-environment SHA-256>-<run ID>-<run attempt>`.
+The environment digest includes `RUNNER_OS`, `RUNNER_ARCH`, `ImageOS` and
+`ImageVersion`, so two hosted images in a rollout can each record a pass for
+identical repository inputs. Those fields are also compared inside the tiny
+record. No stored pass key starts with `mbx-`, so the compiler-cache cleanup
+script ignores it.
+
+A cache entry cannot be replaced, and the record is saved before the job's post
+hooks run. A source job that fails in a post hook leaves a record that every
+lookup rejects. The run ID and attempt in the key let the next run that passes
+save its own record. A lookup restores the newest record under the key without
+the run suffix, and accepts it only when the record names the run in the
+restored key and that run's job succeeded.
 
 Only `pull_request` events restore records. Relevant main pushes and manual
 dispatches always run the selected tasks and record passes, so main keeps
 refreshing compiler bundles. No job's `cache-mode` or mbx save/restore policy
 changes. Each task looks up its pass after checkout, Rust setup and both key
-computations. Exact hits require matching task, pass-input key, environment and
-originating run-attempt URL. Missing image identity, partial hits, malformed
-records, cache errors or an unavailable source-job API run verification.
+computations. A reusable record matches the task, pass-input key, environment
+and the run attempt in its restored key. Missing image or run identity,
+malformed records, cache errors or an unavailable source-job API run
+verification.
 
 Action cleanup hooks run after the record save. Reuse therefore asks GitHub's
 jobs API whether the originating `CI <task>` job completed successfully,
 including its post hooks. The checks job has read-only Actions permission. It
-uses the API's default page; an unlisted or unfinished task runs again.
+reads the API's first page and reuses a pass only when that page lists every job
+of the run attempt, so a second job of the same name cannot hide on a later
+page. An unlisted or unfinished task runs again.
 Completion consumes that successful decision without another API request.
 
 A hit skips system-package setup, Bun setup and installation, compiler-cache
