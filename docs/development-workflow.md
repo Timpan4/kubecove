@@ -188,6 +188,12 @@ the same compiler and rebuilds what changed. Only default-branch pushes save.
 Pull requests restore main's cache and never save: one pull request push that
 saved stored about 7 GB, and GitHub evicts the least recently used caches above
 the quota, which would remove the caches main keeps for other pull requests.
+A save under a new key leaves the previous cache in place, so
+`.github/workflows/rust-cache-cleanup.yml` runs after each main run of CI,
+CodSpeed, E2E and Parity and deletes every Rust build cache on `main` that has a
+newer one of the same name (`scripts/ci-prune-rust-caches.mjs`; without
+`--delete` it only lists them). Usage can still pass the quota for the minutes
+between a save and the cleanup.
 Jobs that share one cache key, such as the CodSpeed Rust shards and the main
 parity shards, let one job save, because the action fails a job whose save loses
 GitHub's reservation of the key to another job. The others set GitHub's
