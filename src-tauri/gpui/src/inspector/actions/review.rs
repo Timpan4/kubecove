@@ -112,6 +112,9 @@ fn review_body(review: &Review, entity: &Entity<Inspector>, cx: &App) -> Div {
                 .items_center()
                 .gap(px(8.))
                 .pl(px(12.))
+                .rounded(px(8.))
+                .border_2()
+                .border_color(gpui_kit::transparent_black())
                 .cursor_pointer()
                 .child(ui::icon(
                     if review.diff_open {
@@ -129,6 +132,7 @@ fn review_body(review: &Review, entity: &Entity<Inspector>, cx: &App) -> Div {
                 .role(gpui_kit::Role::Button)
                 .aria_expanded(review.diff_open)
                 .track_focus(&review.diff_focus)
+                .focus(|style| style.border_color(Tokens::ring()))
                 .tab_index(0)
                 .on_click(toggle)
                 .into_any_element()

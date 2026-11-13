@@ -33,7 +33,12 @@ pub(super) fn action_controller(
     let api_version = owner.get("apiVersion")?.as_str()?;
     // `group/version`, or exactly `v1` for the core group; anything else matches no group.
     let group = match api_version.split_once('/') {
-        Some((group, _version)) => Some(group),
+        Some((group, version))
+            if !group.is_empty() && !version.is_empty() && !version.contains('/') =>
+        {
+            Some(group)
+        }
+        Some(_) => None,
         None => (api_version == "v1").then_some(""),
     };
     // A finished Pod keeps its owner reference, but its controller has already
@@ -140,6 +145,16 @@ mod tests {
             json!([{ "apiVersion": "bogus", "kind": "ReplicationController", "name": "x", "controller": true }]),
         );
         assert_eq!(recreates("Pod", &unversioned), Some(false));
+        for (api_version, kind) in [
+            ("/v1", "ReplicationController"),
+            ("apps/", "ReplicaSet"),
+            ("apps/v1/extra", "ReplicaSet"),
+        ] {
+            let object = owned(
+                json!([{ "apiVersion": api_version, "kind": kind, "name": "x", "controller": true }]),
+            );
+            assert_eq!(recreates("Pod", &object), Some(false), "{api_version}");
+        }
         let malformed =
             owned(json!([{ "apiVersion": "apps/v1", "kind": "ReplicaSet", "controller": true }]));
         assert_eq!(action_controller("Pod", &malformed), None);
