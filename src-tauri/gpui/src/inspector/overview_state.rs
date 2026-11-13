@@ -8,6 +8,12 @@ use std::{
     rc::Rc,
 };
 
+pub(super) struct Projection {
+    pub rows: Vec<kubecove_lib::models::ResourceSummary>,
+    pub health: crate::model::HealthSummary,
+    pub model: crate::workspaces::overview::Overview,
+}
+
 #[derive(Default)]
 pub(super) struct State {
     pub expanded: HashSet<String>,

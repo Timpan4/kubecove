@@ -35,9 +35,10 @@ pub(super) fn titled_card(title: &str, description: &str, content: impl IntoElem
 }
 impl Inspector {
     pub(super) fn overview(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let rows: Vec<_> = self.workspace_rows().collect();
-        let model = overview::build(&rows);
-        let health = HealthSummary::of(rows.iter().copied());
+        let projection = self.overview_projection();
+        let rows: Vec<_> = projection.rows.iter().collect();
+        let model = &projection.model;
+        let health = projection.health;
         let has_data = matches!(self.overview_load(), Load::Ready) || !rows.is_empty();
         let width = super::resources::page_width(self, window).min(1280.) - 48.;
         // The approved Svelte layout puts the 20rem rail beside the table at @6xl.
@@ -132,8 +133,8 @@ impl Inspector {
                             .flex_1()
                             .min_w_0()
                             .gap(px(16.))
-                            .child(self.overview_findings(&rows, &model, has_data, main_width, cx))
-                            .children(self.overview_namespaces(&model, cx)),
+                            .child(self.overview_findings(&rows, model, has_data, main_width, cx))
+                            .children(self.overview_namespaces(model, cx)),
                     )
                     .child(rail),
             )

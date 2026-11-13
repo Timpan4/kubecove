@@ -18,6 +18,7 @@ pub(super) struct SavedOverview {
     pub(super) warnings: Vec<String>,
     entries: Vec<CompareEntry>,
     comparisons: RefCell<Option<Rc<[Comparison]>>>,
+    overview: RefCell<Option<Rc<super::overview_state::Projection>>>,
 }
 struct Comparison {
     title: String,
@@ -25,6 +26,26 @@ struct Comparison {
 }
 
 impl Inspector {
+    pub(super) fn reset_overview_projection(&self) {
+        self.saved_overview.overview.borrow_mut().take();
+    }
+
+    pub(super) fn overview_projection(&self) -> Rc<super::overview_state::Projection> {
+        self.saved_overview
+            .overview
+            .borrow_mut()
+            .get_or_insert_with(|| {
+                let rows: Vec<_> = self.workspace_rows().cloned().collect();
+                let references: Vec<_> = rows.iter().collect();
+                Rc::new(super::overview_state::Projection {
+                    health: HealthSummary::of(references.iter().copied()),
+                    model: crate::workspaces::overview::build(&references),
+                    rows,
+                })
+            })
+            .clone()
+    }
+
     pub(super) fn update_saved_overview(&mut self) {
         let saved = self
             .launcher

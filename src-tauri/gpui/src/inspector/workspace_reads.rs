@@ -119,6 +119,7 @@ impl Inspector {
         shared: Option<SharedScopeReads>,
         cx: &mut Context<Self>,
     ) {
+        self.reset_overview_projection();
         self.workspace_read = None;
         if self.page != super::Page::Overview {
             self.update_saved_overview();
