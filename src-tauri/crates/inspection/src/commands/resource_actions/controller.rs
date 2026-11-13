@@ -240,9 +240,10 @@ mod tests {
 
     // Failure modes of the live owner, written before the code:
     // 1. a same-named owner created after the original has another uid;
-    // 2. an owner being deleted (orphaning or foreground) creates no new Pods;
-    // 3. an owner scaled to zero replaces nothing;
-    // 4. a suspended Job replaces nothing.
+    // 2. an owner scaled to zero replaces nothing;
+    // 3. a suspended Job replaces nothing.
+    // A terminating, missing or unreadable owner is covered at the preview seam
+    // in `resource_actions_tests.rs`.
     #[test]
     fn only_a_live_active_owner_with_the_referenced_uid_replaces() {
         let live = json!({ "metadata": { "uid": "owner-uid" }, "spec": { "replicas": 2 } });
@@ -252,9 +253,6 @@ mod tests {
             "owner-uid"
         ));
         assert!(!owner_can_replace(&live, "other-uid"));
-        let mut deleting = live.clone();
-        deleting["metadata"]["deletionTimestamp"] = json!("2026-11-13T19:00:00Z");
-        assert!(!owner_can_replace(&deleting, "owner-uid"));
         let mut scaled_down = live.clone();
         scaled_down["spec"]["replicas"] = json!(0);
         assert!(!owner_can_replace(&scaled_down, "owner-uid"));
