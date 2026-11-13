@@ -93,13 +93,25 @@ pub async fn preview_resource_action(
     let (effect, after_yaml, revision_identity) = preview_effect(
         &request,
         api,
-        client,
+        client.clone(),
         &current_value,
         &uid,
         &resource_version,
     )
     .await?;
-    let controller = controller::action_controller(&request.target.kind, &current_value);
+    // Only the delete review shows the controller, and confirming it costs a read.
+    let controller = match request.target.namespace.as_deref() {
+        Some(namespace) if request.action == ResourceActionKind::Delete => {
+            controller::confirmed_controller(
+                client,
+                namespace,
+                &request.target.kind,
+                &current_value,
+            )
+            .await
+        }
+        _ => None,
+    };
     Ok(ResourceActionPreview {
         target: request.target,
         effect,
