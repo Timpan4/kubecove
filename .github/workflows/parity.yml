@@ -27,19 +27,24 @@ jobs:
     # Release PRs change only versions and changelogs, so they skip it as in ci.yml.
     if: ${{ github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
     runs-on: ubuntu-latest
+    # The job took 15 s in run 43484678727. A stalled checkout, setup or upload ends at
+    # the limit "Parity result" uses below, and the drivers then run the full suite.
+    timeout-minutes: 5
     permissions:
       contents: read
       actions: read
+    # The selection step continues on error, so this job can succeed after the step failed
+    # with outputs already written. Only a step that succeeded publishes a selection.
     outputs:
       attempt: ${{ github.run_attempt }}
-      ids: ${{ steps.select.outputs.ids }}
-      regular: ${{ steps.select.outputs.regular }}
-      spike: ${{ steps.select.outputs.spike }}
-      web-shards: ${{ steps.select.outputs.web-shards }}
-      gpui-shards: ${{ steps.select.outputs.gpui-shards }}
-      web-matrix: ${{ steps.select.outputs.web-matrix }}
-      gpui-matrix: ${{ steps.select.outputs.gpui-matrix }}
-      reason: ${{ steps.select.outputs.reason }}
+      ids: ${{ steps.select.outcome == 'success' && steps.select.outputs.ids || '' }}
+      regular: ${{ steps.select.outcome == 'success' && steps.select.outputs.regular || '' }}
+      spike: ${{ steps.select.outcome == 'success' && steps.select.outputs.spike || '' }}
+      web-shards: ${{ steps.select.outcome == 'success' && steps.select.outputs.web-shards || '' }}
+      gpui-shards: ${{ steps.select.outcome == 'success' && steps.select.outputs.gpui-shards || '' }}
+      web-matrix: ${{ steps.select.outcome == 'success' && steps.select.outputs.web-matrix || '' }}
+      gpui-matrix: ${{ steps.select.outcome == 'success' && steps.select.outputs.gpui-matrix || '' }}
+      reason: ${{ steps.select.outcome == 'success' && steps.select.outputs.reason || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

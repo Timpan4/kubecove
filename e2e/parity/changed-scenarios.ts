@@ -19,6 +19,9 @@ const FULL_SUITE = [
 	/^\.agents\/skills\/verify-kubecove\/scripts\/processes\.ts$/,
 	/^src-tauri\/gpui\/tests\/(parity\.rs|parity\/|common\/)/,
 	/^\.github\/workflows\/parity[^/]*\.yml$/,
+	// Scripts the driver jobs run before the build. ci-selection.test.ts checks that every
+	// script the parity workflows name selects the full suite.
+	/^scripts\/ci-(mbx-cargo|rust-cache-key)\.mjs$/,
 	// GPUI fixture consumers are not attributed to individual mock calls.
 	/^src\/lib\/(tauri-dev-mock[^/]*|mcp-dev-mocks)\.ts$/,
 	// Files the native crates embed, such as fonts, icons and configuration. The map lists
@@ -39,6 +42,7 @@ const SKIPPED = new RegExp(`^\\s*(${COMMENT_LINE}|[{}()[\\];,]*|(pub(\\([^)]*\\)
 // A changed `use` or `mod` line can give a name another meaning in every item of the file.
 const IMPORT = /^\s*(pub(\([^)]*\))?\s+)?(use|mod|extern\s+crate)\s/;
 const REEXPORT = /^\s*pub(\([^)]*\))?\s+(use|mod)\s/;
+const USE = /^\s*(pub(\([^)]*\))?\s+)?use\s/;
 
 type Hunk = { oldStart: number; oldCount: number; newStart: number; newCount: number; context: string; removed: string[]; added: string[] };
 type FileDiff = { oldPath?: string; newPath?: string; hunks: Hunk[]; binary: boolean };
@@ -108,6 +112,26 @@ function translateLine(hunks: Hunk[], line: number): number[] {
 }
 
 const within = (ranges: number[], line: number) => pairs(ranges).some(([start, end]) => line >= start && line <= end);
+
+type UseBlock = { start: number; end: number; reexport: boolean };
+/** The `use` statements of a Rust source that span several lines, as 1-based line ranges. */
+function useBlocks(lines: string[]): UseBlock[] {
+	const code = (line: string) => line.replace(/\/\/.*/, "");
+	const blocks: UseBlock[] = [];
+	for (let index = 0; index < lines.length; index++) {
+		const first = lines[index] ?? "";
+		if (!USE.test(first) || code(first).includes(";")) continue;
+		const start = index + 1;
+		while (index + 1 < lines.length && !code(lines[index] ?? "").includes(";")) index++;
+		blocks.push({ start, end: index + 1, reexport: REEXPORT.test(first) });
+	}
+	return blocks;
+}
+/** Whether a hunk changes lines of the block, or inserts lines between two of them. */
+function inBlock(hunk: Hunk, block: UseBlock): boolean {
+	if (hunk.oldCount === 0) return hunk.oldStart >= block.start && hunk.oldStart < block.end;
+	return hunk.oldStart <= block.end && hunk.oldStart + hunk.oldCount - 1 >= block.start;
+}
 
 /**
  * The scenarios to run for the changes from `base`'s merge base to `head`, or to the working
@@ -187,10 +211,13 @@ async function selectFile(diff: FileDiff, map: CoverageMap, compiled: Set<string
 	const declared: string[] = [];
 	let outside = false;
 	if (rust) {
-		const imports = diff.hunks.filter((hunk) => [...hunk.removed, ...hunk.added].some((line) => IMPORT.test(line)));
+		// A changed line inside a `use` block that spans several lines carries no keyword.
+		const blocks = useBlocks(base);
+		const imports = diff.hunks.filter((hunk) => [...hunk.removed, ...hunk.added].some((line) => IMPORT.test(line)) || blocks.some((block) => inBlock(hunk, block)));
 		// Other files reach a re-exported name through this one, so a removed or replaced
 		// re-export can change code that this file's coverage says nothing about.
-		if (imports.some((hunk) => hunk.removed.some((line) => REEXPORT.test(line)))) return `${path} changed a re-export, which other files can name`;
+		const reexport = (hunk: Hunk) => hunk.removed.some((line) => REEXPORT.test(line)) || (hunk.oldCount > 0 && blocks.some((block) => block.reexport && inBlock(hunk, block)));
+		if (imports.some(reexport)) return `${path} changed a re-export, which other files can name`;
 		if (imports.length) {
 			if (!record) return `${path} changed its imports and has no recorded coverage`;
 			pick(record.loaded, `${path} (imports)`);

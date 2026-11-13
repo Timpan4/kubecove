@@ -478,7 +478,10 @@ test("parity jobs select pull request scenarios and preserve full main coverage"
   assert.match(selection, /^ {10}fetch-depth: 0$/m);
   assert.match(selection, /^ {10}persist-credentials: false$/m);
   // A stalled planner must end and leave empty outputs, which run the full suite.
-  assert.match(selection, /^ {8}id: select\n {8}timeout-minutes: \d+\n {8}continue-on-error: true$/m);
+  // The limits are the ones "Detect CI changes" and "Parity result" already use.
+  assert.match(selection, /^ {8}id: select\n {8}timeout-minutes: 3\n {8}continue-on-error: true$/m);
+  // So must a stalled checkout, setup or upload, which the step limit does not cover.
+  assert.match(selection, /^ {4}timeout-minutes: 5$/m);
   assert.match(selection, /run: bun e2e\/parity\/ci-selection\.ts/);
   assert.match(selection, /^ {6}attempt: \$\{\{ github.run_attempt \}\}$/m);
   assert.doesNotMatch(selection, /cargo |playwright|bun install/);
@@ -521,7 +524,20 @@ test("parity jobs select pull request scenarios and preserve full main coverage"
   // Failure mode: a planner job that fails after writing its outputs, such as an empty
   // selection, must not decide anything. Every reader falls back to the full suite.
   const empty = { ids: "[]", regular: "false", spike: "false", "web-shards": "0", "gpui-shards": "0", "web-matrix": '{"shard":[0]}', "gpui-matrix": '{"shard":[0]}', reason: '"Nothing"' };
+  // Failure mode: the selection step fails after it wrote its outputs, and continue-on-error
+  // keeps the job successful. The job must publish nothing, which every reader takes as full suite.
+  const published = (key, outcome) => {
+    const expression = new RegExp(`^ {6}${key}: \\$\\{\\{ (.+) \\}\\}$`, "m").exec(selection)[1].replaceAll(/outputs\.([\w-]+)/g, 'outputs["$1"]');
+    return new Function("steps", `return (${expression});`)({ select: { outcome, outputs: empty } });
+  };
+  const unpublished = Object.fromEntries(Object.keys(empty).map((key) => [key, published(key, "failure")]));
+  for (const key of Object.keys(empty)) {
+    assert.equal(published(key, "success"), empty[key]);
+    for (const outcome of ["failure", "cancelled", "skipped"]) assert.equal(published(key, outcome), "", `${key} after a ${outcome} step`);
+  }
   for (const name of ["pull-request-web", "pull-request-gpui", "pull-request-spike"]) {
+    assert.equal(enabled(name, unpublished), true, "a failed selection step runs the full suite");
+    assert.equal(value(job(name, parity), "scenarios", unpublished), "");
     assert.equal(enabled(name, {}, "failure"), true, "planner failure runs full suite");
     for (const outcome of ["failure", "cancelled"]) assert.equal(enabled(name, empty, outcome), true, `a ${outcome} planner's outputs are ignored`);
     assert.equal(enabled(name, {}, "skipped"), false, "release PR stays skipped");

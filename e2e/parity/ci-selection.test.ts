@@ -15,7 +15,7 @@ const contract: Contract = { scenarios: ids.map((id) => ({ id, title: id, steps:
 const report = (driver: Driver, ...ids: string[]) => ({ driver, scenarios: ids.map((id) => ({ id, status: "passed" })) });
 const planner = resolve("e2e/parity/ci-selection.ts");
 const RUST = "src-tauri/gpui/src/page.rs";
-const RUST_SOURCE = "use super::loading::Phase;\npub use super::names::Name;\n\npub fn first() -> Phase {\n    Phase::Ready\n}\n";
+const RUST_SOURCE = "use super::loading::Phase;\npub use super::names::Name;\n\npub fn first() -> Phase {\n    Phase::Ready\n}\nuse super::shapes::{\n    Circle,\n    Square,\n};\npub use super::kinds::{\n    Kind, // one; per line\n    Sort,\n};\n";
 
 async function run(cwd: string, args: string[], env = process.env) {
 	const child = Bun.spawn(args, { cwd, env, stdout: "pipe", stderr: "pipe" });
@@ -120,8 +120,16 @@ test("real git diffs select covered code, nothing for docs, and full suite on ev
 		// A commit this clone lacks, then one it has that the tested head does not contain.
 		const tree = await run(root, ["git", "rev-parse", "HEAD^{tree}"]);
 		const aside = await run(root, ["git", "-c", "user.name=Parity test", "-c", "user.email=parity@example.invalid", "commit-tree", tree, "-p", base, "-m", "Not in the tested head"]);
-		// Then a map whose files refer to scenario sets it does not define.
-		for (const broken of [{ commit: "0".repeat(40) }, { commit: aside }, { sets: [] }, { sets: map.sets.map(() => [ids.length]) }]) {
+		// Then a map whose files refer to scenario sets it does not define, and maps of another
+		// shape: a file list where records belong, a cut-off range, a missing field.
+		const record = map.files[RUST];
+		const damaged = [["lines", record.lines.slice(0, 2)], ["functions", record.functions.slice(1)], ["code", [5]], ["loaded", "0"], ["active", -1], ["loaded", 99], ["lines", [99, 5, 5]], ["functions", [99, 4, 6]]]
+			.map(([field, value]) => ({ files: { ...map.files, [RUST]: { ...record, [String(field)]: value } } }));
+		for (const broken of [
+			{ commit: "0".repeat(40) }, { commit: aside }, { sets: [] }, { sets: map.sets.map(() => [ids.length]) },
+			{ files: [] }, { files: { ...map.files, [RUST]: null } }, { compiled: null }, { scenarios: ids.map((_, index) => index) }, { sets: [["0"]] },
+			...damaged,
+		]) {
 			await writeFile(join(root, "bad-map.json"), JSON.stringify({ ...map, ...broken }));
 			const result = await plan(root, "bad-map.json");
 			expect(result.ids).toEqual(ids);
@@ -132,6 +140,7 @@ test("real git diffs select covered code, nothing for docs, and full suite on ev
 
 // Failure modes: a changed import gives a name another meaning without touching a covered
 // line, and a replaced re-export does the same to files this one's coverage does not name.
+// Inside a `use` block that spans several lines, the changed line carries no `use` keyword.
 test("a changed Rust import selects the file's scenarios and a replaced re-export selects everything", async () => {
 	for (const [from, to, expected] of [
 		["Phase::Ready", "Phase::Failed", ["one"]],
@@ -140,6 +149,11 @@ test("a changed Rust import selects the file's scenarios and a replaced re-expor
 		["pub use super::names::Name;", "pub use super::names::Name;\npub use super::extra::Thing;", ["one"]],
 		["pub use super::names::Name;", "pub use super::other::Name;", ids],
 		["pub use super::names::Name;\n", "", ids],
+		["    Circle,", "    Round,", ["one"]],
+		["    Sort,", "    Sort,\n    More,", ["one"]],
+		["    Kind, // one; per line", "    Other,", ids],
+		["    Sort,\n", "", ids],
+		["};\npub use super::kinds::{", "};\npub(crate) use super::other::{", ids],
 	] as const) {
 		await fixture(async (root) => {
 			await writeFile(join(root, RUST), RUST_SOURCE.replace(from, to));
@@ -171,7 +185,11 @@ test("main changes the map already recorded select nothing for a branch that is 
 });
 
 test("a stale map includes intervening source changes and falls back for blind inputs, mocks and exporter", async () => {
-	for (const path of ["src/feature.ts", "e2e/parity/visual/export-fixture.ts", "e2e/parity/scenarios/new.json", "src/lib/tauri-dev-mocks.ts", "src/lib/mcp-dev-mocks.ts", ".github/workflows/parity.yml", "src-tauri/gpui/assets/icons/search.svg", "src-tauri/gpui/assets/fonts/inter-400.ttf", "src-tauri/tauri.conf.json"]) {
+	// Failure mode: a script a parity job runs breaks that job, and no scenario's coverage names it.
+	const workflows = await Promise.all(["parity.yml", "parity-suite.yml"].map((name) => readFile(resolve(".github/workflows", name), "utf8")));
+	const scripts = [...new Set(workflows.join("\n").match(/\b(?:scripts|e2e\/parity)\/[\w./-]+\.(?:mjs|ts)\b/g) ?? [])];
+	expect(scripts).toContain("scripts/ci-mbx-cargo.mjs");
+	for (const path of ["src/feature.ts", "e2e/parity/visual/export-fixture.ts", "e2e/parity/scenarios/new.json", "src/lib/tauri-dev-mocks.ts", "src/lib/mcp-dev-mocks.ts", ".github/workflows/parity.yml", "src-tauri/gpui/assets/icons/search.svg", "src-tauri/gpui/assets/fonts/inter-400.ttf", "src-tauri/tauri.conf.json", "scripts/e2e-parity.ts", ...scripts]) {
 		await fixture(async (root) => {
 			await mkdir(join(root, path, ".."), { recursive: true });
 			await writeFile(join(root, path), path === "src/feature.ts" ? "export function first() {\n return 3;\n}\nexport function second() {\n return 2;\n}\n" : path.endsWith("new.json") ? JSON.stringify({ scenarios: [{ id: "one" }] }) : "Changed input\n");
