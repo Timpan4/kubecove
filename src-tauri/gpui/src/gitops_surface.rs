@@ -1,7 +1,8 @@
 //! The GitOps page model: `src/features/gitops/surfaceModel.ts`,
 //! `surfaceSummary.ts` and the sidebar kinds of `gitops-nav.ts`. Card helpers
-//! live in [`selection`].
+//! live in [`selection`], the grouped list in [`list`].
 
+pub mod list;
 mod selection;
 
 pub use selection::{Selection, SourceMode, status_label};
