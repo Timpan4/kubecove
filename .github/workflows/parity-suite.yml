@@ -1,7 +1,7 @@
 name: Parity suite
 
-# One shard of `bun run e2e:parity`, called by parity.yml. Pull requests run the scenarios
-# their diff can affect (PARITY_CHANGED); main records the coverage map that selection reads
+# One shard of `bun run e2e:parity`, called by parity.yml. Pull requests and main run the full
+# suite; main also records the coverage map that local PARITY_CHANGED runs read
 # (PARITY_COVERAGE). See "Change-based selection" in e2e/parity/README.md.
 on:
   workflow_call:
@@ -14,6 +14,11 @@ on:
         description: The PARITY_SUITE_SHARD count.
         required: true
         type: number
+      driver:
+        description: PARITY_DRIVER, web or gpui. Empty runs both drivers for local parity and main coverage.
+        required: false
+        type: string
+        default: ""
       coverage:
         description: Record the coverage map for this shard's scenarios instead of selecting by changes.
         required: false
@@ -24,29 +29,41 @@ on:
         required: false
         type: boolean
         default: false
+      prefix:
+        description: PARITY_PREFIX, for a job that runs only the scenarios with these ID prefixes.
+        required: false
+        type: string
+        default: ""
+      exclude:
+        description: PARITY_EXCLUDE, the scenario ID prefixes another job runs.
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
 
 jobs:
   suite:
-    name: ${{ inputs.build-only && 'Build cache' || format('Shard {0} of {1}', inputs.shard, inputs.shards) }}
+    name: ${{ inputs.build-only && 'Build cache' || format('{0} shard {1} of {2} {3}', inputs.driver || 'Both', inputs.shard, inputs.shards, inputs.prefix) }}
     runs-on: ubuntu-latest
     # The same limit as the real Kubernetes suites in e2e.yml.
     timeout-minutes: 60
+    env:
+      # As in ci.yml: line tables keep backtraces readable, and nothing here reads the rest.
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
 
     steps:
-      # Pull requests need history for the merge base and the coverage map's commit.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: ${{ (inputs.coverage || inputs.build-only) && 1 || 0 }}
 
       # yeslogic-fontconfig-sys finds fontconfig through pkg-config at build time.
       # The linker needs libxcb and both xkbcommon libraries for GPUI's X11 backend.
       # GPUI loads Wayland at run time, and its test platform needs no display.
       - name: Install GPUI build dependencies
+        if: ${{ inputs.driver != 'web' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y libfontconfig-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev pkg-config
@@ -58,6 +75,7 @@ jobs:
           bun-version: "1.4.4"
 
       - name: Setup Rust
+        if: ${{ inputs.driver != 'web' }}
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
       # llvm-profdata and llvm-cov matching the toolchain's LLVM read the GPUI profiles.
@@ -65,14 +83,33 @@ jobs:
         if: ${{ inputs.coverage }}
         run: rustup component add llvm-tools
 
-      # The GPUI crate is its own workspace. Main seeds the cache for pull requests; the
-      # instrumented coverage build keeps its own cache so the two never evict each other.
+      # The GPUI crate is its own workspace. The object cache reuses compiler output by
+      # content, so the workspace crates are not recompiled after a fresh checkout as they
+      # are with a cached target directory (Cargo compares file times). Same settings as
+      # ci.yml. Main saves the cache and pull requests only restore it, as in ci.yml. The
+      # instrumented coverage build keeps its own key so the two never replace each other.
+      # An unchanged build restores its exact cache and skips the save
+      # (scripts/ci-rust-cache-key.mjs).
+      - name: Key the Rust cache by its inputs
+        id: rust-cache
+        if: ${{ inputs.driver != 'web' }}
+        run: node scripts/ci-rust-cache-key.mjs parity${{ inputs.coverage && '-coverage' || '' }} .github/workflows/parity-suite.yml src-tauri ':!src-tauri/server'
+
       - name: Cache Rust builds
-        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: ${{ inputs.driver != 'web' }}
+        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
         with:
-          shared-key: kubecove-parity${{ inputs.coverage && '-coverage' || '' }}
-          workspaces: "./src-tauri/gpui -> target"
-          save-if: ${{ github.ref == 'refs/heads/main' && inputs.shard == 0 }}
+          version: "1.30.0"
+          working-directory: src-tauri/gpui
+          cache-key: ${{ steps.rust-cache.outputs.key }}
+          restore-keys: ${{ steps.rust-cache.outputs.prefix }}
+          github-cache-mode: objects
+          isolate-objects-cache: true
+          clean-target-before-export: true
+
+      - name: Activate Cargo caching
+        if: ${{ inputs.driver != 'web' }}
+        run: node scripts/ci-mbx-cargo.mjs
 
       - name: Cache Bun dependencies
         if: ${{ !inputs.build-only }}
@@ -89,19 +126,8 @@ jobs:
 
       # The web driver launches the full Chromium build that playwright-core pins.
       - name: Install Chromium
-        if: ${{ !inputs.build-only }}
+        if: ${{ !inputs.build-only && inputs.driver != 'gpui' }}
         run: bunx playwright-core install --with-deps --no-shell chromium
-
-      # Main saves one map per commit (parity.yml). A pull request takes the map of its base
-      # commit, or else the newest one; a missing map runs the full suite.
-      - name: Restore parity coverage map
-        if: ${{ github.event_name == 'pull_request' && !inputs.coverage && !inputs.build-only }}
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: e2e/artifacts/parity-coverage-map.json
-          key: parity-coverage-map-${{ github.event.pull_request.base.sha }}
-          restore-keys: |
-            parity-coverage-map-
 
       - name: Build parity test
         if: ${{ inputs.build-only }}
@@ -111,21 +137,33 @@ jobs:
         run: CARGO_BUILD_JOBS="$(nproc)" cargo test --manifest-path src-tauri/gpui/Cargo.toml --test parity --no-run
 
       # Build intermediates stay in the cached target directory. CI uses every CPU.
+      # A single driver owns every CPU. Combined coverage jobs retain one GPUI process and
+      # web pages on the other CPUs, based on the 2026-11-12 scenario timings.
       - name: Run parity suite
         if: ${{ !inputs.build-only }}
         env:
           PARITY_SUITE_SHARD: ${{ inputs.shard }}/${{ inputs.shards }}
+          PARITY_DRIVER: ${{ inputs.driver }}
           PARITY_COVERAGE: ${{ inputs.coverage && '1' || '0' }}
-          PARITY_CHANGED: ${{ !inputs.coverage && github.event.pull_request.base.sha || '' }}
+          PARITY_PREFIX: ${{ inputs.prefix }}
+          PARITY_EXCLUDE: ${{ inputs.exclude }}
+          # Failure screenshots only; step screenshots cost about ten captures per scenario.
+          PARITY_STEP_SCREENSHOTS: "0"
           CARGO_TARGET_DIR: ${{ github.workspace }}/src-tauri/gpui/target
           CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/src-tauri/gpui/target
-        run: CARGO_BUILD_JOBS="$(nproc)" bun run e2e:parity
+        run: |
+          if [[ -n "${PARITY_DRIVER}" ]]; then
+            export PARITY_JOBS="$(nproc)" PARITY_WEB_JOBS="$(nproc)"
+          else
+            export PARITY_JOBS=1 PARITY_WEB_JOBS="$(( $(nproc) > 1 ? $(nproc) - 1 : 1 ))"
+          fi
+          CARGO_BUILD_JOBS="$(nproc)" bun run e2e:parity
 
       - name: Upload parity artifacts
         if: ${{ always() && !inputs.build-only }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: parity-${{ github.event_name }}-shard-${{ inputs.shard }}-of-${{ inputs.shards }}-attempt-${{ github.run_attempt }}
+          name: parity-${{ github.event_name }}-${{ inputs.driver || 'both' }}-shard-${{ inputs.shard }}-of-${{ inputs.shards }}-attempt-${{ github.run_attempt }}
           path: e2e/artifacts/parity-*
           if-no-files-found: error
 

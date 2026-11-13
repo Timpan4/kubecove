@@ -14,7 +14,8 @@ export async function adapterAction(page: Page, step: Step): Promise<void> {
         }
         case "expectYamlLens": {
             const lens = page.locator(".cm-yaml-error-lens");
-            if (step.line === 0) await lens.waitFor({ state: "hidden" });
+            // The editor shows one lens per diagnostic, so a single-element wait fails on two.
+            if (step.line === 0) await page.waitForFunction(() => Array.from(document.querySelectorAll(".cm-yaml-error-lens")).every((element) => !element.checkVisibility())).catch(() => { throw new Error("An inline YAML diagnostic is still shown"); });
             else {
                 await lens.first().waitFor();
                 const line = await lens.first().evaluate((node) => {

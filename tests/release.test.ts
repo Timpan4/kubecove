@@ -85,8 +85,8 @@ describe("release version helpers", () => {
 			"utf8",
 		).replaceAll("\r\n", "\n");
 		const ciJobs = [
-			ciWorkflow.match(/\n {2}frontend:\n[\s\S]*?(?=\n {2}rust:\n)/)?.[0],
-			ciWorkflow.match(/\n {2}rust:\n[\s\S]*?(?=\n {2}nix:\n)/)?.[0],
+			ciWorkflow.match(/\n {2}frontend:\n[\s\S]*?(?=\n {2}checks:\n)/)?.[0],
+			ciWorkflow.match(/\n {2}checks:\n[\s\S]*?(?=\n {2}nix:\n)/)?.[0],
 		];
 		const ciCheckJob = ciWorkflow.match(/\n {2}check:\n[\s\S]*$/)?.[0];
 		const benchmarkJobs = [
@@ -133,7 +133,7 @@ describe("release version helpers", () => {
 			'test "$' + '{NIX_RESULT}" = "skipped"',
 		);
 		expect(ciCheckJob).toContain(
-			'test "$' + '{RUST_RESULT}" = "skipped"',
+			'test "$' + '{CHECKS_RESULT}" = "skipped"',
 		);
 		expect(codspeedCheckJob).toContain("name: CodSpeed Performance Analysis");
 		expect(codspeedCheckJob).toContain(

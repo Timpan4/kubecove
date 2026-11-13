@@ -10,7 +10,7 @@ description = "KubeCove Kubernetes clients, session scope, shared metadata and c
 [features]
 default = []
 desktop = ["dep:tauri", "dep:tauri-plugin-dialog"]
-bench-support = ["desktop"]
+bench-support = []
 e2e = ["desktop"]
 # Exposes the fixed-client test adapter for other crates' tests.
 test-support = []

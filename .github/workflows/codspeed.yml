@@ -21,7 +21,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       frontend: ${{ steps.detect.outputs.frontend }}
-      frontend_suites: ${{ steps.suites.outputs.files }}
       rust: ${{ steps.detect.outputs.rust }}
 
     steps:
@@ -32,10 +31,6 @@ jobs:
 
       - name: Test benchmark orchestration
         run: node --test scripts/codspeed-workflow-regression.test.mjs
-
-      - name: Enumerate frontend benchmark files
-        id: suites
-        run: echo "files=$(node scripts/codspeed-benchmark-suites.mjs)" >> "${GITHUB_OUTPUT}"
 
       - name: Detect frontend and Rust benchmark changes
         id: detect
@@ -72,6 +67,12 @@ jobs:
             if [[ "${path}" == .github/* || "${path}" == fixtures/* || "${path}" == */fixtures/* ]]; then
               frontend=true
               rust=true
+            elif [[ "${path}" == src-tauri/gpui/* || "${path}" == src-tauri/server/* ]]; then
+              # Separate Cargo workspaces (src-tauri/Cargo.toml excludes both); the benchmarks cannot depend on them.
+              continue
+            elif [[ "${path}" == e2e/* || "${path}" == tests/* ]]; then
+              # The benchmarks import only src/, benchmarks/ and packages, so these trees cannot change a result.
+              continue
             elif [[ "${path}" == src-tauri/* ]]; then
               rust=true
             else
@@ -87,7 +88,7 @@ jobs:
           echo "rust=${rust}" >> "${GITHUB_OUTPUT}"
 
   frontend:
-    name: Run frontend benchmarks (${{ matrix.file }})
+    name: Run frontend benchmarks (${{ matrix.group }})
     permissions:
       contents: read
       id-token: write
@@ -97,10 +98,12 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      # Eight groups balanced by run 43322953935 file and benchmark durations.
+      # Name filters split long files while preserving CodSpeed identities.
       matrix:
-        file: ${{ fromJSON(needs.changes.outputs.frontend_suites) }}
+        group: [0, 1, 2, 3, 4, 5, 6, 7]
     env:
-      KUBECOVE_BENCHMARK_FILE: ${{ matrix.file }}
+      KUBECOVE_BENCHMARK_GROUP: ${{ matrix.group }}/8
 
     steps:
       - name: Checkout
@@ -125,13 +128,12 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Run benchmarks
-        uses: CodSpeedHQ/action@af75f77f17a054769abefaa42fe8dc2975469b5f # v5.6.3
+        uses: ./.github/actions/codspeed-run
         with:
-          mode: simulation
           run: bunx vitest bench --run
 
   rust:
-    name: Run Rust benchmarks
+    name: Run Rust benchmarks (${{ matrix.shard }})
     permissions:
       contents: read
       id-token: write
@@ -139,6 +141,29 @@ jobs:
       - changes
     if: ${{ needs.changes.outputs.rust == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
     runs-on: ubuntu-latest
+    # Simulation mode costs about 7.5 s per benchmark whatever it measures (run 43316700493),
+    # so one job ran 117 benchmarks for 13 to 16 minutes. Each shard runs the benchmarks whose
+    # last divan path segment starts with one of its letters; CodSpeed merges the uploads of
+    # one workflow run into one report. Divan tests each benchmark (or generic argument)
+    # against one path, and the last class is the complement of the others, so the shards are
+    # disjoint and complete (scripts/codspeed-workflow-regression.test.mjs). The letters are
+    # paired so each shard ran 144 to 159 s of benchmarks in that run.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: ac
+            filter: "(?:^|::)[ac][^:]*$"
+          - shard: dl
+            filter: "(?:^|::)[dl][^:]*$"
+          - shard: es
+            filter: "(?:^|::)[es][^:]*$"
+          - shard: hr
+            filter: "(?:^|::)[hr][^:]*$"
+          - shard: jn
+            filter: "(?:^|::)[jn][^:]*$"
+          - shard: other
+            filter: "(?:^|::)[^acdehjlnrs:][^:]*$"
 
     steps:
       - name: Checkout
@@ -146,38 +171,70 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Tauri Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            patchelf
-
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Rust
+      - name: Cache Cargo dependencies
         uses: swatinem/rust-cache@v2
         with:
-          shared-key: kubecove-rust-codspeed
+          shared-key: kubecove-codspeed-registry
           workspaces: "./src-tauri -> target"
           prefix-key: dependency-rust
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-targets: false
+          save-if: ${{ github.ref == 'refs/heads/main' && matrix.shard == 'ac' }}
+
+      # An unchanged build restores its exact cache and skips the save
+      # (scripts/ci-rust-cache-key.mjs).
+      # The name differs from the earlier desktop build's `codspeed` cache, so a run never
+      # restores that 2.2 GB cache for objects this build cannot use.
+      - name: Key the Rust cache by its inputs
+        id: rust-cache
+        run: node scripts/ci-rust-cache-key.mjs codspeed-backend .github/workflows/codspeed.yml src-tauri ':!src-tauri/gpui' ':!src-tauri/server'
+
+      # Every shard builds the same benchmark binary. A cached target directory does not
+      # survive a fresh checkout, because Cargo compares file times, so the object cache
+      # reuses compiler output by content, with the settings ci.yml uses. Main saves it and
+      # pull requests only restore it, as in ci.yml.
+      - name: Setup Mr Boxington for CodSpeed builds
+        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
+        with:
+          version: "1.30.0"
+          working-directory: src-tauri
+          cache-key: ${{ steps.rust-cache.outputs.key }}
+          restore-keys: ${{ steps.rust-cache.outputs.prefix }}
+          github-cache-mode: objects
+          isolate-objects-cache: true
+          clean-target-before-export: true
+
+      # Puts the mbx Cargo shim first on PATH, so the build cargo-codspeed starts is cached.
+      - name: Activate Cargo caching
+        run: node scripts/ci-mbx-cargo.mjs
 
       - name: Install cargo-codspeed
-        run: cargo install cargo-codspeed --version 5.0.1 --locked
+        env:
+          CARGO_CODSPEED_SHA256: df4b2618fda2aa19f8b92e8d745548a49d9ce20785472eeb584fdc2c99624395
+        run: |
+          set -euo pipefail
+          binary="$RUNNER_TEMP/cargo-codspeed"
+          curl --fail --location --silent --show-error \
+            --output "$binary" \
+            https://github.com/CodSpeedHQ/codspeed-rust/releases/download/v5.0.1/cargo-codspeed-x86_64-unknown-linux-musl
+          echo "$CARGO_CODSPEED_SHA256  $binary" | sha256sum --check --status
+          install -m 0755 "$binary" "$HOME/.cargo/bin/cargo-codspeed"
 
+      # The benchmarks measure backend code, so they build without the `desktop` feature.
+      # With it, every shard compiled and linked the Tauri and WebKitGTK stack into the
+      # root library, which the object cache cannot store: 277 to 383 s per shard in run
+      # 43389328493, after installing the WebKitGTK packages.
       - name: Build Rust benchmarks
         working-directory: src-tauri
-        run: cargo codspeed build --features bench-support --bench backend_hot_paths --locked
+        run: cargo codspeed build --no-default-features --features bench-support --bench backend_hot_paths --locked
 
       - name: Run benchmarks
-        uses: CodSpeedHQ/action@af75f77f17a054769abefaa42fe8dc2975469b5f # v5.6.3
+        uses: ./.github/actions/codspeed-run
         with:
-          mode: simulation
-          run: cd src-tauri && cargo codspeed run --bench backend_hot_paths
+          # cargo-codspeed passes the filter to the divan binary as its regex filter argument.
+          run: cd src-tauri && cargo codspeed run --bench backend_hot_paths '${{ matrix.filter }}'
 
   check:
     name: CodSpeed Performance Analysis

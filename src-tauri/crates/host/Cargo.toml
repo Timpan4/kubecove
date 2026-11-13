@@ -29,7 +29,7 @@ remote-client = [
     "dep:ring",
     "dep:subtle",
 ]
-bench-support = ["desktop"]
+bench-support = []
 
 [dependencies]
 kubecove-models = { path = "../models" }

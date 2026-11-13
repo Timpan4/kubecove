@@ -43,7 +43,8 @@ export async function argoAction(page: Page, step: Step) {
             break;
         case "controlClock":
             // Pausing holds the tracker's recovery tick until advanceClock runs it. Place this after the GitOps rows render,
-            // because paused timers also stop rendering.
+            // because paused timers also stop rendering, and after a step that waits for any command still in flight
+            // (such as expectArgoReview after reviewArgoOperation): the mock's latency timer stops with the clock.
             await page.clock.pauseAt(new Date(Date.now() + 1000));
             break;
         case "advanceClock": await page.clock.runFor(step.ms); break;

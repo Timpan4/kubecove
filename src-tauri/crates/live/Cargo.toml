@@ -10,7 +10,7 @@ description = "KubeCove watches, logs, Pod exec and guarded port forwards"
 [features]
 default = []
 desktop = ["dep:tauri", "kubecove-kube/desktop"]
-bench-support = ["desktop", "kubecove-kube/bench-support"]
+bench-support = ["kubecove-kube/bench-support"]
 
 [dependencies]
 kubecove-models = { path = "../models" }

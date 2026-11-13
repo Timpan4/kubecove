@@ -196,7 +196,7 @@ test("parallel frontend checks retain coverage and finish before compilation-hea
     "bun run lint",
   ];
   for (const [source, commands] of [
-    [ci, [...common, "bun run audit", "bun run typecheck:bench", "bun run svelte:check", "bun run lint:anti-slop"]],
+    [ci, [...common, "bun run audit", "bun run typecheck:bench", "bun run svelte:check", "bun run lint:anti-slop", "bun run test:bench-groups"]],
     [workflow, common],
   ]) {
     const frontend = job("frontend", source);
@@ -215,8 +215,14 @@ test("parallel frontend checks retain coverage and finish before compilation-hea
     assert.ok(tested > checked, "Svelte compilation tests need the runner after parallel checks finish");
     assert.equal(frontend.steps[tested].run, "bun test");
     if (source === ci) {
-      assert.ok(frontend.steps.indexOf(step(frontend, "Run fast end-to-end suite")) > tested,
-        "E2E must wait for the frontend tests");
+      const e2e = step(job("checks", ci), "Run fast end-to-end suite");
+      assert.equal(e2e.run, "bun run e2e:fast");
+      assert.equal(e2e.if, "${{ matrix.task == 'frontend-e2e' }}");
+      assert.match(step(job("changes", ci), "Detect relevant changes").with.script,
+        /\{ task: 'frontend-e2e', scope: 'frontend' \}/);
+      assert.ok(job("check", ci).needs.includes("checks"), "the required gate must wait for E2E");
+      assert.equal(step(job("check", ci), "Verify required jobs").env.CHECKS_RESULT,
+        "${{ needs.checks.result }}");
     }
   }
 });

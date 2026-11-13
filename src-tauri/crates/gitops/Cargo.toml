@@ -10,7 +10,7 @@ description = "KubeCove Argo CD, Flux and Helm backend domains"
 [features]
 default = []
 desktop = ["dep:tauri", "kubecove-kube/desktop", "kubecove-live/desktop"]
-bench-support = ["desktop", "kubecove-kube/bench-support", "kubecove-live/bench-support"]
+bench-support = ["kubecove-kube/bench-support", "kubecove-live/bench-support"]
 
 [dependencies]
 kubecove-models = { path = "../models" }

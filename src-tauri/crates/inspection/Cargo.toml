@@ -10,7 +10,7 @@ description = "KubeCove resource inspection, RBAC and guarded Kubernetes operati
 [features]
 default = []
 desktop = ["dep:tauri", "kubecove-kube/desktop"]
-bench-support = ["desktop", "kubecove-kube/bench-support"]
+bench-support = ["kubecove-kube/bench-support"]
 
 [dependencies]
 kubecove-models = { path = "../models" }

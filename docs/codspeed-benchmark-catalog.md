@@ -681,7 +681,7 @@ The inspected paths below do not justify standalone production benchmarks:
 
 [The workflow](../.github/workflows/codspeed.yml) enumerates every frontend `.bench.ts` file into an independent matrix job and runs Rust in parallel. The partition grows with the catalog rather than relying on a manually maintained job count. All jobs stay in one workflow for CodSpeed aggregation.
 
-- [Vitest filtering](../vitest.config.ts) uses the same [file enumerator](../scripts/codspeed-benchmark-suites.mjs) as CI. `KUBECOVE_BENCHMARK_FILE` selects one known file. Unknown files, unknown legacy suites, and conflicting selectors fail. Legacy `topology` selects all topology benchmark files; `other` selects the complement. Regression checks prove exact-file jobs cover the catalog once and legacy partitions remain complete and disjoint.
+- [Vitest filtering](../vitest.config.ts) uses the same [file enumerator](../scripts/codspeed-benchmark-suites.mjs) as CI. `KUBECOVE_BENCHMARK_FILE` selects one known file. `KUBECOVE_BENCHMARK_GROUP=<index>/<count>` selects one of `count` groups balanced by measured duration; CI runs eight. Unknown files, unknown legacy suites, malformed groups, and conflicting selectors fail. Legacy `topology` selects all topology benchmark files; `other` selects the complement. `bun run test:bench-groups` collects the declared benchmarks with Vitest and proves each runs in exactly one CI group. It runs in the `Frontend checks` job of `ci.yml`, because it needs installed dependencies.
 - Rust CI explicitly builds/runs `backend_hot_paths`. Add cases to that target for automatic inclusion. A new target needs Cargo, workflow and local-script wiring.
 - Existing hosted measurements above show frontend measurement dominates each former frontend job. File jobs remove sequential suite measurement from that job's critical path. Runner availability and repeated setup still affect total hosted time. [CodSpeed sharding](https://codspeed.io/docs/features/sharded-benchmarks)
 - Shared `fixtures/` paths of any extension trigger both lanes. [Workflow regression tests](../scripts/codspeed-workflow-regression.test.mjs) cover fixture selection, actual file partitions, workflow matrix wiring and required-job completion. Missing comparison SHAs are fetched individually with depth one. Rust caches workspace artifacts and retains one target to avoid repeating Tauri linking across targets.
@@ -712,9 +712,11 @@ On PowerShell, set `$env:KUBECOVE_BENCHMARK_SUITE` or `$env:KUBECOVE_BENCHMARK_F
 The existing CI Rust commands, from `src-tauri`, are:
 
 ```sh
-cargo codspeed build --features bench-support --bench backend_hot_paths --locked
+cargo codspeed build --no-default-features --features bench-support --bench backend_hot_paths --locked
 cargo codspeed run --bench backend_hot_paths
 ```
+
+CI builds the benchmarks without the `desktop` feature. They measure backend code, and the desktop build made every benchmark job install WebKitGTK and then compile and link the Tauri stack into the root library, which the build cache cannot store. The `bench-support` feature therefore enables `desktop` in no crate, and the benchmark bridge drives futures on its own tokio runtime instead of `tauri::async_runtime`. Local `cargo bench --features bench-support` keeps the default features, so it still measures the desktop build.
 
 Ordinary local Vitest/Divan runs report native harness measurements. Bare `cargo codspeed run` outside an instrumented environment can check execution without producing CodSpeed measurements. [Divan integration](https://codspeed.io/docs/benchmarks/rust/divan)
 
@@ -1023,3 +1025,100 @@ commands/streams/watch_renewal_tests.rs
 ```
 
 Inline `cfg(test)` code was likewise treated as correctness evidence. Dialog/file export, startup registration, fixed allowlists, command wrappers, tiny getters, and one-target guarded-operation validation do not warrant separate CodSpeed targets from the inspected workloads. Workspace import’s bounded UTF-8 conversion is locally measurable, but its dialog/filesystem path and infrequent trigger make it low priority.
+
+## CI execution cost, 2026-11-12
+
+The frontend matrix runs eight groups. The selector in
+[scripts/codspeed-benchmark-suites.mjs](../scripts/codspeed-benchmark-suites.mjs)
+balances measured chunks from run
+[43322953935](https://github.com/Timpan4/kubecove/actions/runs/43322953935).
+That run's four frontend `Run benchmarks` steps took 287, 241, 261 and 343
+seconds. The earlier per-file job weights from run 43308253138 counted action
+setup and upload once per file and predicted 405 to 426 seconds per group.
+The new weights count that overhead once per group.
+
+File weights are elapsed seconds from the previous file's completion to the
+current file's completion, starting at Vitest's start timestamp for the first
+file. They include imports, fixture preparation and test execution. The test
+execution durations sum to 875.028 seconds across 25 files. The file intervals sum to
+1,015.796 seconds, with the first-file timestamps rounded to whole seconds
+in the log. These are wall-clock execution costs under simulation, not CodSpeed
+performance metrics.
+
+The long files retain their paths, names, callbacks and fixtures.
+`topology.bench.ts` splits into its two slow cases and its four remaining
+cases. Their test durations are 108.537, 118.083 and 11.848 seconds.
+Each chunk adds 6.076 seconds for the rest of the observed file interval,
+including preparation and per-file harness overhead.
+`resource-table.bench.ts` splits into the first 19 cases and the five cases
+for four contexts. Their test durations are 100.684 and 58.051 seconds;
+each repeats 11.606 seconds for the rest of its file interval. These remainders
+are 244.544 - 238.468 seconds for topology and 170.341 - 158.735 seconds for
+the table. Per-case numbers come from
+Vitest's duration in milliseconds divided by 1,000. Consecutive CodSpeed
+completion timestamps corroborate them, but include small handoff costs.
+
+The projection adds 15.410 seconds to every group. This is group 0's measured
+287-second step minus its 271.590-second Vitest run, covering runner setup
+and upload outside Vitest.
+
+| Frontend group | Predicted `Run benchmarks` |
+| ---: | ---: |
+| 0 | 146.258 s |
+| 1 | 148.540 s |
+| 2 | 141.989 s |
+| 3 | 140.843 s |
+| 4 | 148.481 s |
+| 5 | 141.170 s |
+| 6 | 147.844 s |
+| 7 | 147.709 s |
+
+These are projections from one hosted run, with no measured run-to-run spread.
+The changed grouping has not run in CI. Setup varies: the old group 3 spent
+63.790 seconds outside Vitest, including a package installation from
+22:47:06.889 to 22:47:50.051 UTC, despite an instrument cache hit.
+That overhead would exceed the target even with the new groups. The grouping
+targets about 150 seconds with the observed group 0 overhead; it cannot
+guarantee that bound when action setup or uploads stall.
+
+Vitest 5.1.0's [name filter](https://vitest.dev/config/testnamepattern.html)
+marks nonmatching tests skipped without changing their full names.
+The [CodSpeed plugin 6.1.1 provider](https://github.com/CodSpeedHQ/codspeed-node/blob/v6.1.1/packages/vitest-plugin/src/v5/provider.ts#L72)
+builds each identity from the git-relative file path, unchanged full test
+name and registration name. Local full and filtered topology runs emitted
+the same URI for the selected case. The regression test collects actual
+Vitest benchmark names, including generated context cases, and checks every
+case runs in exactly one group and every group matches something. It also
+checks that a new uncovered case in a split file fails coverage.
+
+The workflow currently runs eight frontend groups and six Rust shards, for
+14 CodSpeed jobs. They share GitHub's limit of 20 concurrent jobs with the
+CI, Parity and CodeQL workflows of the same pull request.
+
+Run 43308253138 logged 117 Rust benchmark completion lines roughly seven
+seconds apart, about 819 seconds of aggregate simulation work. Six evenly
+balanced shards would have a 20 × 7 = 140-second longest workload. The
+name-based shard split can be uneven. This remains a cadence estimate,
+not CodSpeed's reported benchmark metric or a measured six-shard result.
+
+The CodSpeed runner log's `Measured:` timestamps measure completion spacing,
+not only instrument startup. CPU simulation executes each benchmark once, and
+accounts for simulated instruction, cache and memory costs. It has no statistical
+warm-up loop. The Rust bench target forces its shared `LazyLock` fixtures before
+Divan starts. Benchmarks using Divan `with_inputs` also generate their input
+outside benchmark timing. Per CodSpeed's [CPU simulation documentation](https://codspeed.io/docs/instruments/cpu)
+and [Divan-compatible input documentation](https://docs.rs/codspeed-divan-compat/latest/codspeed_divan_compat/struct.Bencher.html),
+these fixture paths are excluded from measured work. The remaining roughly
+seven-second completion spacing includes running the instrumented benchmark,
+CodSpeed/Divan per-benchmark setup and profiling/report work. The logs do not
+separate those components, so a precise instrumentation-startup cost is unknown.
+If fixture generation is moved into a measured callback, it is part of the
+measured body and should remain there when it represents production work.
+
+The workflow uses Mr Boxington's documented objects mode
+because stable Cargo path-crate freshness uses source mtimes, which change in
+fresh checkouts. The [Mr Boxington action documentation](https://mr-boxington.jdx.dev/github-action) describes this transport. Its target scanner also skips Cargo 1.100's build/ unit-state
+subtree, so the ordinary target cache does not preserve that state. Object mode
+keys rustc invocations by content and avoids the mtime failure. Integration
+with cargo codspeed through the Cargo shim remains unverified until a hosted
+run.

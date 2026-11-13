@@ -9,6 +9,7 @@ import { coverageAction } from "./web-coverage";
 import { checkCoverage } from "./web-coverage-checks";
 import { startCodeCoverage } from "./web-coverage-map";
 import { detailStatusAction } from "./web-detail-status";
+import { gitOpsDetails, revealGitOps, helmCard, revisionButton } from "./web-delivery-helpers";
 import { detailsAction } from "./web-details";
 import { diagnosticsAction } from "./web-diagnostics";
 import { topologySpikeAction } from "./web-topology-spike";
@@ -28,6 +29,7 @@ import { multiContextAction } from "./web-multi-context";
 import { resourceFilterAction } from "./web-resource-filters";
 import { resourceRow, resourceTableAction } from "./web-resource-table";
 import { sessionHealthAction } from "./web-session-health";
+import { loadDeferredPage } from "./web-deferred";
 import { seedsWorkspace, seedWorkspace, shellAction, storeReloadHolds } from "./web-shell";
 import { sidebarLiveAction } from "./web-sidebar-live";
 import { terminalAction } from "./web-terminal";
@@ -125,8 +127,11 @@ export async function action(page: Page, step: Step) {
                     const path = join(directory, "sources.json");
                     await writeFile(path, JSON.stringify(snapshot));
                     await page.getByRole("button", { name: "Back to app", exact: true }).click();
+                    // The app reads and caches kubeconfig sources at startup. Restoring them after the
+                    // reload raced that read and failed full-suite runs, so seed them before the app loads.
+                    const stored: unknown = JSON.parse(await readFile(path, "utf8"));
+                    await page.addInitScript((sources) => { Object.assign(globalThis, { __kubecoveParityKubeconfigSources: sources }); }, stored);
                     await page.reload();
-                    await page.evaluate(`import('/src/lib/tauri-dev-mocks.ts').then(m => m.restoreMockKubeconfigSources(${await readFile(path, "utf8")}))`);
                     await page.getByRole("button", { name: "Open settings", exact: true }).click();
                 } finally { await rm(directory, { recursive: true }); }
             }
@@ -212,6 +217,7 @@ export async function action(page: Page, step: Step) {
 		case "openPage": {
 			// Rows with children also name their expand toggle.
 			const label = literal(step.page);
+			await loadDeferredPage(page, step.page);
 			await page.getByRole("treeitem", { name: new RegExp(`^(?:(?:Expand|Collapse) ${label} )?${label}$`) }).click();
 			break;
 		}
@@ -457,37 +463,6 @@ async function loadSettingsMocks(page: Page) {
 function eventRows(page: Page) { return page.locator("div.grid:has(> time[datetime])"); }
 function literal(text: string) { return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 function itemCount(count: number) { return `${count} item${count === 1 ? "" : "s"}`; }
-/** A GitOps card or list row, by the label of its Details button. */
-function gitOpsDetails(page: Page, item: { kind: string; name: string; namespace: string }) {
-	return page.getByRole("button", { name: `Open details for ${item.kind} ${item.name} in ${item.namespace}`, exact: true });
-}
-/** Scrolls virtual rows until the requested Application mounts or both ends are reached. */
-async function revealGitOps(page: Page, target: Locator) {
-	await page.getByRole("heading", { level: 2 }).first().waitFor();
-	for (const direction of [1, -1]) {
-		while (await target.count() === 0) {
-			const moved = await page.locator("[data-virtual-row]").first().evaluate(async (row, direction) => {
-				const viewport = row.closest(".overflow-y-auto, .overflow-auto");
-				if (!(viewport instanceof HTMLElement)) throw new Error("GitOps scroll viewport missing");
-				const previous = viewport.scrollTop;
-				viewport.scrollTop += direction * viewport.clientHeight;
-				await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-				return viewport.scrollTop !== previous;
-			}, direction);
-			if (!moved) break;
-		}
-		if (await target.count()) return;
-	}
-	throw new Error("GitOps details target missing after scrolling the collection");
-}
-/** A Helm release card, by its title and namespace description. */
-function helmCard(page: Page, name: string, namespace: string) {
-	return page.locator('[data-slot="card"]')
-		.filter({ has: page.locator('[data-slot="card-title"]').getByText(name, { exact: true }) })
-		.filter({ has: page.locator('[data-slot="card-description"]').getByText(namespace, { exact: true }) });
-}
-/** A revision in the Revisions list; its comparison picker shows the same label. */
-function revisionButton(page: Page, label: string) { return page.locator("button.w-full.p-3").filter({ has: page.locator("div.font-medium", { hasText: new RegExp(`^${literal(label)}$`) }) }); }
 /** Waits until the element's rendered lines include every expected diff line. */
 async function containsLines(locator: Locator, lines: string[]) {
 	const element = await locator.first().elementHandle();
@@ -499,6 +474,9 @@ async function containsLines(locator: Locator, lines: string[]) {
 }
 
 type WebResult = { id: string; status: "passed" | "failed"; durationMs?: number; error?: string };
+// PARITY_STEP_SCREENSHOTS=0 keeps only failure screenshots. CI sets it: step screenshots took
+// about ten captures per scenario and 205 MB of artifacts per shard.
+const stepScreenshots = process.env.PARITY_STEP_SCREENSHOTS !== "0";
 type Browser = Awaited<ReturnType<typeof chromium.launch>>;
 
 async function runScenario(browser: Browser, port: number, artifacts: string, scenarioIndex: number, scenario: Contract["scenarios"][number], signal: AbortSignal): Promise<WebResult> {
@@ -508,8 +486,12 @@ async function runScenario(browser: Browser, port: number, artifacts: string, sc
 	page.on("console", (message) => browserLog.push(`${message.type()}: ${message.text()}`));
 	page.on("pageerror", (error) => browserLog.push(`pageerror: ${error.message}`));
 	page.setDefaultTimeout(readinessTimeoutMs);
+	// The step that failed, named in the error because CI keeps only the failure screenshot.
+	let current = "startup";
 	try {
 		signal.throwIfAborted();
+		// Explicit mock holds control ordering; ordinary parity commands need no artificial delay.
+		await page.addInitScript(() => { globalThis.__kubecoveParityNoLatency = true; });
 		// Fake timers must exist before the app loads: the Argo tracker's recovery timer and loading indicator delays start before later steps.
 		if (scenario.steps.some((step) => step.action === "controlClock" || step.action === "advanceClock")) await page.clock.install();
 		const coverage = await startCodeCoverage(page);
@@ -520,14 +502,15 @@ async function runScenario(browser: Browser, port: number, artifacts: string, sc
 		if (seedsWorkspace(scenario)) await seedWorkspace(page);
 		for (const [index, step] of scenario.steps.entries()) {
 			signal.throwIfAborted();
+			current = `step ${index} (${step.action})`;
 			if (index >= startupSteps) { await storeReloadHolds(page, scenario.steps, index); await action(page, step); }
-			await page.screenshot({ path: join(artifacts, `web-${scenarioIndex}-${index}.png`) });
+			if (stepScreenshots) await page.screenshot({ path: join(artifacts, `web-${scenarioIndex}-${index}.png`) });
 		}
 		await coverage?.save(artifacts, scenarioIndex, scenario.id);
 		return { id: scenario.id, status: "passed" };
 	} catch (error) {
 		await page.screenshot({ path: join(artifacts, `web-${scenarioIndex}-failure.png`) }).catch(() => {});
-		return { id: scenario.id, status: "failed", error: String(error) };
+		return { id: scenario.id, status: "failed", error: `${current}: ${String(error)}` };
 	} finally {
 		try { await writeFile(join(artifacts, `web-${scenarioIndex}.log`), browserLog.join("\n")); } finally { await page.close(); }
 	}
@@ -538,7 +521,11 @@ export async function runWeb(contract: Contract, artifacts: string, signal: Abor
 	const results: WebResult[] = [];
 	const port = await freePort();
 	const env = { ...process.env }; delete env.KUBECONFIG; delete env.ARGV0;
-	const vite = Bun.spawn([process.execPath, join(process.cwd(), "node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", String(port), "--strictPort"], { cwd: process.cwd(), env, detached: true, stdout: "pipe", stderr: "pipe" });
+	// Coverage needs Vite's per-source inline maps; normal runs load the bundled dev app.
+	const command = process.env.PARITY_COVERAGE === "1"
+		? [process.execPath, join(process.cwd(), "node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", String(port), "--strictPort"]
+		: [process.execPath, join(process.cwd(), "e2e/parity/web-bundle-server.ts"), String(port), artifacts];
+	const vite = Bun.spawn(command, { cwd: process.cwd(), env, detached: true, stdout: "pipe", stderr: "pipe" });
 	const identity = startIdentity(vite.pid);
 	const logs = Promise.all([new Response(vite.stdout).text(), new Response(vite.stderr).text()]);
 	let browser: Browser | undefined;

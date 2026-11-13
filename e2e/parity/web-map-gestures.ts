@@ -75,7 +75,9 @@ export async function checkMapGesture(page: Page, check: string) {
  * Resolves once the viewport transform has not changed for FIT_VIEW_DURATION_MS. Input during the
  * fit animation would be overwritten by it, so the gesture waits for the map to settle first.
  */
-async function waitForFitToSettle(page: Page) {
+export async function waitForFitToSettle(page: Page) {
+	// Each wait starts its own window; a style an earlier wait recorded would count as settled at once.
+	await page.evaluate(() => { window.mapSettle = undefined; });
 	await page.waitForFunction(
 		(duration) => {
 			const style = document.querySelector<HTMLElement>(".svelte-flow__viewport")?.getAttribute("style") ?? "";

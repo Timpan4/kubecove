@@ -10,9 +10,14 @@ export function resourceRow(page: Page, step: Identity & { context?: string }) {
 	return step.context === undefined ? rows : rows.filter({ has: page.getByRole("cell", { name: step.context, exact: true }) });
 }
 
-/** The cell under a column header, located by the header's text in the row's table. */
+/**
+ * The cell under a column header, located by the header's text in the row's table. Waits for
+ * the row first: after a search or a sort the table renders it later, and reading the headers
+ * through a missing row finds none.
+ */
 async function cellFor(page: Page, step: Identity & { column: string }) {
 	const row = resourceRow(page, step);
+	await row.first().waitFor();
 	const headers = (await row.locator("xpath=ancestor::table[1]").locator("thead th").allTextContents()).map((text) => text.trim());
 	const index = headers.indexOf(step.column);
 	if (index < 0) throw new Error(`No ${step.column} column in the resource table`);
@@ -30,9 +35,17 @@ export async function resourceTableAction(page: Page, step: Step) {
 			await page.locator("thead").getByRole("button", { name: `Sort by ${step.column}`, exact: true }).click();
 			break;
 		case "expectResourceOrder": {
-			const labels = await page.locator('tr button[aria-label^="Open resource "]').evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label") ?? ""));
-			const visible = labels.map((label) => label.replace(/^Open resource /, "")).filter((name) => step.names.includes(name));
-			if (!isDeepStrictEqual(visible, step.names)) throw new Error(`Resource order was ${visible.join(", ")}`);
+			const visible = async () => {
+				const labels = await page.locator('tr button[aria-label^="Open resource "]').evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label") ?? ""));
+				return labels.map((label) => label.replace(/^Open resource /, "")).filter((name) => step.names.includes(name));
+			};
+			// The table re-renders after a sort or a search, so wait for the order.
+			await page.waitForFunction((names) => {
+				const found = Array.from(document.querySelectorAll('tr button[aria-label^="Open resource "]'), (button) => (button.getAttribute("aria-label") ?? "").replace(/^Open resource /, "")).filter((name) => names.includes(name));
+				return JSON.stringify(found) === JSON.stringify(names);
+			}, step.names).catch(() => {});
+			const order = await visible();
+			if (!isDeepStrictEqual(order, step.names)) throw new Error(`Resource order was ${order.join(", ")}`);
 			break;
 		}
 		case "toggleResourceGroup":
@@ -45,8 +58,12 @@ export async function resourceTableAction(page: Page, step: Step) {
 			await (await cellFor(page, step)).click();
 			break;
 		case "expectResourceCell": {
-			const actual = (await (await cellFor(page, step)).textContent())?.trim();
-			if (actual !== step.text) throw new Error(`${step.column} cell was ${actual ?? "missing"}`);
+			const cell = await cellFor(page, step);
+			// A cell can fill after its row renders (metrics, watch updates), so wait for the text.
+			const exact = new RegExp(`^\\s*${step.text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`);
+			await cell.filter({ hasText: exact }).waitFor().catch(async () => {
+				throw new Error(`${step.column} cell was ${(await cell.textContent().catch(() => null))?.trim() ?? "missing"}`);
+			});
 			break;
 		}
 		case "expectResourceCellFits": {

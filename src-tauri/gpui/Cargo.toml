@@ -108,11 +108,37 @@ harness = false
 
 # Dependency debug info made up 846 MB of the 1 GB visual test binary, and
 # linking it peaked at 4.7 GB RSS. KubeCove's own crates keep full debug info.
+# Unoptimized GPUI layout, text shaping and rendering made parity scenarios average
+# 11 to 13 s each on CI runners (2026-11-12), so dependencies, which build once and stay
+# cached, are optimized. KubeCove's own crates stay at opt-level 0 to keep their edit loop.
 [profile.dev.package."*"]
 debug = false
+opt-level = 2
 
 [profile.dev.package.kubecove]
 debug = true
+opt-level = 0
+
+[profile.dev.package.kubecove-gitops]
+opt-level = 0
+
+[profile.dev.package.kubecove-host]
+opt-level = 0
+
+[profile.dev.package.kubecove-inspection]
+opt-level = 0
+
+[profile.dev.package.kubecove-kube]
+opt-level = 0
+
+[profile.dev.package.kubecove-live]
+opt-level = 0
+
+[profile.dev.package.kubecove-mcp]
+opt-level = 0
+
+[profile.dev.package.kubecove-models]
+opt-level = 0
 
 # Action-to-settled latency on the real backend, run by `scripts/perf-gpui-speed.ts`.
 [[test]]

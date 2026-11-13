@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
 const workflow = readFileSync(process.env.CI_WORKFLOW_PATH ?? new URL("../.github/workflows/ci.yml", import.meta.url), "utf8").replaceAll("\r\n", "\n");
 const base = "a".repeat(40);
@@ -55,7 +56,9 @@ async function detect(paths, options = {}) {
   const core = { setOutput: (key, value) => { output[key] = value; }, warning: (message) => warnings.push(message) };
   const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
   await new AsyncFunction("github", "context", "core", block(job("changes"), "script", 10))(github, context, core);
-  return { output, warnings, requests };
+  const matrix = JSON.parse(output.matrix);
+  delete output.matrix;
+  return { output, matrix, warnings, requests };
 }
 
 for (const [path, selected] of [
@@ -66,6 +69,8 @@ for (const [path, selected] of [
   ["public/app-icon.svg", ["frontend"]],
   ["e2e/fixtures/resource.yaml", ["frontend"]],
   ["scripts/check-docs.ts", ["frontend"]],
+  ["scripts/ci-mbx-cargo.mjs", domains],
+  ["scripts/ci-rust-cache-key.mjs", domains],
   ["bun.lock", ["frontend", "nix"]],
   ["src-tauri/src/lib.rs", ["rust"]],
   ["src-tauri/crates/models/src/lib.rs", ["rust"]],
@@ -154,56 +159,129 @@ test("fast-forward pushes use before and after SHAs", async () => {
   assert.deepEqual(result.output, flags("frontend"));
   assert.equal(result.requests[0].params.basehead, `${base}...${head}`);
 });
-test("change gate has no checkout; docs install no application dependencies", () => {
+// Failure modes: a task omitted from the selected matrix drops its check; fail-fast drops
+// independent checks; a task per command pays one setup and one build cache per command and
+// takes a runner slot from the other workflows under GitHub's limit of 20 concurrent jobs.
+const tasksByScope = {
+  docs: ["docs"],
+  frontend: ["frontend-e2e", "server-backend", "server"],
+  rust: ["rust", "gpui-clippy", "gpui-test", "server-backend", "server"],
+  nix: [],
+};
+test("change detection selects every required task without duplicate jobs", async () => {
+  for (const selected of [[], ["docs"], ["frontend"], ["rust"], ["nix"], domains]) {
+    const paths = selected.map((scope) => ({ docs: "README.md", frontend: "src/App.svelte", rust: "src-tauri/src/lib.rs", nix: "flake.nix" })[scope]);
+    const { matrix } = await detect(paths);
+    assert.deepEqual(matrix.include.map(({ task }) => task).sort(), [...new Set(selected.flatMap((scope) => tasksByScope[scope]))].sort());
+    for (const task of matrix.include) {
+      if (task.workspace) assert.ok(["src-tauri", "src-tauri/server", "src-tauri/gpui"].includes(task.workspace));
+    }
+  }
+  // A limit below the task count starts the last tasks only after the first ones finish.
+  assert.doesNotMatch(job("checks"), /max-parallel/);
+  assert.match(job("checks"), /fail-fast: false/);
+  assert.ok(job("checks").includes("matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}"));
+  assert.match(job("nix"), /needs:\n {6}- changes\n {6}- checks/);
+  assert.match(job("check"), /needs:\n {6}- changes\n {6}- frontend\n {6}- checks\n {6}- nix/);
+  assert.deepEqual([...workflow.slice(workflow.indexOf("\njobs:\n")).matchAll(/^ {2}([\w-]+):$/gm)].map((match) => match[1]), ["changes", "frontend", "checks", "nix", "check"]);
+});
+function step(name) {
+  const source = job("checks");
+  const start = source.search(new RegExp(`^ {6}- name: ${name}\\n`, "m"));
+  assert.notEqual(start, -1, `Missing step: ${name}`);
+  const end = source.indexOf("\n      - name: ", start + 1);
+  return source.slice(start, end < 0 ? undefined : end);
+}
+test("each existing check remains in its selected task", () => {
+  const commands = {
+    frontend: ["node --test scripts/ci-workflow-regression.test.mjs", "node --test scripts/release-workflow-regression.test.mjs", ...["audit", "docs:check", "typecheck", "typecheck:bench", "svelte:check", "lint", "lint:anti-slop", "test:bench-groups", "test:svelte"].map((name) => `bun run ${name}`), "bun test"],
+    "frontend-e2e": ["bun run e2e:fast"],
+    rust: ["mbx test --workspace --manifest-path src-tauri/Cargo.toml", "mbx clippy --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings"],
+    "gpui-clippy": ["mbx clippy --manifest-path src-tauri/gpui/Cargo.toml --locked --all-targets -- -D warnings"],
+    "gpui-test": ["mbx test --manifest-path src-tauri/gpui/Cargo.toml --locked --lib --test native"],
+    "server-backend": ["cargo tree --manifest-path src-tauri/server/Cargo.toml --locked --edges normal,build --prefix none > server-dependencies.txt", "mbx test --locked --workspace --no-default-features --manifest-path src-tauri/Cargo.toml"],
+    server: [
+      "mbx test --manifest-path src-tauri/server/Cargo.toml --locked", "mbx clippy --manifest-path src-tauri/server/Cargo.toml --all-targets --locked -- -D warnings",
+      "mbx test --manifest-path src-tauri/server/Cargo.toml --locked --no-default-features", "mbx clippy --manifest-path src-tauri/server/Cargo.toml --locked --no-default-features --all-targets -- -D warnings",
+      "bun run build", "mbx build --manifest-path src-tauri/server/Cargo.toml --locked", "bun e2e/headless-smoke.ts",
+    ],
+  };
+  for (const [task, expected] of Object.entries(commands)) {
+    const source = job(task === "frontend" ? "frontend" : "checks");
+    const steps = source.split(/(?=^      - name: )/m);
+    for (const command of expected) {
+      const found = steps.find((source) => source.split("\n").some((line) => line.trim() === `run: ${command}` || line.trim() === command));
+      assert.ok(found, `Missing command: ${command}`);
+      assert.equal(source.split("\n").filter((line) => line.trim() === `run: ${command}` || line.trim() === command).length, 1, `Duplicate command: ${command}`);
+      assert.ok(task === "frontend" || found.includes(`matrix.task == '${task}'`), `Wrong task for ${command}`);
+    }
+  }
+  // A missing task condition runs frontend commands in Rust-only jobs without Bun.
+  for (const match of job("checks").matchAll(/^ {6,10}- name: ([^\n]+)\n([\s\S]*?)(?=^ {6,10}- name:|$(?![\s\S]))/gm)) {
+    if (match[1] !== "Checkout") assert.match(match[2], /^ +if: \$\{\{ .+ \}\}$/m, match[1]);
+  }
+  assert.ok(step("Build browser UI").includes("KUBECOVE_PUBLIC_RUNTIME: web"));
+  assert.ok(step("Build browser UI").includes("matrix.task == 'server'"));
+  assert.ok(job("checks").indexOf("- name: Build browser UI") < job("checks").indexOf("- name: Test headless server"));
+  // The API-only server must build in a checkout that has no built browser UI.
+  assert.ok(job("checks").indexOf("- name: Verify API-only server") < job("checks").indexOf("- name: Build browser UI"));
+  const report = step("Upload headless verification report");
+  assert.ok(report.includes("always() && matrix.task == 'server'"));
+  assert.match(report, /if-no-files-found: error/);
+  assert.match(report, /path: e2e\/artifacts\/headless\/\*\*/);
+  assert.match(step("Verify GUI-free dependency tree"), /if grep -E '\^\(tauri /);
+});
+test("lightweight tasks avoid Rust and package setup; CI regressions precede installs", () => {
   assert.doesNotMatch(job("changes"), /actions\/checkout|git diff|fetch-depth/);
   assert.match(job("changes"), /actions\/github-script@[a-f0-9]{40}/);
-  assert.doesNotMatch(job("docs"), /bun install|actions\/cache/);
-  assert.match(job("docs"), /bun run docs:check/);
-  assert.match(job("frontend"), /node --test scripts\/ci-workflow-regression\.test\.mjs/);
-  for (const command of ["audit", "docs:check", "typecheck", "svelte:check", "lint", "lint:anti-slop", "e2e:fast"]) {
-    assert.ok(job("frontend").includes(`run: bun run ${command}\n`), command);
+  assert.ok(step("Install frontend dependencies").includes("matrix.task == 'frontend-e2e' || matrix.task == 'server'"));
+  assert.ok(job("frontend").indexOf("- name: Test CI orchestration") < job("frontend").indexOf("- name: Install frontend dependencies"));
+  assert.ok(step("Setup Rust").includes("matrix.workspace"));
+  assert.ok(step("Check documentation").includes("matrix.task == 'docs'"));
+  for (const name of ["Install Tauri Linux dependencies", "Install GPUI build dependencies"]) {
+    assert.match(step(name), /if ! pkg-config --exists/);
   }
-  assert.match(job("frontend"), /run: bun test/);
+  assert.ok(step("Install Tauri Linux dependencies").includes("matrix.task == 'rust'"));
+  assert.ok(step("Install GPUI build dependencies").includes("matrix.task == 'gpui-clippy' || matrix.task == 'gpui-test'"));
 });
-
 function gate(overrides = {}) {
-  const env = { ...process.env, CHANGES_RESULT: "success", RELEASE_PR: "false", SERVER_RESULT: "success" };
-  for (const key of domains) { env[`${key.toUpperCase()}_REQUIRED`] = "true"; env[`${key.toUpperCase()}_RESULT`] = "success"; }
+  const env = { ...process.env, CHANGES_RESULT: "success", RELEASE_PR: "false", CHECKS_RESULT: "success", FRONTEND_RESULT: "success" };
+  for (const key of domains) { env[`${key.toUpperCase()}_REQUIRED`] = "true"; }
+  env.NIX_RESULT = "success";
   return spawnSync("bash", ["-e", "-o", "pipefail", "-c", block(job("check"), "run", 8)], {
     env: { ...env, ...overrides }, encoding: "utf8", timeout: 2000,
   }).status;
 }
-test("stable required check succeeds only after successful change detection", () => {
+test("stable required check rejects any failed, cancelled, skipped or unknown matrix result", () => {
   assert.match(job("check"), /name: Typecheck and test/);
   assert.match(job("check"), /if: always\(\)/);
   assert.equal(gate(), 0);
-  for (const result of ["failure", "cancelled", "skipped"]) assert.notEqual(gate({ CHANGES_RESULT: result }), 0);
+  for (const name of ["CHANGES_RESULT", "FRONTEND_RESULT", "CHECKS_RESULT", "NIX_RESULT"]) {
+    for (const result of ["failure", "cancelled", "skipped", ""]) assert.notEqual(gate({ [name]: result }), 0);
+  }
+  for (const name of ["DOCS_REQUIRED", "FRONTEND_REQUIRED", "RUST_REQUIRED", "NIX_REQUIRED"]) {
+    assert.notEqual(gate({ [name]: "" }), 0);
+  }
+  const skipped = { DOCS_REQUIRED: "false", FRONTEND_REQUIRED: "false", RUST_REQUIRED: "false", NIX_REQUIRED: "false", CHECKS_RESULT: "skipped", FRONTEND_RESULT: "skipped", NIX_RESULT: "skipped" };
+  assert.equal(gate(skipped), 0);
+  assert.notEqual(gate({ ...skipped, CHECKS_RESULT: "success" }), 0);
+  for (const name of ["DOCS_REQUIRED", "FRONTEND_REQUIRED", "RUST_REQUIRED"]) {
+    assert.equal(gate({ ...skipped, [name]: "true", CHECKS_RESULT: "success", FRONTEND_RESULT: name === "FRONTEND_REQUIRED" ? "success" : "skipped" }), 0);
+    assert.notEqual(gate({ ...skipped, [name]: "true" }), 0);
+  }
 });
-for (const domain of domains) {
-  test(`required gate rejects failed, cancelled, skipped or unknown ${domain} results`, () => {
-    const key = domain.toUpperCase();
-    for (const result of ["failure", "cancelled", "skipped", ""]) assert.notEqual(gate({ [`${key}_RESULT`]: result }), 0);
-    assert.equal(gate({ [`${key}_REQUIRED`]: "false", [`${key}_RESULT`]: "skipped" }), 0);
-    assert.notEqual(gate({ [`${key}_REQUIRED`]: "false" }), 0);
-    assert.notEqual(gate({ [`${key}_REQUIRED`]: "", [`${key}_RESULT`]: "skipped" }), 0);
-  });
-}
-test("pull requests skip Nix without failing the required gate", () => {
-  const condition = "github.event_name != 'pull_request' && needs.changes.outputs.nix == 'true'";
-  assert.ok(job("nix").includes(`if: \${{ ${condition} }}`));
-  assert.ok(job("check").includes(`NIX_REQUIRED: \${{ ${condition} }}`));
+test("pull requests skip Nix; only same-repository labeled release PRs skip the matrix", () => {
+  assert.ok(job("nix").includes("github.event_name != 'pull_request' && needs.changes.outputs.nix == 'true'"));
+  assert.ok(job("check").includes("NIX_REQUIRED: ${{ github.event_name != 'pull_request' && needs.changes.outputs.nix == 'true' }}"));
   assert.equal(gate({ NIX_REQUIRED: "false", NIX_RESULT: "skipped" }), 0);
-});
-test("release PRs skip Nix along with the other expensive checks", () => {
-  const release = { RELEASE_PR: "true", DOCS_RESULT: "skipped", FRONTEND_RESULT: "skipped", NIX_REQUIRED: "false", NIX_RESULT: "skipped", RUST_RESULT: "skipped", SERVER_RESULT: "skipped" };
+  const release = { RELEASE_PR: "true", FRONTEND_RESULT: "skipped", CHECKS_RESULT: "skipped", NIX_REQUIRED: "false", NIX_RESULT: "skipped" };
   assert.equal(gate(release), 0);
-  for (const result of ["failure", "cancelled", "success"]) assert.notEqual(gate({ ...release, NIX_RESULT: result }), 0);
-  assert.notEqual(gate({ ...release, FRONTEND_RESULT: "success" }), 0);
-  assert.notEqual(gate({ ...release, RELEASE_PR: "false" }), 0);
-  for (const name of ["docs", "frontend", "rust"]) {
-    assert.ok(job(name).includes("github.event.pull_request.head.repo.full_name != github.repository"));
-    assert.ok(job(name).includes("!startsWith(github.head_ref, 'release/app-v')"));
-    assert.ok(job(name).includes("!contains(github.event.pull_request.labels.*.name, 'release')"));
+  for (const name of ["FRONTEND_RESULT", "CHECKS_RESULT", "NIX_RESULT"]) {
+    for (const result of ["failure", "cancelled", "success"]) assert.notEqual(gate({ ...release, [name]: result }), 0);
+  }
+  for (const condition of ["github.event.pull_request.head.repo.full_name != github.repository", "!startsWith(github.head_ref, 'release/app-v')", "!contains(github.event.pull_request.labels.*.name, 'release')"]) {
+    assert.ok(job("checks").includes(condition));
+    assert.ok(job("frontend").includes(condition));
   }
 });
 test("Rust verification selects all workspace members despite root-only default-members", () => {
@@ -212,10 +290,11 @@ test("Rust verification selects all workspace members despite root-only default-
   const hook = readFileSync(new URL("../.githooks/pre-commit-user", import.meta.url), "utf8");
   const commands = [
     ...["rust:test", "rust:check", "rust:lint"].map((name) => scripts[name]),
-    ...[job("rust"), release].flatMap((source) => [...source.matchAll(/run: ((?:cargo|mbx) (?:test|clippy) [^\n]+)/g)].map((match) => match[1])),
+    ...[job("checks"), release].flatMap((source) => [...source.matchAll(/run: ((?:cargo|mbx) (?:test|clippy) [^\n]*--manifest-path src-tauri\/Cargo.toml[^\n]*)/g)].map((match) => match[1])),
     ...[...hook.matchAll(/^\s*(cargo check [^\n]*--manifest-path src-tauri\/Cargo.toml[^\n]*)/gm)].map((match) => match[1]),
   ];
-  assert.equal(commands.length, 8, "package, CI, release and hook verification commands must be covered");
+  // The GUI-free backend command was already required in the former server job.
+  assert.equal(commands.length, 9);
   for (const command of commands) {
     const args = command.trim().split(/\s+/);
     const cargoArgs = args.slice(0, args.indexOf("--") === -1 ? args.length : args.indexOf("--"));
@@ -224,44 +303,22 @@ test("Rust verification selects all workspace members despite root-only default-
   }
 });
 test("Rust dependency audits cover every checked-in lockfile with narrow exceptions", () => {
-  const trackedFiles = spawnSync("git", ["ls-files", "-z"], {
-    cwd: new URL("../", import.meta.url),
-    encoding: "utf8",
-  });
+  const trackedFiles = spawnSync("git", ["ls-files", "-z"], { cwd: new URL("../", import.meta.url), encoding: "utf8" });
   assert.equal(trackedFiles.status, 0, trackedFiles.stderr);
-  const lockfileDirectories = trackedFiles.stdout
-    .split("\0")
-    .filter((path) => path === "Cargo.lock" || path.endsWith("/Cargo.lock"))
-    .map(dirname)
-    .sort();
-
-  const rustJob = job("rust");
-  assert.match(
-    rustJob,
-    /run: node --test --test-name-pattern="Rust dependency audits cover every checked-in lockfile with narrow exceptions" scripts\/ci-workflow-regression\.test\.mjs/,
-  );
-  const auditSteps = rustJob.split("\n      - name: ").filter((step) => step.includes("uses: rustsec/audit-check@"));
-  const audits = auditSteps
-    .map((step) => {
-      const directory = /working-directory: ([^\n]+)/.exec(step)?.[1];
-      assert.ok(directory, `Audit step must name its working directory:\n${step}`);
-      const ignoredAdvisories = /\n\s+ignore: ([^\n]+)/.exec(step)?.[1].split(",") ?? [];
-      return { directory, ignoredAdvisories };
-    })
-    .sort((left, right) => left.directory.localeCompare(right.directory));
-  const auditedDirectories = audits.map(({ directory }) => directory);
-  assert.deepEqual(auditedDirectories, lockfileDirectories);
-  assert.deepEqual(
-    audits.map(({ directory, ignoredAdvisories }) => [directory, ignoredAdvisories]),
-    [
-      ["src-tauri", ["RUSTSEC-2024-0429"]],
-      ["src-tauri/gpui", []],
-      ["src-tauri/server", ["RUSTSEC-2023-0071", "RUSTSEC-2026-0387"]],
-    ],
-  );
-
-  const serverAudit = auditSteps.find((step) => step.includes("working-directory: src-tauri/server"));
-  assert.match(serverAudit, /public-signature verification/);
+  const lockfileDirectories = trackedFiles.stdout.split("\0").filter((path) => path === "Cargo.lock" || path.endsWith("/Cargo.lock")).map(dirname).sort();
+  assert.ok(step("Verify Rust audit coverage").includes('node --test --test-name-pattern="Rust dependency audits cover every checked-in lockfile with narrow exceptions" scripts/ci-workflow-regression.test.mjs'));
+  assert.doesNotMatch(job("checks"), /uses: rustsec\/audit-check@/);
+  assert.match(step("Install cargo-audit"), /uses: taiki-e\/install-action@[a-f0-9]{40}/);
+  assert.match(step("Install cargo-audit"), /tool: cargo-audit@0\.22\.2/);
+  const audits = job("checks").split("\n      - name: ").filter((source) => source.includes("run: cargo-audit audit ")).map((source) => {
+    assert.ok(source.includes("matrix.task == 'rust'"));
+    const command = /run: cargo-audit audit (--file \S+(?: --ignore \S+)*)\n/.exec(`${source}\n`)?.[1];
+    assert.ok(command, source);
+    return [dirname(/--file (\S+)/.exec(command)[1]), [...command.matchAll(/--ignore (\S+)/g)].map((match) => match[1])];
+  }).sort(([left], [right]) => left.localeCompare(right));
+  assert.deepEqual(audits.map(([directory]) => directory), lockfileDirectories);
+  assert.deepEqual(audits, [["src-tauri", ["RUSTSEC-2024-0429"]], ["src-tauri/gpui", []], ["src-tauri/server", ["RUSTSEC-2023-0071", "RUSTSEC-2026-0387"]]]);
+  assert.match(step("Audit server Rust dependencies"), /public-signature verification/);
 });
 test("server packaging follows the relocated kubeconform source without changing its standalone build", () => {
   const packaging = readFileSync(new URL("../.github/workflows/server-packaging.yml", import.meta.url), "utf8");
@@ -288,32 +345,91 @@ test("container and Nix build sources include every scripts module vite.config.t
     assert.match(nixFrontend, new RegExp(`^\\s+\\.\\./${escaped}\\r?$`, "m"), `nix/frontend.nix must include ${path}`);
   }
 });
-test("headless checks run without GUI packages and the gate requires their success", () => {
-  assert.doesNotMatch(job("server"), /apt-get|cache-apt-pkgs|pkg-config|--all-features/);
-  assert.match(job("server"), /mbx test --locked --workspace --no-default-features --manifest-path src-tauri\/Cargo.toml/);
-  assert.match(job("server"), /cargo tree --manifest-path src-tauri\/server\/Cargo.toml --locked --edges normal,build/);
-  assert.match(job("server"), /mbx test --manifest-path src-tauri\/server\/Cargo.toml --locked --no-default-features/);
-  assert.match(job("server"), /mbx test --manifest-path src-tauri\/server\/Cargo.toml --locked/);
-  for (const result of ["failure", "cancelled", "skipped", ""]) assert.notEqual(gate({ SERVER_RESULT: result }), 0);
-  assert.equal(gate({ FRONTEND_REQUIRED: "false", FRONTEND_RESULT: "skipped", RUST_REQUIRED: "false", RUST_RESULT: "skipped", SERVER_RESULT: "skipped" }), 0);
-});
-// Missing workspace paths produce empty caches; shared keys can restore the wrong target tree.
-// Running Cargo directly bypasses mbx; save opt-ins would expand the trusted write policy.
-test("Mr Boxington covers CI workspaces with separate caches and default-branch-only writes", () => {
-  const generations = new Set();
-  for (const [name, directories] of [["rust", ["src-tauri"]], ["server", ["src-tauri", "src-tauri/server"]]]) {
-    const source = job(name);
-    assert.doesNotMatch(source, /swatinem\/rust-cache|save-on-(?:pull-request|protected-branch|workflow-dispatch)/i);
-    assert.doesNotMatch(source, /(?:run: |^\s+)cargo (?:build|test|clippy)\b/m);
-    const setups = [...source.matchAll(/uses: jdx\/mr-boxington-action@([a-f0-9]{40})[^\n]*\n {8}with:\n {10}version: "([^"]+)"\n {10}working-directory: ([^\n]+)\n {10}cache-generation: ([^\n]+)/g)];
-    assert.deepEqual(setups.map((match) => match[3]), directories);
-    assert.ok(source.indexOf("dtolnay/rust-toolchain@") < source.indexOf("jdx/mr-boxington-action@"));
-    for (const setup of setups) {
-      assert.match(setup[2], /^\d+\.\d+\.\d+$/);
-      assert.ok(!generations.has(setup[4]), "each target tree needs its own restore namespace");
-      generations.add(setup[4]);
-    }
+// Cargo 1.100 unit state sits inside build/, which the action's target scanner skips.
+// Objects transport must export each phase independently and allow same-repository PR warming.
+test("Mr Boxington uses isolated object bundles for all Rust workspaces", async () => {
+  const setup = step("Setup Mr Boxington");
+  assert.match(setup, /uses: jdx\/mr-boxington-action@[a-f0-9]{40}/);
+  assert.match(setup, /version: "1\.30\.0"/);
+  assert.ok(setup.includes("working-directory: ${{ matrix.workspace }}"));
+  assert.match(setup, /github-cache-mode: objects/);
+  assert.match(setup, /isolate-objects-cache: true/);
+  assert.match(setup, /clean-target-before-export: true/);
+  // Pull requests restore main's cache and never save: one saving push stored about 7 GB
+  // of the 10 GB quota, which evicts the caches every other pull request restores.
+  for (const file of ["ci.yml", "parity-suite.yml", "codspeed.yml"]) {
+    assert.doesNotMatch(readFileSync(new URL(`../.github/workflows/${file}`, import.meta.url), "utf8"), /save-on-pull-request/, file);
   }
+  // Each task keys its own cache by its inputs; the action's generated key is unique per
+  // run, so every run would export and upload again.
+  assert.ok(setup.includes("cache-key: ${{ steps.rust-cache.outputs.key }}"));
+  assert.ok(setup.includes("restore-keys: ${{ steps.rust-cache.outputs.prefix }}"));
+  assert.doesNotMatch(setup, /cache-generation/);
+  assert.ok(step("Key the Rust cache by its inputs").includes("run: node scripts/ci-rust-cache-key.mjs ci-${{ matrix.task }} .github/workflows/ci.yml ${{ matrix.inputs }}"));
+  assert.ok(job("checks").indexOf("- name: Key the Rust cache by its inputs") < job("checks").indexOf("- name: Setup Mr Boxington"));
+  assert.ok(job("checks").indexOf("- name: Setup Rust") < job("checks").indexOf("- name: Key the Rust cache by its inputs"));
+  assert.match(job("checks"), /^ {6}CARGO_PROFILE_DEV_DEBUG: line-tables-only$/m);
+  const { matrix } = await detect([".github/workflows/ci.yml"]);
+  const workspaces = Object.fromEntries(matrix.include.filter(({ workspace }) => workspace).map(({ task, workspace, inputs }) => [task, [workspace, inputs]]));
+  // The GPUI and server crates are separate workspaces that both build the desktop crates.
+  const [desktop, gpui, server] = ["src-tauri :!src-tauri/gpui :!src-tauri/server", "src-tauri :!src-tauri/server", "src-tauri :!src-tauri/gpui"];
+  assert.deepEqual(workspaces, {
+    rust: ["src-tauri", desktop], "gpui-clippy": ["src-tauri/gpui", gpui], "gpui-test": ["src-tauri/gpui", gpui],
+    "server-backend": ["src-tauri", desktop], server: ["src-tauri/server", server],
+  });
+  assert.equal((job("checks").match(/uses: jdx\/mr-boxington-action@/g) ?? []).length, 1);
+  assert.doesNotMatch(job("checks"), /swatinem\/rust-cache|save-on-(?:protected-branch|workflow-dispatch)/i);
+  assert.doesNotMatch(job("checks"), /(?:run: |^\s+)cargo (?:build|test|clippy)\b/m);
+  assert.ok(job("checks").indexOf("dtolnay/rust-toolchain@") < job("checks").indexOf("jdx/mr-boxington-action@"));
+  assert.match(step("Activate Cargo caching"), /node scripts\/ci-mbx-cargo\.mjs/);
+});
+// Failure modes: an input change that keeps the key leaves the new compiler output unsaved
+// for good; a change outside the inputs that moves the key uploads the same cache again; a
+// new compiler or runner image that keeps the key never refreshes the cache; a compiler
+// change that keeps the prefix downloads a cache the build cannot use; a mistyped pathspec
+// keys the cache on nothing.
+test("the Rust cache key follows the build inputs, the compiler and the runner image", () => {
+  const root = mkdtempSync(join(tmpdir(), "kubecove-ci-cache-key-"));
+  const { GITHUB_OUTPUT: _, ...inherited } = process.env;
+  const env = { ...inherited, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", PATH: `${join(root, "bin")}${delimiter}${process.env.PATH}`, RUSTC_VERSION: "1", ImageVersion: "1" };
+  const write = (path, text) => {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), text);
+    assert.equal(spawnSync("git", ["add", "--", path], { cwd: root, env }).status, 0);
+  };
+  const run = (overrides, pathspecs = ["workflow.yml", "src-tauri", ":!src-tauri/gpui"]) => spawnSync(
+    process.execPath, [fileURLToPath(new URL("./ci-rust-cache-key.mjs", import.meta.url)), "ci-rust", ...pathspecs],
+    { cwd: root, env: { ...env, ...overrides }, encoding: "utf8" },
+  );
+  const key = (overrides = {}) => {
+    const result = run(overrides);
+    assert.equal(result.status, 0, result.stderr);
+    const output = Object.fromEntries(result.stdout.trim().split("\n").map((line) => line.split("=")));
+    assert.ok(output.prefix.startsWith("mbx-ci-rust-") && output.key.startsWith(output.prefix) && output.key.length > output.prefix.length);
+    return output;
+  };
+  try {
+    assert.equal(spawnSync("git", ["init", "-q"], { cwd: root, env }).status, 0);
+    // The script asks the compiler on PATH for its identity.
+    mkdirSync(join(root, "bin"));
+    writeFileSync(join(root, "bin", "rustc"), "#!/bin/sh\necho \"rustc $RUSTC_VERSION\"\n");
+    chmodSync(join(root, "bin", "rustc"), 0o755);
+    write("workflow.yml", "one\n"); write("src-tauri/src/lib.rs", "one\n"); write("src-tauri/gpui/src/main.rs", "one\n"); write("README.md", "one\n");
+    const first = key();
+    assert.deepEqual(key(), first);
+    write("src-tauri/gpui/src/main.rs", "two\n"); write("README.md", "two\n");
+    assert.deepEqual(key(), first);
+    write("src-tauri/src/lib.rs", "two\n");
+    const source = key();
+    assert.notEqual(source.key, first.key);
+    assert.equal(source.prefix, first.prefix);
+    write("workflow.yml", "two\n");
+    assert.notEqual(key().key, source.key);
+    assert.notEqual(key({ ImageVersion: "2" }).key, key().key);
+    assert.equal(key({ ImageVersion: "2" }).prefix, first.prefix);
+    assert.notEqual(key({ RUSTC_VERSION: "2" }).prefix, first.prefix);
+    assert.notEqual(run({}, ["missing"]).status, 0);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 test("whitespace check rejects bad diffs even without an available base", () => {
   const root = mkdtempSync(join(tmpdir(), "kubecove-ci-whitespace-"));
@@ -331,7 +447,7 @@ test("whitespace check rejects bad diffs even without an available base", () => 
     writeFileSync(join(root, "README.md"), "bad trailing whitespace  \n");
     git("add", "README.md"); git("commit", "-qm", "bad");
     const bad = git("rev-parse", "HEAD");
-    const script = block(job("docs"), "run", 8);
+    const script = block(step("Check diff whitespace"), "run", 8);
     for (const from of [clean, "", "0".repeat(40), "d".repeat(40)]) {
       for (const [to, succeeds] of [[clean, true], [bad, false]]) {
         const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", script], { cwd: root, env: { ...env, BASE_SHA: from, HEAD_SHA: to }, encoding: "utf8", timeout: 2000 });
@@ -341,14 +457,32 @@ test("whitespace check rejects bad diffs even without an available base", () => 
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 // Failure modes: a matrix that misses a PARITY_SUITE_SHARD index silently drops that share of
-// the parity suite; a job that runs on the other event runs the suite twice or never; a shard
-// that fails without uploading its artifacts leaves nothing to inspect.
-test("parity jobs run every suite shard on pull requests and on main, and keep the artifacts", () => {
+// the parity suite; a job that runs on the other event runs the suite twice or never; a
+// scenario that the shards exclude but no separate job runs never runs; a shard that fails
+// without uploading its artifacts leaves nothing to inspect.
+test("parity jobs run the full suite on pull requests and on main, and keep the artifacts", () => {
   const read = (name) => readFileSync(new URL(`../.github/workflows/${name}`, import.meta.url), "utf8").replaceAll("\r\n", "\n");
   const parity = read("parity.yml");
   const suite = read("parity-suite.yml");
-  assert.deepEqual([...parity.slice(parity.indexOf("\njobs:\n")).matchAll(/^ {2}([\w-]+):$/gm)].map((match) => match[1]), ["pull-request", "main", "main-build-cache", "coverage-map"]);
-  for (const name of ["pull-request", "main"]) {
+  assert.deepEqual([...parity.slice(parity.indexOf("\njobs:\n")).matchAll(/^ {2}([\w-]+):$/gm)].map((match) => match[1]), ["pull-request-web", "pull-request-spike", "pull-request-gpui", "pull-request-result", "main", "main-spike", "main-build-cache", "coverage-map"]);
+  // The stable check fails on any shard or spike failure, cancellation or unexpected skip.
+  const result = job("pull-request-result", parity);
+  assert.match(result, /^ {4}name: Parity result$/m);
+  assert.match(result, /^ {4}needs:\n {6}- pull-request-web\n {6}- pull-request-gpui\n {6}- pull-request-spike$/m);
+  assert.ok(result.includes("if: ${{ always() && github.event_name == 'pull_request' }}"));
+  const verify = (env) => spawnSync("bash", ["-e", "-o", "pipefail", "-c", block(result, "run", 8)], { env: { ...process.env, RELEASE_PR: "false", WEB_RESULT: "success", GPUI_RESULT: "success", SPIKE_RESULT: "success", ...env }, encoding: "utf8", timeout: 2000 }).status;
+  assert.equal(verify({}), 0);
+  for (const outcome of ["failure", "cancelled", "skipped", ""]) {
+    assert.notEqual(verify({ WEB_RESULT: outcome }), 0);
+    assert.notEqual(verify({ GPUI_RESULT: outcome }), 0);
+    assert.notEqual(verify({ SPIKE_RESULT: outcome }), 0);
+  }
+  assert.equal(verify({ WEB_RESULT: "skipped", GPUI_RESULT: "skipped", SPIKE_RESULT: "skipped", RELEASE_PR: "true" }), 0);
+  assert.notEqual(verify({ WEB_RESULT: "success", GPUI_RESULT: "skipped", SPIKE_RESULT: "skipped", RELEASE_PR: "true" }), 0);
+  // Each sharded job leaves out exactly the scenarios its spike job runs, and that ID exists.
+  const ids = readdirSync(new URL("../e2e/parity/scenarios/", import.meta.url)).filter((name) => name.endsWith(".json"))
+    .flatMap((name) => JSON.parse(readFileSync(new URL(`../e2e/parity/scenarios/${name}`, import.meta.url), "utf8")).scenarios.map((scenario) => scenario.id));
+  for (const [name, spike] of [["pull-request-web", "pull-request-spike"], ["pull-request-gpui", "pull-request-spike"], ["main", "main-spike"]]) {
     const text = job(name, parity);
     const matrices = [...text.matchAll(/^ {8}shard: \[([\d, ]+)\]$/gm)].map((match) => match[1].split(",").map(Number));
     const count = Number(/^ {6}shards: (\d+)$/m.exec(text)?.[1]);
@@ -358,29 +492,67 @@ test("parity jobs run every suite shard on pull requests and on main, and keep t
     assert.match(text, /^ {4}uses: \.\/\.github\/workflows\/parity-suite\.yml$/m, name);
     assert.match(text, /^ {6}shard: \$\{\{ matrix\.shard \}\}$/m, name);
     assert.match(text, /^ {6}fail-fast: false$/m, name);
+    assert.doesNotMatch(text, /^ {6}prefix:/m, name);
+    const excluded = /^ {6}exclude: (\S+)$/m.exec(text)?.[1];
+    const spikeText = job(spike, parity);
+    assert.match(spikeText, /^ {6}shard: 0\n {6}shards: 1$/m, spike);
+    assert.equal(/^ {6}prefix: (\S+)$/m.exec(spikeText)?.[1], excluded, spike);
+    assert.equal(/if: (.+)$/m.exec(spikeText)?.[1], /if: (.+)$/m.exec(text)?.[1], `${spike} runs on the same events as ${name}`);
+    assert.equal(/^ {6}coverage: (\w+)$/m.exec(spikeText)?.[1], /^ {6}coverage: (\w+)$/m.exec(text)?.[1], spike);
+    assert.deepEqual(ids.filter((id) => id.startsWith(excluded)), ["settings-diagnostics.topology-spike-harness"]);
   }
-  const pullRequest = job("pull-request", parity);
+  const pullRequest = job("pull-request-web", parity);
   assert.ok(pullRequest.includes("if: ${{ github.event_name == 'pull_request' && ("), "pull request job runs only on pull requests");
   for (const condition of ["github.event.pull_request.head.repo.full_name != github.repository", "!startsWith(github.head_ref, 'release/app-v')", "!contains(github.event.pull_request.labels.*.name, 'release')"]) {
     assert.ok(pullRequest.includes(condition), condition);
   }
   assert.ok(job("main", parity).includes("if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}"));
   assert.match(suite, /^ {10}PARITY_SUITE_SHARD: \$\{\{ inputs\.shard \}\}\/\$\{\{ inputs\.shards \}\}$/m);
-  assert.match(suite, /^ {8}run: CARGO_BUILD_JOBS="\$\(nproc\)" bun run e2e:parity$/m);
+  assert.match(suite, /^ {10}PARITY_PREFIX: \$\{\{ inputs\.prefix \}\}$/m);
+  assert.match(suite, /^ {10}PARITY_EXCLUDE: \$\{\{ inputs\.exclude \}\}$/m);
+  assert.match(suite, /^ {10}PARITY_STEP_SCREENSHOTS: "0"$/m);
+  // Pull requests run the full suite: change selection fell back to it on every recent PR.
+  assert.doesNotMatch(suite, /^ +PARITY_CHANGED:|parity-coverage-map-|fetch-depth/m);
+  const run = suite.slice(suite.indexOf("- name: Run parity suite"), suite.indexOf("- name: Upload parity artifacts"));
+  const command = block(run, "run", 8);
+  const runners = (cpus, driver) => spawnSync("bash", ["-c", `nproc() { echo ${cpus}; }; ${command.replace("bun run e2e:parity", "printenv PARITY_JOBS PARITY_WEB_JOBS")}`], { env: { ...process.env, PARITY_DRIVER: driver }, encoding: "utf8" }).stdout.trim().replaceAll("\n", " ");
+  for (const driver of ["web", "gpui"]) assert.equal(runners(4, driver), "4 4");
+  assert.equal(runners(4, ""), "1 3");
+  assert.equal(runners(1, ""), "1 1");
+  assert.match(suite, /^ {10}PARITY_DRIVER: \$\{\{ inputs\.driver \}\}$/m);
+  assert.match(result, /pattern: parity-pull_request-\*-attempt-\$\{\{ github\.run_attempt \}\}/);
+  assert.match(result, /run: bun e2e\/parity\/merge-reports\.ts parity-reports/);
+  for (const name of ["Checkout", "Setup Bun", "Download driver reports", "Validate merged driver reports"]) {
+    assert.ok(result.includes(`- name: ${name}\n        if: \${{ needs.pull-request-web.result == 'success' }}`));
+  }
+  assert.match(job("pull-request-spike", parity), /^ {8}driver: \[web, gpui\]$/m);
+  assert.match(job("pull-request-web", parity), /^ {6}driver: web$/m);
+  assert.match(job("pull-request-gpui", parity), /^ {6}driver: gpui$/m);
+  // A shard count that differs from its matrix leaves scenarios out or runs a job twice.
+  for (const [name, count] of [["pull-request-web", 4], ["pull-request-gpui", 3]]) {
+    assert.equal(Number(/^ {6}shards: (\d+)$/m.exec(job(name, parity))?.[1]), count);
+    assert.match(job(name, parity), new RegExp(`^ {8}shard: \\[${Array.from({ length: count }, (_, index) => index).join(", ")}\\]$`, "m"));
+  }
+  for (const name of ["Install GPUI build dependencies", "Setup Rust", "Key the Rust cache by its inputs", "Cache Rust builds", "Activate Cargo caching"]) {
+    const start = suite.indexOf(`- name: ${name}\n`);
+    const end = suite.indexOf("\n      - name: ", start + 1);
+    assert.match(suite.slice(start, end), /if: \$\{\{ inputs\.driver != 'web' \}\}/);
+  }
+  const chromium = suite.slice(suite.indexOf("- name: Install Chromium"), suite.indexOf("- name: Build parity test"));
+  assert.match(chromium, /if: \$\{\{ !inputs\.build-only && inputs\.driver != 'gpui' \}\}/);
   assert.match(suite, /sudo apt-get install -y libfontconfig-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev pkg-config/);
   assert.match(suite, /run: bunx playwright-core install --with-deps --no-shell chromium/);
   const upload = suite.slice(suite.indexOf("- name: Upload parity artifacts"));
   assert.match(upload, /^ {8}if: \$\{\{ always\(\) && !inputs\.build-only \}\}$/m);
   assert.match(upload, /^ {10}path: e2e\/artifacts\/parity-\*$/m);
-  assert.match(upload, /^ {10}name: .*\$\{\{ inputs\.shard \}\}.*\$\{\{ github\.run_attempt \}\}$/m);
+  assert.match(upload, /^ {10}name: .*\$\{\{ inputs\.shard \}\}.*\$\{\{ inputs\.shards \}\}.*\$\{\{ github\.run_attempt \}\}$/m);
 });
 
-// Failure modes: change selection on main narrows the full suite that must run after every
-// merge; a main run without PARITY_COVERAGE records no map; a shallow pull request checkout
-// has no merge base; a cache key, path or artifact name that differs between the jobs keeps
-// the map from pull requests, which then silently run the full suite; the instrumented build
-// saved under the pull request cache key makes every pull request rebuild from scratch.
-test("main records the parity coverage map and pull requests select scenarios from it", () => {
+// Failure modes: a main run without PARITY_COVERAGE records no map; the map leaves out the
+// spike job's scenario; a path or artifact name that differs between the jobs leaves local
+// PARITY_CHANGED runs without a map; the instrumented build saved under the pull request cache
+// key makes every pull request rebuild from scratch.
+test("main records the parity coverage map from every parity job", () => {
   const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8").replaceAll("\r\n", "\n");
   const parity = read(".github/workflows/parity.yml");
   const suite = read(".github/workflows/parity-suite.yml");
@@ -397,9 +569,7 @@ test("main records the parity coverage map and pull requests select scenarios fr
   };
   // GitHub expressions here use only operators that JavaScript evaluates the same way.
   const evaluate = (source, inputs, event) => {
-    const github = event === "pull_request"
-      ? { event_name: event, ref: "refs/pull/7/merge", event: { pull_request: { base: { sha: base } } } }
-      : { event_name: event, ref: "refs/heads/main", event: { pull_request: { base: {} } } };
+    const github = { event_name: event, ref: event === "pull_request" ? "refs/pull/7/merge" : "refs/heads/main" };
     return new Function("inputs", "github", "always", "cancelled", `return (${source.replaceAll("build-only", "buildOnly").replaceAll(/'([^']*)'/g, "\"$1\"")});`)(inputs, github, () => true, () => false);
   };
   const modes = {
@@ -408,39 +578,43 @@ test("main records the parity coverage map and pull requests select scenarios fr
     buildCache: [{ coverage: false, buildOnly: true }, "push"],
   };
   const run = step("Run parity suite");
-  const restore = step("Restore parity coverage map");
   const results = Object.fromEntries(Object.entries(modes).map(([mode, [inputs, event]]) => [mode, {
-    fetchDepth: evaluate(expression(step("Checkout"), "fetch-depth"), inputs, event),
-    changed: evaluate(expression(run, "PARITY_CHANGED"), inputs, event),
     coverage: evaluate(expression(run, "PARITY_COVERAGE"), inputs, event),
-    restores: evaluate(expression(restore, "if"), inputs, event),
-    cacheKey: `kubecove-parity${evaluate(/shared-key: kubecove-parity\$\{\{ (.+) \}\}/.exec(step("Cache Rust builds"))?.[1] ?? "''", inputs, event)}`,
+    cacheKey: `parity${evaluate(/run: node scripts\/ci-rust-cache-key\.mjs parity\$\{\{ (.+) \}\} \.github\/workflows\/parity-suite\.yml src-tauri ':!src-tauri\/server'$/m.exec(step("Key the Rust cache by its inputs"))?.[1] ?? "'missing'", inputs, event)}`,
     runs: evaluate(expression(run, "if"), inputs, event),
   }]));
-  assert.deepEqual(results.pullRequest, { fetchDepth: 0, changed: base, coverage: "0", restores: true, cacheKey: "kubecove-parity", runs: true });
-  assert.deepEqual(results.main, { fetchDepth: 1, changed: "", coverage: "1", restores: false, cacheKey: "kubecove-parity-coverage", runs: true });
+  assert.deepEqual(results.pullRequest, { coverage: "0", cacheKey: "parity", runs: true });
+  assert.deepEqual(results.main, { coverage: "1", cacheKey: "parity-coverage", runs: true });
   assert.equal(results.buildCache.runs, false);
-  assert.equal(results.buildCache.cacheKey, "kubecove-parity");
+  assert.equal(results.buildCache.cacheKey, "parity");
   assert.match(step("Build parity test"), /cargo test --manifest-path src-tauri\/gpui\/Cargo\.toml --test parity --no-run/);
-  assert.match(step("Cache Rust builds"), /save-if: \$\{\{ github\.ref == 'refs\/heads\/main' && inputs\.shard == 0 \}\}/);
+  // A cached target directory does not survive a fresh checkout (ci.yml has the reason), and
+  // one pull request job saving is enough: every GPUI job builds the same test binary.
+  const cache = step("Cache Rust builds");
+  assert.match(cache, /uses: jdx\/mr-boxington-action@[a-f0-9]{40} # v1\n/);
+  for (const line of ['version: "1.30.0"', "working-directory: src-tauri/gpui", "cache-key: ${{ steps.rust-cache.outputs.key }}", "restore-keys: ${{ steps.rust-cache.outputs.prefix }}", "github-cache-mode: objects", "isolate-objects-cache: true", "clean-target-before-export: true"]) {
+    assert.ok(cache.includes(`\n          ${line}\n`) || cache.endsWith(`\n          ${line}`), `Missing cache setting: ${line}`);
+  }
+  assert.match(step("Activate Cargo caching"), /run: node scripts\/ci-mbx-cargo\.mjs/);
+  assert.doesNotMatch(suite, /swatinem\/rust-cache/i);
   assert.match(step("Install LLVM tools"), /if: \$\{\{ inputs\.coverage \}\}\n {8}run: rustup component add llvm-tools/);
   // The jobs that call the suite on main pass the inputs these modes assume.
   assert.match(job("main", parity), /^ {6}coverage: true$/m);
-  assert.doesNotMatch(job("pull-request", parity), /coverage:|build-only:/);
+  assert.doesNotMatch(job("pull-request-web", parity), /coverage:|build-only:/);
   const buildCache = job("main-build-cache", parity);
   assert.match(buildCache, /^ {6}build-only: true$/m);
   assert.ok(buildCache.includes("if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}"));
-  // One map path and key family from the shard uploads through the merge to the pull request restore.
+  // One map path from the shard and spike uploads through the merge to the uploaded artifact.
   const merge = job("coverage-map", parity);
   const mapPath = /^export const DEFAULT_MAP = "(.+)";$/m.exec(read("e2e/parity/changed-scenarios.ts"))?.[1];
   assert.equal(mapPath, "e2e/artifacts/parity-coverage-map.json");
-  assert.match(merge, /^ {4}needs: main$/m);
+  assert.match(merge, /^ {4}needs:\n {6}- main\n {6}- main-spike$/m);
   assert.ok(merge.includes("if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}"));
   const shardArtifact = /name: (parity-coverage-shard-)\$\{\{/.exec(step("Upload shard coverage map"))?.[1];
   assert.ok(shardArtifact && merge.includes(`pattern: ${shardArtifact}*`), "merge downloads the shard maps the suite uploads");
   assert.match(step("Upload shard coverage map"), /path: e2e\/artifacts\/parity-\*\/coverage-map\.json/);
+  assert.match(step("Upload shard coverage map"), /\$\{\{ inputs\.shard \}\}-of-\$\{\{ inputs\.shards \}\}/);
   assert.ok(merge.includes(`run: bun e2e/parity/coverage-map.ts merge ${mapPath} shard-maps/*/*/coverage-map.json`));
-  const saved = merge.slice(merge.indexOf("- name: Save coverage map"));
-  assert.ok(saved.includes(`path: ${mapPath}`) && saved.includes("key: parity-coverage-map-${{ github.sha }}"));
-  assert.ok(restore.includes(`path: ${mapPath}`) && restore.includes("key: parity-coverage-map-${{ github.event.pull_request.base.sha }}") && restore.includes("parity-coverage-map-\n"));
+  const uploaded = merge.slice(merge.indexOf("- name: Upload coverage map"));
+  assert.ok(uploaded.includes(`path: ${mapPath}`) && uploaded.includes("name: parity-coverage-map\n"));
 });
