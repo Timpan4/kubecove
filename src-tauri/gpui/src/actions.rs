@@ -332,6 +332,7 @@ pub fn review_request(
         expected_resource_version: None,
         expected_revision_uid: None,
         expected_revision_resource_version: None,
+        require_replacement: false,
         confirmed: false,
         kubeconfig_env_var: None,
     }
@@ -346,6 +347,11 @@ pub fn execution_request(
     guarded.expected_uid = Some(preview.uid.clone());
     guarded.expected_resource_version = Some(preview.resource_version.clone());
     guarded.confirmed = true;
+    guarded.require_replacement = request.action == ResourceActionKind::Delete
+        && preview
+            .controller
+            .as_ref()
+            .is_some_and(|controller| controller.recreates);
     if request.action == ResourceActionKind::Rollback {
         guarded.expected_revision_uid = preview.revision_uid.clone();
         guarded.expected_revision_resource_version = preview.revision_resource_version.clone();

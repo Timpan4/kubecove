@@ -40,6 +40,9 @@ pub struct ResourceActionRequest {
     pub expected_revision_uid: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected_revision_resource_version: Option<String>,
+    /// The review waived typing based on replacement; execution must recheck it.
+    #[serde(default)]
+    pub require_replacement: bool,
     pub confirmed: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kubeconfig_env_var: Option<String>,

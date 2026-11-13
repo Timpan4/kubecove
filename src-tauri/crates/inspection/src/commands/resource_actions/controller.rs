@@ -3,12 +3,38 @@
 //! operator may or may not replace what it owns, so its objects keep the
 //! typed-name confirmation (ADR 0024).
 
-use crate::models::ResourceActionController;
+use crate::models::{AppError, AppErrorKind, ClusterOperationTarget, ResourceActionController};
 use k8s_openapi::{api::core::v1::Pod, apimachinery::pkg::apis::meta::v1::LabelSelector};
 use kube::api::{Api, ApiResource, DynamicObject, ListParams};
 use kube::core::{GroupVersionKind, Selector, SelectorExt};
+use kubecove_kube::commands::list_projection::{self, Typed};
+use serde::Deserialize;
 use serde_json::Value;
 use std::collections::BTreeMap;
+
+#[derive(Clone, Deserialize)]
+struct DemandStatus {
+    phase: Option<String>,
+}
+
+pub(super) async fn require_replacement(
+    client: kube::Client,
+    target: &ClusterOperationTarget,
+    object: &Value,
+) -> Result<(), AppError> {
+    let controller = match target.namespace.as_deref() {
+        Some(namespace) => confirmed_controller(client, namespace, &target.kind, object).await,
+        None => None,
+    };
+    if controller.is_some_and(|controller| controller.recreates) {
+        Ok(())
+    } else {
+        Err(AppError::new(
+            "Replacement is no longer confirmed. Review this resource again before deleting it.",
+            AppErrorKind::Validation,
+        ))
+    }
+}
 
 /// Built-in controllers that replace a deleted object, by target kind:
 /// (target kind, owner API group, owner kind). The core group is "".
@@ -159,9 +185,24 @@ async fn replica_demand(
         return false;
     }
     let api: Api<Pod> = Api::namespaced(client, namespace);
-    let Ok(pods) = api
-        .list(&ListParams::default().labels(&selector.to_string()))
-        .await
+    let desired = owner
+        .pointer("/spec/replicas")
+        .and_then(Value::as_u64)
+        .unwrap_or(1);
+    // Desired plus one is sufficient to detect excess demand candidates.
+    let Some(limit) = desired
+        .checked_add(1)
+        .and_then(|count| u32::try_from(count).ok())
+    else {
+        return false;
+    };
+    let Ok(pods) = list_projection::list::<_, Typed<Pod, DemandStatus>>(
+        api,
+        &ListParams::default()
+            .labels(&selector.to_string())
+            .limit(limit),
+    )
+    .await
     else {
         return false;
     };
@@ -198,10 +239,6 @@ async fn replica_demand(
         target_present |= pod.metadata.uid == target.metadata.uid
             && controller.is_some_and(|controller| controller.uid == owner_uid);
     }
-    let desired = owner
-        .pointer("/spec/replicas")
-        .and_then(Value::as_u64)
-        .unwrap_or(1);
     target_present && active <= desired
 }
 

@@ -168,6 +168,10 @@ pub async fn execute_resource_action(
             &preview_exact_delete_params(expected_uid, expected_resource_version),
         )
         .await?;
+        if request.require_replacement {
+            controller::require_replacement(client.clone(), &request.target, &current_value)
+                .await?;
+        }
         api.delete(
             &request.target.name,
             &exact_delete_params(expected_uid, expected_resource_version),

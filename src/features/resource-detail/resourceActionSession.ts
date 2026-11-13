@@ -122,6 +122,7 @@ function executionRequest(request: ResourceActionRequest, preview: ResourceActio
 		...request,
 		expectedUid: preview.uid,
 		expectedResourceVersion: preview.resourceVersion,
+		...(request.action === "delete" && preview.controller?.recreates === true && { requireReplacement: true }),
 		confirmed: true,
 	};
 	if (request.action === "rollback") {

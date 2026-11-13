@@ -59,7 +59,7 @@ export async function exportDetailTabs(client: TauriClient, resources: ResourceS
 	let pausedState: ResourceActionState | undefined;
 	const review = async (request: ResourceActionRequest) => {
 		const preview = await client.invoke<ResourceActionPreview>("preview_resource_action", { request });
-		const confirmed: ResourceActionRequest = { ...request, expectedUid: preview.uid, expectedResourceVersion: preview.resourceVersion, confirmed: true, ...(request.action === "rollback" && { expectedRevisionUid: preview.revisionUid, expectedRevisionResourceVersion: preview.revisionResourceVersion }) };
+		const confirmed: ResourceActionRequest = { ...request, expectedUid: preview.uid, expectedResourceVersion: preview.resourceVersion, confirmed: true, ...(request.action === "delete" && preview.controller?.recreates === true && { requireReplacement: true }), ...(request.action === "rollback" && { expectedRevisionUid: preview.revisionUid, expectedRevisionResourceVersion: preview.revisionResourceVersion }) };
 		const result = await client.invoke<ClusterOperationResult>("execute_resource_action", { request: confirmed });
 		return { preview, confirmed, result };
 	};

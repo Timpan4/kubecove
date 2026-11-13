@@ -21,6 +21,8 @@ export interface ResourceActionRequest extends ClusterOperationTarget {
 	expectedResourceVersion?: string;
 	expectedRevisionUid?: string;
 	expectedRevisionResourceVersion?: string;
+	/** Recheck replacement demand when the review waived typed-name confirmation. */
+	requireReplacement?: boolean;
 	confirmed: boolean;
 	kubeconfigEnvVar?: string;
 }

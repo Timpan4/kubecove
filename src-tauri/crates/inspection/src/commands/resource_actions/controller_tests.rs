@@ -32,6 +32,7 @@ async fn preview(
             let (request, send) = handle.next_request().await.expect("Pod demand read");
             assert_eq!(request.method(), Method::GET);
             assert_eq!(request.uri().path(), "/api/v1/namespaces/default/pods");
+            assert!(request.uri().query().unwrap().contains("limit=2"));
             assert!(
                 request
                     .uri()
@@ -236,4 +237,70 @@ async fn job_and_daemonset_pods_keep_typed_confirmation() {
         assert_eq!(controller.kind, kind);
         assert!(!controller.recreates);
     }
+}
+
+async fn execute_owned_pod(
+    require_replacement: bool,
+    owner_response: Option<Value>,
+) -> Result<crate::models::ClusterOperationResult, crate::models::AppError> {
+    let pod = owned_pod();
+    let mut value = serde_json::to_value(request("Pod", "delete")).unwrap();
+    value["confirmed"] = json!(true);
+    value["expectedUid"] = json!("pod-uid");
+    value["expectedResourceVersion"] = json!("7");
+    value["requireReplacement"] = json!(require_replacement);
+    let request = serde_json::from_value(value).unwrap();
+    let (cluster, mut handle) = mock_cluster();
+    let operation = cluster.scope().run(execute_resource_action(request));
+    let responder = async move {
+        let (_, send) = handle.next_request().await.expect("target read");
+        send.send_response(json_response(200, pod.clone()));
+        let (request, send) = handle.next_request().await.expect("delete dry-run");
+        assert_eq!(request.method(), Method::DELETE);
+        let body: Value =
+            serde_json::from_slice(&request.into_body().collect_bytes().await.unwrap()).unwrap();
+        assert_eq!(body["dryRun"][0], "All");
+        send.send_response(json_response(200, pod.clone()));
+        if let Some(owner) = owner_response {
+            let (request, send) = handle.next_request().await.expect("replacement recheck");
+            assert_eq!(request.method(), Method::GET);
+            assert!(request.uri().path().contains("/replicasets/"));
+            let can_replace = owner["spec"]["replicas"] != 0;
+            send.send_response(json_response(200, owner));
+            if can_replace {
+                let (request, send) = handle.next_request().await.expect("demand recheck");
+                assert_eq!(request.uri().path(), "/api/v1/namespaces/default/pods");
+                send.send_response(pod_list(vec![pod.clone()]));
+            } else {
+                return handle;
+            }
+        }
+        let (request, send) = handle.next_request().await.expect("real delete");
+        assert_eq!(request.method(), Method::DELETE);
+        let body: Value =
+            serde_json::from_slice(&request.into_body().collect_bytes().await.unwrap()).unwrap();
+        assert!(body.get("dryRun").is_none());
+        assert_eq!(body["preconditions"]["uid"], "pod-uid");
+        assert_eq!(body["preconditions"]["resourceVersion"], "7");
+        send.send_response(json_response(200, pod));
+        handle
+    };
+    let (result, _handle) =
+        Box::pin(await_mock(async { tokio::join!(operation, responder) })).await;
+    result
+}
+
+// Replacement can disappear without changing the target's resourceVersion.
+// A waived typed name requires fresh evidence; a typed delete needs no waiver.
+#[tokio::test]
+async fn waived_name_confirmation_rechecks_replacement_before_mutation() {
+    let mut scaled_zero = replica_set();
+    scaled_zero["spec"]["replicas"] = json!(0);
+    let error = execute_owned_pod(true, Some(scaled_zero))
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, AppErrorKind::Validation);
+    assert!(error.message.contains("Review"));
+    assert!(execute_owned_pod(true, Some(replica_set())).await.is_ok());
+    assert!(execute_owned_pod(false, None).await.is_ok());
 }
