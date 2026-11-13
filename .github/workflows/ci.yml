@@ -73,11 +73,11 @@ jobs:
                 for (const path of [file.filename, file.previous_filename].filter((value) => value !== undefined)) {
                   if (typeof path !== 'string' || !path) throw new Error('Invalid changed path.');
                   // Workflow and shared action changes must validate the pipeline itself.
-                  if (path.startsWith('.github/') || path === 'scripts/ci-mbx-cargo.mjs' || path === 'scripts/ci-rust-cache-key.mjs') { all(); continue; }
+                  if (path.startsWith('.github/') || path === 'scripts/ci-mbx-cargo.mjs' || path === 'scripts/ci-rust-cache-key.mjs' || path === 'scripts/ci-rust-pass.mjs') { all(); continue; }
                   const scope = {
                     docs: /\.md$|^docs\//i.test(path),
                     frontend: /\.(css|html|js|jsx|json|mjs|cjs|svelte|ts|tsx|mts|cts)$|(^|\/)bun\.lock$|^(src|public|e2e|scripts)\//i.test(path),
-                    rust: /\.rs$|(^|\/)(Cargo\.(lock|toml)|rust-toolchain(\.toml)?)$|(^|\/)\.cargo\/|^src-tauri\//i.test(path),
+                    rust: /\.rs$|(^|\/)(Cargo\.(lock|toml)|rust-toolchain(\.toml)?)$|(^|\/)\.cargo\/|^src-tauri\/|^tests\/|^src\/lib\/[^/]+-workspace\.json$/i.test(path),
                     nix: /\.nix$|(^|\/)(Cargo\.(lock|toml)|flake\.lock|bun\.lock|package\.json|vite\.config\.ts|svelte\.config\.js)$/i.test(path),
                   };
                   // Unknown paths fail toward more coverage, never a silently green gate.
@@ -91,16 +91,16 @@ jobs:
             }
             for (const [key, value] of Object.entries(required)) core.setOutput(key, String(value));
             // These tasks share one matrix; frontend checks keep their own job.
-            // The matrix budget leaves one of the owner's seven slots for frontend.
-            const desktop = 'src-tauri :!src-tauri/gpui :!src-tauri/server';
-            // The GPUI tests compile in the workspace fixtures the web client uses.
-            const gpui = 'src-tauri :!src-tauri/server src/lib/*-workspace.json';
-            // The server also embeds the browser build. The frontend tree is left out on
-            // purpose: with it, every frontend push to main would upload the server cache
-            // again (896 MB after run 43325597142). Without it, a build recompiles the
-            // crates that embed the assets: each Cargo step of the server task finished
-            // in under 20 s that way in run 43393348258.
-            const server = 'src-tauri :!src-tauri/gpui';
+            // Pass reuse needs every verification input, including root configuration.
+            // Root dot-directories also cover a future .cargo/config.toml.
+            const common = "tests scripts/ci-rust-pass.mjs ':(top,glob)*' ':(top,glob).*/**'";
+            const desktop = `src-tauri :!src-tauri/gpui :!src-tauri/server ${common}`;
+            const gpui = `src-tauri :!src-tauri/server src/lib/*-workspace.json ${common}`;
+            // cargo tree reads the separate server manifest and lockfile.
+            const backend = `src-tauri :!src-tauri/gpui ${common}`;
+            // The server embeds dist/, builds and typechecks the browser, runs the
+            // local HTTP/WS harness, and checks the Grafana dashboard's queries.
+            const server = `${backend} src public e2e scripts deploy`;
             const tasks = [
               { task: 'docs', scope: 'docs' },
               { task: 'frontend-e2e', scope: 'frontend' },
@@ -111,7 +111,7 @@ jobs:
               { task: 'rust', scope: 'rust', workspace: 'src-tauri', inputs: desktop },
               { task: 'gpui-clippy', scope: 'rust', workspace: 'src-tauri/gpui', inputs: gpui },
               { task: 'gpui-test', scope: 'rust', workspace: 'src-tauri/gpui', inputs: gpui },
-              { task: 'server-backend', scope: 'server', workspace: 'src-tauri', inputs: desktop },
+              { task: 'server-backend', scope: 'server', workspace: 'src-tauri', inputs: backend },
               { task: 'server', scope: 'server', workspace: 'src-tauri/server', inputs: server },
             ];
             const include = tasks.filter(({ scope }) => scope === 'server'
@@ -191,6 +191,9 @@ jobs:
 
   checks:
     name: CI ${{ matrix.task }}
+    permissions:
+      contents: read
+      actions: read
     needs:
       - changes
     if: ${{ (needs.changes.outputs.docs == 'true' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
@@ -213,17 +216,57 @@ jobs:
           fetch-depth: ${{ matrix.task == 'docs' && '0' || '1' }}
 
       - name: Verify Rust audit coverage
+        id: audit-coverage
         if: ${{ matrix.task == 'rust' }}
         run: node --test --test-name-pattern="Rust dependency audits cover every checked-in lockfile with narrow exceptions" scripts/ci-workflow-regression.test.mjs
 
+      - name: Setup Rust
+        id: setup-rust
+        if: ${{ matrix.workspace }}
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy
+
+      # An unchanged build restores its exact cache and skips the save, which took up to
+      # 200 s per job when every run saved (scripts/ci-rust-cache-key.mjs). Only pushes to
+      # main save. A pull request restores main's newest cache and rebuilds what it changed:
+      # one pull request push that saved stored about 7 GB of the 10 GB cache quota, which
+      # evicts the caches main keeps for every other pull request.
+      - name: Key the Rust cache by its inputs
+        id: rust-cache
+        if: ${{ matrix.workspace }}
+        run: node scripts/ci-rust-cache-key.mjs ci-${{ matrix.task }} .github/workflows/ci.yml ${{ matrix.inputs }}
+
+      # A tiny pass record avoids restoring compiler objects or installing build
+      # dependencies on a hit. Cache errors and partial matches run verification.
+      - name: Restore Rust task pass
+        id: restore-pass
+        if: ${{ matrix.workspace && github.event_name == 'pull_request' }}
+        continue-on-error: true
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ci-rust-pass/record.json
+          key: passed-${{ steps.rust-cache.outputs.key }}
+
+      - name: Decide Rust task reuse
+        id: decide-pass
+        if: ${{ matrix.workspace }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PASS_TASK: ${{ matrix.task }}
+          PASS_KEY: ${{ steps.rust-cache.outputs.key }}
+          PASS_EVENT: ${{ github.event_name }}
+          PASS_CACHE_HIT: ${{ steps.restore-pass.outputs.cache-hit }}
+        run: node scripts/ci-rust-pass.mjs decide
+
       - name: Setup Bun
-        if: ${{ matrix.task == 'docs' || matrix.task == 'frontend-e2e' || matrix.task == 'server' }}
+        if: ${{ (matrix.task == 'docs' || matrix.task == 'frontend-e2e' || matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.4.4"
 
       - name: Cache Bun dependencies
-        if: ${{ matrix.task == 'frontend-e2e' || matrix.task == 'server' }}
+        if: ${{ (matrix.task == 'frontend-e2e' || matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
@@ -232,7 +275,7 @@ jobs:
             ${{ runner.os }}-bun-
 
       - name: Install frontend dependencies
-        if: ${{ matrix.task == 'frontend-e2e' || matrix.task == 'server' }}
+        if: ${{ (matrix.task == 'frontend-e2e' || matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
         run: bun install --frozen-lockfile
 
       - name: Check documentation
@@ -260,7 +303,7 @@ jobs:
       # These packages are often already present on the hosted runner. Only
       # update apt and install when pkg-config cannot resolve the required set.
       - name: Install Tauri Linux dependencies
-        if: ${{ matrix.task == 'rust' }}
+        if: ${{ (matrix.task == 'rust') && steps.decide-pass.outputs.skip != 'true' }}
         run: |
           if ! pkg-config --exists webkit2gtk-4.1 ayatana-appindicator3-0.1 librsvg-2.0 || ! command -v patchelf >/dev/null; then
             sudo apt-get update
@@ -268,34 +311,19 @@ jobs:
           fi
 
       - name: Install GPUI build dependencies
-        if: ${{ matrix.task == 'gpui-clippy' || matrix.task == 'gpui-test' }}
+        if: ${{ (matrix.task == 'gpui-clippy' || matrix.task == 'gpui-test') && steps.decide-pass.outputs.skip != 'true' }}
         run: |
           if ! pkg-config --exists fontconfig xcb xkbcommon xkbcommon-x11; then
             sudo apt-get update
             sudo apt-get install -y libfontconfig-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev pkg-config
           fi
 
-      - name: Setup Rust
-        if: ${{ matrix.workspace }}
-        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        with:
-          components: clippy
-
-      # An unchanged build restores its exact cache and skips the save, which took up to
-      # 200 s per job when every run saved (scripts/ci-rust-cache-key.mjs). Only pushes to
-      # main save. A pull request restores main's newest cache and rebuilds what it changed:
-      # one pull request push that saved stored about 7 GB of the 10 GB cache quota, which
-      # evicts the caches main keeps for every other pull request.
-      - name: Key the Rust cache by its inputs
-        id: rust-cache
-        if: ${{ matrix.workspace }}
-        run: node scripts/ci-rust-cache-key.mjs ci-${{ matrix.task }} .github/workflows/ci.yml ${{ matrix.inputs }}
-
       # Cargo 1.100 puts unit state under build/, which the pinned action's target
       # scanner skips. Objects transport exports completed mbx commands instead.
       # One action/store per job also avoids cross-workspace post-step pruning.
       - name: Setup Mr Boxington
-        if: ${{ matrix.workspace }}
+        id: setup-mbx
+        if: ${{ (matrix.workspace) && steps.decide-pass.outputs.skip != 'true' }}
         uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
         with:
           version: "1.30.0"
@@ -307,25 +335,30 @@ jobs:
           clean-target-before-export: true
 
       - name: Activate Cargo caching
-        if: ${{ matrix.workspace }}
+        id: activate-cargo
+        if: ${{ (matrix.workspace) && steps.decide-pass.outputs.skip != 'true' }}
         run: node scripts/ci-mbx-cargo.mjs
 
       - name: Install cargo-audit
+        id: install-audit
         if: ${{ matrix.task == 'rust' }}
         uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
         with:
           tool: cargo-audit@0.22.2
 
       - name: Audit desktop Rust dependencies
+        id: audit-desktop
         if: ${{ matrix.task == 'rust' }}
         # Owner: @Timpan4. Remove when stable Tauri resolves glib >=0.20.
         run: cargo-audit audit --file src-tauri/Cargo.lock --ignore RUSTSEC-2024-0429
 
       - name: Audit GPUI Rust dependencies
+        id: audit-gpui
         if: ${{ matrix.task == 'rust' }}
         run: cargo-audit audit --file src-tauri/gpui/Cargo.lock
 
       - name: Audit server Rust dependencies
+        id: audit-server
         if: ${{ matrix.task == 'rust' }}
         # Owner: @Timpan4. Production uses this chain only for public-signature verification.
         # Remove after jsonwebtoken supports rsa >=0.10 and crypto-bigint >=0.7.6.
@@ -336,36 +369,43 @@ jobs:
         run: bun run e2e:fast
 
       - name: Test Rust
-        if: ${{ matrix.task == 'rust' }}
+        id: test-rust
+        if: ${{ (matrix.task == 'rust') && steps.decide-pass.outputs.skip != 'true' }}
         run: mbx test --workspace --manifest-path src-tauri/Cargo.toml
 
       - name: Lint Rust
-        if: ${{ matrix.task == 'rust' }}
+        id: lint-rust
+        if: ${{ (matrix.task == 'rust') && steps.decide-pass.outputs.skip != 'true' }}
         run: mbx clippy --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
 
       - name: Lint GPUI
-        if: ${{ matrix.task == 'gpui-clippy' }}
+        id: lint-gpui
+        if: ${{ (matrix.task == 'gpui-clippy') && steps.decide-pass.outputs.skip != 'true' }}
         run: mbx clippy --manifest-path src-tauri/gpui/Cargo.toml --locked --all-targets -- -D warnings
 
       - name: Test GPUI
-        if: ${{ matrix.task == 'gpui-test' }}
+        id: test-gpui
+        if: ${{ (matrix.task == 'gpui-test') && steps.decide-pass.outputs.skip != 'true' }}
         run: mbx test --manifest-path src-tauri/gpui/Cargo.toml --locked --lib --test native
 
       # Runs before the browser UI is built: the API-only server must build without it.
       - name: Verify API-only server
-        if: ${{ matrix.task == 'server' }}
+        id: api-only
+        if: ${{ (matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
         run: |
           mbx test --manifest-path src-tauri/server/Cargo.toml --locked --no-default-features
           mbx clippy --manifest-path src-tauri/server/Cargo.toml --locked --no-default-features --all-targets -- -D warnings
 
       - name: Build browser UI
-        if: ${{ matrix.task == 'server' }}
+        id: browser-build
+        if: ${{ (matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
         env:
           KUBECOVE_PUBLIC_RUNTIME: web
         run: bun run build
 
       - name: Verify GUI-free dependency tree
-        if: ${{ matrix.task == 'server-backend' }}
+        id: dependency-tree
+        if: ${{ (matrix.task == 'server-backend') && steps.decide-pass.outputs.skip != 'true' }}
         run: |
           set -euo pipefail
           cargo tree --manifest-path src-tauri/server/Cargo.toml --locked --edges normal,build --prefix none > server-dependencies.txt
@@ -374,32 +414,61 @@ jobs:
           fi
 
       - name: Test GUI-free backend crates
-        if: ${{ matrix.task == 'server-backend' }}
+        id: test-backend
+        if: ${{ (matrix.task == 'server-backend') && steps.decide-pass.outputs.skip != 'true' }}
         run: mbx test --locked --workspace --no-default-features --manifest-path src-tauri/Cargo.toml
 
       - name: Test headless server
-        if: ${{ matrix.task == 'server' }}
+        id: test-server
+        if: ${{ (matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
         run: mbx test --manifest-path src-tauri/server/Cargo.toml --locked
 
       - name: Lint headless server
-        if: ${{ matrix.task == 'server' }}
+        id: lint-server
+        if: ${{ (matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
         run: mbx clippy --manifest-path src-tauri/server/Cargo.toml --all-targets --locked -- -D warnings
 
       - name: Build headless server
-        if: ${{ matrix.task == 'server' }}
+        id: build-server
+        if: ${{ (matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
         run: mbx build --manifest-path src-tauri/server/Cargo.toml --locked
 
       - name: Verify HTTP and WebSocket lifecycle
-        if: ${{ matrix.task == 'server' }}
+        id: http-lifecycle
+        if: ${{ (matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
         run: bun e2e/headless-smoke.ts
 
       - name: Upload headless verification report
-        if: ${{ always() && matrix.task == 'server' }}
+        id: headless-report
+        if: ${{ (always() && matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: headless-verification
           path: e2e/artifacts/headless/**
           if-no-files-found: error
+
+      # A green matrix job proves either every required step ran, or the exact
+      # pass record justified its skipped build steps. A never-started job is not
+      # successful, so the existing required aggregate check still rejects it.
+      - name: Verify Rust task completion
+        id: verify-pass
+        if: ${{ always() && matrix.workspace }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PASS_TASK: ${{ matrix.task }}
+          PASS_KEY: ${{ steps.rust-cache.outputs.key }}
+          PASS_EVENT: ${{ github.event_name }}
+          PASS_CACHE_HIT: ${{ steps.restore-pass.outputs.cache-hit }}
+          PASS_SKIP: ${{ steps.decide-pass.outputs.skip }}
+          PASS_STEPS: ${{ toJSON(steps) }}
+        run: node scripts/ci-rust-pass.mjs verify
+
+      - name: Save Rust task pass
+        if: ${{ success() && matrix.workspace && steps.decide-pass.outputs.skip != 'true' && steps.verify-pass.outcome == 'success' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ci-rust-pass/record.json
+          key: passed-${{ steps.rust-cache.outputs.key }}
 
   nix:
     name: Nix build

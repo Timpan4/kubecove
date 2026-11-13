@@ -185,7 +185,7 @@ and the action then skips the export and upload. When every run saved, that step
 took 14 to 200 seconds per job, and one pull request run stored 6 GB of the
 repository's 10 GB cache quota. A changed build restores the newest cache with
 the same compiler and rebuilds what changed. Only default-branch pushes save.
-Pull requests restore main's cache and never save: one pull request push that
+Pull requests restore main's compiler cache and never save compiler bundles: one pull request push that
 saved stored about 7 GB, and GitHub evicts the least recently used caches above
 the quota, which would remove the caches main keeps for other pull requests.
 A save under a new key leaves the previous cache in place, so
@@ -210,6 +210,52 @@ CI builds set `CARGO_PROFILE_DEV_DEBUG=line-tables-only`. Backtraces keep file
 and line, and the compiler output that each job links, caches and restores is
 smaller. Builds run through `mbx`, while `cargo tree` remains a direct inspection
 command. The Cargo shim also wraps Rust builds launched by Bun.
+
+CI also records successful Rust verification separately from compiler objects.
+The five Rust tasks save a tiny `passed-<full mbx cache key>` entry after all
+their verification steps succeed. Only `pull_request` events read these records.
+Action cleanup hooks run after that save, so reuse also checks the recorded run
+attempt through GitHub's jobs API. The originating `CI <task>` job must have
+completed successfully. An unfinished source job, a later cleanup failure, an
+unavailable API or an unlisted job runs verification again. The matrix job has
+read-only Actions permission for this check. It uses the API's default page;
+a task beyond that page causes a safe missed skip.
+Relevant main pushes and manual dispatches always run the selected tasks and
+record passes, so main keeps refreshing compiler bundles. No job's `cache-mode`
+or mbx restore/save policy changes.
+
+Each task looks up its record immediately after checkout, Rust setup and key
+generation. An exact hit must contain the same task, key, runner OS,
+architecture and hosted image identity. Missing image identity, partial hits,
+missing or malformed records, cache errors and environment changes run the
+checks. Image identity stays outside the compiler-cache key; an immutable pass
+record saved by another image can therefore cause a missed skip until repository
+inputs change. This is deliberate: a wrong skip hides a failure.
+
+A hit skips system-package setup, Bun setup and installation, compiler-cache
+restore, builds, tests, Clippy and the headless report upload. Desktop dependency
+audits and their lockfile-coverage check still run in the selected `rust` task:
+the advisory database changes independently of repository files. The final
+completion step checks every required verification step's outcome, or validates
+the exact record for skipped build steps, before the matrix job can succeed.
+The skip log names the task, full pass key and the run URL that recorded it.
+
+Pass input pathspecs include root files and dot-directories for toolchain and
+Cargo configuration, the pass helper, and root test fixtures. GPUI also includes
+its embedded `src/lib/*-workspace.json` fixtures. The GUI-free backend includes
+the server manifest and lockfile read by `cargo tree`. The server includes the
+browser source and public assets, Bun lockfile, package and TypeScript/Vite
+configuration, scripts, E2E harness and Grafana dashboard. Its generated `dist/`
+comes from those inputs. These wider pathspecs change all five CI compiler-cache
+keys once; frontend changes now also change the server bundle key.
+
+[GitHub cache scopes](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#restrictions-for-accessing-a-cache)
+isolate PR records from other PRs and from main. Main's records are available to
+PRs, while a PR's saved record is available to later runs of that PR. Cache
+eviction only causes verification to run again. The lookup stays inside each
+task rather than adding checkout and compiler setup to change detection. Hits
+still briefly occupy a job slot, but release it before compiler work; hosted runs
+must measure that overhead and the resulting queue savings.
 
 Change detection selects a verification matrix. It disables fail-fast so a
 failed task does not cancel the remaining checks. Checks that build the same
@@ -236,7 +282,8 @@ supply missing system libraries.
 Nix retains its existing push/manual gate and runs after the matrix, so it does
 not exceed the same concurrency budget. The required check remains
 `Typecheck and test`. It requires successful change detection, the frontend job,
-every selected matrix task and Nix job to pass. Unexpected skips, failures and cancellations
+every selected matrix task and Nix job to pass. A reused Rust task remains a
+successful matrix job with explicit pass-record evidence. Unexpected job skips, failures and cancellations
 fail the gate. Same-repository labeled release PRs retain their existing skip
 policy.
 
@@ -264,7 +311,8 @@ Rust dependency cache.
 
 The frontend, headless server, and E2E jobs share Bun's download cache on each
 OS. They still run `bun install --frozen-lockfile` after restoring it. Caches
-never replace a build or test gate, and a cache miss runs the same checks.
+do not replace verification. Compiler-cache misses run the same checks; only the
+separate exact-input pass records above can reuse completed Rust verification.
 
 PR runs skip Nix builds, including release PRs. Relevant pushes to `main` and
 manual CI runs retain the Nix build gate. The daily Nix lock refresh builds its

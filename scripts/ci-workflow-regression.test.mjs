@@ -14,6 +14,75 @@ const domains = ["docs", "frontend", "nix", "rust"];
 const flags = (...selected) => Object.fromEntries(domains.map((key) => [key, String(selected.includes(key))]));
 const all = flags(...domains);
 
+// Partial or stale hits, malformed proof, a different runner, non-PR reuse and a
+// source job that failed in its post hooks must all run verification.
+test("Rust pass records require exact inputs, runner identity and a pull request", () => {
+  const root = mkdtempSync(join(tmpdir(), "kubecove-ci-pass-"));
+  const key = `mbx-ci-gpui-test-${"a".repeat(64)}-${"b".repeat(64)}`;
+  const output = join(root, "output");
+  const env = {
+    ...process.env, PASS_TASK: "gpui-test", PASS_KEY: key, PASS_CACHE_HIT: "true", PASS_EVENT: "pull_request",
+    RUNNER_OS: "Linux", RUNNER_ARCH: "X64", ImageOS: "ubuntu24", ImageVersion: "20261109.1.0",
+    GITHUB_SERVER_URL: "https://github.com", GITHUB_REPOSITORY: "Timpan4/kubecove", GITHUB_RUN_ID: "123", GITHUB_RUN_ATTEMPT: "1", GITHUB_OUTPUT: output,
+    GITHUB_API_URL: "https://api.github.com", GITHUB_TOKEN: "fixture-token",
+  };
+  const preload = join(root, "source-run.mjs");
+  writeFileSync(preload, [
+    'import assert from "node:assert/strict";',
+    'globalThis.fetch = async (url, options) => {',
+    '  assert.equal(url, "https://api.github.com/repos/Timpan4/kubecove/actions/runs/123/attempts/1/jobs");',
+    '  assert.equal(options.headers.Authorization, "Bearer fixture-token");',
+    '  if (process.env.SOURCE_RESULT === "error") throw new Error("unavailable");',
+    '  const job = { name: process.env.SOURCE_NAME ?? "CI gpui-test", status: process.env.SOURCE_STATUS ?? "completed", conclusion: process.env.SOURCE_RESULT ?? "success" };',
+    '  const jobs = process.env.SOURCE_DUPLICATE ? [job, job] : [job];',
+    '  return { ok: process.env.SOURCE_RESULT !== "denied", json: async () => ({ jobs: process.env.SOURCE_MALFORMED ? null : jobs }) };',
+    '};',
+  ].join("\n"));
+  const steps = Object.fromEntries(["setup-rust", "rust-cache", "decide-pass", "setup-mbx", "activate-cargo", "test-gpui"].map((id) => [id, { outcome: "success", conclusion: "success" }]));
+  const run = (mode, overrides = {}) => spawnSync(process.execPath, ["--import", preload, fileURLToPath(new URL("./ci-rust-pass.mjs", import.meta.url)), mode], {
+    cwd: root, env: { ...env, ...overrides }, encoding: "utf8",
+  });
+  const decide = (overrides = {}) => {
+    writeFileSync(output, "");
+    const result = run("decide", overrides);
+    assert.equal(result.status, 0, result.stderr);
+    return { skip: readFileSync(output, "utf8").trim() === "skip=true", log: result.stdout };
+  };
+  try {
+    assert.equal(decide().skip, false, "a missing record runs");
+    const recorded = run("verify", { PASS_SKIP: "false", PASS_CACHE_HIT: "", PASS_STEPS: JSON.stringify(steps) });
+    assert.equal(recorded.status, 0, recorded.stderr);
+    const path = join(root, ".ci-rust-pass/record.json");
+    const record = readFileSync(path, "utf8");
+    const hit = decide();
+    assert.equal(hit.skip, true);
+    assert.ok(hit.log.includes(`gpui-test: passed-${key}`));
+    assert.ok(hit.log.includes("https://github.com/Timpan4/kubecove/actions/runs/123/attempts/1"));
+    for (const overrides of [
+      { PASS_CACHE_HIT: "false" }, { PASS_CACHE_HIT: "" },
+      { PASS_EVENT: "push" }, { PASS_EVENT: "workflow_dispatch" },
+      { PASS_KEY: key.replace(/b{64}$/, "c".repeat(64)) }, { PASS_TASK: "gpui-clippy" },
+      { ImageVersion: "new-image" }, { ImageVersion: "" }, { RUNNER_ARCH: "ARM64" },
+      ...["failure", "cancelled", "skipped", "", "error", "denied"].map((SOURCE_RESULT) => ({ SOURCE_RESULT })),
+      { SOURCE_NAME: "another job" },
+      { SOURCE_STATUS: "in_progress" }, { SOURCE_DUPLICATE: "true" }, { SOURCE_MALFORMED: "true" }, { GITHUB_TOKEN: "" },
+    ]) assert.equal(decide(overrides).skip, false, JSON.stringify(overrides));
+    for (const content of ["not JSON", "null", "{}", "[]", JSON.stringify({ ...JSON.parse(record), run: [JSON.parse(record).run] }), record.replace("https://github.com/", "https://attacker.invalid/")]) {
+      writeFileSync(path, content);
+      assert.equal(decide().skip, false, content);
+    }
+    writeFileSync(path, record);
+    const skipped = { ...steps, ...Object.fromEntries(["setup-mbx", "activate-cargo", "test-gpui"].map((id) => [id, { outcome: "skipped", conclusion: "skipped" }])) };
+    assert.equal(run("verify", { PASS_SKIP: "true", PASS_STEPS: JSON.stringify(skipped) }).status, 0);
+    assert.notEqual(run("verify", { PASS_SKIP: "true", PASS_CACHE_HIT: "false", PASS_STEPS: JSON.stringify(skipped) }).status, 0, "no proof rejects an unexpected skip");
+    for (const outcome of ["failure", "cancelled", "skipped", "", undefined]) {
+      const result = run("verify", { PASS_SKIP: "false", PASS_CACHE_HIT: "", PASS_STEPS: JSON.stringify({ ...steps, "test-gpui": { outcome, conclusion: outcome } }) });
+      assert.notEqual(result.status, 0, `unverified ${outcome} must fail`);
+      assert.equal(readFileSync(path, "utf8"), record, "a failure cannot overwrite a pass");
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 // Extract the workflow's fixed-indentation blocks; execute its actual code.
 function job(name, text = workflow) {
   const lines = text.split("\n");
@@ -193,6 +262,96 @@ function step(name) {
   const end = source.indexOf("\n      - name: ", start + 1);
   return source.slice(start, end < 0 ? undefined : end);
 }
+test("Rust pass reuse skips expensive steps but always runs advisory audits and verifies completion", async () => {
+  const { matrix } = await detect([".github/workflows/ci.yml"]);
+  const lookup = step("Restore Rust task pass");
+  const save = step("Save Rust task pass");
+  const pin = /uses: actions\/cache@([a-f0-9]{40})/.exec(step("Cache Bun dependencies"))[1];
+  assert.ok(lookup.includes(`uses: actions/cache/restore@${pin}`));
+  assert.ok(save.includes(`uses: actions/cache/save@${pin}`));
+  assert.match(lookup, /continue-on-error: true/);
+  for (const source of [lookup, save]) {
+    assert.ok(source.includes("key: passed-${{ steps.rust-cache.outputs.key }}"));
+    assert.ok(source.includes("path: .ci-rust-pass/record.json"));
+    assert.doesNotMatch(source, /restore-keys:|lookup-only:/);
+  }
+  const condition = (name, task, skip, event = "pull_request", successful = true) => {
+    const expression = /if: \$\{\{ (.+) \}\}/.exec(step(name))[1];
+    const normalized = expression.replaceAll("steps.decide-pass", "steps.decidePass").replaceAll("steps.verify-pass", "steps.verifyPass");
+    return new Function("matrix", "steps", "github", "always", "success", `return Boolean(${normalized})`)(
+      task, { decidePass: { outputs: { skip: String(skip) } }, verifyPass: { outcome: successful ? "success" : "failure" } },
+      { event_name: event }, () => true, () => successful,
+    );
+  };
+  const builds = ["Install Tauri Linux dependencies", "Install GPUI build dependencies", "Setup Mr Boxington", "Activate Cargo caching", "Setup Bun", "Cache Bun dependencies", "Install frontend dependencies", "Test Rust", "Lint Rust", "Lint GPUI", "Test GPUI", "Verify API-only server", "Build browser UI", "Verify GUI-free dependency tree", "Test GUI-free backend crates", "Test headless server", "Lint headless server", "Build headless server", "Verify HTTP and WebSocket lifecycle", "Upload headless verification report"];
+  for (const task of matrix.include.filter(({ workspace }) => workspace)) {
+    assert.equal(condition("Restore Rust task pass", task, false), true);
+    for (const event of ["push", "workflow_dispatch"]) assert.equal(condition("Restore Rust task pass", task, false, event), false);
+    assert.equal(condition("Verify Rust task completion", task, true), true);
+    assert.equal(condition("Save Rust task pass", task, true), false);
+    assert.equal(condition("Save Rust task pass", task, false), true);
+    assert.equal(condition("Save Rust task pass", task, false, "pull_request", false), false);
+    for (const name of builds) assert.equal(condition(name, task, true), false, `${task.task}: ${name} on a hit`);
+    assert.equal(condition("Setup Mr Boxington", task, false), true);
+    for (const name of ["Verify Rust audit coverage", "Install cargo-audit", "Audit desktop Rust dependencies", "Audit GPUI Rust dependencies", "Audit server Rust dependencies"]) {
+      assert.equal(condition(name, task, true), task.task === "rust", name);
+    }
+  }
+  assert.ok(job("checks").indexOf("- name: Key the Rust cache by its inputs") < job("checks").indexOf("- name: Restore Rust task pass"));
+  assert.ok(job("checks").indexOf("- name: Decide Rust task reuse") < job("checks").indexOf("- name: Install Tauri Linux dependencies"));
+  assert.ok(job("checks").indexOf("- name: Verify Rust task completion") > job("checks").indexOf("- name: Upload headless verification report"));
+  assert.ok(step("Verify Rust task completion").includes("PASS_STEPS: ${{ toJSON(steps) }}"));
+});
+test("every Rust task rejects a missing, failed or cancelled verification step before recording a pass", async () => {
+  const { matrix } = await detect([".github/workflows/ci.yml"]);
+  const root = mkdtempSync(join(tmpdir(), "kubecove-ci-completion-"));
+  const helper = fileURLToPath(new URL("./ci-rust-pass.mjs", import.meta.url));
+  const definitions = [...job("checks").matchAll(/^      - name: ([^\n]+)\n([\s\S]*?)(?=^      - name: |$(?![\s\S]))/gm)]
+    .map(([, name, source]) => ({ name, source, id: /^ {8}id: (.+)$/m.exec(source)?.[1] })).filter(({ id }) => id && id !== "verify-pass");
+  try {
+    for (const task of matrix.include.filter(({ workspace }) => workspace)) {
+      const steps = {};
+      for (const { source, id } of definitions) {
+        const expression = /^ {8}if: \$\{\{ (.+) \}\}$/m.exec(source)[1].replaceAll("steps.decide-pass", "steps.decidePass");
+        const selected = new Function("matrix", "steps", "github", "always", `return Boolean(${expression})`)(task, { decidePass: { outputs: { skip: "false" } } }, { event_name: "push" }, () => true);
+        steps[id] = { outcome: selected ? "success" : "skipped", conclusion: selected ? "success" : "skipped" };
+      }
+      const run = (outcomes) => spawnSync(process.execPath, [helper, "verify"], { cwd: root, encoding: "utf8", env: {
+        ...process.env, PASS_TASK: task.task, PASS_KEY: `mbx-ci-${task.task}-${"a".repeat(64)}-${"b".repeat(64)}`,
+        PASS_EVENT: "push", PASS_CACHE_HIT: "", PASS_SKIP: "false", PASS_STEPS: JSON.stringify(outcomes),
+        GITHUB_SERVER_URL: "https://github.com", GITHUB_REPOSITORY: "Timpan4/kubecove", GITHUB_RUN_ID: "123", GITHUB_RUN_ATTEMPT: "1",
+      } });
+      const successful = run(steps);
+      assert.equal(successful.status, 0, `${task.task}: ${successful.stderr}`);
+      for (const [id, { outcome }] of Object.entries(steps)) {
+        if (outcome !== "success") continue;
+        for (const result of ["failure", "cancelled", "skipped"]) {
+          assert.notEqual(run({ ...steps, [id]: { outcome: result, conclusion: result } }).status, 0, `${task.task}: ${id} ${result}`);
+        }
+      }
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+test("Rust task keys cover the audited inputs outside each workspace", async () => {
+  const { matrix } = await detect([".github/workflows/ci.yml"]);
+  const shared = ["tests/fixtures/kubernetes/pod-running.json", "package.json", "bun.lock", "scripts/ci-rust-pass.mjs", "src-tauri/Cargo.toml", "src-tauri/Cargo.lock"];
+  const expected = {
+    rust: shared,
+    "gpui-clippy": [...shared, "src-tauri/gpui/Cargo.lock", "src/lib/settings-integration-workspace.json"],
+    "gpui-test": [...shared, "src-tauri/gpui/Cargo.lock", "src/lib/settings-integration-workspace.json"],
+    "server-backend": [...shared, "src-tauri/server/Cargo.toml", "src-tauri/server/Cargo.lock"],
+    server: [...shared, "src-tauri/server/Cargo.lock", "src/main-svelte.ts", "public/kubecove-logo.svg", "vite.config.ts", "tsconfig.json", "index.html", "scripts/tsrs.ts", "scripts/dev-interactions-plugin.ts", "scripts/frontend-bundle-report.ts", "e2e/headless-smoke.ts", "e2e/harness/port-forward-fixture.ts", "deploy/grafana/kubecove-server.json"],
+  };
+  for (const task of matrix.include.filter(({ workspace }) => workspace)) {
+    // Exercise the exact shell pathspec arguments supplied to the key writer.
+    const result = spawnSync("bash", ["-c", `git ls-files -z -- ${task.inputs}`], { cwd: new URL("../", import.meta.url), encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    const files = new Set(result.stdout.split("\0"));
+    for (const path of expected[task.task]) assert.ok(files.has(path), `${task.task} misses ${path}`);
+  }
+  assert.equal((await detect(["tests/fixtures/kubernetes/pod-running.json"])).output.rust, "true");
+  assert.equal((await detect(["src/lib/settings-integration-workspace.json"])).output.rust, "true");
+});
 test("each existing check remains in its selected task", () => {
   const commands = {
     frontend: ["node --test scripts/ci-workflow-regression.test.mjs", "node --test scripts/release-workflow-regression.test.mjs", ...["audit", "docs:check", "typecheck", "typecheck:bench", "svelte:check", "lint", "lint:anti-slop", "test:bench-groups", "test:svelte"].map((name) => `bun run ${name}`), "bun test"],
@@ -373,10 +532,9 @@ test("Mr Boxington uses isolated object bundles for all Rust workspaces", async 
   const { matrix } = await detect([".github/workflows/ci.yml"]);
   const workspaces = Object.fromEntries(matrix.include.filter(({ workspace }) => workspace).map(({ task, workspace, inputs }) => [task, [workspace, inputs]]));
   // The GPUI and server crates are separate workspaces that both build the desktop crates.
-  const [desktop, gpui, server] = ["src-tauri :!src-tauri/gpui :!src-tauri/server", "src-tauri :!src-tauri/server src/lib/*-workspace.json", "src-tauri :!src-tauri/gpui"];
-  assert.deepEqual(workspaces, {
-    rust: ["src-tauri", desktop], "gpui-clippy": ["src-tauri/gpui", gpui], "gpui-test": ["src-tauri/gpui", gpui],
-    "server-backend": ["src-tauri", desktop], server: ["src-tauri/server", server],
+  assert.deepEqual(Object.fromEntries(Object.entries(workspaces).map(([task, [workspace]]) => [task, workspace])), {
+    rust: "src-tauri", "gpui-clippy": "src-tauri/gpui", "gpui-test": "src-tauri/gpui",
+    "server-backend": "src-tauri", server: "src-tauri/server",
   });
   assert.equal((job("checks").match(/uses: jdx\/mr-boxington-action@/g) ?? []).length, 1);
   assert.doesNotMatch(job("checks"), /swatinem\/rust-cache|save-on-(?:protected-branch|workflow-dispatch)/i);
