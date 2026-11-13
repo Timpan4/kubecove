@@ -1,6 +1,6 @@
 import type { ArgoConnectionProfile, ArgoServerEndpoint } from "./gitops-types";
 import type { MockArgs, MockHandler } from "./tauri-dev-mock-contract";
-import { kinds, now, resources, source } from "./tauri-dev-mock-data";
+import { kinds, mockHealthAssessment, now, resources, source } from "./tauri-dev-mock-data";
 import { argoApps, argoManagedResourceRefs, fluxHelmKind, fluxKind, fluxResources } from "./tauri-dev-mock-gitops-data";
 import { mockListVersion } from "./tauri-dev-mock-live";
 import type { ArgoApplicationDetails, ArgoApplicationSetDetails, ArgoApplicationSetSummary, ArgoAppProjectDetails, ArgoAppProjectSummary, ArgoManagedResource, DiscoveredResourceKind, FluxDetectionSummary, FluxResourceDetails, ResourceSummary, VersionedList } from "./types";
@@ -263,8 +263,8 @@ function appSetDetails(args: MockArgs, genericYaml: YamlFactory): ArgoApplicatio
 
 function projects(): ArgoAppProjectSummary[] {
 	return [
-		{ name: "default", cluster: "mock-dev", namespace: "argocd", age: "42d", createdAt: "2026-05-18T08:00:00Z", description: "Mock default project", status: "Active" },
-		{ name: "platform", cluster: "mock-dev", namespace: "argocd", age: "31d", createdAt: "2026-05-29T08:00:00Z", description: "Platform-owned observability and ingress apps", status: "Active" },
+		{ name: "default", cluster: "mock-dev", namespace: "argocd", age: "42d", createdAt: "2026-05-18T08:00:00Z", description: "Mock default project", status: "Active", healthAssessment: mockHealthAssessment("notEvaluated", "Active") },
+		{ name: "platform", cluster: "mock-dev", namespace: "argocd", age: "31d", createdAt: "2026-05-29T08:00:00Z", description: "Platform-owned observability and ingress apps", status: "Active", healthAssessment: mockHealthAssessment("notEvaluated", "Active") },
 	];
 }
 

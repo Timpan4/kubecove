@@ -11,6 +11,7 @@ use super::gitops_card;
 use super::loading::Phase;
 use super::{Inspector, Page};
 use crate::gitops::GitOpsInventory;
+use crate::gitops_surface::list::{Collapsed, Entry, Group};
 use crate::gitops_surface::{self as model, Focus, Provider, Row, Selection, Tone};
 use crate::targets::TestSupportExt;
 use crate::theme::{Palette, Tokens};
@@ -20,9 +21,10 @@ use gpui_kit::{
     list, prelude::*, px,
 };
 
-/// List rows the table puts in the top item, so the rail beside them never
-/// runs past it.
-const TOP_ROWS: [usize; 2] = [1, 4];
+/// Card rows and list lines the table puts in the top item, so the rail beside
+/// them never runs past it. Thirteen 37px list lines cover the 472px that four
+/// rows of the old 118px list did.
+const TOP_ROWS: [usize; 2] = [1, 13];
 
 pub(super) struct GitOpsPage {
     pub workspace: Option<super::argo::ApplicationWorkspace>,
@@ -32,10 +34,13 @@ pub(super) struct GitOpsPage {
     /// `buildGitOpsSelections` for `focus`, rebuilt when the inventory changes.
     rows: Vec<Row>,
     rows_for: Option<(u64, Focus)>,
+    /// `buildGitOpsListEntries` for `rows`: the list mode's group headers and rows.
+    entries: Vec<Entry>,
+    collapsed: Collapsed,
     pub layout: Layout,
     list: ListState,
-    /// The list's item count and layout, which `reset` remeasures on change.
-    shape: Option<(usize, ViewMode, Layout)>,
+    /// The list's item count, layout and top rows, which `reset` remeasures on change.
+    shape: Option<(usize, ViewMode, Layout, usize)>,
     /// Sidebar GitOps and Helm nodes expanded by their chevrons, by label.
     pub nav_open: Vec<&'static str>,
     /// Application focused by a shortcut or entry point, until the inventory settles.
@@ -56,6 +61,8 @@ impl GitOpsPage {
             mode: ViewMode::Cards,
             rows: Vec::new(),
             rows_for: None,
+            entries: Vec::new(),
+            collapsed: Collapsed::default(),
             layout: Layout::new(0., 0),
             list: ListState::new(0, ListAlignment::Top, px(400.)),
             shape: None,
@@ -77,11 +84,11 @@ impl GitOpsPage {
         self.rows_for = None;
     }
 
-    /// Card rows, or list rows, for the current layout.
+    /// Card rows, or list lines, for the current layout.
     fn row_count(&self) -> usize {
         match self.mode {
             ViewMode::Cards => self.rows.len().div_ceil(self.layout.columns),
-            ViewMode::List => self.rows.len(),
+            ViewMode::List => self.entries.len(),
         }
     }
 
@@ -131,7 +138,27 @@ impl Inspector {
             .inventory()
             .map_or_default(|data| model::rows(data, self.gitops_page.focus));
         self.gitops_page.rows_for = Some(key);
+        self.sync_gitops_entries();
+        // A status change can move a list row between its one-line and two-line
+        // forms without changing the item count, which is all `shape` tracks.
+        self.gitops_page.list.remeasure();
         self.resolve_gitops_selection();
+    }
+
+    fn sync_gitops_entries(&mut self) {
+        let page = &mut self.gitops_page;
+        page.entries = self
+            .gitops
+            .inventory()
+            .map_or_default(|data| model::list::entries(&page.rows, data, page.collapsed));
+    }
+
+    /// Collapses or expands one group of the list.
+    pub(super) fn toggle_gitops_group(&mut self, group: Group, cx: &mut Context<Self>) {
+        let collapsed = &mut self.gitops_page.collapsed[group as usize];
+        *collapsed = !*collapsed;
+        self.sync_gitops_entries();
+        cx.notify();
     }
 
     /// Focuses the target Application once the inventory is ready, then clears the
@@ -208,33 +235,39 @@ impl Inspector {
             .map_or(0, |_| self.gitops_page.rows.len());
         self.gitops_page.layout = Layout::new(self.frame_width(window), items);
         let count = self.gitops_items();
-        let shape = Some((count, self.gitops_page.mode, self.gitops_page.layout));
+        let shape = Some((
+            count,
+            self.gitops_page.mode,
+            self.gitops_page.layout,
+            self.gitops_page.top_rows(),
+        ));
         if self.gitops_page.shape != shape {
             let mut position = self.gitops_page.list.logical_scroll_top();
-            if let Some((_, mode, previous)) = self.gitops_page.shape
+            if let Some((_, mode, previous, old_top)) = self.gitops_page.shape
                 && position.item_ix >= 3
             {
-                // Keep the same resource row at the top when opening detail
-                // moves the rail or changes the number of card columns.
-                let old_columns = if mode == ViewMode::Cards {
-                    previous.columns
-                } else {
-                    1
+                // Keep the same resource at the top when opening detail moves
+                // the rail or changes the number of card columns, and when the
+                // mode changes. The list orders resources by group, so a mode
+                // change maps the resource, not its line number.
+                let page = &self.gitops_page;
+                let line = position.item_ix - 3 + old_top;
+                let line = match (mode, page.mode) {
+                    (ViewMode::List, ViewMode::List) => Some(line),
+                    (ViewMode::Cards, ViewMode::Cards) => {
+                        Some(line * previous.columns / page.layout.columns)
+                    }
+                    (ViewMode::Cards, ViewMode::List) => {
+                        model::list::line_of(&page.entries, line * previous.columns)
+                    }
+                    (ViewMode::List, ViewMode::Cards) => model::list::row_at(&page.entries, line)
+                        .map(|row| row / page.layout.columns),
                 };
-                let old_rows = items.div_ceil(old_columns);
-                let old_top = if previous.rail_beside {
-                    TOP_ROWS[usize::from(mode == ViewMode::List)].min(old_rows)
-                } else {
-                    0
-                };
-                let resource = (position.item_ix - 3 + old_top) * old_columns;
-                let columns = if self.gitops_page.mode == ViewMode::Cards {
-                    self.gitops_page.layout.columns
-                } else {
-                    1
-                };
-                position.item_ix =
-                    3 + (resource / columns).saturating_sub(self.gitops_page.top_rows());
+                match line {
+                    Some(line) => position.item_ix = 3 + line.saturating_sub(page.top_rows()),
+                    // The resource has no line in the new mode: start at the top.
+                    None => position = Default::default(),
+                }
             }
             self.gitops_page.shape = shape;
             self.gitops_page.list.reset(count);
@@ -480,7 +513,8 @@ impl Inspector {
                 .map(|row| self.gitops_row_body(row, cx).into_any_element())
                 .collect();
             let closes = page.top_rows() == page.row_count();
-            let header = gitops_card::list_header(page.layout.grid - 2., &page.x_scroll);
+            let first = page.rows.first().and_then(|row| row.resolve(data));
+            let header = gitops_card::list_header(first, page.layout.grid - 2., &page.x_scroll);
             section = section.child(dui::rows_block(page.mode, header, rows, closes));
         }
         if page.layout.rail_beside {
@@ -535,9 +569,24 @@ impl Inspector {
                     }),
                 )
             }
-            ViewMode::List => match page.rows.get(row).and_then(|row| row.resolve(data)) {
-                Some(selection) => {
-                    gitops_card::list_row(selection, page.layout.grid, &page.x_scroll, cx)
+            ViewMode::List => match page.entries.get(row) {
+                Some(&Entry::Group {
+                    group,
+                    position,
+                    count,
+                    collapsed,
+                }) => gitops_card::list_group(group, position, count, collapsed, cx),
+                Some(&Entry::Row { row, expanded }) => {
+                    match page.rows.get(row).and_then(|row| row.resolve(data)) {
+                        Some(selection) => gitops_card::list_row(
+                            selection,
+                            expanded,
+                            page.layout.grid,
+                            &page.x_scroll,
+                            cx,
+                        ),
+                        None => div(),
+                    }
                 }
                 None => div(),
             },

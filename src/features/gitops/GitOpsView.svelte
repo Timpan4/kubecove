@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from "svelte";
-	import { CircleHelp, GitBranch, Layers, Package, Plug } from "lucide-svelte";
+	import { GitBranch } from "lucide-svelte";
 	import CopyableText from "@/components/CopyableText.svelte";
 	import LazyTooltip from "@/components/LazyTooltip.svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
@@ -48,6 +48,18 @@
 		type GitOpsTable,
 		type GitOpsUnavailableProvider,
 	} from "./surfaceModel";
+	import {
+		argoSourceCount,
+		gitOpsCardActionLabel,
+		gitOpsCardBadges,
+		gitOpsCardSubtitle,
+		gitOpsCardTone,
+		gitOpsDetailsActionLabel,
+		gitOpsSourceIcon,
+		type GitOpsTrackedRequest,
+		stopTooltipEvent,
+	} from "./surfacePresentation";
+	import GitOpsList from "./GitOpsList.svelte";
 	import SurfaceFrame from "@/components/SurfaceFrame.svelte";
 	import VirtualCollection from "@/components/VirtualCollection.svelte";
 
@@ -100,7 +112,7 @@
 		openSelectedArgoApplicationResources,
 		onResourceInspect,
 		gitOpsStatusClass,
-		trackedOperationLabel = () => null,
+		trackedRequest = () => null,
 		refreshControls,
 	}: {
 		gitOpsQuery: GitOpsQuery;
@@ -116,7 +128,7 @@
 		openSelectedArgoApplicationResources: (selection?: GitOpsSelection) => void;
 		onResourceInspect: (resource: ResourceSummary, detailTab?: PathStateDetailTab) => void;
 		gitOpsStatusClass: (status: string | null | undefined) => string;
-		trackedOperationLabel?: (selection: GitOpsSelection) => string | null;
+		trackedRequest?: (selection: GitOpsSelection) => GitOpsTrackedRequest | null;
 		refreshControls: Snippet;
 	} = $props();
 
@@ -143,18 +155,6 @@
 		onResourceInspect(gitOpsSelectionResource(selection));
 	}
 
-	function gitOpsCardActionLabel(selection: GitOpsSelection): string {
-		if (gitOpsSelectionPrimaryAction(selection) === "openResources") {
-			return `View resources for ${selection.item.name}`;
-		}
-		return `Open details for ${selection.item.name}`;
-	}
-
-	function gitOpsDetailsActionLabel(selection: GitOpsSelection): string {
-		const resource = gitOpsSelectionResource(selection);
-		return `Open details for ${resource.kind} ${resource.name} ${resource.namespace ? `in ${resource.namespace}` : "at cluster scope"}`;
-	}
-
 	function openGitOpsDetails(event: MouseEvent, selection: GitOpsSelection) {
 		event.stopPropagation();
 		onResourceInspect(
@@ -167,20 +167,6 @@
 		event.stopPropagation();
 		selectedGitOpsItem = selection;
 		openSelectedArgoApplicationResources(selection);
-	}
-
-	function stopTooltipEvent(event: KeyboardEvent) {
-		if (event.key !== "Escape") event.stopPropagation();
-	}
-
-	function revisionCopyValue(selection: GitOpsSelection): string {
-		const rows = gitOpsSelectionRevisionTooltipRows(selection);
-		const values = rows.flatMap((row) =>
-			row.fields.map((field) => `${row.name} ${field.label}: ${field.value}`),
-		);
-		return values.length > 0
-			? values.join("\n")
-			: (gitOpsSelectionRevisionLabel(selection) ?? "Revision unavailable");
 	}
 
 	function factCopyValue(fact: GitOpsCardFact): string {
@@ -203,38 +189,10 @@
 		);
 	}
 
-	function gitOpsCardSubtitle(selection: GitOpsSelection): string {
-		if (selection.type === "flux") return selection.item.resourceKind.kind;
-		if (selection.type === "argoProject") return selection.item.description ?? "AppProject";
-		return selection.item.project ?? "default";
-	}
-
-	function gitOpsSelectionDestination(selection: GitOpsSelection): string {
-		if (selection.type === "flux" || selection.type === "argoProject") {
-			return selection.item.namespace ?? "-";
-		}
-		return selection.item.destinationNamespace ?? selection.item.destinationServer ?? "-";
-	}
-
 	function gitOpsSummaryValueClass(tone: "healthy" | "degraded" | undefined): string {
 		if (tone === "healthy") return "text-emerald-600 dark:text-emerald-300";
 		if (tone === "degraded") return "text-destructive";
 		return "text-foreground";
-	}
-
-	function gitOpsCardBadges(selection: GitOpsSelection): [string, string][] {
-		if (selection.type === "flux") {
-			return selection.item.readyStatus ? [["Ready", selection.item.readyStatus]] : [];
-		}
-		if (selection.type === "argoProject") {
-			return selection.item.status ? [["Status", selection.item.status]] : [];
-		}
-		return [
-			["Last request", trackedOperationLabel(selection)],
-			["Operation", selection.type === "argoApp" ? selection.item.refreshRequested ? "Refreshing" : selection.item.operationPhase : null],
-			["Sync", selection.item.syncStatus],
-			["Health", selection.item.healthStatus],
-		].filter((entry): entry is [string, string] => Boolean(entry[1]));
 	}
 
 	function gitOpsCardFacts(selection: GitOpsSelection): GitOpsCardFact[] {
@@ -296,23 +254,6 @@
 		return rows.filter((row): row is GitOpsCardFact => Boolean(row.value));
 	}
 
-	function gitOpsCardTone(selection: GitOpsSelection): string {
-		const state = selection.item.healthAssessment?.state;
-		if (state === "degraded") return "bg-destructive";
-		if (state === "needsAttention") return "bg-amber-400";
-		if (state === "healthy") return "bg-emerald-400";
-		return "bg-muted";
-	}
-
-	function gitOpsSourceIcon(sourceMode: GitOpsSourceMode | null) {
-		if (sourceMode === "git") return GitBranch;
-		if (sourceMode === "helm") return Package;
-		if (sourceMode === "multi") return Layers;
-		if (sourceMode === "plugin") return Plug;
-		if (sourceMode === "unknown") return CircleHelp;
-		return null;
-	}
-
 	function gitOpsSourceIconClass(sourceMode: GitOpsSourceMode | null): string {
 		const base =
 			"inline-flex size-7 shrink-0 items-center justify-center rounded-md border bg-background/50";
@@ -321,12 +262,6 @@
 		if (sourceMode === "multi") return `${base} border-amber-500/35 text-amber-300`;
 		if (sourceMode === "plugin") return `${base} border-emerald-500/35 text-emerald-300`;
 		return `${base} border-border text-muted-foreground`;
-	}
-
-	function argoSourceCount(selection: GitOpsSelection): number | undefined {
-		if (selection.type !== "argoApp") return undefined;
-		const count = selection.item.sourceCount ?? selection.item.sources?.length;
-		return count && count > 1 ? count : undefined;
 	}
 
 	function hasFactTooltip(fact: GitOpsCardFact): boolean {
@@ -547,7 +482,7 @@
 											<HealthAssessmentBadge
 												assessment={item.item.healthAssessment}
 												compact
-												rawStatuses={gitOpsCardBadges(item).map(([label, value]) => `${label}: ${formatStatusLabel(value)}`)}
+												rawStatuses={gitOpsCardBadges(item, trackedRequest(item)).map(([label, value]) => `${label}: ${formatStatusLabel(value)}`)}
 											/>
 										</div>
 										{#if sourceLine}
@@ -638,118 +573,18 @@
 							{/snippet}
 							</VirtualCollection>
 						{:else}
-							<div class="overflow-x-auto rounded-lg border">
-								<div
-									class="grid min-w-[68rem] grid-cols-[minmax(12rem,1fr)_9rem_minmax(16rem,1.35fr)_minmax(7rem,0.6fr)_minmax(9rem,0.75fr)_4rem_9rem] items-center gap-3 border-b bg-muted/30 px-3 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground"
-								>
-									<span>Name</span>
-									<span>Status</span>
-									<span>Source(s)</span>
-									<span>Revision</span>
-									<span>Destination/Namespace</span>
-									<span>Age</span>
-									<span class="sticky right-0 flex self-stretch items-center justify-end bg-muted text-right">Actions</span>
-								</div>
-								<VirtualCollection items={gitOpsSelections} itemKey={gitOpsSelectionKey} selectedKey={selectedGitOpsItemKey} estimateSize={64} minWidth="68rem">
-								{#snippet children(item)}
-									{@const sourceMode = gitOpsSelectionSourceMode(item)}
-									{@const SourceIcon = gitOpsSourceIcon(sourceMode)}
-									{@const sourceLabel = gitOpsSelectionSourceLabel(sourceMode, argoSourceCount(item))}
-									{@const sourceTooltip = gitOpsSelectionSourceTooltip(item)}
-									{@const sourceTooltipTitle = gitOpsSelectionSourceTooltipTitle(item)}
-									{@const sourceTooltipGroups = gitOpsSelectionSourceTooltipGroups(item)}
-									{@const sourceLine = gitOpsSelectionSourceLine(item)}
-									<div
-										class={gitOpsSelectionKey(item) === selectedGitOpsItemKey
-											? "group relative grid min-w-[68rem] grid-cols-[minmax(12rem,1fr)_9rem_minmax(16rem,1.35fr)_minmax(7rem,0.6fr)_minmax(9rem,0.75fr)_4rem_9rem] items-center gap-3 border-b bg-accent/40 px-3 py-2.5 text-sm transition-colors hover:bg-accent/50 motion-reduce:transition-none"
-											: "group relative grid min-w-[68rem] grid-cols-[minmax(12rem,1fr)_9rem_minmax(16rem,1.35fr)_minmax(7rem,0.6fr)_minmax(9rem,0.75fr)_4rem_9rem] items-center gap-3 border-b bg-surface-1 px-3 py-2.5 text-sm transition-colors hover:bg-accent/30 motion-reduce:transition-none"}
-										class:border-b-0={item === gitOpsSelections[gitOpsSelections.length - 1]}
-									>
-										<div class={`absolute inset-y-0 left-0 w-1 ${gitOpsCardTone(item)}`}></div>
-										<div class="min-w-0 pl-1">
-											<CopyableText
-												value={item.item.name}
-												label="GitOps resource name"
-												textClass="font-medium"
-												onActivate={() => openGitOpsSelection(item)}
-												actionLabel={gitOpsCardActionLabel(item)}
-												active={gitOpsSelectionKey(item) === selectedGitOpsItemKey}
-											/>
-											<div class="truncate text-xs text-muted-foreground">{gitOpsCardSubtitle(item)}</div>
-										</div>
-										<div class="flex min-w-0 flex-col items-start gap-1">
-											<HealthAssessmentBadge assessment={item.item.healthAssessment} />
-											{#each gitOpsCardBadges(item) as [label, value]}
-												<Badge variant="outline" class={gitOpsStatusClass(value)}>
-													Raw {label}: {formatStatusLabel(value)}
-												</Badge>
-											{/each}
-										</div>
-										{#if SourceIcon || sourceLine}
-											<LazyTooltip
-													class="flex min-w-0 items-center gap-2 text-left text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-													aria-label={`${sourceTooltip}. Activate to copy source details.`}
-													onclick={(event: MouseEvent) => void copyRevealedValue(event, sourceTooltip, "source details")}
-													onkeydown={stopTooltipEvent}
-												side="top" align="start" sideOffset={8} contentClass={gitOpsTooltipClass}>
-												{#snippet content()}
-													{@render sourceTooltipContent(sourceTooltipTitle, sourceTooltipGroups, sourceLine ?? sourceLabel)}
-												{/snippet}
-												{#if SourceIcon}
-														<span class={gitOpsSourceIconClass(sourceMode)} aria-hidden="true">
-															<SourceIcon class="size-3.5" />
-														</span>
-													{/if}
-													<span class="min-w-0 flex-1 truncate">{sourceLine ?? "-"}</span>
-											</LazyTooltip>
-										{:else}
-											<span class="text-muted-foreground">-</span>
-										{/if}
-										<LazyTooltip
-												class="truncate text-left font-medium underline-offset-4 hover:underline"
-												aria-label={`Revision: ${revisionCopyValue(item)}. Activate to copy.`}
-												onclick={(event: MouseEvent) => void copyRevealedValue(event, revisionCopyValue(item), "revision")}
-												onkeydown={stopTooltipEvent}
-											side="top" align="start" sideOffset={8} contentClass="max-w-[34rem] break-all">
-											{#snippet content()}
-												{revisionCopyValue(item)}
-											{/snippet}
-											{gitOpsSelectionRevisionLabel(item)}
-										</LazyTooltip>
-										<span class="truncate text-muted-foreground">{gitOpsSelectionDestination(item)}</span>
-										<span class="tabular-nums text-muted-foreground">{item.item.age ?? "-"}</span>
-										<div
-											class={gitOpsSelectionKey(item) === selectedGitOpsItemKey
-												? "sticky right-0 flex h-full items-center justify-end gap-1 bg-accent group-hover:bg-accent"
-												: "sticky right-0 flex h-full items-center justify-end gap-1 bg-surface-1 group-hover:bg-accent"}
-										>
-											<Button
-												type="button"
-												variant="ghost"
-												size="sm"
-												aria-label={gitOpsDetailsActionLabel(item)}
-												data-details-key={gitOpsDetailsActionKey(item)}
-												onclick={(event: MouseEvent) => openGitOpsDetails(event, item)}
-												onkeydown={stopTooltipEvent}
-											>
-												Details
-											</Button>
-											{#if gitOpsSelectionPrimaryAction(item) === "openResources"}
-												<Button
-													type="button"
-													variant="outline"
-													size="sm"
-													onclick={(event: MouseEvent) => openGitOpsResources(event, item)}
-													onkeydown={stopTooltipEvent}
-												>
-													Resources
-												</Button>
-											{/if}
-										</div>
-									</div>
-								{/snippet}
-								</VirtualCollection>
-							</div>
+							<GitOpsList
+								selections={gitOpsSelections}
+								selectedKey={selectedGitOpsItemKey}
+								statusClass={gitOpsStatusClass}
+								{trackedRequest}
+								tooltipClass={gitOpsTooltipClass}
+								sourceTooltip={sourceTooltipContent}
+								onOpen={openGitOpsSelection}
+								onDetails={openGitOpsDetails}
+								onResources={openGitOpsResources}
+								onCopy={copyRevealedValue}
+							/>
 						{/if}
 					{/if}
 				</section>

@@ -61,6 +61,31 @@ pub(super) fn revision(selection: Selection) -> String {
     format!("Revisions · {} unique\n{}", rows.len(), rows.join("\n"))
 }
 
+/// The list's Health tooltip: the state, the sources that decided it, then the
+/// raw provider statuses.
+pub(super) fn health(selection: Selection, label: &str) -> String {
+    let mut lines = vec![
+        label.to_owned(),
+        crate::model::health_source(&selection.health().winning_sources),
+    ];
+    let statuses: Vec<String> = selection
+        .badges()
+        .into_iter()
+        .map(|(label, value)| format!("{label}: {}", crate::gitops_surface::status_label(value)))
+        .collect();
+    if !statuses.is_empty() {
+        lines.push(statuses.join(" · "));
+    }
+    lines.join("\n")
+}
+
+/// Shows `text` on hover.
+pub(super) fn hint(element: Div, id: String, text: String) -> Stateful<Div> {
+    element
+        .id(SharedString::from(id))
+        .tooltip(move |window, cx| Tooltip::new(text.clone()).build(window, cx))
+}
+
 /// Shows `text` on hover and copies it on click. The copy names `label` in the
 /// shared copy toast, as `GitOpsView.svelte`'s `copyRevealedValue` does.
 pub(super) fn reveal(

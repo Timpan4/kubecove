@@ -60,6 +60,31 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
         }
         "expectGitOpsItem" => assert!(seek(window, cx, "gitops-list", &gitops_details(step))),
         "expectNoGitOpsItem" => assert!(!listed(window, cx, "gitops-list", &gitops_details(step))),
+        "expectGitOpsGroup" => {
+            let id = format!("gitops-group:{}", number(step, "position"));
+            assert!(seek(window, cx, "gitops-list", &id));
+            let group = window.find(id);
+            assert_eq!(
+                group.label(),
+                Some(format!("{} {}", string(step, "label"), number(step, "count")).as_str())
+            );
+            assert_eq!(group.expanded(), Some(step["expanded"] == true));
+        }
+        "toggleGitOpsGroup" => {
+            // "Healthy" is part of "Not healthy", so the label must start the header's name.
+            let prefix = format!("{} ", string(step, "label"));
+            let id = (0..3)
+                .map(|position| format!("gitops-group:{position}"))
+                .find(|id| {
+                    seek(window, cx, "gitops-list", id)
+                        && window
+                            .find(id.clone())
+                            .label()
+                            .is_some_and(|label| label.starts_with(&prefix))
+                })
+                .expect("the GitOps group is listed");
+            window.click(id, cx);
+        }
         "openGitOpsDetails" => {
             let id = gitops_details(step);
             assert!(seek(window, cx, "gitops-list", &id));

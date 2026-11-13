@@ -300,6 +300,9 @@ export type Step =
     | { action: "expandNav"; page: string }
     | { action: "expectGitOpsTable"; title: string; count: number }
     | ({ action: "expectGitOpsItem" | "expectNoGitOpsItem" | "openGitOpsDetails" } & Identity)
+    /** A group header of the GitOps list. `position` counts the headers above it. */
+    | { action: "expectGitOpsGroup"; label: string; position: number; count: number; expanded: boolean }
+    | { action: "toggleGitOpsGroup"; label: string }
     | { action: "expectArgoApplication"; name: string; health: string; sync: string }
     | { action: "expectArgoSignal"; label: string; count: number }
     | { action: "expectHelmCount"; count: number }

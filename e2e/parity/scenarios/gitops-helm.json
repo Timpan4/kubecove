@@ -70,6 +70,26 @@
       ]
     },
     {
+      "id": "gitops-list.problems-first",
+      "title": "List mode groups rows by health with the unhealthy group first, and a collapsed group hides its rows",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "setDeliveryView", "page": "GitOps", "mode": "List" },
+        { "action": "expectGitOpsTable", "title": "Argo CD Applications", "count": 8 },
+        { "action": "expectGitOpsGroup", "label": "Not healthy", "position": 0, "count": 1, "expanded": true },
+        { "action": "expectGitOpsGroup", "label": "Healthy", "position": 1, "count": 7, "expanded": true },
+        { "action": "expectGitOpsItem", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "expectGitOpsItem", "kind": "Application", "name": "root-application", "namespace": "argocd" },
+        { "action": "toggleGitOpsGroup", "label": "Healthy" },
+        { "action": "expectGitOpsGroup", "label": "Healthy", "position": 1, "count": 7, "expanded": false },
+        { "action": "expectNoGitOpsItem", "kind": "Application", "name": "root-application", "namespace": "argocd" },
+        { "action": "expectGitOpsItem", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "toggleGitOpsGroup", "label": "Healthy" },
+        { "action": "expectGitOpsGroup", "label": "Healthy", "position": 1, "count": 7, "expanded": true },
+        { "action": "expectGitOpsItem", "kind": "Application", "name": "root-application", "namespace": "argocd" }
+      ]
+    },
+    {
       "id": "helm-list.search-empty",
       "title": "List mode applies the Helm namespace and search together and clears obsolete rows",
       "steps": [
@@ -118,6 +138,22 @@
       ]
     },
     {
+      "id": "flux.list-groups",
+      "title": "The Flux list groups its resources by health as the Applications list does",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "expandNav", "page": "GitOps" },
+        { "action": "openPage", "page": "Flux" },
+        { "action": "setDeliveryView", "page": "GitOps", "mode": "List" },
+        { "action": "expectGitOpsTable", "title": "Flux Resources", "count": 2 },
+        { "action": "expectGitOpsGroup", "label": "Healthy", "position": 0, "count": 2, "expanded": true },
+        { "action": "expectGitOpsItem", "kind": "Kustomization", "name": "platform", "namespace": "flux-system" },
+        { "action": "toggleGitOpsGroup", "label": "Healthy" },
+        { "action": "expectGitOpsGroup", "label": "Healthy", "position": 0, "count": 2, "expanded": false },
+        { "action": "expectNoGitOpsItem", "kind": "Kustomization", "name": "platform", "namespace": "flux-system" }
+      ]
+    },
+    {
       "id": "gitops.flux-kind-filter",
       "title": "A Flux kind node keeps only that kind",
       "steps": [
@@ -139,7 +175,9 @@
         { "action": "expandNav", "page": "GitOps" },
         { "action": "expandNav", "page": "Argo CD" },
         { "action": "openPage", "page": "Argo CD AppProjects" },
+        { "action": "setDeliveryView", "page": "GitOps", "mode": "List" },
         { "action": "expectGitOpsTable", "title": "Argo CD AppProjects", "count": 2 },
+        { "action": "expectGitOpsGroup", "label": "Not evaluated", "position": 0, "count": 2, "expanded": true },
         { "action": "expectGitOpsItem", "kind": "AppProject", "name": "platform", "namespace": "argocd" },
         { "action": "expectNoGitOpsItem", "kind": "Application", "name": "root-application", "namespace": "argocd" }
       ]
