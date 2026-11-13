@@ -1,6 +1,10 @@
 //! Failure modes beyond the in-memory parity seam. All files belong to this worktree.
 use kubecove_gpui::backend::{Backend, NativeBackend};
-use std::{net::TcpListener, path::PathBuf};
+use std::{
+    net::TcpListener,
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 
 struct Directory(PathBuf);
 impl Directory {
@@ -22,6 +26,21 @@ impl Directory {
 impl Drop for Directory {
     fn drop(&mut self) {
         std::fs::remove_dir_all(&self.0).unwrap();
+    }
+}
+
+/// A dropped host shuts its runtime down in the background, so its listening socket closes
+/// shortly after the drop returns. The next host binds once at construction and reports a
+/// port in use instead of retrying, so a test that reopens on the same port waits here.
+/// Five seconds is the deadline this workspace's other local waits use.
+fn wait_until_free(port: u16) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while TcpListener::bind(("127.0.0.1", port)).is_err() {
+        assert!(
+            Instant::now() < deadline,
+            "port {port} stayed bound after its host was dropped"
+        );
+        std::thread::yield_now();
     }
 }
 
@@ -148,6 +167,7 @@ fn running_rotation_revokes_old_token_and_restart_reuses_saved_settings() {
     );
     // Dropping the native host closes its listener. The next host restores the same port.
     drop(backend);
+    wait_until_free(port);
     let reopened = directory.backend();
     let status = runtime.block_on(reopened.mcp_status()).unwrap();
     assert!(status.running && status.port == port);
