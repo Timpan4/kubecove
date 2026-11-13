@@ -22,6 +22,7 @@ jobs:
     outputs:
       frontend: ${{ steps.detect.outputs.frontend }}
       rust: ${{ steps.detect.outputs.rust }}
+      frontend_matrix: ${{ steps.detect.outputs.frontend_matrix }}
 
     steps:
       - name: Checkout
@@ -29,66 +30,96 @@ jobs:
         with:
           persist-credentials: false
 
+      # A failed setup leaves the install step failing, which selects everything below.
+      - name: Setup Bun
+        continue-on-error: true
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Cache Bun dependencies
+        continue-on-error: true
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install selector dependencies
+        id: dependencies
+        continue-on-error: true
+        run: bun install --frozen-lockfile
+
       - name: Test benchmark orchestration
-        run: node --test scripts/codspeed-workflow-regression.test.mjs
+        id: selection-check
+        continue-on-error: true
+        run: node --test scripts/codspeed-workflow-regression.test.mjs scripts/codspeed-selection.test.mjs
 
       - name: Detect frontend and Rust benchmark changes
         id: detect
+        if: ${{ !cancelled() }}
         shell: bash
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           EVENT_NAME: ${{ github.event_name }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          DEPENDENCIES_RESULT: ${{ steps.dependencies.outcome }}
+          SELECTION_CHECK_RESULT: ${{ steps.selection-check.outcome }}
+          RELEASE_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release/app-v') && contains(github.event.pull_request.labels.*.name, 'release') }}
         run: |
           set -euo pipefail
-
-          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
-            echo "frontend=true" >> "${GITHUB_OUTPUT}"
-            echo "rust=true" >> "${GITHUB_OUTPUT}"
+          fallback() {
+            echo 'frontend=true' >> "${GITHUB_OUTPUT}"
+            echo 'rust=true' >> "${GITHUB_OUTPUT}"
+            echo 'frontend_matrix={"include":[{"group":0,"selection":""}]}' >> "${GITHUB_OUTPUT}"
+            {
+              echo '## Benchmark selection'
+              echo 'Selection could not be computed. Running every frontend file without name filters and all Rust shards (ac, dl, es, hr, jn, other). Skipped: none.'
+              git ls-files 'benchmarks/*.bench.ts' || echo 'Benchmark file listing unavailable; the benchmark runner will discover all files.'
+            } >> "${GITHUB_STEP_SUMMARY}"
+          }
+          if [[ "${RELEASE_PR}" == true ]]; then
+            {
+              echo 'frontend=false'
+              echo 'rust=false'
+              echo 'frontend_matrix={"include":[]}'
+            } >> "${GITHUB_OUTPUT}"
+            {
+              echo '## Benchmark selection'
+              echo 'Labeled same-repository release PR. Frontend benchmarks and Rust shards skipped.'
+            } >> "${GITHUB_STEP_SUMMARY}"
             exit 0
           fi
-
-          if [[ -z "${BASE_SHA}" || "${BASE_SHA}" =~ ^0+$ ]]; then
-            echo "No usable base commit; running benchmarks."
-            echo "frontend=true" >> "${GITHUB_OUTPUT}"
-            echo "rust=true" >> "${GITHUB_OUTPUT}"
+          if [[ "${DEPENDENCIES_RESULT}" != "success" || "${SELECTION_CHECK_RESULT}" != "success" ]]; then
+            fallback
             exit 0
           fi
-
-          for sha in "${BASE_SHA}" "${HEAD_SHA}"; do
-            if ! git cat-file -e "${sha}^{commit}"; then
-              git fetch --no-tags --depth=1 origin "${sha}"
-            fi
-          done
-          changed_files=$(git diff --name-only --no-renames "${BASE_SHA}" "${HEAD_SHA}")
-          frontend=false
-          rust=false
-          while IFS= read -r path; do
-            if [[ "${path}" == .github/* || "${path}" == fixtures/* || "${path}" == */fixtures/* ]]; then
-              frontend=true
-              rust=true
-            elif [[ "${path}" == src-tauri/gpui/* || "${path}" == src-tauri/server/* ]]; then
-              # Separate Cargo workspaces (src-tauri/Cargo.toml excludes both); the benchmarks cannot depend on them.
-              continue
-            elif [[ "${path}" == e2e/* || "${path}" == tests/* ]]; then
-              # The benchmarks import only src/, benchmarks/ and packages, so these trees cannot change a result.
-              continue
-            elif [[ "${path}" == src-tauri/* ]]; then
-              rust=true
-            elif [[ "${path}" == scripts/ci-rust-cache-key.mjs || "${path}" == scripts/ci-mbx-cargo.mjs ]]; then
-              # The Rust shards run these two scripts to key and wire their build cache. No frontend benchmark uses them.
-              rust=true
+          changed="${RUNNER_TEMP}/codspeed-changed-files"
+          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            if [[ -z "${BASE_SHA}" || "${BASE_SHA}" =~ ^0+$ ]]; then
+              export SELECTION_FALLBACK="no usable base commit"
             else
-              if [[ "${path}" =~ \.(svelte|js|jsx|mjs|cjs|ts|tsx|mts|cts|json)$ || "${path}" =~ (^|/)bun\.lock$ || "${path}" == src/* || "${path}" == benchmarks/* ]]; then
-                frontend=true
-              fi
-              if [[ "${path}" =~ \.rs$ || "${path}" =~ (^|/)(Cargo\.(lock|toml)|rust-toolchain(\.toml)?)$ || "${path}" =~ (^|/)\.cargo/ ]]; then
-                rust=true
-              fi
+              for sha in "${BASE_SHA}" "${HEAD_SHA}"; do
+                if ! git cat-file -e "${sha}^{commit}"; then
+                  if ! git fetch --no-tags --depth=1 origin "${sha}"; then fallback; exit 0; fi
+                fi
+              done
+              if ! git diff --name-only --no-renames -z "${BASE_SHA}" "${HEAD_SHA}" > "${changed}"; then fallback; exit 0; fi
             fi
-          done <<< "${changed_files}"
-          echo "frontend=${frontend}" >> "${GITHUB_OUTPUT}"
-          echo "rust=${rust}" >> "${GITHUB_OUTPUT}"
+          fi
+          # The selector writes to a file of its own, and its outputs count only when all
+          # three are present and the matrix agrees with the frontend flag.
+          selection="${RUNNER_TEMP}/codspeed-selection"
+          : > "${selection}"
+          valid() {
+            node scripts/codspeed-validate-selection.mjs "${selection}"
+          }
+          if GITHUB_OUTPUT="${selection}" node scripts/codspeed-detect.mjs "${changed}" && valid; then
+            cat "${selection}" >> "${GITHUB_OUTPUT}"
+          else
+            fallback
+          fi
 
   frontend:
     name: Run frontend benchmarks (${{ matrix.group }})
@@ -103,10 +134,9 @@ jobs:
       fail-fast: false
       # Eight groups balanced by run 43322953935 file and benchmark durations.
       # Name filters split long files while preserving CodSpeed identities.
-      matrix:
-        group: [0, 1, 2, 3, 4, 5, 6, 7]
+      matrix: ${{ fromJSON(needs.changes.outputs.frontend_matrix) }}
     env:
-      KUBECOVE_BENCHMARK_GROUP: ${{ matrix.group }}/8
+      KUBECOVE_BENCHMARK_SELECTION: ${{ matrix.selection }}
 
     steps:
       - name: Checkout
@@ -115,7 +145,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.4.4"
 
@@ -292,6 +322,12 @@ jobs:
           echo "Change detection: ${CHANGES_RESULT}"
           echo "Frontend benchmarks: ${FRONTEND_RESULT} (required: ${FRONTEND_REQUIRED})"
           echo "Rust benchmarks: ${RUST_RESULT} and ${RUST_SAVER_RESULT} (required: ${RUST_REQUIRED})"
+          {
+            echo '## Benchmark job results'
+            echo "Frontend: ${FRONTEND_RESULT} (selected: ${FRONTEND_REQUIRED})."
+            echo "Rust: ${RUST_RESULT}; cache-saving shard: ${RUST_SAVER_RESULT} (selected: ${RUST_REQUIRED})."
+            echo "Release PR skip policy: ${RELEASE_PR}."
+          } >> "${GITHUB_STEP_SUMMARY}"
           test "${CHANGES_RESULT}" = "success"
           if [[ "${RELEASE_PR}" == "true" ]]; then
             test "${FRONTEND_RESULT}" = "skipped"

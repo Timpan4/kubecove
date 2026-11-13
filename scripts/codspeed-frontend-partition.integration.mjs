@@ -2,13 +2,14 @@
 // and Node. `bun run test:bench-groups` runs it; the dependency-free workflow assertions
 // stay in codspeed-workflow-regression.test.mjs.
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { relative } from "node:path";
 import { test } from "node:test";
 import { createVitest } from "vitest/node";
 import { benchmarkFiles, benchmarkSelection } from "./codspeed-benchmark-suites.mjs";
+import { frontendMatrix } from "./codspeed-selection.mjs";
 
-const workflow = readFileSync(new URL("../.github/workflows/codspeed.yml", import.meta.url), "utf8");
+// The selections the workflow's frontend jobs receive for these files, read the way a job reads them.
+const jobSelections = (files) => frontendMatrix(files).include.map(({ selection }) => benchmarkSelection({ KUBECOVE_BENCHMARK_SELECTION: selection }));
 
 async function collectBenchmarks() {
 	const vitest = await createVitest({ watch: false, reporters: [], benchmarkOnly: true });
@@ -40,12 +41,22 @@ function assertBenchmarkPartition(benchmarks, selections) {
 
 test("frontend group jobs form a complete, disjoint partition of actual benchmarks", async (t) => {
 	const files = benchmarkFiles();
-	const count = Number(/KUBECOVE_BENCHMARK_GROUP: \$\{\{ matrix\.group \}\}\/(\d+)\r?$/m.exec(workflow)?.[1]);
-	assert.ok(count > 0, "the workflow sets no benchmark group count");
-	const selections = Array.from({ length: count }, (_, group) => benchmarkSelection({ KUBECOVE_BENCHMARK_GROUP: `${group}/${count}` }));
+	const selections = jobSelections(files);
+	const count = selections.length;
+	assert.ok(count > 1, "a full run starts one job or none");
 	const benchmarks = await collectBenchmarks();
 	assert.deepEqual([...new Set(benchmarks.map((item) => item.file))].sort(), files);
 	assertBenchmarkPartition(benchmarks, selections);
+	// A pull request runs a subset of the files. Its jobs must still run each benchmark of
+	// those files once: a split file alone, both split files, and each with unsplit files.
+	const split = ["benchmarks/resource-table.bench.ts", "benchmarks/topology.bench.ts"];
+	const unsplit = files.filter((file) => !split.includes(file));
+	for (const subset of [[split[0]], [split[1]], split, [unsplit[0]], [split[1], unsplit[0]], [...split, ...unsplit.slice(0, 5)], unsplit]) {
+		await t.test(`partial selection of ${subset.length} files: ${subset[0]}`, () => {
+			for (const file of subset) assert.ok(files.includes(file), file);
+			assertBenchmarkPartition(benchmarks.filter((item) => subset.includes(item.file)), jobSelections(subset));
+		});
+	}
 	const target = benchmarks.find((item) => item.file === "benchmarks/topology.bench.ts");
 	assert.ok(target);
 	const exact = target.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

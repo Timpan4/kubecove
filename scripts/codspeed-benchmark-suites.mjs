@@ -156,6 +156,17 @@ export function benchmarkGroups(files, count) {
 
 export function benchmarkSelection(env = process.env) {
 	const files = benchmarkFiles();
+	if (env.KUBECOVE_BENCHMARK_SELECTION) {
+		const selection = JSON.parse(env.KUBECOVE_BENCHMARK_SELECTION);
+		if (env.KUBECOVE_BENCHMARK_FILE || env.KUBECOVE_BENCHMARK_SUITE || env.KUBECOVE_BENCHMARK_GROUP)
+			throw new Error("Select only one CI selection, file, suite or group");
+		// oxlint-disable-next-line anti-slop/no-runtime-typeof -- Parse the CI environment JSON at its input boundary.
+		const validPattern = selection.testNamePattern === undefined || typeof selection.testNamePattern === "string";
+		if (!Array.isArray(selection.include) || !selection.include.length ||
+			selection.include.some((file) => !files.includes(file)) || !validPattern)
+			throw new Error("Invalid CI benchmark selection");
+		return { include: selection.include, exclude: [], testNamePattern: selection.testNamePattern };
+	}
 	const file = env.KUBECOVE_BENCHMARK_FILE;
 	const suite = env.KUBECOVE_BENCHMARK_SUITE;
 	const group = env.KUBECOVE_BENCHMARK_GROUP;
