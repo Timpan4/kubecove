@@ -19,6 +19,8 @@ const FULL_SUITE = [
 	/^\.agents\/skills\/verify-kubecove\/scripts\/processes\.ts$/,
 	/^src-tauri\/gpui\/tests\/(parity\.rs|parity\/|common\/)/,
 	/^\.github\/workflows\/parity[^/]*\.yml$/,
+	// GPUI fixture consumers are not attributed to individual mock calls.
+	/^src\/lib\/(tauri-dev-mock[^/]*|mcp-dev-mocks)\.ts$/,
 ];
 const SCENARIO_FILE = /^e2e\/parity\/scenarios\/[^/]+\.json$/;
 // A line that is only comment text: code after a closing `*/` makes it a code line.

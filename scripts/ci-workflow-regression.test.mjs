@@ -468,94 +468,107 @@ test("whitespace check rejects bad diffs even without an available base", () => 
 // the parity suite; a job that runs on the other event runs the suite twice or never; a
 // scenario that the shards exclude but no separate job runs never runs; a shard that fails
 // without uploading its artifacts leaves nothing to inspect.
-test("parity jobs run the full suite on pull requests and on main, and keep the artifacts", () => {
+test("parity jobs select pull request scenarios and preserve full main coverage", () => {
   const read = (name) => readFileSync(new URL(`../.github/workflows/${name}`, import.meta.url), "utf8").replaceAll("\r\n", "\n");
   const parity = read("parity.yml");
   const suite = read("parity-suite.yml");
-  assert.deepEqual([...parity.slice(parity.indexOf("\njobs:\n")).matchAll(/^ {2}([\w-]+):$/gm)].map((match) => match[1]), ["pull-request-web", "pull-request-spike", "pull-request-gpui", "pull-request-result", "main", "main-spike", "main-build-cache", "coverage-map"]);
-  // The stable check fails on any shard or spike failure, cancellation or unexpected skip.
+  assert.deepEqual([...parity.slice(parity.indexOf("\njobs:\n")).matchAll(/^ {2}([\w-]+):$/gm)].map((match) => match[1]), ["pull-request-selection", "pull-request-web", "pull-request-spike", "pull-request-gpui", "pull-request-result", "main", "main-spike", "main-build-cache", "coverage-map"]);
+  const selection = job("pull-request-selection", parity);
+  assert.match(selection, /^ {6}contents: read\n {6}actions: read$/m);
+  assert.match(selection, /^ {10}fetch-depth: 0$/m);
+  assert.match(selection, /^ {10}persist-credentials: false$/m);
+  assert.match(selection, /continue-on-error: true/);
+  assert.match(selection, /run: bun e2e\/parity\/ci-selection\.ts/);
+  assert.match(selection, /^ {6}attempt: \$\{\{ github.run_attempt \}\}$/m);
+  assert.match(selection, /PARITY_BASE: \$\{\{ github.event.pull_request.base.sha \}\}/);
+  assert.match(selection, /PARITY_HEAD: \$\{\{ github.event.pull_request.head.sha \}\}/);
+  assert.doesNotMatch(selection, /cargo |playwright|bun install/);
+  for (const condition of ["github.event.pull_request.head.repo.full_name != github.repository", "!startsWith(github.head_ref, 'release/app-v')", "!contains(github.event.pull_request.labels.*.name, 'release')"]) {
+    assert.ok(selection.includes(condition), condition);
+  }
   const result = job("pull-request-result", parity);
   assert.match(result, /^ {4}name: Parity result$/m);
-  assert.match(result, /^ {4}needs:\n {6}- pull-request-web\n {6}- pull-request-gpui\n {6}- pull-request-spike$/m);
+  assert.match(result, /^ {4}needs:\n {6}- pull-request-selection\n {6}- pull-request-web\n {6}- pull-request-gpui\n {6}- pull-request-spike$/m);
   assert.ok(result.includes("if: ${{ always() && github.event_name == 'pull_request' }}"));
-  const verify = (env) => spawnSync("bash", ["-e", "-o", "pipefail", "-c", block(result, "run", 8)], { env: { ...process.env, RELEASE_PR: "false", WEB_RESULT: "success", GPUI_RESULT: "success", SPIKE_RESULT: "success", ...env }, encoding: "utf8", timeout: 2000 }).status;
-  assert.equal(verify({}), 0);
-  for (const outcome of ["failure", "cancelled", "skipped", ""]) {
-    assert.notEqual(verify({ WEB_RESULT: outcome }), 0);
-    assert.notEqual(verify({ GPUI_RESULT: outcome }), 0);
-    assert.notEqual(verify({ SPIKE_RESULT: outcome }), 0);
+  // Execute the real shell gate for the supported job graphs and every unexpected outcome.
+  const verify = (env) => spawnSync("bash", ["-e", "-o", "pipefail", "-c", block(result, "run", 8)], { env: { ...process.env, RELEASE_PR: "false", REGULAR_SELECTED: "", SPIKE_SELECTED: "", WEB_RESULT: "success", GPUI_RESULT: "success", SPIKE_RESULT: "success", ...env }, encoding: "utf8" }).status;
+  for (const [regular, spike] of [["", ""], ["true", "true"], ["true", "false"], ["false", "true"], ["false", "false"]]) {
+    const good = { REGULAR_SELECTED: regular, SPIKE_SELECTED: spike, WEB_RESULT: regular === "false" ? "skipped" : "success", GPUI_RESULT: regular === "false" ? "skipped" : "success", SPIKE_RESULT: spike === "false" ? "skipped" : "success" };
+    assert.equal(verify(good), 0);
+    for (const key of ["WEB_RESULT", "GPUI_RESULT", "SPIKE_RESULT"]) {
+      for (const outcome of ["failure", "cancelled", "skipped", "success", ""]) {
+        if (outcome !== good[key]) assert.notEqual(verify({ ...good, [key]: outcome }), 0);
+      }
+    }
   }
   assert.equal(verify({ WEB_RESULT: "skipped", GPUI_RESULT: "skipped", SPIKE_RESULT: "skipped", RELEASE_PR: "true" }), 0);
-  assert.notEqual(verify({ WEB_RESULT: "success", GPUI_RESULT: "skipped", SPIKE_RESULT: "skipped", RELEASE_PR: "true" }), 0);
-  // Each sharded job leaves out exactly the scenarios its spike job runs, and that ID exists.
-  const ids = readdirSync(new URL("../e2e/parity/scenarios/", import.meta.url)).filter((name) => name.endsWith(".json"))
-    .flatMap((name) => JSON.parse(readFileSync(new URL(`../e2e/parity/scenarios/${name}`, import.meta.url), "utf8")).scenarios.map((scenario) => scenario.id));
-  for (const [name, spike] of [["pull-request-web", "pull-request-spike"], ["pull-request-gpui", "pull-request-spike"], ["main", "main-spike"]]) {
+  assert.notEqual(verify({ RELEASE_PR: "true" }), 0);
+  // Evaluate the actual job if expressions, including failed planning and empty output fallback.
+  const enabled = (name, outputs, result = "success", event = "pull_request") => {
+    const expression = /if: \$\{\{ (.+) \}\}/.exec(job(name, parity))[1].replaceAll("needs.pull-request-selection", "needs.selection");
+    return new Function("needs", "github", "cancelled", `return (${expression});`)({ selection: { result, outputs } }, { event_name: event }, () => false);
+  };
+  for (const [regular, spike] of [["true", "false"], ["false", "true"], ["false", "false"], ["true", "true"]]) {
+    const outputs = { regular, spike };
+    assert.equal(enabled("pull-request-web", outputs), regular === "true");
+    assert.equal(enabled("pull-request-gpui", outputs), regular === "true");
+    assert.equal(enabled("pull-request-spike", outputs), spike === "true");
+  }
+  for (const name of ["pull-request-web", "pull-request-gpui", "pull-request-spike"]) {
+    assert.equal(enabled(name, {}, "failure"), true, "planner failure runs full suite");
+    assert.equal(enabled(name, {}, "skipped"), false, "release PR stays skipped");
+    assert.equal(enabled(name, {}, "success", "push"), false, "main graph stays separate");
+    assert.match(job(name, parity), /^ {6}scenarios: \$\{\{ needs.pull-request-selection.outputs.ids \}\}$/m);
+  }
+  for (const [name, driver, count] of [["pull-request-web", "web", 4], ["pull-request-gpui", "gpui", 3]]) {
     const text = job(name, parity);
-    const matrices = [...text.matchAll(/^ {8}shard: \[([\d, ]+)\]$/gm)].map((match) => match[1].split(",").map(Number));
-    const count = Number(/^ {6}shards: (\d+)$/m.exec(text)?.[1]);
-    assert.equal(matrices.length, 1, name);
-    assert.ok(count > 0, name);
-    assert.deepEqual(matrices[0], Array.from({ length: count }, (_, index) => index), name);
-    assert.match(text, /^ {4}uses: \.\/\.github\/workflows\/parity-suite\.yml$/m, name);
-    assert.match(text, /^ {6}shard: \$\{\{ matrix\.shard \}\}$/m, name);
-    assert.match(text, /^ {6}fail-fast: false$/m, name);
-    assert.doesNotMatch(text, /^ {6}prefix:/m, name);
-    const excluded = /^ {6}exclude: (\S+)$/m.exec(text)?.[1];
-    const spikeText = job(spike, parity);
-    assert.match(spikeText, /^ {6}shard: 0\n {6}shards: 1$/m, spike);
-    assert.equal(/^ {6}prefix: (\S+)$/m.exec(spikeText)?.[1], excluded, spike);
-    assert.equal(/if: (.+)$/m.exec(spikeText)?.[1], /if: (.+)$/m.exec(text)?.[1], `${spike} runs on the same events as ${name}`);
-    assert.equal(/^ {6}coverage: (\w+)$/m.exec(spikeText)?.[1], /^ {6}coverage: (\w+)$/m.exec(text)?.[1], spike);
-    assert.deepEqual(ids.filter((id) => id.startsWith(excluded)), ["settings-diagnostics.topology-spike-harness"]);
+    assert.ok(text.includes(`matrix: \${{ fromJSON(needs.pull-request-selection.outputs.${driver}-matrix || '{"shard":[${Array.from({ length: count }, (_, index) => index).join(",")}]}') }}`));
+    assert.ok(text.includes(`shards: \${{ fromJSON(needs.pull-request-selection.outputs.${driver}-shards || '${count}') }}`));
+    assert.match(text, new RegExp(`^ {6}driver: ${driver}$`, "m"));
+    assert.match(text, /^ {6}exclude: settings-diagnostics.topology-spike-harness$/m);
   }
-  const pullRequest = job("pull-request-web", parity);
-  assert.ok(pullRequest.includes("if: ${{ github.event_name == 'pull_request' && ("), "pull request job runs only on pull requests");
-  for (const condition of ["github.event.pull_request.head.repo.full_name != github.repository", "!startsWith(github.head_ref, 'release/app-v')", "!contains(github.event.pull_request.labels.*.name, 'release')"]) {
-    assert.ok(pullRequest.includes(condition), condition);
-  }
-  assert.ok(job("main", parity).includes("if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}"));
-  assert.match(suite, /^ {10}PARITY_SUITE_SHARD: \$\{\{ inputs\.shard \}\}\/\$\{\{ inputs\.shards \}\}$/m);
-  assert.match(suite, /^ {10}PARITY_PREFIX: \$\{\{ inputs\.prefix \}\}$/m);
-  assert.match(suite, /^ {10}PARITY_EXCLUDE: \$\{\{ inputs\.exclude \}\}$/m);
+  assert.match(job("pull-request-spike", parity), /^ {8}driver: \[web, gpui\]$/m);
+  assert.match(job("pull-request-spike", parity), /^ {6}prefix: settings-diagnostics.topology-spike-harness$/m);
+  const main = job("main", parity);
+  assert.match(main, /^ {8}shard: \[0, 1, 2, 3\]$/m);
+  assert.match(main, /^ {6}shards: 4$/m);
+  assert.match(job("main-spike", parity), /^ {6}shard: 0\n {6}shards: 1$/m);
+  assert.ok(main.includes("if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}"));
+  assert.match(suite, /^ {10}PARITY_SUITE_SHARD: \$\{\{ inputs.shard \}\}\/\$\{\{ inputs.shards \}\}$/m);
+  assert.match(suite, /^ {10}PARITY_SCENARIOS: \$\{\{ inputs.scenarios \}\}$/m);
   assert.match(suite, /^ {10}PARITY_STEP_SCREENSHOTS: "0"$/m);
-  // Pull requests run the full suite: change selection fell back to it on every recent PR.
-  assert.doesNotMatch(suite, /^ +PARITY_CHANGED:|parity-coverage-map-|fetch-depth/m);
   const run = suite.slice(suite.indexOf("- name: Run parity suite"), suite.indexOf("- name: Upload parity artifacts"));
   const command = block(run, "run", 8);
   const runners = (cpus, driver) => spawnSync("bash", ["-c", `nproc() { echo ${cpus}; }; ${command.replace("bun run e2e:parity", "printenv PARITY_JOBS PARITY_WEB_JOBS")}`], { env: { ...process.env, PARITY_DRIVER: driver }, encoding: "utf8" }).stdout.trim().replaceAll("\n", " ");
   for (const driver of ["web", "gpui"]) assert.equal(runners(4, driver), "4 4");
   assert.equal(runners(4, ""), "1 3");
   assert.equal(runners(1, ""), "1 1");
-  assert.match(suite, /^ {10}PARITY_DRIVER: \$\{\{ inputs\.driver \}\}$/m);
-  // Every attempt's artifacts: "Re-run failed jobs" leaves the passed shards' reports in the
-  // earlier attempt, and merge-reports.ts keeps the newest attempt of each shard.
   assert.match(result, /^ {10}pattern: parity-pull_request-\*$/m);
+  assert.match(result, /PARITY_SCENARIOS: \$\{\{ needs.pull-request-selection.outputs.ids \}\}/);
+  assert.match(result, /PARITY_SELECTION_REASON:/);
+  assert.match(result, /PARITY_SELECTION_ATTEMPT: \$\{\{ needs.pull-request-selection.outputs.attempt \}\}/);
   assert.match(result, /run: bun e2e\/parity\/merge-reports\.ts parity-reports/);
-  for (const name of ["Checkout", "Setup Bun", "Download driver reports", "Validate merged driver reports"]) {
-    assert.ok(result.includes(`- name: ${name}\n        if: \${{ needs.pull-request-web.result == 'success' }}`));
-  }
-  assert.match(job("pull-request-spike", parity), /^ {8}driver: \[web, gpui\]$/m);
-  assert.match(job("pull-request-web", parity), /^ {6}driver: web$/m);
-  assert.match(job("pull-request-gpui", parity), /^ {6}driver: gpui$/m);
-  // A shard count that differs from its matrix leaves scenarios out or runs a job twice.
-  for (const [name, count] of [["pull-request-web", 4], ["pull-request-gpui", 3]]) {
-    assert.equal(Number(/^ {6}shards: (\d+)$/m.exec(job(name, parity))?.[1]), count);
-    assert.match(job(name, parity), new RegExp(`^ {8}shard: \\[${Array.from({ length: count }, (_, index) => index).join(", ")}\\]$`, "m"));
-  }
+  assert.ok(result.includes("if: ${{ needs.pull-request-web.result == 'success' || needs.pull-request-spike.result == 'success' }}"));
   for (const name of ["Install GPUI build dependencies", "Setup Rust", "Key the Rust cache by its inputs", "Cache Rust builds", "Activate Cargo caching"]) {
     const start = suite.indexOf(`- name: ${name}\n`);
     const end = suite.indexOf("\n      - name: ", start + 1);
-    assert.match(suite.slice(start, end), /if: \$\{\{ inputs\.driver != 'web' \}\}/);
+    assert.match(suite.slice(start, end), /if: \$\{\{ inputs.driver != 'web' \}\}/);
   }
   const chromium = suite.slice(suite.indexOf("- name: Install Chromium"), suite.indexOf("- name: Build parity test"));
-  assert.match(chromium, /if: \$\{\{ !inputs\.build-only && inputs\.driver != 'gpui' \}\}/);
+  assert.match(chromium, /if: \$\{\{ !inputs.build-only && inputs.driver != 'gpui' \}\}/);
   assert.match(suite, /sudo apt-get install -y libfontconfig-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev pkg-config/);
   assert.match(suite, /run: bunx playwright-core install --with-deps --no-shell chromium/);
   const upload = suite.slice(suite.indexOf("- name: Upload parity artifacts"));
-  assert.match(upload, /^ {8}if: \$\{\{ always\(\) && !inputs\.build-only \}\}$/m);
+  assert.match(upload, /^ {8}if: \$\{\{ always\(\) && !inputs.build-only \}\}$/m);
   assert.match(upload, /^ {10}path: e2e\/artifacts\/parity-\*$/m);
-  assert.match(upload, /^ {10}name: .*\$\{\{ inputs\.shard \}\}.*\$\{\{ inputs\.shards \}\}.*\$\{\{ github\.run_attempt \}\}$/m);
+  assert.match(upload, /^ {10}name: .*\$\{\{ inputs.shard \}\}.*\$\{\{ inputs.shards \}\}.*\$\{\{ github.run_attempt \}\}$/m);
+  // A partial suite and the spike both use shard 0 of 1. Their uploads must not collide.
+  const artifactTemplate = /^ {10}name: (.+)$/m.exec(upload)[1];
+  const artifactName = (inputs, event = "pull_request") => artifactTemplate.replace(/\$\{\{ (.*?) \}\}/g, (_, expression) => new Function("inputs", "github", `return (${expression});`)(inputs, { event_name: event, run_attempt: 1 }));
+  const partialArtifacts = ["web", "gpui"].flatMap((driver) => ["", "settings-diagnostics.topology-spike-harness"].map((prefix) => artifactName({ driver, prefix, shard: 0, shards: 1 })));
+  assert.equal(new Set(partialArtifacts).size, 4);
+  assert.equal(artifactName({ driver: "", prefix: "", shard: 0, shards: 4 }, "push"), "parity-push-both-shard-0-of-4-attempt-1");
+  assert.equal(artifactName({ driver: "", prefix: "settings-diagnostics.topology-spike-harness", shard: 0, shards: 1 }, "push"), "parity-push-both-shard-0-of-1-attempt-1");
 });
 
 // Failure modes: a main run without PARITY_COVERAGE records no map; the map leaves out the
