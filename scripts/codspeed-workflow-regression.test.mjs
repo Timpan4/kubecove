@@ -147,6 +147,7 @@ for (const [name, output] of [
   ["a job selection with no file", `frontend=true\nrust=false\nfrontend_matrix=${jobs('{"include":[]}')}\n`],
   ["a job selection naming an unknown file", `frontend=true\nrust=false\nfrontend_matrix=${jobs('{"include":["benchmarks/gone.bench.ts"]}')}\n`],
   ["a job selection with a name filter that is not text", `frontend=true\nrust=false\nfrontend_matrix=${jobs('{"include":["benchmarks/topology.bench.ts"],"testNamePattern":null}')}\n`],
+  ["a job selection with an invalid regex", `frontend=true\nrust=false\nfrontend_matrix=${jobs('{"include":["benchmarks/topology.bench.ts"],"testNamePattern":"["}')}\n`],
   ["two matrix documents", 'frontend=false\nrust=false\nfrontend_matrix={"include":[{}]} {"include":[]}\n'],
 ]) {
   test(`runs both suites when the selector succeeds with ${name}`, () => {

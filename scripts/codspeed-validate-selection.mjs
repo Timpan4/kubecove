@@ -20,5 +20,6 @@ for (const entry of matrix.include) {
   if (!entry || !Number.isSafeInteger(entry.group) || entry.group < 0 ||
     // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Validate the serialized CI output at its boundary.
     typeof entry.selection !== "string") throw new Error("Invalid benchmark job");
-  benchmarkSelection({ KUBECOVE_BENCHMARK_SELECTION: entry.selection });
+  const selection = benchmarkSelection({ KUBECOVE_BENCHMARK_SELECTION: entry.selection });
+  if (selection.testNamePattern !== undefined) RegExp(selection.testNamePattern);
 }

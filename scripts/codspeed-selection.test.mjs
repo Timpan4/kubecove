@@ -136,6 +136,20 @@ test("the benchmark configuration's mode, extensions and run-time reads decide s
     assert.deepEqual(await select(["src/dev-value.ts"]), []);
   });
 
+  // Vitest initializes these values before loading configuration. An independent
+  // resolver cannot assume its process has the same environment as the CLI.
+  for (const key of ["NODE_ENV", "TEST", "VITEST"]) {
+    await fixture({
+      ...other,
+      "vitest.config.ts": `export default { resolve: { alias: { value: new URL(process.env.${key} === ${JSON.stringify(key === "NODE_ENV" ? "test" : "true")} ? "./src/test-value.ts" : "./src/dev-value.ts", import.meta.url).pathname } } };`,
+      "benchmarks/a.bench.ts": 'import "value";',
+      "src/test-value.ts": "export const value = 1;",
+      "src/dev-value.ts": "export const value = 2;",
+    }, async (_root, select) => {
+      assert.deepEqual(await select(["src/test-value.ts"]), all);
+    });
+  }
+
   // A deleted file whose extension only the configuration names.
   await fixture({
     ...other,

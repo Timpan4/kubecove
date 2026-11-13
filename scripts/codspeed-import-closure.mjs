@@ -24,7 +24,7 @@ export async function importClosures(root, files) {
 
   async function imports(file) {
     if (modules.has(file)) return modules.get(file);
-    const result = { dependencies: [], reasons: [] };
+    const result = { dependencies: [], reasons: [], configurationReasons: [] };
     modules.set(file, result);
     try {
       if (file.endsWith(".json")) return result;
@@ -46,7 +46,10 @@ export async function importClosures(root, files) {
         },
         // Globs, URL assets and runtime reads are outside an ESM closure.
         MetaProperty(node) { if (node.meta.name === "import") result.reasons.push("import.meta dependency"); },
-        Identifier(node) { if (node.name === "require" || node.name === "Bun") result.reasons.push(`runtime dependency (${node.name})`); },
+        Identifier(node) {
+          if (["require", "Bun"].includes(node.name)) result.reasons.push(`runtime dependency (${node.name})`);
+          if (node.name === "process") result.configurationReasons.push("configuration process environment");
+        },
         CallExpression: runtimeCode,
         NewExpression: runtimeCode,
       }).visit(parsed.program);
@@ -88,7 +91,8 @@ export async function importClosures(root, files) {
     if (source.includes("node_modules/")) continue;
     const audit = auditedConfigReads.get(source);
     if (audit && createHash("sha256").update(readFileSync(path)).digest("hex") === audit) continue;
-    for (const reason of (await imports(path)).reasons) {
+    const entry = await imports(path);
+    for (const reason of [...entry.reasons, ...entry.configurationReasons]) {
       // Configuration locates files through import.meta.url, which reads nothing.
       if (reason !== "import.meta dependency") setupReasons.push(`${source}: ${reason}`);
     }
