@@ -39,6 +39,7 @@ test("Rust pass records require exact inputs, runner identity and a pull request
     '};',
   ].join("\n"));
   const steps = Object.fromEntries(["setup-rust", "rust-cache", "decide-pass", "setup-mbx", "activate-cargo", "test-gpui"].map((id) => [id, { outcome: "success", conclusion: "success" }]));
+  steps["decide-pass"].outputs = { skip: "false" };
   const run = (mode, overrides = {}) => spawnSync(process.execPath, ["--import", preload, fileURLToPath(new URL("./ci-rust-pass.mjs", import.meta.url)), mode], {
     cwd: root, env: { ...env, ...overrides }, encoding: "utf8",
   });
@@ -72,8 +73,10 @@ test("Rust pass records require exact inputs, runner identity and a pull request
       assert.equal(decide().skip, false, content);
     }
     writeFileSync(path, record);
-    const skipped = { ...steps, ...Object.fromEntries(["setup-mbx", "activate-cargo", "test-gpui"].map((id) => [id, { outcome: "skipped", conclusion: "skipped" }])) };
+    const skipped = { ...steps, "decide-pass": { ...steps["decide-pass"], outputs: { skip: "true" } }, ...Object.fromEntries(["setup-mbx", "activate-cargo", "test-gpui"].map((id) => [id, { outcome: "skipped", conclusion: "skipped" }])) };
     assert.equal(run("verify", { PASS_SKIP: "true", PASS_STEPS: JSON.stringify(skipped) }).status, 0);
+    assert.equal(run("verify", { PASS_SKIP: "true", PASS_STEPS: JSON.stringify(skipped), SOURCE_RESULT: "error" }).status, 0, "completion consumes the successful decision without another API request");
+    assert.notEqual(run("verify", { PASS_SKIP: "true", PASS_STEPS: JSON.stringify({ ...skipped, "decide-pass": steps["decide-pass"] }) }).status, 0, "the decision output must justify the skip");
     assert.notEqual(run("verify", { PASS_SKIP: "true", PASS_CACHE_HIT: "false", PASS_STEPS: JSON.stringify(skipped) }).status, 0, "no proof rejects an unexpected skip");
     for (const outcome of ["failure", "cancelled", "skipped", "", undefined]) {
       const result = run("verify", { PASS_SKIP: "false", PASS_CACHE_HIT: "", PASS_STEPS: JSON.stringify({ ...steps, "test-gpui": { outcome, conclusion: outcome } }) });
@@ -315,6 +318,7 @@ test("every Rust task rejects a missing, failed or cancelled verification step b
         const expression = /^ {8}if: \$\{\{ (.+) \}\}$/m.exec(source)[1].replaceAll("steps.decide-pass", "steps.decidePass");
         const selected = new Function("matrix", "steps", "github", "always", `return Boolean(${expression})`)(task, { decidePass: { outputs: { skip: "false" } } }, { event_name: "push" }, () => true);
         steps[id] = { outcome: selected ? "success" : "skipped", conclusion: selected ? "success" : "skipped" };
+        if (id === "decide-pass") steps[id].outputs = { skip: "false" };
       }
       const run = (outcomes) => spawnSync(process.execPath, [helper, "verify"], { cwd: root, encoding: "utf8", env: {
         ...process.env, PASS_TASK: task.task, PASS_KEY: `mbx-ci-${task.task}-${"a".repeat(64)}-${"b".repeat(64)}`,

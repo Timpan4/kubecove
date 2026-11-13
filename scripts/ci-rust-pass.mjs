@@ -23,30 +23,37 @@ function validRun(value) {
   }
 }
 
-async function reusablePass() {
+function readPass() {
   if (event !== "pull_request" || hit !== "true" || !hasIdentity) return undefined;
   try {
     const record = JSON.parse(readFileSync(path, "utf8"));
     if (record?.task !== task || record.key !== key || !validRun(record.run) ||
         !Object.entries(environment).every(([name, value]) => record.environment?.[name] === value)) return undefined;
+    return record;
+  } catch {
+    // An unreadable or malformed cache record is no proof of a pass.
+    return undefined;
+  }
+}
+
+async function sourceJobPassed(record) {
+  try {
     // Action post hooks run after the save step. A record alone cannot prove that
     // its source job finished successfully, including compiler-cache cleanup.
-    if (!process.env.GITHUB_TOKEN) return undefined;
+    if (!process.env.GITHUB_TOKEN) return false;
     const [run, , attempt] = record.run.slice(runPrefix.length).split("/");
     const url = `${process.env.GITHUB_API_URL}/repos/${process.env.GITHUB_REPOSITORY}/actions/runs/${run}/attempts/${attempt}/jobs`;
     const response = await fetch(url, { headers: {
       Accept: "application/vnd.github+json", Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
     } });
-    if (!response.ok) return undefined;
+    if (!response.ok) return false;
     const { jobs } = await response.json();
     // Use the API's default page. A task absent from it runs again safely.
     const matches = jobs.filter((job) => job.name === `CI ${task}`);
-    if (matches.length === 1 && matches[0].status === "completed" && matches[0].conclusion === "success") return record;
+    return matches.length === 1 && matches[0].status === "completed" && matches[0].conclusion === "success";
   } catch {
-    // An unreadable or malformed cache record is no proof of a pass.
-    return undefined;
+    return false;
   }
-  return undefined;
 }
 
 const [mode] = process.argv.slice(2);
@@ -55,15 +62,19 @@ if (!Object.hasOwn(taskSteps, task) || !new RegExp(`^mbx-ci-${task}-[a-f0-9]{64}
   if (mode !== "decide") throw new Error("Invalid Rust task or cache key");
   appendFileSync(process.env.GITHUB_OUTPUT, "skip=false\n");
 } else if (mode === "decide") {
-  const record = await reusablePass();
-  appendFileSync(process.env.GITHUB_OUTPUT, `skip=${Boolean(record)}\n`);
-  console.log(record
+  const record = readPass();
+  const skip = Boolean(record && await sourceJobPassed(record));
+  appendFileSync(process.env.GITHUB_OUTPUT, `skip=${skip}\n`);
+  console.log(skip
     ? `${task}: passed-${key} matched ${record.run}; skipping build and test work.`
     : `${task}: no reusable passed-${key}; running verification.`);
 } else if (mode === "verify") {
   const steps = JSON.parse(process.env.PASS_STEPS);
-  const skip = Boolean(await reusablePass());
-  if (process.env.PASS_SKIP !== String(skip)) throw new Error("Rust task reuse has no matching pass record");
+  const decision = process.env.PASS_SKIP;
+  const skip = decision === "true";
+  if (!["true", "false"].includes(decision) || steps["decide-pass"]?.outputs?.skip !== decision || (skip && !readPass())) {
+    throw new Error("Rust task reuse has no matching pass decision");
+  }
   const requireOutcome = (id, outcome) => {
     if (steps[id]?.outcome !== outcome) throw new Error(`${task}: ${id} did not ${outcome}`);
   };
