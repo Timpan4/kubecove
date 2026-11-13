@@ -144,7 +144,7 @@ pub(super) fn delete_summary(preview: &ResourceActionPreview) -> Div {
                                 .gap(px(8.))
                                 .child(dot(Tokens::destructive()))
                                 .child(ui::xs(format!(
-                                    "The {} is removed from the cluster.",
+                                    "The {} is removed from the cluster, with its dependents where Kubernetes applies them.",
                                     target.kind
                                 ))),
                         )

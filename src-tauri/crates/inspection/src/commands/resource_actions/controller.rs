@@ -8,13 +8,14 @@ use serde_json::Value;
 
 /// Built-in controllers that replace a deleted object, by target kind:
 /// (target kind, owner API group, owner kind). The core group is "".
+/// A Deployment is left out for ReplicaSets: it recreates only the ReplicaSet
+/// of its current template, so deleting an older one loses that revision.
 const RECREATING_OWNERS: &[(&str, &str, &str)] = &[
     ("Pod", "apps", "ReplicaSet"),
     ("Pod", "apps", "StatefulSet"),
     ("Pod", "apps", "DaemonSet"),
     ("Pod", "batch", "Job"),
     ("Pod", "", "ReplicationController"),
-    ("ReplicaSet", "apps", "Deployment"),
 ];
 
 /// The owner reference marked `controller: true` on `object`.
@@ -30,9 +31,11 @@ pub(super) fn action_controller(
     let kind = owner.get("kind")?.as_str()?;
     let name = owner.get("name")?.as_str()?;
     let api_version = owner.get("apiVersion")?.as_str()?;
-    let group = api_version
-        .rsplit_once('/')
-        .map_or("", |(group, _version)| group);
+    // `group/version`, or exactly `v1` for the core group; anything else matches no group.
+    let group = match api_version.split_once('/') {
+        Some((group, _version)) => Some(group),
+        None => (api_version == "v1").then_some(""),
+    };
     // A finished Pod keeps its owner reference, but its controller has already
     // counted it as done or replaced it, so deleting it creates nothing new.
     let finished = matches!(
@@ -43,7 +46,7 @@ pub(super) fn action_controller(
         && RECREATING_OWNERS
             .iter()
             .any(|&(target, owner_group, owner_kind)| {
-                target == target_kind && owner_group == group && owner_kind == kind
+                target == target_kind && Some(owner_group) == group && owner_kind == kind
             });
     Some(ResourceActionController {
         kind: kind.to_owned(),
@@ -72,7 +75,9 @@ mod tests {
     // 4. a CRD that reuses a built-in kind name in another group is not trusted;
     // 5. a built-in controller only recreates the kind it manages;
     // 6. a malformed owner reference must not count as a controller;
-    // 7. a finished Pod keeps its owner reference but is never replaced.
+    // 7. a finished Pod keeps its owner reference but is never replaced;
+    // 8. an apiVersion other than `group/version` or `v1` names no trusted group;
+    // 9. a Deployment does not recreate an older ReplicaSet revision.
     #[test]
     fn only_built_in_controllers_of_the_target_kind_recreate() {
         assert_eq!(
@@ -130,7 +135,11 @@ mod tests {
         let replica_set = owned(
             json!([{ "apiVersion": "apps/v1", "kind": "Deployment", "name": "web", "controller": true }]),
         );
-        assert_eq!(recreates("ReplicaSet", &replica_set), Some(true));
+        assert_eq!(recreates("ReplicaSet", &replica_set), Some(false));
+        let unversioned = owned(
+            json!([{ "apiVersion": "bogus", "kind": "ReplicationController", "name": "x", "controller": true }]),
+        );
+        assert_eq!(recreates("Pod", &unversioned), Some(false));
         let malformed =
             owned(json!([{ "apiVersion": "apps/v1", "kind": "ReplicaSet", "controller": true }]));
         assert_eq!(action_controller("Pod", &malformed), None);
