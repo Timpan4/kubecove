@@ -157,6 +157,7 @@ test("a changed Rust import selects the file's scenarios and a replaced re-expor
 		["    Sort,", "    Sort,\n    Added,", ids],
 		["    Extra,", "    Different,", ids],
 		["    Split,", "    Different,", ids],
+		["pub\nuse super::split::{", "pub\nmod split;\nuse super::split::{", ids],
 		["};\npub use super::kinds::{", "};\npub(crate) use super::other::{", ids],
 	] as const) {
 		await fixture(async (root) => {
@@ -167,6 +168,17 @@ test("a changed Rust import selects the file's scenarios and a replaced re-expor
 			if (expected === ids) expect(result.fallback).toContain("re-export");
 		});
 	}
+	await fixture(async (root) => {
+		const source = `${RUST_SOURCE}pub\nmod old;\n`;
+		await writeFile(join(root, RUST), source);
+		await run(root, ["git", "-c", "user.name=Parity test", "-c", "user.email=parity@example.invalid", "commit", "--quiet", "-am", "Public module base"]);
+		const map = JSON.parse(await readFile(join(root, "map.json"), "utf8"));
+		map.commit = await run(root, ["git", "rev-parse", "HEAD"]);
+		await writeFile(join(root, "map.json"), JSON.stringify(map));
+		await writeFile(join(root, RUST), source.replace("mod old;", "mod new;"));
+		await run(root, ["git", "-c", "user.name=Parity test", "-c", "user.email=parity@example.invalid", "commit", "--quiet", "-am", "Public module edit"]);
+		expect((await plan(root)).ids).toEqual(ids);
+	});
 });
 
 test("main changes the map already recorded select nothing for a branch that is behind it", async () => {

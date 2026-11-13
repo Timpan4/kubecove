@@ -41,9 +41,8 @@ const DECLARED_CONTEXT = /\b(?:const|static|struct|enum|union|type|trait)\s+(?:m
 // braces, and `use` and `mod` declarations. IMPORT handles a change to the last two.
 const SKIPPED = new RegExp(`^\\s*(${COMMENT_LINE}|[{}()[\\];,]*|(pub(\\([^)]*\\))?\\s+)?(use|mod)\\s.*)$`);
 // A changed `use` or `mod` line can give a name another meaning in every item of the file.
-const IMPORT = /^\s*(pub(\([^)]*\))?\s+)?(use|mod|extern\s+crate)\s/;
-const REEXPORT = /^\s*pub(\([^)]*\))?\s+(use|mod)\s/;
-const USE = /^\s*(pub(\([^)]*\))?\s+)?use\s/;
+const IMPORT = /^\s*(pub(?:\s*\([^)]*\))?\s+)?(use|mod|extern\s+crate)\s/;
+const REEXPORT = /^\s*pub(?:\s*\([^)]*\))?\s+(use|mod)\s/;
 
 type Hunk = { oldStart: number; oldCount: number; newStart: number; newCount: number; context: string; removed: string[]; added: string[] };
 type FileDiff = { oldPath?: string; newPath?: string; hunks: Hunk[]; binary: boolean };
@@ -114,12 +113,12 @@ function translateLine(hunks: Hunk[], line: number): number[] {
 
 const within = (ranges: number[], line: number) => pairs(ranges).some(([start, end]) => line >= start && line <= end);
 
-type UseBlock = { start: number; end: number; reexport: boolean };
-/** Rust `use` statements, including split visibility and nested comments, as 1-based line ranges. */
-function useBlocks(lines: string[]): UseBlock[] {
-	const blocks: UseBlock[] = [];
+type ImportBlock = { start: number; end: number; reexport: boolean };
+/** Rust imports and module declarations, including split visibility and nested comments. */
+function importBlocks(lines: string[]): ImportBlock[] {
+	const blocks: ImportBlock[] = [];
 	for (let index = 0; index < lines.length; index++) {
-		if (!/^\s*(pub\b|use\b)/.test(lines[index] ?? "")) continue;
+		if (!/^\s*(pub\b|use\b|mod\b)/.test(lines[index] ?? "")) continue;
 		// Use paths contain no strings. Strip comments only after a possible statement
 		// start, so comment markers in unrelated Rust strings cannot hide an import.
 		let depth = 0;
@@ -136,15 +135,15 @@ function useBlocks(lines: string[]): UseBlock[] {
 		};
 		const start = index + 1;
 		let text = code(lines[index] ?? "");
-		while (index + 1 < lines.length && (depth || /^\s*pub(?:\([^)]*\))?\s*$/.test(text))) text += `\n${code(lines[++index] ?? "")}`;
-		if (!USE.test(text)) continue;
+		while (index + 1 < lines.length && (depth || /^\s*pub(?:\s*\([^)]*\)?)?\s*$/.test(text))) text += `\n${code(lines[++index] ?? "")}`;
+		if (!IMPORT.test(text)) continue;
 		while (index + 1 < lines.length && !text.includes(";")) text += `\n${code(lines[++index] ?? "")}`;
 		blocks.push({ start, end: index + 1, reexport: REEXPORT.test(text) });
 	}
 	return blocks;
 }
 /** Whether a hunk changes lines of the block, or inserts lines between two of them. */
-function inBlock(hunk: Hunk, block: UseBlock): boolean {
+function inBlock(hunk: Hunk, block: ImportBlock): boolean {
 	if (hunk.oldCount === 0) return hunk.oldStart >= block.start && hunk.oldStart < block.end;
 	return hunk.oldStart <= block.end && hunk.oldStart + hunk.oldCount - 1 >= block.start;
 }
@@ -228,10 +227,10 @@ async function selectFile(diff: FileDiff, map: CoverageMap, compiled: Set<string
 	let outside = false;
 	if (rust) {
 		// A changed line inside a `use` block that spans several lines carries no keyword.
-		const blocks = useBlocks(base);
+		const blocks = importBlocks(base);
 		const source = diff.newPath ? (head ? await gitOut(["show", `${head}:${diff.newPath}`]) : await readFile(diff.newPath, "utf8")) : "";
-		const nextBlocks = useBlocks(source.split("\n"));
-		const inNextBlock = (hunk: Hunk, block: UseBlock) => inBlock({ ...hunk, oldStart: hunk.newStart, oldCount: hunk.newCount }, block);
+		const nextBlocks = importBlocks(source.split("\n"));
+		const inNextBlock = (hunk: Hunk, block: ImportBlock) => inBlock({ ...hunk, oldStart: hunk.newStart, oldCount: hunk.newCount }, block);
 		const imports = diff.hunks.filter((hunk) => [...hunk.removed, ...hunk.added].some((line) => IMPORT.test(line)) || blocks.some((block) => inBlock(hunk, block)) || nextBlocks.some((block) => inNextBlock(hunk, block)));
 		// Additions can shadow a glob export and redirect names in unchanged consumers too.
 		const reexport = (hunk: Hunk) => [...hunk.removed, ...hunk.added].some((line) => REEXPORT.test(line)) || blocks.some((block) => block.reexport && inBlock(hunk, block)) || nextBlocks.some((block) => block.reexport && inNextBlock(hunk, block));
