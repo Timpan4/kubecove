@@ -273,6 +273,8 @@ including its post hooks. The checks job has read-only Actions permission. It
 reads the API's first page and reuses a pass only when that page lists every job
 of the run attempt, so a second job of the same name cannot hide on a later
 page. An unlisted or unfinished task runs again.
+The owner selected a deadline of ten seconds for this optional lookup. It covers
+both response headers and the JSON body. An aborted lookup runs verification.
 Completion consumes that successful decision without another API request.
 
 A hit skips system-package setup, Bun setup and installation, compiler-cache

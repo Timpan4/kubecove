@@ -30,6 +30,13 @@ test("Rust pass records require exact inputs, runner identity and a pull request
   const preload = join(root, "source-run.mjs");
   writeFileSync(preload, [
     'import assert from "node:assert/strict";',
+    'import { writeFileSync } from "node:fs";',
+    'if (process.env.SOURCE_ABORT) AbortSignal.timeout = (milliseconds) => {',
+    '  writeFileSync(process.env.TIMEOUT_PROBE, String(milliseconds));',
+    '  const controller = new AbortController();',
+    '  queueMicrotask(() => controller.abort(new DOMException("Fixture deadline", "TimeoutError")));',
+    '  return controller.signal;',
+    '};',
     'globalThis.fetch = async (url, options) => {',
     '  assert.equal(url, `https://api.github.com/repos/Timpan4/kubecove/actions/runs/123/attempts/${process.env.SOURCE_ATTEMPT ?? 1}/jobs`);',
     '  assert.equal(options.headers.Authorization, "Bearer fixture-token");',
@@ -37,7 +44,12 @@ test("Rust pass records require exact inputs, runner identity and a pull request
     '  const job = { name: process.env.SOURCE_NAME ?? "CI gpui-test", status: process.env.SOURCE_STATUS ?? "completed", conclusion: process.env.SOURCE_RESULT ?? "success" };',
     '  const jobs = process.env.SOURCE_DUPLICATE ? [job, job] : [job];',
     '  const total = Number(process.env.SOURCE_TOTAL ?? jobs.length);',
-    '  return { ok: !process.env.SOURCE_DENIED, json: async () => ({ total_count: total, jobs: process.env.SOURCE_MALFORMED ? null : jobs }) };',
+    '  const aborted = () => new Promise((resolve, reject) => {',
+    '    if (options.signal.aborted) reject(options.signal.reason);',
+    '    else options.signal.addEventListener("abort", () => reject(options.signal.reason), { once: true });',
+    '  });',
+    '  if (process.env.SOURCE_ABORT === "headers" && options.signal) return aborted();',
+    '  return { ok: !process.env.SOURCE_DENIED, json: process.env.SOURCE_ABORT === "body" && options.signal ? aborted : async () => ({ total_count: total, jobs: process.env.SOURCE_MALFORMED ? null : jobs }) };',
     '};',
   ].join("\n"));
   const steps = Object.fromEntries(["setup-rust", "rust-cache", "rust-pass", "pass-cache", "decide-pass", "setup-mbx", "activate-cargo", "test-gpui"].map((id) => [id, { outcome: "success", conclusion: "success" }]));
@@ -70,6 +82,12 @@ test("Rust pass records require exact inputs, runner identity and a pull request
     const hit = decide();
     assert.equal(hit.skip, true);
     assert.equal(hit.log, `gpui-test: ${first.key} records https://github.com/Timpan4/kubecove/actions/runs/123/attempts/1; skipping build and test work.\n`);
+    for (const phase of ["headers", "body"]) {
+      const probe = join(root, "timeout-probe");
+      writeFileSync(probe, "");
+      assert.equal(decide({ SOURCE_ABORT: phase, TIMEOUT_PROBE: probe }).skip, false, `aborted ${phase} must run checks`);
+      assert.equal(readFileSync(probe, "utf8"), "10000", "the owner selected ten seconds");
+    }
     for (const overrides of [
       { PASS_CACHE_MATCH: "" }, { PASS_CACHE_MATCH: first.prefix }, { PASS_CACHE_MATCH: rerun.key },
       { PASS_EVENT: "push" }, { PASS_EVENT: "workflow_dispatch" },
@@ -302,7 +320,32 @@ function step(name) {
   const end = source.indexOf("\n      - name: ", start + 1);
   return source.slice(start, end < 0 ? undefined : end);
 }
+// Recognize only the condition forms these steps support. New syntax needs an
+// explicit truth table here rather than execution as JavaScript.
+function rustCondition(expression, task, skip, event = "push", successful = true) {
+  let selected;
+  if (expression === "matrix.workspace" || expression === "always() && matrix.workspace") {
+    selected = Boolean(task.workspace);
+  } else if (expression === "matrix.workspace && steps.pass-cache.outputs.key != '' && github.event_name == 'pull_request'") {
+    selected = Boolean(task.workspace) && event === "pull_request";
+  } else if (expression === "success() && matrix.workspace && steps.pass-cache.outputs.key != '' && steps.decide-pass.outputs.skip != 'true' && steps.verify-pass.outcome == 'success'") {
+    selected = Boolean(task.workspace) && skip !== "true" && successful;
+  } else {
+    const single = /^matrix\.task == '([\w-]+)'$/.exec(expression);
+    const group = /^\((?:always\(\) && )?(matrix\.workspace|matrix\.task == '[\w-]+'(?: \|\| matrix\.task == '[\w-]+')*)\) && steps\.decide-pass\.outputs\.skip != 'true'$/.exec(expression);
+    if (single) selected = task.task === single[1];
+    else if (group) {
+      const matches = group[1] === "matrix.workspace" ? Boolean(task.workspace) : [...group[1].matchAll(/matrix\.task == '([\w-]+)'/g)].some((match) => match[1] === task.task);
+      selected = matches && skip !== "true";
+    } else throw new Error(`Unsupported Rust condition: ${expression}`);
+  }
+  // GitHub supplies an implicit success() guard unless a status function overrides it.
+  return Boolean(selected && (expression.includes("always()") || successful));
+}
 test("Rust pass reuse skips expensive steps but always runs advisory audits and verifies completion", async () => {
+  const source = readFileSync(new URL(import.meta.url), "utf8");
+  const rustTests = source.slice(source.indexOf('test("Rust pass reuse skips'), source.lastIndexOf('test("Rust task keys cover'));
+  assert.doesNotMatch(rustTests, /\bnew\s+Function\s*\(/, "Rust condition checks must not execute expression text");
   const { matrix } = await detect([".github/workflows/ci.yml"]);
   const lookup = step("Restore Rust task pass");
   const save = step("Save Rust task pass");
@@ -324,11 +367,7 @@ test("Rust pass reuse skips expensive steps but always runs advisory audits and 
   assert.ok(step("Verify Rust task completion").includes("if: ${{ always() && matrix.workspace }}\n"));
   const condition = (name, task, skip, event = "pull_request", successful = true) => {
     const expression = /if: \$\{\{ (.+) \}\}/.exec(step(name))[1];
-    const normalized = expression.replaceAll("steps.decide-pass", "steps.decidePass").replaceAll("steps.verify-pass", "steps.verifyPass").replaceAll("steps.pass-cache", "steps.passCache");
-    return new Function("matrix", "steps", "github", "always", "success", `return Boolean(${normalized})`)(
-      task, { decidePass: { outputs: skip === undefined ? {} : { skip: String(skip) } }, verifyPass: { outcome: successful ? "success" : "failure" }, passCache: { outputs: { key: "passed-key" } } },
-      { event_name: event }, () => true, () => successful,
-    );
+    return rustCondition(expression, task, skip === undefined ? "" : String(skip), event, successful);
   };
   const builds = ["Install Tauri Linux dependencies", "Install GPUI build dependencies", "Setup Mr Boxington", "Activate Cargo caching", "Setup Bun", "Cache Bun dependencies", "Install frontend dependencies", "Test Rust", "Lint Rust", "Lint GPUI", "Test GPUI", "Verify API-only server", "Build browser UI", "Verify GUI-free dependency tree", "Test GUI-free backend crates", "Test headless server", "Lint headless server", "Build headless server", "Verify HTTP and WebSocket lifecycle", "Upload headless verification report"];
   for (const task of matrix.include.filter(({ workspace }) => workspace)) {
@@ -366,8 +405,8 @@ test("every Rust task rejects a missing, failed or cancelled verification step b
     for (const task of matrix.include.filter(({ workspace }) => workspace)) {
       const steps = {};
       for (const { source, id } of definitions) {
-        const expression = /^ {8}if: \$\{\{ (.+) \}\}$/m.exec(source)[1].replaceAll("steps.decide-pass", "steps.decidePass").replaceAll("steps.pass-cache", "steps.passCache");
-        const selected = new Function("matrix", "steps", "github", "always", `return Boolean(${expression})`)(task, { decidePass: { outputs: { skip: "false" } }, passCache: { outputs: { key: "passed-key" } } }, { event_name: "push" }, () => true);
+        const expression = /^ {8}if: \$\{\{ (.+) \}\}$/m.exec(source)[1];
+        const selected = rustCondition(expression, task, "false");
         steps[id] = { outcome: selected ? "success" : "skipped", conclusion: selected ? "success" : "skipped" };
         if (id === "decide-pass") steps[id].outputs = { skip: "false" };
       }

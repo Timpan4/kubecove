@@ -50,7 +50,8 @@ async function sourceJobPassed(record) {
     if (!process.env.GITHUB_TOKEN) return false;
     const [run, , attempt] = record.run.slice(runPrefix.length).split("/");
     const url = `${process.env.GITHUB_API_URL}/repos/${process.env.GITHUB_REPOSITORY}/actions/runs/${run}/attempts/${attempt}/jobs`;
-    const response = await fetch(url, { headers: {
+    // The owner selected ten seconds for this optional lookup on 2026-11-14.
+    const response = await fetch(url, { signal: AbortSignal.timeout(10_000), headers: {
       Accept: "application/vnd.github+json", Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
     } });
     if (!response.ok) return false;
