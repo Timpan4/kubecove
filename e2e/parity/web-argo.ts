@@ -45,7 +45,17 @@ export async function argoAction(page: Page, step: Step) {
             // Pausing holds the tracker's recovery tick until advanceClock runs it. Place this after the GitOps rows render,
             // because paused timers also stop rendering, and after a step that waits for any command still in flight
             // (such as expectArgoReview after reviewArgoOperation): the mock's latency timer stops with the clock.
-            await page.clock.pauseAt(new Date(Date.now() + 1000));
+            try {
+                await page.clock.pauseAt(new Date(Date.now() + 1000));
+            } catch (error) {
+                // The time is this process's, and a busy page can take longer than that second to run the call: main's
+                // coverage shards failed here with "Cannot fast-forward to the past" (run 43416191832). Playwright 1.65
+                // stops the clock before it rejects the time, so the page's own time no longer moves and pausing at it
+                // cannot be late. It skips no time, as when the first call arrives with none left to skip; timers already
+                // due can still run.
+                if (!String(error).includes("Cannot fast-forward to the past")) throw error;
+                await page.clock.pauseAt(await page.evaluate(() => Date.now()));
+            }
             break;
         case "advanceClock": await page.clock.runFor(step.ms); break;
         case "focusArgoResource":
