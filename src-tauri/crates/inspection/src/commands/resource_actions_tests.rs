@@ -574,3 +574,5 @@ fn secret_objects_are_rejected_before_any_yaml_is_returned() {
     value["kind"] = json!("ConfigMap");
     assert!(ensure_action_resource_is_not_secret(&value).is_ok());
 }
+#[path = "resource_actions/controller_tests.rs"]
+mod controller_tests;

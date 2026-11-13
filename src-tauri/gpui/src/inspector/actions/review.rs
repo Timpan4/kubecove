@@ -5,6 +5,7 @@
 use super::super::Inspector;
 use super::super::controls::{Variant, button, diff_pre};
 use super::super::detail::Detail;
+use super::delete_review::delete_summary;
 use super::state::{Execution, Review, ReviewStep};
 use crate::actions;
 use crate::targets::TestSupportExt;
@@ -92,31 +93,79 @@ fn review_body(review: &Review, entity: &Entity<Inspector>, cx: &App) -> Div {
                 }))),
         );
     } else if let ReviewStep::Previewed(previewed) = &review.step {
+        let delete = review.action == ResourceActionKind::Delete;
+        if delete {
+            body = body.child(delete_summary(&previewed.preview));
+        }
+        let header = ui::medium(ui::xs("API server result"))
+            .px(px(12.))
+            .py(px(8.));
+        let header = if delete {
+            let toggle = {
+                let entity = entity.clone();
+                move |_: &gpui_kit::ClickEvent, window: &mut Window, cx: &mut App| {
+                    entity.update(cx, |this, cx| this.toggle_review_diff(window, cx));
+                }
+            };
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .pl(px(12.))
+                .rounded(px(8.))
+                .border_2()
+                .border_color(gpui_kit::transparent_black())
+                .cursor_pointer()
+                .child(ui::icon(
+                    if review.diff_open {
+                        "chevron-down"
+                    } else {
+                        "chevron-right"
+                    },
+                    14.,
+                    Tokens::muted_foreground(),
+                ))
+                .child(header.pl(px(0.)))
+                .id("review-diff-toggle")
+                .test_support()
+                .aria_label("API server result")
+                .role(gpui_kit::Role::Button)
+                .aria_expanded(review.diff_open)
+                .track_focus(&review.diff_focus)
+                .focus(|style| style.border_color(Tokens::ring()))
+                .tab_index(0)
+                .on_click(toggle)
+                .into_any_element()
+        } else {
+            header
+                .border_b_1()
+                .border_color(Tokens::border())
+                .into_any_element()
+        };
         body = body.child(
             div()
-                .mt(px(16.))
+                .mt(px(if delete { 12. } else { 16. }))
                 .rounded(px(8.))
                 .border_1()
                 .border_color(Tokens::border())
                 .bg(Tokens::muted().opacity(0.15))
-                .child(
-                    ui::medium(ui::xs("API server result"))
-                        .px(px(12.))
-                        .py(px(8.))
-                        .border_b_1()
-                        .border_color(Tokens::border()),
-                )
-                .child(
-                    div()
-                        .id("review-diff")
-                        .test_support()
-                        .aria_label(previewed.diff_text.clone())
-                        .max_h(px(450.))
-                        .overflow_y_scroll()
-                        .child(diff_pre("review-diff-lines", &previewed.diff)),
-                ),
+                .child(header)
+                .when(!delete || review.diff_open, |panel| {
+                    panel.child(
+                        div()
+                            .when(delete, |diff| {
+                                diff.border_t_1().border_color(Tokens::border())
+                            })
+                            .id("review-diff")
+                            .test_support()
+                            .aria_label(previewed.diff_text.clone())
+                            .max_h(px(450.))
+                            .overflow_y_scroll()
+                            .child(diff_pre("review-diff-lines", &previewed.diff)),
+                    )
+                }),
         );
-        if review.action == ResourceActionKind::Delete {
+        if review.needs_typed_name() {
             body = body.child(
                 div()
                     .mt(px(16.))
@@ -142,6 +191,10 @@ fn review_body(review: &Review, entity: &Entity<Inspector>, cx: &App) -> Div {
         }
     };
     let delete = review.action == ResourceActionKind::Delete;
+    let previewed_kind = match &review.step {
+        ReviewStep::Previewed(previewed) => Some(previewed.preview.target.kind.clone()),
+        _ => None,
+    };
     body.child(
         div()
             .mt(px(16.))
@@ -157,13 +210,13 @@ fn review_body(review: &Review, entity: &Entity<Inspector>, cx: &App) -> Div {
                     .child(if busy { "Cancel check" } else { "Cancel" })
                     .when(!executing, |button| button.on_click(close)),
             )
-            .when(matches!(review.step, ReviewStep::Previewed(_)), |footer| {
+            .when_some(previewed_kind, |footer, kind| {
                 let label = if executing {
-                    "Applying…"
+                    "Applying…".to_owned()
                 } else if delete {
-                    "Delete"
+                    format!("Delete {kind}")
                 } else {
-                    "Apply"
+                    "Apply".to_owned()
                 };
                 let variant = if delete {
                     Variant::Destructive
@@ -174,7 +227,7 @@ fn review_body(review: &Review, entity: &Entity<Inspector>, cx: &App) -> Div {
                     button(variant, 28., !can_execute)
                         .id("review-execute")
                         .test_support()
-                        .aria_label(label)
+                        .aria_label(label.clone())
                         .font_weight(FontWeight::MEDIUM)
                         .child(label)
                         .when(can_execute, |button| button.on_click(execute)),
@@ -210,6 +263,7 @@ impl Inspector {
                 )
             };
             let close = on_close.clone();
+            let confirm = on_close.clone();
             dialog
                 .w(px(896.))
                 .title(
@@ -218,6 +272,13 @@ impl Inspector {
                         .test_support()
                         .aria_label(title),
                 )
+                // The dialog binds Enter to Confirm, which would close the
+                // review; Enter activates the focused diff disclosure instead,
+                // as in the web dialog, and otherwise does nothing.
+                .on_ok(move |_, window, cx| {
+                    confirm.update(cx, |this, cx| this.review_enter(window, cx));
+                    false
+                })
                 .on_close(move |_, window, cx| {
                     close.update(cx, |this, cx| this.close_review(window, cx));
                 })

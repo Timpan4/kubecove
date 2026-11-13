@@ -11,7 +11,8 @@
 		Input,
 		Spinner,
 	} from "@/components/ui/svelte";
-	import { LockKeyhole, Search } from "lucide-svelte";
+	import { ChevronRight, LockKeyhole, Search } from "lucide-svelte";
+	import DeleteReviewSummary from "./DeleteReviewSummary.svelte";
 	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import type { TauriClient } from "@/lib/tauri";
 	import type { ResourceSummary } from "@/lib/types";
@@ -53,7 +54,7 @@
 		setQuantity,
 		setReplicas,
 	} from "./resourceActionDrafts";
-	import { createResourceActionSession } from "./resourceActionSession";
+	import { createResourceActionSession, needsTypedName } from "./resourceActionSession";
 
 	type NewEntry = { name: string; value: string };
 	const QUANTITY_FIELDS: QuantityField[] = ["requests", "limits"];
@@ -113,6 +114,11 @@
 	const pending = $derived(hasPendingEdits(edits));
 	const diffLines = $derived(review?.preview ? buildCompactUnifiedDiff(review.preview.beforeYaml, review.preview.afterYaml) : []);
 	const reviewBusy = $derived(review?.status === "checking" || review?.status === "executing");
+	// A delete review folds its diff behind the target summary; each new check folds it again.
+	let diffOpen = $state(false);
+	$effect(() => {
+		if (review?.status === "checking") diffOpen = false;
+	});
 
 	function revert(row: ResourceActionRowId) {
 		session.draft(revertRow(row));
@@ -294,16 +300,21 @@
 			<div class="flex justify-end"><Button variant="ghost" size="sm" disabled={review.status === "executing"} aria-label="Close review" onclick={() => session.closeReview()}>{reviewBusy ? "Cancel check" : "Close review"}</Button></div>
 			{#if review.error}<p class="mt-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive" role="alert">Could not complete the check or confirm the action. {#if review.executionAttempted}Refresh this resource before retrying. {/if}{review.error}</p>{/if}
 			{#if reviewBusy}<div class="flex items-center gap-2 py-8 text-sm text-muted-foreground"><Spinner />{review.status === "executing" ? "Applying the reviewed action" : "Checking with the API server"}</div>{:else if review.preview}
-				<div class="mt-4 rounded-md border bg-muted/15">
-					<div class="border-b px-3 py-2 text-xs font-medium">API server result</div>
-					<pre class="max-h-[50vh] overflow-auto p-3 font-mono text-xs leading-5" aria-label="Server result diff">{#each diffLines as line}<span class={diffLineClassName(line.type)}>{line.text}{"\n"}</span>{/each}</pre>
+				{#if review.action === "delete"}<DeleteReviewSummary preview={review.preview} />{/if}
+				<div class={review.action === "delete" ? "mt-3 rounded-md border bg-muted/15" : "mt-4 rounded-md border bg-muted/15"}>
+					{#if review.action === "delete"}
+						<button type="button" class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium" aria-expanded={diffOpen} onclick={() => (diffOpen = !diffOpen)}><ChevronRight class={diffOpen ? "size-3.5 rotate-90 text-muted-foreground" : "size-3.5 text-muted-foreground"} aria-hidden="true" />API server result</button>
+					{:else}
+						<div class="border-b px-3 py-2 text-xs font-medium">API server result</div>
+					{/if}
+					{#if review.action !== "delete" || diffOpen}<pre class={review.action === "delete" ? "max-h-[50vh] overflow-auto border-t p-3 font-mono text-xs leading-5" : "max-h-[50vh] overflow-auto p-3 font-mono text-xs leading-5"} aria-label="Server result diff">{#each diffLines as line}<span class={diffLineClassName(line.type)}>{line.text}{"\n"}</span>{/each}</pre>{/if}
 				</div>
-				{#if review.action === "delete"}<label class="mt-4 grid gap-1 text-xs">Type {review.name} to confirm deletion<Input aria-label="Type resource name to confirm" autocomplete="off" value={review.confirmation} oninput={(event: Event & { currentTarget: HTMLInputElement }) => session.confirm(event.currentTarget.value)} /></label>{/if}
+				{#if needsTypedName(review)}<label class="mt-4 grid gap-1 text-xs">Type {review.name} to confirm deletion<Input aria-label="Type resource name to confirm" autocomplete="off" value={review.confirmation} oninput={(event: Event & { currentTarget: HTMLInputElement }) => session.confirm(event.currentTarget.value)} /></label>{/if}
 			{/if}
 			<div class="mt-4 flex flex-wrap items-center justify-end gap-2">
 				{#if review.skipRequested}<span class="mr-auto text-xs text-muted-foreground">Successful review dialogs are skipped in Settings. Dry-run still runs.</span>{/if}
 				<Button variant="outline" disabled={review.status === "executing"} onclick={() => session.closeReview()}>{reviewBusy ? "Cancel check" : "Cancel"}</Button>
-				{#if review.preview}<Button variant={review.action === "delete" ? "destructive" : "default"} disabled={!review.canExecute} onclick={() => session.execute()}>{review.status === "executing" ? "Applying…" : review.action === "delete" ? "Delete" : "Apply"}</Button>{/if}
+				{#if review.preview}<Button variant={review.action === "delete" ? "destructive" : "default"} disabled={!review.canExecute} onclick={() => session.execute()}>{review.status === "executing" ? "Applying…" : review.action === "delete" ? `Delete ${review.preview.target.kind}` : "Apply"}</Button>{/if}
 			</div>
 		</DialogContent>
 	</Dialog>

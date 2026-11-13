@@ -70,7 +70,7 @@ export const ACTIONS = [
 	"expectDetailScroll", "expectEvent", "expectEventCount", "expectLiveSessionCount", "filterIncidents", "expectIncidentGuide", "openIncidentResources", "expectGitOpsCount", "expectPortForward",
 	"expectLogLines", "expectLogToolbarFit", "filterLogs", "toggleLogLevel", "expectLogsEmpty", "selectRevision", "expectRevisionDiff", "reviewAction", "editReplicas",
 	"toggleLogRow", "toggleLogExpandAll", "expectLogRowOpen", "copyLogLine", "expectLogTimestampTooltip", "expectRestorePrompt", "restorePromptControl",
-	"expectReview", "confirmDeletion", "executeReview", "closeReview", "expectNoReview", "expectActionResult", "expectNoActionResult",
+	"expectReview", "showReviewDiff", "expectDeleteReview", "confirmDeletion", "executeReview", "closeReview", "expectNoReview", "expectActionResult", "expectNoActionResult",
 	"editYaml", "applyYaml", "dryRunYaml", "expectDryRun", "expectYamlNotice", "expectNoYamlNotice", "expectYamlReadOnly",
 	"expectNoResource", "openLauncher", "openSavedWorkspace", "expectSavedWorkspace", "expectContextUnavailable", "nameWorkspace", "selectWorkspaceContext", "toggleWorkspaceNamespace",
 	"createWorkspace", "expectOpenWorkspace", "selectRbacCategory", "expectRbacCategory", "filterRbacRisk", "expectRbacItem", "expectNoRbacItem", "selectRbacItem",
@@ -334,6 +334,11 @@ function step<Value>(value: Value): Step {
 			return { action: item.action, selected: string(item.selected), comparison: string(item.comparison), contains: strings(item.contains, false) };
 		case "expectReview":
 			return { action: item.action, title: string(item.title), description: string(item.description), contains: strings(item.contains, false) };
+		case "showReviewDiff":
+			return item.key === undefined ? { action: item.action } : { action: item.action, key: oneOf(["Enter", "Space"] as const, item.key, "a disclosure key") };
+		case "expectDeleteReview":
+			if (!isString(item.controller)) throw new Error("Expected a controller, empty when the target has none");
+			return { action: item.action, name: string(item.name), context: string(item.context), namespace: string(item.namespace), controller: item.controller, consequence: string(item.consequence), typed: boolean(item.typed) };
 		case "expectActionResult": return { action: item.action, text: string(item.text) };
 		case "expectDryRun": return { action: item.action, contains: strings(item.contains, false) };
 		case "expectNoResource":

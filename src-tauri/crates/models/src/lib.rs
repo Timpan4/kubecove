@@ -85,9 +85,10 @@ pub use resource::{
     YamlApplyResult, YamlApplyTarget, YamlEncoding, YamlViewMode,
 };
 pub use resource_actions::{
-    ResourceActionContainer, ResourceActionEdits, ResourceActionEnv, ResourceActionKind,
-    ResourceActionPermission, ResourceActionPreview, ResourceActionRequest, ResourceActionRevision,
-    ResourceActionState, ResourceActionStateRequest, ResourceContainerEdit, ResourceEnvEdit,
+    ResourceActionContainer, ResourceActionController, ResourceActionEdits, ResourceActionEnv,
+    ResourceActionKind, ResourceActionPermission, ResourceActionPreview, ResourceActionRequest,
+    ResourceActionRevision, ResourceActionState, ResourceActionStateRequest, ResourceContainerEdit,
+    ResourceEnvEdit,
 };
 pub use sessions::{
     LiveSessionCleanupRequest, LiveSessionCleanupResult, PodExecConfirmation,

@@ -58,7 +58,7 @@ fn visible_names(window: &mut gpui_kit::Window, expected: &[String]) -> Vec<Stri
 /// Presses Tab until the control `id` has keyboard focus, as a keyboard user
 /// reaches it. The web driver's `press` focuses the name button first; GPUI's
 /// scoped `press` dispatches to the current focus and does not move it.
-fn tab_to(window: &mut gpui_kit::Window, id: &str, cx: &mut gpui_kit::App) {
+pub(crate) fn tab_to(window: &mut gpui_kit::Window, id: &str, cx: &mut gpui_kit::App) {
     let mut first: Option<gpui_kit::FocusHandle> = None;
     loop {
         window.press("tab", cx);

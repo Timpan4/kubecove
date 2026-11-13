@@ -8,6 +8,7 @@ import { argoAction } from "./web-argo";
 import { coverageAction } from "./web-coverage";
 import { checkCoverage } from "./web-coverage-checks";
 import { startCodeCoverage } from "./web-coverage-map";
+import { deleteReviewAction } from "./web-delete-review";
 import { detailStatusAction } from "./web-detail-status";
 import { deliveryAction } from "./web-delivery";
 import { gitOpsDetails, revealGitOps, helmCard, revisionButton } from "./web-delivery-helpers";
@@ -86,6 +87,7 @@ export async function action(page: Page, step: Step) {
             await argoAction(page, step); break;
         case "expectYamlDiagnostic": case "expectNoYamlDiagnostic": case "expectYamlApplyDescription": case "expectNoYamlApplyDescription": case "expectActionLoadError": case "expectNoActionLoadError": case "retryActionPermission": case "expectActionLock":
             await yamlPermissionAction(page, step); break;
+        case "showReviewDiff": case "expectDeleteReview": await deleteReviewAction(page, step); break;
         case "cancelYamlEdit": case "revealSecretValue": case "hideSecretValue": case "expectSecretValue": case "expectYamlLens": case "refreshLatencyReport": case "clearLatencyReport": case "expectLatencyEmpty": case "expectLatencyTiming": case "openDocumentation": case "expectDocumentationRequest":
             await adapterAction(page, step); break;
         case "openIncidentResources": case "updateStatusControl": case "expectUpdateControl": case "copyLatencyReport": case "expectLatencyReportCopy":
@@ -268,7 +270,7 @@ export async function action(page: Page, step: Step) {
 		}
 		case "confirmDeletion": await page.getByRole("dialog").getByRole("textbox", { name: "Type resource name to confirm" }).fill(step.value); break;
 		// Forced, so a disabled control is clicked like a user would and must do nothing.
-		case "executeReview": await page.getByRole("dialog").getByRole("button", { name: /^(Apply|Delete)$/ }).click({ force: true }); break;
+		case "executeReview": await page.getByRole("dialog").getByRole("button", { name: /^(Apply|Delete \w+)$/ }).click({ force: true }); break;
 		case "closeReview": await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click(); break;
 		case "expectNoReview": await page.getByRole("dialog").waitFor({ state: "detached" }); break;
 		case "expectActionResult": await page.getByRole("status").filter({ hasText: new RegExp(`^${literal(step.text)}$`) }).waitFor(); break;

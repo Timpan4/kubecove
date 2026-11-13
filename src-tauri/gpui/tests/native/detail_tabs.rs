@@ -105,6 +105,7 @@ impl DetailControls {
                 resource_version: "1".into(),
                 revision_uid: None,
                 revision_resource_version: None,
+                controller: None,
             })
         })
     }
