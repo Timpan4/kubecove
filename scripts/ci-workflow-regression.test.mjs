@@ -372,7 +372,7 @@ test("Mr Boxington uses isolated object bundles for all Rust workspaces", async 
   const { matrix } = await detect([".github/workflows/ci.yml"]);
   const workspaces = Object.fromEntries(matrix.include.filter(({ workspace }) => workspace).map(({ task, workspace, inputs }) => [task, [workspace, inputs]]));
   // The GPUI and server crates are separate workspaces that both build the desktop crates.
-  const [desktop, gpui, server] = ["src-tauri :!src-tauri/gpui :!src-tauri/server", "src-tauri :!src-tauri/server", "src-tauri :!src-tauri/gpui"];
+  const [desktop, gpui, server] = ["src-tauri :!src-tauri/gpui :!src-tauri/server", "src-tauri :!src-tauri/server src/lib/*-workspace.json", "src-tauri :!src-tauri/gpui"];
   assert.deepEqual(workspaces, {
     rust: ["src-tauri", desktop], "gpui-clippy": ["src-tauri/gpui", gpui], "gpui-test": ["src-tauri/gpui", gpui],
     "server-backend": ["src-tauri", desktop], server: ["src-tauri/server", server],
@@ -415,6 +415,8 @@ test("the Rust cache key follows the build inputs, the compiler and the runner i
     writeFileSync(join(root, "bin", "rustc"), "#!/bin/sh\necho \"rustc $RUSTC_VERSION\"\n");
     chmodSync(join(root, "bin", "rustc"), 0o755);
     write("workflow.yml", "one\n"); write("src-tauri/src/lib.rs", "one\n"); write("src-tauri/gpui/src/main.rs", "one\n"); write("README.md", "one\n");
+    // The real checkout always tracks the two scripts the key includes, so the fixture does too.
+    write("scripts/ci-rust-cache-key.mjs", "one\n"); write("scripts/ci-mbx-cargo.mjs", "one\n");
     const first = key();
     assert.deepEqual(key(), first);
     write("src-tauri/gpui/src/main.rs", "two\n"); write("README.md", "two\n");
@@ -429,6 +431,8 @@ test("the Rust cache key follows the build inputs, the compiler and the runner i
     assert.equal(key({ ImageVersion: "2" }).prefix, first.prefix);
     assert.notEqual(key({ RUSTC_VERSION: "2" }).prefix, first.prefix);
     assert.notEqual(run({}, ["missing"]).status, 0);
+    assert.notEqual(run({}, ["workflow.yml", "src-tauri", "missing"]).status, 0);
+    assert.equal(run({}, ["workflow.yml", "src-tauri", ":!missing"]).status, 0);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 test("whitespace check rejects bad diffs even without an available base", () => {
@@ -520,7 +524,9 @@ test("parity jobs run the full suite on pull requests and on main, and keep the 
   assert.equal(runners(4, ""), "1 3");
   assert.equal(runners(1, ""), "1 1");
   assert.match(suite, /^ {10}PARITY_DRIVER: \$\{\{ inputs\.driver \}\}$/m);
-  assert.match(result, /pattern: parity-pull_request-\*-attempt-\$\{\{ github\.run_attempt \}\}/);
+  // Every attempt's artifacts: "Re-run failed jobs" leaves the passed shards' reports in the
+  // earlier attempt, and merge-reports.ts keeps the newest attempt of each shard.
+  assert.match(result, /^ {10}pattern: parity-pull_request-\*$/m);
   assert.match(result, /run: bun e2e\/parity\/merge-reports\.ts parity-reports/);
   for (const name of ["Checkout", "Setup Bun", "Download driver reports", "Validate merged driver reports"]) {
     assert.ok(result.includes(`- name: ${name}\n        if: \${{ needs.pull-request-web.result == 'success' }}`));
@@ -580,7 +586,7 @@ test("main records the parity coverage map from every parity job", () => {
   const run = step("Run parity suite");
   const results = Object.fromEntries(Object.entries(modes).map(([mode, [inputs, event]]) => [mode, {
     coverage: evaluate(expression(run, "PARITY_COVERAGE"), inputs, event),
-    cacheKey: `parity${evaluate(/run: node scripts\/ci-rust-cache-key\.mjs parity\$\{\{ (.+) \}\} \.github\/workflows\/parity-suite\.yml src-tauri ':!src-tauri\/server'$/m.exec(step("Key the Rust cache by its inputs"))?.[1] ?? "'missing'", inputs, event)}`,
+    cacheKey: `parity${evaluate(/run: node scripts\/ci-rust-cache-key\.mjs parity\$\{\{ (.+) \}\} \.github\/workflows\/parity-suite\.yml src-tauri ':!src-tauri\/server' 'src\/lib\/\*-workspace\.json'$/m.exec(step("Key the Rust cache by its inputs"))?.[1] ?? "'missing'", inputs, event)}`,
     runs: evaluate(expression(run, "if"), inputs, event),
   }]));
   assert.deepEqual(results.pullRequest, { coverage: "0", cacheKey: "parity", runs: true });
@@ -595,6 +601,17 @@ test("main records the parity coverage map from every parity job", () => {
   for (const line of ['version: "1.30.0"', "working-directory: src-tauri/gpui", "cache-key: ${{ steps.rust-cache.outputs.key }}", "restore-keys: ${{ steps.rust-cache.outputs.prefix }}", "github-cache-mode: objects", "isolate-objects-cache: true", "clean-target-before-export: true"]) {
     assert.ok(cache.includes(`\n          ${line}\n`) || cache.endsWith(`\n          ${line}`), `Missing cache setting: ${line}`);
   }
+  // Failure mode: the main shards and the main spike job build the same instrumented binary
+  // under one cache key, and a second saver fails its job when GitHub has reserved the key
+  // for the first. Exactly one of those jobs may save.
+  // The mode is `read` for every job but the saver, whose empty value leaves the action's
+  // own save policy in force.
+  assert.equal(expression(cache, "ACTIONS_CACHE_MODE"), "!inputs.save-cache && 'read' || ''");
+  assert.match(suite, /^ {6}save-cache:\n(?: {8}.+\n)* {8}default: true$/m);
+  const mainShards = JSON.parse(/^ {8}shard: (\[.+\])$/m.exec(job("main", parity))?.[1] ?? "[]");
+  assert.equal(expression(job("main", parity), "save-cache"), "matrix.shard == 0");
+  assert.deepEqual([mainShards.length, mainShards.filter((shard) => shard === 0)], [4, [0]]);
+  assert.match(job("main-spike", parity), /^ {6}save-cache: false$/m);
   assert.match(step("Activate Cargo caching"), /run: node scripts\/ci-mbx-cargo\.mjs/);
   assert.doesNotMatch(suite, /swatinem\/rust-cache/i);
   assert.match(step("Install LLVM tools"), /if: \$\{\{ inputs\.coverage \}\}\n {8}run: rustup component add llvm-tools/);

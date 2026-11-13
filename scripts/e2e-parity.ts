@@ -27,7 +27,7 @@ type Scenario = Contract["scenarios"][number];
  *   affect, from the coverage map at PARITY_COVERAGE_MAP (e2e/parity/changed-scenarios.ts).
  * - PARITY_SUITE_SHARD=<index>/<count>: every `count`-th scenario from position `index`, so
  *   separate CI jobs split one suite.
- * - PARITY_RERUN, resolved to `rerun`: only the scenarios either driver did not pass there.
+ * - PARITY_RERUN, resolved to `rerun`: only the scenarios a driver of this run did not pass there.
  */
 async function selectScenarios(scenarios: Scenario[], rerun: string | undefined): Promise<Scenario[]> {
 	const list = (name: string) => (process.env[name] ?? "").split(",").map((prefix) => prefix.trim()).filter(Boolean);
@@ -51,10 +51,11 @@ async function selectScenarios(scenarios: Scenario[], rerun: string | undefined)
 		selected = selected.filter((_, position) => position % count === index);
 	}
 	if (rerun) {
-		const [web, gpui] = await Promise.all([passedIn(rerun, "web"), passedIn(rerun, "gpui")]);
+		// A single-driver run writes one report, so only the drivers this run starts decide.
+		const passed = await Promise.all((driver ? [driver] : ["web", "gpui"]).map((name) => passedIn(rerun, name)));
 		// Only the scenarios that run selected; a prefixed run never ran the others.
 		const earlier = new Set((await readFile(join(rerun, "scenarios.txt"), "utf8")).split("\n").filter(Boolean));
-		selected = selected.filter((scenario) => earlier.has(scenario.id) && (!web.has(scenario.id) || !gpui.has(scenario.id)));
+		selected = selected.filter((scenario) => earlier.has(scenario.id) && passed.some((ids) => !ids.has(scenario.id)));
 		console.log(`Rerunning ${selected.length} scenarios not passed in ${rerun}`);
 	}
 	return selected;

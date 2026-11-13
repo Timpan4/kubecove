@@ -29,6 +29,11 @@ on:
         required: false
         type: boolean
         default: false
+      save-cache:
+        description: Whether this job may save the Rust build cache. Callers that share one cache key let one job save.
+        required: false
+        type: boolean
+        default: true
       prefix:
         description: PARITY_PREFIX, for a job that runs only the scenarios with these ID prefixes.
         required: false
@@ -93,11 +98,17 @@ jobs:
       - name: Key the Rust cache by its inputs
         id: rust-cache
         if: ${{ inputs.driver != 'web' }}
-        run: node scripts/ci-rust-cache-key.mjs parity${{ inputs.coverage && '-coverage' || '' }} .github/workflows/parity-suite.yml src-tauri ':!src-tauri/server'
+        run: node scripts/ci-rust-cache-key.mjs parity${{ inputs.coverage && '-coverage' || '' }} .github/workflows/parity-suite.yml src-tauri ':!src-tauri/server' 'src/lib/*-workspace.json'
 
+      # Jobs with the same cache key must not all save: GitHub reserves the key for one and
+      # the action fails the others (three of four main shards in run 43397675113). The
+      # action skips its save when ACTIONS_CACHE_MODE, GitHub's cache-mode for the job, is
+      # `read`.
       - name: Cache Rust builds
         if: ${{ inputs.driver != 'web' }}
         uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
+        env:
+          ACTIONS_CACHE_MODE: ${{ !inputs.save-cache && 'read' || '' }}
         with:
           version: "1.30.0"
           working-directory: src-tauri/gpui

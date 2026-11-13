@@ -19,8 +19,8 @@ export const chartPins = {
 } as const;
 
 export const gitDaemonPins = {
-	amd64: { version: "2.54.0-r0", url: "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/git-daemon-2.54.0-r0.apk", sha256: "b376522eadb4df8dc5274687ceabe07456924d415cfcc5683c4b198e97a6c855" },
-	arm64: { version: "2.54.0-r0", url: "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/git-daemon-2.54.0-r0.apk", sha256: "e34fc8841226216b798b8e1ff20c2ad856d97c2bc2c512f6b7e183d934f3d9b0" },
+	amd64: { version: "2.54.1-r0", url: "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/git-daemon-2.54.1-r0.apk", sha256: "f5d20c0d6e5f21c91013707ce5da60b6085a3c8c0ab2bef38b6a5bc736f7178b" },
+	arm64: { version: "2.54.1-r0", url: "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/git-daemon-2.54.1-r0.apk", sha256: "b36c50914b7c47ada074175d0d0d2ab5a3678ecc7d69a5a7742ca899fbaeb50e" },
 } as const;
 
 export function validateImmutablePins(pins = chartPins) {

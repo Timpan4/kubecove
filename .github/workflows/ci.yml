@@ -93,7 +93,13 @@ jobs:
             // These tasks share one matrix; frontend checks keep their own job.
             // The matrix budget leaves one of the owner's seven slots for frontend.
             const desktop = 'src-tauri :!src-tauri/gpui :!src-tauri/server';
-            const gpui = 'src-tauri :!src-tauri/server';
+            // The GPUI tests compile in the workspace fixtures the web client uses.
+            const gpui = 'src-tauri :!src-tauri/server src/lib/*-workspace.json';
+            // The server also embeds the browser build. The frontend tree is left out on
+            // purpose: with it, every frontend push to main would upload the server cache
+            // again (896 MB after run 43325597142). Without it, a build recompiles the
+            // crates that embed the assets: each Cargo step of the server task finished
+            // in under 20 s that way in run 43393348258.
             const server = 'src-tauri :!src-tauri/gpui';
             const tasks = [
               { task: 'docs', scope: 'docs' },
@@ -122,7 +128,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -130,12 +136,12 @@ jobs:
         run: node --test scripts/ci-workflow-regression.test.mjs
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.4.4"
 
       - name: Cache Bun dependencies
-        uses: actions/cache@v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
@@ -201,7 +207,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: ${{ matrix.task == 'docs' && '0' || '1' }}
@@ -212,13 +218,13 @@ jobs:
 
       - name: Setup Bun
         if: ${{ matrix.task == 'docs' || matrix.task == 'frontend-e2e' || matrix.task == 'server' }}
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.4.4"
 
       - name: Cache Bun dependencies
         if: ${{ matrix.task == 'frontend-e2e' || matrix.task == 'server' }}
-        uses: actions/cache@v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
@@ -407,7 +413,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 

@@ -107,11 +107,14 @@ jobs:
         with:
           bun-version: "1.4.4"
 
+      # Every attempt, because "Re-run failed jobs" does not run the passed shards again:
+      # their reports stay in the earlier attempt. merge-reports.ts judges each shard by its
+      # newest attempt.
       - name: Download driver reports
         if: ${{ needs.pull-request-web.result == 'success' }}
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: parity-pull_request-*-attempt-${{ github.run_attempt }}
+          pattern: parity-pull_request-*
           path: parity-reports
 
       - name: Validate merged driver reports
@@ -130,6 +133,8 @@ jobs:
       shard: ${{ matrix.shard }}
       shards: 4
       coverage: true
+      # The four shards and the spike job build the same instrumented binary.
+      save-cache: ${{ matrix.shard == 0 }}
       exclude: settings-diagnostics.topology-spike-harness
 
   main-spike:
@@ -140,6 +145,7 @@ jobs:
       shard: 0
       shards: 1
       coverage: true
+      save-cache: false
       prefix: settings-diagnostics.topology-spike-harness
 
   # The main shards build an instrumented binary, so this seeds the uninstrumented build

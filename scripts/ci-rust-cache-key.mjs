@@ -20,8 +20,12 @@ const digest = (...parts) => createHash("sha256").update(parts.join("\n")).diges
 
 const toolchain = digest(capture("rustc", ["-Vv"]));
 const scripts = ["scripts/ci-rust-cache-key.mjs", "scripts/ci-mbx-cargo.mjs"];
+// Each pathspec that names files must match some. The scripts always match, so a check of
+// the combined listing would pass a mistyped pathspec and key the cache without that input.
+for (const pathspec of pathspecs) {
+  if (!pathspec.startsWith(":!") && !capture("git", ["ls-files", "--", pathspec])) throw new Error(`No tracked file matches: ${pathspec}`);
+}
 const inputs = capture("git", ["ls-files", "--stage", "--", ...scripts, ...pathspecs]);
-if (!inputs) throw new Error(`No tracked file matches: ${pathspecs.join(" ")}`);
 
 // The prefix keeps the compiler, so a toolchain update does not download a cache it cannot use.
 const prefix = `mbx-${name}-${toolchain}-`;
