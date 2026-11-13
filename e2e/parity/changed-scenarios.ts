@@ -21,6 +21,9 @@ const FULL_SUITE = [
 	/^\.github\/workflows\/parity[^/]*\.yml$/,
 	// GPUI fixture consumers are not attributed to individual mock calls.
 	/^src\/lib\/(tauri-dev-mock[^/]*|mcp-dev-mocks)\.ts$/,
+	// Files the native crates embed, such as fonts, icons and configuration. The map lists
+	// only what cargo's dep-info names, and it has no line coverage for any of them.
+	/^src-tauri\/(?!server\/)(?!.*\.(rs|md)$)/,
 ];
 const SCENARIO_FILE = /^e2e\/parity\/scenarios\/[^/]+\.json$/;
 // A line that is only comment text: code after a closing `*/` makes it a code line.
@@ -30,9 +33,12 @@ const DECLARED = /\b(?:const|static|struct|enum|union|type|trait)\s+(?:mut\s+)?(
 // Git's hunk header names the enclosing item. An `impl` header says only which type a method
 // belongs to, so it names no changed item.
 const DECLARED_CONTEXT = /\b(?:const|static|struct|enum|union|type|trait)\s+(?:mut\s+)?([A-Za-z_]\w*)/g;
-// Rust lines outside functions that change nothing by themselves: comments, blank lines,
-// braces, and `use` and `mod` declarations (a change reaches behavior through code that uses it).
+// Rust lines outside functions that have no coverage count of their own: comments, blank lines,
+// braces, and `use` and `mod` declarations. IMPORT handles a change to the last two.
 const SKIPPED = new RegExp(`^\\s*(${COMMENT_LINE}|[{}()[\\];,]*|(pub(\\([^)]*\\))?\\s+)?(use|mod)\\s.*)$`);
+// A changed `use` or `mod` line can give a name another meaning in every item of the file.
+const IMPORT = /^\s*(pub(\([^)]*\))?\s+)?(use|mod|extern\s+crate)\s/;
+const REEXPORT = /^\s*pub(\([^)]*\))?\s+(use|mod)\s/;
 
 type Hunk = { oldStart: number; oldCount: number; newStart: number; newCount: number; context: string; removed: string[]; added: string[] };
 type FileDiff = { oldPath?: string; newPath?: string; hunks: Hunk[]; binary: boolean };
@@ -180,6 +186,16 @@ async function selectFile(diff: FileDiff, map: CoverageMap, compiled: Set<string
 	};
 	const declared: string[] = [];
 	let outside = false;
+	if (rust) {
+		const imports = diff.hunks.filter((hunk) => [...hunk.removed, ...hunk.added].some((line) => IMPORT.test(line)));
+		// Other files reach a re-exported name through this one, so a removed or replaced
+		// re-export can change code that this file's coverage says nothing about.
+		if (imports.some((hunk) => hunk.removed.some((line) => REEXPORT.test(line)))) return `${path} changed a re-export, which other files can name`;
+		if (imports.length) {
+			if (!record) return `${path} changed its imports and has no recorded coverage`;
+			pick(record.loaded, `${path} (imports)`);
+		}
+	}
 	for (const hunk of diff.hunks) {
 		const commentOnly = [...hunk.removed, ...hunk.added].every((line) => COMMENT.test(line));
 		if (commentOnly && /\.(rs|ts|js|mjs)$/.test(path)) continue;

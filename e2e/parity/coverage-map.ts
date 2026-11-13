@@ -148,6 +148,11 @@ export async function readMap(path: string): Promise<CoverageMap> {
 	if (map.version !== 1 || String(map.commit) !== map.commit || !Array.isArray(map.scenarios) || !Array.isArray(map.sets) || Object(map.files) !== map.files) {
 		throw new Error(`${path} is not a version 1 parity coverage map`);
 	}
+	// A reference past the end would read as "no scenario ran this", which selects nothing.
+	const within = (index: number, length: number) => Number.isInteger(index) && index >= 0 && index < length;
+	const dangling = map.sets.some((set) => !Array.isArray(set) || set.some((index) => !within(index, map.scenarios.length)))
+		|| Object.values(map.files).some((file) => ![file.loaded, file.active, ...triples(file.lines ?? []).map(([set]) => set), ...triples(file.functions ?? []).map(([set]) => set)].every((set) => within(set, map.sets.length)));
+	if (dangling) throw new Error(`${path} refers to a scenario or scenario set it does not define`);
 	return map;
 }
 

@@ -63,7 +63,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: bun e2e/parity/ci-selection.ts
 
+      # A selection counts only when this job succeeds: the jobs below ignore the outputs of
+      # a failed one and run the full suite. A failed upload does not cost that.
       - name: Upload selection
+        continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: pr-parity-selection-attempt-${{ github.run_attempt }}
@@ -73,25 +76,25 @@ jobs:
   pull-request-web:
     name: Parity web (pull request)
     needs: pull-request-selection
-    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.pull-request-selection.result != 'skipped' && needs.pull-request-selection.outputs.regular != 'false' }}
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.pull-request-selection.result != 'skipped' && (needs.pull-request-selection.result != 'success' || needs.pull-request-selection.outputs.regular != 'false') }}
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.pull-request-selection.outputs.web-matrix || '{"shard":[0,1,2,3]}') }}
+      matrix: ${{ fromJSON(needs.pull-request-selection.result == 'success' && needs.pull-request-selection.outputs.web-matrix || '{"shard":[0,1,2,3]}') }}
     uses: ./.github/workflows/parity-suite.yml
     # Pull request jobs restore main's caches and save none, so every pull request also
     # exercises the read-only cache access that the main shards below depend on.
     cache-mode: read
     with:
       shard: ${{ matrix.shard }}
-      shards: ${{ fromJSON(needs.pull-request-selection.outputs.web-shards || '4') }}
+      shards: ${{ fromJSON(needs.pull-request-selection.result == 'success' && needs.pull-request-selection.outputs.web-shards || '4') }}
       driver: web
       exclude: settings-diagnostics.topology-spike-harness
-      scenarios: ${{ needs.pull-request-selection.outputs.ids }}
+      scenarios: ${{ needs.pull-request-selection.result == 'success' && needs.pull-request-selection.outputs.ids || '' }}
 
   pull-request-spike:
     name: Parity (pull request)
     needs: pull-request-selection
-    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.pull-request-selection.result != 'skipped' && needs.pull-request-selection.outputs.spike != 'false' }}
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.pull-request-selection.result != 'skipped' && (needs.pull-request-selection.result != 'success' || needs.pull-request-selection.outputs.spike != 'false') }}
     strategy:
       fail-fast: false
       matrix:
@@ -103,25 +106,25 @@ jobs:
       shards: 1
       driver: ${{ matrix.driver }}
       prefix: settings-diagnostics.topology-spike-harness
-      scenarios: ${{ needs.pull-request-selection.outputs.ids }}
+      scenarios: ${{ needs.pull-request-selection.result == 'success' && needs.pull-request-selection.outputs.ids || '' }}
 
   # With two shards a warm GPUI job took 326 to 359 s: about 100 s to build the test and
   # 150 s of scenarios (run 43322953853). A third shard shortens the scenario share.
   pull-request-gpui:
     name: Parity GPUI (pull request)
     needs: pull-request-selection
-    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.pull-request-selection.result != 'skipped' && needs.pull-request-selection.outputs.regular != 'false' }}
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.pull-request-selection.result != 'skipped' && (needs.pull-request-selection.result != 'success' || needs.pull-request-selection.outputs.regular != 'false') }}
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.pull-request-selection.outputs.gpui-matrix || '{"shard":[0,1,2]}') }}
+      matrix: ${{ fromJSON(needs.pull-request-selection.result == 'success' && needs.pull-request-selection.outputs.gpui-matrix || '{"shard":[0,1,2]}') }}
     uses: ./.github/workflows/parity-suite.yml
     cache-mode: read
     with:
       shard: ${{ matrix.shard }}
-      shards: ${{ fromJSON(needs.pull-request-selection.outputs.gpui-shards || '3') }}
+      shards: ${{ fromJSON(needs.pull-request-selection.result == 'success' && needs.pull-request-selection.outputs.gpui-shards || '3') }}
       driver: gpui
       exclude: settings-diagnostics.topology-spike-harness
-      scenarios: ${{ needs.pull-request-selection.outputs.ids }}
+      scenarios: ${{ needs.pull-request-selection.result == 'success' && needs.pull-request-selection.outputs.ids || '' }}
 
   # Advisory check with a stable name; validates only the declared selection.
   # Release PRs pass only when the parity jobs were deliberately skipped, as in ci.yml.
@@ -141,8 +144,8 @@ jobs:
           WEB_RESULT: ${{ needs.pull-request-web.result }}
           GPUI_RESULT: ${{ needs.pull-request-gpui.result }}
           SPIKE_RESULT: ${{ needs.pull-request-spike.result }}
-          REGULAR_SELECTED: ${{ needs.pull-request-selection.outputs.regular }}
-          SPIKE_SELECTED: ${{ needs.pull-request-selection.outputs.spike }}
+          REGULAR_SELECTED: ${{ needs.pull-request-selection.result == 'success' && needs.pull-request-selection.outputs.regular || '' }}
+          SPIKE_SELECTED: ${{ needs.pull-request-selection.result == 'success' && needs.pull-request-selection.outputs.spike || '' }}
           RELEASE_PR: ${{ github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release/app-v') && contains(github.event.pull_request.labels.*.name, 'release') }}
         run: |
           set -euo pipefail
@@ -180,9 +183,9 @@ jobs:
       - name: Validate merged driver reports
         if: ${{ needs.pull-request-selection.result != 'skipped' }}
         env:
-          PARITY_SCENARIOS: ${{ needs.pull-request-selection.outputs.ids }}
+          PARITY_SCENARIOS: ${{ needs.pull-request-selection.result == 'success' && needs.pull-request-selection.outputs.ids || '' }}
           PARITY_SELECTION_ATTEMPT: ${{ needs.pull-request-selection.outputs.attempt }}
-          PARITY_SELECTION_REASON: ${{ needs.pull-request-selection.outputs.reason || '"Selection planner failed; full suite"' }}
+          PARITY_SELECTION_REASON: ${{ needs.pull-request-selection.result == 'success' && needs.pull-request-selection.outputs.reason || '"Selection planner failed; full suite"' }}
         run: bun e2e/parity/merge-reports.ts parity-reports
 
   main:

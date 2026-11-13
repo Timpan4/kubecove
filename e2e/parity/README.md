@@ -61,7 +61,7 @@ A `PARITY_COVERAGE=1` run records which source lines each scenario executed and 
 
 Only scenarios that both drivers passed enter the map. `PARITY_CHANGED` diffs the merge base against the working tree and selects (`changed-scenarios.ts`):
 
-- the full suite when the map is missing, its commit is not in the clone, or a file changed that coverage cannot see: `package.json`, `bun.lock`, `Cargo.toml` and `Cargo.lock` files, `build.rs`, `vite.config.ts` and the scripts it imports, tsconfig files, `index.html`, `public/`, everything under `e2e/parity/` except scenario files and Markdown, `scripts/e2e-parity.ts` and the process helper it imports, `src-tauri/gpui/tests/parity.rs`, `tests/parity/` and `tests/common/`, the parity workflows, a non-Rust file the GPUI binary compiles in (such as an `include_bytes!` asset), or a non-code file under `src/` that no scenario loaded;
+- the full suite when the map is missing, its commit is not in the clone, or a file changed that coverage cannot see: `package.json`, `bun.lock`, `Cargo.toml` and `Cargo.lock` files, `build.rs`, `vite.config.ts` and the scripts it imports, tsconfig files, `index.html`, `public/`, everything under `e2e/parity/` except scenario files and Markdown, `scripts/e2e-parity.ts` and the process helper it imports, `src-tauri/gpui/tests/parity.rs`, `tests/parity/` and `tests/common/`, the parity workflows, any file under `src-tauri/` outside `server/` that is not Rust or Markdown (fonts, icons and configuration the native crates embed), a removed or replaced Rust re-export (`pub use`, `pub mod`), or a non-code file under `src/` that no scenario loaded;
 - every scenario in a changed scenario file, and every scenario the map does not hold;
 - for other files, the scenarios that executed the changed lines. Changed lines are translated to the map's commit first, so a map from an older main commit still applies.
 
@@ -69,7 +69,7 @@ Lines need care by file kind:
 
 - TypeScript: line level. A module's top-level code runs for every scenario that imports it, so changes there select all of those scenarios.
 - Svelte: line level inside `<script>`; a markup or style change selects the scenarios that rendered the component.
-- Rust: line level inside coverage regions. Changes outside them, such as constants, types and imports, select the scenarios that executed any code in that file or in a file naming a changed item.
+- Rust: line level inside coverage regions. Changes outside them, such as constants and types, select the scenarios that executed any code in that file or in a file naming a changed item. A changed `use` or `mod` line selects every scenario that executed code in that file, because it can give a name another meaning there.
 - Comment-only and blank-line changes in Rust and TypeScript select nothing.
 
 Mock data (`src/lib/tauri-dev-mock*.ts`, `src/lib/mcp-dev-mocks.ts`) and the fixture exporter select the full suite. The GPUI driver reads the exported fixture, which runs every mock at once. Web coverage cannot prove which GPUI scenarios consume a response that their web runs never request.

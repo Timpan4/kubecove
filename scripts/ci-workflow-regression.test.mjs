@@ -513,19 +513,51 @@ test("parity jobs select pull request scenarios and preserve full main coverage"
     assert.equal(enabled("pull-request-gpui", outputs), regular === "true");
     assert.equal(enabled("pull-request-spike", outputs), spike === "true");
   }
+  // The value a job reads for `key`, evaluated from the workflow's own expression.
+  const value = (text, key, outputs, result = "success") => {
+    const expression = new RegExp(`^ +${key}: \\$\\{\\{ (.+) \\}\\}$`, "m").exec(text)[1].replaceAll("needs.pull-request-selection", "needs.selection").replaceAll(/outputs\.([\w-]+)/g, 'outputs["$1"]');
+    return new Function("needs", "fromJSON", `return (${expression});`)({ selection: { result, outputs } }, JSON.parse);
+  };
+  // Failure mode: a planner job that fails after writing its outputs, such as an empty
+  // selection, must not decide anything. Every reader falls back to the full suite.
+  const empty = { ids: "[]", regular: "false", spike: "false", "web-shards": "0", "gpui-shards": "0", "web-matrix": '{"shard":[0]}', "gpui-matrix": '{"shard":[0]}', reason: '"Nothing"' };
   for (const name of ["pull-request-web", "pull-request-gpui", "pull-request-spike"]) {
     assert.equal(enabled(name, {}, "failure"), true, "planner failure runs full suite");
+    for (const outcome of ["failure", "cancelled"]) assert.equal(enabled(name, empty, outcome), true, `a ${outcome} planner's outputs are ignored`);
     assert.equal(enabled(name, {}, "skipped"), false, "release PR stays skipped");
     assert.equal(enabled(name, {}, "success", "push"), false, "main graph stays separate");
-    assert.match(job(name, parity), /^ {6}scenarios: \$\{\{ needs.pull-request-selection.outputs.ids \}\}$/m);
+    assert.equal(value(job(name, parity), "scenarios", { ids: '["one"]' }), '["one"]');
+    assert.equal(value(job(name, parity), "scenarios", empty), "[]");
+    assert.equal(value(job(name, parity), "scenarios", {}), "");
+    assert.equal(value(job(name, parity), "scenarios", empty, "failure"), "");
   }
   for (const [name, driver, count] of [["pull-request-web", "web", 4], ["pull-request-gpui", "gpui", 3]]) {
     const text = job(name, parity);
-    assert.ok(text.includes(`matrix: \${{ fromJSON(needs.pull-request-selection.outputs.${driver}-matrix || '{"shard":[${Array.from({ length: count }, (_, index) => index).join(",")}]}') }}`));
-    assert.ok(text.includes(`shards: \${{ fromJSON(needs.pull-request-selection.outputs.${driver}-shards || '${count}') }}`));
+    const full = { shard: Array.from({ length: count }, (_, index) => index) };
+    const partial = { [`${driver}-matrix`]: '{"shard":[0,1]}', [`${driver}-shards`]: "2" };
+    assert.deepEqual([value(text, "matrix", partial), value(text, "shards", partial)], [{ shard: [0, 1] }, 2]);
+    for (const [outputs, outcome] of [[{}, "success"], [{}, "failure"], [empty, "failure"], [partial, "cancelled"]]) {
+      assert.deepEqual([value(text, "matrix", outputs, outcome), value(text, "shards", outputs, outcome)], [full, count]);
+    }
     assert.match(text, new RegExp(`^ {6}driver: ${driver}$`, "m"));
     assert.match(text, /^ {6}exclude: settings-diagnostics.topology-spike-harness$/m);
   }
+  // The gate and the report check read the same guarded values, so a failed planner with an
+  // empty selection and skipped drivers fails the gate.
+  const guarded = (outputs, outcome) => ({ REGULAR_SELECTED: value(result, "REGULAR_SELECTED", outputs, outcome), SPIKE_SELECTED: value(result, "SPIKE_SELECTED", outputs, outcome) });
+  assert.deepEqual(guarded(empty, "success"), { REGULAR_SELECTED: "false", SPIKE_SELECTED: "false" });
+  assert.deepEqual(guarded(empty, "failure"), { REGULAR_SELECTED: "", SPIKE_SELECTED: "" });
+  assert.equal(verify({ ...guarded(empty, "success"), WEB_RESULT: "skipped", GPUI_RESULT: "skipped", SPIKE_RESULT: "skipped" }), 0);
+  assert.notEqual(verify({ ...guarded(empty, "failure"), WEB_RESULT: "skipped", GPUI_RESULT: "skipped", SPIKE_RESULT: "skipped" }), 0);
+  assert.equal(value(result, "PARITY_SCENARIOS", empty), "[]");
+  assert.equal(value(result, "PARITY_SCENARIOS", empty, "failure"), "");
+  assert.equal(value(result, "PARITY_SELECTION_REASON", empty), '"Nothing"');
+  assert.equal(value(result, "PARITY_SELECTION_REASON", empty, "failure"), '"Selection planner failed; full suite"');
+  // Failure mode: the report check stops running, and job results alone pass the gate.
+  const validate = result.slice(result.indexOf("      - name: Validate merged driver reports\n"));
+  assert.match(validate, /^ {6}- name: Validate merged driver reports\n {8}if: \$\{\{ needs.pull-request-selection.result != 'skipped' \}\}\n {8}env:$/m);
+  assert.match(validate, /^ {8}run: bun e2e\/parity\/merge-reports\.ts parity-reports$/m);
+  assert.match(selection, /^ {6}- name: Upload selection\n {8}continue-on-error: true$/m);
   assert.match(job("pull-request-spike", parity), /^ {8}driver: \[web, gpui\]$/m);
   assert.match(job("pull-request-spike", parity), /^ {6}prefix: settings-diagnostics.topology-spike-harness$/m);
   const main = job("main", parity);
@@ -543,8 +575,6 @@ test("parity jobs select pull request scenarios and preserve full main coverage"
   assert.equal(runners(4, ""), "1 3");
   assert.equal(runners(1, ""), "1 1");
   assert.match(result, /^ {10}pattern: parity-pull_request-\*$/m);
-  assert.match(result, /PARITY_SCENARIOS: \$\{\{ needs.pull-request-selection.outputs.ids \}\}/);
-  assert.match(result, /PARITY_SELECTION_REASON:/);
   assert.match(result, /PARITY_SELECTION_ATTEMPT: \$\{\{ needs.pull-request-selection.outputs.attempt \}\}/);
   assert.match(result, /run: bun e2e\/parity\/merge-reports\.ts parity-reports/);
   assert.ok(result.includes("if: ${{ needs.pull-request-web.result == 'success' || needs.pull-request-spike.result == 'success' }}"));
