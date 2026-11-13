@@ -27,14 +27,13 @@ fn identity(row: &ResourceSummary) -> String {
         row.cluster
     )
 }
-fn cell(width: f32, content: impl IntoElement) -> Div {
-    div()
+fn cell(width: f32, content: Div) -> Div {
+    content
         .w(px(width))
         .flex_none()
         .px(px(8.))
         .py(px(8.))
         .min_w_0()
-        .child(content)
 }
 impl Inspector {
     pub(super) fn overview_problem_table(
@@ -378,7 +377,7 @@ impl Inspector {
                 width * 0.11,
                 ui::xs(cause.restarts.unwrap_or(0).to_string()).text_right(),
             ))
-            .child(cell(width * 0.13, app_cell))
+            .child(cell(width * 0.13, div().child(app_cell)))
     }
     pub(super) fn overview_namespaces(
         &self,
