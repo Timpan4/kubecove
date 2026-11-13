@@ -139,7 +139,7 @@ for (const verb of ["get", "list", "watch", "create", "update", "patch", "delete
 	catch (error) { rbacReviews.push({ verb, error: error instanceof Error ? error.message : String(error) }); }
 }
 const sessionControls = await exportSessionControls(client, resources);
-const argoConnected = await exportArgo(client, gitops.applications);
+const argoConnected = await exportArgo(client, gitops.applications, gitops.manyApplications);
 const coverage = await exportCoverage(client, { helm: helm.list, rbac: rbac[clusterContext ?? "mock-dev"], incidents, topology: rustTopology, sessions: liveSessions });
 const logCases = await exportCoverageLogs(client);
 // Page reads keep each command's response shape; GitOps lists are versioned lists.

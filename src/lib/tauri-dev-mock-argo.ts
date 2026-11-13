@@ -307,7 +307,8 @@ export function argoApplicationSummary(name: string): ResourceSummary | undefine
 			plural: "applications",
 			namespaced: true,
 			dynamic: true,
-			health: "healthy",
+			health: application.healthStatus === "Degraded" ? "degraded" : "healthy",
+			healthAssessment: application.healthAssessment,
 			createdAt: application.createdAt,
 		};
 		if (application.syncStatus) summary.status = application.syncStatus;

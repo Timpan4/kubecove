@@ -281,7 +281,10 @@ impl Fixture {
                     && detail.summary.namespace == resource.namespace
             })
             .cloned()
-            .or_else(|| self.gitops.application_details(&resource));
+            .or_else(|| {
+                self.gitops
+                    .application_details(&resource, &self.argo.inventory_mode.lock().unwrap())
+            });
         // Named after the command the native and web clients call for this resource.
         let command = if resource.dynamic == Some(true) {
             "get_dynamic_resource_details"

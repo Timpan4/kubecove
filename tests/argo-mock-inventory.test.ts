@@ -12,6 +12,7 @@ test("every generated inventory Application retains its identity and health in d
 			expect(inspector.application.uid).toBe(`mock-${app.name}`);
 			expect(inspector.status.health.status).toBe(app.healthStatus);
 			expect(argoApplicationSummary(app.name)?.name).toBe(app.name);
+			expect(argoApplicationSummary(app.name)?.healthAssessment).toEqual(app.healthAssessment);
 		}
 	} finally {
 		configureArgoInventory("base");

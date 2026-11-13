@@ -1,5 +1,13 @@
 use super::*;
 
+fn tab_id(label: &str) -> String {
+    if label == "Argo CD" {
+        "show-argo".into()
+    } else {
+        format!("show-{}", label.to_lowercase())
+    }
+}
+
 pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) -> bool {
     match string(step, "action") {
         "expectYamlAbsent" => {
@@ -113,7 +121,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             )
         ),
         "expectDetailTab" => {
-            let id = format!("show-{}", string(step, "tab").to_lowercase());
+            let id = tab_id(string(step, "tab"));
             assert_eq!(window.find(id).selected(), Some(true));
         }
         "expectClusterResource" => {
@@ -148,7 +156,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             assert_eq!(window.find("search").value(), Some(string(step, "value")))
         }
         "openPage" => window.click(format!("nav:{}", string(step, "page")), cx),
-        "showTab" => window.click(format!("show-{}", string(step, "tab").to_lowercase()), cx),
+        "showTab" => window.click(tab_id(string(step, "tab")), cx),
         "filterEvents" => {
             let id = match string(step, "filter") {
                 "All" => "events-filter-all",

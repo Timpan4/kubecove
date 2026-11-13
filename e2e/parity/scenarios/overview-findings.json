@@ -3,6 +3,34 @@
   "context": "mock-dev",
   "scenarios": [
     {
+      "id": "overview.generated-application-details",
+      "title": "Generated troubled Applications load exact details and health on both pages",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "configureArgoInventory", "mode": "many" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "coverageClick", "label": "Inspect Application overview-application-000 in argocd" },
+        { "action": "expectDetail", "kind": "Application", "namespace": "argocd", "name": "overview-application-000" },
+        { "action": "toggleDetailDisclosure", "label": "Health evidence" },
+        { "action": "expectPageText", "text": "Argo CD health: Degraded \u2014 Mock argoHealth state is Degraded" },
+        { "action": "showTab", "tab": "Argo CD" },
+        { "action": "expectArgoApplication", "name": "overview-application-000", "health": "Degraded", "sync": "OutOfSync" },
+        { "action": "showYaml" },
+        { "action": "expectYaml", "contains": ["name: overview-application-000"] },
+        { "action": "closeDetail" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "coverageClick", "label": "Next applications" },
+        { "action": "coverageClick", "label": "Inspect Application overview-application-050 in argocd" },
+        { "action": "expectDetail", "kind": "Application", "namespace": "argocd", "name": "overview-application-050" },
+        { "action": "toggleDetailDisclosure", "label": "Health evidence" },
+        { "action": "expectPageText", "text": "Argo CD health: Degraded \u2014 Mock argoHealth state is Degraded" },
+        { "action": "showTab", "tab": "Argo CD" },
+        { "action": "expectArgoApplication", "name": "overview-application-050", "health": "Degraded", "sync": "OutOfSync" },
+        { "action": "showYaml" },
+        { "action": "expectYaml", "contains": ["name: overview-application-050"] }
+      ]
+    },
+    {
       "id": "overview.gitops-application-pages",
       "title": "Troubled applications remain reachable across pages",
       "steps": [

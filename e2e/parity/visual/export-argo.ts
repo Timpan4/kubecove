@@ -1,11 +1,11 @@
 import { applicationSpecFromYaml } from "../../../src/features/gitops/argo-application-yaml";
 import { argoProfileId } from "../../../src/features/gitops/argo-connection";
 import type { TauriClient } from "../../../src/lib/tauri";
-import { configureArgoMock } from "../../../src/lib/tauri-dev-mock-argo";
+import { configureArgoInventory, configureArgoMock } from "../../../src/lib/tauri-dev-mock-argo";
 import type { ArgoApplicationInspector, ArgoApplicationRef, ArgoConnectionStatus, ArgoOperationRequest, JsonObject, JsonValue, ResourceDetailsFull } from "../../../src/lib/types";
 
 /** Exact native requests from the same mock command implementation as web. */
-export async function exportArgo(client: TauriClient, applications: { details: ResourceDetailsFull }[]) {
+export async function exportArgo(client: TauriClient, applications: { details: ResourceDetailsFull }[], manyApplications: { details: ResourceDetailsFull }[]) {
     const url = "https://argocd.example.test";
     const source = await client.invoke<{ sourceKey: string }>("get_kubeconfig_sources");
     const scope = { workspaceId: "native-session", clusterContext: "mock-dev", kubeconfigSourceKey: source.sourceKey };
@@ -53,39 +53,46 @@ export async function exportArgo(client: TauriClient, applications: { details: R
     const inspections = [];
     const comparisons = [];
     const operations = [];
-    for (const { details } of applications) {
-        for (const workspaceId of ["native-session", "1"]) {
-            const application: ArgoApplicationRef = { name: details.summary.name, namespace: details.summary.namespace ?? null, project: null, resourceVersion: null, uid: null, apiVersion: details.summary.apiVersion ?? null, context: "mock-dev", workspaceId };
-            const ids = connectionIds(workspaceId);
-            for (const connectionId of [null, ids.profile, ids.tunnel]) {
-                const transport = connectionId ? "connected" : "kubernetes";
-                const result = await client.invoke<ArgoApplicationInspector>("get_argo_application_inspector", { clusterContext: "mock-dev", application, transport, connectionId });
-                configureArgoMock("full-diff");
-                const full = await client.invoke<ArgoApplicationInspector>("get_argo_application_inspector", { clusterContext: "mock-dev", application, transport, connectionId });
-                configureArgoMock("base");
-                inspections.push({ request: { application, connectionId, source: connected.profile?.kubeconfigSourceKey }, result, full });
-                inspections.push({ request: { application: result.application, connectionId, source: connected.profile?.kubeconfigSourceKey }, result, full });
-                if (connectionId) for (const resource of result.resources) {
-                    const selected = { ...resource, targetState: null, liveState: null };
-                    comparisons.push({ request: { inspection: { application: result.application, connectionId, source: connected.profile?.kubeconfigSourceKey }, resource: selected }, result: await client.invoke("get_argo_resource_comparison", { clusterContext: "mock-dev", application: result.application, connectionId, transport: "connected", resource: selected }) });
-                }
-                if (application.name !== "tenant-ledger") continue;
-                for (const action of ["refresh", "hardRefresh", "sync", "rollback"] as const) {
-                    const request: ArgoOperationRequest = { connectionId, transport, application: result.application, action, revision: null, resources: [], prune: action === "sync" ? automatedPrune(applicationSpecFromYaml(details.yaml).syncPolicy) : null, dryRun: action === "sync" ? false : null, force: action === "sync" ? false : null, historyId: action === "rollback" ? 17 : null, resourceAction: null, resourceActionParameters: null, resourceVersion: "42", clusterContext: "mock-dev", kubeconfigEnvVar: connected.profile?.kubeconfigSourceKey ?? null, syncPayload: null };
-                    const review = await client.invoke("preflight_argo_operation", { request });
-                    operations.push({ request, review });
-                    if (action === "rollback") {
-                        const selected = { ...request, historyId: 18 };
-                        operations.push({ request: selected, review: await client.invoke("preflight_argo_operation", { request: selected }) });
-                    }
-                    if (action === "sync") {
-                        // Prune starts checked from the automated Application; configureArgoSync unchecks it and checks the other two.
-                        const advanced = { ...request, revision: "3d91a7b", prune: false, dryRun: true, force: true };
-                        operations.push({ request: advanced, review: await client.invoke("preflight_argo_operation", { request: advanced }) });
+    try {
+        for (const [mode, inventory] of [["base", applications], ["many", manyApplications]] as const) {
+            configureArgoInventory(mode);
+            for (const { details } of inventory) {
+                for (const workspaceId of ["native-session", "1"]) {
+                    const application: ArgoApplicationRef = { name: details.summary.name, namespace: details.summary.namespace ?? null, project: null, resourceVersion: null, uid: null, apiVersion: details.summary.apiVersion ?? null, context: "mock-dev", workspaceId };
+                    const ids = connectionIds(workspaceId);
+                    for (const connectionId of [null, ids.profile, ids.tunnel]) {
+                        const transport = connectionId ? "connected" : "kubernetes";
+                        const result = await client.invoke<ArgoApplicationInspector>("get_argo_application_inspector", { clusterContext: "mock-dev", application, transport, connectionId });
+                        configureArgoMock("full-diff");
+                        const full = await client.invoke<ArgoApplicationInspector>("get_argo_application_inspector", { clusterContext: "mock-dev", application, transport, connectionId });
+                        configureArgoMock("base");
+                        inspections.push({ request: { application, connectionId, source: connected.profile?.kubeconfigSourceKey }, result, full });
+                        inspections.push({ request: { application: result.application, connectionId, source: connected.profile?.kubeconfigSourceKey }, result, full });
+                        if (connectionId) for (const resource of result.resources) {
+                            const selected = { ...resource, targetState: null, liveState: null };
+                            comparisons.push({ request: { inspection: { application: result.application, connectionId, source: connected.profile?.kubeconfigSourceKey }, resource: selected }, result: await client.invoke("get_argo_resource_comparison", { clusterContext: "mock-dev", application: result.application, connectionId, transport: "connected", resource: selected }) });
+                        }
+                        if (application.name !== "tenant-ledger") continue;
+                        for (const action of ["refresh", "hardRefresh", "sync", "rollback"] as const) {
+                            const request: ArgoOperationRequest = { connectionId, transport, application: result.application, action, revision: null, resources: [], prune: action === "sync" ? automatedPrune(applicationSpecFromYaml(details.yaml).syncPolicy) : null, dryRun: action === "sync" ? false : null, force: action === "sync" ? false : null, historyId: action === "rollback" ? 17 : null, resourceAction: null, resourceActionParameters: null, resourceVersion: "42", clusterContext: "mock-dev", kubeconfigEnvVar: connected.profile?.kubeconfigSourceKey ?? null, syncPayload: null };
+                            const review = await client.invoke("preflight_argo_operation", { request });
+                            operations.push({ request, review });
+                            if (action === "rollback") {
+                                const selected = { ...request, historyId: 18 };
+                                operations.push({ request: selected, review: await client.invoke("preflight_argo_operation", { request: selected }) });
+                            }
+                            if (action === "sync") {
+                                // Prune starts checked from the automated Application; configureArgoSync unchecks it and checks the other two.
+                                const advanced = { ...request, revision: "3d91a7b", prune: false, dryRun: true, force: true };
+                                operations.push({ request: advanced, review: await client.invoke("preflight_argo_operation", { request: advanced }) });
+                            }
+                        }
                     }
                 }
             }
         }
+    } finally {
+        configureArgoInventory("base");
     }
     const confirmation = { sessionId: "mock-session", confirmation: "mock-session" };
     const result = await client.invoke("run_argo_operation", { confirmation });
