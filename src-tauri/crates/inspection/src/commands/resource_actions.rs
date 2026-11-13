@@ -99,6 +99,7 @@ pub async fn preview_resource_action(
         &resource_version,
     )
     .await?;
+    let controller = controller::action_controller(&request.target.kind, &current_value);
     Ok(ResourceActionPreview {
         target: request.target,
         effect,
@@ -108,6 +109,7 @@ pub async fn preview_resource_action(
         resource_version,
         revision_uid: revision_identity.as_ref().map(|(uid, _)| uid.clone()),
         revision_resource_version: revision_identity.map(|(_, version)| version),
+        controller,
     })
 }
 
@@ -679,6 +681,7 @@ fn complete_template_merge_patch(current: &Value, desired: &Value) -> Value {
     }
 }
 
+mod controller;
 mod state;
 use state::{
     access_review, action_identity, action_value, action_yaml,

@@ -147,4 +147,18 @@ pub struct ResourceActionPreview {
     pub revision_uid: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub revision_resource_version: Option<String>,
+    /// The controlling owner of the reviewed object, from `ownerReferences`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub controller: Option<ResourceActionController>,
+}
+
+/// The owner reference marked `controller: true`. `recreates` holds only for a
+/// built-in controller known to replace a deleted object of the target's kind,
+/// which lets a delete review skip the typed-name confirmation (ADR 0024).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceActionController {
+    pub kind: String,
+    pub name: String,
+    pub recreates: bool,
 }

@@ -92,4 +92,13 @@ export interface ResourceActionPreview {
 	resourceVersion: string;
 	revisionUid?: string;
 	revisionResourceVersion?: string;
+	/** The controlling owner of the reviewed object. */
+	controller?: ResourceActionController;
+}
+
+/** `recreates` holds only for a built-in controller that replaces a deleted object of the target's kind. */
+export interface ResourceActionController {
+	kind: string;
+	name: string;
+	recreates: boolean;
 }

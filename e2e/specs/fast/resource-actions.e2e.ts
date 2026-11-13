@@ -120,9 +120,9 @@ describe("resource Actions review", () => {
 		await $('[data-resource-action="delete"]').$("button=Delete").click();
 		const review = await $('[role="dialog"]');
 		await expect(review.$('input[aria-label="Type resource name to confirm"]')).toBeDisplayed();
-		await expect(review.$("button=Delete")).toBeDisabled();
+		await expect(review.$("button=Delete Deployment")).toBeDisabled();
 		await review.$('input[aria-label="Type resource name to confirm"]').setValue("payments-api");
-		await expect(review.$("button=Delete")).toBeEnabled();
+		await expect(review.$("button=Delete Deployment")).toBeEnabled();
 	});
 
 	it("keeps a failed dry run in review without an execution action", async () => {

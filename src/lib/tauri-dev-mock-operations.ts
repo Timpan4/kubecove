@@ -139,6 +139,7 @@ function resourceActionPreview(request: ResourceActionRequest): ResourceActionPr
 	const after = applyMockAction(cloneMock(before), request);
 	const target = actionTarget(request);
 	const revision = request.action === "rollback" ? mockRevisionIdentity(request) : undefined;
+	const controller = mockReplicaSetOwner(request);
 	return {
 		target,
 		effect: `${request.action} ${operationLabel(request)}`,
@@ -150,7 +151,14 @@ function resourceActionPreview(request: ResourceActionRequest): ResourceActionPr
 			revisionUid: revision.uid,
 			revisionResourceVersion: revision.resourceVersion,
 		}),
+		...(controller && { controller: { kind: "ReplicaSet", name: controller, recreates: true } }),
 	};
+}
+
+/** A mock Pod named like a ReplicaSet replica, `<replicaset>-<suffix>`, is controlled by that ReplicaSet. */
+function mockReplicaSetOwner(request: ResourceActionRequest): string | undefined {
+	if (request.kind !== "Pod") return undefined;
+	return /^(.+-[a-z0-9]{9,10})-[a-z0-9]{5}$/.exec(request.name)?.[1];
 }
 
 function resourceActionResult(request: ResourceActionRequest): ClusterOperationResult {

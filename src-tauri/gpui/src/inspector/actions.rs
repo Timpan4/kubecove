@@ -4,6 +4,7 @@
 //! exported here and the `Inspector` methods the family marks
 //! `pub(in crate::inspector)`.
 
+mod delete_review;
 mod drafts;
 mod editor_view;
 mod editors;

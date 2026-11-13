@@ -36,7 +36,7 @@ export type ResourceActionReviewStatus = "checking" | "ready" | "executing" | "f
 
 export interface ResourceActionReview {
 	action: ResourceActionId;
-	/** The exact resource name; deletion is confirmed by typing it. */
+	/** The exact resource name; a delete that nothing recreates is confirmed by typing it. */
 	name: string;
 	status: ResourceActionReviewStatus;
 	/** False while a skipped review runs inline. */
@@ -103,12 +103,17 @@ const IDLE: ResourceActionSessionState = {
 	result: null,
 };
 
+/** A delete needs the typed name unless a built-in controller recreates the object (ADR 0024). */
+export function needsTypedName(view: Pick<ResourceActionReview, "action" | "preview">): boolean {
+	return view.action === "delete" && view.preview?.controller?.recreates !== true;
+}
+
 function canExecute(view: ResourceActionReview): boolean {
 	return (
 		view.status === "ready" &&
 		view.preview !== null &&
 		view.error === null &&
-		(view.action !== "delete" || view.confirmation === view.name)
+		(!needsTypedName(view) || view.confirmation === view.name)
 	);
 }
 

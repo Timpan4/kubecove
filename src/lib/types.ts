@@ -89,6 +89,7 @@ export type {
 	ClusterOperationResult,
 	ClusterOperationTarget,
 	ResourceActionContainer,
+	ResourceActionController,
 	ResourceActionEdits,
 	ResourceActionKind,
 	ResourceActionPermission,

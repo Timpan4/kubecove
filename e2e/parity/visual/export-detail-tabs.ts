@@ -91,6 +91,12 @@ export async function exportDetailTabs(client: TauriClient, resources: ResourceS
 		}
 		if (request.action !== "delete") await review({ ...target(focus), action: "delete", confirmed: false });
 	}
+	// `actions.delete-recreated-pod` deletes a Pod that its ReplicaSet recreates.
+	const replica = resources.find((row) => row.cluster === focus.cluster && row.kind === "Pod" && row.name === "payments-api-7d9c9b7f8d-k2r9p");
+	if (!replica) throw new Error("The browser mock has no ReplicaSet Pod payments-api-7d9c9b7f8d-k2r9p");
+	const podDelete = await review({ ...target(replica), action: "delete", confirmed: false });
+	previews.push({ request: { ...target(replica), action: "delete", confirmed: false }, preview: podDelete.preview });
+	executions.push({ request: podDelete.confirmed, result: podDelete.result });
 	// Multi-context scenarios review the replica edit of the same Deployment in another context.
 	const sameObject = (row: ResourceSummary) => row.cluster !== focus.cluster && row.kind === focus.kind && row.name === focus.name && row.namespace === focus.namespace;
 	for (const row of resources.filter(sameObject)) {
