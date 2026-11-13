@@ -8,8 +8,8 @@ use serde_json::Value;
 
 /// Built-in controllers that replace a deleted object, by target kind:
 /// (target kind, owner API group, owner kind). The core group is "".
-/// A Deployment is left out for ReplicaSets: it recreates only the ReplicaSet
-/// of its current template, so deleting an older one loses that revision.
+/// A `Deployment` is left out for `ReplicaSet` targets: it recreates only the
+/// `ReplicaSet` of its current template, so deleting an older one loses that revision.
 const RECREATING_OWNERS: &[(&str, &str, &str)] = &[
     ("Pod", "apps", "ReplicaSet"),
     ("Pod", "apps", "StatefulSet"),
