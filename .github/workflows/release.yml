@@ -185,6 +185,8 @@ jobs:
     if: ${{ !inputs.gpui-dry-run }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
     strategy:
       fail-fast: false
       matrix:
@@ -225,20 +227,22 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
+      # The key, the cache settings and CARGO_PROFILE_DEV_DEBUG match e2e.yml, whose push job
+      # saves this cache on main. A tag run restores it and never saves.
+      - name: Key the Rust cache by its inputs
+        id: rust-cache
+        run: node scripts/ci-rust-cache-key.mjs e2e .github/workflows/e2e.yml e2e/lifecycle.ts src-tauri ':!src-tauri/gpui'
+
       - name: Setup Mr Boxington
         uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
         with:
-          version: "1.29.2"
+          version: "1.30.0"
           working-directory: src-tauri
-          cache-generation: kubecove-e2e
-
-      - name: Cache headless E2E builds
-        if: runner.os != 'Windows'
-        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
-        with:
-          version: "1.29.2"
-          working-directory: src-tauri/server
-          cache-generation: kubecove-server-e2e
+          cache-key: ${{ steps.rust-cache.outputs.key }}
+          restore-keys: ${{ steps.rust-cache.outputs.prefix }}
+          github-cache-mode: objects
+          isolate-objects-cache: true
+          clean-target-before-export: true
 
       - name: Activate Cargo caching
         run: node scripts/ci-mbx-cargo.mjs

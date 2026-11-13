@@ -21,6 +21,10 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      # As in ci.yml: no step reads full debug information, and line tables shrink the
+      # compiler output this job links, caches and restores.
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
 
     steps:
       - name: Checkout
@@ -59,20 +63,25 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
+      # One cache holds the desktop and the headless server build: the objects payload carries
+      # what every Cargo step compiled, whichever target directory it built in. The target
+      # payload this replaces saved nothing, because Cargo 1.100 keeps unit state under build/
+      # (ci.yml has the details). Every Linux E2E job here and in release.yml uses this key,
+      # and only the job that runs on pushes to main saves it.
+      - name: Key the Rust cache by its inputs
+        id: rust-cache
+        run: node scripts/ci-rust-cache-key.mjs e2e .github/workflows/e2e.yml e2e/lifecycle.ts src-tauri ':!src-tauri/gpui'
+
       - name: Setup Mr Boxington
         uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
         with:
-          version: "1.29.2"
+          version: "1.30.0"
           working-directory: src-tauri
-          cache-generation: kubecove-e2e
-
-      - name: Cache headless E2E builds
-        if: runner.os != 'Windows'
-        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
-        with:
-          version: "1.29.2"
-          working-directory: src-tauri/server
-          cache-generation: kubecove-server-e2e
+          cache-key: ${{ steps.rust-cache.outputs.key }}
+          restore-keys: ${{ steps.rust-cache.outputs.prefix }}
+          github-cache-mode: objects
+          isolate-objects-cache: true
+          clean-target-before-export: true
 
       - name: Activate Cargo caching
         run: node scripts/ci-mbx-cargo.mjs
@@ -121,6 +130,9 @@ jobs:
     if: github.event_name != 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      # The compiler flags must match the job that saves the cache.
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
     strategy:
       fail-fast: false
       matrix:
@@ -163,20 +175,25 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
+      # One cache holds the desktop and the headless server build: the objects payload carries
+      # what every Cargo step compiled, whichever target directory it built in. The target
+      # payload this replaces saved nothing, because Cargo 1.100 keeps unit state under build/
+      # (ci.yml has the details). Every Linux E2E job here and in release.yml uses this key,
+      # and only the job that runs on pushes to main saves it.
+      - name: Key the Rust cache by its inputs
+        id: rust-cache
+        run: node scripts/ci-rust-cache-key.mjs e2e .github/workflows/e2e.yml e2e/lifecycle.ts src-tauri ':!src-tauri/gpui'
+
       - name: Setup Mr Boxington
         uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
         with:
-          version: "1.29.2"
+          version: "1.30.0"
           working-directory: src-tauri
-          cache-generation: kubecove-e2e
-
-      - name: Cache headless E2E builds
-        if: runner.os != 'Windows'
-        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
-        with:
-          version: "1.29.2"
-          working-directory: src-tauri/server
-          cache-generation: kubecove-server-e2e
+          cache-key: ${{ steps.rust-cache.outputs.key }}
+          restore-keys: ${{ steps.rust-cache.outputs.prefix }}
+          github-cache-mode: objects
+          isolate-objects-cache: true
+          clean-target-before-export: true
 
       - name: Activate Cargo caching
         run: node scripts/ci-mbx-cargo.mjs
@@ -244,27 +261,9 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
-      - name: Setup Mr Boxington
-        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
-        with:
-          version: "1.29.2"
-          working-directory: src-tauri
-          cache-generation: kubecove-e2e
-          # Desktop jobs do not run on push; trusted manual runs on main seed them.
-          save-on-workflow-dispatch: ${{ github.ref == 'refs/heads/main' }}
-
-      - name: Cache headless E2E builds
-        if: runner.os != 'Windows'
-        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
-        with:
-          version: "1.29.2"
-          working-directory: src-tauri/server
-          cache-generation: kubecove-server-e2e
-          save-on-workflow-dispatch: ${{ github.ref == 'refs/heads/main' }}
-
-      - name: Activate Cargo caching
-        run: node scripts/ci-mbx-cargo.mjs
-
+      # No Rust build cache: these jobs run nightly or by hand, and the Linux caches that pull
+      # requests restore take about 7.5 GB of the repository's 10 GB cache quota (cache list
+      # of 2026-11-13). GitHub evicts the least recently used caches above the quota.
       - name: Cache Bun dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
