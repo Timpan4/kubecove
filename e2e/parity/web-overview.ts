@@ -1,5 +1,6 @@
 import type { Page } from "playwright-core";
 import type { OverviewStep } from "./contract-overview";
+import { resourceKey } from "../../src/lib/resource-identity";
 const literal = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 export async function overviewAction(page: Page, step: OverviewStep): Promise<void> {
 	switch (step.action) {
@@ -11,8 +12,11 @@ export async function overviewAction(page: Page, step: OverviewStep): Promise<vo
 			break;
 		case "expectOverviewProblem": case "openOverviewProblem": case "toggleOverviewProblem": case "expectNoOverviewProblem": {
 			const suffix = `:${step.kind}:${step.namespace}:${step.name}`;
+			const selector = step.apiVersion === undefined
+				? `[data-overview-resource^=${JSON.stringify(`${step.context}:`)}][data-overview-resource$=${JSON.stringify(suffix)}]`
+				: `[data-overview-resource=${JSON.stringify(resourceKey({ cluster: step.context, apiVersion: step.apiVersion, kind: step.kind, namespace: step.namespace, name: step.name }))}]`;
 			const row = page.getByRole("table", { name: "Workspace findings", exact: true })
-				.locator(`[data-overview-resource^=${JSON.stringify(`${step.context}:`)}][data-overview-resource$=${JSON.stringify(suffix)}]`);
+				.locator(selector);
 			if (step.action === "expectNoOverviewProblem") { await row.waitFor({ state: "hidden" }); break; }
 			await row.waitFor();
 			if (step.action === "openOverviewProblem" || step.action === "toggleOverviewProblem") {

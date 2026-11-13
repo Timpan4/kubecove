@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readdir, readFile } from "node:fs/promises";
 import { ACTIONS, loadContract, parseContract, requireViewCoverage, validateReports } from "./contract";
 import { VIEWS } from "./visual/views";
+import { overviewStep } from "./contract-overview";
 
 describe("equal GPUI and Svelte tests", () => {
 	test("every native view has a shared scenario", async () => {
@@ -26,6 +27,11 @@ const report = (driver: string, scenarios: unknown[]) => ({ driver, scenarios })
 const passed = { id: "one", status: "passed" };
 
 describe("parity input boundaries", () => {
+	test("overview identities retain an API version and reject malformed discriminators", () => {
+		const step = { action: "openOverviewProblem", kind: "Deployment", name: "same", namespace: "payments", context: "mock-dev", apiVersion: "alpha.example/v1" };
+		expect(overviewStep(step)).toMatchObject({ apiVersion: "alpha.example/v1" });
+		expect(() => overviewStep({ ...step, apiVersion: 42 })).toThrow();
+	});
 	test("rejects malformed contracts, IDs and steps", () => {
 		for (const value of [null, {}, { ...contract, scenarios: [] }, { ...contract, scenarios: [{ ...contract.scenarios[0], id: "" }] }, { ...contract, scenarios: [...contract.scenarios, ...contract.scenarios] }, { ...contract, scenarios: [{ ...contract.scenarios[0], steps: [{ action: "unknown" }] }] }]) {
 			expect(() => parseContract(value)).toThrow();

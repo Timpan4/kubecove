@@ -38,11 +38,28 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 string(step, "namespace"),
                 step["context"].as_str().unwrap_or("mock-dev")
             );
+            let mut matching = window.find_all_by_label(&label).into_iter().filter(|row| {
+                let Some(api) = step["apiVersion"].as_str() else {
+                    return true;
+                };
+                let gpui_kit::ElementId::Name(id) = locate::id(row) else {
+                    return false;
+                };
+                let Some(key) = id.strip_prefix("overview-problem:") else {
+                    return false;
+                };
+                serde_json::from_str::<Value>(key).expect("resource identity JSON")[3] == api
+            });
+            let row = matching.next();
+            assert!(
+                matching.next().is_none(),
+                "finding identity is ambiguous; specify apiVersion"
+            );
             if step["action"] == "expectNoOverviewProblem" {
-                assert!(window.try_find_by_label(&label).is_none());
+                assert!(row.is_none());
                 return true;
             }
-            let row = window.find_by_label(&label);
+            let row = row.expect("matching finding identity");
             let gpui_kit::ElementId::Name(id) = locate::id(&row) else {
                 panic!("finding has a named identity")
             };

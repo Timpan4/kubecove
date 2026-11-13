@@ -75,7 +75,7 @@
       "title": "Failing owners fold their children and disclose each exact object",
       "steps": [
         { "action": "configureShellRead", "phase": "overview-owner-chain" },
-        { "action": "expectOverviewProblem", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "ready": "0/3", "status": "CrashLoopBackOff" },
+        { "action": "expectOverviewProblem", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "apiVersion": "apps/v1", "ready": "0/3", "status": "CrashLoopBackOff" },
         { "action": "expectNoOverviewProblem", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
         { "action": "toggleOverviewProblem", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
         { "action": "expectOverviewProblem", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p", "ready": "0/1", "status": "CrashLoopBackOff" },
@@ -83,7 +83,7 @@
         { "action": "expectNoOverviewProblem", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
         { "action": "toggleOverviewProblem", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "key": "space" },
         { "action": "expectOverviewProblem", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p", "ready": "0/1", "status": "CrashLoopBackOff" },
-        { "action": "openOverviewProblem", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "key": "enter" },
+        { "action": "openOverviewProblem", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "apiVersion": "apps/v1", "key": "enter" },
         { "action": "expectDetail", "kind": "Deployment", "namespace": "payments", "name": "payments-api" }
       ]
     },

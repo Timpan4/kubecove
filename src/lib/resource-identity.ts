@@ -1,7 +1,7 @@
 import type { DiscoveredResourceKind, ResourceSummary } from "./types";
 
 /** Exact identity of one listed resource. */
-export function resourceKey(resource: ResourceSummary): string {
+export function resourceKey(resource: Pick<ResourceSummary, "cluster" | "apiVersion" | "kind" | "namespace" | "name">): string {
 	return `${resource.cluster}:${resource.apiVersion ?? ""}:${resource.kind}:${resource.namespace ?? ""}:${resource.name}`;
 }
 
