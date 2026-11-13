@@ -12,6 +12,7 @@ use std::{
 pub(super) struct State {
     pub expanded: HashSet<String>,
     pub quiet: bool,
+    pub page: usize,
     focus: RefCell<HashMap<String, FocusHandle>>,
 }
 impl Inspector {

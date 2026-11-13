@@ -1,6 +1,18 @@
 use super::*;
 pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) -> bool {
     match string(step, "action") {
+        "coverageClick" => {
+            let label = string(step, "label");
+            let id = match label {
+                "Next findings" => "overview-next".into(),
+                "Previous findings" => "overview-previous".into(),
+                _ if label.starts_with("Inspect Application ") => {
+                    locate::id(&window.find_by_label(label))
+                }
+                _ => return false,
+            };
+            locate::click_in(window, "page", id, cx);
+        }
         "overviewHealth" => locate::click_in(
             window,
             "page",

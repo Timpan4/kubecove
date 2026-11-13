@@ -64,7 +64,13 @@ impl Inspector {
                         .map(|(label, share)| cell(width * share, ui::muted(ui::xs(label)))),
                 ),
         );
-        for problem in problems {
+        let pages = problems.len().div_ceil(crate::model::PAGE_SIZE).max(1);
+        let page = self.overview_ui.page.min(pages - 1);
+        for problem in problems
+            .iter()
+            .skip(page * crate::model::PAGE_SIZE)
+            .take(crate::model::PAGE_SIZE)
+        {
             let row = rows[problem.root];
             let key = identity(row);
             let open = self.overview_ui.expanded.contains(&key);
@@ -88,11 +94,52 @@ impl Inspector {
                 }
             }
         }
-        div()
+        let table = div()
             .id("overview-problems")
             .test_support()
             .overflow_x_scroll()
-            .child(body)
+            .child(body);
+        div()
+            .flex()
+            .flex_col()
+            .child(table)
+            .when(pages > 1, |view| {
+                view.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_end()
+                        .gap(px(8.))
+                        .p(px(12.))
+                        .child(ui::muted(ui::xs(format!("Page {} of {pages}", page + 1))))
+                        .child(
+                            self.overview_button(
+                                "overview-previous",
+                                "Previous findings",
+                                page > 0,
+                                cx,
+                                move |this, _, cx| {
+                                    this.overview_ui.page = page - 1;
+                                    cx.notify();
+                                },
+                            )
+                            .child(ui::xs("Previous findings")),
+                        )
+                        .child(
+                            self.overview_button(
+                                "overview-next",
+                                "Next findings",
+                                page + 1 < pages,
+                                cx,
+                                move |this, _, cx| {
+                                    this.overview_ui.page = page + 1;
+                                    cx.notify();
+                                },
+                            )
+                            .child(ui::xs("Next findings")),
+                        ),
+                )
+            })
     }
     fn overview_problem_row(
         &self,

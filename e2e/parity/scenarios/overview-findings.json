@@ -3,6 +3,19 @@
   "context": "mock-dev",
   "scenarios": [
     {
+      "id": "overview.findings-pages",
+      "title": "Findings remain reachable across pages",
+      "steps": [
+        { "action": "configureShellRead", "phase": "overview-many" },
+        { "action": "expectOverviewProblem", "kind": "Pod", "namespace": "operations", "name": "overview-finding-000", "ready": "0/1", "status": "CrashLoopBackOff" },
+        { "action": "expectNoOverviewProblem", "kind": "Pod", "namespace": "operations", "name": "overview-finding-050" },
+        { "action": "coverageClick", "label": "Next findings" },
+        { "action": "expectOverviewProblem", "kind": "Pod", "namespace": "operations", "name": "overview-finding-050", "ready": "0/1", "status": "CrashLoopBackOff" },
+        { "action": "coverageClick", "label": "Previous findings" },
+        { "action": "expectOverviewProblem", "kind": "Pod", "namespace": "operations", "name": "overview-finding-000", "ready": "0/1", "status": "CrashLoopBackOff" }
+      ]
+    },
+    {
       "id": "overview.gitops-application",
       "title": "Troubled GitOps applications open their exact resource details",
       "steps": [

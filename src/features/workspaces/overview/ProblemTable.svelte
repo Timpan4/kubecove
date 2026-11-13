@@ -2,12 +2,17 @@
 	import { ChevronRight } from "lucide-svelte";
 	import { Button, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/svelte";
 	import { resourceKey } from "@/lib/resource-identity";
+	import { PAGE_SIZE } from "@/features/resources/constants";
 	import type { ResourceSummary } from "@/lib/types";
 	import type { Problem } from "./model";
 	import ProblemStatus from "./ProblemStatus.svelte";
 	import { DOT, LINK, plural, type OverviewView } from "./view";
 	let { view, problems }: { view: OverviewView; problems: Problem[] } = $props();
 	let expanded = $state<Record<string, boolean>>({});
+	let page = $state(0);
+	const pages = $derived(Math.max(1, Math.ceil(problems.length / PAGE_SIZE)));
+	const currentPage = $derived(Math.min(page, pages - 1));
+	const visible = $derived(problems.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE));
 	const label = (row: ResourceSummary) => `Open ${row.kind} ${row.name} in ${row.namespace ?? "cluster scope"} on ${row.cluster}`;
 </script>
 <Table aria-label="Workspace findings" class="min-w-[40rem] table-fixed">
@@ -24,7 +29,7 @@
 		</TableRow>
 	</TableHeader>
 	<TableBody>
-		{#each problems as problem (problem.key)}
+		{#each visible as problem (problem.key)}
 			{@const open = expanded[problem.key] === true}
 			{@const owner = problem.resource.gitOpsOwner}
 			{@const app = owner?.name ?? problem.resource.argoApp}
@@ -82,3 +87,10 @@
 		{/each}
 	</TableBody>
 </Table>
+{#if pages > 1}
+	<nav aria-label="Findings pages" class="flex items-center justify-end gap-2 border-t px-3 pt-3">
+		<span class="text-xs text-muted-foreground">Page {currentPage + 1} of {pages}</span>
+		<Button variant="outline" size="sm" disabled={currentPage === 0} onclick={() => page = currentPage - 1}>Previous findings</Button>
+		<Button variant="outline" size="sm" disabled={currentPage === pages - 1} onclick={() => page = currentPage + 1}>Next findings</Button>
+	</nav>
+{/if}

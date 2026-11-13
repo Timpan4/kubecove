@@ -142,6 +142,21 @@ impl Fixture {
         resources: Vec<ResourceSummary>,
     ) -> Vec<ResourceSummary> {
         let phase = self.shell_read_phase.lock().unwrap().clone();
+        if phase == "overview-many" {
+            return resources
+                .iter()
+                .find(|row| row.name == "operations-crashloop-7f468cd8b8-lab01")
+                .map(|template| {
+                    (0..=kubecove_gpui::model::PAGE_SIZE)
+                        .map(|index| ResourceSummary {
+                            name: format!("overview-finding-{index:03}"),
+                            owner_ref: None,
+                            ..template.clone()
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+        }
         self.live_rows(resources)
             .into_iter()
             .filter(|row| {
