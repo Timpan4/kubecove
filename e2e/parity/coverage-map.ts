@@ -163,15 +163,22 @@ function parseMap<Value>(value: Value): CoverageMap {
 		return index;
 	};
 	for (const set of sets) for (const index of set) below(scenarios.length, index);
+	const range = (start: number, end: number) => {
+		if (start < 1 || end < start) throw new Error("Expected a positive ordered line range");
+	};
 	const spans = (list: number[]) => {
-		for (const [set] of triples(list)) below(sets.length, set);
+		for (const [set, start, end] of triples(list)) { below(sets.length, set); range(start, end); }
 		return list;
 	};
 	const files: CoverageMap["files"] = {};
 	for (const [path, entry] of Object.entries(object(input.files))) {
 		const file = object(entry);
 		files[path] = { loaded: below(sets.length, count(file.loaded)), active: below(sets.length, count(file.active)), lines: spans(flat(file.lines, 3)) };
-		if (file.code !== undefined) files[path].code = flat(file.code, 2);
+		if (file.code !== undefined) {
+			const code = flat(file.code, 2);
+			for (const [start, end] of pairs(code)) range(start, end);
+			files[path].code = code;
+		}
 		if (file.functions !== undefined) files[path].functions = spans(flat(file.functions, 3));
 	}
 	return { version: 1, commit: string(input.commit), scenarios, sets, compiled: strings(input.compiled, true), files };

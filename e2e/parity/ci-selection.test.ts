@@ -15,7 +15,7 @@ const contract: Contract = { scenarios: ids.map((id) => ({ id, title: id, steps:
 const report = (driver: Driver, ...ids: string[]) => ({ driver, scenarios: ids.map((id) => ({ id, status: "passed" })) });
 const planner = resolve("e2e/parity/ci-selection.ts");
 const RUST = "src-tauri/gpui/src/page.rs";
-const RUST_SOURCE = "use super::loading::Phase;\npub use super::names::Name;\n\npub fn first() -> Phase {\n    Phase::Ready\n}\nuse super::shapes::{\n    Circle,\n    Square,\n};\npub use super::kinds::{\n    Kind, // one; per line\n    Sort,\n};\n";
+const RUST_SOURCE = "use super::loading::Phase;\npub use super::names::Name;\n\npub fn first() -> Phase {\n    Phase::Ready\n}\nuse super::shapes::{\n    Circle,\n    Square,\n};\npub use super::kinds::{\n    Kind, // one; per line\n    Sort,\n};\npub use super::more::{ /* outer /* nested ; */ ; */\n    Extra,\n};\npub\nuse super::split::{\n    Split,\n};\n";
 
 async function run(cwd: string, args: string[], env = process.env) {
 	const child = Bun.spawn(args, { cwd, env, stdout: "pipe", stderr: "pipe" });
@@ -123,7 +123,8 @@ test("real git diffs select covered code, nothing for docs, and full suite on ev
 		// Then a map whose files refer to scenario sets it does not define, and maps of another
 		// shape: a file list where records belong, a cut-off range, a missing field.
 		const record = map.files[RUST];
-		const damaged = [["lines", record.lines.slice(0, 2)], ["functions", record.functions.slice(1)], ["code", [5]], ["loaded", "0"], ["active", -1], ["loaded", 99], ["lines", [99, 5, 5]], ["functions", [99, 4, 6]]]
+const damaged = [["lines", record.lines.slice(0, 2)], ["functions", record.functions.slice(1)], ["code", [5]], ["loaded", "0"], ["active", -1], ["loaded", 99], ["lines", [99, 5, 5]], ["functions", [99, 4, 6]],
+  ...["lines", "functions"].flatMap((field) => [[field, [record.loaded, 6, 4]], [field, [record.loaded, 0, 0]]]), ["code", [6, 4]], ["code", [0, 0]]]
 			.map(([field, value]) => ({ files: { ...map.files, [RUST]: { ...record, [String(field)]: value } } }));
 		for (const broken of [
 			{ commit: "0".repeat(40) }, { commit: aside }, { sets: [] }, { sets: map.sets.map(() => [ids.length]) },
@@ -146,13 +147,16 @@ test("a changed Rust import selects the file's scenarios and a replaced re-expor
 		["Phase::Ready", "Phase::Failed", ["one"]],
 		["use super::loading::Phase;", "use super::other::Phase;", ["one"]],
 		["use super::loading::Phase;", "use super::loading::Phase;\nuse super::extra::Thing;", ["one"]],
-		["pub use super::names::Name;", "pub use super::names::Name;\npub use super::extra::Thing;", ["one"]],
+		["pub use super::names::Name;", "pub use super::names::Name;\npub use super::extra::Thing;", ids],
 		["pub use super::names::Name;", "pub use super::other::Name;", ids],
 		["pub use super::names::Name;\n", "", ids],
 		["    Circle,", "    Round,", ["one"]],
-		["    Sort,", "    Sort,\n    More,", ["one"]],
+		["    Sort,", "    Sort,\n    More,", ids],
 		["    Kind, // one; per line", "    Other,", ids],
 		["    Sort,\n", "", ids],
+		["    Sort,", "    Sort,\n    Added,", ids],
+		["    Extra,", "    Different,", ids],
+		["    Split,", "    Different,", ids],
 		["};\npub use super::kinds::{", "};\npub(crate) use super::other::{", ids],
 	] as const) {
 		await fixture(async (root) => {
@@ -189,7 +193,7 @@ test("a stale map includes intervening source changes and falls back for blind i
 	const workflows = await Promise.all(["parity.yml", "parity-suite.yml"].map((name) => readFile(resolve(".github/workflows", name), "utf8")));
 	const scripts = [...new Set(workflows.join("\n").match(/\b(?:scripts|e2e\/parity)\/[\w./-]+\.(?:mjs|ts)\b/g) ?? [])];
 	expect(scripts).toContain("scripts/ci-mbx-cargo.mjs");
-	for (const path of ["src/feature.ts", "e2e/parity/visual/export-fixture.ts", "e2e/parity/scenarios/new.json", "src/lib/tauri-dev-mocks.ts", "src/lib/mcp-dev-mocks.ts", ".github/workflows/parity.yml", "src-tauri/gpui/assets/icons/search.svg", "src-tauri/gpui/assets/fonts/inter-400.ttf", "src-tauri/tauri.conf.json", "scripts/e2e-parity.ts", ...scripts]) {
+	for (const path of ["src/feature.ts", "e2e/parity/visual/export-fixture.ts", "e2e/parity/scenarios/new.json", "src/lib/tauri-dev-mocks.ts", "src/lib/mcp-dev-mocks.ts", ".github/workflows/parity.yml", "src-tauri/gpui/assets/icons/search.svg", "src-tauri/gpui/assets/fonts/inter-400.ttf", "src-tauri/tauri.conf.json", "scripts/e2e-parity.ts", ".env", ".env.local", ".env.test", ".env.test.local", ...scripts]) {
 		await fixture(async (root) => {
 			await mkdir(join(root, path, ".."), { recursive: true });
 			await writeFile(join(root, path), path === "src/feature.ts" ? "export function first() {\n return 3;\n}\nexport function second() {\n return 2;\n}\n" : path.endsWith("new.json") ? JSON.stringify({ scenarios: [{ id: "one" }] }) : "Changed input\n");

@@ -11,6 +11,7 @@ export const DEFAULT_MAP = "e2e/artifacts/parity-coverage-map.json";
 const FULL_SUITE = [
 	/^(package\.json|bun\.lock|bunfig\.toml|vite\.config\.ts|svelte\.config\.js|index\.html)$/,
 	/^tsconfig[^/]*\.json$/,
+	/(^|\/)\.env(?:\.[^/]+)?$/,
 	/(^|\/)(Cargo\.toml|Cargo\.lock|build\.rs|rust-toolchain(\.toml)?)$/,
 	/^(\.cargo|public)\//,
 	// The runner, drivers, contract and fixture exporter; scenario files select their own scenarios.
@@ -114,16 +115,31 @@ function translateLine(hunks: Hunk[], line: number): number[] {
 const within = (ranges: number[], line: number) => pairs(ranges).some(([start, end]) => line >= start && line <= end);
 
 type UseBlock = { start: number; end: number; reexport: boolean };
-/** The `use` statements of a Rust source that span several lines, as 1-based line ranges. */
+/** Rust `use` statements, including split visibility and nested comments, as 1-based line ranges. */
 function useBlocks(lines: string[]): UseBlock[] {
-	const code = (line: string) => line.replace(/\/\/.*/, "");
 	const blocks: UseBlock[] = [];
 	for (let index = 0; index < lines.length; index++) {
-		const first = lines[index] ?? "";
-		if (!USE.test(first) || code(first).includes(";")) continue;
+		if (!/^\s*(pub\b|use\b)/.test(lines[index] ?? "")) continue;
+		// Use paths contain no strings. Strip comments only after a possible statement
+		// start, so comment markers in unrelated Rust strings cannot hide an import.
+		let depth = 0;
+		const code = (line: string) => {
+			let text = "";
+			for (let offset = 0; offset < line.length; offset++) {
+				const pair = line.slice(offset, offset + 2);
+				if (pair === "/*") { depth++; offset++; text += " "; }
+				else if (depth && pair === "*/") { depth--; offset++; }
+				else if (!depth && pair === "//") break;
+				else if (!depth) text += line[offset];
+			}
+			return text;
+		};
 		const start = index + 1;
-		while (index + 1 < lines.length && !code(lines[index] ?? "").includes(";")) index++;
-		blocks.push({ start, end: index + 1, reexport: REEXPORT.test(first) });
+		let text = code(lines[index] ?? "");
+		while (index + 1 < lines.length && (depth || /^\s*pub(?:\([^)]*\))?\s*$/.test(text))) text += `\n${code(lines[++index] ?? "")}`;
+		if (!USE.test(text)) continue;
+		while (index + 1 < lines.length && !text.includes(";")) text += `\n${code(lines[++index] ?? "")}`;
+		blocks.push({ start, end: index + 1, reexport: REEXPORT.test(text) });
 	}
 	return blocks;
 }
@@ -213,10 +229,12 @@ async function selectFile(diff: FileDiff, map: CoverageMap, compiled: Set<string
 	if (rust) {
 		// A changed line inside a `use` block that spans several lines carries no keyword.
 		const blocks = useBlocks(base);
-		const imports = diff.hunks.filter((hunk) => [...hunk.removed, ...hunk.added].some((line) => IMPORT.test(line)) || blocks.some((block) => inBlock(hunk, block)));
-		// Other files reach a re-exported name through this one, so a removed or replaced
-		// re-export can change code that this file's coverage says nothing about.
-		const reexport = (hunk: Hunk) => hunk.removed.some((line) => REEXPORT.test(line)) || (hunk.oldCount > 0 && blocks.some((block) => block.reexport && inBlock(hunk, block)));
+		const source = diff.newPath ? (head ? await gitOut(["show", `${head}:${diff.newPath}`]) : await readFile(diff.newPath, "utf8")) : "";
+		const nextBlocks = useBlocks(source.split("\n"));
+		const inNextBlock = (hunk: Hunk, block: UseBlock) => inBlock({ ...hunk, oldStart: hunk.newStart, oldCount: hunk.newCount }, block);
+		const imports = diff.hunks.filter((hunk) => [...hunk.removed, ...hunk.added].some((line) => IMPORT.test(line)) || blocks.some((block) => inBlock(hunk, block)) || nextBlocks.some((block) => inNextBlock(hunk, block)));
+		// Additions can shadow a glob export and redirect names in unchanged consumers too.
+		const reexport = (hunk: Hunk) => [...hunk.removed, ...hunk.added].some((line) => REEXPORT.test(line)) || blocks.some((block) => block.reexport && inBlock(hunk, block)) || nextBlocks.some((block) => block.reexport && inNextBlock(hunk, block));
 		if (imports.some(reexport)) return `${path} changed a re-export, which other files can name`;
 		if (imports.length) {
 			if (!record) return `${path} changed its imports and has no recorded coverage`;
