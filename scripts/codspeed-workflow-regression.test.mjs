@@ -108,7 +108,7 @@ function gate(overrides = {}) {
   return bash(runBlock(job("check")), {
     CHANGES_RESULT: "success", RELEASE_PR: "false",
     FRONTEND_REQUIRED: "true", FRONTEND_RESULT: "success",
-    RUST_REQUIRED: "true", RUST_RESULT: "success", ...overrides,
+    RUST_REQUIRED: "true", RUST_RESULT: "success", RUST_SAVER_RESULT: "success", ...overrides,
   }).status;
 }
 
@@ -121,14 +121,18 @@ test("the stable gate requires successful detection and all selected jobs", () =
   }
 });
 
-for (const domain of ["FRONTEND", "RUST"]) {
+// The Rust shards are two jobs (the saving shard and the read-only ones), and each must pass.
+for (const [domain, results] of [["FRONTEND", ["FRONTEND_RESULT"]], ["RUST", ["RUST_RESULT", "RUST_SAVER_RESULT"]]]) {
   test(`the gate rejects incomplete ${domain} jobs and accepts only deliberate skips`, () => {
-    for (const result of ["failure", "cancelled", "skipped", ""]) {
-      assert.notEqual(gate({ [`${domain}_RESULT`]: result }), 0);
+    const skipped = Object.fromEntries(results.map((name) => [name, "skipped"]));
+    for (const name of results) {
+      for (const result of ["failure", "cancelled", "skipped", ""]) {
+        assert.notEqual(gate({ [name]: result }), 0, `${name}=${result}`);
+      }
+      assert.notEqual(gate({ [`${domain}_REQUIRED`]: "false", ...skipped, [name]: "success" }), 0, `${name} ran`);
     }
-    assert.equal(gate({ [`${domain}_REQUIRED`]: "false", [`${domain}_RESULT`]: "skipped" }), 0);
-    assert.notEqual(gate({ [`${domain}_REQUIRED`]: "false" }), 0);
-    assert.notEqual(gate({ [`${domain}_REQUIRED`]: "", [`${domain}_RESULT`]: "skipped" }), 0);
+    assert.equal(gate({ [`${domain}_REQUIRED`]: "false", ...skipped }), 0);
+    assert.notEqual(gate({ [`${domain}_REQUIRED`]: "", ...skipped }), 0);
   });
 }
 
@@ -136,7 +140,7 @@ for (const domain of ["FRONTEND", "RUST"]) {
 // overlap runs a benchmark twice in one CodSpeed run, which CodSpeed rejects; a path without
 // `::` (a benchmark at the bench crate root) matches no shard.
 test("Rust benchmark shard filters split every benchmark path into exactly one shard", () => {
-  const filters = [...job("rust").matchAll(/^ {12}filter: "(.+)"$/gm)].map((match) => new RegExp(match[1]));
+  const filters = [...`${job("rust")}\n${job("rust-saver")}`.matchAll(/^ {12}filter: "(.+)"$/gm)].map((match) => new RegExp(match[1]));
   assert.equal(filters.length, 6);
   assert.match(job("rust"), /cargo codspeed run --bench backend_hot_paths '\$\{\{ matrix\.filter \}\}'/);
   const leading = [...Array.from({ length: 95 }, (_, index) => String.fromCharCode(32 + index)), "é", "Ω"].filter((character) => character !== ":");
@@ -148,8 +152,10 @@ test("Rust benchmark shard filters split every benchmark path into exactly one s
       assert.ok(shards[0].test(`x::${last}`), `${path} must be judged by its last segment`);
     }
   }
-  // Rust benchmarks gate the required check through one aggregated matrix result.
+  // Rust benchmarks gate the required check through the results of both shard jobs.
   assert.match(job("check"), /RUST_RESULT: \$\{\{ needs\.rust\.result \}\}/);
+  assert.match(job("check"), /RUST_SAVER_RESULT: \$\{\{ needs\.rust-saver\.result \}\}/);
+  assert.match(job("check"), /^ {6}- rust\n {6}- rust-saver$/m);
   assert.match(job("rust"), /cache-targets: false/);
   // The key follows the build inputs, so an unchanged build skips the export and upload.
   assert.ok(job("rust").includes("run: node scripts/ci-rust-cache-key.mjs codspeed-backend .github/workflows/codspeed.yml src-tauri ':!src-tauri/gpui' ':!src-tauri/server'"));
@@ -163,13 +169,24 @@ test("Rust benchmark shard filters split every benchmark path into exactly one s
   assert.match(job("rust"), /isolate-objects-cache: true/);
   assert.match(job("rust"), /clean-target-before-export: true/);
   assert.match(job("rust"), /save-if: \$\{\{ github\.ref == 'refs\/heads\/main' && matrix\.shard == 'ac' \}\}/);
-  assert.match(job("rust"), /^ {10}- shard: ac$/m);
   // Failure mode: the shards share one cache key, and a second saver fails its job when
-  // GitHub has reserved the key for the first. Exactly one shard may save.
-  const cacheMode = /^ {8}env:\n {10}ACTIONS_CACHE_MODE: \$\{\{ (.+) \}\}\n {8}with:\n {10}version: "1\.30\.0"$/m.exec(job("rust"))?.[1];
-  assert.equal(cacheMode, "matrix.shard != 'ac' && 'read' || ''", "every shard but ac restores only");
-  const shards = [...job("rust").matchAll(/^ {10}- shard: (\w+)$/gm)].map(([, shard]) => shard);
-  assert.deepEqual([shards.length, shards.filter((shard) => shard === "ac")], [6, ["ac"]]);
+  // GitHub has reserved the key for the first. Exactly one shard may save. GitHub's
+  // `cache-mode` makes the others read-only, and it takes one literal per job, so the
+  // saving shard is a job of its own with the same steps and condition. A step-level
+  // ACTIONS_CACHE_MODE does nothing: the runner overrides it (run 43407667697).
+  const shards = (name) => [...job(name).matchAll(/^ {10}- shard: (\w+)$/gm)].map(([, shard]) => shard);
+  assert.deepEqual(shards("rust-saver"), ["ac"]);
+  assert.deepEqual(shards("rust"), ["dl", "es", "hr", "jn", "other"]);
+  assert.match(job("rust"), /^ {4}cache-mode: read$/m);
+  assert.doesNotMatch(job("rust-saver"), /cache-mode/);
+  assert.doesNotMatch(workflow, /ACTIONS_CACHE_MODE: /);
+  assert.match(job("rust"), /^ {4}steps: &rust-steps$/m);
+  assert.match(job("rust-saver"), /^ {4}steps: \*rust-steps$/m);
+  for (const key of ["name", "if", "runs-on"]) {
+    const value = (name) => new RegExp(`^ {4}${key}: (.+)$`, "m").exec(job(name))?.[1];
+    assert.ok(value("rust"), `Missing ${key}`);
+    assert.equal(value("rust-saver"), value("rust"), `the saver's ${key} differs`);
+  }
   assert.ok(job("rust").indexOf("run: node scripts/ci-mbx-cargo.mjs") < job("rust").indexOf("cargo codspeed build"));
   // The benchmark build leaves out the desktop feature, so it needs no GUI packages and
   // links no GUI stack. `bench-support` must not turn the feature back on in any crate.
@@ -206,10 +223,11 @@ test("benchmark jobs install the CodSpeed runner from its pinned GitHub release"
 });
 
 test("release PRs still require both benchmark jobs to be skipped", () => {
-  const release = { RELEASE_PR: "true", FRONTEND_RESULT: "skipped", RUST_RESULT: "skipped" };
+  const release = { RELEASE_PR: "true", FRONTEND_RESULT: "skipped", RUST_RESULT: "skipped", RUST_SAVER_RESULT: "skipped" };
   assert.equal(gate(release), 0);
   assert.notEqual(gate({ ...release, FRONTEND_RESULT: "success" }), 0);
   assert.notEqual(gate({ ...release, RUST_RESULT: "success" }), 0);
+  assert.notEqual(gate({ ...release, RUST_SAVER_RESULT: "success" }), 0);
   assert.notEqual(gate({ ...release, RELEASE_PR: "false" }), 0);
 });
 
