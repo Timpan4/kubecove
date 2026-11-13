@@ -83,6 +83,9 @@ for (const [path, frontend, rust] of [
   ["shared/fixtures/resource.json", true, true],
   ["shared/fixtures/stream.txt", true, true],
   ["scripts/codspeed-benchmark-suites.mjs", true, false],
+  // Failure mode: a change to a script the Rust shards run merges without those shards running.
+  ["scripts/ci-rust-cache-key.mjs", false, true],
+  ["scripts/ci-mbx-cargo.mjs", false, true],
   // No benchmark imports from the E2E or unit test trees; their fixtures still select both.
   ["e2e/parity/web.ts", false, false],
   ["e2e/parity/scenarios/argo-gaps.json", false, false],
