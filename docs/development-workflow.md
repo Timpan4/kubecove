@@ -231,11 +231,14 @@ The short jobs target warm PR feedback. Hosted cold/warm runs must confirm the
 cache transfer time, hit rates and wall time; local regression tests do not prove
 a three-minute job or the overall three-to-four-minute goal.
 
-Standalone and release E2E use mbx with separate desktop and headless server
-workspace caches. The primary Kubernetes version publishes the Linux E2E cache
-on pushes to `main`; the scheduled matrix and release E2E restore it. Desktop
-caches remain separate by OS and architecture. A manual E2E run on `main`
-seeds the macOS and Windows caches; scheduled runs restore them.
+Standalone and release E2E on Linux share one objects cache, which holds the
+desktop and the headless server build. The primary Kubernetes version saves it
+on pushes to `main`; the scheduled matrix and release E2E restore it and never
+save. These jobs set `CARGO_PROFILE_DEV_DEBUG=line-tables-only` like CI: a job
+whose compiler flags differ from the saver's misses the cache. The macOS and
+Windows desktop smoke jobs build without a cache. They run nightly or by hand,
+and the Linux caches that pull requests restore take about 7.5 GB of the
+repository's 10 GB cache quota (cache list of 2026-11-13).
 The Cargo shim installed by
 `scripts/ci-mbx-cargo.mjs` also wraps Cargo launched by Bun and Tauri.
 `MBX_TARGET_VIEWS=0` preserves the target paths consumed by E2E and packaging.

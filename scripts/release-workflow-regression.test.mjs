@@ -309,7 +309,12 @@ test("server build reuses pinned actions already used by release jobs", () => {
 });
 
 // Release binaries must not inherit shared compiler outputs. E2E must wrap nested Cargo.
-test("release artifacts use local mbx while E2E restores both workspace caches", () => {
+// Failure modes of the E2E cache: a job that differs from the saver in key, cache settings or
+// compiler flags restores nothing it can use; a second cache setup in one job moves the
+// builds into its own store, so the first restores for nothing; a second saver of the key
+// fails its job; and Cargo started by Bun or Tauri bypasses the cache unless the shim is on
+// PATH before the suite runs.
+test("release artifacts use local mbx while Linux E2E jobs share one objects cache", () => {
   const e2e = parse(readFileSync(new URL("../.github/workflows/e2e.yml", import.meta.url), "utf8"));
   for (const build of [job("build"), job("server-build", packaging), job("bundle", gpuiRelease)]) {
     const setup = build.steps.find(({ uses }) => uses?.startsWith("jdx/mr-boxington-action@"));
@@ -321,16 +326,36 @@ test("release artifacts use local mbx while E2E restores both workspace caches",
       || run?.includes("for variant in full slim") || run?.includes("cargo build --locked"));
     assert.ok(build.steps.indexOf(activation) < build.steps.indexOf(consumer));
   }
-  for (const check of [job("e2e"), ...Object.values(e2e.jobs)]) {
+  for (const check of [job("e2e"), e2e.jobs["real-primary"], e2e.jobs["real-matrix"]]) {
+    const key = check.steps.find(({ id }) => id === "rust-cache");
+    assert.equal(key?.run, "node scripts/ci-rust-cache-key.mjs e2e .github/workflows/e2e.yml e2e/lifecycle.ts src-tauri ':!src-tauri/gpui'");
     const setups = check.steps.filter(({ uses }) => uses?.startsWith("jdx/mr-boxington-action@"));
-    assert.deepEqual(setups.map(({ with: inputs }) => inputs["working-directory"]), ["src-tauri", "src-tauri/server"]);
-    assert.deepEqual(setups.map(({ with: inputs }) => inputs["cache-generation"]), ["kubecove-e2e", "kubecove-server-e2e"]);
+    assert.deepEqual(setups.map(({ with: inputs }) => inputs), [{
+      version: "1.30.0",
+      "working-directory": "src-tauri",
+      "cache-key": "${{ steps.rust-cache.outputs.key }}",
+      "restore-keys": "${{ steps.rust-cache.outputs.prefix }}",
+      "github-cache-mode": "objects",
+      "isolate-objects-cache": true,
+      "clean-target-before-export": true,
+    }]);
+    assert.equal(check.env?.CARGO_PROFILE_DEV_DEBUG, "line-tables-only");
     const activation = step(check, "Activate Cargo caching");
     assert.equal(activation.run, "node scripts/ci-mbx-cargo.mjs");
     const consumer = check.steps.find(({ run }) => run?.includes("bun run e2e:"));
-    assert.ok(check.steps.indexOf(activation) < check.steps.indexOf(consumer));
+    const order = [check.steps.find(({ uses }) => uses?.startsWith("dtolnay/rust-toolchain@")), key, setups[0], activation, consumer].map((entry) => check.steps.indexOf(entry));
+    assert.deepEqual(order, order.toSorted((left, right) => left - right));
+    assert.ok(!order.includes(-1));
     assert.doesNotMatch(JSON.stringify(check), /swatinem\/rust-cache/);
   }
+  // The action saves on a push to the default branch only, and of these jobs one runs there.
+  assert.equal(e2e.jobs["real-primary"].if, "github.event_name == 'push'");
+  assert.equal(e2e.jobs["real-primary"].strategy, undefined);
+  assert.equal(e2e.jobs["real-matrix"].if, "github.event_name != 'push'");
+  assert.deepEqual(e2e.on.push, { branches: ["main"] });
+  assert.deepEqual(Object.keys(workflow.on.push), ["tags"]);
+  // Desktop smoke builds without a cache (e2e.yml has the reason), so it needs no shim.
+  assert.doesNotMatch(JSON.stringify(e2e.jobs["desktop-smoke"]), /mr-boxington|ci-mbx-cargo|rust-cache/);
 });
 
 test("publishing can read build artifacts and waits for all release gates", () => {
