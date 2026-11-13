@@ -156,6 +156,7 @@
 				class="flex w-full min-w-[53.75rem] cursor-pointer items-center gap-2 border-b bg-muted/30 px-3 py-1.5 text-left text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50"
 				class:border-b-0={entry.last}
 				aria-expanded={!entry.collapsed}
+				data-gitops-group={entry.group}
 				onclick={() => toggleGroup(entry.group)}
 			>
 				<ChevronDown

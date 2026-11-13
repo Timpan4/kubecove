@@ -9,6 +9,7 @@ import { coverageAction } from "./web-coverage";
 import { checkCoverage } from "./web-coverage-checks";
 import { startCodeCoverage } from "./web-coverage-map";
 import { detailStatusAction } from "./web-detail-status";
+import { deliveryAction } from "./web-delivery";
 import { gitOpsDetails, revealGitOps, helmCard, revisionButton } from "./web-delivery-helpers";
 import { detailsAction } from "./web-details";
 import { diagnosticsAction } from "./web-diagnostics";
@@ -400,6 +401,7 @@ export async function action(page: Page, step: Step) {
 			await page.getByRole("heading", { level: 2, name: step.title, exact: true }).waitFor();
 			await page.getByText(itemCount(step.count), { exact: true }).waitFor();
 			break;
+		case "expectGitOpsGroup": case "toggleGitOpsGroup": await deliveryAction(page, step); break;
 		case "expectGitOpsItem": await gitOpsDetails(page, step).waitFor(); break;
 		// Absence is checked after a preceding step waited for the page's rows.
 		case "expectNoGitOpsItem": if (await gitOpsDetails(page, step).count()) throw new Error(`${step.kind} ${step.name} is still listed`); break;
