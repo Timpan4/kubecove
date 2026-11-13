@@ -137,7 +137,10 @@ function importBlocks(lines: string[]): ImportBlock[] {
 		let text = code(lines[index] ?? "");
 		while (index + 1 < lines.length && (depth || /^\s*pub(?:\s*\([^)]*\)?)?\s*$/.test(text))) text += `\n${code(lines[++index] ?? "")}`;
 		if (!IMPORT.test(text)) continue;
-		while (index + 1 < lines.length && !text.includes(";")) text += `\n${code(lines[++index] ?? "")}`;
+		// An inline module ends its declaration at the opening brace. Its body can
+		// contain ordinary items and further imports that must be scanned separately.
+		const end = /^\s*(pub(?:\s*\([^)]*\))?\s+)?mod\s/.test(text) ? /[;{]/ : /;/;
+		while (index + 1 < lines.length && !end.test(text)) text += `\n${code(lines[++index] ?? "")}`;
 		blocks.push({ start, end: index + 1, reexport: REEXPORT.test(text) });
 	}
 	return blocks;
