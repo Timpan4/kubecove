@@ -4,6 +4,8 @@ mod argo;
 mod argo_gaps;
 #[path = "native/argo_outcomes.rs"]
 mod argo_outcomes;
+#[path = "native/credential_plugin.rs"]
+mod credential_plugin;
 #[path = "native/default_read_retry.rs"]
 mod default_read_retry;
 #[path = "native/detail_tabs.rs"]
@@ -16,6 +18,8 @@ mod inspection;
 mod kind_selection;
 #[path = "native/live_data.rs"]
 mod live_data;
+#[path = "native/map_live.rs"]
+mod map_live;
 #[path = "native/page_reads.rs"]
 mod page_reads;
 #[path = "native/preferences.rs"]
@@ -78,6 +82,7 @@ struct Controlled {
     secret: adapters::SecretControls,
     sessions: session_controls::SessionControls,
     live: live_data::LiveControls,
+    map_live: map_live::MapControls,
     fail: AtomicBool,
     pending: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
     detail: detail_tabs::DetailControls,
@@ -250,6 +255,7 @@ impl Backend for Controlled {
         let pod = self.sessions.enabled.load(Ordering::SeqCst);
         let argo = self.argo.enabled.load(Ordering::SeqCst);
         let secret = self.secret.enabled.load(Ordering::SeqCst);
+        let map_rows = self.map_live.rows(&scope.context);
         let versions = self.live.list_versions.clone();
         let returned = self.live.returned_lists.clone();
         Box::pin(async move {
@@ -270,7 +276,9 @@ impl Backend for Controlled {
                     age: "1d".into(),
                     created_at: None,
                 }],
-                resources: if argo {
+                resources: if let Some(rows) = map_rows {
+                    rows
+                } else if argo {
                     vec![
                         argo::resource(&scope.context, "payments-api"),
                         argo::resource(&scope.context, "other-app"),
@@ -319,12 +327,16 @@ impl Backend for Controlled {
         self.retry.calls.fetch_add(1, Ordering::SeqCst);
         let error = self.retry.errors.lock().unwrap().pop_front();
         let gate = self.retry.gate.lock().unwrap().take();
+        let topology = self.map_live.topology(&scope.context);
         Box::pin(async move {
             if let Some(gate) = gate {
                 let _ = gate.await;
             }
             if let Some(kind) = error {
                 return Err(AppError::new("scripted topology failure", kind));
+            }
+            if let Some(topology) = topology {
+                return Ok(topology);
             }
             Ok(Arc::new(serde_json::from_value(json!({
                 "nodes": [{"id": MAP_NODE, "kind": "Deployment", "name": "payments-api", "namespace": "payments", "status": "Available", "health": "healthy", "selectable": true, "summary": resource(&scope.context)}],

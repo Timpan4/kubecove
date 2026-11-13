@@ -197,6 +197,12 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
                 .expect("refresh failure panel");
                 // Open the disclosure only while it is closed, so repeated checks do not toggle it shut.
                 if window.try_find(format!("{title}:technical")).is_none() {
+                    let list = match title {
+                        "GitOps refresh failed" => "gitops-list",
+                        "Helm refresh failed" => "helm-list",
+                        _ => "page",
+                    };
+                    reveal(window, list, &format!("{title}:detail"), cx);
                     window.click(format!("{title}:detail"), cx);
                     window.render_frame(cx);
                 }

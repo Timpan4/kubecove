@@ -40,6 +40,7 @@
 		gitOpsUnavailableProvider,
 		type GitOpsSelection,
 	} from "./surfaceModel";
+	import type { GitOpsTrackedRequest } from "./surfacePresentation";
 	import { buildGitOpsReadState } from "./surfaceState";
 	import {
 		argoApplicationResourceNavigation,
@@ -77,12 +78,12 @@
 	const client = createTauriClient();
 	const queryClient = useQueryClient();
 	const tracker = getArgoOperationTracker(queryClient);
-	function trackedOperationLabel(selection: GitOpsSelection): string | null {
+	function trackedRequest(selection: GitOpsSelection): GitOpsTrackedRequest | null {
 		if (selection.type !== "argoApp") return null;
 		const operation = $tracker.get(argoTrackingKey({ name: selection.item.name, namespace: selection.item.namespace, context, workspaceId: workspace.id }, kubeconfigSourceKey));
 		if (!operation) return null;
 		const action = operation.request.action === "hardRefresh" ? "Hard refresh" : operation.request.action === "sync" ? "Sync" : "Refresh";
-		return `${action}: ${operation.phase}`;
+		return { label: `${action}: ${operation.phase}`, busy: operation.busy };
 	}
 	const context = $derived(workspace.scope.clusterContext);
 	let argoConnectionOpen = $state(false);
@@ -268,5 +269,5 @@
 	{openSelectedArgoApplicationResources}
 	{onResourceInspect}
 	{gitOpsStatusClass}
-	{trackedOperationLabel}
+	{trackedRequest}
 />

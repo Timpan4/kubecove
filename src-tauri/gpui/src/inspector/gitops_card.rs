@@ -1,5 +1,5 @@
-//! One GitOps selection as a card or a list row, from the `VirtualCollection`
-//! snippets in `GitOpsView.svelte`.
+//! One GitOps selection as a card, from the `VirtualCollection` snippet in
+//! `GitOpsView.svelte`, or as a list row, from `GitOpsList.svelte`.
 
 use super::controls::Variant;
 use super::delivery_ui::{self as dui, CARD_HEIGHT};
@@ -14,7 +14,7 @@ use gpui_kit::{ClipboardItem, Context, Div, FontWeight, Hsla, SharedString, div,
 use kubecove_lib::models::HealthAssessmentState;
 
 mod list;
-pub(super) use list::{list_header, list_row};
+pub(super) use list::{list_group, list_header, list_row};
 
 /// `gitOpsCardTone`: the `w-1` bar's color.
 fn tone(selection: Selection) -> Hsla {
@@ -145,8 +145,13 @@ impl Inspector {
     }
 }
 
-/// The Details and View resources buttons.
-fn actions(selection: Selection, resources_label: &str, cx: &mut Context<Inspector>) -> Div {
+/// The Details button, and for an Application the resources button under
+/// `resources_label`. `None` leaves the resources button out, as the narrow list does.
+fn actions(
+    selection: Selection,
+    resources_label: Option<&str>,
+    cx: &mut Context<Inspector>,
+) -> Div {
     let resource = selection.resource();
     let details_id = format!(
         "gitops-details:{}:{}:{}",
@@ -168,26 +173,31 @@ fn actions(selection: Selection, resources_label: &str, cx: &mut Context<Inspect
         Selection::App(app) => Some(app.clone()),
         _ => None,
     };
-    div().flex().items_center().gap(px(8.)).child(details).when(
-        selection.opens_resources(),
-        |row| {
-            row.child(
-                dui::sm_button(Variant::Outline, resources_label)
-                    .id(SharedString::from(format!(
-                        "gitops-resources:{}",
-                        selection.key()
-                    )))
-                    .test_support()
-                    .ml_auto()
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        cx.stop_propagation();
-                        if let Some(app) = &application {
-                            this.open_application_resources(app.clone(), window, cx);
-                        }
-                    })),
-            )
-        },
-    )
+    div()
+        .flex()
+        .items_center()
+        .gap(px(8.))
+        .child(details)
+        .when_some(
+            resources_label.filter(|_| selection.opens_resources()),
+            |row, resources_label| {
+                row.child(
+                    dui::sm_button(Variant::Outline, resources_label)
+                        .id(SharedString::from(format!(
+                            "gitops-resources:{}",
+                            selection.key()
+                        )))
+                        .test_support()
+                        .ml_auto()
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            cx.stop_propagation();
+                            if let Some(app) = &application {
+                                this.open_application_resources(app.clone(), window, cx);
+                            }
+                        })),
+                )
+            },
+        )
 }
 
 /// A `h-[18.5rem]` card: tone bar, name and source icon, health badge, source
@@ -357,11 +367,10 @@ pub(super) fn card(
                         .gap(px(6.))
                         .children(fact_rows),
                 )
-                .child(
-                    div()
-                        .mt_auto()
-                        .pt(px(12.))
-                        .child(actions(selection, "View resources", cx)),
-                ),
+                .child(div().mt_auto().pt(px(12.)).child(actions(
+                    selection,
+                    Some("View resources"),
+                    cx,
+                ))),
         )
 }

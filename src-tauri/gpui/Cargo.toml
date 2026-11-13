@@ -40,7 +40,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kubecove_coverage)"] }
 
 [dependencies]
 gpui-kit = { version = "=0.9.0", default-features = false, features = ["component", "assets", "tree-sitter-yaml"] }
-kubecove = { path = "..", default-features = false, features = ["mcp-host"] }
+kubecove = { path = "..", default-features = false, features = ["mcp-host", "credential-plugin-path"] }
 kubecove-host = { path = "../crates/host", features = ["remote-client"] }
 rfd = "=0.17.2"
 dirs = "=7.0.0"

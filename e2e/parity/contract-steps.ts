@@ -260,6 +260,10 @@ export type Step =
     | { action: "selectRevision" | "reviewAction"; label: string }
     | { action: "expectRevisionDiff"; selected: string; comparison: string; contains: string[] }
     | { action: "expectReview"; title: string; description: string; contains: string[] }
+    // Without `key` the disclosure is clicked; with it, focused and activated from the keyboard.
+    | { action: "showReviewDiff"; key?: "Enter" | "Space" }
+    // `controller` is "" when the target has no controlling owner; `typed` says whether the name input shows.
+    | { action: "expectDeleteReview"; name: string; context: string; namespace: string; controller: string; consequence: string; typed: boolean }
     | { action: "expectActionResult"; text: string }
     | { action: "expectDryRun"; contains: string[] }
     | ({ action: "expectNoResource" | "expectPaletteResource" | "expectNoPaletteResource" | "choosePaletteResource" } & Identity)
@@ -300,6 +304,9 @@ export type Step =
     | { action: "expandNav"; page: string }
     | { action: "expectGitOpsTable"; title: string; count: number }
     | ({ action: "expectGitOpsItem" | "expectNoGitOpsItem" | "openGitOpsDetails" } & Identity)
+    /** A group header of the GitOps list. `position` counts the headers above it. */
+    | { action: "expectGitOpsGroup"; label: string; position: number; count: number; expanded: boolean }
+    | { action: "toggleGitOpsGroup"; label: string }
     | { action: "expectArgoApplication"; name: string; health: string; sync: string }
     | { action: "expectArgoSignal"; label: string; count: number }
     | { action: "expectHelmCount"; count: number }

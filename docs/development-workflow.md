@@ -73,7 +73,9 @@ cargo clippy --locked --manifest-path src-tauri/gpui/Cargo.toml --all-targets --
 bun run e2e:parity
 ```
 
-The parity command exercises both production interfaces with controlled backend responses using the same [acceptance scenarios](../e2e/parity/scenarios/) and the same exported browser-mock data. It retains reports and screenshots when available under `e2e/artifacts/`. This is UI integration evidence, separate from packaged-window and real Kubernetes checks. The full suite runs in CI on every pull request and after each merge to main (`.github/workflows/parity.yml`); run it locally with `PARITY_PREFIX` for the areas you change. Unsupported native product areas remain listed in the [parity guide](../e2e/parity/README.md).
+The parity command exercises both production interfaces with controlled backend responses using the same [acceptance scenarios](../e2e/parity/scenarios/) and exported browser-mock data. It retains reports and available screenshots under `e2e/artifacts/`. This proves UI integration, separate from packaged-window and real Kubernetes checks. Pull requests select scenarios using the newest successful main coverage map and start jobs for that selection. Unavailable or untrusted selection runs the full suite. `Parity result` states the selected count and reason, then validates those exact scenarios on both drivers. Main still runs every scenario with coverage after each merge (`.github/workflows/parity.yml`). A scenario missed by PR selection is caught on main. See [change-based selection](../e2e/parity/README.md#change-based-selection) for fallback rules and the job graph. Use `PARITY_PREFIX` locally for the areas you change. Unsupported native areas remain listed in the parity guide.
+
+Changes to Rust files compiled by the parity binary select the full suite. Execution coverage cannot capture how attributes, private imports, types and macros affect descendant modules. Frontend changes retain line and component coverage selection.
 
 When a user-level Cargo configuration sets a shared build directory, override both `CARGO_TARGET_DIR` and `CARGO_BUILD_BUILD_DIR` for isolated builds. The target directory alone does not override Cargo's intermediate build directory.
 
@@ -203,8 +205,8 @@ GitHub's reservation of the key to another job. The others set GitHub's
 Setting `ACTIONS_CACHE_MODE` in a step's `env` does nothing: the runner sets that
 variable from the job's `cache-mode`, and only for actions, so a `run` step
 cannot read it. The "Set up job" log of every job prints the access it got as
-"Cache mode". The pull request parity jobs are read-only too,
-so every pull request exercises that path before main depends on it.
+"Cache mode". Selected pull request parity jobs are read-only too,
+so their GPUI runs exercise that path before main depends on it.
 
 CI builds set `CARGO_PROFILE_DEV_DEBUG=line-tables-only`. Backtraces keep file
 and line, and the compiler output that each job links, caches and restores is
@@ -356,6 +358,49 @@ To evaluate a CI change, compare job queue, setup, execution, and cache upload
 times in GitHub Actions on comparable revisions. Include both cold and warm
 runs. Local workflow regression checks validate orchestration, not hosted cache
 hits or an end-to-end speedup.
+
+## Benchmark selection on pull requests
+
+CodSpeed runs every frontend benchmark and all six Rust shards on pushes to
+`main` and manual runs, keeping complete baselines. Pull requests select frontend
+benchmark files whose transitive imports changed. The selector uses Vite's parser
+and resolver with `vitest.config.ts`, including aliases, extension lookup,
+re-exports and literal dynamic imports. It does not execute the benchmark code.
+Computed imports, globs, runtime file reads, unsupported source formats and
+unresolved imports keep their dependent benchmarks selected on every PR.
+
+Lockfiles, package manifests, Vitest, Vite, Svelte and TypeScript configuration,
+environment files and the benchmark harness select every frontend file. Fixture
+modules select their importers through the same closure. Rust retains its
+conservative full-lane fixture rule. Unrelated E2E and test files, documents and
+workflow files select no benchmarks unless imported by one.
+
+The CodSpeed workflow and `.github/actions/codspeed-run/` select both lanes.
+Changes elsewhere under `.github/` do not select a lane. The selection scripts and
+their orchestration tests select both lanes; frontend import-resolution and
+grouping scripts select the frontend lane. Rust's cache-key and Cargo-shim scripts
+select only Rust. Rust keeps its six-shard selection for backend source, manifests,
+toolchain and Cargo configuration changes. The separate GPUI and server
+workspaces do not select Rust benchmarks.
+
+Frontend jobs use the measured file and case durations from run `43322953935` in
+`scripts/codspeed-benchmark-suites.mjs`. The selector chooses the fewest groups
+whose predicted duration fits within that run's existing eight-group maximum.
+It preserves the case filters and benchmark identities. No selected file means
+no frontend job. New files without measurements run unfiltered in one job,
+pending measured durations. A selection failure runs all frontend files without
+name filters and all Rust shards. Cache keys, saving and access modes are unchanged.
+
+The detection summary lists every frontend file's selection reason and the Rust
+shards. The gate summary records job results. Failed, cancelled or unexpectedly
+skipped selected jobs fail `CodSpeed Performance Analysis`; legitimate empty
+selections pass. Labeled same-repository release PRs retain their existing skip
+policy. Unchanged benchmarked code does not block a merge on performance results.
+
+CodSpeed [fills omitted results from the baseline and marks them skipped](https://codspeed.io/docs/features/partial-runs).
+Uploads stay in one workflow with the same authentication, following its
+[sharding contract](https://codspeed.io/docs/features/sharded-benchmarks).
+Removed benchmarks remain skipped until archived in CodSpeed.
 
 ## Verification Before Completion
 

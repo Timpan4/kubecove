@@ -1,0 +1,456 @@
+//! The controlling owner a delete review shows, and whether that owner
+//! recreates the deleted object. Only built-in controllers count: a custom
+//! operator may or may not replace what it owns, so its objects keep the
+//! typed-name confirmation (ADR 0024).
+
+use crate::models::{AppError, AppErrorKind, ClusterOperationTarget, ResourceActionController};
+use k8s_openapi::{api::core::v1::Pod, apimachinery::pkg::apis::meta::v1::LabelSelector};
+use kube::api::{Api, ApiResource, DynamicObject, ListParams};
+use kube::core::{GroupVersionKind, Selector, SelectorExt};
+use kubecove_kube::commands::list_projection::{self, Typed};
+use serde::Deserialize;
+use serde_json::Value;
+use std::collections::BTreeMap;
+
+#[derive(Clone, Deserialize)]
+struct DemandStatus {
+    phase: Option<String>,
+}
+
+pub(super) async fn require_replacement(
+    client: kube::Client,
+    target: &ClusterOperationTarget,
+    object: &Value,
+) -> Result<(), AppError> {
+    let controller = match target.namespace.as_deref() {
+        Some(namespace) => confirmed_controller(client, namespace, &target.kind, object).await,
+        None => None,
+    };
+    if controller.is_some_and(|controller| controller.recreates) {
+        Ok(())
+    } else {
+        Err(AppError::new(
+            "Replacement is no longer confirmed. Review this resource again before deleting it.",
+            AppErrorKind::Validation,
+        ))
+    }
+}
+
+/// Built-in controllers that replace a deleted object, by target kind:
+/// (target kind, owner API group, owner kind). The core group is "".
+/// A `Deployment` is left out for `ReplicaSet` targets: it recreates only the
+/// `ReplicaSet` of its current template, so deleting an older one loses that revision.
+const RECREATING_OWNERS: &[(&str, &str, &str)] = &[
+    ("Pod", "apps", "ReplicaSet"),
+    ("Pod", "apps", "StatefulSet"),
+    ("Pod", "", "ReplicationController"),
+];
+
+/// A trusted built-in owner that the preview still has to fetch to confirm
+/// it exists and can create a replacement.
+pub(super) struct OwnerToConfirm {
+    gvk: GroupVersionKind,
+    name: String,
+    uid: String,
+}
+
+/// The controlling owner for the review. `recreates` is true only when a
+/// fetch of the live owner confirms it (`owner_can_replace`); any read error,
+/// such as `NotFound` or `Forbidden`, keeps the typed-name confirmation.
+pub(super) async fn confirmed_controller(
+    client: kube::Client,
+    namespace: &str,
+    target_kind: &str,
+    object: &Value,
+) -> Option<ResourceActionController> {
+    let (mut controller, owner) = action_controller(target_kind, object)?;
+    if let Some(owner) = owner {
+        let api: Api<DynamicObject> = Api::namespaced_with(
+            client.clone(),
+            namespace,
+            &ApiResource::from_gvk(&owner.gvk),
+        );
+        controller.recreates = match api.get(&owner.name).await {
+            Ok(live) => match serde_json::to_value(&live) {
+                Ok(live) if owner_can_replace(&live, &owner.uid, &owner.gvk.kind, object) => {
+                    if matches!(
+                        owner.gvk.kind.as_str(),
+                        "ReplicaSet" | "ReplicationController"
+                    ) {
+                        replica_demand(
+                            client,
+                            namespace,
+                            &owner.gvk.kind,
+                            &owner.uid,
+                            &live,
+                            object,
+                        )
+                        .await
+                    } else {
+                        true
+                    }
+                }
+                _ => false,
+            },
+            Err(_) => false,
+        };
+    }
+    Some(controller)
+}
+
+/// The live owner is the one the reference names, is not being deleted (an
+/// orphaning or foreground delete leaves the reference in place for a while),
+/// and still desires replacement work for this target.
+fn owner_can_replace(owner: &Value, uid: &str, kind: &str, target: &Value) -> bool {
+    if owner.pointer("/metadata/uid").and_then(Value::as_str) != Some(uid)
+        || owner.pointer("/metadata/deletionTimestamp").is_some()
+    {
+        return false;
+    }
+    match kind {
+        "StatefulSet" => statefulset_desires_pod(owner, target),
+        "ReplicaSet" | "ReplicationController" => {
+            owner
+                .pointer("/spec/replicas")
+                .and_then(Value::as_u64)
+                .unwrap_or(1)
+                > 0
+        }
+        _ => false,
+    }
+}
+
+fn statefulset_desires_pod(owner: &Value, target: &Value) -> bool {
+    let Some(owner_name) = owner.pointer("/metadata/name").and_then(Value::as_str) else {
+        return false;
+    };
+    let Some(suffix) = target
+        .pointer("/metadata/name")
+        .and_then(Value::as_str)
+        .and_then(|name| name.strip_prefix(owner_name))
+        .and_then(|suffix| suffix.strip_prefix('-'))
+    else {
+        return false;
+    };
+    let Ok(ordinal) = suffix.parse::<u64>() else {
+        return false;
+    };
+    if ordinal.to_string() != suffix {
+        return false;
+    }
+    // Kubernetes defaults StatefulSet start to zero and replicas to one.
+    let start = owner
+        .pointer("/spec/ordinals/start")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let replicas = owner
+        .pointer("/spec/replicas")
+        .and_then(Value::as_u64)
+        .unwrap_or(1);
+    ordinal
+        .checked_sub(start)
+        .is_some_and(|index| index < replicas)
+}
+
+/// Replica controllers replace a selected active Pod only when removing it
+/// leaves fewer active owned or adoptable Pods than the desired count.
+async fn replica_demand(
+    client: kube::Client,
+    namespace: &str,
+    kind: &str,
+    owner_uid: &str,
+    owner: &Value,
+    target: &Value,
+) -> bool {
+    let selector = match kind {
+        "ReplicaSet" => serde_json::from_value::<LabelSelector>(owner["spec"]["selector"].clone())
+            .ok()
+            .and_then(|selector| Selector::try_from(selector).ok()),
+        "ReplicationController" => {
+            serde_json::from_value::<BTreeMap<String, String>>(owner["spec"]["selector"].clone())
+                .ok()
+                .map(|selector| selector.into_iter().collect())
+        }
+        _ => None,
+    };
+    let Some(selector) = selector else {
+        return false;
+    };
+    let Ok(target) = serde_json::from_value::<Pod>(target.clone()) else {
+        return false;
+    };
+    if selector.to_string().is_empty()
+        || !selector.matches(&target.metadata.labels.clone().unwrap_or_default())
+    {
+        return false;
+    }
+    let api: Api<Pod> = Api::namespaced(client, namespace);
+    let desired = owner
+        .pointer("/spec/replicas")
+        .and_then(Value::as_u64)
+        .unwrap_or(1);
+    // Desired plus one is sufficient to detect excess demand candidates.
+    let Some(limit) = desired
+        .checked_add(1)
+        .and_then(|count| u32::try_from(count).ok())
+    else {
+        return false;
+    };
+    let Ok(pods) = list_projection::list::<_, Typed<Pod, DemandStatus>>(
+        api,
+        &ListParams::default()
+            .labels(&selector.to_string())
+            .limit(limit),
+    )
+    .await
+    else {
+        return false;
+    };
+    // A partial list cannot establish demand.
+    if pods
+        .metadata
+        .continue_
+        .as_ref()
+        .is_some_and(|token| !token.is_empty())
+    {
+        return false;
+    }
+    let mut active = 0_u64;
+    let mut target_present = false;
+    for pod in pods.items {
+        let controller = pod
+            .metadata
+            .owner_references
+            .as_ref()
+            .and_then(|owners| owners.iter().find(|owner| owner.controller == Some(true)));
+        if pod.metadata.deletion_timestamp.is_some()
+            || matches!(
+                pod.status
+                    .as_ref()
+                    .and_then(|status| status.phase.as_deref()),
+                Some("Succeeded" | "Failed")
+            )
+            || !selector.matches(&pod.metadata.labels.clone().unwrap_or_default())
+            || controller.is_some_and(|controller| controller.uid != owner_uid)
+        {
+            continue;
+        }
+        active += 1;
+        target_present |= pod.metadata.uid == target.metadata.uid
+            && controller.is_some_and(|controller| controller.uid == owner_uid);
+    }
+    target_present && active <= desired
+}
+
+/// The owner reference marked `controller: true` on `object`, and the owner
+/// to fetch when its reference matches a recreating built-in controller.
+fn action_controller(
+    target_kind: &str,
+    object: &Value,
+) -> Option<(ResourceActionController, Option<OwnerToConfirm>)> {
+    let owner = object
+        .pointer("/metadata/ownerReferences")?
+        .as_array()?
+        .iter()
+        .find(|owner| owner.get("controller").and_then(Value::as_bool) == Some(true))?;
+    let kind = owner.get("kind")?.as_str()?;
+    let name = owner.get("name")?.as_str()?;
+    let api_version = owner.get("apiVersion")?.as_str()?;
+    // `group/version`, or exactly `v1` for the core group; anything else matches no group.
+    let group_version = match api_version.split_once('/') {
+        Some((group, version))
+            if !group.is_empty() && !version.is_empty() && !version.contains('/') =>
+        {
+            Some((group, version))
+        }
+        Some(_) => None,
+        None => (api_version == "v1").then_some(("", "v1")),
+    };
+    let group = group_version.map(|(group, _)| group);
+    // A finished Pod keeps its owner reference, but its controller has already
+    // counted it as done or replaced it, so deleting it creates nothing new.
+    let finished = matches!(
+        object.pointer("/status/phase").and_then(Value::as_str),
+        Some("Succeeded" | "Failed")
+    );
+    let trusted = !finished
+        && RECREATING_OWNERS
+            .iter()
+            .any(|&(target, owner_group, owner_kind)| {
+                target == target_kind && Some(owner_group) == group && owner_kind == kind
+            });
+    let uid = owner
+        .get("uid")
+        .and_then(Value::as_str)
+        .filter(|uid| !uid.is_empty());
+    let to_confirm = match (trusted, group_version, uid) {
+        (true, Some((group, version)), Some(uid)) => Some(OwnerToConfirm {
+            gvk: GroupVersionKind::gvk(group, version, kind),
+            name: name.to_owned(),
+            uid: uid.to_owned(),
+        }),
+        _ => None,
+    };
+    Some((
+        ResourceActionController {
+            kind: kind.to_owned(),
+            name: name.to_owned(),
+            recreates: to_confirm.is_some(),
+        },
+        to_confirm,
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{action_controller, owner_can_replace};
+    use serde_json::{Value, json};
+
+    /// Owner references as the API server returns them, with a `uid`.
+    fn owned(mut owners: Value) -> Value {
+        for owner in owners.as_array_mut().expect("owner list") {
+            owner["uid"] = json!("owner-uid");
+        }
+        json!({ "metadata": { "name": "web-7d9c9b7f8d-k2r9p", "ownerReferences": owners } })
+    }
+
+    fn recreates(target_kind: &str, object: &Value) -> Option<bool> {
+        action_controller(target_kind, object).map(|(controller, _)| controller.recreates)
+    }
+
+    // Failure modes, written before the code:
+    // 1. an object with no owners must still require typing;
+    // 2. an owner without `controller: true` does not replace the object;
+    // 3. the controller may follow other owner references;
+    // 4. a CRD that reuses a built-in kind name in another group is not trusted;
+    // 5. a built-in controller only recreates the kind it manages;
+    // 6. a malformed owner reference must not count as a controller;
+    // 7. a finished Pod keeps its owner reference but is never replaced;
+    // 8. an apiVersion other than `group/version` or `v1` names no trusted group;
+    // 9. a Deployment does not recreate an older ReplicaSet revision;
+    // 10. an owner reference without a `uid` cannot be matched to the live owner.
+    #[test]
+    fn only_built_in_controllers_of_the_target_kind_recreate() {
+        assert!(action_controller("Pod", &json!({ "metadata": { "name": "bare" } })).is_none());
+        assert!(
+            action_controller(
+                "Pod",
+                &owned(
+                    json!([{ "apiVersion": "apps/v1", "kind": "ReplicaSet", "name": "web-7d9c9b7f8d" }])
+                )
+            )
+            .is_none()
+        );
+        let no_uid = json!({ "metadata": { "ownerReferences": [
+            { "apiVersion": "apps/v1", "kind": "ReplicaSet", "name": "web", "controller": true }
+        ] } });
+        assert_eq!(recreates("Pod", &no_uid), Some(false));
+        let (controller, _) = action_controller(
+            "Pod",
+            &owned(json!([
+                { "apiVersion": "v1", "kind": "ConfigMap", "name": "ref" },
+                { "apiVersion": "apps/v1", "kind": "ReplicaSet", "name": "web-7d9c9b7f8d", "controller": true }
+            ])),
+        )
+        .expect("controller owner");
+        assert_eq!(
+            (
+                controller.kind.as_str(),
+                controller.name.as_str(),
+                controller.recreates
+            ),
+            ("ReplicaSet", "web-7d9c9b7f8d", true)
+        );
+        for (api_version, kind) in [("apps/v1", "StatefulSet"), ("v1", "ReplicationController")] {
+            let object = owned(
+                json!([{ "apiVersion": api_version, "kind": kind, "name": "owner", "controller": true }]),
+            );
+            assert_eq!(recreates("Pod", &object), Some(true), "{kind}");
+        }
+        let custom = owned(
+            json!([{ "apiVersion": "example.com/v1", "kind": "ReplicaSet", "name": "x", "controller": true }]),
+        );
+        assert_eq!(recreates("Pod", &custom), Some(false));
+        let operator = owned(
+            json!([{ "apiVersion": "argoproj.io/v1alpha1", "kind": "Rollout", "name": "x", "controller": true }]),
+        );
+        assert_eq!(recreates("Pod", &operator), Some(false));
+        let wrong_target = owned(
+            json!([{ "apiVersion": "apps/v1", "kind": "ReplicaSet", "name": "x", "controller": true }]),
+        );
+        assert_eq!(recreates("ConfigMap", &wrong_target), Some(false));
+        let replica_set = owned(
+            json!([{ "apiVersion": "apps/v1", "kind": "Deployment", "name": "web", "controller": true }]),
+        );
+        assert_eq!(recreates("ReplicaSet", &replica_set), Some(false));
+        let unversioned = owned(
+            json!([{ "apiVersion": "bogus", "kind": "ReplicationController", "name": "x", "controller": true }]),
+        );
+        assert_eq!(recreates("Pod", &unversioned), Some(false));
+        for (api_version, kind) in [
+            ("/v1", "ReplicationController"),
+            ("apps/", "ReplicaSet"),
+            ("apps/v1/extra", "ReplicaSet"),
+        ] {
+            let object = owned(
+                json!([{ "apiVersion": api_version, "kind": kind, "name": "x", "controller": true }]),
+            );
+            assert_eq!(recreates("Pod", &object), Some(false), "{api_version}");
+        }
+        let malformed =
+            owned(json!([{ "apiVersion": "apps/v1", "kind": "ReplicaSet", "controller": true }]));
+        assert!(action_controller("Pod", &malformed).is_none());
+        for (api_version, kind, phase) in [
+            ("batch/v1", "Job", "Succeeded"),
+            ("apps/v1", "ReplicaSet", "Failed"),
+        ] {
+            let mut object = owned(
+                json!([{ "apiVersion": api_version, "kind": kind, "name": "owner", "controller": true }]),
+            );
+            object["status"] = json!({ "phase": phase });
+            assert_eq!(recreates("Pod", &object), Some(false), "{kind} {phase}");
+        }
+        let mut running = owned(
+            json!([{ "apiVersion": "batch/v1", "kind": "Job", "name": "owner", "controller": true }]),
+        );
+        running["status"] = json!({ "phase": "Running" });
+        assert_eq!(recreates("Pod", &running), Some(false));
+    }
+
+    // Failure modes of the live owner, written before the code:
+    // 1. a same-named owner created after the original has another uid;
+    // 2. an owner scaled to zero replaces nothing;
+    // 3. a suspended Job replaces nothing.
+    // A terminating, missing or unreadable owner is covered at the preview seam
+    // in `resource_actions_tests.rs`.
+    #[test]
+    fn only_a_live_active_owner_with_the_referenced_uid_replaces() {
+        let live = json!({ "metadata": { "uid": "owner-uid" }, "spec": { "replicas": 2 } });
+        assert!(owner_can_replace(
+            &live,
+            "owner-uid",
+            "ReplicaSet",
+            &json!({})
+        ));
+        assert!(owner_can_replace(
+            &json!({ "metadata": { "uid": "owner-uid" } }),
+            "owner-uid",
+            "ReplicaSet",
+            &json!({})
+        ));
+        assert!(!owner_can_replace(
+            &live,
+            "other-uid",
+            "ReplicaSet",
+            &json!({})
+        ));
+        let mut scaled_down = live.clone();
+        scaled_down["spec"]["replicas"] = json!(0);
+        assert!(!owner_can_replace(
+            &scaled_down,
+            "owner-uid",
+            "ReplicaSet",
+            &json!({})
+        ));
+    }
+}

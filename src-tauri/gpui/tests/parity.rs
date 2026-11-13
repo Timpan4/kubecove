@@ -15,6 +15,8 @@ mod common;
 mod coverage;
 #[path = "parity/coverage_checks.rs"]
 mod coverage_checks;
+#[path = "parity/delete_review.rs"]
+mod delete_review;
 #[path = "parity/delivery.rs"]
 mod delivery;
 #[path = "parity/detail.rs"]
@@ -228,6 +230,7 @@ fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
         || multi_context::act(window, cx, step)
         || detail::act(window, cx, step)
         || detail_status::act(window, cx, step)
+        || delete_review::act(window, cx, step)
         || details_metadata::act(window, cx, step)
         || lint_permissions::act(window, cx, step)
         || workspace::act(window, cx, step)

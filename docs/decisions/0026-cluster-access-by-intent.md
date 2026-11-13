@@ -104,8 +104,10 @@ separate runtime evidence.
 Desktop launches on Linux and macOS can omit the user's terminal PATH. Before
 building a local exec-authenticated client, recover only PATH from the configured
 absolute `SHELL`, using a fixed interactive login-shell command. Cache the result
-for this process. Preserve inherited directory precedence and append missing
-shell directories. Supply the result only to the credential plugin's environment;
+for this process. Both Tauri and GPUI enable the shared `credential-plugin-path`
+Cargo feature; recovery does not require the Tauri runtime. Preserve inherited
+directory precedence and append missing shell directories. Supply the result only
+to the credential plugin's environment;
 do not mutate process-global environment or kubeconfig files. Explicit
 `exec.env.PATH` wins. No plugin-specific directories or provider commands are added.
 

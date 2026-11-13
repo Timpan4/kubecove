@@ -1,7 +1,8 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { type Contract, loadContract, validateReports } from "./contract";
-import { object, string } from "./contract-values";
+import { count, object, string } from "./contract-values";
+import { selectedContract } from "./selected-contract";
 
 export type Driver = "web" | "gpui";
 type Report = { driver: Driver; scenarios: unknown[] };
@@ -55,7 +56,7 @@ export function newestAttempts(names: string[]): string[] {
 }
 
 /** Reads downloaded artifacts. Each run must have finished and passed its declared driver. */
-export async function collectReports(root: string): Promise<unknown[]> {
+export async function collectReports(root: string, selectionAttempt = 0): Promise<unknown[]> {
 	const reports: unknown[] = [];
 	async function visit(directory: string): Promise<void> {
 		const entries = await readdir(directory, { withFileTypes: true });
@@ -72,7 +73,11 @@ export async function collectReports(root: string): Promise<unknown[]> {
 		for (const entry of entries) if (entry.isDirectory()) await visit(join(directory, entry.name));
 	}
 	const artifacts = (await readdir(root, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map(({ name }) => name);
-	for (const artifact of newestAttempts(artifacts)) await visit(join(root, artifact));
+	// Re-running the planner can change the selected IDs and shard count. Reports from
+	// before that plan belong to a different selection. A failed-shard rerun keeps the
+	// original plan's attempt and can still use its earlier successful shard reports.
+	const current = artifacts.filter((name) => Number(/-attempt-(\d+)$/.exec(name)?.[1] ?? 0) >= selectionAttempt);
+	for (const artifact of newestAttempts(current)) await visit(join(root, artifact));
 	if (!reports.length) throw new Error(`No parity reports found: ${root}`);
 	return reports;
 }
@@ -80,7 +85,14 @@ export async function collectReports(root: string): Promise<unknown[]> {
 if (import.meta.main) {
 	const root = string(process.argv[2]);
 	const contract = await loadContract();
-	const reports = mergeReports(contract, await collectReports(root));
-	await writeFile(join(root, "merged-reports.json"), JSON.stringify(reports, null, 2));
-	console.log(`Both drivers passed all ${contract.scenarios.length} scenarios; merged reports validated.`);
+	const selected = selectedContract(contract, process.env.PARITY_SCENARIOS);
+	const selectionAttempt = process.env.PARITY_SELECTION_ATTEMPT ? count(Number(process.env.PARITY_SELECTION_ATTEMPT)) : 0;
+	const reports = mergeReports(selected, selected.scenarios.length ? await collectReports(root, selectionAttempt) : []);
+	if (selected.scenarios.length) await writeFile(join(root, "merged-reports.json"), JSON.stringify(reports, null, 2));
+	const reason = process.env.PARITY_SELECTION_REASON ? string(JSON.parse(process.env.PARITY_SELECTION_REASON)) : "Full contract";
+	const summary = selected.scenarios.length
+		? `Both drivers passed ${selected.scenarios.length} of ${contract.scenarios.length} scenarios; merged reports validated. ${reason}.\n`
+		: `No parity scenarios selected (0 of ${contract.scenarios.length}); no driver jobs were needed. ${reason}.\n`;
+	console.log(summary);
+	if (process.env.GITHUB_STEP_SUMMARY) await writeFile(process.env.GITHUB_STEP_SUMMARY, summary, { flag: "a" });
 }

@@ -6,6 +6,7 @@ import { type Contract, loadContract, requireViewCoverage, validateReports } fro
 import { writeRunMap } from "../e2e/parity/coverage-map";
 import { runGpui } from "../e2e/parity/gpui-run";
 import { parseDriver, validateDriverReport } from "../e2e/parity/merge-reports";
+import { selectedContract } from "../e2e/parity/selected-contract";
 import { VIEWS } from "../e2e/parity/visual/views";
 import { runWeb } from "../e2e/parity/web";
 
@@ -33,7 +34,8 @@ async function selectScenarios(scenarios: Scenario[], rerun: string | undefined)
 	const list = (name: string) => (process.env[name] ?? "").split(",").map((prefix) => prefix.trim()).filter(Boolean);
 	const prefixes = list("PARITY_PREFIX");
 	const excluded = list("PARITY_EXCLUDE");
-	let selected = prefixes.length ? scenarios.filter((scenario) => prefixes.some((prefix) => scenario.id.startsWith(prefix))) : scenarios;
+	const exact = selectedContract({ scenarios }, process.env.PARITY_SCENARIOS).scenarios;
+	let selected = prefixes.length ? exact.filter((scenario) => prefixes.some((prefix) => scenario.id.startsWith(prefix))) : exact;
 	selected = selected.filter((scenario) => !excluded.some((prefix) => scenario.id.startsWith(prefix)));
 	const base = process.env.PARITY_CHANGED;
 	if (base) {
@@ -149,7 +151,7 @@ async function runDrivers(contract: Contract) {
 		const map = await writeRunMap(artifacts, join(artifacts, "coverage-map.json"));
 		mark("coverageMap");
 		console.log(`Coverage map: ${map.scenarios.length} scenarios, ${Object.keys(map.files).length} files`);
-		const narrowed = ["PARITY_PREFIX", "PARITY_EXCLUDE", "PARITY_CHANGED", "PARITY_RERUN", "PARITY_SUITE_SHARD"].some((name) => process.env[name]);
+		const narrowed = ["PARITY_PREFIX", "PARITY_SCENARIOS", "PARITY_EXCLUDE", "PARITY_CHANGED", "PARITY_RERUN", "PARITY_SUITE_SHARD"].some((name) => process.env[name]);
 		if (!narrowed) await copyFile(join(artifacts, "coverage-map.json"), resolve(DEFAULT_MAP));
 	}
 }

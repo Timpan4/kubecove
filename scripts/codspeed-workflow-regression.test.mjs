@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { benchmarkFiles, benchmarkGroups, benchmarkSelection } from "./codspeed-benchmark-suites.mjs";
+import { frontendMatrix } from "./codspeed-selection.mjs";
 
 const workflow = readFileSync(new URL("../.github/workflows/codspeed.yml", import.meta.url), "utf8").replaceAll("\r\n", "\n");
 
@@ -41,12 +42,23 @@ function detect(paths, overrides = {}) {
   const root = mkdtempSync(join(tmpdir(), "kubecove-codspeed-"));
   const output = join(root, "output").replaceAll("\\", "/");
   try {
-    const result = bash(`git() { if [[ "$1" == "diff" ]]; then printf '%s\\n' "$CHANGED_PATHS"; fi; }\n${runBlock(job("changes"))}`, {
+    const result = bash(`git() { if [[ "$1" == "diff" ]]; then if [[ "$GIT_FAILURE" == true ]]; then return 1; fi; printf '%s' "$CHANGED_PATHS" | tr '\\n' '\\0'; fi; }\nnode() { if [[ "$NODE_FAILURE" == true ]]; then return 1; fi; if [[ "$1" == scripts/codspeed-detect.mjs && -n "\${NODE_OUTPUT+set}" ]]; then printf '%s' "$NODE_OUTPUT" >> "$GITHUB_OUTPUT"; return 0; fi; command node "$@"; }\n${runBlock(job("changes"))}`, {
       BASE_SHA: "a".repeat(40), HEAD_SHA: "b".repeat(40), EVENT_NAME: "pull_request",
-      CHANGED_PATHS: paths.join("\n"), GITHUB_OUTPUT: output, ...overrides,
+      DEPENDENCIES_RESULT: "success", SELECTION_CHECK_RESULT: "success",
+      GIT_FAILURE: "false", NODE_FAILURE: "false", RELEASE_PR: "false",
+      CHANGED_PATHS: paths.join("\n"), GITHUB_OUTPUT: output, RUNNER_TEMP: root,
+      GITHUB_STEP_SUMMARY: join(root, "summary"), ...overrides,
     });
     assert.equal(result.status, 0, result.stderr);
-    return Object.fromEntries(readFileSync(output, "utf8").trim().split("\n").map((line) => line.split("=")));
+    const outputs = Object.fromEntries(readFileSync(output, "utf8").trim().split("\n").map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]));
+    const matrix = JSON.parse(outputs.frontend_matrix);
+    assert.equal(matrix.include.length > 0, outputs.frontend === "true");
+    if (overrides.NODE_OUTPUT === undefined) {
+      const summary = readFileSync(join(root, "summary"), "utf8");
+      assert.match(summary, /Rust shards/);
+      for (const file of benchmarkFiles()) assert.ok(summary.includes(file) || summary.includes("Running every frontend file") || summary.includes("Labeled same-repository release PR"), file);
+    }
+    return { frontend: outputs.frontend, rust: outputs.rust };
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -54,8 +66,8 @@ function detect(paths, overrides = {}) {
 
 for (const [path, frontend, rust] of [
   ["README.md", false, false],
-  ["src/App.svelte", true, false],
-  ["src/lib/resource-table.ts", true, false],
+  ["src/App.svelte", false, false],
+  ["src/lib/yamlFormat.ts", true, false],
   ["benchmarks/topology.bench.ts", true, false],
   ["package.json", true, false],
   ["bun.lock", true, false],
@@ -79,18 +91,25 @@ for (const [path, frontend, rust] of [
   [".cargo/config.toml", false, true],
   ["rust-toolchain.toml", false, true],
   [".github/workflows/codspeed.yml", true, true],
-  ["fixtures/resource.yaml", true, true],
-  ["shared/fixtures/resource.json", true, true],
-  ["shared/fixtures/stream.txt", true, true],
+  [".github/actions/codspeed-run/action.yml", true, true],
+  [".github/workflows/ci.yml", false, false],
+  [".github/actions/unrelated/action.yml", false, false],
+  [".github/dependabot.yml", false, false],
+  ["fixtures/resource.yaml", false, true],
+  ["shared/fixtures/resource.json", false, true],
+  ["shared/fixtures/stream.txt", false, true],
   ["scripts/codspeed-benchmark-suites.mjs", true, false],
+  ["scripts/codspeed-import-closure.mjs", true, false],
+  ["scripts/codspeed-selection.mjs", true, true],
+  ["scripts/codspeed-detect.mjs", true, true],
   // Failure mode: a change to a script the Rust shards run merges without those shards running.
   ["scripts/ci-rust-cache-key.mjs", false, true],
   ["scripts/ci-mbx-cargo.mjs", false, true],
-  // No benchmark imports from the E2E or unit test trees; their fixtures still select both.
+  // Frontend fixtures follow import closures. Rust retains its conservative fixture rule.
   ["e2e/parity/web.ts", false, false],
   ["e2e/parity/scenarios/argo-gaps.json", false, false],
   ["tests/release.test.ts", false, false],
-  ["e2e/fixtures/chart/values.yaml", true, true],
+  ["e2e/fixtures/chart/values.yaml", false, true],
 ]) {
   test(`selects affected benchmarks for ${path}`, () => {
     assert.deepEqual(detect([path]), { frontend: String(frontend), rust: String(rust) });
@@ -98,27 +117,108 @@ for (const [path, frontend, rust] of [
 }
 
 test("combines frontend and Rust changes, including removed paths", () => {
-  assert.deepEqual(detect(["src/removed.ts", "src-tauri/src/removed.rs"]), { frontend: "true", rust: "true" });
+  assert.deepEqual(detect(["src/lib/yamlFormat.ts", "src-tauri/src/removed.rs"]), { frontend: "true", rust: "true" });
 });
 
-for (const overrides of [{ EVENT_NAME: "workflow_dispatch" }, { BASE_SHA: "" }, { BASE_SHA: "0".repeat(40) }]) {
+for (const overrides of [{ EVENT_NAME: "push" }, { EVENT_NAME: "workflow_dispatch" }, { BASE_SHA: "" }, { BASE_SHA: "0".repeat(40) }, { DEPENDENCIES_RESULT: "failure" }, { SELECTION_CHECK_RESULT: "failure" }, { GIT_FAILURE: "true" }, { NODE_FAILURE: "true" }]) {
   test(`runs both suites without a usable comparison: ${JSON.stringify(overrides)}`, () => {
     assert.deepEqual(detect([], overrides), { frontend: "true", rust: "true" });
   });
 }
 
+const jobs = (selection) => JSON.stringify({ include: [{ group: 0, selection }] });
+
+// Failure mode: the selector exits 0 with missing, extra or contradictory outputs, and the
+// benchmark jobs read them: an unparsable matrix, or a frontend lane switched off by accident.
+for (const [name, output] of [
+  ["nothing", ""],
+  ["a matrix that is not JSON", "frontend=true\nrust=false\nfrontend_matrix=not-json\n"],
+  ["a matrix without include", "frontend=false\nrust=false\nfrontend_matrix={}\n"],
+  ["an empty matrix with the frontend lane on", 'frontend=true\nrust=false\nfrontend_matrix={"include":[]}\n'],
+  ["jobs with the frontend lane off", 'frontend=false\nrust=false\nfrontend_matrix={"include":[{"group":0,"selection":""}]}\n'],
+  ["a job without a selection", 'frontend=true\nrust=false\nfrontend_matrix={"include":[{"group":0}]}\n'],
+  ["a flag that is not a boolean", 'frontend=false\nrust=maybe\nfrontend_matrix={"include":[]}\n'],
+  ["a missing Rust flag", 'frontend=false\nfrontend_matrix={"include":[]}\n'],
+  ["a fourth output", 'frontend=false\nrust=false\nfrontend_matrix={"include":[]}\nrust=true\n'],
+  // Failure mode: the benchmark run rejects its job's selection, so the job fails where
+  // the fallback would have run everything.
+  ["a job selection that is not JSON", `frontend=true\nrust=false\nfrontend_matrix=${jobs("not-json")}\n`],
+  ["a job selection without files", `frontend=true\nrust=false\nfrontend_matrix=${jobs("{}")}\n`],
+  ["a job selection with no file", `frontend=true\nrust=false\nfrontend_matrix=${jobs('{"include":[]}')}\n`],
+  ["a job selection naming an unknown file", `frontend=true\nrust=false\nfrontend_matrix=${jobs('{"include":["benchmarks/gone.bench.ts"]}')}\n`],
+  ["a job selection with a name filter that is not text", `frontend=true\nrust=false\nfrontend_matrix=${jobs('{"include":["benchmarks/topology.bench.ts"],"testNamePattern":null}')}\n`],
+  ["a job selection with an invalid regex", `frontend=true\nrust=false\nfrontend_matrix=${jobs('{"include":["benchmarks/topology.bench.ts"],"testNamePattern":"["}')}\n`],
+  ["two matrix documents", 'frontend=false\nrust=false\nfrontend_matrix={"include":[{}]} {"include":[]}\n'],
+]) {
+  test(`runs both suites when the selector succeeds with ${name}`, () => {
+    assert.deepEqual(detect([], { NODE_OUTPUT: output }), { frontend: "true", rust: "true" });
+  });
+}
+
+// Failure mode: the check above rejects what the benchmark run accepts, and every pull
+// request runs everything.
+test("keeps a selection the benchmark run accepts", () => {
+  const selection = '{"include":["benchmarks/topology.bench.ts"],"exclude":[],"testNamePattern":"F07"}';
+  assert.deepEqual(benchmarkSelection({ KUBECOVE_BENCHMARK_SELECTION: selection }).include, ["benchmarks/topology.bench.ts"]);
+  assert.deepEqual(detect([], { NODE_OUTPUT: `frontend=true\nrust=false\nfrontend_matrix=${jobs(selection)}\n` }), { frontend: "true", rust: "false" });
+});
+
+// Failure mode: the selector's own error handling selects nothing instead of everything.
+test("the selector runs everything when it cannot read the changed paths", () => {
+  const root = mkdtempSync(join(tmpdir(), "kubecove-codspeed-detect-"));
+  try {
+    const output = join(root, "output");
+    const result = spawnSync(process.execPath, ["scripts/codspeed-detect.mjs", join(root, "missing")], { cwd: new URL("../", import.meta.url), env: { ...process.env, EVENT_NAME: "pull_request", GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: "", RELEASE_PR: "false", SELECTION_FALLBACK: "" }, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(readFileSync(output, "utf8"), 'frontend=true\nrust=true\nfrontend_matrix={"include":[{"group":0,"selection":""}]}\n');
+    const release = spawnSync(process.execPath, ["scripts/codspeed-detect.mjs", join(root, "missing")], { cwd: new URL("../", import.meta.url), env: { ...process.env, EVENT_NAME: "pull_request", GITHUB_OUTPUT: join(root, "release-output"), GITHUB_STEP_SUMMARY: "", RELEASE_PR: "true", SELECTION_FALLBACK: "" }, encoding: "utf8" });
+    assert.equal(release.status, 0, release.stderr);
+    assert.equal(readFileSync(join(root, "release-output"), "utf8"), 'frontend=false\nrust=false\nfrontend_matrix={"include":[]}\n');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// Failure mode: a selector setup step that fails the detection job skips every benchmark job
+// and fails the gate, where the fallback would have run everything.
+test("a failed selector setup step still reaches the detection step", () => {
+  const changes = job("changes");
+  for (const name of ["Setup Bun", "Cache Bun dependencies", "Install selector dependencies", "Test benchmark orchestration"]) {
+    const start = changes.indexOf(`      - name: ${name}\n`);
+    assert.notEqual(start, -1, name);
+    assert.match(changes.slice(start, changes.indexOf("\n      - name: ", start + 1)), /^ {8}continue-on-error: true$/m, name);
+  }
+  assert.ok(changes.indexOf("      - name: Cache Bun dependencies\n") < changes.indexOf("      - name: Install selector dependencies\n"));
+  assert.match(changes.slice(changes.indexOf("      - name: Detect frontend and Rust benchmark changes\n")), /^ {8}if: \$\{\{ !cancelled\(\) \}\}$/m);
+});
+
+// Failure mode: a release pull request whose selector setup failed reports that every
+// benchmark runs, while the benchmark jobs skip a release pull request.
+for (const overrides of [{}, { DEPENDENCIES_RESULT: "failure" }, { SELECTION_CHECK_RESULT: "failure" }, { GIT_FAILURE: "true" }, { NODE_FAILURE: "true" }]) {
+  test(`a release pull request selects nothing: ${JSON.stringify(overrides)}`, () => {
+    assert.deepEqual(detect(["bun.lock"], { RELEASE_PR: "true", ...overrides }), { frontend: "false", rust: "false" });
+  });
+}
+
 function gate(overrides = {}) {
-  return bash(runBlock(job("check")), {
-    CHANGES_RESULT: "success", RELEASE_PR: "false",
-    FRONTEND_REQUIRED: "true", FRONTEND_RESULT: "success",
-    RUST_REQUIRED: "true", RUST_RESULT: "success", RUST_SAVER_RESULT: "success", ...overrides,
-  }).status;
+  const root = mkdtempSync(join(tmpdir(), "codspeed-gate-"));
+  try {
+    return bash(runBlock(job("check")), {
+      CHANGES_RESULT: "success", RELEASE_PR: "false",
+      FRONTEND_REQUIRED: "true", FRONTEND_RESULT: "success",
+      RUST_REQUIRED: "true", RUST_RESULT: "success", RUST_SAVER_RESULT: "success",
+      GITHUB_STEP_SUMMARY: join(root, "summary"), ...overrides,
+    }).status;
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 }
 
 test("the stable gate requires successful detection and all selected jobs", () => {
   assert.match(job("check"), /name: CodSpeed Performance Analysis/);
   assert.match(job("check"), /if: always\(\)/);
   assert.equal(gate(), 0);
+  assert.equal(gate({ FRONTEND_REQUIRED: "false", FRONTEND_RESULT: "skipped", RUST_REQUIRED: "false", RUST_RESULT: "skipped", RUST_SAVER_RESULT: "skipped" }), 0);
   for (const result of ["failure", "cancelled", "skipped", ""]) {
     assert.notEqual(gate({ CHANGES_RESULT: result }), 0);
   }
@@ -236,16 +336,17 @@ test("release PRs still require both benchmark jobs to be skipped", () => {
   assert.notEqual(gate({ ...release, RELEASE_PR: "false" }), 0);
 });
 
-// This file runs without installed dependencies (the CodSpeed detection job) and under
-// `bun test`. The check of the name filters against the benchmarks Vitest collects needs
-// both, so it lives in codspeed-frontend-partition.integration.mjs.
+// Vitest's collected name-filter contract is checked separately by
+// codspeed-frontend-partition.integration.mjs. No benchmarks execute here.
 test("frontend group jobs select every benchmark file within the measured projection", (t) => {
 	const files = benchmarkFiles();
 	assert.ok(files.length);
-	const groups = /^ {8}group: \[([\d, ]+)\]$/m.exec(job("frontend"))?.[1].split(",").map(Number);
-	const count = Number(/KUBECOVE_BENCHMARK_GROUP: \$\{\{ matrix\.group \}\}\/(\d+)$/m.exec(job("frontend"))?.[1]);
-	assert.deepEqual(groups, Array.from({ length: count }, (_, index) => index));
-	const selections = groups.map((group) => benchmarkSelection({ KUBECOVE_BENCHMARK_GROUP: `${group}/${count}` }));
+	const matrix = frontendMatrix(files).include;
+	const count = matrix.length;
+	const groups = matrix.map(({ group }) => group);
+	assert.match(job("frontend"), /matrix: \$\{\{ fromJSON\(needs.changes.outputs.frontend_matrix\) \}\}/);
+	assert.match(job("frontend"), /KUBECOVE_BENCHMARK_SELECTION: \$\{\{ matrix.selection \}\}/);
+	const selections = matrix.map(({ selection }) => benchmarkSelection({ KUBECOVE_BENCHMARK_SELECTION: selection }));
 	assert.deepEqual([...new Set(selections.flatMap((selection) => selection.include))].sort(), files);
 	const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
 	const scripts = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).scripts;
@@ -268,6 +369,9 @@ test("frontend group jobs select every benchmark file within the measured projec
 });
 
 test("invalid or conflicting frontend selectors fail instead of running every benchmark", () => {
+	for (const selection of ["null", "{}", '{"include":[]}', '{"include":["missing"]}', JSON.stringify({ include: [benchmarkFiles()[0]], testNamePattern: 1 })]) {
+		assert.throws(() => benchmarkSelection({ KUBECOVE_BENCHMARK_SELECTION: selection }));
+	}
 	assert.throws(
 		() =>
 			benchmarkSelection({

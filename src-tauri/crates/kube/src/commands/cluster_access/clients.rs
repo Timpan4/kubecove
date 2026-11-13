@@ -112,7 +112,10 @@ pub(super) async fn client(
         }
         // Only the desktop plugin-path step below changes the config.
         #[cfg_attr(
-            not(all(feature = "desktop", any(target_os = "linux", target_os = "macos"))),
+            not(all(
+                feature = "credential-plugin-path",
+                any(target_os = "linux", target_os = "macos")
+            )),
             allow(unused_mut)
         )]
         let mut config = source.config_for_context(cluster_context, fallback).await?;
@@ -120,7 +123,10 @@ pub(super) async fn client(
         // layer and cache owner before crossing that boundary.
         let bearer = forwarded_bearer_layer()?;
         let scope = SessionScope::current_or_process();
-        #[cfg(all(feature = "desktop", any(target_os = "linux", target_os = "macos")))]
+        #[cfg(all(
+            feature = "credential-plugin-path",
+            any(target_os = "linux", target_os = "macos")
+        ))]
         if matches!(scope.source_policy(), super::SourcePolicy::Local) {
             super::plugin_path::apply(&mut config).await;
         }

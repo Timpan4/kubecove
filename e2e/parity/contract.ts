@@ -70,7 +70,7 @@ export const ACTIONS = [
 	"expectDetailScroll", "expectEvent", "expectEventCount", "expectLiveSessionCount", "filterIncidents", "expectIncidentGuide", "openIncidentResources", "expectGitOpsCount", "expectPortForward",
 	"expectLogLines", "expectLogToolbarFit", "filterLogs", "toggleLogLevel", "expectLogsEmpty", "selectRevision", "expectRevisionDiff", "reviewAction", "editReplicas",
 	"toggleLogRow", "toggleLogExpandAll", "expectLogRowOpen", "copyLogLine", "expectLogTimestampTooltip", "expectRestorePrompt", "restorePromptControl",
-	"expectReview", "confirmDeletion", "executeReview", "closeReview", "expectNoReview", "expectActionResult", "expectNoActionResult",
+	"expectReview", "showReviewDiff", "expectDeleteReview", "confirmDeletion", "executeReview", "closeReview", "expectNoReview", "expectActionResult", "expectNoActionResult",
 	"editYaml", "applyYaml", "dryRunYaml", "expectDryRun", "expectYamlNotice", "expectNoYamlNotice", "expectYamlReadOnly",
 	"expectNoResource", "openLauncher", "openSavedWorkspace", "expectSavedWorkspace", "expectContextUnavailable", "nameWorkspace", "selectWorkspaceContext", "toggleWorkspaceNamespace",
 	"createWorkspace", "expectOpenWorkspace", "selectRbacCategory", "expectRbacCategory", "filterRbacRisk", "expectRbacItem", "expectNoRbacItem", "selectRbacItem",
@@ -79,7 +79,7 @@ export const ACTIONS = [
 	"expectKubeconfigEnvVar", "addServerKubeconfigPath", "moveResourceKindEarlier", "expectResourceKindPosition", "expectDeliveryView", "restartClient", "toggleSetting", "expectSetting", "selectSettingOption", "expectSettingOption", "openPalette", "searchPalette", "expectPaletteResource", "expectNoPaletteResource",
 	"choosePaletteResource", "expectPaletteEntry", "expectNoPaletteEntry", "choosePaletteEntry",
 	"editRbacReviewNote", "expectRbacReviewNote", "saveRbacReview", "expectRbacReview", "clearRbacReview",
-	"openGitOps", "expandNav", "expectGitOpsTable", "expectGitOpsItem", "expectNoGitOpsItem", "openGitOpsDetails", "expectArgoApplication",
+	"openGitOps", "expandNav", "expectGitOpsTable", "expectGitOpsItem", "expectNoGitOpsItem", "openGitOpsDetails", "expectGitOpsGroup", "toggleGitOpsGroup", "expectArgoApplication",
 	"expectArgoSignal", "expectHelmCount", "expectHelmRelease", "expectNoHelmRelease", "openHelmRelease", "selectHelmNamespace", "searchHelm",
 	"expectHelmDetails", "openGitOpsResources", "expectArgoWorkspace", "filterArgoResources", "setDeliveryView",
     "sortResourceTable", "pressResourceRow", "expectResourceOrder", "toggleResourceGroup", "expectResourceGroup", "openResourceRow", "expectResourceCell", "expectResourceCellFits", "expectResourceColumns", "expectResourceActivity",
@@ -334,6 +334,11 @@ function step<Value>(value: Value): Step {
 			return { action: item.action, selected: string(item.selected), comparison: string(item.comparison), contains: strings(item.contains, false) };
 		case "expectReview":
 			return { action: item.action, title: string(item.title), description: string(item.description), contains: strings(item.contains, false) };
+		case "showReviewDiff":
+			return item.key === undefined ? { action: item.action } : { action: item.action, key: oneOf(["Enter", "Space"] as const, item.key, "a disclosure key") };
+		case "expectDeleteReview":
+			if (!isString(item.controller)) throw new Error("Expected a controller, empty when the target has none");
+			return { action: item.action, name: string(item.name), context: string(item.context), namespace: string(item.namespace), controller: item.controller, consequence: string(item.consequence), typed: boolean(item.typed) };
 		case "expectActionResult": return { action: item.action, text: string(item.text) };
 		case "expectDryRun": return { action: item.action, contains: strings(item.contains, false) };
 		case "expectNoResource":
@@ -417,6 +422,8 @@ function step<Value>(value: Value): Step {
 		case "expectGitOpsTable": return { action: item.action, title: string(item.title), count: count(item.count) };
 		case "expectGitOpsItem": case "expectNoGitOpsItem": case "openGitOpsDetails":
 			return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace) };
+		case "expectGitOpsGroup": return { action: item.action, label: string(item.label), position: count(item.position), count: count(item.count), expanded: boolean(item.expanded) };
+		case "toggleGitOpsGroup": return { action: item.action, label: string(item.label) };
 		case "expectArgoApplication": return { action: item.action, name: string(item.name), health: string(item.health), sync: string(item.sync) };
 		case "expectArgoSignal": return { action: item.action, label: string(item.label), count: count(item.count) };
 		case "expectHelmCount": return { action: item.action, count: count(item.count) };
