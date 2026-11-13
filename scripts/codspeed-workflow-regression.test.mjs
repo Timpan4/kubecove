@@ -179,6 +179,8 @@ test("Rust benchmark shard filters split every benchmark path into exactly one s
   assert.deepEqual(shards("rust"), ["dl", "es", "hr", "jn", "other"]);
   assert.match(job("rust"), /^ {4}cache-mode: read$/m);
   assert.doesNotMatch(job("rust-saver"), /cache-mode/);
+  // One at the top of the workflow would take the saver's access as well.
+  assert.equal(workflow.match(/^ *cache-mode:/gm)?.length, 1);
   assert.doesNotMatch(workflow, /ACTIONS_CACHE_MODE: /);
   assert.match(job("rust"), /^ {4}steps: &rust-steps$/m);
   assert.match(job("rust-saver"), /^ {4}steps: \*rust-steps$/m);

@@ -608,9 +608,18 @@ test("main records the parity coverage map from every parity job", () => {
   // ACTIONS_CACHE_MODE from the job's cache-mode and ignores a step's value (run 43407667697).
   const readOnly = (name) => /^ {4}cache-mode: read$/m.test(job(name, parity));
   assert.deepEqual(["main", "main-spike", "main-build-cache"].map(readOnly), [true, false, false]);
+  // Each saver writes its own cache: the spike job the instrumented build, the build cache
+  // job the uninstrumented one. A second `coverage: true` saver would bring the conflict back
+  // and leave pull requests without a cache.
   assert.match(job("main-spike", parity), /^ {6}coverage: true$/m);
+  assert.match(job("main-build-cache", parity), /^ {6}build-only: true$/m);
+  assert.doesNotMatch(job("main-build-cache", parity), /coverage:/);
   // Pull request jobs never save, and with the same access they exercise the main shards' path.
   assert.deepEqual(["pull-request-web", "pull-request-gpui", "pull-request-spike"].map(readOnly), [true, true, true]);
+  // Those four jobs are the only place that sets the mode. One at the top of either workflow
+  // would take the two savers' access as well.
+  assert.equal(parity.match(/^ *cache-mode:/gm)?.length, 4);
+  assert.doesNotMatch(suite, /^ *cache-mode:/m);
   assert.doesNotMatch(`${suite}${parity}`, /ACTIONS_CACHE_MODE: |save-cache|^ +cache-mode: (?!read$)/m);
   assert.match(step("Activate Cargo caching"), /run: node scripts\/ci-mbx-cargo\.mjs/);
   assert.doesNotMatch(suite, /swatinem\/rust-cache/i);
