@@ -171,6 +171,11 @@ jobs:
           - name: Lint frontend anti-slop rules
             run: bun run lint:anti-slop
 
+          # Vitest collects the real benchmark names here, because the CodSpeed
+          # detection job that runs the other benchmark checks installs nothing.
+          - name: Test frontend benchmark groups
+            run: bun run test:bench-groups
+
       # Svelte compilation tests need the runner after the parallel checks finish.
       - name: Test frontend
         run: bun test

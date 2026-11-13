@@ -196,7 +196,7 @@ test("parallel frontend checks retain coverage and finish before compilation-hea
     "bun run lint",
   ];
   for (const [source, commands] of [
-    [ci, [...common, "bun run audit", "bun run typecheck:bench", "bun run svelte:check", "bun run lint:anti-slop"]],
+    [ci, [...common, "bun run audit", "bun run typecheck:bench", "bun run svelte:check", "bun run lint:anti-slop", "bun run test:bench-groups"]],
     [workflow, common],
   ]) {
     const frontend = job("frontend", source);

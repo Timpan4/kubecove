@@ -2,9 +2,8 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import { test } from "node:test";
-import { createVitest } from "vitest/node";
 import { benchmarkFiles, benchmarkGroups, benchmarkSelection } from "./codspeed-benchmark-suites.mjs";
 
 const workflow = readFileSync(new URL("../.github/workflows/codspeed.yml", import.meta.url), "utf8").replaceAll("\r\n", "\n");
@@ -200,66 +199,21 @@ test("release PRs still require both benchmark jobs to be skipped", () => {
   assert.notEqual(gate({ ...release, RELEASE_PR: "false" }), 0);
 });
 
-async function collectBenchmarks() {
-	const vitest = await createVitest({ watch: false, reporters: [], benchmarkOnly: true });
-	try {
-		const { testModules, unhandledErrors } = await vitest.collect([], { staticParse: false });
-		assert.deepEqual(unhandledErrors, []);
-		return testModules.flatMap((module) => {
-			assert.deepEqual(module.errors(), []);
-			return [...module.children.allTests()].map((item) => ({
-				file: relative(process.cwd(), module.moduleId).replaceAll("\\", "/"),
-				name: item.fullName,
-			}));
-		});
-	} finally {
-		await vitest.close();
-	}
-}
-
-function assertBenchmarkPartition(benchmarks, selections) {
-	const matches = selections.map((selection) => benchmarks.filter((item) =>
-		selection.include.includes(item.file) && (!selection.testNamePattern || item.name.match(selection.testNamePattern)),
-	));
-	for (const [index, items] of matches.entries()) assert.ok(items.length, `group ${index} matches nothing`);
-	for (const item of benchmarks) {
-		const count = matches.filter((items) => items.includes(item)).length;
-		assert.equal(count, 1, `${item.file} > ${item.name} matched ${count} groups`);
-	}
-}
-
-test("frontend group jobs form a complete, disjoint partition of actual benchmarks", async (t) => {
+// This file runs without installed dependencies (the CodSpeed detection job) and under
+// `bun test`. The check of the name filters against the benchmarks Vitest collects needs
+// both, so it lives in codspeed-frontend-partition.integration.mjs.
+test("frontend group jobs select every benchmark file within the measured projection", (t) => {
 	const files = benchmarkFiles();
 	assert.ok(files.length);
 	const groups = /^ {8}group: \[([\d, ]+)\]$/m.exec(job("frontend"))?.[1].split(",").map(Number);
 	const count = Number(/KUBECOVE_BENCHMARK_GROUP: \$\{\{ matrix\.group \}\}\/(\d+)$/m.exec(job("frontend"))?.[1]);
 	assert.deepEqual(groups, Array.from({ length: count }, (_, index) => index));
 	const selections = groups.map((group) => benchmarkSelection({ KUBECOVE_BENCHMARK_GROUP: `${group}/${count}` }));
-	const benchmarks = await collectBenchmarks();
-	assert.deepEqual([...new Set(benchmarks.map((item) => item.file))].sort(), files);
-	assertBenchmarkPartition(benchmarks, selections);
-	const target = benchmarks.find((item) => item.file === "benchmarks/topology.bench.ts");
-	assert.ok(target);
-	const exact = target.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	await t.test("rejects a benchmark that runs in no group", () => {
-		const missing = selections.map((selection) => ({ ...selection, testNamePattern: `^(?!${exact}$)(?:${selection.testNamePattern ?? ".*"})` }));
-		assert.throws(() => assertBenchmarkPartition(benchmarks, missing), /matched 0 groups/);
-	});
-	await t.test("rejects a benchmark that runs in two groups", () => {
-		const owner = selections.findIndex((selection) => selection.include.includes(target.file) && target.name.match(selection.testNamePattern ?? ".*"));
-		const duplicate = selections.map((selection, index) => index !== (owner + 1) % count ? selection : ({
-			...selection, include: [...new Set([...selection.include, target.file])],
-			testNamePattern: `(?:${selection.testNamePattern ?? ".*"})|^${exact}$`,
-		}));
-		assert.throws(() => assertBenchmarkPartition(benchmarks, duplicate), /matched 2 groups/);
-	});
-	await t.test("rejects a group whose name filter matches nothing", () => {
-		assert.throws(() => assertBenchmarkPartition(benchmarks, selections.map((selection, index) => index ? selection : ({ ...selection, testNamePattern: "(?!)" }))), /group 0 matches nothing/);
-	});
-	await t.test("rejects a new benchmark in a split file that no filter covers", () => {
-		const added = { ...target, name: `${target.name.slice(0, target.name.lastIndexOf(" > "))} > newly added benchmark` };
-		assert.throws(() => assertBenchmarkPartition([...benchmarks, added], selections), /newly added benchmark matched 0 groups/);
-	});
+	assert.deepEqual([...new Set(selections.flatMap((selection) => selection.include))].sort(), files);
+	const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+	const scripts = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).scripts;
+	assert.equal(scripts["test:bench-groups"], "node --test scripts/codspeed-frontend-partition.integration.mjs");
+	assert.match(ci, /^ {12}run: bun run test:bench-groups$/m);
 	const durations = groups.map((group) => benchmarkGroups(files, count)[group].seconds);
 	t.diagnostic(`Predicted Run benchmarks seconds by group: ${durations.map((seconds) => seconds.toFixed(3)).join(", ")}`);
 	assert.equal(count, 8);
