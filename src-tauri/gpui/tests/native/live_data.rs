@@ -73,6 +73,31 @@ pub(super) struct LiveControls {
 const START_VERSION: &str = "42";
 
 impl LiveControls {
+    pub(super) fn change(&self, kind: &str, name: &str) {
+        let mut sent = false;
+        for (target, sender) in self.streams.lock().unwrap().iter() {
+            if !sender.is_closed()
+                && matches!(target, WatchTarget::Resource { scope, key, .. }
+                    if scope.context == "mock-dev" && key.resource_kind.kind == kind)
+            {
+                sender
+                    .send(StreamMessage::ResourceChanged {
+                        stream_id: "native".into(),
+                        target: WatchResourceTarget {
+                            cluster: "mock-dev".into(),
+                            kind: kind.into(),
+                            namespace: Some("payments".into()),
+                            name: Some(name.into()),
+                        },
+                        action: "applied".into(),
+                    })
+                    .unwrap();
+                sent = true;
+            }
+        }
+        assert!(sent, "no open {kind} watch");
+    }
+
     pub fn start_version(&self) -> Option<Read<String>> {
         let fails = self.start_versions?;
         let reads = self.reads.clone();

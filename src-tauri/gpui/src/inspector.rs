@@ -225,7 +225,6 @@ pub struct Inspector {
     context_task: Option<Task<()>>,
     scope_trace: Option<load_trace::LoadTrace>,
     map_trace: Option<load_trace::LoadTrace>,
-    topology_task: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -356,7 +355,6 @@ impl Inspector {
             context_task: None,
             scope_trace: None,
             map_trace: None,
-            topology_task: None,
             _subscriptions: subscriptions,
         };
         this.load_preferences(cx);
@@ -390,7 +388,7 @@ impl Inspector {
             self.gitops_page.workspace = None;
             self.argo.reset_dialog(argo::DialogHost::Page, cx);
             self.close_detail(cx);
-            self.topology_task.take();
+            self.map.read.cancel();
             self.set_page(page);
             if matches!(page, Page::Resources | Page::ClusterOverview) {
                 self.load_topology(cx);
