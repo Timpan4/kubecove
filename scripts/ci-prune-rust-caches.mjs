@@ -18,27 +18,18 @@ export const cacheName = (key) => /^mbx-(.+)-[0-9a-f]{64}-[0-9a-f]{64}$/.exec(ke
 
 // Caches of other refs stay: a release branch or a pull request restores its own before main's.
 export function supersededCaches(caches) {
+  const builds = [];
   const newest = new Map();
-  const superseded = [];
   for (const cache of caches) {
     const name = cache.ref === "refs/heads/main" ? cacheName(cache.key) : undefined;
     if (name === undefined) continue;
-    const kept = newest.get(name);
-    if (kept === undefined) {
-      newest.set(name, cache);
-      continue;
-    }
-    // GitHub writes microseconds and Date.parse keeps milliseconds. Two saves in the same
-    // millisecond have no known order, so both stay until a later save replaces them.
-    const later = Date.parse(cache.created_at) - Date.parse(kept.created_at);
-    if (later > 0) {
-      superseded.push(kept);
-      newest.set(name, cache);
-    } else if (later < 0) {
-      superseded.push(cache);
-    }
+    const saved = Date.parse(cache.created_at);
+    builds.push({ cache, name, saved });
+    newest.set(name, Math.max(newest.get(name) ?? saved, saved));
   }
-  return superseded;
+  // GitHub writes microseconds and Date.parse keeps milliseconds. Saves that share the newest
+  // millisecond of a name have no known order, so all of them stay.
+  return builds.filter(({ name, saved }) => saved < newest.get(name)).map(({ cache }) => cache);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

@@ -674,10 +674,14 @@ test("cache cleanup deletes only main's Rust build caches that a newer one of th
     // Saved in the same millisecond: which one is newer is unknown, so neither is deleted.
     cache(14, `mbx-e2e-${a}-${a}`, "2026-11-13T12:00:00.500001Z"),
     cache(15, `mbx-e2e-${a}-${b}`, "2026-11-13T12:00:00.500999Z"),
+    // A later save replaces both of two that share a millisecond, whichever is listed first.
+    cache(16, `mbx-ci-rust-${a}-${a}`, "2026-11-13T12:00:00.500001Z"),
+    cache(17, `mbx-ci-rust-${a}-${b}`, "2026-11-13T12:00:00.500999Z"),
+    cache(18, `mbx-ci-rust-${a}-${c}`, "2026-11-13T12:00:01Z"),
   ];
-  const deleted = (list) => supersededCaches(list).map(({ id }) => id).sort();
-  assert.deepEqual(deleted(caches), [1, 5]);
-  assert.deepEqual(deleted(caches.toReversed()), [1, 5]);
+  const deleted = (list) => supersededCaches(list).map(({ id }) => id).sort((first, second) => first - second);
+  assert.deepEqual(deleted(caches), [1, 5, 16, 17]);
+  assert.deepEqual(deleted(caches.toReversed()), [1, 5, 16, 17]);
 });
 test("cache cleanup deletes only with --delete, passes over a cache that is already gone, and fails on a refusal", () => {
   const root = mkdtempSync(join(tmpdir(), "kubecove-ci-cache-prune-"));
