@@ -182,6 +182,10 @@ the same compiler and rebuilds what changed. Only default-branch pushes save.
 Pull requests restore main's cache and never save: one pull request push that
 saved stored about 7 GB, and GitHub evicts the least recently used caches above
 the quota, which would remove the caches main keeps for other pull requests.
+Jobs that share one cache key, such as the CodSpeed Rust shards and the main
+parity shards, let one job save. The others run the cache action with
+`ACTIONS_CACHE_MODE: read`, because the action fails a job whose save loses
+GitHub's reservation of the key to another job.
 
 CI builds set `CARGO_PROFILE_DEV_DEBUG=line-tables-only`. Backtraces keep file
 and line, and the compiler output that each job links, caches and restores is
