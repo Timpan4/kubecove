@@ -80,11 +80,11 @@
       ]
     },
     {
-      "id": "overview.incident-attention",
-      "title": "Overview attention shortcut opens filtered investigation",
+      "id": "overview.attention-resources",
+      "title": "Overview attention count opens filtered resources",
       "steps": [
-        { "action": "overviewIncident", "filter": "Needs attention" },
-        { "action": "expectIncidentGuide", "title": "OutOfSync: shop needs attention in mock data." }
+        { "action": "overviewHealth", "filter": "Needs attention" },
+        { "action": "expectHealthFilter", "label": "Needs attention", "pressed": true }
       ]
     },
     {

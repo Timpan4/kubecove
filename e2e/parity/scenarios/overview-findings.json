@@ -1,0 +1,149 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "overview.generated-application-details",
+      "title": "Generated troubled Applications load exact details and health on both pages",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "configureArgoInventory", "mode": "many" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "coverageClick", "label": "Inspect Application overview-application-000 in argocd" },
+        { "action": "expectDetail", "kind": "Application", "namespace": "argocd", "name": "overview-application-000" },
+        { "action": "toggleDetailDisclosure", "label": "Health evidence" },
+        { "action": "expectPageText", "text": "Argo CD health: Degraded \u2014 Mock argoHealth state is Degraded" },
+        { "action": "showTab", "tab": "Argo CD" },
+        { "action": "expectArgoApplication", "name": "overview-application-000", "health": "Degraded", "sync": "OutOfSync" },
+        { "action": "showYaml" },
+        { "action": "expectYaml", "contains": ["name: overview-application-000"] },
+        { "action": "closeDetail" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "coverageClick", "label": "Next applications" },
+        { "action": "coverageClick", "label": "Inspect Application overview-application-050 in argocd" },
+        { "action": "expectDetail", "kind": "Application", "namespace": "argocd", "name": "overview-application-050" },
+        { "action": "toggleDetailDisclosure", "label": "Health evidence" },
+        { "action": "expectPageText", "text": "Argo CD health: Degraded \u2014 Mock argoHealth state is Degraded" },
+        { "action": "showTab", "tab": "Argo CD" },
+        { "action": "expectArgoApplication", "name": "overview-application-050", "health": "Degraded", "sync": "OutOfSync" },
+        { "action": "showYaml" },
+        { "action": "expectYaml", "contains": ["name: overview-application-050"] }
+      ]
+    },
+    {
+      "id": "overview.gitops-application-pages",
+      "title": "Troubled applications remain reachable across pages",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "configureArgoInventory", "mode": "many" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectAccessibleName", "name": "Inspect Application overview-application-000 in argocd" },
+        { "action": "coverageClick", "label": "Next applications" },
+        { "action": "expectAccessibleName", "name": "Inspect Application overview-application-050 in argocd" },
+        { "action": "coverageClick", "label": "Previous applications" },
+        { "action": "expectAccessibleName", "name": "Inspect Application overview-application-000 in argocd" },
+        { "action": "coverageClick", "label": "Next applications" },
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "configureArgoInventory", "mode": "base" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectAccessibleName", "name": "Inspect Application tenant-ledger in argocd" }
+      ]
+    },
+    {
+      "id": "overview.mixed-namespace-findings",
+      "title": "A namespace with both health severities opens both sets of findings",
+      "steps": [
+        { "action": "overviewNamespace", "namespace": "payments" },
+        { "action": "expectHealthFilter", "label": "Total", "pressed": true },
+        { "action": "expectResource", "kind": "Ingress", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" }
+      ]
+    },
+    {
+      "id": "overview.single-resource-total",
+      "title": "A scope with one resource uses the singular count",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "choose-workspace" },
+        { "action": "openLauncher" },
+        { "action": "clickSettingsButton", "label": "Import" },
+        { "action": "clickSettingsButton", "label": "Apply import" },
+        { "action": "editSavedWorkspace", "name": "Controlled import" },
+        { "action": "toggleWorkspaceNamespace", "namespace": "payments" },
+        { "action": "toggleWorkspaceNamespace", "namespace": "todo" },
+        { "action": "saveWorkspace" },
+        { "action": "openSavedWorkspace", "name": "Controlled import" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectOverviewHealth", "total": 1 }
+      ]
+    },
+    {
+      "id": "overview.findings-pages",
+      "title": "Findings remain reachable across pages",
+      "steps": [
+        { "action": "configureShellRead", "phase": "overview-many" },
+        { "action": "expectOverviewProblem", "kind": "Pod", "namespace": "operations", "name": "overview-finding-000", "ready": "0/1", "status": "CrashLoopBackOff" },
+        { "action": "expectNoOverviewProblem", "kind": "Pod", "namespace": "operations", "name": "overview-finding-050" },
+        { "action": "coverageClick", "label": "Next findings" },
+        { "action": "expectOverviewProblem", "kind": "Pod", "namespace": "operations", "name": "overview-finding-050", "ready": "0/1", "status": "CrashLoopBackOff" },
+        { "action": "coverageClick", "label": "Previous findings" },
+        { "action": "expectOverviewProblem", "kind": "Pod", "namespace": "operations", "name": "overview-finding-000", "ready": "0/1", "status": "CrashLoopBackOff" }
+      ]
+    },
+    {
+      "id": "overview.gitops-application",
+      "title": "Troubled GitOps applications open their exact resource details",
+      "steps": [
+        { "action": "coverageClick", "label": "Inspect Application tenant-ledger in argocd" },
+        { "action": "expectDetail", "kind": "Application", "namespace": "argocd", "name": "tenant-ledger" },
+        { "action": "expectDetailContext", "context": "mock-dev" }
+      ]
+    },
+    {
+      "id": "overview.owner-chain",
+      "title": "Failing owners fold their children and disclose each exact object",
+      "steps": [
+        { "action": "configureShellRead", "phase": "overview-owner-chain" },
+        { "action": "expectOverviewProblem", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "apiVersion": "apps/v1", "ready": "0/3", "status": "CrashLoopBackOff" },
+        { "action": "expectNoOverviewProblem", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "toggleOverviewProblem", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectOverviewProblem", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p", "ready": "0/1", "status": "CrashLoopBackOff" },
+        { "action": "toggleOverviewProblem", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "key": "enter" },
+        { "action": "expectNoOverviewProblem", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "toggleOverviewProblem", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "key": "space" },
+        { "action": "expectOverviewProblem", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p", "ready": "0/1", "status": "CrashLoopBackOff" },
+        { "action": "openOverviewProblem", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "apiVersion": "apps/v1", "key": "enter" },
+        { "action": "expectDetail", "kind": "Deployment", "namespace": "payments", "name": "payments-api" }
+      ]
+    },
+    {
+      "id": "overview.findings-resource",
+      "title": "Overview findings show readiness and open the exact failing object",
+      "steps": [
+        { "action": "expectOverviewProblem", "kind": "Pod", "namespace": "operations", "name": "operations-crashloop-7f468cd8b8-lab01", "ready": "0/1", "status": "CrashLoopBackOff" },
+        { "action": "expectOverviewProblem", "kind": "Ingress", "namespace": "payments", "name": "payments-api", "ready": "-", "status": "MissingBackend" },
+        { "action": "openOverviewProblem", "kind": "Pod", "namespace": "operations", "name": "operations-crashloop-7f468cd8b8-lab01" },
+        { "action": "expectDetail", "kind": "Pod", "namespace": "operations", "name": "operations-crashloop-7f468cd8b8-lab01" }
+      ]
+    },
+    {
+      "id": "overview.health-resources",
+      "title": "Overview counts open Resources with the chosen health filter",
+      "steps": [
+        { "action": "overviewHealth", "filter": "Degraded" },
+        { "action": "expectHealthFilter", "label": "Degraded", "pressed": true },
+        { "action": "expectResource", "kind": "Pod", "namespace": "operations", "name": "operations-crashloop-7f468cd8b8-lab01" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" }
+      ]
+    },
+    {
+      "id": "overview.namespace-findings",
+      "title": "Overview namespace findings open the namespace and matching resources",
+      "steps": [
+        { "action": "overviewNamespace", "namespace": "operations" },
+        { "action": "expectHealthFilter", "label": "Degraded", "pressed": true },
+        { "action": "expectResource", "kind": "Pod", "namespace": "operations", "name": "operations-worker-evicted" },
+        { "action": "expectNoResource", "kind": "Ingress", "namespace": "payments", "name": "payments-api" }
+      ]
+    }
+  ]
+}

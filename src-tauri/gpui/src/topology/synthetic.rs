@@ -69,6 +69,8 @@ fn node(app: usize, template: usize) -> TopologyNode {
         ready: Some(if healthy { "True" } else { "False" }.to_owned()),
         restarts: None,
         owner_ref: matches!(*kind, "Pod" | "ReplicaSet").then(|| format!("deployment-api-{app}")),
+        uid: None,
+        controller_owner: None,
         argo_app: Some(format!("app-{}", app % 80)),
         helm_release: app
             .is_multiple_of(7)

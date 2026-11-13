@@ -245,11 +245,17 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             );
             return true;
         }
-        "overviewOperation" => format!(
-            "open-{}",
-            string(step, "destination").to_lowercase().replace(' ', "-")
-        ),
-        "overviewIncident" => format!("overview-incident:{}", string(step, "filter")),
+        "overviewOperation" => match string(step, "destination") {
+            "Workspaces" => {
+                window.click("header-workspaces", cx);
+                return true;
+            }
+            "Port Forwards" => {
+                locate::click_in(window, "sidebar-tree", "nav:Port Forwards".into(), cx);
+                return true;
+            }
+            destination => format!("open-{}", destination.to_lowercase()),
+        },
         "reviewIncidentAction" => {
             locate::click_in(
                 window,

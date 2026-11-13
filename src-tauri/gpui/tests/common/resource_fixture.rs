@@ -142,6 +142,21 @@ impl Fixture {
         resources: Vec<ResourceSummary>,
     ) -> Vec<ResourceSummary> {
         let phase = self.shell_read_phase.lock().unwrap().clone();
+        if phase == "overview-many" {
+            return resources
+                .iter()
+                .find(|row| row.name == "operations-crashloop-7f468cd8b8-lab01")
+                .map(|template| {
+                    (0..=kubecove_gpui::model::PAGE_SIZE)
+                        .map(|index| ResourceSummary {
+                            name: format!("overview-finding-{index:03}"),
+                            owner_ref: None,
+                            ..template.clone()
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+        }
         self.live_rows(resources)
             .into_iter()
             .filter(|row| {
@@ -150,7 +165,20 @@ impl Fixture {
                     && row.namespace.as_deref() == Some("payments")
                     && row.name == "payments-api")
             })
-            .map(|row| {
+            .map(|mut row| {
+                if phase == "overview-owner-chain" {
+                    let patches: Vec<serde_json::Value> = serde_json::from_str(include_str!("../../../../src/lib/tauri-dev-mock-overview.json")).unwrap();
+                    if let Some(patch) = patches.iter().find(|patch| patch["kind"] == row.kind && patch["name"] == row.name && patch["namespace"].as_str() == row.namespace.as_deref()) {
+                        row.status = patch["status"].as_str().map(str::to_owned);
+                        row.ready = patch["ready"].as_str().map(str::to_owned);
+                        row.owner_ref = patch["ownerRef"].as_str().map(str::to_owned);
+                        row.uid = patch["uid"].as_str().map(str::to_owned);
+                        row.controller_owner = serde_json::from_value(patch["controllerOwner"].clone()).unwrap();
+                        row.health_assessment = serde_json::from_value(serde_json::json!({
+                            "state": "degraded", "completeness": "complete", "winningSources": ["kubernetes"], "reasons": ["Controlled owner-chain failure"], "evidence": []
+                        })).unwrap();
+                    }
+                }
                 if phase == "payments-ingress-version-changed"
                     && row.kind == "Ingress"
                     && row.namespace.as_deref() == Some("payments")
@@ -253,7 +281,10 @@ impl Fixture {
                     && detail.summary.namespace == resource.namespace
             })
             .cloned()
-            .or_else(|| self.gitops.application_details(&resource));
+            .or_else(|| {
+                self.gitops
+                    .application_details(&resource, &self.argo.inventory_mode.lock().unwrap())
+            });
         // Named after the command the native and web clients call for this resource.
         let command = if resource.dynamic == Some(true) {
             "get_dynamic_resource_details"

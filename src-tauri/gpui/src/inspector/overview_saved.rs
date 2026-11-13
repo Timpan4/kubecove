@@ -15,9 +15,10 @@ use std::{cell::RefCell, rc::Rc};
 pub(super) struct SavedOverview {
     pub(super) shortcuts: Vec<crate::workspaces::shortcuts::Shortcut>,
     scope: [String; 3],
-    warnings: Vec<String>,
+    pub(super) warnings: Vec<String>,
     entries: Vec<CompareEntry>,
     comparisons: RefCell<Option<Rc<[Comparison]>>>,
+    overview: RefCell<Option<Rc<super::overview_state::Projection>>>,
 }
 struct Comparison {
     title: String,
@@ -25,11 +26,79 @@ struct Comparison {
 }
 
 impl Inspector {
+    pub(super) fn reset_overview_projection(&self) {
+        self.saved_overview.overview.borrow_mut().take();
+    }
+
+    pub(super) fn overview_projection(&self) -> Rc<super::overview_state::Projection> {
+        self.saved_overview
+            .overview
+            .borrow_mut()
+            .get_or_insert_with(|| {
+                let rows: Vec<_> = self.workspace_rows().cloned().collect();
+                let references: Vec<_> = rows.iter().collect();
+                let model = crate::workspaces::overview::build(&references);
+                let pages = model
+                    .problems
+                    .len()
+                    .div_ceil(crate::model::PAGE_SIZE)
+                    .max(1);
+                self.overview_ui
+                    .page
+                    .set(self.overview_ui.page.get().min(pages - 1));
+                let entry_health = rows
+                    .iter()
+                    .map(|row| {
+                        (
+                            crate::workspaces::overview::identity(row),
+                            row.health_assessment.state,
+                        )
+                    })
+                    .collect();
+                let namespace_health = model
+                    .namespaces
+                    .iter()
+                    .filter_map(|namespace| {
+                        use kubecove_lib::models::HealthAssessmentState as Health;
+                        let state = if namespace.degraded > 0 {
+                            Health::Degraded
+                        } else if namespace.attention > 0 {
+                            Health::NeedsAttention
+                        } else {
+                            return None;
+                        };
+                        Some((namespace.name.clone(), state))
+                    })
+                    .collect();
+                Rc::new(super::overview_state::Projection {
+                    health: HealthSummary::of(references.iter().copied()),
+                    model,
+                    entry_health,
+                    namespace_health,
+                    rows,
+                })
+            })
+            .clone()
+    }
+
     pub(super) fn update_saved_overview(&mut self) {
         let saved = self
             .launcher
             .active
             .and_then(|id| self.launcher.saved.iter().find(|saved| saved.id == id));
+        let workspace = serde_json::to_string(&(
+            self.launcher.active,
+            &self.scope.context,
+            saved.map(|saved| (&saved.namespaces, &saved.kinds, saved.contexts())),
+        ))
+        .expect("workspace scope serializes");
+        if self.overview_ui.workspace.as_ref() != Some(&workspace) {
+            self.overview_ui.workspace = Some(workspace);
+            self.overview_ui.page.set(0);
+            self.overview_ui.application_page.set(0);
+            self.overview_ui.expanded.clear();
+            self.overview_ui.quiet = false;
+        }
         let scope = if let Some(saved) = saved {
             let contexts = saved.contexts();
             [
@@ -205,7 +274,22 @@ impl Inspector {
                         .iter()
                         .enumerate()
                         .map(|(index, label)| {
-                            ui::outline_badge(label.clone())
+                            let badge = if index == 2 {
+                                div()
+                                    .flex()
+                                    .flex_none()
+                                    .items_center()
+                                    .h(px(20.))
+                                    .max_w(px(384.))
+                                    .px(px(8.))
+                                    .border_1()
+                                    .border_color(crate::theme::Tokens::border())
+                                    .bg(crate::theme::Tokens::input().opacity(0.3))
+                                    .child(ui::text(label.clone(), 10., 14.).truncate())
+                            } else {
+                                ui::outline_badge(label.clone())
+                            };
+                            badge
                                 .id(SharedString::from(format!("overview-scope:{index}")))
                                 .test_support()
                                 .aria_label(label.clone())

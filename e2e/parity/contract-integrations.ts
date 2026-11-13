@@ -36,7 +36,7 @@ export function integrationStep(item: JsonObject): Step | undefined {
 		case "expectNoSavedArgoProfile": return { action: item.action, url: string(item.url) };
 		case "expandArgoDiff": return { action: item.action };
 		case "reconnectArgoProfile": return { action: item.action };
-		case "configureArgoInventory": return { action: item.action, mode: oneOf(["base", "absent", "empty", "partial", "unavailable"], item.mode, "an Argo inventory mode") };
+		case "configureArgoInventory": return { action: item.action, mode: oneOf(["base", "absent", "empty", "partial", "unavailable", "many"], item.mode, "an Argo inventory mode") };
 		case "copyArgoValue": return { action: item.action, control: oneOf(["source", "revision", "repository value", "release value", "cluster target value"], item.control, "an Argo copy control"), contains: string(item.contains) };
 		case "reviewArgoOperation": return { action: item.action, operation: oneOf(["Refresh", "Hard refresh", "Sync", "Rollback"], item.operation, "an Argo operation") };
 		case "expectArgoReview": return { action: item.action, operation: string(item.operation), name: string(item.name), namespace: string(item.namespace), transport: string(item.transport) };

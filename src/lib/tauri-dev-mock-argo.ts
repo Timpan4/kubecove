@@ -1,4 +1,5 @@
 import type { ArgoConnectionProfile, ArgoServerEndpoint } from "./gitops-types";
+import { PAGE_SIZE } from "@/features/resources/constants";
 import type { MockArgs, MockHandler } from "./tauri-dev-mock-contract";
 import { kinds, mockHealthAssessment, now, resources, source } from "./tauri-dev-mock-data";
 import { argoApps, argoManagedResourceRefs, fluxHelmKind, fluxKind, fluxResources } from "./tauri-dev-mock-gitops-data";
@@ -40,9 +41,18 @@ export function configureArgoMock(script: ArgoMockScript) {
 	argoScript = script;
 	for (const release of heldArgo.splice(0)) release();
 }
-export type ArgoInventoryMode = "base" | "absent" | "empty" | "partial" | "unavailable";
+export type ArgoInventoryMode = "base" | "absent" | "empty" | "partial" | "unavailable" | "many";
 let argoInventoryMode: ArgoInventoryMode = "base";
-export function configureArgoInventory(mode: ArgoInventoryMode) { argoInventoryMode = mode; }
+let inventoryApplications = argoApps;
+export function configureArgoInventory(mode: ArgoInventoryMode) {
+    argoInventoryMode = mode;
+    inventoryApplications = argoApps;
+    if (mode === "empty") inventoryApplications = [];
+    if (mode === "many") {
+        const template = argoApps.find(app => app.healthAssessment?.state === "degraded");
+        inventoryApplications = template ? Array.from({ length: PAGE_SIZE + 1 }, (_, index) => ({ ...template, name: `overview-application-${String(index).padStart(3, "0")}` })) : [];
+    }
+}
 export function completeMockArgoOperation() { argoOutcomeComplete = true; }
 /** Mirrors the Rust endpoint model, which fills an absent tunnel TLS name when a profile is read. */
 function normalizedArgoEndpoint(endpoint: ArgoServerEndpoint): ArgoServerEndpoint {
@@ -136,7 +146,7 @@ return {
 	run_argo_operation: () => ({ accepted: true, transport: "kubernetes", message: "Mock operation accepted", operation: null }),
 	list_argocd_applications: () => {
         if (argoInventoryMode === "partial") throw new Error("Fixture Argo inventory unavailable");
-        return listed(argoInventoryMode === "empty" ? [] : argoApps);
+        return listed(inventoryApplications);
     },
 	get_argocd_application_details: (args) => argoDetails(args),
 	list_argocd_appsets: () => listed(appSets()),
@@ -154,7 +164,7 @@ return {
 
 function argoApplication(args: MockArgs) {
 	const application = args?.application;
-	return argoApps.find((candidate) => candidate.name === application?.name) ?? argoApps[0];
+	return inventoryApplications.find((candidate) => candidate.name === application?.name) ?? argoApps[0];
 }
 
 function argoManagedResources(args: MockArgs): ArgoManagedResource[] {
@@ -240,7 +250,7 @@ function argoManifest(row: ResourceSummary, desired: boolean) {
 }
 
 function argoDetails(args: MockArgs): ArgoApplicationDetails {
-	const summary = argoApps.find((app) => app.name === args?.name) ?? argoApps[0];
+	const summary = inventoryApplications.find((app) => app.name === args?.name) ?? argoApps[0];
 	return { summary, yaml: argoApplicationYaml(summary), metadata: { labels: { "argocd.argoproj.io/instance": summary.name } }, status: { sync: { status: summary.syncStatus }, health: { status: summary.healthStatus } } };
 }
 
@@ -283,7 +293,7 @@ export function argoApplicationYaml(app: (typeof argoApps)[number]): string {
 }
 
 export function argoApplicationSummary(name: string): ResourceSummary | undefined {
-		const application = argoApps.find((candidate) => candidate.name === name);
+	const application = inventoryApplications.find((candidate) => candidate.name === name);
 	if (application) {
 		const summary: ResourceSummary = {
 			kind: "Application",
@@ -297,7 +307,8 @@ export function argoApplicationSummary(name: string): ResourceSummary | undefine
 			plural: "applications",
 			namespaced: true,
 			dynamic: true,
-			health: "healthy",
+			health: application.healthStatus === "Degraded" ? "degraded" : "healthy",
+			healthAssessment: application.healthAssessment,
 			createdAt: application.createdAt,
 		};
 		if (application.syncStatus) summary.status = application.syncStatus;

@@ -1,0 +1,105 @@
+use super::resource_filters::HealthFilter;
+use super::{Inspector, Page};
+use crate::{targets::TestSupportExt, theme::Tokens, ui};
+use gpui_kit::{Context, Div, FocusHandle, SharedString, Window, prelude::*, px};
+use std::{
+    cell::{Cell, RefCell},
+    collections::{HashMap, HashSet},
+};
+
+pub(super) struct Projection {
+    pub rows: Vec<kubecove_lib::models::ResourceSummary>,
+    pub health: crate::model::HealthSummary,
+    pub model: crate::workspaces::overview::Overview,
+    pub entry_health: HashMap<String, kubecove_lib::models::HealthAssessmentState>,
+    pub namespace_health: HashMap<String, kubecove_lib::models::HealthAssessmentState>,
+}
+
+#[derive(Default)]
+pub(super) struct State {
+    pub expanded: HashSet<String>,
+    pub quiet: bool,
+    pub page: Cell<usize>,
+    pub application_page: Cell<usize>,
+    pub workspace: Option<String>,
+    focus: RefCell<HashMap<String, ButtonFocus>>,
+}
+struct ButtonFocus {
+    handle: FocusHandle,
+    rendered: bool,
+}
+impl Inspector {
+    pub(super) fn begin_overview_buttons(&self) {
+        for focus in self.overview_ui.focus.borrow_mut().values_mut() {
+            focus.rendered = false;
+        }
+    }
+    pub(super) fn finish_overview_buttons(&self) {
+        self.overview_ui
+            .focus
+            .borrow_mut()
+            .retain(|_, focus| focus.rendered);
+    }
+    pub(super) fn overview_button(
+        &self,
+        id: impl Into<String>,
+        label: impl Into<String>,
+        enabled: bool,
+        cx: &mut Context<Self>,
+        action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+    ) -> crate::targets::ObservedElement<gpui_kit::Stateful<Div>> {
+        let id = id.into();
+        let mut buttons = self.overview_ui.focus.borrow_mut();
+        if !buttons.contains_key(&id) {
+            buttons.insert(
+                id.clone(),
+                ButtonFocus {
+                    handle: cx.focus_handle(),
+                    rendered: true,
+                },
+            );
+        }
+        let button = buttons.get_mut(&id).expect("button focus was inserted");
+        button.rendered = true;
+        let focus = button.handle.clone().tab_stop(enabled);
+        drop(buttons);
+        ui::outline_button()
+            .id(SharedString::from(id))
+            .test_support()
+            .role(gpui_kit::Role::Button)
+            .aria_label(label.into())
+            .aria_description(if enabled { "enabled" } else { "disabled" })
+            .track_focus(&focus)
+            .focus(|style| style.border_color(Tokens::ring()))
+            .when(!enabled, |button| button.opacity(0.5))
+            .when(enabled, |button| button.cursor_pointer())
+            .on_click(cx.listener(move |this, _, window, cx| {
+                if enabled {
+                    action(this, window, cx);
+                }
+            }))
+            .px(px(8.))
+            .py(px(4.))
+    }
+    pub(super) fn open_overview_resources(
+        &mut self,
+        namespace: Option<String>,
+        health: HealthFilter,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.can_leave(cx) {
+            return;
+        }
+        self.select_namespace(namespace, window, cx);
+        if self.page != Page::Resources {
+            return;
+        }
+        self.search
+            .update(cx, |input, cx| input.set_value("", window, cx));
+        self.filters.health = health;
+        self.filters.contexts.clear();
+        self.filters.gitops_owner = None;
+        self.filter(cx);
+    }
+}

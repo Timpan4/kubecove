@@ -70,6 +70,10 @@ pub struct ResourceSummary {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner_ref: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uid: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub controller_owner: Option<OwnerReferenceSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub argo_app: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub helm_release: Option<String>,

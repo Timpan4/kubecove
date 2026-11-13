@@ -43,6 +43,8 @@ export interface ResourceSummary {
 	ready?: string;
 	restarts?: number;
 	ownerRef?: string;
+	uid?: string;
+	controllerOwner?: { apiVersion: string; kind: string; name: string; uid: string };
 	argoApp?: string;
 	helmRelease?: string;
 	gitOpsOwnershipPartial?: boolean;

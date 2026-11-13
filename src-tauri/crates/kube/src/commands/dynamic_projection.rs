@@ -1,7 +1,7 @@
 use crate::commands::helpers::{
     argo_app_name, extract_git_ops_owner, extract_helm_release, extract_owner_ref,
-    k8s_creation_timestamp_to_rfc3339, k8s_timestamp_to_datetime, legacy_resource_health,
-    resource_age_at,
+    extract_owner_ref_summary, k8s_creation_timestamp_to_rfc3339, k8s_timestamp_to_datetime,
+    legacy_resource_health, resource_age_at,
 };
 use crate::models::{
     AppError, AppErrorKind, DiscoveredResourceKind, HealthAssessment, HealthAssessmentEvidence,
@@ -100,6 +100,8 @@ pub fn dynamic_resource_summary_at(
         ready: None,
         restarts: None,
         owner_ref: extract_owner_ref(&object.metadata),
+        uid: object.metadata.uid.clone(),
+        controller_owner: extract_owner_ref_summary(&object.metadata),
         argo_app,
         helm_release: extract_helm_release(&object.metadata),
         git_ops_owner,

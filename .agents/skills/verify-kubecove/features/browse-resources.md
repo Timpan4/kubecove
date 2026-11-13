@@ -12,7 +12,7 @@ The Resources view lists the workspace's resources in one table, grouped by owne
 
 ## How to get to it (user POV)
 
-- Choose `Resources` under `Operations` or `Shortcuts` on the workspace overview.
+- Choose `Open resources` in the workspace overview header, or `Resources` under `Shortcuts`.
 - Press `Ctrl K` and search views, namespaces, and resources.
 
 ## Driving it with kubecove-verify
@@ -21,7 +21,7 @@ Preconditions:
 
 - A ready run with a workspace for `mock-dev` and all namespaces. Use the `create-defaults` steps in [Create a workspace](./create-workspace.md).
 
-- **Open the view.** Choose `Resources`. Run `.agents/skills/verify-kubecove/scripts/kubecove-verify.ts browser click --role button --name Resources --exact`. The URL ends in `/resources`, and the region `Resource controls` shows `Namespace All` and `Kinds Pod, Deployment, ReplicaSet +9`.
+- **Open the view.** Choose `Open resources` in the overview header. Run `.agents/skills/verify-kubecove/scripts/kubecove-verify.ts browser click --role button --name "Open resources" --exact`. The URL ends in `/resources`, and the region `Resource controls` shows `Namespace All` and `Kinds Pod, Deployment, ReplicaSet +9`.
 - **Search.** Type a name. Run `.agents/skills/verify-kubecove/scripts/kubecove-verify.ts browser fill --label "Search resources" --value payments-api` and `.agents/skills/verify-kubecove/scripts/kubecove-verify.ts browser snapshot --role table --path browse-resources/search.aria.txt`. The table shows the Pod row `Open resource payments-api-7d9c9b7f8d-k2r9p` and a Deployment row `Open resource payments-api`. The count `Total 7` is a button in the `Resource controls` region, outside the table; `.agents/skills/verify-kubecove/scripts/kubecove-verify.ts browser snapshot --role region --name "Resource controls" --path browse-resources/controls.aria.txt` shows it.
 - **Remove a kind.** Open the kind editor and clear `Pod`. Run `.agents/skills/verify-kubecove/scripts/kubecove-verify.ts browser click --role button --name "Edit resource kinds"`, `.agents/skills/verify-kubecove/scripts/kubecove-verify.ts browser click --role checkbox --name Pod --exact`, and `.agents/skills/verify-kubecove/scripts/kubecove-verify.ts browser press --key Escape`. Then run `.agents/skills/verify-kubecove/scripts/kubecove-verify.ts browser count --role button --name "Open resource payments-api-7d9c9b7f8d-k2r9p"`. The count is `0`, and `Edit resource kinds` no longer lists `Pod`. Check `Pod` again the same way to restore it.
 - **Refresh.** Open live options and refresh. Run `.agents/skills/verify-kubecove/scripts/kubecove-verify.ts browser click --role button --name "Live updates and refresh options"`, `.agents/skills/verify-kubecove/scripts/kubecove-verify.ts browser click --role button --name "Refresh (clear cache)"`, and `.agents/skills/verify-kubecove/scripts/kubecove-verify.ts browser press --key Escape`. The popover shows the status `Live updates connected`. `.agents/skills/verify-kubecove/scripts/kubecove-verify.ts browser count --text "Refresh failed:"` prints `0`, and `.agents/skills/verify-kubecove/scripts/kubecove-verify.ts browser value --label "Search resources"` still prints `payments-api`.

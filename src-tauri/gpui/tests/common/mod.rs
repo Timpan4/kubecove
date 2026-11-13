@@ -605,6 +605,7 @@ impl Backend for Fixture {
         self.helm.reconciliation(release)
     }
     fn argo_inspector(&self, application: ArgoApplicationRef) -> Read<ArgoApplicationInspector> {
-        self.gitops.inspector(application)
+        self.gitops
+            .inspector(application, &self.argo.inventory_mode.lock().unwrap())
     }
 }

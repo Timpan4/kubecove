@@ -36,10 +36,10 @@ impl Fixture {
 
     /// The GitOps inventory read, shaped by the scripted Argo inventory mode.
     pub(super) fn gitops_fixture(&self, context: String) -> Read<GitOpsInventory> {
+        let mode = self.argo.inventory_mode.lock().unwrap().clone();
         let read = self
             .timing
-            .wrap("detect_argocd", &context, self.page_gitops());
-        let mode = self.argo.inventory_mode.lock().unwrap().clone();
+            .wrap("detect_argocd", &context, self.page_gitops(&mode));
         Box::pin(async move {
             if mode == "unavailable" {
                 return Err(AppError::new(
@@ -69,11 +69,11 @@ impl Fixture {
         })
     }
 
-    fn page_gitops(&self) -> Read<GitOpsInventory> {
+    fn page_gitops(&self, mode: &str) -> Read<GitOpsInventory> {
         let phase = self.page_read_phase.lock().unwrap().clone();
         let appsets = self.page_reads.get("list_argocd_appsets").cloned();
         let flux = self.page_reads.get("list_flux_resources").cloned();
-        let read = self.gitops.inventory();
+        let read = self.gitops.inventory(mode);
         // Every listed kind reports the mock list version, as tauri-dev-mock-argo.ts does.
         let version = self.list_version();
         let flux_keys: Vec<_> = self

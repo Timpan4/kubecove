@@ -3,6 +3,7 @@
 // Kubernetes-transport inspector snapshot, and Helm releases with their details
 // and reconciliation. Shapes follow the Rust models the GPUI fixture loads.
 import type { TauriClient } from "../../../src/lib/tauri";
+import { configureArgoInventory } from "../../../src/lib/tauri-dev-mock-argo";
 import type {
 	ArgoApplicationSetSummary,
 	ArgoApplicationSummary,
@@ -34,10 +35,21 @@ function withRustOwnerFields(row: ResourceSummary): ResourceSummary {
 const APPLICATION_KIND = { kind: "Application", apiVersion: "argoproj.io/v1alpha1", group: "argoproj.io", version: "v1alpha1", plural: "applications", namespaced: true };
 
 export async function exportGitOpsPage(client: TauriClient, clusterContext: string | undefined, argoDetected: boolean) {
-	if (!argoDetected) return { appSets: [], projects: [], applications: [] };
+	if (!argoDetected) return { appSets: [], projects: [], applications: [], manyArgo: [], manyApplications: [] };
 	// The fixture keeps rows only; its reads report the mock list version themselves.
 	const appSets = (await client.invoke<VersionedList<ArgoApplicationSetSummary>>("list_argocd_appsets", { clusterContext })).items.map(withAssessment);
 	const projects = (await client.invoke<VersionedList<ArgoAppProjectSummary>>("list_argocd_appprojects", { clusterContext })).items.map(withAssessment);
+	const base = await exportApplications(client, clusterContext);
+	configureArgoInventory("many");
+	try {
+		const many = await exportApplications(client, clusterContext);
+		return { appSets, projects, applications: base.applications, manyArgo: many.apps, manyApplications: many.applications };
+	} finally {
+		configureArgoInventory("base");
+	}
+}
+
+async function exportApplications(client: TauriClient, clusterContext: string | undefined) {
 	const apps = (await client.invoke<VersionedList<ArgoApplicationSummary>>("list_argocd_applications", { clusterContext })).items;
 	const applications = [];
 	for (const app of apps) {
@@ -46,7 +58,7 @@ export async function exportGitOpsPage(client: TauriClient, clusterContext: stri
 		const inspector = await client.invoke("get_argo_application_inspector", { clusterContext, transport: "kubernetes", application });
 		applications.push({ details: { ...details, summary: withRustOwnerFields(details.summary) }, inspector });
 	}
-	return { appSets, projects, applications };
+	return { apps, applications };
 }
 
 export async function exportHelm(client: TauriClient, clusterContext: string | undefined) {

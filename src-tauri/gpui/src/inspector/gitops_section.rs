@@ -170,14 +170,97 @@ impl Inspector {
                 .flex_col()
                 .gap(px(8.))
                 .when_some(inventory.argo.as_ref(), |list, apps| {
-                    list.child(count("Applications", apps.len(), None))
-                        .child(separator())
-                        .child(count(
-                            "Out of sync",
-                            inventory.out_of_sync(),
-                            Some(Palette::amber300()),
-                        ))
-                        .child(separator())
+                    let troubled = || {
+                        apps.iter().filter(|app| {
+                            crate::workspaces::overview::failing(app.health_assessment.state)
+                        })
+                    };
+                    let pages = troubled().count().div_ceil(crate::model::PAGE_SIZE).max(1);
+                    let page = self.overview_ui.application_page.get().min(pages - 1);
+                    self.overview_ui.application_page.set(page);
+                    list.children(
+                        troubled()
+                            .skip(page * crate::model::PAGE_SIZE)
+                            .take(crate::model::PAGE_SIZE)
+                            .map(|app| {
+                                let resource =
+                                    crate::gitops_surface::Selection::App(app).resource();
+                                self.overview_button(
+                                    format!(
+                                        "overview-argo:{}:{}",
+                                        app.namespace.as_deref().unwrap_or(""),
+                                        app.name
+                                    ),
+                                    format!(
+                                        "Inspect Application {} in {}",
+                                        app.name,
+                                        app.namespace.as_deref().unwrap_or("")
+                                    ),
+                                    true,
+                                    cx,
+                                    move |this, window, cx| {
+                                        if !this.can_leave(cx) {
+                                            return;
+                                        }
+                                        this.open_page(super::Page::Resources, cx);
+                                        this.open_resource(resource.clone(), window, cx);
+                                    },
+                                )
+                                .border_0()
+                                .bg(gpui_kit::transparent_black())
+                                .child(ui::xs(app.name.clone()).font_family(crate::theme::MONO))
+                                .child(
+                                    super::surface::health_state_badge(app.health_assessment.state),
+                                )
+                            }),
+                    )
+                    .when(pages > 1, |list| {
+                        list.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .gap(px(8.))
+                                .child(
+                                    self.overview_button(
+                                        "overview-applications-previous",
+                                        "Previous applications",
+                                        page > 0,
+                                        cx,
+                                        move |this, _, cx| {
+                                            this.overview_ui.application_page.set(page - 1);
+                                            cx.notify();
+                                        },
+                                    )
+                                    .child(ui::xs("Previous")),
+                                )
+                                .child(ui::muted(ui::xs(format!(
+                                    "Applications page {} of {pages}",
+                                    page + 1
+                                ))))
+                                .child(
+                                    self.overview_button(
+                                        "overview-applications-next",
+                                        "Next applications",
+                                        page + 1 < pages,
+                                        cx,
+                                        move |this, _, cx| {
+                                            this.overview_ui.application_page.set(page + 1);
+                                            cx.notify();
+                                        },
+                                    )
+                                    .child(ui::xs("Next")),
+                                ),
+                        )
+                    })
+                    .child(count("Applications", apps.len(), None))
+                    .child(separator())
+                    .child(count(
+                        "Out of sync",
+                        inventory.out_of_sync(),
+                        (inventory.out_of_sync() > 0).then(Palette::amber300),
+                    ))
+                    .child(separator())
                 })
                 .when_some(inventory.flux.as_ref(), |list, rows| {
                     list.child(count("Flux resources", rows.len(), None))

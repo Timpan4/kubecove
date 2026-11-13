@@ -1,4 +1,5 @@
 import type { JsonObject } from "../../src/lib/types";
+import type { OverviewStep } from "./contract-overview";
 
 type Identity = { kind: string; name: string; namespace: string };
 /** Checkbox labels inside the Argo Sync options popover. */
@@ -12,6 +13,7 @@ export type UpdateControlLabel = "Check for updates" | "Update available" | "Che
 /** One diagnostic the YAML editor marks. Positions are 1-based `[line, column]` in UTF-16 columns; `to` is exclusive. Without `message`, the clients' texts may differ. */
 export type YamlEditorDiagnostic = { from: [number, number]; to: [number, number]; severity: "error" | "warning" | "info"; source: string; message?: string };
 export type Step =
+    | OverviewStep
     | { action: "expectDetailScroll"; view: "events" | "timeline" }
     | { action: "coverageSelect"; label: string; value: string }
     | { action: "coverageCopy"; label: string; text: string; match: "contains" | "exact" }
@@ -61,7 +63,7 @@ export type Step =
     | { action: "expectRemoteNotice"; value: string }
     | { action: "expectNoRemoteNotice" }
     | { action: "clickRemoteNoticeButton"; label: "Sign in" | "Copy sign-in link" | "Cancel" | "Start a new session" | "Disconnect" }
-    | { action: "configureShellRead"; phase: "ready" | "contexts-failed" | "contexts-empty" | "namespaces-failed" | "namespaces-credential-failed" | "namespaces-empty" | "resources-failed" | "primary-context-missing" | "kind-missing" | "payments-api-removed" | "payments-deployments-forbidden" | "payments-ingress-version-changed" | "sources-failed" }
+    | { action: "configureShellRead"; phase: "ready" | "contexts-failed" | "contexts-empty" | "namespaces-failed" | "namespaces-credential-failed" | "namespaces-empty" | "resources-failed" | "primary-context-missing" | "kind-missing" | "payments-api-removed" | "payments-deployments-forbidden" | "payments-ingress-version-changed" | "sources-failed" | "overview-owner-chain" | "overview-many" }
     | { action: "openNamespaceList" }
     | { action: "expectNamespaceRow"; name: string; age: string }
     | { action: "resizeViewport"; width: number; height: number }
@@ -71,7 +73,6 @@ export type Step =
     | { action: "retryLauncher"; read: "contexts" | "namespaces" }
     | { action: "expectLauncherRetry"; read: "contexts" | "namespaces" }
     | { action: "overviewOperation"; destination: "Resources" | "Workspaces" | "Port Forwards" | "Incidents" }
-    | { action: "overviewIncident"; filter: "Degraded" | "Needs attention" | "Restart evidence" }
     | { action: "reviewIncidentAction"; index: number }
     | { action: "expectTopologyDenied" }
     | { action: "expectWatchStart"; kind: string; resourceVersion: string | null }

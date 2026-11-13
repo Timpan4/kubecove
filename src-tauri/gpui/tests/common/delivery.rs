@@ -19,6 +19,8 @@ pub struct GitOps {
     app_sets: Vec<ArgoApplicationSetSummary>,
     projects: Vec<ArgoAppProjectSummary>,
     applications: Vec<Application>,
+    many_argo: Vec<ArgoApplicationSummary>,
+    many_applications: Vec<Application>,
 }
 
 #[derive(Deserialize)]
@@ -44,9 +46,13 @@ fn same_release(a: &HelmReleaseSummary, b: &HelmReleaseSummary) -> bool {
 }
 
 impl GitOps {
-    pub fn inventory(&self) -> Read<GitOpsInventory> {
+    pub fn inventory(&self, mode: &str) -> Read<GitOpsInventory> {
         let inventory = GitOpsInventory {
-            argo: self.argo.clone(),
+            argo: if mode == "many" {
+                Some(self.many_argo.clone())
+            } else {
+                self.argo.clone()
+            },
             flux: self.flux.clone(),
             app_sets: self.app_sets.clone(),
             projects: self.projects.clone(),
@@ -55,9 +61,21 @@ impl GitOps {
         Box::pin(async move { Ok(inventory) })
     }
 
+    fn applications(&self, mode: &str) -> &[Application] {
+        if mode == "many" {
+            &self.many_applications
+        } else {
+            &self.applications
+        }
+    }
+
     /// An Application's details, which the GitOps page's Details button inspects.
-    pub fn application_details(&self, resource: &ResourceSummary) -> Option<ResourceDetailsFull> {
-        self.applications
+    pub fn application_details(
+        &self,
+        resource: &ResourceSummary,
+        mode: &str,
+    ) -> Option<ResourceDetailsFull> {
+        self.applications(mode)
             .iter()
             .map(|app| &app.details)
             .find(|details| {
@@ -68,9 +86,13 @@ impl GitOps {
             .cloned()
     }
 
-    pub fn inspector(&self, application: ArgoApplicationRef) -> Read<ArgoApplicationInspector> {
+    pub fn inspector(
+        &self,
+        application: ArgoApplicationRef,
+        mode: &str,
+    ) -> Read<ArgoApplicationInspector> {
         let found = self
-            .applications
+            .applications(mode)
             .iter()
             .find(|app| {
                 app.details.summary.name == application.name

@@ -3,9 +3,10 @@ use gpui_kit::test::TestQueryExt;
 
 #[derive(Default)]
 pub(super) struct WorkspaceControls {
-    enabled: AtomicBool,
+    pub(super) enabled: AtomicBool,
     fail_other: AtomicBool,
     pending: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+    pub(super) rows: Mutex<Option<Vec<ResourceSummary>>>,
     /// The file the next Import dialog returns.
     pub import: Mutex<Option<String>>,
 }
@@ -19,6 +20,12 @@ impl WorkspaceControls {
             return None;
         }
         let context = scope.context.clone();
+        let resources = self
+            .rows
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or_else(|| vec![resource(&context)]);
         let fail = context == "mock-other" && self.fail_other.load(Ordering::SeqCst);
         let pending = if context == "mock-other" {
             self.pending.lock().unwrap().take()
@@ -33,7 +40,7 @@ impl WorkspaceControls {
                 return Err(AppError::new("Context unavailable", AppErrorKind::Cluster));
             }
             Ok(ScopeResult {
-                resources: vec![resource(&context)],
+                resources,
                 namespaces: vec![],
                 warnings: vec![],
                 versions: Default::default(),
@@ -75,8 +82,8 @@ fn one_failed_context_keeps_successful_rows_and_names_the_failure(cx: &mut TestA
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
         assert_eq!(
-            window.find("overview-metric:Total").label(),
-            Some("Total: 1")
+            window.find("overview-description:Resource Health").label(),
+            Some("1 resource loaded from the saved scope.")
         );
         assert!(
             window
@@ -160,8 +167,8 @@ fn changing_workspace_cancels_every_old_context_read(cx: &mut TestAppContext) {
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
         assert_eq!(
-            window.find("overview-metric:Total").label(),
-            Some("Total: 1")
+            window.find("overview-description:Resource Health").label(),
+            Some("1 resource loaded from the saved scope.")
         );
     })
     .unwrap();
