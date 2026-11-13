@@ -37,6 +37,15 @@ jobs:
         with:
           bun-version: "1.4.4"
 
+      - name: Cache Bun dependencies
+        continue-on-error: true
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
       - name: Install selector dependencies
         id: dependencies
         continue-on-error: true

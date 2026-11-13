@@ -183,11 +183,12 @@ test("the selector runs everything when it cannot read the changed paths", () =>
 // and fails the gate, where the fallback would have run everything.
 test("a failed selector setup step still reaches the detection step", () => {
   const changes = job("changes");
-  for (const name of ["Setup Bun", "Install selector dependencies", "Test benchmark orchestration"]) {
+  for (const name of ["Setup Bun", "Cache Bun dependencies", "Install selector dependencies", "Test benchmark orchestration"]) {
     const start = changes.indexOf(`      - name: ${name}\n`);
     assert.notEqual(start, -1, name);
     assert.match(changes.slice(start, changes.indexOf("\n      - name: ", start + 1)), /^ {8}continue-on-error: true$/m, name);
   }
+  assert.ok(changes.indexOf("      - name: Cache Bun dependencies\n") < changes.indexOf("      - name: Install selector dependencies\n"));
   assert.match(changes.slice(changes.indexOf("      - name: Detect frontend and Rust benchmark changes\n")), /^ {8}if: \$\{\{ !cancelled\(\) \}\}$/m);
 });
 
