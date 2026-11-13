@@ -75,6 +75,8 @@ bun run e2e:parity
 
 The parity command exercises both production interfaces with controlled backend responses using the same [acceptance scenarios](../e2e/parity/scenarios/) and exported browser-mock data. It retains reports and available screenshots under `e2e/artifacts/`. This proves UI integration, separate from packaged-window and real Kubernetes checks. Pull requests select scenarios using the newest successful main coverage map and start jobs for that selection. Unavailable or untrusted selection runs the full suite. `Parity result` states the selected count and reason, then validates those exact scenarios on both drivers. Main still runs every scenario with coverage after each merge (`.github/workflows/parity.yml`). A scenario missed by PR selection is caught on main. See [change-based selection](../e2e/parity/README.md#change-based-selection) for fallback rules and the job graph. Use `PARITY_PREFIX` locally for the areas you change. Unsupported native areas remain listed in the parity guide.
 
+Changes to Rust files compiled by the parity binary select the full suite. Execution coverage cannot capture how attributes, private imports, types and macros affect descendant modules. Frontend changes retain line and component coverage selection.
+
 When a user-level Cargo configuration sets a shared build directory, override both `CARGO_TARGET_DIR` and `CARGO_BUILD_BUILD_DIR` for isolated builds. The target directory alone does not override Cargo's intermediate build directory.
 
 ## Headless Server Development

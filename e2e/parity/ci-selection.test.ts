@@ -139,49 +139,35 @@ const damaged = [["lines", record.lines.slice(0, 2)], ["functions", record.funct
 	});
 });
 
-// Failure modes: a changed import gives a name another meaning without touching a covered
-// line, and a replaced re-export does the same to files this one's coverage does not name.
-// Inside a `use` block that spans several lines, the changed line carries no `use` keyword.
-test("a changed Rust import selects the file's scenarios and a replaced re-export selects everything", async () => {
-	for (const [from, to, expected] of [
-		["Phase::Ready", "Phase::Failed", ["one"]],
-		["use super::loading::Phase;", "use super::other::Phase;", ["one"]],
-		["use super::loading::Phase;", "use super::loading::Phase;\nuse super::extra::Thing;", ["one"]],
-		["pub use super::names::Name;", "pub use super::names::Name;\npub use super::extra::Thing;", ids],
-		["pub use super::names::Name;", "pub use super::other::Name;", ids],
-		["pub use super::names::Name;\n", "", ids],
-		["    Circle,", "    Round,", ["one"]],
-		["    Sort,", "    Sort,\n    More,", ids],
-		["    Kind, // one; per line", "    Other,", ids],
-		["    Sort,\n", "", ids],
-		["    Sort,", "    Sort,\n    Added,", ids],
-		["    Extra,", "    Different,", ids],
-		["    Split,", "    Different,", ids],
-		["pub\nuse super::split::{", "pub\nmod split;\nuse super::split::{", ids],
-		["};\npub use super::kinds::{", "};\npub(crate) use super::other::{", ids],
-	] as const) {
-		await fixture(async (root) => {
-			await writeFile(join(root, RUST), RUST_SOURCE.replace(from, to));
-			await run(root, ["git", "-c", "user.name=Parity test", "-c", "user.email=parity@example.invalid", "commit", "--quiet", "-am", "Rust edit"]);
-			const result = await plan(root);
-			expect(result.ids).toEqual([...expected]);
-			if (expected === ids) expect(result.fallback).toContain("re-export");
-		});
-	}
-	for (const [module, from, to, expected] of [
-		["pub\nmod old;\n", "mod old;", "mod new;", ids],
-		["pub mod inline {\n    pub const VALUE: u8 = 1;\n}\n", "VALUE: u8 = 1", "VALUE: u8 = 2", ["one"]],
-		["pub mod inline {\n    use crate::old;\n}\n", "use crate::old;", "use crate::new;", ["one"]],
-	] as const) await fixture(async (root) => {
-		const source = `${RUST_SOURCE}${module}`;
-		await writeFile(join(root, RUST), source);
-		await run(root, ["git", "-c", "user.name=Parity test", "-c", "user.email=parity@example.invalid", "commit", "--quiet", "-am", "Public module base"]);
+// Failure modes: attributes and private imports in a compiled parent can change descendants
+// even when the parent has no recorded execution. Rust syntax is not a source dependency graph.
+test("compiled Rust changes select all scenarios even without parent execution", async () => {
+	for (const [from, to] of [
+		["use super::loading::Phase;", "use super::other::Phase;"],
+		["pub use super::names::Name;", '#[cfg(feature = "alternate")]\npub use super::names::Name;'],
+		["Phase::Ready", "Phase::Failed"],
+	]) await fixture(async (root) => {
 		const map = JSON.parse(await readFile(join(root, "map.json"), "utf8"));
-		map.commit = await run(root, ["git", "rev-parse", "HEAD"]);
+		const parent = map.files[RUST];
+		const child = "src-tauri/gpui/src/child.rs";
+		map.files[child] = parent;
+		map.compiled.push(child);
+		map.sets.push([]);
+		map.files[RUST] = { loaded: map.sets.length - 1, active: map.sets.length - 1, lines: [], code: [] };
 		await writeFile(join(root, "map.json"), JSON.stringify(map));
-		await writeFile(join(root, RUST), source.replace(from, to));
-		await run(root, ["git", "-c", "user.name=Parity test", "-c", "user.email=parity@example.invalid", "commit", "--quiet", "-am", "Public module edit"]);
-		expect((await plan(root)).ids).toEqual([...expected]);
+		await writeFile(join(root, RUST), RUST_SOURCE.replace(from, to));
+		await run(root, ["git", "-c", "user.name=Parity test", "-c", "user.email=parity@example.invalid", "commit", "--quiet", "-am", "Compiled Rust edit"]);
+		const result = await plan(root);
+		expect(result.ids).toEqual(ids);
+		expect(result.fallback).toContain("compiled Rust");
+	});
+	await fixture(async (root) => {
+		const path = "src-tauri/src/uncompiled.rs";
+		await mkdir(join(root, path, ".."), { recursive: true });
+		await writeFile(join(root, path), "pub fn uncompiled() {}\n");
+		await run(root, ["git", "add", path]);
+		await run(root, ["git", "-c", "user.name=Parity test", "-c", "user.email=parity@example.invalid", "commit", "--quiet", "-m", "Uncompiled Rust edit"]);
+		expect((await plan(root)).ids).toEqual([]);
 	});
 });
 
