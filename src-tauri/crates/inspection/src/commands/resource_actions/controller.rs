@@ -42,9 +42,8 @@ pub(super) async fn confirmed_controller(
         let api: Api<DynamicObject> =
             Api::namespaced_with(client, namespace, &ApiResource::from_gvk(&owner.gvk));
         controller.recreates = match api.get(&owner.name).await {
-            Ok(live) => {
-                serde_json::to_value(&live).is_ok_and(|live| owner_can_replace(&live, &owner.uid))
-            }
+            Ok(live) => serde_json::to_value(&live)
+                .is_ok_and(|live| owner_can_replace(&live, &owner.uid, &owner.gvk.kind, object)),
             Err(_) => false,
         };
     }
@@ -53,12 +52,94 @@ pub(super) async fn confirmed_controller(
 
 /// The live owner is the one the reference names, is not being deleted (an
 /// orphaning or foreground delete leaves the reference in place for a while),
-/// and is not scaled to zero or suspended.
-fn owner_can_replace(owner: &Value, uid: &str) -> bool {
-    owner.pointer("/metadata/uid").and_then(Value::as_str) == Some(uid)
-        && owner.pointer("/metadata/deletionTimestamp").is_none()
-        && owner.pointer("/spec/replicas").and_then(Value::as_i64) != Some(0)
-        && owner.pointer("/spec/suspend").and_then(Value::as_bool) != Some(true)
+/// and still desires replacement work for this target.
+fn owner_can_replace(owner: &Value, uid: &str, kind: &str, target: &Value) -> bool {
+    if owner.pointer("/metadata/uid").and_then(Value::as_str) != Some(uid)
+        || owner.pointer("/metadata/deletionTimestamp").is_some()
+    {
+        return false;
+    }
+    match kind {
+        "StatefulSet" => statefulset_desires_pod(owner, target),
+        "Job" => job_has_replacement_work(owner),
+        "ReplicaSet" | "ReplicationController" => {
+            owner
+                .pointer("/spec/replicas")
+                .and_then(Value::as_u64)
+                .unwrap_or(1)
+                > 0
+        }
+        "DaemonSet" => true,
+        _ => false,
+    }
+}
+
+fn statefulset_desires_pod(owner: &Value, target: &Value) -> bool {
+    let Some(owner_name) = owner.pointer("/metadata/name").and_then(Value::as_str) else {
+        return false;
+    };
+    let Some(suffix) = target
+        .pointer("/metadata/name")
+        .and_then(Value::as_str)
+        .and_then(|name| name.strip_prefix(owner_name))
+        .and_then(|suffix| suffix.strip_prefix('-'))
+    else {
+        return false;
+    };
+    let Ok(ordinal) = suffix.parse::<u64>() else {
+        return false;
+    };
+    if ordinal.to_string() != suffix {
+        return false;
+    }
+    // Kubernetes defaults StatefulSet start to zero and replicas to one.
+    let start = owner
+        .pointer("/spec/ordinals/start")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let replicas = owner
+        .pointer("/spec/replicas")
+        .and_then(Value::as_u64)
+        .unwrap_or(1);
+    ordinal
+        .checked_sub(start)
+        .is_some_and(|index| index < replicas)
+}
+
+fn job_has_replacement_work(owner: &Value) -> bool {
+    if owner.pointer("/spec/suspend").and_then(Value::as_bool) == Some(true)
+        || owner.pointer("/spec/parallelism").and_then(Value::as_u64) == Some(0)
+        || owner.pointer("/spec/managedBy").and_then(Value::as_str)
+            .is_some_and(|controller| controller != "kubernetes.io/job-controller")
+        // Indexed Pods can be obsolete even while other indexes need work.
+        || owner.pointer("/spec/completionMode").and_then(Value::as_str) == Some("Indexed")
+    {
+        return false;
+    }
+    if owner
+        .pointer("/status/conditions")
+        .and_then(Value::as_array)
+        .is_some_and(|conditions| {
+            conditions.iter().any(|condition| {
+                condition.get("status").and_then(Value::as_str) == Some("True")
+                    && matches!(
+                        condition.get("type").and_then(Value::as_str),
+                        Some("FailureTarget" | "Failed" | "SuccessCriteriaMet" | "Complete")
+                    )
+            })
+        })
+    {
+        return false;
+    }
+    let succeeded = owner
+        .pointer("/status/succeeded")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    match owner.pointer("/spec/completions").and_then(Value::as_u64) {
+        Some(completions) => succeeded < completions,
+        // A work-queue Job stops creating Pods after its first success.
+        None => succeeded == 0,
+    }
 }
 
 /// The owner reference marked `controller: true` on `object`, and the owner
@@ -98,7 +179,10 @@ fn action_controller(
             .any(|&(target, owner_group, owner_kind)| {
                 target == target_kind && Some(owner_group) == group && owner_kind == kind
             });
-    let uid = owner.get("uid").and_then(Value::as_str);
+    let uid = owner
+        .get("uid")
+        .and_then(Value::as_str)
+        .filter(|uid| !uid.is_empty());
     let to_confirm = match (trusted, group_version, uid) {
         (true, Some((group, version)), Some(uid)) => Some(OwnerToConfirm {
             gvk: GroupVersionKind::gvk(group, version, kind),
@@ -247,16 +331,31 @@ mod tests {
     #[test]
     fn only_a_live_active_owner_with_the_referenced_uid_replaces() {
         let live = json!({ "metadata": { "uid": "owner-uid" }, "spec": { "replicas": 2 } });
-        assert!(owner_can_replace(&live, "owner-uid"));
+        assert!(owner_can_replace(
+            &live,
+            "owner-uid",
+            "ReplicaSet",
+            &json!({})
+        ));
         assert!(owner_can_replace(
             &json!({ "metadata": { "uid": "owner-uid" } }),
-            "owner-uid"
+            "owner-uid",
+            "ReplicaSet",
+            &json!({})
         ));
-        assert!(!owner_can_replace(&live, "other-uid"));
+        assert!(!owner_can_replace(
+            &live,
+            "other-uid",
+            "ReplicaSet",
+            &json!({})
+        ));
         let mut scaled_down = live.clone();
         scaled_down["spec"]["replicas"] = json!(0);
-        assert!(!owner_can_replace(&scaled_down, "owner-uid"));
-        let suspended = json!({ "metadata": { "uid": "owner-uid" }, "spec": { "suspend": true } });
-        assert!(!owner_can_replace(&suspended, "owner-uid"));
+        assert!(!owner_can_replace(
+            &scaled_down,
+            "owner-uid",
+            "ReplicaSet",
+            &json!({})
+        ));
     }
 }
