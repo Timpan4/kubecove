@@ -3,7 +3,7 @@
 //! the contexts that answered.
 use super::Inspector;
 use super::load_trace::LoadKind;
-use super::scope_load::{all_failed, rank_order};
+use super::resource_observation::rank_order;
 use crate::backend::ScopeResult;
 use crate::model::PreparedRows;
 use gpui_kit::{BackgroundExecutor, Context};
@@ -50,13 +50,7 @@ impl Inspector {
         if !Rc::ptr_eq(&self.request, request) {
             return None;
         }
-        self.scope_load.set_preparing(true);
-        if self.scope_load.contexts().len() < 2 {
-            return Some(Vec::new());
-        }
-        let mut rows = self.rows.backend_rows();
-        rows.retain(|row| row.cluster != context);
-        Some(rows)
+        Some(self.observation.begin_arrival(context))
     }
 
     /// Applies one context's built-in read with the rows `prepare_arrival`
@@ -68,50 +62,21 @@ impl Inspector {
         context: &str,
         result: Result<ScopeResult, AppError>,
         rows: PreparedRows,
-        failures: &mut Vec<(String, AppError)>,
         cx: &mut Context<Self>,
     ) -> bool {
         if !Rc::ptr_eq(&self.request, request) {
             return false;
         }
         let apply_started = Instant::now();
-        self.scope_load.set_preparing(false);
-        let was_shown = self.scope_load.shows(context);
-        // The context's watches start at the versions of the rows it read.
-        self.live
-            .starts
-            .retain(|id, _| !crate::backend::watch_id_in(context, id));
-        match result {
-            Ok(result) => self.scope_load.context_settled(context, Ok(result)),
-            Err(error) => {
-                self.scope_load.context_settled(context, Err(&error));
-                failures.push((context.to_owned(), error));
-            }
+        let applied = self.observation.install_arrival(context, result, rows);
+        if let Some(namespaces) = applied.namespaces {
+            self.namespaces = namespaces;
         }
-        // The picker lists the namespaces of every context whose rows show,
-        // kept ones included, so a slow context's namespaces stay with its rows.
-        // When the last such context fails, its namespaces leave with its rows.
-        match self.scope_load.shown_namespaces() {
-            Some(namespaces) => self.namespaces = namespaces,
-            None if was_shown => self.namespaces.clear(),
-            None => {}
-        }
-        if !self.scope_load.loading() && !self.scope_load.any_shown() {
-            let contexts = self.scope_load.contexts();
-            failures.sort_by_key(|(context, _)| contexts.iter().position(|other| other == context));
-            let error = all_failed(
-                failures
-                    .drain(..)
-                    .map(|(context, error)| (context, Err(error)))
-                    .collect(),
-            );
-            self.live.refresh_error = Some(error.message.clone());
-            self.scope_load.all_failed(error.message);
-            self.rows = Rc::default();
+        if let Some(error) = applied.error {
+            self.live.refresh_error = Some(error);
             self.warnings.clear();
         } else {
-            self.rows = Rc::new(rows);
-            self.warnings = self.scope_warnings(self.scope_load.warnings());
+            self.warnings = self.scope_warnings(self.observation.warnings());
         }
         self.prepare_rows();
         self.filter(cx);
@@ -119,7 +84,7 @@ impl Inspector {
         self.note_apply(
             LoadKind::Scope,
             apply_started.elapsed(),
-            self.scope_load.settled(),
+            self.observation.settled(),
         );
         true
     }
@@ -140,7 +105,7 @@ impl Inspector {
         self.note_apply(
             LoadKind::Scope,
             apply_started.elapsed(),
-            self.scope_load.settled(),
+            self.observation.settled(),
         );
     }
 }

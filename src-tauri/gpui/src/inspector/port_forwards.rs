@@ -103,7 +103,7 @@ impl Inspector {
             .sessions
             .scope_contexts
             .as_deref()
-            .is_none_or(|old| !super::scope_load::same_contexts(old, &contexts))
+            .is_none_or(|old| !super::resource_observation::same_contexts(old, &contexts))
             || !self.sessions.load.fetching()
         {
             self.load_sessions(cx);
@@ -138,7 +138,7 @@ impl Inspector {
         let changed = state
             .scope_contexts
             .as_deref()
-            .is_some_and(|old| !super::scope_load::same_contexts(old, &contexts));
+            .is_some_and(|old| !super::resource_observation::same_contexts(old, &contexts));
         state.scope_contexts = Some(contexts.clone());
         // A failed or replaced read leaves the cleanup pending for the next one.
         let cleanup = (changed || state.cleanup_pending) && !keep;

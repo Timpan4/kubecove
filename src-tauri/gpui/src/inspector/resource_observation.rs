@@ -1,19 +1,28 @@
-//! The resource scope read and what the table shows for it
-//! (`state-machines.md` #5). The web keeps this in its scope and custom-kind
-//! queries; here one owner holds the read so the table cannot wait on a read
-//! that no longer runs.
-use super::{
-    Inspector, Load, custom_resources::CustomLoad, request::InFlight, watch_status::LiveStatus,
-};
+//! Resource observation owns shown rows, list versions, and staged watch changes.
+use super::{Load, custom_resources::CustomLoad, request::InFlight};
 use crate::backend::{ListVersions, ScopeResult, context_versions};
 use crate::model::PreparedRows;
+use std::{collections::HashMap, rc::Rc};
+
+mod snapshots;
+mod watches;
 use crate::workspaces::reads::ContextResults;
 use gpui_kit::Task;
 use kubecove_lib::models::{AppError, NamespaceSummary, ResourceSummary};
+pub(super) use snapshots::{
+    ScopeRows, all_failed, context_message, rank_order, same_contexts, union_namespaces,
+};
+pub(super) use watches::Patch;
 
-pub(super) struct ScopeLoad {
+pub(super) struct ResourceObservation {
     /// What the table shows for the workspace contexts.
-    pub(super) rows: Load,
+    status: Load,
+    data: Rc<PreparedRows>,
+    namespace: Option<String>,
+    starts: HashMap<String, Option<String>>,
+    start_tasks: Vec<Task<()>>,
+    pending: Vec<Patch>,
+    failures: Vec<(String, AppError)>,
     /// The last settled custom-kind read. `custom` adds the pending one.
     custom: CustomLoad,
     /// A refresh replaced, and so cancelled, a custom-kind read. If the
@@ -53,7 +62,7 @@ struct ContextRows {
     namespaces: Vec<NamespaceSummary>,
 }
 
-/// What applying every context's read changes outside `ScopeLoad`.
+/// What applying every context's read changes outside `ResourceObservation`.
 #[derive(Default)]
 pub(super) struct Applied {
     /// The namespaces of every context that answered, once each by name.
@@ -62,68 +71,6 @@ pub(super) struct Applied {
     pub(super) warnings: Vec<String>,
     /// Contexts whose refresh failed, so the table keeps their last rows.
     pub(super) kept: Vec<String>,
-}
-
-/// Whether two context lists hold the same contexts. Workspace contexts are unique.
-pub(super) fn same_contexts(left: &[String], right: &[String]) -> bool {
-    left.len() == right.len() && left.iter().all(|context| right.contains(context))
-}
-
-/// A message about one context, named after it when the page reads several.
-pub(super) fn context_message(several: bool, context: &str, message: &str) -> String {
-    if several {
-        format!("Context \"{context}\": {message}")
-    } else {
-        message.to_owned()
-    }
-}
-
-/// Orders rows by the rank of their context, keeping each context's own order.
-pub(super) fn rank_order(rows: &mut [ResourceSummary], contexts: &[String]) {
-    rows.sort_by_key(|row| {
-        contexts
-            .iter()
-            .position(|context| *context == row.cluster)
-            .unwrap_or(contexts.len())
-    });
-}
-
-/// `namespaces` plus each previous namespace it lacks, so a context whose
-/// refresh failed keeps its namespaces in the picker.
-pub(super) fn union_namespaces(
-    mut namespaces: Vec<NamespaceSummary>,
-    previous: &[NamespaceSummary],
-) -> Vec<NamespaceSummary> {
-    for namespace in previous {
-        if !namespaces.iter().any(|other| other.name == namespace.name) {
-            namespaces.push(namespace.clone());
-        }
-    }
-    namespaces
-}
-
-/// The error of a read in which every context failed: one context's error as
-/// it is, or one error naming each context, as the web's
-/// `WorkspaceResourceLoadError` does.
-pub(super) fn all_failed(results: ContextResults<ScopeResult>) -> AppError {
-    let several = results.len() > 1;
-    let mut failures = results
-        .into_iter()
-        .filter_map(|(context, result)| result.err().map(|error| (context, error)));
-    let (first_context, mut error) = failures.next().expect("every context failed");
-    if !several {
-        return error;
-    }
-    let line = |context: &str, error: &AppError| {
-        format!(
-            "Context \"{context}\", operation \"resource discovery\": {}",
-            error.message
-        )
-    };
-    let mut lines = vec![line(&first_context, &error)];
-    lines.extend(failures.map(|(context, other)| line(&context, &other)));
-    error.message = lines.join("\n");
-    error
 }
 
 /// The scope read in flight. Dropping it cancels the read.
@@ -135,10 +82,16 @@ enum ScopeRead {
     Refresh { _task: InFlight },
 }
 
-impl Default for ScopeLoad {
+impl Default for ResourceObservation {
     fn default() -> Self {
         Self {
-            rows: Load::Loading,
+            status: Load::Loading,
+            data: Rc::default(),
+            namespace: None,
+            starts: HashMap::new(),
+            start_tasks: Vec::new(),
+            pending: Vec::new(),
+            failures: Vec::new(),
             custom: CustomLoad::Idle,
             custom_interrupted: false,
             custom_ok: false,
@@ -150,7 +103,7 @@ impl Default for ScopeLoad {
     }
 }
 
-impl ScopeLoad {
+impl ResourceObservation {
     /// Starts `load_scope`'s read of `contexts`, replacing and so cancelling
     /// any scope read. Every part waits for its context; the contexts in
     /// `custom` also read custom kinds. With `kept`, the table keeps each
@@ -162,6 +115,7 @@ impl ScopeLoad {
         kept: bool,
         task: Task<()>,
     ) {
+        self.failures.clear();
         self.custom = CustomLoad::Idle;
         self.custom_interrupted = false;
         self.custom_ok = false;
@@ -211,17 +165,9 @@ impl ScopeLoad {
         }
     }
 
-    pub(super) fn set_preparing(&mut self, preparing: bool) {
-        self.preparing = preparing;
-    }
-
     /// Applies one context's built-in read, whose rows the caller took. A
     /// failed context shows no rows, one warning and no custom kinds.
-    pub(super) fn context_settled(
-        &mut self,
-        context: &str,
-        result: Result<ScopeResult, &AppError>,
-    ) {
+    fn context_settled(&mut self, context: &str, result: Result<ScopeResult, &AppError>) {
         let several = self.contexts.len() > 1;
         let Some(index) = self.position(context) else {
             return;
@@ -242,7 +188,7 @@ impl ScopeLoad {
                         .collect(),
                     namespaces: result.namespaces,
                 };
-                self.rows = Load::Ready;
+                self.status = Load::Ready;
             }
             Err(error) => {
                 // A failed context reads no custom kinds.
@@ -260,7 +206,7 @@ impl ScopeLoad {
 
     /// The table shows rows of `context`, as when a watch installed them
     /// after its read failed, so its live status counts.
-    pub(super) fn mark_shown(&mut self, context: &str) {
+    fn mark_shown(&mut self, context: &str) {
         if let Some(index) = self.position(context) {
             self.parts[index].shown = true;
         }
@@ -295,14 +241,14 @@ impl ScopeLoad {
     }
 
     /// Fails the load when every context failed.
-    pub(super) fn all_failed(&mut self, error: String) {
-        self.rows = Load::Failed(error);
+    fn all_failed(&mut self, error: String) {
+        self.status = Load::Failed(error);
         self.custom = CustomLoad::Idle;
     }
 
     /// Applies one context's custom read to the context, whose built-ins
     /// loaded. Returns the rows to add; the warnings join the context's part.
-    pub(super) fn custom_settled(
+    fn custom_settled(
         &mut self,
         context: &str,
         result: Result<ScopeResult, AppError>,
@@ -346,11 +292,7 @@ impl ScopeLoad {
     /// A failed context shows no rows and one warning. In a `refresh`, a
     /// context whose rows show keeps its part and rows when it fails, kept
     /// rows whose reload the refresh cancelled included.
-    pub(super) fn apply_parts(
-        &mut self,
-        results: ContextResults<ScopeResult>,
-        refresh: bool,
-    ) -> Applied {
+    fn apply_parts(&mut self, results: ContextResults<ScopeResult>, refresh: bool) -> Applied {
         let several = results.len() > 1;
         let mut applied = Applied::default();
         for (context, result) in results {
@@ -418,7 +360,7 @@ impl ScopeLoad {
         same_contexts(&self.contexts, contexts)
     }
 
-    pub(super) fn has_context(&self, context: &str) -> bool {
+    fn has_context(&self, context: &str) -> bool {
         self.position(context).is_some()
     }
 
@@ -427,30 +369,24 @@ impl ScopeLoad {
         self.parts.iter().find_map(|part| part.versions.get(id))
     }
 
-    /// The list versions of `context`'s rows, which a watch patch moves.
-    pub(super) fn versions_mut(&mut self, context: &str) -> Option<&mut ListVersions> {
-        let index = self.position(context)?;
-        Some(&mut self.parts[index].versions)
-    }
-
     /// Applies the refresh. A failure keeps rows the table shows; without
     /// rows, as when Refresh is pressed during a first load, it fails the load.
-    pub(super) fn refresh_settled(&mut self, result: Result<(), String>) {
+    fn refresh_settled(&mut self, result: Result<(), String>) {
         self.read = None;
         let interrupted = std::mem::take(&mut self.custom_interrupted);
         match result {
             Ok(()) => {
-                self.rows = Load::Ready;
+                self.status = Load::Ready;
                 self.custom = CustomLoad::Ready;
             }
             // The kept rows lack the custom kinds the refresh cancelled; the
             // summary reports them unavailable until a refresh succeeds.
-            Err(_) if matches!(self.rows, Load::Ready) => {
+            Err(_) if matches!(self.status, Load::Ready) => {
                 if interrupted {
                     self.custom = CustomLoad::Failed;
                 }
             }
-            Err(error) => self.rows = Load::Failed(error),
+            Err(error) => self.status = Load::Failed(error),
         }
     }
 
@@ -474,7 +410,7 @@ impl ScopeLoad {
     }
 
     /// Watch patches wait: a refresh runs, or rows are being prepared off the UI thread.
-    pub(super) fn holds_patches(&self) -> bool {
+    fn holds_patches(&self) -> bool {
         self.refreshing() || self.preparing
     }
 
@@ -535,44 +471,5 @@ impl ScopeLoad {
         } else {
             self.custom
         }
-    }
-}
-
-impl Inspector {
-    /// The refreshed rows plus the last rows of each context whose refresh
-    /// failed, in context rank order.
-    pub(super) fn keep_failed_contexts(&self, rows: PreparedRows, kept: &[String]) -> PreparedRows {
-        if kept.is_empty() {
-            return rows;
-        }
-        let mut all = rows.backend_rows();
-        all.extend(
-            self.rows
-                .backend_rows()
-                .into_iter()
-                .filter(|row| kept.contains(&row.cluster)),
-        );
-        let contexts = self.scope_load.contexts();
-        rank_order(&mut all, contexts);
-        PreparedRows::with_inherited_owners(all, contexts)
-    }
-
-    /// The live status of the contexts whose rows the table shows, which the
-    /// stale-data notice reads. A context that failed or still loads has no
-    /// rows to call stale, as `shownLive` in `ResourceBrowser.svelte`.
-    pub(super) fn shown_live_status(&self) -> LiveStatus {
-        if self.scope_load.refreshing() {
-            LiveStatus::Refreshing
-        } else {
-            self.live
-                .settled_status_where(|context| self.scope_load.shows(context))
-        }
-    }
-
-    /// Whether row activity may animate: every watch of a context whose rows
-    /// show is live and none of those contexts still reads its rows.
-    /// Mirrors `updatesCurrent` in `ResourceBrowser.svelte`.
-    pub(super) fn updates_current(&self) -> bool {
-        !self.scope_load.shown_loading() && self.shown_live_status() == LiveStatus::Live
     }
 }

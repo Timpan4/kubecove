@@ -38,6 +38,7 @@ User-facing procedures start in the [public Wiki](https://github.com/Timpan4/kub
 
 ## Governance
 
+- [Domain language](../GLOSSARY.md): resource observation, shown evidence, and freshness.
 - [Architecture decisions](decisions/) — accepted technical and safety decisions.
 - [Planning and milestones](milestones.md) — GitHub Issue and Milestone tracking direction.
 - [Multiple user sessions and persistence](decisions/0023-multi-user-sessions-and-persistence.md) — implemented session baseline and proposed private-source provisioning, persistent user workspaces, settings and migration.

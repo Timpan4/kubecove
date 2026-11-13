@@ -9,7 +9,7 @@ use gpui_kit::{IntoElement, div, prelude::*, px};
 impl Inspector {
     fn foreground_loading(&self) -> bool {
         let list = matches!(self.page, Page::Resources | Page::ClusterOverview)
-            && matches!(self.scope_load.rows, Load::Loading);
+            && matches!(*self.observation.status(), Load::Loading);
         let topology = matches!(self.map.topology, TopologyLoad::Loading)
             && matches!(self.page, Page::Resources | Page::ClusterOverview);
         let detail = matches!(self.detail, Detail::Loading(_));

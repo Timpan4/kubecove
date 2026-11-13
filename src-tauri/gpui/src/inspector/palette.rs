@@ -136,7 +136,8 @@ impl Inspector {
         }
         let launcher = &self.launcher;
         let mut resources: Vec<_> = self
-            .rows
+            .observation
+            .rows()
             .iter()
             .chain(self.cluster_rows())
             .filter(|row| launcher.in_scope(row))

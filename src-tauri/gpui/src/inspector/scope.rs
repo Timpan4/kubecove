@@ -1,9 +1,9 @@
 //! Context and resource-scope reads, refresh, and visible resource filtering.
 
+use super::Inspector;
 use super::load_trace::{LoadKind, LoadTrace};
+use super::resource_observation::{ScopeRows, all_failed, union_namespaces};
 use super::scope_arrivals::prepare_arrival;
-use super::scope_load::{all_failed, union_namespaces};
-use super::{Inspector, Load};
 use crate::backend::{Read, Scope, ScopeResult};
 use crate::model::PreparedRows;
 use crate::workspaces::reads::{ContextResults, Settled, settle};
@@ -35,12 +35,6 @@ async fn arrive(
 ) -> (Stage, String, Result<ScopeResult, AppError>) {
     let result = read.await;
     (stage, context, result)
-}
-
-/// Every context's read with the rows taken out, and those rows prepared.
-struct ScopeRows {
-    results: ContextResults<ScopeResult>,
-    rows: PreparedRows,
 }
 
 /// Prepares the rows of every context that answered on the background
@@ -130,18 +124,16 @@ impl SharedScopeReads {
 impl Inspector {
     pub(super) fn load_contexts(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.context_task.take();
-        self.scope_load.rows = Load::Loading;
+        self.observation.loading_contexts();
         let task = self.read_kubeconfig_contexts(
             false,
             window,
             cx,
             |this, result, _source_error, window, cx| {
                 match result {
-                    Ok(contexts) if contexts.is_empty() => {
-                        this.scope_load.rows = Load::Failed(
-                            "No Kubernetes contexts found. Configure KUBECONFIG and retry.".into(),
-                        )
-                    }
+                    Ok(contexts) if contexts.is_empty() => this.observation.context_error(
+                        "No Kubernetes contexts found. Configure KUBECONFIG and retry.".into(),
+                    ),
                     Ok(contexts) => {
                         this.launcher.context_choices = contexts
                             .iter()
@@ -175,7 +167,7 @@ impl Inspector {
                             this.load_scope(false, window, cx);
                         }
                     }
-                    Err(error) => this.scope_load.rows = Load::Failed(error.message),
+                    Err(error) => this.observation.context_error(error.message),
                 }
                 cx.notify();
             },
@@ -194,7 +186,7 @@ impl Inspector {
             &self.scope.context,
             self.scope.namespace.as_deref(),
         ));
-        self.scope_load.cancel();
+        self.observation.reset_scope();
         self.sync_page_reads(cx);
         self.kind_selection.reads.clear();
         self.live.reset_scope();
@@ -209,10 +201,10 @@ impl Inspector {
         self.load_workspace_overview(refresh, Some(reads.clone()), cx);
         // As the web's keepPreviousData does, rows of the same contexts stay
         // visible until each context's new read answers.
-        let kept = self.scope_load.same_contexts(&contexts) && !self.rows.is_empty();
+        let kept = self
+            .observation
+            .prepare_scope(&contexts, self.scope.namespace.clone());
         if !kept {
-            self.scope_load.rows = Load::Loading;
-            self.rows = Rc::default();
             self.warnings.clear();
         }
         self.prepare_rows();
@@ -231,7 +223,6 @@ impl Inspector {
                 .into_iter()
                 .map(|(context, read)| arrive(Stage::Builtin, context, read))
                 .collect();
-            let mut failures = Vec::new();
             while let Some((stage, context, result)) = arrivals.next().await {
                 if stage == Stage::Custom {
                     if this
@@ -253,7 +244,7 @@ impl Inspector {
                 let (result, rows) =
                     prepare_arrival(cx.background_executor(), plan.clone(), rows, result).await;
                 let applied = this.update(cx, |this, cx| {
-                    this.apply_arrival(&request, &context, result, rows, &mut failures, cx)
+                    this.apply_arrival(&request, &context, result, rows, cx)
                 });
                 if !matches!(applied, Ok(true)) {
                     return;
@@ -267,7 +258,7 @@ impl Inspector {
                 }
             }
         });
-        self.scope_load
+        self.observation
             .start(contexts, &custom_contexts, kept, task);
         // The map loads on its own, like the web's topology query, so a
         // topology failure leaves the table usable.
@@ -313,39 +304,26 @@ impl Inspector {
                         return;
                     }
                     let apply_started = Instant::now();
-                    // A refresh that replaced a first load still in flight
-                    // settles that load's start versions too.
-                    this.live.starts.clear();
-                    match result {
-                        Ok(ScopeRows { results, rows }) => {
-                            let span = crate::frame_profile::scope("scope", "apply_parts");
-                            let applied = this.scope_load.apply_parts(results, true);
-                            drop(span);
-                            let span = crate::frame_profile::scope("scope", "swap_rows");
-                            this.rows = Rc::new(this.keep_failed_contexts(rows, &applied.kept));
-                            drop(span);
+                    match this.observation.install_refresh(result) {
+                        Ok(applied) => {
                             this.namespaces = if applied.kept.is_empty() {
                                 applied.namespaces
                             } else {
                                 union_namespaces(applied.namespaces, &this.namespaces)
                             };
                             this.warnings = this.scope_warnings(applied.warnings);
-                            this.scope_load.refresh_settled(Ok(()));
                             let span = crate::frame_profile::scope("scope", "prepare_rows");
                             this.prepare_rows();
                             drop(span);
                             this.filter(cx);
                         }
-                        Err(error) => {
-                            this.live.refresh_error = Some(error.message.clone());
-                            this.scope_load.refresh_settled(Err(error.message));
-                        }
+                        Err(error) => this.live.refresh_error = Some(error),
                     }
                     cx.notify();
                     this.note_apply(LoadKind::Scope, apply_started.elapsed(), true);
                 });
             });
-            self.scope_load.start_refresh(task);
+            self.observation.start_refresh(task);
             self.load_topology(cx);
             self.load_inventory(true, cx);
             self.load_page(cx);
@@ -471,7 +449,7 @@ impl Inspector {
     pub(super) fn workspace_rows(&self) -> impl Iterator<Item = &ResourceSummary> {
         self.workspace_read
             .as_ref()
-            .map_or(&self.rows[..], |state| state.rows.as_slice())
+            .map_or(&self.observation.rows()[..], |state| state.rows.as_slice())
             .iter()
             .filter(|row| self.launcher.overview_kind(&row.kind) && self.launcher.in_scope(row))
     }
@@ -493,7 +471,7 @@ impl Inspector {
         if !self.persisted.preferences.show_custom_resources {
             return kinds;
         }
-        for row in self.rows.iter() {
+        for row in self.observation.rows().iter() {
             if self.persisted.preferences.show_custom_resources
                 && row.dynamic == Some(true)
                 && !kinds.contains(&row.kind)

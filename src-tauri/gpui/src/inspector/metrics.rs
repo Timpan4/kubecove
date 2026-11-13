@@ -114,7 +114,7 @@ impl Inspector {
         self.metrics.slots.clear();
         let request = self.request.clone();
         let reads = self
-            .scope_load
+            .observation
             .contexts()
             .iter()
             .map(|context| {

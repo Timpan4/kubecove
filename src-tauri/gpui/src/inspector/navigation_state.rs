@@ -213,8 +213,8 @@ impl Inspector {
     ) {
         // Cluster-scoped rows such as Nodes join `visible` only when their own read lands.
         if self.navigation.pending_detail.is_none()
-            || self.scope_load.loading()
-            || matches!(self.scope_load.rows, Load::Loading)
+            || self.observation.loading()
+            || matches!(*self.observation.status(), Load::Loading)
             || (self.wants_cluster_rows() && self.cluster_loading())
         {
             return;

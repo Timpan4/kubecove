@@ -60,7 +60,7 @@ impl Inspector {
     fn overview_matches_scope(&self, contexts: &[String]) -> bool {
         self.focused_application().is_none()
             && self.scope.namespace.is_none()
-            && super::scope_load::same_contexts(contexts, &self.workspace_contexts())
+            && super::resource_observation::same_contexts(contexts, &self.workspace_contexts())
     }
 
     /// The contexts the Resources page reads, in rank order: every workspace
@@ -166,6 +166,6 @@ impl Inspector {
     pub(super) fn overview_load(&self) -> &super::Load {
         self.workspace_read
             .as_ref()
-            .map_or(&self.scope_load.rows, |state| &state.load)
+            .map_or(self.observation.status(), |state| &state.load)
     }
 }

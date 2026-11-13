@@ -24,7 +24,7 @@ impl Inspector {
         if !self.persisted.preferences.show_custom_resources {
             return Some("Custom Resources off");
         }
-        let custom = self.scope_load.custom();
+        let custom = self.observation.custom();
         let phase = self
             .loading
             .phase("custom-resources-status", custom == CustomLoad::Loading);
@@ -48,17 +48,8 @@ impl Inspector {
         result: Result<ScopeResult, AppError>,
         cx: &mut Context<Self>,
     ) {
-        let added = self.scope_load.custom_settled(context, result);
-        if !added.is_empty() {
-            let contexts = self.scope_load.contexts();
-            let mut rows = self.rows.backend_rows();
-            rows.extend(added);
-            super::scope_load::rank_order(&mut rows, contexts);
-            self.rows = std::rc::Rc::new(crate::model::PreparedRows::with_inherited_owners(
-                rows, contexts,
-            ));
-        }
-        self.warnings = self.scope_warnings(self.scope_load.warnings());
+        self.observation.install_custom(context, result);
+        self.warnings = self.scope_warnings(self.observation.warnings());
         self.prepare_rows();
         self.filter(cx);
         cx.notify();
