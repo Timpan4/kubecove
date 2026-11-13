@@ -28,6 +28,10 @@ function problemTone(row: ResourceSummary): ProblemTone | null {
 	return state === "degraded" || state === "needsAttention" ? state : null;
 }
 const ownerKey = (row: ResourceSummary, uid: string, namespace = row.namespace) => JSON.stringify([row.cluster, namespace, uid]);
+function apiGroup(version: string): string {
+	const separator = version.indexOf("/");
+	return separator < 0 ? "" : version.slice(0, separator);
+}
 
 export function buildOverviewModel(rows: readonly ResourceSummary[]): OverviewModel {
 	// Only the Kubernetes controller reference and the loaded object's UID establish ownership.
@@ -65,7 +69,7 @@ export function buildOverviewModel(rows: readonly ResourceSummary[]): OverviewMo
 				if (owner === undefined) owner = clusterOwner;
 				else if (clusterOwner !== undefined) owner = null;
 			}
-			if (!owner || owner.name !== reference.name || owner.kind !== reference.kind || owner.apiVersion !== reference.apiVersion) break;
+			if (!owner || owner.name !== reference.name || owner.kind !== reference.kind || !owner.apiVersion || apiGroup(owner.apiVersion) !== apiGroup(reference.apiVersion)) break;
 			if (seen.has(owner)) { root = row; break; }
 			seen.add(owner);
 			if (problemTone(owner)) root = owner;

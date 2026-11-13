@@ -2,6 +2,26 @@ use super::*;
 use serde_json::json;
 
 #[test]
+fn controller_versions_can_differ_without_crossing_api_groups() {
+    let mut controller = row("Controller", "api", HealthAssessmentState::Degraded, None);
+    controller.api_version = Some("example.io/v1".into());
+    let mut pod = row(
+        "Pod",
+        "child",
+        HealthAssessmentState::Degraded,
+        Some(("Controller", "api")),
+    );
+    pod.controller_owner.as_mut().unwrap().api_version = "example.io/v1beta1".into();
+    assert_eq!(build(&[&controller, &pod]).problems.len(), 1);
+    pod.controller_owner.as_mut().unwrap().api_version = "other.io/v1".into();
+    assert_eq!(build(&[&controller, &pod]).problems.len(), 2);
+    pod.controller_owner.as_mut().unwrap().api_version = "v1".into();
+    assert_eq!(build(&[&controller, &pod]).problems.len(), 2);
+    controller.api_version = None;
+    assert_eq!(build(&[&controller, &pod]).problems.len(), 2);
+}
+
+#[test]
 fn namespaced_dependents_fold_into_cluster_scoped_controllers_only() {
     let mut controller = row(
         "Controller",

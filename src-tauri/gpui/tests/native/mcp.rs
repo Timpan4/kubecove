@@ -128,9 +128,12 @@ fn running_rotation_revokes_old_token_and_restart_reuses_saved_settings() {
     let url = status.url.unwrap();
     let original = runtime.block_on(backend.reveal_mcp_token()).unwrap();
     let _ = rustls::crypto::ring::default_provider().install_default();
-    let client = reqwest::Client::builder().no_proxy().build().unwrap();
+    // Rotation restarts the listener, so each authentication probe opens a new connection.
     let request = |token: String| {
-        client
+        reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .unwrap()
             .post(&url)
             .bearer_auth(token)
             .header("accept", "application/json, text/event-stream")

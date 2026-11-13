@@ -11,6 +11,18 @@ function row(kind: string, name: string, state: HealthAssessmentState = "degrade
 function owner(kind: string, name: string) { return { apiVersion: "apps/v1", kind, name, uid: `${kind}/${name}` }; }
 
 describe("workspace overview findings", () => {
+	test("controller UIDs survive served-version changes without crossing API groups", () => {
+		const controller = row("Controller", "api", "degraded", { apiVersion: "example.io/v1" });
+		const reference = { ...owner("Controller", "api"), apiVersion: "example.io/v1beta1" };
+		const pod = row("Pod", "child", "degraded", { controllerOwner: reference });
+		expect(buildOverviewModel([controller, pod]).problems).toHaveLength(1);
+		reference.apiVersion = "other.io/v1";
+		expect(buildOverviewModel([controller, pod]).problems).toHaveLength(2);
+		reference.apiVersion = "v1";
+		expect(buildOverviewModel([controller, pod]).problems).toHaveLength(2);
+		controller.apiVersion = undefined;
+		expect(buildOverviewModel([controller, pod]).problems).toHaveLength(2);
+	});
 	test("namespaced dependents can fold into a cluster-scoped controller", () => {
 		const controller = row("Controller", "global", "degraded", { namespace: null });
 		const pod = row("Pod", "child", "degraded", { controllerOwner: owner("Controller", "global") });

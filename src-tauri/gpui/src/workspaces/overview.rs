@@ -146,9 +146,12 @@ pub fn build(rows: &[&ResourceSummary]) -> Overview {
                 break;
             };
             let parent = rows[owner];
+            let Some(parent_api) = parent.api_version.as_deref() else {
+                break;
+            };
             if parent.name != reference.name
                 || parent.kind != reference.kind
-                || parent.api_version.as_deref() != Some(&reference.api_version)
+                || api_group(Some(parent_api)) != api_group(Some(&reference.api_version))
             {
                 break;
             }
