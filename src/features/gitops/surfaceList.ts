@@ -1,12 +1,13 @@
 import type { HealthAssessmentState } from "@/lib/health-types";
 import { formatStatusLabel } from "@/lib/utils";
 import { type GitOpsSelection, gitOpsSelectionKey } from "./surfaceModel";
+import type { GitOpsTrackedRequest } from "./surfacePresentation";
 
 /** The GitOps list groups rows by health so resources that need a look sit on top. */
 export type GitOpsListGroup = "attention" | "healthy" | "notEvaluated";
 
 export type GitOpsListEntry =
-	| { kind: "group"; group: GitOpsListGroup; label: string; count: number; collapsed: boolean; last: boolean }
+	| { kind: "group"; group: GitOpsListGroup; position: number; label: string; count: number; collapsed: boolean; last: boolean }
 	/** `expanded` rows add a second line with the assessment reasons and raw statuses. */
 	| { kind: "row"; selection: GitOpsSelection; expanded: boolean; last: boolean };
 
@@ -64,11 +65,12 @@ export function buildGitOpsListEntries(
 	);
 
 	const entries: GitOpsListEntry[] = [];
+	let position = 0;
 	for (const group of GROUP_ORDER) {
 		const rows = groups[group];
 		if (rows.length === 0) continue;
 		const isCollapsed = collapsed.has(group);
-		entries.push({ kind: "group", group, label: GROUP_LABELS[group], count: rows.length, collapsed: isCollapsed, last: false });
+		entries.push({ kind: "group", group, position: position++, label: GROUP_LABELS[group], count: rows.length, collapsed: isCollapsed, last: false });
 		if (isCollapsed) continue;
 		for (const selection of rows) {
 			entries.push({ kind: "row", selection, expanded: group === "attention", last: false });
@@ -92,9 +94,10 @@ export function gitOpsListColumns(selection: GitOpsSelection | undefined): GitOp
 
 /**
  * One word for the delivery state of a row. For an Application the most urgent fact wins:
- * a request KubeCove sent, then a running or failed operation, then the sync status.
+ * a request KubeCove sent that Argo CD has not settled, then a running or failed operation,
+ * then the sync status. A settled request stays in the row's Last request status.
  */
-export function gitOpsListSync(selection: GitOpsSelection, trackedOperation: string | null): GitOpsListSync {
+export function gitOpsListSync(selection: GitOpsSelection, request: GitOpsTrackedRequest | null): GitOpsListSync {
 	if (selection.type === "flux") {
 		const ready = selection.item.readyStatus;
 		if (!ready) return { label: "-", tone: "quiet" };
@@ -105,9 +108,7 @@ export function gitOpsListSync(selection: GitOpsSelection, trackedOperation: str
 	if (selection.type === "argoProject") {
 		return { label: selection.item.status ? formatStatusLabel(selection.item.status) : "-", tone: "quiet" };
 	}
-	if (trackedOperation) {
-		return { label: trackedOperation, tone: trackedOperation.endsWith(": error") ? "failed" : "active" };
-	}
+	if (request?.busy) return { label: request.label, tone: "active" };
 	if (selection.type === "argoApp") {
 		if (selection.item.refreshRequested) return { label: "Refreshing", tone: "active" };
 		const phase = selection.item.operationPhase;

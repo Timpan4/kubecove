@@ -138,6 +138,22 @@
       ]
     },
     {
+      "id": "flux.list-groups",
+      "title": "The Flux list groups its resources by health as the Applications list does",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "expandNav", "page": "GitOps" },
+        { "action": "openPage", "page": "Flux" },
+        { "action": "setDeliveryView", "page": "GitOps", "mode": "List" },
+        { "action": "expectGitOpsTable", "title": "Flux Resources", "count": 2 },
+        { "action": "expectGitOpsGroup", "label": "Healthy", "position": 0, "count": 2, "expanded": true },
+        { "action": "expectGitOpsItem", "kind": "Kustomization", "name": "platform", "namespace": "flux-system" },
+        { "action": "toggleGitOpsGroup", "label": "Healthy" },
+        { "action": "expectGitOpsGroup", "label": "Healthy", "position": 0, "count": 2, "expanded": false },
+        { "action": "expectNoGitOpsItem", "kind": "Kustomization", "name": "platform", "namespace": "flux-system" }
+      ]
+    },
+    {
       "id": "gitops.flux-kind-filter",
       "title": "A Flux kind node keeps only that kind",
       "steps": [
@@ -159,7 +175,9 @@
         { "action": "expandNav", "page": "GitOps" },
         { "action": "expandNav", "page": "Argo CD" },
         { "action": "openPage", "page": "Argo CD AppProjects" },
+        { "action": "setDeliveryView", "page": "GitOps", "mode": "List" },
         { "action": "expectGitOpsTable", "title": "Argo CD AppProjects", "count": 2 },
+        { "action": "expectGitOpsGroup", "label": "Not evaluated", "position": 0, "count": 2, "expanded": true },
         { "action": "expectGitOpsItem", "kind": "AppProject", "name": "platform", "namespace": "argocd" },
         { "action": "expectNoGitOpsItem", "kind": "Application", "name": "root-application", "namespace": "argocd" }
       ]

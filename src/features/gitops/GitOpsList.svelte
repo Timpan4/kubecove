@@ -42,6 +42,7 @@
 		gitOpsCardTone,
 		gitOpsDetailsActionLabel,
 		gitOpsSourceIcon,
+		type GitOpsTrackedRequest,
 		stopTooltipEvent,
 	} from "./surfacePresentation";
 
@@ -49,7 +50,7 @@
 		selections,
 		selectedKey,
 		statusClass,
-		trackedOperationLabel,
+		trackedRequest,
 		tooltipClass,
 		sourceTooltip,
 		onOpen,
@@ -60,7 +61,7 @@
 		selections: GitOpsSelection[];
 		selectedKey: string;
 		statusClass: (status: string | null | undefined) => string;
-		trackedOperationLabel: (selection: GitOpsSelection) => string | null;
+		trackedRequest: (selection: GitOpsSelection) => GitOpsTrackedRequest | null;
 		tooltipClass: string;
 		sourceTooltip: Snippet<[string, GitOpsSourceTooltipGroup[], string]>;
 		onOpen: (selection: GitOpsSelection) => void;
@@ -157,6 +158,7 @@
 				class:border-b-0={entry.last}
 				aria-expanded={!entry.collapsed}
 				data-gitops-group={entry.group}
+				data-gitops-group-position={entry.position}
 				onclick={() => toggleGroup(entry.group)}
 			>
 				<ChevronDown
@@ -172,8 +174,9 @@
 			{@const state = gitOpsListState(item)}
 			{@const health = healthPresentation[state]}
 			{@const HealthIcon = health.icon}
-			{@const badges = gitOpsCardBadges(item, trackedOperationLabel(item))}
-			{@const sync = gitOpsListSync(item, trackedOperationLabel(item))}
+			{@const request = trackedRequest(item)}
+			{@const badges = gitOpsCardBadges(item, request)}
+			{@const sync = gitOpsListSync(item, request)}
 			{@const sourceMode = gitOpsSelectionSourceMode(item)}
 			{@const SourceIcon = gitOpsSourceIcon(sourceMode)}
 			{@const sourceLabel = gitOpsSelectionSourceLabel(sourceMode, argoSourceCount(item))}

@@ -30,10 +30,21 @@ export function gitOpsCardSubtitle(selection: GitOpsSelection): string {
 	return selection.item.project ?? "default";
 }
 
-/** Raw provider statuses, labelled. `trackedOperation` is the last request KubeCove sent for an Application. */
+/** The last request KubeCove sent for an Application. `busy` until Argo CD settles it. */
+export interface GitOpsTrackedRequest {
+	label: string;
+	busy: boolean;
+}
+
+function argoOperationStatus(selection: GitOpsSelection): string | null | undefined {
+	if (selection.type !== "argoApp") return null;
+	return selection.item.refreshRequested ? "Refreshing" : selection.item.operationPhase;
+}
+
+/** Raw provider statuses, labelled. */
 export function gitOpsCardBadges(
 	selection: GitOpsSelection,
-	trackedOperation: string | null,
+	request: GitOpsTrackedRequest | null,
 ): [string, string][] {
 	if (selection.type === "flux") {
 		return selection.item.readyStatus ? [["Ready", selection.item.readyStatus]] : [];
@@ -42,8 +53,8 @@ export function gitOpsCardBadges(
 		return selection.item.status ? [["Status", selection.item.status]] : [];
 	}
 	return [
-		["Last request", trackedOperation],
-		["Operation", selection.type === "argoApp" ? selection.item.refreshRequested ? "Refreshing" : selection.item.operationPhase : null],
+		["Last request", request?.label],
+		["Operation", argoOperationStatus(selection)],
 		["Sync", selection.item.syncStatus],
 		["Health", selection.item.healthStatus],
 	].filter((entry): entry is [string, string] => Boolean(entry[1]));

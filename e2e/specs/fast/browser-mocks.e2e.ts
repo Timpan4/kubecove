@@ -1,6 +1,29 @@
 import { $, browser, expect } from "@wdio/globals";
 import { beforeEach, describe, it } from "mocha";
 
+async function revealGitOpsDetails(name: string) {
+	const selector = `button[aria-label="Open details for Application ${name} in argocd"]`;
+	await browser.waitUntil(() => browser.execute(async (selector: string) => {
+		for (const direction of [1, -1]) {
+			while (!document.querySelector(selector)) {
+				const viewport = document.querySelector("[data-virtual-row]")?.closest(".overflow-y-auto, .overflow-auto");
+				if (!(viewport instanceof HTMLElement)) return false;
+				const before = viewport.scrollTop;
+				viewport.scrollTop += direction * viewport.clientHeight;
+				await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+				if (viewport.scrollTop === before) break;
+			}
+			const target = document.querySelector(selector);
+			if (target) {
+				target.scrollIntoView({ block: "center", inline: "nearest" });
+				return true;
+			}
+		}
+		return false;
+	}, selector));
+	return $(selector);
+}
+
 describe("browser mock inspection", () => {
 	beforeEach(async () => {
 		await browser.url("/");
@@ -221,19 +244,20 @@ describe("browser mock inspection", () => {
 			expect(wideSettings.contentWidth).toBeLessThanOrEqual(1024);
 
 			await $("button=Back to app").click();
-			await browser.setWindowSize(1026, 752);
+			// The compact list fits at 1026px. Use the tablet viewport to exercise horizontal scrolling.
+			await browser.setWindowSize(768, 752);
 			await $('button[aria-label="Open workspace navigation"]').click();
 			const navigation = await $('[data-slot="sheet-content"]');
 			await navigation.$('[role="treeitem"]*=GitOps').click();
 			const list = await $("button=List");
 			await list.waitForDisplayed();
 			await list.click();
-			const details = await $('button[aria-label="Open details for Application platform-argocd in argocd"]');
+			const details = await revealGitOpsDetails("platform-argocd");
 			await details.waitForDisplayed();
 			const compactActions = await browser.execute((button: HTMLElement) => {
 				const scroller = button.closest(".overflow-x-auto");
 				const scrollerBounds = scroller?.getBoundingClientRect();
-				const actions = Array.from(button.parentElement?.querySelectorAll("button") ?? []);
+				const actions = Array.from(button.parentElement?.querySelectorAll("button") ?? []).filter((action) => action.getClientRects().length > 0);
 				return {
 					insideScroller: actions.every((action) => {
 						const bounds = action.getBoundingClientRect();
@@ -256,7 +280,7 @@ describe("browser mock inspection", () => {
 				const scroller = button.closest(".overflow-x-auto");
 				const scrollerBounds = scroller?.getBoundingClientRect();
 				const actionArea = button.parentElement;
-				const actions = Array.from(actionArea?.querySelectorAll("button") ?? []);
+				const actions = Array.from(actionArea?.querySelectorAll("button") ?? []).filter((action) => action.getClientRects().length > 0);
 				const canvas = document.createElement("canvas");
 				canvas.width = 1;
 				canvas.height = 1;
@@ -296,20 +320,20 @@ describe("browser mock inspection", () => {
 		await $("button=Refresh (clear cache)").waitForEnabled();
 		await expect($("body")).not.toHaveText(expect.stringContaining("Refresh failed:"));
 
-		const firstDetails = await $('button[aria-label="Open details for Application platform-argocd in argocd"]');
 		await browser.keys("Escape");
+		const firstDetails = await revealGitOpsDetails("platform-argocd");
 		await firstDetails.click();
 		await expect($('button[aria-label="Pin Application platform-argocd"]')).toBeDisplayed();
 		await $('button[aria-label="Close resource details"]').click();
 
-		const keyboardDetails = await $('button[aria-label="Open details for Application platform-argocd in argocd"]');
+		const keyboardDetails = await revealGitOpsDetails("platform-argocd");
 		await keyboardDetails.scrollIntoView();
 		await browser.execute((element: HTMLElement) => element.focus(), keyboardDetails);
 		await browser.keys("Enter");
 		await expect($('button[aria-label="Pin Application platform-argocd"]')).toBeDisplayed();
 		await $('button[aria-label="Close resource details"]').click();
 
-		const secondDetails = await $('button[aria-label="Open details for Application platform-cilium in argocd"]');
+		const secondDetails = await revealGitOpsDetails("platform-cilium");
 		await secondDetails.click();
 		await expect($('button[aria-label="Pin Application platform-cilium"]')).toBeDisplayed();
 		await $('button[aria-label="Close resource details"]').click();

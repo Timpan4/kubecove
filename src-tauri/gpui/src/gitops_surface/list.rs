@@ -99,6 +99,22 @@ pub fn entries(rows: &[Row], data: &GitOpsInventory, collapsed: Collapsed) -> Ve
     entries
 }
 
+/// The page row shown at `line`, or the first one below it, so a group header
+/// stands for its first row.
+pub fn row_at(entries: &[Entry], line: usize) -> Option<usize> {
+    entries.get(line..)?.iter().find_map(|entry| match entry {
+        Entry::Row { row, .. } => Some(*row),
+        Entry::Group { .. } => None,
+    })
+}
+
+/// The list line that shows page row `row`. `None` while its group is collapsed.
+pub fn line_of(entries: &[Entry], row: usize) -> Option<usize> {
+    entries
+        .iter()
+        .position(|entry| matches!(entry, Entry::Row { row: shown, .. } if *shown == row))
+}
+
 /// `gitOpsListColumns`: the Sync and Destination column labels. Every row of
 /// one list has the same type, so the first row decides.
 pub fn columns(first: Option<Selection>) -> (&'static str, &'static str) {

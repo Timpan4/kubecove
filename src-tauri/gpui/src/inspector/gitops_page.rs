@@ -139,6 +139,9 @@ impl Inspector {
             .map_or_default(|data| model::rows(data, self.gitops_page.focus));
         self.gitops_page.rows_for = Some(key);
         self.sync_gitops_entries();
+        // A status change can move a list row between its one-line and two-line
+        // forms without changing the item count, which is all `shape` tracks.
+        self.gitops_page.list.remeasure();
         self.resolve_gitops_selection();
     }
 
@@ -243,23 +246,28 @@ impl Inspector {
             if let Some((_, mode, previous, old_top)) = self.gitops_page.shape
                 && position.item_ix >= 3
             {
-                // Keep the same resource row at the top when opening detail
-                // moves the rail or changes the number of card columns. A list
-                // line counts as one resource, so its group headers shift the
-                // row by a few lines when the mode changes.
-                let old_columns = if mode == ViewMode::Cards {
-                    previous.columns
-                } else {
-                    1
+                // Keep the same resource at the top when opening detail moves
+                // the rail or changes the number of card columns, and when the
+                // mode changes. The list orders resources by group, so a mode
+                // change maps the resource, not its line number.
+                let page = &self.gitops_page;
+                let line = position.item_ix - 3 + old_top;
+                let line = match (mode, page.mode) {
+                    (ViewMode::List, ViewMode::List) => Some(line),
+                    (ViewMode::Cards, ViewMode::Cards) => {
+                        Some(line * previous.columns / page.layout.columns)
+                    }
+                    (ViewMode::Cards, ViewMode::List) => {
+                        model::list::line_of(&page.entries, line * previous.columns)
+                    }
+                    (ViewMode::List, ViewMode::Cards) => model::list::row_at(&page.entries, line)
+                        .map(|row| row / page.layout.columns),
                 };
-                let resource = (position.item_ix - 3 + old_top) * old_columns;
-                let columns = if self.gitops_page.mode == ViewMode::Cards {
-                    self.gitops_page.layout.columns
-                } else {
-                    1
-                };
-                position.item_ix =
-                    3 + (resource / columns).saturating_sub(self.gitops_page.top_rows());
+                match line {
+                    Some(line) => position.item_ix = 3 + line.saturating_sub(page.top_rows()),
+                    // The resource has no line in the new mode: start at the top.
+                    None => position = Default::default(),
+                }
             }
             self.gitops_page.shape = shape;
             self.gitops_page.list.reset(count);

@@ -36,6 +36,8 @@ pub fn reveal(window: &mut gpui_kit::Window, anchor: &str, id: &str, cx: &mut gp
             | "actions-scroll"
             | "incident-guide"
             | "sidebar-tree"
+            | "gitops-list"
+            | "helm-list"
     );
     let anchor = window.find(gpui_kit::ElementId::Name(anchor.to_owned().into()));
     if target.visible()

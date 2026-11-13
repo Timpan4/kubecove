@@ -56,6 +56,7 @@
 		gitOpsCardTone,
 		gitOpsDetailsActionLabel,
 		gitOpsSourceIcon,
+		type GitOpsTrackedRequest,
 		stopTooltipEvent,
 	} from "./surfacePresentation";
 	import GitOpsList from "./GitOpsList.svelte";
@@ -111,7 +112,7 @@
 		openSelectedArgoApplicationResources,
 		onResourceInspect,
 		gitOpsStatusClass,
-		trackedOperationLabel = () => null,
+		trackedRequest = () => null,
 		refreshControls,
 	}: {
 		gitOpsQuery: GitOpsQuery;
@@ -127,7 +128,7 @@
 		openSelectedArgoApplicationResources: (selection?: GitOpsSelection) => void;
 		onResourceInspect: (resource: ResourceSummary, detailTab?: PathStateDetailTab) => void;
 		gitOpsStatusClass: (status: string | null | undefined) => string;
-		trackedOperationLabel?: (selection: GitOpsSelection) => string | null;
+		trackedRequest?: (selection: GitOpsSelection) => GitOpsTrackedRequest | null;
 		refreshControls: Snippet;
 	} = $props();
 
@@ -481,7 +482,7 @@
 											<HealthAssessmentBadge
 												assessment={item.item.healthAssessment}
 												compact
-												rawStatuses={gitOpsCardBadges(item, trackedOperationLabel(item)).map(([label, value]) => `${label}: ${formatStatusLabel(value)}`)}
+												rawStatuses={gitOpsCardBadges(item, trackedRequest(item)).map(([label, value]) => `${label}: ${formatStatusLabel(value)}`)}
 											/>
 										</div>
 										{#if sourceLine}
@@ -576,7 +577,7 @@
 								selections={gitOpsSelections}
 								selectedKey={selectedGitOpsItemKey}
 								statusClass={gitOpsStatusClass}
-								{trackedOperationLabel}
+								{trackedRequest}
 								tooltipClass={gitOpsTooltipClass}
 								sourceTooltip={sourceTooltipContent}
 								onOpen={openGitOpsSelection}
