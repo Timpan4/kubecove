@@ -120,7 +120,12 @@ export async function shellAction(page: Page, step: Step): Promise<void> {
         case "expectWorkspaceEntry": case "openWorkspaceEntry": {
             const panel = page.getByRole("heading", { name: step.panel, exact: true }).locator("xpath=ancestor::section[1]");
             const buttons = panel.getByRole("button");
-            await buttons.nth(step.index).and(panel.getByRole("button", { name: step.label, exact: true })).waitFor();
+            const button = buttons.nth(step.index);
+            await button.waitFor();
+            const kind = step.label.split(" / ")[0];
+            const subtitle = await button.locator("span.font-normal").innerText();
+            const accessibleName = `${step.label}${subtitle.slice(kind.length)}`;
+            await button.and(panel.getByRole("button", { name: accessibleName, exact: true })).waitFor();
             if (await buttons.count() !== step.count) throw new Error("Workspace entry count differs");
             if (step.action === "openWorkspaceEntry") await buttons.nth(step.index).click();
             break;

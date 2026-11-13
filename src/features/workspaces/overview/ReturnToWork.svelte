@@ -47,7 +47,7 @@
 		</h2>
 		{#if rows.length === 0}<p class="px-2 text-muted-foreground">{emptyText}</p>{/if}
 		{#each rows as row (row.key)}
-			<Button variant="ghost" class={`${ROW} items-start py-1`} aria-label={entryLabel(row.entry)} onclick={() => view.onOpenEntry(row.entry)}>
+			<Button variant="ghost" class={`${ROW} items-start py-1`} aria-label={`${entryLabel(row.entry)}${row.namespace ? ` in ${row.namespace}` : ""}${row.tone ? `, ${TONE_LABEL[row.tone].toLowerCase()}` : ""}`} onclick={() => view.onOpenEntry(row.entry)}>
 				<span
 					class={["mt-1.5 size-2 shrink-0 rounded-full", row.tone ? DOT[row.tone] : HOLLOW_DOT]}
 					aria-hidden="true"
