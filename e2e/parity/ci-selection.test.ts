@@ -43,13 +43,13 @@ async function fixture(work: (root: string, base: string) => Promise<void>) {
 	} finally { await rm(root, { recursive: true, force: true }); }
 }
 
-async function plan(root: string, base: string, mapPath = "map.json", reject = false) {
+async function plan(root: string, mapPath = "map.json", reject = false) {
 	const code = `import { planPullRequest } from ${JSON.stringify(planner)};
-	console.log(JSON.stringify(await planPullRequest(${JSON.stringify(ids)}, process.env.BASE, "HEAD", async () => {
+	console.log(JSON.stringify(await planPullRequest(${JSON.stringify(ids)}, "HEAD", async () => {
 		if (process.env.REJECT === "1") throw new Error("Artifact download refused");
 		return process.env.MAP;
 	})));`;
-	return JSON.parse(await run(root, [process.execPath, "--eval", code], { ...process.env, BASE: base, MAP: mapPath, REJECT: reject ? "1" : "0" }));
+	return JSON.parse(await run(root, [process.execPath, "--eval", code], { ...process.env, MAP: mapPath, REJECT: reject ? "1" : "0" }));
 }
 
 test("execution and report validation share exact selected IDs, including an explicit empty selection", () => {
@@ -68,16 +68,21 @@ test("execution and report validation share exact selected IDs, including an exp
 	}
 });
 
-test("job counts follow empty, partial, spike-only and full contracts without a duration threshold", () => {
+test("job counts follow empty, partial, spike-only and full contracts", () => {
+	// Twelve regular scenarios: a full-suite web shard carries three and a GPUI shard four.
+	const many = [...Array.from({ length: 12 }, (_, index) => `many.${index}`), SPIKE];
 	const cases = [
 		{ selected: [], regular: false, spike: false, web: 0, gpui: 0 },
 		{ selected: ["one"], regular: true, spike: false, web: 1, gpui: 1 },
 		{ selected: [SPIKE], regular: false, spike: true, web: 0, gpui: 0 },
 		{ selected: ["one", SPIKE], regular: true, spike: true, web: 1, gpui: 1 },
 		{ selected: ids, regular: true, spike: true, web: 4, gpui: 3 },
+		{ all: many, selected: many.slice(0, 3), regular: true, spike: false, web: 1, gpui: 1 },
+		{ all: many, selected: many.slice(0, 7), regular: true, spike: false, web: 3, gpui: 2 },
+		{ all: many, selected: many.slice(0, 12), regular: true, spike: false, web: 4, gpui: 3 },
 	];
 	for (const item of cases) {
-		const plan = selectionPlan(ids, { ids: new Set(item.selected), because: {} });
+		const plan = selectionPlan(item.all ?? ids, { ids: new Set(item.selected), because: {} });
 		expect([plan.regular, plan.spike, plan.webShards, plan.gpuiShards]).toEqual([item.regular, item.spike, item.web, item.gpui]);
 		if (item.regular) {
 			expect(plan.webMatrix.shard).toEqual(Array.from({ length: item.web }, (_, index) => index));
@@ -94,24 +99,46 @@ test("real git diffs select covered code, nothing for docs, and full suite on ev
 		};
 		await writeFile(join(root, "docs.md"), "Docs only\n");
 		await commit();
-		expect((await plan(root, base)).ids).toEqual([]);
+		expect((await plan(root)).ids).toEqual([]);
 		await writeFile(join(root, "src/feature.ts"), "export function first() {\n return 3;\n}\nexport function second() {\n return 2;\n}\n");
 		await commit();
-		expect((await plan(root, base)).ids).toEqual(["one"]);
+		expect((await plan(root)).ids).toEqual(["one"]);
 		for (const [path, reject] of [["missing.json", false], ["map.json", true]] as const) {
-			const result = await plan(root, base, path, reject);
+			const result = await plan(root, path, reject);
 			expect(result.ids).toEqual(ids);
 			expect(result.fallback).toContain("Selection unavailable");
 		}
 		await writeFile(join(root, "bad-map.json"), "{}");
-		expect((await plan(root, base, "bad-map.json")).ids).toEqual(ids);
+		expect((await plan(root, "bad-map.json")).ids).toEqual(ids);
 		const map = JSON.parse(await readFile(join(root, "map.json"), "utf8"));
-		map.commit = "0".repeat(40);
-		await writeFile(join(root, "bad-map.json"), JSON.stringify(map));
-		expect((await plan(root, base, "bad-map.json")).ids).toEqual(ids);
-		const invalid = await plan(root, "not-a-ref");
-		expect(invalid.ids).toEqual(ids);
-		expect(invalid.fallback).toContain("Selection unavailable");
+		// A commit this clone lacks, then one it has that the tested head does not contain.
+		const tree = await run(root, ["git", "rev-parse", "HEAD^{tree}"]);
+		const aside = await run(root, ["git", "-c", "user.name=Parity test", "-c", "user.email=parity@example.invalid", "commit-tree", tree, "-p", base, "-m", "Not in the tested head"]);
+		for (const commit of ["0".repeat(40), aside]) {
+			await writeFile(join(root, "bad-map.json"), JSON.stringify({ ...map, commit }));
+			const result = await plan(root, "bad-map.json");
+			expect(result.ids).toEqual(ids);
+			expect(result.fallback).toContain("Selection unavailable");
+		}
+	});
+});
+
+test("main changes the map already recorded select nothing for a branch that is behind it", async () => {
+	await fixture(async (root, base) => {
+		const git = (...args: string[]) => run(root, ["git", "-c", "user.name=Parity test", "-c", "user.email=parity@example.invalid", ...args]);
+		// Main changes second() after the branch point, and its map records that commit.
+		await writeFile(join(root, "src/feature.ts"), "export function first() {\n return 1;\n}\nexport function second() {\n return 4;\n}\n");
+		await git("commit", "--quiet", "-am", "Main edit");
+		const main = await git("rev-parse", "HEAD");
+		const map = JSON.parse(await readFile(join(root, "map.json"), "utf8"));
+		await writeFile(join(root, "map.json"), JSON.stringify({ ...map, commit: main }));
+		// The branch left before that commit and changes only docs; the tested head merges both.
+		await git("checkout", "--quiet", "-b", "branch", base);
+		await writeFile(join(root, "docs.md"), "Docs only\n");
+		await git("add", "docs.md");
+		await git("commit", "--quiet", "-m", "Branch edit");
+		await git("merge", "--quiet", "--no-edit", main);
+		expect((await plan(root)).ids).toEqual([]);
 	});
 });
 
@@ -122,8 +149,7 @@ test("a stale map includes intervening source changes and falls back for blind i
 			await writeFile(join(root, path), path === "src/feature.ts" ? "export function first() {\n return 3;\n}\nexport function second() {\n return 2;\n}\n" : path.endsWith("new.json") ? JSON.stringify({ scenarios: [{ id: "one" }] }) : "Changed input\n");
 			await run(root, ["git", "add", path]);
 			await run(root, ["git", "-c", "user.name=Parity test", "-c", "user.email=parity@example.invalid", "commit", "--quiet", "-m", "Intervening main edit"]);
-			const base = await run(root, ["git", "rev-parse", "HEAD"]);
-			const result = await plan(root, base);
+			const result = await plan(root);
 			if (path === "src/feature.ts" || path.endsWith("new.json")) expect(result.ids).toEqual(["one"]);
 			else {
 				expect(result.ids).toEqual(ids);
@@ -170,7 +196,7 @@ if (args[1] === "list") {
 } else process.exit(1);
 `, { mode: 0o755 });
 		const code = `import { planPullRequest } from ${JSON.stringify(planner)};
-		console.log(JSON.stringify(await planPullRequest(${JSON.stringify(ids)}, process.env.BASE, "HEAD")));`;
+		console.log(JSON.stringify(await planPullRequest(${JSON.stringify(ids)}, "HEAD")));`;
 		// Missing artifact runs first, before a preceding successful download could leave a file.
 		for (const mode of ["missing-artifact", "no-main", "list-failure", "download-failure", "fetch-failure", "wrong-commit", "success"]) {
 			const output = await run(root, [process.execPath, "--eval", code], { ...process.env, PATH: `${join(root, "bin")}${delimiter}${process.env.PATH}`, BASE: base, MODE: mode, GITHUB_REPOSITORY: "owner/repo" });

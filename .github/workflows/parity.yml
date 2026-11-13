@@ -58,8 +58,6 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-          PARITY_BASE: ${{ github.event.pull_request.base.sha }}
-          PARITY_HEAD: ${{ github.event.pull_request.head.sha }}
         run: bun e2e/parity/ci-selection.ts
 
       - name: Upload selection

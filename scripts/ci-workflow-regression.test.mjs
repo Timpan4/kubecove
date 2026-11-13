@@ -480,8 +480,6 @@ test("parity jobs select pull request scenarios and preserve full main coverage"
   assert.match(selection, /continue-on-error: true/);
   assert.match(selection, /run: bun e2e\/parity\/ci-selection\.ts/);
   assert.match(selection, /^ {6}attempt: \$\{\{ github.run_attempt \}\}$/m);
-  assert.match(selection, /PARITY_BASE: \$\{\{ github.event.pull_request.base.sha \}\}/);
-  assert.match(selection, /PARITY_HEAD: \$\{\{ github.event.pull_request.head.sha \}\}/);
   assert.doesNotMatch(selection, /cargo |playwright|bun install/);
   for (const condition of ["github.event.pull_request.head.repo.full_name != github.repository", "!startsWith(github.head_ref, 'release/app-v')", "!contains(github.event.pull_request.labels.*.name, 'release')"]) {
     assert.ok(selection.includes(condition), condition);

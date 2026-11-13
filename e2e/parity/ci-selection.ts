@@ -7,15 +7,21 @@ import { readMap } from "./coverage-map";
 import { selectedContract } from "./selected-contract";
 
 export const SPIKE = "settings-diagnostics.topology-spike-harness";
-// Full-suite counts from parity.yml before selection. Partial suites need no timing threshold.
+// Full-suite counts from parity.yml before selection.
 const FULL_SHARDS = { web: 4, gpui: 3 };
 
 export function selectionPlan(ids: string[], selection: Selection) {
 	selectedContract({ scenarios: ids.map((id) => ({ id, title: id, steps: [] })) }, JSON.stringify([...selection.ids]));
 	const selected = ids.filter((id) => selection.ids.has(id));
-	const regular = selected.some((id) => id !== SPIKE);
-	const full = selected.length === ids.length;
-	const shards = (driver: keyof typeof FULL_SHARDS) => regular ? full ? FULL_SHARDS[driver] : 1 : 0;
+	const regularCount = selected.filter((id) => id !== SPIKE).length;
+	const regular = regularCount > 0;
+	// A shard of a partial selection carries at most the scenarios a full-suite shard carries,
+	// so a large selection takes no longer per job than the full suite does.
+	const shards = (driver: keyof typeof FULL_SHARDS) => {
+		if (selected.length === ids.length) return FULL_SHARDS[driver];
+		const perShard = Math.ceil(ids.filter((id) => id !== SPIKE).length / FULL_SHARDS[driver]);
+		return regular ? Math.ceil(regularCount / perShard) : 0;
+	};
 	return {
 		ids: selected, total: ids.length,
 		reason: selection.all ?? (selected.length ? "Changed source coverage and scenarios without recorded coverage" : "No scenario covers the changed code"),
@@ -59,25 +65,16 @@ async function downloadMap(): Promise<string> {
 }
 
 /** Any acquisition, history or selection failure selects the full contract. */
-export async function planPullRequest(ids: string[], base: string, head: string, acquireMap = downloadMap, prHead = head) {
+export async function planPullRequest(ids: string[], head: string, acquireMap = downloadMap) {
 	try {
 		const mapPath = await acquireMap();
 		const map = await readMap(mapPath);
+		// The map describes the tree at its commit, so the changes that can outdate it are those
+		// from that commit to the tested head: the pull request's and main's since the map. The
+		// pull request's merge base is not used. Diffing from a merge base older than the map
+		// would also select main changes the map already recorded.
 		await command(["git", "merge-base", "--is-ancestor", map.commit, head]);
-		const mergeBase = await command(["git", "merge-base", base, prHead]);
-		const selection = await changedScenarios(mergeBase, ids, mapPath, head);
-		// Line translation cannot describe new dependencies or changed harness/fixture inputs.
-		// Include intervening main changes too, using the same conservative selector. Its
-		// full-suite rules apply equally to an older successful map.
-		if (map.commit !== mergeBase && !selection.all) {
-			const intervening = await changedScenarios(map.commit, ids, mapPath, head);
-			if (intervening.all) return selectionPlan(ids, intervening);
-			for (const id of intervening.ids) {
-				selection.ids.add(id);
-				selection.because[id] ??= `Since coverage map: ${intervening.because[id]}`;
-			}
-		}
-		return selectionPlan(ids, selection);
+		return selectionPlan(ids, await changedScenarios(map.commit, ids, mapPath, head));
 	} catch (error) {
 		return selectionPlan(ids, { all: `Selection unavailable: ${error instanceof Error ? error.message : String(error)}`, ids: new Set(ids), because: {} });
 	}
@@ -85,7 +82,7 @@ export async function planPullRequest(ids: string[], base: string, head: string,
 
 if (import.meta.main) {
 	const ids = (await loadContract()).scenarios.map(({ id }) => id);
-	const plan = await planPullRequest(ids, string(process.env.PARITY_BASE), "HEAD", downloadMap, string(process.env.PARITY_HEAD));
+	const plan = await planPullRequest(ids, "HEAD");
 	await mkdir("e2e/artifacts", { recursive: true });
 	await writeFile("e2e/artifacts/pr-parity-selection.json", JSON.stringify(plan, null, 2));
 	if (process.env.GITHUB_OUTPUT) {
