@@ -668,6 +668,12 @@ test("cache cleanup deletes only main's Rust build caches that a newer one of th
     cache(9, `Linux-bun-${a}`, "2026-11-13T07:00:00Z"),
     cache(10, `Linux-bun-${b}`, "2026-11-13T07:30:00Z"),
     cache(11, `mbx-parity-${a}`, "2026-11-13T07:00:00Z"),
+    // Text around the key shape makes another tool's key. Read as parity caches, these would replace cache 4.
+    cache(12, `other-mbx-parity-${a}-${c}`, "2026-11-13T13:00:00Z"),
+    cache(13, `mbx-parity-${a}-${c}-part`, "2026-11-13T13:00:00Z"),
+    // Saved in the same millisecond: which one is newer is unknown, so neither is deleted.
+    cache(14, `mbx-e2e-${a}-${a}`, "2026-11-13T12:00:00.500001Z"),
+    cache(15, `mbx-e2e-${a}-${b}`, "2026-11-13T12:00:00.500999Z"),
   ];
   const deleted = (list) => supersededCaches(list).map(({ id }) => id).sort();
   assert.deepEqual(deleted(caches), [1, 5]);

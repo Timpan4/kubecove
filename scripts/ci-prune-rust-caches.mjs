@@ -26,10 +26,15 @@ export function supersededCaches(caches) {
     const kept = newest.get(name);
     if (kept === undefined) {
       newest.set(name, cache);
-    } else if (Date.parse(cache.created_at) > Date.parse(kept.created_at)) {
+      continue;
+    }
+    // GitHub writes microseconds and Date.parse keeps milliseconds. Two saves in the same
+    // millisecond have no known order, so both stay until a later save replaces them.
+    const later = Date.parse(cache.created_at) - Date.parse(kept.created_at);
+    if (later > 0) {
       superseded.push(kept);
       newest.set(name, cache);
-    } else {
+    } else if (later < 0) {
       superseded.push(cache);
     }
   }
