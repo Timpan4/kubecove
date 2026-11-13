@@ -170,6 +170,9 @@ test("the selector runs everything when it cannot read the changed paths", () =>
     const result = spawnSync(process.execPath, ["scripts/codspeed-detect.mjs", join(root, "missing")], { cwd: new URL("../", import.meta.url), env: { ...process.env, EVENT_NAME: "pull_request", GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: "", RELEASE_PR: "false", SELECTION_FALLBACK: "" }, encoding: "utf8" });
     assert.equal(result.status, 0, result.stderr);
     assert.equal(readFileSync(output, "utf8"), 'frontend=true\nrust=true\nfrontend_matrix={"include":[{"group":0,"selection":""}]}\n');
+    const release = spawnSync(process.execPath, ["scripts/codspeed-detect.mjs", join(root, "missing")], { cwd: new URL("../", import.meta.url), env: { ...process.env, EVENT_NAME: "pull_request", GITHUB_OUTPUT: join(root, "release-output"), GITHUB_STEP_SUMMARY: "", RELEASE_PR: "true", SELECTION_FALLBACK: "" }, encoding: "utf8" });
+    assert.equal(release.status, 0, release.stderr);
+    assert.equal(readFileSync(join(root, "release-output"), "utf8"), 'frontend=false\nrust=false\nfrontend_matrix={"include":[]}\n');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
