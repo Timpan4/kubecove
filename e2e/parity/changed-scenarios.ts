@@ -3,7 +3,7 @@
 // Usage: bun e2e/parity/changed-scenarios.ts <base> [<head>] [--map <path>]
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { type CoverageMap, pairs, readMap, triples } from "./coverage-map";
+import { type CoverageMap, pairs, readMap } from "./coverage-map";
 
 export const DEFAULT_MAP = "e2e/artifacts/parity-coverage-map.json";
 
@@ -11,6 +11,7 @@ export const DEFAULT_MAP = "e2e/artifacts/parity-coverage-map.json";
 const FULL_SUITE = [
 	/^(package\.json|bun\.lock|bunfig\.toml|vite\.config\.ts|svelte\.config\.js|index\.html)$/,
 	/^tsconfig[^/]*\.json$/,
+	/(^|\/)\.env(?:\.[^/]+)?$/,
 	/(^|\/)(Cargo\.toml|Cargo\.lock|build\.rs|rust-toolchain(\.toml)?)$/,
 	/^(\.cargo|public)\//,
 	// The runner, drivers, contract and fixture exporter; scenario files select their own scenarios.
@@ -19,19 +20,19 @@ const FULL_SUITE = [
 	/^\.agents\/skills\/verify-kubecove\/scripts\/processes\.ts$/,
 	/^src-tauri\/gpui\/tests\/(parity\.rs|parity\/|common\/)/,
 	/^\.github\/workflows\/parity[^/]*\.yml$/,
+	// Scripts the driver jobs run before the build. ci-selection.test.ts checks that every
+	// script the parity workflows name selects the full suite.
+	/^scripts\/ci-(mbx-cargo|rust-cache-key)\.mjs$/,
+	// GPUI fixture consumers are not attributed to individual mock calls.
+	/^src\/lib\/(tauri-dev-mock[^/]*|mcp-dev-mocks)\.ts$/,
+	// Files the native crates embed, such as fonts, icons and configuration. The map lists
+	// only what cargo's dep-info names, and it has no line coverage for any of them.
+	/^src-tauri\/(?!server\/)(?!.*\.(rs|md)$)/,
 ];
 const SCENARIO_FILE = /^e2e\/parity\/scenarios\/[^/]+\.json$/;
 // A line that is only comment text: code after a closing `*/` makes it a code line.
 const COMMENT_LINE = String.raw`\/\/.*|\/\*(?:(?!\*\/).)*(?:\*\/\s*)?|\*\/\s*|\*(?:\s(?:(?!\*\/).)*(?:\*\/\s*)?)?`;
 const COMMENT = new RegExp(`^\\s*(${COMMENT_LINE})?$`);
-const DECLARED = /\b(?:const|static|struct|enum|union|type|trait)\s+(?:mut\s+)?([A-Za-z_]\w*)|\bimpl(?:<[^>]*>)?\s+(?:[\w:]+\s+for\s+)?([A-Za-z_]\w*)/g;
-// Git's hunk header names the enclosing item. An `impl` header says only which type a method
-// belongs to, so it names no changed item.
-const DECLARED_CONTEXT = /\b(?:const|static|struct|enum|union|type|trait)\s+(?:mut\s+)?([A-Za-z_]\w*)/g;
-// Rust lines outside functions that change nothing by themselves: comments, blank lines,
-// braces, and `use` and `mod` declarations (a change reaches behavior through code that uses it).
-const SKIPPED = new RegExp(`^\\s*(${COMMENT_LINE}|[{}()[\\];,]*|(pub(\\([^)]*\\))?\\s+)?(use|mod)\\s.*)$`);
-
 type Hunk = { oldStart: number; oldCount: number; newStart: number; newCount: number; context: string; removed: string[]; added: string[] };
 type FileDiff = { oldPath?: string; newPath?: string; hunks: Hunk[]; binary: boolean };
 export type Selection = { all?: string; ids: Set<string>; because: Record<string, string> };
@@ -139,27 +140,29 @@ export async function changedScenarios(base: string, scenarioIds: string[], mapP
 	};
 	const compiled = new Set(map.compiled);
 	for (const diff of code) {
-		const reason = await selectFile(diff, map, compiled, mergeBase, translate, pick, head);
+		const reason = await selectFile(diff, map, compiled, translate, pick);
 		if (reason) return full(reason);
 	}
 	return selection;
 }
 
-/** Adds the scenarios one changed file can affect through `pick`, or returns why the full suite must run. */
-async function selectFile(diff: FileDiff, map: CoverageMap, compiled: Set<string>, mergeBase: string, translate: (path: string, line: number) => Promise<number[]>, pick: (set: number, cause: string) => void, head?: string): Promise<string | undefined> {
+/** Selects web coverage; compiled native inputs require the full suite. */
+async function selectFile(diff: FileDiff, map: CoverageMap, compiled: Set<string>, translate: (path: string, line: number) => Promise<number[]>, pick: (set: number, cause: string) => void): Promise<string | undefined> {
+	// Attributes, imports, types and macros can affect descendants without executing
+	// this file. Execution coverage is not a Rust dependency graph.
+	for (const path of [diff.oldPath, diff.newPath]) {
+		if (path && compiled.has(path)) return path.endsWith(".rs") ? `${path} is a compiled Rust input` : `${path} is compiled into the GPUI parity binary`;
+	}
+	if (diff.oldPath?.endsWith(".rs") || diff.newPath?.endsWith(".rs")) return undefined;
 	const webAsset = (path: string) => path.startsWith("src/") && !/\.(ts|js|mjs|svelte|css|json|md)$/.test(path);
 	const path = diff.oldPath;
 	if (!path) return diff.newPath && webAsset(diff.newPath) ? `new asset ${diff.newPath} has no recorded coverage` : undefined;
-	const rust = path.endsWith(".rs");
 	const record = map.files[path];
-	if (compiled.has(path) && !rust) return `${path} is compiled into the GPUI parity binary`;
-	if (!record && !(rust && compiled.has(path))) return webAsset(path) ? `${path} has no recorded coverage` : undefined;
-	if (record && (diff.binary || !diff.hunks.length || (!record.lines.length && !record.code))) { pick(record.loaded, path); return undefined; }
-	const base = (await gitOut(["show", `${mergeBase}:${path}`])).split("\n");
-	const code = record?.code ?? [];
+	if (!record) return webAsset(path) ? `${path} has no recorded coverage` : undefined;
+	if (diff.binary || !diff.hunks.length || (!record.lines.length && !record.code)) { pick(record.loaded, path); return undefined; }
+	const code = record.code ?? [];
 	/** Picks the scenarios that executed any of `targets`, and says whether any did. */
 	const lineLevel = (targets: number[], cause: string): boolean => {
-		if (!record) return false;
 		let hit = false;
 		for (let offset = 0; offset + 2 < record.lines.length; offset += 3) {
 			const [set, start, end] = [record.lines[offset] ?? 0, record.lines[offset + 1] ?? 0, record.lines[offset + 2] ?? 0];
@@ -167,63 +170,26 @@ async function selectFile(diff: FileDiff, map: CoverageMap, compiled: Set<string
 		}
 		return hit;
 	};
-	// A Rust line without a count of its own inside a function, such as a closing brace, a match
-	// pattern or a comment, runs whenever the innermost function around it runs.
-	const innermost = (target: number): number | undefined => {
-		let best: [number, number, number] | undefined;
-		for (const span of triples(record?.functions ?? [])) {
-			if (target >= span[1] && target <= span[2] && (!best || span[2] - span[1] < best[2] - best[1])) best = span;
-		}
-		return best?.[0];
-	};
-	const declared: string[] = [];
-	let outside = false;
 	for (const hunk of diff.hunks) {
 		const commentOnly = [...hunk.removed, ...hunk.added].every((line) => COMMENT.test(line));
-		if (commentOnly && /\.(rs|ts|js|mjs)$/.test(path)) continue;
-		let [reached, hunkOutside, hit] = [false, false, false];
+		if (commentOnly && /\.(ts|js|mjs)$/.test(path)) continue;
+		let hit = false;
 		for (const line of touched(hunk)) {
 			const targets = await translate(path, line);
 			const cause = `${path}:${line}`;
 			if (path.endsWith(".svelte") && !targets.some((target) => within(code, target))) {
 				// Markup with no component code of its own, such as static elements or styles.
-				if (record) pick(record.active, `${cause} (markup)`);
-				reached = hit = true;
+				pick(record.active, `${cause} (markup)`);
+				hit = true;
 				continue;
 			}
-			if (!rust) { hit = lineLevel(targets, cause) || hit; reached = true; continue; }
-			for (const target of targets) {
-				const set = innermost(target);
-				if (within(code, target)) lineLevel([target], cause);
-				else if (set !== undefined) pick(set, `${cause} (function)`);
-				else if (!SKIPPED.test(base[line - 1] ?? "")) hunkOutside = true;
-				else continue;
-				reached = true;
-			}
+			hit = lineLevel(targets, cause) || hit;
 		}
 		// Lines inserted where no recorded code ran, such as top-level code between two
 		// functions no scenario called, run for every scenario that loads the module.
-		if (!rust && !hit && record && hunk.removed.every((line) => COMMENT.test(line))) {
+		if (!hit && hunk.removed.every((line) => COMMENT.test(line))) {
 			pick(path.endsWith(".svelte") ? record.active : record.loaded, `${path}:${hunk.oldStart} (insertion outside recorded code)`);
 		}
-		// Rust lines outside functions: items such as constants, types and trait impls. A hunk
-		// that touches only skipped lines there still removes what it contains; a new function
-		// it inserts runs only through callers, whose own changes select their scenarios.
-		if (rust && (!reached || hunkOutside)) {
-			for (const text of [...hunk.removed, ...hunk.added]) for (const match of text.matchAll(DECLARED)) declared.push(match[1] ?? match[2] ?? "");
-			for (const match of hunk.context.matchAll(DECLARED_CONTEXT)) declared.push(match[1] ?? "");
-			outside ||= hunkOutside || hunk.removed.some((line) => !SKIPPED.test(line));
-		}
-	}
-	const names = [...new Set(declared.filter(Boolean))];
-	if (names.length) {
-		// Code that names a changed item can change with it.
-		const grep = await git(["grep", "-lwF", ...names.flatMap((name) => ["-e", name]), ...(head ? [head] : []), "--", "*.rs"]);
-		const users = grep.stdout.split("\n").filter(Boolean).map((line) => head ? line.slice(head.length + 1) : line);
-		for (const user of users) { const file = map.files[user]; if (file && compiled.has(user)) pick(file.loaded, `${path} item used in ${user}`); }
-	} else if (outside) {
-		if (!record) return `${path} changed items outside recorded code`;
-		pick(record.loaded, `${path} (item)`);
 	}
 	return undefined;
 }

@@ -73,7 +73,9 @@ cargo clippy --locked --manifest-path src-tauri/gpui/Cargo.toml --all-targets --
 bun run e2e:parity
 ```
 
-The parity command exercises both production interfaces with controlled backend responses using the same [acceptance scenarios](../e2e/parity/scenarios/) and the same exported browser-mock data. It retains reports and screenshots when available under `e2e/artifacts/`. This is UI integration evidence, separate from packaged-window and real Kubernetes checks. The full suite runs in CI on every pull request and after each merge to main (`.github/workflows/parity.yml`); run it locally with `PARITY_PREFIX` for the areas you change. Unsupported native product areas remain listed in the [parity guide](../e2e/parity/README.md).
+The parity command exercises both production interfaces with controlled backend responses using the same [acceptance scenarios](../e2e/parity/scenarios/) and exported browser-mock data. It retains reports and available screenshots under `e2e/artifacts/`. This proves UI integration, separate from packaged-window and real Kubernetes checks. Pull requests select scenarios using the newest successful main coverage map and start jobs for that selection. Unavailable or untrusted selection runs the full suite. `Parity result` states the selected count and reason, then validates those exact scenarios on both drivers. Main still runs every scenario with coverage after each merge (`.github/workflows/parity.yml`). A scenario missed by PR selection is caught on main. See [change-based selection](../e2e/parity/README.md#change-based-selection) for fallback rules and the job graph. Use `PARITY_PREFIX` locally for the areas you change. Unsupported native areas remain listed in the parity guide.
+
+Changes to Rust files compiled by the parity binary select the full suite. Execution coverage cannot capture how attributes, private imports, types and macros affect descendant modules. Frontend changes retain line and component coverage selection.
 
 When a user-level Cargo configuration sets a shared build directory, override both `CARGO_TARGET_DIR` and `CARGO_BUILD_BUILD_DIR` for isolated builds. The target directory alone does not override Cargo's intermediate build directory.
 
@@ -203,8 +205,8 @@ GitHub's reservation of the key to another job. The others set GitHub's
 Setting `ACTIONS_CACHE_MODE` in a step's `env` does nothing: the runner sets that
 variable from the job's `cache-mode`, and only for actions, so a `run` step
 cannot read it. The "Set up job" log of every job prints the access it got as
-"Cache mode". The pull request parity jobs are read-only too,
-so every pull request exercises that path before main depends on it.
+"Cache mode". Selected pull request parity jobs are read-only too,
+so their GPUI runs exercise that path before main depends on it.
 
 CI builds set `CARGO_PROFILE_DEV_DEBUG=line-tables-only`. Backtraces keep file
 and line, and the compiler output that each job links, caches and restores is

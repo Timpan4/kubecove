@@ -74,5 +74,9 @@ test("a re-run shard is judged by its newest attempt", async () => {
 		expect(mergeReports(contract, await collectReports(root)).map((item) => item.scenarios.length)).toEqual([2, 2]);
 		await shard("web-1-attempt-3", "web", "failed", "two");
 		await expect(collectReports(root)).rejects.toThrow();
+		// A new plan consolidates the regular shards and drops the earlier layout.
+		await shard("web-single-attempt-4", "web", "passed", "one", "two");
+		await shard("gpui-single-attempt-4", "gpui", "passed", "one", "two");
+		expect(mergeReports(contract, await collectReports(root, 4)).map((item) => item.scenarios.length)).toEqual([2, 2]);
 	} finally { await rm(root, { recursive: true, force: true }); }
 });

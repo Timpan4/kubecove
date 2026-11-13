@@ -3,6 +3,7 @@
 // Usage: bun e2e/parity/coverage-map.ts merge <out.json> <shard-map.json>...
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { count, object, string, strings } from "./contract-values";
 
 /** Inclusive 1-based line range. */
 export type Range = [number, number];
@@ -142,13 +143,53 @@ export function pairs(flat: number[]): Range[] {
 	return ranges;
 }
 
-export async function readMap(path: string): Promise<CoverageMap> {
-	// SAFETY: the checks below cover the fields readers index first. Maps come only from mergeMaps and writeRunMap in this file.
-	const map = JSON.parse(await readFile(path, "utf8")) as CoverageMap;
-	if (map.version !== 1 || String(map.commit) !== map.commit || !Array.isArray(map.scenarios) || !Array.isArray(map.sets) || Object(map.files) !== map.files) {
-		throw new Error(`${path} is not a version 1 parity coverage map`);
+/** A flat list of whole numbers in groups of `group`: a cut-off group would read as no coverage. */
+function flat<Value>(value: Value, group: number): number[] {
+	if (!Array.isArray(value) || value.length % group !== 0) throw new Error(`Expected whole numbers in groups of ${group}`);
+	return value.map((item) => count(item));
+}
+
+/**
+ * Parses a map file. A damaged map is rejected here: a record of another shape or a reference
+ * past the end would read as "no scenario ran this", which selects nothing.
+ */
+function parseMap<Value>(value: Value): CoverageMap {
+	const input = object(value);
+	if (input.version !== 1 || !Array.isArray(input.sets)) throw new Error("Expected a version 1 map with scenario sets");
+	const scenarios = strings(input.scenarios, true);
+	const sets = input.sets.map((set) => flat(set, 1));
+	const below = (limit: number, index: number) => {
+		if (index >= limit) throw new Error(`Reference ${index} is past the end`);
+		return index;
+	};
+	for (const set of sets) for (const index of set) below(scenarios.length, index);
+	const range = (start: number, end: number) => {
+		if (start < 1 || end < start) throw new Error("Expected a positive ordered line range");
+	};
+	const spans = (list: number[]) => {
+		for (const [set, start, end] of triples(list)) { below(sets.length, set); range(start, end); }
+		return list;
+	};
+	const files: CoverageMap["files"] = {};
+	for (const [path, entry] of Object.entries(object(input.files))) {
+		const file = object(entry);
+		files[path] = { loaded: below(sets.length, count(file.loaded)), active: below(sets.length, count(file.active)), lines: spans(flat(file.lines, 3)) };
+		if (file.code !== undefined) {
+			const code = flat(file.code, 2);
+			for (const [start, end] of pairs(code)) range(start, end);
+			files[path].code = code;
+		}
+		if (file.functions !== undefined) files[path].functions = spans(flat(file.functions, 3));
 	}
-	return map;
+	return { version: 1, commit: string(input.commit), scenarios, sets, compiled: strings(input.compiled, true), files };
+}
+
+export async function readMap(path: string): Promise<CoverageMap> {
+	try {
+		return parseMap(JSON.parse(await readFile(path, "utf8")));
+	} catch (error) {
+		throw new Error(`${path} is not a complete version 1 parity coverage map`, { cause: error });
+	}
 }
 
 async function passed(artifacts: string, driver: string): Promise<Set<string>> {
