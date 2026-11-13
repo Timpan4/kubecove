@@ -170,14 +170,51 @@ impl Inspector {
                 .flex_col()
                 .gap(px(8.))
                 .when_some(inventory.argo.as_ref(), |list, apps| {
-                    list.child(count("Applications", apps.len(), None))
-                        .child(separator())
-                        .child(count(
-                            "Out of sync",
-                            inventory.out_of_sync(),
-                            Some(Palette::amber300()),
-                        ))
-                        .child(separator())
+                    list.children(
+                        apps.iter()
+                            .filter(|app| {
+                                crate::workspaces::overview::failing(app.health_assessment.state)
+                            })
+                            .map(|app| {
+                                let resource =
+                                    crate::gitops_surface::Selection::App(app).resource();
+                                self.overview_button(
+                                    format!(
+                                        "overview-argo:{}:{}",
+                                        app.namespace.as_deref().unwrap_or(""),
+                                        app.name
+                                    ),
+                                    format!(
+                                        "Inspect Application {} in {}",
+                                        app.name,
+                                        app.namespace.as_deref().unwrap_or("")
+                                    ),
+                                    true,
+                                    cx,
+                                    move |this, window, cx| {
+                                        if !this.can_leave(cx) {
+                                            return;
+                                        }
+                                        this.open_page(super::Page::Resources, cx);
+                                        this.open_resource(resource.clone(), window, cx);
+                                    },
+                                )
+                                .border_0()
+                                .bg(gpui_kit::transparent_black())
+                                .child(ui::xs(app.name.clone()).font_family(crate::theme::MONO))
+                                .child(
+                                    super::surface::health_state_badge(app.health_assessment.state),
+                                )
+                            }),
+                    )
+                    .child(count("Applications", apps.len(), None))
+                    .child(separator())
+                    .child(count(
+                        "Out of sync",
+                        inventory.out_of_sync(),
+                        (inventory.out_of_sync() > 0).then(Palette::amber300),
+                    ))
+                    .child(separator())
                 })
                 .when_some(inventory.flux.as_ref(), |list, rows| {
                     list.child(count("Flux resources", rows.len(), None))

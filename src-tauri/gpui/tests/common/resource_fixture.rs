@@ -150,7 +150,18 @@ impl Fixture {
                     && row.namespace.as_deref() == Some("payments")
                     && row.name == "payments-api")
             })
-            .map(|row| {
+            .map(|mut row| {
+                if phase == "overview-owner-chain" {
+                    let patches: Vec<serde_json::Value> = serde_json::from_str(include_str!("../../../../src/lib/tauri-dev-mock-overview.json")).unwrap();
+                    if let Some(patch) = patches.iter().find(|patch| patch["kind"] == row.kind && patch["name"] == row.name && patch["namespace"].as_str() == row.namespace.as_deref()) {
+                        row.status = patch["status"].as_str().map(str::to_owned);
+                        row.ready = patch["ready"].as_str().map(str::to_owned);
+                        row.owner_ref = patch["ownerRef"].as_str().map(str::to_owned);
+                        row.health_assessment = serde_json::from_value(serde_json::json!({
+                            "state": "degraded", "completeness": "complete", "winningSources": ["kubernetes"], "reasons": ["Controlled owner-chain failure"], "evidence": []
+                        })).unwrap();
+                    }
+                }
                 if phase == "payments-ingress-version-changed"
                     && row.kind == "Ingress"
                     && row.namespace.as_deref() == Some("payments")

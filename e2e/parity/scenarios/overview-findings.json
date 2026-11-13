@@ -1,0 +1,58 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "overview.gitops-application",
+      "title": "Troubled GitOps applications open their exact resource details",
+      "steps": [
+        { "action": "coverageClick", "label": "Inspect Application tenant-ledger in argocd" },
+        { "action": "expectDetail", "kind": "Application", "namespace": "argocd", "name": "tenant-ledger" },
+        { "action": "expectDetailContext", "context": "mock-dev" }
+      ]
+    },
+    {
+      "id": "overview.owner-chain",
+      "title": "Failing owners fold their children and disclose each exact object",
+      "steps": [
+        { "action": "configureShellRead", "phase": "overview-owner-chain" },
+        { "action": "expectOverviewProblem", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "ready": "0/3", "status": "CrashLoopBackOff" },
+        { "action": "expectNoOverviewProblem", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "toggleOverviewProblem", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectOverviewProblem", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p", "ready": "0/1", "status": "CrashLoopBackOff" },
+        { "action": "toggleOverviewProblem", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectNoOverviewProblem", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" }
+      ]
+    },
+    {
+      "id": "overview.findings-resource",
+      "title": "Overview findings show readiness and open the exact failing object",
+      "steps": [
+        { "action": "expectOverviewProblem", "kind": "Pod", "namespace": "operations", "name": "operations-crashloop-7f468cd8b8-lab01", "ready": "0/1", "status": "CrashLoopBackOff" },
+        { "action": "expectOverviewProblem", "kind": "Ingress", "namespace": "payments", "name": "payments-api", "ready": "-", "status": "MissingBackend" },
+        { "action": "openOverviewProblem", "kind": "Pod", "namespace": "operations", "name": "operations-crashloop-7f468cd8b8-lab01" },
+        { "action": "expectDetail", "kind": "Pod", "namespace": "operations", "name": "operations-crashloop-7f468cd8b8-lab01" }
+      ]
+    },
+    {
+      "id": "overview.health-resources",
+      "title": "Overview counts open Resources with the chosen health filter",
+      "steps": [
+        { "action": "overviewHealth", "filter": "Degraded" },
+        { "action": "expectHealthFilter", "label": "Degraded", "pressed": true },
+        { "action": "expectResource", "kind": "Pod", "namespace": "operations", "name": "operations-crashloop-7f468cd8b8-lab01" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" }
+      ]
+    },
+    {
+      "id": "overview.namespace-findings",
+      "title": "Overview namespace findings open the namespace and matching resources",
+      "steps": [
+        { "action": "overviewNamespace", "namespace": "operations" },
+        { "action": "expectHealthFilter", "label": "Degraded", "pressed": true },
+        { "action": "expectResource", "kind": "Pod", "namespace": "operations", "name": "operations-worker-evicted" },
+        { "action": "expectNoResource", "kind": "Ingress", "namespace": "payments", "name": "payments-api" }
+      ]
+    }
+  ]
+}

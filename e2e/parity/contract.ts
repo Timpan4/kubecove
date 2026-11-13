@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { integrationStep } from "./contract-integrations";
 import { resourceTableStep } from "./contract-resources";
+import { overviewStep } from "./contract-overview";
 import { sessionStep } from "./contract-sessions";
 import { DETAIL_RESIZE_KEYS, LOG_LEVELS, MAP_CONTROLS, MAP_KEYS, PANEL_CONTROLS, RBAC_CATEGORIES, RBAC_RISKS, SORT_COLUMNS, type Step, TABLE_COLUMNS, VERDICTS } from "./contract-steps";
 import { boolean, count, isBoolean, isNumber, isString, object, oneOf, optionalBoolean, string, strings } from "./contract-values";
@@ -14,6 +15,7 @@ export type Contract = { scenarios: Scenario[] };
 
 /** Every action both drivers must implement; `contract.test.ts` checks each driver handles each one. */
 export const ACTIONS = [
+    "overviewHealth", "overviewNamespace", "expectOverviewProblem", "openOverviewProblem", "toggleOverviewProblem", "expectNoOverviewProblem",
     "expectOverviewShortcuts", "overviewShortcut", "expectActivePage", "expectGitOpsSelection",
     "expectOverviewScope", "expectCompareTotal",
     "retryOverview", "expectOverviewRetry",
@@ -26,7 +28,7 @@ export const ACTIONS = [
     "reorderKindKey", "resetKindOrder", "expectRemoteHost", "expectRemoteHostTooltip", "expectNoRemoteHost", "dropRemoteConnection",
     "remoteSessionSignal", "expectRemoteNotice", "expectNoRemoteNotice", "clickRemoteNoticeButton",
     "configureShellRead", "retryLauncher", "expectLauncherRetry",
-    "overviewOperation", "overviewIncident", "reviewIncidentAction",
+    "overviewOperation", "reviewIncidentAction",
     "expectTopologyDenied", "expectWatchStart",
     "mockTiming",
     "coverageSelect",
@@ -95,7 +97,7 @@ void allActionsListed;
 
 function step<Value>(value: Value): Step {
 	const item = object(value);
-	const areaStep = integrationStep(item) ?? sessionStep(item) ?? resourceTableStep(item) ?? yamlEditorStep(item);
+	const areaStep = integrationStep(item) ?? sessionStep(item) ?? resourceTableStep(item) ?? yamlEditorStep(item) ?? overviewStep(item);
 	if (areaStep) return areaStep;
 	switch (item.action) {
         case "sidebarToggle": case "sidebarSelect": return { action: item.action, path: strings(item.path, false) };
@@ -134,7 +136,7 @@ function step<Value>(value: Value): Step {
         case "expectWorkspaceEntry": case "openWorkspaceEntry": return { action: item.action, panel: oneOf(["Pinned", "Recent"], item.panel, "an entry panel"), label: string(item.label), index: count(item.index), count: count(item.count) };
         case "reorderKindKey": return { action: item.action, kind: string(item.kind), key: oneOf(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"], item.key, "a reorder key") };
         case "resetKindOrder": return { action: item.action };
-        case "configureShellRead": return { action: item.action, phase: oneOf(["ready", "contexts-failed", "contexts-empty", "namespaces-failed", "namespaces-credential-failed", "namespaces-empty", "resources-failed", "primary-context-missing", "kind-missing", "payments-api-removed", "payments-deployments-forbidden", "payments-ingress-version-changed", "sources-failed"], item.phase, "a shell read phase") };
+        case "configureShellRead": return { action: item.action, phase: oneOf(["ready", "contexts-failed", "contexts-empty", "namespaces-failed", "namespaces-credential-failed", "namespaces-empty", "resources-failed", "primary-context-missing", "kind-missing", "payments-api-removed", "payments-deployments-forbidden", "payments-ingress-version-changed", "sources-failed", "overview-owner-chain"], item.phase, "a shell read phase") };
         case "openNamespaceList": case "openNavigationDrawer": return { action: item.action };
         case "expectNamespaceRow": return { action: item.action, name: string(item.name), age: string(item.age) };
         case "resizeViewport": return { action: item.action, width: count(item.width), height: count(item.height) };
@@ -144,7 +146,6 @@ function step<Value>(value: Value): Step {
         case "sidebarKey": return { action: item.action, path: strings(item.path, false), key: oneOf(["Enter", "Space", "ArrowLeft", "ArrowRight"], item.key, "a sidebar key") };
         case "retryLauncher": case "expectLauncherRetry": return { action: item.action, read: oneOf(["contexts", "namespaces"], item.read, "a launcher read") };
         case "overviewOperation": return { action: item.action, destination: oneOf(["Resources", "Workspaces", "Port Forwards", "Incidents"], item.destination, "an overview operation") };
-        case "overviewIncident": return { action: item.action, filter: oneOf(["Degraded", "Needs attention", "Restart evidence"], item.filter, "an incident shortcut") };
         case "reviewIncidentAction": return { action: item.action, index: count(item.index) };
         case "expectTopologyDenied": return { action: item.action };
         case "expectWatchStart": return { action: item.action, kind: string(item.kind), resourceVersion: item.resourceVersion === null ? null : string(item.resourceVersion) };

@@ -54,8 +54,10 @@ mod metrics;
 mod namespace_list;
 mod navigation_state;
 mod overview;
+mod overview_findings;
 mod overview_saved;
 mod overview_shortcuts;
+mod overview_state;
 mod page_refresh;
 mod palette;
 mod port_forward_rows;
@@ -160,6 +162,7 @@ pub struct Inspector {
     workspace_name: SharedString,
     workspace_read: Option<workspace_reads::OverviewRead>,
     saved_overview: overview_saved::SavedOverview,
+    overview_ui: overview_state::State,
     restore_inventory: Option<restore_inventory::RestoreInventory>,
     shortcut_owner: Option<(u64, String, String)>,
     scope: Scope,
@@ -296,6 +299,7 @@ impl Inspector {
             workspace_name: "KubeCove".into(),
             workspace_read: None,
             saved_overview: Default::default(),
+            overview_ui: Default::default(),
             restore_inventory: None,
             shortcut_owner: None,
             scope: Scope::default(),
@@ -505,7 +509,7 @@ impl Inspector {
             return notice;
         }
         match self.page {
-            Page::Overview => self.overview(cx).into_any_element(),
+            Page::Overview => self.overview(window, cx).into_any_element(),
             Page::Resources | Page::ClusterOverview => {
                 self.resources(window, cx).into_any_element()
             }

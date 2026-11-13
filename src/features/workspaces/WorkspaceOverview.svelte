@@ -1,76 +1,25 @@
 <script lang="ts">
-	import { cancelledQueryRetry } from "@/lib/query-retry";
-	import { createQueries, createQuery } from "@tanstack/svelte-query";
-	import {
-		AlertTriangle,
-		Boxes,
-		Cable,
-		FolderOpen,
-		GitBranch,
-		GitCompareArrows,
-		Layers,
-		Pin,
-		Clock3,
-	} from "lucide-svelte";
+	import { createQuery } from "@tanstack/svelte-query";
+	import { AlertTriangle, Boxes } from "lucide-svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
 	import ResourceScopeWarnings from "@/features/resources/ResourceScopeWarnings.svelte";
-	import {
-		Alert,
-		AlertDescription,
-		AlertTitle,
-		Badge,
-		Button,
-		Card,
-		CardContent,
-		CardDescription,
-		CardHeader,
-		CardTitle,
-		Empty,
-		EmptyDescription,
-		EmptyHeader,
-		EmptyTitle,
-		Separator,
-		Spinner,
-	} from "@/components/ui/svelte";
-	import {
-		buildWorkspaceFetchKeys,
-		buildWorkspaceFetchPlans,
-		fetchWorkspaceResources,
-		WorkspaceResourceLoadError,
-	} from "@/features/workspaces/query";
+	import { Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Spinner } from "@/components/ui/svelte";
+	import { buildWorkspaceFetchKeys, buildWorkspaceFetchPlans, fetchWorkspaceResources, WorkspaceResourceLoadError } from "./query";
 	import { kindLabel } from "@/lib/kind-identity";
 	import { loadingDelay } from "@/lib/loading-delay.svelte";
+	import { cancelledQueryRetry } from "@/lib/query-retry";
 	import { queryKeys } from "@/lib/queryKeys";
-	import {
-		createTauriClient,
-		detectArgoCD,
-		detectFlux,
-		listArgoApplications,
-		listFluxResources,
-		listKubeContexts,
-		listNamespaces,
-		listResourceKinds,
-	} from "@/lib/tauri";
+	import { createTauriClient, listKubeContexts, listNamespaces, listResourceKinds } from "@/lib/tauri";
 	import type { ResourceSummary } from "@/lib/types";
-	import {
-		normalizeEntryPoints,
-		resourceFromEntryPoint,
-		type WorkspaceEntryPoint,
-	} from "@/lib/workspace-entry-points";
-	import {
-		buildWorkspaceCompareEntries,
-		buildWorkspaceCompareSummaries,
-		buildWorkspaceHealthSummary,
-		computeRestoreStatus,
-		workspaceClusterGroupLabel,
-		workspaceScopeContexts,
-		type SavedWorkspace,
-		type WorkspaceShortcut,
-	} from "@/lib/workspaces";
+	import { normalizeEntryPoints, resourceFromEntryPoint, type WorkspaceEntryPoint } from "@/lib/workspace-entry-points";
+	import { buildWorkspaceCompareEntries, buildWorkspaceCompareSummaries, buildWorkspaceHealthSummary, computeRestoreStatus, workspaceClusterGroupLabel, workspaceScopeContexts, type SavedWorkspace, type WorkspaceShortcut } from "@/lib/workspaces";
 	import type { HealthFilter } from "@/features/resources/helpers";
 	import type { IncidentFilter } from "@/features/incidents";
 	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
-
+	import OverviewLayout from "./overview/OverviewLayout.svelte";
+	import OverviewGitOps from "./overview/OverviewGitOps.svelte";
+	import { buildOverviewModel } from "./overview/model";
+	import { entryRows } from "./overview/entries";
 	let {
 		workspace,
 		workspaceReadContext,
@@ -80,7 +29,6 @@
 		onOpenArgo,
 		onOpenIncidents,
 		onOpenPortForwards,
-		onOpenLauncher,
 	}: {
 		workspace: SavedWorkspace;
 		workspaceReadContext: WorkspaceReadContext;
@@ -184,54 +132,7 @@
 		}
 	});
 	const health = $derived(buildWorkspaceHealthSummary(rows));
-	const hasIncidentShortcuts = $derived(
-		health.attention > 0 || health.degraded > 0 || health.restartEvidence > 0,
-	);
 
-	const argoDetectedQuery = createQuery(() => ({
-		queryKey: queryKeys.argoDetect(workspace.scope.clusterContext, kubeconfigSourceKey),
-		queryFn: () => detectArgoCD(client, workspace.scope.clusterContext, kubeconfigSourceKey),
-		enabled: sourceReady && restoreStatus.clusterAvailable && !namespacesQuery.isPending,
-	}));
-	const fluxDetectedQuery = createQuery(() => ({
-		queryKey: queryKeys.fluxDetect(workspace.scope.clusterContext, kubeconfigSourceKey),
-		queryFn: () => detectFlux(client, workspace.scope.clusterContext, kubeconfigSourceKey),
-		enabled: sourceReady && restoreStatus.clusterAvailable && !namespacesQuery.isPending,
-		staleTime: 60_000,
-	}));
-	const argoAppsQuery = createQuery(() => ({
-		queryKey: queryKeys.argoApps(workspace.scope.clusterContext, kubeconfigSourceKey),
-		queryFn: () => listArgoApplications(client, workspace.scope.clusterContext, kubeconfigSourceKey),
-		enabled: argoDetectedQuery.data === true,
-	}));
-	const fluxResourceQueries = createQueries(() => ({
-		queries: (fluxDetectedQuery.data?.kinds ?? []).map((kind) => ({
-			queryKey: queryKeys.fluxResources(
-				workspace.scope.clusterContext,
-				kind,
-				kubeconfigSourceKey,
-			),
-			queryFn: () => listFluxResources(client, workspace.scope.clusterContext, kind, kubeconfigSourceKey),
-			enabled: fluxDetectedQuery.data?.detected === true,
-			staleTime: 30_000,
-		})),
-	}));
-	const argoDrift = $derived(
-		(argoAppsQuery.data?.items ?? []).filter((app) => app.syncStatus && app.syncStatus !== "Synced")
-			.length,
-	);
-	const fluxDetected = $derived(fluxDetectedQuery.data?.detected === true);
-	const fluxRows = $derived(
-		fluxResourceQueries.flatMap((query) => query.data?.items ?? []),
-	);
-	const fluxPending = $derived(fluxResourceQueries.some((query) => query.isPending));
-	const fluxError = $derived(fluxResourceQueries.find((query) => query.isError)?.error ?? null);
-	const gitOpsInventoryError = $derived(argoAppsQuery.error ?? fluxError);
-	const gitOpsDetected = $derived(argoDetectedQuery.data === true || fluxDetected);
-	const gitOpsDetecting = loadingDelay(() => argoDetectedQuery.isPending || fluxDetectedQuery.isPending);
-	const healthLoading = loadingDelay(() => resourcesQuery.isPending);
-	const applicationsLoading = loadingDelay(() => argoAppsQuery.isPending);
-	const fluxLoading = loadingDelay(() => fluxPending);
 	const hasRestoreWarning = $derived(
 		contextsQuery.isSuccess &&
 			(!restoreStatus.clusterAvailable ||
@@ -264,15 +165,32 @@
 		if (resource) onOpenResource(resource);
 	}
 
-	function entryPointLabel(entry: WorkspaceEntryPoint): string {
-		if (entry.kind === "namespace") return `Namespace / ${entry.name}`;
-		if (entry.kind === "app") return `Application / ${entry.name}`;
-		return `${entry.resourceKind ?? "Resource"} / ${entry.name}`;
-	}
+
+	const healthLoading = loadingDelay(() => resourcesQuery.isPending);
+	const model = $derived(buildOverviewModel(rows));
+	const view = $derived({
+		model, health, hasData: resourcesQuery.data !== undefined,
+		partial: resourcesQuery.isError || hasRestoreWarning || (resourcesQuery.data?.failures.length ?? 0) > 0,
+		multiContext: workspaceScopeContexts(workspace.scope).length > 1, primaryContext: workspace.scope.clusterContext,
+		pinned: entryRows(entryPoints.pinned, rows, model), recent: entryRows(entryPoints.recent, rows, model),
+		shortcuts: workspace.shortcuts, portForwardCount: workspace.portForwards.length,
+		loadState: LoadState, gitOps: GitOps,
+		onOpenResources: (namespace?: string, filter?: HealthFilter) => onOpenResources(namespace, undefined, undefined, filter),
+		onOpenResource, onOpenEntry: openEntryPoint, onOpenShortcut: openShortcut, onOpenIncidents,
+		onOpenApp: (resource: ResourceSummary) => {
+			const owner = resource.gitOpsOwner;
+			if (owner?.provider === "argo" && owner.kind === "Application" && owner.namespace) {
+				onOpenResource({ kind: "Application", name: owner.name, namespace: owner.namespace, cluster: resource.cluster,
+					apiVersion: "argoproj.io/v1alpha1", group: "argoproj.io", version: "v1alpha1", plural: "applications",
+					namespaced: true, dynamic: true, age: "", health: "unknown", healthAssessment: null });
+			} else onOpenArgo();
+		}, onOpenPortForwards,
+	});
 </script>
 
-<section class="mx-auto flex w-full max-w-7xl flex-col gap-4 p-4 md:p-6">
-	<header class="border-b pb-3">
+<section class="@container mx-auto flex w-full max-w-7xl flex-col gap-4 p-4 md:p-6">
+	<header class="flex flex-wrap items-end justify-between gap-3 border-b pb-3">
+		<div class="min-w-0">
 		<p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground">
 			Workspace Overview
 		</p>
@@ -282,10 +200,12 @@
 			<Badge variant="outline" class="rounded-sm">
 				{workspace.scope.namespaces.length || "All"} namespaces
 			</Badge>
-			<Badge variant="outline" class="max-w-96 truncate rounded-sm">
-				{workspace.scope.kinds.map(kindLabel).join(", ")}
+			<Badge variant="outline" class="max-w-96 rounded-sm">
+				<span class="truncate">{workspace.scope.kinds.map(kindLabel).join(", ")}</span>
 			</Badge>
 		</div>
+			</div>
+		<Button variant="outline" onclick={() => onOpenResources()}><Boxes /> Open resources</Button>
 	</header>
 
 	{#if hasRestoreWarning}
@@ -307,222 +227,7 @@
 		</Alert>
 	{/if}
 
-	<Card size="sm" elevation="flat" class="overflow-hidden">
-		<CardHeader class="border-b">
-			<CardTitle>Resource Health</CardTitle>
-			<CardDescription>Live status across saved workspace scope.</CardDescription>
-		</CardHeader>
-		<CardContent class="grid gap-3 pt-3">
-			<div class="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
-				{@render Metric("Total", health.total)}
-				{@render Metric("Healthy", health.healthy, "text-emerald-300")}
-				{@render Metric("Needs attention", health.attention, "text-amber-300")}
-				{@render Metric("Degraded", health.degraded, "text-red-300")}
-				{@render Metric("Unknown", health.unknown)}
-				{@render Metric("Not evaluated", health.notEvaluated)}
-			</div>
-
-			{#if healthLoading.active}
-				<div class="flex min-h-16 items-center justify-center gap-2 text-sm text-muted-foreground">
-					{#if healthLoading.shown}<Spinner class="size-4" /> Loading workspace health...{/if}
-				</div>
-			{:else if resourcesQuery.isError}
-				<div class="grid gap-2">
-					<FriendlyError
-						error={resourcesQuery.error}
-						context={{
-							operation: "resourcesLoad",
-							fallbackTitle: "Failed to refresh workspace resources",
-							target: failedResourceTarget,
-							partial: true,
-						}}
-					/>
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						disabled={resourcesQuery.isFetching}
-						onclick={() => void retryWorkspaceResources()}
-					>
-						{resourcesQuery.isFetching ? "Retrying workspace resources..." : "Retry workspace resources"}
-					</Button>
-				</div>
-			{:else if successfulResourceRetryKey === resourceQueryIdentity}
-				<p role="status" class="text-xs text-emerald-300">
-					Workspace resources loaded successfully after retry.
-				</p>
-			{/if}
-			{#if resourcesQuery.isSuccess}
-				<ResourceScopeWarnings failures={resourcesQuery.data?.failures ?? []} />
-			{/if}
-
-			{#if hasIncidentShortcuts}
-				<div class="flex flex-wrap items-center gap-2 border-t pt-3">
-					<span class="mr-1 text-xs font-medium text-muted-foreground">Incident shortcuts</span>
-				{@render IncidentShortcutButton("Degraded", health.degraded, "degraded", onOpenIncidents)}
-				{@render IncidentShortcutButton("Needs attention", health.attention, "attention", onOpenIncidents)}
-				{@render IncidentShortcutButton("Restart evidence", health.restartEvidence, "restarted", onOpenIncidents)}
-				</div>
-			{/if}
-		</CardContent>
-	</Card>
-
-	<Card size="sm" elevation="flat" class="overflow-hidden">
-		<CardHeader class="border-b">
-			<CardTitle>Operations</CardTitle>
-			<CardDescription>Open primary workspace surfaces without changing scope.</CardDescription>
-		</CardHeader>
-		<CardContent class="grid gap-2 pt-3 sm:grid-cols-2 xl:grid-cols-4">
-			<Button type="button" variant="outline" class="h-auto min-h-14 justify-start gap-3 px-4 py-3" onclick={() => onOpenResources()}>
-				<Boxes class="size-4 shrink-0" /> Resources
-			</Button>
-			<Button type="button" variant="outline" class="h-auto min-h-14 justify-start gap-3 px-4 py-3" onclick={onOpenLauncher}>
-				<FolderOpen class="size-4 shrink-0" /> Workspaces
-			</Button>
-			<Button type="button" variant="outline" class="h-auto min-h-14 justify-start gap-3 px-4 py-3" onclick={onOpenPortForwards}>
-				<Cable class="size-4 shrink-0" /> Port Forwards
-			</Button>
-			<Button type="button" variant="outline" class="h-auto min-h-14 justify-start gap-3 px-4 py-3" onclick={() => onOpenIncidents()}>
-				<AlertTriangle class="size-4 shrink-0" /> Incidents
-			</Button>
-		</CardContent>
-	</Card>
-
-	<Card size="sm" elevation="flat" class="overflow-hidden">
-		<CardHeader class="border-b">
-			<CardTitle>Return to Work</CardTitle>
-			<CardDescription>Saved and recent entry points for this workspace.</CardDescription>
-		</CardHeader>
-		<CardContent class="grid gap-3 pt-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_20rem]">
-			<section class="overflow-hidden rounded-md border bg-background/30 md:col-span-2 xl:col-span-2">
-				<header class="flex items-center justify-between gap-2 border-b px-3 py-2">
-					<h2 class="text-sm font-semibold">Shortcuts</h2>
-					<span class="text-xs tabular-nums text-muted-foreground">{workspace.shortcuts.length}</span>
-				</header>
-				<div class="flex min-h-16 flex-wrap items-start gap-2 p-3">
-				{#if workspace.shortcuts.length === 0}
-					<Empty class="min-h-20 w-full border-0">
-						<EmptyHeader>
-							<EmptyTitle>No shortcuts</EmptyTitle>
-							<EmptyDescription>Workspace shortcuts appear after scope is saved.</EmptyDescription>
-						</EmptyHeader>
-					</Empty>
-				{/if}
-				{#each workspace.shortcuts as shortcut}
-					<Button type="button" variant="outline" size="sm" onclick={() => openShortcut(shortcut)}>
-						{#if shortcut.kind === "argo"}<GitBranch data-icon="inline-start" />
-						{:else if shortcut.kind === "namespace"}<Layers data-icon="inline-start" />
-						{:else if shortcut.kind === "compare"}<GitCompareArrows data-icon="inline-start" />
-						{:else}<Boxes data-icon="inline-start" />{/if}
-						{shortcut.label}
-					</Button>
-				{/each}
-				</div>
-			</section>
-
-			<section class="overflow-hidden rounded-md border bg-background/30">
-				<header class="border-b px-3 py-2">
-					<h2 class="flex items-center gap-2 text-sm font-semibold"><Pin class="size-4" /> Pinned</h2>
-					<p class="text-xs text-muted-foreground">Saved resource entry points.</p>
-				</header>
-				<div class="flex min-h-20 flex-wrap items-start gap-2 p-3">
-					{#if entryPoints.pinned.length === 0}
-						<span class="text-sm text-muted-foreground">Pin resources from the table or detail panel.</span>
-					{/if}
-					{#each entryPoints.pinned as entry}
-						<Button type="button" variant="outline" size="sm" onclick={() => openEntryPoint(entry)}>
-							<Pin data-icon="inline-start" /> {entryPointLabel(entry)}
-						</Button>
-					{/each}
-				</div>
-			</section>
-
-			<section class="overflow-hidden rounded-md border bg-background/30">
-				<header class="border-b px-3 py-2">
-					<h2 class="flex items-center gap-2 text-sm font-semibold"><Clock3 class="size-4" /> Recent</h2>
-					<p class="text-xs text-muted-foreground">Explicitly opened resources and scopes.</p>
-				</header>
-				<div class="flex min-h-20 flex-wrap items-start gap-2 p-3">
-					{#if entryPoints.recent.length === 0}
-						<span class="text-sm text-muted-foreground">Recent visits will appear here.</span>
-					{/if}
-					{#each entryPoints.recent as entry}
-						<Button type="button" variant="outline" size="sm" onclick={() => openEntryPoint(entry)}>
-							<Clock3 data-icon="inline-start" /> {entryPointLabel(entry)}
-						</Button>
-					{/each}
-				</div>
-			</section>
-
-			<section class="overflow-hidden rounded-md border bg-background/30 md:col-span-2 xl:col-span-1 xl:col-start-3 xl:row-span-2 xl:row-start-1">
-				<header class="border-b px-3 py-2">
-					<h2 class="text-sm font-semibold">GitOps</h2>
-					<p class="text-xs text-muted-foreground">Argo CD and Flux inventory.</p>
-				</header>
-				<div class="p-3">
-				{#if gitOpsDetecting.active}
-					{#if gitOpsDetecting.shown}
-						<div class="inline-flex items-center gap-2 text-xs text-muted-foreground">
-							<Spinner class="size-4" /> Detecting...
-						</div>
-					{/if}
-				{:else if !gitOpsDetected}
-					<div class="text-xs text-muted-foreground">Not detected</div>
-				{:else}
-					<div class="grid gap-2">
-						{#if argoDetectedQuery.data === true && applicationsLoading.active}
-							{#if applicationsLoading.shown}
-								<div class="inline-flex items-center gap-2 text-xs text-muted-foreground">
-									<Spinner class="size-4" /> Loading applications...
-								</div>
-							{/if}
-						{:else if gitOpsInventoryError}
-							<FriendlyError
-								mode="compact"
-								error={gitOpsInventoryError}
-								context={{
-									operation: "providerDetection",
-									fallbackTitle: "Failed to load GitOps inventory",
-									partial: true,
-								}}
-							/>
-						{:else if argoDetectedQuery.data === true}
-							<div class="flex items-center justify-between py-2 text-xs">
-								<span class="text-muted-foreground">Applications</span>
-								<strong>{argoAppsQuery.data?.items.length ?? 0}</strong>
-							</div>
-							<Separator />
-							<div class="flex items-center justify-between py-2 text-xs">
-								<span class="text-muted-foreground">Out of sync</span>
-								<strong class="text-amber-300">{argoDrift}</strong>
-							</div>
-							<Separator />
-						{/if}
-						{#if fluxDetected}
-							{#if fluxLoading.active}
-								{#if fluxLoading.shown}
-									<div class="inline-flex items-center gap-2 text-xs text-muted-foreground">
-										<Spinner class="size-4" /> Loading Flux resources...
-									</div>
-								{/if}
-							{:else}
-								<div class="flex items-center justify-between py-2 text-xs">
-									<span class="text-muted-foreground">Flux resources</span>
-									<strong>{fluxRows.length}</strong>
-								</div>
-								<Separator />
-							{/if}
-						{/if}
-						<Button type="button" variant="outline" onclick={() => onOpenArgo()}>
-							<GitBranch data-icon="inline-start" /> Open GitOps
-						</Button>
-					</div>
-				{/if}
-				</div>
-			</section>
-		</CardContent>
-	</Card>
-
+	<OverviewLayout {view} />
 	{#if compareSummaries.length > 0}
 		<Card>
 			<CardHeader>
@@ -543,26 +248,47 @@
 		</Card>
 	{/if}
 </section>
-
-{#snippet Metric(label: string, value: string | number, tone = "")}
-	<Card size="sm" class="min-h-20 justify-center">
-		<CardContent class="flex flex-col gap-1">
-			<span class="text-[0.72rem] font-semibold uppercase text-muted-foreground">{label}</span>
-			<strong class={tone}>{value}</strong>
-		</CardContent>
-	</Card>
-{/snippet}
-
-{#snippet IncidentShortcutButton(label: string, count: number, filter: IncidentFilter, onOpenIncidents: (filter?: IncidentFilter) => void)}
-	{#if count > 0}
-		<Button type="button" variant="outline" size="sm" onclick={() => onOpenIncidents(filter)}>
-			<AlertTriangle data-icon="inline-start" />
-			{label}
-			<Badge variant="secondary" class="ml-1 rounded-sm px-1.5 tabular-nums">{count}</Badge>
-		</Button>
+{#snippet LoadState()}
+	{#if healthLoading.active}
+		<div class="flex min-h-16 items-center justify-center gap-2 text-sm text-muted-foreground">
+			{#if healthLoading.shown}<Spinner class="size-4" /> Loading workspace health...{/if}
+		</div>
+	{:else if resourcesQuery.isError}
+		<div class="grid gap-2">
+			<FriendlyError
+				error={resourcesQuery.error}
+				context={{
+					operation: "resourcesLoad",
+					fallbackTitle: "Failed to refresh workspace resources",
+					target: failedResourceTarget,
+					partial: true,
+				}}
+			/>
+			<Button
+				type="button"
+				variant="outline"
+				size="sm"
+				disabled={resourcesQuery.isFetching}
+				onclick={() => void retryWorkspaceResources()}
+			>
+				{resourcesQuery.isFetching ? "Retrying workspace resources..." : "Retry workspace resources"}
+			</Button>
+		</div>
+	{:else if successfulResourceRetryKey === resourceQueryIdentity}
+		<p role="status" class="text-xs text-emerald-300">
+			Workspace resources loaded successfully after retry.
+		</p>
+	{/if}
+	{#if resourcesQuery.isSuccess}
+		<ResourceScopeWarnings failures={resourcesQuery.data?.failures ?? []} />
 	{/if}
 {/snippet}
 
+
+{#snippet GitOps()}
+	<OverviewGitOps clusterContext={workspace.scope.clusterContext} {kubeconfigSourceKey}
+		enabled={sourceReady && restoreStatus.clusterAvailable && !namespacesQuery.isPending} {onOpenArgo} {onOpenResource} />
+{/snippet}
 {#snippet CompareSide(
 	label: string,
 	health: {

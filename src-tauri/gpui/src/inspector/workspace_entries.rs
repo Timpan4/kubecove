@@ -92,34 +92,90 @@ impl Inspector {
             .test_support()
             .aria_description(entries.len().to_string())
             .flex()
-            .flex_wrap()
-            .gap(px(8.))
-            .min_h(px(80.))
-            .p(px(12.))
+            .flex_col()
+            .gap(px(4.))
             .when(entries.is_empty(), |list| {
-                list.child(ui::muted(ui::sm(if pinned {
+                list.child(ui::muted(ui::xs(if pinned {
                     "Pin resources from the table or detail panel."
                 } else {
                     "Recent visits will appear here."
                 })))
             })
             .children(entries.iter().enumerate().map(|(index, entry)| {
-                let label = format!(
-                    "{} / {}",
-                    entry.resource_kind.as_deref().unwrap_or("Namespace"),
-                    entry.name
-                );
-                let entry = entry.clone();
-                ui::outline_button()
-                    .id(SharedString::from(format!("entry:{panel}:{index}")))
-                    .test_support()
-                    .aria_label(label.clone())
-                    .h(px(24.))
-                    .child(ui::xs(label))
-                    .cursor_pointer()
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.open_workspace_entry(&entry, window, cx)
-                    }))
+                use kubecove_lib::models::HealthAssessmentState as Health;
+                let kind = match entry.kind {
+                    EntryKind::Namespace => "Namespace",
+                    EntryKind::App => "Application",
+                    EntryKind::Resource => entry.resource_kind.as_deref().unwrap_or("Resource"),
+                };
+                let label = format!("{kind} / {}", entry.name);
+                let health = if entry.kind == EntryKind::Namespace {
+                    let namespace = entry.namespace.as_deref().unwrap_or(&entry.name);
+                    let summary = crate::model::HealthSummary::of(
+                        self.workspace_rows()
+                            .filter(|row| row.namespace.as_deref() == Some(namespace)),
+                    );
+                    if summary.degraded > 0 {
+                        Some(Health::Degraded)
+                    } else if summary.attention > 0 {
+                        Some(Health::NeedsAttention)
+                    } else {
+                        None
+                    }
+                } else {
+                    self.workspace_rows()
+                        .find(|row| entry.identifies(row))
+                        .map(|row| row.health_assessment.state)
+                };
+                let (color, state) = match health {
+                    Some(Health::Degraded) => (crate::theme::Palette::red300(), ", degraded"),
+                    Some(Health::NeedsAttention) => {
+                        (crate::theme::Palette::amber300(), ", needs attention")
+                    }
+                    Some(Health::Healthy) => (crate::theme::Palette::emerald300(), ", healthy"),
+                    Some(Health::Unknown) => {
+                        (crate::theme::Tokens::muted_foreground(), ", unknown")
+                    }
+                    Some(Health::NotEvaluated) => {
+                        (crate::theme::Tokens::muted_foreground(), ", not evaluated")
+                    }
+                    None => (crate::theme::Tokens::muted_foreground().opacity(0.5), ""),
+                };
+                let target = entry.clone();
+                self.overview_button(
+                    format!("entry:{panel}:{index}"),
+                    label,
+                    true,
+                    cx,
+                    move |this, window, cx| this.open_workspace_entry(&target, window, cx),
+                )
+                .border_0()
+                .bg(gpui_kit::transparent_black())
+                .items_start()
+                .gap(px(8.))
+                .child(
+                    div()
+                        .size(px(8.))
+                        .mt(px(6.))
+                        .rounded_full()
+                        .flex_none()
+                        .bg(color),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .min_w_0()
+                        .gap(px(2.))
+                        .child(ui::xs(entry.name.clone()).font_family(crate::theme::MONO))
+                        .child(ui::muted(ui::xs(format!(
+                            "{kind}{}{state}",
+                            entry
+                                .namespace
+                                .as_ref()
+                                .map_or(String::new(), |namespace| format!(" in {namespace}"))
+                        )))),
+                )
             }))
             .into_any_element()
     }

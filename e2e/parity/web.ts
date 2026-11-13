@@ -43,6 +43,7 @@ export async function action(page: Page, step: Step) {
 	const search = page.getByRole("textbox", { name: "Search resources" });
 	const close = page.getByRole("button", { name: "Close resource details" });
 	switch (step.action) {
+        case "overviewHealth": case "overviewNamespace": case "expectOverviewProblem": case "openOverviewProblem": case "toggleOverviewProblem": case "expectNoOverviewProblem": await overviewAction(page, step); break;
         case "expectOverviewShortcuts": case "overviewShortcut": await shellAction(page, step); break;
         case "expectOverviewScope": case "expectCompareTotal": await shellAction(page, step); break;
         case "retryOverview": case "expectOverviewRetry": await shellAction(page, step); break;
@@ -56,7 +57,7 @@ export async function action(page: Page, step: Step) {
         case "remoteSessionSignal": case "expectRemoteNotice": case "expectNoRemoteNotice": case "clickRemoteNoticeButton": await remoteAction(page, step); break;
         case "configureShellRead": case "retryLauncher": case "expectLauncherRetry": await shellAction(page, step); break;
         case "expectActivePage": case "expectGitOpsSelection": await shellAction(page, step); break;
-        case "overviewOperation": case "overviewIncident": case "reviewIncidentAction": case "expectDetailTab": await shellAction(page, step); break;
+        case "overviewOperation": case "reviewIncidentAction": case "expectDetailTab": await shellAction(page, step); break;
         case "expectTopologyDenied": case "mockTiming": case "expectWatchStart": await timingAction(page, step); break;
         case "coverageSelect": await coverageAction(page, step); break;
         case "coverageCopy": await coverageAction(page, step); break;
@@ -172,7 +173,7 @@ export async function action(page: Page, step: Step) {
 		case "clickDetailControl": await detailsAction(page, step); break;
 		case "openResources":
 			await action(page, { action: "openPage", page: "Workspace Overview" });
-			await page.getByRole("button", { name: "Resources", exact: true }).first().click();
+			await page.getByRole("button", { name: "Open resources", exact: true }).click();
 			break;
 		case "search": await search.fill(step.value); break;
 		case "expectSearch": if (await search.inputValue() !== step.value) throw new Error("Search changed after refresh"); break;
@@ -569,3 +570,4 @@ export async function runWeb(contract: Contract, artifacts: string, signal: Abor
 		if (closeError) throw closeError;
 	}
 }
+import { overviewAction } from "./web-overview";

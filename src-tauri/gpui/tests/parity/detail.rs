@@ -82,9 +82,9 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             assert_eq!(actual, expected);
         }
         "openResources" => {
-            if window.try_find("resources").is_none() {
-                window.click("open-resources", cx);
-            }
+            locate::click_in(window, "sidebar-tree", "nav:Workspace Overview".into(), cx);
+            window.render_frame(cx);
+            locate::click_in(window, "page", "open-resources".into(), cx);
             window.render_frame(cx);
             assert!(window.find("resources").visible());
         }

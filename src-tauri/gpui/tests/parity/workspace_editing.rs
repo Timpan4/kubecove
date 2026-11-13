@@ -62,8 +62,14 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             cx,
         ),
         "expectOverviewHealth" => assert_eq!(
-            window.find("overview-metric:Total").label(),
-            Some(format!("Total: {}", number(step, "total")).as_str())
+            window.find("overview-description:Resource Health").label(),
+            Some(
+                format!(
+                    "{} resources loaded from the saved scope.",
+                    number(step, "total")
+                )
+                .as_str()
+            )
         ),
         // A multi-context workspace shows the row's context as a header badge.
         // A one-context workspace has no badge; its detail belongs to the

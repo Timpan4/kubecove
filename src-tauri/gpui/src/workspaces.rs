@@ -6,6 +6,7 @@
 
 use crate::model::WORKSPACE_KINDS;
 pub mod entries;
+pub mod overview;
 pub mod reads;
 pub mod shortcuts;
 pub mod transfer;

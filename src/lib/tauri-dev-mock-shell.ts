@@ -1,9 +1,11 @@
-export type ShellReadPhase = "ready" | "contexts-failed" | "contexts-empty" | "namespaces-failed" | "namespaces-credential-failed" | "namespaces-empty" | "resources-failed" | "primary-context-missing" | "kind-missing" | "payments-api-removed" | "payments-deployments-forbidden" | "payments-ingress-version-changed" | "sources-failed";
+import overviewPatches from "./tauri-dev-mock-overview.json";
+import type { ResourceSummary } from "./types";
+export type ShellReadPhase = "ready" | "contexts-failed" | "contexts-empty" | "namespaces-failed" | "namespaces-credential-failed" | "namespaces-empty" | "resources-failed" | "primary-context-missing" | "kind-missing" | "payments-api-removed" | "payments-deployments-forbidden" | "payments-ingress-version-changed" | "sources-failed" | "overview-owner-chain";
 function initialPhase(): ShellReadPhase {
     const value = globalThis.sessionStorage?.getItem("parity-shell-read");
     switch (value) {
         case "contexts-failed": case "contexts-empty": case "namespaces-empty": case "namespaces-failed": case "namespaces-credential-failed": case "resources-failed":
-        case "primary-context-missing": case "kind-missing": case "payments-api-removed": case "payments-deployments-forbidden": case "payments-ingress-version-changed": case "sources-failed": return value;
+        case "primary-context-missing": case "kind-missing": case "payments-api-removed": case "payments-deployments-forbidden": case "payments-ingress-version-changed": case "sources-failed": case "overview-owner-chain": return value;
         default: return "ready";
     }
 }
@@ -43,8 +45,12 @@ export function shellScopeRequests<Request extends { kind?: string }>(requests: 
 }
 
 /** Applies the scripted cluster changes after a resource was pinned: a deleted Deployment, or an Ingress served at another API version. */
-export function shellWithoutRemoved<Row extends { kind: string; namespace?: string | null; name: string; apiVersion?: string }>(rows: Row[]): Row[] {
-    const payments = (row: Row, kind: string) => row.kind === kind && row.namespace === "payments" && row.name === "payments-api";
+export function shellWithoutRemoved(rows: ResourceSummary[]): ResourceSummary[] {
+    if (phase === "overview-owner-chain") return rows.map((row): ResourceSummary => {
+        const patch = overviewPatches.find(patch => patch.kind === row.kind && patch.namespace === row.namespace && patch.name === row.name);
+        return patch ? { ...row, ...patch, healthAssessment: { state: "degraded", completeness: "complete", winningSources: ["kubernetes"], reasons: ["Controlled owner-chain failure"], evidence: [] } } : row;
+    });
+    const payments = (row: ResourceSummary, kind: string) => row.kind === kind && row.namespace === "payments" && row.name === "payments-api";
     if (phase === "payments-ingress-version-changed") return rows.map((row) => (payments(row, "Ingress") ? { ...row, apiVersion: "networking.k8s.io/v1beta1" } : row));
     if (phase !== "payments-api-removed") return rows;
     return rows.filter((row) => !payments(row, "Deployment"));

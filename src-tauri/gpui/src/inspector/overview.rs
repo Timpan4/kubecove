@@ -1,13 +1,15 @@
-//! Workspace overview, mirroring `src/features/workspaces/WorkspaceOverview.svelte`.
-
+//! The production workspace overview, matching the web's approved table layout.
+use super::resource_filters::HealthFilter;
 use super::{Inspector, Load, Page};
-use crate::model::HealthSummary;
-use crate::targets::TestSupportExt;
-use crate::theme::{Palette, Tokens};
-use crate::ui;
-use gpui_kit::{AnyElement, Context, Div, FontWeight, Hsla, div, prelude::*, px};
+use crate::{
+    model::HealthSummary,
+    targets::TestSupportExt,
+    theme::{Palette, Tokens},
+    ui,
+    workspaces::overview,
+};
+use gpui_kit::{AnyElement, Context, Div, FontWeight, SharedString, Window, div, prelude::*, px};
 
-/// `Card size="sm"` with a bordered header and its content.
 pub(super) fn titled_card(title: &str, description: &str, content: impl IntoElement) -> Div {
     ui::card()
         .py(px(12.))
@@ -22,155 +24,58 @@ pub(super) fn titled_card(title: &str, description: &str, content: impl IntoElem
                 .border_b_1()
                 .border_color(Tokens::border())
                 .child(ui::heading(title.to_owned(), 14., 20.))
-                .child(ui::muted(ui::text(description.to_owned(), 12., 19.5))),
-        )
-        .child(div().px(px(12.)).pt(px(12.)).child(content))
-}
-
-fn metric(label: &str, value: usize, tone: Option<Hsla>) -> AnyElement {
-    ui::card()
-        .id(gpui_kit::SharedString::from(format!(
-            "overview-metric:{label}"
-        )))
-        .test_support()
-        .aria_label(format!("{label}: {value}"))
-        .flex_1()
-        .min_w_0()
-        .min_h(px(80.))
-        .justify_center()
-        .py(px(12.))
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .gap(px(4.))
-                .px(px(12.))
-                // Computed web style: 11.52px with an 18.72px (1.625) line height.
-                .child(ui::caps(label, 11.52).line_height(px(18.72)))
                 .child(
-                    ui::xs(value.to_string())
-                        .line_height(px(19.5))
-                        .font_weight(FontWeight::BOLD)
-                        .text_color(tone.unwrap_or(Tokens::foreground())),
+                    ui::muted(ui::text(description.to_owned(), 12., 19.5))
+                        .id(SharedString::from(format!("overview-description:{title}")))
+                        .test_support()
+                        .aria_label(description.to_owned()),
                 ),
         )
-        .into_any_element()
+        .child(div().px(px(12.)).child(content))
 }
-
-fn shortcut(label: &str, count: usize, cx: &mut Context<Inspector>) -> Option<AnyElement> {
-    let filter = match label {
-        "Degraded" => crate::incidents::Filter::Degraded,
-        "Needs attention" => crate::incidents::Filter::Attention,
-        _ => crate::incidents::Filter::Restarted,
-    };
-    (count > 0).then(|| {
-        ui::outline_button()
-            .id(gpui_kit::SharedString::from(format!(
-                "overview-incident:{label}"
-            )))
-            .test_support()
-            .cursor_pointer()
-            .on_click(cx.listener(move |this, _, _, cx| this.open_incident_filter(filter, cx)))
-            .h(px(24.))
-            .pl(px(6.))
-            .pr(px(8.))
-            .child(ui::icon("triangle-alert", 12., Tokens::foreground()))
-            .child(ui::medium(ui::text(label.to_owned(), 12., 19.5)))
-            .child(
-                div()
-                    .ml(px(4.))
-                    .h(px(20.))
-                    .px(px(6.))
-                    .rounded(px(6.))
-                    .bg(Tokens::secondary())
-                    .flex()
-                    .items_center()
-                    .child(ui::medium(ui::text(count.to_string(), 10., 14.))),
-            )
-            .into_any_element()
-    })
-}
-
-fn section(title: impl IntoElement, body: impl IntoElement) -> Div {
-    ui::panel()
-        .overflow_hidden()
-        .child(
-            div()
-                .px(px(12.))
-                .py(px(8.))
-                .border_b_1()
-                .border_color(Tokens::border())
-                .child(title),
-        )
-        .child(body)
-}
-
-fn entry_title(icon: &str, title: &str, description: &str) -> Div {
-    div()
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(8.))
-                .child(ui::icon(icon, 16., Tokens::foreground()))
-                .child(ui::semibold(ui::sm(title.to_owned()))),
-        )
-        .child(ui::muted(ui::xs(description.to_owned())))
-}
-
 impl Inspector {
-    pub(super) fn overview(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let health = HealthSummary::of(self.workspace_rows());
-        let loading = self.loading.phase(
-            "overview-health",
-            matches!(self.overview_load(), Load::Loading),
-        );
-        let operations = [
-            (
-                "open-resources",
-                "boxes",
-                "Resources",
-                Some(Page::Resources),
-            ),
-            ("open-workspaces", "folder-open", "Workspaces", None),
-            (
-                "open-port-forwards",
-                "cable",
-                "Port Forwards",
-                Some(Page::PortForwards),
-            ),
-            (
-                "open-incidents",
-                "triangle-alert",
-                "Incidents",
-                Some(Page::Incidents),
-            ),
-        ]
-        .map(|(id, icon, label, destination)| {
-            ui::outline_button()
-                .id(id)
-                .test_support()
+    pub(super) fn overview(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let rows: Vec<_> = self.workspace_rows().collect();
+        let model = overview::build(&rows);
+        let health = HealthSummary::of(rows.iter().copied());
+        let has_data = matches!(self.overview_load(), Load::Ready) || !rows.is_empty();
+        let width = super::resources::page_width(self, window).min(1280.) - 48.;
+        // The approved Svelte layout puts the 20rem rail beside the table at @6xl.
+        let wide = width >= 1152.;
+        let main_width = if wide { width - 336. } else { width };
+        let rail = div()
+            .flex()
+            .gap(px(16.))
+            .when(wide, |view| view.flex_col().w(px(320.)).flex_none())
+            .when(!wide, |view| view.w_full())
+            .child(
+                titled_card(
+                    "Return to Work",
+                    "Pinned and recently opened entry points, with their health now.",
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(12.))
+                        .child(ui::semibold(ui::xs("Pinned")))
+                        .child(self.entry_list(true, cx))
+                        .child(ui::semibold(ui::xs("Recent")))
+                        .child(self.entry_list(false, cx))
+                        .child(ui::semibold(ui::xs("Shortcuts")))
+                        .child(self.saved_shortcuts(cx))
+                        .children(self.overview_saved_forwards(cx)),
+                )
                 .flex_1()
-                .min_w_0()
-                .min_h(px(56.))
-                .px(px(16.))
-                .py(px(12.))
-                .gap(px(12.))
-                .child(ui::icon(icon, 16., Tokens::foreground()))
-                .child(ui::medium(ui::text(label, 12., 19.5)))
-                .cursor_pointer()
-                .on_click(cx.listener(move |this, _, window, cx| match destination {
-                    Some(Page::Incidents) => {
-                        this.open_incident_filter(crate::incidents::Filter::All, cx)
-                    }
-                    // The workspace scope, not the namespace an earlier visit selected, as the
-                    // web's `openResources` intent does.
-                    Some(Page::Resources) => this.select_namespace(None, window, cx),
-                    Some(page) => this.open_page(page, cx),
-                    None => this.open_launcher(window, cx),
-                }))
-                .into_any_element()
-        });
+                .min_w_0(),
+            )
+            .child(
+                titled_card(
+                    "GitOps",
+                    "Argo CD and Flux inventory.",
+                    self.gitops_body(cx),
+                )
+                .flex_1()
+                .min_w_0(),
+            );
         div()
             .id("overview")
             .flex()
@@ -180,199 +85,313 @@ impl Inspector {
             .max_w(px(1280.))
             .mx_auto()
             .p(px(24.))
-            .when_some(self.workspace_read.as_ref(), |page, state| {
-                page.children(state.warnings.iter().map(|warning| {
-                    ui::xs(warning.clone())
-                        .id(gpui_kit::SharedString::from(format!(
-                            "overview-warning:{warning}"
-                        )))
-                        .test_support()
-                        .aria_label(warning.clone())
-                }))
-            })
-            .when_some(
-                match self.overview_load() {
-                    Load::Failed(error) => Some(error),
-                    _ => None,
-                },
-                |page, error| {
-                    page.child(self.friendly_failure(
-                        "overview-error",
-                        None,
-                        error,
-                        super::friendly_error::Context {
-                            operation: Some(super::friendly_error::Operation::Resources),
-                            fallback_title: Some("Failed to refresh workspace resources"),
-                            partial: true,
-                            ..Default::default()
-                        },
-                        None,
-                        cx,
-                    ))
-                    .child(
-                        ui::outline_button()
-                            .id("retry-overview")
-                            .test_support()
-                            .aria_label("Retry workspace resources")
-                            .child("Retry workspace resources")
-                            .on_click(cx.listener(|this, _, _, cx| this.retry_overview(cx))),
-                    )
-                },
-            )
-            .when(
-                self.workspace_read
-                    .as_ref()
-                    .is_some_and(|state| state.retried),
-                |page| {
-                    page.child(
-                        ui::sm("Workspace resources loaded successfully after retry.")
-                            .id("overview-retry-success")
-                            .test_support()
-                            .aria_label("Workspace resources loaded successfully after retry."),
-                    )
-                },
-            )
             .child(
                 div()
+                    .flex()
+                    .items_end()
+                    .justify_between()
+                    .gap(px(12.))
                     .pb(px(12.))
                     .border_b_1()
                     .border_color(Tokens::border())
-                    .child(ui::caps("Workspace Overview", 11.).line_height(px(16.)))
-                    .child(ui::semibold(ui::text(self.workspace_name.clone(), 16., 24.)).mt(px(4.)))
-                    .child(self.saved_scope_view()),
-            )
-            .child(titled_card(
-                "Resource Health",
-                "Live status across saved workspace scope.",
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(12.))
                     .child(
                         div()
-                            .flex()
-                            .gap(px(8.))
-                            .child(metric("Total", health.total, None))
-                            .child(metric(
-                                "Healthy",
-                                health.healthy,
-                                Some(Palette::emerald300()),
-                            ))
-                            .child(metric(
-                                "Needs attention",
-                                health.attention,
-                                Some(Palette::amber300()),
-                            ))
-                            .child(metric("Degraded", health.degraded, Some(Palette::red300())))
-                            .child(metric("Unknown", health.unknown, None))
-                            .child(metric("Not evaluated", health.not_evaluated, None)),
-                    )
-                    .when(!loading.ready(), |content| {
-                        content.child(
-                            ui::muted(ui::sm(if loading.shown() {
-                                "Loading workspace health..."
-                            } else {
-                                ""
-                            }))
-                            .flex()
-                            .justify_center()
-                            .min_h(px(64.)),
-                        )
-                    })
-                    .when(
-                        health.degraded + health.attention + health.restart_evidence > 0,
-                        |content| {
-                            content.child(
-                                div()
-                                    .flex()
-                                    .flex_wrap()
-                                    .items_center()
-                                    .gap(px(8.))
-                                    .pt(px(12.))
-                                    .border_t_1()
-                                    .border_color(Tokens::border())
-                                    .child(
-                                        ui::muted(ui::medium(ui::xs("Incident shortcuts")))
-                                            .mr(px(4.)),
-                                    )
-                                    .children(shortcut("Degraded", health.degraded, cx))
-                                    .children(shortcut("Needs attention", health.attention, cx))
-                                    .children(shortcut(
-                                        "Restart evidence",
-                                        health.restart_evidence,
-                                        cx,
-                                    )),
+                            .flex_1()
+                            .min_w_0()
+                            .child(ui::caps("Workspace Overview", 11.).line_height(px(16.)))
+                            .child(
+                                ui::semibold(ui::text(self.workspace_name.clone(), 16., 24.))
+                                    .mt(px(4.)),
                             )
-                        },
+                            .child(self.saved_scope_view()),
+                    )
+                    .child(
+                        self.overview_button(
+                            "open-resources",
+                            "Open resources",
+                            true,
+                            cx,
+                            |this, window, cx| {
+                                this.open_overview_resources(None, HealthFilter::All, window, cx)
+                            },
+                        )
+                        .child(ui::icon("boxes", 14., Tokens::foreground()))
+                        .child(ui::xs("Open resources")),
                     ),
-            ))
-            .child(titled_card(
-                "Operations",
-                "Open primary workspace surfaces without changing scope.",
-                div().flex().gap(px(8.)).children(operations),
-            ))
-            .child(titled_card(
-                "Return to Work",
-                "Saved and recent entry points for this workspace.",
+            )
+            .child(self.overview_health(health, has_data, cx))
+            .child(
                 div()
                     .flex()
-                    .gap(px(12.))
+                    .gap(px(16.))
+                    .when(!wide, |view| view.flex_col())
                     .child(
                         div()
                             .flex()
                             .flex_col()
                             .flex_1()
                             .min_w_0()
-                            .gap(px(12.))
-                            .child(section(
-                                div()
-                                    .flex()
-                                    .justify_between()
-                                    .child(ui::semibold(ui::sm("Shortcuts")))
-                                    .child(ui::muted(ui::xs(
-                                        self.saved_overview.shortcuts.len().to_string(),
-                                    ))),
-                                self.saved_shortcuts(cx),
-                            ))
-                            .child(
-                                div()
-                                    .flex()
-                                    .gap(px(12.))
-                                    .child(
-                                        section(
-                                            entry_title(
-                                                "pin",
-                                                "Pinned",
-                                                "Saved resource entry points.",
-                                            ),
-                                            self.entry_list(true, cx),
-                                        )
-                                        .flex_1(),
-                                    )
-                                    .child(
-                                        section(
-                                            entry_title(
-                                                "clock-3",
-                                                "Recent",
-                                                "Explicitly opened resources and scopes.",
-                                            ),
-                                            self.entry_list(false, cx),
-                                        )
-                                        .flex_1(),
-                                    ),
-                            ),
+                            .gap(px(16.))
+                            .child(self.overview_findings(&rows, &model, has_data, main_width, cx))
+                            .children(self.overview_namespaces(&model, cx)),
+                    )
+                    .child(rail),
+            )
+            .children(self.compare_cards())
+    }
+    fn overview_health(
+        &self,
+        health: HealthSummary,
+        has_data: bool,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let summary = if has_data {
+            format!("{} resources loaded from the saved scope.", health.total)
+        } else {
+            "Counts appear once workspace resources load.".into()
+        };
+        let metrics = [
+            (
+                "Degraded",
+                health.degraded,
+                HealthFilter::Degraded,
+                Some(Palette::red300()),
+            ),
+            (
+                "Needs attention",
+                health.attention,
+                HealthFilter::Attention,
+                Some(Palette::amber300()),
+            ),
+            (
+                "Healthy",
+                health.healthy,
+                HealthFilter::Healthy,
+                Some(Palette::emerald300()),
+            ),
+            ("Unknown", health.unknown, HealthFilter::Unknown, None),
+            (
+                "Not evaluated",
+                health.not_evaluated,
+                HealthFilter::NotEvaluated,
+                None,
+            ),
+            (
+                "Restart evidence",
+                health.restart_evidence,
+                HealthFilter::Restarted,
+                None,
+            ),
+        ];
+        let loading = self.loading.phase(
+            "overview-health",
+            matches!(self.overview_load(), Load::Loading),
+        );
+        titled_card(
+            "Resource Health",
+            &summary,
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(12.))
+                .child(div().flex().gap(px(8.)).children(metrics.into_iter().map(
+                    |(label, value, filter, tone)| {
+                        self.overview_button(
+                            format!("overview-health:{label}"),
+                            format!("{label} {value}"),
+                            has_data && value > 0,
+                            cx,
+                            move |this, window, cx| {
+                                this.open_overview_resources(None, filter, window, cx)
+                            },
+                        )
+                        .flex_1()
+                        .min_w_0()
+                        .min_h(px(64.))
+                        .flex_col()
+                        .items_start()
+                        .justify_center()
+                        .gap(px(2.))
+                        .px(px(12.))
+                        .child(ui::caps(label, 11.52).line_height(px(18.72)))
+                        .child(
+                            ui::text(
+                                if has_data {
+                                    value.to_string()
+                                } else {
+                                    "-".into()
+                                },
+                                16.,
+                                24.,
+                            )
+                            .font_weight(FontWeight::BOLD)
+                            .text_color(if value > 0 {
+                                tone.unwrap_or(Tokens::foreground())
+                            } else {
+                                Tokens::muted_foreground()
+                            }),
+                        )
+                    },
+                )))
+                .when(!loading.ready(), |view| {
+                    view.child(
+                        ui::muted(ui::sm(if loading.shown() {
+                            "Loading workspace health..."
+                        } else {
+                            ""
+                        }))
+                        .min_h(px(64.)),
+                    )
+                })
+                .when_some(self.workspace_read.as_ref(), |view, state| {
+                    view.children(state.warnings.iter().map(|warning| {
+                        ui::xs(warning.clone())
+                            .id(SharedString::from(format!("overview-warning:{warning}")))
+                            .test_support()
+                            .aria_label(warning.clone())
+                    }))
+                })
+                .when_some(
+                    match self.overview_load() {
+                        Load::Failed(error) => Some(error),
+                        _ => None,
+                    },
+                    |view, error| {
+                        view.child(self.friendly_failure(
+                            "overview-error",
+                            None,
+                            error,
+                            super::friendly_error::Context {
+                                operation: Some(super::friendly_error::Operation::Resources),
+                                fallback_title: Some("Failed to refresh workspace resources"),
+                                partial: true,
+                                ..Default::default()
+                            },
+                            None,
+                            cx,
+                        ))
+                        .child(
+                            self.overview_button(
+                                "retry-overview",
+                                "Retry workspace resources",
+                                true,
+                                cx,
+                                |this, _, cx| this.retry_overview(cx),
+                            )
+                            .child(ui::xs("Retry workspace resources")),
+                        )
+                    },
+                )
+                .when(
+                    self.workspace_read
+                        .as_ref()
+                        .is_some_and(|state| state.retried),
+                    |view| {
+                        view.child(
+                            ui::sm("Workspace resources loaded successfully after retry.")
+                                .id("overview-retry-success")
+                                .test_support()
+                                .aria_label("Workspace resources loaded successfully after retry."),
+                        )
+                    },
+                ),
+        )
+    }
+    fn overview_findings(
+        &self,
+        rows: &[&kubecove_lib::models::ResourceSummary],
+        model: &overview::Overview,
+        has_data: bool,
+        width: f32,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let description = if !has_data {
+            "Listed once workspace resources load.".into()
+        } else {
+            format!(
+                "{} findings behind the {} resources counted as degraded or needing attention.",
+                model.problems.len(),
+                model.problem_resources
+            )
+        };
+        let body: AnyElement = if !model.problems.is_empty() {
+            self.overview_problem_table(rows, &model.problems, width, cx)
+                .into_any_element()
+        } else {
+            let partial = matches!(self.overview_load(), Load::Failed(_))
+                || self
+                    .workspace_read
+                    .as_ref()
+                    .is_some_and(|read| !read.warnings.is_empty())
+                || !self.saved_overview.warnings.is_empty();
+            let text = if !has_data {
+                ""
+            } else if partial {
+                "No findings in the part of the scope that loaded. Resource Health lists what did not load."
+            } else {
+                "No loaded resource is degraded or needs attention. Unknown and not evaluated resources carry no health signal."
+            };
+            ui::muted(ui::xs(text))
+                .id("overview-findings-empty")
+                .test_support()
+                .aria_label(text)
+                .p(px(16.))
+                .into_any_element()
+        };
+        ui::card()
+            .id("overview-findings-card")
+            .test_support()
+            .py(px(12.))
+            .gap(px(12.))
+            .child(
+                div()
+                    .flex()
+                    .items_start()
+                    .justify_between()
+                    .gap(px(12.))
+                    .px(px(12.))
+                    .pb(px(12.))
+                    .border_b_1()
+                    .border_color(Tokens::border())
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(ui::heading("Needs attention", 14., 20.))
+                            .child(ui::muted(ui::text(description, 12., 19.5)).mt(px(4.))),
                     )
                     .child(
-                        section(
-                            div()
-                                .child(ui::semibold(ui::sm("GitOps")))
-                                .child(ui::muted(ui::xs("Argo CD and Flux inventory."))),
-                            self.gitops_body(cx),
+                        self.overview_button(
+                            "open-incidents",
+                            "Open incident queue",
+                            true,
+                            cx,
+                            |this, _, cx| {
+                                this.open_incident_filter(crate::incidents::Filter::All, cx)
+                            },
                         )
-                        .w(px(320.))
-                        .flex_none(),
+                        .child(ui::xs("Open incident queue")),
                     ),
-            ))
-            .children(self.compare_cards())
+            )
+            .child(body)
+    }
+    fn overview_saved_forwards(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let count = self
+            .launcher
+            .active
+            .and_then(|id| self.launcher.transfer.documents.get(&id))
+            .and_then(|document| document["spec"]["portForwards"].as_array())
+            .map_or(0, Vec::len);
+        (count > 0).then(|| {
+            self.overview_button(
+                "overview-saved-forwards",
+                format!("{count} saved port forwards"),
+                true,
+                cx,
+                |this, _, cx| this.open_page(Page::PortForwards, cx),
+            )
+            .child(ui::xs(format!("{count} saved port forwards")))
+            .into_any_element()
+        })
     }
 }

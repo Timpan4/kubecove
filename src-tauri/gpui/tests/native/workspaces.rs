@@ -75,8 +75,8 @@ fn one_failed_context_keeps_successful_rows_and_names_the_failure(cx: &mut TestA
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
         assert_eq!(
-            window.find("overview-metric:Total").label(),
-            Some("Total: 1")
+            window.find("overview-description:Resource Health").label(),
+            Some("1 resources loaded from the saved scope.")
         );
         assert!(
             window
@@ -160,8 +160,8 @@ fn changing_workspace_cancels_every_old_context_read(cx: &mut TestAppContext) {
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
         assert_eq!(
-            window.find("overview-metric:Total").label(),
-            Some("Total: 1")
+            window.find("overview-description:Resource Health").label(),
+            Some("1 resources loaded from the saved scope.")
         );
     })
     .unwrap();

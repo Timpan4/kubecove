@@ -55,6 +55,8 @@ mod mcp;
 mod multi_context;
 #[path = "parity/navigation.rs"]
 mod navigation;
+#[path = "parity/overview.rs"]
+mod overview;
 #[path = "parity/resource_filters.rs"]
 mod resource_filters;
 #[path = "parity/resource_table.rs"]
@@ -207,6 +209,7 @@ fn cluster_row(step: &Value) -> String {
 
 fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
     if !(shell::act(window, cx, step)
+        || overview::act(window, cx, step)
         || coverage_checks::act(window, cx, step)
         || coverage::act(window, cx, step)
         || log_toolbar::act(window, cx, step)

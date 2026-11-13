@@ -120,7 +120,7 @@ export async function shellAction(page: Page, step: Step): Promise<void> {
         case "expectWorkspaceEntry": case "openWorkspaceEntry": {
             const panel = page.getByRole("heading", { name: step.panel, exact: true }).locator("xpath=ancestor::section[1]");
             const buttons = panel.getByRole("button");
-            await buttons.nth(step.index).filter({ hasText: step.label }).waitFor();
+            await buttons.nth(step.index).and(panel.getByRole("button", { name: step.label, exact: true })).waitFor();
             if (await buttons.count() !== step.count) throw new Error("Workspace entry count differs");
             if (step.action === "openWorkspaceEntry") await buttons.nth(step.index).click();
             break;
@@ -162,10 +162,10 @@ export async function shellAction(page: Page, step: Step): Promise<void> {
             await page.getByRole("button", { name: "Retry", exact: true }).waitFor();
             break;
         case "overviewOperation":
-            await page.locator('[data-slot="card"]').filter({ has: page.getByText("Operations", { exact: true }) }).getByRole("button", { name: step.destination, exact: true }).click();
-            break;
-        case "overviewIncident":
-            await page.getByRole("button", { name: new RegExp(`^${step.filter} \\d+$`) }).click();
+            if (step.destination === "Resources") await page.getByRole("button", { name: "Open resources", exact: true }).click();
+            else if (step.destination === "Workspaces") await page.getByRole("button", { name: "Open workspaces", exact: true }).click();
+            else if (step.destination === "Incidents") await page.getByRole("button", { name: "Open incident queue", exact: true }).click();
+            else await page.getByRole("treeitem", { name: "Port Forwards", exact: true }).click();
             break;
         case "reviewIncidentAction":
             await page.locator("[data-incident-guide]").getByRole("button", { name: "Review in Actions", exact: true }).nth(step.index).click();

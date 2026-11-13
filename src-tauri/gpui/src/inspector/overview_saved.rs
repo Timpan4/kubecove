@@ -15,7 +15,7 @@ use std::{cell::RefCell, rc::Rc};
 pub(super) struct SavedOverview {
     pub(super) shortcuts: Vec<crate::workspaces::shortcuts::Shortcut>,
     scope: [String; 3],
-    warnings: Vec<String>,
+    pub(super) warnings: Vec<String>,
     entries: Vec<CompareEntry>,
     comparisons: RefCell<Option<Rc<[Comparison]>>>,
 }
@@ -205,7 +205,22 @@ impl Inspector {
                         .iter()
                         .enumerate()
                         .map(|(index, label)| {
-                            ui::outline_badge(label.clone())
+                            let badge = if index == 2 {
+                                div()
+                                    .flex()
+                                    .flex_none()
+                                    .items_center()
+                                    .h(px(20.))
+                                    .max_w(px(384.))
+                                    .px(px(8.))
+                                    .border_1()
+                                    .border_color(crate::theme::Tokens::border())
+                                    .bg(crate::theme::Tokens::input().opacity(0.3))
+                                    .child(ui::text(label.clone(), 10., 14.).truncate())
+                            } else {
+                                ui::outline_badge(label.clone())
+                            };
+                            badge
                                 .id(SharedString::from(format!("overview-scope:{index}")))
                                 .test_support()
                                 .aria_label(label.clone())
