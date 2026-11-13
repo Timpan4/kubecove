@@ -90,6 +90,7 @@ desktop = [
     "dep:webkit2gtk",
 ]
 mcp-host = ["dep:kubecove-mcp", "kubecove-mcp/loopback", "dep:tokio-util"]
+credential-plugin-path = ["kubecove-kube/credential-plugin-path"]
 bench-support = [
     "kubecove-kube/bench-support", "kubecove-inspection/bench-support",
     "kubecove-live/bench-support", "kubecove-gitops/bench-support", "kubecove-host/bench-support",

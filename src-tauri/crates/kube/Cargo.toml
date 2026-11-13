@@ -9,7 +9,9 @@ description = "KubeCove Kubernetes clients, session scope, shared metadata and c
 
 [features]
 default = []
-desktop = ["dep:tauri", "dep:tauri-plugin-dialog"]
+desktop = ["dep:tauri", "dep:tauri-plugin-dialog", "credential-plugin-path"]
+# Desktop hosts recover credential plugin paths without requiring Tauri.
+credential-plugin-path = []
 bench-support = []
 e2e = ["desktop"]
 # Exposes the fixed-client test adapter for other crates' tests.

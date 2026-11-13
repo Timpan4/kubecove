@@ -4,6 +4,8 @@ mod argo;
 mod argo_gaps;
 #[path = "native/argo_outcomes.rs"]
 mod argo_outcomes;
+#[path = "native/credential_plugin.rs"]
+mod credential_plugin;
 #[path = "native/default_read_retry.rs"]
 mod default_read_retry;
 #[path = "native/detail_tabs.rs"]
