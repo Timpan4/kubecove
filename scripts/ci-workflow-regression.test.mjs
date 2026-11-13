@@ -477,7 +477,8 @@ test("parity jobs select pull request scenarios and preserve full main coverage"
   assert.match(selection, /^ {6}contents: read\n {6}actions: read$/m);
   assert.match(selection, /^ {10}fetch-depth: 0$/m);
   assert.match(selection, /^ {10}persist-credentials: false$/m);
-  assert.match(selection, /continue-on-error: true/);
+  // A stalled planner must end and leave empty outputs, which run the full suite.
+  assert.match(selection, /^ {8}id: select\n {8}timeout-minutes: \d+\n {8}continue-on-error: true$/m);
   assert.match(selection, /run: bun e2e\/parity\/ci-selection\.ts/);
   assert.match(selection, /^ {6}attempt: \$\{\{ github.run_attempt \}\}$/m);
   assert.doesNotMatch(selection, /cargo |playwright|bun install/);

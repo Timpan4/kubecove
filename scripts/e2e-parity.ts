@@ -151,7 +151,7 @@ async function runDrivers(contract: Contract) {
 		const map = await writeRunMap(artifacts, join(artifacts, "coverage-map.json"));
 		mark("coverageMap");
 		console.log(`Coverage map: ${map.scenarios.length} scenarios, ${Object.keys(map.files).length} files`);
-		const narrowed = ["PARITY_PREFIX", "PARITY_EXCLUDE", "PARITY_CHANGED", "PARITY_RERUN", "PARITY_SUITE_SHARD"].some((name) => process.env[name]);
+		const narrowed = ["PARITY_PREFIX", "PARITY_SCENARIOS", "PARITY_EXCLUDE", "PARITY_CHANGED", "PARITY_RERUN", "PARITY_SUITE_SHARD"].some((name) => process.env[name]);
 		if (!narrowed) await copyFile(join(artifacts, "coverage-map.json"), resolve(DEFAULT_MAP));
 	}
 }

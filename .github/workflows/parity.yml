@@ -53,8 +53,11 @@ jobs:
           bun-version: "1.4.4"
 
       # No dependencies, Rust build or browser. Missing outputs also mean full suite below.
+      # The step took 2 s in run 43484678727. A stalled download or fetch ends at the limit
+      # "Detect CI changes" uses in ci.yml, and the drivers then run the full suite.
       - name: Select scenarios
         id: select
+        timeout-minutes: 3
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
