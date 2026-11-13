@@ -44,7 +44,13 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const remove = process.argv.includes("--delete");
   for (const cache of superseded) {
     console.log(`${remove ? "Deleting" : "Would delete"} ${cache.key} (${Math.round(cache.size_in_bytes / 2 ** 20)} MiB, saved ${cache.created_at})`);
-    if (remove) gh("--method", "DELETE", `repos/{owner}/{repo}/actions/caches/${cache.id}`);
+    if (!remove) continue;
+    try {
+      gh("--method", "DELETE", `repos/{owner}/{repo}/actions/caches/${cache.id}`);
+    } catch (error) {
+      // GitHub can evict a cache between the listing and this call. The sweep goes on.
+      if (!String(error.stderr).includes("(HTTP 404)")) throw error;
+    }
   }
   console.log(`Superseded Rust build caches on main: ${superseded.length}`);
 }

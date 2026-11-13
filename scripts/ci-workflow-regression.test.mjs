@@ -673,6 +673,41 @@ test("cache cleanup deletes only main's Rust build caches that a newer one of th
   assert.deepEqual(deleted(caches), [1, 5]);
   assert.deepEqual(deleted(caches.toReversed()), [1, 5]);
 });
+test("cache cleanup deletes only with --delete, passes over a cache that is already gone, and fails on a refusal", () => {
+  const root = mkdtempSync(join(tmpdir(), "kubecove-ci-cache-prune-"));
+  const log = join(root, "deleted");
+  const digest = "a".repeat(64);
+  const caches = ["2026-11-13T10:00:00Z", "2026-11-13T11:00:00Z", "2026-11-13T12:00:00Z"].map((created_at, index) => (
+    { id: index + 1, key: `mbx-parity-${digest}-${String(index).repeat(64)}`, ref: "refs/heads/main", created_at, size_in_bytes: 1 }
+  ));
+  const run = (args, refusal = "") => spawnSync(process.execPath, [fileURLToPath(new URL("./ci-prune-rust-caches.mjs", import.meta.url)), ...args], {
+    env: { ...process.env, PATH: `${join(root, "bin")}${delimiter}${process.env.PATH}`, GH_LOG: log, GH_LIST: join(root, "list.json"), GH_REFUSAL: refusal },
+    encoding: "utf8",
+  });
+  try {
+    mkdirSync(join(root, "bin"));
+    writeFileSync(join(root, "list.json"), JSON.stringify([{ actions_caches: caches }]));
+    // Stands in for `gh api`: cache 1 is gone when its deletion arrives, and GH_REFUSAL refuses cache 2.
+    writeFileSync(join(root, "bin", "gh"), [
+      "#!/bin/sh",
+      'case "$*" in',
+      '  *DELETE*/caches/1) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;',
+      '  *DELETE*/caches/2) if [ -n "$GH_REFUSAL" ]; then echo "gh: $GH_REFUSAL" >&2; exit 1; fi; echo "$*" >> "$GH_LOG" ;;',
+      '  *DELETE*) echo "$*" >> "$GH_LOG" ;;',
+      '  *) cat "$GH_LIST" ;;',
+      "esac",
+      "",
+    ].join("\n"));
+    chmodSync(join(root, "bin", "gh"), 0o755);
+    const listed = run([]);
+    assert.equal(listed.status, 0, listed.stderr);
+    assert.match(listed.stdout, /Would delete mbx-parity-.+\nWould delete mbx-parity-/);
+    assert.throws(() => readFileSync(log), /ENOENT/);
+    assert.equal(run(["--delete"]).status, 0);
+    assert.match(readFileSync(log, "utf8"), /^[^\n]+\/caches\/2\n$/);
+    assert.notEqual(run(["--delete"], "Resource not accessible by integration (HTTP 403)").status, 0);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
 test("cache cleanup runs after workflows that exist", () => {
   const directory = new URL("../.github/workflows/", import.meta.url);
   const read = (file) => readFileSync(new URL(file, directory), "utf8").replaceAll("\r\n", "\n");
