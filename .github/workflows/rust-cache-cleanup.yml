@@ -1,0 +1,48 @@
+name: Rust cache cleanup
+
+# A push to main that changes a Rust build saves its cache under a new key and leaves
+# the previous cache in place. The caches in use take about 8 GB of the repository's
+# 10 GB quota, so the leftovers exceed it. GitHub then evicts the least recently used
+# caches, and those can be caches that pull requests still restore. After each main run
+# of a workflow that saves these caches, this workflow deletes every Rust build cache on
+# main that has a newer one of the same name (scripts/ci-prune-rust-caches.mjs).
+
+on:
+  workflow_run:
+    workflows: [CI, CodSpeed, E2E, Parity]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+# Each run sweeps every cache, so a queued run covers the ones that finished before it.
+concurrency:
+  group: rust-cache-cleanup
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    name: Delete superseded Rust caches
+    # `branches` matches the head branch by name, so a fork's pull request from its own
+    # `main` would start this job too.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.head_repository.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/ci-prune-rust-caches.mjs
+          sparse-checkout-cone-mode: false
+
+      - name: Delete superseded caches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: node scripts/ci-prune-rust-caches.mjs --delete

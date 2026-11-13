@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { cacheName, supersededCaches } from "./ci-prune-rust-caches.mjs";
 
 const workflow = readFileSync(process.env.CI_WORKFLOW_PATH ?? new URL("../.github/workflows/ci.yml", import.meta.url), "utf8").replaceAll("\r\n", "\n");
 const base = "a".repeat(40);
@@ -421,6 +422,8 @@ test("the Rust cache key follows the build inputs and the compiler, not the runn
     write("scripts/ci-rust-cache-key.mjs", "one\n"); write("scripts/ci-mbx-cargo.mjs", "one\n");
     const first = key();
     assert.deepEqual(key(), first);
+    // The cleanup finds the caches it may delete by this key shape.
+    assert.equal(cacheName(first.key), "ci-rust");
     write("src-tauri/gpui/src/main.rs", "two\n"); write("README.md", "two\n");
     assert.deepEqual(key(), first);
     write("src-tauri/src/lib.rs", "two\n");
@@ -644,4 +647,38 @@ test("main records the parity coverage map from every parity job", () => {
   assert.ok(merge.includes(`run: bun e2e/parity/coverage-map.ts merge ${mapPath} shard-maps/*/*/coverage-map.json`));
   const uploaded = merge.slice(merge.indexOf("- name: Upload coverage map"));
   assert.ok(uploaded.includes(`path: ${mapPath}`) && uploaded.includes("name: parity-coverage-map\n"));
+});
+// Ways the cleanup could go wrong: it deletes the cache in use, it takes a longer name such
+// as ci-server-backend for a version of ci-server, it deletes a cache of another ref or of
+// another tool, it depends on the order GitHub lists caches in, or it deletes nothing.
+test("cache cleanup deletes only main's Rust build caches that a newer one of the same name replaced", () => {
+  const [a, b, c] = ["a", "b", "c"].map((digit) => digit.repeat(64));
+  const cache = (id, key, created_at, ref = "refs/heads/main") => ({ id, key, ref, created_at });
+  const caches = [
+    cache(1, `mbx-ci-server-${a}-${a}`, "2026-11-13T10:00:00Z"),
+    cache(2, `mbx-ci-server-backend-${a}-${a}`, "2026-11-13T09:00:00Z"),
+    // A later save replaces an earlier one, also when the compiler digest changed.
+    cache(3, `mbx-ci-server-${b}-${c}`, "2026-11-13T11:00:00Z"),
+    // The newer cache is listed first. Compared as text, "00Z" would sort after "00.5Z".
+    cache(4, `mbx-parity-${a}-${b}`, "2026-11-13T12:00:00.5Z"),
+    cache(5, `mbx-parity-${a}-${a}`, "2026-11-13T12:00:00Z"),
+    cache(6, `mbx-parity-coverage-${a}-${a}`, "2026-11-13T08:00:00Z"),
+    cache(7, `mbx-ci-server-${a}-${b}`, "2026-11-13T07:00:00Z", "refs/heads/release/app-v1.0.0"),
+    cache(8, `mbx-ci-server-${a}-${b}`, "2026-11-13T07:00:00Z", "refs/pull/1/merge"),
+    cache(9, `Linux-bun-${a}`, "2026-11-13T07:00:00Z"),
+    cache(10, `Linux-bun-${b}`, "2026-11-13T07:30:00Z"),
+    cache(11, `mbx-parity-${a}`, "2026-11-13T07:00:00Z"),
+  ];
+  const deleted = (list) => supersededCaches(list).map(({ id }) => id).sort();
+  assert.deepEqual(deleted(caches), [1, 5]);
+  assert.deepEqual(deleted(caches.toReversed()), [1, 5]);
+});
+test("cache cleanup runs after workflows that exist", () => {
+  const directory = new URL("../.github/workflows/", import.meta.url);
+  const read = (file) => readFileSync(new URL(file, directory), "utf8").replaceAll("\r\n", "\n");
+  const names = readdirSync(directory).map((file) => /^name: (.+)$/m.exec(read(file))?.[1]);
+  const followed = /^ {4}workflows: \[(.+)\]$/m.exec(read("rust-cache-cleanup.yml"))?.[1].split(", ");
+  // A renamed workflow would stop starting the cleanup without any failure.
+  assert.ok(followed?.length, "the cleanup lists the workflows it follows on one line");
+  for (const name of followed) assert.ok(names.includes(name), `no workflow is named ${name}`);
 });
