@@ -277,3 +277,15 @@ jobs:
 
       - name: Run native desktop smoke
         run: bun run e2e:desktop-smoke
+
+      # The suite writes its WDIO log to a file under e2e/artifacts, so without this upload a
+      # failed run shows only "node failed (1)".
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: e2e-desktop-smoke-${{ matrix.os }}-${{ github.run_id }}
+          path: |
+            e2e/artifacts/**
+            .artifacts/e2e/**
+          if-no-files-found: ignore
