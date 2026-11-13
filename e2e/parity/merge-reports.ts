@@ -39,6 +39,21 @@ export function mergeReports(contract: Contract, values: unknown[]): Report[] {
 	return merged;
 }
 
+/**
+ * A shard uploads its artifact as `<name>-attempt-<n>`. "Re-run failed jobs" keeps the passed
+ * shards' artifacts from the earlier attempt and adds new ones for the shards it ran again, so
+ * the newest attempt of each shard is its result, whether it passed or failed.
+ */
+export function newestAttempts(names: string[]): string[] {
+	const newest = new Map<string, { name: string; attempt: number }>();
+	for (const name of names) {
+		const match = /^(.*)-attempt-(\d+)$/.exec(name);
+		const [shard, attempt] = match ? [string(match[1]), Number(match[2])] : [name, 0];
+		if (attempt >= (newest.get(shard)?.attempt ?? 0)) newest.set(shard, { name, attempt });
+	}
+	return [...newest.values()].map(({ name }) => name);
+}
+
 /** Reads downloaded artifacts. Each run must have finished and passed its declared driver. */
 export async function collectReports(root: string): Promise<unknown[]> {
 	const reports: unknown[] = [];
@@ -56,7 +71,8 @@ export async function collectReports(root: string): Promise<unknown[]> {
 		}
 		for (const entry of entries) if (entry.isDirectory()) await visit(join(directory, entry.name));
 	}
-	await visit(root);
+	const artifacts = (await readdir(root, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map(({ name }) => name);
+	for (const artifact of newestAttempts(artifacts)) await visit(join(root, artifact));
 	if (!reports.length) throw new Error(`No parity reports found: ${root}`);
 	return reports;
 }

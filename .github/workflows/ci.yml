@@ -97,7 +97,9 @@ jobs:
             const gpui = 'src-tauri :!src-tauri/server src/lib/*-workspace.json';
             // The server also embeds the browser build. The frontend tree is left out on
             // purpose: with it, every frontend push to main would upload the server cache
-            // (896 MB after run 43325597142) again for the one crate that embeds it.
+            // again (896 MB after run 43325597142). Without it, a build recompiles the
+            // crates that embed the assets: each Cargo step of the server task finished
+            // in under 20 s that way in run 43393348258.
             const server = 'src-tauri :!src-tauri/gpui';
             const tasks = [
               { task: 'docs', scope: 'docs' },

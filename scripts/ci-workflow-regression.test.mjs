@@ -415,6 +415,8 @@ test("the Rust cache key follows the build inputs, the compiler and the runner i
     writeFileSync(join(root, "bin", "rustc"), "#!/bin/sh\necho \"rustc $RUSTC_VERSION\"\n");
     chmodSync(join(root, "bin", "rustc"), 0o755);
     write("workflow.yml", "one\n"); write("src-tauri/src/lib.rs", "one\n"); write("src-tauri/gpui/src/main.rs", "one\n"); write("README.md", "one\n");
+    // The real checkout always tracks the two scripts the key includes, so the fixture does too.
+    write("scripts/ci-rust-cache-key.mjs", "one\n"); write("scripts/ci-mbx-cargo.mjs", "one\n");
     const first = key();
     assert.deepEqual(key(), first);
     write("src-tauri/gpui/src/main.rs", "two\n"); write("README.md", "two\n");
@@ -429,6 +431,8 @@ test("the Rust cache key follows the build inputs, the compiler and the runner i
     assert.equal(key({ ImageVersion: "2" }).prefix, first.prefix);
     assert.notEqual(key({ RUSTC_VERSION: "2" }).prefix, first.prefix);
     assert.notEqual(run({}, ["missing"]).status, 0);
+    assert.notEqual(run({}, ["workflow.yml", "src-tauri", "missing"]).status, 0);
+    assert.equal(run({}, ["workflow.yml", "src-tauri", ":!missing"]).status, 0);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 test("whitespace check rejects bad diffs even without an available base", () => {
@@ -520,7 +524,9 @@ test("parity jobs run the full suite on pull requests and on main, and keep the 
   assert.equal(runners(4, ""), "1 3");
   assert.equal(runners(1, ""), "1 1");
   assert.match(suite, /^ {10}PARITY_DRIVER: \$\{\{ inputs\.driver \}\}$/m);
-  assert.match(result, /pattern: parity-pull_request-\*-attempt-\$\{\{ github\.run_attempt \}\}/);
+  // Every attempt's artifacts: "Re-run failed jobs" leaves the passed shards' reports in the
+  // earlier attempt, and merge-reports.ts keeps the newest attempt of each shard.
+  assert.match(result, /^ {10}pattern: parity-pull_request-\*$/m);
   assert.match(result, /run: bun e2e\/parity\/merge-reports\.ts parity-reports/);
   for (const name of ["Checkout", "Setup Bun", "Download driver reports", "Validate merged driver reports"]) {
     assert.ok(result.includes(`- name: ${name}\n        if: \${{ needs.pull-request-web.result == 'success' }}`));
