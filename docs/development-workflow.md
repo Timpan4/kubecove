@@ -279,6 +279,49 @@ times in GitHub Actions on comparable revisions. Include both cold and warm
 runs. Local workflow regression checks validate orchestration, not hosted cache
 hits or an end-to-end speedup.
 
+## Benchmark selection on pull requests
+
+CodSpeed runs every frontend benchmark and all six Rust shards on pushes to
+`main` and manual runs, keeping complete baselines. Pull requests select frontend
+benchmark files whose transitive imports changed. The selector uses Vite's parser
+and resolver with `vitest.config.ts`, including aliases, extension lookup,
+re-exports and literal dynamic imports. It does not execute the benchmark code.
+Computed imports, globs, runtime file reads, unsupported source formats and
+unresolved imports keep their dependent benchmarks selected on every PR.
+
+Lockfiles, package manifests, Vitest, Vite, Svelte and TypeScript configuration,
+environment files and the benchmark harness select every frontend file. Shared
+fixtures retain the conservative full-lane rule. Other fixture modules under
+`benchmarks/` select their importers. Unrelated E2E and test files, documents and
+workflow files select no benchmarks unless imported by one.
+
+The CodSpeed workflow and `.github/actions/codspeed-run/` select both lanes.
+Changes elsewhere under `.github/` do not select a lane. The selection scripts and
+their orchestration tests select both lanes; frontend import-resolution and
+grouping scripts select the frontend lane. Rust's cache-key and Cargo-shim scripts
+select only Rust. Rust keeps its six-shard selection for backend source, manifests,
+toolchain and Cargo configuration changes. The separate GPUI and server
+workspaces do not select Rust benchmarks.
+
+Frontend jobs use the measured file and case durations from run `43322953935` in
+`scripts/codspeed-benchmark-suites.mjs`. The selector chooses the fewest groups
+whose predicted duration fits within that run's existing eight-group maximum.
+It preserves the case filters and benchmark identities. No selected file means
+no frontend job. New files without measurements run unfiltered in one job,
+pending measured durations. A selection failure runs all frontend files without
+name filters and all Rust shards. Cache keys, saving and access modes are unchanged.
+
+The detection summary lists every frontend file's selection reason and the Rust
+shards. The gate summary records job results. Failed, cancelled or unexpectedly
+skipped selected jobs fail `CodSpeed Performance Analysis`; legitimate empty
+selections pass. Labeled same-repository release PRs retain their existing skip
+policy. Unchanged benchmarked code does not block a merge on performance results.
+
+CodSpeed [fills omitted results from the baseline and marks them skipped](https://codspeed.io/docs/features/partial-runs).
+Uploads stay in one workflow with the same authentication, following its
+[sharding contract](https://codspeed.io/docs/features/sharded-benchmarks).
+Removed benchmarks remain skipped until archived in CodSpeed.
+
 ## Verification Before Completion
 
 Run the smallest checks that cover the work:
