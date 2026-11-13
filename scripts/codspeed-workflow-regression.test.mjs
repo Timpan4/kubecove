@@ -42,7 +42,7 @@ function detect(paths, overrides = {}) {
   const root = mkdtempSync(join(tmpdir(), "kubecove-codspeed-"));
   const output = join(root, "output").replaceAll("\\", "/");
   try {
-    const result = bash(`git() { if [[ "$1" == "diff" ]]; then if [[ "$GIT_FAILURE" == true ]]; then return 1; fi; printf '%s' "$CHANGED_PATHS" | tr '\\n' '\\0'; fi; }\nnode() { if [[ "$NODE_FAILURE" == true ]]; then return 1; fi; command node "$@"; }\n${runBlock(job("changes"))}`, {
+    const result = bash(`git() { if [[ "$1" == "diff" ]]; then if [[ "$GIT_FAILURE" == true ]]; then return 1; fi; printf '%s' "$CHANGED_PATHS" | tr '\\n' '\\0'; fi; }\nnode() { if [[ "$NODE_FAILURE" == true ]]; then return 1; fi; if [[ -n "\${NODE_OUTPUT+set}" ]]; then printf '%s' "$NODE_OUTPUT" >> "$GITHUB_OUTPUT"; return 0; fi; command node "$@"; }\n${runBlock(job("changes"))}`, {
       BASE_SHA: "a".repeat(40), HEAD_SHA: "b".repeat(40), EVENT_NAME: "pull_request",
       DEPENDENCIES_RESULT: "success", SELECTION_CHECK_RESULT: "success",
       GIT_FAILURE: "false", NODE_FAILURE: "false",
@@ -123,6 +123,37 @@ for (const overrides of [{ EVENT_NAME: "push" }, { EVENT_NAME: "workflow_dispatc
     assert.deepEqual(detect([], overrides), { frontend: "true", rust: "true" });
   });
 }
+
+// Failure mode: the selector exits 0 with missing, extra or contradictory outputs, and the
+// benchmark jobs read them: an unparsable matrix, or a frontend lane switched off by accident.
+for (const [name, output] of [
+  ["nothing", ""],
+  ["a matrix that is not JSON", "frontend=true\nrust=false\nfrontend_matrix=not-json\n"],
+  ["a matrix without include", "frontend=false\nrust=false\nfrontend_matrix={}\n"],
+  ["an empty matrix with the frontend lane on", 'frontend=true\nrust=false\nfrontend_matrix={"include":[]}\n'],
+  ["jobs with the frontend lane off", 'frontend=false\nrust=false\nfrontend_matrix={"include":[{"group":0,"selection":""}]}\n'],
+  ["a job without a selection", 'frontend=true\nrust=false\nfrontend_matrix={"include":[{"group":0}]}\n'],
+  ["a flag that is not a boolean", 'frontend=false\nrust=maybe\nfrontend_matrix={"include":[]}\n'],
+  ["a missing Rust flag", 'frontend=false\nfrontend_matrix={"include":[]}\n'],
+  ["a fourth output", 'frontend=false\nrust=false\nfrontend_matrix={"include":[]}\nrust=true\n'],
+]) {
+  test(`runs both suites when the selector succeeds with ${name}`, () => {
+    assert.deepEqual(detect([], { NODE_OUTPUT: output }), { frontend: "true", rust: "true" });
+  });
+}
+
+// Failure mode: the selector's own error handling selects nothing instead of everything.
+test("the selector runs everything when it cannot read the changed paths", () => {
+  const root = mkdtempSync(join(tmpdir(), "kubecove-codspeed-detect-"));
+  try {
+    const output = join(root, "output");
+    const result = spawnSync(process.execPath, ["scripts/codspeed-detect.mjs", join(root, "missing")], { cwd: new URL("../", import.meta.url), env: { ...process.env, EVENT_NAME: "pull_request", GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: "", RELEASE_PR: "false", SELECTION_FALLBACK: "" }, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(readFileSync(output, "utf8"), 'frontend=true\nrust=true\nfrontend_matrix={"include":[{"group":0,"selection":""}]}\n');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 // Failure mode: a selector setup step that fails the detection job skips every benchmark job
 // and fails the gate, where the fallback would have run everything.

@@ -62,6 +62,49 @@ test("import closures select dependants and conservatively retain unknown depend
   }
 });
 
+// Failure modes: Vitest runs setup files the benchmark never imports, and a deleted module
+// can leave its importers resolving to another file, so no current closure names the change.
+test("setup files and deleted modules that another file replaces select their benchmarks", async () => {
+  const root = mkdtempSync(join(tmpdir(), "codspeed-selection-"));
+  const files = ["benchmarks/a.bench.ts", "benchmarks/b.bench.ts"];
+  const sources = {
+    "vitest.config.ts": 'export default { test: { setupFiles: ["./setup.ts"], globalSetup: "./global.ts" } };',
+    "setup.ts": 'import "./setup-helper";',
+    "setup-helper.ts": "export const helper = 1;",
+    "global.ts": 'import "./global-helper";',
+    "global-helper.ts": "export const helper = 2;",
+    "benchmarks/a.bench.ts": 'import "../src/value";',
+    "benchmarks/b.bench.ts": 'import "../src/other";',
+    "src/value.ts": "export const value = 1;",
+    "src/value/index.ts": "export const value = 2;",
+    "src/other.ts": "export const other = 1;",
+  };
+  try {
+    for (const [path, source] of Object.entries(sources)) {
+      mkdirSync(join(root, path, ".."), { recursive: true });
+      writeFileSync(join(root, path), source);
+    }
+    const select = async (paths) => (await selectBenchmarks(paths, { root, files })).selected;
+    assert.deepEqual(await select(["src/other.ts"]), [files[1]]);
+    assert.deepEqual(await select(["src/value.ts"]), [files[0]]);
+    for (const path of ["setup.ts", "setup-helper.ts", "global.ts", "global-helper.ts"]) assert.deepEqual(await select([path]), files, path);
+    // An unrelated deletion selects nothing; a deletion with a replacement selects everything.
+    assert.deepEqual(await select(["src/gone.ts", "docs/gone.json"]), []);
+    rmSync(join(root, "src/value.ts"));
+    const replaced = await selectBenchmarks(["src/value.ts"], { root, files });
+    assert.deepEqual(replaced.selected, files);
+    assert.match(replaced.decisions[0].reason, /deleted module that another file now resolves for: src\/value\.ts/);
+    assert.equal(replaced.rust, false);
+    rmSync(join(root, "src/value/index.ts"));
+    writeFileSync(join(root, "src/value.js"), "export const value = 3;");
+    assert.deepEqual(await select(["src/value/index.ts"]), files);
+    rmSync(join(root, "setup.ts"));
+    assert.deepEqual(await select(["src/other.ts"]), files);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("selected files use the fewest groups meeting the measured full-run duration", () => {
   const files = benchmarkFiles();
   const ceiling = Math.max(...benchmarkGroups(files, 8).map((group) => group.seconds));

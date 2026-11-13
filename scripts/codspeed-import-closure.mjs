@@ -63,11 +63,20 @@ export async function importClosures(root, files) {
     return result;
   }
 
+  // Vitest runs these files for every benchmark, and the configuration only names them.
+  const setup = [];
+  const setupReasons = [];
+  for (const entry of [config.test?.setupFiles, config.test?.globalSetup].flat().filter(Boolean)) {
+    const resolved = await resolveId(String(entry), resolve(root, "vitest.config.ts"), false, true);
+    if (resolved && isAbsolute(resolved) && !resolved.includes("?")) setup.push(resolved);
+    else setupReasons.push(`vitest.config.ts: unresolved setup file (${entry})`);
+  }
+
   const closures = new Map();
   for (const file of files) {
     const visited = new Set(config.configFileDependencies);
-    const reasons = new Set();
-    const pending = [resolve(root, file)];
+    const reasons = new Set(setupReasons);
+    const pending = [resolve(root, file), ...setup];
     while (pending.length) {
       const path = pending.pop();
       if (visited.has(path)) continue;

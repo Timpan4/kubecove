@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { benchmarkFiles, benchmarkGroups } from "./codspeed-benchmark-suites.mjs";
 
@@ -17,9 +19,24 @@ export function rustAffected(path) {
     /\.rs$|(^|\/)(Cargo\.(lock|toml)|rust-toolchain(\.toml)?)$|(^|\/)\.cargo\//.test(path);
 }
 
+// Vite's default resolve.extensions, the ones an import may leave out.
+const resolvedExtensions = ["mjs", "js", "mts", "ts", "jsx", "tsx", "json"];
+
+// Closures come from the current tree, so they cannot name a deleted file. When another file
+// answers the same extensionless import, such as value/index.ts after value.ts is deleted, the
+// importers stay unchanged and resolve, and nothing else reports the new implementation.
+function replacedByAnotherFile(root, path) {
+  const stem = new RegExp(`^(.*)\\.(${resolvedExtensions.join("|")})$`).exec(path)?.[1];
+  if (stem === undefined || existsSync(join(root, path))) return false;
+  const stems = [stem, `${stem}/index`, ...(stem.endsWith("/index") ? [stem.slice(0, -"/index".length)] : [])];
+  return stems.some((candidate) => resolvedExtensions.some((extension) => existsSync(join(root, `${candidate}.${extension}`))));
+}
+
 export async function selectBenchmarks(paths, { root = repository, files = benchmarkFiles(), fullReason } = {}) {
   const global = paths.filter(frontendGlobal);
-  const reason = fullReason || (global.length ? `shared benchmark input: ${global.join(", ")}` : undefined);
+  const replaced = paths.filter((path) => replacedByAnotherFile(root, path));
+  const reason = fullReason || (global.length ? `shared benchmark input: ${global.join(", ")}` : undefined) ||
+    (replaced.length ? `deleted module that another file now resolves for: ${replaced.join(", ")}` : undefined);
   const rustPaths = paths.filter(rustAffected);
   const rust = Boolean(fullReason || rustPaths.length);
   const decisions = [];

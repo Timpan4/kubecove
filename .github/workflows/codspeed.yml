@@ -87,7 +87,25 @@ jobs:
               if ! git diff --name-only --no-renames -z "${BASE_SHA}" "${HEAD_SHA}" > "${changed}"; then fallback; exit 0; fi
             fi
           fi
-          if ! node scripts/codspeed-detect.mjs "${changed}"; then fallback; fi
+          # The selector writes to a file of its own, and its outputs count only when all
+          # three are present and the matrix agrees with the frontend flag.
+          selection="${RUNNER_TEMP}/codspeed-selection"
+          : > "${selection}"
+          valid() {
+            local frontend rust
+            [[ "$(grep -c '' "${selection}")" == 3 ]] || return 1
+            frontend="$(sed -n 's/^frontend=//p' "${selection}")"
+            rust="$(sed -n 's/^rust=//p' "${selection}")"
+            [[ "${frontend}" == true || "${frontend}" == false ]] || return 1
+            [[ "${rust}" == true || "${rust}" == false ]] || return 1
+            sed -n 's/^frontend_matrix=//p' "${selection}" | jq -e --arg frontend "${frontend}" \
+              '(.include | type == "array") and ((.include | length > 0) == ($frontend == "true")) and all(.include[]; (.group | type == "number") and (.selection | type == "string"))' > /dev/null
+          }
+          if GITHUB_OUTPUT="${selection}" node scripts/codspeed-detect.mjs "${changed}" && valid; then
+            cat "${selection}" >> "${GITHUB_OUTPUT}"
+          else
+            fallback
+          fi
 
   frontend:
     name: Run frontend benchmarks (${{ matrix.group }})
