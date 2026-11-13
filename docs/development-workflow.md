@@ -187,7 +187,7 @@ and the action then skips the export and upload. When every run saved, that step
 took 14 to 200 seconds per job, and one pull request run stored 6 GB of the
 repository's 10 GB cache quota. A changed build restores the newest cache with
 the same compiler and rebuilds what changed. Only default-branch pushes save.
-Pull requests restore main's cache and never save: one pull request push that
+Pull requests restore main's compiler cache and never save compiler bundles: one pull request push that
 saved stored about 7 GB, and GitHub evicts the least recently used caches above
 the quota, which would remove the caches main keeps for other pull requests.
 A save under a new key leaves the previous cache in place, so
@@ -212,6 +212,84 @@ CI builds set `CARGO_PROFILE_DEV_DEBUG=line-tables-only`. Backtraces keep file
 and line, and the compiler output that each job links, caches and restores is
 smaller. Builds run through `mbx`, while `cargo tree` remains a direct inspection
 command. The Cargo shim also wraps Rust builds launched by Bun.
+
+CI records successful Rust verification separately from compiler objects. Each
+matrix entry carries `inputs` for its compiler bundle and `passInputs` for
+result reuse. `scripts/ci-rust-cache-key.mjs` computes both keys, using names
+`ci-<task>` and `ci-<task>-pass`. Both include `ci.yml` explicitly, the actual
+compiler identity and the existing key/wrapper scripts. Compiler-bundle inputs
+retain the lists from before pass reuse. Wider pass inputs never refresh a
+compiler bundle.
+
+In this table, `shared` means `tests scripts/ci-rust-pass.mjs ':(top,glob)*'
+':(top,glob).c*/**'`. Root files cover package, lockfile, environment and toolchain
+configuration; the dot-directory pattern covers `.cargo` and `.config` and also
+matches the tracked `.claude` tree. Other `.github` files are excluded. The only
+GitHub input is the explicit `.github/workflows/ci.yml`: CI currently uses no
+local actions or reusable workflows. Introducing one must add its source to pass
+inputs, which the workflow regression checks enforce.
+
+| Task | Compiler-bundle inputs | Pass inputs |
+| --- | --- | --- |
+| rust | `src-tauri :!src-tauri/gpui :!src-tauri/server` | Compiler inputs plus `shared` |
+| gpui-clippy | `src-tauri :!src-tauri/server src/lib/*-workspace.json` | Compiler inputs plus `shared` |
+| gpui-test | `src-tauri :!src-tauri/server src/lib/*-workspace.json` | Compiler inputs plus `shared` |
+| server-backend | `src-tauri :!src-tauri/gpui :!src-tauri/server` | `src-tauri :!src-tauri/gpui` plus `shared` |
+| server | `src-tauri :!src-tauri/gpui` | Compiler inputs plus `shared src public e2e scripts deploy` |
+
+The server's generated `dist/` comes from its audited browser inputs. The
+backend pass includes the server manifest and lockfile that `cargo tree` reads.
+GPUI pass inputs include embedded workspace JSON, and every pass includes root
+test fixtures. These wider inputs affect only pass records. The edited workflow
+itself changes all five compiler keys once because it was already a build input.
+
+The pass-record cache key is
+`passed-<pass-input key>-<runner-environment SHA-256>-<run ID>-<run attempt>`.
+The environment digest includes `RUNNER_OS`, `RUNNER_ARCH`, `ImageOS` and
+`ImageVersion`, so two hosted images in a rollout can each record a pass for
+identical repository inputs. Those fields are also compared inside the tiny
+record. No stored pass key starts with `mbx-`, so the compiler-cache cleanup
+script ignores it.
+
+A cache entry cannot be replaced, and the record is saved before the job's post
+hooks run. A source job that fails in a post hook leaves a record that every
+lookup rejects. The run ID and attempt in the key let the next run that passes
+save its own record. A lookup restores the newest record under the key without
+the run suffix, and accepts it only when the record names the run in the
+restored key and that run's job succeeded.
+
+Only `pull_request` events restore records. Relevant main pushes and manual
+dispatches always run the selected tasks and record passes, so main keeps
+refreshing compiler bundles. No job's `cache-mode` or mbx save/restore policy
+changes. Each task looks up its pass after checkout, Rust setup and both key
+computations. A reusable record matches the task, pass-input key, environment
+and the run attempt in its restored key. Missing image or run identity,
+malformed records, cache errors or an unavailable source-job API run
+verification.
+
+Action cleanup hooks run after the record save. Reuse therefore asks GitHub's
+jobs API whether the originating `CI <task>` job completed successfully,
+including its post hooks. The checks job has read-only Actions permission. It
+reads the API's first page and reuses a pass only when that page lists every job
+of the run attempt, so a second job of the same name cannot hide on a later
+page. An unlisted or unfinished task runs again.
+The owner selected a deadline of ten seconds for this optional lookup. It covers
+both response headers and the JSON body. An aborted lookup runs verification.
+Completion consumes that successful decision without another API request.
+
+A hit skips system-package setup, Bun setup and installation, compiler-cache
+restore, builds, tests, Clippy and the headless report upload. Dependency audits
+and their lockfile-coverage check still run in the selected `rust` task because
+the advisory database changes independently. The final task guard requires
+successful verification outcomes or the proved pass decision with matching
+skipped build steps. The log names the task, full image-specific pass cache key
+and the source run URL.
+
+[GitHub cache scopes](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#restrictions-for-accessing-a-cache)
+isolate PR records from other PRs and from main. Main's records are available to
+PRs, while a PR's saved record is available to later runs of that PR. Cache
+eviction only causes verification to run again. Hits still briefly occupy a
+job slot for setup and lookup; hosted runs must measure the queue savings.
 
 Change detection selects a verification matrix. It disables fail-fast so a
 failed task does not cancel the remaining checks. Checks that build the same
@@ -238,7 +316,8 @@ supply missing system libraries.
 Nix retains its existing push/manual gate and runs after the matrix, so it does
 not exceed the same concurrency budget. The required check remains
 `Typecheck and test`. It requires successful change detection, the frontend job,
-every selected matrix task and Nix job to pass. Unexpected skips, failures and cancellations
+every selected matrix task and Nix job to pass. A reused Rust task remains a
+successful matrix job with explicit pass-record evidence. Unexpected job skips, failures and cancellations
 fail the gate. Same-repository labeled release PRs retain their existing skip
 policy.
 
@@ -266,7 +345,8 @@ Rust dependency cache.
 
 The frontend, headless server, and E2E jobs share Bun's download cache on each
 OS. They still run `bun install --frozen-lockfile` after restoring it. Caches
-never replace a build or test gate, and a cache miss runs the same checks.
+do not replace verification. Compiler-cache misses run the same checks; only the
+separate exact-input pass records above can reuse completed Rust verification.
 
 PR runs skip Nix builds, including release PRs. Relevant pushes to `main` and
 manual CI runs retain the Nix build gate. The daily Nix lock refresh builds its
