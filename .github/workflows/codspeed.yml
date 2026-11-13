@@ -75,6 +75,9 @@ jobs:
               continue
             elif [[ "${path}" == src-tauri/* ]]; then
               rust=true
+            elif [[ "${path}" == scripts/ci-rust-cache-key.mjs || "${path}" == scripts/ci-mbx-cargo.mjs ]]; then
+              # The Rust shards run these two scripts to key and wire their build cache. No frontend benchmark uses them.
+              rust=true
             else
               if [[ "${path}" =~ \.(svelte|js|jsx|mjs|cjs|ts|tsx|mts|cts|json)$ || "${path}" =~ (^|/)bun\.lock$ || "${path}" == src/* || "${path}" == benchmarks/* ]]; then
                 frontend=true

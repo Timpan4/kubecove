@@ -7,10 +7,15 @@
 //
 // The runner image is not part of the key. GitHub runs two image versions side by side
 // while it rolls one out, so with the image in the key every cache was saved once per
-// image: about 14 GB against the repository's 10 GB quota, and GitHub then evicted caches
-// that main still used. The image does not change what the cache holds: a job on one image
-// that restored the other image's cache got the same 595 hits and 15 misses as an exact
-// hit (CI runs 43411879023 and 43414482769).
+// image: about 14 GB against the repository's 10 GB quota, and caches that main still used
+// went missing, which fits GitHub's eviction of the least recently used caches. On the two
+// images seen then, a job that restored the other image's cache got the same 595 hits and
+// 15 misses as an exact hit (CI runs 43411879023 and 43414482769).
+//
+// The key selects a bundle; mbx still checks every cached action against its own inputs,
+// which include the C compiler, the linker and libc. An image that changes those gives
+// misses, not a wrong build. The exact key hit then skips the save, so those misses repeat
+// until an input changes on main and the next run saves a fresh bundle.
 //
 // Usage: node scripts/ci-rust-cache-key.mjs <name> <pathspec>...
 // Pathspecs are Git pathspecs, so ":!src-tauri/gpui" leaves a tree out. Pass the calling
