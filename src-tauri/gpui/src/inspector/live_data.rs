@@ -707,6 +707,9 @@ impl Inspector {
         patch: super::live_rows::Patch,
         cx: &mut Context<Self>,
     ) {
+        if patch.watch.is_some() {
+            self.invalidate_topology(&patch.scope, cx);
+        }
         self.live.pending.push(patch);
         cx.notify();
     }

@@ -341,9 +341,10 @@ function topologyFor(args: MockArgs): ResourceTopology {
 	const cluster = args?.clusterContext ?? "mock-dev";
 	const namespaces = new Set(args?.namespaces ?? []);
 	const mode = args?.mode === "networkFlow" ? "networkFlow" : "ownership";
+	const rows = liveResources(resourcesForCluster(cluster));
 	return mode === "networkFlow"
-		? networkTopology(cluster, namespaces, resourcesForCluster(cluster))
-		: ownershipTopology(cluster, namespaces, resourcesForCluster(cluster));
+		? networkTopology(cluster, namespaces, rows)
+		: ownershipTopology(cluster, namespaces, rows);
 }
 
 function metrics(): ResourceMetricsSummary {

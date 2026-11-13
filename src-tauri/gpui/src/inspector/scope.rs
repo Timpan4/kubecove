@@ -3,7 +3,7 @@
 use super::load_trace::{LoadKind, LoadTrace};
 use super::scope_arrivals::prepare_arrival;
 use super::scope_load::{all_failed, union_namespaces};
-use super::{Inspector, Load, map};
+use super::{Inspector, Load};
 use crate::backend::{Read, Scope, ScopeResult};
 use crate::model::PreparedRows;
 use crate::workspaces::reads::{ContextResults, Settled, settle};
@@ -289,62 +289,6 @@ impl Inspector {
         }
         self.map.network = network;
         self.load_topology(cx);
-    }
-
-    pub(super) fn load_topology(&mut self, cx: &mut Context<Self>) {
-        self.topology_task.take();
-        if !matches!(
-            self.page,
-            super::Page::Resources | super::Page::ClusterOverview
-        ) {
-            return;
-        }
-        self.map.cache.take();
-        // The map shows one workspace context, chosen in the "Map context" select.
-        let scope = Scope {
-            context: self.map_context(),
-            namespace: self.scope.namespace.clone(),
-        };
-        self.map_trace = Some(LoadTrace::start(
-            LoadKind::Map,
-            &scope.context,
-            scope.namespace.as_deref(),
-        ));
-        self.map.replace_topology(map::TopologyLoad::Loading);
-        let request = self.request.clone();
-        let network = self.map.network;
-        let backend = self.backend.clone();
-        let timings = self.timings.clone();
-        self.topology_task = Some(cx.spawn(async move |this, cx| {
-            let result = crate::read_retry::cancelled_read(
-                || {
-                    let read = if network {
-                        backend.network_topology(scope.clone())
-                    } else {
-                        backend.topology(scope.clone())
-                    };
-                    timings.measure("list_resource_topology", read)
-                },
-                |delay| cx.background_executor().timer(delay),
-            )
-            .await;
-            let _ = this.update(cx, |this, cx| {
-                if !Rc::ptr_eq(&this.request, &request) || this.map.network != network {
-                    return;
-                }
-                let apply_started = Instant::now();
-                this.map.replace_topology(match result {
-                    Ok(topology) => map::TopologyLoad::Ready(topology),
-                    Err(error) => map::TopologyLoad::Failed(error),
-                });
-                // The resource render rebuilds the map before drawing it, once
-                // per frame, so a scope read applied in the same frame costs no
-                // second build.
-                cx.notify();
-                this.note_apply(LoadKind::Map, apply_started.elapsed(), true);
-            });
-        }));
-        cx.notify();
     }
 
     pub(super) fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>) {

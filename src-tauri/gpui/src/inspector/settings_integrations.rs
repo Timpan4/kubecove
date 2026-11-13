@@ -171,7 +171,7 @@ impl Inspector {
         self.relink_active_workspace(active);
         self.context_task.take();
         self.scope_load.cancel();
-        self.topology_task.take();
+        self.map.read.cancel();
         self.request = std::rc::Rc::new(());
         self.close_detail(cx);
         self.live.reset_scope();

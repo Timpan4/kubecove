@@ -8,6 +8,7 @@ mod focus;
 mod links;
 mod motion;
 mod paint;
+mod reads;
 pub(super) mod spike;
 mod viewport;
 use paint::PreparedEdges;
@@ -38,6 +39,7 @@ type CachedEdges = (Rc<topology::View>, Rc<PreparedEdges>);
 
 pub(super) struct MapState {
     pub topology: TopologyLoad,
+    pub(super) read: reads::ReadState,
     node_ids: Vec<SharedString>,
     pub(super) expanded: HashSet<String>,
     pub network: bool,
@@ -128,6 +130,7 @@ impl MapState {
     pub fn new() -> Self {
         Self {
             topology: TopologyLoad::Loading,
+            read: Default::default(),
             node_ids: Vec::new(),
             expanded: HashSet::new(),
             network: false,
@@ -604,6 +607,20 @@ impl Inspector {
             .min_h(px(400.))
             .shadow_sm()
             .child(header)
+            .when_some(self.map.read.error.as_ref(), |panel, error| {
+                panel.child(
+                    ui::muted(ui::xs(format!(
+                        "Map refresh failed. Showing last observed graph. {}",
+                        error.message
+                    )))
+                    .id("map-refresh-error")
+                    .test_support()
+                    .role(gpui_kit::Role::Alert)
+                    .aria_label("Map refresh failed. Showing last observed graph.")
+                    .px(px(12.))
+                    .py(px(8.)),
+                )
+            })
             .children(body)
     }
 }
