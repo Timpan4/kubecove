@@ -290,9 +290,9 @@ Computed imports, globs, runtime file reads, unsupported source formats and
 unresolved imports keep their dependent benchmarks selected on every PR.
 
 Lockfiles, package manifests, Vitest, Vite, Svelte and TypeScript configuration,
-environment files and the benchmark harness select every frontend file. Shared
-fixtures retain the conservative full-lane rule. Other fixture modules under
-`benchmarks/` select their importers. Unrelated E2E and test files, documents and
+environment files and the benchmark harness select every frontend file. Fixture
+modules select their importers through the same closure. Rust retains its
+conservative full-lane fixture rule. Unrelated E2E and test files, documents and
 workflow files select no benchmarks unless imported by one.
 
 The CodSpeed workflow and `.github/actions/codspeed-run/` select both lanes.

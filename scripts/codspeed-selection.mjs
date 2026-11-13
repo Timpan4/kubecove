@@ -5,7 +5,7 @@ const repository = fileURLToPath(new URL("../", import.meta.url));
 const sharedWorkflow = (path) => path === ".github/workflows/codspeed.yml" || path.startsWith(".github/actions/codspeed-run/");
 const sharedSelector = (path) => ["scripts/codspeed-detect.mjs", "scripts/codspeed-selection.mjs", "scripts/codspeed-selection.test.mjs", "scripts/codspeed-workflow-regression.test.mjs"].includes(path);
 const fixture = (path) => /(^|\/)fixtures\//.test(path);
-const frontendGlobal = (path) => sharedWorkflow(path) || fixture(path) ||
+const frontendGlobal = (path) => sharedWorkflow(path) ||
   /(^|\/)(package\.json|bun\.lock|(?:vitest|vite|svelte)\.config\.[^/]+|tsconfig[^/]*\.json|\.env(?:\.[^/]+)?)$/.test(path) ||
   path === "benchmarks/benchmark.ts" || path.startsWith("scripts/codspeed-");
 

@@ -14,7 +14,8 @@ test("import closures select dependants and conservatively retain unknown depend
   const sources = {
     "vitest.config.ts": `export default { resolve: { alias: { "@": ${JSON.stringify(join(root, "src"))} } } };`,
     "benchmarks/a.bench.ts": 'import "@/barrel"; import "./fixture";',
-    "benchmarks/b.bench.ts": 'import("@/literal");',
+    "benchmarks/b.bench.ts": 'import("@/literal"); import "../fixtures/shared";',
+    "fixtures/shared.ts": 'export const shared = 1;',
     "benchmarks/fixture.ts": 'export const fixture = 1;',
     "src/barrel.ts": 'export * from "./cycle";',
     "src/cycle.ts": 'import "./barrel"; export * from "./leaf";',
@@ -38,6 +39,8 @@ test("import closures select dependants and conservatively retain unknown depend
     assert.deepEqual(await select(["src/leaf.ts"]), [files[0], ...always]);
     assert.deepEqual(await select(["src/literal.ts"]), [files[1], ...always]);
     assert.deepEqual(await select(["benchmarks/fixture.ts"]), [files[0], ...always]);
+    assert.deepEqual(await select(["fixtures/shared.ts"]), [files[1], ...always]);
+    assert.deepEqual(await select(["e2e/fixtures/unrelated.yaml"]), always);
     assert.deepEqual(await select(["e2e/scenario.ts"]), always);
     writeFileSync(join(root, "src/cycle.ts"), 'export * from "./introduced";');
     writeFileSync(join(root, "src/introduced.ts"), 'export const added = 3;');

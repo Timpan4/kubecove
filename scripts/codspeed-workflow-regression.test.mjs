@@ -93,9 +93,9 @@ for (const [path, frontend, rust] of [
   [".github/workflows/ci.yml", false, false],
   [".github/actions/unrelated/action.yml", false, false],
   [".github/dependabot.yml", false, false],
-  ["fixtures/resource.yaml", true, true],
-  ["shared/fixtures/resource.json", true, true],
-  ["shared/fixtures/stream.txt", true, true],
+  ["fixtures/resource.yaml", false, true],
+  ["shared/fixtures/resource.json", false, true],
+  ["shared/fixtures/stream.txt", false, true],
   ["scripts/codspeed-benchmark-suites.mjs", true, false],
   ["scripts/codspeed-import-closure.mjs", true, false],
   ["scripts/codspeed-selection.mjs", true, true],
@@ -103,11 +103,11 @@ for (const [path, frontend, rust] of [
   // Failure mode: a change to a script the Rust shards run merges without those shards running.
   ["scripts/ci-rust-cache-key.mjs", false, true],
   ["scripts/ci-mbx-cargo.mjs", false, true],
-  // No benchmark imports from the E2E or unit test trees; their fixtures still select both.
+  // Frontend fixtures follow import closures. Rust retains its conservative fixture rule.
   ["e2e/parity/web.ts", false, false],
   ["e2e/parity/scenarios/argo-gaps.json", false, false],
   ["tests/release.test.ts", false, false],
-  ["e2e/fixtures/chart/values.yaml", true, true],
+  ["e2e/fixtures/chart/values.yaml", false, true],
 ]) {
   test(`selects affected benchmarks for ${path}`, () => {
     assert.deepEqual(detect([path]), { frontend: String(frontend), rust: String(rust) });
