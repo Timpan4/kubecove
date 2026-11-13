@@ -51,7 +51,8 @@ export async function argoAction(page: Page, step: Step) {
                 // The time is this process's, and a busy page can take longer than that second to run the call: main's
                 // coverage shards failed here with "Cannot fast-forward to the past" (run 43416191832). Playwright 1.65
                 // stops the clock before it rejects the time, so the page's own time no longer moves and pausing at it
-                // cannot be late. Nothing fires, as when the first call arrives with no time left to skip.
+                // cannot be late. It skips no time, as when the first call arrives with none left to skip; timers already
+                // due can still run.
                 if (!String(error).includes("Cannot fast-forward to the past")) throw error;
                 await page.clock.pauseAt(await page.evaluate(() => Date.now()));
             }
