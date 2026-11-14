@@ -13,7 +13,7 @@ describe("YAML apply review", () => {
 	});
 
 	it("does not enable Apply for a draft edited while its dry run was in flight", async () => {
-		await $$("button=Resources")[0].click();
+		await $("button=Open resources").click();
 		await $('input[aria-label="Search resources"]').setValue("payments-api");
 		await $('//tr[td[normalize-space()="Deployment"]]//button[@aria-label="Open resource payments-api"]').click();
 		await $('[role="tab"]=YAML').click();
@@ -41,7 +41,7 @@ describe("YAML apply review", () => {
 	});
 
 	it("keeps the reviewed draft locked while Apply runs and reports its result", async () => {
-		await $$("button=Resources")[0].click();
+		await $("button=Open resources").click();
 		await $('input[aria-label="Search resources"]').setValue("payments-api");
 		await $('//tr[td[normalize-space()="Deployment"]]//button[@aria-label="Open resource payments-api"]').click();
 		await $('[role="tab"]=YAML').click();
