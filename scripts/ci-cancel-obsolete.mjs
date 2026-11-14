@@ -14,8 +14,16 @@ export async function cancelObsoleteRuns({ github, context, core }) {
     const pulls = run.pull_requests?.length
       ? await Promise.all(run.pull_requests.map(async ({ number }) => (await github.rest.pulls.get({ ...repo, pull_number: number })).data))
       : await github.paginate(github.rest.pulls.list, { ...repo, state: "all", head: `${headRepo.split("/")[0]}:${run.head_branch}` });
-    const matching = run.pull_requests?.length ? pulls : pulls.filter((pr) => pr.head?.repo?.full_name === headRepo && pr.head.ref === run.head_branch && pr.head.sha === run.head_sha);
-    return matching.length > 0 && matching.every((pr) => pr.state === "closed");
+    if (run.pull_requests?.length) return pulls.every((pr) => pr.state === "closed");
+    const matching = pulls.filter((pr) => pr.head?.repo?.full_name === headRepo && pr.head.ref === run.head_branch);
+    // A reopened or reused branch with an open PR still needs its validation.
+    if (matching.some((pr) => pr.state !== "closed")) return false;
+    for (const pr of matching) {
+      if (pr.head.sha === run.head_sha) return true;
+      const commits = await github.paginate(github.rest.pulls.listCommits, { ...repo, pull_number: pr.number });
+      if (commits.some((commit) => commit.sha === run.head_sha)) return true;
+    }
+    return false;
   }
   // Finish pagination before cancelling. Removing runs while paging can skip rows.
   const pages = await Promise.all(activeStates.map((status) => github.paginate(

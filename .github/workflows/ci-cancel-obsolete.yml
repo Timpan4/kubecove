@@ -21,6 +21,8 @@ concurrency:
 jobs:
   cancel:
     runs-on: ubuntu-latest
+    # Match the existing API cleanup deadline in rust-cache-cleanup.yml.
+    timeout-minutes: 3
     permissions:
       actions: write
       contents: read

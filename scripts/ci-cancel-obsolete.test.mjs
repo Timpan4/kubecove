@@ -36,10 +36,15 @@ async function exercise(runs, options = {}) {
       pulls: {
         get: async () => { if (options.error) throw new Error("unavailable"); return { data: options.pr }; },
         list: "pulls",
+        listCommits: "commits",
       },
     },
     paginate: async (method, params) => {
-      if (method === "pulls") { if (options.error) throw Object.assign(new Error("unavailable"), { status: options.error }); return options.pr ? [options.pr] : []; }
+      if (method === "commits") {
+        if (options.commitError) throw new Error("commit lookup unavailable");
+        return options.commits ?? [];
+      }
+      if (method === "pulls") { if (options.error) throw Object.assign(new Error("unavailable"), { status: options.error }); return options.prs ?? (options.pr ? [options.pr] : []); }
       assert.equal(method, "list");
       listed.push(params.status);
       return runs.filter((item) => item.status === params.status);
@@ -77,6 +82,31 @@ test("handles missing run associations using exact head identity and leaves open
   const failed = await exercise(runs, { error: true });
   assert.deepEqual(failed.cancelled, []);
   assert.equal(failed.warnings.length, 1);
+});
+
+test("verifies old commits of closed fork PRs with missing associations without confusing reused branches", async () => {
+  const headRepository = { full_name: "fork/kubecove" };
+  const runs = [run(1, { event: "pull_request", head_branch: "topic", head_repository: headRepository })];
+  const pr = { number: 8, state: "closed", head: { sha: main, ref: "topic", repo: headRepository } };
+  assert.deepEqual((await exercise(runs, { pr, commits: [{ sha: old }, { sha: main }] })).cancelled, [1]);
+  assert.deepEqual((await exercise(runs, { pr, commits: [{ sha: main }] })).cancelled, []);
+  assert.deepEqual((await exercise(runs, { pr, commitError: true })).cancelled, []);
+  assert.deepEqual((await exercise(runs, { prs: [pr, { ...pr, state: "open" }], commits: [{ sha: old }] })).cancelled, []);
+});
+
+test("E2E primary and matrix runs cannot cancel each other's complementary jobs", () => {
+  const workflow = readFileSync(new URL("../.github/workflows/e2e.yml", import.meta.url), "utf8");
+  const template = workflow.match(/^ {2}group: (.+)$/m)[1];
+  const group = (event_name) => template.replace(/\$\{\{(.*?)\}\}/g, (_, expression) => new Function("github", `return (${expression});`)({ workflow: "E2E", ref: "refs/heads/main", sha: main, event_name }));
+  assert.notEqual(group("push"), group("schedule"));
+  assert.notEqual(group("push"), group("workflow_dispatch"));
+  assert.equal(group("schedule"), group("workflow_dispatch"));
+});
+
+test("cleanup uses the existing API cleanup job deadline", () => {
+  const cleanup = readFileSync(new URL("../.github/workflows/ci-cancel-obsolete.yml", import.meta.url), "utf8");
+  const cacheCleanup = readFileSync(new URL("../.github/workflows/rust-cache-cleanup.yml", import.meta.url), "utf8");
+  assert.equal(cleanup.match(/timeout-minutes: (\d+)/)?.[1], cacheCleanup.match(/timeout-minutes: (\d+)/)[1]);
 });
 
 test("cancels deleted branch dispatches only after a confirmed missing branch", async () => {
