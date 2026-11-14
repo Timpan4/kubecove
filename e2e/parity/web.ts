@@ -41,7 +41,7 @@ import { expectRetainedWorkspaceFields, workspaceAction } from "./web-workspaces
 import { yamlEditorAction } from "./web-yaml-editor";
 import { yamlPermissionAction } from "./web-yaml-permissions";
 
-export async function action(page: Page, step: Step) {
+export async function action(page: Page, step: Step, scenarioSteps: readonly Step[] = []) {
 	const search = page.getByRole("textbox", { name: "Search resources" });
 	const close = page.getByRole("button", { name: "Close resource details" });
 	switch (step.action) {
@@ -60,7 +60,7 @@ export async function action(page: Page, step: Step) {
         case "configureShellRead": case "retryLauncher": case "expectLauncherRetry": await shellAction(page, step); break;
         case "expectActivePage": case "expectGitOpsSelection": await shellAction(page, step); break;
         case "overviewOperation": case "reviewIncidentAction": case "expectDetailTab": await shellAction(page, step); break;
-        case "expectTopologyDenied": case "mockTiming": case "expectWatchStart": await timingAction(page, step); break;
+        case "expectTopologyDenied": case "mockTiming": case "expectWatchStart": await timingAction(page, step, scenarioSteps); break;
         case "coverageSelect": await coverageAction(page, step); break;
         case "coverageCopy": await coverageAction(page, step); break;
         case "coverageScript": await coverageAction(page, step); break;
@@ -498,17 +498,17 @@ async function runScenario(browser: Browser, port: number, artifacts: string, sc
 		// Explicit mock holds control ordering; ordinary parity commands need no artificial delay.
 		await page.addInitScript(() => { globalThis.__kubecoveParityNoLatency = true; });
 		// Fake timers must exist before the app loads: the Argo tracker's recovery timer and loading indicator delays start before later steps.
-		if (scenario.steps.some((step) => step.action === "controlClock" || step.action === "advanceClock")) await page.clock.install();
+		if (scenario.steps.some((step) => step.action === "controlClock" || step.action === "advanceClock" || (step.action === "mockTiming" && step.control.operation === "expectNoRetry"))) await page.clock.install();
 		const coverage = await startCodeCoverage(page);
 		await page.goto(`http://127.0.0.1:${port}/`);
 		const prelude = scenario.steps.findIndex((step) => step.action !== "mockTiming" || step.control.operation !== "hold");
 		const startupSteps = prelude < 0 ? scenario.steps.length : prelude;
-		for (const step of scenario.steps.slice(0, startupSteps)) await action(page, step);
+		for (const step of scenario.steps.slice(0, startupSteps)) await action(page, step, scenario.steps);
 		if (seedsWorkspace(scenario)) await seedWorkspace(page);
 		for (const [index, step] of scenario.steps.entries()) {
 			signal.throwIfAborted();
 			current = `step ${index} (${step.action})`;
-			if (index >= startupSteps) { await storeReloadHolds(page, scenario.steps, index); await action(page, step); }
+			if (index >= startupSteps) { await storeReloadHolds(page, scenario.steps, index); await action(page, step, scenario.steps); }
 			if (stepScreenshots) await page.screenshot({ path: join(artifacts, `web-${scenarioIndex}-${index}.png`) });
 		}
 		await coverage?.save(artifacts, scenarioIndex, scenario.id);
