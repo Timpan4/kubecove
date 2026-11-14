@@ -116,6 +116,17 @@ The command uses Playwright's `chromium.connectOverCDP` to drive Obscura. It che
 
 ## Deterministic E2E and Kind Lab
 
+Validation runs on main retain only the current commit. The `Cancel obsolete CI`
+workflow cancels superseded main runs, validation for closed pull requests, and
+manual validation on deleted branches. It reconciles on main pushes, PR closure,
+branch deletion and validation startup, including reruns. Main concurrency groups
+include the commit SHA so a late rerun of an old commit cannot cancel current
+validation. Release and publishing workflows stay outside this cleanup.
+
+Run `node --test scripts/ci-cancel-obsolete.test.mjs` for the cancellation policy.
+API lookup failures retain uncertain runs. The cleanup can also be dispatched
+manually from Actions to reconcile existing queued work.
+
 Use fast E2E while changing frontend behavior:
 
 ```sh
@@ -123,6 +134,11 @@ bun run e2e:fast
 ```
 
 It starts Vite on Bun, runs the Playwright/Obscura smoke check, then runs the existing Chrome/WDIO scenarios with typed development-browser mocks. The runner downloads a checksum-verified Obscura release and stops only the Obscura process it started. Port 9223 must be free. Each run writes its result, Obscura server log, smoke results, and WDIO reports under a new `e2e/artifacts/fast-<run-id>/` directory. Startup failures also write a result artifact. It neither builds Rust nor contacts Kubernetes.
+
+For resource-view setup, use the overview header's `Open resources` button. Its
+`Resources` shortcut sits below asynchronously loaded overview content and can move
+between pointerdown and click. The controlled regression runs with
+`bun run e2e:fast -- --spec e2e/specs/fast/resource-navigation.e2e.ts`.
 
 Use real E2E for native-command and cluster behavior:
 

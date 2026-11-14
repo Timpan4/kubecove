@@ -13,8 +13,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # Main commits are isolated so a late old rerun cannot cancel the current one.
+  # Cancel obsolete CI compares their SHAs with main and cancels superseded runs.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.ref == 'refs/heads/main' && github.sha || '' }}
+  cancel-in-progress: true
 
 jobs:
   changes:
@@ -143,7 +145,7 @@ jobs:
           persist-credentials: false
 
       - name: Test CI orchestration
-        run: node --test scripts/ci-workflow-regression.test.mjs
+        run: node --test scripts/ci-workflow-regression.test.mjs scripts/ci-cancel-obsolete.test.mjs
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
