@@ -3,6 +3,14 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.14.3 - 2026-11-14
+### Fixed
+
+- GPUI kubeconfig OIDC credential plugin discovery (#695).
+- Refresh topology after live resource changes (#688).
+- The parity web clock pause that failed when the page was slow (#684).
+- Cache saves on main and the review findings from #678 (#681).
+
 ## 0.14.2 - 2026-11-12
 ### Fixed
 
