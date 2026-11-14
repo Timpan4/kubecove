@@ -46,9 +46,16 @@ async function exercise(runs, options = {}) {
       if (method === "jobs") {
         if (options.jobError) throw new Error("jobs unavailable");
         const path = runs.find((item) => item.id === params.run_id)?.path;
-        const name = path === ".github/workflows/ci.yml" ? "CI rust" : path === ".github/workflows/codspeed.yml" ? "Run frontend benchmarks (0)" : "check";
+        let name = "check";
+        let selection = null;
+        if (path === ".github/workflows/ci.yml") {
+          name = "CI rust";
+          selection = "Detect CI changes";
+        } else if (path === ".github/workflows/codspeed.yml") {
+          name = "Run frontend benchmarks (0)";
+          selection = "Detect benchmark changes";
+        }
         const selected = options.jobs?.[params.run_id] ?? [{ name, status: "in_progress", conclusion: null }];
-        const selection = path === ".github/workflows/ci.yml" ? "Detect CI changes" : path === ".github/workflows/codspeed.yml" ? "Detect benchmark changes" : null;
         return selection && !selected.some((job) => job.name === selection) ? [{ name: selection, status: "completed", conclusion: "success" }, ...selected] : selected;
       }
       if (method === "commits") {
