@@ -26,6 +26,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-server-packaging-${{ inputs.release-tag || github.ref }}-${{ !inputs.release-tag && github.sha || '' }}
+  cancel-in-progress: ${{ !inputs.release-tag }}
+
 jobs:
   server-build:
     name: Build headless server ${{ matrix.target }}

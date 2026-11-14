@@ -71,13 +71,13 @@ describe("rollout progress and realtime recovery", () => {
 			await expect(browser.$("[role='tooltip']")).toHaveText(expect.stringContaining("Kubernetes"));
 			await expect(browser.$("[role='tooltip']")).toHaveText(expect.stringContaining("Rolling out"));
 			await expect(browser.$$("[role='tooltip'] summary, [role='tooltip'] button, [role='tooltip'] a")).toBeElementsArrayOfSize(0);
-			await browser.execute(async () => {
+			await browser.waitUntil(() => browser.execute(async () => {
 				const tooltip = document.querySelector<HTMLElement>("[role='tooltip']");
-				if (!tooltip) throw new Error("Health evidence tooltip is missing");
+				if (!tooltip) return false;
 				await Promise.all(tooltip.getAnimations().map((animation) => animation.finished));
 				const bounds = tooltip.getBoundingClientRect();
-				if (!tooltip.contains(document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2))) throw new Error("Health evidence tooltip is obscured");
-			});
+				return tooltip.contains(document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2));
+			}), { timeoutMsg: "Health evidence tooltip is obscured" });
 			await browser.saveScreenshot(join(artifacts, "resource-rollout-health-tooltip.png"));
 			await browser.keys("Escape");
 			const activity = await browser.execute(async () => {

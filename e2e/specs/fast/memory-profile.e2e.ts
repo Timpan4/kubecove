@@ -16,7 +16,7 @@ describe("browser heap observations", () => {
 		const create = await $("button=Create workspace");
 		await create.waitForEnabled();
 		await create.click();
-		await $$("button=Resources")[0].click();
+		await $("button=Open resources").click();
 		await $$('button[aria-label^="Open resource "]')[0].waitForDisplayed();
 		const samples: object[] = [];
 		async function sample(stage: string) {

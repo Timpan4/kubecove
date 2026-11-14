@@ -1,0 +1,45 @@
+name: Cancel obsolete CI
+
+on:
+  push:
+    branches: [main]
+  pull_request_target:
+    types: [closed]
+  delete:
+  workflow_run:
+    workflows: [CI, Parity, CodSpeed, E2E, Native tsrs checks, Server packaging]
+    # Unlike requested, in_progress also fires for reruns of old commits.
+    # Completion also reconciles work whose selected jobs were not known at startup.
+    types: [in_progress, completed]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: cancel-obsolete-ci
+  cancel-in-progress: false
+
+jobs:
+  cancel:
+    runs-on: ubuntu-latest
+    # Match the existing API cleanup deadline in rust-cache-cleanup.yml.
+    timeout-minutes: 3
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    steps:
+      # This privileged job never checks out a pull request or downloads its artifacts.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: scripts/ci-cancel-obsolete.mjs
+          sparse-checkout-cone-mode: false
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const { join } = require('node:path');
+            const { cancelObsoleteRuns } = await import(pathToFileURL(join(process.env.GITHUB_WORKSPACE, 'scripts/ci-cancel-obsolete.mjs')).href);
+            await cancelObsoleteRuns({ github, context, core });

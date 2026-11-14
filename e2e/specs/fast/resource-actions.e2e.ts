@@ -23,7 +23,7 @@ describe("resource Actions review", () => {
 		const create = await $("button=Create workspace");
 		await create.waitForEnabled();
 		await create.click();
-		await $$("button=Resources")[0].click();
+		await $("button=Open resources").click();
 		await $('input[aria-label="Search resources"]').waitForDisplayed();
 		await $('input[aria-label="Search resources"]').setValue("payments-api");
 		await $('//tr[td[normalize-space()="Deployment"]]//button[@aria-label="Open resource payments-api"]').click();
@@ -37,7 +37,7 @@ describe("resource Actions review", () => {
 		const warning = await $('[role="alert"]');
 		await warning.$("button=Skip review").click();
 		await $("button=Back to app").click();
-		await $$("button=Resources")[0].click();
+		await $("button=Open resources").click();
 		await $('input[aria-label="Search resources"]').waitForDisplayed();
 		await $('input[aria-label="Search resources"]').setValue("payments-api");
 		await $('//tr[td[normalize-space()="Deployment"]]//button[@aria-label="Open resource payments-api"]').click();
@@ -114,7 +114,7 @@ describe("resource Actions review", () => {
 		await expect(warning).toBeDisplayed();
 		await warning.$("button=Skip review").click();
 		await $("button=Back to app").click();
-		await $$("button=Resources")[0].click();
+		await $("button=Open resources").click();
 		await $('input[aria-label="Search resources"]').waitForDisplayed();
 		await $('input[aria-label="Search resources"]').setValue("payments-api");
 		await $('//tr[td[normalize-space()="Deployment"]]//button[@aria-label="Open resource payments-api"]').click();
