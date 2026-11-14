@@ -3,6 +3,12 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.14.4 - 2026-11-14
+### Fixed
+
+- Isolate parity retry checks from polling (#700).
+- Cancel obsolete runs and stabilize fast E2E (#699).
+
 ## 0.14.3 - 2026-11-14
 ### Fixed
 
