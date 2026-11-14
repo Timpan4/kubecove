@@ -56,7 +56,11 @@ async function exercise(runs, options = {}) {
           selection = "Detect benchmark changes";
         }
         const selected = options.jobs?.[params.run_id] ?? [{ name, status: "in_progress", conclusion: null }];
-        return selection && !selected.some((job) => job.name === selection) ? [{ name: selection, status: "completed", conclusion: "success" }, ...selected] : selected;
+        const visible = selection && !selected.some((job) => job.name === selection) ? [{ name: selection, status: "completed", conclusion: "success" }, ...selected] : selected;
+        if (path === ".github/workflows/ci.yml" && !options.hiddenNix?.includes(params.run_id) && !visible.some((job) => job.name === "Nix build")) {
+          return [...visible, { name: "Nix build", status: "completed", conclusion: "skipped" }];
+        }
+        return visible;
       }
       if (method === "commits") {
         calls.commits++;
@@ -153,6 +157,17 @@ test("a newer main commit must replace the same work before an old run is cancel
   const benchmark = run(1, { path: ".github/workflows/codspeed.yml" });
   const newerBenchmark = run(2, { path: benchmark.path, head_sha: main });
   assert.deepEqual((await exercise([benchmark, newerBenchmark])).cancelled, [1], "CodSpeed selects its full baseline on main pushes");
+});
+
+test("retains CI until downstream Nix selection is visible and replaced", async () => {
+  const original = run(1);
+  const replacement = run(2, { head_sha: main });
+  const frontend = { name: "CI frontend-e2e", status: "in_progress", conclusion: null };
+  const nix = { name: "Nix build", status: "queued", conclusion: null };
+  const jobs = { 1: [frontend], 2: [frontend] };
+  assert.deepEqual((await exercise([original, replacement], { jobs, hiddenNix: [1] })).cancelled, [], "selected Nix may not be visible while its dependencies run");
+  assert.deepEqual((await exercise([original, replacement], { jobs: { ...jobs, 1: [frontend, nix] } })).cancelled, [], "frontend-only replacement omits selected Nix");
+  assert.deepEqual((await exercise([original, replacement], { jobs: { 1: [frontend, nix], 2: [frontend, nix] } })).cancelled, [1]);
 });
 
 test("tag dispatches survive a same-name default or merged branch", async () => {

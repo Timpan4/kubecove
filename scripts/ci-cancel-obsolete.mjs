@@ -20,7 +20,10 @@ export async function cancelObsoleteRuns({ github, context, core }) {
     const replacements = await readOnce(`main-runs:${sha}`, () => github.paginate(
       github.rest.actions.listWorkflowRunsForRepo, { ...repo, branch: repository.default_branch, head_sha: sha },
     ));
-    const originalJobs = (await jobs(run)).filter((job) => job.conclusion !== "skipped");
+    const visibleJobs = await jobs(run);
+    // Nix depends on the CI matrix. Its absence leaves downstream selection unknown.
+    if (run.path === ".github/workflows/ci.yml" && !visibleJobs.some((job) => job.name === "Nix build")) return false;
+    const originalJobs = visibleJobs.filter((job) => job.conclusion !== "skipped");
     if (!originalJobs.length) return false;
     if (run.path === ".github/workflows/ci.yml" &&
         (originalJobs.find((job) => job.name === "Detect CI changes")?.conclusion !== "success" ||
