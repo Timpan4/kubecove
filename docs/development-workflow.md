@@ -116,12 +116,17 @@ The command uses Playwright's `chromium.connectOverCDP` to drive Obscura. It che
 
 ## Deterministic E2E and Kind Lab
 
-Validation runs on main retain only the current commit. The `Cancel obsolete CI`
-workflow cancels superseded main runs, validation for closed pull requests, and
+Validation runs on main replace older work when the current commit covers it.
+The `Cancel obsolete CI` workflow cancels superseded main runs, validation for closed pull requests, and
 manual validation on deleted branches. It reconciles on main pushes, PR closure,
-branch deletion and validation startup, including reruns. Main concurrency groups
+branch deletion and validation startup/completion, including reruns. Main concurrency groups
 include the commit SHA so a late rerun of an old commit cannot cancel current
-validation. Release and publishing workflows stay outside this cleanup.
+validation. Before cancelling an older main run, cleanup requires a current-main
+run of the same workflow and E2E mode with every previously selected job either
+pending, running or successful. A path filter or change selection that omits work
+preserves its latest relevant run. Release and publishing workflows stay outside
+this cleanup. Dispatches whose head name also names an existing tag are retained
+because the API does not distinguish that ambiguous ref.
 
 Run `node --test scripts/ci-cancel-obsolete.test.mjs` for the cancellation policy.
 API lookup failures retain uncertain runs. The cleanup can also be dispatched

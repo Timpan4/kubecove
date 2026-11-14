@@ -9,7 +9,8 @@ on:
   workflow_run:
     workflows: [CI, Parity, CodSpeed, E2E, Native tsrs checks, Server packaging]
     # Unlike requested, in_progress also fires for reruns of old commits.
-    types: [in_progress]
+    # Completion also reconciles work whose selected jobs were not known at startup.
+    types: [in_progress, completed]
   workflow_dispatch:
 
 permissions: {}

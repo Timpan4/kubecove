@@ -15,6 +15,7 @@ async function exercise(runs, options = {}) {
   const cancelled = [];
   const warnings = [];
   const listed = [];
+  const calls = { branch: 0, pull: 0, commits: 0, replacements: 0 };
   const github = {
     rest: {
       git: { getRef: async () => {
@@ -22,6 +23,7 @@ async function exercise(runs, options = {}) {
         throw Object.assign(new Error("missing tag"), { status: 404 });
       } },
       repos: { getBranch: async ({ branch }) => {
+        calls.branch++;
         if (options.branchError && branch !== "main") throw Object.assign(new Error("lookup failed"), { status: options.branchError });
         return { data: { commit: { sha: main } } };
       } },
@@ -32,26 +34,40 @@ async function exercise(runs, options = {}) {
           assert.deepEqual(listed.toSorted(), ["in_progress", "pending", "queued", "requested", "waiting"]);
           cancelled.push(run_id);
         },
+        listJobsForWorkflowRun: "jobs",
       },
       pulls: {
-        get: async () => { if (options.error) throw new Error("unavailable"); return { data: options.pr }; },
+        get: async () => { calls.pull++; if (options.error) throw new Error("unavailable"); return { data: options.pr }; },
         list: "pulls",
         listCommits: "commits",
       },
     },
     paginate: async (method, params) => {
+      if (method === "jobs") {
+        if (options.jobError) throw new Error("jobs unavailable");
+        const path = runs.find((item) => item.id === params.run_id)?.path;
+        const name = path === ".github/workflows/ci.yml" ? "CI rust" : path === ".github/workflows/codspeed.yml" ? "Run frontend benchmarks (0)" : "check";
+        const selected = options.jobs?.[params.run_id] ?? [{ name, status: "in_progress", conclusion: null }];
+        const selection = path === ".github/workflows/ci.yml" ? "Detect CI changes" : path === ".github/workflows/codspeed.yml" ? "Detect benchmark changes" : null;
+        return selection && !selected.some((job) => job.name === selection) ? [{ name: selection, status: "completed", conclusion: "success" }, ...selected] : selected;
+      }
       if (method === "commits") {
+        calls.commits++;
         if (options.commitError) throw new Error("commit lookup unavailable");
         return options.commits ?? [];
       }
       if (method === "pulls") { if (options.error) throw Object.assign(new Error("unavailable"), { status: options.error }); return options.prs ?? (options.pr ? [options.pr] : []); }
       assert.equal(method, "list");
+      if (params.head_sha) {
+        calls.replacements++;
+        return runs.filter((item) => item.head_sha === params.head_sha);
+      }
       listed.push(params.status);
       return runs.filter((item) => item.status === params.status);
     },
   };
   await cancelObsoleteRuns({ github, context: { repo, payload: { repository: { default_branch: "main", full_name: "Timpan4/kubecove" } } }, core: { info() {}, warning(message) { warnings.push(message); } } });
-  return { cancelled, warnings };
+  return { cancelled, warnings, calls };
 }
 
 test("cancels obsolete main validation, including late reruns, and preserves latest main and releases", async () => {
@@ -97,11 +113,56 @@ test("verifies old commits of closed fork PRs with missing associations without 
 test("E2E primary and matrix runs cannot cancel each other's complementary jobs", () => {
   const workflow = readFileSync(new URL("../.github/workflows/e2e.yml", import.meta.url), "utf8");
   const template = workflow.match(/^ {2}group: (.+)$/m)[1];
-  const group = (event_name) => template.replace(/\$\{\{(.*?)\}\}/g, (_, expression) => new Function("github", `return (${expression});`)({ workflow: "E2E", ref: "refs/heads/main", sha: main, event_name }));
-  assert.notEqual(group("push"), group("schedule"));
-  assert.notEqual(group("push"), group("workflow_dispatch"));
-  assert.equal(group("schedule"), group("workflow_dispatch"));
+  assert.equal(template, "${{ github.workflow }}-${{ github.ref }}-${{ github.ref == 'refs/heads/main' && github.sha || '' }}-${{ github.event_name == 'push' && 'primary' || 'matrix' }}");
+  assert.match(workflow, /real-primary:[\s\S]*?if: github.event_name == 'push'/);
+  for (const job of ["real-matrix", "desktop-smoke"]) assert.match(workflow, new RegExp(`${job}:[\\s\\S]*?if: github.event_name != 'push'`));
 });
+
+test("a newer main commit must replace the same work before an old run is cancelled", async () => {
+  const first = run(1);
+  const latest = run(2, { head_sha: main, status: "completed", conclusion: "success" });
+  const rust = { name: "CI rust", status: "in_progress", conclusion: null };
+  const docs = { name: "CI docs", status: "completed", conclusion: "success" };
+  assert.deepEqual((await exercise([first])).cancelled, [], "no current workflow run");
+  assert.deepEqual((await exercise([run(1, { path: ".github/workflows/server-packaging.yml" }), latest])).cancelled, [], "paths filter omitted packaging");
+  assert.deepEqual((await exercise([first, latest], { jobs: { 1: [rust], 2: [docs] } })).cancelled, [], "change selection omitted Rust");
+  assert.deepEqual((await exercise([first, latest], { jobs: { 1: [{ name: "Detect CI changes", status: "in_progress", conclusion: null }], 2: [docs] } })).cancelled, [], "the original matrix is not known while detection runs");
+  for (const replacement of [[], [{ ...rust, status: "completed", conclusion: "skipped" }], [{ ...rust, status: "completed", conclusion: "failure" }]]) {
+    assert.deepEqual((await exercise([first, latest], { jobs: { 1: [rust], 2: replacement } })).cancelled, []);
+  }
+  assert.deepEqual((await exercise([first, latest], { jobs: { 1: [rust], 2: [rust, docs] } })).cancelled, [1]);
+  assert.deepEqual((await exercise([first, { ...latest, conclusion: "cancelled" }], { jobs: { 1: [rust], 2: [rust] } })).cancelled, [], "cancelled replacements can still have draining jobs");
+  assert.deepEqual((await exercise([first, latest], { jobError: true })).cancelled, []);
+  const matrix = run(1, { path: ".github/workflows/e2e.yml", event: "schedule" });
+  const primary = run(2, { path: matrix.path, head_sha: main });
+  assert.deepEqual((await exercise([matrix, primary])).cancelled, [], "primary cannot replace the matrix");
+  assert.deepEqual((await exercise([matrix, { ...primary, event: "workflow_dispatch" }])).cancelled, [1]);
+  const benchmark = run(1, { path: ".github/workflows/codspeed.yml" });
+  const newerBenchmark = run(2, { path: benchmark.path, head_sha: main });
+  assert.deepEqual((await exercise([benchmark, newerBenchmark])).cancelled, [1], "CodSpeed selects its full baseline on main pushes");
+});
+
+test("tag dispatches survive a same-name default or merged branch", async () => {
+  const pr = { state: "closed", head: { sha: old, ref: "topic", repo: { full_name: "Timpan4/kubecove" } } };
+  for (const head_branch of ["main", "topic"]) {
+    const runs = [run(1, { event: "workflow_dispatch", head_branch }), run(2, { head_sha: main })];
+    assert.deepEqual((await exercise(runs, { pr, tag: true })).cancelled, []);
+  }
+});
+
+test("a backlog shares main and PR identity reads within one reconciliation", async () => {
+  const backlog = activeRuns();
+  const result = await exercise([...backlog, run(99, { head_sha: main })]);
+  assert.equal(result.calls.branch, 1);
+  assert.equal(result.calls.replacements, 1);
+  const pr = { number: 8, state: "closed", head: { sha: old, ref: "topic", repo: { full_name: "Timpan4/kubecove" } } };
+  const resultPr = await exercise(backlog.map((item) => ({ ...item, event: "pull_request", head_branch: "topic", pull_requests: [{ number: 8 }] })), { pr });
+  assert.equal(resultPr.calls.pull, 1);
+});
+
+function activeRuns() {
+  return ["queued", "in_progress", "pending", "waiting", "requested"].map((status, index) => run(index + 1, { status }));
+}
 
 test("cleanup uses the existing API cleanup job deadline", () => {
   const cleanup = readFileSync(new URL("../.github/workflows/ci-cancel-obsolete.yml", import.meta.url), "utf8");
@@ -137,7 +198,7 @@ test("validation concurrency replaces older work and isolates reusable release p
   const cleanup = readFileSync(new URL("../.github/workflows/ci-cancel-obsolete.yml", import.meta.url), "utf8");
   assert.match(cleanup, /pull_request_target:\n {4}types: \[closed\]/);
   assert.match(cleanup, / {2}delete:/);
-  assert.match(cleanup, /types: \[in_progress\]/);
+  assert.match(cleanup, /types: \[in_progress, completed\]/);
   assert.match(cleanup, /ref: \$\{\{ github\.event\.repository\.default_branch \}\}/);
   assert.doesNotMatch(cleanup, /head\.sha|head_ref|download-artifact/);
 });
