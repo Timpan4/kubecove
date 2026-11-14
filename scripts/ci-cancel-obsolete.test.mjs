@@ -113,7 +113,7 @@ test("verifies old commits of closed fork PRs with missing associations without 
 test("E2E primary and matrix runs cannot cancel each other's complementary jobs", () => {
   const workflow = readFileSync(new URL("../.github/workflows/e2e.yml", import.meta.url), "utf8");
   const template = workflow.match(/^ {2}group: (.+)$/m)[1];
-  assert.equal(template, "${{ github.workflow }}-${{ github.ref }}-${{ github.ref == 'refs/heads/main' && github.sha || '' }}-${{ github.event_name == 'push' && 'primary' || 'matrix' }}");
+  assert.equal(template, "${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}-${{ github.event_name == 'push' && 'primary' || 'matrix' }}");
   assert.match(workflow, /real-primary:[\s\S]*?if: github.event_name == 'push'/);
   for (const job of ["real-matrix", "desktop-smoke"]) assert.match(workflow, new RegExp(`${job}:[\\s\\S]*?if: github.event_name != 'push'`));
 });
@@ -196,11 +196,13 @@ test("validation concurrency replaces older work and isolates reusable release p
   for (const file of ["ci", "parity", "codspeed", "tsrs", "e2e"]) {
     const text = readFileSync(new URL(`../.github/workflows/${file}.yml`, import.meta.url), "utf8");
     assert.match(text, /cancel-in-progress: true/);
-    assert.match(text, /github\.ref == 'refs\/heads\/main' && github\.sha/);
+    if (file === "e2e") assert.match(text, /group:.*-\$\{\{ github\.sha \}\}-/);
+    else assert.ok(text.includes("${{ github.event_name != 'pull_request' && github.sha || '' }}"), `${file} must isolate every non-PR commit`);
   }
   const packaging = readFileSync(new URL("../.github/workflows/server-packaging.yml", import.meta.url), "utf8");
   assert.match(packaging, /inputs\.release-tag \|\| github\.ref/);
   assert.match(packaging, /cancel-in-progress:.*!inputs\.release-tag/);
+  assert.ok(packaging.includes("${{ !inputs.release-tag && github.sha || '' }}"));
   const cleanup = readFileSync(new URL("../.github/workflows/ci-cancel-obsolete.yml", import.meta.url), "utf8");
   assert.match(cleanup, /pull_request_target:\n {4}types: \[closed\]/);
   assert.match(cleanup, / {2}delete:/);

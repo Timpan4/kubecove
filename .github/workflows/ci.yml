@@ -13,9 +13,9 @@ permissions:
   contents: read
 
 concurrency:
-  # Main commits are isolated so a late old rerun cannot cancel the current one.
+  # Non-PR commits are isolated so a late rerun cannot cancel newer validation.
   # Cancel obsolete CI compares their SHAs with main and cancels superseded runs.
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.ref == 'refs/heads/main' && github.sha || '' }}-${{ github.event_name == 'workflow_dispatch' && 'full' || 'changes' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name != 'pull_request' && github.sha || '' }}-${{ github.event_name == 'workflow_dispatch' && 'full' || 'changes' }}
   cancel-in-progress: true
 
 jobs:

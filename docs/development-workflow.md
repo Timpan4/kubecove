@@ -119,9 +119,9 @@ The command uses Playwright's `chromium.connectOverCDP` to drive Obscura. It che
 Validation runs on main replace older work when the current commit covers it.
 The `Cancel obsolete CI` workflow cancels superseded main runs, validation for closed pull requests, and
 manual validation on deleted branches. It reconciles on main pushes, PR closure,
-branch deletion and validation startup/completion, including reruns. Main concurrency groups
+branch deletion and validation startup/completion, including reruns. Non-PR concurrency groups
 include the commit SHA so a late rerun of an old commit cannot cancel current
-validation. Before cancelling an older main run, cleanup requires a current-main
+validation, including manual feature-branch runs. Before cancelling an older main run, cleanup requires a current-main
 run of the same workflow and E2E mode with every previously selected job either
 pending, running or successful. A path filter or change selection that omits work
 preserves its latest relevant run. Release and publishing workflows stay outside
