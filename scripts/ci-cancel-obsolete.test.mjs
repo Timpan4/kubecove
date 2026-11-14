@@ -118,6 +118,12 @@ test("E2E primary and matrix runs cannot cancel each other's complementary jobs"
   for (const job of ["real-matrix", "desktop-smoke"]) assert.match(workflow, new RegExp(`${job}:[\\s\\S]*?if: github.event_name != 'push'`));
 });
 
+test("selective main pushes cannot cancel full manual CI at the same SHA", () => {
+  const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const group = workflow.match(/^ {2}group: (.+)$/m)[1];
+  assert.ok(group.endsWith("-${{ github.event_name == 'workflow_dispatch' && 'full' || 'changes' }}"));
+});
+
 test("a newer main commit must replace the same work before an old run is cancelled", async () => {
   const first = run(1);
   const latest = run(2, { head_sha: main, status: "completed", conclusion: "success" });

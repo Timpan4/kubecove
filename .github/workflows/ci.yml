@@ -15,7 +15,7 @@ permissions:
 concurrency:
   # Main commits are isolated so a late old rerun cannot cancel the current one.
   # Cancel obsolete CI compares their SHAs with main and cancels superseded runs.
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.ref == 'refs/heads/main' && github.sha || '' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.ref == 'refs/heads/main' && github.sha || '' }}-${{ github.event_name == 'workflow_dispatch' && 'full' || 'changes' }}
   cancel-in-progress: true
 
 jobs:
