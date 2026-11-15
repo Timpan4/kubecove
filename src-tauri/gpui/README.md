@@ -84,9 +84,11 @@ claude mcp add --transport http kubecove-ui http://127.0.0.1:<port>/mcp \
   --header "Authorization: Bearer $(cat "$KUBECOVE_DATA_DIR/automation-token")"
 ```
 
-Start with `snapshot`, which lists the window's elements with references, roles, labels
-and states, and the painted text with bounds. Then use `click`, `type_text`, `press_key`
-and `scroll` on a reference, an accessible label or a window position. `screenshot`
+Start with `snapshot`, which lists the window's elements with references, roles, labels,
+values and states. Most visible content, such as table cells, appears as labels and
+values. Then use `click`, `type_text`, `press_key` and `scroll` on a reference, an
+accessible label or a window position. Elements under an overlay, such as the workspace
+launcher, are still listed, but a click on them lands on the overlay. `screenshot`
 returns a PNG on macOS and Windows; GPUI's Linux windows cannot capture their pixels.
 Native file dialogs are not reachable through the endpoint.
 

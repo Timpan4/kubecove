@@ -8,7 +8,7 @@ Accepted on 2026-11-15. Extends [ADR 0010](0010-e2e-only-wdio-security-boundary.
 
 The Tauri client has real-cluster and packaged-app tests: WDIO drives its webview through the E2E-only plugin of ADR 0010. The native client has none. Its parity driver renders offscreen against controlled backend responses, which proves UI wiring but not Kubernetes access. Agents working on the native client also cannot look at the running app or operate it. They can only write a parity scenario and read its report.
 
-GPUI Kit's `test-support` feature already provides what a driver needs. Every element the client marks with `.test_support()` (551 places today) records its path, accessible role, label, description, value, state and bounds in each frame. Painted text is recorded with its bounds. Pointer, wheel and key events go through GPUI's own dispatch and hit testing. On macOS and Windows a window can render its current scene to an image. These functions work on any `Window`, not only test windows. ADR 0029 forbids native automation hooks in production builds, and ADR 0010 requires an ADR update and a production absence check for any desktop automation surface.
+GPUI Kit's `test-support` feature already provides what a driver needs. Every element the client marks with `.test_support()` (551 places today) records its path, accessible role, label, description, value, state and bounds in each frame. Text is recorded with its bounds only where an element opts in with `.test_text()` or uses GPUI Kit's inline text; the client has no such element today, so its content reaches a driver through labels and values, such as table cells, which expose their text as labels. GPUI's accessibility tree is private to the platform adapter. Pointer, wheel and key events go through GPUI's own dispatch and hit testing. On macOS and Windows a window can render its current scene to an image. These functions work on any `Window`, not only test windows. ADR 0029 forbids native automation hooks in production builds, and ADR 0010 requires an ADR update and a production absence check for any desktop automation surface.
 
 ## Decision
 
@@ -36,14 +36,14 @@ Each launch writes a new 32-byte token from the OS CSPRNG to `<data dir>/automat
 
 | Tool | Effect |
 | --- | --- |
-| `snapshot` | Draws a frame and returns the window size, the observed elements with a reference, path, role, label, description, value, placeholder, state and bounds, and the painted text with bounds. Hidden elements are left out unless asked for. |
+| `snapshot` | Draws a frame and returns the window size, the observed elements with a reference, path, role, label, description, value, placeholder, state and bounds, and any recorded text with bounds. Hidden elements are left out unless asked for. |
 | `click` | Moves the pointer to a target and presses and releases a mouse button, once or several times. |
 | `type_text` | Optionally clicks a target to focus it, then types text into the focused element one character at a time. |
 | `press_key` | Sends one GPUI keystroke, such as `enter`, `escape`, `tab` or `ctrl-a`. |
 | `scroll` | Sends a wheel event with a pixel delta at a target. |
 | `screenshot` | Returns the window as a PNG image, on macOS and Windows. |
 
-A target is a reference from the latest snapshot, an exact accessible label with an optional description, or a window position in pixels. A reference resolves by its element path in the current frame, so a reference whose element has gone fails instead of hitting what replaced it. A label must match exactly one visible element. A target must be visible. Keys and text are parsed before any event is sent, so an invalid request sends nothing. Every failure is a tool error, and the app keeps running.
+A target is a reference from the latest snapshot, an exact accessible label with an optional description, or a window position in pixels. A reference resolves by its element path in the current frame, so a reference whose element has gone fails instead of hitting what replaced it. A label must match exactly one visible element. A target must be visible, which means inside the window and its clip, not uncovered: an element under an overlay such as the workspace launcher is still listed, and a click on it lands on the overlay, as a person's would. Keys and text are parsed before any event is sent, so an invalid request sends nothing. Every failure is a tool error, and the app keeps running.
 
 Events go through the same window dispatch as platform input, so hit testing, focus and key bindings behave as for a person. The endpoint runs each request on the UI thread between frames, in arrival order.
 
