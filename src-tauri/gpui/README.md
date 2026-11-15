@@ -65,7 +65,8 @@ The `e2e` feature builds a test flavor that agents can operate through MCP
 ([ADR 0035](../../docs/decisions/0035-gpui-e2e-flavor-and-agent-automation.md)). It reads
 only the kubeconfig you name, and every cluster in it must be an HTTPS API server on
 loopback, such as the one `bun run dev:kind` creates. It keeps its settings in the data
-directory you name, not in your config directory. Release builds do not have it.
+directory you name, not in your config directory. Give each launch its own data
+directory, since a second launch on one replaces its token. Release builds do not have it.
 
 ```sh
 export KUBECOVE_E2E=1

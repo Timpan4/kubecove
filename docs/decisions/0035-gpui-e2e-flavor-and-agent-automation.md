@@ -26,7 +26,7 @@ Startup checks run before any window, storage or network access:
 
 The pin comes from the shared backend. The `kubecove-kube` crate's E2E kubeconfig handling moves behind a Tauri-free `pinned-kubeconfig` feature, which the Tauri `e2e` feature still includes. While `KUBECOVE_E2E=1`, every cluster read and write uses only the pinned file. `KUBECONFIG`, `~/.kube/config` and paths saved in settings are ignored, and a pinned file that stops loading is an error, not a fallback.
 
-The data directory replaces the platform config directory for kubeconfig settings, the ADR 0030 preference document, saved workspaces and the read-only MCP settings and token. The legacy live-session file is not read.
+The data directory replaces the platform config directory for kubeconfig settings, the ADR 0030 preference document, saved workspaces and the read-only MCP settings and token. The legacy live-session file is not read. Each launch needs its own data directory. Two launches on one directory would share these files and its token file, and the later one replaces the earlier one's token.
 
 ### The automation endpoint
 
