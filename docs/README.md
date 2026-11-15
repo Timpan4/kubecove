@@ -13,6 +13,7 @@ User-facing procedures start in the [public Wiki](https://github.com/Timpan4/kub
 
 ## Engineering
 
+- [GPUI E2E flavor and agent automation](decisions/0035-gpui-e2e-flavor-and-agent-automation.md): the native client's test build, its pinned kubeconfig, and the MCP endpoint agents use to read and operate its window.
 - [GPUI release bundles and updates](decisions/0034-gpui-release-bundles-and-updates.md): the native client's AppImage, app bundle and installer, its signed update manifest, and how it verifies and installs an update.
 - [Multi-context resource views](decisions/0033-multi-context-resource-views.md): Resources view reads across workspace contexts, with per-context identity, targets and the ownership map scope.
 - [Desktop close guard](decisions/0032-desktop-close-draft-guard.md): window close refuses while a YAML draft has unsaved changes in the Tauri desktop client.
