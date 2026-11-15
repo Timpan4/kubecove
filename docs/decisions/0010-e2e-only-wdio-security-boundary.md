@@ -30,4 +30,4 @@ The lab topology, real-controller requirement, and bootstrap-to-GitOps ownership
 
 ## Consequences
 
-Native tests can exercise real Tauri commands without shipping a production automation surface. A misconfigured E2E process stops before it can fall back to a user's cluster. The dedicated flavor adds build time and must be checked separately from the default flavor. Any future desktop automation permission or test-only command requires an update to this ADR and a production-build absence check.
+Native tests can exercise real Tauri commands without shipping a production automation surface. A misconfigured E2E process stops before it can fall back to a user's cluster. The dedicated flavor adds build time and must be checked separately from the default flavor. Any future desktop automation permission or test-only command requires an update to this ADR and a production-build absence check. [ADR 0035](0035-gpui-e2e-flavor-and-agent-automation.md) adds the native client's E2E flavor under the same rules: a Cargo `e2e` feature, the `KUBECOVE_E2E=1` interlock, a pinned kubeconfig and data directory, and a release-build absence check.

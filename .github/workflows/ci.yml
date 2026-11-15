@@ -409,12 +409,18 @@ jobs:
       - name: Lint GPUI
         id: lint-gpui
         if: ${{ (matrix.task == 'gpui-clippy') && steps.decide-pass.outputs.skip != 'true' }}
-        run: mbx clippy --manifest-path src-tauri/gpui/Cargo.toml --locked --all-targets -- -D warnings
+        run: |
+          mbx clippy --manifest-path src-tauri/gpui/Cargo.toml --locked --all-targets -- -D warnings
+          # The E2E flavor with the agent automation endpoint (ADR 0035).
+          mbx clippy --manifest-path src-tauri/gpui/Cargo.toml --locked --features e2e --all-targets -- -D warnings
 
       - name: Test GPUI
         id: test-gpui
         if: ${{ (matrix.task == 'gpui-test') && steps.decide-pass.outputs.skip != 'true' }}
-        run: mbx test --manifest-path src-tauri/gpui/Cargo.toml --locked --lib --test native
+        run: |
+          mbx test --manifest-path src-tauri/gpui/Cargo.toml --locked --lib --test native
+          # The E2E flavor's automation and startup checks (ADR 0035).
+          mbx test --manifest-path src-tauri/gpui/Cargo.toml --locked --features e2e --test native -- automation:: e2e_interlock::
 
       # Runs before the browser UI is built: the API-only server must build without it.
       - name: Verify API-only server

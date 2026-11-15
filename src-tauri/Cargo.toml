@@ -96,7 +96,9 @@ bench-support = [
     "kubecove-live/bench-support", "kubecove-gitops/bench-support", "kubecove-host/bench-support",
     "dep:base64", "dep:flate2", "dep:futures-util", "tokio/rt-multi-thread",
 ]
-e2e =["desktop", "kubecove-kube/e2e", "dep:tauri-plugin-wdio", "dep:tauri-plugin-wdio-webdriver"]
+e2e =["desktop", "pinned-kubeconfig", "kubecove-kube/e2e", "dep:tauri-plugin-wdio", "dep:tauri-plugin-wdio-webdriver"]
+# The kubeconfig pin of the E2E flavors, without Tauri; the native client's `e2e` uses it.
+pinned-kubeconfig = ["kubecove-kube/pinned-kubeconfig"]
 
 [lib]
 name = "kubecove_lib"

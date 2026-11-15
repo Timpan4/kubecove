@@ -2,6 +2,7 @@
 
 use crate::http::McpEndpoint;
 use axum::{Router, extract::Request, response::IntoResponse as _};
+use rmcp::ServerHandler;
 use std::{
     io,
     net::{Ipv4Addr, SocketAddr},
@@ -13,9 +14,9 @@ use tokio_util::sync::CancellationToken;
 /// such as a port in use, is returned before anything is spawned. Aborting the returned
 /// task closes the listening socket at once; the cancelled endpoint refuses requests on
 /// connections that outlive it.
-pub async fn serve_loopback(
+pub async fn serve_loopback<H: ServerHandler + Clone + Send + Sync + 'static>(
     port: u16,
-    endpoint: McpEndpoint,
+    endpoint: McpEndpoint<H>,
     shutdown: CancellationToken,
 ) -> io::Result<(SocketAddr, JoinHandle<()>)> {
     let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, port)).await?;

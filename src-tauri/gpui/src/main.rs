@@ -1,8 +1,10 @@
 use gpui_kit::{AppContext, Bounds, WindowBounds, WindowOptions, px, size};
+#[cfg(not(feature = "e2e"))]
+use kubecove_gpui::backend::settings_integrations::config_directory;
 use kubecove_gpui::{
     Inspector,
     assets::AppAssets,
-    backend::{DesktopBackend, NativeBackend, settings_integrations::config_directory},
+    backend::{DesktopBackend, NativeBackend},
 };
 use std::sync::Arc;
 
@@ -13,15 +15,28 @@ const APP_ID: &str = "com.timpan.kubecove.gpui";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     cap_malloc_arenas();
+    // The E2E checks come first, before any storage, network or window (ADR 0035).
+    #[cfg(feature = "e2e")]
+    let (automation, local) = {
+        let startup = kubecove_gpui::automation::Startup::from_env()?;
+        let local = NativeBackend::with_settings_directory(startup.data_dir().to_path_buf())?;
+        (startup.listen()?, local)
+    };
+    #[cfg(not(feature = "e2e"))]
+    if std::env::var("KUBECOVE_E2E").as_deref() == Ok("1") {
+        return Err("KUBECOVE_E2E=1 requires the e2e Cargo feature".into());
+    }
     // reqwest is built with `rustls-no-provider`, so a TLS client such as the update check
     // panics unless a provider is installed first. Only the first installation takes effect.
     let _ = rustls::crypto::ring::default_provider().install_default();
-    let directory = config_directory()?;
-    let legacy_sessions = directory
-        .with_file_name("kubecove-gpui")
-        .join("live-sessions.json");
-    let local = NativeBackend::with_settings_directory(directory)?
-        .with_legacy_session_file(legacy_sessions);
+    #[cfg(not(feature = "e2e"))]
+    let local = {
+        let directory = config_directory()?;
+        let legacy_sessions = directory
+            .with_file_name("kubecove-gpui")
+            .join("live-sessions.json");
+        NativeBackend::with_settings_directory(directory)?.with_legacy_session_file(legacy_sessions)
+    };
     let backend = Arc::new(DesktopBackend::new(local));
     gpui_kit::application()
         .with_assets(AppAssets)
@@ -39,7 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             })
             .detach();
             let bounds = Bounds::centered(None, size(px(1440.), px(900.)), cx);
-            if let Err(error) = gpui_kit::open_window(
+            let opened = gpui_kit::open_window(
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     focus: false,
@@ -51,9 +66,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     window.set_window_title("KubeCove");
                     cx.new(|cx| Inspector::new(backend, window, cx))
                 },
-            ) {
-                eprintln!("Could not open KubeCove: {error}");
-                cx.quit();
+            );
+            match opened {
+                #[cfg(feature = "e2e")]
+                Ok((window, _)) => automation.attach(window, cx),
+                #[cfg(not(feature = "e2e"))]
+                Ok(_) => {}
+                Err(error) => {
+                    eprintln!("Could not open KubeCove: {error}");
+                    cx.quit();
+                }
             }
         });
     Ok(())

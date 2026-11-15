@@ -25,8 +25,8 @@ pub mod commands;
 mod ipc;
 #[cfg(feature = "mcp-host")]
 pub mod mcp;
-#[cfg(feature = "e2e")]
-use kubecove_kube::e2e;
+#[cfg(feature = "pinned-kubeconfig")]
+pub use kubecove_kube::e2e;
 pub use kubecove_kube::runtime;
 pub use kubecove_models as models;
 

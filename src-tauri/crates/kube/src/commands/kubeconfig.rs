@@ -21,7 +21,7 @@ use tauri_plugin_dialog::{DialogExt, FilePath};
 
 pub const DEFAULT_KUBECONFIG_ENV_VAR: &str = "KUBECONFIG";
 const SETTINGS_FILE_NAME: &str = "kubeconfig-sources.json";
-#[cfg(any(feature = "e2e", feature = "test-support", test))]
+#[cfg(any(feature = "pinned-kubeconfig", feature = "test-support", test))]
 const E2E_KUBECONFIG_SOURCE_ENV_VAR: &str = "KUBECOVE_E2E_KUBECONFIG_SOURCE";
 
 static SETTINGS_PATH: OnceLock<PathBuf> = OnceLock::new();
@@ -97,7 +97,7 @@ impl KubeconfigSource {
     /// The persisted source settings, with `env_var` naming the environment
     /// variable instead of the configured one when given.
     pub(crate) fn from_persisted(env_var: Option<&str>) -> Result<Self, AppError> {
-        #[cfg(feature = "e2e")]
+        #[cfg(feature = "pinned-kubeconfig")]
         if crate::e2e::is_enabled() {
             return Ok(Self::from_e2e_path(crate::e2e::kubeconfig_path()?));
         }
@@ -124,7 +124,7 @@ impl KubeconfigSource {
         })
     }
 
-    #[cfg(any(feature = "e2e", feature = "test-support", test))]
+    #[cfg(any(feature = "pinned-kubeconfig", feature = "test-support", test))]
     pub(crate) fn from_e2e_path(path: PathBuf) -> Self {
         Self {
             env_var: E2E_KUBECONFIG_SOURCE_ENV_VAR.to_string(),
@@ -311,10 +311,16 @@ impl KubeconfigSource {
         }
 
         if loaded > 0 {
+            // ADR 0035: the startup cluster rule also holds for every later read, so a
+            // pinned file rewritten while the app runs cannot reach a remote cluster.
+            #[cfg(feature = "pinned-kubeconfig")]
+            if crate::e2e::is_enabled() {
+                crate::e2e::validate_reread(&merged)?;
+            }
             return Ok((merged, warnings));
         }
 
-        #[cfg(feature = "e2e")]
+        #[cfg(feature = "pinned-kubeconfig")]
         if crate::e2e::is_enabled() {
             return Err(AppError::new(
                 "the isolated E2E kubeconfig became unavailable",

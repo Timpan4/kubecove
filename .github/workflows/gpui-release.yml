@@ -102,6 +102,24 @@ jobs:
           # cargo-packager reads the binary from target/<bundle target>/release.
           cargo build --locked --release --manifest-path src-tauri/gpui/Cargo.toml --bin kubecove-gpui --target "$BUNDLE_TARGET"
 
+      # ADR 0035: a release build has no E2E automation, so it refuses KUBECOVE_E2E=1 and
+      # exits before it opens storage or a window.
+      - name: Check the release build excludes E2E automation
+        shell: bash
+        env:
+          BUNDLE_TARGET: ${{ matrix.bundle-target }}
+        run: |
+          set -uo pipefail
+          binary="src-tauri/gpui/target/$BUNDLE_TARGET/release/kubecove-gpui"
+          if [ "$RUNNER_OS" = "Windows" ]; then binary="$binary.exe"; fi
+          # The step's shell runs with errexit, which an `if` condition suspends, so the
+          # expected nonzero exit is captured instead of ending the step.
+          if output="$(KUBECOVE_E2E=1 "$binary" 2>&1)"; then status=0; else status=$?; fi
+          if [ "$status" -eq 0 ] || [[ "$output" != *"KUBECOVE_E2E=1 requires the e2e Cargo feature"* ]]; then
+            echo "The release build did not refuse KUBECOVE_E2E=1 (exit $status): $output"
+            exit 1
+          fi
+
       # The bundle settings live in `[package.metadata.packager]` of src-tauri/gpui/Cargo.toml.
       - name: Bundle GPUI client
         env:

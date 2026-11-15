@@ -59,6 +59,42 @@ force-conflict settings are stored with the other preferences.
 
 See [FRAME_TIMING.md](FRAME_TIMING.md) for the optimized frame harness and measurement boundaries.
 
+## E2E flavor and agent automation
+
+The `e2e` feature builds a test flavor that agents can operate through MCP
+([ADR 0035](../../docs/decisions/0035-gpui-e2e-flavor-and-agent-automation.md)). It reads
+only the kubeconfig you name, and every cluster in it must be an HTTPS API server on
+loopback, such as the one `bun run dev:kind` creates. It keeps its settings in the data
+directory you name, not in your config directory. Give each launch its own data
+directory, since a second launch on one replaces its token. Release builds do not have it.
+
+```sh
+export KUBECOVE_E2E=1
+export KUBECOVE_KUBECONFIG=/absolute/path/to/kubeconfig
+export KUBECOVE_DATA_DIR=/absolute/path/to/empty/directory
+export KUBECOVE_AUTOMATION_PORT=0   # 0 picks a free port
+cargo run --locked --manifest-path src-tauri/gpui/Cargo.toml --features e2e
+```
+
+The app prints `[kubecove:automation] MCP endpoint http://127.0.0.1:<port>/mcp; bearer
+token in <data dir>/automation-token`. The token changes at every launch. To give Claude
+Code the tools for that launch:
+
+```sh
+claude mcp add --transport http kubecove-ui http://127.0.0.1:<port>/mcp \
+  --header "Authorization: Bearer $(cat "$KUBECOVE_DATA_DIR/automation-token")"
+```
+
+Start with `snapshot`, which lists the window's elements with references, roles, labels,
+values and states. Most visible content, such as table cells, appears as labels and
+values. Then use `click`, `type_text`, `press_key` and `scroll` on a reference, an
+accessible label or a window position. Elements under an overlay, such as the workspace
+launcher, are still listed, but a click on them lands on the overlay. `type_text` with a
+target clicks its center first, so in a field that already holds text it types at that
+point. Send newlines and tabs with `press_key`. `screenshot`
+returns a PNG on macOS and Windows; GPUI's Linux windows cannot capture their pixels.
+Native file dialogs are not reachable through the endpoint.
+
 The workspace pins GPUI Kit 0.9.0 with components, assets and the YAML grammar.
 Test support is enabled only for development builds. The backend dependency
 uses the existing GUI-free configuration.

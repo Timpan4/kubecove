@@ -29,20 +29,32 @@ pub fn rotate_token(dir: &Path) -> io::Result<String> {
     write_new(&dir.join(TOKEN_FILE_NAME))
 }
 
-fn write_new(path: &Path) -> io::Result<String> {
-    // ADR 0020 requires 32 bytes from the OS CSPRNG for server tokens; ADR 0028 reuses it.
-    let token = URL_SAFE_NO_PAD.encode(random_bytes::<32>()?);
+/// A new token. ADR 0020 requires 32 bytes from the OS CSPRNG for server tokens; ADR 0028
+/// reuses it.
+pub fn new_token() -> io::Result<String> {
+    Ok(URL_SAFE_NO_PAD.encode(random_bytes::<32>()?))
+}
+
+/// Stores `token` at `path`, replacing any earlier one. The native client's E2E
+/// automation endpoint writes a fresh one once its listener is bound (ADR 0035).
+pub fn write_token_file(path: &Path, token: &str) -> io::Result<()> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
     }
     // Write a staging file of this call's own and rename it over the target, so a reader
     // never sees a partial token and overlapping writers never share a staging file.
     let staged = staged_path(path)?;
-    let written = write_staged(&staged, &token).and_then(|()| fs::rename(&staged, path));
+    let written = write_staged(&staged, token).and_then(|()| fs::rename(&staged, path));
     if written.is_err() {
         let _ = fs::remove_file(&staged);
     }
-    written.map(|()| token)
+    written
+}
+
+fn write_new(path: &Path) -> io::Result<String> {
+    let token = new_token()?;
+    write_token_file(path, &token)?;
+    Ok(token)
 }
 
 fn write_staged(staged: &Path, token: &str) -> io::Result<()> {

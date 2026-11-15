@@ -2,7 +2,7 @@
 
 pub mod commands;
 pub use commands::*;
-#[cfg(feature = "e2e")]
+#[cfg(feature = "pinned-kubeconfig")]
 pub mod e2e;
 pub use kubecove_models as models;
 pub mod runtime;

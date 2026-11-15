@@ -33,6 +33,13 @@ installMode = "currentUser"
 
 [features]
 frame-profile = []
+# The E2E flavor (ADR 0035): element observation, the agent automation endpoint and the
+# pinned kubeconfig. Release builds never enable it.
+e2e = [
+  "gpui-kit/test-support", "kubecove/pinned-kubeconfig", "tokio/net",
+  "dep:kubecove-mcp", "dep:rmcp", "dep:schemars", "dep:image", "dep:tokio-util",
+  "serde/derive",
+]
 
 # `scripts/e2e-parity.ts` sets this cfg with -C instrument-coverage when PARITY_COVERAGE=1.
 [lints.rust]
@@ -79,6 +86,13 @@ memchr = "=2.8.3"
 # error recovery lets the editor report every YAML parser error, as the web's
 # `yaml` package does, where serde_yaml stops at the first.
 tree-sitter-yaml = "=0.7.2"
+# The E2E flavor's automation endpoint (ADR 0035), at the versions already locked through
+# the backend's MCP host and GPUI.
+kubecove-mcp = { path = "../crates/mcp", features = ["loopback"], optional = true }
+rmcp = { version = "=3.9.0", default-features = false, features = ["server", "transport-streamable-http-server"], optional = true }
+schemars = { version = "=1.2.3", optional = true }
+image = { version = "=0.25.10", default-features = false, features = ["png"], optional = true }
+tokio-util = { version = "=0.7.20", optional = true }
 
 [dev-dependencies]
 tokio-tungstenite = "=0.30.0"
