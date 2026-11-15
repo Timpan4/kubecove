@@ -29,7 +29,7 @@ import { createResourceActionSession, type ResourceActionSessionState } from "./
 // 4. Execution omits the reviewed UID and resourceVersion guards, or a rollback
 //    omits its revision source guards; a preview claims confirmation.
 // 5. Drafts edited after the preview change what executes.
-// 6. Delete skips review or typed-name confirmation when review skipping is on.
+// 6. Delete skips the explicit confirmation dialog when review skipping is on.
 // 7. Skipping review hides a failed dry run or applies a no-op without showing it.
 // 8. An independent action loses pending drafts or leaves the baseline stale.
 // 9. An edit success clears drafts edited during its execution.
@@ -374,21 +374,22 @@ describe("resource action session: preview then execute", () => {
 });
 
 describe("resource action session: review skipping", () => {
-	test("delete always opens review and needs the exact typed name", async () => {
-		const h = harness({ skipReview: true });
-		await ready(h);
-		await h.session.review("delete");
+	for (const kind of ["Deployment", "StatefulSet", "DaemonSet", "Pod", "ConfigMap"]) {
+		test(`delete ${kind} always opens review and executes without typing`, async () => {
+			const h = harness({ skipReview: true });
+			await ready(h, { ...deployment(), kind, apiVersion: ["Pod", "ConfigMap"].includes(kind) ? "v1" : "apps/v1" });
+			await h.session.review("delete");
 
-		expect(h.session.current.review?.open).toBe(true);
-		await h.session.execute();
-		h.session.confirm("payments");
-		await h.session.execute();
-		expect(h.calls("execute_resource_action")).toHaveLength(0);
-
-		h.session.confirm("payments-api");
-		await h.session.execute();
-		expect(h.last("execute_resource_action")?.request.action).toBe("delete");
-	});
+			expect(h.session.current.review?.open).toBe(true);
+			expect(h.calls("execute_resource_action")).toHaveLength(0);
+			expect(h.session.current.review?.canExecute).toBe(true);
+			await h.session.execute();
+			expect(h.last("execute_resource_action")?.request).toMatchObject({
+				action: "delete", kind, name: "payments-api", confirmed: true,
+				expectedUid: "payments-api-uid", expectedResourceVersion: "7",
+			});
+		});
+	}
 
 	test("applies a changed dry run inline without opening review", async () => {
 		const h = harness({ skipReview: true });

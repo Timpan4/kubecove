@@ -54,7 +54,7 @@
 		setQuantity,
 		setReplicas,
 	} from "./resourceActionDrafts";
-	import { createResourceActionSession, needsTypedName } from "./resourceActionSession";
+	import { createResourceActionSession } from "./resourceActionSession";
 
 	type NewEntry = { name: string; value: string };
 	const QUANTITY_FIELDS: QuantityField[] = ["requests", "limits"];
@@ -309,7 +309,6 @@
 					{/if}
 					{#if review.action !== "delete" || diffOpen}<pre class={review.action === "delete" ? "max-h-[50vh] overflow-auto border-t p-3 font-mono text-xs leading-5" : "max-h-[50vh] overflow-auto p-3 font-mono text-xs leading-5"} aria-label="Server result diff">{#each diffLines as line}<span class={diffLineClassName(line.type)}>{line.text}{"\n"}</span>{/each}</pre>{/if}
 				</div>
-				{#if needsTypedName(review)}<label class="mt-4 grid gap-1 text-xs">Type {review.name} to confirm deletion<Input aria-label="Type resource name to confirm" autocomplete="off" value={review.confirmation} oninput={(event: Event & { currentTarget: HTMLInputElement }) => session.confirm(event.currentTarget.value)} /></label>{/if}
 			{/if}
 			<div class="mt-4 flex flex-wrap items-center justify-end gap-2">
 				{#if review.skipRequested}<span class="mr-auto text-xs text-muted-foreground">Successful review dialogs are skipped in Settings. Dry-run still runs.</span>{/if}

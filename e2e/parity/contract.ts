@@ -72,7 +72,7 @@ export const ACTIONS = [
 	"expectDetailScroll", "expectEvent", "expectEventCount", "expectLiveSessionCount", "filterIncidents", "expectIncidentGuide", "openIncidentResources", "expectGitOpsCount", "expectPortForward",
 	"expectLogLines", "expectLogToolbarFit", "filterLogs", "toggleLogLevel", "expectLogsEmpty", "selectRevision", "expectRevisionDiff", "reviewAction", "editReplicas",
 	"toggleLogRow", "toggleLogExpandAll", "expectLogRowOpen", "copyLogLine", "expectLogTimestampTooltip", "expectRestorePrompt", "restorePromptControl",
-	"expectReview", "showReviewDiff", "expectDeleteReview", "confirmDeletion", "executeReview", "closeReview", "expectNoReview", "expectActionResult", "expectNoActionResult",
+	"expectReview", "showReviewDiff", "expectDeleteReview", "executeReview", "closeReview", "expectNoReview", "expectActionResult", "expectNoActionResult",
 	"editYaml", "applyYaml", "dryRunYaml", "expectDryRun", "expectYamlNotice", "expectNoYamlNotice", "expectYamlReadOnly",
 	"expectNoResource", "openLauncher", "openSavedWorkspace", "expectSavedWorkspace", "expectContextUnavailable", "nameWorkspace", "selectWorkspaceContext", "toggleWorkspaceNamespace",
 	"createWorkspace", "expectOpenWorkspace", "selectRbacCategory", "expectRbacCategory", "filterRbacRisk", "expectRbacItem", "expectNoRbacItem", "selectRbacItem",
@@ -308,7 +308,7 @@ function step<Value>(value: Value): Step {
 		case "expectLogLines": return { action: item.action, lines: strings(item.lines, true) };
 		case "expectLogToolbarFit": return { action: item.action, state: oneOf(["Live", "Paused"], item.state, "a log toolbar state") };
 		case "filterLogs": return { action: item.action, value: item.value === "" ? "" : string(item.value) };
-		case "confirmDeletion": case "editReplicas": return { action: item.action, value: string(item.value) };
+		case "editReplicas": return { action: item.action, value: string(item.value) };
 		case "toggleLogLevel": {
 			const level = LOG_LEVELS.find((candidate) => candidate === item.level);
 			if (!level) throw new Error("Expected a log level");
@@ -339,7 +339,7 @@ function step<Value>(value: Value): Step {
 			return item.key === undefined ? { action: item.action } : { action: item.action, key: oneOf(["Enter", "Space"] as const, item.key, "a disclosure key") };
 		case "expectDeleteReview":
 			if (!isString(item.controller)) throw new Error("Expected a controller, empty when the target has none");
-			return { action: item.action, name: string(item.name), context: string(item.context), namespace: string(item.namespace), controller: item.controller, consequence: string(item.consequence), typed: boolean(item.typed) };
+			return { action: item.action, name: string(item.name), context: string(item.context), namespace: string(item.namespace), controller: item.controller, consequence: string(item.consequence) };
 		case "expectActionResult": return { action: item.action, text: string(item.text) };
 		case "expectDryRun": return { action: item.action, contains: strings(item.contains, false) };
 		case "expectNoResource":

@@ -6,7 +6,7 @@ import { beforeEach, describe, it } from "mocha";
  * Test brief. Cover the failure modes that can make a guarded resource action
  * unsafe or silently lose work: pending edits must survive an independent
  * action, preview errors must not allow execution, deletes must still require
- * the exact typed name when review is skipped, and switching target/source
+ * an explicit confirmation dialog when review is skipped, and switching target/source
  * must invalidate pending review state. The API server remains authoritative.
  */
 describe("resource Actions review", () => {
@@ -122,9 +122,8 @@ describe("resource Actions review", () => {
 
 		await $('[data-resource-action="delete"]').$("button=Delete").click();
 		const review = await $('[role="dialog"]');
-		await expect(review.$('input[aria-label="Type resource name to confirm"]')).toBeDisplayed();
-		await expect(review.$("button=Delete Deployment")).toBeDisabled();
-		await review.$('input[aria-label="Type resource name to confirm"]').setValue("payments-api");
+		await expect(review.$('input[aria-label="Type resource name to confirm"]')).not.toBeDisplayed();
+		await expect(review).toHaveText(expect.stringContaining("payments-api"));
 		await expect(review.$("button=Delete Deployment")).toBeEnabled();
 	});
 

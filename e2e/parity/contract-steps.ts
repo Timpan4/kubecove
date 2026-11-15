@@ -248,7 +248,7 @@ export type Step =
     | { action: "closeReview" | "expectNoReview" | "executeReview" | "expectNoActionResult" | "editYaml" | "applyYaml" | "dryRunYaml" | "expectYamlReadOnly" }
     | { action: "expectLogLines"; lines: string[] }
     | { action: "expectLogToolbarFit"; state: "Live" | "Paused" }
-    | { action: "filterLogs" | "confirmDeletion" | "editReplicas"; value: string }
+    | { action: "filterLogs" | "editReplicas"; value: string }
     | { action: "toggleLogLevel"; level: LogLevel }
     | { action: "toggleLogRow"; line: string; key?: "Enter" | "Space" }
     | { action: "toggleLogExpandAll" }
@@ -263,8 +263,8 @@ export type Step =
     | { action: "expectReview"; title: string; description: string; contains: string[] }
     // Without `key` the disclosure is clicked; with it, focused and activated from the keyboard.
     | { action: "showReviewDiff"; key?: "Enter" | "Space" }
-    // `controller` is "" when the target has no controlling owner; `typed` says whether the name input shows.
-    | { action: "expectDeleteReview"; name: string; context: string; namespace: string; controller: string; consequence: string; typed: boolean }
+    // `controller` is "" when the target has no controlling owner.
+    | { action: "expectDeleteReview"; name: string; context: string; namespace: string; controller: string; consequence: string }
     | { action: "expectActionResult"; text: string }
     | { action: "expectDryRun"; contains: string[] }
     | ({ action: "expectNoResource" | "expectPaletteResource" | "expectNoPaletteResource" | "choosePaletteResource" } & Identity)

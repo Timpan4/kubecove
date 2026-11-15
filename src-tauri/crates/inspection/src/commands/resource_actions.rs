@@ -99,19 +99,9 @@ pub async fn preview_resource_action(
         &resource_version,
     )
     .await?;
-    // Only the delete review shows the controller, and confirming it costs a read.
-    let controller = match request.target.namespace.as_deref() {
-        Some(namespace) if request.action == ResourceActionKind::Delete => {
-            controller::confirmed_controller(
-                client,
-                namespace,
-                &request.target.kind,
-                &current_value,
-            )
-            .await
-        }
-        _ => None,
-    };
+    let controller = (request.action == ResourceActionKind::Delete)
+        .then(|| controller::action_controller(&current_value))
+        .flatten();
     Ok(ResourceActionPreview {
         target: request.target,
         effect,
@@ -168,10 +158,6 @@ pub async fn execute_resource_action(
             &preview_exact_delete_params(expected_uid, expected_resource_version),
         )
         .await?;
-        if request.require_replacement {
-            controller::require_replacement(client.clone(), &request.target, &current_value)
-                .await?;
-        }
         api.delete(
             &request.target.name,
             &exact_delete_params(expected_uid, expected_resource_version),

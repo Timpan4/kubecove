@@ -266,7 +266,6 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 &strings(step, "contains"),
             );
         }
-        "confirmDeletion" => replace_text(window, cx, "review-confirmation", string(step, "value")),
         "executeReview" => window.click("review-execute", cx),
         "closeReview" => window.click("review-cancel", cx),
         "expectNoReview" => assert!(window.try_find("review-title").is_none()),

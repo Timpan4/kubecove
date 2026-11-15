@@ -12,15 +12,11 @@ use kubecove_lib::models::ResourceActionPreview;
 pub(super) fn consequence(preview: &ResourceActionPreview) -> String {
     let kind = &preview.target.kind;
     match &preview.controller {
-        Some(controller) if controller.recreates => format!(
-            "{} {} normally creates a replacement {kind}.",
-            controller.kind, controller.name
-        ),
         Some(controller) => format!(
-            "{} {} controls this {kind}, but KubeCove cannot confirm it will create a replacement.",
+            "{} {} controls this {kind}. It may create a replacement if still needed.",
             controller.kind, controller.name
         ),
-        None => "No controlling owner was found. The delete is permanent unless other automation, such as GitOps, recreates it.".to_owned(),
+        None => "No controlling owner was found. Other automation, such as GitOps, may recreate this resource.".to_owned(),
     }
 }
 
@@ -72,10 +68,6 @@ pub(super) fn delete_summary(preview: &ResourceActionPreview) -> Div {
             true,
         ));
     }
-    let recreates = preview
-        .controller
-        .as_ref()
-        .is_some_and(|controller| controller.recreates);
     let consequence = consequence(preview);
     div()
         .flex()
@@ -152,11 +144,7 @@ pub(super) fn delete_summary(preview: &ResourceActionPreview) -> Div {
                             div()
                                 .flex()
                                 .gap(px(8.))
-                                .child(dot(if recreates {
-                                    Palette::emerald400()
-                                } else {
-                                    Palette::amber400()
-                                }))
+                                .child(dot(Palette::amber400()))
                                 .child(
                                     ui::xs(consequence.clone())
                                         .id("delete-consequence")

@@ -269,7 +269,6 @@ export async function action(page: Page, step: Step, scenarioSteps: readonly Ste
 			await containsLines(dialog.getByLabel("Server result diff"), step.contains);
 			break;
 		}
-		case "confirmDeletion": await page.getByRole("dialog").getByRole("textbox", { name: "Type resource name to confirm" }).fill(step.value); break;
 		// Forced, so a disabled control is clicked like a user would and must do nothing.
 		case "executeReview": await page.getByRole("dialog").getByRole("button", { name: /^(Apply|Delete \w+)$/ }).click({ force: true }); break;
 		case "closeReview": await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click(); break;

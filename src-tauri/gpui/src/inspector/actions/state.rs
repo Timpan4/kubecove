@@ -12,7 +12,7 @@ use gpui_kit::component::{
     WindowExt,
     input::{InputEvent, InputState},
 };
-use gpui_kit::{App, AppContext, Context, Entity, FocusHandle, SharedString, Subscription, Window};
+use gpui_kit::{AppContext, Context, Entity, FocusHandle, SharedString, Subscription, Window};
 use kubecove_lib::models::{
     ResourceActionEdits, ResourceActionKind, ResourceActionPreview, ResourceActionRequest,
     ResourceActionState, ResourceSummary,
@@ -52,12 +52,10 @@ pub(super) struct Review {
     pub name: String,
     request: ResourceActionRequest,
     pub step: ReviewStep,
-    pub confirmation: Entity<InputState>,
     /// A delete review folds its diff behind the target summary.
     pub diff_open: bool,
     /// Tab stop of the diff disclosure, so Enter or Space can open it.
     pub diff_focus: FocusHandle,
-    _subscription: Subscription,
 }
 
 impl Review {
@@ -76,25 +74,9 @@ impl Review {
         matches!(self.step, ReviewStep::Checking { .. }) || self.executing()
     }
 
-    /// `needsTypedName`: a delete needs the typed name unless a built-in
-    /// controller recreates the object (ADR 0024).
-    pub fn needs_typed_name(&self) -> bool {
-        let recreated = match &self.step {
-            ReviewStep::Previewed(previewed) => previewed
-                .preview
-                .controller
-                .as_ref()
-                .is_some_and(|controller| controller.recreates),
-            _ => false,
-        };
-        self.action == ResourceActionKind::Delete && !recreated
-    }
-
-    /// `canExecute`: a ready preview, and the typed name when a delete needs it.
-    pub fn can_execute(&self, cx: &App) -> bool {
+    /// A successful preview still waits for the explicit action button.
+    pub fn can_execute(&self) -> bool {
         matches!(self.execution(), Some(Execution::Pending))
-            && (!self.needs_typed_name()
-                || self.confirmation.read(cx).value().as_ref() == self.name)
     }
 }
 
@@ -402,13 +384,6 @@ impl Inspector {
                 window.refresh();
             });
         });
-        let confirmation = cx.new(|cx| InputState::new(window, cx));
-        let subscription = cx.subscribe_in(&confirmation, window, |_, _, event, window, cx| {
-            if matches!(event, InputEvent::Change) {
-                cx.notify();
-                window.refresh();
-            }
-        });
         let Some(actions) = self.actions_state() else {
             return;
         };
@@ -418,10 +393,8 @@ impl Inspector {
             name: actions.resource.name.clone(),
             request,
             step: ReviewStep::Checking { _read: task.into() },
-            confirmation,
             diff_open: false,
             diff_focus: cx.focus_handle().tab_stop(true),
-            _subscription: subscription,
         });
         self.open_review_dialog(window, cx);
         cx.notify();
@@ -437,7 +410,7 @@ impl Inspector {
         let Some(review) = actions.review.as_mut() else {
             return;
         };
-        if !review.can_execute(cx) {
+        if !review.can_execute() {
             return;
         }
         let ReviewStep::Previewed(previewed) = &mut review.step else {
