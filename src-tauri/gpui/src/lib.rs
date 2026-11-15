@@ -1,6 +1,8 @@
 mod actions;
 mod argo_app;
 pub mod assets;
+#[cfg(feature = "e2e")]
+pub mod automation;
 pub mod backend;
 mod collate;
 pub mod frame_profile;

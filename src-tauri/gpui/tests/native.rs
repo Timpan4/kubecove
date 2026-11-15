@@ -4,12 +4,17 @@ mod argo;
 mod argo_gaps;
 #[path = "native/argo_outcomes.rs"]
 mod argo_outcomes;
+#[cfg(feature = "e2e")]
+#[path = "native/automation.rs"]
+mod automation;
 #[path = "native/credential_plugin.rs"]
 mod credential_plugin;
 #[path = "native/default_read_retry.rs"]
 mod default_read_retry;
 #[path = "native/detail_tabs.rs"]
 mod detail_tabs;
+#[path = "native/e2e_interlock.rs"]
+mod e2e_interlock;
 #[path = "native/exec_context_menu.rs"]
 mod exec_context_menu;
 #[path = "native/inspection.rs"]
