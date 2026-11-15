@@ -72,7 +72,7 @@ Opening a row reads its details, YAML, and events from that row's context. The d
 
 Actions remain visible when Kubernetes permission is denied or cannot be determined, but the unavailable action is locked and shows the required permission. You can collect several edits for one object and review them as one atomic change. By default, KubeCove sends a server-side dry-run and shows a diff between the current YAML and the API server's result before applying. If the resource UID or resource version changes after review, execution is rejected as stale. A failed dry-run cannot be applied.
 
-In global **Settings > Advanced**, **Skip change review** skips the successful review screen only, after an explicit warning. Server-side dry-run still runs, and exact deletion always requires typing the resource name. The selected-resource YAML editor keeps its separate second **Apply** step.
+In global **Settings > Advanced**, **Skip change review** skips the successful review screen only, after an explicit warning. Server-side dry-run still runs, and exact deletion always opens a clear confirmation dialog with an explicit Delete button and no typing. The selected-resource YAML editor keeps its separate second **Apply** step.
 
 ## Understand loading and empty states
 
