@@ -112,8 +112,9 @@ jobs:
           set -uo pipefail
           binary="src-tauri/gpui/target/$BUNDLE_TARGET/release/kubecove-gpui"
           if [ "$RUNNER_OS" = "Windows" ]; then binary="$binary.exe"; fi
-          output="$(KUBECOVE_E2E=1 "$binary" 2>&1)"
-          status=$?
+          # The step's shell runs with errexit, which an `if` condition suspends, so the
+          # expected nonzero exit is captured instead of ending the step.
+          if output="$(KUBECOVE_E2E=1 "$binary" 2>&1)"; then status=0; else status=$?; fi
           if [ "$status" -eq 0 ] || [[ "$output" != *"KUBECOVE_E2E=1 requires the e2e Cargo feature"* ]]; then
             echo "The release build did not refuse KUBECOVE_E2E=1 (exit $status): $output"
             exit 1
