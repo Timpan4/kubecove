@@ -1,6 +1,6 @@
 use crate::models::AppError;
 use crate::models::AppErrorKind;
-use kube::config::Kubeconfig;
+use kube::config::{Cluster, Kubeconfig};
 use std::{env, fs, path::PathBuf};
 
 const E2E_ENV: &str = "KUBECOVE_E2E";
@@ -72,14 +72,7 @@ fn validate_loopback_clusters(config: &Kubeconfig) -> Result<(), AppError> {
         ));
     }
     for named in &config.clusters {
-        let server = named
-            .cluster
-            .as_ref()
-            .and_then(|cluster| cluster.server.as_deref())
-            .ok_or_else(|| {
-                AppError::new("missing E2E cluster API server", AppErrorKind::Validation)
-            })?;
-        validate_loopback_server(server)?;
+        validate_loopback_cluster(named.cluster.as_ref())?;
     }
     Ok(())
 }
@@ -203,14 +196,50 @@ fn validate_kubeconfig(config: &Kubeconfig, cluster: &str) -> Result<(), AppErro
             AppErrorKind::Validation,
         ));
     }
-    let server = config
-        .clusters
-        .iter()
-        .find(|named| named.name == cluster)
-        .and_then(|named| named.cluster.as_ref())
+    validate_loopback_cluster(
+        config
+            .clusters
+            .iter()
+            .find(|named| named.name == cluster)
+            .and_then(|named| named.cluster.as_ref()),
+    )
+}
+
+/// The cluster's API server must be HTTPS on loopback and reached directly. kube-rs
+/// sends requests through a cluster's `proxy-url`, or else `HTTPS_PROXY`, where loopback
+/// would name the proxy's host instead of this one.
+fn validate_loopback_cluster(cluster: Option<&Cluster>) -> Result<(), AppError> {
+    validate_direct(cluster, |name| env::var(name).ok())
+}
+
+fn validate_direct(
+    cluster: Option<&Cluster>,
+    variable: impl Fn(&str) -> Option<String>,
+) -> Result<(), AppError> {
+    let server = cluster
         .and_then(|cluster| cluster.server.as_deref())
         .ok_or_else(|| AppError::new("missing E2E cluster API server", AppErrorKind::Validation))?;
-    validate_loopback_server(server)
+    validate_loopback_server(server)?;
+    if cluster.is_some_and(|cluster| {
+        cluster
+            .proxy_url
+            .as_deref()
+            .is_some_and(|url| !url.is_empty())
+    }) {
+        return Err(AppError::new(
+            "E2E cluster must not set proxy-url",
+            AppErrorKind::Validation,
+        ));
+    }
+    for name in ["HTTPS_PROXY", "https_proxy"] {
+        if variable(name).is_some_and(|value| !value.is_empty()) {
+            return Err(AppError::new(
+                format!("unset {name} for E2E: the cluster must be reached directly"),
+                AppErrorKind::Validation,
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn validate_loopback_server(server: &str) -> Result<(), AppError> {
@@ -293,6 +322,36 @@ mod tests {
         let mut empty = kind_config(&["https://127.0.0.1:41234"]);
         empty.clusters.clear();
         assert!(validate_loopback_clusters(&empty).is_err());
+    }
+
+    /// A loopback server behind a remote proxy reaches the proxy's loopback, not this
+    /// host's, so the flavor would reach whatever cluster the proxy host runs.
+    #[test]
+    fn pinned_flavor_rejects_a_loopback_server_behind_a_proxy() {
+        let mut config = kind_config(&["https://127.0.0.1:41234"]);
+        config.clusters[0]
+            .cluster
+            .as_mut()
+            .expect("cluster")
+            .proxy_url = Some("http://proxy.example.com:3128".into());
+        assert!(validate_loopback_clusters(&config).is_err());
+
+        let direct = kind_config(&["https://127.0.0.1:41234"]);
+        let cluster = direct.clusters[0].cluster.as_ref();
+        let proxied = |name: &str| (name == "https_proxy").then(|| "http://proxy:3128".to_owned());
+        assert!(validate_direct(cluster, proxied).is_err());
+        assert!(validate_direct(cluster, |_| None).is_ok());
+    }
+
+    #[test]
+    fn rejects_lab_cluster_behind_a_proxy() {
+        let mut config = valid_config();
+        config.clusters[0]
+            .cluster
+            .as_mut()
+            .expect("cluster")
+            .proxy_url = Some("http://proxy.example.com:3128".into());
+        assert!(validate_kubeconfig(&config, "run").is_err());
     }
 
     #[test]
