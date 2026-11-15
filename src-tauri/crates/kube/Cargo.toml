@@ -13,7 +13,10 @@ desktop = ["dep:tauri", "dep:tauri-plugin-dialog", "credential-plugin-path"]
 # Desktop hosts recover credential plugin paths without requiring Tauri.
 credential-plugin-path = []
 bench-support = []
-e2e = ["desktop"]
+e2e = ["desktop", "pinned-kubeconfig"]
+# Reads only the kubeconfig named by KUBECOVE_KUBECONFIG while KUBECOVE_E2E=1, without
+# Tauri, for the native client's E2E flavor (ADR 0035).
+pinned-kubeconfig = []
 # Exposes the fixed-client test adapter for other crates' tests.
 test-support = []
 

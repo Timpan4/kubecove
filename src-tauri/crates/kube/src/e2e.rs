@@ -20,7 +20,25 @@ pub(crate) fn kubeconfig_path() -> Result<PathBuf, AppError> {
     required_absolute_path(KUBECONFIG_ENV, false)
 }
 
+/// The desktop E2E flavor (ADR 0010): the kubeconfig must hold exactly the run cluster
+/// named by `KUBECOVE_E2E_CLUSTER`, with its admin and restricted contexts.
 pub fn startup_config() -> Result<E2eConfig, AppError> {
+    config(ClusterRule::Required)
+}
+
+/// The native client's E2E flavor (ADR 0035). With `KUBECOVE_E2E_CLUSTER` set, the same
+/// run-cluster rule as [`startup_config`] applies. Without it, any kubeconfig is accepted
+/// whose every cluster is an HTTPS API server on loopback, such as a kind cluster.
+pub fn pinned_config() -> Result<E2eConfig, AppError> {
+    config(ClusterRule::Optional)
+}
+
+enum ClusterRule {
+    Required,
+    Optional,
+}
+
+fn config(rule: ClusterRule) -> Result<E2eConfig, AppError> {
     if !is_enabled() {
         return Err(AppError::new(
             "e2e feature requires KUBECOVE_E2E=1",
@@ -29,12 +47,41 @@ pub fn startup_config() -> Result<E2eConfig, AppError> {
     }
     let kubeconfig = kubeconfig_path()?;
     let data_dir = required_absolute_path(DATA_DIR_ENV, true)?;
-    let cluster = required_value(CLUSTER_ENV)?;
+    let cluster = match rule {
+        ClusterRule::Required => Some(required_value(CLUSTER_ENV)?),
+        ClusterRule::Optional => env::var(CLUSTER_ENV)
+            .ok()
+            .filter(|value| !value.trim().is_empty()),
+    };
     let config = Kubeconfig::read_from(&kubeconfig).map_err(|error| {
         AppError::new("failed to load E2E kubeconfig", AppErrorKind::Validation).with_source(error)
     })?;
-    validate_kubeconfig(&config, &cluster)?;
+    match cluster {
+        Some(cluster) => validate_kubeconfig(&config, &cluster)?,
+        None => validate_loopback_clusters(&config)?,
+    }
     Ok(E2eConfig { data_dir })
+}
+
+/// Every cluster must be an HTTPS API server on loopback, and there must be one.
+fn validate_loopback_clusters(config: &Kubeconfig) -> Result<(), AppError> {
+    if config.clusters.is_empty() {
+        return Err(AppError::new(
+            "E2E kubeconfig must contain a cluster",
+            AppErrorKind::Validation,
+        ));
+    }
+    for named in &config.clusters {
+        let server = named
+            .cluster
+            .as_ref()
+            .and_then(|cluster| cluster.server.as_deref())
+            .ok_or_else(|| {
+                AppError::new("missing E2E cluster API server", AppErrorKind::Validation)
+            })?;
+        validate_loopback_server(server)?;
+    }
+    Ok(())
 }
 
 fn required_value(name: &str) -> Result<String, AppError> {
@@ -163,6 +210,10 @@ fn validate_kubeconfig(config: &Kubeconfig, cluster: &str) -> Result<(), AppErro
         .and_then(|named| named.cluster.as_ref())
         .and_then(|cluster| cluster.server.as_deref())
         .ok_or_else(|| AppError::new("missing E2E cluster API server", AppErrorKind::Validation))?;
+    validate_loopback_server(server)
+}
+
+fn validate_loopback_server(server: &str) -> Result<(), AppError> {
     let uri = server.parse::<http::Uri>().map_err(|error| {
         AppError::new(
             "E2E cluster API server must be a URL",
@@ -208,6 +259,40 @@ mod tests {
     #[test]
     fn accepts_exact_loopback_config() {
         assert!(validate_kubeconfig(&valid_config(), "run").is_ok());
+    }
+
+    fn kind_config(servers: &[&str]) -> Kubeconfig {
+        use std::fmt::Write as _;
+        let mut clusters = String::new();
+        for (index, server) in servers.iter().enumerate() {
+            let _ = writeln!(
+                clusters,
+                "- name: c{index}\n  cluster: {{ server: {server} }}"
+            );
+        }
+        serde_yaml::from_str(&format!(
+            "clusters:\n{clusters}contexts:\n- name: kind-dev\n  context: {{ cluster: c0, user: dev }}\nusers:\n- name: dev\n  user: {{ token: dev }}\n"
+        ))
+        .expect("config")
+    }
+
+    #[test]
+    fn pinned_flavor_accepts_any_context_names_on_loopback() {
+        assert!(validate_loopback_clusters(&kind_config(&["https://127.0.0.1:41234"])).is_ok());
+    }
+
+    #[test]
+    fn pinned_flavor_rejects_one_remote_cluster_among_loopback_ones() {
+        let config = kind_config(&["https://127.0.0.1:41234", "https://prod.example.com"]);
+        assert!(validate_loopback_clusters(&config).is_err());
+    }
+
+    #[test]
+    fn pinned_flavor_rejects_plain_http_and_no_clusters() {
+        assert!(validate_loopback_clusters(&kind_config(&["http://127.0.0.1:8080"])).is_err());
+        let mut empty = kind_config(&["https://127.0.0.1:41234"]);
+        empty.clusters.clear();
+        assert!(validate_loopback_clusters(&empty).is_err());
     }
 
     #[test]
