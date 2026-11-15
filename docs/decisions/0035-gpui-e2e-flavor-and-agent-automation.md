@@ -51,7 +51,7 @@ GPUI's Linux platform cannot read back a window's pixels, so `screenshot` report
 
 ### What an agent can do
 
-Through the endpoint, an agent can do anything a person can do in the window, against the pinned kubeconfig. That includes guarded operations whose confirmation a person would type, such as an exact-name delete. The loopback-only cluster rule and the explicit kubeconfig keep that to clusters the tester created. ADR 0028's rule that agent write tools need their own ADR still holds for the product: the automation endpoint exists only in a test build.
+Through the endpoint, an agent can do anything a person can do in the window, against the pinned kubeconfig. That includes guarded operations and their confirmations, such as delete, scale and YAML apply. The loopback-only cluster rule and the explicit kubeconfig keep that to clusters the tester created. ADR 0028's rule that agent write tools need their own ADR still holds for the product: the automation endpoint exists only in a test build.
 
 Native file dialogs, the platform clipboard and OS menus are outside the window and the endpoint does not drive them. Remembered Argo CD credentials still go to the OS keyring, as in the Tauri E2E flavor; a test that remembers one leaves an entry there.
 
