@@ -59,7 +59,7 @@ export async function exportDetailTabs(client: TauriClient, resources: ResourceS
 	let pausedState: ResourceActionState | undefined;
 	const review = async (request: ResourceActionRequest) => {
 		const preview = await client.invoke<ResourceActionPreview>("preview_resource_action", { request });
-		const confirmed: ResourceActionRequest = { ...request, expectedUid: preview.uid, expectedResourceVersion: preview.resourceVersion, confirmed: true, ...(request.action === "delete" && preview.controller?.recreates === true && { requireReplacement: true }), ...(request.action === "rollback" && { expectedRevisionUid: preview.revisionUid, expectedRevisionResourceVersion: preview.revisionResourceVersion }) };
+		const confirmed: ResourceActionRequest = { ...request, expectedUid: preview.uid, expectedResourceVersion: preview.resourceVersion, ...(request.action === "rollback" && { expectedRevisionUid: preview.revisionUid, expectedRevisionResourceVersion: preview.revisionResourceVersion }), confirmed: true };
 		const result = await client.invoke<ClusterOperationResult>("execute_resource_action", { request: confirmed });
 		return { preview, confirmed, result };
 	};
@@ -91,7 +91,7 @@ export async function exportDetailTabs(client: TauriClient, resources: ResourceS
 		}
 		if (request.action !== "delete") await review({ ...target(focus), action: "delete", confirmed: false });
 	}
-	// `actions.delete-recreated-pod` deletes a Pod that its ReplicaSet recreates.
+	// The managed-Pod scenario shows the owner without relying on replacement.
 	const replica = resources.find((row) => row.cluster === focus.cluster && row.kind === "Pod" && row.name === "payments-api-7d9c9b7f8d-k2r9p");
 	if (!replica) throw new Error("The browser mock has no ReplicaSet Pod payments-api-7d9c9b7f8d-k2r9p");
 	const podDelete = await review({ ...target(replica), action: "delete", confirmed: false });

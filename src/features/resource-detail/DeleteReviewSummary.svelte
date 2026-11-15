@@ -9,11 +9,9 @@
 	const target = $derived(preview.target);
 	const controller = $derived(preview.controller);
 	const consequence = $derived(
-		controller?.recreates
-			? `${controller.kind} ${controller.name} normally creates a replacement ${target.kind}.`
-			: controller
-				? `${controller.kind} ${controller.name} controls this ${target.kind}, but KubeCove cannot confirm it will create a replacement.`
-				: "No controlling owner was found. The delete is permanent unless other automation, such as GitOps, recreates it.",
+		controller
+			? `${controller.kind} ${controller.name} controls this ${target.kind}. It may create a replacement if still needed.`
+			: "No controlling owner was found. Other automation, such as GitOps, may recreate this resource.",
 	);
 </script>
 
@@ -33,6 +31,6 @@
 	<h3 class="border-b px-3 py-2 text-xs font-medium">What happens</h3>
 	<ul class="grid gap-1.5 px-3 py-2 text-xs">
 		<li class="flex items-start gap-2"><span class="mt-1.5 size-1.5 shrink-0 rounded-full bg-destructive" aria-hidden="true"></span>The {target.kind} is removed from the cluster, with its dependents where Kubernetes applies them.</li>
-		<li class="flex items-start gap-2" data-delete-consequence><span class={`mt-1.5 size-1.5 shrink-0 rounded-full ${controller?.recreates ? "bg-emerald-400" : "bg-amber-400"}`} aria-hidden="true"></span>{consequence}</li>
+		<li class="flex items-start gap-2" data-delete-consequence><span class="mt-1.5 size-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden="true"></span>{consequence}</li>
 	</ul>
 </section>

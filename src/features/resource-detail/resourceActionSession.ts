@@ -36,7 +36,7 @@ export type ResourceActionReviewStatus = "checking" | "ready" | "executing" | "f
 
 export interface ResourceActionReview {
 	action: ResourceActionId;
-	/** The exact resource name; a delete that nothing recreates is confirmed by typing it. */
+	/** The exact resource name shown in the review title. */
 	name: string;
 	status: ResourceActionReviewStatus;
 	/** False while a skipped review runs inline. */
@@ -47,7 +47,6 @@ export interface ResourceActionReview {
 	error: string | null;
 	/** The API server may have received the failed execution. */
 	executionAttempted: boolean;
-	confirmation: string;
 	canExecute: boolean;
 }
 
@@ -82,7 +81,6 @@ export interface ResourceActionSession {
 	/** Applies a draft change against the loaded baseline; false when refused. */
 	draft(change: DraftChange): boolean;
 	review(action: ResourceActionId, revision?: number): Promise<void>;
-	confirm(name: string): void;
 	execute(): Promise<void>;
 	closeReview(): void;
 }
@@ -103,18 +101,8 @@ const IDLE: ResourceActionSessionState = {
 	result: null,
 };
 
-/** A delete needs the typed name unless a built-in controller recreates the object (ADR 0024). */
-export function needsTypedName(view: Pick<ResourceActionReview, "action" | "preview">): boolean {
-	return view.action === "delete" && view.preview?.controller?.recreates !== true;
-}
-
 function canExecute(view: ResourceActionReview): boolean {
-	return (
-		view.status === "ready" &&
-		view.preview !== null &&
-		view.error === null &&
-		(!needsTypedName(view) || view.confirmation === view.name)
-	);
+	return view.status === "ready" && view.preview !== null && view.error === null;
 }
 
 function executionRequest(request: ResourceActionRequest, preview: ResourceActionPreview): ResourceActionRequest {
@@ -122,7 +110,6 @@ function executionRequest(request: ResourceActionRequest, preview: ResourceActio
 		...request,
 		expectedUid: preview.uid,
 		expectedResourceVersion: preview.resourceVersion,
-		...(request.action === "delete" && preview.controller?.recreates === true && { requireReplacement: true }),
 		confirmed: true,
 	};
 	if (request.action === "rollback") {
@@ -262,7 +249,6 @@ export function createResourceActionSession(options: ResourceActionSessionOption
 				preview: null,
 				error: null,
 				executionAttempted: false,
-				confirmation: "",
 				canExecute: false,
 			};
 			const current: ReviewRun = { target, request, view };
@@ -287,9 +273,6 @@ export function createResourceActionSession(options: ResourceActionSessionOption
 				return;
 			}
 			updateRun(current, { status: "ready", preview, open: true }, { inlineStatus: null });
-		},
-		confirm(name) {
-			if (run) updateRun(run, { confirmation: name });
 		},
 		execute,
 		closeReview() {

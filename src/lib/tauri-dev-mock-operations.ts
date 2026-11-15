@@ -151,7 +151,7 @@ function resourceActionPreview(request: ResourceActionRequest): ResourceActionPr
 			revisionUid: revision.uid,
 			revisionResourceVersion: revision.resourceVersion,
 		}),
-		...(controller && { controller: { kind: "ReplicaSet", name: controller, recreates: true } }),
+		...(controller && { controller: { kind: "ReplicaSet", name: controller } }),
 	};
 }
 
@@ -163,9 +163,6 @@ function mockReplicaSetOwner(request: ResourceActionRequest): string | undefined
 
 function resourceActionResult(request: ResourceActionRequest): ClusterOperationResult {
 	requireMockConfirmation(request);
-	if (request.action === "delete" && mockReplicaSetOwner(request) && request.requireReplacement !== true) {
-		throw new Error("Replacement-based deletion must carry the replacement requirement.");
-	}
 	assertActionAllowed(request);
 	assertValidMockEdits(request);
 	assertNotDryRunFailure(request.name);

@@ -1,6 +1,6 @@
 //! Review dialog of the Actions tab, mirroring the server dry-run review in
 //! `ResourceActionsTab.svelte` (ADR 0004): the exact target, the API server
-//! result, the typed-name delete confirmation and the guarded execute button.
+//! result, the explicit delete confirmation and the guarded execute button.
 
 use super::super::Inspector;
 use super::super::controls::{Variant, button, diff_pre};
@@ -11,7 +11,7 @@ use crate::actions;
 use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui;
-use gpui_kit::component::{WindowExt, input::Input};
+use gpui_kit::component::WindowExt;
 use gpui_kit::{App, Context, Div, Entity, FontWeight, Window, div, prelude::*, px};
 use kubecove_lib::models::ResourceActionKind;
 
@@ -24,7 +24,7 @@ fn review_description(review: &Review) -> String {
     }
 }
 
-fn review_body(review: &Review, entity: &Entity<Inspector>, cx: &App) -> Div {
+fn review_body(review: &Review, entity: &Entity<Inspector>) -> Div {
     let busy = review.busy();
     let close = {
         let entity = entity.clone();
@@ -165,25 +165,8 @@ fn review_body(review: &Review, entity: &Entity<Inspector>, cx: &App) -> Div {
                     )
                 }),
         );
-        if review.needs_typed_name() {
-            body = body.child(
-                div()
-                    .mt(px(16.))
-                    .flex()
-                    .flex_col()
-                    .gap(px(4.))
-                    .child(ui::xs(format!("Type {} to confirm deletion", review.name)))
-                    .child(
-                        Input::new(&review.confirmation)
-                            .id("review-confirmation")
-                            .aria_label("Type resource name to confirm")
-                            .text_sm()
-                            .h(px(32.)),
-                    ),
-            );
-        }
     }
-    let can_execute = review.can_execute(cx);
+    let can_execute = review.can_execute();
     let execute = {
         let entity = entity.clone();
         move |_: &gpui_kit::ClickEvent, window: &mut Window, cx: &mut App| {
@@ -282,7 +265,7 @@ impl Inspector {
                 .on_close(move |_, window, cx| {
                     close.update(cx, |this, cx| this.close_review(window, cx));
                 })
-                .child(review_body(review, &entity, cx))
+                .child(review_body(review, &entity))
         });
     }
 }

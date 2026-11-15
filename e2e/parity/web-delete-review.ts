@@ -6,7 +6,7 @@ async function expectText(page: Page, selector: string, expected: string) {
 	if (actual !== expected) throw new Error(`${selector} reads ${JSON.stringify(actual)}, not ${JSON.stringify(expected)}`);
 }
 
-/** The delete review's target summary, its folded dry-run diff, and the typed-name input it may skip. */
+/** The delete review's target summary, its folded dry-run diff, and absence of a name-entry requirement. */
 export async function deleteReviewAction(page: Page, step: Step) {
 	const dialog = page.getByRole("dialog");
 	switch (step.action) {
@@ -31,7 +31,7 @@ export async function deleteReviewAction(page: Page, step: Step) {
 			if (controller !== step.controller) throw new Error(`Delete controller is ${JSON.stringify(controller)}, not ${JSON.stringify(step.controller)}`);
 			await expectText(page, "[data-delete-consequence]", step.consequence);
 			const typed = await dialog.getByRole("textbox", { name: "Type resource name to confirm" }).count();
-			if ((typed > 0) !== step.typed) throw new Error(step.typed ? "The delete review has no typed-name input" : "The delete review still asks for the typed name");
+			if (typed > 0) throw new Error("The delete review still asks for the typed name");
 			break;
 		}
 		default:

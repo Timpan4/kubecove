@@ -72,15 +72,15 @@ Each one opens the same review dialog before it applies.
 ## Delete one resource
 
 1. Select **Delete** on the **Delete resource** row.
-2. Read the review, then type the resource name to confirm.
-3. Select **Delete**.
+2. Check the resource kind, name, context, namespace, owner and consequences in the review. No typing is required.
+3. Select **Delete <Kind>** to confirm, or **Cancel**.
 4. Verify the resource state after the refresh. The result reports the delete request. It does not prove that the resource has disappeared.
 
 Delete targets one resource. The review names that resource. It does not analyze dependent resources.
 
 ## Skip change review
 
-**Settings** → **Advanced** → **Skip change review** is off by default and warns before you enable it. When it is on, a successful dry-run applies without showing the diff, in every context. The dry-run still runs, a failed dry-run still opens the error, and delete always asks for the typed name.
+**Settings** → **Advanced** → **Skip change review** is off by default and warns before you enable it. When it is on, a successful dry-run applies without showing the diff, in every context. The dry-run still runs, a failed dry-run still opens the error, and delete always opens its confirmation dialog.
 
 ## Failure and recovery
 

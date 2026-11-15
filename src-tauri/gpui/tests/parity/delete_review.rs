@@ -1,5 +1,5 @@
 //! Shared steps for the delete review: its target summary, the folded dry-run
-//! diff, and the typed-name input that a recreated object skips.
+//! diff, and absence of a name-entry requirement.
 
 use super::*;
 
@@ -37,10 +37,9 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 label("delete-consequence").as_deref(),
                 Some(string(step, "consequence"))
             );
-            assert_eq!(
-                window.try_find("review-confirmation").is_some(),
-                step["typed"].as_bool().expect("missing typed"),
-                "typed-name input visibility"
+            assert!(
+                window.try_find("review-confirmation").is_none(),
+                "delete asks for typing"
             );
         }
         _ => return false,
