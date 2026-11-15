@@ -23,8 +23,8 @@ snapshot first: it lists the window's elements with references (e0, e1, ...), ac
 roles, labels, values and states. Most visible content, such as table cells, appears as \
 labels and values; `texts` holds only text that components recorded. Target an element by \
 its reference, by its exact accessible label (with its description when several share one), \
-or by a window position in pixels. A reference stays valid while its element is in the \
-window; take a new snapshot after the screen changes. Elements under an overlay, such as \
+or by a window position in pixels. A reference stays valid while the window lists the \
+same elements as at its snapshot; after the screen changes, take a new snapshot. Elements under an overlay, such as \
 the workspace launcher, are still listed, and a click on them lands on the overlay; when \
 an action changes nothing, look for an overlay first. An action returns once its events \
 are dispatched and a frame is drawn. Cluster reads finish later, so snapshot again to see \

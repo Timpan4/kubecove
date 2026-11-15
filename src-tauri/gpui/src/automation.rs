@@ -7,7 +7,7 @@ pub mod ui;
 
 use gpui_kit::{AnyWindowHandle, App, AppContext as _};
 use kubecove_lib::models::{AppError, AppErrorKind};
-use kubecove_mcp::{EndpointPolicy, McpEndpoint, serve_loopback, write_token_file};
+use kubecove_mcp::{EndpointPolicy, McpEndpoint, new_token, serve_loopback, write_token_file};
 use std::{
     error::Error,
     net::SocketAddr,
@@ -52,17 +52,18 @@ impl Startup {
         &self.data_dir
     }
 
-    /// Writes a new token and binds the listener. Fails before any window opens when the
-    /// port cannot be bound.
+    /// Binds the listener, then writes its new token. Fails before any window opens when
+    /// the port cannot be bound, and then leaves the token file as it was, so a second
+    /// launch on a taken port does not lock clients out of the first.
     pub fn listen(self) -> Result<Endpoint, Box<dyn Error>> {
         let token_path = self.data_dir.join(TOKEN_FILE_NAME);
-        let token = write_token_file(&token_path)?;
+        let token = new_token()?;
         let (jobs, requests) = mpsc::unbounded_channel();
         // The listener lives as long as the process; quitting the app ends it.
         let shutdown = CancellationToken::new();
         let endpoint = McpEndpoint::with_handler(
             tools::AutomationTools::new(jobs),
-            token,
+            token.clone(),
             EndpointPolicy::loopback(),
             shutdown.clone(),
         );
@@ -96,6 +97,7 @@ impl Startup {
         let address = address
             .recv()
             .map_err(|_| "the automation listener stopped before binding")??;
+        write_token_file(&token_path, &token)?;
         println!(
             "[kubecove:automation] MCP endpoint http://{address}/mcp; bearer token in {}",
             token_path.display()
@@ -115,12 +117,19 @@ impl Endpoint {
         cx.spawn(async move |cx| {
             let mut references = ui::References::default();
             while let Some(job) = self.requests.recv().await {
+                // A call whose client stopped waiting dropped its receiver; skip it so a
+                // cancelled click never reaches the window.
+                if job.reply.is_closed() {
+                    continue;
+                }
+                let reply = job.reply;
+                let cancelled = || reply.is_closed();
                 let result = cx
                     .update_window(window, |_, window, cx| {
-                        ui::perform(job.operation, &mut references, window, cx)
+                        ui::perform(job.operation, &mut references, &cancelled, window, cx)
                     })
                     .unwrap_or_else(|error| Err(format!("the KubeCove window is gone: {error}")));
-                let _ = job.reply.send(result);
+                let _ = reply.send(result);
             }
         })
         .detach();

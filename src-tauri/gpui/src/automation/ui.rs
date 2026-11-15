@@ -9,6 +9,7 @@ use gpui_kit::{
     MouseMoveEvent, MouseUpEvent, Pixels, Point, ScrollDelta, ScrollEvent, Window, point, px,
 };
 use serde_json::{Map, Value, json};
+use std::hash::{DefaultHasher, Hash as _, Hasher as _};
 
 /// What a tool asks of the window.
 pub enum Operation {
@@ -60,14 +61,20 @@ pub enum Reply {
 }
 
 /// The element paths behind the latest snapshot's references; `e<n>` is entry `n`.
+/// `identity` fingerprints every element the snapshot saw, because KubeCove's element
+/// ids can give a path to another item, such as a row index after a row is removed.
 #[derive(Default)]
 pub struct References {
     paths: Vec<Vec<ElementId>>,
+    identity: u64,
 }
 
+/// Performs one operation. `cancelled` reports that the caller stopped waiting; it is
+/// checked before each event, so a cancelled request sends nothing further.
 pub fn perform(
     operation: Operation,
     references: &mut References,
+    cancelled: &dyn Fn() -> bool,
     window: &mut Window,
     cx: &mut App,
 ) -> Result<Reply, String> {
@@ -85,7 +92,7 @@ pub fn perform(
                 return Err("count must be at least 1".into());
             }
             let position = resolve(&target, references, window)?;
-            click(position, button, count, window, cx);
+            click(position, button, count, cancelled, window, cx)?;
             Ok(Reply::Json(action(position)))
         }
         Operation::TypeText { target, text } => {
@@ -94,9 +101,10 @@ pub fn perform(
                 .map(|target| resolve(&target, references, window))
                 .transpose()?;
             if let Some(position) = position {
-                click(position, Button::Left, 1, window, cx);
+                click(position, Button::Left, 1, cancelled, window, cx)?;
             }
             for key in keys {
+                proceed(cancelled)?;
                 window.dispatch_keystroke(key, cx);
                 window.render_frame(cx);
             }
@@ -105,11 +113,13 @@ pub fn perform(
         Operation::PressKey { key } => {
             Keystroke::parse_with_os(&key, cx.platform_info().os)
                 .map_err(|error| format!("invalid key {key:?}: {error}"))?;
+            proceed(cancelled)?;
             window.press(&key, cx);
             Ok(Reply::Json(json!({ "pressed": key })))
         }
         Operation::Scroll { target, delta } => {
             let position = resolve(&target, references, window)?;
+            proceed(cancelled)?;
             let modifiers = window.modifiers();
             move_pointer(position, window, cx);
             window.dispatch_event(
@@ -142,9 +152,35 @@ pub fn perform(
     }
 }
 
+fn proceed(cancelled: &dyn Fn() -> bool) -> Result<(), String> {
+    if cancelled() {
+        Err("tool call cancelled".into())
+    } else {
+        Ok(())
+    }
+}
+
+/// A fingerprint of which elements the window lists: their paths, roles, labels and
+/// descriptions. Values and bounds are left out, so typing or scrolling within the same
+/// elements keeps references valid.
+fn identity(elements: &[ElementSnapshot]) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    for element in elements {
+        element.path().hash(&mut hasher);
+        element
+            .role()
+            .map(|role| format!("{role:?}"))
+            .hash(&mut hasher);
+        element.label().hash(&mut hasher);
+        element.description().hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
 fn snapshot(include_hidden: bool, references: &mut References, window: &Window) -> Value {
-    let elements: Vec<ElementSnapshot> = window
-        .elements()
+    let elements = window.elements();
+    references.identity = identity(&elements);
+    let elements: Vec<ElementSnapshot> = elements
         .into_iter()
         .filter(|element| include_hidden || element.visible())
         .collect();
@@ -275,13 +311,17 @@ fn resolve(
                 .and_then(|index| index.parse::<usize>().ok())
                 .and_then(|index| references.paths.get(index))
                 .ok_or_else(|| format!("unknown reference {reference:?}; take a snapshot"))?;
-            window
-                .elements()
+            let elements = window.elements();
+            if identity(&elements) != references.identity {
+                return Err(format!(
+                    "the window's elements changed since the snapshot that gave {reference}; \
+                     take a new snapshot"
+                ));
+            }
+            elements
                 .into_iter()
                 .find(|element| element.path() == path.as_slice())
-                .ok_or_else(|| {
-                    format!("{reference} is no longer in the window; take a new snapshot")
-                })?
+                .ok_or_else(|| format!("{reference} is not in the window; take a new snapshot"))?
         }
         Target::Label { label, description } => {
             let matches: Vec<ElementSnapshot> = window
@@ -333,15 +373,24 @@ fn typed_keys(text: &str, cx: &App) -> Result<Vec<Keystroke>, String> {
         .collect()
 }
 
-fn click(position: Point<Pixels>, button: Button, count: usize, window: &mut Window, cx: &mut App) {
+fn click(
+    position: Point<Pixels>,
+    button: Button,
+    count: usize,
+    cancelled: &dyn Fn() -> bool,
+    window: &mut Window,
+    cx: &mut App,
+) -> Result<(), String> {
     let button = match button {
         Button::Left => MouseButton::Left,
         Button::Right => MouseButton::Right,
         Button::Middle => MouseButton::Middle,
     };
     let modifiers = window.modifiers();
+    proceed(cancelled)?;
     move_pointer(position, window, cx);
     for click_count in 1..=count {
+        proceed(cancelled)?;
         window.dispatch_event(
             MouseDownEvent {
                 button,
@@ -366,6 +415,7 @@ fn click(position: Point<Pixels>, button: Button, count: usize, window: &mut Win
         );
         window.render_frame(cx);
     }
+    Ok(())
 }
 
 fn move_pointer(position: Point<Pixels>, window: &mut Window, cx: &mut App) {

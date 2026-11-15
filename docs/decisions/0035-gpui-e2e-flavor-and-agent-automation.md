@@ -22,7 +22,7 @@ Startup checks run before any window, storage or network access:
 - A build without the feature refuses to start when `KUBECOVE_E2E=1` is set, so a test can never believe it drives a production build.
 - `KUBECOVE_KUBECONFIG` must name an existing regular file by absolute path, and `KUBECOVE_DATA_DIR` an existing directory by absolute path.
 - `KUBECOVE_AUTOMATION_PORT` must be a port number. `0` asks the OS for a free port.
-- With `KUBECOVE_E2E_CLUSTER` set, the kubeconfig must hold exactly that lab cluster and its admin and restricted contexts, as in ADR 0010. Without it, the kubeconfig must hold at least one cluster, and every cluster must be an HTTPS API server on `127.0.0.1`, `localhost` or `::1`. This accepts a kind or lab cluster and refuses a kubeconfig that also reaches a remote cluster.
+- With `KUBECOVE_E2E_CLUSTER` set, the kubeconfig must hold exactly that lab cluster and its admin and restricted contexts, as in ADR 0010. Without it, the kubeconfig must hold at least one cluster, and every cluster must be an HTTPS API server on `127.0.0.1`, `localhost` or `::1`. This accepts a kind or lab cluster and refuses a kubeconfig that also reaches a remote cluster. Like ADR 0010's check, it runs at startup. Clients re-read the pinned file later, so a file rewritten after startup takes effect. The endpoint cannot write files, and whoever can rewrite the file can already reach its clusters without KubeCove.
 
 The pin comes from the shared backend. The `kubecove-kube` crate's E2E kubeconfig handling moves behind a Tauri-free `pinned-kubeconfig` feature, which the Tauri `e2e` feature still includes. While `KUBECOVE_E2E=1`, every cluster read and write uses only the pinned file. `KUBECONFIG`, `~/.kube/config` and paths saved in settings are ignored, and a pinned file that stops loading is an error, not a fallback.
 
@@ -32,7 +32,7 @@ The data directory replaces the platform config directory for kubeconfig setting
 
 The flavor serves MCP on its own listener at `http://127.0.0.1:<port>/mcp`. It reuses the ADR 0028 endpoint code: Streamable HTTP in stateless JSON mode, a bearer token compared in constant time, loopback `Host` values only, and every request with an `Origin` refused. The read-only MCP listener and its tool list are unchanged, and automation tools never appear there.
 
-Each launch writes a new 32-byte token from the OS CSPRNG to `<data dir>/automation-token`, mode `0600` on Unix. The app prints the endpoint URL and the token file path on standard output, never the token. The listener stops when the app quits. A bind failure stops the app before it opens a window.
+Each launch binds the listener, then writes a new 32-byte token from the OS CSPRNG to `<data dir>/automation-token`, mode `0600` on Unix. The app prints the endpoint URL and the token file path on standard output, never the token. The listener stops when the app quits. A bind failure stops the app before it opens a window and leaves an earlier token file in place, so a second launch on a taken port does not lock out the first launch's clients.
 
 | Tool | Effect |
 | --- | --- |
@@ -43,9 +43,9 @@ Each launch writes a new 32-byte token from the OS CSPRNG to `<data dir>/automat
 | `scroll` | Sends a wheel event with a pixel delta at a target. |
 | `screenshot` | Returns the window as a PNG image, on macOS and Windows. |
 
-A target is a reference from the latest snapshot, an exact accessible label with an optional description, or a window position in pixels. A reference resolves by its element path in the current frame, so a reference whose element has gone fails instead of hitting what replaced it. A label must match exactly one visible element. A target must be visible, which means inside the window and its clip, not uncovered: an element under an overlay such as the workspace launcher is still listed, and a click on it lands on the overlay, as a person's would. Keys and text are parsed before any event is sent, so an invalid request sends nothing. Every failure is a tool error, and the app keeps running.
+A target is a reference from the latest snapshot, an exact accessible label with an optional description, or a window position in pixels. A reference resolves by its element path, and only while the window lists the same elements, by path, role, label and description, as at that snapshot. Element ids in the client can hand a path to another item, such as a row index after a row is removed, so a path alone could hit the item that replaced the original. Values and bounds are not compared, so typing or scrolling within the same elements keeps references valid. A label must match exactly one visible element. A target must be visible, which means inside the window and its clip, not uncovered: an element under an overlay such as the workspace launcher is still listed, and a click on it lands on the overlay, as a person's would. Keys and text are parsed before any event is sent, so an invalid request sends nothing. Every failure is a tool error, and the app keeps running.
 
-Events go through the same window dispatch as platform input, so hit testing, focus and key bindings behave as for a person. The endpoint runs each request on the UI thread between frames, in arrival order.
+Events go through the same window dispatch as platform input, so hit testing, focus and key bindings behave as for a person. The endpoint runs each request on the UI thread between frames, in arrival order. A request whose caller stopped waiting is skipped, and one already running sends no further event.
 
 GPUI's Linux platform cannot read back a window's pixels, so `screenshot` reports an error there. On Linux the snapshot's text and bounds are the agent's view of the screen.
 
@@ -70,6 +70,7 @@ Failure modes, each covered before release:
 3. A missing or relative kubeconfig or data directory, or a missing or invalid port, exits with the variable's name.
 4. Without `KUBECOVE_E2E_CLUSTER`, a kubeconfig with any non-loopback or non-HTTPS cluster, or with no cluster, exits.
 5. Requests without the automation token, with a wrong token, with a non-loopback `Host` or with any `Origin` run no tool. The shared endpoint tests of ADR 0028 cover this code.
-6. A reference from an older frame whose element is gone, an ambiguous or missing label, a hidden target, an invalid key or an untypeable character returns an error and dispatches no event.
+6. A reference taken before the window's elements changed, including one whose path now names another row, an ambiguous or missing label, a hidden target, an invalid key or an untypeable character returns an error and dispatches no event.
 7. `screenshot` on Linux returns an error and the app keeps running.
-8. The token file is created with mode `0600` and replaced at every launch.
+8. The token file is created with mode `0600` and replaced at every launch that binds its port, and kept when the bind fails.
+9. A cancelled request dispatches no further event.

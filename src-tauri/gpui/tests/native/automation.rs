@@ -1,11 +1,28 @@
 //! Failure modes (ADR 0035): a reference from an older frame lands on whatever replaced
-//! its element; a refused request still dispatches events; a label click misses the
-//! one control it names.
+//! its element, including another row that took its index; a refused or cancelled
+//! request still dispatches events; a label click misses the one control it names.
 use super::{Controlled, open};
+use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AnyWindowHandle, AppContext, TestAppContext};
 use kubecove_gpui::automation::ui::{self, Button, Operation, References, Reply, Target};
 use serde_json::Value;
 use std::sync::Arc;
+
+fn perform_unless(
+    cx: &mut TestAppContext,
+    handle: AnyWindowHandle,
+    references: &mut References,
+    cancelled: bool,
+    operation: Operation,
+) -> Result<Reply, String> {
+    let result = cx
+        .update_window(handle, |_, window, cx| {
+            ui::perform(operation, references, &|| cancelled, window, cx)
+        })
+        .unwrap();
+    cx.run_until_parked();
+    result
+}
 
 fn perform(
     cx: &mut TestAppContext,
@@ -13,13 +30,7 @@ fn perform(
     references: &mut References,
     operation: Operation,
 ) -> Result<Reply, String> {
-    let result = cx
-        .update_window(handle, |_, window, cx| {
-            ui::perform(operation, references, window, cx)
-        })
-        .unwrap();
-    cx.run_until_parked();
-    result
+    perform_unless(cx, handle, references, false, operation)
 }
 
 fn snapshot(
@@ -91,7 +102,7 @@ fn a_reference_whose_element_left_the_window_fails_without_clicking(cx: &mut Tes
     )
     .err()
     .expect("a reference to a closed page must fail");
-    assert!(error.contains("no longer in the window"), "{error}");
+    assert!(error.contains("take a new snapshot"), "{error}");
     let after = snapshot(cx, handle, &mut references);
     assert_eq!(
         reference(&after, "settings-section:Appearance"),
@@ -141,10 +152,68 @@ fn refused_requests_leave_the_window_unchanged(cx: &mut TestAppContext) {
     for operation in refused {
         assert!(perform(cx, handle, &mut references, operation).is_err());
     }
+    let cancelled = perform_unless(cx, handle, &mut references, true, click(open_settings()));
+    assert!(cancelled.is_err(), "a cancelled click must fail");
     let after = snapshot(cx, handle, &mut references);
     assert_eq!(
         reference(&after, "settings-section:Appearance"),
         None,
-        "a refused request reached the window"
+        "a refused or cancelled request reached the window"
     );
+}
+
+/// Saved forwards key their Delete buttons by row index. Removing the first moves the
+/// second into its path, so a reference that resolved by path alone deleted it too.
+#[gpui_kit::test]
+fn a_reference_whose_path_now_names_another_row_fails(cx: &mut TestAppContext) {
+    let handle = open(cx, Arc::new(Controlled::default()));
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("nav:Port Forwards", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, w, cx| {
+        for remote in ["80", "81"] {
+            w.render_frame(cx);
+            w.click("save-forward", cx);
+            w.render_frame(cx);
+            for (id, text) in [
+                ("preset-namespace", "payments"),
+                ("preset-service", "payments-api"),
+                ("preset-remote", remote),
+            ] {
+                w.click(id, cx);
+                w.input(text, cx);
+            }
+            w.click("preset-save", cx);
+        }
+        w.render_frame(cx);
+        assert!(w.try_find("remove-preset:1").is_some(), "two presets saved");
+    })
+    .unwrap();
+    cx.run_until_parked();
+
+    let mut references = References::default();
+    let presets = snapshot(cx, handle, &mut references);
+    let first = reference(&presets, "remove-preset:0").expect("the first preset's Delete");
+    perform(
+        cx,
+        handle,
+        &mut references,
+        click(Target::Reference(first.clone())),
+    )
+    .expect("the first preset's Delete is in the window");
+    let error = perform(cx, handle, &mut references, click(Target::Reference(first)))
+        .err()
+        .expect("the remaining preset took the deleted one's path");
+    assert!(error.contains("take a new snapshot"), "{error}");
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        assert!(
+            w.try_find("remove-preset:0").is_some(),
+            "the outdated reference deleted the remaining preset"
+        );
+    })
+    .unwrap();
 }

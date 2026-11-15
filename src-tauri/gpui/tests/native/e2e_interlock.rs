@@ -1,6 +1,7 @@
 //! Failure modes (ADR 0035): a release build starts under `KUBECOVE_E2E=1`; the E2E build
 //! starts without it, with a kubeconfig that also reaches a remote cluster, or without an
-//! automation port. Each case must exit before storage or a window. The child gets no
+//! automation port. Each case must exit before storage or a window, and a launch whose
+//! port is taken must not replace a running endpoint's token. The child gets no
 //! display and a worktree-local home, so a broken check cannot reach the desktop or the
 //! user's settings.
 use std::{path::PathBuf, process::Command};
@@ -99,5 +100,30 @@ fn the_e2e_build_refuses_to_start_outside_its_environment() {
     assert!(
         !std::path::Path::new(data).join("automation-token").exists(),
         "a refused start wrote the token"
+    );
+}
+
+/// A second launch on the same data directory whose port is taken must not replace the
+/// running endpoint's token file, or its clients could no longer authenticate.
+#[cfg(feature = "e2e")]
+#[test]
+fn a_launch_that_cannot_bind_keeps_the_existing_token() {
+    let data = scratch("e2e-interlock-bind");
+    let token = data.join("automation-token");
+    std::fs::write(&token, "running-endpoint-token").unwrap();
+    let taken = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = taken.local_addr().unwrap().port().to_string();
+    let local = kubeconfig("bind", &["https://127.0.0.1:41234"]);
+
+    let (succeeded, _) = launch(&[
+        ("KUBECOVE_E2E", "1"),
+        ("KUBECOVE_KUBECONFIG", &local),
+        ("KUBECOVE_DATA_DIR", data.to_str().unwrap()),
+        ("KUBECOVE_AUTOMATION_PORT", &port),
+    ]);
+    assert!(!succeeded);
+    assert_eq!(
+        std::fs::read_to_string(&token).unwrap(),
+        "running-endpoint-token"
     );
 }

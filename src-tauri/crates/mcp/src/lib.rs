@@ -15,7 +15,7 @@ pub use handler::{McpContext, ToolCall, ToolObserver, ToolOutcome};
 pub use http::{EndpointPolicy, McpEndpoint, McpResponse};
 #[cfg(feature = "loopback")]
 pub use loopback::serve_loopback;
-pub use token::{TOKEN_FILE_NAME, load_or_create_token, rotate_token, write_token_file};
+pub use token::{TOKEN_FILE_NAME, load_or_create_token, new_token, rotate_token, write_token_file};
 pub use tools::TOOL_NAMES;
 
 #[cfg(test)]
