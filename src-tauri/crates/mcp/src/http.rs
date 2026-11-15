@@ -5,8 +5,11 @@ use crate::handler::{KubeCoveMcp, McpContext};
 use bytes::Bytes;
 use http::{HeaderMap, Request, Response, StatusCode, header};
 use http_body_util::{BodyExt as _, Full, combinators::BoxBody};
-use rmcp::transport::streamable_http_server::{
-    StreamableHttpServerConfig, StreamableHttpService, session::never::NeverSessionManager,
+use rmcp::{
+    ServerHandler,
+    transport::streamable_http_server::{
+        StreamableHttpServerConfig, StreamableHttpService, session::never::NeverSessionManager,
+    },
 };
 use std::{convert::Infallible, fmt::Display, sync::Arc};
 use subtle::ConstantTimeEq as _;
@@ -33,11 +36,14 @@ impl EndpointPolicy {
     }
 }
 
+/// An authenticated MCP endpoint. `H` is the read-only tool set unless a host serves
+/// another handler, such as the native client's E2E automation tools (ADR 0035), which
+/// get the same token, Host and Origin checks on a listener of their own.
 #[derive(Clone)]
-pub struct McpEndpoint {
+pub struct McpEndpoint<H = KubeCoveMcp> {
     token: Arc<str>,
     shutdown: CancellationToken,
-    service: StreamableHttpService<KubeCoveMcp, NeverSessionManager>,
+    service: StreamableHttpService<H, NeverSessionManager>,
 }
 
 impl McpEndpoint {
@@ -45,6 +51,18 @@ impl McpEndpoint {
     /// later requests, including ones on connections still open, get 503.
     pub fn new(
         context: Arc<McpContext>,
+        token: String,
+        policy: EndpointPolicy,
+        shutdown: CancellationToken,
+    ) -> Self {
+        Self::with_handler(KubeCoveMcp::new(context), token, policy, shutdown)
+    }
+}
+
+impl<H: ServerHandler + Clone + Send + Sync + 'static> McpEndpoint<H> {
+    /// Serves `handler` behind this endpoint's checks; see [`McpEndpoint::new`].
+    pub fn with_handler(
+        handler: H,
         token: String,
         policy: EndpointPolicy,
         shutdown: CancellationToken,
@@ -58,7 +76,6 @@ impl McpEndpoint {
         config.legacy_session_mode = false;
         config.json_response = true;
         config.cancellation_token = shutdown.clone();
-        let handler = KubeCoveMcp::new(context);
         Self {
             token: token.into(),
             shutdown,

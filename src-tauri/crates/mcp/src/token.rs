@@ -29,6 +29,12 @@ pub fn rotate_token(dir: &Path) -> io::Result<String> {
     write_new(&dir.join(TOKEN_FILE_NAME))
 }
 
+/// Writes a new token of the same strength to `path`, replacing any earlier one. The
+/// native client's E2E automation endpoint takes a fresh one at every launch (ADR 0035).
+pub fn write_token_file(path: &Path) -> io::Result<String> {
+    write_new(path)
+}
+
 fn write_new(path: &Path) -> io::Result<String> {
     // ADR 0020 requires 32 bytes from the OS CSPRNG for server tokens; ADR 0028 reuses it.
     let token = URL_SAFE_NO_PAD.encode(random_bytes::<32>()?);
