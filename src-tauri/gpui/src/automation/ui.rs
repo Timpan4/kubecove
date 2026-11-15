@@ -151,6 +151,7 @@ pub fn perform(
             proceed(cancelled)?;
             let modifiers = window.modifiers();
             move_pointer(position, window, cx);
+            proceed(cancelled)?;
             window.dispatch_event(
                 ScrollEvent {
                     position,
