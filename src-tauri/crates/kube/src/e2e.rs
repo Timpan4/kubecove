@@ -56,6 +56,7 @@ fn config(rule: ClusterRule) -> Result<E2eConfig, AppError> {
     let config = Kubeconfig::read_from(&kubeconfig).map_err(|error| {
         AppError::new("failed to load E2E kubeconfig", AppErrorKind::Validation).with_source(error)
     })?;
+    validate_proxy_env(|name| env::var(name).ok())?;
     match cluster {
         Some(cluster) => validate_kubeconfig(&config, &cluster)?,
         None => validate_loopback_clusters(&config)?,
@@ -207,15 +208,9 @@ fn validate_kubeconfig(config: &Kubeconfig, cluster: &str) -> Result<(), AppErro
 
 /// The cluster's API server must be HTTPS on loopback and reached directly. kube-rs
 /// sends requests through a cluster's `proxy-url`, or else `HTTPS_PROXY`, where loopback
-/// would name the proxy's host instead of this one.
+/// would name the proxy's host instead of this one; [`validate_proxy_env`] covers the
+/// variables.
 fn validate_loopback_cluster(cluster: Option<&Cluster>) -> Result<(), AppError> {
-    validate_direct(cluster, |name| env::var(name).ok())
-}
-
-fn validate_direct(
-    cluster: Option<&Cluster>,
-    variable: impl Fn(&str) -> Option<String>,
-) -> Result<(), AppError> {
     let server = cluster
         .and_then(|cluster| cluster.server.as_deref())
         .ok_or_else(|| AppError::new("missing E2E cluster API server", AppErrorKind::Validation))?;
@@ -231,6 +226,11 @@ fn validate_direct(
             AppErrorKind::Validation,
         ));
     }
+    Ok(())
+}
+
+/// kube-rs uses `HTTPS_PROXY` or `https_proxy` for a cluster without `proxy-url`.
+fn validate_proxy_env(variable: impl Fn(&str) -> Option<String>) -> Result<(), AppError> {
     for name in ["HTTPS_PROXY", "https_proxy"] {
         if variable(name).is_some_and(|value| !value.is_empty()) {
             return Err(AppError::new(
@@ -240,6 +240,13 @@ fn validate_direct(
         }
     }
     Ok(())
+}
+
+/// Checks a pinned kubeconfig read after startup, so a file rewritten while the app runs
+/// cannot point a client at a remote or proxied cluster. Both startup rules require
+/// every cluster to pass this check.
+pub(crate) fn validate_reread(config: &Kubeconfig) -> Result<(), AppError> {
+    validate_loopback_clusters(config)
 }
 
 fn validate_loopback_server(server: &str) -> Result<(), AppError> {
@@ -336,11 +343,9 @@ mod tests {
             .proxy_url = Some("http://proxy.example.com:3128".into());
         assert!(validate_loopback_clusters(&config).is_err());
 
-        let direct = kind_config(&["https://127.0.0.1:41234"]);
-        let cluster = direct.clusters[0].cluster.as_ref();
         let proxied = |name: &str| (name == "https_proxy").then(|| "http://proxy:3128".to_owned());
-        assert!(validate_direct(cluster, proxied).is_err());
-        assert!(validate_direct(cluster, |_| None).is_ok());
+        assert!(validate_proxy_env(proxied).is_err());
+        assert!(validate_proxy_env(|_| None).is_ok());
     }
 
     #[test]

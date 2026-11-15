@@ -311,6 +311,12 @@ impl KubeconfigSource {
         }
 
         if loaded > 0 {
+            // ADR 0035: the startup cluster rule also holds for every later read, so a
+            // pinned file rewritten while the app runs cannot reach a remote cluster.
+            #[cfg(feature = "pinned-kubeconfig")]
+            if crate::e2e::is_enabled() {
+                crate::e2e::validate_reread(&merged)?;
+            }
             return Ok((merged, warnings));
         }
 

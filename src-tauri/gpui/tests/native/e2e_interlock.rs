@@ -27,6 +27,9 @@ fn launch(variables: &[(&str, &str)]) -> (bool, String) {
     command
         .env_remove("DISPLAY")
         .env_remove("WAYLAND_DISPLAY")
+        // The E2E flavor refuses an HTTPS proxy; a runner's proxy must not decide these cases.
+        .env_remove("HTTPS_PROXY")
+        .env_remove("https_proxy")
         .env("HOME", &home)
         .env("XDG_CONFIG_HOME", &home);
     for variable in E2E_VARIABLES {
