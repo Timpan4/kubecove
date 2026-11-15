@@ -37,7 +37,7 @@ pub enum Operation {
 
 /// Where an action lands.
 pub enum Target {
-    /// A reference such as `e12` from the latest snapshot.
+    /// A reference such as `s3e12` from the latest snapshot.
     Reference(String),
     /// The one visible element with this exact accessible label, and description when given.
     Label {
@@ -60,13 +60,43 @@ pub enum Reply {
     Png(Vec<u8>),
 }
 
-/// The element paths behind the latest snapshot's references; `e<n>` is entry `n`.
+/// The element paths behind the latest snapshot's references; `s<snapshot>e<n>` is entry `n`.
 /// `identity` fingerprints every element the snapshot saw, because KubeCove's element
 /// ids can give a path to another item, such as a row index after a row is removed.
+/// `snapshot` numbers every snapshot, and a reference `s<snapshot>e<n>` carries it: the
+/// endpoint serves every client from one table, so another client's later snapshot must
+/// not renumber an earlier reference onto a different element.
 #[derive(Default)]
 pub struct References {
+    snapshot: u64,
     paths: Vec<Vec<ElementId>>,
     identity: u64,
+}
+
+impl References {
+    fn name(&self, index: usize) -> String {
+        format!("s{}e{index}", self.snapshot)
+    }
+
+    /// The path behind `reference`, or why it no longer names one.
+    fn path(&self, reference: &str) -> Result<&[ElementId], String> {
+        let (snapshot, index) = reference
+            .strip_prefix('s')
+            .and_then(|rest| rest.split_once('e'))
+            .and_then(|(snapshot, index)| {
+                Some((snapshot.parse::<u64>().ok()?, index.parse::<usize>().ok()?))
+            })
+            .ok_or_else(|| format!("unknown reference {reference:?}; take a snapshot"))?;
+        if snapshot != self.snapshot {
+            return Err(format!(
+                "{reference} is from an earlier snapshot; take a new snapshot"
+            ));
+        }
+        self.paths
+            .get(index)
+            .map(Vec::as_slice)
+            .ok_or_else(|| format!("unknown reference {reference:?}; take a snapshot"))
+    }
 }
 
 /// Performs one operation. `cancelled` reports that the caller stopped waiting; it is
@@ -183,6 +213,7 @@ fn snapshot(include_hidden: bool, references: &mut References, window: &Window) 
         .into_iter()
         .filter(|element| include_hidden || element.visible())
         .collect();
+    references.snapshot += 1;
     references.paths = elements
         .iter()
         .map(|element| element.path().to_vec())
@@ -190,7 +221,7 @@ fn snapshot(include_hidden: bool, references: &mut References, window: &Window) 
     let elements: Vec<Value> = elements
         .iter()
         .enumerate()
-        .map(|(index, element)| describe(index, element))
+        .map(|(index, element)| describe(&references.name(index), element))
         .collect();
     let texts: Vec<Value> = gpui_kit::base::test_support::texts(window)
         .iter()
@@ -211,9 +242,9 @@ fn snapshot(include_hidden: bool, references: &mut References, window: &Window) 
     })
 }
 
-fn describe(index: usize, element: &ElementSnapshot) -> Value {
+fn describe(reference: &str, element: &ElementSnapshot) -> Value {
     let mut fields = Map::new();
-    fields.insert("ref".into(), json!(format!("e{index}")));
+    fields.insert("ref".into(), json!(reference));
     fields.insert("path".into(), json!(path(element.path())));
     if let Some(role) = element.role() {
         fields.insert("role".into(), json!(format!("{role:?}")));
@@ -305,11 +336,7 @@ fn resolve(
             };
         }
         Target::Reference(reference) => {
-            let path = reference
-                .strip_prefix('e')
-                .and_then(|index| index.parse::<usize>().ok())
-                .and_then(|index| references.paths.get(index))
-                .ok_or_else(|| format!("unknown reference {reference:?}; take a snapshot"))?;
+            let path = references.path(reference)?;
             let elements = window.elements();
             if identity(&elements) != references.identity {
                 return Err(format!(
@@ -319,7 +346,7 @@ fn resolve(
             }
             elements
                 .into_iter()
-                .find(|element| element.path() == path.as_slice())
+                .find(|element| element.path() == path)
                 .ok_or_else(|| format!("{reference} is not in the window; take a new snapshot"))?
         }
         Target::Label { label, description } => {

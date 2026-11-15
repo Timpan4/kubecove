@@ -212,6 +212,41 @@ fn real_keys_and_printable_text_are_sent(cx: &mut TestAppContext) {
     perform(cx, handle, &mut references, typed).expect("printable text types");
 }
 
+/// Every client shares one reference table. A later snapshot that lists more elements,
+/// here hidden ones, renumbered an earlier client's reference onto another element.
+#[gpui_kit::test]
+fn a_reference_from_an_earlier_snapshot_fails(cx: &mut TestAppContext) {
+    let handle = open(cx, Arc::new(Controlled::default()));
+    let mut references = References::default();
+    let first = snapshot(cx, handle, &mut references);
+    let open_settings = first["elements"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|element| element["label"] == "Open settings")
+        .map(|element| element["ref"].as_str().unwrap().to_owned())
+        .expect("the header lists Open settings");
+    let all = Operation::Snapshot {
+        include_hidden: true,
+    };
+    perform(cx, handle, &mut references, all).expect("a second client's snapshot");
+    let error = perform(
+        cx,
+        handle,
+        &mut references,
+        click(Target::Reference(open_settings)),
+    )
+    .err()
+    .expect("a reference from an earlier snapshot must fail");
+    assert!(error.contains("earlier snapshot"), "{error}");
+    let after = snapshot(cx, handle, &mut references);
+    assert_eq!(
+        reference(&after, "settings-section:Appearance"),
+        None,
+        "the refused click reached the window"
+    );
+}
+
 /// Saved forwards key their Delete buttons by row index. Removing the first moves the
 /// second into its path, so a reference that resolved by path alone deleted it too.
 #[gpui_kit::test]

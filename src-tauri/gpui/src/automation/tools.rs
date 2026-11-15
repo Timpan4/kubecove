@@ -19,7 +19,7 @@ use serde_json::{Value, json};
 use tokio::sync::{mpsc, oneshot};
 
 const INSTRUCTIONS: &str = "Operates the KubeCove native client in its E2E build. Call \
-snapshot first: it lists the window's elements with references (e0, e1, ...), accessible \
+snapshot first: it lists the window's elements with references (s1e0, s1e1, ...), accessible \
 roles, labels, values and states. Most visible content, such as table cells, appears as \
 labels and values; `texts` holds only text that components recorded. Target an element by \
 its reference, by its exact accessible label (with its description when several share one), \
@@ -68,7 +68,8 @@ struct SnapshotArgs {
 /// Exactly one of `ref`, `label`, or `x` with `y`.
 #[derive(Deserialize, JsonSchema)]
 struct TargetArgs {
-    /// A reference such as `e12` from the latest snapshot.
+    /// A reference such as `s3e12` from the latest snapshot. A later snapshot, from any
+    /// client, ends it.
     #[serde(default, rename = "ref")]
     reference: Option<String>,
     /// An exact accessible label; it must match one visible element.
