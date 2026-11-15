@@ -115,13 +115,14 @@ fn a_launch_that_cannot_bind_keeps_the_existing_token() {
     let port = taken.local_addr().unwrap().port().to_string();
     let local = kubeconfig("bind", &["https://127.0.0.1:41234"]);
 
-    let (succeeded, _) = launch(&[
+    let (succeeded, stderr) = launch(&[
         ("KUBECOVE_E2E", "1"),
         ("KUBECOVE_KUBECONFIG", &local),
         ("KUBECOVE_DATA_DIR", data.to_str().unwrap()),
         ("KUBECOVE_AUTOMATION_PORT", &port),
     ]);
     assert!(!succeeded);
+    assert!(stderr.contains("KUBECOVE_AUTOMATION_PORT"), "{stderr}");
     assert_eq!(
         std::fs::read_to_string(&token).unwrap(),
         "running-endpoint-token"

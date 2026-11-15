@@ -38,8 +38,8 @@ Each launch binds the listener, then writes a new 32-byte token from the OS CSPR
 | --- | --- |
 | `snapshot` | Draws a frame and returns the window size, the observed elements with a reference, path, role, label, description, value, placeholder, state and bounds, and any recorded text with bounds. Hidden elements are left out unless asked for. |
 | `click` | Moves the pointer to a target and presses and releases a mouse button, once or several times. |
-| `type_text` | Optionally clicks a target to focus it, then types text into the focused element one character at a time. |
-| `press_key` | Sends one GPUI keystroke, such as `enter`, `escape`, `tab` or `ctrl-a`. |
+| `type_text` | Optionally clicks a target's center to focus it, then types printable text into the focused element one character at a time. Control characters such as a newline or tab are refused; they are keys. |
+| `press_key` | Sends one GPUI keystroke: modifiers and one character or a key name GPUI knows, such as `enter`, `escape`, `tab`, `f5` or `ctrl-a`. GPUI's parser accepts any word and would type it, so other words are refused. |
 | `scroll` | Sends a wheel event with a pixel delta at a target. |
 | `screenshot` | Returns the window as a PNG image, on macOS and Windows. |
 
@@ -51,9 +51,9 @@ GPUI's Linux platform cannot read back a window's pixels, so `screenshot` report
 
 ### What an agent can do
 
-Through the endpoint, an agent can do anything a person can do in the window, against the pinned kubeconfig. That includes guarded operations and their confirmations, such as delete, scale and YAML apply. The loopback-only cluster rule and the explicit kubeconfig keep that to clusters the tester created. ADR 0028's rule that agent write tools need their own ADR still holds for the product: the automation endpoint exists only in a test build.
+Through the endpoint, an agent can do anything a person can do in the window, against the pinned kubeconfig. That includes guarded operations and their confirmations, such as delete, scale and YAML apply. The loopback-only cluster rule and the explicit kubeconfig keep direct cluster access to clusters the tester created. Two window features reach beyond the kubeconfig: a remote KubeCove server connection (ADR 0031) and a connected Argo CD instance (ADR 0013). Each reaches only a server whose address and credentials are typed into the window. The endpoint supplies neither, so a test reaches one only when it gives the agent those details. ADR 0028's rule that agent write tools need their own ADR still holds for the product: the automation endpoint exists only in a test build.
 
-Native file dialogs, the platform clipboard and OS menus are outside the window and the endpoint does not drive them. Remembered Argo CD credentials still go to the OS keyring, as in the Tauri E2E flavor; a test that remembers one leaves an entry there.
+Native file dialogs, the platform clipboard and OS menus are outside the window and the endpoint does not drive them. A link control, such as the documentation link, still hands its URL to the OS opener, as it would for a person. Remembered Argo CD credentials still go to the OS keyring, as in the Tauri E2E flavor; a test that remembers one leaves an entry there.
 
 ## Consequences
 

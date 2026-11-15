@@ -135,7 +135,9 @@ struct ClickArgs {
 
 #[derive(Deserialize, JsonSchema)]
 struct TypeTextArgs {
-    /// The text to type into the focused element, one character at a time.
+    /// Printable text to type into the focused element, one character at a time. Send
+    /// newlines and tabs with press_key. A target is clicked at its center, so text goes
+    /// where that click puts the cursor.
     text: String,
     /// Clicked first to focus it; omit to type into the current focus.
     #[serde(flatten)]
@@ -144,7 +146,8 @@ struct TypeTextArgs {
 
 #[derive(Deserialize, JsonSchema)]
 struct PressKeyArgs {
-    /// A GPUI keystroke such as `enter`, `escape`, `tab`, `down`, `backspace` or `ctrl-a`.
+    /// A GPUI keystroke: modifiers joined by `-`, then one character or a key name such as
+    /// `enter`, `escape`, `tab`, `down`, `backspace`, `f5` or `ctrl-a`.
     key: String,
 }
 

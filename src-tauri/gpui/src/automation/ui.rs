@@ -111,8 +111,7 @@ pub fn perform(
             Ok(Reply::Json(json!({ "typed": text.chars().count() })))
         }
         Operation::PressKey { key } => {
-            Keystroke::parse_with_os(&key, cx.platform_info().os)
-                .map_err(|error| format!("invalid key {key:?}: {error}"))?;
+            checked_key(&key, cx)?;
             proceed(cancelled)?;
             window.press(&key, cx);
             Ok(Reply::Json(json!({ "pressed": key })))
@@ -360,9 +359,71 @@ fn resolve(
     Ok(element.bounds().center())
 }
 
+/// Key names GPUI gives meaning to besides single characters: its non-printable keys
+/// (`is_printable_key` in gpui's `platform/keystroke.rs`), the whitespace keys it names,
+/// and the names it gives a modifier pressed alone. GPUI's parser accepts any other word
+/// as a key and the window then types it as text, so the endpoint refuses it instead.
+const NAMED_KEYS: [&str; 22] = [
+    "enter",
+    "tab",
+    "space",
+    "escape",
+    "backspace",
+    "delete",
+    "insert",
+    "home",
+    "end",
+    "pageup",
+    "pagedown",
+    "up",
+    "down",
+    "left",
+    "right",
+    "back",
+    "forward",
+    "shift",
+    "control",
+    "alt",
+    "platform",
+    "function",
+];
+
+/// A named key, or one of GPUI's function keys `f1` to `f35`.
+fn named_key(key: &str) -> bool {
+    NAMED_KEYS.contains(&key)
+        || key
+            .strip_prefix('f')
+            .filter(|number| !number.starts_with('0'))
+            .and_then(|number| number.parse::<u8>().ok())
+            .is_some_and(|number| (1..=35).contains(&number))
+}
+
+/// A keystroke the window would treat as a key: modifiers and one character or one named
+/// key. The `->` test syntax for a custom key character is refused.
+fn checked_key(key: &str, cx: &App) -> Result<Keystroke, String> {
+    let invalid = || {
+        format!(
+            "invalid key {key:?}; give modifiers and one character or a key name such as \
+             enter, tab, escape, up or f5"
+        )
+    };
+    let parsed = Keystroke::parse_with_os(key, cx.platform_info().os).map_err(|_| invalid())?;
+    let single = parsed.key.chars().count() == 1;
+    if parsed.key_char.is_some() || !(single || named_key(&parsed.key)) {
+        return Err(invalid());
+    }
+    Ok(parsed)
+}
+
 fn typed_keys(text: &str, cx: &App) -> Result<Vec<Keystroke>, String> {
     text.chars()
         .map(|character| {
+            if character.is_control() {
+                return Err(format!(
+                    "{character:?} is a control character and cannot be typed; send it with \
+                     press_key, such as enter or tab"
+                ));
+            }
             let text = character.to_string();
             let mut key = Keystroke::parse_with_os(&text, cx.platform_info().os).map_err(|_| {
                 format!("{character:?} cannot be typed; send it with press_key instead")

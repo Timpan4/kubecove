@@ -88,7 +88,9 @@ Start with `snapshot`, which lists the window's elements with references, roles,
 values and states. Most visible content, such as table cells, appears as labels and
 values. Then use `click`, `type_text`, `press_key` and `scroll` on a reference, an
 accessible label or a window position. Elements under an overlay, such as the workspace
-launcher, are still listed, but a click on them lands on the overlay. `screenshot`
+launcher, are still listed, but a click on them lands on the overlay. `type_text` with a
+target clicks its center first, so in a field that already holds text it types at that
+point. Send newlines and tabs with `press_key`. `screenshot`
 returns a PNG on macOS and Windows; GPUI's Linux windows cannot capture their pixels.
 Native file dialogs are not reachable through the endpoint.
 

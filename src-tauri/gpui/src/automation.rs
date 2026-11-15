@@ -96,7 +96,8 @@ impl Startup {
             })?;
         let address = address
             .recv()
-            .map_err(|_| "the automation listener stopped before binding")??;
+            .map_err(|_| "the automation listener stopped before binding")?
+            .map_err(|error| format!("{PORT_ENV}={port}: cannot listen on 127.0.0.1: {error}"))?;
         write_token_file(&token_path, &token)?;
         println!(
             "[kubecove:automation] MCP endpoint http://{address}/mcp; bearer token in {}",

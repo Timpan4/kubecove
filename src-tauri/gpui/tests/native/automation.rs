@@ -137,6 +137,27 @@ fn refused_requests_leave_the_window_unchanged(cx: &mut TestAppContext) {
             count: 0,
         },
         Operation::PressKey { key: "a-b".into() },
+        // GPUI's parser takes any word as a key, and the window types it as text.
+        Operation::PressKey {
+            key: "notakey".into(),
+        },
+        Operation::PressKey {
+            key: "enter enter".into(),
+        },
+        Operation::PressKey { key: "".into() },
+        Operation::PressKey {
+            key: "ctrl-".into(),
+        },
+        Operation::PressKey { key: "a->b".into() },
+        // Control characters were dropped or inserted raw while reporting success.
+        Operation::TypeText {
+            target: None,
+            text: "line\nbreak".into(),
+        },
+        Operation::TypeText {
+            target: None,
+            text: "tab\there".into(),
+        },
         Operation::TypeText {
             target: Some(Target::Label {
                 label: "No control has this label".into(),
@@ -160,6 +181,35 @@ fn refused_requests_leave_the_window_unchanged(cx: &mut TestAppContext) {
         None,
         "a refused or cancelled request reached the window"
     );
+}
+
+/// The key check must still pass every key a test needs: named keys, function keys,
+/// characters with and without modifiers, and the `-` key.
+#[gpui_kit::test]
+fn real_keys_and_printable_text_are_sent(cx: &mut TestAppContext) {
+    let handle = open(cx, Arc::new(Controlled::default()));
+    let mut references = References::default();
+    for key in [
+        "escape",
+        "Tab",
+        "shift-tab",
+        "down",
+        "f5",
+        "f35",
+        "ctrl-a",
+        "A",
+        "-",
+        "shift",
+    ] {
+        let operation = Operation::PressKey { key: key.into() };
+        perform(cx, handle, &mut references, operation)
+            .unwrap_or_else(|error| panic!("{key}: {error}"));
+    }
+    let typed = Operation::TypeText {
+        target: None,
+        text: "Ab -_./: é€😀".into(),
+    };
+    perform(cx, handle, &mut references, typed).expect("printable text types");
 }
 
 /// Saved forwards key their Delete buttons by row index. Removing the first moves the
