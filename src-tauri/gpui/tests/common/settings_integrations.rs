@@ -163,12 +163,7 @@ impl Fixture {
                     path: "/controlled/parity.config".into(),
                 });
         }
-        let sources = sources.clone();
-        let saved = self.save_settings(&sources);
-        Box::pin(async move {
-            saved?;
-            Ok(sources)
-        })
+        self.saved_sources_read(sources.clone())
     }
     pub(super) fn updates_enabled_read(&self) -> bool {
         matches!(
@@ -230,7 +225,7 @@ impl Fixture {
         }
     }
     pub(super) fn kubeconfig_sources_read(&self) -> Read<KubeconfigSourcesSummary> {
-        let sources = self.kubeconfig.lock().expect("kubeconfig lock").clone();
+        let sources = keyed(self.kubeconfig.lock().expect("kubeconfig lock").clone());
         self.coverage_read(
             "get_kubeconfig_sources",
             self.timing.read("get_kubeconfig_sources", "", "", sources),
@@ -279,7 +274,9 @@ impl Fixture {
                     });
             }
         }
-        self.saved_sources_read(sources.clone())
+        let saved = self.saved_sources_read(sources.clone());
+        // Holds as the web mock holds every command it answers.
+        self.timing.wrap("add_kubeconfig_paths", "", saved)
     }
     pub(super) fn set_source_labels_read(&self, show: bool) -> Read<KubeconfigSourcesSummary> {
         let mut sources = self.kubeconfig.lock().expect("kubeconfig lock");
@@ -303,16 +300,38 @@ impl Fixture {
         sources.paths = ordered;
         self.saved_sources_read(sources.clone())
     }
-    fn saved_sources_read(
+    pub(super) fn saved_sources_read(
         &self,
         sources: KubeconfigSourcesSummary,
     ) -> Read<KubeconfigSourcesSummary> {
         let saved = self.save_settings(&sources);
+        let sources = keyed(sources);
         Box::pin(async move {
             saved?;
             Ok(sources)
         })
     }
+}
+
+/// The fixture kubeconfig file that defines one extra context, as in `tauri-dev-mock-kubeconfig.ts`.
+const ADDED_CONTEXT_KUBECONFIG: &str = "/fixtures/mock-added.kubeconfig";
+pub(super) const ADDED_CONTEXT: &str = "mock-added";
+
+/// Whether the fixture file that defines `ADDED_CONTEXT` is an added path.
+pub(super) fn has_added_context(sources: &KubeconfigSourcesSummary) -> bool {
+    sources
+        .paths
+        .iter()
+        .any(|entry| entry.path == ADDED_CONTEXT_KUBECONFIG)
+}
+
+/// `kubeconfigSourceKeyMock`: the backend's key hashes the added paths, so the fixture file
+/// changes it. Other paths keep the base key, so the sessions recorded under it stay in scope.
+fn keyed(mut sources: KubeconfigSourcesSummary) -> KubeconfigSourcesSummary {
+    if has_added_context(&sources) {
+        sources.source_key = format!("{}|{ADDED_CONTEXT}", sources.source_key);
+    }
+    sources
 }
 
 impl Drop for Fixture {

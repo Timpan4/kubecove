@@ -17,7 +17,7 @@ import {
 import { argoApps, helmReleases } from "./tauri-dev-mock-gitops-data";
 import { withDetailStatusFixture } from "./tauri-dev-mock-detail-status";
 import { evictedWorkerName, evictedWorkerStatus } from "./tauri-dev-mock-incidents";
-import { addKubeconfigPathsMock, reorderKubeconfigPathsMock } from "./tauri-dev-mock-kubeconfig";
+import { addKubeconfigPathsMock, kubeContextsMock, kubeconfigSourceKeyMock, reorderKubeconfigPathsMock } from "./tauri-dev-mock-kubeconfig";
 import { lintMockYaml } from "./tauri-dev-mock-lint";
 import { liveEvents, liveResources, mockListVersion, registerMockWatch, stopMockWatch } from "./tauri-dev-mock-live";
 import { operationMockHandlers } from "./tauri-dev-mock-operations";
@@ -122,8 +122,10 @@ export function createDevMockTauriClient({ latencyMs = globalThis.__kubecovePari
 declare global { var __kubecoveParityKubeconfigSources: KubeconfigSourcesSummary | undefined; }
 // The page's kubeconfig settings, so saved values read back like the desktop settings file.
 // The parity driver seeds stored settings before a reload, as the desktop reads its file at startup.
-const kubeconfigSource = { ...source, ...globalThis.__kubecoveParityKubeconfigSources };
-const kubeconfigSources = () => shellKubeconfigSourcesRead({ ...kubeconfigSource });
+// The seeded summary carries a key derived from its paths, so the base key stays the default's.
+const kubeconfigSource = { ...source, ...globalThis.__kubecoveParityKubeconfigSources, sourceKey: source.sourceKey };
+const kubeconfigSummary = () => ({ ...kubeconfigSource, sourceKey: kubeconfigSourceKeyMock(kubeconfigSource) });
+const kubeconfigSources = () => shellKubeconfigSourcesRead(kubeconfigSummary());
 
 const handlers = {
 	remote_connect: (args) => connectRemoteMock(args.serverUrl ?? "", args.token ?? ""),
@@ -138,7 +140,9 @@ const handlers = {
 		if (!remoteMockStatus()?.connected) throw new Error("Selected remote server is disconnected");
 		const handler = findMockHandler(args.command ?? "");
 		if (!handler) throw new Error("Unknown controlled remote command");
-		return handler(args.args ?? {});
+		// Scripted holds apply to the routed command, as they do in the native fixture.
+		const routed = readMockArgs(args.args ?? {});
+		return mockTiming.read(args.command ?? "", routed, () => handler(routed));
 	},
 	get_kubeconfig_sources: kubeconfigSources,
 	set_kubeconfig_env_var: (args) => {
@@ -156,13 +160,19 @@ const handlers = {
 	},
 	save_workspace_export_json: (args) => saveWorkspaceMock(String(args.content)),
 	pick_workspace_import_json: selectedWorkspaceFile,
-	add_kubeconfig_paths: (args) => addKubeconfigPathsMock(kubeconfigSource, args.paths),
+	add_kubeconfig_paths: (args) => {
+		addKubeconfigPathsMock(kubeconfigSource, args.paths);
+		return kubeconfigSummary();
+	},
 	remove_kubeconfig_path: (args) => {
         kubeconfigSource.paths = kubeconfigSource.paths.filter((entry) => entry.path !== args.path);
         return kubeconfigSources();
     },
-	reorder_kubeconfig_paths: (args) => reorderKubeconfigPathsMock(kubeconfigSource, args.paths),
-	list_kube_contexts: () => shellRead("contexts", mockContexts),
+	reorder_kubeconfig_paths: (args) => {
+		reorderKubeconfigPathsMock(kubeconfigSource, args.paths);
+		return kubeconfigSummary();
+	},
+	list_kube_contexts: () => shellRead("contexts", kubeContextsMock(mockContexts, kubeconfigSource)),
 	list_namespaces: () => shellRead("namespaces", namespaces),
 	list_resource_kinds: () => shellRead("kinds", customResourceKinds()),
 	list_present_custom_resource_kinds: (args) =>

@@ -28,11 +28,11 @@ pub(super) struct Integrations {
     pub(super) status_read: Option<InFlight>,
     /// Reads the status again on each session change. Dropping it stops the watch.
     pub(super) session_watch: Option<Task<()>>,
-    /// Set by a runtime change. The web resets every query then, and its Resources query reads
-    /// again only when the page next mounts. The scope read that the change starts also feeds
-    /// the sidebar here, so Resources reads again on its next entry instead of keeping rows a
-    /// later remote drop would make stale.
-    scope_reread: bool,
+    /// Set by a runtime change or a kubeconfig source change. The web resets every query then,
+    /// and its Resources query reads again only when the page next mounts. The scope read that
+    /// the change starts also feeds the sidebar here, so Resources reads again on its next entry
+    /// instead of keeping rows a later remote drop or source change would make stale.
+    pub(super) scope_reread: bool,
 }
 impl Integrations {
     pub(super) fn new(window: &mut Window, cx: &mut Context<Inspector>) -> Self {

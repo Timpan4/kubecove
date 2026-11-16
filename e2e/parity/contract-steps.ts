@@ -197,6 +197,10 @@ export type Step =
     | { action: "clickSettingsButton"; label: string }
     | { action: "clickKubeconfigPathButton"; value: string; label: string }
     | { action: "expectKubeconfigPathBefore"; value: string; other: string }
+    /** Local mode: types `value` into the pasted paths field, then adds it; `fill…` only types. */
+    | { action: "addPastedKubeconfigPaths" | "fillKubeconfigPathDraft"; value: string }
+    /** The path field of the current mode (pasted paths, or the server path when remote): its text and whether it accepts input. */
+    | { action: "expectKubeconfigPathDraft"; value: string; enabled: boolean }
     | { action: "expectAccessibleName"; name: string }
     | { action: "expectSettingsText" | "expectNoSettingsText" | "expectRuntimeEndpoint"; value: string }
     | { action: "expectMaskedToken" | "reopenStoredSettings" }
