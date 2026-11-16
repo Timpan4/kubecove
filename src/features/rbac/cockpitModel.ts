@@ -155,12 +155,9 @@ function buildRbacRiskIndex(data: RbacInspectionSummary): RbacRiskIndex {
 		bindingOrder.set(binding, index);
 		bindingRisks.set(binding, [...binding.risks, ...referencedRoleRisks(rolesByReference, binding)]);
 		for (const subject of binding.subjects) {
-			const account =
-				subject.kind === "ServiceAccount"
-					? subject
-					: subject.kind === "User"
-						? splitServiceAccountUsername(subject.name)
-						: null;
+			let account: { namespace?: string; name: string } | null = null;
+			if (subject.kind === "ServiceAccount") account = subject;
+			else if (subject.kind === "User") account = splitServiceAccountUsername(subject.name);
 			if (account) {
 				pushMapValue(
 					bindingsByServiceAccount,
