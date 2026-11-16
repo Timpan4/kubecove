@@ -2,6 +2,19 @@ import type { Page } from "playwright-core";
 import type { Step } from "./contract";
 import { resourceRow } from "./web-resource-table";
 
+/**
+ * Runs in the page: the Resource metrics card's message and context lines as
+ * JSON, or whether they equal `want` when it is not null.
+ */
+function metricsCard(want: string | null) {
+	const card = document.querySelector('[role="group"][aria-label="Resource metrics"]');
+	const found = card && JSON.stringify({
+		message: card.children[1]?.textContent?.trim() ?? "",
+		contexts: Array.from(card.querySelectorAll("li"), (item) => item.textContent?.trim() ?? ""),
+	});
+	return want === null ? found : found === want;
+}
+
 export async function topologyAction(page: Page, step: Step) {
 	switch (step.action) {
 		case "expectUsageFooter": await page.locator("footer").getByText(step.text, { exact: true }).waitFor(); break;
@@ -31,6 +44,14 @@ export async function topologyAction(page: Page, step: Step) {
 			const row = resourceRow(page, step);
 			await row.getByLabel(`CPU usage ${step.cpu}`, { exact: true }).waitFor();
 			await row.getByLabel(`Memory usage ${step.memory}`, { exact: true }).waitFor();
+			break;
+		}
+		case "expectMetricsCard": {
+			const want = JSON.stringify({ message: step.message, contexts: step.contexts });
+			// Metrics load after the rows settle, so wait for the card to show the expected state.
+			await page.waitForFunction(metricsCard, want).catch(async () => {
+				throw new Error(`Resource metrics card showed ${await page.evaluate(metricsCard, null)}`);
+			});
 			break;
 		}
 		default:

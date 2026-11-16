@@ -1,6 +1,7 @@
 //! Formatting and identity from `src/lib/resource-metrics.ts`.
 use kubecove_lib::models::{
-    ResourceMetricSummary, ResourceMetricsAvailability, ResourceMetricsAvailabilityStatus,
+    AppError, AppErrorKind, ResourceMetricSummary, ResourceMetricsAvailability,
+    ResourceMetricsAvailabilityStatus,
 };
 
 pub fn cpu(value: Option<f64>) -> String {
@@ -38,14 +39,26 @@ pub fn compact(metric: &ResourceMetricSummary) -> Option<String> {
     (!parts.is_empty()).then(|| parts.join(" / "))
 }
 
-pub fn availability(value: &ResourceMetricsAvailability) -> &str {
+/// Why a context's metrics are missing, or `None` when they are available.
+pub fn issue(value: &ResourceMetricsAvailability) -> Option<&str> {
     match value.status {
-        ResourceMetricsAvailabilityStatus::Available => "metrics available",
-        ResourceMetricsAvailabilityStatus::Forbidden => "metrics API forbidden",
-        ResourceMetricsAvailabilityStatus::NoSamples => "no metrics samples yet",
-        ResourceMetricsAvailabilityStatus::Unavailable => value
-            .message
-            .as_deref()
-            .unwrap_or("metrics API unavailable"),
+        ResourceMetricsAvailabilityStatus::Available => None,
+        ResourceMetricsAvailabilityStatus::Forbidden => Some("metrics API forbidden"),
+        ResourceMetricsAvailabilityStatus::NoSamples => Some("no metrics samples yet"),
+        ResourceMetricsAvailabilityStatus::Unavailable => Some(
+            value
+                .message
+                .as_deref()
+                .unwrap_or("metrics API unavailable"),
+        ),
+    }
+}
+
+/// Why a context's metrics read failed.
+pub fn read_issue(error: &AppError) -> &'static str {
+    if error.kind == AppErrorKind::Forbidden {
+        "metrics API forbidden"
+    } else {
+        "metrics API unavailable"
     }
 }

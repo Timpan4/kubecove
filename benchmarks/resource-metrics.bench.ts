@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { describe } from "vitest";
 import {
 	type ContextMetrics,
-	describeMetricsAvailability,
 	mergeResourceMetrics,
 	mergeTopologyMetrics,
+	metricsCard,
 	resourceMetricIndex,
 } from "@/lib/resource-metrics";
 import type {
@@ -140,11 +140,11 @@ assert.equal(unsupportedIndex.size, 0);
 assert.equal(unavailableTableResult, resources);
 assert.equal(unsupportedTopologyResult, topology);
 assert.equal(
-	describeMetricsAvailability(unavailableMetrics.availability),
+	metricsCard([{ clusterContext: "unavailable", summary: unavailableMetrics }]).message,
 	"metrics API unreachable",
 );
 assert.equal(
-	describeMetricsAvailability(unsupportedMetrics.availability),
+	metricsCard([{ clusterContext: "unsupported", summary: unsupportedMetrics }]).message,
 	"metrics API forbidden",
 );
 assert.deepEqual(unavailableMetrics.warnings, ["The metrics API could not be reached."]);
