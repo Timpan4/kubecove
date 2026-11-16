@@ -101,9 +101,9 @@ assert(managedResources.some((resource) => resource.requiresPruning &&
 assert.equal(applicationSpecFromYaml(malformedYaml), null);
 assert.equal(applicationSpecFromYaml(invalidRootYaml), null);
 assert.equal(applicationSpecFromYaml(invalidSpecYaml), null);
-// SAFETY: yamlDocuments[0] is the synthetic Application fixture with two sources below.
 const firstSpec = applicationSpecFromYaml(yamlDocuments[0]);
 assert(firstSpec);
+// SAFETY: yamlDocuments[0] is the synthetic Application fixture with two sources below.
 assert.equal(
 	(firstSpec.sources as unknown[]).length,
 	2,
