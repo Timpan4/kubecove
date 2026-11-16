@@ -149,15 +149,23 @@ export function resourceBrowserReads(client: TauriClient, input: () => ResourceB
 		clusterContext: specs[index]?.clusterContext ?? "",
 		summary: query.data,
 	}))));
-	// Contexts whose read is still loading are left out until it settles.
-	const metricsCardState = $derived(metricsCard(metricsQueries.flatMap((query, index): ContextMetricsRead[] => {
-		const clusterContext = specs[index]?.clusterContext ?? "";
-		if (query.isError) {
-			const forbidden = isAppError(query.error) && query.error.kind === "forbidden";
-			return [{ clusterContext, failure: forbidden ? "forbidden" : "unavailable" }];
+	// Like the native client, the card shows its loading state until every context's read settles,
+	// so one settled context never stands in for the whole workspace.
+	const metricsCardState = $derived.by(() => {
+		const reads: ContextMetricsRead[] = [];
+		for (const [index, query] of metricsQueries.entries()) {
+			const clusterContext = specs[index]?.clusterContext ?? "";
+			if (query.isError) {
+				const forbidden = isAppError(query.error) && query.error.kind === "forbidden";
+				reads.push({ clusterContext, failure: forbidden ? "forbidden" : "unavailable" });
+			} else if (query.data) {
+				reads.push({ clusterContext, summary: query.data });
+			} else {
+				return metricsCard([]);
+			}
 		}
-		return query.data ? [{ clusterContext, summary: query.data }] : [];
-	})));
+		return metricsCard(reads);
+	});
 
 	const live = liveViewRefresh(client, () => specs.flatMap(({ clusterContext, specs: spec }) => {
 		const view = resourceBrowserLiveView(
