@@ -616,6 +616,50 @@
   stroke: color-mix(in oklch, var(--muted-foreground) 55%, transparent);
 }
 
+/* Edge motion runs in SVG layers outside the node card subtrees, where the
+   WKWebView blank-card bug above does not apply. OwnershipMap.svelte sets
+   `ownership-map-motion` only on maps that stay fully mounted, and never
+   under reduced motion. Two 8 8 dash periods per loop keep the loop seamless. */
+.ownership-map-motion .ownership-map-edge-active .svelte-flow__edge-path {
+  animation: topology-edge-flow 1.8s linear infinite;
+}
+
+@keyframes topology-edge-flow {
+  to {
+    stroke-dashoffset: -32;
+  }
+}
+
+/* A dot on a path of length 1: a near-zero dash with round caps, moved from
+   the source handle to the target handle once per activity-icon turn. */
+.ownership-map-pulse {
+  fill: none;
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-dasharray: 0.001 2;
+  animation: topology-edge-pulse 1150ms linear infinite;
+}
+
+.ownership-map-pulse-halo {
+  stroke-width: 12;
+  stroke-opacity: 0.25;
+}
+
+@keyframes topology-edge-pulse {
+  0% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+  12%,
+  85% {
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: -1;
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .resource-topology-node::after {
     transition: none;

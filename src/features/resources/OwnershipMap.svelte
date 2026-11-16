@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { setContext } from "svelte";
+	import { prefersReducedMotion } from "svelte/motion";
 	import { RESOURCE_ACTIVITY_CURRENT } from "./resource-activity-animation";
 	import { Controls, SvelteFlow, type NodeTypes } from "@xyflow/svelte";
 	import type { NodeEventWithPointer } from "@xyflow/svelte";
@@ -23,9 +24,10 @@
 		selectedStandaloneExpansionId as resolveSelectedStandaloneExpansionId,
 		type FlowTopologyNode,
 	} from "./topology";
-	import { buildFlowTopologyEdgeLayer } from "./topology-edge-layer";
+	import { buildFlowTopologyEdgeLayer, buildFlowTopologyPulses } from "./topology-edge-layer";
 	import MapContextSelect from "./MapContextSelect.svelte";
 	import OwnershipMapEdgeLayer from "./OwnershipMapEdgeLayer.svelte";
+	import OwnershipMapPulseLayer from "./OwnershipMapPulseLayer.svelte";
 	import OwnershipMapViewport from "./OwnershipMapViewport.svelte";
 	import OwnershipResourceNode from "./OwnershipResourceNode.svelte";
 	import StandaloneKindGroupNode from "./StandaloneKindGroupNode.svelte";
@@ -117,6 +119,12 @@
 		graph && onlyRenderVisibleElements
 			? buildFlowTopologyEdgeLayer(graph.nodes, graph.edges)
 			: null,
+	);
+	// Continuous edge motion repaints every frame, so only maps small enough to stay fully mounted get it.
+	const edgeMotion = $derived(!onlyRenderVisibleElements && !prefersReducedMotion.current);
+	// The pulse stops with the activity icons when live updates are not current.
+	const pulses = $derived(
+		graph && edgeMotion && updatesCurrent ? buildFlowTopologyPulses(graph.nodes, graph.edges) : [],
 	);
 	const focusedGraph = $derived(
 		Boolean(
@@ -264,7 +272,7 @@
 					edges={edgeLayer?.native ?? graph.edges}
 					{nodeTypes}
 					{translateExtent}
-					class="ownership-map-flow"
+					class={edgeMotion ? "ownership-map-flow ownership-map-motion" : "ownership-map-flow"}
 					minZoom={0.12}
 					maxZoom={1.4}
 					nodesDraggable={false}
@@ -281,6 +289,9 @@
 				>
 					{#if edgeLayer}
 						<OwnershipMapEdgeLayer edges={edgeLayer.layered} />
+					{/if}
+					{#if pulses.length > 0}
+						<OwnershipMapPulseLayer {pulses} />
 					{/if}
 					<OwnershipMapViewport
 						nodes={graph.nodes}
