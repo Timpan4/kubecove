@@ -7,7 +7,7 @@
 use base64::Engine as _;
 use kubecove_lib::models::{AppError, AppErrorKind};
 use minisign_verify::{PublicKey, Signature, StreamVerifier};
-use std::{ffi::OsString, io, path::PathBuf};
+use std::{ffi::OsString, io, path::PathBuf, time::Duration};
 use tokio::sync::{mpsc, watch};
 
 mod install;
@@ -117,12 +117,29 @@ pub fn platform() -> String {
     format!("{os}-{}", std::env::consts::ARCH)
 }
 
+/// How long the update check and download wait for a connection or for more bytes. Without it a
+/// server that accepts and then stalls leaves Checking or Installing pending until restart. It
+/// limits silence, not the whole transfer, so a slow download that keeps arriving still
+/// completes. The owner chose 30 seconds (#662); nothing in the project or the Tauri updater
+/// sets one.
+pub const STALL_TIMEOUT: Duration = Duration::from_secs(30);
+
+fn client() -> reqwest::Result<reqwest::Client> {
+    reqwest::Client::builder()
+        .connect_timeout(STALL_TIMEOUT)
+        .read_timeout(STALL_TIMEOUT)
+        .build()
+}
+
 pub(super) async fn check() -> Result<UpdateStatus, AppError> {
-    let response = reqwest::Client::new()
-        .get(Feed::release()?.endpoint)
+    let failed = || AppError::new("Could not check for updates", AppErrorKind::Network);
+    let endpoint = Feed::release()?.endpoint;
+    let response = client()
+        .map_err(|_| failed())?
+        .get(endpoint)
         .send()
         .await
-        .map_err(|_| AppError::new("Could not check for updates", AppErrorKind::Network))?;
+        .map_err(|_| failed())?;
     if response.status() == reqwest::StatusCode::NO_CONTENT {
         return Ok(UpdateStatus::UpToDate);
     }
@@ -322,7 +339,8 @@ async fn download(
     progress: &watch::Sender<DownloadProgress>,
     writer: &mpsc::Sender<Piece>,
 ) -> Result<(), AppError> {
-    let mut response = reqwest::Client::new()
+    let mut response = client()
+        .map_err(|_| download_failed())?
         .get(url)
         .header(reqwest::header::ACCEPT, "application/octet-stream")
         .send()

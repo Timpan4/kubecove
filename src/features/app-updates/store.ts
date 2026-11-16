@@ -233,15 +233,14 @@ export const useAppUpdateStore = createStore<AppUpdateState>()(
 					diagnosticLog("updates.install.error", { error: message });
 				}
 			},
-				relaunchApp: async () => {
-					try {
-						await updateApi.relaunch();
-					} catch (error) {
-						const message = error instanceof Error ? error.message : String(error);
-						set({
-							status: "error",
-							errorMessage: message,
-					});
+			// A failed relaunch keeps the installed update, so Relaunch stays available and shows why.
+			relaunchApp: async () => {
+				try {
+					await updateApi.relaunch();
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					set({ errorMessage: message });
+					diagnosticLog("updates.relaunch.error", { error: message });
 				}
 			},
 			dismissUpdate: (version: string) => set({ dismissedVersion: version }),

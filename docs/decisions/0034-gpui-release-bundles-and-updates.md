@@ -45,21 +45,23 @@ The manifest URL is derived from the Tauri endpoint in the same config, so the t
 The client streams the artifact. Each chunk goes to the staged file and to minisign's streaming verifier, then is dropped, so memory use stays flat however large the response is. No trusted size exists to cap the download: the manifest and `Content-Length` are untrusted and the signature carries no size. File writes, hashing and the install run off the UI thread and off the async workers. A download that fails or ends before its announced length never installs.
 
 - **Linux.** The staged file is a new hidden file beside the AppImage. After verification the payload must be an ELF file. The client copies the AppImage's permissions to the staged file, syncs it and renames it over the AppImage. The path always holds a complete AppImage. Relaunch starts the AppImage.
-- **macOS.** The staged file is a hidden file beside the bundle that holds the downloaded `.app.tar.gz`, and it is removed once the install ends. After verification the client unpacks it into a hidden directory beside the bundle, requires exactly one `.app` directory in it, moves the installed bundle aside, moves the new one into its place, and deletes the old one. If the second move fails it moves the installed bundle back. Relaunch runs `open -n` on the bundle.
+- **macOS.** The staged file is a hidden file beside the bundle that holds the downloaded `.app.tar.gz`, and it is removed once the install ends. After verification the client unpacks it into a hidden directory beside the bundle, requires exactly one `.app` directory in it, moves the installed bundle aside, moves the new one into its place, and deletes the old one. If the second move fails it moves the installed bundle back. If that move fails too, the installed bundle stays under its hidden name beside the install path; it is deleted only after the new bundle is in place. Relaunch runs `open -n` on the bundle.
 - **Windows.** The staged file is a hidden file in the user's temporary directory whose name does not end in `.exe`. After verification the payload must be a PE file, and the client renames it to `KubeCove-GPUI-<version>-setup.exe`, so an unverified file never sits at an installer's name. Relaunch runs it with `/P` (passive) and `/R` (restart the app), and the app quits so the installer can replace its files.
 
 Work files are created with `create_new`, so the client never writes through a link placed at a predictable path. A stale work file from an interrupted install is removed first, without following links.
 
 Relaunch quits the app, so it obeys the close guard: it stays open while a YAML draft has unsaved changes.
 
-The update states match the web: available, downloading with progress, installed and waiting for relaunch, and failed with the reason. Settings and the header popover show the same state.
+The update states match the web: available, downloading with progress, installed and waiting for relaunch, and failed with the reason. Settings and the header popover show the same state. A relaunch that fails keeps the installed state and shows the reason beside Relaunch, so the user can try again without a new check and download. On Windows the saved installer stays in use.
+
+The update check and the download fail when the server sends nothing for 30 seconds, while connecting or while reading. The limit covers silence, not the whole transfer, so a slow download that keeps arriving still completes. The owner chose the value on 2026-11-16 (#662).
 
 ### Differences from the Tauri updater
 
 - On Windows the Tauri plugin starts the installer and exits the app as soon as the download finishes. The native client waits for Relaunch, so the user can finish work first.
 - On macOS the Tauri plugin swaps bundles atomically where the file system allows and asks for administrator rights when the install location is not writable. The native client uses two renames and reports an error when the location is not writable. A crash between the two renames leaves the old bundle under a hidden name beside the install path.
 - On Linux the client updates only an AppImage. A binary started outside an AppImage, such as a Nix or development build, reports that it cannot install updates.
-- There are no proxy, header, timeout or downgrade settings.
+- There are no proxy, header, timeout or downgrade settings. The Tauri updater sets no timeout by default; the native client always applies the 30-second stall limit.
 
 ## Risks accepted
 
@@ -70,7 +72,7 @@ The update states match the web: available, downloading with progress, installed
 
 ## Verification
 
-- Native tests (`src-tauri/gpui/tests/native/updates.rs`) list the failure modes first and cover manifest reading, the signature, signed-version and signed-file-name checks with signatures made by the Tauri signer, a download from a local server through to the replaced AppImage, and the bundle and installer paths. The macOS and Windows file operations run on Linux in those tests; only the platform's own launch command is not exercised.
+- Native tests (`src-tauri/gpui/tests/native/updates.rs`) list the failure modes first and cover manifest reading, the signature, signed-version and signed-file-name checks with signatures made by the Tauri signer, a download from a local server through to the replaced AppImage, a download that stalls, and the bundle and installer paths. Library tests in `src-tauri/gpui/src/backend/updates/install.rs` inject a failure at the second bundle move and at the move back. The macOS and Windows file operations run on Linux in those tests; only the platform's own launch command is not exercised.
 - Shared scenarios `settings-updates.*` cover the install, progress, relaunch and failure states in both clients with scripted results.
 - The release dry run proves that each platform builds, bundles and signs, and that each signature verifies against the public key and names the version.
 - Not covered by any automated check: installing a real update on macOS and Windows, and the relaunch on all three platforms.

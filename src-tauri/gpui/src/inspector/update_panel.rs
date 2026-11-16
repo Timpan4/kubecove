@@ -70,7 +70,7 @@ impl Inspector {
             "Update check failed"
         } else if matches!(state.install, Install::Downloading { .. }) {
             "Downloading update"
-        } else if matches!(state.install, Install::Installed(_)) {
+        } else if matches!(state.install, Install::Installed { .. }) {
             "Restart to finish update"
         } else if self.available_version().is_some() {
             "Update available"
@@ -248,22 +248,33 @@ impl Inspector {
                     )
                     .child(labelled(ui::muted(ui::xs(caption.clone())), &caption));
             }
-            Install::Installed(_) => {
-                return body
-                    .gap(px(12.))
-                    .child(labelled(
-                        ui::sm("Update installed. Restart KubeCove to finish."),
-                        "Update installed. Restart KubeCove to finish.",
-                    ))
-                    .child(
-                        button(Variant::Default, 28., false)
-                            .id("header-update-relaunch")
-                            .test_support()
-                            .aria_label("Relaunch")
-                            .child(ui::icon("refresh-cw", 14., Tokens::primary_foreground()))
-                            .child("Relaunch")
-                            .on_click(cx.listener(|this, _, _, cx| this.relaunch_after_update(cx))),
+            Install::Installed { error, .. } => {
+                let mut body = body.gap(px(12.)).child(labelled(
+                    ui::sm("Update installed. Restart KubeCove to finish."),
+                    "Update installed. Restart KubeCove to finish.",
+                ));
+                if let Some(error) = error {
+                    body = body.child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap(px(8.))
+                            .child(labelled(
+                                ui::sm("Relaunch failed.").text_color(Tokens::destructive()),
+                                "Relaunch failed.",
+                            ))
+                            .child(labelled(ui::muted(ui::xs(error.clone())), error)),
                     );
+                }
+                return body.child(
+                    button(Variant::Default, 28., false)
+                        .id("header-update-relaunch")
+                        .test_support()
+                        .aria_label("Relaunch")
+                        .child(ui::icon("refresh-cw", 14., Tokens::primary_foreground()))
+                        .child("Relaunch")
+                        .on_click(cx.listener(|this, _, _, cx| this.relaunch_after_update(cx))),
+                );
             }
         }
         match &state.status {

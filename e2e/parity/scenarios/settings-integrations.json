@@ -266,8 +266,10 @@
         { "action": "expectSettingsText", "value": "Update is installed. Relaunch KubeCove to finish." },
         { "action": "expectUpdateControl", "label": "Restart to finish update" },
         { "action": "clickSettingsButton", "label": "Relaunch" },
-        { "action": "expectSettingsText", "value": "Tests cannot relaunch" },
-        { "action": "expectNoSettingsText", "value": "Relaunch required" }
+        { "action": "expectSettingsText", "value": "Relaunch failed: Tests cannot relaunch" },
+        { "action": "expectSettingsText", "value": "Relaunch required" },
+        { "action": "expectNoSettingsText", "value": "Update check failed" },
+        { "action": "expectUpdateControl", "label": "Restart to finish update" }
       ]
     },
     {
@@ -281,7 +283,10 @@
         { "action": "expectSettingsText", "value": "Update installed. Restart KubeCove to finish." },
         { "action": "expectUpdateControl", "label": "Restart to finish update" },
         { "action": "updateStatusControl", "control": "Relaunch" },
-        { "action": "expectSettingsText", "value": "Tests cannot relaunch" }
+        { "action": "expectSettingsText", "value": "Relaunch failed." },
+        { "action": "expectSettingsText", "value": "Tests cannot relaunch" },
+        { "action": "expectSettingsText", "value": "Update installed. Restart KubeCove to finish." },
+        { "action": "expectNoSettingsText", "value": "Update check failed" }
       ]
     },
     {

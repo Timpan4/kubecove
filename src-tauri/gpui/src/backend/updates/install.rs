@@ -115,12 +115,14 @@ impl Staged {
                     args: Vec::new(),
                 })
             }
-            InstallTarget::AppBundle(bundle) => replace_bundle(bundle, &mut self.file)
-                .map_err(|error| failed("Could not replace the app bundle", &error))
-                .map(|()| Relaunch {
-                    program: "/usr/bin/open".into(),
-                    args: vec!["-n".into(), bundle.clone().into()],
-                }),
+            InstallTarget::AppBundle(bundle) => {
+                replace_bundle(bundle, &mut self.file, |from, to| fs::rename(from, to))
+                    .map_err(|error| failed("Could not replace the app bundle", &error))
+                    .map(|()| Relaunch {
+                        program: "/usr/bin/open".into(),
+                        args: vec!["-n".into(), bundle.clone().into()],
+                    })
+            }
             InstallTarget::Installer(directory) => {
                 let installer = directory.join(format!("KubeCove-GPUI-{version}-setup.exe"));
                 save_installer(&installer, &self.path, &mut self.file)
@@ -205,8 +207,13 @@ fn replace_appimage(path: &Path, staged: &Path, file: &mut fs::File) -> io::Resu
 
 /// Unpacks the staged `.app.tar.gz` beside the installed bundle, then moves the installed bundle
 /// aside and the new one into its place. A failed move puts the installed bundle back. The
-/// previous bundle is deleted only once the new one is in place.
-fn replace_bundle(bundle: &Path, archive: &mut fs::File) -> io::Result<()> {
+/// previous bundle is deleted only once the new one is in place, so if putting it back also
+/// fails it stays under its hidden name. `rename` is `fs::rename`; tests make it fail.
+fn replace_bundle(
+    bundle: &Path,
+    archive: &mut fs::File,
+    rename: impl Fn(&Path, &Path) -> io::Result<()>,
+) -> io::Result<()> {
     fs::symlink_metadata(bundle)?;
     let staging = sibling(bundle, "update")?;
     let previous = sibling(bundle, "previous")?;
@@ -217,9 +224,9 @@ fn replace_bundle(bundle: &Path, archive: &mut fs::File) -> io::Result<()> {
         .rewind()
         .and_then(|()| unpack_bundle(archive, &staging))
         .and_then(|unpacked| {
-            fs::rename(bundle, &previous)?;
-            fs::rename(&unpacked, bundle).inspect_err(|_| {
-                let _ = fs::rename(&previous, bundle);
+            rename(bundle, &previous)?;
+            rename(&unpacked, bundle).inspect_err(|_| {
+                let _ = rename(&previous, bundle);
             })
         });
     let _ = fs::remove_dir_all(&staging);
@@ -269,5 +276,97 @@ fn remove_stale(path: &Path) -> io::Result<()> {
     match removed {
         Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
         _ => Ok(()),
+    }
+}
+
+/// Failure modes at the bundle swap, written before these tests: the move of the new bundle
+/// into place fails, which must leave the installed bundle at its path; putting the installed
+/// bundle back fails as well, which must keep it under its hidden name instead of deleting it.
+/// Neither may leave the unpacked update behind. `fs::rename` cannot be made to fail at the
+/// second move alone from outside, so these tests inject the failure.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const BINARY: &str = "Contents/MacOS/kubecove-gpui";
+
+    /// An installed bundle in `<root>/apps`, and an update archive in `<root>`.
+    fn installed(name: &str) -> (PathBuf, PathBuf, fs::File) {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../.t/update-tests")
+            .join(format!("{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let apps = root.join("apps");
+        let bundle = apps.join("KubeCove GPUI.app");
+        fs::create_dir_all(bundle.join("Contents/MacOS")).unwrap();
+        fs::write(bundle.join(BINARY), b"installed version").unwrap();
+
+        let encoder = flate2::write::GzEncoder::new(
+            create_new(&root.join("update.tar.gz")).unwrap(),
+            flate2::Compression::default(),
+        );
+        let mut builder = tar::Builder::new(encoder);
+        let contents: &[u8] = b"new version";
+        let mut header = tar::Header::new_gnu();
+        header.set_size(contents.len() as u64);
+        header.set_mode(0o755);
+        builder
+            .append_data(
+                &mut header,
+                Path::new("KubeCove GPUI.app").join(BINARY),
+                contents,
+            )
+            .unwrap();
+        let archive = builder.into_inner().unwrap().finish().unwrap();
+        (apps, bundle, archive)
+    }
+
+    fn names(directory: &Path) -> Vec<String> {
+        let mut names: Vec<String> = fs::read_dir(directory)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect();
+        names.sort();
+        names
+    }
+
+    fn injected() -> io::Error {
+        io::Error::other("injected rename failure")
+    }
+
+    #[test]
+    fn a_failed_move_into_place_puts_the_installed_bundle_back() {
+        let (apps, bundle, mut archive) = installed("swap-fails");
+        let previous = sibling(&bundle, "previous").unwrap();
+        let result = replace_bundle(&bundle, &mut archive, |from, to| {
+            if to == bundle && from != previous {
+                Err(injected())
+            } else {
+                fs::rename(from, to)
+            }
+        });
+        assert!(result.is_err());
+        assert_eq!(fs::read(bundle.join(BINARY)).unwrap(), b"installed version");
+        assert_eq!(names(&apps), ["KubeCove GPUI.app"]);
+    }
+
+    #[test]
+    fn a_failed_restore_keeps_the_installed_bundle_under_its_hidden_name() {
+        let (apps, bundle, mut archive) = installed("restore-fails");
+        let previous = sibling(&bundle, "previous").unwrap();
+        let result = replace_bundle(&bundle, &mut archive, |from, to| {
+            if to == bundle {
+                Err(injected())
+            } else {
+                fs::rename(from, to)
+            }
+        });
+        assert!(result.is_err());
+        assert!(!bundle.exists());
+        assert_eq!(
+            fs::read(previous.join(BINARY)).unwrap(),
+            b"installed version"
+        );
+        assert_eq!(names(&apps), [".KubeCove GPUI.app.previous"]);
     }
 }

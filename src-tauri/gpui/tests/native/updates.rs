@@ -10,7 +10,9 @@
 //!
 //! Download: a failed request; a body that is not the signed build; a body that ends before its
 //! announced length, even when the bytes that arrived are the signed build; a refused, failed or
-//! cut-short download that leaves its staged file behind, for any install target.
+//! cut-short download that leaves its staged file behind, for any install target; a server that
+//! sends part of the build and then stalls, which must end the install instead of waiting
+//! forever. That test waits the full `STALL_TIMEOUT`.
 //!
 //! Install: a payload of the wrong kind for the platform; a missing install path; a failure
 //! that leaves the installed version changed or leaves work files behind; an archive without
@@ -71,6 +73,16 @@ fn serve(status: &'static str, body: &'static [u8]) -> String {
 
 /// Answers one request with `status`, a `Content-Length` of `length` and `body`, then closes.
 fn serve_announcing(status: &'static str, body: &'static [u8], length: usize) -> String {
+    respond(status, body, length, false)
+}
+
+/// Answers one request with `body` and a `Content-Length` of `length`, then keeps the
+/// connection open and sends nothing more until the client closes it.
+fn serve_then_stall(body: &'static [u8], length: usize) -> String {
+    respond("200 OK", body, length, true)
+}
+
+fn respond(status: &'static str, body: &'static [u8], length: usize, stall: bool) -> String {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("http://{}/build", listener.local_addr().unwrap());
     std::thread::spawn(move || {
@@ -90,6 +102,8 @@ fn serve_announcing(status: &'static str, body: &'static [u8], length: usize) ->
         )
         .unwrap();
         stream.write_all(body).unwrap();
+        // The client sends nothing more, so a read returns only when it closes the connection.
+        while stall && stream.read(&mut chunk).is_ok_and(|read| read > 0) {}
     });
     url
 }
@@ -110,9 +124,18 @@ fn install_from(
             signature: SIGNATURE.into(),
         },
     };
+    // An outer deadline, so a lost stall timeout fails the stall test instead of hanging it.
+    // The owner chose twice the stall timeout (#718).
     let result = tokio::runtime::Runtime::new()
         .unwrap()
-        .block_on(updates::install(update, PUBLIC_KEY.into(), target, sender));
+        .block_on(async {
+            tokio::time::timeout(
+                2 * updates::STALL_TIMEOUT,
+                updates::install(update, PUBLIC_KEY.into(), target, sender),
+            )
+            .await
+        })
+        .expect("the install outlived twice the stall timeout");
     let progress = *receiver.borrow();
     (result, progress)
 }
@@ -332,6 +355,27 @@ fn a_tampered_failed_or_cut_short_download_changes_nothing_and_leaves_no_staged_
             );
         }
     }
+}
+
+#[test]
+fn a_download_that_stalls_fails_after_the_stall_timeout_and_changes_nothing() {
+    let directory = directory("stall");
+    let appimage = installed_appimage(&directory);
+    let sent = PAYLOAD.len() / 2;
+    let started = std::time::Instant::now();
+    let (result, progress) = install_from(
+        serve_then_stall(&PAYLOAD[..sent], PAYLOAD.len()),
+        InstallTarget::AppImage(appimage.clone()),
+    );
+    assert!(result.is_err(), "a stalled download installed");
+    assert!(started.elapsed() >= updates::STALL_TIMEOUT);
+    // The first bytes arrived, so the request itself did not fail.
+    assert_eq!(progress.downloaded, sent as u64);
+    assert_eq!(
+        std::fs::read(&appimage).unwrap(),
+        b"\x7fELF installed version"
+    );
+    assert_eq!(names(&directory), ["KubeCove GPUI.AppImage"]);
 }
 
 #[test]
