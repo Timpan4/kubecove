@@ -9,7 +9,7 @@ import type {
 } from "@/lib/types";
 import type { WorkspaceRbacReview } from "@/lib/workspace-model";
 import type { RbacCockpitItem } from "./cockpitModel";
-import { serviceAccountPrincipal, subjectAppliesTo } from "./principal";
+import { serviceAccountMatcher } from "./principal";
 import type { RbacView } from "./surfaceModel";
 
 export const REVIEWABLE_RBAC_CATEGORIES = [
@@ -160,8 +160,8 @@ function relevantBindings(
 			(binding.roleRefKind !== "Role" || binding.namespace === item.namespace),
 		);
 	}
-	const principal = serviceAccountPrincipal(item.namespace, item.name);
-	return bindings.filter((binding) => binding.subjects.some((subject) => subjectAppliesTo(principal, subject)));
+	const applies = serviceAccountMatcher(item.namespace, item.name);
+	return bindings.filter((binding) => binding.subjects.some(applies));
 }
 
 function roleForBinding(inspection: RbacInspectionSummary, binding: RbacBindingSummary): RbacRoleSummary | undefined {

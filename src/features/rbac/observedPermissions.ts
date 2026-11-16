@@ -1,5 +1,5 @@
 import type { RbacAccessReviewIdentity, RbacBindingSummary, RbacInspectionSummary, RbacRoleSummary, RbacRuleSummary } from "@/lib/types";
-import { principalOf, subjectAppliesTo } from "./principal";
+import { subjectMatcher } from "./principal";
 
 export interface InspectorIdentity {
 	kind: "serviceAccount" | "user" | "group";
@@ -31,7 +31,7 @@ export function observedPermissions(
 	inspection: RbacInspectionSummary,
 	identity: InspectorIdentity,
 ): ObservedPermissionResult {
-	const principal = principalOf(reviewIdentity(identity));
+	const applies = subjectMatcher(reviewIdentity(identity));
 	const coverage = new Map(inspection.coverage.map((item) => [item.family, item.status]));
 	const incomplete = (["roles", "clusterRoles", "roleBindings", "clusterRoleBindings"] as const)
 		.filter((family) => coverage.get(family) !== "complete");
@@ -40,7 +40,7 @@ export function observedPermissions(
 	const grants: ObservedGrant[] = [];
 	let missing = false;
 	for (const binding of [...inspection.roleBindings, ...inspection.clusterRoleBindings]) {
-		if (!binding.subjects.some((subject) => subjectAppliesTo(principal, subject))) continue;
+		if (!binding.subjects.some(applies)) continue;
 		const role = roles.get(roleKey(binding.roleRefKind, binding.roleRefName, binding.roleRefKind === "Role" ? binding.namespace : undefined));
 		if (!role) { missing = true; continue; }
 		const scope = binding.kind === "ClusterRoleBinding" ? "cluster" : "namespace";

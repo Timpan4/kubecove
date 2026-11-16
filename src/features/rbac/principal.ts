@@ -4,13 +4,7 @@ import type { RbacAccessReviewIdentity, RbacSubjectSummary } from "@/lib/types";
 // subject named `system:serviceaccount:<namespace>:<name>` grants that account.
 const SERVICE_ACCOUNT_PREFIX = "system:serviceaccount:";
 
-/** The user name and groups a SubjectAccessReview sends for an identity, mapped as `rbac_review.rs` does. */
-export interface RbacPrincipal {
-	username?: string;
-	/** The ServiceAccount the username names, parsed once for subject matching. */
-	account: { namespace: string; name: string } | null;
-	groups: string[];
-}
+export type RbacSubjectMatcher = (subject: RbacSubjectSummary) => boolean;
 
 export function automaticServiceAccountGroups(namespace: string): string[] {
 	return ["system:serviceaccounts", `system:serviceaccounts:${namespace}`, "system:authenticated"];
@@ -30,27 +24,37 @@ export function splitServiceAccountUsername(username: string): { namespace: stri
 	return namespace && name ? { namespace, name } : null;
 }
 
-export function principalOf(identity: RbacAccessReviewIdentity): RbacPrincipal {
+/**
+ * `appliesToUser` in the Kubernetes RBAC authorizer, for the user name and
+ * groups a SubjectAccessReview sends for the identity, mapped as
+ * `rbac_review.rs` does. Build it once per identity: the returned check runs
+ * for every subject of every binding.
+ */
+export function subjectMatcher(identity: RbacAccessReviewIdentity): RbacSubjectMatcher {
+	let username: string | undefined;
+	let account: { namespace: string; name: string } | null;
+	let groups: ReadonlySet<string>;
 	if (identity.kind === "serviceAccount") {
-		const username = serviceAccountUsername(identity.namespace, identity.name);
-		return { username, account: splitServiceAccountUsername(username), groups: automaticServiceAccountGroups(identity.namespace) };
+		username = serviceAccountUsername(identity.namespace, identity.name);
+		account = { namespace: identity.namespace, name: identity.name };
+		groups = new Set(automaticServiceAccountGroups(identity.namespace));
+	} else if (identity.kind === "user") {
+		username = identity.username;
+		account = splitServiceAccountUsername(identity.username);
+		groups = new Set(identity.groups);
+	} else {
+		account = null;
+		groups = new Set([identity.group]);
 	}
-	if (identity.kind === "user") {
-		return { username: identity.username, account: splitServiceAccountUsername(identity.username), groups: identity.groups };
-	}
-	return { account: null, groups: [identity.group] };
+	const accountName = account?.name;
+	const accountNamespace = account?.namespace;
+	return (subject) => {
+		if (subject.kind === "ServiceAccount") return accountName !== undefined && subject.name === accountName && subject.namespace === accountNamespace;
+		if (subject.kind === "Group") return groups.has(subject.name);
+		return subject.kind === "User" && username !== undefined && subject.name === username;
+	};
 }
 
-export function serviceAccountPrincipal(namespace: string, name: string): RbacPrincipal {
-	return principalOf({ kind: "serviceAccount", name, namespace });
-}
-
-/** `appliesToUser` in the Kubernetes RBAC authorizer. */
-export function subjectAppliesTo(principal: RbacPrincipal, subject: RbacSubjectSummary): boolean {
-	if (subject.kind === "User") return principal.username !== undefined && subject.name === principal.username;
-	if (subject.kind === "ServiceAccount") {
-		const account = principal.account;
-		return account !== null && subject.namespace === account.namespace && subject.name === account.name;
-	}
-	return subject.kind === "Group" && principal.groups.includes(subject.name);
+export function serviceAccountMatcher(namespace: string, name: string): RbacSubjectMatcher {
+	return subjectMatcher({ kind: "serviceAccount", name, namespace });
 }

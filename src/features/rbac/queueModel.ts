@@ -6,7 +6,7 @@ import type {
 	ServiceAccountSummary,
 } from "@/lib/types";
 import type { RbacCockpitItem } from "./cockpitModel";
-import { serviceAccountPrincipal, subjectAppliesTo } from "./principal";
+import { serviceAccountMatcher } from "./principal";
 import { subjectListLabel } from "./risk";
 
 export function queueTags(
@@ -69,13 +69,8 @@ export function bindingSources(
 		entry.category === "Service Accounts" &&
 		isServiceAccountSummary(entry.item)
 	) {
-		const principal = serviceAccountPrincipal(
-			entry.item.namespace,
-			entry.item.name,
-		);
-		return bindings.filter((binding) =>
-			binding.subjects.some((subject) => subjectAppliesTo(principal, subject)),
-		);
+		const applies = serviceAccountMatcher(entry.item.namespace, entry.item.name);
+		return bindings.filter((binding) => binding.subjects.some(applies));
 	}
 	if (
 		(entry.category === "Roles" || entry.category === "Cluster Roles") &&
