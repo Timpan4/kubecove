@@ -315,6 +315,28 @@
       ]
     },
     {
+      "id": "argo-connection.cancel-sign-in-after-source-change",
+      "title": "Cancelling a saved tunnel profile's sign-in after the form's server source changed during its preview drops that profile's target confirmation",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd-server.argocd.svc", "tunnel": true },
+        { "action": "confirmArgoTunnel" },
+        { "action": "disconnectArgoProfile" },
+        { "action": "argoConnectionDialog", "operation": "openDetail" },
+        { "action": "argoConnectionDialog", "operation": "chooseFoundInCluster" },
+        { "action": "argoConnectionDialog", "operation": "escape" },
+        { "action": "reconnectArgoProfile" },
+        { "action": "configureArgoMock", "script": "preview-pending" },
+        { "action": "argoProfileSignIn", "token": "parity-fixture-token", "tunnel": true, "pending": true },
+        { "action": "argoConnectionDialog", "operation": "chooseExternalUrl" },
+        { "action": "configureArgoMock", "script": "base" },
+        { "action": "expectArgoText", "text": "argocd-server-7d9f8b6c5-x2k4q" },
+        { "action": "argoControl", "control": "Cancel sign-in" },
+        { "action": "expectNoArgoControl", "control": "Confirm and connect" }
+      ]
+    },
+    {
       "id": "argo-connection.redacts-connect-error",
       "title": "A connect error that quotes a token shows it redacted",
       "steps": [

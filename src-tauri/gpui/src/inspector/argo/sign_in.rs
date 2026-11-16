@@ -4,6 +4,7 @@ use super::super::{
     Inspector,
     controls::{Variant, button},
 };
+use super::connection::ConnectStep;
 use super::connection_view::toggled;
 use crate::targets::TestSupportExt;
 use crate::ui;
@@ -142,6 +143,12 @@ impl Inspector {
         {
             connections.editing = None;
             connections.step.clear_preview();
+        }
+        // A form source change clears `editing` while this profile's preview runs, so the
+        // confirmation it leaves is matched by the profile it carries.
+        if matches!(&connections.step, ConnectStep::ConfirmTarget { saved: Some(p), .. } if p.id == profile_id)
+        {
+            connections.step = ConnectStep::Idle;
         }
     }
 

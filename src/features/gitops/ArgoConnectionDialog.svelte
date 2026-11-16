@@ -215,39 +215,40 @@
 		}
 		step = { kind: "busy", label: "Connecting…" };
 		const formTls = !saved && target.kind === "externalHttps";
+		const request = {
+			id: saved?.id ?? argoProfileId(scope, target),
+			serverUrl: argoEndpointUrl(target),
+			endpoint: target,
+			...(saved ? savedCredential(saved) : credential(loginMode === "local", token, username, password)),
+			insecureTls: formTls && insecureTls,
+			customCaPem: formTls && customCa ? [...new TextEncoder().encode(customCa)] : undefined,
+			rememberCredential: saved ? Boolean(saved.rememberCredential) : rememberCredential,
+			clusterContext: scope.clusterContext,
+			kubeconfigEnvVar: scope.kubeconfigSourceKey,
+			workspaceId: scope.workspaceId,
+			confirmedTarget,
+		};
+		// Submitted credentials leave component state when they are sent, as in GPUI, so a
+		// correction typed while the request runs survives its failure. A saved profile's
+		// sign-in leaves the new-connection form as it was.
+		if (saved) clearSignInSecrets();
+		else {
+			token = "";
+			username = "";
+			password = "";
+			customCa = "";
+		}
 		try {
-			const result = await connectArgoServer(client, {
-				id: saved?.id ?? argoProfileId(scope, target),
-				serverUrl: argoEndpointUrl(target),
-				endpoint: target,
-				...(saved ? savedCredential(saved) : credential(loginMode === "local", token, username, password)),
-				insecureTls: formTls && insecureTls,
-				customCaPem: formTls && customCa ? [...new TextEncoder().encode(customCa)] : undefined,
-				rememberCredential: saved ? Boolean(saved.rememberCredential) : rememberCredential,
-				clusterContext: scope.clusterContext,
-				kubeconfigEnvVar: scope.kubeconfigSourceKey,
-				workspaceId: scope.workspaceId,
-				confirmedTarget,
-			});
+			const result = await connectArgoServer(client, request);
 			const profile = savedArgoProfile(result);
 			if (profile) settings.setArgoProfiles(upsertArgoProfileInSavedOrder(settings.argoProfiles, profile, saved?.id));
-			if (saved && saved.id === signInId) signInId = null;
+			if (saved && saved.id === signInId) closeSignIn();
 			refreshStatuses();
 			step = { kind: "idle" };
 		} catch (caught) {
 			fail(messageFromError(caught));
 			// A rejected tunnel target is usually a replaced Pod; refetch so the next preview is current.
 			if (confirmedTarget) void queryClient.invalidateQueries({ queryKey: discoveryKey });
-		} finally {
-			// Credentials never persist in component state after submit. A saved profile's sign-in
-			// leaves the new-connection form as it was.
-			if (saved) clearSignInSecrets();
-			else {
-				token = "";
-				username = "";
-				password = "";
-				customCa = "";
-			}
 		}
 	}
 
