@@ -145,6 +145,7 @@ export type Step =
     | { action: "expectNoSavedArgoProfile"; url: string }
     | { action: "expandArgoDiff" }
     | { action: "reconnectArgoProfile" }
+    | { action: "argoProfileSignIn"; token: string }
     | { action: "configureArgoInventory"; mode: import("../../src/lib/tauri-dev-mock-argo").ArgoInventoryMode }
     | { action: "copyArgoValue"; control: "source" | "revision" | "repository value" | "release value" | "cluster target value"; contains: string }
     | { action: "expectArgoReview"; operation: string; name: string; namespace: string; transport: string }

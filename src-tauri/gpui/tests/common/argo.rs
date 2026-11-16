@@ -93,6 +93,12 @@ impl Argo {
         if *self.script.lock().unwrap() == "target-mismatch" {
             return failed("Fixture tunnel target changed");
         }
+        // A connect error can quote the request URL with its token, which the dialog must redact.
+        if *self.script.lock().unwrap() == "credential-error" {
+            return failed(
+                "Fixture rejected https://argocd.example.test/api/v1/session?token=parity-leaked-secret",
+            );
+        }
         let request = serde_json::to_value(request).unwrap();
         let Some(connection) = self.connections.iter().find(|r| r.request == request) else {
             return self.unexpected("connection", &request);

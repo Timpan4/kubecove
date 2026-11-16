@@ -160,6 +160,15 @@ impl Inspector {
         else {
             return;
         };
+        if self
+            .argo
+            .connections
+            .sign_in
+            .as_ref()
+            .is_some_and(|s| s.profile_id == id)
+        {
+            self.argo.connections.sign_in = None;
+        }
         // Persist the auto-reconnect opt-out before touching the credential. A later
         // failure leaves a visible, retryable profile that cannot reconnect on startup.
         let mut document = self.persisted.clone();

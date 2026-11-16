@@ -30,12 +30,13 @@ export function integrationStep(item: JsonObject): Step | undefined {
 		case "completeArgoOperation": return { action: item.action };
 		case "connectArgoProfile": return { action: item.action, url: string(item.url), remember: optionalBoolean(item.remember), tunnel: optionalBoolean(item.tunnel), local: optionalBoolean(item.local), insecure: optionalBoolean(item.insecure), customCa: item.customCa == null ? undefined : string(item.customCa), surface: item.surface == null ? undefined : oneOf(["page"] as const, item.surface, "an Argo connection surface") };
 		case "disconnectArgoProfile": case "confirmArgoReview": case "cancelArgoReview": return { action: item.action };
-		case "configureArgoMock": return { action: item.action, script: oneOf(["base", "discovery-error", "target-mismatch", "preview-error", "snapshot-error", "operation-error", "lazy", "full-diff", "connect-pending", "disconnect-pending"], item.script, "an Argo fixture script") };
+		case "configureArgoMock": return { action: item.action, script: oneOf(["base", "discovery-error", "target-mismatch", "preview-error", "snapshot-error", "operation-error", "lazy", "full-diff", "connect-pending", "disconnect-pending", "credential-error"], item.script, "an Argo fixture script") };
 		case "argoControl": return { action: item.action, control: oneOf(["Open connection", "Close connection", "Disconnect", "Forget", "Retry", "Confirm target again", "Retry operation", "Retry state refresh", "Retry snapshot", "Technical detail", "Show diff", "Show fewer lines", "All changes", "Sync options", "Sync with these options", "Refresh options"], item.control, "an Argo control"), url: item.url == null ? undefined : string(item.url) };
 		case "focusArgoResource": return { action: item.action, key: string(item.key), label: string(item.label) };
 		case "expectNoSavedArgoProfile": return { action: item.action, url: string(item.url) };
 		case "expandArgoDiff": return { action: item.action };
 		case "reconnectArgoProfile": return { action: item.action };
+		case "argoProfileSignIn": return { action: item.action, token: plainString(item.token) };
 		case "configureArgoInventory": return { action: item.action, mode: oneOf(["base", "absent", "empty", "partial", "unavailable", "many"], item.mode, "an Argo inventory mode") };
 		case "copyArgoValue": return { action: item.action, control: oneOf(["source", "revision", "repository value", "release value", "cluster target value"], item.control, "an Argo copy control"), contains: string(item.contains) };
 		case "reviewArgoOperation": return { action: item.action, operation: oneOf(["Refresh", "Hard refresh", "Sync", "Rollback"], item.operation, "an Argo operation") };

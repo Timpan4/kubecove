@@ -234,6 +234,39 @@
         { "action": "argoControl", "control": "Close connection" },
         { "action": "argoConnectionDialog", "operation": "expectOpen", "open": false }
       ]
+    },
+    {
+      "id": "argo-connection.reconnect-asks-in-row",
+      "title": "Reconnect on a saved profile that does not remember its credential asks for it in the profile's row and never sends the token or TLS choice typed in the new-connection form",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test" },
+        { "action": "expectArgoText", "text": "Connected Argo CD API" },
+        { "action": "disconnectArgoProfile" },
+        { "action": "argoConnectionDialog", "operation": "openDetail" },
+        { "action": "argoConnectionDialog", "operation": "chooseInsecure" },
+        { "action": "fillArgoConnectionField", "field": "url", "value": "https://other.argocd.example.test" },
+        { "action": "fillArgoConnectionField", "field": "token", "value": "token-for-another-server" },
+        { "action": "argoConnectionDialog", "operation": "escape" },
+        { "action": "reconnectArgoProfile" },
+        { "action": "expectArgoConnectionField", "field": "token", "value": "token-for-another-server" },
+        { "action": "argoProfileSignIn", "token": "parity-fixture-token" },
+        { "action": "expectArgoText", "text": "Connected Argo CD API" }
+      ]
+    },
+    {
+      "id": "argo-connection.redacts-connect-error",
+      "title": "A connect error that quotes a token shows it redacted",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "configureArgoMock", "script": "credential-error" },
+        { "action": "connectArgoProfile", "url": "https://argocd-server.argocd.svc", "tunnel": true },
+        { "action": "confirmArgoTunnel", "failure": "token=[REDACTED]" },
+        { "action": "expectArgoText", "text": "token=[REDACTED]" },
+        { "action": "configureArgoMock", "script": "base" }
+      ]
     }
   ]
 }

@@ -17,6 +17,13 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             window.render_frame(cx);
             locate::click_label(window, "root", "Reconnect", cx);
         }
+        "argoProfileSignIn" => {
+            // A saved profile without a remembered credential asks for it in its own row.
+            reveal(window, "argo-connection-dialog", "argo-sign-in-token", cx);
+            replace_text(window, cx, "argo-sign-in-token", string(step, "token"));
+            reveal(window, "argo-connection-dialog", "argo-sign-in-submit", cx);
+            window.click("argo-sign-in-submit", cx);
+        }
         "expandArgoDiff" => {
             reveal(window, "detail-body", "argo-diff-lines:0", cx);
             window.click("argo-diff-lines:0", cx);

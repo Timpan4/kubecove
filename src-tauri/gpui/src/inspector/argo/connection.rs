@@ -1,6 +1,7 @@
 //! Workspace-scoped connection state. Credentials live only in masked inputs until submission.
 use super::super::{Inspector, detail::Detail, request::InFlight};
 use super::connection_view::same_server;
+use super::sign_in::{CredentialFields, SignIn};
 use crate::backend::ArgoConnect;
 use gpui_kit::{
     AppContext, Context, Entity, FocusHandle, Window,
@@ -83,9 +84,7 @@ pub(super) struct DialogFields {
     pub root_path: Entity<InputState>,
     pub tls_name: Entity<InputState>,
     pub ca: Entity<TextareaState>,
-    pub token: Entity<InputState>,
-    pub username: Entity<InputState>,
-    pub password: Entity<InputState>,
+    pub credential: CredentialFields,
 }
 impl DialogFields {
     fn new(window: &mut Window, cx: &mut gpui_kit::App) -> Self {
@@ -95,18 +94,14 @@ impl DialogFields {
             root_path: cx.new(|cx| InputState::new(window, cx)),
             tls_name: cx.new(|cx| InputState::new(window, cx)),
             ca: cx.new(|cx| TextareaState::new(window, cx).rows(3)),
-            token: cx.new(|cx| InputState::new(window, cx).masked(true)),
-            username: cx.new(|cx| InputState::new(window, cx)),
-            password: cx.new(|cx| InputState::new(window, cx).masked(true)),
+            credential: CredentialFields::new(window, cx),
         }
     }
     /// Empties the typed credentials and the CA, as the web does after a submit.
     pub fn clear_secrets(&self, window: &mut Window, cx: &mut gpui_kit::App) {
         self.ca
             .update(cx, |input, cx| input.set_value("", window, cx));
-        for field in [&self.token, &self.username, &self.password] {
-            field.update(cx, |input, cx| input.set_value("", window, cx));
-        }
+        self.credential.clear(window, cx);
     }
     /// Empties every field, as the web loses them when its dialog unmounts.
     pub fn clear_all(&self, window: &mut Window, cx: &mut gpui_kit::App) {
@@ -130,6 +125,8 @@ pub(super) struct Connections {
     pub(super) profiles: Vec<ArgoConnectionStatus>,
     pub(super) selected: Preference,
     pub(super) editing: Option<ArgoConnectionProfile>,
+    /// The saved profile that asks for its credential in its own row. Closing the dialog drops it.
+    pub(super) sign_in: Option<SignIn>,
     pub(super) scope: String,
     pub(super) host: DialogHost,
     /// The GitOps page dialog's choices. Leaving the page or changing the scope resets them.
@@ -206,6 +203,7 @@ impl Connections {
             profiles: vec![],
             selected: Preference::Automatic,
             editing: None,
+            sign_in: None,
             scope: String::new(),
             host: DialogHost::default(),
             page: DialogChoices::default(),
@@ -305,7 +303,7 @@ impl Inspector {
     /// value, so UI tests ask here.
     #[doc(hidden)]
     pub fn argo_typed_secret(&self, field: &str, cx: &gpui_kit::App) -> String {
-        let fields = self.argo.connections.fields();
+        let fields = &self.argo.connections.fields().credential;
         let input = match field {
             "token" => &fields.token,
             "password" => &fields.password,
@@ -342,6 +340,7 @@ impl Inspector {
         state.discovery.take();
         state.dialog = false;
         state.editing = None;
+        state.sign_in = None;
         cx.notify();
     }
     /// Records a connected profile and saves it, as the web's connection status cache does.
@@ -379,17 +378,21 @@ impl Inspector {
         let state = &self.argo.connections;
         let choices = state.choices();
         let fields = state.fields();
-        let remembered = state
-            .editing
-            .as_ref()
-            .is_some_and(|p| p.remember_credential);
-        let credential = if choices.local {
-            !fields.username.read(cx).value().is_empty()
-                && !fields.password.read(cx).value().is_empty()
-        } else {
-            !fields.token.read(cx).value().is_empty()
+        let saved = state.editing.as_ref();
+        let remembered = saved.is_some_and(|p| p.remember_credential);
+        // A saved profile signs in with its keyring credential or the one typed in its own row.
+        // The new-connection form's credential and TLS choices may be meant for another server.
+        let credential = match saved {
+            None => fields.credential.read(choices.local, cx),
+            Some(p) => state
+                .sign_in
+                .as_ref()
+                .filter(|s| s.profile_id == p.id)
+                .map(|s| s.fields.read(s.local, cx))
+                .unwrap_or_default(),
         };
-        if !credential && !remembered {
+        let form = saved.is_none();
+        if credential.is_empty() && !remembered {
             self.argo.connections.step = ConnectStep::failed(
                 "Enter a token or local username and password before connecting.",
             );
@@ -455,37 +458,13 @@ impl Inspector {
             workspace_id: Some(self.argo_workspace_id()),
             kubeconfig_source_key: self.argo_source_key().map(str::to_owned),
             transport: "connected".into(),
-            remember_credential: choices.remember
-                || state
-                    .editing
-                    .as_ref()
-                    .is_some_and(|p| p.remember_credential),
+            remember_credential: saved.map_or(choices.remember, |p| p.remember_credential),
         };
-        let value = |field: &Entity<InputState>| {
-            let s = field.read(cx).value().to_string();
-            (!s.is_empty()).then_some(s)
-        };
-        // A remembered profile reconnects with its keyring credential and default TLS
-        // checks, as the web does. The form holds what was typed for a new connection,
-        // which may be meant for another server.
-        let form = !remembered;
         let read = self.backend.connect_argo(ArgoConnect {
             profile,
-            token: if form && !choices.local {
-                value(&fields.token)
-            } else {
-                None
-            },
-            username: if form && choices.local {
-                value(&fields.username)
-            } else {
-                None
-            },
-            password: if form && choices.local {
-                value(&fields.password)
-            } else {
-                None
-            },
+            token: credential.token,
+            username: credential.username,
+            password: credential.password,
             insecure_tls: form && external && choices.insecure,
             custom_ca_pem: if form && external {
                 let ca = fields.ca.read(cx).value().to_string();
@@ -500,6 +479,8 @@ impl Inspector {
         });
         if form {
             self.clear_argo_secrets(window, cx);
+        } else if let Some(sign_in) = &self.argo.connections.sign_in {
+            sign_in.fields.clear(window, cx);
         }
         let task = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
@@ -507,6 +488,7 @@ impl Inspector {
                 match connected(result) {
                     Ok(status) => {
                         this.argo.connections.step = ConnectStep::Idle;
+                        this.argo.connections.sign_in = None;
                         this.record_argo_status(status, window, cx);
                         this.argo.connections.dialog = false;
                         this.reload_argo(window, cx);

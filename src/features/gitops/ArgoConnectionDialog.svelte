@@ -48,6 +48,7 @@
 		savedArgoProfile,
 		type ArgoWorkspaceScope,
 	} from "./argo-connection";
+	import ArgoProfileSignIn from "./ArgoProfileSignIn.svelte";
 
 	let {
 		open = $bindable(false),
@@ -98,6 +99,12 @@
 	let username = $state("");
 	let password = $state("");
 	let rememberCredential = $state(false);
+	// The saved profile whose row asks for its own credential, and what was typed there.
+	let signInId = $state<string | null>(null);
+	let signInLocal = $state(false);
+	let signInToken = $state("");
+	let signInUsername = $state("");
+	let signInPassword = $state("");
 	type ConnectStep =
 		| { kind: "idle" }
 		| { kind: "busy"; label: string }
@@ -109,6 +116,32 @@
 
 	function fail(message: string, reconfirm?: SavedArgoProfile) {
 		step = { kind: "failed", message, reconfirm };
+	}
+
+	function clearSignInSecrets() {
+		signInToken = "";
+		signInUsername = "";
+		signInPassword = "";
+	}
+
+	function closeSignIn() {
+		signInId = null;
+		clearSignInSecrets();
+	}
+
+	// A closed dialog keeps no credential typed for a saved profile.
+	$effect(() => {
+		if (!open) closeSignIn();
+	});
+
+	function credential(local: boolean, typedToken: string, typedUsername: string, typedPassword: string) {
+		return local ? { username: typedUsername || undefined, password: typedPassword || undefined } : { token: typedToken || undefined };
+	}
+
+	// A saved profile signs in with its keyring credential or the one typed in its own row. The
+	// new-connection form's credential and TLS choices may be meant for another server.
+	function savedCredential(saved: SavedArgoProfile) {
+		return saved.id === signInId ? credential(signInLocal, signInToken, signInUsername, signInPassword) : {};
 	}
 
 	function draftEndpoint(): ArgoServerEndpoint | null {
@@ -163,18 +196,16 @@
 
 	async function connect(target: ArgoServerEndpoint, saved?: SavedArgoProfile, confirmedTarget?: ArgoConfirmedTarget) {
 		step = { kind: "busy", label: "Connecting…" };
-		const external = target.kind === "externalHttps";
+		const formTls = !saved && target.kind === "externalHttps";
 		try {
 			const result = await connectArgoServer(client, {
 				id: saved?.id ?? argoProfileId(scope, target),
 				serverUrl: argoEndpointUrl(target),
 				endpoint: target,
-				token: loginMode === "token" ? token || undefined : undefined,
-				username: loginMode === "local" ? username || undefined : undefined,
-				password: loginMode === "local" ? password || undefined : undefined,
-				insecureTls: external && insecureTls,
-				customCaPem: external && customCa ? [...new TextEncoder().encode(customCa)] : undefined,
-				rememberCredential: Boolean(saved?.rememberCredential) || rememberCredential,
+				...(saved ? savedCredential(saved) : credential(loginMode === "local", token, username, password)),
+				insecureTls: formTls && insecureTls,
+				customCaPem: formTls && customCa ? [...new TextEncoder().encode(customCa)] : undefined,
+				rememberCredential: saved ? Boolean(saved.rememberCredential) : rememberCredential,
 				clusterContext: scope.clusterContext,
 				kubeconfigEnvVar: scope.kubeconfigSourceKey,
 				workspaceId: scope.workspaceId,
@@ -182,6 +213,7 @@
 			});
 			const profile = savedArgoProfile(result);
 			if (profile) settings.setArgoProfiles(upsertArgoProfileInSavedOrder(settings.argoProfiles, profile, saved?.id));
+			if (saved && saved.id === signInId) signInId = null;
 			refreshStatuses();
 			step = { kind: "idle" };
 		} catch (caught) {
@@ -189,25 +221,26 @@
 			// A rejected tunnel target is usually a replaced Pod; refetch so the next preview is current.
 			if (confirmedTarget) void queryClient.invalidateQueries({ queryKey: discoveryKey });
 		} finally {
-			// Credentials never persist in component state after submit.
-			token = "";
-			username = "";
-			password = "";
-			customCa = "";
+			// Credentials never persist in component state after submit. A saved profile's sign-in
+			// leaves the new-connection form as it was.
+			if (saved) clearSignInSecrets();
+			else {
+				token = "";
+				username = "";
+				password = "";
+				customCa = "";
+			}
 		}
 	}
 
 	async function reconnect(profile: SavedArgoProfile) {
 		if (step.kind === "busy") return;
 		if (!profile.rememberCredential) {
-			if (!hasCredential) {
-				step = {
-					kind: "failed",
-					message: "This profile does not remember its credential. Enter a token or local login below, then reconnect.",
-				};
-				return;
+			if (signInId !== profile.id) {
+				closeSignIn();
+				signInId = profile.id;
 			}
-			return startConnect(profile.endpoint, profile);
+			return;
 		}
 		await runProfileAction("Reconnecting…", () => reconnectRememberedArgoProfile(client, scope, profile), profile.endpoint.kind === "serviceTunnel" ? profile : undefined);
 	}
@@ -217,6 +250,7 @@
 	}
 
 	function forget(profile: SavedArgoProfile) {
+		if (signInId === profile.id) closeSignIn();
 		return runProfileAction("Forgetting…", async () => {
 			await disconnectArgoServer(client, profile.id);
 			await forgetArgoCredential(client, { ...profile, url: argoEndpointUrl(profile.endpoint), transport: "connected" });
@@ -265,6 +299,18 @@
 							{/if}
 							<Button size="sm" variant="ghost" type="button" disabled={busy !== null} onclick={() => forget(profile)}>Forget</Button>
 						</div>
+						{#if signInId === profile.id && !status?.connected}
+							<ArgoProfileSignIn
+								label={argoEndpointLabel(profile.endpoint)}
+								bind:local={signInLocal}
+								bind:token={signInToken}
+								bind:username={signInUsername}
+								bind:password={signInPassword}
+								busy={busy !== null}
+								onSubmit={() => startConnect(profile.endpoint, profile)}
+								onCancel={closeSignIn}
+							/>
+						{/if}
 					</div>
 				{/each}
 			</section>

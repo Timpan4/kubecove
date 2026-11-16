@@ -30,7 +30,7 @@ export function presentCustomResourceKinds(namespaces: string[] = []): Discovere
 	);
 }
 let argoOutcomeComplete = false;
-export type ArgoMockScript = "base" | "discovery-error" | "target-mismatch" | "preview-error" | "snapshot-error" | "operation-error" | "lazy" | "full-diff" | "connect-pending" | "disconnect-pending";
+export type ArgoMockScript = "base" | "discovery-error" | "target-mismatch" | "preview-error" | "snapshot-error" | "operation-error" | "lazy" | "full-diff" | "connect-pending" | "disconnect-pending" | "credential-error";
 declare global { var __kubecoveParityArgo: ArgoMockScript | undefined; }
 // The parity driver sets the global before a reload, so a held script also covers startup reads.
 let argoScript: ArgoMockScript = globalThis.__kubecoveParityArgo ?? "base";
@@ -86,6 +86,10 @@ return {
 	},
 	connect_argo_server: async (args) => {
         if (argoScript === "target-mismatch") throw new Error("Fixture tunnel target changed");
+        // A connect error can quote the request URL with its token, which the dialog must redact.
+        if (argoScript === "credential-error") throw new Error("Fixture rejected https://argocd.example.test/api/v1/session?token=parity-leaked-secret");
+        // Parity scenarios type this token for another server, so it must never reach a saved profile.
+        if (args?.token === "token-for-another-server") throw new Error("Fixture received a token meant for another server");
 		await holdArgo("connect-pending");
 		const serverUrl = args?.serverUrl ?? "https://argocd.example.test";
 		const endpoint = normalizedArgoEndpoint(args?.endpoint ?? { kind: "externalHttps", url: serverUrl });

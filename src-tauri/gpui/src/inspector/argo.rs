@@ -13,6 +13,7 @@ mod options;
 mod outcomes;
 mod panels;
 mod profiles;
+mod sign_in;
 mod snapshot;
 mod tab;
 mod tunnel;
