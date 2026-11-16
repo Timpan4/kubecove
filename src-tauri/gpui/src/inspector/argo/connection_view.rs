@@ -392,6 +392,11 @@ impl Inspector {
                         "Connect"
                     })
                     .on_click(cx.listener(|this, _, window, cx| {
+                        // The form always makes a new connection, as on the web, even after a
+                        // saved profile's sign-in failed.
+                        if !this.argo.connections.busy() {
+                            this.argo.connections.editing = None;
+                        }
                         this.connect_argo_profile(None, window, cx)
                     })),
             )

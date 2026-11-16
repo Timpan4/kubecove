@@ -256,6 +256,24 @@
       ]
     },
     {
+      "id": "argo-connection.cancel-sign-in-drops-confirmation",
+      "title": "Cancelling a saved tunnel profile's sign-in drops its pending target confirmation, and the form then connects to its own server",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd-server.argocd.svc", "tunnel": true },
+        { "action": "confirmArgoTunnel" },
+        { "action": "disconnectArgoProfile" },
+        { "action": "reconnectArgoProfile" },
+        { "action": "argoProfileSignIn", "token": "parity-fixture-token", "tunnel": true },
+        { "action": "argoControl", "control": "Cancel sign-in" },
+        { "action": "expectNoArgoControl", "control": "Confirm and connect" },
+        { "action": "argoConnectionDialog", "operation": "escape" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test" },
+        { "action": "expectArgoText", "text": "Connected Argo CD API" }
+      ]
+    },
+    {
       "id": "argo-connection.redacts-connect-error",
       "title": "A connect error that quotes a token shows it redacted",
       "steps": [

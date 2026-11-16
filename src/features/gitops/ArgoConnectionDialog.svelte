@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import { AlertCircle, Link2, RefreshCw, ShieldAlert } from "lucide-svelte";
+	import { untrack } from "svelte";
 	import {
 		Alert,
 		AlertDescription,
@@ -124,14 +125,16 @@
 		signInPassword = "";
 	}
 
+	// Also drops that profile's pending tunnel confirmation, which would otherwise sign in without a credential.
 	function closeSignIn() {
+		if (step.kind === "confirmTarget" && step.saved && step.saved.id === signInId) step = { kind: "idle" };
 		signInId = null;
 		clearSignInSecrets();
 	}
 
 	// A closed dialog keeps no credential typed for a saved profile.
 	$effect(() => {
-		if (!open) closeSignIn();
+		if (!open) untrack(closeSignIn);
 	});
 
 	function credential(local: boolean, typedToken: string, typedUsername: string, typedPassword: string) {
@@ -302,6 +305,7 @@
 						{#if signInId === profile.id && !status?.connected}
 							<ArgoProfileSignIn
 								label={argoEndpointLabel(profile.endpoint)}
+								external={profile.endpoint.kind === "externalHttps"}
 								bind:local={signInLocal}
 								bind:token={signInToken}
 								bind:username={signInUsername}

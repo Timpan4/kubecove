@@ -5,6 +5,7 @@
 	// so a credential typed in the new-connection form never reaches this server.
 	let {
 		label,
+		external,
 		local = $bindable(false),
 		token = $bindable(""),
 		username = $bindable(""),
@@ -14,6 +15,7 @@
 		onCancel,
 	}: {
 		label: string;
+		external: boolean;
 		local?: boolean;
 		token?: string;
 		username?: string;
@@ -43,8 +45,13 @@
 	{:else}
 		<Input aria-label={`Token for ${label}`} bind:value={token} type="password" autocomplete="off" />
 	{/if}
+	{#if external}
+		<!-- Custom CA and invalid-certificate choices are session-only and never saved. -->
+		<p class="text-xs text-muted-foreground">To use a custom CA or accept an invalid certificate, connect from the form below with this server's URL.</p>
+	{/if}
 	<div class="flex gap-2">
 		<Button size="sm" type="button" disabled={busy || !ready} onclick={onSubmit}>Sign in</Button>
-		<Button size="sm" variant="ghost" type="button" aria-label="Cancel sign-in" onclick={onCancel}>Cancel</Button>
+		<!-- A running preview or connect finishes first. -->
+		<Button size="sm" variant="ghost" type="button" aria-label="Cancel sign-in" disabled={busy} onclick={onCancel}>Cancel</Button>
 	</div>
 </div>

@@ -14,7 +14,9 @@ use gpui_kit::{
     prelude::*,
     px,
 };
-use kubecove_lib::models::ArgoConnectionProfile;
+use kubecove_lib::models::{ArgoConnectionProfile, ArgoServerEndpoint};
+
+const EXTERNAL_TLS_HINT: &str = "To use a custom CA or accept an invalid certificate, connect from the form below with this server's URL.";
 
 /// Masked credential inputs. The new-connection form and a saved profile's row each own a set.
 #[derive(Clone)]
@@ -106,6 +108,27 @@ impl Inspector {
         cx.notify();
     }
 
+    /// Closes the row sign-in of `profile_id` and drops its pending tunnel confirmation, so
+    /// neither a later confirm nor the form's Connect signs in to that profile without a credential.
+    pub(super) fn close_argo_sign_in(&mut self, profile_id: &str) {
+        let connections = &mut self.argo.connections;
+        if connections
+            .sign_in
+            .as_ref()
+            .is_some_and(|s| s.profile_id == profile_id)
+        {
+            connections.sign_in = None;
+        }
+        if connections
+            .editing
+            .as_ref()
+            .is_some_and(|p| p.id == profile_id)
+        {
+            connections.editing = None;
+            connections.step.clear_preview();
+        }
+    }
+
     /// The sign-in row under `profile`, while that profile asks for its credential.
     pub(super) fn argo_sign_in_row(
         &self,
@@ -162,14 +185,21 @@ impl Inspector {
                     .aria_label(format!("Token for {label}")),
             )
         };
+        // Custom CA and invalid-certificate choices are session-only and never saved, so a
+        // profile that needs them connects again through the form with the same URL.
+        if matches!(profile.endpoint, ArgoServerEndpoint::ExternalHttps { .. }) {
+            row = row.child(ui::muted(ui::xs(EXTERNAL_TLS_HINT)));
+        }
+        let busy = self.argo.connections.busy();
         let saved = profile.clone();
+        let cancel_id = profile.id.clone();
         Some(
             row.child(
                 div()
                     .flex()
                     .gap(px(8.))
                     .child(
-                        button(Variant::Default, 24., self.argo.connections.busy())
+                        button(Variant::Default, 24., busy)
                             .id("argo-sign-in-submit")
                             .test_support()
                             .child("Sign in")
@@ -180,13 +210,14 @@ impl Inspector {
                             })),
                     )
                     .child(
-                        button(Variant::Outline, 24., false)
+                        // A running preview or connect finishes first, as on the web.
+                        button(Variant::Outline, 24., busy)
                             .id("argo-sign-in-cancel")
                             .test_support()
                             .aria_label("Cancel sign-in")
                             .child("Cancel")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.argo.connections.sign_in = None;
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.close_argo_sign_in(&cancel_id);
                                 cx.notify();
                             })),
                     ),

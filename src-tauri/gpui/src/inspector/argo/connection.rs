@@ -249,6 +249,8 @@ impl Connections {
             DialogHost::Detail => self.detail = DialogChoices::default(),
             DialogHost::Page => self.page = DialogChoices::default(),
         }
+        // The row sign-in belongs to the open dialog, so a reset surface drops its typed credential.
+        self.sign_in = None;
         self.discard_fields(host, cx);
     }
     /// Empties a dialog's text once its surface unmounts, as the web does. The reset sites

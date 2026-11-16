@@ -152,6 +152,11 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                     window.click(id, cx);
                     return true;
                 }
+                "Cancel sign-in" => {
+                    reveal(window, "argo-connection-dialog", "argo-sign-in-cancel", cx);
+                    window.click("argo-sign-in-cancel", cx);
+                    return true;
+                }
                 "Retry" => "argo-discovery-retry",
                 "Confirm target again" => "argo-target-retry",
                 "Retry operation" => "argo-operation-retry",
@@ -358,6 +363,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                     .elements()
                     .iter()
                     .any(|e| e.label().is_some_and(|l| l == control)),
+                "Confirm and connect" => window.try_find("argo-tunnel-confirm").is_some(),
                 _ => window.try_find("argo-target-retry").is_some(),
             };
             assert!(!visible, "{control} is visible");

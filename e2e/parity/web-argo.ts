@@ -23,6 +23,8 @@ export async function argoAction(page: Page, step: Step) {
             const dialog = page.getByRole("dialog", { name: "Argo CD connection" });
             await dialog.getByLabel(/^Token for /).fill(step.token);
             await dialog.getByRole("button", { name: "Sign in", exact: true }).click();
+            // A tunnel profile first previews its target, which the next steps confirm or cancel.
+            if (step.tunnel) { await dialog.getByText("Confirm tunnel target", { exact: true }).waitFor(); break; }
             await dialog.getByRole("button", { name: "Disconnect", exact: true }).waitFor();
             await page.keyboard.press("Escape");
             break;
