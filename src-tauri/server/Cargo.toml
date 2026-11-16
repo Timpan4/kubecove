@@ -43,7 +43,7 @@ tracing = { version = "=0.1.44", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "=0.3.23", default-features = false, features = ["env-filter", "fmt", "json", "std"] }
 prometheus-client = "=0.25.2"
 # Matches the backend workspace's pin.
-sysinfo = { version = "=0.40.1", default-features = false, features = ["system"] }
+sysinfo = { version = "=0.40.3", default-features = false, features = ["system"] }
 
 [dev-dependencies]
 tower = { version = "=0.5.3", features = ["util"] }
