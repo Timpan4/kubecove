@@ -41,7 +41,7 @@ export const ACTIONS = [
     "terminalOutput", "terminalSelect", "terminalCopy", "terminalPaste", "terminalScroll", "terminalPrimaryPaste", "terminalDragOutside", "terminalRelease", "terminalFocus", "terminalRightClick", "expectTerminalCursor",
     "configureArgoMock", "argoControl", "focusArgoResource", "expectNoSavedArgoProfile", "copyArgoValue", "configureArgoInventory", "expandArgoDiff", "reconnectArgoProfile", "controlClock", "advanceClock",
     "failWorkspaceContext", "expectWorkspaceReadWarning", "holdWorkspaceContext", "releaseWorkspaceContext", "expectContextsLoading",
-    "editSavedWorkspace", "expectNoSavedWorkspace", "saveWorkspace", "cancelWorkspaceEdit", "toggleWorkspaceContext", "expectOverviewHealth", "expectDetailContext",
+    "editSavedWorkspace", "expectNoSavedWorkspace", "saveWorkspace", "cancelWorkspaceEdit", "toggleWorkspaceContext", "chooseClusterContext", "expectOverviewHealth", "expectDetailContext",
     "sidebarToggle", "sidebarSelect", "expectSidebarRow", "collapseSidebar", "expectSidebarBranch", "scrollSidebar", "expectSidebarReveal", "refreshPage",
     "replayPageReads", "focusStalePage", "expectPageText",
     "toggleDetailDisclosure", "expectNoPageText",
@@ -177,7 +177,7 @@ function step<Value>(value: Value): Step {
         case "expectContextsLoading": return { action: item.action, contexts: strings(item.contexts, true) };
         case "editSavedWorkspace": case "expectNoSavedWorkspace": return { action: item.action, name: string(item.name) };
         case "saveWorkspace": case "cancelWorkspaceEdit": return { action: item.action };
-        case "toggleWorkspaceContext": case "expectDetailContext": return { action: item.action, context: string(item.context) };
+        case "toggleWorkspaceContext": case "chooseClusterContext": case "expectDetailContext": return { action: item.action, context: string(item.context) };
         case "expectOverviewHealth": return { action: item.action, total: count(item.total) };
         case "refreshPage": return { action: item.action, page: oneOf(["RBAC", "Incidents"], item.page, "a refresh button page") };
         case "replayPageReads": return { action: item.action, phase: oneOf(["base", "updated", "failed"], item.phase, "a page read phase") };
