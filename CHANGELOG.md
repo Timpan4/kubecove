@@ -3,6 +3,15 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.14.5 - 2026-11-16
+### Improved
+
+- Resource deletion confirms in one dialog without typing the resource name, in the Svelte and GPUI clients (#703).
+
+### Release
+
+- Dependency updates: kube 5.1.0, rmcp 3.10.0, sysinfo 0.40.3, `@tauri-apps/plugin-opener` 2.7.3, bits-ui 2.21.0, Vite 8.3.8 and Biome 2.6.7 (#706, #707, #708).
+
 ## 0.14.4 - 2026-11-14
 ### Fixed
 
