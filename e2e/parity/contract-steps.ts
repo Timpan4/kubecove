@@ -44,7 +44,11 @@ export type Step =
     | { action: "startWithoutWorkspace" | "expectNoWorkspaceShell" | "expectPaletteUnavailable" }
     | { action: "expectEntryCount"; panel: "Pinned" | "Recent"; count: number }
     | { action: "copyErrorDetail"; error: "contexts" | "namespaces" | "details"; expected: string }
-    | { action: "expectForegroundLoading"; active: boolean }
+    /** `sliding`: whether the bar moves across the strip. Without it only `active` is checked. */
+    | { action: "expectForegroundLoading"; active: boolean; sliding?: boolean }
+    /** Whether anything on the page animates. `false` passes once every finite transition has ended. */
+    | { action: "expectMotion"; moving: boolean }
+    | { action: "setReducedMotion"; reduce: boolean }
     | { action: "expectFriendlyError"; title: string; next?: string; summary?: string }
     | { action: "inspectRequiredPermission" | "returnToSource" | "dismissCopyToast" }
     | { action: "expectPermissionTarget"; verb: string; resource: string }

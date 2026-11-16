@@ -51,7 +51,7 @@ pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check
     }
 }
 
-fn inspector(
+pub(super) fn inspector(
     window: &gpui_kit::Window,
     cx: &gpui_kit::App,
 ) -> gpui_kit::Entity<kubecove_gpui::Inspector> {

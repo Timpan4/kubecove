@@ -23,6 +23,8 @@ mod inspection;
 mod kind_selection;
 #[path = "native/live_data.rs"]
 mod live_data;
+#[path = "native/loading_motion.rs"]
+mod loading_motion;
 #[path = "native/map_live.rs"]
 mod map_live;
 #[path = "native/overview.rs"]

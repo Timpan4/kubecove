@@ -1,0 +1,69 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "loading-motion.spinner",
+      "title": "A loading spinner turns while its read is pending, and nothing moves once the rows show",
+      "steps": [
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_scope", "context": "mock-dev" } },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "controlClock" },
+        { "action": "openResources" },
+        { "action": "advanceClock", "ms": 100 },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_scope", "context": "mock-dev" } },
+        { "action": "advanceClock", "ms": 200 },
+        { "action": "expectPageText", "text": "Loading resources" },
+        { "action": "expectMotion", "moving": true },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_scope", "context": "mock-dev" } },
+        { "action": "advanceClock", "ms": 300 },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectNoPageText", "text": "Loading resources" },
+        { "action": "advanceClock", "ms": 150 },
+        { "action": "expectMotion", "moving": false }
+      ]
+    },
+    {
+      "id": "loading-motion.foreground-bar",
+      "title": "The foreground loading bar slides while a read is pending and stops after it fades out",
+      "steps": [
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_topology", "context": "mock-dev" } },
+        { "action": "openResources" },
+        { "action": "setTopologyMode", "mode": "Ownership", "pending": true },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_topology", "context": "mock-dev" } },
+        { "action": "advanceClock", "ms": 300 },
+        { "action": "expectForegroundLoading", "active": true, "sliding": true },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_topology", "context": "mock-dev" } },
+        { "action": "advanceClock", "ms": 300 },
+        { "action": "expectForegroundLoading", "active": false },
+        { "action": "advanceClock", "ms": 150 },
+        { "action": "expectForegroundLoading", "active": false, "sliding": false }
+      ]
+    },
+    {
+      "id": "loading-motion.reduced-motion",
+      "title": "With reduced motion the foreground loading bar shows without sliding",
+      "steps": [
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_topology", "context": "mock-dev" } },
+        { "action": "setReducedMotion", "reduce": true },
+        { "action": "openResources" },
+        { "action": "setTopologyMode", "mode": "Ownership", "pending": true },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_topology", "context": "mock-dev" } },
+        { "action": "advanceClock", "ms": 300 },
+        { "action": "expectForegroundLoading", "active": true, "sliding": false }
+      ]
+    },
+    {
+      "id": "loading-motion.finding-rows",
+      "title": "Owned-resource rows of a finding fade in and then rest",
+      "steps": [
+        { "action": "configureShellRead", "phase": "overview-owner-chain" },
+        { "action": "expectOverviewProblem", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "apiVersion": "apps/v1", "ready": "0/3", "status": "CrashLoopBackOff" },
+        { "action": "toggleOverviewProblem", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectOverviewProblem", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p", "ready": "0/1", "status": "CrashLoopBackOff" },
+        { "action": "advanceClock", "ms": 200 },
+        { "action": "expectMotion", "moving": false }
+      ]
+    }
+  ]
+}

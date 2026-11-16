@@ -3,6 +3,15 @@
 //! is GPUI's in-memory test clipboard, never the system clipboard.
 use super::*;
 
+/// Whether the frame just rendered asked for another, as an element in motion
+/// does. The executor clock stands still within a step, so nothing else does.
+fn frame_requested(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App) -> bool {
+    window.render_frame(cx);
+    window.simulate_next_frame(cx);
+    window.render_frame(cx);
+    window.simulate_next_frame(cx) > 0
+}
+
 pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) -> bool {
     match string(step, "action") {
         "expectForegroundLoading" => {
@@ -16,6 +25,28 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 window.find("foreground-loading-bar").description(),
                 Some(expected)
             );
+            if let Some(sliding) = step["sliding"].as_bool() {
+                let drawn = map_gestures::inspector(window, cx)
+                    .read(cx)
+                    .foreground_bar_motion();
+                assert!(drawn.is_some() || !sliding, "a sliding bar must be drawn");
+                assert_eq!(
+                    frame_requested(window, cx),
+                    sliding,
+                    "the foreground loading bar's motion"
+                );
+            }
+        }
+        "expectMotion" => {
+            assert_eq!(
+                frame_requested(window, cx),
+                step["moving"] == true,
+                "whether a frame was requested"
+            );
+        }
+        "setReducedMotion" => {
+            cx.set_reduce_motion(step["reduce"] == true);
+            window.refresh();
         }
         "expectFriendlyError" => {
             window.render_frame(cx);

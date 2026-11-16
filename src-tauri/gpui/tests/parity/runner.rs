@@ -49,6 +49,9 @@ pub(super) fn run_scenario(
     window: &mut Option<AnyWindowHandle>,
 ) {
     let id = string(scenario, "id");
+    // Scenarios share one app. `setReducedMotion` must not outlive its scenario,
+    // as the web driver's media emulation ends with its page.
+    cx.update(|cx| cx.set_reduce_motion(false));
     // A fresh fixture per scenario, as the web driver reloads the page and its
     // in-memory mock state.
     let backend = Arc::new(Fixture::load(Path::new(fixture)));

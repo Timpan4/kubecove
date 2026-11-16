@@ -1,4 +1,5 @@
 import type { Page } from "playwright-core";
+import { waitFor } from "../../.agents/skills/verify-kubecove/scripts/processes";
 import type { Step } from "./contract";
 
 export const clipboardRecorder = `Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (value) => { document.documentElement.dataset.copyValue = value; } } })`;
@@ -6,7 +7,22 @@ export const clipboardRecorder = `Object.defineProperty(navigator, "clipboard", 
 export async function feedbackAction(page: Page, step: Step): Promise<void> {
     switch (step.action) {
         case "expectForegroundLoading":
-            await page.waitForFunction((active) => document.querySelector("[data-foreground-loading]")?.getAttribute("data-active") === active, step.active ? "true" : "false");
+            // Polled from this process: a scenario that pauses the page clock also pauses the page's own timers.
+            await waitFor(`the foreground loading bar to be ${step.active ? "active" : "idle"}${step.sliding === undefined ? "" : step.sliding ? " and sliding" : " and still"}`, () => page.evaluate(([active, sliding]) => {
+                const host = document.querySelector("[data-foreground-loading]");
+                if (host?.getAttribute("data-active") !== active) return false;
+                if (sliding === null) return true;
+                // The keyframe animation moves the bar. Reduced motion and the end of the fade-out both remove it.
+                const bar = host.firstElementChild;
+                return bar !== null && (getComputedStyle(bar).animationName !== "none") === sliding;
+            }, [step.active ? "true" : "false", step.sliding ?? null] as const));
+            break;
+        case "expectMotion":
+            // CSS animations run on the browser's clock, not the page clock the scenario controls, so a finite one ends by itself.
+            await waitFor(step.moving ? "a running animation" : "every animation to end", () => page.evaluate((moving) => document.getAnimations().some((animation) => animation.playState === "running") === moving, step.moving));
+            break;
+        case "setReducedMotion":
+            await page.emulateMedia({ reducedMotion: step.reduce ? "reduce" : "no-preference" });
             break;
         case "expectFriendlyError": {
             const alert = page.getByRole("alert").filter({ hasText: step.title });
