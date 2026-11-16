@@ -42,20 +42,13 @@
 		type RbacRiskBucket,
 	} from "./cockpitModel";
 	import type { RbacVerifierHandoff } from "./handoff";
-	import { observedPermissions, identityDefaults, inspectorIdentity } from "./observedPermissions";
+	import { grantSummary, identityDefaults, inspectorIdentity, observedPermissions, reviewIdentity, type InspectorIdentity } from "./observedPermissions";
 	import RbacReviewBadge from "./RbacReviewBadge.svelte";
 	import RbacReviewPanel from "./RbacReviewPanel.svelte";
 	import type { RbacReviewRecord } from "./reviewModel";
 	import { riskSummaryLabel } from "./risk";
 	import { bindingSources, queueSummary, queueTags } from "./queueModel";
 	import type { RbacView } from "./surfaceModel";
-
-	type InspectorIdentity = {
-		kind: "serviceAccount" | "user" | "group";
-		name: string;
-		namespace?: string;
-		groups?: string[];
-	};
 
 	const categories: RbacView[] = [
 		"Namespace Access",
@@ -339,23 +332,7 @@
 		) {
 			return;
 		}
-		const identity =
-			activeIdentity.kind === "serviceAccount"
-				? {
-					kind: "serviceAccount" as const,
-					name: activeIdentity.name,
-					namespace: activeIdentity.namespace || "default",
-				}
-				: activeIdentity.kind === "group"
-					? { kind: "group" as const, group: activeIdentity.name }
-					: {
-							kind: "user" as const,
-							username: activeIdentity.name,
-							groups:
-								activeIdentity.groups?.length
-									? activeIdentity.groups
-									: identityDefaults("user", activeIdentity.name),
-						};
+		const identity = reviewIdentity(activeIdentity);
 		const target =
 			targetKind === "resource"
 				? {
@@ -783,7 +760,7 @@
 											{#if observed?.unknown}<p class="rounded-sm border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-200">Unknown · {observed.reason}</p>{/if}
 											{#each observed?.grants ?? [] as grant}
 												<div class="rounded-sm border bg-muted/20 p-2">
-													<p class="font-mono text-xs">{grant.verbs.join(", ")} · {grant.apiGroups.join(", ") || "core"}/{grant.resources.join(", ") || grant.nonResourceUrls.join(", ")}</p>
+													<p class="font-mono text-xs">{grantSummary(grant)}</p>
 													<p class="mt-1 text-xs text-muted-foreground">{grant.scope}{grant.namespace ? `/${grant.namespace}` : ""} · {grant.roles.join(", ")}</p>
 												</div>
 											{:else}

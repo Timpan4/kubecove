@@ -13,10 +13,10 @@ export function rbacInspectionMock(cluster = "mock-dev"): RbacInspectionSummary 
 		warnings: partial ? ["RoleBindings partially loaded in browser mock mode."] : [],
 		coverage: [
 			{ family: "serviceAccounts", status: "complete", requestMode: "allNamespaces", count: 3 },
-			{ family: "roles", status: "complete", requestMode: "allNamespaces", count: 2 },
-			{ family: "clusterRoles", status: "complete", requestMode: "cluster", count: 1 },
-			{ family: "roleBindings", status: partial ? "partial" : "complete", requestMode: "allNamespaces", count: 2, message: partial ? "A later browser-mock page was unavailable." : undefined },
-			{ family: "clusterRoleBindings", status: "complete", requestMode: "cluster", count: 1 },
+			{ family: "roles", status: "complete", requestMode: "allNamespaces", count: 3 },
+			{ family: "clusterRoles", status: "complete", requestMode: "cluster", count: 2 },
+			{ family: "roleBindings", status: partial ? "partial" : "complete", requestMode: "allNamespaces", count: 4, message: partial ? "A later browser-mock page was unavailable." : undefined },
+			{ family: "clusterRoleBindings", status: "complete", requestMode: "cluster", count: 2 },
 		],
 		serviceAccounts: [
 			{ cluster, name: "payments-api", namespace: "payments", age: "18d", createdAt: "2026-06-11T08:00:00Z", automountToken: true, secretsCount: 1, imagePullSecretsCount: 0, risks: [{ level: "medium", label: "Mounted token", reason: "Service account token is mounted." }] },
@@ -26,16 +26,26 @@ export function rbacInspectionMock(cluster = "mock-dev"): RbacInspectionSummary 
 		roles: [
 			{ cluster, kind: "Role", name: "payments-reader", namespace: "payments", age: "18d", createdAt: "2026-06-11T08:00:00Z", rulesCount: 1, risks: [], rules: [{ verbs: ["get", "list", "watch"], apiGroups: [""], resources: ["pods", "services", "configmaps"], resourceNames: [], nonResourceUrls: [], risks: [] }] },
 			{ cluster, kind: "Role", name: "grafana-config", namespace: "monitoring", age: "31d", createdAt: "2026-05-29T08:00:00Z", rulesCount: 1, risks: [], rules: [{ verbs: ["get"], apiGroups: [""], resources: ["secrets", "configmaps"], resourceNames: ["grafana"], nonResourceUrls: [], risks: [] }] },
+			{ cluster, kind: "Role", name: "grafana-dashboards", namespace: "monitoring", age: "31d", createdAt: "2026-05-29T08:00:00Z", rulesCount: 1, risks: [{ level: "low", label: "Dashboard reads", reason: "Reads dashboard ConfigMaps in monitoring." }], rules: [{ verbs: ["get", "list"], apiGroups: [""], resources: ["configmaps"], resourceNames: [], nonResourceUrls: [], risks: [] }] },
 		],
-		clusterRoles: [{ cluster, kind: "ClusterRole", name: "argocd-app-controller", age: "36d", createdAt: "2026-05-24T08:00:00Z", rulesCount: 2, risks: [{ level: "high", label: "Can update apps", reason: "Can update Argo CD Application resources." }], rules: [{ verbs: ["get", "list", "watch", "update"], apiGroups: ["argoproj.io"], resources: ["applications"], resourceNames: [], nonResourceUrls: [], risks: [{ level: "high", label: "Write access", reason: "Can update GitOps application state." }] }] }],
+		clusterRoles: [
+			{ cluster, kind: "ClusterRole", name: "argocd-app-controller", age: "36d", createdAt: "2026-05-24T08:00:00Z", rulesCount: 2, risks: [{ level: "high", label: "Can update apps", reason: "Can update Argo CD Application resources." }], rules: [{ verbs: ["get", "list", "watch", "update"], apiGroups: ["argoproj.io"], resources: ["applications"], resourceNames: [], nonResourceUrls: [], risks: [{ level: "high", label: "Write access", reason: "Can update GitOps application state." }] }] },
+			{ cluster, kind: "ClusterRole", name: "namespace-viewer", age: "36d", createdAt: "2026-05-24T08:00:00Z", rulesCount: 1, risks: [], rules: [{ verbs: ["get", "list"], apiGroups: [""], resources: ["namespaces"], resourceNames: [], nonResourceUrls: [], risks: [] }] },
+		],
 		roleBindings: [
 			{ cluster, kind: "RoleBinding", name: "payments-api-reader", namespace: "payments", age: "18d", createdAt: "2026-06-11T08:00:00Z", roleRefKind: "Role", roleRefName: "payments-reader", subjects: [{ kind: "ServiceAccount", name: "payments-api", namespace: "payments" }], risks: [] },
 			{ cluster, kind: "RoleBinding", name: "grafana-config", namespace: "monitoring", age: "31d", createdAt: "2026-05-29T08:00:00Z", roleRefKind: "Role", roleRefName: "grafana-config", subjects: [{ kind: "ServiceAccount", name: "grafana", namespace: "monitoring" }], risks: partial ? [{ level: "unknown", label: "Partial binding inventory", reason: "A later page was unavailable in this browser mock state." }] : [] },
+			// Kubernetes matches a User subject named with a ServiceAccount's username to that account.
+			{ cluster, kind: "RoleBinding", name: "grafana-dashboards", namespace: "monitoring", age: "31d", createdAt: "2026-05-29T08:00:00Z", roleRefKind: "Role", roleRefName: "grafana-dashboards", subjects: [{ kind: "User", name: "system:serviceaccount:monitoring:grafana" }], risks: [] },
+			{ cluster, kind: "RoleBinding", name: "payments-oncall", namespace: "payments", age: "18d", createdAt: "2026-06-11T08:00:00Z", roleRefKind: "Role", roleRefName: "payments-reader", subjects: [{ kind: "User", name: "alice" }, { kind: "ServiceAccount", name: "deployer", namespace: "default" }], risks: [] },
 		],
-		clusterRoleBindings: [{ cluster, kind: "ClusterRoleBinding", name: "argocd-application-controller", age: "36d", createdAt: "2026-05-24T08:00:00Z", roleRefKind: "ClusterRole", roleRefName: "argocd-app-controller", subjects: [{ kind: "ServiceAccount", name: "argocd-application-controller", namespace: "argocd" }], risks: [{ level: "high", label: "Cluster-wide GitOps", reason: "Controller binding reaches all namespaces in mock data." }] }],
+		clusterRoleBindings: [
+			{ cluster, kind: "ClusterRoleBinding", name: "argocd-application-controller", age: "36d", createdAt: "2026-05-24T08:00:00Z", roleRefKind: "ClusterRole", roleRefName: "argocd-app-controller", subjects: [{ kind: "ServiceAccount", name: "argocd-application-controller", namespace: "argocd" }], risks: [{ level: "high", label: "Cluster-wide GitOps", reason: "Controller binding reaches all namespaces in mock data." }] },
+			{ cluster, kind: "ClusterRoleBinding", name: "authenticated-namespace-viewer", age: "36d", createdAt: "2026-05-24T08:00:00Z", roleRefKind: "ClusterRole", roleRefName: "namespace-viewer", subjects: [{ kind: "Group", name: "system:authenticated" }], risks: [] },
+		],
 		namespaceAccess: [
-			{ cluster, namespace: "payments", serviceAccounts: 1, roles: 1, roleBindings: 1, boundSubjects: [{ kind: "ServiceAccount", name: "payments-api", namespace: "payments" }], risks: [] },
-			{ cluster, namespace: "monitoring", serviceAccounts: 1, roles: 1, roleBindings: 1, boundSubjects: [{ kind: "ServiceAccount", name: "grafana", namespace: "monitoring" }], risks: [] },
+			{ cluster, namespace: "payments", serviceAccounts: 1, roles: 1, roleBindings: 2, boundSubjects: [{ kind: "ServiceAccount", name: "payments-api", namespace: "payments" }, { kind: "User", name: "alice" }, { kind: "ServiceAccount", name: "deployer", namespace: "default" }], risks: [] },
+			{ cluster, namespace: "monitoring", serviceAccounts: 1, roles: 2, roleBindings: 2, boundSubjects: [{ kind: "ServiceAccount", name: "grafana", namespace: "monitoring" }, { kind: "User", name: "system:serviceaccount:monitoring:grafana" }], risks: [] },
 			{ cluster, namespace: "argocd", serviceAccounts: 1, roles: 0, roleBindings: 0, boundSubjects: [{ kind: "ServiceAccount", name: "argocd-application-controller", namespace: "argocd" }], risks: [{ level: "high", label: "ClusterRoleBinding", reason: "Bound to cluster-wide application-controller role." }] },
 		],
 	};

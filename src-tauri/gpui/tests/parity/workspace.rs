@@ -68,12 +68,17 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 .is_none()
         ),
         "selectRbacItem" => {
-            let target = locate::id(
+            // A card partly below the window counts as visible, so reveal it
+            // whole before the click lands on its center.
+            let gpui_kit::ElementId::Name(target) = locate::id(
                 &window
                     .within("rbac-queue")
                     .find_by_label(string(step, "title")),
-            );
-            locate::click_in(window, "page", target, cx);
+            ) else {
+                panic!("RBAC queue cards have named IDs");
+            };
+            reveal(window, RBAC_TOP, &target, cx);
+            window.click(target.to_string(), cx);
         }
         "editRbacReviewNote" => {
             locate::click_in(window, "page", "rbac-review-editor".into(), cx);
@@ -96,7 +101,9 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
         ),
         "clearRbacReview" => locate::click_in(window, "page", "rbac-clear-review".into(), cx),
         "investigateRbacSubject" => {
-            window.click(format!("rbac-subject:{}", string(step, "subject")), cx)
+            let target = format!("rbac-subject:{}", string(step, "subject"));
+            reveal(window, RBAC_TOP, &target, cx);
+            window.click(target, cx);
         }
         "expectRbacIdentity" => assert_eq!(
             window.find("rbac-identity").label(),

@@ -1,4 +1,12 @@
-import type { RbacAccessReviewIdentity, RbacBindingSummary, RbacInspectionSummary, RbacRoleSummary, RbacRuleSummary, RbacSubjectSummary } from "@/lib/types";
+import type { RbacAccessReviewIdentity, RbacBindingSummary, RbacInspectionSummary, RbacRoleSummary, RbacRuleSummary } from "@/lib/types";
+import { principalOf, subjectAppliesTo } from "./principal";
+
+export interface InspectorIdentity {
+	kind: "serviceAccount" | "user" | "group";
+	name: string;
+	namespace?: string;
+	groups?: string[];
+}
 
 export interface ObservedGrant {
 	verbs: string[];
@@ -18,10 +26,12 @@ export interface ObservedPermissionResult {
 	reason?: string;
 }
 
+/** Grants for the same identity the verifier would review. */
 export function observedPermissions(
 	inspection: RbacInspectionSummary,
-	identity: { kind: "serviceAccount" | "user" | "group"; name: string; namespace?: string; groups?: string[] },
+	identity: InspectorIdentity,
 ): ObservedPermissionResult {
+	const principal = principalOf(reviewIdentity(identity));
 	const coverage = new Map(inspection.coverage.map((item) => [item.family, item.status]));
 	const incomplete = (["roles", "clusterRoles", "roleBindings", "clusterRoleBindings"] as const)
 		.filter((family) => coverage.get(family) !== "complete");
@@ -30,7 +40,7 @@ export function observedPermissions(
 	const grants: ObservedGrant[] = [];
 	let missing = false;
 	for (const binding of [...inspection.roleBindings, ...inspection.clusterRoleBindings]) {
-		if (!binding.subjects.some((subject) => matchesSubject(subject, identity))) continue;
+		if (!binding.subjects.some((subject) => subjectAppliesTo(principal, subject))) continue;
 		const role = roles.get(roleKey(binding.roleRefKind, binding.roleRefName, binding.roleRefKind === "Role" ? binding.namespace : undefined));
 		if (!role) { missing = true; continue; }
 		const scope = binding.kind === "ClusterRoleBinding" ? "cluster" : "namespace";
@@ -50,35 +60,24 @@ export function identityDefaults(kind: "serviceAccount" | "user" | "group", name
 	return kind === "user" ? [name === "system:anonymous" ? "system:unauthenticated" : "system:authenticated"] : [];
 }
 
-export function inspectorIdentity(identity: RbacAccessReviewIdentity | undefined): {
-	kind: "serviceAccount" | "user" | "group";
-	name: string;
-	namespace?: string;
-	groups?: string[];
-} | null {
+export function inspectorIdentity(identity: RbacAccessReviewIdentity | undefined): InspectorIdentity | null {
 	if (!identity) return null;
 	if (identity.kind === "serviceAccount") return { kind: "serviceAccount", name: identity.name, namespace: identity.namespace };
 	if (identity.kind === "group") return { kind: "group", name: identity.group };
 	return { kind: "user", name: identity.username, groups: identity.groups };
 }
 
-function matchesSubject(subject: RbacSubjectSummary, identity: { kind: string; name: string; namespace?: string; groups?: string[] }): boolean {
-	if (identity.kind === "serviceAccount") {
-		if (subject.kind === "ServiceAccount") {
-			return subject.name === identity.name && subject.namespace === identity.namespace;
-		}
-		const groups = new Set([
-			"system:serviceaccounts",
-			`system:serviceaccounts:${identity.namespace ?? ""}`,
-			"system:authenticated",
-		]);
-		return subject.kind === "Group" && groups.has(subject.name);
-	}
-	if (identity.kind === "user") {
-		return (subject.kind === "User" && subject.name === identity.name) ||
-			(subject.kind === "Group" && new Set(identity.groups ?? []).has(subject.name));
-	}
-	return subject.kind === "Group" && subject.name === identity.name;
+/** The verifier's request identity: a blank namespace reads as `default`, a user without groups gets `identityDefaults`. */
+export function reviewIdentity(identity: InspectorIdentity): RbacAccessReviewIdentity {
+	if (identity.kind === "serviceAccount") return { kind: "serviceAccount", name: identity.name, namespace: identity.namespace || "default" };
+	if (identity.kind === "group") return { kind: "group", group: identity.name };
+	return { kind: "user", username: identity.name, groups: identity.groups?.length ? identity.groups : identityDefaults("user", identity.name) };
+}
+
+/** `verbs · groups/resources`, then `· names: …` when the rule is limited to named objects. */
+export function grantSummary(grant: ObservedGrant): string {
+	const summary = `${grant.verbs.join(", ")} · ${grant.apiGroups.join(", ") || "core"}/${grant.resources.join(", ") || grant.nonResourceUrls.join(", ")}`;
+	return grant.resourceNames.length ? `${summary} · names: ${grant.resourceNames.join(", ")}` : summary;
 }
 function grant(rule: RbacRuleSummary, scope: "cluster" | "namespace", namespace: string | undefined, role: RbacRoleSummary, binding: RbacBindingSummary): ObservedGrant | null {
 	const nonResourceUrls = scope === "namespace" ? [] : rule.nonResourceUrls;
