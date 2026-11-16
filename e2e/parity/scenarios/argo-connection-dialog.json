@@ -274,6 +274,25 @@
       ]
     },
     {
+      "id": "argo-connection.close-during-sign-in-preview",
+      "title": "Closing the dialog while a saved tunnel profile's sign-in preview is pending offers no target confirmation when the dialog opens again",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd-server.argocd.svc", "tunnel": true },
+        { "action": "confirmArgoTunnel" },
+        { "action": "disconnectArgoProfile" },
+        { "action": "reconnectArgoProfile" },
+        { "action": "configureArgoMock", "script": "preview-pending" },
+        { "action": "argoProfileSignIn", "token": "parity-fixture-token", "tunnel": true, "pending": true },
+        { "action": "argoConnectionDialog", "operation": "escape" },
+        { "action": "configureArgoMock", "script": "base" },
+        { "action": "argoConnectionDialog", "operation": "openDetail" },
+        { "action": "expectNoArgoControl", "control": "Confirm and connect" },
+        { "action": "argoConnectionDialog", "operation": "escape" }
+      ]
+    },
+    {
       "id": "argo-connection.redacts-connect-error",
       "title": "A connect error that quotes a token shows it redacted",
       "steps": [

@@ -8,8 +8,8 @@ use super::connection_view::toggled;
 use crate::targets::TestSupportExt;
 use crate::ui;
 use gpui_kit::{
-    AppContext, Context, Div, Entity, Window,
-    component::input::{Input, InputState},
+    AppContext, Context, Div, Entity, Subscription, Window,
+    component::input::{Input, InputEvent, InputState},
     div,
     prelude::*,
     px,
@@ -82,6 +82,7 @@ pub(super) struct SignIn {
     pub profile_id: String,
     pub local: bool,
     pub fields: CredentialFields,
+    _edits: [Subscription; 3],
 }
 
 impl Inspector {
@@ -92,18 +93,33 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let connections = &mut self.argo.connections;
-        if connections
+        let previous = self
+            .argo
+            .connections
             .sign_in
             .as_ref()
-            .is_some_and(|s| s.profile_id == profile_id)
-        {
+            .map(|s| s.profile_id.clone());
+        if previous.as_deref() == Some(profile_id.as_str()) {
             return;
         }
-        connections.sign_in = Some(SignIn {
+        // Another profile's row closes first, with its pending confirmation, as on the web.
+        if let Some(previous) = previous {
+            self.close_argo_sign_in(&previous);
+        }
+        let fields = CredentialFields::new(window, cx);
+        // Typing re-renders the row, so Sign in enables once a credential is complete.
+        let _edits = [&fields.token, &fields.username, &fields.password].map(|field| {
+            cx.subscribe_in(field, window, |_, _, event, _, cx| {
+                if matches!(event, InputEvent::Change) {
+                    cx.notify();
+                }
+            })
+        });
+        self.argo.connections.sign_in = Some(SignIn {
             profile_id,
             local: false,
-            fields: CredentialFields::new(window, cx),
+            fields,
+            _edits,
         });
         cx.notify();
     }
@@ -191,6 +207,8 @@ impl Inspector {
             row = row.child(ui::muted(ui::xs(EXTERNAL_TLS_HINT)));
         }
         let busy = self.argo.connections.busy();
+        // As on the web, Sign in waits for a token or a full local login.
+        let missing = sign_in.fields.read(sign_in.local, cx).is_empty();
         let saved = profile.clone();
         let cancel_id = profile.id.clone();
         Some(
@@ -199,7 +217,7 @@ impl Inspector {
                     .flex()
                     .gap(px(8.))
                     .child(
-                        button(Variant::Default, 24., busy)
+                        button(Variant::Default, 24., busy || missing)
                             .id("argo-sign-in-submit")
                             .test_support()
                             .child("Sign in")

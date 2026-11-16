@@ -30,11 +30,11 @@ export function presentCustomResourceKinds(namespaces: string[] = []): Discovere
 	);
 }
 let argoOutcomeComplete = false;
-export type ArgoMockScript = "base" | "discovery-error" | "target-mismatch" | "preview-error" | "snapshot-error" | "operation-error" | "lazy" | "full-diff" | "connect-pending" | "disconnect-pending" | "credential-error";
+export type ArgoMockScript = "base" | "discovery-error" | "target-mismatch" | "preview-error" | "snapshot-error" | "operation-error" | "lazy" | "full-diff" | "connect-pending" | "disconnect-pending" | "credential-error" | "preview-pending";
 declare global { var __kubecoveParityArgo: ArgoMockScript | undefined; }
 // The parity driver sets the global before a reload, so a held script also covers startup reads.
 let argoScript: ArgoMockScript = globalThis.__kubecoveParityArgo ?? "base";
-// "connect-pending" and "disconnect-pending" hold those commands until the next script.
+// "connect-pending", "disconnect-pending" and "preview-pending" hold those commands until the next script.
 const heldArgo: (() => void)[] = [];
 const holdArgo = (script: ArgoMockScript) => argoScript === script ? new Promise<void>((resolve) => heldArgo.push(resolve)) : undefined;
 export function configureArgoMock(script: ArgoMockScript) {
@@ -74,8 +74,9 @@ return {
 		{ id: "service:argocd:argocd-server:80", name: "argocd-server", namespace: "argocd", url: null, transport: "serviceTunnel", endpoint: { kind: "serviceTunnel", namespace: "argocd", serviceName: "argocd-server", servicePort: 80, scheme: "https" }, unavailableReason: null, targetPod: "argocd-server-7d9f8b6c5-x2k4q", argoLabeled: true },
 		{ id: "service:argocd:external", name: "argocd-external", namespace: "argocd", url: null, transport: "serviceTunnel", endpoint: null, unavailableReason: "ExternalName Services cannot be port-forwarded", argoLabeled: false },
 	]; },
-	preview_argo_tunnel_target: (args) => {
+	preview_argo_tunnel_target: async (args) => {
         if (argoScript === "preview-error") throw new Error("Fixture tunnel preview unavailable");
+		await holdArgo("preview-pending");
 		const endpoint = args?.endpoint?.kind === "serviceTunnel" ? args.endpoint : null;
 		return {
 			namespace: endpoint?.namespace ?? "argocd",

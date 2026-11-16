@@ -143,6 +143,11 @@
 
 	// A saved profile signs in with its keyring credential or the one typed in its own row. The
 	// new-connection form's credential and TLS choices may be meant for another server.
+	// A saved profile without a remembered credential connects only through its open row.
+	function hasSignInFor(saved: SavedArgoProfile) {
+		return Boolean(saved.rememberCredential) || saved.id === signInId;
+	}
+
 	function savedCredential(saved: SavedArgoProfile) {
 		return saved.id === signInId ? credential(signInLocal, signInToken, signInUsername, signInPassword) : {};
 	}
@@ -190,6 +195,12 @@
 		step = { kind: "busy", label: "Checking the tunnel target…" };
 		try {
 			const preview = await previewArgoTunnelTarget(client, scope.clusterContext, target, scope.kubeconfigSourceKey);
+			// The row may have closed while the preview ran, as when the dialog closes. Its
+			// confirmation would then connect without a credential.
+			if (saved && !hasSignInFor(saved)) {
+				step = { kind: "idle" };
+				return;
+			}
 			step = { kind: "confirmTarget", endpoint: target, saved, preview, argoLabeled: isArgoLabeled(target) };
 		} catch (caught) {
 			fail(messageFromError(caught));
@@ -198,6 +209,10 @@
 	}
 
 	async function connect(target: ArgoServerEndpoint, saved?: SavedArgoProfile, confirmedTarget?: ArgoConfirmedTarget) {
+		if (saved && !hasSignInFor(saved)) {
+			fail("Enter this profile's credential in its row, then sign in.");
+			return;
+		}
 		step = { kind: "busy", label: "Connecting…" };
 		const formTls = !saved && target.kind === "externalHttps";
 		try {
