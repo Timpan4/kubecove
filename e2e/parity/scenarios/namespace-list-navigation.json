@@ -49,9 +49,17 @@
         { "action": "expectSidebarRow", "path": ["Workloads", "Pod"], "visible": false, "selected": false },
         { "action": "sidebarKey", "path": ["Workloads"], "key": "ArrowRight" },
         { "action": "expectSidebarRow", "path": ["Workloads", "Deployment"], "visible": true, "selected": false },
+        { "action": "sidebarSelect", "path": ["Workloads", "Pod"] },
+        { "action": "expectSidebarRow", "path": ["Workloads", "Pod"], "visible": true, "selected": true },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
         { "action": "sidebarKey", "path": ["Workloads", "Deployment"], "key": "Enter" },
+        { "action": "expectSidebarRow", "path": ["Workloads", "Deployment"], "visible": true, "selected": true },
         { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "sidebarSelect", "path": ["Workloads", "Pod"] },
+        { "action": "expectSidebarRow", "path": ["Workloads", "Deployment"], "visible": true, "selected": false },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
         { "action": "sidebarKey", "path": ["Workloads", "Deployment"], "key": "Space" },
+        { "action": "expectSidebarRow", "path": ["Workloads", "Deployment"], "visible": true, "selected": true },
         { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" }
       ]
     },

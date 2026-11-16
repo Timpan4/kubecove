@@ -56,20 +56,58 @@ fn visible_names(window: &mut gpui_kit::Window, expected: &[String]) -> Vec<Stri
 }
 
 /// Presses Tab until the control `id` has keyboard focus, as a keyboard user
-/// reaches it. The web driver's `press` focuses the name button first; GPUI's
-/// scoped `press` dispatches to the current focus and does not move it.
-pub(crate) fn tab_to(window: &mut gpui_kit::Window, id: &str, cx: &mut gpui_kit::App) {
-    let mut first: Option<gpui_kit::FocusHandle> = None;
+/// reaches it, so a control outside the Tab order fails the step. GPUI's scoped
+/// `press` dispatches to the current focus and does not move it.
+pub(crate) fn tab_to(
+    window: &mut gpui_kit::Window,
+    id: impl Into<gpui_kit::ElementId>,
+    cx: &mut gpui_kit::App,
+) {
+    let id = id.into();
+    window.render_frame(cx);
+    if locate::focus_state(&window.find(id.clone())) == Some(true) {
+        return;
+    }
+    // Tab landing on a control it already visited means it cycled, or stayed in a
+    // control that keeps Tab, such as the terminal.
+    let mut visited: Vec<gpui_kit::FocusHandle> = Vec::new();
     loop {
         window.press("tab", cx);
-        if locate::focus_state(&window.find(id.to_owned())) == Some(true) {
+        if locate::focus_state(&window.find(id.clone())) == Some(true) {
             return;
         }
         let focused = window.focused(cx).expect("Tab focused no control");
-        match &first {
-            None => first = Some(focused),
-            Some(first) => assert!(*first != focused, "Tab cycled without reaching {id}"),
+        assert!(
+            !visited.contains(&focused),
+            "Tab returned to a visited control without reaching {id:?}"
+        );
+        visited.push(focused);
+    }
+}
+
+fn activation_key(step: &Value) -> Option<&'static str> {
+    step["key"].as_str().map(|key| match key {
+        "Enter" => "enter",
+        "Space" => "space",
+        other => panic!("unknown activation key: {other}"),
+    })
+}
+
+/// Clicks the control `id` inside `scope`, or with a `key` reaches it with Tab
+/// and presses the key.
+pub(crate) fn activate(
+    window: &mut gpui_kit::Window,
+    scope: &'static str,
+    id: gpui_kit::ElementId,
+    step: &Value,
+    cx: &mut gpui_kit::App,
+) {
+    match activation_key(step) {
+        Some(key) => {
+            tab_to(window, id.clone(), cx);
+            window.within(id).press(key, cx);
         }
+        None => locate::click_in(window, scope, id, cx),
     }
 }
 
@@ -78,7 +116,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
         "pressResourceRow" => {
             let id = resolved_row(window, step, cx);
             reveal_cell(window, &id, cx);
-            tab_to(window, &id, cx);
+            tab_to(window, id.clone(), cx);
             let key = if string(step, "key") == "Enter" {
                 "enter"
             } else {
@@ -89,7 +127,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
         "sortResourceTable" => {
             let id = format!("sort:{}", string(step, "column"));
             reveal_cell(window, &id, cx);
-            window.click(id, cx);
+            activate(window, "resource-table", id.into(), step, cx);
         }
         "expectResourceOrder" => {
             let expected = strings(step, "names");
@@ -101,7 +139,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                     .within("resource-table")
                     .find_by_label(string(step, "label")),
             );
-            locate::click_in(window, "resource-table", target, cx);
+            activate(window, "resource-table", target, step, cx);
         }
         "expectResourceGroup" => {
             // The table mounts only the group headers near its viewport.

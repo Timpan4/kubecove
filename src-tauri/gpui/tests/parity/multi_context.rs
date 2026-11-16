@@ -96,6 +96,39 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 cx,
             );
         }
+        "mapContextKey" => {
+            // Focus stays on the trigger while the options are open.
+            if window.try_find("map-context-options").is_none() {
+                super::resource_table::tab_to(window, "map-context", cx);
+            }
+            let key = match string(step, "key") {
+                "Enter" => "enter",
+                "Space" => "space",
+                "ArrowDown" => "down",
+                "ArrowUp" => "up",
+                "Home" => "home",
+                "End" => "end",
+                "Escape" => "escape",
+                "Tab" => "tab",
+                "Shift+Tab" => "shift-tab",
+                other => panic!("unknown Map context key: {other}"),
+            };
+            window.within("map-context").press(key, cx);
+        }
+        "expectMapContextOptions" => {
+            assert_eq!(
+                window.try_find("map-context-options").is_some(),
+                step["open"] == true,
+                "{step}"
+            );
+            if let Some(focused) = step["focused"].as_bool() {
+                assert_eq!(
+                    locate::focus_state(&window.find("map-context")),
+                    Some(focused),
+                    "{step}"
+                );
+            }
+        }
         "expectMapContext" => {
             if step["shown"] == true {
                 assert!(

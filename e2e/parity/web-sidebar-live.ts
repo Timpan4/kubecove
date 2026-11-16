@@ -8,7 +8,7 @@ function sidebarScrollArea(page: Page): Locator {
 }
 
 /** The first row whose label matches each path segment, at that depth. */
-function sidebarRow(page: Page, path: string[]): Locator {
+export function sidebarRow(page: Page, path: string[]): Locator {
 	let list = page.getByRole("tree");
 	for (const [index, label] of path.entries()) {
 		const row = list.getByRole("treeitem").and(page.locator(`[data-depth="${index}"]`)).filter({ has: page.getByText(label, { exact: true }) }).first();

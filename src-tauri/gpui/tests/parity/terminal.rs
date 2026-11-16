@@ -203,11 +203,26 @@ pub fn apply(window: &mut Window, cx: &mut App, step: &Value) -> bool {
             if step["focused"] == true {
                 // GPUI reports focus only in an active window; the browser page is one.
                 window.activate_window();
-                window.click("exec-terminal", cx);
+                if step["key"] == "Tab" {
+                    // `window.blur` leaves nothing focused, which the app never does: it
+                    // focuses its root at startup. With no focus, the root's Tab binding
+                    // is off the dispatch path, so start where the browser's Tab from
+                    // the body starts, at the first tab stop.
+                    if window.focused(cx).is_none() {
+                        window.focus_next(cx);
+                    }
+                    super::resource_table::tab_to(window, "exec-terminal", cx);
+                } else {
+                    window.click("exec-terminal", cx);
+                }
             } else {
                 window.blur(cx);
                 window.render_frame(cx);
             }
+        }
+        "terminalKey" => {
+            assert_eq!(string(step, "key"), "Tab", "{step}");
+            window.within("exec-terminal").press("tab", cx);
         }
         "terminalRightClick" => {
             // Only the primary button selects, so a right press leaves the selection as it is.

@@ -654,7 +654,7 @@
     },
     {
       "id": "exec-session.cursor-shapes",
-      "title": "DECSCUSR shapes the cursor and an unfocused terminal outlines it",
+      "title": "DECSCUSR shapes the cursor, an unfocused terminal outlines it, Tab reaches the terminal and a Tab inside it goes to the shell",
       "steps": [
         {
           "action": "openResources"
@@ -726,11 +726,22 @@
         },
         {
           "action": "terminalFocus",
-          "focused": true
+          "focused": true,
+          "key": "Tab"
         },
         {
           "action": "expectTerminalCursor",
           "cursor": "underline"
+        },
+        {
+          "action": "terminalKey",
+          "key": "Tab"
+        },
+        {
+          "action": "expectTerminalCursor",
+          "cursor": "underline",
+          "row": 0,
+          "col": 8
         },
         {
           "action": "terminalOutput",

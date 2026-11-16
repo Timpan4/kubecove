@@ -1,5 +1,6 @@
 import type { Page } from "playwright-core";
 import type { Step } from "./contract";
+import { tabTo } from "./web-keyboard";
 
 // One-line log rows are `[data-log-row]` buttons. Their headline is an exact text node.
 function logRow(page: Page, line: string) {
@@ -13,8 +14,10 @@ function restorePrompt(page: Page) {
 export async function logRowAndRestoreAction(page: Page, step: Step): Promise<void> {
     switch (step.action) {
         case "toggleLogRow":
-            if (step.key) await logRow(page, step.line).press(step.key);
-            else await logRow(page, step.line).getByText(step.line, { exact: true }).click();
+            if (step.key) {
+                await tabTo(page, logRow(page, step.line));
+                await page.keyboard.press(step.key);
+            } else await logRow(page, step.line).getByText(step.line, { exact: true }).click();
             break;
         case "toggleLogExpandAll":
             await page.getByRole("button", { name: /^(Expand|Collapse) all$/ }).click();

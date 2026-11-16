@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
-import type { Page } from "playwright-core";
+import type { Locator, Page } from "playwright-core";
 import type { Step } from "./contract";
+import { tabTo } from "./web-keyboard";
 
 type Identity = { kind: string; name: string; namespace: string };
 
@@ -25,6 +26,13 @@ async function cellFor(page: Page, step: Identity & { column: string }) {
 	return row.getByRole("cell").nth(index);
 }
 
+/** Clicks a control, or with `key` reaches it with Tab and presses the key. */
+async function activate(page: Page, control: Locator, key: "Enter" | "Space" | undefined) {
+	if (!key) return control.click();
+	await tabTo(page, control);
+	await page.keyboard.press(key);
+}
+
 export async function resourceTableAction(page: Page, step: Step) {
 	switch (step.action) {
 		case "pressResourceRow":
@@ -32,7 +40,7 @@ export async function resourceTableAction(page: Page, step: Step) {
 			await resourceRow(page, step).getByRole("button", { name: `Open resource ${step.name}`, exact: true }).press(step.key);
 			break;
 		case "sortResourceTable":
-			await page.locator("thead").getByRole("button", { name: `Sort by ${step.column}`, exact: true }).click();
+			await activate(page, page.locator("thead").getByRole("button", { name: `Sort by ${step.column}`, exact: true }), step.key);
 			break;
 		case "expectResourceOrder": {
 			const visible = async () => {
@@ -49,7 +57,7 @@ export async function resourceTableAction(page: Page, step: Step) {
 			break;
 		}
 		case "toggleResourceGroup":
-			await page.locator("tr").getByRole("button", { name: step.label }).first().click();
+			await activate(page, page.locator("tr").getByRole("button", { name: step.label }).first(), step.key);
 			break;
 		case "expectResourceGroup":
 			await page.locator(`tr button[aria-expanded="${String(step.expanded)}"]`).filter({ hasText: step.label }).first().waitFor();
