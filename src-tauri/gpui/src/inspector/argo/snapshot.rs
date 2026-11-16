@@ -460,7 +460,7 @@ pub(super) fn snapshot(
                 .rounded(px(10.))
                 .border_1()
                 .border_color(Tokens::border())
-                .child(ui::icon("loader-circle", 16., Tokens::muted_foreground()))
+                .child(ui::spinner(16., Tokens::muted_foreground()))
                 .child(ui::muted(ui::xs("Loading Application snapshot"))),
         ),
         _ if !loading.ready() => body,

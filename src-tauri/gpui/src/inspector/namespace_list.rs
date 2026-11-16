@@ -195,7 +195,7 @@ fn loading() -> AnyElement {
         .justify_center()
         .gap(px(8.))
         .min_h(px(160.))
-        .child(ui::icon("loader-circle", 16., Tokens::muted_foreground()))
+        .child(ui::spinner(16., Tokens::muted_foreground()))
         .child(ui::muted(ui::sm("Loading namespaces")))
         .into_any_element()
 }

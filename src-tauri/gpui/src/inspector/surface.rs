@@ -79,7 +79,7 @@ pub(super) fn loading() -> AnyElement {
         .justify_center()
         .gap(px(8.))
         .min_h(px(192.))
-        .child(ui::icon("loader-circle", 16., Tokens::muted_foreground()))
+        .child(ui::spinner(16., Tokens::muted_foreground()))
         .child(ui::muted(ui::sm("Loading...")))
         .into_any_element()
 }
@@ -106,7 +106,7 @@ pub(super) fn small_button(icon: Option<&str>, label: impl Into<SharedString>) -
         .pl(px(if icon.is_some() { 6. } else { 8. }))
         .pr(px(8.))
         .when_some(icon, |button, icon| {
-            button.child(ui::icon(icon, 12., Tokens::foreground()))
+            button.child(ui::glyph(icon, 12., Tokens::foreground()))
         })
         .child(ui::medium(ui::text(label, 12., 19.5)))
 }

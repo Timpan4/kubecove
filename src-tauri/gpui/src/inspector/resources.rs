@@ -496,14 +496,16 @@ impl Inspector {
                     .min_h(px(208.))
                     .items_center()
                     .justify_center()
+                    .gap(px(8.))
                     .when(loading.shown(), |slot| {
-                        slot.child(
-                            div()
-                                .id("resources-loading")
-                                .test_support()
-                                .aria_label("Loading resources")
-                                .child(ui::muted(ui::xs("Loading resources"))),
-                        )
+                        slot.child(ui::spinner(16., Tokens::muted_foreground()))
+                            .child(
+                                div()
+                                    .id("resources-loading")
+                                    .test_support()
+                                    .aria_label("Loading resources")
+                                    .child(ui::muted(ui::xs("Loading resources"))),
+                            )
                     })
                     .into_any_element(),
                 // The top bar stays so the Live menu's refresh can retry the read.

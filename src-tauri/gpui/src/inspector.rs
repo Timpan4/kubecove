@@ -158,6 +158,7 @@ pub struct Inspector {
     timings: crate::diagnostics::Timings,
     presentation: presentation::Presentation,
     loading: loading::LoadingDelays,
+    foreground: foreground_bar::ForegroundBar,
     persisted: crate::preferences::Document,
     persistence_error: Option<String>,
     workspace_name: SharedString,
@@ -293,6 +294,7 @@ impl Inspector {
             timings: Default::default(),
             presentation: Default::default(),
             loading: Default::default(),
+            foreground: Default::default(),
             backend,
             persisted: Default::default(),
             persistence_error: None,
@@ -579,6 +581,7 @@ impl Render for Inspector {
         let drawer = (workspace && compact && self.navigation_open)
             .then(|| self.navigation_drawer(window, cx));
         let probe = self.presentation_frame(started);
+        let foreground_bar = self.foreground_bar(window, cx);
         let view = div()
             .track_focus(&self.focus)
             .relative()
@@ -614,7 +617,7 @@ impl Render for Inspector {
             .bg(Tokens::background())
             .text_color(Tokens::foreground())
             .font_family(crate::theme::SANS)
-            .child(self.foreground_bar())
+            .child(foreground_bar)
             .children(sidebar)
             .child(
                 div()

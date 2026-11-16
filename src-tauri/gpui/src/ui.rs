@@ -3,8 +3,10 @@
 
 use crate::theme::{HEADING, Palette, SANS, SM_FONT_SIZE, Tokens, XS_FONT_SIZE};
 use gpui_kit::{
-    Div, FontWeight, Hsla, Pixels, SharedString, Styled, Svg, div, prelude::*, px, svg,
+    Animation, AnimationExt, AnyElement, Div, FontWeight, Hsla, Pixels, SharedString, Styled, Svg,
+    Transformation, div, percentage, prelude::*, px, svg,
 };
+use std::time::Duration;
 
 /// Text at a web font size (px) and line height (px).
 pub fn text(content: impl Into<SharedString>, size: f32, line: f32) -> Div {
@@ -57,6 +59,37 @@ pub fn icon(name: &str, size: f32, color: Hsla) -> Svg {
         .size(px(size))
         .flex_none()
         .text_color(color)
+}
+
+/// The icon `Spinner.svelte` draws.
+pub const SPINNER: &str = "loader-circle";
+
+/// Tailwind's `animate-spin`, which `Spinner.svelte` sets: `spin 1s linear infinite`
+/// in `node_modules/tailwindcss/theme.css`.
+const SPIN_TURN: Duration = Duration::from_secs(1);
+
+/// `Spinner.svelte`. It turns only while it is rendered, on one clock shared by
+/// every spinner, and stays still under reduced motion.
+pub fn spinner(size: f32, color: Hsla) -> impl IntoElement {
+    spinning(SPINNER, size, color)
+}
+
+/// An icon with `animate-spin`.
+pub fn spinning(name: &str, size: f32, color: Hsla) -> impl IntoElement {
+    icon(name, size, color).with_animation(
+        "spin",
+        Animation::new(SPIN_TURN).repeat_synced(),
+        |icon, turn| icon.with_transformation(Transformation::rotate(percentage(turn))),
+    )
+}
+
+/// An icon by name, where `SPINNER` names the turning spinner.
+pub fn glyph(name: &str, size: f32, color: Hsla) -> AnyElement {
+    if name == SPINNER {
+        spinner(size, color).into_any_element()
+    } else {
+        icon(name, size, color).into_any_element()
+    }
 }
 
 /// `Card`: `rounded-lg border bg-surface-1`.
@@ -188,12 +221,21 @@ pub fn outline_button() -> Div {
 
 /// `Button variant="ghost" size="icon"` (28px square).
 pub fn ghost_icon(name: &str, size: f32, icon_size: f32) -> Div {
-    div()
+    ghost_icon_spinning(name, size, icon_size, false)
+}
+
+/// `ghost_icon` whose icon has `animate-spin` while `spin` is set.
+pub fn ghost_icon_spinning(name: &str, size: f32, icon_size: f32, spin: bool) -> Div {
+    let frame = div()
         .flex()
         .flex_none()
         .items_center()
         .justify_center()
         .size(px(size))
-        .rounded(px(8.))
-        .child(icon(name, icon_size, Tokens::foreground()))
+        .rounded(px(8.));
+    if spin {
+        frame.child(spinning(name, icon_size, Tokens::foreground()))
+    } else {
+        frame.child(icon(name, icon_size, Tokens::foreground()))
+    }
 }

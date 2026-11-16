@@ -336,7 +336,7 @@ impl Inspector {
                     .child(
                         surface::small_button(
                             Some(if refreshing {
-                                "loader-circle"
+                                ui::SPINNER
                             } else {
                                 "rotate-ccw"
                             }),

@@ -226,7 +226,7 @@ pub(super) fn events_tab(
                 .justify_center()
                 .gap(px(8.))
                 .when(phase.shown(), |slot| {
-                    slot.child(ui::icon("loader-circle", 16., Tokens::muted_foreground()))
+                    slot.child(ui::spinner(16., Tokens::muted_foreground()))
                         .child(ui::muted(ui::xs("Loading events")))
                 })
                 .into_any_element();
