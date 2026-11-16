@@ -359,6 +359,8 @@ impl Inspector {
                                 let drop_target = kind.clone();
                                 div()
                                     .id(SharedString::from(format!("kind-order-item:{kind}")))
+                                    // Before `track_focus`, so tests observe the item's focus.
+                                    .test_support()
                                     .on_drag(
                                         super::resource_order::DragKind(kind.clone()),
                                         |drag, _, _, cx| cx.new(|_| drag.clone()),
@@ -374,7 +376,7 @@ impl Inspector {
                                     ))
                                     .when_some(self.settings.kind_focus.get(kind), |item, focus| {
                                         let focus = focus.clone();
-                                        item.track_focus(&focus).tab_index(0).on_click(cx.listener(
+                                        item.track_focus(&focus).on_click(cx.listener(
                                             move |_, _, window, cx| focus.focus(window, cx),
                                         ))
                                     })
@@ -389,7 +391,6 @@ impl Inspector {
                                             }
                                         },
                                     ))
-                                    .test_support()
                                     .aria_description(format!("{title}:{position}"))
                                     .flex()
                                     .gap(px(4.))
@@ -400,6 +401,7 @@ impl Inspector {
                                     .border_1()
                                     .border_color(Tokens::border())
                                     .bg(Tokens::card())
+                                    .focus(|item| item.border_color(Tokens::ring()))
                                     .when(dragged == Some(kind.as_str()), |item| {
                                         item.border_color(Tokens::primary()).bg(Tokens::muted())
                                     })

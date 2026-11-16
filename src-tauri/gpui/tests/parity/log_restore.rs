@@ -11,6 +11,7 @@ pub fn apply(window: &mut Window, cx: &mut App, step: &Value) -> bool {
         "toggleLogRow" => {
             let position = row_position(window, string(step, "line"));
             if let Some(key) = step["key"].as_str() {
+                super::resource_table::tab_to(window, ("log-row", position), cx);
                 window
                     .within(("log-row", position))
                     .press(if key == "Enter" { "enter" } else { "space" }, cx);

@@ -107,11 +107,13 @@ fn one_line_row(
     let structure = &line.structure;
     let index = line.index;
     let open = logs.row_open(index);
+    // The handle is the tab stop: an element's `tab_index` applies only to a
+    // handle the element creates, not to one it tracks.
     let focus = logs
         .row_focus
         .borrow_mut()
         .entry(index)
-        .or_insert_with(|| cx.focus_handle())
+        .or_insert_with(|| cx.focus_handle().tab_stop(true))
         .clone();
     let term = logs.term.as_str();
     let summary = div()
@@ -183,7 +185,6 @@ fn one_line_row(
         .aria_label(structure.headline.clone())
         .aria_expanded(open)
         .track_focus(&focus)
-        .tab_index(0)
         .on_click(cx.listener(move |this, _, _, cx| {
             if let Some(logs) = this.logs_state() {
                 logs.toggle_row(index);
@@ -196,6 +197,7 @@ fn one_line_row(
         .px(px(12.))
         .py(px(4.))
         .hover(|row| row.bg(Tokens::muted().opacity(0.4)))
+        .focus(|row| row.bg(Tokens::muted().opacity(0.4)))
         .when(open, |row| row.bg(Tokens::muted().opacity(0.5)))
         .child(summary)
         .children(details)

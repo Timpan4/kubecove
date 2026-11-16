@@ -1,8 +1,47 @@
 //! xterm's keyboard sequences and platform clipboard gestures.
 use super::super::Inspector;
-use gpui_kit::{Context, KeyDownEvent};
+use gpui_kit::{App, Context, Global, KeyBinding, KeyDownEvent, actions};
+
+/// The terminal's key context. Its bindings outrank the window root's.
+pub(super) const CONTEXT: &str = "ExecTerminal";
+
+actions!(exec_terminal, [SendTab, SendBackTab]);
+
+struct Bound;
+impl Global for Bound {}
+
+/// Binds Tab and Shift+Tab inside the terminal, once per app. The window root
+/// binds them to focus traversal, and key bindings run before key listeners, so
+/// without these the keys would leave the terminal instead of reaching the shell.
+/// xterm keeps them in the terminal too.
+pub(super) fn bind(cx: &mut App) {
+    if cx.has_global::<Bound>() {
+        return;
+    }
+    cx.bind_keys([
+        KeyBinding::new("tab", SendTab, Some(CONTEXT)),
+        KeyBinding::new("shift-tab", SendBackTab, Some(CONTEXT)),
+    ]);
+    cx.set_global(Bound);
+}
 
 impl Inspector {
+    pub(super) fn send_exec_tab(
+        &mut self,
+        _: &SendTab,
+        _: &mut gpui_kit::Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.exec_input("\t".into(), cx);
+    }
+    pub(super) fn send_exec_back_tab(
+        &mut self,
+        _: &SendBackTab,
+        _: &mut gpui_kit::Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.exec_input("\x1b[Z".into(), cx);
+    }
     /// Pastes the clipboard's text, for Shift+Insert and the platform paste gesture.
     /// The terminal's context menu calls this too.
     pub(super) fn paste_clipboard(&mut self, cx: &mut Context<Self>) {

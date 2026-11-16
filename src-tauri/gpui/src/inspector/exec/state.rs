@@ -106,7 +106,10 @@ pub(in crate::inspector) struct ExecState {
 }
 impl ExecState {
     pub(in crate::inspector) fn new(window: &mut Window, cx: &mut Context<Inspector>) -> Self {
-        let focus = cx.focus_handle();
+        super::keys::bind(cx);
+        // The handle is the tab stop: an element's `tab_index` applies only to a
+        // handle the element creates, not to one it tracks.
+        let focus = cx.focus_handle().tab_stop(true);
         let focus_changed = |focused| {
             move |this: &mut Inspector, _: &mut Window, cx: &mut Context<Inspector>| {
                 this.exec.focused = focused;

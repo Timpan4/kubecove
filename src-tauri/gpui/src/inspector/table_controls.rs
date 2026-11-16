@@ -1,8 +1,10 @@
 //! The resource table's controls: sortable headers, group and type rows, and
-//! the pin button, mirroring the buttons in `ResourceBrowser.svelte`.
+//! the pin button, mirroring the buttons in `ResourceBrowser.svelte`. Each one
+//! tracks a tab-stop handle from `table_tab_stop`, so Tab reaches it and Enter
+//! or Space activates it, as the web's native buttons do.
 
 use super::Inspector;
-use super::table_columns::{Column, cell};
+use super::table_columns::{Column, cell, resource_id};
 use crate::table_sort::Column as SortColumn;
 use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
@@ -19,6 +21,23 @@ pub(super) struct GroupRow {
     pub inset: f32,
     pub strong: bool,
     pub collapsed: bool,
+}
+
+/// The element id of a column's sort header.
+pub(super) fn sort_id(column: Column) -> String {
+    format!("sort:{}", column.label())
+}
+
+/// The element id of a group or type row.
+pub(super) fn group_row_id(key: &str) -> String {
+    format!("group-row:{key}")
+}
+
+/// The element id of a row's pin button. It ends in the row's context, as the
+/// row's id does.
+pub(super) fn pin_id(row: &ResourceSummary) -> String {
+    let id = resource_id(row);
+    format!("pin:{}", id.strip_prefix("resource:").unwrap_or(&id))
 }
 
 impl Inspector {
@@ -66,15 +85,21 @@ impl Inspector {
             Some(description) => format!("Sort by {label}. {description}"),
             None => format!("Sort by {label}"),
         };
+        let id = sort_id(column);
+        let focus = self.table_tab_stop(&id, cx);
         cell(
             column,
             div()
                 .flex()
                 .items_center()
                 .gap(px(4.))
-                .id(SharedString::from(format!("sort:{label}")))
+                .id(SharedString::from(id))
                 .test_support()
+                .role(gpui_kit::Role::Button)
                 .aria_label(aria)
+                .track_focus(&focus)
+                .rounded(px(4.))
+                .focus(|style| style.bg(Tokens::muted()))
                 .cursor_pointer()
                 .on_click(cx.listener(move |this, _, _, cx| this.toggle_sort(sort_column, cx)))
                 .child(ui::muted(ui::text(label, 11., 16.)).font_weight(FontWeight::MEDIUM))
@@ -96,11 +121,16 @@ impl Inspector {
         } = row;
         let (size, count_size) = if strong { (12., 11.) } else { (11., 10.) };
         let toggle_key = key.clone();
+        let id = group_row_id(&key);
+        let focus = self.table_tab_stop(&id, cx);
         div()
-            .id(SharedString::from(format!("group-row:{key}")))
+            .id(SharedString::from(id))
             .test_support()
+            .role(gpui_kit::Role::Button)
             .aria_label(label.clone())
             .aria_description(if collapsed { "collapsed" } else { "expanded" })
+            .track_focus(&focus)
+            .focus(|style| style.bg(Tokens::muted()))
             .cursor_pointer()
             .on_click(cx.listener(move |this, _, _, cx| this.toggle_group(toggle_key.clone(), cx)))
             .flex()
@@ -153,17 +183,19 @@ impl Inspector {
     /// The pin column's button, which pins or unpins the row's resource.
     pub(super) fn pin_cell(&self, row: &ResourceSummary, cx: &mut Context<Self>) -> Div {
         let target = row.clone();
+        let id = pin_id(row);
+        let focus = self.table_tab_stop(&id, cx);
         cell(
             Column::Pin,
             div()
-                .id(SharedString::from(format!(
-                    "pin:{}:{}:{}:{}",
-                    row.kind,
-                    row.namespace.as_deref().unwrap_or(""),
-                    row.name,
-                    row.cluster
-                )))
+                .id(SharedString::from(id))
                 .test_support()
+                .role(gpui_kit::Role::Button)
+                .track_focus(&focus)
+                .rounded(px(6.))
+                .border_1()
+                .border_color(gpui_kit::transparent_black())
+                .focus(|style| style.border_color(Tokens::ring()))
                 .aria_label(format!(
                     "{} {} {}",
                     if self.resource_pinned(row) {

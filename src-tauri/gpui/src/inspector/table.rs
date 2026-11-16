@@ -6,7 +6,7 @@ use super::table_columns::{
     Column, EMPTY, READINESS_NOT_REPORTED, RESTART_COUNT_NOT_REPORTED, cell, ready_chip,
     ready_text, resource_id, restart_text, text_cell, value_cell,
 };
-use super::table_controls::GroupRow;
+use super::table_controls::{GroupRow, group_row_id, pin_id, sort_id};
 use super::table_status::{health_badge, lifecycle_status, row_height_key};
 use super::{Inspector, surface, timestamp_text};
 use crate::model::{
@@ -106,20 +106,26 @@ impl Inspector {
         }
     }
 
-    /// The focus handle of a row's name control. It is created on first use and
-    /// kept while the row stays on the page, so the keyboard can reach the row.
-    fn name_focus(&self, row: &ResourceSummary, cx: &mut Context<Self>) -> FocusHandle {
-        self.table_focus
-            .borrow_mut()
-            .entry(resource_id(row))
-            .or_insert_with(|| cx.focus_handle().tab_stop(true))
-            .clone()
+    /// The focus handle of the table control with element id `id`: a row's name,
+    /// a pin, a group row or a sortable header. It is created on first use and kept
+    /// while the control stays on the page, so Tab reaches it and keeps its focus
+    /// across renders. The handle itself is the tab stop: GPUI applies an element's
+    /// `tab_index` only to a handle the element creates, not to one it tracks. GPUI
+    /// turns Enter and Space on a focused element into its click.
+    pub(super) fn table_tab_stop(&self, id: &str, cx: &mut Context<Self>) -> FocusHandle {
+        let mut handles = self.table_focus.borrow_mut();
+        if let Some(handle) = handles.get(id) {
+            return handle.clone();
+        }
+        let handle = cx.focus_handle().tab_stop(true);
+        handles.insert(id.to_owned(), handle.clone());
+        handle
     }
 
     /// The name cell. Its control takes focus, and Enter or Space opens the resource
     /// as a click does, as the web's name button does.
     fn name_cell(&self, row: &ResourceSummary, cx: &mut Context<Self>) -> Div {
-        let focus = self.name_focus(row, cx);
+        let focus = self.table_tab_stop(&resource_id(row), cx);
         let resource = row.clone();
         cell(
             Column::Name,
@@ -362,11 +368,20 @@ impl Inspector {
             self.usage(row)
         }));
         self.table_page = self.table_page.min(page.page_count - 1);
-        // Drop the focus handles of rows that left the page.
-        let live: std::collections::HashSet<String> = page.rows.iter().map(resource_id).collect();
-        self.table_focus.get_mut().retain(|id, _| live.contains(id));
         let contexts = self.workspace_contexts().len();
         let columns = self.columns(&page.rows, contexts > 1);
+        // Drop the focus handles of controls that left the page.
+        let mut live: std::collections::HashSet<String> = page
+            .rows
+            .iter()
+            .flat_map(|row| [resource_id(row), pin_id(row)])
+            .collect();
+        live.extend(page.entries.iter().filter_map(|entry| match entry {
+            Entry::Group { key, .. } | Entry::Type { key, .. } => Some(group_row_id(key)),
+            Entry::Row(_) => None,
+        }));
+        live.extend(columns.iter().map(|column| sort_id(*column)));
+        self.table_focus.get_mut().retain(|id, _| live.contains(id));
         let min_width: f32 = columns.iter().map(|column| column.width()).sum();
         let header = div()
             .flex()
