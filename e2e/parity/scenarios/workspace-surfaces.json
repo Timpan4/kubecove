@@ -10,7 +10,7 @@
         { "action": "expectRbacCategory", "category": "Service Accounts" },
         { "action": "expectRbacItem", "title": "ServiceAccount/argocd-application-controller", "risk": "HIGH: 3 flags" },
         { "action": "expectRbacItem", "title": "ServiceAccount/payments-api", "risk": "MEDIUM: 1 flag" },
-        { "action": "expectRbacItem", "title": "ServiceAccount/grafana", "risk": "No flags" },
+        { "action": "expectRbacItem", "title": "ServiceAccount/grafana", "risk": "LOW: 1 flag" },
         { "action": "selectRbacCategory", "category": "Cluster Roles" },
         { "action": "expectRbacItem", "title": "ClusterRole/argocd-app-controller", "risk": "HIGH: 1 flag" },
         { "action": "selectRbacCategory", "category": "Bindings" },
@@ -35,10 +35,40 @@
         { "action": "selectRbacItem", "title": "RoleBinding/grafana-config" },
         { "action": "investigateRbacSubject", "subject": "ServiceAccount/monitoring/grafana" },
         { "action": "expectRbacIdentity", "identity": "system:serviceaccount:monitoring:grafana" },
-        { "action": "expectRbacGrant", "grant": "get · core/secrets, configmaps" },
+        { "action": "expectRbacGrant", "grant": "get · core/secrets, configmaps · names: grafana" },
+        { "action": "expectNoRbacGrant", "grant": "get · core/secrets, configmaps" },
         { "action": "expectNoRbacGrant", "grant": "get, list, watch · core/pods, services, configmaps" },
         { "action": "verifyRbacAccess", "verb": "delete" },
         { "action": "expectRbacVerdict", "outcome": "denied" }
+      ]
+    },
+    {
+      "id": "rbac.service-account-username-subject",
+      "title": "A User subject named system:serviceaccount:<namespace>:<name> grants that ServiceAccount its binding, risk and grants",
+      "steps": [
+        { "action": "openPage", "page": "RBAC" },
+        { "action": "expectRbacItem", "title": "ServiceAccount/grafana", "risk": "LOW: 1 flag" },
+        { "action": "coverageText", "text": "3 bindings", "visible": true },
+        { "action": "selectRbacItem", "title": "ServiceAccount/grafana" },
+        { "action": "expectRbacIdentity", "identity": "system:serviceaccount:monitoring:grafana" },
+        { "action": "expectRbacGrant", "grant": "get, list · core/configmaps" }
+      ]
+    },
+    {
+      "id": "rbac.observed-identity-defaults",
+      "title": "Observed grants read the identity the verifier reviews: a user without groups is authenticated and a blank namespace is default",
+      "steps": [
+        { "action": "openPage", "page": "RBAC" },
+        { "action": "selectRbacCategory", "category": "Bindings" },
+        { "action": "selectRbacItem", "title": "RoleBinding/payments-oncall" },
+        { "action": "investigateRbacSubject", "subject": "User/alice" },
+        { "action": "expectRbacGrant", "grant": "get, list, watch · core/pods, services, configmaps" },
+        { "action": "expectRbacGrant", "grant": "get, list · core/namespaces" },
+        { "action": "coverageClick", "label": "Investigate identity" },
+        { "action": "coverageClick", "label": "ServiceAccount" },
+        { "action": "coverageFill", "label": "Identity name", "value": "deployer" },
+        { "action": "coverageFill", "label": "ServiceAccount namespace", "value": "" },
+        { "action": "expectRbacGrant", "grant": "get, list, watch · core/pods, services, configmaps" }
       ]
     },
     {

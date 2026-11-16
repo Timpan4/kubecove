@@ -6,6 +6,7 @@ import type {
 	ServiceAccountSummary,
 } from "@/lib/types";
 import type { RbacCockpitItem } from "./cockpitModel";
+import { serviceAccountMatcher } from "./principal";
 import { subjectListLabel } from "./risk";
 
 export function queueTags(
@@ -68,21 +69,8 @@ export function bindingSources(
 		entry.category === "Service Accounts" &&
 		isServiceAccountSummary(entry.item)
 	) {
-		const account = entry.item;
-		const groups = new Set([
-			"system:serviceaccounts",
-			`system:serviceaccounts:${account.namespace}`,
-			"system:authenticated",
-		]);
-		return bindings.filter((binding) =>
-			binding.subjects.some(
-				(subject) =>
-					(subject.kind === "ServiceAccount" &&
-						subject.name === account.name &&
-						subject.namespace === account.namespace) ||
-					(subject.kind === "Group" && groups.has(subject.name)),
-			),
-		);
+		const applies = serviceAccountMatcher(entry.item.namespace, entry.item.name);
+		return bindings.filter((binding) => binding.subjects.some(applies));
 	}
 	if (
 		(entry.category === "Roles" || entry.category === "Cluster Roles") &&

@@ -2,11 +2,11 @@
 //! `src/features/rbac/observedPermissions.ts`. This is not an authorization
 //! verdict; only the SubjectAccessReview verifier decides access.
 
-use super::{automatic_groups, bindings};
+use super::{Principal, bindings, binds_principal};
 use crate::collate::collate;
 use kubecove_lib::models::{
     RbacAccessReviewIdentity, RbacBindingSummary, RbacCoverageStatus, RbacFamily,
-    RbacInspectionSummary, RbacRoleSummary, RbacSubjectSummary,
+    RbacInspectionSummary, RbacRoleSummary,
 };
 use std::collections::HashMap;
 
@@ -123,7 +123,8 @@ pub struct Grant {
 }
 
 impl Grant {
-    /// The grant's first line: `verbs · groups/resources`.
+    /// `grantSummary`: `verbs · groups/resources`, then `· names: …` when the
+    /// rule is limited to named objects.
     pub fn summary(&self) -> String {
         let groups = match self.api_groups.join(", ") {
             joined if joined.is_empty() => "core".to_owned(),
@@ -134,7 +135,12 @@ impl Grant {
         } else {
             self.resources.join(", ")
         };
-        format!("{} · {groups}/{targets}", self.verbs.join(", "))
+        let mut summary = format!("{} · {groups}/{targets}", self.verbs.join(", "));
+        if !self.resource_names.is_empty() {
+            summary.push_str(" · names: ");
+            summary.push_str(&self.resource_names.join(", "));
+        }
+        summary
     }
 
     /// The grant's second line: `scope/namespace · roles`.
@@ -162,24 +168,6 @@ fn binding_key(binding: &RbacBindingSummary) -> String {
     role_key(&binding.kind, &binding.name, binding.namespace.as_deref())
 }
 
-fn matches_subject(subject: &RbacSubjectSummary, identity: &Identity) -> bool {
-    match identity.kind {
-        IdentityKind::ServiceAccount if subject.kind == "ServiceAccount" => {
-            subject.name == identity.name && subject.namespace == identity.namespace
-        }
-        IdentityKind::ServiceAccount => {
-            subject.kind == "Group"
-                && automatic_groups(identity.namespace.as_deref().unwrap_or(""))
-                    .contains(&subject.name)
-        }
-        IdentityKind::User => {
-            (subject.kind == "User" && subject.name == identity.name)
-                || (subject.kind == "Group" && identity.groups.contains(&subject.name))
-        }
-        IdentityKind::Group => subject.kind == "Group" && subject.name == identity.name,
-    }
-}
-
 const FAMILIES: [(RbacFamily, &str); 4] = [
     (RbacFamily::Roles, "roles"),
     (RbacFamily::ClusterRoles, "clusterRoles"),
@@ -187,8 +175,9 @@ const FAMILIES: [(RbacFamily, &str); 4] = [
     (RbacFamily::ClusterRoleBindings, "clusterRoleBindings"),
 ];
 
-/// `observedPermissions`.
+/// `observedPermissions`, for the same identity the verifier would review.
 pub fn observed(data: &RbacInspectionSummary, identity: &Identity) -> Observed {
+    let principal = Principal::of(&identity.review_identity());
     let incomplete: Vec<&str> = FAMILIES
         .iter()
         .filter(|(family, _)| {
@@ -212,11 +201,7 @@ pub fn observed(data: &RbacInspectionSummary, identity: &Identity) -> Observed {
     let mut merged: Vec<Grant> = Vec::new();
     let mut missing = false;
     for binding in bindings(data) {
-        if !binding
-            .subjects
-            .iter()
-            .any(|subject| matches_subject(subject, identity))
-        {
+        if !binds_principal(binding, &principal) {
             continue;
         }
         let namespace = (binding.role_ref_kind == "Role")

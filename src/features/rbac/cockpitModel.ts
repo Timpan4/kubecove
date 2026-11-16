@@ -7,6 +7,7 @@ import type {
 	RbacSubjectSummary,
 	ServiceAccountSummary,
 } from "@/lib/types";
+import { automaticServiceAccountGroups, splitServiceAccountUsername } from "./principal";
 import type { RbacView } from "./surfaceModel";
 
 export type RbacRiskBucket = "all" | "high" | "medium" | "low" | "none" | "unknown";
@@ -154,10 +155,13 @@ function buildRbacRiskIndex(data: RbacInspectionSummary): RbacRiskIndex {
 		bindingOrder.set(binding, index);
 		bindingRisks.set(binding, [...binding.risks, ...referencedRoleRisks(rolesByReference, binding)]);
 		for (const subject of binding.subjects) {
-			if (subject.kind === "ServiceAccount") {
+			let account: { namespace?: string; name: string } | null = null;
+			if (subject.kind === "ServiceAccount") account = subject;
+			else if (subject.kind === "User") account = splitServiceAccountUsername(subject.name);
+			if (account) {
 				pushMapValue(
 					bindingsByServiceAccount,
-					bindingServiceAccountKey(subject.namespace, subject.name),
+					bindingServiceAccountKey(account.namespace, account.name),
 					binding,
 				);
 			} else if (subject.kind === "Group") {
@@ -212,10 +216,6 @@ export function selectedCockpitItem(items: RbacCockpitItem[], selectedKey?: stri
 export function ruleText(rule: RbacRuleSummary): string {
 	const resources = rule.resources.map((resource) => `${rule.apiGroups.length ? rule.apiGroups.join(",") || "core" : "core"}/${resource}`).join(", ");
 	return [rule.verbs.join(", "), resources, rule.nonResourceUrls.join(", ")].filter(Boolean).join(" · ");
-}
-
-export function automaticServiceAccountGroups(namespace: string): string[] {
-	return ["system:serviceaccounts", `system:serviceaccounts:${namespace}`, "system:authenticated"];
 }
 
 function searchable(entry: RbacCockpitItem): string {

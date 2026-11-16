@@ -49,6 +49,8 @@ Verification checks the request you entered at that moment. It does not authoriz
 
 **Observed RBAC grants** are derived from Roles, ClusterRoles, RoleBindings, and ClusterRoleBindings that KubeCove loaded. **Source chain** shows which binding and role evidence produced an observation.
 
+Grants are matched for the same identity **Verify access** sends: a user with no groups counts as `system:authenticated`, a ServiceAccount with a blank namespace uses `default`, and a User subject named `system:serviceaccount:<namespace>:<name>` grants that ServiceAccount. A grant limited to named objects ends with `names:` and the allowed names.
+
 - **No observed grants for this identity** is not proof of denial.
 - Partial inventory can omit a source chain.
 - Aggregated roles, external authorizers, impersonation rules, admission controls, or other cluster mechanisms can affect the final outcome.

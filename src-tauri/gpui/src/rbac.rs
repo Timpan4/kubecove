@@ -3,10 +3,12 @@
 //! category; rendering reads them without allocating.
 
 pub mod permissions;
+mod principal;
 pub mod review;
 mod risk;
 
-pub use risk::{automatic_groups, risk_summary_label};
+pub use principal::Principal;
+pub use risk::risk_summary_label;
 
 use crate::collate::collate;
 use kubecove_lib::models::{
@@ -438,15 +440,12 @@ pub fn queue_summary(data: &RbacInspectionSummary, item: &CockpitItem) -> String
     "No policy heuristic flags for this object.".into()
 }
 
-/// Whether a binding names the account directly or through its automatic groups.
-pub fn binds_account(binding: &RbacBindingSummary, namespace: &str, name: &str) -> bool {
-    let groups = automatic_groups(namespace);
-    binding.subjects.iter().any(|subject| {
-        (subject.kind == "ServiceAccount"
-            && subject.name == name
-            && subject.namespace.as_deref() == Some(namespace))
-            || (subject.kind == "Group" && groups.contains(&subject.name))
-    })
+/// Whether any of a binding's subjects applies to the principal.
+pub fn binds_principal(binding: &RbacBindingSummary, principal: &Principal) -> bool {
+    binding
+        .subjects
+        .iter()
+        .any(|subject| principal.matches(subject))
 }
 
 /// Whether a binding references the role, matching the namespace for Roles.
@@ -462,9 +461,12 @@ pub fn binding_sources<'a>(
     item: &CockpitItem,
 ) -> Vec<&'a RbacBindingSummary> {
     match item.object.get(data) {
-        ObjectRef::Account(account) => bindings(data)
-            .filter(|binding| binds_account(binding, &account.namespace, &account.name))
-            .collect(),
+        ObjectRef::Account(account) => {
+            let principal = Principal::service_account(&account.namespace, &account.name);
+            bindings(data)
+                .filter(|binding| binds_principal(binding, &principal))
+                .collect()
+        }
         ObjectRef::Role(role) => bindings(data)
             .filter(|binding| binds_role(binding, role))
             .collect(),
