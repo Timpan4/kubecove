@@ -143,6 +143,20 @@ pub fn owner_ref(row: &ResourceSummary) -> Option<OwnerRef<'_>> {
 }
 
 impl OwnerRef<'_> {
+    /// The owner as a row's `git_ops_owner`, as `effectiveGitOpsOwner` in
+    /// `src/lib/gitops-ownership-evidence.ts` builds it.
+    fn to_summary(self) -> GitOpsOwnerSummary {
+        GitOpsOwnerSummary {
+            provider: self.provider.to_owned(),
+            kind: self.kind.to_owned(),
+            name: self.name.to_owned(),
+            namespace: self.namespace.map(str::to_owned),
+            confidence: self.confidence.to_owned(),
+            provenance: self.provenance.to_owned(),
+            partial: self.partial,
+        }
+    }
+
     /// `ownerName` in `gitOpsOwnership`: the Flux owner is qualified by its namespace.
     pub fn name(self) -> String {
         match (self.provider, self.namespace) {
@@ -248,11 +262,17 @@ pub fn inherit_gitops_owners(
             .collect()
     };
     // An owner row has its own label, so it is never itself in `inherited` and
-    // still holds its own owner while the rows below it copy from it.
+    // still holds its own owner while the rows below it copy from it. An owner
+    // known only by its Argo CD name annotation has no `git_ops_owner`, so the
+    // rows below it take the owner `owner_ref` builds from the annotation.
     inherited
         .into_iter()
         .map(|(index, owner_index)| {
-            let owner = rows[owner_index].git_ops_owner.clone();
+            let owner_row = &rows[owner_index];
+            let owner = owner_row
+                .git_ops_owner
+                .clone()
+                .or_else(|| owner_ref(owner_row).map(OwnerRef::to_summary));
             (
                 index,
                 std::mem::replace(&mut rows[index].git_ops_owner, owner),
