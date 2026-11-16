@@ -244,8 +244,11 @@ function listScope(requests: ResourceListRequest[] = [], cluster = "mock-dev"): 
 	if (requests.length === 0) return rows;
 	const seen = new Set<string>();
 	return requests.flatMap((request) => {
-		const kindName = "resourceKind" in request && request.resourceKind ? request.resourceKind.kind : request.kind;
-		return rows.filter((row) => (!kindName || row.kind === kindName) && (!request.namespace || row.namespace === request.namespace)).filter((row) => {
+		const resourceKind = "resourceKind" in request ? request.resourceKind : undefined;
+		const kindName = resourceKind ? resourceKind.kind : request.kind;
+		// A discovered kind lists its own API version, as the backend's dynamic read does.
+		const apiVersion = resourceKind?.apiVersion;
+		return rows.filter((row) => (!kindName || row.kind === kindName) && (!apiVersion || !row.apiVersion || row.apiVersion === apiVersion) && (!request.namespace || row.namespace === request.namespace)).filter((row) => {
 			const key = `${row.kind}:${row.namespace ?? ""}:${row.name}`;
 			if (seen.has(key)) return false;
 			seen.add(key);

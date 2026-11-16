@@ -17,6 +17,16 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             window.render_frame(cx);
             locate::click_label(window, "root", "Reconnect", cx);
         }
+        "argoProfileSignIn" => {
+            // A saved profile without a remembered credential asks for it in its own row.
+            reveal(window, "argo-connection-dialog", "argo-sign-in-token", cx);
+            replace_text(window, cx, "argo-sign-in-token", string(step, "token"));
+            // `submit: false` only edits the row, as while its tunnel target waits for confirmation.
+            if step["submit"].as_bool() != Some(false) {
+                reveal(window, "argo-connection-dialog", "argo-sign-in-submit", cx);
+                window.click("argo-sign-in-submit", cx);
+            }
+        }
         "expandArgoDiff" => {
             reveal(window, "detail-body", "argo-diff-lines:0", cx);
             window.click("argo-diff-lines:0", cx);
@@ -143,6 +153,11 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                         .unwrap_or_else(|| panic!("no Forget control for {target}"));
                     reveal(window, "detail-body", &id, cx);
                     window.click(id, cx);
+                    return true;
+                }
+                "Cancel sign-in" => {
+                    reveal(window, "argo-connection-dialog", "argo-sign-in-cancel", cx);
+                    window.click("argo-sign-in-cancel", cx);
                     return true;
                 }
                 "Retry" => "argo-discovery-retry",
@@ -351,6 +366,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                     .elements()
                     .iter()
                     .any(|e| e.label().is_some_and(|l| l == control)),
+                "Confirm and connect" => window.try_find("argo-tunnel-confirm").is_some(),
                 _ => window.try_find("argo-target-retry").is_some(),
             };
             assert!(!visible, "{control} is visible");
@@ -359,6 +375,13 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             window.find("argo-workspace-transport").label(),
             Some(string(step, "text"))
         ),
+        "expectArgoPolicy" => {
+            reveal(window, "detail-body", "argo-delivery-policy", cx);
+            assert_eq!(
+                window.find("argo-delivery-policy").label(),
+                Some(string(step, "text"))
+            );
+        }
         "completeArgoOperation" => {}
         "expectArgoText" => {
             let expected = string(step, "text");

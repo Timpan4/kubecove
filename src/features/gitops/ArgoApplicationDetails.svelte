@@ -51,7 +51,7 @@
 		Spinner,
 		buttonClass,
 	} from "@/components/ui/svelte";
-	import { applicationSpecFromYaml } from "./argo-application-yaml";
+	import { applicationSpecFromYaml, argoSyncPolicyLabel } from "./argo-application-yaml";
 	import {
 		argoDocumentText,
 		resolveArgoResourceComparison,
@@ -333,16 +333,7 @@
 		dryRun: false,
 		force: false,
 	});
-	const policy = $derived(
-		booleanAt(applicationSpec, "syncPolicy", "automated", "prune") === null &&
-		booleanAt(applicationSpec, "syncPolicy", "automated", "selfHeal") === null
-			? "Policy unavailable"
-			: [
-				"Automated",
-				booleanAt(applicationSpec, "syncPolicy", "automated", "prune") ? "prune" : null,
-				booleanAt(applicationSpec, "syncPolicy", "automated", "selfHeal") ? "self-heal" : null,
-			].filter(Boolean).join(" · "),
-	);
+	const policy = $derived(argoSyncPolicyLabel(applicationSpec));
 	const loading = $derived(inspection.current.loading);
 	const loadingIndicator = loadingDelay(() => loading);
 	const dataError = $derived(inspection.current.error);

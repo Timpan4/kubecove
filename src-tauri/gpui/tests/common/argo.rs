@@ -23,7 +23,7 @@ pub struct Argo {
     result: ArgoOperationResult,
     #[serde(skip)]
     active: Arc<Mutex<bool>>,
-    /// Commands that "connect-pending" or "disconnect-pending" hold until the next script.
+    /// Commands that "connect-pending", "disconnect-pending" or "preview-pending" hold until the next script.
     #[serde(skip)]
     held: Mutex<Vec<oneshot::Sender<()>>>,
     #[serde(skip)]
@@ -93,6 +93,12 @@ impl Argo {
         if *self.script.lock().unwrap() == "target-mismatch" {
             return failed("Fixture tunnel target changed");
         }
+        // A connect error can quote the request URL with its token, which the dialog must redact.
+        if *self.script.lock().unwrap() == "credential-error" {
+            return failed(
+                "Fixture rejected https://argocd.example.test/api/v1/session?token=parity-leaked-secret",
+            );
+        }
         let request = serde_json::to_value(request).unwrap();
         let Some(connection) = self.connections.iter().find(|r| r.request == request) else {
             return self.unexpected("connection", &request);
@@ -132,10 +138,17 @@ impl Argo {
             return failed("Fixture tunnel preview unavailable");
         }
         let request = serde_json::to_value(request).unwrap();
-        match self.previews.iter().find(|p| p.request == request) {
-            Some(preview) => ready(preview.result.clone()),
-            None => self.unexpected("preview", &request),
-        }
+        let Some(preview) = self.previews.iter().find(|p| p.request == request) else {
+            return self.unexpected("preview", &request);
+        };
+        let result = preview.result.clone();
+        let held = self.hold("preview-pending");
+        Box::pin(async move {
+            if let Some(held) = held {
+                let _ = held.await;
+            }
+            Ok(result)
+        })
     }
     pub fn disconnect(&self, id: String) -> Read<()> {
         if !self

@@ -43,6 +43,8 @@ export async function exportArgo(client: TauriClient, inventories: InventoryAppl
             { ...connect, token: null, profile: { ...connect.profile, id: tunnel, url: "https://argocd-server.argocd.svc", endpoint: savedEndpoint, rememberCredential: true }, confirmedTarget: preview },
             // An automatic reconnect after a restart sends the saved endpoint and the saved target.
             { ...connect, token: null, profile: { ...connect.profile, id: tunnel, url: "https://argocd-server.argocd.svc", endpoint: savedEndpoint, rememberCredential: true }, confirmedTarget: { namespace: preview.namespace, serviceName: preview.serviceName, podName: null, certificateSha256: null } },
+            // A saved tunnel profile without a remembered credential signs in from its row with the row's token.
+            { ...connect, profile: { ...connect.profile, id: tunnel, url: "https://argocd-server.argocd.svc", endpoint: savedEndpoint }, confirmedTarget: preview },
             { ...connect, profile: { ...connect.profile, rememberCredential: true } },
             { ...connect, token: null, profile: { ...connect.profile, rememberCredential: true } },
             { ...connect, token: null, username: "fixture-user", password: "fixture-password", insecureTls: true, customCaPem: [...new TextEncoder().encode("parity fixture CA")] },
@@ -78,7 +80,7 @@ export async function exportArgo(client: TauriClient, inventories: InventoryAppl
                         }
                         if (application.name !== "tenant-ledger") continue;
                         for (const action of ["refresh", "hardRefresh", "sync", "rollback"] as const) {
-                            const request: ArgoOperationRequest = { connectionId, transport, application: result.application, action, revision: null, resources: [], prune: action === "sync" ? automatedPrune(applicationSpecFromYaml(details.yaml).syncPolicy) : null, dryRun: action === "sync" ? false : null, force: action === "sync" ? false : null, historyId: action === "rollback" ? 17 : null, resourceAction: null, resourceActionParameters: null, resourceVersion: "42", clusterContext: "mock-dev", kubeconfigEnvVar: connected.profile?.kubeconfigSourceKey ?? null, syncPayload: null };
+                            const request: ArgoOperationRequest = { connectionId, transport, application: result.application, action, revision: null, resources: [], prune: action === "sync" ? automatedPrune(applicationSpecFromYaml(details.yaml)?.syncPolicy) : null, dryRun: action === "sync" ? false : null, force: action === "sync" ? false : null, historyId: action === "rollback" ? 17 : null, resourceAction: null, resourceActionParameters: null, resourceVersion: "42", clusterContext: "mock-dev", kubeconfigEnvVar: connected.profile?.kubeconfigSourceKey ?? null, syncPayload: null };
                             const review = await client.invoke("preflight_argo_operation", { request });
                             operations.push({ request, review });
                             if (action === "rollback") {

@@ -112,6 +112,23 @@
 			]
 		},
 		{
+			"id": "metrics.per-context-availability",
+			"title": "A context whose metrics read is forbidden is listed under the card while another context's metrics are available",
+			"steps": [
+				{ "action": "mockTiming", "control": { "operation": "fail", "command": "list_resource_metrics", "context": "admin@solid-k8s", "kind": "forbidden" } },
+				{ "action": "openResources" },
+				{ "action": "expectMetricsCard", "message": "metrics available", "contexts": [] },
+				{ "action": "openLauncher" },
+				{ "action": "editSavedWorkspace", "name": "Parity mock workspace" },
+				{ "action": "toggleWorkspaceContext", "context": "admin@solid-k8s" },
+				{ "action": "saveWorkspace" },
+				{ "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+				{ "action": "openResources" },
+				{ "action": "expectMetricsCard", "message": "metrics available", "contexts": ["admin@solid-k8s: metrics API forbidden"] },
+				{ "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_metrics", "context": "admin@solid-k8s" } }
+			]
+		},
+		{
 			"id": "usage-footer.toggle",
 			"title": "App process usage footer toggles, shows WSS, RSS and PSS, opens the process tree, and its working set setting toggles",
 			"steps": [

@@ -1,5 +1,6 @@
 //! Risk inheritance and weighting from `src/features/rbac/risk.ts`.
 
+use super::principal::{automatic_groups, split_service_account_username};
 use super::{bindings, serde_label};
 use kubecove_lib::models::{
     RbacBindingSummary, RbacInspectionSummary, RbacRiskIndicator, RbacRiskLevel, RbacRoleSummary,
@@ -31,9 +32,15 @@ impl<'a> RiskIndex<'a> {
         let (mut by_account, mut by_group) = (HashMap::new(), HashMap::new());
         for (position, binding) in bindings.iter().enumerate() {
             for subject in &binding.subjects {
-                if subject.kind == "ServiceAccount" {
+                let account = match subject.kind.as_str() {
+                    "ServiceAccount" => Some((subject.namespace.as_deref(), subject.name.as_str())),
+                    "User" => split_service_account_username(&subject.name)
+                        .map(|(namespace, name)| (Some(namespace), name)),
+                    _ => None,
+                };
+                if let Some(account) = account {
                     by_account
-                        .entry((subject.namespace.as_deref(), subject.name.as_str()))
+                        .entry(account)
                         .or_insert_with(Vec::new)
                         .push(position);
                 } else if subject.kind == "Group" {
@@ -75,7 +82,8 @@ impl<'a> RiskIndex<'a> {
         }
     }
 
-    /// Bindings naming the account or its automatic groups, in binding order.
+    /// Bindings naming the account, its username or its automatic groups, in
+    /// binding order.
     pub(super) fn account_bindings(
         &self,
         namespace: &str,
@@ -98,15 +106,6 @@ impl<'a> RiskIndex<'a> {
             .map(|position| self.bindings[position])
             .collect()
     }
-}
-
-/// `automaticServiceAccountGroups`.
-pub fn automatic_groups(namespace: &str) -> [String; 3] {
-    [
-        "system:serviceaccounts".into(),
-        format!("system:serviceaccounts:{namespace}"),
-        "system:authenticated".into(),
-    ]
 }
 
 pub(super) fn unique_risks(risks: Vec<RbacRiskIndicator>) -> Vec<RbacRiskIndicator> {

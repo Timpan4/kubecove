@@ -746,7 +746,7 @@
 			argoSummary={focusedArgoFilterSummary}
 			argoFilter={argoResourceFilter}
 			{hideHistoricalReplicaSets}
-			metricsMessage={reads.metricsMessage}
+			metricsCard={reads.metricsCard}
 			contexts={multiContext ? reads.contexts : []}
 			{contextFilter}
 			onContextFilterChange={(next) => { contextFilter = next; pageIndex = 0; }}

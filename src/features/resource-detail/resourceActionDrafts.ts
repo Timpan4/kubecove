@@ -57,10 +57,17 @@ export const addEnvironment = (container: string, variable: string, value: strin
 	return setEnvironment(container, name, value)(edits, base);
 };
 
+/**
+ * Renames a pending variable in place. A rename onto another drafted name merges
+ * into it: the renamed draft replaces the other one, so one draft per name remains.
+ */
 export const renameEnvironment = (container: string, previousName: string, nextName: string): DraftChange => (edits) =>
 	updateContainer(edits, container, (current) => ({
 		...current,
-		env: (current.env ?? []).map((item) => (item.name === previousName ? { ...item, name: nextName } : item)),
+		env: (current.env ?? []).flatMap((item) => {
+			if (item.name === previousName) return [{ ...item, name: nextName }];
+			return item.name === nextName ? [] : [item];
+		}),
 	}));
 
 export const removeEnvironment = (container: string, variable: string): DraftChange => (edits, base) => {

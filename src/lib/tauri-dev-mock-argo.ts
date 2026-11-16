@@ -30,11 +30,11 @@ export function presentCustomResourceKinds(namespaces: string[] = []): Discovere
 	);
 }
 let argoOutcomeComplete = false;
-export type ArgoMockScript = "base" | "discovery-error" | "target-mismatch" | "preview-error" | "snapshot-error" | "operation-error" | "lazy" | "full-diff" | "connect-pending" | "disconnect-pending";
+export type ArgoMockScript = "base" | "discovery-error" | "target-mismatch" | "preview-error" | "snapshot-error" | "operation-error" | "lazy" | "full-diff" | "connect-pending" | "disconnect-pending" | "credential-error" | "preview-pending";
 declare global { var __kubecoveParityArgo: ArgoMockScript | undefined; }
 // The parity driver sets the global before a reload, so a held script also covers startup reads.
 let argoScript: ArgoMockScript = globalThis.__kubecoveParityArgo ?? "base";
-// "connect-pending" and "disconnect-pending" hold those commands until the next script.
+// "connect-pending", "disconnect-pending" and "preview-pending" hold those commands until the next script.
 const heldArgo: (() => void)[] = [];
 const holdArgo = (script: ArgoMockScript) => argoScript === script ? new Promise<void>((resolve) => heldArgo.push(resolve)) : undefined;
 export function configureArgoMock(script: ArgoMockScript) {
@@ -79,8 +79,9 @@ return {
 		{ id: "service:argocd:argocd-server:80", name: "argocd-server", namespace: "argocd", url: null, transport: "serviceTunnel", endpoint: { kind: "serviceTunnel", namespace: "argocd", serviceName: "argocd-server", servicePort: 80, scheme: "https" }, unavailableReason: null, targetPod: "argocd-server-7d9f8b6c5-x2k4q", argoLabeled: true },
 		{ id: "service:argocd:external", name: "argocd-external", namespace: "argocd", url: null, transport: "serviceTunnel", endpoint: null, unavailableReason: "ExternalName Services cannot be port-forwarded", argoLabeled: false },
 	]; },
-	preview_argo_tunnel_target: (args) => {
+	preview_argo_tunnel_target: async (args) => {
         if (argoScript === "preview-error") throw new Error("Fixture tunnel preview unavailable");
+		await holdArgo("preview-pending");
 		const endpoint = args?.endpoint?.kind === "serviceTunnel" ? args.endpoint : null;
 		return {
 			namespace: endpoint?.namespace ?? "argocd",
@@ -91,6 +92,10 @@ return {
 	},
 	connect_argo_server: async (args) => {
         if (argoScript === "target-mismatch") throw new Error("Fixture tunnel target changed");
+        // A connect error can quote the request URL with its token, which the dialog must redact.
+        if (argoScript === "credential-error") throw new Error("Fixture rejected https://argocd.example.test/api/v1/session?token=parity-leaked-secret");
+        // Parity scenarios type this token for another server, so it must never reach a saved profile.
+        if (args?.token === "token-for-another-server") throw new Error("Fixture received a token meant for another server");
 		await holdArgo("connect-pending");
 		const serverUrl = args?.serverUrl ?? "https://argocd.example.test";
 		const endpoint = normalizedArgoEndpoint(args?.endpoint ?? { kind: "externalHttps", url: serverUrl });
@@ -293,8 +298,14 @@ function fluxDetails(args: MockArgs, genericYaml: YamlFactory): FluxResourceDeta
 	return { summary, yaml: genericYaml(summary.resourceKind.kind, summary.name, summary.namespace, summary.resourceKind.apiVersion), metadata: { labels: { "kustomize.toolkit.fluxcd.io/name": summary.name } }, status: { conditions: [{ type: "Ready", status: summary.readyStatus ?? "Unknown", message: summary.message }] } };
 }
 
+// Read by the argo-policy.* scenarios. Other Applications automate prune and self-heal.
+const syncPolicyYaml = new Map([
+	["platform-storage", "    automated: {}\n"],
+	["platform-ingress", "    automated:\n      enabled: false\n      prune: true\n"],
+]);
+
 export function argoApplicationYaml(app: (typeof argoApps)[number]): string {
-	return `apiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: ${app.name}\n  namespace: ${app.namespace ?? "argocd"}\nspec:\n  project: ${app.project ?? "default"}\n  source:\n    repoURL: ${app.sourceRepo ?? "https://github.com/example/platform-config.git"}\n    path: environments/mock-dev\n    targetRevision: ${app.sourceRevision ?? "main"}\n  destination:\n    server: ${app.destinationServer ?? "https://kubernetes.default.svc"}\n    namespace: ${app.destinationNamespace ?? "default"}\n  syncPolicy:\n    automated:\n      prune: true\n      selfHeal: true\n`;
+	return `apiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: ${app.name}\n  namespace: ${app.namespace ?? "argocd"}\nspec:\n  project: ${app.project ?? "default"}\n  source:\n    repoURL: ${app.sourceRepo ?? "https://github.com/example/platform-config.git"}\n    path: environments/mock-dev\n    targetRevision: ${app.sourceRevision ?? "main"}\n  destination:\n    server: ${app.destinationServer ?? "https://kubernetes.default.svc"}\n    namespace: ${app.destinationNamespace ?? "default"}\n  syncPolicy:\n${syncPolicyYaml.get(app.name) ??"    automated:\n      prune: true\n      selfHeal: true\n"}`;
 }
 
 /** The listed Application with this name, in this namespace when one is given. */

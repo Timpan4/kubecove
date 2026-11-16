@@ -213,7 +213,7 @@ impl Inspector {
             entry
                 .resource_kind
                 .as_deref()
-                .is_some_and(|kind| launcher.overview_kind(kind))
+                .is_some_and(|kind| launcher.overview_kind(kind, entry.api_version.as_deref()))
                 && entry
                     .namespace
                     .as_deref()

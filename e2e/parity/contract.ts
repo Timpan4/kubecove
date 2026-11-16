@@ -39,9 +39,9 @@ export const ACTIONS = [
     "terminalFit",
     "openNamespaceList", "expectNamespaceRow", "resizeViewport", "openNavigationDrawer", "expectNavigationDrawer", "sidebarKey",
     "terminalOutput", "terminalSelect", "terminalCopy", "terminalPaste", "terminalScroll", "terminalPrimaryPaste", "terminalDragOutside", "terminalRelease", "terminalFocus", "terminalRightClick", "expectTerminalCursor",
-    "configureArgoMock", "argoControl", "focusArgoResource", "expectNoSavedArgoProfile", "copyArgoValue", "configureArgoInventory", "expandArgoDiff", "reconnectArgoProfile", "controlClock", "advanceClock",
+    "configureArgoMock", "argoControl", "focusArgoResource", "expectNoSavedArgoProfile", "copyArgoValue", "configureArgoInventory", "expandArgoDiff", "reconnectArgoProfile", "argoProfileSignIn", "controlClock", "advanceClock",
     "failWorkspaceContext", "expectWorkspaceReadWarning", "holdWorkspaceContext", "releaseWorkspaceContext", "expectContextsLoading",
-    "editSavedWorkspace", "expectNoSavedWorkspace", "saveWorkspace", "cancelWorkspaceEdit", "toggleWorkspaceContext", "expectOverviewHealth", "expectDetailContext",
+    "editSavedWorkspace", "expectNoSavedWorkspace", "saveWorkspace", "cancelWorkspaceEdit", "toggleWorkspaceContext", "chooseClusterContext", "expectOverviewHealth", "expectDetailContext",
     "sidebarToggle", "sidebarSelect", "expectSidebarRow", "collapseSidebar", "expectSidebarBranch", "scrollSidebar", "expectSidebarReveal", "refreshPage",
     "replayPageReads", "focusStalePage", "expectPageText",
     "toggleDetailDisclosure", "expectNoPageText",
@@ -50,7 +50,7 @@ export const ACTIONS = [
     "selectHealthFilter", "expectHealthFilter", "chooseGitOpsOwner", "setHistoricalReplicaSets",
     "fillMcpPort", "mcpControl", "expectMcpState", "expectMcpCopy", "expectMcpRequests",
     "selectArgoPreference", "expectSavedArgoProfile", "configureArgoSync", "selectArgoHistory", "expectArgoWorkspaceTransport", "completeArgoOperation", "confirmArgoTunnel",
-    "connectArgoProfile", "disconnectArgoProfile", "confirmArgoReview", "cancelArgoReview", "reviewArgoOperation", "expectArgoReview", "expectArgoText", "argoDocument", "expectArgoPopover", "dismissArgoPopover", "expectArgoCheckbox", "toggleArgoOption", "expectNoArgoControl", "expectArgoFocusInPopover", "tabArgoPopover", "expectArgoTriggerFocus", "expectArgoOptionFocusable","expectArgoOperationState","selectArgoConnection","argoConnectionDialog","fillArgoConnectionField","expectArgoConnectionField",
+    "connectArgoProfile", "disconnectArgoProfile", "confirmArgoReview", "cancelArgoReview", "reviewArgoOperation", "expectArgoReview", "expectArgoText", "expectArgoPolicy", "argoDocument", "expectArgoPopover", "dismissArgoPopover", "expectArgoCheckbox", "toggleArgoOption", "expectNoArgoControl", "expectArgoFocusInPopover", "tabArgoPopover", "expectArgoTriggerFocus", "expectArgoOptionFocusable","expectArgoOperationState","selectArgoConnection","argoConnectionDialog","fillArgoConnectionField","expectArgoConnectionField",
     "cancelYamlEdit",
     "revealSecretValue", "hideSecretValue", "expectSecretValue", "expectYamlLens", "refreshLatencyReport", "clearLatencyReport", "expectLatencyEmpty", "expectLatencyTiming", "openDocumentation", "expectDocumentationRequest", "copyLatencyReport", "expectLatencyReportCopy", "updateStatusControl", "expectUpdateControl",
     "expectViewTiming", "copyInteractions", "clearInteractions", "expectInteractionCopy", "typeSettingsField",
@@ -61,7 +61,7 @@ export const ACTIONS = [
     "expectWorkspaceExport", "exportSavedWorkspace", "expectExportedShortcut",
     "expectAccessibleName", "fillSettingsField", "clickSettingsButton", "clickKubeconfigPathButton", "expectKubeconfigPathBefore", "expectSettingsText", "expectNoSettingsText", "expectRuntimeEndpoint", "expectMaskedToken", "reopenStoredSettings", "configureSettingsMock",
 	"expectLiveState", "expectLiveMenu", "replayLiveData", "expectResourceStatus", "openCustomKind",
-	"selectTopologyNode", "expectTopologyEmpty", "expectUsageFooter", "openUsageTree", "expectNoUsageFooter", "expectUsageProcess", "setTopologyMode", "selectNamespace", "expectTopology", "expectTopologyEdge", "expectNoTopologyNode", "expectResourceMetrics",
+	"selectTopologyNode", "expectTopologyEmpty", "expectUsageFooter", "openUsageTree", "expectNoUsageFooter", "expectUsageProcess", "setTopologyMode", "selectNamespace", "expectTopology", "expectTopologyEdge", "expectNoTopologyNode", "expectResourceMetrics", "expectMetricsCard",
 	"expectYamlAbsent",
 	"expectYamlEditorDiagnostics",
 	"clickActionEntry",
@@ -181,7 +181,7 @@ function step<Value>(value: Value): Step {
         case "expectContextsLoading": return { action: item.action, contexts: strings(item.contexts, true) };
         case "editSavedWorkspace": case "expectNoSavedWorkspace": return { action: item.action, name: string(item.name) };
         case "saveWorkspace": case "cancelWorkspaceEdit": return { action: item.action };
-        case "toggleWorkspaceContext": case "expectDetailContext": return { action: item.action, context: string(item.context) };
+        case "toggleWorkspaceContext": case "chooseClusterContext": case "expectDetailContext": return { action: item.action, context: string(item.context) };
         case "expectOverviewHealth": return { action: item.action, total: count(item.total) };
         case "refreshPage": return { action: item.action, page: oneOf(["RBAC", "Incidents"], item.page, "a refresh button page") };
         case "replayPageReads": return { action: item.action, phase: oneOf(["base", "updated", "failed"], item.phase, "a page read phase") };
@@ -241,7 +241,7 @@ function step<Value>(value: Value): Step {
         case "expectAccessibleName": return { action: item.action, name: string(item.name) };
         case "expectSettingsText": case "expectNoSettingsText": case "expectRuntimeEndpoint": return { action: item.action, value: string(item.value) };
         case "expectMaskedToken": case "reopenStoredSettings": return { action: item.action };
-        case "configureSettingsMock": return { action: item.action, script: oneOf(["oidc-server", "oidc-browser-waits", "oidc-sign-in-fails", "oidc-memory-only", "oidc-store-keeps-sign-in", "access-server", "choose-kubeconfig", "choose-workspace", "choose-unavailable-workspace", "choose-application-workspace", "choose-compare-workspace", "choose-last-export", "cancel-dialog", "no-update", "invalid-signature", "update-available", "update-installs", "update-download-waits"], item.script, "a settings script") };
+        case "configureSettingsMock": return { action: item.action, script: oneOf(["oidc-server", "oidc-browser-waits", "oidc-sign-in-fails", "oidc-memory-only", "oidc-store-keeps-sign-in", "access-server", "choose-kubeconfig", "choose-workspace", "choose-unavailable-workspace", "choose-application-workspace", "choose-foreign-kind-workspace", "choose-compare-workspace", "choose-last-export", "cancel-dialog", "no-update", "invalid-signature", "update-available", "update-installs", "update-download-waits"], item.script, "a settings script") };
         case "expectWorkspaceExport": case "exportSavedWorkspace": return { action: item.action, name: string(item.name) };
         case "expectExportedShortcut": return { action: item.action, name: string(item.name), shortcut: object(item.shortcut) };
         case "expectResourceStatus": return { action: item.action, kind: string(item.kind), namespace: string(item.namespace), name: string(item.name), status: string(item.status) };
@@ -270,6 +270,7 @@ function step<Value>(value: Value): Step {
         case "expectResourceMetrics":
             if (!isString(item.namespace)) throw new Error("Expected namespace");
             return { action: item.action, kind: string(item.kind), namespace: item.namespace, name: string(item.name), cpu: string(item.cpu), memory: string(item.memory) };
+        case "expectMetricsCard": return { action: item.action, message: string(item.message), contexts: strings(item.contexts, true) };
 		case "expectYamlAbsent": return { action: item.action, fragments: strings(item.fragments, false) };
 		case "clickActionEntry": return { action: item.action, label: string(item.label), button: oneOf(["Add", "Remove", "Restore"], item.button, "an entry action") };
 		case "fillContainerImage": return { action: item.action, container: string(item.container), value: string(item.value) };

@@ -98,7 +98,7 @@ export type Step =
     | { action: "expectContextsLoading"; contexts: string[] }
     | { action: "editSavedWorkspace" | "expectNoSavedWorkspace"; name: string }
     | { action: "saveWorkspace" | "cancelWorkspaceEdit" }
-    | { action: "toggleWorkspaceContext"; context: string }
+    | { action: "toggleWorkspaceContext" | "chooseClusterContext"; context: string }
     | { action: "expectOverviewHealth"; total: number }
     | { action: "expectActivePage"; page: string }
     | { action: "expectGitOpsSelection"; name: string; namespace?: string }
@@ -140,20 +140,21 @@ export type Step =
     | { action: "disconnectArgoProfile" | "confirmArgoReview" | "cancelArgoReview" }
     | { action: "reviewArgoOperation"; operation: "Refresh" | "Hard refresh" | "Sync" | "Rollback" }
     | { action: "configureArgoMock"; script: import("../../src/lib/tauri-dev-mock-argo").ArgoMockScript }
-    | { action: "argoControl"; control: "Open connection" | "Close connection" | "Disconnect" | "Forget" | "Retry" | "Confirm target again" | "Retry operation" | "Retry state refresh" | "Retry snapshot" | "Technical detail" | "Show diff" | "Show fewer lines" | "All changes" | "Sync options" | "Sync with these options" | "Refresh options"; url?: string }
+    | { action: "argoControl"; control: "Open connection" | "Close connection" | "Disconnect" | "Forget" | "Cancel sign-in" | "Retry" | "Confirm target again" | "Retry operation" | "Retry state refresh" | "Retry snapshot" | "Technical detail" | "Show diff" | "Show fewer lines" | "All changes" | "Sync options" | "Sync with these options" | "Refresh options"; url?: string }
     | { action: "focusArgoResource"; key: string; label: string }
     | { action: "expectNoSavedArgoProfile"; url: string }
     | { action: "expandArgoDiff" }
     | { action: "reconnectArgoProfile" }
+    | { action: "argoProfileSignIn"; token: string; tunnel?: boolean; pending?: boolean; submit?: boolean }
     | { action: "configureArgoInventory"; mode: import("../../src/lib/tauri-dev-mock-argo").ArgoInventoryMode }
     | { action: "copyArgoValue"; control: "source" | "revision" | "repository value" | "release value" | "cluster target value"; contains: string }
     | { action: "expectArgoReview"; operation: string; name: string; namespace: string; transport: string }
-    | { action: "expectArgoText"; text: string }
+    | { action: "expectArgoText" | "expectArgoPolicy"; text: string }
     | { action: "expectArgoPopover"; control: "Sync options" | "Refresh options"; open: boolean }
     | { action: "dismissArgoPopover"; how: "Escape" | "outside click" }
     | { action: "expectArgoCheckbox"; name: ArgoOptionName; checked: boolean }
     | { action: "toggleArgoOption"; name: ArgoOptionName }
-    | { action: "expectNoArgoControl"; control: "Confirm target again" | "Reconnect" }
+    | { action: "expectNoArgoControl"; control: "Confirm target again" | "Reconnect" | "Confirm and connect" }
     | { action: "expectArgoFocusInPopover"; control: "Sync options" | "Refresh options" }
     | { action: "tabArgoPopover"; control: "Sync options" | "Refresh options"; presses: number }
     | { action: "argoConnectionDialog"; operation: "open" | "expectFocusIn" | "tabCycle" | "shiftTabCycle" | "escape" | "outsideClick" | "expectOpen" | "expectConnectForm" | "expectRemember" | "expectLocalLogin" | "expectInsecure" | "chooseLocalLogin" | "chooseInsecure" | "openDetail" | "chooseFoundInCluster" | "chooseExternalUrl" | "expectFoundInCluster" | "expectInWindow" | "expectReachable"; open: boolean; checked: boolean; control: string }
@@ -199,7 +200,7 @@ export type Step =
     | { action: "expectAccessibleName"; name: string }
     | { action: "expectSettingsText" | "expectNoSettingsText" | "expectRuntimeEndpoint"; value: string }
     | { action: "expectMaskedToken" | "reopenStoredSettings" }
-    | { action: "configureSettingsMock"; script: "oidc-server" | "oidc-browser-waits" | "oidc-sign-in-fails" | "oidc-memory-only" | "oidc-store-keeps-sign-in" | "access-server" | "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "choose-application-workspace" | "choose-compare-workspace" | "choose-last-export" | "cancel-dialog" | "no-update" | "invalid-signature" | "update-available" | "update-installs" | "update-download-waits" }
+    | { action: "configureSettingsMock"; script: "oidc-server" | "oidc-browser-waits" | "oidc-sign-in-fails" | "oidc-memory-only" | "oidc-store-keeps-sign-in" | "access-server" | "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "choose-application-workspace" | "choose-foreign-kind-workspace" | "choose-compare-workspace" | "choose-last-export" | "cancel-dialog" | "no-update" | "invalid-signature" | "update-available" | "update-installs" | "update-download-waits" }
     | { action: "expectLiveState"; label: string; notice?: string }
     /** Opens the live-updates menu and checks its status message, refresh hint and refresh button. */
     | { action: "expectLiveMenu"; message: string }
@@ -330,6 +331,8 @@ export type Step =
     | { action: "expectTopologyEmpty"; title: string }
     | { action: "selectTopologyNode" | "expectNoTopologyNode"; id: string }
     | { action: "expectResourceMetrics"; kind: string; namespace: string; name: string; cpu: string; memory: string }
+    /** The Resource metrics card's message and its "<context>: <issue>" lines in rank order. */
+    | { action: "expectMetricsCard"; message: string; contexts: string[] }
     | { action: "sortResourceTable"; column: (typeof SORT_COLUMNS)[number] }
     | { action: "expectResourceOrder"; names: string[] }
     | { action: "toggleResourceGroup"; label: string }

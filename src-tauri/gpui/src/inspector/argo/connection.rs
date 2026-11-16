@@ -1,6 +1,7 @@
 //! Workspace-scoped connection state. Credentials live only in masked inputs until submission.
 use super::super::{Inspector, detail::Detail, request::InFlight};
 use super::connection_view::same_server;
+use super::sign_in::{CredentialFields, SignIn};
 use crate::backend::ArgoConnect;
 use gpui_kit::{
     AppContext, Context, Entity, FocusHandle, Window,
@@ -24,10 +25,13 @@ pub(super) enum ConnectStep {
     Busy {
         _read: InFlight,
     },
-    /// A previewed tunnel target that waits for the user's confirmation.
+    /// A previewed tunnel target that waits for the user's confirmation. `saved` is the saved
+    /// profile it reconnects, as the web's step carries it, so confirming never falls back to
+    /// the form's credential after the form's choices changed.
     ConfirmTarget {
         endpoint: ArgoServerEndpoint,
         preview: ArgoTunnelTargetPreview,
+        saved: Option<ArgoConnectionProfile>,
     },
     /// `reconfirm` is the remembered tunnel profile whose reconnect failed. Only it
     /// offers a fresh preview of its saved target, as on the web.
@@ -83,9 +87,7 @@ pub(super) struct DialogFields {
     pub root_path: Entity<InputState>,
     pub tls_name: Entity<InputState>,
     pub ca: Entity<TextareaState>,
-    pub token: Entity<InputState>,
-    pub username: Entity<InputState>,
-    pub password: Entity<InputState>,
+    pub credential: CredentialFields,
 }
 impl DialogFields {
     fn new(window: &mut Window, cx: &mut gpui_kit::App) -> Self {
@@ -95,18 +97,14 @@ impl DialogFields {
             root_path: cx.new(|cx| InputState::new(window, cx)),
             tls_name: cx.new(|cx| InputState::new(window, cx)),
             ca: cx.new(|cx| TextareaState::new(window, cx).rows(3)),
-            token: cx.new(|cx| InputState::new(window, cx).masked(true)),
-            username: cx.new(|cx| InputState::new(window, cx)),
-            password: cx.new(|cx| InputState::new(window, cx).masked(true)),
+            credential: CredentialFields::new(window, cx),
         }
     }
     /// Empties the typed credentials and the CA, as the web does after a submit.
     pub fn clear_secrets(&self, window: &mut Window, cx: &mut gpui_kit::App) {
         self.ca
             .update(cx, |input, cx| input.set_value("", window, cx));
-        for field in [&self.token, &self.username, &self.password] {
-            field.update(cx, |input, cx| input.set_value("", window, cx));
-        }
+        self.credential.clear(window, cx);
     }
     /// Empties every field, as the web loses them when its dialog unmounts.
     pub fn clear_all(&self, window: &mut Window, cx: &mut gpui_kit::App) {
@@ -130,6 +128,8 @@ pub(super) struct Connections {
     pub(super) profiles: Vec<ArgoConnectionStatus>,
     pub(super) selected: Preference,
     pub(super) editing: Option<ArgoConnectionProfile>,
+    /// The saved profile that asks for its credential in its own row. Closing the dialog drops it.
+    pub(super) sign_in: Option<SignIn>,
     pub(super) scope: String,
     pub(super) host: DialogHost,
     /// The GitOps page dialog's choices. Leaving the page or changing the scope resets them.
@@ -206,6 +206,7 @@ impl Connections {
             profiles: vec![],
             selected: Preference::Automatic,
             editing: None,
+            sign_in: None,
             scope: String::new(),
             host: DialogHost::default(),
             page: DialogChoices::default(),
@@ -251,6 +252,8 @@ impl Connections {
             DialogHost::Detail => self.detail = DialogChoices::default(),
             DialogHost::Page => self.page = DialogChoices::default(),
         }
+        // The row sign-in belongs to the open dialog, so a reset surface drops its typed credential.
+        self.sign_in = None;
         self.discard_fields(host, cx);
     }
     /// Empties a dialog's text once its surface unmounts, as the web does. The reset sites
@@ -305,7 +308,7 @@ impl Inspector {
     /// value, so UI tests ask here.
     #[doc(hidden)]
     pub fn argo_typed_secret(&self, field: &str, cx: &gpui_kit::App) -> String {
-        let fields = self.argo.connections.fields();
+        let fields = &self.argo.connections.fields().credential;
         let input = match field {
             "token" => &fields.token,
             "password" => &fields.password,
@@ -342,6 +345,7 @@ impl Inspector {
         state.discovery.take();
         state.dialog = false;
         state.editing = None;
+        state.sign_in = None;
         cx.notify();
     }
     /// Records a connected profile and saves it, as the web's connection status cache does.
@@ -379,17 +383,27 @@ impl Inspector {
         let state = &self.argo.connections;
         let choices = state.choices();
         let fields = state.fields();
-        let remembered = state
-            .editing
-            .as_ref()
-            .is_some_and(|p| p.remember_credential);
-        let credential = if choices.local {
-            !fields.username.read(cx).value().is_empty()
-                && !fields.password.read(cx).value().is_empty()
-        } else {
-            !fields.token.read(cx).value().is_empty()
+        // A confirmed preview belongs to the profile it was previewed for, whatever the form
+        // shows now. Otherwise the profile being reconnected is the one being edited.
+        let saved = match (&confirmed_target, &state.step) {
+            (Some(_), ConnectStep::ConfirmTarget { saved, .. }) => saved.clone(),
+            _ => state.editing.clone(),
         };
-        if !credential && !remembered {
+        let saved = saved.as_ref();
+        let remembered = saved.is_some_and(|p| p.remember_credential);
+        // A saved profile signs in with its keyring credential or the one typed in its own row.
+        // The new-connection form's credential and TLS choices may be meant for another server.
+        let credential = match saved {
+            None => fields.credential.read(choices.local, cx),
+            Some(p) => state
+                .sign_in
+                .as_ref()
+                .filter(|s| s.profile_id == p.id)
+                .map(|s| s.fields.read(s.local, cx))
+                .unwrap_or_default(),
+        };
+        let form = saved.is_none();
+        if credential.is_empty() && !remembered {
             self.argo.connections.step = ConnectStep::failed(
                 "Enter a token or local username and password before connecting.",
             );
@@ -402,9 +416,7 @@ impl Inspector {
         };
         let mut endpoint = previewed
             .or_else(|| {
-                state
-                    .editing
-                    .as_ref()
+                saved
                     .map(|p| p.endpoint.clone())
                     .or_else(|| choices.endpoint.clone())
             })
@@ -412,7 +424,7 @@ impl Inspector {
                 url: fields.url.read(cx).value().trim().to_owned(),
             });
         if confirmed_target.is_none()
-            && state.editing.is_none()
+            && form
             && let ArgoServerEndpoint::ServiceTunnel {
                 root_path,
                 tls_server_name,
@@ -431,13 +443,14 @@ impl Inspector {
         if matches!(endpoint, ArgoServerEndpoint::ServiceTunnel { .. })
             && confirmed_target.is_none()
         {
-            self.preview_argo_target(endpoint, window, cx);
+            let saved = saved.cloned();
+            self.preview_argo_target(endpoint, saved, window, cx);
             return;
         }
         let url = super::profiles::endpoint_url(&endpoint);
         let external = matches!(endpoint, ArgoServerEndpoint::ExternalHttps { .. });
         let profile = ArgoConnectionProfile {
-            id: state.editing.as_ref().map_or_else(
+            id: saved.map_or_else(
                 || {
                     format!(
                         "argo:{}:{}:{}:{}",
@@ -455,37 +468,13 @@ impl Inspector {
             workspace_id: Some(self.argo_workspace_id()),
             kubeconfig_source_key: self.argo_source_key().map(str::to_owned),
             transport: "connected".into(),
-            remember_credential: choices.remember
-                || state
-                    .editing
-                    .as_ref()
-                    .is_some_and(|p| p.remember_credential),
+            remember_credential: saved.map_or(choices.remember, |p| p.remember_credential),
         };
-        let value = |field: &Entity<InputState>| {
-            let s = field.read(cx).value().to_string();
-            (!s.is_empty()).then_some(s)
-        };
-        // A remembered profile reconnects with its keyring credential and default TLS
-        // checks, as the web does. The form holds what was typed for a new connection,
-        // which may be meant for another server.
-        let form = !remembered;
         let read = self.backend.connect_argo(ArgoConnect {
             profile,
-            token: if form && !choices.local {
-                value(&fields.token)
-            } else {
-                None
-            },
-            username: if form && choices.local {
-                value(&fields.username)
-            } else {
-                None
-            },
-            password: if form && choices.local {
-                value(&fields.password)
-            } else {
-                None
-            },
+            token: credential.token,
+            username: credential.username,
+            password: credential.password,
             insecure_tls: form && external && choices.insecure,
             custom_ca_pem: if form && external {
                 let ca = fields.ca.read(cx).value().to_string();
@@ -495,11 +484,13 @@ impl Inspector {
             },
             confirmed_target,
         });
-        let reconfirm = state.editing.clone().filter(|p| {
+        let reconfirm = saved.cloned().filter(|p| {
             p.remember_credential && matches!(p.endpoint, ArgoServerEndpoint::ServiceTunnel { .. })
         });
         if form {
             self.clear_argo_secrets(window, cx);
+        } else if let Some(sign_in) = &self.argo.connections.sign_in {
+            sign_in.fields.clear(window, cx);
         }
         let task = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
@@ -507,6 +498,7 @@ impl Inspector {
                 match connected(result) {
                     Ok(status) => {
                         this.argo.connections.step = ConnectStep::Idle;
+                        this.argo.connections.sign_in = None;
                         this.record_argo_status(status, window, cx);
                         this.argo.connections.dialog = false;
                         this.reload_argo(window, cx);

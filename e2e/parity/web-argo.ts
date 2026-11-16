@@ -18,6 +18,21 @@ export async function argoAction(page: Page, step: Step) {
             await page.getByRole("tabpanel").getByRole("button", { name: /^(Manage connection|Connect Argo CD)$/ }).click();
             await page.getByRole("dialog").getByRole("button", { name: "Reconnect", exact: true }).click();
             break;
+        case "argoProfileSignIn": {
+            // A saved profile without a remembered credential asks for it in its own row.
+            const dialog = page.getByRole("dialog", { name: "Argo CD connection" });
+            await dialog.getByLabel(/^Token for /).fill(step.token);
+            // `submit: false` only edits the row, as while its tunnel target waits for confirmation.
+            if (step.submit === false) break;
+            await dialog.getByRole("button", { name: "Sign in", exact: true }).click();
+            // A held preview stays pending for the next steps.
+            if (step.pending) break;
+            // A tunnel profile first previews its target, which the next steps confirm or cancel.
+            if (step.tunnel) { await dialog.getByText("Confirm tunnel target", { exact: true }).waitFor(); break; }
+            await dialog.getByRole("button", { name: "Disconnect", exact: true }).waitFor();
+            await page.keyboard.press("Escape");
+            break;
+        }
         case "expandArgoDiff": await page.getByRole("button", { name: /^Show all .* lines$/ }).first().click(); break;
         case "configureArgoInventory":
             await page.evaluate(`import('/src/lib/tauri-dev-mock-argo.ts').then(m => m.configureArgoInventory(${JSON.stringify(step.mode)}))`);
@@ -145,6 +160,11 @@ export async function argoAction(page: Page, step: Step) {
             const technical = page.locator("details").filter({ has: text });
             if (await technical.count() && !(await text.isVisible())) await technical.locator("summary").click();
             await text.waitFor();
+            break;
+        }
+        case "expectArgoPolicy": {
+            const value = page.getByText("Policy", { exact: true }).locator("xpath=following-sibling::span[1]");
+            await value.filter({ hasText: new RegExp(`^${step.text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`) }).waitFor();
             break;
         }
         case "argoDocument":

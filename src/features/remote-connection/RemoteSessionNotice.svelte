@@ -27,6 +27,7 @@
 			return;
 		}
 		// The sign-in call lasts until the browser finishes or the user cancels, so its notice stays usable.
+		// A session that is still opening keeps its Cancel, which disconnects.
 		const blocking = action !== "signIn";
 		busy = blocking;
 		try {
@@ -51,7 +52,7 @@
 			<Button
 				type="button"
 				variant={index === 0 ? "default" : "outline"}
-				disabled={busy && action !== "cancelSignIn"}
+				disabled={busy && action !== "cancelSignIn" && action !== "cancelConnecting"}
 				onclick={() => void run(action)}
 			>
 				{REMOTE_NOTICE_LABELS[action]}

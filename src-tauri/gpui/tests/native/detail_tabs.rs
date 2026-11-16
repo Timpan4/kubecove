@@ -27,6 +27,10 @@ pub struct DetailControls {
     preview_fail: AtomicBool,
     execute_fail: AtomicBool,
     executed: AtomicUsize,
+    /// Holds the next execution until the test releases it.
+    execute_gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+    /// Executions that ran to the end instead of being dropped.
+    execute_finished: Arc<AtomicUsize>,
     dry_run_fail: AtomicBool,
     /// Holds the next dry run until the test releases it.
     dry_run_gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
@@ -113,7 +117,13 @@ impl DetailControls {
     pub fn execute_action(&self, request: ResourceActionRequest) -> Read<ClusterOperationResult> {
         let fail = self.execute_fail.load(Ordering::SeqCst);
         self.executed.fetch_add(1, Ordering::SeqCst);
+        let gate = self.execute_gate.lock().unwrap().take();
+        let finished = self.execute_finished.clone();
         Box::pin(async move {
+            if let Some(gate) = gate {
+                let _ = gate.await;
+            }
+            finished.fetch_add(1, Ordering::SeqCst);
             if fail {
                 return Err(AppError::new(
                     "resourceVersion changed",
@@ -313,6 +323,36 @@ fn a_failed_execution_keeps_the_review_open(cx: &mut TestAppContext) {
         assert!(window.try_find("action-result").is_none());
     });
     assert_eq!(backend.detail.executed.load(Ordering::SeqCst), 1);
+}
+
+/// Failure mode: closing the detail drops the running execution, which aborts
+/// a write the API server may already have applied. Like the web session, the
+/// write finishes and its result is dropped, so the reopened detail shows none.
+#[gpui_kit::test]
+fn a_running_action_finishes_after_its_detail_closes(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    let (release, gate) = tokio::sync::oneshot::channel();
+    *backend.detail.execute_gate.lock().unwrap() = Some(gate);
+    let handle = open_tab(cx, backend.clone(), "actions");
+    step(cx, handle, |window, cx| window.click("action-restart", cx));
+    step(cx, handle, |window, cx| window.click("review-execute", cx));
+    // Escape hides the dialog while the review keeps executing.
+    step(cx, handle, |window, cx| window.press("escape", cx));
+    step(cx, handle, |window, cx| window.click("close-detail", cx));
+    step(cx, handle, |window, cx| {
+        window.click("resource:Deployment:payments:payments-api:mock-dev", cx);
+    });
+    step(cx, handle, |window, cx| window.click("show-actions", cx));
+    assert!(
+        release.send(()).is_ok(),
+        "closing the detail must not abort the running execution"
+    );
+    cx.run_until_parked();
+    assert_eq!(backend.detail.execute_finished.load(Ordering::SeqCst), 1);
+    step(cx, handle, |window, _| {
+        assert!(window.try_find("action-result").is_none());
+        assert!(window.try_find("review-title").is_none());
+    });
 }
 
 pub fn edit_draft(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, yaml: &str) {

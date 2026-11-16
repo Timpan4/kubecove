@@ -2,7 +2,9 @@
 //! A record is active while its evidence fingerprint matches the loaded
 //! inspection and stale once that evidence changes.
 
-use super::{CockpitItem, ObjectRef, bindings, binds_account, binds_role, subject_label};
+use super::{
+    CockpitItem, ObjectRef, Principal, bindings, binds_principal, binds_role, subject_label,
+};
 use kubecove_lib::models::{
     RbacBindingSummary, RbacInspectionSummary, RbacRiskIndicator, RbacRoleSummary,
 };
@@ -226,18 +228,21 @@ fn evidence(data: &RbacInspectionSummary, item: &CockpitItem) -> Value {
             "binding",
             binding_evidence(binding, bound_role(data, binding)),
         ),
-        ObjectRef::Account(account) => (
-            "serviceAccount",
-            json!({
-                "automountToken": account.automount_token,
-                "secretsCount": account.secrets_count,
-                "imagePullSecretsCount": account.image_pull_secrets_count,
-                "inheritedPaths": sorted(bindings(data)
-                    .filter(|binding| binds_account(binding, &account.namespace, &account.name))
-                    .map(|binding| binding_evidence(binding, bound_role(data, binding)))
-                    .collect()),
-            }),
-        ),
+        ObjectRef::Account(account) => {
+            let principal = Principal::service_account(&account.namespace, &account.name);
+            (
+                "serviceAccount",
+                json!({
+                    "automountToken": account.automount_token,
+                    "secretsCount": account.secrets_count,
+                    "imagePullSecretsCount": account.image_pull_secrets_count,
+                    "inheritedPaths": sorted(bindings(data)
+                        .filter(|binding| binds_principal(binding, &principal))
+                        .map(|binding| binding_evidence(binding, bound_role(data, binding)))
+                        .collect()),
+                }),
+            )
+        }
         ObjectRef::Namespace(_) => return evidence,
     };
     evidence[extra.0] = extra.1;

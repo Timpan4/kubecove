@@ -404,7 +404,16 @@ fn queue_card(
             div().flex().flex_wrap().gap(px(4.)).mt(px(8.)).children(
                 rbac::queue_tags(data, item)
                     .into_iter()
-                    .map(|tag| ui::outline_badge(tag).h(px(16.)).px(px(6.)).rounded(px(4.))),
+                    .enumerate()
+                    .map(|(index, tag)| {
+                        ui::outline_badge(tag.clone())
+                            .id(SharedString::from(format!("rbac-tag:{}:{index}", item.key)))
+                            .test_support()
+                            .aria_label(tag)
+                            .h(px(16.))
+                            .px(px(6.))
+                            .rounded(px(4.))
+                    }),
             ),
         )
         .child(
