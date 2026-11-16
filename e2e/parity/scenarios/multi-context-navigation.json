@@ -59,6 +59,45 @@
       ]
     },
     {
+      "id": "multi-context-navigation.helm-selection-per-workspace",
+      "title": "A release selected in one workspace stays out of another workspace on the same context, and returns when its workspace reopens",
+      "steps": [
+        { "action": "openPage", "page": "Helm" },
+        { "action": "openHelmRelease", "name": "metrics-gateway", "namespace": "platform" },
+        { "action": "expectHelmDetails", "title": "metrics-gateway", "description": "platform / Secret:sh.helm.release.v1.metrics-gateway.v7", "totals": "4 tracked, 1 missing, 0 label-only" },
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Helm selection peer" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Helm selection peer", "context": "mock-dev" },
+        { "action": "openPage", "page": "Helm" },
+        { "action": "expectHelmCount", "count": 3 },
+        { "action": "expectNoPageText", "text": "platform / Secret:sh.helm.release.v1.metrics-gateway.v7" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectHelmDetails", "title": "metrics-gateway", "description": "platform / Secret:sh.helm.release.v1.metrics-gateway.v7", "totals": "4 tracked, 1 missing, 0 label-only" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Helm selection peer" },
+        { "action": "expectHelmCount", "count": 3 },
+        { "action": "expectNoPageText", "text": "platform / Secret:sh.helm.release.v1.metrics-gateway.v7" }
+      ]
+    },
+    {
+      "id": "multi-context-navigation.helm-namespace-per-workspace",
+      "title": "A Helm namespace filter chosen in one workspace does not filter another workspace's Helm page",
+      "steps": [
+        { "action": "openPage", "page": "Helm" },
+        { "action": "expectHelmCount", "count": 3 },
+        { "action": "selectHelmNamespace", "namespace": "platform" },
+        { "action": "expectHelmCount", "count": 1 },
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Helm namespace peer" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Helm namespace peer", "context": "mock-dev" },
+        { "action": "openPage", "page": "Helm" },
+        { "action": "expectHelmCount", "count": 3 }
+      ]
+    },
+    {
       "id": "multi-context-navigation.gitops-application-namespace",
       "title": "A recent Application reopens in its own namespace when another namespace has an Application with the same name",
       "steps": [

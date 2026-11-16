@@ -118,10 +118,12 @@ impl HelmPage {
     }
 
     /// Applies a workspace's remembered release: its context and target, with
-    /// no selection left over from the previous workspace.
+    /// no selection or namespace filter left over from the previous workspace,
+    /// as the web's `HelmSurface` starts each workspace with `helmNamespace` unset.
     pub(super) fn restore(&mut self, target: Option<HelmTarget>) {
         self.requested_context = target.as_ref().map(|target| target.context.clone());
         self.target = target;
+        self.namespace = None;
         self.selected = None;
         self.details = HelmDetails::default();
     }
