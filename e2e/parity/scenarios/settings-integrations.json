@@ -128,6 +128,57 @@
       ]
     },
     {
+      "id": "settings-kubeconfig.source-change-refreshes-contexts",
+      "title": "Adding a kubeconfig file lists its context in the launcher at once, and removing it marks a workspace on that context unavailable",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Kubeconfig" },
+        { "action": "addPastedKubeconfigPaths", "value": "/fixtures/mock-added.kubeconfig" },
+        { "action": "expectSettingsText", "value": "/fixtures/mock-added.kubeconfig" },
+        { "action": "closeSettings" },
+        { "action": "openLauncher" },
+        { "action": "selectWorkspaceContext", "context": "mock-added" },
+        { "action": "nameWorkspace", "value": "Added source" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Added source", "context": "mock-added" },
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Kubeconfig" },
+        { "action": "clickKubeconfigPathButton", "value": "/fixtures/mock-added.kubeconfig", "label": "Remove kubeconfig path" },
+        { "action": "expectNoSettingsText", "value": "/fixtures/mock-added.kubeconfig" },
+        { "action": "closeSettings" },
+        { "action": "openLauncher" },
+        { "action": "expectContextUnavailable", "name": "Added source" }
+      ]
+    },
+    {
+      "id": "settings-kubeconfig.pending-path-keeps-new-draft",
+      "title": "A path typed while an added path saves stays in the field, and the server path field waits for its save",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Kubeconfig" },
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "add_kubeconfig_paths", "context": "" } },
+        { "action": "addPastedKubeconfigPaths", "value": "/srv/parity-first.yaml" },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "add_kubeconfig_paths", "context": "" } },
+        { "action": "fillKubeconfigPathDraft", "value": "/srv/parity-next.yaml" },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "add_kubeconfig_paths", "context": "" } },
+        { "action": "expectSettingsText", "value": "/srv/parity-first.yaml" },
+        { "action": "expectKubeconfigPathDraft", "value": "/srv/parity-next.yaml", "enabled": true },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "fillSettingsField", "field": "Server token", "value": "parity-controlled-credential" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "expectRemoteHost", "url": "http://127.0.0.1:43117" },
+        { "action": "showSettingsSection", "section": "Kubeconfig" },
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "add_kubeconfig_paths", "context": "" } },
+        { "action": "addServerKubeconfigPath", "value": "/srv/parity-remote.yaml" },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "add_kubeconfig_paths", "context": "" } },
+        { "action": "expectKubeconfigPathDraft", "value": "/srv/parity-remote.yaml", "enabled": false },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "add_kubeconfig_paths", "context": "" } },
+        { "action": "expectSettingsText", "value": "/srv/parity-remote.yaml" },
+        { "action": "expectKubeconfigPathDraft", "value": "", "enabled": true }
+      ]
+    },
+    {
       "id": "settings-remote.header-badge-and-session",
       "title": "The header badge names the connected host with its status tooltip, and Settings shows the server and grace period while connected",
       "steps": [

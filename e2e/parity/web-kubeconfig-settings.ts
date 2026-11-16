@@ -1,6 +1,8 @@
 import type { Page } from "playwright-core";
 import type { Step } from "./contract";
 
+const pastedPaths = (page: Page) => page.getByRole("textbox", { name: "Paste kubeconfig paths", exact: true });
+
 /** Kubeconfig source actions in the settings page. Remote mode uses the server path field. */
 export async function kubeconfigSettingsAction(page: Page, step: Step): Promise<void> {
 	switch (step.action) {
@@ -8,6 +10,24 @@ export async function kubeconfigSettingsAction(page: Page, step: Step): Promise<
 			await page.getByRole("textbox", { name: "Kubeconfig path on server", exact: true }).fill(step.value);
 			await page.getByRole("button", { name: "Add server path", exact: true }).click();
 			return;
+		case "addPastedKubeconfigPaths":
+			await pastedPaths(page).fill(step.value);
+			await page.getByRole("button", { name: "Add pasted paths", exact: true }).click();
+			return;
+		case "fillKubeconfigPathDraft":
+			await pastedPaths(page).fill(step.value);
+			return;
+		case "expectKubeconfigPathDraft": {
+			// The field of the current mode: the server path when remote, else the pasted paths.
+			const field = page.getByRole("textbox", { name: "Kubeconfig path on server", exact: true }).or(pastedPaths(page));
+			const handle = await field.elementHandle();
+			await page.waitForFunction(({ field, value, enabled }) =>
+				(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) && field.value === value && field.disabled !== enabled,
+			{ field: handle, value: step.value, enabled: step.enabled }).catch((error) => {
+				throw new Error(`Kubeconfig path draft is not ${JSON.stringify(step.value)} with enabled ${step.enabled}: ${String(error)}`);
+			});
+			return;
+		}
 		case "expectAccessibleName":
 			await page.getByLabel(step.name, { exact: true }).waitFor();
 			return;

@@ -59,7 +59,7 @@ export const ACTIONS = [
     "replaySessions", "confirmExecLeave",
     "configureForward", "forwardControl", "expectForwardState", "expectForwardNotice","execControl", "expectExecState",
     "expectWorkspaceExport", "exportSavedWorkspace", "expectExportedShortcut",
-    "expectAccessibleName", "fillSettingsField", "clickSettingsButton", "clickKubeconfigPathButton", "expectKubeconfigPathBefore", "expectSettingsText", "expectNoSettingsText", "expectRuntimeEndpoint", "expectMaskedToken", "reopenStoredSettings", "configureSettingsMock",
+    "expectAccessibleName", "fillSettingsField", "clickSettingsButton", "clickKubeconfigPathButton", "expectKubeconfigPathBefore", "addPastedKubeconfigPaths", "fillKubeconfigPathDraft", "expectKubeconfigPathDraft", "expectSettingsText", "expectNoSettingsText", "expectRuntimeEndpoint", "expectMaskedToken", "reopenStoredSettings", "configureSettingsMock",
 	"expectLiveState", "expectLiveMenu", "replayLiveData", "expectResourceStatus", "openCustomKind",
 	"selectTopologyNode", "expectTopologyEmpty", "expectUsageFooter", "openUsageTree", "expectNoUsageFooter", "expectUsageProcess", "setTopologyMode", "selectNamespace", "expectTopology", "expectTopologyEdge", "expectNoTopologyNode", "expectResourceMetrics",
 	"expectYamlAbsent",
@@ -234,6 +234,8 @@ function step<Value>(value: Value): Step {
         case "clickSettingsButton": return { action: item.action, label: string(item.label) };
         case "clickKubeconfigPathButton": return { action: item.action, value: string(item.value), label: string(item.label) };
         case "expectKubeconfigPathBefore": return { action: item.action, value: string(item.value), other: string(item.other) };
+        case "addPastedKubeconfigPaths": case "fillKubeconfigPathDraft": return { action: item.action, value: string(item.value) };
+        case "expectKubeconfigPathDraft": return { action: item.action, value: item.value === "" ? "" : string(item.value), enabled: boolean(item.enabled) };
         case "expectAccessibleName": return { action: item.action, name: string(item.name) };
         case "expectSettingsText": case "expectNoSettingsText": case "expectRuntimeEndpoint": return { action: item.action, value: string(item.value) };
         case "expectMaskedToken": case "reopenStoredSettings": return { action: item.action };

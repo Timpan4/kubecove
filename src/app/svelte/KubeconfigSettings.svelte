@@ -119,9 +119,11 @@
 	}
 
 	function addPastedPaths() {
-		if (!pathDraft.trim()) return;
-		void runSourceUpdate(() => addKubeconfigPaths(client, [pathDraft])).then((saved) => {
-			if (saved) pathDraft = "";
+		const submitted = pathDraft;
+		if (!submitted.trim()) return;
+		void runSourceUpdate(() => addKubeconfigPaths(client, [submitted])).then((saved) => {
+			// Text typed while the save ran stays in the draft.
+			if (saved && pathDraft === submitted) pathDraft = "";
 		});
 	}
 

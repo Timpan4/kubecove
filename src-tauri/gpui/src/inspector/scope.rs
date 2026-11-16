@@ -145,23 +145,7 @@ impl Inspector {
                             .unwrap_or(&contexts[0])
                             .name
                             .clone();
-                        this.context_picker.update(cx, |state, cx| {
-                            state.set_items(
-                                SearchableVec::new(
-                                    contexts
-                                        .into_iter()
-                                        .map(|context| SharedString::from(context.name))
-                                        .collect::<Vec<_>>(),
-                                ),
-                                window,
-                                cx,
-                            );
-                            state.set_selected_value(
-                                &SharedString::from(selected.clone()),
-                                window,
-                                cx,
-                            );
-                        });
+                        this.set_context_picker(contexts, &selected, window, cx);
                         this.scope.context = selected;
                         if this.workspace_open() {
                             this.load_scope(false, window, cx);
@@ -173,6 +157,29 @@ impl Inspector {
             },
         );
         self.context_task = Some(task);
+    }
+
+    /// Lists `contexts` in the header's context picker with `selected` chosen.
+    pub(super) fn set_context_picker(
+        &mut self,
+        contexts: Vec<kubecove_lib::models::ClusterContext>,
+        selected: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.context_picker.update(cx, |state, cx| {
+            state.set_items(
+                SearchableVec::new(
+                    contexts
+                        .into_iter()
+                        .map(|context| SharedString::from(context.name))
+                        .collect::<Vec<_>>(),
+                ),
+                window,
+                cx,
+            );
+            state.set_selected_value(&SharedString::from(selected.to_owned()), window, cx);
+        });
     }
 
     pub(super) fn load_scope(
