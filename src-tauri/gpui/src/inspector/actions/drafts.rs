@@ -58,6 +58,32 @@ pub(super) fn set(edits: &mut ResourceActionEdits, field: &Field, value: String)
     }
 }
 
+/// renameEnvironment in resourceActionDrafts.ts: a rename onto another drafted
+/// name replaces that draft. Returns whether it did, so the editor can drop its field.
+pub(super) fn rename_env(
+    edits: &mut ResourceActionEdits,
+    container_name: &str,
+    from: &str,
+    to: &str,
+) -> bool {
+    if from == to {
+        return false;
+    }
+    let env = &mut container(edits, container_name).env;
+    let Some(index) = env.iter().position(|v| v.name == from) else {
+        return false;
+    };
+    env[index].name = to.into();
+    let before = env.len();
+    let mut position = 0;
+    env.retain(|v| {
+        let keep = position == index || v.name != to;
+        position += 1;
+        keep
+    });
+    env.len() != before
+}
+
 pub(super) fn revert(edits: &mut ResourceActionEdits, row: RowId) {
     match row {
         RowId::Replicas => edits.replicas = None,

@@ -134,7 +134,7 @@ pub(super) fn entry(
                     return;
                 }
                 let key = input.read(cx).value().to_string();
-                let merges_baseline = this
+                let mut merges = this
                     .actions_state()
                     .and_then(|a| a.state.as_ref())
                     .and_then(|base| base.containers.iter().find(|c| c.name == name))
@@ -142,10 +142,7 @@ pub(super) fn entry(
                 if let Some(a) = this.actions_state() {
                     for g in &mut a.editor.groups {
                         if let Some(e) = g.entries.iter_mut().find(|e| e.key_input == *input) {
-                            let env = &mut drafts::container(&mut a.edits, &name).env;
-                            if let Some(change) = env.iter_mut().find(|v| v.name == e.key) {
-                                change.name = key.clone();
-                            }
+                            merges |= drafts::rename_env(&mut a.edits, &name, &e.key, &key);
                             let (key_label, value_label) = g.kind.labels(&key);
                             e.key_label = key_label.into();
                             e.value_id = value_label.clone().into();
@@ -157,7 +154,7 @@ pub(super) fn entry(
                         }
                     }
                 }
-                if merges_baseline {
+                if merges {
                     this.prepare_action_editor(crate::actions::RowId::Environment, window, cx);
                 }
                 this.refresh_action_labels(cx);

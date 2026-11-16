@@ -749,6 +749,95 @@
       ]
     },
     {
+      "id": "actions-environment.rename-onto-pending",
+      "title": "Renaming a new variable onto another new variable keeps one draft with the renamed value",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "search",
+          "value": "payments-api"
+        },
+        {
+          "action": "openResource",
+          "kind": "Deployment",
+          "name": "payments-api",
+          "namespace": "payments"
+        },
+        {
+          "action": "showTab",
+          "tab": "Actions"
+        },
+        {
+          "action": "openActionEditor",
+          "row": "environment"
+        },
+        {
+          "action": "fillActionField",
+          "label": "New environment name api",
+          "value": "EXTRA"
+        },
+        {
+          "action": "fillActionField",
+          "label": "New environment value api",
+          "value": "new"
+        },
+        {
+          "action": "clickActionEntry",
+          "label": "New environment name api",
+          "button": "Add"
+        },
+        {
+          "action": "fillActionField",
+          "label": "New environment name api",
+          "value": "RENAMED"
+        },
+        {
+          "action": "fillActionField",
+          "label": "New environment value api",
+          "value": "old"
+        },
+        {
+          "action": "clickActionEntry",
+          "label": "New environment name api",
+          "button": "Add"
+        },
+        {
+          "action": "fillActionField",
+          "label": "Environment name api EXTRA",
+          "value": "RENAMED"
+        },
+        {
+          "action": "clickActionEntry",
+          "label": "Environment value api MODE",
+          "button": "Remove"
+        },
+        {
+          "action": "reviewAction",
+          "label": "Check changes"
+        },
+        {
+          "action": "expectReview",
+          "title": "Review edit for payments-api",
+          "description": "edit Deployment payments/payments-api in context mock-dev",
+          "contains": [
+            "+            - name: RENAMED",
+            "+              value: new",
+            "-            - name: MODE",
+            "-              value: safe"
+          ]
+        },
+        {
+          "action": "executeReview"
+        },
+        {
+          "action": "expectActionResult",
+          "text": "Simulated edit of Deployment payments/payments-api in context mock-dev in browser mock mode."
+        }
+      ]
+    },
+    {
       "id": "yaml-edit-kyaml.dynamic-format",
       "title": "Discovered-resource YAML uses the selected encoding and formats KYAML without changing values.",
       "steps": [
