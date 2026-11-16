@@ -122,11 +122,7 @@ impl Inspector {
             LeaveIntent::IncidentResources(filter) => {
                 self.open_incident_resources(filter, window, cx)
             }
-            LeaveIntent::Context(context) => {
-                self.scope.context = context;
-                self.scope.namespace = None;
-                self.load_scope(false, window, cx);
-            }
+            LeaveIntent::Context(context) => self.retarget_workspace(context, window, cx),
             LeaveIntent::Workspace(id) => self.open_workspace(id, window, cx),
         }
     }

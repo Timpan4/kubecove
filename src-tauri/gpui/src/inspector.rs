@@ -265,7 +265,9 @@ impl Inspector {
                 let SelectEvent::Confirm(Some(context)) = event else {
                     return;
                 };
-                if this.scope.context != context.as_ref() {
+                // As the web compares with the saved workspace's context, picking
+                // the primary context of a cluster group keeps the group.
+                if this.active_saved_context().as_deref() != Some(context.as_ref()) {
                     if this.defer_exec_leave(exec::LeaveIntent::Context(context.to_string()), cx) {
                         // Show the context the view still uses.
                         let current = SharedString::from(this.scope.context.clone());
@@ -274,11 +276,7 @@ impl Inspector {
                         });
                         return;
                     }
-                    this.scope = Scope {
-                        context: context.to_string(),
-                        namespace: None,
-                    };
-                    this.load_scope(false, window, cx);
+                    this.retarget_workspace(context.to_string(), window, cx);
                 }
             }),
         ];

@@ -98,7 +98,7 @@ export type Step =
     | { action: "expectContextsLoading"; contexts: string[] }
     | { action: "editSavedWorkspace" | "expectNoSavedWorkspace"; name: string }
     | { action: "saveWorkspace" | "cancelWorkspaceEdit" }
-    | { action: "toggleWorkspaceContext"; context: string }
+    | { action: "toggleWorkspaceContext" | "chooseClusterContext"; context: string }
     | { action: "expectOverviewHealth"; total: number }
     | { action: "expectActivePage"; page: string }
     | { action: "expectGitOpsSelection"; name: string }
