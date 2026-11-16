@@ -140,7 +140,10 @@ impl MapState {
             network: false,
             context: None,
             context_open: false,
-            context_trigger: cx.focus_handle().tab_stop(true),
+            context_trigger: {
+                super::map_context::bind(cx);
+                cx.focus_handle().tab_stop(true)
+            },
             context_highlight: None,
             cache: None,
             edge_cache: RefCell::new(None),

@@ -109,6 +109,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 "Home" => "home",
                 "End" => "end",
                 "Escape" => "escape",
+                "Tab" => "tab",
                 other => panic!("unknown Map context key: {other}"),
             };
             window.within("map-context").press(key, cx);

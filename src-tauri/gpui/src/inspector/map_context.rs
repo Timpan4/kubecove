@@ -7,17 +7,49 @@
 //! trigger. Enter, Space and the vertical arrows open the options with the
 //! current context highlighted. While they are open, the arrows move the
 //! highlight without wrapping, Home and End jump to the first and last option,
-//! Enter or Space chooses the highlighted context and Escape closes them
-//! without a change.
+//! Enter or Space chooses the highlighted context, and Escape closes them
+//! without a change. Tab and Shift+Tab close them and move focus on.
 
 use super::Inspector;
 use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
 use gpui_kit::{
-    AnyElement, ClickEvent, Context, KeyDownEvent, SharedString, deferred, div, prelude::*, px,
+    AnyElement, App, ClickEvent, Context, Global, KeyBinding, KeyDownEvent, SharedString, Window,
+    actions, deferred, div, prelude::*, px,
 };
 
+/// The trigger's key context. Its bindings outrank the window root's.
+const CONTEXT: &str = "MapContextSelect";
+
+actions!(map_context, [LeaveMapContext]);
+
+struct Bound;
+impl Global for Bound {}
+
+/// Binds Tab and Shift+Tab on the trigger, once per app. The window root binds
+/// them to focus traversal, and key bindings run before key listeners, so the
+/// trigger's own key handler never sees them.
+pub(super) fn bind(cx: &mut App) {
+    if cx.has_global::<Bound>() {
+        return;
+    }
+    cx.bind_keys([
+        KeyBinding::new("tab", LeaveMapContext, Some(CONTEXT)),
+        KeyBinding::new("shift-tab", LeaveMapContext, Some(CONTEXT)),
+    ]);
+    cx.set_global(Bound);
+}
+
 impl Inspector {
+    /// Closes the options and lets the key reach the root's focus traversal.
+    fn leave_map_context(&mut self, _: &LeaveMapContext, _: &mut Window, cx: &mut Context<Self>) {
+        if self.map.context_open {
+            self.map.context_open = false;
+            cx.notify();
+        }
+        cx.propagate();
+    }
+
     /// The context the map reads: the chosen one while it is still a workspace
     /// context, else the primary context.
     pub(super) fn map_context(&self) -> String {
@@ -155,6 +187,8 @@ impl Inspector {
                         .aria_label("Map context")
                         .aria_expanded(open)
                         .track_focus(&self.map.context_trigger)
+                        .key_context(CONTEXT)
+                        .on_action(cx.listener(Self::leave_map_context))
                         .focus(|style| style.border_color(Tokens::ring()))
                         .h(px(32.))
                         .px(px(10.))

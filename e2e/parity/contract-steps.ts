@@ -382,7 +382,7 @@ export const PANEL_CONTROLS = [
 ] as const;
 type PanelControl = (typeof PANEL_CONTROLS)[number];
 export const MAP_KEYS = ["Tab", "Shift+Tab", "Enter", "Space"] as const;
-export const MAP_CONTEXT_KEYS = ["Enter", "Space", "ArrowDown", "ArrowUp", "Home", "End", "Escape"] as const;
+export const MAP_CONTEXT_KEYS = ["Enter", "Space", "ArrowDown", "ArrowUp", "Home", "End", "Escape", "Tab"] as const;
 type MapKey = (typeof MAP_KEYS)[number];
 /** The zoom controls, labeled as xyflow labels them on the web. */
 export const MAP_CONTROLS = ["Zoom In", "Zoom Out", "Fit View"] as const;

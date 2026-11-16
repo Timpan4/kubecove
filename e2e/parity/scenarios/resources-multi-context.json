@@ -251,7 +251,7 @@
     },
     {
       "id": "map.multi-context-keyboard",
-      "title": "Tab reaches the Map context select; Enter, Space and the arrows open it on the current context, the arrows, Home and End move, Enter or Space chooses and Escape closes it unchanged",
+      "title": "Tab reaches the Map context select; Enter, Space and the arrows open it on the current context, the arrows, Home and End move, Enter or Space chooses, and Escape or Tab closes it unchanged",
       "steps": [
         { "action": "openResources" },
         { "action": "openLauncher" },
@@ -285,6 +285,12 @@
         { "action": "expectMapContextOptions", "open": true },
         { "action": "mapContextKey", "key": "End" },
         { "action": "mapContextKey", "key": "Enter" },
+        { "action": "expectMapContext", "shown": true, "context": "admin@solid-k8s" },
+        { "action": "mapContextKey", "key": "Enter" },
+        { "action": "expectMapContextOptions", "open": true },
+        { "action": "mapContextKey", "key": "ArrowUp" },
+        { "action": "mapContextKey", "key": "Tab" },
+        { "action": "expectMapContextOptions", "open": false },
         { "action": "expectMapContext", "shown": true, "context": "admin@solid-k8s" }
       ]
     }
