@@ -393,8 +393,11 @@ impl Inspector {
         }
         let context = self.helm_page.context.clone();
         vec![
+            // HelmView's `max-w-40 truncate`: a long context name ends in an ellipsis.
             ui::outline_badge(context.clone())
                 .flex_none()
+                .max_w(px(160.))
+                .truncate()
                 .id("helm-context")
                 .test_support()
                 .aria_label(format!("Context: {context}"))

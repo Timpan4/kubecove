@@ -163,6 +163,8 @@ impl Inspector {
             .filter(|saved| saved.context == context)
             .cloned();
         self.page = saved.as_ref().map_or(Page::Overview, |saved| saved.page);
+        // A Helm context opened from the previous workspace's resource does not carry over.
+        self.helm_page.requested_context = None;
         self.scope = Scope {
             context: context.to_owned(),
             namespace: saved.as_ref().and_then(|saved| saved.namespace.clone()),
