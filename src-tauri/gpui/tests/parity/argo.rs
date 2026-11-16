@@ -372,6 +372,13 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             window.find("argo-workspace-transport").label(),
             Some(string(step, "text"))
         ),
+        "expectArgoPolicy" => {
+            reveal(window, "detail-body", "argo-delivery-policy", cx);
+            assert_eq!(
+                window.find("argo-delivery-policy").label(),
+                Some(string(step, "text"))
+            );
+        }
         "completeArgoOperation" => {}
         "expectArgoText" => {
             let expected = string(step, "text");

@@ -98,12 +98,14 @@ assert(managedResources.some((resource) => resource.requiresPruning));
 assert(expandedRemovalKeys.size > 0);
 assert(managedResources.some((resource) => resource.requiresPruning &&
 	!expandedRemovalKeys.has(argoResourceIdentityKey(resource) ?? "")));
-assert.equal(applicationSpecFromYaml(malformedYaml).source, undefined);
-assert.deepEqual(applicationSpecFromYaml(invalidRootYaml), {});
-assert.deepEqual(applicationSpecFromYaml(invalidSpecYaml), {});
+assert.equal(applicationSpecFromYaml(malformedYaml), null);
+assert.equal(applicationSpecFromYaml(invalidRootYaml), null);
+assert.equal(applicationSpecFromYaml(invalidSpecYaml), null);
+const firstSpec = applicationSpecFromYaml(yamlDocuments[0]);
+assert(firstSpec);
 // SAFETY: yamlDocuments[0] is the synthetic Application fixture with two sources below.
 assert.equal(
-	(applicationSpecFromYaml(yamlDocuments[0]).sources as unknown[]).length,
+	(firstSpec.sources as unknown[]).length,
 	2,
 );
 

@@ -52,16 +52,31 @@ export function isDesktopRemoteSelected(): boolean {
 	return desktopRemoteSummary !== null;
 }
 
-export async function connectDesktopRemote(
-	serverUrl: string,
-	token: string,
-): Promise<RemoteConnectionSummary> {
-	const summary = await invoke<RemoteConnectionSummary>("remote_connect", {
-		serverUrl,
-		token,
-	});
-	setRemoteState(summary);
-	return summary;
+/** Counts Disconnects, so a connect or session start can tell that one overlapped it. */
+let disconnects = 0;
+/** Counts state changes from user actions. Status reads do not count, so concurrent reads still publish. */
+let actionChanges = 0;
+
+/**
+ * Applies the summary `call` returns. A Disconnect during the call may have superseded it, and an invoke
+ * cannot be aborted, so the host's state then replaces its result or error.
+ */
+async function unlessDisconnected(call: () => Promise<RemoteConnectionSummary>): Promise<RemoteConnectionSummary | null> {
+	const started = disconnects;
+	try {
+		const summary = await call();
+		if (started === disconnects) {
+			setRemoteState(summary);
+			return summary;
+		}
+	} catch (error) {
+		if (started === disconnects) throw error;
+	}
+	return initializeDesktopRemote();
+}
+
+export async function connectDesktopRemote(serverUrl: string, token: string): Promise<RemoteConnectionSummary | null> {
+	return unlessDisconnected(() => invoke<RemoteConnectionSummary>("remote_connect", { serverUrl, token }));
 }
 
 /**
@@ -91,10 +106,15 @@ export async function desktopRemoteSignInLink(): Promise<string | null> {
 	return invoke<string | null>("remote_sign_in_link");
 }
 
-export async function startNewDesktopRemoteSession(): Promise<RemoteConnectionSummary> {
-	const summary = await invoke<RemoteConnectionSummary>("remote_start_new_session");
-	setRemoteState(summary);
-	return summary;
+export async function startNewDesktopRemoteSession(): Promise<RemoteConnectionSummary | null> {
+	// The host reports Connecting while the session opens, so the notice shows it now and offers Cancel at once.
+	if (desktopRemoteSummary) setRemoteState({ ...desktopRemoteSummary, sessionState: "connecting", connected: false });
+	try {
+		return await unlessDisconnected(() => invoke<RemoteConnectionSummary>("remote_start_new_session"));
+	} catch (error) {
+		await initializeDesktopRemote().catch(() => null);
+		throw error;
+	}
 }
 
 /** Revokes the sign-in at the server and forgets it here. The server stays selected. */
@@ -106,6 +126,7 @@ export async function signOutDesktopRemote(): Promise<RemoteConnectionSummary> {
 }
 
 export async function disconnectDesktopRemote(): Promise<void> {
+	disconnects += 1;
 	try {
 		await invoke("remote_disconnect");
 	} finally {
@@ -113,11 +134,14 @@ export async function disconnectDesktopRemote(): Promise<void> {
 	}
 }
 
+/** Reads the host's state. A change from a user action during the read is newer, so the read then publishes nothing. */
 export async function initializeDesktopRemote(): Promise<RemoteConnectionSummary | null> {
+	const started = actionChanges;
 	try {
 		const summary = await invoke<RemoteConnectionSummary | null>("remote_connection_status");
+		if (started !== actionChanges) return desktopRemoteSummary;
 		if (summary) {
-			setRemoteState(summary);
+			publishRemoteState(summary);
 			if (!summary.connected) clearRemoteChannels();
 		} else {
 			markRemoteDisconnected();
@@ -125,19 +149,24 @@ export async function initializeDesktopRemote(): Promise<RemoteConnectionSummary
 		}
 		return summary;
 	} catch (error) {
-		markRemoteDisconnected();
+		if (started === actionChanges) markRemoteDisconnected();
 		throw error;
 	}
 }
 
 function setRemoteState(summary: RemoteConnectionSummary): void {
+	actionChanges += 1;
+	publishRemoteState(summary);
+}
+
+function publishRemoteState(summary: RemoteConnectionSummary): void {
 	desktopRemoteSummary = summary;
 	desktopRemoteConnection.set(summary);
 }
 
 function markRemoteDisconnected(): void {
 	if (desktopRemoteSummary) {
-		setRemoteState({ ...desktopRemoteSummary, connected: false });
+		publishRemoteState({ ...desktopRemoteSummary, connected: false });
 	}
 }
 
@@ -147,6 +176,7 @@ function clearRemoteChannels(): void {
 }
 
 function clearRemoteState(): void {
+	actionChanges += 1;
 	desktopRemoteSummary = null;
 	desktopRemoteConnection.set(null);
 	clearRemoteChannels();

@@ -56,6 +56,21 @@
       ]
     },
     {
+      "id": "overview.saved-kind-api-version",
+      "title": "A saved custom kind keeps its API version, so same-named kinds of another API group stay out of the Overview",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "choose-foreign-kind-workspace" },
+        { "action": "openLauncher" },
+        { "action": "clickSettingsButton", "label": "Import" },
+        { "action": "clickSettingsButton", "label": "Apply import" },
+        { "action": "openSavedWorkspace", "name": "Foreign Application" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectOverviewHealth", "total": 2 },
+        { "action": "expectNoOverviewProblem", "kind": "Application", "namespace": "argocd", "name": "shop" },
+        { "action": "expectSettingsText", "value": "Kinds: Application" }
+      ]
+    },
+    {
       "id": "overview.application-shortcut-focus",
       "title": "An Application shortcut opens GitOps focused on that Application, not Resources",
       "steps": [

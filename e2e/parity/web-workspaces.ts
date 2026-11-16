@@ -46,6 +46,9 @@ export async function workspaceAction(page: Page, step: Step): Promise<void> {
             await page.getByRole("button", { name: "Cancel edit", exact: true }).click(); break;
         case "toggleWorkspaceContext":
             await page.getByRole("checkbox", { name: step.context, exact: true }).click(); break;
+        case "chooseClusterContext":
+            await page.locator("#cluster-select").click();
+            await page.getByRole("option", { name: step.context, exact: true }).click(); break;
         case "expectOverviewHealth": {
             await page.locator("[data-overview-total]").getByText(`${step.total} resource${step.total === 1 ? "" : "s"} loaded from the saved scope.`, { exact: true }).waitFor();
             break;

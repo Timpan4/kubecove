@@ -162,6 +162,28 @@
       ]
     },
     {
+      "id": "workspaces.header-context-retarget",
+      "title": "Picking a header context saves the open workspace as that one context, so Overview and the saved scope agree",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "editSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "toggleWorkspaceContext", "context": "admin@solid-k8s" },
+        { "action": "toggleWorkspaceNamespace", "namespace": "payments" },
+        { "action": "saveWorkspace" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "chooseClusterContext", "context": "admin@solid-k8s" },
+        { "action": "expectOpenWorkspace", "name": "Parity mock workspace", "context": "admin@solid-k8s" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectOverviewHealth", "total": 57 },
+        { "action": "openLauncher" },
+        {
+          "action": "expectSavedWorkspace",
+          "name": "Parity mock workspace",
+          "summary": "admin@solid-k8s / All namespaces / Pod, Deployment +7"
+        }
+      ]
+    },
+    {
       "id": "workspaces.edit-primary",
       "title": "Changing the primary context and namespace replaces scope without old rows",
       "steps": [

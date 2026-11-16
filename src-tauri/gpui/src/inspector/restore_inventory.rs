@@ -11,6 +11,7 @@ pub(super) struct RestoreInventory {
     /// `None` until the read settles. A failed read counts as an empty
     /// inventory, as the web's `data ?? []` does.
     pub(super) namespaces: Option<Vec<String>>,
+    /// Discovered kinds as `kindKey` identities.
     pub(super) kinds: Option<Vec<String>>,
     _tasks: Vec<Task<()>>,
 }
@@ -57,9 +58,9 @@ impl Inspector {
             });
         });
         let kind_task = cx.spawn(async move |this, cx| {
-            let kinds: Vec<String> = kinds
-                .await
-                .map_or_default(|items| items.into_iter().map(|item| item.kind).collect());
+            let kinds: Vec<String> = kinds.await.map_or_default(|items| {
+                items.iter().map(super::kind_selection::identity).collect()
+            });
             let _ = this.update(cx, |this, cx| {
                 if !Rc::ptr_eq(&this.request, &kind_request) {
                     return;
