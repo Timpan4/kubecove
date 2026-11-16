@@ -213,6 +213,11 @@
 			fail("Enter this profile's credential in its row, then sign in.");
 			return;
 		}
+		// The row stays editable while its tunnel target waits for confirmation, as in GPUI.
+		if (saved && !saved.rememberCredential && !(signInLocal ? signInUsername && signInPassword : signInToken)) {
+			fail("Enter a token or local username and password before connecting.");
+			return;
+		}
 		step = { kind: "busy", label: "Connecting…" };
 		const formTls = !saved && target.kind === "externalHttps";
 		const request = {

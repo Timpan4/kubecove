@@ -337,6 +337,22 @@
       ]
     },
     {
+      "id": "argo-connection.confirm-needs-complete-row-credential",
+      "title": "Clearing a saved tunnel profile's row token while its target waits for confirmation makes the confirmation ask for a credential instead of connecting",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd-server.argocd.svc", "tunnel": true },
+        { "action": "confirmArgoTunnel" },
+        { "action": "disconnectArgoProfile" },
+        { "action": "reconnectArgoProfile" },
+        { "action": "argoProfileSignIn", "token": "parity-fixture-token", "tunnel": true },
+        { "action": "argoProfileSignIn", "token": "", "submit": false },
+        { "action": "confirmArgoTunnel", "failure": "before connecting" },
+        { "action": "expectArgoText", "text": "Enter a token or local username and password before connecting." }
+      ]
+    },
+    {
       "id": "argo-connection.redacts-connect-error",
       "title": "A connect error that quotes a token shows it redacted",
       "steps": [

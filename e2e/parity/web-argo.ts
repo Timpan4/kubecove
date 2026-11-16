@@ -22,6 +22,8 @@ export async function argoAction(page: Page, step: Step) {
             // A saved profile without a remembered credential asks for it in its own row.
             const dialog = page.getByRole("dialog", { name: "Argo CD connection" });
             await dialog.getByLabel(/^Token for /).fill(step.token);
+            // `submit: false` only edits the row, as while its tunnel target waits for confirmation.
+            if (step.submit === false) break;
             await dialog.getByRole("button", { name: "Sign in", exact: true }).click();
             // A held preview stays pending for the next steps.
             if (step.pending) break;

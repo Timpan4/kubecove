@@ -21,8 +21,11 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             // A saved profile without a remembered credential asks for it in its own row.
             reveal(window, "argo-connection-dialog", "argo-sign-in-token", cx);
             replace_text(window, cx, "argo-sign-in-token", string(step, "token"));
-            reveal(window, "argo-connection-dialog", "argo-sign-in-submit", cx);
-            window.click("argo-sign-in-submit", cx);
+            // `submit: false` only edits the row, as while its tunnel target waits for confirmation.
+            if step["submit"].as_bool() != Some(false) {
+                reveal(window, "argo-connection-dialog", "argo-sign-in-submit", cx);
+                window.click("argo-sign-in-submit", cx);
+            }
         }
         "expandArgoDiff" => {
             reveal(window, "detail-body", "argo-diff-lines:0", cx);
