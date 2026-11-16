@@ -128,6 +128,9 @@
 
 	$effect(() => {
 		if (helmNamespace !== activeHelmNamespace) helmNamespace = activeHelmNamespace;
+		// A release from another context closes as soon as the page changes context,
+		// not after the new list loads, so a failed read cannot leave it shown.
+		if (selectedHelmRelease && selectedHelmRelease.cluster !== context) selectedHelmRelease = null;
 		const target = resolveTargetHelmRelease(helmReleases, targetHelmRelease);
 		if (target) {
 			helmNamespace = target.namespace;

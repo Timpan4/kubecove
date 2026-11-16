@@ -57,11 +57,13 @@ describe("Helm surface state", () => {
 	});
 
 	test("resolves handoff targets and mirrors selection into path state", () => {
-		const releases = [release("api", "prod"), release("api", "dev")];
+		const releases = [release("api", "prod"), release("api", "dev"), release("api", "dev", { cluster: "kind-staging" })];
 
 		expect(resolveTargetHelmRelease(releases, { name: "api", namespace: "dev" })).toBe(releases[1]);
+		expect(resolveTargetHelmRelease(releases, { name: "api", namespace: "dev", cluster: "kind-staging" })).toBe(releases[2]);
+		expect(resolveTargetHelmRelease(releases.slice(0, 2), { name: "api", namespace: "dev", cluster: "kind-staging" })).toBeNull();
 		expect(resolveTargetHelmRelease(releases, { name: "missing" })).toBeNull();
-		expect(selectedHelmReleasePath(releases[1])).toEqual({ name: "api", namespace: "dev" });
+		expect(selectedHelmReleasePath(releases[1])).toEqual({ name: "api", namespace: "dev", cluster: "kind-dev" });
 		expect(selectedHelmReleasePath(null)).toBeNull();
 	});
 
