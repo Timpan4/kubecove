@@ -109,7 +109,12 @@ impl LauncherState {
             .and_then(|id| self.saved.iter().find(|saved| saved.id == id))
             .map_or_else(
                 || crate::model::WORKSPACE_KINDS.contains(&kind),
-                |saved| saved.kinds.iter().any(|saved| saved.matches(kind, api_version)),
+                |saved| {
+                    saved
+                        .kinds
+                        .iter()
+                        .any(|saved| saved.matches(kind, api_version))
+                },
             )
     }
 

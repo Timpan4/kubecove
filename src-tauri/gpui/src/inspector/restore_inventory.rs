@@ -59,10 +59,7 @@ impl Inspector {
         });
         let kind_task = cx.spawn(async move |this, cx| {
             let kinds: Vec<String> = kinds.await.map_or_default(|items| {
-                items
-                    .iter()
-                    .map(super::kind_selection::identity)
-                    .collect()
+                items.iter().map(super::kind_selection::identity).collect()
             });
             let _ = this.update(cx, |this, cx| {
                 if !Rc::ptr_eq(&this.request, &kind_request) {

@@ -49,7 +49,11 @@ fn version_one_kind_names_take_their_import_identity() {
         plural: "applications".into(),
         namespaced: true,
     });
-    let kinds: Vec<_> = migrated.workspaces.iter().map(|saved| &saved.kinds).collect();
+    let kinds: Vec<_> = migrated
+        .workspaces
+        .iter()
+        .map(|saved| &saved.kinds)
+        .collect();
     assert_eq!(
         kinds,
         [
