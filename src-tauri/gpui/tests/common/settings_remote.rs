@@ -202,7 +202,10 @@ impl Fixture {
         } else {
             RemoteSessionState::SignInExpired
         };
-        ready(Ok(self.set_remote(Some(selected)).unwrap()))
+        let selected = self.set_remote(Some(selected)).unwrap();
+        // Scenarios hold it to cancel a session that is still opening.
+        self.timing
+            .gate("remote_start_new_session", "", "", selected)
     }
     pub(super) fn remote_sign_out_read(&self) -> Read<RemoteConnectionSummary> {
         let Some(mut selected) = self.settings.remote.lock().unwrap().clone() else {

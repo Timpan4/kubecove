@@ -139,12 +139,26 @@ impl Inspector {
                 if self.settings.integrations.remote_call.is_some() || !self.can_leave(cx) {
                     return;
                 }
+                // The host reports Connecting while the session opens but signals no
+                // change, so the notice shows it now and offers Cancel at once.
+                if let Some(remote) = self.settings.integrations.remote.as_mut() {
+                    remote.session_state = RemoteSessionState::Connecting;
+                    remote.connected = false;
+                }
                 let read = self.backend.remote_start_new_session();
                 self.run_remote_change(read, window, cx);
             }
-            RemoteNoticeAction::CancelConnecting | RemoteNoticeAction::Disconnect => {
+            RemoteNoticeAction::CancelConnecting => {
+                if !self.can_leave(cx) {
+                    return;
+                }
+                // Dropping the pending connect or new session aborts its host task. An
+                // attempt that still finishes publishes nothing: Disconnect removes the
+                // selection, so its generation no longer matches.
+                self.settings.integrations.remote_call = None;
                 self.disconnect_settings_remote(window, cx);
             }
+            RemoteNoticeAction::Disconnect => self.disconnect_settings_remote(window, cx),
         }
     }
 
@@ -219,7 +233,11 @@ impl Inspector {
                 this.settings.integrations.remote_call = None;
                 match result {
                     Ok(summary) => this.apply_remote_summary(Some(summary), window, cx),
-                    Err(error) => this.settings.integrations.remote_error = Some(error.message),
+                    // The host's state replaces the Connecting state shown while the call ran.
+                    Err(error) => {
+                        this.settings.integrations.remote_error = Some(error.message);
+                        this.refresh_remote_status(window, cx);
+                    }
                 }
                 cx.notify();
             });
@@ -313,8 +331,12 @@ impl Inspector {
             } else {
                 Variant::Outline
             };
-            // A pending sign-in keeps its own actions available.
-            let disabled = busy && action != RemoteNoticeAction::CancelSignIn;
+            // A pending sign-in or session open keeps its Cancel available.
+            let disabled = busy
+                && !matches!(
+                    action,
+                    RemoteNoticeAction::CancelSignIn | RemoteNoticeAction::CancelConnecting
+                );
             actions = actions.child(
                 button(variant, 28., disabled)
                     .id(SharedString::from(format!("{buttons}:{label}")))
