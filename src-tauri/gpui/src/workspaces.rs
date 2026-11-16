@@ -21,11 +21,65 @@ pub struct SavedWorkspace {
     pub group: Vec<String>,
     pub group_name: Option<String>,
     pub namespaces: Vec<String>,
-    pub kinds: Vec<String>,
+    pub kinds: Vec<SavedKind>,
     /// Monotonic edit order; the launcher lists the latest first.
     pub updated: u64,
     /// Local review context belongs to this workspace, even for the same cluster.
     pub reviews: Vec<crate::rbac::review::ReviewRecord>,
+}
+
+/// One saved workspace kind, stored as `ResourceKindSelection` in
+/// `src/lib/types.ts` is: a built-in kind's name, or a discovered kind with
+/// its API identity, so same-named kinds of other API groups stay apart.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+pub enum SavedKind {
+    Name(String),
+    Api(ApiKind),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ApiKind {
+    pub group: String,
+    pub version: String,
+    pub api_version: String,
+    pub kind: String,
+    pub plural: String,
+    pub namespaced: bool,
+}
+
+impl SavedKind {
+    /// `kindLabel`.
+    pub fn label(&self) -> &str {
+        match self {
+            Self::Name(name) => name,
+            Self::Api(api) => &api.kind,
+        }
+    }
+
+    /// `kindKey`: a name, or `apiVersion/plural/kind`; the two never collide.
+    pub fn key(&self) -> String {
+        match self {
+            Self::Name(name) => name.clone(),
+            Self::Api(api) => format!("{}/{}/{}", api.api_version, api.plural, api.kind),
+        }
+    }
+
+    /// `kindMatcher`: a name matches by name; an API kind needs the
+    /// resource's apiVersion, and matches by name only when it has none.
+    /// An empty apiVersion counts as none, as the web's truthiness test does.
+    pub fn matches(&self, kind: &str, api_version: Option<&str>) -> bool {
+        match self {
+            Self::Name(name) => name == kind,
+            Self::Api(api) => {
+                api.kind == kind
+                    && api_version
+                        .filter(|version| !version.is_empty())
+                        .is_none_or(|version| version == api.api_version)
+            }
+        }
+    }
 }
 
 impl SavedWorkspace {
@@ -58,8 +112,9 @@ impl SavedWorkspace {
             [first, second] => format!("{first}, {second}"),
             [first, second, rest @ ..] => format!("{first}, {second} +{}", rest.len()),
         };
-        let kinds = match self.kinds.as_slice() {
-            kinds if kinds.len() <= 2 => kinds.join(", "),
+        let labels: Vec<&str> = self.kinds.iter().map(SavedKind::label).collect();
+        let kinds = match labels.as_slice() {
+            labels if labels.len() <= 2 => labels.join(", "),
             [first, second, rest @ ..] => format!("{first}, {second} +{}", rest.len()),
             _ => unreachable!("slices longer than two have two leading items"),
         };
@@ -99,7 +154,7 @@ pub struct Draft<'a> {
     pub effective: &'a str,
     pub group: &'a [String],
     pub namespaces: &'a [String],
-    pub kinds: Option<&'a [String]>,
+    pub kinds: Option<&'a [SavedKind]>,
 }
 
 impl Draft<'_> {
@@ -131,10 +186,10 @@ impl Draft<'_> {
                 || {
                     WORKSPACE_KINDS
                         .iter()
-                        .map(|kind| (*kind).to_owned())
+                        .map(|kind| SavedKind::Name((*kind).to_owned()))
                         .collect()
                 },
-                <[String]>::to_vec,
+                <[SavedKind]>::to_vec,
             ),
             updated,
             reviews: vec![],

@@ -227,7 +227,7 @@ pub struct Document {
 impl Default for Document {
     fn default() -> Self {
         Self {
-            version: 1,
+            version: 2,
             revision: 0,
             preferences: Preferences::default(),
             updates: Updates::default(),

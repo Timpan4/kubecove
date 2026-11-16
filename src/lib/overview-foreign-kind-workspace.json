@@ -1,0 +1,17 @@
+{
+  "apiVersion": "kubecove.dev/workspace/v1",
+  "kind": "Workspace",
+  "metadata": { "name": "foreign-application" },
+  "spec": {
+    "displayName": "Foreign Application",
+    "scope": {
+      "clusterContext": "mock-dev",
+      "namespaces": ["argocd"],
+      "kinds": ["Pod", { "group": "example.com", "version": "v1", "apiVersion": "example.com/v1", "kind": "Application", "plural": "applications", "namespaced": true }],
+      "layout": "overview",
+      "argoAppFilter": ""
+    },
+    "shortcuts": [],
+    "portForwards": []
+  }
+}

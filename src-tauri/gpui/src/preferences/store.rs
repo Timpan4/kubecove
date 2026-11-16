@@ -1,5 +1,6 @@
 //! All filesystem access is explicit. Default stores are memory-only.
 use super::Document;
+use crate::workspaces::SavedKind;
 use kubecove_lib::models::{AppError, AppErrorKind};
 use std::{
     fs::{self, OpenOptions},
@@ -108,7 +109,8 @@ impl Store {
 fn decode(bytes: &[u8]) -> Result<Document, AppError> {
     let value: serde_json::Value = serde_json::from_slice(bytes).map_err(|_| invalid())?;
     reject_credentials(&value)?;
-    let mut document: Document = if value.get("version").is_none()
+    let versioned = value.get("version").is_some();
+    let mut document: Document = if !versioned
         && ["presets", "autoStart", "keep"]
             .iter()
             .any(|key| value.get(key).is_some())
@@ -133,9 +135,17 @@ fn decode(bytes: &[u8]) -> Result<Document, AppError> {
     } else {
         serde_json::from_value(value).map_err(|_| invalid())?
     };
+    // The new-document default is the current version; a stored document
+    // without one predates version 2.
+    if !versioned {
+        document.version = 1;
+    }
     match document.version {
-        0 => document.version = 1,
-        1 => {}
+        0 | 1 => {
+            restore_kind_identities(&mut document);
+            document.version = 2;
+        }
+        2 => {}
         _ => {
             return Err(AppError::new(
                 "Native preferences use an unsupported version. The file was preserved.",
@@ -146,8 +156,31 @@ fn decode(bytes: &[u8]) -> Result<Document, AppError> {
     validate(&document)?;
     Ok(document)
 }
+/// Version 1 saved only kind names. An import kept its document, whose kinds
+/// carry the API identity; when the saved names are exactly that document's
+/// kinds, take them. Other names stay as they are.
+fn restore_kind_identities(document: &mut Document) {
+    for workspace in &mut document.workspaces {
+        let Some(kinds) = document
+            .workspace_documents
+            .get(&workspace.id)
+            .and_then(|retained| {
+                crate::workspaces::transfer::scope_kinds(&retained["spec"]["scope"]).ok()
+            })
+        else {
+            continue;
+        };
+        if kinds
+            .iter()
+            .map(SavedKind::label)
+            .eq(workspace.kinds.iter().map(SavedKind::label))
+        {
+            workspace.kinds = kinds;
+        }
+    }
+}
 fn validate(document: &Document) -> Result<(), AppError> {
-    if document.version != 1 {
+    if document.version != 2 {
         return Err(invalid());
     }
     let lanes = &document.preferences.resource_kind_lanes;

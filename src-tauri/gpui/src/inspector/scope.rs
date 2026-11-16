@@ -456,7 +456,11 @@ impl Inspector {
             .as_ref()
             .map_or(&self.observation.rows()[..], |state| state.rows.as_slice())
             .iter()
-            .filter(|row| self.launcher.overview_kind(&row.kind) && self.launcher.in_scope(row))
+            .filter(|row| {
+                self.launcher
+                    .overview_kind(&row.kind, row.api_version.as_deref())
+                    && self.launcher.in_scope(row)
+            })
     }
 
     /// Kinds in the resource scope: the page's kinds plus custom kinds present.
