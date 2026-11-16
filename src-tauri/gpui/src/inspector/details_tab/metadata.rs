@@ -39,14 +39,11 @@ enum Disclosure {
 }
 
 impl Inspector {
-    /// `openHelmRelease`: the Helm page selects the release once it loads.
-    fn open_helm_release(
-        &mut self,
-        name: String,
-        namespace: Option<String>,
-        cx: &mut Context<Self>,
-    ) {
-        self.helm_page.target = Some(HelmTarget { name, namespace });
+    /// `openHelmRelease`: the Helm page reads the resource's context and selects
+    /// the release once it loads. Leaving the detail passes the page's leave guards.
+    fn open_helm_release(&mut self, target: HelmTarget, cx: &mut Context<Self>) {
+        self.helm_page.requested_context = Some(target.context.clone());
+        self.helm_page.target = Some(target);
         self.open_page(super::super::Page::Helm, cx);
     }
 
@@ -87,7 +84,7 @@ pub(super) fn helm_header_button(
         .helm_release
         .clone()
         .filter(|name| !name.is_empty())?;
-    let namespace = summary.namespace.clone();
+    let target = HelmTarget::of(summary, release);
     Some(
         ui::outline_button()
             .h(px(28.))
@@ -97,9 +94,7 @@ pub(super) fn helm_header_button(
             .test_support()
             .aria_label("Open Helm release")
             .cursor_pointer()
-            .on_click(cx.listener(move |this, _, _, cx| {
-                this.open_helm_release(release.clone(), namespace.clone(), cx)
-            }))
+            .on_click(cx.listener(move |this, _, _, cx| this.open_helm_release(target.clone(), cx)))
             .child(ui::icon("external-link", 12., Tokens::foreground()))
             .child(ui::xs("Open Helm release")),
     )
@@ -124,8 +119,10 @@ pub(super) fn ownership_card(detail: &ResourceDetail, cx: &mut Context<Inspector
             .map(|(label, text)| field(label, labeled_value(label, text))),
     );
     if let Some(release) = summary.helm_release.clone().filter(|name| !name.is_empty()) {
-        let namespace = summary.namespace.clone();
-        rows.push(field("Helm", helm_row_button(release, namespace, cx)));
+        rows.push(field(
+            "Helm",
+            helm_row_button(HelmTarget::of(summary, release), cx),
+        ));
     }
     if rows.is_empty() {
         rows.push(ui::muted(ui::xs("None detected")));
@@ -245,12 +242,8 @@ pub(super) fn advanced_metadata(detail: &ResourceDetail, cx: &mut Context<Inspec
     block
 }
 
-fn helm_row_button(
-    release: String,
-    namespace: Option<String>,
-    cx: &mut Context<Inspector>,
-) -> impl IntoElement {
-    let label = release.clone();
+fn helm_row_button(target: HelmTarget, cx: &mut Context<Inspector>) -> impl IntoElement {
+    let label = target.name.clone();
     ui::outline_button()
         .h(px(28.))
         .px(px(10.))
@@ -259,9 +252,7 @@ fn helm_row_button(
         .test_support()
         .aria_label(label.clone())
         .cursor_pointer()
-        .on_click(cx.listener(move |this, _, _, cx| {
-            this.open_helm_release(release.clone(), namespace.clone(), cx)
-        }))
+        .on_click(cx.listener(move |this, _, _, cx| this.open_helm_release(target.clone(), cx)))
         .child(ui::icon("external-link", 12., Tokens::foreground()))
         .child(ui::xs(label))
 }

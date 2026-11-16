@@ -107,7 +107,7 @@
 		resource: ResourceSummary;
 		workspaceReadContext: WorkspaceReadContext;
 		argoApplicationSummary?: ArgoApplicationSummary | null;
-		onOpenHelmRelease?: (releaseName: string, namespace?: string | null) => void;
+		onOpenHelmRelease?: (releaseName: string, namespace: string | null, cluster: string) => void;
 		initialPathState?: PathStateResourceDetailState | null;
 		onPathStateChange?: (state: PathStateResourceDetailState) => void;
 	} = $props();

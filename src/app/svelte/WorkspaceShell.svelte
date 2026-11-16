@@ -154,6 +154,7 @@
 	const focusedResource = $derived(navigation.focusedResource);
 	const restoreTargetResource = $derived(navigation.restoreTargetResource);
 	const targetHelmRelease = $derived(navigation.targetHelmRelease);
+	const helmContext = $derived(navigation.helmContext);
 	const targetGitOpsApplication = $derived(navigation.targetGitOpsApplication);
 	const resourceGitOpsFocusApplication = $derived(
 		navigation.resourceGitOpsFocusApplication,
@@ -450,11 +451,12 @@
 		});
 	}
 
-	function openHelmReleaseFromResource(releaseName: string, namespace?: string | null) {
+	function openHelmReleaseFromResource(releaseName: string, namespace: string | null, cluster: string) {
 		applyWorkspaceNavigation({
 			type: "openHelmRelease",
 			name: releaseName,
 			namespace,
+			cluster,
 		});
 	}
 
@@ -466,16 +468,14 @@
 		applyWorkspaceNavigation({ type: "clearGitOpsTarget" });
 	}
 
-	function openArgo(argoApp?: string, namespace?: string) {
+	function openArgo(argoApp?: string, namespace?: string, cluster = workspace.scope.clusterContext) {
 		if (argoApp) {
-			workspaceStore.recordRecentApplication(
-				workspace.id,
-				workspace.scope.clusterContext,
-				argoApp,
-				namespace,
-			);
+			workspaceStore.recordRecentApplication(workspace.id, cluster, argoApp, namespace);
 		}
-		applyWorkspaceNavigation({ type: "openArgo", application: argoApp });
+		applyWorkspaceNavigation({
+			type: "openArgo",
+			application: argoApp ? { name: argoApp, namespace, cluster } : undefined,
+		});
 	}
 
 	function openIncidents(filter: IncidentFilter = "all") {
@@ -689,6 +689,7 @@
 						{viewMode}
 						{selectedNode}
 						{targetHelmRelease}
+						{helmContext}
 						{targetGitOpsApplication}
 						{initialIncidentFilter}
 						initialPathState={initialSurfacesPathState}

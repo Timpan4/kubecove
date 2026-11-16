@@ -61,7 +61,7 @@ describe("workspace navigation", () => {
 			focusedResource: null,
 			restoreTargetResource: null,
 			targetHelmRelease: null,
-			targetGitOpsApplication: "checkout",
+			targetGitOpsApplication: { name: "checkout", namespace: "argocd", cluster: "kind-dev" },
 			resources: null,
 			detail: null,
 			surfaces: null,
@@ -77,7 +77,7 @@ describe("workspace navigation", () => {
 
 		expect(matching.viewMode).toBe("argo");
 		expect(matching.selectedNode).toBe(null);
-		expect(matching.targetGitOpsApplication).toBe("checkout");
+		expect(matching.targetGitOpsApplication).toEqual({ name: "checkout", namespace: "argocd", cluster: "kind-dev" });
 		expect(different.viewMode).toBe("overview");
 		expect(different.selectedNode).toEqual({
 			type: "section",
@@ -88,7 +88,7 @@ describe("workspace navigation", () => {
 	test("opens resource handoffs and resets stale surface targets", () => {
 		const argo = navigateWorkspace(createWorkspaceNavigation(workspace), {
 			type: "openArgo",
-			application: "old-app",
+			application: { name: "old-app" },
 		});
 		const resources = navigateWorkspace(argo, {
 			type: "openResources",
@@ -157,10 +157,11 @@ describe("workspace navigation", () => {
 			type: "openHelmRelease",
 			name: "checkout",
 			namespace: "payments",
+			cluster: "kind-staging",
 		});
 		const argo = navigateWorkspace(helm, {
 			type: "openArgo",
-			application: "checkout",
+			application: { name: "checkout" },
 		});
 		const portForwards = navigateWorkspace(argo, { type: "openPortForwards" });
 
@@ -171,12 +172,14 @@ describe("workspace navigation", () => {
 		});
 		expect(helm).toMatchObject({
 			viewMode: "helm",
-			targetHelmRelease: { name: "checkout", namespace: "payments" },
+			targetHelmRelease: { name: "checkout", namespace: "payments", cluster: "kind-staging" },
+			helmContext: "kind-staging",
 		});
 		expect(argo).toMatchObject({
 			viewMode: "argo",
 			targetHelmRelease: null,
-			targetGitOpsApplication: "checkout",
+			helmContext: null,
+			targetGitOpsApplication: { name: "checkout" },
 		});
 		expect(portForwards).toMatchObject({
 			viewMode: "portForwards",
@@ -189,7 +192,7 @@ describe("workspace navigation", () => {
 		const surfaces = [
 			{ type: "openSettings" as const },
 			{ type: "openArgo" as const },
-			{ type: "openHelmRelease" as const, name: "checkout" },
+			{ type: "openHelmRelease" as const, name: "checkout", cluster: "kind-dev" },
 			{ type: "openIncidents" as const },
 			{ type: "openPortForwards" as const },
 		];

@@ -1,3 +1,4 @@
+import type { PathStateTargetRef } from "@/lib/path-state";
 import type { HelmReleaseSummary } from "@/lib/types";
 import { findHelmReleaseTarget, groupHelmReleasesByNamespace, helmReleaseKey } from "./helpers";
 
@@ -42,14 +43,14 @@ export function resolveHelmNamespace(
 
 export function resolveTargetHelmRelease(
 	releases: HelmReleaseSummary[] | undefined,
-	target: { name: string; namespace?: string | null } | null | undefined,
+	target: PathStateTargetRef | null | undefined,
 ) {
 	if (!releases || !target) return null;
 	return findHelmReleaseTarget(releases, target);
 }
 
-export function selectedHelmReleasePath(release: HelmReleaseSummary | null) {
-	return release ? { name: release.name, namespace: release.namespace } : null;
+export function selectedHelmReleasePath(release: HelmReleaseSummary | null): PathStateTargetRef | null {
+	return release ? { name: release.name, namespace: release.namespace, cluster: release.cluster } : null;
 }
 
 export function selectedHelmReleaseExists(

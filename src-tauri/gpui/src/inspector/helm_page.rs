@@ -18,7 +18,7 @@ use gpui_kit::{
     AnyElement, AppContext, Context, Div, Entity, ListAlignment, ListState, ScrollHandle,
     Subscription, Window, div, list, prelude::*, px,
 };
-use kubecove_lib::models::{HelmReleaseList, HelmReleaseSummary};
+use kubecove_lib::models::{HelmReleaseList, HelmReleaseSummary, ResourceSummary};
 
 mod rail;
 
@@ -27,15 +27,29 @@ const TOP_ROWS: [usize; 2] = [1, 4];
 
 /// A release opened from another page, such as a resource's Open Helm release
 /// action. The page selects it after the next successful list read.
+#[derive(Clone)]
 pub(super) struct HelmTarget {
+    /// The context the release belongs to.
+    pub(super) context: String,
     pub(super) name: String,
     pub(super) namespace: Option<String>,
 }
 
 impl HelmTarget {
-    /// `findHelmReleaseTarget`: a release with this name, in the namespace when one is given.
+    /// The release `name` that manages `resource`, in the resource's context and namespace.
+    pub(super) fn of(resource: &ResourceSummary, name: String) -> Self {
+        Self {
+            context: resource.cluster.clone(),
+            name,
+            namespace: resource.namespace.clone(),
+        }
+    }
+
+    /// `findHelmReleaseTarget`: a release with this name in this context, and
+    /// in the namespace when one is given.
     fn matches(&self, release: &HelmReleaseSummary) -> bool {
         release.name == self.name
+            && release.cluster == self.context
             && self
                 .namespace
                 .as_ref()
@@ -46,6 +60,9 @@ impl HelmTarget {
 pub(super) struct HelmPage {
     /// The context `load` belongs to.
     context: String,
+    /// The web's `helmContext`: the context of a release opened from another
+    /// workspace context. `None` reads the workspace context.
+    pub(super) requested_context: Option<String>,
     /// Set by `open_helm_release`; consumed by the next successful list read.
     pub(super) target: Option<HelmTarget>,
     load: Query<HelmReleaseList>,
@@ -80,6 +97,7 @@ impl HelmPage {
         });
         Self {
             context: String::new(),
+            requested_context: None,
             target: None,
             load: Query::default(),
             namespace: None,
@@ -97,6 +115,31 @@ impl HelmPage {
             details: HelmDetails::default(),
             _search_changed,
         }
+    }
+
+    /// Applies a workspace's remembered release: its context and target, with
+    /// no selection or namespace filter left over from the previous workspace,
+    /// as the web's `HelmSurface` starts each workspace with `helmNamespace` unset.
+    pub(super) fn restore(&mut self, target: Option<HelmTarget>) {
+        self.requested_context = target.as_ref().map(|target| target.context.clone());
+        self.target = target;
+        self.namespace = None;
+        self.selected = None;
+        self.details = HelmDetails::default();
+    }
+
+    /// The release a workspace reopens on, as the web's restored
+    /// `targetHelmRelease ?? surfaces.selectedHelmRelease`: a pending target,
+    /// otherwise the selected release.
+    pub(super) fn remembered_target(&self) -> Option<HelmTarget> {
+        self.target.clone().or_else(|| {
+            let release = self.releases().get(self.selected?)?;
+            Some(HelmTarget {
+                context: release.cluster.clone(),
+                name: release.name.clone(),
+                namespace: Some(release.namespace.clone()),
+            })
+        })
     }
 
     pub(super) fn releases(&self) -> &[HelmReleaseSummary] {
@@ -144,12 +187,13 @@ impl Inspector {
     /// `helmQuery`: read on every page load, keeping the shown list while a
     /// read for the same context runs.
     pub(super) fn load_helm(&mut self, cx: &mut Context<Self>) {
-        if self.scope.context.is_empty() {
+        let context = self.helm_context();
+        if context.is_empty() {
             return;
         }
         let page = &mut self.helm_page;
-        if page.context != self.scope.context {
-            page.context = self.scope.context.clone();
+        if page.context != context {
+            page.context = context;
             page.load = Query::default();
             page.namespace = None;
             page.selected = None;
@@ -214,6 +258,28 @@ impl Inspector {
                 this.refresh_helm_details(cx);
             });
         }));
+    }
+
+    /// `HelmSurface`'s context: the requested context while it is still a
+    /// workspace context, otherwise the workspace context.
+    fn helm_context(&self) -> String {
+        self.helm_page
+            .requested_context
+            .clone()
+            .filter(|context| self.workspace_contexts().contains(context))
+            .unwrap_or_else(|| self.scope.context.clone())
+    }
+
+    /// Opens the Helm page on the workspace context, as selecting the Helm node
+    /// does in the web: a context or release opened from a resource is dropped.
+    pub(super) fn open_helm(&mut self, cx: &mut Context<Self>) {
+        let page = &mut self.helm_page;
+        let changed = page.requested_context.take().is_some() | page.target.take().is_some();
+        if self.page != super::Page::Helm {
+            self.open_page(super::Page::Helm, cx);
+        } else if changed {
+            self.load_helm(cx);
+        }
     }
 
     pub(super) fn cancel_helm_reads(&mut self) {
@@ -316,7 +382,9 @@ impl Inspector {
     fn helm_list_item(&self, index: usize, cx: &mut Context<Self>) -> AnyElement {
         let last = index + 1 == self.helm_page.items();
         let item = match self.helm_item(index) {
-            Item::Header => dui::frame_header("package", "Helm", Vec::new()).pt(px(20.)),
+            Item::Header => {
+                dui::frame_header("package", "Helm", self.helm_context_badge()).pt(px(20.))
+            }
             Item::Status => div().pt(px(16.)).child(
                 match (
                     surface::pending_slot(self.helm_page.status),
@@ -341,6 +409,22 @@ impl Inspector {
             .px(px(20.))
             .when(last, |item| item.pb(px(20.)))
             .into_any_element()
+    }
+
+    /// With several workspace contexts the header names the context the releases come from.
+    fn helm_context_badge(&self) -> Vec<AnyElement> {
+        if self.workspace_contexts().len() < 2 {
+            return Vec::new();
+        }
+        let context = self.helm_page.context.clone();
+        vec![
+            // HelmView's `max-w-40 truncate` (160px).
+            ui::truncated_outline_badge(context.clone(), px(160.))
+                .id("helm-context")
+                .test_support()
+                .aria_label(format!("Context: {context}"))
+                .into_any_element(),
+        ]
     }
 
     fn helm_summary(&self, cx: &mut Context<Self>) -> Div {

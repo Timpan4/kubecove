@@ -7,6 +7,7 @@
 //! so an app restart starts from the default view.
 
 use super::detail::{Detail, DetailTab};
+use super::helm_page::HelmTarget;
 use super::resource_filters::HealthFilter;
 use super::{Inspector, Load, Page};
 use crate::backend::Scope;
@@ -54,6 +55,9 @@ struct Snapshot {
     custom_kind: Option<DiscoveredResourceKind>,
     custom_kind_locked: bool,
     detail: Option<(ResourceSummary, DetailTab)>,
+    /// The Helm release to reopen, whose context the Helm page reads, as the
+    /// web restores `targetHelmRelease` and `helmContext` from path state.
+    helm: Option<HelmTarget>,
 }
 
 #[derive(Default)]
@@ -143,6 +147,7 @@ impl Inspector {
             custom_kind: self.live.selected.clone(),
             custom_kind_locked: self.live.kind_locked,
             detail,
+            helm: self.helm_page.remembered_target(),
         };
         self.navigation.workspaces.insert(id, snapshot);
     }
@@ -163,6 +168,9 @@ impl Inspector {
             .filter(|saved| saved.context == context)
             .cloned();
         self.page = saved.as_ref().map_or(Page::Overview, |saved| saved.page);
+        // The Helm context and release are this workspace's own, never the previous workspace's.
+        self.helm_page
+            .restore(saved.as_ref().and_then(|saved| saved.helm.clone()));
         self.scope = Scope {
             context: context.to_owned(),
             namespace: saved.as_ref().and_then(|saved| saved.namespace.clone()),

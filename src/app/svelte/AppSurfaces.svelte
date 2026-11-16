@@ -9,7 +9,7 @@
 
 <script lang="ts">
 	import {
-		selectedGitOpsApplicationName,
+		selectedGitOpsApplicationRef,
 		type GitOpsSelection,
 	} from "@/features/gitops/surfaceSelection";
 	import { selectedHelmReleasePath } from "@/features/helm/surfaceState";
@@ -23,7 +23,7 @@
 		ResourceSummary,
 	} from "@/lib/types";
 	import type { TreeNodeId } from "@/lib/tree-nav";
-	import type { PathStateDetailTab, PathStateSurfacesState } from "@/lib/path-state";
+	import type { PathStateDetailTab, PathStateSurfacesState, PathStateTargetRef } from "@/lib/path-state";
 	import type { SavedWorkspace } from "@/lib/workspace-model";
 	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
 	import type { RbacVerifierHandoff } from "@/features/rbac";
@@ -36,6 +36,7 @@
 		viewMode,
 		selectedNode,
 		targetHelmRelease,
+		helmContext = null,
 		targetGitOpsApplication,
 		initialIncidentFilter = "all",
 		initialPathState = null,
@@ -56,8 +57,9 @@
 		workspaceReadContext: WorkspaceReadContext;
 		viewMode: WorkspaceViewMode;
 		selectedNode: TreeNodeId | null;
-		targetHelmRelease?: { name: string; namespace?: string | null } | null;
-		targetGitOpsApplication?: string | null;
+		targetHelmRelease?: PathStateTargetRef | null;
+		helmContext?: string | null;
+		targetGitOpsApplication?: PathStateTargetRef | null;
 		initialIncidentFilter?: IncidentFilter;
 		initialPathState?: PathStateSurfacesState | null;
 		onOpenResources: (
@@ -123,7 +125,7 @@
 			incidentFilter,
 			helmSearch,
 			selectedHelmRelease: selectedHelmReleasePath(selectedHelmRelease),
-			selectedGitOpsApplication: selectedGitOpsApplicationName(selectedGitOpsItem),
+			selectedGitOpsApplication: selectedGitOpsApplicationRef(selectedGitOpsItem),
 			rbac: rbacState
 				? {
 					riskBucket: rbacState.riskBucket ?? "all",
@@ -163,6 +165,7 @@
 					{sourceReady}
 					{kubeconfigSourceKey}
 					{targetHelmRelease}
+					{helmContext}
 					bind:helmSearch
 					bind:selectedHelmRelease
 					{onTargetHelmReleaseResolved}

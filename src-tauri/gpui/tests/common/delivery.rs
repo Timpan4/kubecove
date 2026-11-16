@@ -10,6 +10,7 @@ use kubecove_lib::models::{
     ResourceSummary,
 };
 use serde::Deserialize;
+use std::collections::HashMap;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -21,6 +22,9 @@ pub struct GitOps {
     applications: Vec<Application>,
     many_argo: Vec<ArgoApplicationSummary>,
     many_applications: Vec<Application>,
+    /// The "same-name" inventory: a second tenant-catalog in another namespace.
+    same_name_argo: Vec<ArgoApplicationSummary>,
+    same_name_applications: Vec<Application>,
 }
 
 #[derive(Deserialize)]
@@ -32,6 +36,9 @@ struct Application {
 #[derive(Deserialize)]
 pub struct Helm {
     list: HelmReleaseList,
+    /// Each context's list, so a release opened from another workspace context
+    /// reads its own context.
+    lists: HashMap<String, HelmReleaseList>,
     details: Vec<HelmReleaseDetails>,
     reconciliations: Vec<HelmReleaseReconciliation>,
 }
@@ -42,16 +49,16 @@ fn ready<T: Send + 'static>(found: Option<T>, what: &str) -> Read<T> {
 }
 
 fn same_release(a: &HelmReleaseSummary, b: &HelmReleaseSummary) -> bool {
-    a.namespace == b.namespace && a.storage_name == b.storage_name
+    a.cluster == b.cluster && a.namespace == b.namespace && a.storage_name == b.storage_name
 }
 
 impl GitOps {
     pub fn inventory(&self, mode: &str) -> Read<GitOpsInventory> {
         let inventory = GitOpsInventory {
-            argo: if mode == "many" {
-                Some(self.many_argo.clone())
-            } else {
-                self.argo.clone()
+            argo: match mode {
+                "many" => Some(self.many_argo.clone()),
+                "same-name" => Some(self.same_name_argo.clone()),
+                _ => self.argo.clone(),
             },
             flux: self.flux.clone(),
             app_sets: self.app_sets.clone(),
@@ -62,10 +69,10 @@ impl GitOps {
     }
 
     fn applications(&self, mode: &str) -> &[Application] {
-        if mode == "many" {
-            &self.many_applications
-        } else {
-            &self.applications
+        match mode {
+            "many" => &self.many_applications,
+            "same-name" => &self.same_name_applications,
+            _ => &self.applications,
         }
     }
 
@@ -104,8 +111,10 @@ impl GitOps {
 }
 
 impl Helm {
-    pub fn releases(&self) -> Read<HelmReleaseList> {
-        ready(Some(self.list.clone()), "Helm releases")
+    /// `list_helm_releases` for `context`; a context the export did not list reads the primary list.
+    pub fn releases(&self, context: &str) -> Read<HelmReleaseList> {
+        let list = self.lists.get(context).unwrap_or(&self.list).clone();
+        ready(Some(list), "Helm releases")
     }
 
     pub fn release(&self, release: HelmReleaseSummary) -> Read<HelmReleaseDetails> {

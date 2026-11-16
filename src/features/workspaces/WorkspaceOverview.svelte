@@ -43,7 +43,7 @@
 			resources: ResourceSummary[],
 			coverage: ReturnType<typeof buildWorkspaceFetchPlans>,
 		) => void;
-		onOpenArgo: (argoApp?: string, namespace?: string) => void;
+		onOpenArgo: (argoApp?: string, namespace?: string, cluster?: string) => void;
 		onOpenIncidents: (filter?: IncidentFilter) => void;
 		onOpenPortForwards: () => void;
 		onOpenLauncher: () => void;
@@ -158,7 +158,7 @@
 			return;
 		}
 		if (entry.kind === "app") {
-			onOpenArgo(entry.name, entry.namespace);
+			onOpenArgo(entry.name, entry.namespace, entry.clusterContext);
 			return;
 		}
 		const resource = resourceFromEntryPoint(entry);

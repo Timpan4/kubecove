@@ -280,6 +280,7 @@ pub(super) fn card(
                     .id("gitops-selected")
                     .test_support()
                     .aria_label(selection.name().to_string())
+                    .aria_description(key.clone())
                     .absolute()
                     .w(px(0.))
                     .h(px(0.)),

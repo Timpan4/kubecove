@@ -25,6 +25,11 @@ export async function deliveryAction(page: Page, step: Step): Promise<void> {
 			await group.click();
 			break;
 		}
+		// The Helm frame header's context badge, which carries screen-reader text before the name.
+		case "expectHelmContext":
+			await page.getByRole("heading", { level: 2, name: "Helm", exact: true }).locator("xpath=ancestor::header")
+				.getByText(`Context: ${step.context}`, { exact: true }).waitFor();
+			break;
 		default: throw new Error(`Not a GitOps list step: ${step.action}`);
 	}
 }

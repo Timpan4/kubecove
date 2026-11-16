@@ -3,7 +3,7 @@ import { buildGitOpsReadState } from "../src/features/gitops/surfaceState";
 import {
 	argoApplicationResourceNavigation,
 	resolveTargetGitOpsSelection,
-	selectedGitOpsApplicationName,
+	selectedGitOpsApplicationRef,
 } from "../src/features/gitops/surfaceSelection";
 
 const readyDetection = {
@@ -34,13 +34,23 @@ describe("GitOps surface state", () => {
 	};
 
 	test("resolves shortcut targets and mirrors selected applications into path state", () => {
-		const resolved = resolveTargetGitOpsSelection([application], "checkout", true);
-		const missing = resolveTargetGitOpsSelection([application], "missing", true);
+		const resolved = resolveTargetGitOpsSelection([application], { name: "checkout" }, true);
+		const missing = resolveTargetGitOpsSelection([application], { name: "missing" }, true);
 
 		expect(resolved).toEqual({ selection: application, shouldResolve: true });
 		expect(missing).toEqual({ selection: null, shouldResolve: true });
-		expect(selectedGitOpsApplicationName(resolved.selection)).toBe("checkout");
-		expect(selectedGitOpsApplicationName(null)).toBeNull();
+		expect(selectedGitOpsApplicationRef(resolved.selection)).toEqual({ name: "checkout", namespace: "argocd", cluster: "kind-dev" });
+		expect(selectedGitOpsApplicationRef(null)).toBeNull();
+	});
+
+	test("selects a same-named Application only in the target's namespace and context", () => {
+		const tenants = { ...application, item: { ...application.item, namespace: "tenants" } };
+		const selections = [application, tenants];
+
+		expect(resolveTargetGitOpsSelection(selections, { name: "checkout", namespace: "tenants", cluster: "kind-dev" }, true).selection).toBe(tenants);
+		expect(resolveTargetGitOpsSelection(selections, { name: "checkout", namespace: "argocd", cluster: "kind-dev" }, true).selection).toBe(application);
+		// GitOps reads only the primary context, so a target from another context selects nothing.
+		expect(resolveTargetGitOpsSelection(selections, { name: "checkout", namespace: "tenants", cluster: "kind-staging" }, true).selection).toBeNull();
 	});
 
 	test("opens Argo resources without an owner filter and preserves focus", () => {

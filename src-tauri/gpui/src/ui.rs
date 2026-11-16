@@ -2,7 +2,9 @@
 //! in `src/components/ui/svelte/classes.ts`. Sizes use the web's px values.
 
 use crate::theme::{HEADING, Palette, SANS, SM_FONT_SIZE, Tokens, XS_FONT_SIZE};
-use gpui_kit::{Div, FontWeight, Hsla, SharedString, Styled, Svg, div, prelude::*, px, svg};
+use gpui_kit::{
+    Div, FontWeight, Hsla, Pixels, SharedString, Styled, Svg, div, prelude::*, px, svg,
+};
 
 /// Text at a web font size (px) and line height (px).
 pub fn text(content: impl Into<SharedString>, size: f32, line: f32) -> Div {
@@ -81,12 +83,7 @@ pub fn panel() -> Div {
 /// Badge base: `inline-flex h-5 items-center justify-center overflow-hidden
 /// whitespace-nowrap px-2 text-[10px] font-medium`. Overflowing text stays
 /// centered and clips on both sides, as in the web.
-fn badge(
-    border: Hsla,
-    background: Hsla,
-    foreground: Hsla,
-    content: impl Into<SharedString>,
-) -> Div {
+fn badge_frame(border: Hsla, background: Hsla) -> Div {
     div()
         .flex()
         .flex_none()
@@ -99,13 +96,22 @@ fn badge(
         .border_1()
         .border_color(border)
         .bg(background)
-        .child(
-            text(content, 10., 14.)
-                .flex_none()
-                .whitespace_nowrap()
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(foreground),
-        )
+}
+
+fn badge_text(content: impl Into<SharedString>, foreground: Hsla) -> Div {
+    text(content, 10., 14.)
+        .whitespace_nowrap()
+        .font_weight(FontWeight::MEDIUM)
+        .text_color(foreground)
+}
+
+fn badge(
+    border: Hsla,
+    background: Hsla,
+    foreground: Hsla,
+    content: impl Into<SharedString>,
+) -> Div {
+    badge_frame(border, background).child(badge_text(content, foreground).flex_none())
 }
 
 /// `Badge variant="outline"`.
@@ -116,6 +122,19 @@ pub fn outline_badge(content: impl Into<SharedString>) -> Div {
         Tokens::foreground(),
         content,
     )
+}
+
+/// `Badge variant="outline"` with `max-w-* truncate`: a label wider than
+/// `max_width` ends in an ellipsis.
+pub fn truncated_outline_badge(content: impl Into<SharedString>, max_width: Pixels) -> Div {
+    badge_frame(Tokens::border(), Tokens::input().opacity(0.3))
+        .max_w(max_width)
+        .justify_start()
+        .child(
+            badge_text(content, Tokens::foreground())
+                .min_w_0()
+                .truncate(),
+        )
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

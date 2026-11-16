@@ -57,7 +57,10 @@ Scope limits:
 
 - GitOps (Argo CD and Flux), Helm, RBAC, Incidents, Usage and the Cluster
   Overview stay primary-context only. Argo CD connected profiles keep ADR
-  0013's single-context binding.
+  0013's single-context binding. One exception: a Helm release opened from a
+  resource in another workspace context opens the Helm page on that context,
+  and the Helm header names it. Any other Helm navigation returns to the
+  primary context. A GitOps target from another context selects nothing.
 - Ownership map shows one context at a time. A "Map context" select in the map
   panel lists the workspace contexts in workspace order and defaults to the
   primary context. The select appears only when the workspace has more than one

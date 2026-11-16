@@ -107,7 +107,7 @@ export type Step =
     | { action: "toggleWorkspaceContext" | "chooseClusterContext"; context: string }
     | { action: "expectOverviewHealth"; total: number }
     | { action: "expectActivePage"; page: string }
-    | { action: "expectGitOpsSelection"; name: string }
+    | { action: "expectGitOpsSelection"; name: string; namespace?: string }
     | { action: "expectDetailContext"; context: string }
     | { action: "refreshPage"; page: "RBAC" | "Incidents" }
     | { action: "replayPageReads"; phase: "base" | "updated" | "failed" }
@@ -330,6 +330,8 @@ export type Step =
     | { action: "selectHelmNamespace"; namespace: string }
     | { action: "searchHelm"; value: string }
     | { action: "expectHelmDetails"; title: string; description: string; totals: string }
+    /** The Helm header names the context its releases come from (multi-context workspaces only). */
+    | { action: "expectHelmContext"; context: string }
     | ({ action: "openGitOpsResources" } & Identity)
     | { action: "expectArgoWorkspace"; name: string }
     | { action: "filterArgoResources"; filter: string }

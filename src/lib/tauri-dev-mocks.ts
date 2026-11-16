@@ -1,7 +1,7 @@
 import type { Channel, InvokeOptions } from "@tauri-apps/api/core";
 import { stringify } from "yaml";
 import { cancelSignInRemoteMock, connectRemoteMock, disconnectRemoteMock, remoteMockStatus, saveWorkspaceMock, selectedDialogPath, selectedWorkspaceFile, signInLinkRemoteMock, signInRemoteMock, signOutRemoteMock, startNewSessionRemoteMock } from "./settings-integration-mocks";
-import { argoApplicationSummary, argoApplicationYaml, argoMockHandlers, customResourceKinds, presentCustomResourceKinds } from "./tauri-dev-mock-argo";
+import { argoApplicationSummary, argoApplicationYaml, argoMockHandlers, customResourceKinds, inventoryApplication, presentCustomResourceKinds } from "./tauri-dev-mock-argo";
 import { type MockArgs, type MockHandler, type MockResult, readMockArgs } from "./tauri-dev-mock-contract";
 import { beforeCoverageRead, coverageHelm, coverageIncidents, coverageLogs, coverageRbac, coverageSessions, coverageStopExec, coverageStopForward, coverageTopology, coverageYamlPreview, registerCoverageLogStream } from "./tauri-dev-mock-coverage";
 import {
@@ -14,7 +14,7 @@ import {
 	solidOnlyResources,
 	source,
 } from "./tauri-dev-mock-data";
-import { argoApps, helmReleases } from "./tauri-dev-mock-gitops-data";
+import { helmReleases, helmReleasesFor } from "./tauri-dev-mock-gitops-data";
 import { withDetailStatusFixture } from "./tauri-dev-mock-detail-status";
 import { evictedWorkerName, evictedWorkerStatus } from "./tauri-dev-mock-incidents";
 import { addKubeconfigPathsMock, kubeContextsMock, kubeconfigSourceKeyMock, reorderKubeconfigPathsMock } from "./tauri-dev-mock-kubeconfig";
@@ -217,7 +217,7 @@ const handlers = {
 	list_resource_metrics: () => metrics(),
 	...argoMockHandlers(genericYaml),
 	reveal_secret_data_value: () => "c2VjcmV0",
-	list_helm_releases: () => coverageHelm({ releases: helmReleases, warnings: [] } satisfies HelmReleaseList),
+	list_helm_releases: (args) => coverageHelm({ releases: helmReleasesFor(args?.clusterContext), warnings: [] } satisfies HelmReleaseList),
 	get_helm_release_details: (args) => helmDetails(args),
 	get_helm_release_reconciliation: (args) => helmReconciliation(args),
 	list_rbac_inspection: (args) => coverageRbac(rbacInspectionMock(args?.clusterContext)),
@@ -274,7 +274,7 @@ function resourceFromArgs(args: MockArgs): ResourceSummary {
 	const match = rows.find((row) => row.kind === kind && row.name === args?.name && (args?.namespace === undefined || row.namespace === args.namespace));
 	if (match) return match;
 	if (kind === "Application" && args?.name !== undefined) {
-		const summary = argoApplicationSummary(args.name);
+		const summary = argoApplicationSummary(args.name, args.namespace);
 		if (summary) return summary;
 	}
 	return rows[0];
@@ -317,7 +317,7 @@ function yamlFor(args: MockArgs): string {
     if (row.kind === "Secret") return stringify({ apiVersion: "v1", kind: "Secret", metadata: { name: row.name, namespace: row.namespace }, data: { token: "REDACTED" } });
     if (row.namespace === "payments" && row.kind === "Pod" && row.name.startsWith("payments-api-")) return stringify({ apiVersion: "v1", kind: "Pod", metadata: { name: row.name, namespace: row.namespace, labels: { app: "payments-api" } }, spec: { containers: [{ name: "app", image: "example/payments-api", ports: [{ containerPort: 8080 }] }, { name: "sidecar", image: "example/sidecar" }] } });
     if (row.namespace === "payments" && row.kind === "Service" && row.name === "payments-api") return stringify({ apiVersion: "v1", kind: "Service", metadata: { name: row.name, namespace: row.namespace }, spec: { selector: { app: "payments-api" }, ports: [{ name: "http", port: 80, targetPort: 8080, protocol: "TCP" }] } });
-	const app = row.kind === "Application" ? argoApps.find((candidate) => candidate.name === row.name) : undefined;
+	const app = row.kind === "Application" ? inventoryApplication(row.name, row.namespace) : undefined;
 	if (app) return argoApplicationYaml(app);
 	if (row.name === evictedWorkerName) return `${genericYaml(row.kind, row.name, row.namespace, row.apiVersion)}${stringify({ status: evictedWorkerStatus })}`;
 	return genericYaml(row.kind, row.name, row.namespace, row.apiVersion);
@@ -375,7 +375,7 @@ function usage(): AppUsageMetrics {
 }
 
 function helmReleaseFromArgs(args: MockArgs): HelmReleaseSummary {
-	return helmReleases.find((release) => release.storageName === args?.storageName && release.namespace === args?.namespace) ?? helmReleases[0];
+	return helmReleasesFor(args?.clusterContext).find((release) => release.storageName === args?.storageName && release.namespace === args?.namespace) ?? helmReleases[0];
 }
 
 function helmDetails(args: MockArgs): HelmReleaseDetails {
@@ -388,12 +388,13 @@ function helmDetails(args: MockArgs): HelmReleaseDetails {
 
 function helmReconciliation(args: MockArgs): HelmReleaseReconciliation {
 	const summary = helmReleaseFromArgs(args);
-	const releaseResources = resources.filter((row) => row.helmRelease === summary.name);
+	const live = resourcesForCluster(summary.cluster);
+	const releaseResources = live.filter((row) => row.helmRelease === summary.name);
 	if (summary.name !== "metrics-gateway") {
 		return { summary, totals: { tracked: releaseResources.length, unlabeledLive: 0, missing: 0, labelOnly: 0, unavailable: 0 }, resources: releaseResources.map((row) => ({ apiVersion: row.apiVersion, kind: row.kind, namespace: row.namespace ?? undefined, name: row.name, status: "tracked", statusMessage: "Tracked in mock Helm release", inManifest: true, explicitHelmLabel: true, liveResource: row })), warnings: [] };
 	}
-	const tracked: HelmReconciliationResource[] = resources.filter((row) => row.helmRelease === "metrics-gateway").map((row) => ({ apiVersion: row.apiVersion, kind: row.kind, namespace: row.namespace ?? undefined, name: row.name, status: "tracked", statusMessage: "Tracked in mock Helm release", inManifest: true, explicitHelmLabel: true, liveResource: row }));
-	const ciliumSecret = resources.find((row) => row.kind === "Secret" && row.name === "sh.helm.release.v1.cilium.v2");
+	const tracked: HelmReconciliationResource[] = releaseResources.map((row) => ({ apiVersion: row.apiVersion, kind: row.kind, namespace: row.namespace ?? undefined, name: row.name, status: "tracked", statusMessage: "Tracked in mock Helm release", inManifest: true, explicitHelmLabel: true, liveResource: row }));
+	const ciliumSecret = live.find((row) => row.kind === "Secret" && row.name === "sh.helm.release.v1.cilium.v2");
 	return { summary, totals: { tracked: 4, unlabeledLive: 1, missing: 1, labelOnly: 0, unavailable: 0 }, resources: tracked.concat([{ apiVersion: "v1", kind: "ConfigMap", namespace: "platform", name: "metrics-gateway-dashboard", status: "missing", statusMessage: "Manifest resource is not present in mock live state.", inManifest: true, explicitHelmLabel: false }, { apiVersion: "v1", kind: "Secret", namespace: "kube-system", name: "sh.helm.release.v1.cilium.v2", status: "unlabeledLive", statusMessage: "Live Helm storage Secret is outside the selected release manifest.", inManifest: false, explicitHelmLabel: false, liveResource: ciliumSecret }]), warnings: [] };
 }
 

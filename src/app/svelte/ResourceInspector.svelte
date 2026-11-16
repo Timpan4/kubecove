@@ -33,7 +33,7 @@
 		initialPathState: PathStateResourceDetailState | null;
 		onPinToggle: () => void;
 		onClose: () => void;
-		onOpenHelmRelease: (releaseName: string, namespace?: string | null) => void;
+		onOpenHelmRelease: (releaseName: string, namespace: string | null, cluster: string) => void;
 		onPathStateChange: (state: PathStateResourceDetailState) => void;
 	} = $props();
 </script>
