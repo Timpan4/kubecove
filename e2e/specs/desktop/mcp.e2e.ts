@@ -97,6 +97,11 @@ describe("desktop MCP server", () => {
 			);
 		}
 		if (blocker) await new Promise((closed) => blocker?.close(closed));
+		// The next spec starts on the screen this one leaves. On Windows the remote spec is
+		// skipped, so the smoke spec would otherwise start on Settings, where the
+		// "Open settings" button is absent.
+		const back = await $("button=Back to app");
+		if (await back.isDisplayed()) await back.click();
 	});
 
 	it("is off until enabled, then serves only read-only tools to the token holder", async () => {
