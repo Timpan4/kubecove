@@ -89,7 +89,7 @@ tree-sitter-yaml = "=0.7.2"
 # The E2E flavor's automation endpoint (ADR 0035), at the versions already locked through
 # the backend's MCP host and GPUI.
 kubecove-mcp = { path = "../crates/mcp", features = ["loopback"], optional = true }
-rmcp = { version = "=3.9.0", default-features = false, features = ["server", "transport-streamable-http-server"], optional = true }
+rmcp = { version = "=3.10.0", default-features = false, features = ["server", "transport-streamable-http-server"], optional = true }
 schemars = { version = "=1.2.3", optional = true }
 image = { version = "=0.25.10", default-features = false, features = ["png"], optional = true }
 tokio-util = { version = "=0.7.20", optional = true }
