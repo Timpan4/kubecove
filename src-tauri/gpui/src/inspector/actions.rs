@@ -14,5 +14,5 @@ mod rollback_view;
 mod state;
 mod tab;
 
-pub(super) use state::ActionsState;
+pub(super) use state::{ActionsState, RunningAction};
 pub(super) use tab::actions_tab;

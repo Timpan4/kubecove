@@ -198,6 +198,8 @@ pub struct Inspector {
     gitops: gitops_section::GitOpsState,
     gitops_page: gitops_page::GitOpsPage,
     argo: argo::ArgoState,
+    /// Resource action executions still in flight when their detail closed.
+    running_actions: Vec<actions::RunningAction>,
     helm_page: helm_page::HelmPage,
     cluster: cluster::ClusterState,
     incidents: incidents::IncidentsState,
@@ -329,6 +331,7 @@ impl Inspector {
             gitops: Default::default(),
             gitops_page: gitops_page::GitOpsPage::new(),
             argo: argo::ArgoState::new(window, cx),
+            running_actions: Vec::new(),
             helm_page: helm_page::HelmPage::new(window, cx),
             cluster: Default::default(),
             incidents: incidents::IncidentsState::new(),
@@ -473,6 +476,7 @@ impl Inspector {
         }
         self.exec.clear();
         self.keep_argo_submission();
+        self.keep_action_execution();
         self.detail = Detail::Closed;
         self.argo.reset_dialog(argo::DialogHost::Detail, cx);
         self.notice = None;
