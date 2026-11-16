@@ -68,11 +68,15 @@ impl SavedKind {
 
     /// `kindMatcher`: a name matches by name; an API kind needs the
     /// resource's apiVersion, and matches by name only when it has none.
+    /// An empty apiVersion counts as none, as the web's truthiness test does.
     pub fn matches(&self, kind: &str, api_version: Option<&str>) -> bool {
         match self {
             Self::Name(name) => name == kind,
             Self::Api(api) => {
-                api.kind == kind && api_version.is_none_or(|version| version == api.api_version)
+                api.kind == kind
+                    && api_version
+                        .filter(|version| !version.is_empty())
+                        .is_none_or(|version| version == api.api_version)
             }
         }
     }
