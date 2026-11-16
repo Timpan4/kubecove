@@ -50,8 +50,11 @@ export type Step =
     | { action: "expectPermissionTarget"; verb: string; resource: string }
     | ({ action: "copyResourceName" } & Identity)
     | { action: "expectCopyToast"; text: string }
-    /** `context` names the row's context in a multi-context workspace, where each context has its own row. */
-    | ({ action: "toggleResourcePin"; context?: string } & Identity)
+    /**
+     * `context` names the row's context in a multi-context workspace, where each context has its own row.
+     * With `key`, the driver reaches the pin button with Tab and presses the key instead of clicking.
+     */
+    | ({ action: "toggleResourcePin"; context?: string; key?: "Enter" | "Space" } & Identity)
     | { action: "expectWorkspaceEntry" | "openWorkspaceEntry"; panel: "Pinned" | "Recent"; label: string; index: number; count: number }
     | { action: "reorderKindKey"; kind: string; key: "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" }
     | { action: "resetKindOrder" }
@@ -86,7 +89,10 @@ export type Step =
     // Press at a cell and hold the pointer past the rows' top or bottom edge; `terminalRelease` lets go after `ms`.
     | { action: "terminalDragOutside"; row: number; col: number; edge: "above" | "below" }
     | { action: "terminalRelease"; ms: number }
-    | { action: "terminalFocus"; focused: boolean }
+    /** `key: "Tab"` focuses the terminal by pressing Tab until it has focus, instead of clicking it. */
+    | { action: "terminalFocus"; focused: boolean; key?: "Tab" }
+    /** Presses a key while the terminal has focus. */
+    | { action: "terminalKey"; key: "Tab" }
     // A right press keeps an existing selection: xterm ignores button 2 while text is selected.
     | { action: "terminalRightClick"; row: number; col: number }
     // `cursor` is the shape with " blink" when it blinks, or "outline" without focus.
@@ -233,6 +239,9 @@ export type Step =
     /** The ownership map's "Map context" select and its value; `shown: false` asserts there is no select. */
     | { action: "expectMapContext"; shown: true; context: string }
     | { action: "expectMapContext"; shown: false }
+    /** Presses a key on the "Map context" trigger, reaching it with Tab first while its options are closed. */
+    | { action: "mapContextKey"; key: (typeof MAP_CONTEXT_KEYS)[number] }
+    | { action: "expectMapContextOptions"; open: boolean }
     | { action: "expectClusterResource" | "expectNoClusterResource"; kind: string; name: string }
     | { action: "expectYaml"; contains: string[] }
     | { action: "openPage"; page: string }
@@ -328,9 +337,10 @@ export type Step =
     | { action: "expectTopologyEmpty"; title: string }
     | { action: "selectTopologyNode" | "expectNoTopologyNode"; id: string }
     | { action: "expectResourceMetrics"; kind: string; namespace: string; name: string; cpu: string; memory: string }
-    | { action: "sortResourceTable"; column: (typeof SORT_COLUMNS)[number] }
+    /** With `key`, the driver reaches the control with Tab and presses the key instead of clicking. */
+    | { action: "sortResourceTable"; column: (typeof SORT_COLUMNS)[number]; key?: "Enter" | "Space" }
     | { action: "expectResourceOrder"; names: string[] }
-    | { action: "toggleResourceGroup"; label: string }
+    | { action: "toggleResourceGroup"; label: string; key?: "Enter" | "Space" }
     | { action: "expectResourceGroup"; label: string; expanded: boolean }
     | ({ action: "openResourceRow"; column: TableColumn } & Identity)
     | ({ action: "pressResourceRow"; key: "Enter" | "Space" } & Identity)
@@ -372,6 +382,7 @@ export const PANEL_CONTROLS = [
 ] as const;
 type PanelControl = (typeof PANEL_CONTROLS)[number];
 export const MAP_KEYS = ["Tab", "Shift+Tab", "Enter", "Space"] as const;
+export const MAP_CONTEXT_KEYS = ["Enter", "Space", "ArrowDown", "ArrowUp", "Home", "End", "Escape"] as const;
 type MapKey = (typeof MAP_KEYS)[number];
 /** The zoom controls, labeled as xyflow labels them on the web. */
 export const MAP_CONTROLS = ["Zoom In", "Zoom Out", "Fit View"] as const;

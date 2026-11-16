@@ -14,7 +14,15 @@ export function sessionStep(item: JsonObject): Step | undefined {
 		case "terminalScroll": return { action: item.action, rows: count(item.rows) };
 		case "terminalDragOutside": return { action: item.action, row: count(item.row), col: count(item.col), edge: oneOf(["above", "below"], item.edge, "a terminal edge") };
 		case "terminalRelease": return { action: item.action, ms: count(item.ms) };
-		case "terminalFocus": return { action: item.action, focused: boolean(item.focused) };
+		case "terminalFocus": {
+			const focus: Extract<Step, { action: "terminalFocus" }> = { action: item.action, focused: boolean(item.focused) };
+			if (item.key !== undefined) {
+				if (!focus.focused) throw new Error("Only focusing the terminal takes a key");
+				focus.key = oneOf(["Tab"] as const, item.key, "a terminal focus key");
+			}
+			return focus;
+		}
+		case "terminalKey": return { action: item.action, key: oneOf(["Tab"] as const, item.key, "a terminal key") };
 		case "terminalRightClick": return { action: item.action, row: count(item.row), col: count(item.col) };
 		case "expectTerminalCursor": {
 			const cursor: Extract<Step, { action: "expectTerminalCursor" }> = { action: item.action, cursor: oneOf(["block", "block blink", "bar", "bar blink", "underline", "underline blink", "outline"], item.cursor, "a cursor paint") };

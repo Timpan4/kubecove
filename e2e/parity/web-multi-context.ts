@@ -1,10 +1,13 @@
 import type { Page } from "playwright-core";
 import type { Step } from "./contract";
+import { tabTo } from "./web-keyboard";
 
-type MultiContextStep = Extract<Step, { action: "expectRowContexts" | "filterContexts" | "expectResourceSummary" | "selectMapContext" | "expectMapContext" }>;
+type MultiContextStep = Extract<Step, { action: "expectRowContexts" | "filterContexts" | "expectResourceSummary" | "selectMapContext" | "expectMapContext" | "mapContextKey" | "expectMapContextOptions" }>;
 
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const mapContextSelect = (page: Page) => page.getByRole("combobox", { name: "Map context", exact: true });
+// Bits UI mounts a select's listbox only while it is open, so on the map this is the Map context options.
+const mapContextOptions = (page: Page) => page.getByRole("listbox");
 
 /**
  * Runs in the page: the Context cells of every table row with this identity, in
@@ -54,6 +57,14 @@ export async function multiContextAction(page: Page, step: MultiContextStep): Pr
 		case "selectMapContext":
 			await mapContextSelect(page).click();
 			await page.getByRole("option", { name: step.context, exact: true }).click();
+			break;
+		case "mapContextKey":
+			// While the options are open, keys go to the select wherever Bits UI keeps focus.
+			if (!(await mapContextOptions(page).isVisible())) await tabTo(page, mapContextSelect(page));
+			await page.keyboard.press(step.key);
+			break;
+		case "expectMapContextOptions":
+			await mapContextOptions(page).waitFor({ state: step.open ? "visible" : "hidden" });
 			break;
 		case "expectMapContext":
 			// The map header is present, so a missing select is not a map that has not loaded yet.

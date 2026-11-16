@@ -89,7 +89,7 @@ export const ACTIONS = [
 	"openLiveSessionPopover", "expectLiveSessionRow", "liveSessionControl", "expectHealthTooltip", "expectTimestampTooltip", "expectEventTimeTooltip",
     "panelControl", "expectPanelControl", "skipGraph", "mapKey", "expectMapFocus", "expectNoMapFocus", "expectMapNodeInView", "panMap", "clickMapControl", "expectMapControlFocus", "expectMapZoom", "resizeDetail", "expectDetailResize",
 	"expectYamlDiagnostic", "expectNoYamlDiagnostic", "expectYamlApplyDescription", "expectNoYamlApplyDescription", "expectActionLoadError", "expectNoActionLoadError", "retryActionPermission", "expectActionLock",
-	"expectRowContexts", "filterContexts", "expectResourceSummary", "selectMapContext", "expectMapContext",
+	"expectRowContexts", "filterContexts", "expectResourceSummary", "selectMapContext", "expectMapContext", "mapContextKey", "expectMapContextOptions", "terminalKey",
 ] as const satisfies readonly Step["action"][];
 type Missing = Exclude<Step["action"], (typeof ACTIONS)[number]>;
 const allActionsListed: Missing extends never ? true : Missing = true;
@@ -131,6 +131,7 @@ function step<Value>(value: Value): Step {
         case "toggleResourcePin": {
             const pin: Extract<Step, { action: "toggleResourcePin" }> = { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace) };
             if (item.context !== undefined) pin.context = string(item.context);
+            if (item.key !== undefined) pin.key = oneOf(["Enter", "Space"] as const, item.key, "a pin key");
             return pin;
         }
         case "expectWorkspaceEntry": case "openWorkspaceEntry": return { action: item.action, panel: oneOf(["Pinned", "Recent"], item.panel, "an entry panel"), label: string(item.label), index: count(item.index), count: count(item.count) };
@@ -433,9 +434,17 @@ function step<Value>(value: Value): Step {
 		case "selectHelmNamespace": return { action: item.action, namespace: string(item.namespace) };
 		case "searchHelm": return { action: item.action, value: string(item.value) };
 		case "expectHelmDetails": return { action: item.action, title: string(item.title), description: string(item.description), totals: string(item.totals) };
-		case "sortResourceTable": return { action: item.action, column: oneOf(SORT_COLUMNS, item.column, "a sortable table column") };
+		case "sortResourceTable": {
+			const sort: Extract<Step, { action: "sortResourceTable" }> = { action: item.action, column: oneOf(SORT_COLUMNS, item.column, "a sortable table column") };
+			if (item.key !== undefined) sort.key = oneOf(["Enter", "Space"] as const, item.key, "a sort key");
+			return sort;
+		}
 		case "expectResourceOrder": return { action: item.action, names: strings(item.names, false) };
-		case "toggleResourceGroup": return { action: item.action, label: string(item.label) };
+		case "toggleResourceGroup": {
+			const group: Extract<Step, { action: "toggleResourceGroup" }> = { action: item.action, label: string(item.label) };
+			if (item.key !== undefined) group.key = oneOf(["Enter", "Space"] as const, item.key, "a group key");
+			return group;
+		}
 		case "expectResourceGroup": return { action: item.action, label: string(item.label), expanded: boolean(item.expanded) };
 		case "openResourceRow": return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), column: oneOf(TABLE_COLUMNS, item.column, "a table column") };
 		case "expectResourceCell": return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), column: oneOf(TABLE_COLUMNS, item.column, "a table column"), text: string(item.text) };

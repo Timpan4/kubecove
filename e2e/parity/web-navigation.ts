@@ -1,6 +1,7 @@
 import type { Page } from "playwright-core";
 import type { Step } from "./contract";
-import { sidebarLiveAction } from "./web-sidebar-live";
+import { tabTo } from "./web-keyboard";
+import { sidebarRow } from "./web-sidebar-live";
 
 export async function navigationAction(page: Page, step: Step): Promise<void> {
     switch (step.action) {
@@ -16,8 +17,8 @@ export async function navigationAction(page: Page, step: Step): Promise<void> {
             await page.getByRole("dialog", { name: "Workspace navigation", exact: true }).waitFor({ state: step.open ? "visible" : "hidden" });
             break;
         case "sidebarKey":
-            // A click focuses the row, as a pointer user does before pressing keys.
-            await sidebarLiveAction(page, { action: "sidebarSelect", path: step.path });
+            // Tab focuses the row without selecting it, so Enter and Space must select it themselves.
+            await tabTo(page, sidebarRow(page, step.path));
             await page.keyboard.press(step.key);
             break;
         default: throw new Error(`Unknown navigation action ${step.action}`);

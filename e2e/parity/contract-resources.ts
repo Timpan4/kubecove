@@ -1,5 +1,5 @@
 import type { JsonObject } from "../../src/lib/types";
-import type { Step } from "./contract-steps";
+import { MAP_CONTEXT_KEYS, type Step } from "./contract-steps";
 import { boolean, oneOf, string, strings } from "./contract-values";
 
 /** Parses resource table, multi-context and map context steps; returns undefined for any other action. */
@@ -21,6 +21,8 @@ export function resourceTableStep(item: JsonObject): Step | undefined {
 				return { action: item.action, shown: false };
 			}
 			return { action: item.action, shown: true, context: string(item.context) };
+		case "mapContextKey": return { action: item.action, key: oneOf(MAP_CONTEXT_KEYS, item.key, "a Map context key") };
+		case "expectMapContextOptions": return { action: item.action, open: boolean(item.open) };
 		default: return undefined;
 	}
 }
