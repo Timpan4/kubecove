@@ -61,7 +61,7 @@ export const ACTIONS = [
     "expectWorkspaceExport", "exportSavedWorkspace", "expectExportedShortcut",
     "expectAccessibleName", "fillSettingsField", "clickSettingsButton", "clickKubeconfigPathButton", "expectKubeconfigPathBefore", "expectSettingsText", "expectNoSettingsText", "expectRuntimeEndpoint", "expectMaskedToken", "reopenStoredSettings", "configureSettingsMock",
 	"expectLiveState", "expectLiveMenu", "replayLiveData", "expectResourceStatus", "openCustomKind",
-	"selectTopologyNode", "expectTopologyEmpty", "expectUsageFooter", "openUsageTree", "expectNoUsageFooter", "expectUsageProcess", "setTopologyMode", "selectNamespace", "expectTopology", "expectTopologyEdge", "expectNoTopologyNode", "expectResourceMetrics",
+	"selectTopologyNode", "expectTopologyEmpty", "expectUsageFooter", "openUsageTree", "expectNoUsageFooter", "expectUsageProcess", "setTopologyMode", "selectNamespace", "expectTopology", "expectTopologyEdge", "expectNoTopologyNode", "expectResourceMetrics", "expectMetricsCard",
 	"expectYamlAbsent",
 	"expectYamlEditorDiagnostics",
 	"clickActionEntry",
@@ -266,6 +266,7 @@ function step<Value>(value: Value): Step {
         case "expectResourceMetrics":
             if (!isString(item.namespace)) throw new Error("Expected namespace");
             return { action: item.action, kind: string(item.kind), namespace: item.namespace, name: string(item.name), cpu: string(item.cpu), memory: string(item.memory) };
+        case "expectMetricsCard": return { action: item.action, message: string(item.message), contexts: strings(item.contexts, true) };
 		case "expectYamlAbsent": return { action: item.action, fragments: strings(item.fragments, false) };
 		case "clickActionEntry": return { action: item.action, label: string(item.label), button: oneOf(["Add", "Remove", "Restore"], item.button, "an entry action") };
 		case "fillContainerImage": return { action: item.action, container: string(item.container), value: string(item.value) };

@@ -328,6 +328,8 @@ export type Step =
     | { action: "expectTopologyEmpty"; title: string }
     | { action: "selectTopologyNode" | "expectNoTopologyNode"; id: string }
     | { action: "expectResourceMetrics"; kind: string; namespace: string; name: string; cpu: string; memory: string }
+    /** The Resource metrics card's message and its "<context>: <issue>" lines in rank order. */
+    | { action: "expectMetricsCard"; message: string; contexts: string[] }
     | { action: "sortResourceTable"; column: (typeof SORT_COLUMNS)[number] }
     | { action: "expectResourceOrder"; names: string[] }
     | { action: "toggleResourceGroup"; label: string }

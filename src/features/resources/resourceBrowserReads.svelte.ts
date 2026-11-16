@@ -4,8 +4,8 @@ import { diagnosticLog } from "@/lib/diagnostics";
 import type { KindFetchKey } from "@/lib/kind-identity";
 import { liveViewRefresh } from "@/lib/live-view-refresh.svelte";
 import { cancelledQueryRetry } from "@/lib/query-retry";
-import { describeMetricsAvailability, resourceMetricIndex } from "@/lib/resource-metrics";
-import { listNamespaces, listResourceKinds, type TauriClient } from "@/lib/tauri";
+import { type ContextMetricsRead, metricsCard, resourceMetricIndex } from "@/lib/resource-metrics";
+import { isAppError, listNamespaces, listResourceKinds, type TauriClient } from "@/lib/tauri";
 import type {
 	DiscoveredResourceKind,
 	NamespaceSummary,
@@ -149,11 +149,15 @@ export function resourceBrowserReads(client: TauriClient, input: () => ResourceB
 		clusterContext: specs[index]?.clusterContext ?? "",
 		summary: query.data,
 	}))));
-	const metricsMessage = $derived(
-		metricsQueries.some((query) => query.isError)
-			? "metrics API unavailable"
-			: metricsQueries.map((query) => describeMetricsAvailability(query.data?.availability)).find(Boolean) ?? null,
-	);
+	// Contexts whose read is still loading are left out until it settles.
+	const metricsCardState = $derived(metricsCard(metricsQueries.flatMap((query, index): ContextMetricsRead[] => {
+		const clusterContext = specs[index]?.clusterContext ?? "";
+		if (query.isError) {
+			const forbidden = isAppError(query.error) && query.error.kind === "forbidden";
+			return [{ clusterContext, failure: forbidden ? "forbidden" : "unavailable" }];
+		}
+		return query.data ? [{ clusterContext, summary: query.data }] : [];
+	})));
 
 	const live = liveViewRefresh(client, () => specs.flatMap(({ clusterContext, specs: spec }) => {
 		const view = resourceBrowserLiveView(
@@ -199,7 +203,7 @@ export function resourceBrowserReads(client: TauriClient, input: () => ResourceB
 		get topology() { return topology; },
 		get topologyFitViewKey() { return mapSpecs.topologyFitViewKey; },
 		get metricsIndex() { return metricsIndex; },
-		get metricsMessage() { return metricsMessage; },
+		get metricsCard() { return metricsCardState; },
 		get freshness() { return freshness; },
 		live,
 	};

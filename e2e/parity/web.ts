@@ -170,7 +170,7 @@ export async function action(page: Page, step: Step, scenarioSteps: readonly Ste
         }
         case "expectUsageFooter": case "openUsageTree": case "expectUsageProcess": case "expectNoUsageFooter": await topologyAction(page, step); break;
         case "selectNamespace": await page.getByRole("treeitem").filter({ has: page.getByText(step.namespace, { exact: true }) }).first().click(); break;
-        case "setTopologyMode": case "expectTopology": case "expectTopologyEdge": case "selectTopologyNode": case "expectTopologyEmpty": case "expectNoTopologyNode": case "expectResourceMetrics": await topologyAction(page, step); break;
+        case "setTopologyMode": case "expectTopology": case "expectTopologyEdge": case "selectTopologyNode": case "expectTopologyEmpty": case "expectNoTopologyNode": case "expectResourceMetrics": case "expectMetricsCard": await topologyAction(page, step); break;
         case "expectYamlAbsent": case "clickActionEntry": case "fillContainerImage": case "openActionEditor": case "fillActionField": case "chooseActionRevision": await yamlEditorAction(page, step); break;
         case "selectYamlShape": case "selectYamlEncoding": case "expectYamlPicker": case "replaceYamlDraft": case "formatYaml": case "expectYamlDocument": case "foldYamlLine": case "expectYamlVisibleLines": case "expectYamlEditorDiagnostics": await yamlEditorAction(page, step); break;
 		case "clickDetailControl": await detailsAction(page, step); break;
