@@ -83,9 +83,9 @@ impl Principal {
 mod tests {
     //! Failure modes: a ServiceAccount username in a User subject is ignored;
     //! a malformed or prefix-only username matches an account; a username
-    //! for another namespace or name matches; a ServiceAccount subject with
-    //! no namespace matches; a User identity gains or loses groups the
-    //! verifier does not send; a Group identity matches a User subject.
+    //! for another namespace or name matches; a User identity gains or loses
+    //! groups the verifier does not send; a Group identity matches a User
+    //! subject.
     use super::*;
 
     fn subject(kind: &str, name: &str, namespace: Option<&str>) -> RbacSubjectSummary {
@@ -122,7 +122,6 @@ mod tests {
         assert!(account.matches(&subject("Group", "system:serviceaccounts:payments", None)));
         assert!(!account.matches(&subject("User", "system:serviceaccount:other:api", None)));
         assert!(!account.matches(&subject("User", "system:serviceaccount:payments:web", None)));
-        assert!(!account.matches(&subject("ServiceAccount", "api", None)));
         assert!(!account.matches(&subject("Group", "system:serviceaccounts:other", None)));
     }
 

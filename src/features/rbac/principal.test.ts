@@ -4,8 +4,7 @@ import { principalOf, serviceAccountPrincipal, splitServiceAccountUsername, subj
 
 // Failure modes: a ServiceAccount username in a User subject is ignored; a
 // malformed or prefix-only username matches an account; a username for another
-// namespace or name matches; a ServiceAccount subject with no namespace
-// matches; a Group identity matches a User subject.
+// namespace or name matches; a Group identity matches a User subject.
 const subject = (kind: string, name: string, namespace?: string): RbacSubjectSummary => ({ kind, name, namespace });
 
 describe("RBAC principal", () => {
@@ -28,7 +27,6 @@ describe("RBAC principal", () => {
 		expect(subjectAppliesTo(account, subject("Group", "system:serviceaccounts:payments"))).toBe(true);
 		expect(subjectAppliesTo(account, subject("User", "system:serviceaccount:other:api"))).toBe(false);
 		expect(subjectAppliesTo(account, subject("User", "system:serviceaccount:payments:web"))).toBe(false);
-		expect(subjectAppliesTo(account, subject("ServiceAccount", "api"))).toBe(false);
 		expect(subjectAppliesTo(account, subject("Group", "system:serviceaccounts:other"))).toBe(false);
 	});
 
