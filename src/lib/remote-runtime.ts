@@ -54,6 +54,8 @@ export function isDesktopRemoteSelected(): boolean {
 
 /** Counts Disconnects, so a connect or session start can tell that one overlapped it. */
 let disconnects = 0;
+/** Counts state changes from user actions. Status reads do not count, so concurrent reads still publish. */
+let actionChanges = 0;
 
 /**
  * Applies the summary `call` returns. A Disconnect during the call may have superseded it, and an invoke
@@ -132,11 +134,14 @@ export async function disconnectDesktopRemote(): Promise<void> {
 	}
 }
 
+/** Reads the host's state. A change from a user action during the read is newer, so the read then publishes nothing. */
 export async function initializeDesktopRemote(): Promise<RemoteConnectionSummary | null> {
+	const started = actionChanges;
 	try {
 		const summary = await invoke<RemoteConnectionSummary | null>("remote_connection_status");
+		if (started !== actionChanges) return desktopRemoteSummary;
 		if (summary) {
-			setRemoteState(summary);
+			publishRemoteState(summary);
 			if (!summary.connected) clearRemoteChannels();
 		} else {
 			markRemoteDisconnected();
@@ -144,19 +149,24 @@ export async function initializeDesktopRemote(): Promise<RemoteConnectionSummary
 		}
 		return summary;
 	} catch (error) {
-		markRemoteDisconnected();
+		if (started === actionChanges) markRemoteDisconnected();
 		throw error;
 	}
 }
 
 function setRemoteState(summary: RemoteConnectionSummary): void {
+	actionChanges += 1;
+	publishRemoteState(summary);
+}
+
+function publishRemoteState(summary: RemoteConnectionSummary): void {
 	desktopRemoteSummary = summary;
 	desktopRemoteConnection.set(summary);
 }
 
 function markRemoteDisconnected(): void {
 	if (desktopRemoteSummary) {
-		setRemoteState({ ...desktopRemoteSummary, connected: false });
+		publishRemoteState({ ...desktopRemoteSummary, connected: false });
 	}
 }
 
@@ -166,6 +176,7 @@ function clearRemoteChannels(): void {
 }
 
 function clearRemoteState(): void {
+	actionChanges += 1;
 	desktopRemoteSummary = null;
 	desktopRemoteConnection.set(null);
 	clearRemoteChannels();
