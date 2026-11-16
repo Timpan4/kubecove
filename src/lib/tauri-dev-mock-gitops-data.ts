@@ -207,7 +207,11 @@ const solidHelmReleases: HelmReleaseSummary[] = helmReleases.map((release) =>
 		: { ...release, cluster: "admin@solid-k8s" },
 );
 
-/** The Helm releases `list_helm_releases` returns for a context. */
+/**
+ * The Helm releases `list_helm_releases` returns for a context: mock-dev's when
+ * none is given, and none for docker-desktop, which runs no Helm releases.
+ */
 export function helmReleasesFor(context: string | undefined): HelmReleaseSummary[] {
-	return context === "admin@solid-k8s" ? solidHelmReleases : helmReleases;
+	if (context === "admin@solid-k8s") return solidHelmReleases;
+	return context === "docker-desktop" ? [] : helmReleases;
 }

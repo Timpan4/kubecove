@@ -1,7 +1,7 @@
 import type { Channel, InvokeOptions } from "@tauri-apps/api/core";
 import { stringify } from "yaml";
 import { cancelSignInRemoteMock, connectRemoteMock, disconnectRemoteMock, remoteMockStatus, saveWorkspaceMock, selectedDialogPath, selectedWorkspaceFile, signInLinkRemoteMock, signInRemoteMock, signOutRemoteMock, startNewSessionRemoteMock } from "./settings-integration-mocks";
-import { argoApplicationSummary, argoApplicationYaml, argoMockHandlers, customResourceKinds, presentCustomResourceKinds } from "./tauri-dev-mock-argo";
+import { argoApplicationSummary, argoApplicationYaml, argoMockHandlers, customResourceKinds, inventoryApplication, presentCustomResourceKinds } from "./tauri-dev-mock-argo";
 import { type MockArgs, type MockHandler, type MockResult, readMockArgs } from "./tauri-dev-mock-contract";
 import { beforeCoverageRead, coverageHelm, coverageIncidents, coverageLogs, coverageRbac, coverageSessions, coverageStopExec, coverageStopForward, coverageTopology, coverageYamlPreview, registerCoverageLogStream } from "./tauri-dev-mock-coverage";
 import {
@@ -14,7 +14,7 @@ import {
 	solidOnlyResources,
 	source,
 } from "./tauri-dev-mock-data";
-import { argoApps, helmReleases, helmReleasesFor } from "./tauri-dev-mock-gitops-data";
+import { helmReleases, helmReleasesFor } from "./tauri-dev-mock-gitops-data";
 import { withDetailStatusFixture } from "./tauri-dev-mock-detail-status";
 import { evictedWorkerName, evictedWorkerStatus } from "./tauri-dev-mock-incidents";
 import { addKubeconfigPathsMock, reorderKubeconfigPathsMock } from "./tauri-dev-mock-kubeconfig";
@@ -304,7 +304,7 @@ function yamlFor(args: MockArgs): string {
     if (row.kind === "Secret") return stringify({ apiVersion: "v1", kind: "Secret", metadata: { name: row.name, namespace: row.namespace }, data: { token: "REDACTED" } });
     if (row.namespace === "payments" && row.kind === "Pod" && row.name.startsWith("payments-api-")) return stringify({ apiVersion: "v1", kind: "Pod", metadata: { name: row.name, namespace: row.namespace, labels: { app: "payments-api" } }, spec: { containers: [{ name: "app", image: "example/payments-api", ports: [{ containerPort: 8080 }] }, { name: "sidecar", image: "example/sidecar" }] } });
     if (row.namespace === "payments" && row.kind === "Service" && row.name === "payments-api") return stringify({ apiVersion: "v1", kind: "Service", metadata: { name: row.name, namespace: row.namespace }, spec: { selector: { app: "payments-api" }, ports: [{ name: "http", port: 80, targetPort: 8080, protocol: "TCP" }] } });
-	const app = row.kind === "Application" ? argoApps.find((candidate) => candidate.name === row.name) : undefined;
+	const app = row.kind === "Application" ? inventoryApplication(row.name, row.namespace) : undefined;
 	if (app) return argoApplicationYaml(app);
 	if (row.name === evictedWorkerName) return `${genericYaml(row.kind, row.name, row.namespace, row.apiVersion)}${stringify({ status: evictedWorkerStatus })}`;
 	return genericYaml(row.kind, row.name, row.namespace, row.apiVersion);

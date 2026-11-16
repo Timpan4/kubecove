@@ -117,6 +117,15 @@ impl HelmPage {
         }
     }
 
+    /// Applies a workspace's remembered release: its context and target, with
+    /// no selection left over from the previous workspace.
+    pub(super) fn restore(&mut self, target: Option<HelmTarget>) {
+        self.requested_context = target.as_ref().map(|target| target.context.clone());
+        self.target = target;
+        self.selected = None;
+        self.details = HelmDetails::default();
+    }
+
     /// The release a workspace reopens on, as the web's restored
     /// `targetHelmRelease ?? surfaces.selectedHelmRelease`: a pending target,
     /// otherwise the selected release.

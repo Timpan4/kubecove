@@ -169,9 +169,8 @@ impl Inspector {
             .cloned();
         self.page = saved.as_ref().map_or(Page::Overview, |saved| saved.page);
         // The Helm context and release are this workspace's own, never the previous workspace's.
-        let helm = saved.as_ref().and_then(|saved| saved.helm.clone());
-        self.helm_page.requested_context = helm.as_ref().map(|target| target.context.clone());
-        self.helm_page.target = helm;
+        self.helm_page
+            .restore(saved.as_ref().and_then(|saved| saved.helm.clone()));
         self.scope = Scope {
             context: context.to_owned(),
             namespace: saved.as_ref().and_then(|saved| saved.namespace.clone()),

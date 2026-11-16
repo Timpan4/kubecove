@@ -298,7 +298,7 @@ export function argoApplicationYaml(app: (typeof argoApps)[number]): string {
 }
 
 /** The listed Application with this name, in this namespace when one is given. */
-function inventoryApplication(name: string | undefined, namespace: string | null | undefined) {
+export function inventoryApplication(name: string | undefined, namespace: string | null | undefined) {
 	return inventoryApplications.find((candidate) => candidate.name === name && (namespace == null || candidate.namespace === namespace));
 }
 
