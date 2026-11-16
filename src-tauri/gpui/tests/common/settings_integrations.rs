@@ -30,6 +30,9 @@ impl Fixture {
             "choose-application-workspace" => Some(
                 include_str!("../../../../src/lib/overview-application-workspace.json").to_owned(),
             ),
+            "choose-foreign-kind-workspace" => Some(
+                include_str!("../../../../src/lib/overview-foreign-kind-workspace.json").to_owned(),
+            ),
             "choose-compare-workspace" => {
                 Some(include_str!("../../../../src/lib/overview-compare-workspace.json").to_owned())
             }

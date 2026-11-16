@@ -64,7 +64,7 @@ impl Inspector {
         let order = state.next;
         state.next = state.next.saturating_add(1);
         let id = editing.unwrap_or(order);
-        let mut workspace = Draft {
+        let workspace = Draft {
             name: &name,
             effective: &effective,
             group: &state.group,
@@ -73,33 +73,82 @@ impl Inspector {
         }
         .build(id, order);
         if let Some(previous) = previous {
-            workspace.reviews = previous.reviews;
-            let contexts = workspace
-                .contexts()
-                .into_iter()
-                .map(str::to_owned)
-                .collect::<Vec<_>>();
-            workspace
-                .reviews
-                .retain(|review| contexts.contains(&review.cluster_context));
-            if state.active == Some(id) {
-                self.rbac.reviews = workspace.reviews.clone();
-            }
-            if let Some(document) = state.transfer.documents.get_mut(&id) {
-                document["spec"]["shortcuts"] = serde_json::to_value(
-                    crate::workspaces::shortcuts::generated(&workspace, Some(document)),
-                )
-                .expect("shortcut identities serialize");
-            }
-            if let Some(saved) = state.saved.iter_mut().find(|saved| saved.id == id) {
-                *saved = workspace;
-            }
-            self.save_preferences(cx);
+            self.replace_workspace(previous, workspace, cx);
             self.cancel_workspace_edit(window, cx);
         } else {
             state.saved.push(workspace);
             self.save_preferences(cx);
             self.open_workspace(id, window, cx);
         }
+    }
+
+    /// `changeClusterContext` in the web's workspace shell: the header's context
+    /// picker saves the open workspace as that one context, with no cluster group
+    /// and every namespace, and reads its scope again. Overview and Resources then
+    /// read the same context the workspace's labels name.
+    pub(super) fn retarget_workspace(
+        &mut self,
+        context: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let state = &mut self.launcher;
+        let Some(previous) = state
+            .active
+            .and_then(|id| state.saved.iter().find(|saved| saved.id == id))
+            .cloned()
+        else {
+            return;
+        };
+        let order = state.next;
+        state.next = state.next.saturating_add(1);
+        let workspace = Draft {
+            name: &previous.name,
+            effective: &context,
+            group: &[],
+            namespaces: &[],
+            kinds: Some(&previous.kinds),
+        }
+        .build(previous.id, order);
+        self.replace_workspace(previous, workspace, cx);
+        self.scope = crate::backend::Scope {
+            context,
+            namespace: None,
+        };
+        self.load_scope(false, window, cx);
+    }
+
+    /// `updateWorkspaceRecord`: replaces `previous` with `workspace`, keeping the
+    /// reviews of contexts still in scope and the shortcut identities, and saves.
+    fn replace_workspace(
+        &mut self,
+        previous: workspaces::SavedWorkspace,
+        mut workspace: workspaces::SavedWorkspace,
+        cx: &mut Context<Self>,
+    ) {
+        let state = &mut self.launcher;
+        let id = workspace.id;
+        workspace.reviews = previous.reviews;
+        let contexts = workspace
+            .contexts()
+            .into_iter()
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        workspace
+            .reviews
+            .retain(|review| contexts.contains(&review.cluster_context));
+        if state.active == Some(id) {
+            self.rbac.reviews = workspace.reviews.clone();
+        }
+        if let Some(document) = state.transfer.documents.get_mut(&id) {
+            document["spec"]["shortcuts"] = serde_json::to_value(
+                crate::workspaces::shortcuts::generated(&workspace, Some(document)),
+            )
+            .expect("shortcut identities serialize");
+        }
+        if let Some(saved) = state.saved.iter_mut().find(|saved| saved.id == id) {
+            *saved = workspace;
+        }
+        self.save_preferences(cx);
     }
 }

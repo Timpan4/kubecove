@@ -1,0 +1,46 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "argo-policy.automated-presence",
+      "title": "Sync policy reads Automated from the automated block and Manual when enabled is false",
+      "steps": [
+        {
+          "action": "openPage",
+          "page": "GitOps"
+        },
+        {
+          "action": "openGitOpsDetails",
+          "kind": "Application",
+          "name": "platform-storage",
+          "namespace": "argocd"
+        },
+        {
+          "action": "expectArgoPolicy",
+          "text": "Automated"
+        },
+        {
+          "action": "openGitOpsDetails",
+          "kind": "Application",
+          "name": "platform-ingress",
+          "namespace": "argocd"
+        },
+        {
+          "action": "expectArgoPolicy",
+          "text": "Manual"
+        },
+        {
+          "action": "openGitOpsDetails",
+          "kind": "Application",
+          "name": "tenant-catalog",
+          "namespace": "argocd"
+        },
+        {
+          "action": "expectArgoPolicy",
+          "text": "Automated · prune · self-heal"
+        }
+      ]
+    }
+  ]
+}

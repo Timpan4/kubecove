@@ -107,6 +107,27 @@
       ]
     },
     {
+      "id": "resources.ownerref-annotation-owner",
+      "title": "A row owned only through its ownerRef inherits a parent whose GitOps owner comes only from its Argo CD name annotation",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "checkout-worker" },
+        { "action": "replayLiveData", "script": "annotation-ownership" },
+        { "action": "expectResourceGroup", "label": "Owned by Argo CD: checkout-legacy (partial evidence)", "expanded": true },
+        { "action": "expectResourceCell", "kind": "Deployment", "name": "checkout-worker", "namespace": "payments", "column": "Owner", "text": "checkout-legacy" },
+        { "action": "expectResourceCell", "kind": "Pod", "name": "checkout-worker-6bfbd7d5dd-9qj2f", "namespace": "payments", "column": "Owner", "text": "checkout-legacy" },
+        { "action": "toggleResourceGroup", "label": "Owned by Argo CD: checkout-legacy (partial evidence)" },
+        { "action": "expectResourceGroup", "label": "Owned by Argo CD: checkout-legacy (partial evidence)", "expanded": false },
+        { "action": "expectNoResource", "kind": "Pod", "name": "checkout-worker-6bfbd7d5dd-9qj2f", "namespace": "payments" },
+        { "action": "toggleResourceGroup", "label": "Owned by Argo CD: checkout-legacy (partial evidence)" },
+        { "action": "chooseGitOpsOwner", "owner": "Owned by Argo CD: checkout-legacy (partial evidence)" },
+        { "action": "expectResource", "kind": "Pod", "name": "checkout-worker-6bfbd7d5dd-9qj2f", "namespace": "payments" },
+        { "action": "chooseGitOpsOwner", "owner": "Owned by Argo CD: shop (partial evidence)" },
+        { "action": "expectNoResource", "kind": "Pod", "name": "checkout-worker-6bfbd7d5dd-9qj2f", "namespace": "payments" },
+        { "action": "chooseGitOpsOwner", "owner": "All GitOps owners" }
+      ]
+    },
+    {
       "id": "resources.table-row-open",
       "title": "Clicking any cell of a resource row opens its detail",
       "steps": [

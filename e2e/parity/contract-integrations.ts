@@ -40,7 +40,7 @@ export function integrationStep(item: JsonObject): Step | undefined {
 		case "copyArgoValue": return { action: item.action, control: oneOf(["source", "revision", "repository value", "release value", "cluster target value"], item.control, "an Argo copy control"), contains: string(item.contains) };
 		case "reviewArgoOperation": return { action: item.action, operation: oneOf(["Refresh", "Hard refresh", "Sync", "Rollback"], item.operation, "an Argo operation") };
 		case "expectArgoReview": return { action: item.action, operation: string(item.operation), name: string(item.name), namespace: string(item.namespace), transport: string(item.transport) };
-		case "expectArgoText": return { action: item.action, text: string(item.text) };
+		case "expectArgoText": case "expectArgoPolicy": return { action: item.action, text: string(item.text) };
 		case "expectArgoPopover": return { action: item.action, control: oneOf(["Sync options", "Refresh options"], item.control, "an Argo options popover"), open: boolean(item.open) };
 		case "dismissArgoPopover": return { action: item.action, how: oneOf(["Escape", "outside click"], item.how, "a popover dismissal") };
 		case "expectArgoCheckbox": return { action: item.action, name: oneOf(ARGO_OPTION_NAMES, item.name, "an Argo option"), checked: boolean(item.checked) };

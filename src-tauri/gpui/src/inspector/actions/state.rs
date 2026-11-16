@@ -2,6 +2,8 @@
 //! `resourceActionSession.ts`: the permission baseline, typed edit drafts,
 //! the server dry-run review and the guarded execution that follows it. Each
 //! load and review owns its task, so replacing or closing one drops its result.
+//! A running execution is the exception: closing the detail keeps its write
+//! running and drops only its result, as the web session does.
 
 use super::super::Inspector;
 use super::super::detail::Detail;
@@ -17,6 +19,7 @@ use kubecove_lib::models::{
     ResourceActionEdits, ResourceActionKind, ResourceActionPreview, ResourceActionRequest,
     ResourceActionState, ResourceSummary,
 };
+use std::rc::Rc;
 
 /// Where a review stands. A step that waits on the API server owns that call,
 /// so closing or replacing the review cancels it.
@@ -40,11 +43,17 @@ pub(super) struct Previewed {
 pub(super) enum Execution {
     /// Waits for the user to apply the previewed action.
     Pending,
-    Running {
-        _call: InFlight,
-    },
+    Running(RunningAction),
     /// The API server may have received the failed execution.
     Failed(String),
+}
+
+/// An `execute_action` call in flight. Dropping it aborts a write the API
+/// server may already have applied, so closing the detail moves it to
+/// `Inspector::running_actions` until it finishes.
+pub(in crate::inspector) struct RunningAction {
+    id: Rc<()>,
+    _call: InFlight,
 }
 
 pub(super) struct Review {
@@ -67,7 +76,12 @@ impl Review {
     }
 
     pub fn executing(&self) -> bool {
-        matches!(self.execution(), Some(Execution::Running { .. }))
+        matches!(self.execution(), Some(Execution::Running(_)))
+    }
+
+    /// Whether this review runs the execution `id` names.
+    fn runs(&self, id: &Rc<()>) -> bool {
+        matches!(self.execution(), Some(Execution::Running(running)) if Rc::ptr_eq(&running.id, id))
     }
 
     pub fn busy(&self) -> bool {
@@ -424,10 +438,18 @@ impl Inspector {
         let edit = request.action == ResourceActionKind::Edit;
         let read = backend.execute_action(request);
         let read = timings.measure("execute_action", read);
+        let id = Rc::new(());
+        let current = id.clone();
         let call = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
-                let Some(actions) = this.actions_state() else {
+                this.running_actions
+                    .retain(|running| !Rc::ptr_eq(&running.id, &current));
+                // A closed or replaced detail drops the result, as the web session does.
+                let Some(actions) = this
+                    .actions_state()
+                    .filter(|actions| actions.review.as_ref().is_some_and(|r| r.runs(&current)))
+                else {
                     return;
                 };
                 match result {
@@ -469,9 +491,31 @@ impl Inspector {
                 window.refresh();
             });
         });
-        previewed.execution = Execution::Running { _call: call.into() };
+        previewed.execution = Execution::Running(RunningAction {
+            id,
+            _call: call.into(),
+        });
         cx.notify();
         window.refresh();
+    }
+
+    /// Moves an execution in flight out of the detail that is about to close,
+    /// so the write finishes instead of aborting.
+    pub(in crate::inspector) fn keep_action_execution(&mut self) {
+        let Some(actions) = self.actions_state() else {
+            return;
+        };
+        if !actions.review.as_ref().is_some_and(Review::executing) {
+            return;
+        }
+        if let Some(Review {
+            step: ReviewStep::Previewed(previewed),
+            ..
+        }) = actions.review.take()
+            && let Execution::Running(running) = previewed.execution
+        {
+            self.running_actions.push(running);
+        }
     }
 
     /// Shows or folds the dry-run diff of a delete review.

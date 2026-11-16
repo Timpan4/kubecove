@@ -288,8 +288,14 @@ function fluxDetails(args: MockArgs, genericYaml: YamlFactory): FluxResourceDeta
 	return { summary, yaml: genericYaml(summary.resourceKind.kind, summary.name, summary.namespace, summary.resourceKind.apiVersion), metadata: { labels: { "kustomize.toolkit.fluxcd.io/name": summary.name } }, status: { conditions: [{ type: "Ready", status: summary.readyStatus ?? "Unknown", message: summary.message }] } };
 }
 
+// Read by the argo-policy.* scenarios. Other Applications automate prune and self-heal.
+const syncPolicyYaml = new Map([
+	["platform-storage", "    automated: {}\n"],
+	["platform-ingress", "    automated:\n      enabled: false\n      prune: true\n"],
+]);
+
 export function argoApplicationYaml(app: (typeof argoApps)[number]): string {
-	return `apiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: ${app.name}\n  namespace: ${app.namespace ?? "argocd"}\nspec:\n  project: ${app.project ?? "default"}\n  source:\n    repoURL: ${app.sourceRepo ?? "https://github.com/example/platform-config.git"}\n    path: environments/mock-dev\n    targetRevision: ${app.sourceRevision ?? "main"}\n  destination:\n    server: ${app.destinationServer ?? "https://kubernetes.default.svc"}\n    namespace: ${app.destinationNamespace ?? "default"}\n  syncPolicy:\n    automated:\n      prune: true\n      selfHeal: true\n`;
+	return `apiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: ${app.name}\n  namespace: ${app.namespace ?? "argocd"}\nspec:\n  project: ${app.project ?? "default"}\n  source:\n    repoURL: ${app.sourceRepo ?? "https://github.com/example/platform-config.git"}\n    path: environments/mock-dev\n    targetRevision: ${app.sourceRevision ?? "main"}\n  destination:\n    server: ${app.destinationServer ?? "https://kubernetes.default.svc"}\n    namespace: ${app.destinationNamespace ?? "default"}\n  syncPolicy:\n${syncPolicyYaml.get(app.name) ??"    automated:\n      prune: true\n      selfHeal: true\n"}`;
 }
 
 export function argoApplicationSummary(name: string): ResourceSummary | undefined {

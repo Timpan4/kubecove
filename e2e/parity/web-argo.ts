@@ -147,6 +147,11 @@ export async function argoAction(page: Page, step: Step) {
             await text.waitFor();
             break;
         }
+        case "expectArgoPolicy": {
+            const value = page.getByText("Policy", { exact: true }).locator("xpath=following-sibling::span[1]");
+            await value.filter({ hasText: new RegExp(`^${step.text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`) }).waitFor();
+            break;
+        }
         case "argoDocument":
             await page.getByRole("tabpanel").getByRole("radio", { name: step.view, exact: true }).click();
             await page.getByRole("tabpanel").getByText(step.contains, { exact: false }).first().waitFor();

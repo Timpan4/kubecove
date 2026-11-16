@@ -7,7 +7,7 @@ export const LIVE_EVENTS: ResourceEventSummary[] = [
     { eventType: "Normal", reason: "LiveOlder", message: "Older scripted event", count: 1, lastSeen: "2m", lastSeenAt: "2026-06-29T10:01:00Z", source: "parity", namespace: "payments" },
     { eventType: "Normal", reason: "LiveNewest", message: "Newest scripted event", count: 1, lastSeen: "1m", lastSeenAt: "2026-06-29T10:02:00Z", source: "parity", namespace: "payments" },
 ];
-export const LIVE_SCRIPTS = ["update", "rollout", "delete", "delete-mock-dev", "add", "ownership", "reconnecting", "connected", "events", "events-overflow", "forbidden", "failed", "missed-delete"] as const;
+export const LIVE_SCRIPTS = ["update", "rollout", "delete", "delete-mock-dev", "add", "ownership", "annotation-ownership", "reconnecting", "connected", "events", "events-overflow", "forbidden", "failed", "missed-delete"] as const;
 export type LiveScript = typeof LIVE_SCRIPTS[number];
 type Watch = { id: string; channel: Pick<Channel<StreamMessage>, "onmessage">; context: string; unavailable?: boolean; keys?: ResourceWatchStart[]; kind?: string; name?: string; namespace?: string | null };
 const watches = new Map<string, Watch>();
@@ -22,10 +22,12 @@ let added = false;
 const ADDED = "orders-api";
 // A scripted rollout gives payments-api the "Rolling out" lifecycle, which shows activity.
 let rolling = false;
-// The "ownership" script moves checkout-worker to a Flux owner. Its ownerRef-only Pod follows it.
-let reowned = false;
+// The "ownership" script moves checkout-worker to a Flux owner. "annotation-ownership" leaves it
+// only an Argo CD name annotation, with no backend owner. Its ownerRef-only Pod follows either.
+let reowned: "flux" | "annotation" | undefined;
 const REOWNED = "checkout-worker";
 const FLUX_OWNER = { provider: "flux", kind: "Kustomization", name: "platform", namespace: "flux-system", confidence: "inventory", provenance: "flux-kustomization-inventory", partial: false };
+const ANNOTATION_APP = "checkout-legacy";
 let events: ResourceEventSummary[] | undefined;
 let failed = false;
 // Scripted changes so far; the mock list version is one higher, as in tests/common/live_data.rs.
@@ -83,7 +85,9 @@ export function liveResources(rows: ResourceSummary[]): ResourceSummary[] {
     if (failed) throw new Error("Scripted reload failure");
     const copy = added ? rows.find(target) : undefined;
     return rows.filter((row) => !((deleted || (deletedInMockDev && row.cluster === "mock-dev")) && target(row))).map((row): ResourceSummary => {
-        if (reowned && row.kind === "Deployment" && row.namespace === "payments" && row.name === REOWNED) return { ...row, gitOpsOwner: FLUX_OWNER };
+        if (reowned && row.kind === "Deployment" && row.namespace === "payments" && row.name === REOWNED) {
+            return reowned === "flux" ? { ...row, gitOpsOwner: FLUX_OWNER } : { ...row, gitOpsOwner: undefined, argoApp: ANNOTATION_APP };
+        }
         if (!target(row)) return row;
         if (rolling) return { ...row, status: "Rolling out" };
         return changed && row.healthAssessment ? { ...row, status: "Progressing", healthAssessment: { ...row.healthAssessment, state: "degraded" } } : row;
@@ -97,10 +101,12 @@ export function replayLiveData(script: LiveScript): void {
     // "missed-delete" deletes payments-api without a notification, as an event a lost watch never delivered.
     const missed = script === "missed-delete";
     const mockDevOnly = script === "delete-mock-dev";
-    const rowChange = script === "update" || script === "rollout" || script === "delete" || mockDevOnly || script === "add" || script === "ownership" || missed;
+    const reowning = script === "ownership" || script === "annotation-ownership";
+    const rowChange = script === "update" || script === "rollout" || script === "delete" || mockDevOnly || script === "add" || reowning || missed;
     if (rowChange) mockTiming.invalidate("mock-dev");
     if (mockDevOnly) deletedInMockDev = true;
-    if (script === "ownership") reowned = true;
+    if (script === "ownership") reowned = "flux";
+    if (script === "annotation-ownership") reowned = "annotation";
     if (script === "add") added = true;
     if (script === "failed") failed = true;
     if (script === "connected") failed = false;
@@ -126,7 +132,7 @@ export function replayLiveData(script: LiveScript): void {
         } else if ((script === "events" || script === "events-overflow") && watch.name === "payments-api" && watch.kind === "Deployment") {
             watch.channel.onmessage({ type: "resourceEventsChanged", streamId, target: { cluster: watch.context, kind: "Deployment", name: watch.name, namespace: watch.namespace }, action: "applied" });
         } else if (script !== "events" && script !== "events-overflow" && (!mockDevOnly || watch.context === "mock-dev") && watch.keys?.some((key) => key.resourceKind.kind === "Deployment" && (!key.namespace || key.namespace === "payments"))) {
-            watch.channel.onmessage({ type: "resourceChanged", streamId, target: { cluster: watch.context, kind: "Deployment", name: script === "ownership" ? REOWNED : script === "add" ? ADDED : "payments-api", namespace: "payments" }, action: script === "delete" || mockDevOnly ? "deleted" : "applied" });
+            watch.channel.onmessage({ type: "resourceChanged", streamId, target: { cluster: watch.context, kind: "Deployment", name: reowning ? REOWNED : script === "add" ? ADDED : "payments-api", namespace: "payments" }, action: script === "delete" || mockDevOnly ? "deleted" : "applied" });
         }
     }
 }
