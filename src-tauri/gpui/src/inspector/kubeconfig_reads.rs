@@ -44,6 +44,12 @@ impl KubeconfigReads {
         changed
     }
 
+    /// Changes with every saved source, so a read can tell that a newer source replaced the
+    /// one it read.
+    pub(super) fn generation(&self) -> u64 {
+        self.generation
+    }
+
     fn fresh_source(&self, now: Instant) -> Option<KubeconfigSourcesSummary> {
         self.source
             .as_ref()
@@ -82,6 +88,10 @@ impl Inspector {
         }
         self.settings.integrations.scope_reread = true;
         self.load_sessions(cx);
+        // The web's header hides its picker while the new source's contexts load and shows
+        // their error if the read fails, so no context of the previous source stays selectable.
+        let context = self.scope.context.clone();
+        self.set_context_picker(Vec::new(), &context, window, cx);
         // Replacing the launcher's read drops one still running for the previous source.
         let read = self.read_kubeconfig_contexts(
             false,

@@ -125,11 +125,17 @@ impl Inspector {
     pub(super) fn load_contexts(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.context_task.take();
         self.observation.loading_contexts();
+        let generation = self.launcher.kubeconfig.generation();
         let task = self.read_kubeconfig_contexts(
             false,
             window,
             cx,
-            |this, result, _source_error, window, cx| {
+            move |this, result, _source_error, window, cx| {
+                // A source saved while this read ran makes its contexts stale, so read again.
+                if this.launcher.kubeconfig.generation() != generation {
+                    this.load_contexts(window, cx);
+                    return;
+                }
                 match result {
                     Ok(contexts) if contexts.is_empty() => this.observation.context_error(
                         "No Kubernetes contexts found. Configure KUBECONFIG and retry.".into(),

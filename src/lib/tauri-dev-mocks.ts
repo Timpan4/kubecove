@@ -17,7 +17,7 @@ import {
 import { argoApps, helmReleases } from "./tauri-dev-mock-gitops-data";
 import { withDetailStatusFixture } from "./tauri-dev-mock-detail-status";
 import { evictedWorkerName, evictedWorkerStatus } from "./tauri-dev-mock-incidents";
-import { addKubeconfigPathsMock, kubeconfigSourceKeyMock, kubeContextsMock, reorderKubeconfigPathsMock } from "./tauri-dev-mock-kubeconfig";
+import { addKubeconfigPathsMock, kubeContextsMock, kubeconfigSourceKeyMock, reorderKubeconfigPathsMock } from "./tauri-dev-mock-kubeconfig";
 import { lintMockYaml } from "./tauri-dev-mock-lint";
 import { liveEvents, liveResources, mockListVersion, registerMockWatch, stopMockWatch } from "./tauri-dev-mock-live";
 import { operationMockHandlers } from "./tauri-dev-mock-operations";
@@ -122,7 +122,8 @@ export function createDevMockTauriClient({ latencyMs = globalThis.__kubecovePari
 declare global { var __kubecoveParityKubeconfigSources: KubeconfigSourcesSummary | undefined; }
 // The page's kubeconfig settings, so saved values read back like the desktop settings file.
 // The parity driver seeds stored settings before a reload, as the desktop reads its file at startup.
-const kubeconfigSource = { ...source, ...globalThis.__kubecoveParityKubeconfigSources };
+// The seeded summary carries a key derived from its paths, so the base key stays the default's.
+const kubeconfigSource = { ...source, ...globalThis.__kubecoveParityKubeconfigSources, sourceKey: source.sourceKey };
 const kubeconfigSummary = () => ({ ...kubeconfigSource, sourceKey: kubeconfigSourceKeyMock(kubeconfigSource) });
 const kubeconfigSources = () => shellKubeconfigSourcesRead(kubeconfigSummary());
 

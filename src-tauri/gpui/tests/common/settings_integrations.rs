@@ -297,7 +297,7 @@ impl Fixture {
         sources.paths = ordered;
         self.saved_sources_read(sources.clone())
     }
-    fn saved_sources_read(
+    pub(super) fn saved_sources_read(
         &self,
         sources: KubeconfigSourcesSummary,
     ) -> Read<KubeconfigSourcesSummary> {
