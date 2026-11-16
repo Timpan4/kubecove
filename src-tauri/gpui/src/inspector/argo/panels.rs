@@ -127,11 +127,11 @@ pub(super) fn delivery(
     timezone: crate::preferences::TimestampTimezone,
 ) -> Div {
     let facts = [
-        ("Repository", &view.repository),
-        ("Path", &view.path),
-        ("Revision", &view.configured_revision),
-        ("Destination", &view.destination),
-        ("Policy", &view.policy),
+        ("Repository", &view.repository, "argo-delivery-repository"),
+        ("Path", &view.path, "argo-delivery-path"),
+        ("Revision", &view.configured_revision, "argo-delivery-revision"),
+        ("Destination", &view.destination, "argo-delivery-destination"),
+        ("Policy", &view.policy, "argo-delivery-policy"),
     ];
     let deployment = state
         .options
@@ -157,12 +157,19 @@ pub(super) fn delivery(
                     .flex()
                     .flex_col()
                     .gap(px(8.))
-                    .children(facts.map(|(label, value)| {
+                    .children(facts.map(|(label, value, id)| {
                         div()
                             .flex()
                             .gap(px(8.))
                             .child(ui::muted(ui::xs(label)).w(px(72.)).flex_none())
-                            .child(ui::xs(value.clone()).flex_1().min_w_0())
+                            .child(
+                                ui::xs(value.clone())
+                                    .id(id)
+                                    .test_support()
+                                    .aria_label(value.clone())
+                                    .flex_1()
+                                    .min_w_0(),
+                            )
                     })),
             ),
         )

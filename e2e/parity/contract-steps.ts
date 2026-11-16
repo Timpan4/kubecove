@@ -148,7 +148,7 @@ export type Step =
     | { action: "configureArgoInventory"; mode: import("../../src/lib/tauri-dev-mock-argo").ArgoInventoryMode }
     | { action: "copyArgoValue"; control: "source" | "revision" | "repository value" | "release value" | "cluster target value"; contains: string }
     | { action: "expectArgoReview"; operation: string; name: string; namespace: string; transport: string }
-    | { action: "expectArgoText"; text: string }
+    | { action: "expectArgoText" | "expectArgoPolicy"; text: string }
     | { action: "expectArgoPopover"; control: "Sync options" | "Refresh options"; open: boolean }
     | { action: "dismissArgoPopover"; how: "Escape" | "outside click" }
     | { action: "expectArgoCheckbox"; name: ArgoOptionName; checked: boolean }
