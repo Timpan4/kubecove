@@ -82,7 +82,9 @@
 	{#if updatesEnabled && update.status === "installed"}
 		<SettingsRow
 			title="Relaunch required"
-			description="Update is installed. Relaunch KubeCove to finish."
+			description={update.errorMessage
+				? `Relaunch failed: ${update.errorMessage}`
+				: "Update is installed. Relaunch KubeCove to finish."}
 		>
 			<Button
 				type="button"

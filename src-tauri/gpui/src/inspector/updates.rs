@@ -11,7 +11,8 @@ use gpui_kit::{Context, Div, Window, div, prelude::*, px};
 pub(super) struct Updates {
     pub(super) status: UpdateStatus,
     pub(super) checked_at: Option<String>,
-    /// The last failed check, install or relaunch. The next check clears it.
+    /// The last failed check or install. The next check clears it. A failed relaunch is kept
+    /// on `Install::Installed` instead, because the install it belongs to stays in place.
     pub(super) error: Option<String>,
     /// The update check in flight. Check is disabled while it runs.
     pub(super) check: Option<InFlight>,
@@ -28,8 +29,12 @@ pub(super) enum Install {
         progress: DownloadProgress,
         _run: InFlight,
     },
-    /// The new version is in place and `Relaunch` starts it.
-    Installed(Relaunch),
+    /// The new version is in place and `relaunch` starts it. `error` is the last failed
+    /// relaunch; the install stays, so Relaunch can be tried again without a new download.
+    Installed {
+        relaunch: Relaunch,
+        error: Option<String>,
+    },
 }
 
 impl Updates {
@@ -119,7 +124,12 @@ impl Inspector {
             };
             let _ = this.update(cx, |this, cx| {
                 match result {
-                    Ok(relaunch) => this.updates.install = Install::Installed(relaunch),
+                    Ok(relaunch) => {
+                        this.updates.install = Install::Installed {
+                            relaunch,
+                            error: None,
+                        }
+                    }
                     Err(error) => {
                         this.updates.install = Install::NotStarted;
                         this.updates.error = Some(error.message);
@@ -136,9 +146,10 @@ impl Inspector {
     }
 
     /// `relaunchApp`: starts the installed version and quits this one. Like closing the
-    /// window, it stays while an unsaved YAML draft would be lost.
+    /// window, it stays while an unsaved YAML draft would be lost. A failed relaunch keeps the
+    /// installed update and shows why, so on Windows the saved installer is still used.
     pub(super) fn relaunch_after_update(&mut self, cx: &mut Context<Self>) {
-        let Install::Installed(relaunch) = &self.updates.install else {
+        let Install::Installed { relaunch, .. } = &self.updates.install else {
             return;
         };
         let relaunch = relaunch.clone();
@@ -147,9 +158,10 @@ impl Inspector {
         }
         match self.backend.relaunch(&relaunch) {
             Ok(()) => cx.quit(),
-            Err(error) => {
-                self.updates.install = Install::NotStarted;
-                self.updates.error = Some(error.message);
+            Err(failure) => {
+                if let Install::Installed { error, .. } = &mut self.updates.install {
+                    *error = Some(failure.message);
+                }
                 cx.notify();
             }
         }
@@ -226,10 +238,14 @@ impl Inspector {
                     secondary_badge("Working").into_any_element(),
                 ));
             }
-            Install::Installed(_) => {
+            Install::Installed { error, .. } => {
+                let description = match error {
+                    Some(error) => format!("Relaunch failed: {error}"),
+                    None => "Update is installed. Relaunch KubeCove to finish.".to_owned(),
+                };
                 section = section.child(described_row(
                     "Relaunch required",
-                    "Update is installed. Relaunch KubeCove to finish.".to_owned(),
+                    description,
                     action("Relaunch", false)
                         .on_click(cx.listener(|this, _, _, cx| this.relaunch_after_update(cx)))
                         .into_any_element(),

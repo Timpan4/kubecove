@@ -145,6 +145,15 @@
 							<CheckCircle2 data-icon="inline-start" />
 							Update installed. Restart KubeCove to finish.
 						</div>
+						{#if update.errorMessage}
+							<div class="flex flex-col gap-2">
+								<div class="flex items-center gap-2 text-sm text-destructive">
+									<AlertTriangle data-icon="inline-start" />
+									Relaunch failed.
+								</div>
+								<div class="text-xs leading-relaxed text-muted-foreground">{update.errorMessage}</div>
+							</div>
+						{/if}
 						<Button type="button" onclick={() => void update.relaunchApp()}>
 							<RefreshCw data-icon="inline-start" />
 							Relaunch
