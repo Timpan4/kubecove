@@ -86,8 +86,8 @@ const detail: PathStateResourceDetailState = {
 const surfaces: PathStateSurfacesState = {
 	incidentFilter: "warning",
 	helmSearch: "checkout",
-	selectedHelmRelease: { name: "checkout-api", namespace: "checkout" },
-	selectedGitOpsApplication: "checkout",
+	selectedHelmRelease: { name: "checkout-api", namespace: "checkout", cluster: "kind-dev" },
+	selectedGitOpsApplication: { name: "checkout", namespace: "argocd", cluster: "kind-dev" },
 	rbac: {
 		riskBucket: "high",
 		selectedObjectKey: "ServiceAccount:checkout:api",
