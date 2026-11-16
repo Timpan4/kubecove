@@ -117,6 +117,20 @@ impl HelmPage {
         }
     }
 
+    /// The release a workspace reopens on, as the web's restored
+    /// `targetHelmRelease ?? surfaces.selectedHelmRelease`: a pending target,
+    /// otherwise the selected release.
+    pub(super) fn remembered_target(&self) -> Option<HelmTarget> {
+        self.target.clone().or_else(|| {
+            let release = self.releases().get(self.selected?)?;
+            Some(HelmTarget {
+                context: release.cluster.clone(),
+                name: release.name.clone(),
+                namespace: Some(release.namespace.clone()),
+            })
+        })
+    }
+
     pub(super) fn releases(&self) -> &[HelmReleaseSummary] {
         match self.load.data() {
             Some(list) => &list.releases,
@@ -393,11 +407,8 @@ impl Inspector {
         }
         let context = self.helm_page.context.clone();
         vec![
-            // HelmView's `max-w-40 truncate`: a long context name ends in an ellipsis.
-            ui::outline_badge(context.clone())
-                .flex_none()
-                .max_w(px(160.))
-                .truncate()
+            // HelmView's `max-w-40 truncate` (160px).
+            ui::truncated_outline_badge(context.clone(), px(160.))
                 .id("helm-context")
                 .test_support()
                 .aria_label(format!("Context: {context}"))

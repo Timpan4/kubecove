@@ -25,6 +25,40 @@
       ]
     },
     {
+      "id": "multi-context-navigation.helm-context-per-workspace",
+      "title": "A Helm context opened from a resource stays with its workspace: another workspace left on Helm reads its own primary context, and reopening the first restores its release",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "nameWorkspace", "value": "Helm context peer" },
+        { "action": "createWorkspace" },
+        { "action": "expectOpenWorkspace", "name": "Helm context peer", "context": "mock-dev" },
+        { "action": "openLauncher" },
+        { "action": "editSavedWorkspace", "name": "Helm context peer" },
+        { "action": "toggleWorkspaceContext", "context": "admin@solid-k8s" },
+        { "action": "saveWorkspace" },
+        { "action": "openSavedWorkspace", "name": "Helm context peer" },
+        { "action": "openPage", "page": "Helm" },
+        { "action": "expectHelmContext", "context": "mock-dev" },
+        { "action": "openLauncher" },
+        { "action": "editSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "toggleWorkspaceContext", "context": "admin@solid-k8s" },
+        { "action": "saveWorkspace" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openResources" },
+        { "action": "search", "value": "metrics-gateway-9f6d4f7c9-7j2p4" },
+        { "action": "openResource", "kind": "Pod", "namespace": "platform", "name": "metrics-gateway-9f6d4f7c9-7j2p4", "context": "admin@solid-k8s" },
+        { "action": "clickDetailControl", "label": "Open Helm release" },
+        { "action": "expectHelmContext", "context": "admin@solid-k8s" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Helm context peer" },
+        { "action": "expectHelmContext", "context": "mock-dev" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "expectHelmContext", "context": "admin@solid-k8s" },
+        { "action": "expectHelmDetails", "title": "metrics-gateway", "description": "platform / Secret:sh.helm.release.v1.metrics-gateway.v9", "totals": "4 tracked, 1 missing, 0 label-only" }
+      ]
+    },
+    {
       "id": "multi-context-navigation.gitops-application-namespace",
       "title": "A recent Application reopens in its own namespace when another namespace has an Application with the same name",
       "steps": [
