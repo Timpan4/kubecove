@@ -39,7 +39,7 @@ export const ACTIONS = [
     "terminalFit",
     "openNamespaceList", "expectNamespaceRow", "resizeViewport", "openNavigationDrawer", "expectNavigationDrawer", "sidebarKey",
     "terminalOutput", "terminalSelect", "terminalCopy", "terminalPaste", "terminalScroll", "terminalPrimaryPaste", "terminalDragOutside", "terminalRelease", "terminalFocus", "terminalRightClick", "expectTerminalCursor",
-    "configureArgoMock", "argoControl", "focusArgoResource", "expectNoSavedArgoProfile", "copyArgoValue", "configureArgoInventory", "expandArgoDiff", "reconnectArgoProfile", "controlClock", "advanceClock",
+    "configureArgoMock", "argoControl", "focusArgoResource", "expectNoSavedArgoProfile", "copyArgoValue", "configureArgoInventory", "expandArgoDiff", "reconnectArgoProfile", "argoProfileSignIn", "controlClock", "advanceClock",
     "failWorkspaceContext", "expectWorkspaceReadWarning", "holdWorkspaceContext", "releaseWorkspaceContext", "expectContextsLoading",
     "editSavedWorkspace", "expectNoSavedWorkspace", "saveWorkspace", "cancelWorkspaceEdit", "toggleWorkspaceContext", "chooseClusterContext", "expectOverviewHealth", "expectDetailContext",
     "sidebarToggle", "sidebarSelect", "expectSidebarRow", "collapseSidebar", "expectSidebarBranch", "scrollSidebar", "expectSidebarReveal", "refreshPage",

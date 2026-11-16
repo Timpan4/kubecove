@@ -140,11 +140,12 @@ export type Step =
     | { action: "disconnectArgoProfile" | "confirmArgoReview" | "cancelArgoReview" }
     | { action: "reviewArgoOperation"; operation: "Refresh" | "Hard refresh" | "Sync" | "Rollback" }
     | { action: "configureArgoMock"; script: import("../../src/lib/tauri-dev-mock-argo").ArgoMockScript }
-    | { action: "argoControl"; control: "Open connection" | "Close connection" | "Disconnect" | "Forget" | "Retry" | "Confirm target again" | "Retry operation" | "Retry state refresh" | "Retry snapshot" | "Technical detail" | "Show diff" | "Show fewer lines" | "All changes" | "Sync options" | "Sync with these options" | "Refresh options"; url?: string }
+    | { action: "argoControl"; control: "Open connection" | "Close connection" | "Disconnect" | "Forget" | "Cancel sign-in" | "Retry" | "Confirm target again" | "Retry operation" | "Retry state refresh" | "Retry snapshot" | "Technical detail" | "Show diff" | "Show fewer lines" | "All changes" | "Sync options" | "Sync with these options" | "Refresh options"; url?: string }
     | { action: "focusArgoResource"; key: string; label: string }
     | { action: "expectNoSavedArgoProfile"; url: string }
     | { action: "expandArgoDiff" }
     | { action: "reconnectArgoProfile" }
+    | { action: "argoProfileSignIn"; token: string; tunnel?: boolean; pending?: boolean; submit?: boolean }
     | { action: "configureArgoInventory"; mode: import("../../src/lib/tauri-dev-mock-argo").ArgoInventoryMode }
     | { action: "copyArgoValue"; control: "source" | "revision" | "repository value" | "release value" | "cluster target value"; contains: string }
     | { action: "expectArgoReview"; operation: string; name: string; namespace: string; transport: string }
@@ -153,7 +154,7 @@ export type Step =
     | { action: "dismissArgoPopover"; how: "Escape" | "outside click" }
     | { action: "expectArgoCheckbox"; name: ArgoOptionName; checked: boolean }
     | { action: "toggleArgoOption"; name: ArgoOptionName }
-    | { action: "expectNoArgoControl"; control: "Confirm target again" | "Reconnect" }
+    | { action: "expectNoArgoControl"; control: "Confirm target again" | "Reconnect" | "Confirm and connect" }
     | { action: "expectArgoFocusInPopover"; control: "Sync options" | "Refresh options" }
     | { action: "tabArgoPopover"; control: "Sync options" | "Refresh options"; presses: number }
     | { action: "argoConnectionDialog"; operation: "open" | "expectFocusIn" | "tabCycle" | "shiftTabCycle" | "escape" | "outsideClick" | "expectOpen" | "expectConnectForm" | "expectRemember" | "expectLocalLogin" | "expectInsecure" | "chooseLocalLogin" | "chooseInsecure" | "openDetail" | "chooseFoundInCluster" | "chooseExternalUrl" | "expectFoundInCluster" | "expectInWindow" | "expectReachable"; open: boolean; checked: boolean; control: string }

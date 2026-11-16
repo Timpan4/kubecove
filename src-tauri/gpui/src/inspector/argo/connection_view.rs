@@ -2,6 +2,7 @@
 use super::super::{
     Inspector,
     controls::{Variant, button},
+    friendly_error::redact_detail,
 };
 use super::connection::{ConnectStep, Preference};
 use crate::targets::TestSupportExt;
@@ -129,23 +130,24 @@ impl Inspector {
                                 "Reconnect"
                             })
                             .on_click(cx.listener(move |this, _, window, cx| {
+                                // GPUI buttons drawn disabled still click, so a running read blocks here.
+                                if this.argo.connections.busy() {
+                                    return;
+                                }
                                 if this.argo.connections.profiles.iter().any(|s| {
                                     s.connected && s.profile.as_ref().is_some_and(|p| p.id == id)
                                 }) {
                                     this.disconnect_argo_profile(id.clone(), window, cx);
+                                } else if !saved.remember_credential {
+                                    // Without a keyring credential, the profile asks for one in its own row.
+                                    this.open_argo_sign_in(id.clone(), window, cx);
                                 } else {
-                                    let url = this.argo.connections.fields().url.clone();
-                                    url.update(cx, |input, cx| {
-                                        input.set_value(saved.url.clone(), window, cx)
-                                    });
                                     this.argo.connections.editing = Some(saved.clone());
                                     this.argo.connections.step.clear_preview();
-                                    let confirmed = if saved.remember_credential {
-                                        match &saved.endpoint {
-                                            kubecove_lib::models::ArgoServerEndpoint::ServiceTunnel { namespace, service_name, .. } => Some(ArgoConfirmedTarget { namespace: namespace.clone(), service_name: service_name.clone(), pod_name: None, certificate_sha256: None }),
-                                            _ => None,
-                                        }
-                                    } else { None };
+                                    let confirmed = match &saved.endpoint {
+                                        kubecove_lib::models::ArgoServerEndpoint::ServiceTunnel { namespace, service_name, .. } => Some(ArgoConfirmedTarget { namespace: namespace.clone(), service_name: service_name.clone(), pod_name: None, certificate_sha256: None }),
+                                        _ => None,
+                                    };
                                     this.connect_argo_profile(confirmed, window, cx);
                                 }
                             })),
@@ -161,10 +163,15 @@ impl Inspector {
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.forget_argo_profile(forget_id.clone(), window, cx)
                             })),
+                    )
+                    .children(
+                        (!status.connected)
+                            .then(|| self.argo_sign_in_row(p, cx))
+                            .flatten(),
                     ),
             );
         }
-        if let Some(error) = &state.discovery_error {
+        if let Some(error) = state.discovery_error.as_deref().map(redact_detail) {
             panel = panel
                 .child(
                     ui::xs(error.clone())
@@ -332,18 +339,18 @@ impl Inspector {
         if choices.local {
             panel = panel
                 .child(
-                    Input::new(&fields.username)
+                    Input::new(&fields.credential.username)
                         .id("argo-username")
                         .aria_label("Username"),
                 )
                 .child(
-                    Input::new(&fields.password)
+                    Input::new(&fields.credential.password)
                         .id("argo-password")
                         .aria_label("Password"),
                 );
         } else {
             panel = panel.child(
-                Input::new(&fields.token)
+                Input::new(&fields.credential.token)
                     .id("argo-token")
                     .aria_label("Argo CD token"),
             );
@@ -389,6 +396,11 @@ impl Inspector {
                         "Connect"
                     })
                     .on_click(cx.listener(|this, _, window, cx| {
+                        // The form always makes a new connection, as on the web, even after a
+                        // saved profile's sign-in failed.
+                        if !this.argo.connections.busy() {
+                            this.argo.connections.editing = None;
+                        }
                         this.connect_argo_profile(None, window, cx)
                     })),
             )
@@ -411,12 +423,21 @@ impl Inspector {
                     .test_support()
                     .child("Confirm target again")
                     .on_click(cx.listener(move |this, _, window, cx| {
+                        if this.argo.connections.busy() {
+                            return;
+                        }
                         this.argo.connections.editing = Some(profile.clone());
-                        this.preview_argo_target(profile.endpoint.clone(), window, cx)
+                        this.preview_argo_target(
+                            profile.endpoint.clone(),
+                            Some(profile.clone()),
+                            window,
+                            cx,
+                        )
                     })),
             );
         }
-        panel.when_some(state.step.error().map(str::to_owned), |p, error| {
+        // Error text can quote a request URL or header with a credential, as on the web.
+        panel.when_some(state.step.error().map(redact_detail), |p, error| {
             p.child(
                 ui::xs(error.clone())
                     .id("argo-connection-error")
@@ -455,7 +476,7 @@ pub(super) fn same_server(
 }
 
 /// The checked state the web's switches and radios expose.
-fn toggled(on: bool) -> gpui_kit::accesskit::Toggled {
+pub(super) fn toggled(on: bool) -> gpui_kit::accesskit::Toggled {
     if on {
         gpui_kit::accesskit::Toggled::True
     } else {

@@ -41,6 +41,8 @@ export async function exportArgo(client: TauriClient, applications: { details: R
             { ...connect, token: null, profile: { ...connect.profile, id: tunnel, url: "https://argocd-server.argocd.svc", endpoint: savedEndpoint, rememberCredential: true }, confirmedTarget: preview },
             // An automatic reconnect after a restart sends the saved endpoint and the saved target.
             { ...connect, token: null, profile: { ...connect.profile, id: tunnel, url: "https://argocd-server.argocd.svc", endpoint: savedEndpoint, rememberCredential: true }, confirmedTarget: { namespace: preview.namespace, serviceName: preview.serviceName, podName: null, certificateSha256: null } },
+            // A saved tunnel profile without a remembered credential signs in from its row with the row's token.
+            { ...connect, profile: { ...connect.profile, id: tunnel, url: "https://argocd-server.argocd.svc", endpoint: savedEndpoint }, confirmedTarget: preview },
             { ...connect, profile: { ...connect.profile, rememberCredential: true } },
             { ...connect, token: null, profile: { ...connect.profile, rememberCredential: true } },
             { ...connect, token: null, username: "fixture-user", password: "fixture-password", insecureTls: true, customCaPem: [...new TextEncoder().encode("parity fixture CA")] },
