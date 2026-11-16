@@ -97,6 +97,7 @@ mod sidebar_tree;
 mod surface;
 mod table;
 mod table_columns;
+mod table_controls;
 mod table_status;
 mod timeline;
 mod timestamp_text;
@@ -317,7 +318,7 @@ impl Inspector {
             observation: Default::default(),
             warnings: vec![],
             detail: Detail::Closed,
-            map: map::MapState::new(),
+            map: map::MapState::new(cx),
             spike: None,
             map_open: None,
             table_open: true,

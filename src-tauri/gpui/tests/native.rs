@@ -47,6 +47,8 @@ mod session_controls;
 mod settings_integrations;
 #[path = "native/shell.rs"]
 mod shell;
+#[path = "native/source_refresh.rs"]
+mod source_refresh;
 #[path = "native/updates.rs"]
 mod updates;
 #[path = "native/watch_burst.rs"]
@@ -94,6 +96,7 @@ struct Controlled {
     pending: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
     detail: detail_tabs::DetailControls,
     workspace: workspaces::WorkspaceControls,
+    kubeconfig: source_refresh::KubeconfigControls,
 }
 
 const YAML: &str = "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: payments-api\n  namespace: payments\n";
@@ -235,18 +238,16 @@ impl Backend for Controlled {
         self.live.start_version()
     }
     fn contexts(&self, _kubeconfig_source_key: Option<String>) -> Read<Vec<ClusterContext>> {
-        Box::pin(async {
-            Ok(vec![
-                ClusterContext {
-                    name: "mock-dev".into(),
-                    is_current: true,
-                },
-                ClusterContext {
-                    name: "mock-other".into(),
-                    is_current: false,
-                },
-            ])
-        })
+        self.kubeconfig.contexts(vec![
+            ClusterContext {
+                name: "mock-dev".into(),
+                is_current: true,
+            },
+            ClusterContext {
+                name: "mock-other".into(),
+                is_current: false,
+            },
+        ])
     }
     fn resources(&self, scope: Scope, _: bool) -> Read<ScopeResult> {
         self.live.reads.lock().unwrap().push("list");
@@ -473,14 +474,18 @@ impl Backend for Controlled {
         Box::pin(async { Err(AppError::new("Review denied", AppErrorKind::Forbidden)) })
     }
     fn kubeconfig_sources(&self) -> Read<KubeconfigSourcesSummary> {
-        self.shell.kubeconfig_sources()
+        self.kubeconfig.sources(self.shell.kubeconfig_sources())
     }
-    /// Like the production backend, which cannot persist kubeconfig settings.
+    /// Like the production backend, which cannot persist kubeconfig settings, unless a test
+    /// makes source edits writable.
     fn kubeconfig_writes_unavailable(&self) -> Option<&'static str> {
         Some(KUBECONFIG_WRITES)
     }
     fn kubeconfig_source_edits_unavailable(&self) -> Option<&'static str> {
-        Some(KUBECONFIG_WRITES)
+        self.kubeconfig.writes_unavailable()
+    }
+    fn add_kubeconfig_paths(&self, _: Vec<String>) -> Read<KubeconfigSourcesSummary> {
+        self.kubeconfig.add(self.shell.kubeconfig_sources())
     }
     fn set_kubeconfig_env_var(&self, _: String) -> Read<KubeconfigSourcesSummary> {
         unreachable!("the settings page must not write when writes are unavailable")

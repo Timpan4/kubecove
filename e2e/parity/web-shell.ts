@@ -1,6 +1,7 @@
 import type { Page } from "playwright-core";
 import { STARTUP_HOLDS_KEY, type TimingControl } from "../../src/lib/tauri-dev-mock-timing";
 import type { Scenario, Step } from "./contract";
+import { tabTo } from "./web-keyboard";
 
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -114,7 +115,11 @@ export async function shellAction(page: Page, step: Step): Promise<void> {
             const pin = new RegExp(`^(?:Pin|Unpin) ${escapeRegExp(step.kind)} ${escapeRegExp(step.name)}$`);
             const rows = page.getByRole("row").filter({ has: page.getByRole("button", { name: pin }) }).filter({ hasText: step.namespace });
             const row = step.context === undefined ? rows : rows.filter({ has: page.getByRole("cell", { name: step.context, exact: true }) });
-            await row.getByRole("button", { name: pin }).click();
+            const button = row.getByRole("button", { name: pin });
+            if (step.key) {
+                await tabTo(page, button);
+                await page.keyboard.press(step.key);
+            } else await button.click();
             break;
         }
         case "expectWorkspaceEntry": case "openWorkspaceEntry": {
@@ -144,7 +149,7 @@ export async function shellAction(page: Page, step: Step): Promise<void> {
             break;
         }
         case "reorderKindKey":
-            await page.locator(`[data-kind-drop="${step.kind}"]`).focus();
+            await tabTo(page, page.locator(`[data-kind-drop="${step.kind}"]`));
             await page.keyboard.press(step.key);
             break;
         case "resetKindOrder":

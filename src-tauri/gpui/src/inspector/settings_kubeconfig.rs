@@ -15,6 +15,14 @@ use gpui_kit::component::input::{Input, Textarea};
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{Context, Div, SharedString, Window, div, prelude::*, px};
 
+/// What settling a kubeconfig sources read does beyond showing the sources.
+enum SourceRead {
+    /// A plain read.
+    Load,
+    /// A saved change. `draft` is the path text it submitted, if it submitted one.
+    Change { draft: Option<String> },
+}
+
 impl Inspector {
     pub(super) fn kubeconfig_sources_read(
         &self,
@@ -102,7 +110,7 @@ impl Inspector {
                                 };
                                 paths.swap(index, target);
                                 let read = this.backend.reorder_kubeconfig_paths(paths);
-                                this.run_kubeconfig(read, window, cx);
+                                this.change_kubeconfig(read, window, cx);
                             }))
                         })
                 }),
@@ -118,52 +126,58 @@ impl Inspector {
                     .when(!disabled, |button| {
                         button.on_click(cx.listener(move |this, _, window, cx| {
                             let read = this.backend.remove_kubeconfig_path(path.clone());
-                            this.run_kubeconfig(read, window, cx);
+                            this.change_kubeconfig(read, window, cx);
                         }))
                     }),
             )
     }
 
-    /// `runSourceUpdate`: applies the returned sources and refills the draft.
+    /// Shows the sources a read returned and refills the env var draft.
     pub(super) fn run_kubeconfig(
         &mut self,
         read: crate::backend::Read<KubeconfigSourcesSummary>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.run_kubeconfig_draft(read, false, window, cx);
+        self.settle_kubeconfig(read, SourceRead::Load, window, cx);
     }
 
-    /// Like `run_kubeconfig`. A saved path also clears the path draft, as `addPastedPaths` does.
-    fn run_kubeconfig_draft(
+    /// `runSourceUpdate`: applies the sources a saved change returned.
+    fn change_kubeconfig(
         &mut self,
         read: crate::backend::Read<KubeconfigSourcesSummary>,
-        clear_path_draft: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.settle_kubeconfig(read, SourceRead::Change { draft: None }, window, cx);
+    }
+
+    fn settle_kubeconfig(
+        &mut self,
+        read: crate::backend::Read<KubeconfigSourcesSummary>,
+        kind: SourceRead,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let change = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
-                let state = &mut this.settings;
-                state.source_change = None;
+                this.settings.source_change = None;
                 match result {
                     Ok(sources) => {
                         let value = sources.kubeconfig_env_var.clone();
-                        state
+                        this.settings
                             .env_var
                             .update(cx, |input, cx| input.set_value(value, window, cx));
-                        if clear_path_draft {
-                            state
-                                .server_path
-                                .update(cx, |input, cx| input.set_value("", window, cx));
-                            state
-                                .pasted_paths
-                                .update(cx, |input, cx| input.set_value("", window, cx));
+                        if let SourceRead::Change { draft } = kind {
+                            if let Some(draft) = draft {
+                                this.clear_path_drafts(&draft, window, cx);
+                            }
+                            this.apply_source_change(sources.clone(), window, cx);
                         }
-                        state.sources = Some(Ok(sources));
+                        this.settings.sources = Some(Ok(sources));
                     }
-                    Err(error) => state.sources = Some(Err(error.message)),
+                    Err(error) => this.settings.sources = Some(Err(error.message)),
                 }
                 cx.notify();
             });
@@ -172,15 +186,31 @@ impl Inspector {
         cx.notify();
     }
 
+    /// Clears each path field that still holds `submitted`, as `addPastedPaths` clears its
+    /// draft. Text typed while the save ran stays.
+    fn clear_path_drafts(&mut self, submitted: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let state = &self.settings;
+        if state.server_path.read(cx).value() == submitted {
+            state
+                .server_path
+                .update(cx, |input, cx| input.set_value("", window, cx));
+        }
+        if state.pasted_paths.read(cx).value() == submitted {
+            state
+                .pasted_paths
+                .update(cx, |input, cx| input.set_value("", window, cx));
+        }
+    }
+
     fn save_env_var(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let value = self.settings.env_var.read(cx).value().to_string();
         let read = self.backend.set_kubeconfig_env_var(value);
-        self.run_kubeconfig(read, window, cx);
+        self.change_kubeconfig(read, window, cx);
     }
 
     fn reset_env_var(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let read = self.backend.set_kubeconfig_env_var(String::new());
-        self.run_kubeconfig(read, window, cx);
+        self.change_kubeconfig(read, window, cx);
     }
 
     fn toggle_source_labels(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -190,7 +220,7 @@ impl Inspector {
         let read = self
             .backend
             .set_show_kubeconfig_source_labels(!sources.show_source_labels);
-        self.run_kubeconfig(read, window, cx);
+        self.change_kubeconfig(read, window, cx);
     }
 
     /// `addServerPath` in the web's remote mode: one typed path on the server.
@@ -209,8 +239,9 @@ impl Inspector {
         if value.trim().is_empty() {
             return;
         }
-        let read = self.backend.add_kubeconfig_paths(vec![value]);
-        self.run_kubeconfig_draft(read, true, window, cx);
+        let read = self.backend.add_kubeconfig_paths(vec![value.clone()]);
+        let kind = SourceRead::Change { draft: Some(value) };
+        self.settle_kubeconfig(read, kind, window, cx);
     }
 
     pub(super) fn kubeconfig_section(&self, cx: &mut Context<Self>) -> Div {
@@ -407,7 +438,7 @@ impl Inspector {
                 .when(!picks_disabled, |button| {
                     button.on_click(cx.listener(|this, _, window, cx| {
                         let read = this.backend.pick_kubeconfig_paths();
-                        this.run_kubeconfig(read, window, cx);
+                        this.change_kubeconfig(read, window, cx);
                     }))
                 })
         });
@@ -423,7 +454,7 @@ impl Inspector {
                         Input::new(&self.settings.server_path)
                             .id("kubeconfig-server-path")
                             .aria_label("Kubeconfig path on server")
-                            .disabled(edits_unavailable.is_some())
+                            .disabled(edits_disabled)
                             .text_xs()
                             .h(px(32.)),
                     ),

@@ -67,7 +67,7 @@ export async function action(page: Page, step: Step, scenarioSteps: readonly Ste
         case "coverageCheck": await checkCoverage(page, step.check); break;
         case "coverageClick": case "coverageFill": case "coverageText": case "paletteKey": case "expectPaletteOpen": case "deleteSavedWorkspace": case "importDecision": case "cancelImport": case "searchEvents": await coverageAction(page, step); break;
         case "panelControl": case "expectPanelControl": case "skipGraph": case "mapKey": case "expectMapFocus": case "expectNoMapFocus": case "expectMapNodeInView": case "panMap": case "clickMapControl": case "expectMapControlFocus": case "expectMapZoom": case "resizeDetail": case "expectDetailResize": await panelAction(page, step); break;
-        case "terminalFit": case "terminalOutput": case "terminalSelect": case "terminalCopy": case "terminalPaste": case "terminalScroll": case "terminalPrimaryPaste": case "terminalDragOutside": case "terminalRelease": case "terminalFocus": case "terminalRightClick": case "expectTerminalCursor":
+        case "terminalFit": case "terminalOutput": case "terminalSelect": case "terminalCopy": case "terminalPaste": case "terminalScroll": case "terminalPrimaryPaste": case "terminalDragOutside": case "terminalRelease": case "terminalFocus": case "terminalKey": case "terminalRightClick": case "expectTerminalCursor":
             await terminalAction(page, step); break;
         case "failWorkspaceContext": case "expectWorkspaceReadWarning": case "expectContextUnavailable": case "holdWorkspaceContext": case "releaseWorkspaceContext": case "expectContextsLoading":
             await workspaceAction(page, step); break;
@@ -152,7 +152,7 @@ export async function action(page: Page, step: Step, scenarioSteps: readonly Ste
         case "expectLiveMenu": await liveMenuAction(page, step); break;
         case "replayLiveData": await page.evaluate(`import('/src/lib/tauri-dev-mock-live.ts').then(m => m.replayLiveData(${JSON.stringify(step.script)}))`); break;
         case "sortResourceTable": case "pressResourceRow": case "expectResourceOrder": case "toggleResourceGroup": case "expectResourceGroup": case "openResourceRow": case "expectResourceCell": case "expectResourceCellFits": case "expectResourceColumns": case "expectResourceActivity": await resourceTableAction(page, step); break;
-        case "expectRowContexts": case "filterContexts": case "expectResourceSummary": case "selectMapContext": case "expectMapContext": await multiContextAction(page, step); break;
+        case "expectRowContexts": case "filterContexts": case "expectResourceSummary": case "selectMapContext": case "expectMapContext": case "mapContextKey": case "expectMapContextOptions": await multiContextAction(page, step); break;
         case "expectResourceStatus": await resourceRow(page, step).getByText(step.status, { exact: true }).waitFor(); break;
         case "openCustomKind": {
             if (step.surface === "sidebar") {
@@ -341,7 +341,7 @@ export async function action(page: Page, step: Step, scenarioSteps: readonly Ste
 		case "expectSettingRow": await page.getByText(step.title, { exact: true }).first().waitFor(); break;
 		case "expectNoSettingRow": if (await page.getByText(step.title, { exact: true }).count()) throw new Error(`${step.title} is shown`); break;
 		case "expectSettingsEmpty": await page.getByText(`No settings match "${step.value}".`, { exact: true }).waitFor(); break;
-		case "addServerKubeconfigPath": case "clickKubeconfigPathButton": case "expectKubeconfigPathBefore": case "expectAccessibleName": await kubeconfigSettingsAction(page, step); break;
+		case "addServerKubeconfigPath": case "clickKubeconfigPathButton": case "expectKubeconfigPathBefore": case "addPastedKubeconfigPaths": case "fillKubeconfigPathDraft": case "expectKubeconfigPathDraft": case "expectAccessibleName": await kubeconfigSettingsAction(page, step); break;
 		case "setKubeconfigEnvVar": {
 			await page.getByRole("textbox", { name: "Kubeconfig env var", exact: true }).fill(step.value);
 			const save = page.getByRole("button", { name: "Save", exact: true });

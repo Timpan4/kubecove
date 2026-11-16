@@ -1,5 +1,6 @@
 import type { Locator, Page } from "playwright-core";
 import type { Step } from "./contract";
+import { tabTo } from "./web-keyboard";
 
 const frames = (page: Page) => page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
 
@@ -100,8 +101,13 @@ export async function terminalAction(page: Page, step: Step): Promise<void> {
             break;
         }
         case "terminalFocus":
-            if (step.focused) await terminal.locator(".xterm-screen").click();
+            if (step.key) await tabTo(page, terminal.locator("textarea"));
+            else if (step.focused) await terminal.locator(".xterm-screen").click();
             else await terminal.locator("textarea").evaluate((element: HTMLTextAreaElement) => element.blur());
+            await frames(page);
+            break;
+        case "terminalKey":
+            await page.keyboard.press(step.key);
             await frames(page);
             break;
         case "terminalRightClick": {

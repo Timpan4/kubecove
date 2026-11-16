@@ -1,7 +1,7 @@
 //! Namespace list, compact navigation drawer and sidebar tree keys.
 //! `resizeViewport` resizes the window in `parity.rs`; this module ignores it.
 
-use super::sidebar_live::{click_sidebar, sidebar_row_id};
+use super::sidebar_live::sidebar_row_id;
 use super::*;
 
 fn native_key(key: &str) -> &'static str {
@@ -33,8 +33,8 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
             let parts: Vec<&str> = path.iter().map(String::as_str).collect();
             let id = sidebar_row_id(&parts);
             reveal(window, "sidebar-tree", &id, cx);
-            // The pointer press focuses the row, as a user does before pressing keys.
-            click_sidebar(window, cx, id);
+            // Tab focuses the row without selecting it, so Enter and Space must select it themselves.
+            super::resource_table::tab_to(window, id, cx);
             window.press(native_key(string(step, "key")), cx);
         }
         _ => return false,

@@ -125,11 +125,17 @@ impl Inspector {
     pub(super) fn load_contexts(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.context_task.take();
         self.observation.loading_contexts();
+        let generation = self.launcher.kubeconfig.generation();
         let task = self.read_kubeconfig_contexts(
             false,
             window,
             cx,
-            |this, result, _source_error, window, cx| {
+            move |this, result, _source_error, window, cx| {
+                // A source saved while this read ran makes its contexts stale, so read again.
+                if this.launcher.kubeconfig.generation() != generation {
+                    this.load_contexts(window, cx);
+                    return;
+                }
                 match result {
                     Ok(contexts) if contexts.is_empty() => this.observation.context_error(
                         "No Kubernetes contexts found. Configure KUBECONFIG and retry.".into(),
@@ -150,23 +156,7 @@ impl Inspector {
                                 .name
                                 .clone()
                         });
-                        this.context_picker.update(cx, |state, cx| {
-                            state.set_items(
-                                SearchableVec::new(
-                                    contexts
-                                        .into_iter()
-                                        .map(|context| SharedString::from(context.name))
-                                        .collect::<Vec<_>>(),
-                                ),
-                                window,
-                                cx,
-                            );
-                            state.set_selected_value(
-                                &SharedString::from(selected.clone()),
-                                window,
-                                cx,
-                            );
-                        });
+                        this.set_context_picker(contexts, &selected, window, cx);
                         this.scope.context = selected;
                         if this.workspace_open() {
                             this.load_scope(false, window, cx);
@@ -178,6 +168,29 @@ impl Inspector {
             },
         );
         self.context_task = Some(task);
+    }
+
+    /// Lists `contexts` in the header's context picker with `selected` chosen.
+    pub(super) fn set_context_picker(
+        &mut self,
+        contexts: Vec<kubecove_lib::models::ClusterContext>,
+        selected: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.context_picker.update(cx, |state, cx| {
+            state.set_items(
+                SearchableVec::new(
+                    contexts
+                        .into_iter()
+                        .map(|context| SharedString::from(context.name))
+                        .collect::<Vec<_>>(),
+                ),
+                window,
+                cx,
+            );
+            state.set_selected_value(&SharedString::from(selected.to_owned()), window, cx);
+        });
     }
 
     pub(super) fn load_scope(

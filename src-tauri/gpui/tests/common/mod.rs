@@ -269,11 +269,7 @@ impl Backend for Fixture {
         let mut sources = self.kubeconfig.lock().unwrap();
         sources.paths.retain(|entry| entry.path != path);
         let sources = sources.clone();
-        let saved = self.save_settings(&sources);
-        Box::pin(async move {
-            saved?;
-            Ok(sources)
-        })
+        self.saved_sources_read(sources)
     }
     fn import_workspace(&self) -> Read<Option<String>> {
         self.import_workspace_read()

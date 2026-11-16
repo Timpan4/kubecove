@@ -152,7 +152,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 gpui_kit::ScrollDelta::Pixels(gpui_kit::point(offset, px(0.))),
                 cx,
             );
-            locate::click_in(window, "resource-table", id.into(), cx);
+            super::resource_table::activate(window, "resource-table", id.into(), step, cx);
             window.scroll(
                 "resource-table",
                 gpui_kit::ScrollDelta::Pixels(gpui_kit::point(-offset, px(0.))),
@@ -184,10 +184,9 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             return true;
         }
         "reorderKindKey" => {
-            locate::click_in(
+            super::resource_table::tab_to(
                 window,
-                "page",
-                format!("kind-order-item:{}", string(step, "kind")).into(),
+                format!("kind-order-item:{}", string(step, "kind")),
                 cx,
             );
             window.press(&string(step, "key").replace("Arrow", "").to_lowercase(), cx);

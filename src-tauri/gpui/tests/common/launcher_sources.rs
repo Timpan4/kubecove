@@ -30,12 +30,19 @@ impl Fixture {
         }
         // The saved primary context of the parity workspaces is mock-dev.
         let missing = *self.shell_read_phase.lock().unwrap() == "primary-context-missing";
-        let available: Vec<_> = self
+        let mut available: Vec<_> = self
             .cluster_contexts
             .iter()
             .filter(|context| !(missing && context.name == "mock-dev"))
             .cloned()
             .collect();
+        // `kubeContextsMock`: the added fixture kubeconfig file defines one more context.
+        if super::settings_integrations::has_added_context(&self.kubeconfig.lock().unwrap()) {
+            available.push(ClusterContext {
+                name: super::settings_integrations::ADDED_CONTEXT.into(),
+                is_current: false,
+            });
+        }
         // The web mock keys `list_kube_contexts` without a cluster context.
         self.timing.wrap(
             "list_kube_contexts",

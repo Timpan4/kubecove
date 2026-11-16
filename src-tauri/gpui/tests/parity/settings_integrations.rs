@@ -47,6 +47,59 @@ pub fn act(window: &mut Window, cx: &mut App, step: &Value) -> bool {
             window.input(string(step, "value"), cx);
             locate::click_in(window, "page", "settings-button:Add server path".into(), cx);
         }
+        "addPastedKubeconfigPaths" | "fillKubeconfigPathDraft" => {
+            locate::click_in(window, "page", "kubeconfig-paths-input".into(), cx);
+            window.press("secondary-a", cx);
+            window.input(string(step, "value"), cx);
+            if string(step, "action") == "addPastedKubeconfigPaths" {
+                locate::click_in(
+                    window,
+                    "page",
+                    "settings-button:Add pasted paths".into(),
+                    cx,
+                );
+            }
+        }
+        "expectKubeconfigPathDraft" => {
+            window.render_frame(cx);
+            // The field of the current mode: the server path when remote, else the pasted paths.
+            let (label, id) = if window
+                .try_find_by_label("Kubeconfig path on server")
+                .is_some()
+            {
+                ("Kubeconfig path on server", "kubeconfig-server-path")
+            } else {
+                ("Paste kubeconfig paths", "kubeconfig-paths-input")
+            };
+            let draft = |window: &mut Window| {
+                window
+                    .find_by_label(label)
+                    .value()
+                    .unwrap_or_default()
+                    .to_owned()
+            };
+            let value = string(step, "value");
+            assert_eq!(draft(window), value);
+            // GPUI inputs expose no disabled flag, so typing tells: a disabled field keeps its text.
+            let probe = format!("{value}#");
+            locate::click_in(window, "page", id.into(), cx);
+            window.press("secondary-a", cx);
+            window.input(&probe, cx);
+            window.render_frame(cx);
+            let accepted = draft(window) == probe;
+            if accepted {
+                window.press("secondary-a", cx);
+                if value.is_empty() {
+                    window.press("backspace", cx);
+                } else {
+                    window.input(value, cx);
+                }
+                window.render_frame(cx);
+            }
+            let enabled = step["enabled"].as_bool().expect("missing enabled");
+            assert_eq!(accepted, enabled, "{label} accepts input");
+            assert_eq!(draft(window), value);
+        }
         "expectAccessibleName" => {
             let name = string(step, "name");
             assert!(

@@ -221,39 +221,42 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let read = self.read_kubeconfig_contexts(
-            force,
-            window,
-            cx,
-            |this, result, source_warning, window, cx| {
-                match result {
-                    Ok(contexts) => {
-                        let state = &mut this.launcher;
-                        let before = state.effective().to_owned();
-                        state.context_choices = contexts
-                            .into_iter()
-                            .map(|context| (context.name, context.is_current))
-                            .collect();
-                        // A new current context moves an unpicked form to another
-                        // cluster, so its selections reset as `choose_launcher_context`'s do.
-                        if state.effective() != before {
-                            state.namespaces.clear();
-                            let effective = state.effective().to_owned();
-                            state.group.retain(|member| *member != effective);
-                        }
-                        state.contexts = Fetch::Ready(ContextsRead { source_warning });
-                        this.discover_namespaces(window, cx);
-                        this.update_saved_overview();
-                    }
-                    Err(error) => {
-                        this.launcher.contexts =
-                            Fetch::Failed(source_warning.unwrap_or(error.message));
-                    }
-                }
-                cx.notify();
-            },
-        );
+        let read = self.read_kubeconfig_contexts(force, window, cx, Self::apply_launcher_contexts);
         self.launcher.contexts = Fetch::start(read);
+        cx.notify();
+    }
+
+    /// Applies a settled context read to the launcher's context choices.
+    pub(super) fn apply_launcher_contexts(
+        &mut self,
+        result: Result<Vec<kubecove_lib::models::ClusterContext>, kubecove_lib::models::AppError>,
+        source_warning: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match result {
+            Ok(contexts) => {
+                let state = &mut self.launcher;
+                let before = state.effective().to_owned();
+                state.context_choices = contexts
+                    .into_iter()
+                    .map(|context| (context.name, context.is_current))
+                    .collect();
+                // A new current context moves an unpicked form to another
+                // cluster, so its selections reset as `choose_launcher_context`'s do.
+                if state.effective() != before {
+                    state.namespaces.clear();
+                    let effective = state.effective().to_owned();
+                    state.group.retain(|member| *member != effective);
+                }
+                state.contexts = Fetch::Ready(ContextsRead { source_warning });
+                self.discover_namespaces(window, cx);
+                self.update_saved_overview();
+            }
+            Err(error) => {
+                self.launcher.contexts = Fetch::Failed(source_warning.unwrap_or(error.message));
+            }
+        }
         cx.notify();
     }
 
