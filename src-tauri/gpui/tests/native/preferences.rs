@@ -115,7 +115,7 @@ fn corrupt_future_migration_and_write_failure() {
     let migrated = store.load().unwrap();
     assert!(migrated.preferences.show_exact_timestamps);
     assert!(migrated.preferences.redact_secrets);
-    assert_eq!(migrated.version, 1);
+    assert_eq!(migrated.version, 2);
     store.save(migrated).unwrap();
     let original = std::fs::read(&path).unwrap();
     // A directory in place of the sibling lock file forces a write error,

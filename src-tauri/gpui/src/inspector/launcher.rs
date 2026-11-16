@@ -104,12 +104,12 @@ impl LauncherState {
             .map_or(&[], |saved| saved.namespaces.as_slice())
     }
 
-    pub(super) fn overview_kind(&self, kind: &str) -> bool {
+    pub(super) fn overview_kind(&self, kind: &str, api_version: Option<&str>) -> bool {
         self.active
             .and_then(|id| self.saved.iter().find(|saved| saved.id == id))
             .map_or_else(
                 || crate::model::WORKSPACE_KINDS.contains(&kind),
-                |saved| saved.kinds.iter().any(|saved| saved == kind),
+                |saved| saved.kinds.iter().any(|saved| saved.matches(kind, api_version)),
             )
     }
 
