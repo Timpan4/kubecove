@@ -130,6 +130,10 @@ impl Inspector {
                                 "Reconnect"
                             })
                             .on_click(cx.listener(move |this, _, window, cx| {
+                                // GPUI buttons drawn disabled still click, so a running read blocks here.
+                                if this.argo.connections.busy() {
+                                    return;
+                                }
                                 if this.argo.connections.profiles.iter().any(|s| {
                                     s.connected && s.profile.as_ref().is_some_and(|p| p.id == id)
                                 }) {
@@ -419,8 +423,16 @@ impl Inspector {
                     .test_support()
                     .child("Confirm target again")
                     .on_click(cx.listener(move |this, _, window, cx| {
+                        if this.argo.connections.busy() {
+                            return;
+                        }
                         this.argo.connections.editing = Some(profile.clone());
-                        this.preview_argo_target(profile.endpoint.clone(), window, cx)
+                        this.preview_argo_target(
+                            profile.endpoint.clone(),
+                            Some(profile.clone()),
+                            window,
+                            cx,
+                        )
                     })),
             );
         }

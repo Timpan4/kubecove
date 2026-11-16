@@ -25,10 +25,13 @@ pub(super) enum ConnectStep {
     Busy {
         _read: InFlight,
     },
-    /// A previewed tunnel target that waits for the user's confirmation.
+    /// A previewed tunnel target that waits for the user's confirmation. `saved` is the saved
+    /// profile it reconnects, as the web's step carries it, so confirming never falls back to
+    /// the form's credential after the form's choices changed.
     ConfirmTarget {
         endpoint: ArgoServerEndpoint,
         preview: ArgoTunnelTargetPreview,
+        saved: Option<ArgoConnectionProfile>,
     },
     /// `reconfirm` is the remembered tunnel profile whose reconnect failed. Only it
     /// offers a fresh preview of its saved target, as on the web.
@@ -380,7 +383,13 @@ impl Inspector {
         let state = &self.argo.connections;
         let choices = state.choices();
         let fields = state.fields();
-        let saved = state.editing.as_ref();
+        // A confirmed preview belongs to the profile it was previewed for, whatever the form
+        // shows now. Otherwise the profile being reconnected is the one being edited.
+        let saved = match (&confirmed_target, &state.step) {
+            (Some(_), ConnectStep::ConfirmTarget { saved, .. }) => saved.clone(),
+            _ => state.editing.clone(),
+        };
+        let saved = saved.as_ref();
         let remembered = saved.is_some_and(|p| p.remember_credential);
         // A saved profile signs in with its keyring credential or the one typed in its own row.
         // The new-connection form's credential and TLS choices may be meant for another server.
@@ -407,9 +416,7 @@ impl Inspector {
         };
         let mut endpoint = previewed
             .or_else(|| {
-                state
-                    .editing
-                    .as_ref()
+                saved
                     .map(|p| p.endpoint.clone())
                     .or_else(|| choices.endpoint.clone())
             })
@@ -417,7 +424,7 @@ impl Inspector {
                 url: fields.url.read(cx).value().trim().to_owned(),
             });
         if confirmed_target.is_none()
-            && state.editing.is_none()
+            && form
             && let ArgoServerEndpoint::ServiceTunnel {
                 root_path,
                 tls_server_name,
@@ -436,13 +443,14 @@ impl Inspector {
         if matches!(endpoint, ArgoServerEndpoint::ServiceTunnel { .. })
             && confirmed_target.is_none()
         {
-            self.preview_argo_target(endpoint, window, cx);
+            let saved = saved.cloned();
+            self.preview_argo_target(endpoint, saved, window, cx);
             return;
         }
         let url = super::profiles::endpoint_url(&endpoint);
         let external = matches!(endpoint, ArgoServerEndpoint::ExternalHttps { .. });
         let profile = ArgoConnectionProfile {
-            id: state.editing.as_ref().map_or_else(
+            id: saved.map_or_else(
                 || {
                     format!(
                         "argo:{}:{}:{}:{}",
@@ -476,7 +484,7 @@ impl Inspector {
             },
             confirmed_target,
         });
-        let reconfirm = state.editing.clone().filter(|p| {
+        let reconfirm = saved.cloned().filter(|p| {
             p.remember_credential && matches!(p.endpoint, ArgoServerEndpoint::ServiceTunnel { .. })
         });
         if form {

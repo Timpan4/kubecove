@@ -3,7 +3,7 @@ use super::super::Inspector;
 use super::connection::ConnectStep;
 use crate::backend::ArgoTarget;
 use gpui_kit::{Context, Window};
-use kubecove_lib::models::ArgoServerEndpoint;
+use kubecove_lib::models::{ArgoConnectionProfile, ArgoServerEndpoint};
 
 impl Inspector {
     pub(super) fn discover_argo_servers(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -38,6 +38,7 @@ impl Inspector {
     pub(super) fn preview_argo_target(
         &mut self,
         endpoint: ArgoServerEndpoint,
+        saved: Option<ArgoConnectionProfile>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -49,9 +50,25 @@ impl Inspector {
         let task = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
+                // A saved profile without a keyring credential confirms only while its row is
+                // open, as on the web. Its confirmation would otherwise carry no credential.
+                let row_closed = saved.as_ref().is_some_and(|p| {
+                    !p.remember_credential
+                        && this
+                            .argo
+                            .connections
+                            .sign_in
+                            .as_ref()
+                            .is_none_or(|s| s.profile_id != p.id)
+                });
                 // A preview that fails leaves no reconfirm offer, as on the web.
                 this.argo.connections.step = match result {
-                    Ok(preview) => ConnectStep::ConfirmTarget { endpoint, preview },
+                    Ok(_) if row_closed => ConnectStep::Idle,
+                    Ok(preview) => ConnectStep::ConfirmTarget {
+                        endpoint,
+                        preview,
+                        saved,
+                    },
                     Err(error) => ConnectStep::failed(error.message),
                 };
                 cx.notify();

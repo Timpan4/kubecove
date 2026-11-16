@@ -222,6 +222,9 @@ impl Inspector {
                             .test_support()
                             .child("Sign in")
                             .on_click(cx.listener(move |this, _, window, cx| {
+                                if this.argo.connections.busy() {
+                                    return;
+                                }
                                 this.argo.connections.editing = Some(saved.clone());
                                 this.argo.connections.step.clear_preview();
                                 this.connect_argo_profile(None, window, cx);
@@ -235,6 +238,10 @@ impl Inspector {
                             .aria_label("Cancel sign-in")
                             .child("Cancel")
                             .on_click(cx.listener(move |this, _, _, cx| {
+                                // GPUI buttons drawn disabled still click.
+                                if this.argo.connections.busy() {
+                                    return;
+                                }
                                 this.close_argo_sign_in(&cancel_id);
                                 cx.notify();
                             })),

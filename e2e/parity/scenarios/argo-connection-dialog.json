@@ -293,6 +293,28 @@
       ]
     },
     {
+      "id": "argo-connection.source-change-during-sign-in-preview",
+      "title": "Changing the form's server source while a saved tunnel profile's sign-in preview is pending still confirms that profile with its row's token, never the form's",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "connectArgoProfile", "url": "https://argocd-server.argocd.svc", "tunnel": true },
+        { "action": "confirmArgoTunnel" },
+        { "action": "disconnectArgoProfile" },
+        { "action": "argoConnectionDialog", "operation": "openDetail" },
+        { "action": "argoConnectionDialog", "operation": "chooseFoundInCluster" },
+        { "action": "fillArgoConnectionField", "field": "token", "value": "token-for-another-server" },
+        { "action": "argoConnectionDialog", "operation": "escape" },
+        { "action": "reconnectArgoProfile" },
+        { "action": "configureArgoMock", "script": "preview-pending" },
+        { "action": "argoProfileSignIn", "token": "parity-fixture-token", "tunnel": true, "pending": true },
+        { "action": "argoConnectionDialog", "operation": "chooseExternalUrl" },
+        { "action": "configureArgoMock", "script": "base" },
+        { "action": "confirmArgoTunnel" },
+        { "action": "expectArgoText", "text": "Connected Argo CD API" }
+      ]
+    },
+    {
       "id": "argo-connection.redacts-connect-error",
       "title": "A connect error that quotes a token shows it redacted",
       "steps": [
