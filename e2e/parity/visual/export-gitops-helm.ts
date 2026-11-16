@@ -35,15 +35,17 @@ function withRustOwnerFields(row: ResourceSummary): ResourceSummary {
 const APPLICATION_KIND = { kind: "Application", apiVersion: "argoproj.io/v1alpha1", group: "argoproj.io", version: "v1alpha1", plural: "applications", namespaced: true };
 
 export async function exportGitOpsPage(client: TauriClient, clusterContext: string | undefined, argoDetected: boolean) {
-	if (!argoDetected) return { appSets: [], projects: [], applications: [], manyArgo: [], manyApplications: [] };
+	if (!argoDetected) return { appSets: [], projects: [], applications: [], manyArgo: [], manyApplications: [], sameNameArgo: [], sameNameApplications: [] };
 	// The fixture keeps rows only; its reads report the mock list version themselves.
 	const appSets = (await client.invoke<VersionedList<ArgoApplicationSetSummary>>("list_argocd_appsets", { clusterContext })).items.map(withAssessment);
 	const projects = (await client.invoke<VersionedList<ArgoAppProjectSummary>>("list_argocd_appprojects", { clusterContext })).items.map(withAssessment);
 	const base = await exportApplications(client, clusterContext);
-	configureArgoInventory("many");
 	try {
+		configureArgoInventory("many");
 		const many = await exportApplications(client, clusterContext);
-		return { appSets, projects, applications: base.applications, manyArgo: many.apps, manyApplications: many.applications };
+		configureArgoInventory("same-name");
+		const sameName = await exportApplications(client, clusterContext);
+		return { appSets, projects, applications: base.applications, manyArgo: many.apps, manyApplications: many.applications, sameNameArgo: sameName.apps, sameNameApplications: sameName.applications };
 	} finally {
 		configureArgoInventory("base");
 	}
@@ -61,15 +63,29 @@ async function exportApplications(client: TauriClient, clusterContext: string | 
 	return { apps, applications };
 }
 
-export async function exportHelm(client: TauriClient, clusterContext: string | undefined) {
-	const list = await client.invoke<HelmReleaseList>("list_helm_releases", { clusterContext });
+/**
+ * `list` is the primary context's list. `lists` holds every context's list, so
+ * a release opened from another workspace context reads its own context.
+ */
+export async function exportHelm(client: TauriClient, clusterContext: string | undefined, contexts: string[]) {
+	const lists: Record<string, HelmReleaseList> = {};
 	const details: HelmReleaseDetails[] = [];
 	const reconciliations: HelmReleaseReconciliation[] = [];
-	for (const release of list.releases) {
-		const target = { clusterContext: release.cluster, namespace: release.namespace, storageKind: release.storageKind, storageName: release.storageName };
-		details.push(await client.invoke<HelmReleaseDetails>("get_helm_release_details", target));
-		const reconciliation = await client.invoke<HelmReleaseReconciliation>("get_helm_release_reconciliation", target);
-		reconciliations.push({ ...reconciliation, resources: reconciliation.resources.map((resource) => (resource.liveResource ? { ...resource, liveResource: withRustOwnerFields(resource.liveResource) } : resource)) });
+	const exported = new Set<string>();
+	for (const context of contexts) {
+		const list = await client.invoke<HelmReleaseList>("list_helm_releases", { clusterContext: context });
+		lists[context] = list;
+		for (const release of list.releases) {
+			const target = { clusterContext: release.cluster, namespace: release.namespace, storageKind: release.storageKind, storageName: release.storageName };
+			const key = JSON.stringify(target);
+			if (exported.has(key)) continue;
+			exported.add(key);
+			details.push(await client.invoke<HelmReleaseDetails>("get_helm_release_details", target));
+			const reconciliation = await client.invoke<HelmReleaseReconciliation>("get_helm_release_reconciliation", target);
+			reconciliations.push({ ...reconciliation, resources: reconciliation.resources.map((resource) => (resource.liveResource ? { ...resource, liveResource: withRustOwnerFields(resource.liveResource) } : resource)) });
+		}
 	}
-	return { list, details, reconciliations };
+	const list = clusterContext === undefined ? undefined : lists[clusterContext];
+	if (!list) throw new Error(`No Helm releases exported for ${clusterContext}`);
+	return { list, lists, details, reconciliations };
 }

@@ -134,9 +134,15 @@ export async function shellAction(page: Page, step: Step): Promise<void> {
             await page.getByRole("treeitem", { selected: true }).filter({ has: page.getByText(step.page, { exact: true }) }).waitFor();
             break;
         }
-        case "expectGitOpsSelection":
-            await page.locator('[data-gitops-selected="true"]').filter({ hasText: step.name }).first().waitFor();
+        case "expectGitOpsSelection": {
+            const selected = page.locator('[data-gitops-selected="true"]').filter({ hasText: step.name });
+            // A namespace tells same-named Applications apart by the selected card's Details button.
+            const card = step.namespace === undefined ? selected : selected.filter({
+                has: page.getByRole("button", { name: `Open details for Application ${step.name} in ${step.namespace}`, exact: true }),
+            });
+            await card.first().waitFor();
             break;
+        }
         case "reorderKindKey":
             await page.locator(`[data-kind-drop="${step.kind}"]`).focus();
             await page.keyboard.press(step.key);

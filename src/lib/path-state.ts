@@ -75,6 +75,17 @@ export type PathStateRbacRiskBucket =
 	| "none"
 	| "unknown";
 
+/**
+ * A Helm release or Argo CD Application opened by name. `cluster` and
+ * `namespace`, when set, must match too, so a same-named object in another
+ * context or namespace is never selected.
+ */
+export interface PathStateTargetRef {
+	name: string;
+	namespace?: string | null;
+	cluster?: string | null;
+}
+
 export interface PathStateResourceRef {
 	cluster: string;
 	kind: string;
@@ -121,8 +132,8 @@ export interface PathStateResourceDetailState {
 export interface PathStateSurfacesState {
 	incidentFilter: PathStateIncidentFilter;
 	helmSearch: string;
-	selectedHelmRelease: { name: string; namespace?: string | null } | null;
-	selectedGitOpsApplication: string | null;
+	selectedHelmRelease: PathStateTargetRef | null;
+	selectedGitOpsApplication: PathStateTargetRef | null;
 	rbac: {
 		riskBucket: PathStateRbacRiskBucket;
 		selectedObjectKey: string | null;
@@ -140,8 +151,8 @@ export interface PathStateWorkspaceSnapshot {
 	resourceNamespaceOverride: string[] | null;
 	focusedResource: PathStateResourceRef | null;
 	restoreTargetResource: PathStateResourceRef | null;
-	targetHelmRelease: { name: string; namespace?: string | null } | null;
-	targetGitOpsApplication: string | null;
+	targetHelmRelease: PathStateTargetRef | null;
+	targetGitOpsApplication: PathStateTargetRef | null;
 	resources: PathStateResourceBrowserState | null;
 	detail: PathStateResourceDetailState | null;
 	surfaces: PathStateSurfacesState | null;
@@ -268,11 +279,14 @@ function sanitizeResourceRef<Value>(value: Value): PathStateResourceRef | null {
 	};
 }
 
-function sanitizeTargetRef<Value>(value: Value): { name: string; namespace?: string | null } | null {
+function sanitizeTargetRef<Value>(value: Value): PathStateTargetRef | null {
+	// Earlier snapshots stored a GitOps Application as its name alone.
+	const legacyName = stringValue(value);
+	if (legacyName) return { name: legacyName };
 	if (!isRecord(value)) return null;
 	const name = stringValue(value.name);
 	if (!name) return null;
-	return { name, namespace: nullableString(value.namespace) };
+	return { name, namespace: nullableString(value.namespace), cluster: nullableString(value.cluster) };
 }
 
 function sanitizeBrowserState<Value>(value: Value): PathStateResourceBrowserState | null {
@@ -353,7 +367,7 @@ function sanitizeSurfacesState<Value>(value: Value): PathStateSurfacesState | nu
 		),
 		helmSearch: stringValue(value.helmSearch),
 		selectedHelmRelease: sanitizeTargetRef(value.selectedHelmRelease),
-		selectedGitOpsApplication: nullableString(value.selectedGitOpsApplication),
+		selectedGitOpsApplication: sanitizeTargetRef(value.selectedGitOpsApplication),
 		rbac,
 	};
 }
@@ -386,7 +400,7 @@ function sanitizeWorkspaceSnapshot<Value>(value: Value): PathStateWorkspaceSnaps
 		focusedResource,
 		restoreTargetResource,
 		targetHelmRelease: sanitizeTargetRef(value.targetHelmRelease),
-		targetGitOpsApplication: nullableString(value.targetGitOpsApplication),
+		targetGitOpsApplication: sanitizeTargetRef(value.targetGitOpsApplication),
 		resources: sanitizeBrowserState(value.resources),
 		detail: sanitizeDetailState(value.detail),
 		surfaces: sanitizeSurfacesState(value.surfaces),

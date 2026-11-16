@@ -11,6 +11,7 @@ import {
 	type PathStateResourceBrowserState,
 	type PathStateResourceDetailState,
 	type PathStateSurfacesState,
+	type PathStateTargetRef,
 	type PathStateWorkspaceSnapshot,
 	type PathStateWorkspaceViewMode,
 	resourceRefFromSummary,
@@ -198,8 +199,13 @@ export interface WorkspaceNavigationState {
 	viewMode: WorkspaceViewMode;
 	focusedResource: ResourceSummary | null;
 	restoreTargetResource: ResourceSummary | null;
-	targetHelmRelease: { name: string; namespace?: string | null } | null;
-	targetGitOpsApplication: string | null;
+	targetHelmRelease: PathStateTargetRef | null;
+	/**
+	 * The context the Helm page reads, set when a release opens from a resource
+	 * in another workspace context. `null` reads the workspace's primary context.
+	 */
+	helmContext: string | null;
+	targetGitOpsApplication: PathStateTargetRef | null;
 	resourceGitOpsFocusApplication: ArgoApplicationSummary | null;
 	resourceInitialSearch: string;
 	resourceInitialGitOpsFilter: string;
@@ -222,8 +228,8 @@ export type WorkspaceNavigationIntent =
 			healthFilter?: PathStateHealthFilter;
 			gitOpsFocusApplication?: ArgoApplicationSummary | null;
 	  }
-	| { type: "openHelmRelease"; name: string; namespace?: string | null }
-	| { type: "openArgo"; application?: string }
+	| { type: "openHelmRelease"; name: string; namespace?: string | null; cluster: string }
+	| { type: "openArgo"; application?: PathStateTargetRef }
 	| { type: "openIncidents"; filter?: PathStateIncidentFilter }
 	| { type: "openPortForwards" }
 	| { type: "selectNode"; node: TreeNodeId }
@@ -241,13 +247,15 @@ export function createWorkspaceNavigation(
 ): WorkspaceNavigationState {
 	const restored = workspacePathForWorkspace(workspace, snapshot);
 	const restoreRef = restored?.restoreTargetResource ?? restored?.focusedResource ?? null;
+	const targetHelmRelease =
+		restored?.targetHelmRelease ?? restored?.surfaces?.selectedHelmRelease ?? null;
 	return {
 		selectedNode: restored ? restored.selectedNode : DEFAULT_WORKSPACE_NODE,
 		viewMode: restored?.viewMode ?? DEFAULT_WORKSPACE_VIEW,
 		focusedResource: null,
 		restoreTargetResource: restoreRef ? resourceSummaryFromRef(restoreRef) : null,
-		targetHelmRelease:
-			restored?.targetHelmRelease ?? restored?.surfaces?.selectedHelmRelease ?? null,
+		targetHelmRelease,
+		helmContext: targetHelmRelease?.cluster ?? null,
 		targetGitOpsApplication:
 			restored?.targetGitOpsApplication ??
 			restored?.surfaces?.selectedGitOpsApplication ??
@@ -283,6 +291,7 @@ function clearHandoffs(state: WorkspaceNavigationState): WorkspaceNavigationStat
 	return {
 		...state,
 		targetHelmRelease: null,
+		helmContext: null,
 		targetGitOpsApplication: null,
 		restoreTargetResource: null,
 		focusedResource: null,
@@ -359,7 +368,8 @@ export function navigateWorkspace(
 	if (intent.type === "openHelmRelease") {
 		return {
 			...cleared,
-			targetHelmRelease: { name: intent.name, namespace: intent.namespace },
+			targetHelmRelease: { name: intent.name, namespace: intent.namespace, cluster: intent.cluster },
+			helmContext: intent.cluster,
 			selectedNode: { type: "section", section: "helm" },
 			viewMode: "helm",
 		};

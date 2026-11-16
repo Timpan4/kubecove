@@ -594,7 +594,7 @@ impl Backend for Fixture {
             self.page_read(
                 "list_helm_releases",
                 self.timing
-                    .wrap("list_helm_releases", &context, self.helm.releases()),
+                    .wrap("list_helm_releases", &context, self.helm.releases(&context)),
             ),
         )
     }

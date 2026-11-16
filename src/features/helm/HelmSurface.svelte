@@ -14,7 +14,8 @@
 		HelmReleaseReconciliation,
 		HelmReleaseSummary,
 	} from "@/lib/types";
-	import type { SavedWorkspace } from "@/lib/workspace-model";
+	import type { PathStateTargetRef } from "@/lib/path-state";
+	import { type SavedWorkspace, workspaceScopeContexts } from "@/lib/workspace-model";
 	import {
 		helmReconciliationStatusTone,
 		helmReleaseKey,
@@ -34,6 +35,7 @@
 		sourceReady,
 		kubeconfigSourceKey,
 		targetHelmRelease = null,
+		helmContext = null,
 		helmSearch = $bindable(""),
 		selectedHelmRelease = $bindable(null),
 		onTargetHelmReleaseResolved = () => {},
@@ -42,7 +44,8 @@
 		workspace: SavedWorkspace;
 		sourceReady: boolean;
 		kubeconfigSourceKey?: string;
-		targetHelmRelease?: { name: string; namespace?: string | null } | null;
+		targetHelmRelease?: PathStateTargetRef | null;
+		helmContext?: string | null;
 		helmSearch?: string;
 		selectedHelmRelease?: HelmReleaseSummary | null;
 		onTargetHelmReleaseResolved?: () => void;
@@ -51,7 +54,12 @@
 
 	const client = createTauriClient();
 	let helmNamespace = $state<string | null>(null);
-	const context = $derived(workspace.scope.clusterContext);
+	const workspaceContexts = $derived(workspaceScopeContexts(workspace.scope));
+	// A release opened from another workspace context reads that context; any
+	// other value, such as one restored after the workspace changed, falls back.
+	const context = $derived(
+		helmContext && workspaceContexts.includes(helmContext) ? helmContext : workspace.scope.clusterContext,
+	);
 	const helmQuery = createQuery<HelmReleaseList>(() => ({
 		queryKey: queryKeys.helmReleases(context, kubeconfigSourceKey),
 		queryFn: () => listHelmReleases(client, context, kubeconfigSourceKey),
@@ -160,6 +168,7 @@
 </script>
 
 <HelmView
+	context={workspaceContexts.length > 1 ? context : null}
 	list={{
 		query: helmQuery,
 		groups: releaseState.groups,

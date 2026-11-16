@@ -123,6 +123,13 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             assert!(seek(window, cx, "helm-list", &id));
             window.click(id, cx);
         }
+        "expectHelmContext" => {
+            assert!(seek(window, cx, "helm-list", "helm-context"));
+            assert_eq!(
+                window.find("helm-context").label(),
+                Some(format!("Context: {}", string(step, "context")).as_str())
+            );
+        }
         "selectHelmNamespace" => {
             window.click(format!("helm-namespace:{}", string(step, "namespace")), cx)
         }

@@ -7,7 +7,7 @@
 	import { liveViewRefresh } from "@/lib/live-view-refresh.svelte";
 	import { createQueries, createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import type { HealthFilter } from "@/features/resources";
-	import type { PathStateDetailTab } from "@/lib/path-state";
+	import type { PathStateDetailTab, PathStateTargetRef } from "@/lib/path-state";
 	import { queryKeys, queryMatchers } from "@/lib/queryKeys";
 	import {
 		createTauriClient,
@@ -62,7 +62,7 @@
 		sourceReady: boolean;
 		kubeconfigSourceKey?: string;
 		selectedNode: TreeNodeId | null;
-		targetGitOpsApplication?: string | null;
+		targetGitOpsApplication?: PathStateTargetRef | null;
 		selectedGitOpsItem?: GitOpsSelection | null;
 		onTargetGitOpsApplicationResolved?: () => void;
 		onOpenResources: (

@@ -229,10 +229,14 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
         }
         "expectGitOpsSelection" => {
             assert!(seek(window, cx, "gitops-list", "gitops-selected"));
-            assert_eq!(
-                window.find("gitops-selected").label(),
-                Some(string(step, "name"))
-            );
+            let selected = window.find("gitops-selected");
+            assert_eq!(selected.label(), Some(string(step, "name")));
+            // The marker's description is the selection key, `argoApp:<context>:<namespace>:<name>`.
+            if let Some(namespace) = step["namespace"].as_str() {
+                let suffix = format!(":{namespace}:{}", string(step, "name"));
+                let key = selected.description().unwrap_or_default();
+                assert!(key.ends_with(&suffix), "selected {key}, expected {suffix}");
+            }
             return true;
         }
         "configureShellRead" => return true,

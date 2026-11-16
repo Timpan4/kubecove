@@ -90,7 +90,7 @@ const argo = (await client.invoke<boolean>("detect_argocd", { clusterContext }))
 const fluxDetection = await client.invoke<FluxDetectionSummary>("detect_flux", { clusterContext });
 const flux = fluxDetection.detected ? (await Promise.all(fluxDetection.kinds.map(async (resourceKind) => (await client.invoke<VersionedList<FluxResourceSummary>>("list_flux_resources", { clusterContext, resourceKind })).items))).flat() : null;
 const gitops = { argo, flux, ...(await exportGitOpsPage(client, clusterContext, argo !== null)) };
-const helm = await exportHelm(client, clusterContext);
+const helm = await exportHelm(client, clusterContext, contexts.map((context) => context.name));
 // Mock incidents omit the states the Rust model requires; fill them as `incidentState` infers.
 const cockpit = await client.invoke<IncidentCockpitSummary>("list_incident_cockpit", { clusterContext, requests: [] });
 const incidents = {
@@ -139,7 +139,7 @@ for (const verb of ["get", "list", "watch", "create", "update", "patch", "delete
 	catch (error) { rbacReviews.push({ verb, error: error instanceof Error ? error.message : String(error) }); }
 }
 const sessionControls = await exportSessionControls(client, resources);
-const argoConnected = await exportArgo(client, gitops.applications, gitops.manyApplications);
+const argoConnected = await exportArgo(client, { base: gitops.applications, many: gitops.manyApplications, "same-name": gitops.sameNameApplications });
 const coverage = await exportCoverage(client, { helm: helm.list, rbac: rbac[clusterContext ?? "mock-dev"], incidents, topology: rustTopology, sessions: liveSessions });
 const logCases = await exportCoverageLogs(client);
 // Page reads keep each command's response shape; GitOps lists are versioned lists.

@@ -1,0 +1,41 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "multi-context-navigation.helm-release-other-context",
+      "title": "Open Helm release from a second-context Pod reads that context's release, and the Helm node returns to the primary context",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "editSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "toggleWorkspaceContext", "context": "admin@solid-k8s" },
+        { "action": "saveWorkspace" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openResources" },
+        { "action": "search", "value": "metrics-gateway-9f6d4f7c9-7j2p4" },
+        { "action": "openResource", "kind": "Pod", "namespace": "platform", "name": "metrics-gateway-9f6d4f7c9-7j2p4", "context": "admin@solid-k8s" },
+        { "action": "expectDetailContext", "context": "admin@solid-k8s" },
+        { "action": "clickDetailControl", "label": "Open Helm release" },
+        { "action": "expectHelmContext", "context": "admin@solid-k8s" },
+        { "action": "expectHelmDetails", "title": "metrics-gateway", "description": "platform / Secret:sh.helm.release.v1.metrics-gateway.v9", "totals": "4 tracked, 1 missing, 0 label-only" },
+        { "action": "openPage", "page": "Helm" },
+        { "action": "expectHelmContext", "context": "mock-dev" },
+        { "action": "openHelmRelease", "name": "metrics-gateway", "namespace": "platform" },
+        { "action": "expectHelmDetails", "title": "metrics-gateway", "description": "platform / Secret:sh.helm.release.v1.metrics-gateway.v7", "totals": "4 tracked, 1 missing, 0 label-only" }
+      ]
+    },
+    {
+      "id": "multi-context-navigation.gitops-application-namespace",
+      "title": "A recent Application reopens in its own namespace when another namespace has an Application with the same name",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "configureArgoInventory", "mode": "same-name" },
+        { "action": "openGitOpsResources", "kind": "Application", "name": "tenant-catalog", "namespace": "tenants" },
+        { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "expectWorkspaceEntry", "panel": "Recent", "label": "Application / tenant-catalog", "index": 0, "count": 1 },
+        { "action": "openWorkspaceEntry", "panel": "Recent", "label": "Application / tenant-catalog", "index": 0, "count": 1 },
+        { "action": "expectGitOpsSelection", "name": "tenant-catalog", "namespace": "tenants" }
+      ]
+    }
+  ]
+}

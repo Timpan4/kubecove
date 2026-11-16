@@ -14,7 +14,7 @@ import {
 	solidOnlyResources,
 	source,
 } from "./tauri-dev-mock-data";
-import { argoApps, helmReleases } from "./tauri-dev-mock-gitops-data";
+import { argoApps, helmReleases, helmReleasesFor } from "./tauri-dev-mock-gitops-data";
 import { withDetailStatusFixture } from "./tauri-dev-mock-detail-status";
 import { evictedWorkerName, evictedWorkerStatus } from "./tauri-dev-mock-incidents";
 import { addKubeconfigPathsMock, reorderKubeconfigPathsMock } from "./tauri-dev-mock-kubeconfig";
@@ -207,7 +207,7 @@ const handlers = {
 	list_resource_metrics: () => metrics(),
 	...argoMockHandlers(genericYaml),
 	reveal_secret_data_value: () => "c2VjcmV0",
-	list_helm_releases: () => coverageHelm({ releases: helmReleases, warnings: [] } satisfies HelmReleaseList),
+	list_helm_releases: (args) => coverageHelm({ releases: helmReleasesFor(args?.clusterContext), warnings: [] } satisfies HelmReleaseList),
 	get_helm_release_details: (args) => helmDetails(args),
 	get_helm_release_reconciliation: (args) => helmReconciliation(args),
 	list_rbac_inspection: (args) => coverageRbac(rbacInspectionMock(args?.clusterContext)),
@@ -261,7 +261,7 @@ function resourceFromArgs(args: MockArgs): ResourceSummary {
 	const match = rows.find((row) => row.kind === kind && row.name === args?.name && (args?.namespace === undefined || row.namespace === args.namespace));
 	if (match) return match;
 	if (kind === "Application" && args?.name !== undefined) {
-		const summary = argoApplicationSummary(args.name);
+		const summary = argoApplicationSummary(args.name, args.namespace);
 		if (summary) return summary;
 	}
 	return rows[0];
@@ -362,7 +362,7 @@ function usage(): AppUsageMetrics {
 }
 
 function helmReleaseFromArgs(args: MockArgs): HelmReleaseSummary {
-	return helmReleases.find((release) => release.storageName === args?.storageName && release.namespace === args?.namespace) ?? helmReleases[0];
+	return helmReleasesFor(args?.clusterContext).find((release) => release.storageName === args?.storageName && release.namespace === args?.namespace) ?? helmReleases[0];
 }
 
 function helmDetails(args: MockArgs): HelmReleaseDetails {

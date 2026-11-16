@@ -346,7 +346,7 @@ impl Inspector {
                     )
                     .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| match open {
                         Open::GitOps(focus) => this.open_gitops(focus, cx),
-                        Open::Helm => this.open_page(Page::Helm, cx),
+                        Open::Helm => this.open_helm(cx),
                         Open::Nothing => {}
                     }))
                     .into_any_element()

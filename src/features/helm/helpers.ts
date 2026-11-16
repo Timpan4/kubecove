@@ -1,3 +1,4 @@
+import type { PathStateTargetRef } from "@/lib/path-state";
 import type { HelmReleaseSummary } from "@/lib/types";
 import type {
 	HelmReconciliationResource,
@@ -35,14 +36,15 @@ export function groupHelmReleasesByNamespace(releases: HelmReleaseSummary[]) {
 
 export function findHelmReleaseTarget(
 	releases: HelmReleaseSummary[],
-	target: { name: string; namespace?: string | null } | null | undefined,
+	target: PathStateTargetRef | null | undefined,
 ): HelmReleaseSummary | null {
 	if (!target) return null;
 	return (
 		releases.find(
 			(release) =>
 				release.name === target.name &&
-				(target.namespace == null || release.namespace === target.namespace),
+				(target.namespace == null || release.namespace === target.namespace) &&
+				(target.cluster == null || release.cluster === target.cluster),
 		) ?? null
 	);
 }

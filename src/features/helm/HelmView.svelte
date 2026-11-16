@@ -58,7 +58,9 @@
 		error: unknown;
 	};
 
-	let { list, details, reconciliation, actions }: {
+	let { context = null, list, details, reconciliation, actions }: {
+		/** The context the releases come from, named when the workspace has several. */
+		context?: string | null;
 		list: {
 			query: QueryState<HelmReleaseList>;
 			groups: Array<{ namespace: string; releases: HelmReleaseSummary[] }>;
@@ -134,6 +136,11 @@
 </script>
 
 <SurfaceFrame icon={Package} title="Helm" query={helmQuery} errorLabel="Helm releases unavailable" wide>
+	{#snippet headerActions()}
+		{#if context}
+			<Badge variant="outline" class="max-w-40 shrink-0 truncate" title={context}><span class="sr-only">{"Context: "}</span>{context}</Badge>
+		{/if}
+	{/snippet}
 	<div class="@container flex flex-col gap-4">
 		<section
 			class="rounded-lg border bg-surface-1 px-3 py-2.5 shadow-sm"

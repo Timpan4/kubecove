@@ -49,7 +49,15 @@ impl Inspector {
                                     name.clone(),
                                     cx,
                                 );
-                                this.open_gitops_application(name.clone(), cx);
+                                // A shortcut names an Application of the context GitOps reads.
+                                this.open_gitops_application(
+                                    super::gitops_page::ApplicationTarget {
+                                        context: this.scope.context.clone(),
+                                        namespace: None,
+                                        name: name.clone(),
+                                    },
+                                    cx,
+                                );
                             }
                             None => this.open_page(Page::GitOps, cx),
                         },

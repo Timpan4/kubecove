@@ -4,8 +4,10 @@ import type { TauriClient } from "../../../src/lib/tauri";
 import { configureArgoInventory, configureArgoMock } from "../../../src/lib/tauri-dev-mock-argo";
 import type { ArgoApplicationInspector, ArgoApplicationRef, ArgoConnectionStatus, ArgoOperationRequest, JsonObject, JsonValue, ResourceDetailsFull } from "../../../src/lib/types";
 
+type InventoryApplications = Record<"base" | "many" | "same-name", { details: ResourceDetailsFull }[]>;
+
 /** Exact native requests from the same mock command implementation as web. */
-export async function exportArgo(client: TauriClient, applications: { details: ResourceDetailsFull }[], manyApplications: { details: ResourceDetailsFull }[]) {
+export async function exportArgo(client: TauriClient, inventories: InventoryApplications) {
     const url = "https://argocd.example.test";
     const source = await client.invoke<{ sourceKey: string }>("get_kubeconfig_sources");
     const scope = { workspaceId: "native-session", clusterContext: "mock-dev", kubeconfigSourceKey: source.sourceKey };
@@ -54,7 +56,9 @@ export async function exportArgo(client: TauriClient, applications: { details: R
     const comparisons = [];
     const operations = [];
     try {
-        for (const [mode, inventory] of [["base", applications], ["many", manyApplications]] as const) {
+        // "same-name" repeats the base Applications, whose requests are already recorded.
+        const sameNameOnly = inventories["same-name"].filter(({ details }) => !inventories.base.some((app) => app.details.summary.name === details.summary.name && app.details.summary.namespace === details.summary.namespace));
+        for (const [mode, inventory] of [["base", inventories.base], ["many", inventories.many], ["same-name", sameNameOnly]] as const) {
             configureArgoInventory(mode);
             for (const { details } of inventory) {
                 for (const workspaceId of ["native-session", "1"]) {

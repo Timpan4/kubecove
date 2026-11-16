@@ -83,7 +83,7 @@ export const ACTIONS = [
 	"editRbacReviewNote", "expectRbacReviewNote", "saveRbacReview", "expectRbacReview", "clearRbacReview",
 	"openGitOps", "expandNav", "expectGitOpsTable", "expectGitOpsItem", "expectNoGitOpsItem", "openGitOpsDetails", "expectGitOpsGroup", "toggleGitOpsGroup", "expectArgoApplication",
 	"expectArgoSignal", "expectHelmCount", "expectHelmRelease", "expectNoHelmRelease", "openHelmRelease", "selectHelmNamespace", "searchHelm",
-	"expectHelmDetails", "openGitOpsResources", "expectArgoWorkspace", "filterArgoResources", "setDeliveryView",
+	"expectHelmDetails", "expectHelmContext", "openGitOpsResources", "expectArgoWorkspace", "filterArgoResources", "setDeliveryView",
     "sortResourceTable", "pressResourceRow", "expectResourceOrder", "toggleResourceGroup", "expectResourceGroup", "openResourceRow", "expectResourceCell", "expectResourceCellFits", "expectResourceColumns", "expectResourceActivity",
 	"clickDetailControl",
 	"openLiveSessionPopover", "expectLiveSessionRow", "liveSessionControl", "expectHealthTooltip", "expectTimestampTooltip", "expectEventTimeTooltip",
@@ -110,7 +110,11 @@ function step<Value>(value: Value): Step {
         case "expectOverviewShortcuts": return { action: item.action, labels: strings(item.labels, true) };
         case "overviewShortcut": return { action: item.action, label: string(item.label) };
         case "expectActivePage": return { action: item.action, page: string(item.page) };
-        case "expectGitOpsSelection": return { action: item.action, name: string(item.name) };
+        case "expectGitOpsSelection": {
+            const selection: Extract<Step, { action: "expectGitOpsSelection" }> = { action: item.action, name: string(item.name) };
+            if (item.namespace !== undefined) selection.namespace = string(item.namespace);
+            return selection;
+        }
         case "expectOverviewScope": return { action: item.action, labels: strings(item.labels, false) };
         case "expectCompareTotal": return { action: item.action, title: string(item.title), side: string(item.side), total: count(item.total) };
         case "retryOverview": case "expectOverviewRetry": return { action: item.action };
@@ -433,6 +437,7 @@ function step<Value>(value: Value): Step {
 		case "selectHelmNamespace": return { action: item.action, namespace: string(item.namespace) };
 		case "searchHelm": return { action: item.action, value: string(item.value) };
 		case "expectHelmDetails": return { action: item.action, title: string(item.title), description: string(item.description), totals: string(item.totals) };
+		case "expectHelmContext": return { action: item.action, context: string(item.context) };
 		case "sortResourceTable": return { action: item.action, column: oneOf(SORT_COLUMNS, item.column, "a sortable table column") };
 		case "expectResourceOrder": return { action: item.action, names: strings(item.names, false) };
 		case "toggleResourceGroup": return { action: item.action, label: string(item.label) };

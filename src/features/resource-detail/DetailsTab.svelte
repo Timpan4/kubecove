@@ -110,7 +110,7 @@
 							variant="outline"
 							size="sm"
 							onclick={() =>
-								onOpenHelmRelease?.(detailResource.helmRelease ?? "", detailResource.namespace)}
+								onOpenHelmRelease?.(detailResource.helmRelease ?? "", detailResource.namespace, detailResource.cluster)}
 						>
 							<ExternalLink data-icon="inline-start" />
 							Open Helm release
@@ -313,7 +313,7 @@
 												type="button"
 												variant="outline"
 												size="sm"
-												onclick={() => onOpenHelmRelease?.(row.value, detailResource.namespace)}
+												onclick={() => onOpenHelmRelease?.(row.value, detailResource.namespace, detailResource.cluster)}
 											>
 												<ExternalLink data-icon="inline-start" />
 												{row.value}

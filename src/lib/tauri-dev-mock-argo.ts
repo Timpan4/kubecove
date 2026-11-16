@@ -41,13 +41,18 @@ export function configureArgoMock(script: ArgoMockScript) {
 	argoScript = script;
 	for (const release of heldArgo.splice(0)) release();
 }
-export type ArgoInventoryMode = "base" | "absent" | "empty" | "partial" | "unavailable" | "many";
+export type ArgoInventoryMode = "base" | "absent" | "empty" | "partial" | "unavailable" | "many" | "same-name";
 let argoInventoryMode: ArgoInventoryMode = "base";
 let inventoryApplications = argoApps;
 export function configureArgoInventory(mode: ArgoInventoryMode) {
     argoInventoryMode = mode;
     inventoryApplications = argoApps;
     if (mode === "empty") inventoryApplications = [];
+    // A second tenant-catalog in another namespace, as Argo CD's Applications in any namespace allows.
+    if (mode === "same-name") {
+        const template = argoApps.find((app) => app.name === "tenant-catalog");
+        inventoryApplications = template ? [...argoApps, { ...template, namespace: "tenants", project: "tenant-self-service" }] : argoApps;
+    }
     if (mode === "many") {
         const template = argoApps.find(app => app.healthAssessment?.state === "degraded");
         inventoryApplications = template ? Array.from({ length: PAGE_SIZE + 1 }, (_, index) => ({ ...template, name: `overview-application-${String(index).padStart(3, "0")}` })) : [];
@@ -164,7 +169,7 @@ return {
 
 function argoApplication(args: MockArgs) {
 	const application = args?.application;
-	return inventoryApplications.find((candidate) => candidate.name === application?.name) ?? argoApps[0];
+	return inventoryApplication(application?.name, application?.namespace) ?? argoApps[0];
 }
 
 function argoManagedResources(args: MockArgs): ArgoManagedResource[] {
@@ -250,7 +255,7 @@ function argoManifest(row: ResourceSummary, desired: boolean) {
 }
 
 function argoDetails(args: MockArgs): ArgoApplicationDetails {
-	const summary = inventoryApplications.find((app) => app.name === args?.name) ?? argoApps[0];
+	const summary = inventoryApplication(args?.name, args?.namespace) ?? argoApps[0];
 	return { summary, yaml: argoApplicationYaml(summary), metadata: { labels: { "argocd.argoproj.io/instance": summary.name } }, status: { sync: { status: summary.syncStatus }, health: { status: summary.healthStatus } } };
 }
 
@@ -292,8 +297,13 @@ export function argoApplicationYaml(app: (typeof argoApps)[number]): string {
 	return `apiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: ${app.name}\n  namespace: ${app.namespace ?? "argocd"}\nspec:\n  project: ${app.project ?? "default"}\n  source:\n    repoURL: ${app.sourceRepo ?? "https://github.com/example/platform-config.git"}\n    path: environments/mock-dev\n    targetRevision: ${app.sourceRevision ?? "main"}\n  destination:\n    server: ${app.destinationServer ?? "https://kubernetes.default.svc"}\n    namespace: ${app.destinationNamespace ?? "default"}\n  syncPolicy:\n    automated:\n      prune: true\n      selfHeal: true\n`;
 }
 
-export function argoApplicationSummary(name: string): ResourceSummary | undefined {
-	const application = inventoryApplications.find((candidate) => candidate.name === name);
+/** The listed Application with this name, in this namespace when one is given. */
+function inventoryApplication(name: string | undefined, namespace: string | null | undefined) {
+	return inventoryApplications.find((candidate) => candidate.name === name && (namespace == null || candidate.namespace === namespace));
+}
+
+export function argoApplicationSummary(name: string, namespace?: string | null): ResourceSummary | undefined {
+	const application = inventoryApplication(name, namespace);
 	if (application) {
 		const summary: ResourceSummary = {
 			kind: "Application",

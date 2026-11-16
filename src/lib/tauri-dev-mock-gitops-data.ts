@@ -197,3 +197,17 @@ export const helmReleases: HelmReleaseSummary[] = [
 		storageName: "sh.helm.release.v1.grafana.v14",
 	},
 ];
+
+// admin@solid-k8s runs the same releases, with metrics-gateway at a later
+// revision, so a release opened from that context can be told apart from the
+// same-named release in mock-dev.
+const solidHelmReleases: HelmReleaseSummary[] = helmReleases.map((release) =>
+	release.name === "metrics-gateway"
+		? { ...release, cluster: "admin@solid-k8s", revision: 9, storageName: "sh.helm.release.v1.metrics-gateway.v9" }
+		: { ...release, cluster: "admin@solid-k8s" },
+);
+
+/** The Helm releases `list_helm_releases` returns for a context. */
+export function helmReleasesFor(context: string | undefined): HelmReleaseSummary[] {
+	return context === "admin@solid-k8s" ? solidHelmReleases : helmReleases;
+}

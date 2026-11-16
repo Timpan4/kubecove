@@ -1,6 +1,7 @@
 import type {
 	GitOpsSelection,
 } from "@/lib/gitops-resource";
+import type { PathStateTargetRef } from "@/lib/path-state";
 
 export type { GitOpsSelection } from "@/lib/gitops-resource";
 export { gitOpsSelectionResource } from "@/lib/gitops-resource";
@@ -12,19 +13,26 @@ export interface TargetGitOpsSelection {
 
 import { argoApplicationResourceNamespaces } from "@/features/resources";
 
-export function selectedGitOpsApplicationName(selection: GitOpsSelection | null): string | null {
-	return selection?.type === "argoApp" ? selection.item.name : null;
+export function selectedGitOpsApplicationRef(selection: GitOpsSelection | null): PathStateTargetRef | null {
+	if (selection?.type !== "argoApp") return null;
+	const { item } = selection;
+	return { name: item.name, namespace: item.namespace ?? null, cluster: item.cluster };
 }
 
 export function resolveTargetGitOpsSelection(
 	selections: GitOpsSelection[],
-	targetApplication: string | null | undefined,
+	targetApplication: PathStateTargetRef | null | undefined,
 	dataReady: boolean,
 ): TargetGitOpsSelection {
 	if (!targetApplication) return { selection: null, shouldResolve: false };
+	const { name, namespace, cluster } = targetApplication;
 	const selection =
 		selections.find(
-			(item) => item.type === "argoApp" && item.item.name === targetApplication,
+			(item) =>
+				item.type === "argoApp" &&
+				item.item.name === name &&
+				(namespace == null || item.item.namespace === namespace) &&
+				(cluster == null || item.item.cluster === cluster),
 		) ?? null;
 	return { selection, shouldResolve: Boolean(selection) || dataReady };
 }

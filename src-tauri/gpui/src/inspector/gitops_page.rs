@@ -20,6 +20,7 @@ use gpui_kit::{
     AnyElement, Context, Div, ListAlignment, ListState, ScrollHandle, SharedString, Window, div,
     list, prelude::*, px,
 };
+use kubecove_lib::models::ArgoApplicationSummary;
 
 /// Card rows and list lines the table puts in the top item, so the rail beside
 /// them never runs past it. Thirteen 37px list lines cover the 472px that four
@@ -44,7 +45,7 @@ pub(super) struct GitOpsPage {
     /// Sidebar GitOps and Helm nodes expanded by their chevrons, by label.
     pub nav_open: Vec<&'static str>,
     /// Application focused by a shortcut or entry point, until the inventory settles.
-    pub target_application: Option<String>,
+    pub target_application: Option<ApplicationTarget>,
     /// The focused row's selection key, as `selectedGitOpsItem` in the web.
     pub selected: Option<String>,
     /// The inventory's loading phase. List items render after the frame, so
@@ -79,8 +80,8 @@ impl GitOpsPage {
 
     /// Focuses one Application once the inventory settles. The row cache is
     /// rebuilt so the target resolves even when the focus did not change.
-    pub(super) fn target_application(&mut self, name: String) {
-        self.target_application = Some(name);
+    pub(super) fn target_application(&mut self, target: ApplicationTarget) {
+        self.target_application = Some(target);
         self.rows_for = None;
     }
 
@@ -99,6 +100,26 @@ impl GitOpsPage {
         }
         let rows = TOP_ROWS[usize::from(self.mode == ViewMode::List)];
         rows.min(self.row_count())
+    }
+}
+
+/// An Application opened by name from a shortcut or entry point.
+pub(super) struct ApplicationTarget {
+    pub context: String,
+    /// `None` matches any namespace, as a shortcut names the Application only.
+    pub namespace: Option<String>,
+    pub name: String,
+}
+
+impl ApplicationTarget {
+    /// `resolveTargetGitOpsSelection`: same name and context, and same namespace when one is given.
+    fn matches(&self, app: &ArgoApplicationSummary) -> bool {
+        app.name == self.name
+            && app.cluster == self.context
+            && self
+                .namespace
+                .as_ref()
+                .is_none_or(|namespace| app.namespace.as_ref() == Some(namespace))
     }
 }
 
@@ -169,12 +190,12 @@ impl Inspector {
             return;
         };
         let page = &mut self.gitops_page;
-        if let Some(name) = page.target_application.take() {
+        if let Some(target) = page.target_application.take() {
             let found = page
                 .rows
                 .iter()
                 .filter_map(|row| row.resolve(data))
-                .find(|selection| matches!(selection, Selection::App(app) if app.name == name))
+                .find(|selection| matches!(selection, Selection::App(app) if target.matches(app)))
                 .map(|selection| selection.key());
             if found.is_some() {
                 page.selected = found;

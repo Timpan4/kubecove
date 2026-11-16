@@ -1,4 +1,5 @@
 //! Entry-point interface shared by table, detail and workspace surfaces.
+use super::gitops_page::ApplicationTarget;
 use super::{Inspector, Load, Page};
 use crate::targets::TestSupportExt;
 use crate::{
@@ -173,12 +174,16 @@ impl Inspector {
     }
     /// Opens GitOps focused on one Application, as the
     /// web's `openArgo` with a target does.
-    pub(super) fn open_gitops_application(&mut self, name: String, cx: &mut Context<Self>) {
+    pub(super) fn open_gitops_application(
+        &mut self,
+        target: ApplicationTarget,
+        cx: &mut Context<Self>,
+    ) {
         self.open_gitops(Focus::Section, cx);
         if self.page != Page::GitOps {
             return;
         }
-        self.gitops_page.target_application(name);
+        self.gitops_page.target_application(target);
         if !self.gitops_page.nav_open.contains(&"GitOps") {
             self.gitops_page.nav_open.push("GitOps");
         }
@@ -240,7 +245,14 @@ impl Inspector {
                 entry.name.clone(),
                 cx,
             );
-            self.open_gitops_application(entry.name.clone(), cx);
+            self.open_gitops_application(
+                ApplicationTarget {
+                    context: entry.cluster_context.clone(),
+                    namespace: entry.namespace.clone(),
+                    name: entry.name.clone(),
+                },
+                cx,
+            );
             return;
         }
         // A saved identity is resolved against current rows, never a cached object.

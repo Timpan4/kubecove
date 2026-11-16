@@ -389,7 +389,14 @@ export async function action(page: Page, step: Step, scenarioSteps: readonly Ste
 			await page.getByRole("button", { name: "Open GitOps", exact: true }).scrollIntoViewIfNeeded();
 			await page.getByRole("button", { name: "Open GitOps", exact: true }).click(); break;
 		case "openGitOpsResources": {
-			await page.getByRole("button", { name: `View resources for ${step.name}`, exact: true }).first().click();
+			await revealGitOps(page, gitOpsDetails(page, step));
+			const resources = page.getByRole("button", { name: `View resources for ${step.name}`, exact: true });
+			// Same-named Applications in other namespaces share the label; the deepest
+			// element holding both it and the step's Details button is the step's card.
+			const target = await resources.count() > 1
+				? page.locator("div").filter({ has: resources }).filter({ has: gitOpsDetails(page, step) }).last().getByRole("button", { name: `View resources for ${step.name}`, exact: true })
+				: resources.first();
+			await target.click();
 			break;
 		}
 		case "expectArgoWorkspace": await page.getByRole("heading", { level: 2 }).filter({ hasText: step.name }).waitFor(); break;
@@ -403,7 +410,7 @@ export async function action(page: Page, step: Step, scenarioSteps: readonly Ste
 			await page.getByRole("heading", { level: 2, name: step.title, exact: true }).waitFor();
 			await page.getByText(itemCount(step.count), { exact: true }).waitFor();
 			break;
-		case "expectGitOpsGroup": case "toggleGitOpsGroup": await deliveryAction(page, step); break;
+		case "expectGitOpsGroup": case "toggleGitOpsGroup": case "expectHelmContext": await deliveryAction(page, step); break;
 		case "expectGitOpsItem": await gitOpsDetails(page, step).waitFor(); break;
 		// Absence is checked after a preceding step waited for the page's rows.
 		case "expectNoGitOpsItem": if (await gitOpsDetails(page, step).count()) throw new Error(`${step.kind} ${step.name} is still listed`); break;
