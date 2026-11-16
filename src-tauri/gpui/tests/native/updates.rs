@@ -124,9 +124,18 @@ fn install_from(
             signature: SIGNATURE.into(),
         },
     };
+    // An outer deadline, so a lost stall timeout fails the stall test instead of hanging it.
+    // The owner chose twice the stall timeout (#718).
     let result = tokio::runtime::Runtime::new()
         .unwrap()
-        .block_on(updates::install(update, PUBLIC_KEY.into(), target, sender));
+        .block_on(async {
+            tokio::time::timeout(
+                2 * updates::STALL_TIMEOUT,
+                updates::install(update, PUBLIC_KEY.into(), target, sender),
+            )
+            .await
+        })
+        .expect("the install outlived twice the stall timeout");
     let progress = *receiver.borrow();
     (result, progress)
 }
