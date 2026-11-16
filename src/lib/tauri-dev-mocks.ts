@@ -375,12 +375,13 @@ function helmDetails(args: MockArgs): HelmReleaseDetails {
 
 function helmReconciliation(args: MockArgs): HelmReleaseReconciliation {
 	const summary = helmReleaseFromArgs(args);
-	const releaseResources = resources.filter((row) => row.helmRelease === summary.name);
+	const live = resourcesForCluster(summary.cluster);
+	const releaseResources = live.filter((row) => row.helmRelease === summary.name);
 	if (summary.name !== "metrics-gateway") {
 		return { summary, totals: { tracked: releaseResources.length, unlabeledLive: 0, missing: 0, labelOnly: 0, unavailable: 0 }, resources: releaseResources.map((row) => ({ apiVersion: row.apiVersion, kind: row.kind, namespace: row.namespace ?? undefined, name: row.name, status: "tracked", statusMessage: "Tracked in mock Helm release", inManifest: true, explicitHelmLabel: true, liveResource: row })), warnings: [] };
 	}
-	const tracked: HelmReconciliationResource[] = resources.filter((row) => row.helmRelease === "metrics-gateway").map((row) => ({ apiVersion: row.apiVersion, kind: row.kind, namespace: row.namespace ?? undefined, name: row.name, status: "tracked", statusMessage: "Tracked in mock Helm release", inManifest: true, explicitHelmLabel: true, liveResource: row }));
-	const ciliumSecret = resources.find((row) => row.kind === "Secret" && row.name === "sh.helm.release.v1.cilium.v2");
+	const tracked: HelmReconciliationResource[] = releaseResources.map((row) => ({ apiVersion: row.apiVersion, kind: row.kind, namespace: row.namespace ?? undefined, name: row.name, status: "tracked", statusMessage: "Tracked in mock Helm release", inManifest: true, explicitHelmLabel: true, liveResource: row }));
+	const ciliumSecret = live.find((row) => row.kind === "Secret" && row.name === "sh.helm.release.v1.cilium.v2");
 	return { summary, totals: { tracked: 4, unlabeledLive: 1, missing: 1, labelOnly: 0, unavailable: 0 }, resources: tracked.concat([{ apiVersion: "v1", kind: "ConfigMap", namespace: "platform", name: "metrics-gateway-dashboard", status: "missing", statusMessage: "Manifest resource is not present in mock live state.", inManifest: true, explicitHelmLabel: false }, { apiVersion: "v1", kind: "Secret", namespace: "kube-system", name: "sh.helm.release.v1.cilium.v2", status: "unlabeledLive", statusMessage: "Live Helm storage Secret is outside the selected release manifest.", inManifest: false, explicitHelmLabel: false, liveResource: ciliumSecret }]), warnings: [] };
 }
 
