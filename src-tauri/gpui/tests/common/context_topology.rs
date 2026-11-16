@@ -126,6 +126,7 @@ impl Fixture {
         {
             metric.cluster = scope.context.clone();
         }
-        Box::pin(async move { Ok(metrics) })
+        self.timing
+            .read("list_resource_metrics", &scope.context, "", metrics)
     }
 }

@@ -37,8 +37,10 @@ pub(super) struct ScriptState {
     deleted_in_mock_dev: bool,
     /// The "add" script lists a copy of payments-api named `ADDED`.
     added: bool,
-    /// The "ownership" script moves checkout-worker to a Flux owner. Its ownerRef-only Pod follows it.
-    reowned: bool,
+    /// The "ownership" script moves checkout-worker to a Flux owner.
+    /// "annotation-ownership" leaves it only an Argo CD name annotation, with
+    /// no backend owner. Its ownerRef-only Pod follows either.
+    reowned: Option<Reowned>,
     events: Option<EventSet>,
     /// Scripted changes so far. The mock list version is one higher.
     revision: u64,
@@ -48,8 +50,16 @@ pub(super) struct ScriptState {
     starts: Vec<(String, Option<String>)>,
     pub(super) watches: Vec<(WatchTarget, mpsc::UnboundedSender<StreamMessage>)>,
 }
-/// The Deployment the "ownership" script moves to another GitOps owner.
+/// The Deployment the "ownership" scripts move to another GitOps owner.
 const REOWNED: &str = "checkout-worker";
+/// The Argo CD Application "annotation-ownership" names in `REOWNED`'s annotation.
+const ANNOTATION_APP: &str = "checkout-legacy";
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Reowned {
+    Flux,
+    Annotation,
+}
 /// The copy of payments-api the "add" script creates. Its name sorts between
 /// the payments Deployments.
 const ADDED: &str = "orders-api";
@@ -314,6 +324,7 @@ impl Fixture {
                 | "delete-mock-dev"
                 | "add"
                 | "ownership"
+                | "annotation-ownership"
                 | "missed-delete"
         ) {
             self.timing.invalidate("mock-dev");
@@ -331,13 +342,23 @@ impl Fixture {
                 state.changed_at = Some(state.revision + 1);
                 return;
             }
-            "update" | "rollout" | "delete" | "delete-mock-dev" | "add" | "ownership" => {
+            "update"
+            | "rollout"
+            | "delete"
+            | "delete-mock-dev"
+            | "add"
+            | "ownership"
+            | "annotation-ownership" => {
                 state.changed |= script == "update";
                 state.rolling |= script == "rollout";
                 state.deleted |= script == "delete";
                 state.deleted_in_mock_dev |= script == "delete-mock-dev";
                 state.added |= script == "add";
-                state.reowned |= script == "ownership";
+                match script {
+                    "ownership" => state.reowned = Some(Reowned::Flux),
+                    "annotation-ownership" => state.reowned = Some(Reowned::Annotation),
+                    _ => {}
+                }
                 state.revision += 1;
                 state.changed_at = Some(state.revision + 1);
             }
@@ -386,7 +407,7 @@ impl Fixture {
                 namespace: Some("payments".into()),
                 name: Some(
                     match script {
-                        "ownership" => REOWNED,
+                        "ownership" | "annotation-ownership" => REOWNED,
                         "add" => ADDED,
                         _ => "payments-api",
                     }
@@ -419,7 +440,15 @@ impl Fixture {
                         action: "deleted".into(),
                     }
                 }
-                "update" | "rollout" | "delete" | "add" | "ownership" | "failed" if matches!(watch, WatchTarget::Resource { key, .. } if key.resource_kind.kind == "Deployment") => {
+                "update"
+                | "rollout"
+                | "delete"
+                | "add"
+                | "ownership"
+                | "annotation-ownership"
+                | "failed"
+                    if matches!(watch, WatchTarget::Resource { key, .. } if key.resource_kind.kind == "Deployment") =>
+                {
                     StreamMessage::ResourceChanged {
                         stream_id: "fixture".into(),
                         target,
@@ -496,7 +525,7 @@ impl Fixture {
                 let changed = [
                     (state.changed || state.rolling || deleted)
                         .then_some(("payments-api", if deleted { "deleted" } else { "applied" })),
-                    state.reowned.then_some((REOWNED, "applied")),
+                    state.reowned.map(|_| (REOWNED, "applied")),
                 ];
                 for (name, action) in changed.into_iter().flatten() {
                     let _ = sender.send(StreamMessage::ResourceChanged {
@@ -532,20 +561,28 @@ impl Fixture {
                     row.health_assessment.state =
                         kubecove_lib::models::HealthAssessmentState::Degraded;
                 }
-                if state.reowned
+                if let Some(reowned) = state.reowned
                     && row.kind == "Deployment"
                     && row.namespace.as_deref() == Some("payments")
                     && row.name == REOWNED
                 {
-                    row.git_ops_owner = Some(kubecove_lib::models::GitOpsOwnerSummary {
-                        provider: "flux".into(),
-                        kind: "Kustomization".into(),
-                        name: "platform".into(),
-                        namespace: Some("flux-system".into()),
-                        confidence: "inventory".into(),
-                        provenance: "flux-kustomization-inventory".into(),
-                        partial: false,
-                    });
+                    match reowned {
+                        Reowned::Flux => {
+                            row.git_ops_owner = Some(kubecove_lib::models::GitOpsOwnerSummary {
+                                provider: "flux".into(),
+                                kind: "Kustomization".into(),
+                                name: "platform".into(),
+                                namespace: Some("flux-system".into()),
+                                confidence: "inventory".into(),
+                                provenance: "flux-kustomization-inventory".into(),
+                                partial: false,
+                            });
+                        }
+                        Reowned::Annotation => {
+                            row.git_ops_owner = None;
+                            row.argo_app = Some(ANNOTATION_APP.into());
+                        }
+                    }
                 }
                 if scripted_target(&row) {
                     if state.deleted || (state.deleted_in_mock_dev && row.cluster == "mock-dev") {

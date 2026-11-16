@@ -44,18 +44,28 @@ const fluxAdapter: ProviderAdapter = (owner) => {
 
 const PROVIDER_ADAPTERS = [argoAdapter, fluxAdapter];
 
-export function gitOpsOwnership(
+/** The row's own GitOps owner: the backend's, or an owner built from its Argo CD name annotation. GPUI: `owner_ref` in `gpui/src/model.rs`. */
+function effectiveGitOpsOwner(
 	resource: Pick<ResourceSummary, "gitOpsOwner" | "argoApp">,
-): GitOpsOwnershipPresentation | null {
-	const owner = resource.gitOpsOwner ?? (resource.argoApp?.trim()
+): GitOpsOwnerSummary | undefined {
+	if (resource.gitOpsOwner) return resource.gitOpsOwner;
+	const name = resource.argoApp?.trim();
+	return name
 		? {
 				provider: "argo",
 				kind: "Application",
-				name: resource.argoApp.trim(),
+				name,
 				confidence: "metadata",
 				provenance: "argocd-name-annotation",
+				partial: true,
 			}
-		: undefined);
+		: undefined;
+}
+
+export function gitOpsOwnership(
+	resource: Pick<ResourceSummary, "gitOpsOwner" | "argoApp">,
+): GitOpsOwnershipPresentation | null {
+	const owner = effectiveGitOpsOwner(resource);
 	if (!owner?.name.trim()) return null;
 	const adapted = PROVIDER_ADAPTERS.map((adapter) => adapter(owner)).find(Boolean);
 	if (!adapted) return null;
@@ -195,10 +205,12 @@ export function inheritGitOpsOwnership(resources: ResourceSummary[]): ResourceSu
 			);
 			if (!owner || seen.has(owner)) break;
 			if (gitOpsOwnership(owner)) {
-				const ownerKey = JSON.stringify(owner.gitOpsOwner);
+				// An owner known only by its annotation has no `gitOpsOwner`, so the row takes the effective one.
+				const gitOpsOwner = effectiveGitOpsOwner(owner);
+				const ownerKey = JSON.stringify(gitOpsOwner);
 				const cached = inheritedRows.get(resource);
 				if (cached && cached.ownerKey === ownerKey) return cached.row;
-				const row = { ...resource, gitOpsOwner: owner.gitOpsOwner };
+				const row = { ...resource, gitOpsOwner };
 				inheritedRows.set(resource, { ownerKey, row });
 				return row;
 			}

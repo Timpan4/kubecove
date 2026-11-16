@@ -71,7 +71,7 @@ export async function action(page: Page, step: Step, scenarioSteps: readonly Ste
             await terminalAction(page, step); break;
         case "failWorkspaceContext": case "expectWorkspaceReadWarning": case "expectContextUnavailable": case "holdWorkspaceContext": case "releaseWorkspaceContext": case "expectContextsLoading":
             await workspaceAction(page, step); break;
-        case "editSavedWorkspace": case "expectNoSavedWorkspace": case "saveWorkspace": case "cancelWorkspaceEdit": case "toggleWorkspaceContext": case "expectOverviewHealth": case "expectDetailContext": case "exportSavedWorkspace": case "expectExportedShortcut":
+        case "editSavedWorkspace": case "expectNoSavedWorkspace": case "saveWorkspace": case "cancelWorkspaceEdit": case "toggleWorkspaceContext": case "chooseClusterContext": case "expectOverviewHealth": case "expectDetailContext": case "exportSavedWorkspace": case "expectExportedShortcut":
             await workspaceAction(page, step); break;
         case "sidebarToggle": case "sidebarSelect": case "expectSidebarRow": case "collapseSidebar": case "expectSidebarBranch": case "scrollSidebar": case "expectSidebarReveal": case "refreshPage": await sidebarLiveAction(page, step); break;
         case "openNamespaceList": case "expectNamespaceRow": case "resizeViewport": case "openNavigationDrawer": case "expectNavigationDrawer": case "sidebarKey": await navigationAction(page, step); break;
@@ -81,7 +81,7 @@ export async function action(page: Page, step: Step, scenarioSteps: readonly Ste
         case "fillMcpPort": case "mcpControl": case "expectMcpState": case "expectMcpCopy": case "expectMcpRequests":
             await mcpAction(page, step); break;
         case "configureArgoMock": case "argoControl": case "focusArgoResource": case "expectNoSavedArgoProfile": case "copyArgoValue": case "configureArgoInventory": case "expandArgoDiff": case "reconnectArgoProfile":
-        case "connectArgoProfile": case "disconnectArgoProfile": case "reviewArgoOperation": case "confirmArgoReview": case "cancelArgoReview": case "expectArgoReview": case "expectArgoText": case "argoDocument":
+        case "connectArgoProfile": case "disconnectArgoProfile": case "reviewArgoOperation": case "confirmArgoReview": case "cancelArgoReview": case "expectArgoReview": case "expectArgoText": case "expectArgoPolicy": case "argoDocument":
         case "expectArgoPopover": case "dismissArgoPopover": case "expectArgoCheckbox": case "toggleArgoOption": case "expectNoArgoControl":
         case "selectArgoPreference": case "expectSavedArgoProfile": case "configureArgoSync": case "selectArgoHistory": case "expectArgoWorkspaceTransport": case "completeArgoOperation": case "confirmArgoTunnel":
         case "expectArgoFocusInPopover": case "argoConnectionDialog": case "tabArgoPopover": case "expectArgoTriggerFocus": case "expectArgoOptionFocusable": case "expectArgoOperationState": case "controlClock": case "advanceClock": case "selectArgoConnection": case "fillArgoConnectionField": case "expectArgoConnectionField":
@@ -170,7 +170,7 @@ export async function action(page: Page, step: Step, scenarioSteps: readonly Ste
         }
         case "expectUsageFooter": case "openUsageTree": case "expectUsageProcess": case "expectNoUsageFooter": await topologyAction(page, step); break;
         case "selectNamespace": await page.getByRole("treeitem").filter({ has: page.getByText(step.namespace, { exact: true }) }).first().click(); break;
-        case "setTopologyMode": case "expectTopology": case "expectTopologyEdge": case "selectTopologyNode": case "expectTopologyEmpty": case "expectNoTopologyNode": case "expectResourceMetrics": await topologyAction(page, step); break;
+        case "setTopologyMode": case "expectTopology": case "expectTopologyEdge": case "selectTopologyNode": case "expectTopologyEmpty": case "expectNoTopologyNode": case "expectResourceMetrics": case "expectMetricsCard": await topologyAction(page, step); break;
         case "expectYamlAbsent": case "clickActionEntry": case "fillContainerImage": case "openActionEditor": case "fillActionField": case "chooseActionRevision": await yamlEditorAction(page, step); break;
         case "selectYamlShape": case "selectYamlEncoding": case "expectYamlPicker": case "replaceYamlDraft": case "formatYaml": case "expectYamlDocument": case "foldYamlLine": case "expectYamlVisibleLines": case "expectYamlEditorDiagnostics": await yamlEditorAction(page, step); break;
 		case "clickDetailControl": await detailsAction(page, step); break;

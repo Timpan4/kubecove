@@ -104,7 +104,7 @@ export type Step =
     | { action: "expectContextsLoading"; contexts: string[] }
     | { action: "editSavedWorkspace" | "expectNoSavedWorkspace"; name: string }
     | { action: "saveWorkspace" | "cancelWorkspaceEdit" }
-    | { action: "toggleWorkspaceContext"; context: string }
+    | { action: "toggleWorkspaceContext" | "chooseClusterContext"; context: string }
     | { action: "expectOverviewHealth"; total: number }
     | { action: "expectActivePage"; page: string }
     | { action: "expectGitOpsSelection"; name: string }
@@ -154,7 +154,7 @@ export type Step =
     | { action: "configureArgoInventory"; mode: import("../../src/lib/tauri-dev-mock-argo").ArgoInventoryMode }
     | { action: "copyArgoValue"; control: "source" | "revision" | "repository value" | "release value" | "cluster target value"; contains: string }
     | { action: "expectArgoReview"; operation: string; name: string; namespace: string; transport: string }
-    | { action: "expectArgoText"; text: string }
+    | { action: "expectArgoText" | "expectArgoPolicy"; text: string }
     | { action: "expectArgoPopover"; control: "Sync options" | "Refresh options"; open: boolean }
     | { action: "dismissArgoPopover"; how: "Escape" | "outside click" }
     | { action: "expectArgoCheckbox"; name: ArgoOptionName; checked: boolean }
@@ -205,7 +205,7 @@ export type Step =
     | { action: "expectAccessibleName"; name: string }
     | { action: "expectSettingsText" | "expectNoSettingsText" | "expectRuntimeEndpoint"; value: string }
     | { action: "expectMaskedToken" | "reopenStoredSettings" }
-    | { action: "configureSettingsMock"; script: "oidc-server" | "oidc-browser-waits" | "oidc-sign-in-fails" | "oidc-memory-only" | "oidc-store-keeps-sign-in" | "access-server" | "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "choose-application-workspace" | "choose-compare-workspace" | "choose-last-export" | "cancel-dialog" | "no-update" | "invalid-signature" | "update-available" | "update-installs" | "update-download-waits" }
+    | { action: "configureSettingsMock"; script: "oidc-server" | "oidc-browser-waits" | "oidc-sign-in-fails" | "oidc-memory-only" | "oidc-store-keeps-sign-in" | "access-server" | "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "choose-application-workspace" | "choose-foreign-kind-workspace" | "choose-compare-workspace" | "choose-last-export" | "cancel-dialog" | "no-update" | "invalid-signature" | "update-available" | "update-installs" | "update-download-waits" }
     | { action: "expectLiveState"; label: string; notice?: string }
     /** Opens the live-updates menu and checks its status message, refresh hint and refresh button. */
     | { action: "expectLiveMenu"; message: string }
@@ -337,6 +337,8 @@ export type Step =
     | { action: "expectTopologyEmpty"; title: string }
     | { action: "selectTopologyNode" | "expectNoTopologyNode"; id: string }
     | { action: "expectResourceMetrics"; kind: string; namespace: string; name: string; cpu: string; memory: string }
+    /** The Resource metrics card's message and its "<context>: <issue>" lines in rank order. */
+    | { action: "expectMetricsCard"; message: string; contexts: string[] }
     /** With `key`, the driver reaches the control with Tab and presses the key instead of clicking. */
     | { action: "sortResourceTable"; column: (typeof SORT_COLUMNS)[number]; key?: "Enter" | "Space" }
     | { action: "expectResourceOrder"; names: string[] }

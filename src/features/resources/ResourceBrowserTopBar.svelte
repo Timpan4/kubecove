@@ -20,6 +20,7 @@
 		ArgoResourceFilter,
 	} from "@/features/gitops/argo-workspace-model";
 	import type { GitOpsOwnershipFilter } from "@/lib/gitops-ownership-evidence";
+	import type { MetricsCard } from "@/lib/resource-metrics";
 	import type { NamespaceSummary, ResourceKindSelection } from "@/lib/types";
 	import type { HealthFilter, HealthSummary } from "./helpers";
 	import ResourceScopeSelector from "./ResourceScopeSelector.svelte";
@@ -41,7 +42,7 @@
 		search = $bindable(""),
 		gitOpsFilter,
 		gitOpsFilters,
-		metricsMessage,
+		metricsCard,
 		contexts = [],
 		contextFilter = [],
 		onContextFilterChange = () => {},
@@ -72,7 +73,7 @@
 		search?: string;
 		gitOpsFilter: string;
 		gitOpsFilters: GitOpsOwnershipFilter[];
-		metricsMessage: string | null;
+		metricsCard: MetricsCard;
 		/** Workspace contexts in rank order. The Context filter shows only for more than one. */
 		contexts?: readonly string[];
 		/** Contexts whose rows show; empty shows every context. */
@@ -351,9 +352,14 @@
 		</div>
 
 		<div class="grid min-w-0 gap-2 @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] @5xl:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)] @7xl:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_minmax(12rem,auto)]">
-			<div class="rounded-md border bg-background/30 px-3 py-2 text-xs">
+			<div role="group" aria-label="Resource metrics" class="rounded-md border bg-background/30 px-3 py-2 text-xs">
 				<div class="font-semibold text-foreground">Resource metrics</div>
-				<div class="text-muted-foreground">{metricsMessage ?? "metrics available"}</div>
+				<div class="text-muted-foreground">{metricsCard.message}</div>
+				{#if metricsCard.contexts.length > 0}
+					<ul class="text-muted-foreground">
+						{#each metricsCard.contexts as line (line)}<li>{line}</li>{/each}
+					</ul>
+				{/if}
 			</div>
 
 			<div class="rounded-md border bg-background/30 px-3 py-2 text-xs">

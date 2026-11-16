@@ -3,12 +3,13 @@
 import { setAppUpdateApiForTests } from "@/features/app-updates/store";
 import applicationWorkspace from "./overview-application-workspace.json";
 import compareWorkspace from "./overview-compare-workspace.json";
+import foreignKindWorkspace from "./overview-foreign-kind-workspace.json";
 import unavailableWorkspace from "./overview-unavailable-workspace.json";
 import { setAppUpdatesEnabledForTests } from "./release-channel";
 import type { RemoteAuthMode, RemoteConnectionSummary, RemoteSessionState } from "./remote-runtime";
 import workspace from "./settings-integration-workspace.json";
 
-export type SettingsScript = "oidc-server" | "oidc-browser-waits" | "oidc-sign-in-fails" | "oidc-memory-only" | "oidc-store-keeps-sign-in" | "access-server" | "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "choose-application-workspace" | "choose-compare-workspace" | "choose-last-export" | "cancel-dialog" | "no-update" | "invalid-signature" | "update-available" | "update-installs" | "update-download-waits";
+export type SettingsScript = "oidc-server" | "oidc-browser-waits" | "oidc-sign-in-fails" | "oidc-memory-only" | "oidc-store-keeps-sign-in" | "access-server" | "choose-kubeconfig" | "choose-workspace" | "choose-unavailable-workspace" | "choose-application-workspace" | "choose-foreign-kind-workspace" | "choose-compare-workspace" | "choose-last-export" | "cancel-dialog" | "no-update" | "invalid-signature" | "update-available" | "update-installs" | "update-download-waits";
 const UPDATE_SCRIPTS = ["no-update", "invalid-signature", "update-available", "update-installs", "update-download-waits"] as const;
 type UpdateScript = (typeof UPDATE_SCRIPTS)[number];
 /** Page-session storage, so a reloaded page keeps the update script its scenario configured. */
@@ -27,6 +28,7 @@ export function configureSettingsMock(script: SettingsScript): void {
     workspaceFile = script === "choose-workspace" ? JSON.stringify(workspace) : null;
     if (script === "choose-unavailable-workspace") workspaceFile = JSON.stringify(unavailableWorkspace);
     if (script === "choose-application-workspace") workspaceFile = JSON.stringify(applicationWorkspace);
+    if (script === "choose-foreign-kind-workspace") workspaceFile = JSON.stringify(foreignKindWorkspace);
     if (script === "choose-compare-workspace") workspaceFile = JSON.stringify(compareWorkspace);
     // Reimports the file the last export saved.
     if (script === "choose-last-export") workspaceFile = exportedWorkspace;

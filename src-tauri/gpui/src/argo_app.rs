@@ -109,8 +109,30 @@ fn string_at(value: Option<&Value>, path: &[&str]) -> Option<String> {
         .map(str::to_owned)
 }
 
-fn bool_at(value: Option<&Value>, path: &[&str]) -> Option<bool> {
-    value_at(value, path).and_then(Value::as_bool)
+/// `argoSyncPolicyLabel`: Argo CD runs automated sync whenever
+/// `syncPolicy.automated` is set, unless `automated.enabled` is false.
+/// `prune` and `selfHeal` only qualify it.
+fn sync_policy_label(spec: Option<&Value>) -> String {
+    if spec.is_none() {
+        return "Policy unavailable".to_owned();
+    }
+    let Some(automated) =
+        value_at(spec, &["syncPolicy", "automated"]).filter(|automated| automated.is_object())
+    else {
+        return "Manual".to_owned();
+    };
+    let flag = |field: &str| automated.get(field).and_then(Value::as_bool);
+    if flag("enabled") == Some(false) {
+        return "Manual".to_owned();
+    }
+    let mut parts = vec!["Automated"];
+    if flag("prune") == Some(true) {
+        parts.push("prune");
+    }
+    if flag("selfHeal") == Some(true) {
+        parts.push("self-heal");
+    }
+    parts.join(" · ")
 }
 
 /// `applicationSpecFromYaml`: the Application `spec`, or nothing when the
@@ -259,22 +281,7 @@ impl ArgoView {
             string_at(spec, &["source", field])
                 .or_else(|| string_at(spec, &["sources", "0", field]))
         };
-        let (prune, self_heal) = (
-            bool_at(spec, &["syncPolicy", "automated", "prune"]),
-            bool_at(spec, &["syncPolicy", "automated", "selfHeal"]),
-        );
-        let policy = if prune.is_none() && self_heal.is_none() {
-            "Policy unavailable".to_owned()
-        } else {
-            let mut parts = vec!["Automated"];
-            if prune == Some(true) {
-                parts.push("prune");
-            }
-            if self_heal == Some(true) {
-                parts.push("self-heal");
-            }
-            parts.join(" · ")
-        };
+        let policy = sync_policy_label(spec);
         let operation = inspector.operation_state.as_ref();
         let kubernetes = inspector.transport != "connected";
         let transport = if kubernetes {

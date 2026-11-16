@@ -139,12 +139,17 @@ impl Inspector {
                             .iter()
                             .map(|context| (context.name.clone(), context.is_current))
                             .collect();
-                        let selected = contexts
-                            .iter()
-                            .find(|context| context.is_current)
-                            .unwrap_or(&contexts[0])
-                            .name
-                            .clone();
+                        // As the web's ClusterSelector shows the open workspace's
+                        // context, the kubeconfig's current context only fills an
+                        // empty choice and never moves an open workspace.
+                        let selected = this.active_saved_context().unwrap_or_else(|| {
+                            contexts
+                                .iter()
+                                .find(|context| context.is_current)
+                                .unwrap_or(&contexts[0])
+                                .name
+                                .clone()
+                        });
                         this.context_picker.update(cx, |state, cx| {
                             state.set_items(
                                 SearchableVec::new(
@@ -451,7 +456,11 @@ impl Inspector {
             .as_ref()
             .map_or(&self.observation.rows()[..], |state| state.rows.as_slice())
             .iter()
-            .filter(|row| self.launcher.overview_kind(&row.kind) && self.launcher.in_scope(row))
+            .filter(|row| {
+                self.launcher
+                    .overview_kind(&row.kind, row.api_version.as_deref())
+                    && self.launcher.in_scope(row)
+            })
     }
 
     /// Kinds in the resource scope: the page's kinds plus custom kinds present.

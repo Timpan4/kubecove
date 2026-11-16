@@ -61,6 +61,12 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             format!("workspace-group:{}", string(step, "context")).into(),
             cx,
         ),
+        // The header's searchable Cluster Context picker.
+        "chooseClusterContext" => {
+            window.within("context").click("input", cx);
+            window.input(string(step, "context"), cx);
+            window.press("enter", cx);
+        }
         "expectOverviewHealth" => assert_eq!(
             window.find("overview-description:Resource Health").label(),
             Some(

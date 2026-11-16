@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
-	describeMetricsAvailability,
 	formatCompactResourceMetrics,
 	formatCpuMillicores,
 	formatMemoryBytes,
 	mergeResourceMetrics,
 	mergeTopologyMetrics,
+	metricsCard,
 	resourceMetricIndex,
 } from "../src/lib/resource-metrics";
 import type {
@@ -135,18 +135,13 @@ describe("resource metrics helpers", () => {
 	});
 
 	test("describes unavailable metrics states without failing the resource view", () => {
-		expect(describeMetricsAvailability({ status: "available" })).toBeNull();
-		expect(describeMetricsAvailability({ status: "forbidden" })).toBe(
-			"metrics API forbidden",
+		const card = (availability: ResourceMetricsSummary["availability"]) =>
+			metricsCard([{ clusterContext: "kind-dev", summary: { ...metrics, availability } }]);
+		expect(card({ status: "available" })).toEqual({ message: "metrics available", contexts: [] });
+		expect(card({ status: "forbidden" }).message).toBe("metrics API forbidden");
+		expect(card({ status: "noSamples" }).message).toBe("no metrics samples yet");
+		expect(card({ status: "unavailable", message: "metrics API unreachable" }).message).toBe(
+			"metrics API unreachable",
 		);
-		expect(describeMetricsAvailability({ status: "noSamples" })).toBe(
-			"no metrics samples yet",
-		);
-		expect(
-			describeMetricsAvailability({
-				status: "unavailable",
-				message: "metrics API unavailable",
-			}),
-		).toBe("metrics API unavailable");
 	});
 });

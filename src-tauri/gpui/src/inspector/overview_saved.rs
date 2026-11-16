@@ -116,7 +116,12 @@ impl Inspector {
                 } else {
                     format!("{} namespaces", saved.namespaces.len())
                 },
-                saved.kinds.join(", "),
+                saved
+                    .kinds
+                    .iter()
+                    .map(crate::workspaces::SavedKind::label)
+                    .collect::<Vec<_>>()
+                    .join(", "),
             ]
         } else {
             [
@@ -196,16 +201,18 @@ impl Inspector {
                         .warnings
                         .push(format!("Namespaces: {}", missing.join(", ")));
                 }
+                // `kindKey` identities, as the web's `knownKindKeys` compares them.
                 let missing: Vec<&str> =
                     match inventory.and_then(|inventory| inventory.kinds.as_deref()) {
                         Some(available) => saved
                             .kinds
                             .iter()
                             .filter(|kind| {
-                                !self.picker_builtin_kinds().contains(&kind.as_str())
-                                    && !available.contains(*kind)
+                                let key = kind.key();
+                                !self.picker_builtin_kinds().contains(&key.as_str())
+                                    && !available.contains(&key)
                             })
-                            .map(String::as_str)
+                            .map(crate::workspaces::SavedKind::label)
                             .collect(),
                         None => Vec::new(),
                     };

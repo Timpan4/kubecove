@@ -1,6 +1,6 @@
 //! Workspace file schema, shared with `workspace-sharing-parse.ts`.
 //! Workspace metadata is retained for export and native persistence.
-use super::SavedWorkspace;
+use super::{ApiKind, SavedKind, SavedWorkspace};
 use serde_json::{Value, json};
 
 pub const API_VERSION: &str = "kubecove.dev/workspace/v1";
@@ -11,7 +11,7 @@ pub struct ImportedWorkspace {
     pub group: Vec<String>,
     pub group_name: Option<String>,
     pub namespaces: Vec<String>,
-    pub kinds: Vec<String>,
+    pub kinds: Vec<SavedKind>,
 }
 pub fn parse(raw: &str) -> Result<Vec<ImportedWorkspace>, String> {
     let value: Value =
@@ -45,23 +45,7 @@ pub fn parse(raw: &str) -> Result<Vec<ImportedWorkspace>, String> {
         let name = required(&spec["displayName"])?;
         let context = required(&scope["clusterContext"])?;
         let namespaces = strings(&scope["namespaces"])?;
-        let mut kinds = Vec::new();
-        for kind in scope["kinds"]
-            .as_array()
-            .ok_or("scope.kinds must be an array")?
-        {
-            if kind.is_string() {
-                kinds.push(required(kind)?);
-            } else {
-                for field in ["group", "version", "apiVersion", "kind", "plural"] {
-                    required(&kind[field])?;
-                }
-                if !kind["namespaced"].is_boolean() {
-                    return Err("kind.namespaced must be a boolean".into());
-                }
-                kinds.push(required(&kind["kind"])?);
-            }
-        }
+        let kinds = scope_kinds(scope)?;
         let (group, group_name) = if scope["clusterGroup"].is_null() {
             (vec![], None)
         } else {
@@ -124,6 +108,30 @@ pub fn parse(raw: &str) -> Result<Vec<ImportedWorkspace>, String> {
         });
     }
     Ok(imported)
+}
+/// `parseKind`: a kind name, or a discovered kind with its API identity.
+pub fn scope_kinds(scope: &Value) -> Result<Vec<SavedKind>, String> {
+    scope["kinds"]
+        .as_array()
+        .ok_or("scope.kinds must be an array")?
+        .iter()
+        .map(|kind| {
+            if kind.is_string() {
+                return Ok(SavedKind::Name(required(kind)?));
+            }
+            let Some(namespaced) = kind["namespaced"].as_bool() else {
+                return Err("kind.namespaced must be a boolean".into());
+            };
+            Ok(SavedKind::Api(ApiKind {
+                group: required(&kind["group"])?,
+                version: required(&kind["version"])?,
+                api_version: required(&kind["apiVersion"])?,
+                kind: required(&kind["kind"])?,
+                plural: required(&kind["plural"])?,
+                namespaced,
+            }))
+        })
+        .collect()
 }
 /// `optionalString` in the web parser: a shortcut's `namespace` or `argoApp`
 /// that is not a nonempty string is absent, so the saved shortcuts still load.

@@ -155,11 +155,41 @@ export function formatCompactResourceMetrics(
 	return parts.length > 0 ? parts.join(" / ") : null;
 }
 
-export function describeMetricsAvailability(
-	availability: ResourceMetricsAvailability | undefined,
-): string | null {
-	if (!availability || availability.status === "available") return null;
+/** Why a context's metrics are missing, or null when they are available. */
+function metricsIssue(availability: ResourceMetricsAvailability): string | null {
+	if (availability.status === "available") return null;
 	if (availability.status === "forbidden") return "metrics API forbidden";
 	if (availability.status === "noSamples") return "no metrics samples yet";
 	return availability.message ?? "metrics API unavailable";
+}
+
+/** One context's settled metrics read. */
+export type ContextMetricsRead =
+	| { clusterContext: string; summary: ResourceMetricsSummary }
+	| { clusterContext: string; failure: "forbidden" | "unavailable" };
+
+export interface MetricsCard {
+	message: string;
+	/** "<context>: <issue>" for each context without metrics, listed only when several contexts are read. */
+	contexts: string[];
+}
+
+/**
+ * The Resource metrics card for settled reads in rank order: "metrics available"
+ * while any context has metrics, else the first context's issue.
+ */
+export function metricsCard(reads: readonly ContextMetricsRead[]): MetricsCard {
+	const issues = reads.map((read) => ({
+		clusterContext: read.clusterContext,
+		issue: "summary" in read
+			? metricsIssue(read.summary.availability)
+			: `metrics API ${read.failure}`,
+	}));
+	const first = issues[0]?.issue;
+	return {
+		message: first && issues.every(({ issue }) => issue) ? first : "metrics available",
+		contexts: issues.length > 1
+			? issues.flatMap(({ clusterContext, issue }) => (issue ? [`${clusterContext}: ${issue}`] : []))
+			: [],
+	};
 }
