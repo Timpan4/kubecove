@@ -39,6 +39,27 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
                 .expect("the Inspector is the window's content");
             assert!(inspector.read(cx).map_draws_edge(s("source"), s("target")));
         }
+        "expectTopologyEdgeMotion" => {
+            window.render_frame(cx);
+            let inspector = gpui_kit::base::Root::read(window, cx)
+                .view()
+                .clone()
+                .downcast::<kubecove_gpui::Inspector>()
+                .expect("the Inspector is the window's content");
+            let want = (
+                step["flow"].as_bool().expect("flow"),
+                step["pulse"].as_bool().expect("pulse"),
+            );
+            assert_eq!(
+                inspector.read(cx).map_edge_motion(s("source"), s("target")),
+                Some(want),
+                "edge motion as (flow, pulse)"
+            );
+            // A moving edge asks for the next frame.
+            if want.0 || want.1 {
+                assert!(window.simulate_next_frame(cx) > 0);
+            }
+        }
         "selectTopologyNode" => {
             let node = format!("map-node:{}", s("id"));
             // Playwright clicks a node once it stops moving, after any transition ends.

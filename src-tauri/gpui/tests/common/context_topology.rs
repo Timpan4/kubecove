@@ -41,6 +41,7 @@ impl Fixture {
                 .clone()
         });
         self.add_live_topology(&mut topology);
+        self.roll_live_topology(&mut topology);
         let topology = Arc::new(topology);
         self.coverage_read(
             "list_resource_topology",
@@ -96,6 +97,32 @@ impl Fixture {
             relation: kubecove_lib::models::TopologyRelation::Owns,
         });
         topology.nodes.extend([deployment, replica_set]);
+    }
+
+    /// The "rollout" script: ownershipTopology builds the payments-api node and its
+    /// ReplicaSet's node from the live Deployment row, so both show "Rolling out".
+    fn roll_live_topology(&self, topology: &mut ResourceTopology) {
+        let payments = |node: &kubecove_lib::models::TopologyNode, kind: &str, name: &str| {
+            node.kind == kind && node.name == name && node.namespace.as_deref() == Some("payments")
+        };
+        let Some(status) = topology
+            .nodes
+            .iter()
+            .find(|node| payments(node, "Deployment", "payments-api"))
+            .and_then(|node| self.live_rows(vec![node.summary.clone()]).pop())
+            .and_then(|row| row.status)
+            .filter(|status| status == "Rolling out")
+        else {
+            return;
+        };
+        for node in &mut topology.nodes {
+            if payments(node, "Deployment", "payments-api")
+                || payments(node, "ReplicaSet", "payments-api-7d9c9b7f8d")
+            {
+                node.status = Some(status.clone());
+                node.summary.status = Some(status.clone());
+            }
+        }
     }
 
     pub(super) fn network_topology_fixture(&self, scope: Scope) -> Read<Arc<ResourceTopology>> {

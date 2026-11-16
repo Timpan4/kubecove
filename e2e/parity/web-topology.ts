@@ -15,6 +15,20 @@ function metricsCard(want: string | null) {
 	return want === null ? found : found === want;
 }
 
+/**
+ * Runs in the page: whether the edge's dashes are moving and whether a pulse is traveling along
+ * it, as running animations. Returns whether both equal `want`, or what it found when `want` is
+ * null. Small maps draw each edge as a Svelte Flow edge, the only kind that moves.
+ */
+function edgeMotion({ id, want }: { id: string; want: { flow: boolean; pulse: boolean } | null }) {
+	const running = (element: Element | null | undefined) =>
+		Boolean(element?.getAnimations().some((animation) => animation.playState === "running"));
+	const edge = Array.from(document.querySelectorAll(".svelte-flow__edge")).find((item) => item.getAttribute("data-id") === id);
+	const pulse = Array.from(document.querySelectorAll("[data-pulse]")).find((item) => item.getAttribute("data-pulse") === id);
+	const found = { flow: running(edge?.querySelector(".svelte-flow__edge-path")), pulse: running(pulse?.querySelector(".ownership-map-pulse")) };
+	return want === null ? JSON.stringify(found) : Boolean(edge) && found.flow === want.flow && found.pulse === want.pulse;
+}
+
 export async function topologyAction(page: Page, step: Step) {
 	switch (step.action) {
 		case "expectUsageFooter": await page.locator("footer").getByText(step.text, { exact: true }).waitFor(); break;
@@ -29,6 +43,13 @@ export async function topologyAction(page: Page, step: Step) {
 		case "expectTopologyEdge": {
 			const edge = page.locator(".svelte-flow__edge").filter({ has: page.locator(`[id="${step.source}->${step.target}"]`) });
 			if (!(await edge.count()) && !(await page.locator(`[data-id="${step.source}->${step.target}"]`).count())) throw new Error("Missing traffic edge");
+			break;
+		}
+		case "expectTopologyEdgeMotion": {
+			const id = `${step.source}->${step.target}`;
+			await page.waitForFunction(edgeMotion, { id, want: { flow: step.flow, pulse: step.pulse } }).catch(async () => {
+				throw new Error(`Edge ${id} motion was ${await page.evaluate(edgeMotion, { id, want: null })}`);
+			});
 			break;
 		}
 		case "selectTopologyNode": await page.locator(`.svelte-flow__node[data-id="${step.id}"]`).click(); break;

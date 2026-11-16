@@ -1,0 +1,34 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "map.selected-path-flow",
+      "title": "The dashes of a selected resource's path move, and edges are still before a selection",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": false, "pulse": false },
+        { "action": "selectTopologyNode", "id": "mock-dev:apps/v1:Deployment:payments:payments-api" },
+        { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": true, "pulse": false }
+      ]
+    },
+    {
+      "id": "map.rollout-pulse",
+      "title": "A pulse travels toward a resource in progress while live, and stops while reconnecting",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "expectLiveState", "label": "Live" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "replayLiveData", "script": "rollout" },
+        { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": false, "pulse": true },
+        { "action": "replayLiveData", "script": "reconnecting" },
+        { "action": "expectLiveState", "label": "Reconnecting" },
+        { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": false, "pulse": false },
+        { "action": "replayLiveData", "script": "connected" },
+        { "action": "expectLiveState", "label": "Live" },
+        { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": false, "pulse": true }
+      ]
+    }
+  ]
+}

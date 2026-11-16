@@ -61,7 +61,7 @@ export const ACTIONS = [
     "expectWorkspaceExport", "exportSavedWorkspace", "expectExportedShortcut",
     "expectAccessibleName", "fillSettingsField", "clickSettingsButton", "clickKubeconfigPathButton", "expectKubeconfigPathBefore", "addPastedKubeconfigPaths", "fillKubeconfigPathDraft", "expectKubeconfigPathDraft", "expectSettingsText", "expectNoSettingsText", "expectRuntimeEndpoint", "expectMaskedToken", "reopenStoredSettings", "configureSettingsMock",
 	"expectLiveState", "expectLiveMenu", "replayLiveData", "expectResourceStatus", "openCustomKind",
-	"selectTopologyNode", "expectTopologyEmpty", "expectUsageFooter", "openUsageTree", "expectNoUsageFooter", "expectUsageProcess", "setTopologyMode", "selectNamespace", "expectTopology", "expectTopologyEdge", "expectNoTopologyNode", "expectResourceMetrics", "expectMetricsCard",
+	"selectTopologyNode", "expectTopologyEmpty", "expectUsageFooter", "openUsageTree", "expectNoUsageFooter", "expectUsageProcess", "setTopologyMode", "selectNamespace", "expectTopology", "expectTopologyEdge", "expectTopologyEdgeMotion", "expectNoTopologyNode", "expectResourceMetrics", "expectMetricsCard",
 	"expectYamlAbsent",
 	"expectYamlEditorDiagnostics",
 	"clickActionEntry",
@@ -268,6 +268,7 @@ function step<Value>(value: Value): Step {
         case "selectNamespace": return { action: item.action, namespace: string(item.namespace) };
         case "expectTopology": return { action: item.action, nodes: count(item.nodes), edges: count(item.edges) };
         case "expectTopologyEdge": return { action: item.action, source: string(item.source), target: string(item.target) };
+        case "expectTopologyEdgeMotion": return { action: item.action, source: string(item.source), target: string(item.target), flow: boolean(item.flow), pulse: boolean(item.pulse) };
         case "expectTopologyEmpty": return { action: item.action, title: string(item.title) };
         case "selectTopologyNode": case "expectNoTopologyNode": return { action: item.action, id: string(item.id) };
         case "expectResourceMetrics":

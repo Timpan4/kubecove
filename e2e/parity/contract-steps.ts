@@ -342,6 +342,8 @@ export type Step =
     | { action: "selectNamespace"; namespace: string }
     | { action: "expectTopology"; nodes: number; edges: number }
     | { action: "expectTopologyEdge"; source: string; target: string }
+    /** `flow`: the edge's dashes move along a selected path. `pulse`: a pulse travels toward a target in progress. */
+    | { action: "expectTopologyEdgeMotion"; source: string; target: string; flow: boolean; pulse: boolean }
     | { action: "expectTopologyEmpty"; title: string }
     | { action: "selectTopologyNode" | "expectNoTopologyNode"; id: string }
     | { action: "expectResourceMetrics"; kind: string; namespace: string; name: string; cpu: string; memory: string }
