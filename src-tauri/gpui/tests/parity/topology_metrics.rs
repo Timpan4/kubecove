@@ -1,4 +1,4 @@
-use gpui_kit::test::TestWindowExt;
+use gpui_kit::test::{TestQueryExt, TestWindowExt};
 use serde_json::Value;
 
 pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) -> bool {
@@ -65,6 +65,20 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
                     Some(format!("{column} usage {}", s(field)).as_str())
                 );
             }
+        }
+        "expectMetricsCard" => {
+            assert_eq!(window.find("metrics-message").label(), Some(s("message")));
+            let contexts: Vec<String> = window
+                .elements()
+                .iter()
+                .filter(|element| {
+                    super::locate::id(element)
+                        .to_string()
+                        .starts_with("metrics-context:")
+                })
+                .filter_map(|element| element.label().map(str::to_owned))
+                .collect();
+            assert_eq!(contexts, super::strings(step, "contexts"));
         }
         _ => return false,
     }

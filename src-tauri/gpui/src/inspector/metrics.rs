@@ -11,7 +11,12 @@ use std::{
 
 #[derive(Default)]
 pub(super) struct MetricsState {
-    summary: Option<Result<ResourceMetricsSummary, String>>,
+    /// Every answering context's metrics. `None` while loading or when no
+    /// context answered.
+    summary: Option<ResourceMetricsSummary>,
+    /// Each read context in rank order with why its metrics are missing, or
+    /// `None` when they are available. Empty while loading.
+    contexts: Vec<(String, Option<String>)>,
     /// Each metric's identity hash and its position in `all`, sorted by hash,
     /// so a row finds its metric without building a key.
     slots: Vec<(u64, u32)>,
@@ -59,7 +64,7 @@ impl Inspector {
         &'a self,
         row: &'a ResourceSummary,
     ) -> Option<&'a ResourceMetricSummary> {
-        let Some(Ok(summary)) = &self.metrics.summary else {
+        let Some(summary) = &self.metrics.summary else {
             return None;
         };
         let slots = &self.metrics.slots;
@@ -88,11 +93,21 @@ impl Inspector {
             .last()
     }
 
+    /// "metrics available" while any context has metrics, else the first
+    /// context's issue. With several contexts, each context without metrics is
+    /// listed under the message.
     pub(super) fn metrics_card(&self) -> Div {
-        let message = match &self.metrics.summary {
-            Some(Ok(summary)) => metrics::availability(&summary.availability),
-            Some(Err(_)) => "metrics API unavailable",
-            None => "metrics available",
+        let contexts = &self.metrics.contexts;
+        let message = match contexts.first() {
+            Some((_, Some(issue))) if contexts.iter().all(|(_, issue)| issue.is_some()) => {
+                issue.as_str()
+            }
+            _ => "metrics available",
+        };
+        let listed = if contexts.len() > 1 {
+            contexts.as_slice()
+        } else {
+            &[]
         };
         ui::panel()
             .flex_1()
@@ -105,12 +120,22 @@ impl Inspector {
                     .test_support()
                     .aria_label(message),
             )
+            .children(listed.iter().filter_map(|(context, issue)| {
+                let line = format!("{context}: {}", issue.as_deref()?);
+                Some(
+                    ui::muted(ui::xs(line.clone()))
+                        .id(format!("metrics-context:{context}"))
+                        .test_support()
+                        .aria_label(line),
+                )
+            }))
     }
 
     /// Reads every context's metrics at once. Rows find theirs by cluster.
     pub(super) fn load_metrics(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.metrics.task.take();
         self.metrics.summary = None;
+        self.metrics.contexts.clear();
         self.metrics.slots.clear();
         let request = self.request.clone();
         let reads = self
@@ -127,30 +152,34 @@ impl Inspector {
             .collect();
         let read = crate::workspaces::reads::settle(reads);
         self.metrics.task = Some(cx.spawn_in(window, async move |this, cx| {
-            let result = merge(read.await);
+            let (summary, contexts) = merge(read.await);
             let _ = this.update(cx, |this, cx| {
                 if !Rc::ptr_eq(&this.request, &request) {
                     return;
                 }
-                this.metrics.slots = result.as_ref().map_or_default(slots);
-                this.metrics.summary = Some(result);
+                this.metrics.slots = summary.as_ref().map(slots).unwrap_or_default();
+                this.metrics.summary = summary;
+                this.metrics.contexts = contexts;
                 cx.notify();
             });
         }));
     }
 }
 
-/// Every context's metrics in one summary. Metrics keep their cluster, so the
-/// contexts never mix. The card shows the availability of the first context in
-/// rank order that answered; the read fails only when every context failed.
+/// Every answering context's metrics in one summary, and each context's issue
+/// in rank order. Metrics keep their cluster, so the contexts never mix.
 fn merge(
     results: crate::workspaces::reads::ContextResults<ResourceMetricsSummary>,
-) -> Result<ResourceMetricsSummary, String> {
+) -> (
+    Option<ResourceMetricsSummary>,
+    Vec<(String, Option<String>)>,
+) {
     let mut merged: Option<ResourceMetricsSummary> = None;
-    let mut first_error = None;
-    for (_, result) in results {
-        match result {
+    let mut contexts = Vec::with_capacity(results.len());
+    for (context, result) in results {
+        let issue = match result {
             Ok(summary) => {
+                let issue = metrics::issue(&summary.availability).map(str::to_owned);
                 if let Some(all) = &mut merged {
                     all.pods.extend(summary.pods);
                     all.nodes.extend(summary.nodes);
@@ -159,11 +188,11 @@ fn merge(
                 } else {
                     merged = Some(summary);
                 }
+                issue
             }
-            Err(error) => {
-                first_error.get_or_insert(error.message);
-            }
-        }
+            Err(error) => Some(metrics::read_issue(&error).to_owned()),
+        };
+        contexts.push((context, issue));
     }
-    merged.ok_or_else(|| first_error.unwrap_or_default())
+    (merged, contexts)
 }
