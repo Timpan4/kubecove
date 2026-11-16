@@ -7,6 +7,8 @@ const SERVICE_ACCOUNT_PREFIX = "system:serviceaccount:";
 /** The user name and groups a SubjectAccessReview sends for an identity, mapped as `rbac_review.rs` does. */
 export interface RbacPrincipal {
 	username?: string;
+	/** The ServiceAccount the username names, parsed once for subject matching. */
+	account: { namespace: string; name: string } | null;
 	groups: string[];
 }
 
@@ -30,13 +32,13 @@ export function splitServiceAccountUsername(username: string): { namespace: stri
 
 export function principalOf(identity: RbacAccessReviewIdentity): RbacPrincipal {
 	if (identity.kind === "serviceAccount") {
-		return {
-			username: serviceAccountUsername(identity.namespace, identity.name),
-			groups: automaticServiceAccountGroups(identity.namespace),
-		};
+		const username = serviceAccountUsername(identity.namespace, identity.name);
+		return { username, account: splitServiceAccountUsername(username), groups: automaticServiceAccountGroups(identity.namespace) };
 	}
-	if (identity.kind === "user") return { username: identity.username, groups: identity.groups };
-	return { groups: [identity.group] };
+	if (identity.kind === "user") {
+		return { username: identity.username, account: splitServiceAccountUsername(identity.username), groups: identity.groups };
+	}
+	return { account: null, groups: [identity.group] };
 }
 
 export function serviceAccountPrincipal(namespace: string, name: string): RbacPrincipal {
@@ -47,7 +49,7 @@ export function serviceAccountPrincipal(namespace: string, name: string): RbacPr
 export function subjectAppliesTo(principal: RbacPrincipal, subject: RbacSubjectSummary): boolean {
 	if (subject.kind === "User") return principal.username !== undefined && subject.name === principal.username;
 	if (subject.kind === "ServiceAccount") {
-		const account = principal.username ? splitServiceAccountUsername(principal.username) : null;
+		const account = principal.account;
 		return account !== null && subject.namespace === account.namespace && subject.name === account.name;
 	}
 	return subject.kind === "Group" && principal.groups.includes(subject.name);
