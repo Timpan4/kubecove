@@ -110,15 +110,25 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 "End" => "end",
                 "Escape" => "escape",
                 "Tab" => "tab",
+                "Shift+Tab" => "shift-tab",
                 other => panic!("unknown Map context key: {other}"),
             };
             window.within("map-context").press(key, cx);
         }
-        "expectMapContextOptions" => assert_eq!(
-            window.try_find("map-context-options").is_some(),
-            step["open"] == true,
-            "{step}"
-        ),
+        "expectMapContextOptions" => {
+            assert_eq!(
+                window.try_find("map-context-options").is_some(),
+                step["open"] == true,
+                "{step}"
+            );
+            if let Some(focused) = step["focused"].as_bool() {
+                assert_eq!(
+                    locate::focus_state(&window.find("map-context")),
+                    Some(focused),
+                    "{step}"
+                );
+            }
+        }
         "expectMapContext" => {
             if step["shown"] == true {
                 assert!(

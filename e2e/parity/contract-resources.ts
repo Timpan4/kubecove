@@ -22,7 +22,11 @@ export function resourceTableStep(item: JsonObject): Step | undefined {
 			}
 			return { action: item.action, shown: true, context: string(item.context) };
 		case "mapContextKey": return { action: item.action, key: oneOf(MAP_CONTEXT_KEYS, item.key, "a Map context key") };
-		case "expectMapContextOptions": return { action: item.action, open: boolean(item.open) };
+		case "expectMapContextOptions": {
+			const options: Extract<Step, { action: "expectMapContextOptions" }> = { action: item.action, open: boolean(item.open) };
+			if (item.focused !== undefined) options.focused = boolean(item.focused);
+			return options;
+		}
 		default: return undefined;
 	}
 }

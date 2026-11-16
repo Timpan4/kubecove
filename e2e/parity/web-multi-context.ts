@@ -65,6 +65,10 @@ export async function multiContextAction(page: Page, step: MultiContextStep): Pr
 			break;
 		case "expectMapContextOptions":
 			await mapContextOptions(page).waitFor({ state: step.open ? "visible" : "hidden" });
+			if (step.focused !== undefined) {
+				const focused = await mapContextSelect(page).evaluate((node) => node === document.activeElement);
+				if (focused !== step.focused) throw new Error(`Map context trigger focused: ${focused}, expected ${step.focused}`);
+			}
 			break;
 		case "expectMapContext":
 			// The map header is present, so a missing select is not a map that has not loaded yet.

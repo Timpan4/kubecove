@@ -241,7 +241,8 @@ export type Step =
     | { action: "expectMapContext"; shown: false }
     /** Presses a key on the "Map context" trigger, reaching it with Tab first while its options are closed. */
     | { action: "mapContextKey"; key: (typeof MAP_CONTEXT_KEYS)[number] }
-    | { action: "expectMapContextOptions"; open: boolean }
+    /** With `focused`, also whether the Map context trigger has keyboard focus. */
+    | { action: "expectMapContextOptions"; open: boolean; focused?: boolean }
     | { action: "expectClusterResource" | "expectNoClusterResource"; kind: string; name: string }
     | { action: "expectYaml"; contains: string[] }
     | { action: "openPage"; page: string }
@@ -384,7 +385,7 @@ export const PANEL_CONTROLS = [
 ] as const;
 type PanelControl = (typeof PANEL_CONTROLS)[number];
 export const MAP_KEYS = ["Tab", "Shift+Tab", "Enter", "Space"] as const;
-export const MAP_CONTEXT_KEYS = ["Enter", "Space", "ArrowDown", "ArrowUp", "Home", "End", "Escape", "Tab"] as const;
+export const MAP_CONTEXT_KEYS = ["Enter", "Space", "ArrowDown", "ArrowUp", "Home", "End", "Escape", "Tab", "Shift+Tab"] as const;
 type MapKey = (typeof MAP_KEYS)[number];
 /** The zoom controls, labeled as xyflow labels them on the web. */
 export const MAP_CONTROLS = ["Zoom In", "Zoom Out", "Fit View"] as const;

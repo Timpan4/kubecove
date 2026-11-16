@@ -68,17 +68,20 @@ pub(crate) fn tab_to(
     if locate::focus_state(&window.find(id.clone())) == Some(true) {
         return;
     }
-    let mut first: Option<gpui_kit::FocusHandle> = None;
+    // Tab landing on a control it already visited means it cycled, or stayed in a
+    // control that keeps Tab, such as the terminal.
+    let mut visited: Vec<gpui_kit::FocusHandle> = Vec::new();
     loop {
         window.press("tab", cx);
         if locate::focus_state(&window.find(id.clone())) == Some(true) {
             return;
         }
         let focused = window.focused(cx).expect("Tab focused no control");
-        match &first {
-            None => first = Some(focused),
-            Some(first) => assert!(*first != focused, "Tab cycled without reaching {id:?}"),
-        }
+        assert!(
+            !visited.contains(&focused),
+            "Tab returned to a visited control without reaching {id:?}"
+        );
+        visited.push(focused);
     }
 }
 
