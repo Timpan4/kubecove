@@ -7,12 +7,19 @@ use kubecove_gpui::workspaces::{ApiKind, SavedKind};
 
 #[test]
 fn version_one_kind_names_take_their_import_identity() {
+    // A document without a version predates version 2 too.
+    for version in [Some(1), None] {
+        kind_names_migrate(version);
+    }
+}
+
+fn kind_names_migrate(version: Option<u32>) {
     let directory = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
         .join(".t")
         .join("preferences-tests")
-        .join(format!("kinds-{}", std::process::id()));
+        .join(format!("kinds-{}-{version:?}", std::process::id()));
     std::fs::create_dir_all(&directory).unwrap();
     let imported: serde_json::Value = serde_json::from_str(include_str!(
         "../../../../src/lib/overview-application-workspace.json"
@@ -24,8 +31,7 @@ fn version_one_kind_names_take_their_import_identity() {
             "group_name": null, "namespaces": [], "kinds": kinds, "updated": id, "reviews": []
         })
     };
-    let original = serde_json::json!({
-        "version": 1,
+    let mut original = serde_json::json!({
         "workspaces": [
             workspace(1, &["Pod", "Application"]),
             workspace(2, &["Application"]),
@@ -33,8 +39,11 @@ fn version_one_kind_names_take_their_import_identity() {
         ],
         // Workspace 2's names differ from its document's kinds, so they stay.
         "workspaceDocuments": {"1": imported, "2": imported}
-    })
-    .to_string();
+    });
+    if let Some(version) = version {
+        original["version"] = version.into();
+    }
+    let original = original.to_string();
     let path = directory.join("live-sessions.json");
     std::fs::write(&path, &original).unwrap();
     let store = Store::file(directory.clone());

@@ -109,7 +109,8 @@ impl Store {
 fn decode(bytes: &[u8]) -> Result<Document, AppError> {
     let value: serde_json::Value = serde_json::from_slice(bytes).map_err(|_| invalid())?;
     reject_credentials(&value)?;
-    let mut document: Document = if value.get("version").is_none()
+    let versioned = value.get("version").is_some();
+    let mut document: Document = if !versioned
         && ["presets", "autoStart", "keep"]
             .iter()
             .any(|key| value.get(key).is_some())
@@ -134,6 +135,11 @@ fn decode(bytes: &[u8]) -> Result<Document, AppError> {
     } else {
         serde_json::from_value(value).map_err(|_| invalid())?
     };
+    // The new-document default is the current version; a stored document
+    // without one predates version 2.
+    if !versioned {
+        document.version = 1;
+    }
     match document.version {
         0 | 1 => {
             restore_kind_identities(&mut document);
