@@ -122,7 +122,7 @@ test("off-page selection expands its group without changing the page or saved co
 		...rows[0],
 		name: `pod-${index}`,
 	}));
-	const collapsedGroups = new Set([resourceTypeGroupCollapseKey(many[0])]);
+	const collapsedGroups = new Set([resourceTypeGroupCollapseKey(many[0], false)]);
 	const projection = buildResourceTableProjection(many);
 	const collapsed = buildResourceTableModel(projection, {
 		...state,
@@ -148,6 +148,26 @@ test("off-page selection expands its group without changing the page or saved co
 		selectedResource: many.at(-1),
 	});
 	expect(filteredOut.entries.some((entry) => entry.type === "resource")).toBe(
+		false,
+	);
+});
+
+test("without GitOps grouping, a kind group row counts and collapses the rows of every Helm release", () => {
+	const deployments = ["grafana", "traefik"].map((name) => ({
+		...rows[0],
+		kind: "Deployment",
+		name,
+		helmRelease: name,
+	}));
+	const projection = buildResourceTableProjection(deployments);
+	const expanded = buildResourceTableModel(projection, state);
+	const header = expanded.entries.find((entry) => entry.type === "type");
+	expect(header?.type === "type" && header.count).toBe(2);
+	const collapsed = buildResourceTableModel(projection, {
+		...state,
+		collapsedGroups: new Set([header?.key ?? ""]),
+	});
+	expect(collapsed.entries.some((entry) => entry.type === "resource")).toBe(
 		false,
 	);
 });
