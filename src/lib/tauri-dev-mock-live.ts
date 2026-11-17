@@ -65,6 +65,9 @@ export function registerMockWatch(args: Omit<Watch, "id" | "channel"> & { channe
         if (changed || rolling || deletedHere) {
             channel.onmessage({ type: "resourceChanged", streamId: id, target: { cluster: args.context, kind: "Deployment", name: "payments-api", namespace: "payments" }, action: deletedHere ? "deleted" : "applied" });
         }
+        if (added) {
+            channel.onmessage({ type: "resourceChanged", streamId: id, target: { cluster: args.context, kind: "Deployment", name: ADDED, namespace: "payments" }, action: "applied" });
+        }
         if (reowned) {
             channel.onmessage({ type: "resourceChanged", streamId: id, target: { cluster: args.context, kind: "Deployment", name: REOWNED, namespace: "payments" }, action: "applied" });
         }

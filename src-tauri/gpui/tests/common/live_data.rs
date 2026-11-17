@@ -228,9 +228,12 @@ impl Fixture {
         scope: &Scope,
         key: &kubecove_lib::models::WatchResourceKey,
     ) -> Vec<ResourceSummary> {
+        // Each context has the exact rows exported by the browser mocks, so a
+        // read from the wrong context returns that context's rows.
         let rows = self
-            .resources
+            .context_resources
             .iter()
+            .filter(|row| row.cluster == scope.context)
             .filter(|row| row.kind == key.resource_kind.kind)
             .filter(|row| {
                 key.resource_kind
@@ -243,10 +246,7 @@ impl Fixture {
                     .as_ref()
                     .is_none_or(|ns| row.namespace.as_ref() == Some(ns))
             })
-            .map(|row| ResourceSummary {
-                cluster: scope.context.clone(),
-                ..row.clone()
-            })
+            .cloned()
             .collect();
         self.live_rows(rows)
     }
@@ -525,6 +525,7 @@ impl Fixture {
                 let changed = [
                     (state.changed || state.rolling || deleted)
                         .then_some(("payments-api", if deleted { "deleted" } else { "applied" })),
+                    state.added.then_some((ADDED, "applied")),
                     state.reowned.map(|_| (REOWNED, "applied")),
                 ];
                 for (name, action) in changed.into_iter().flatten() {
