@@ -3,6 +3,8 @@
 //! the visuals of `resourceVisuals.ts`. Only the chevron expands a node, and
 //! providers show once detected, as with `showUnavailableGitOpsProviders` off.
 
+use super::sidebar_fold::{self, Fold};
+use super::sidebar_tree::ROW_HEIGHT;
 use super::{Inspector, Page};
 use crate::gitops_surface::{ARGO_KINDS, FLUX_FAMILIES, Focus};
 use crate::targets::TestSupportExt;
@@ -31,6 +33,40 @@ struct Row {
     tone: fn() -> Hsla,
     open: Open,
     disabled: bool,
+    /// The height the row shows, which a folding parent cuts.
+    shown: f32,
+}
+
+fn row(
+    depth: usize,
+    id: String,
+    toggle: Option<&'static str>,
+    label: &'static str,
+    (icon, tone): (&'static str, fn() -> Hsla),
+    open: Open,
+) -> Row {
+    Row {
+        depth,
+        id,
+        toggle,
+        label,
+        icon,
+        tone,
+        open,
+        disabled: false,
+        shown: ROW_HEIGHT,
+    }
+}
+
+/// The height `row` shows, for `Fold::clip`.
+fn shown(row: &mut Row) -> &mut f32 {
+    &mut row.shown
+}
+
+/// The fold of the node `node`. Flux families share labels with the built-in
+/// branches, so the key names the section.
+fn fold_key(node: &str) -> String {
+    format!("gitops:{node}")
 }
 
 /// `getResourceKindVisual` for the GitOps kinds.
@@ -92,137 +128,40 @@ impl Inspector {
     }
 
     fn toggle_nav(&mut self, node: &'static str, cx: &mut Context<Self>) {
-        let open = &mut self.gitops_page.nav_open;
-        match open.iter().position(|item| *item == node) {
+        let nodes = &mut self.gitops_page.nav_open;
+        let open = match nodes.iter().position(|item| *item == node) {
             Some(index) => {
-                open.remove(index);
+                nodes.remove(index);
+                false
             }
-            None => open.push(node),
-        }
+            None => {
+                nodes.push(node);
+                true
+            }
+        };
+        self.sidebar_tree.folds.start(&fold_key(node), open, cx);
         cx.notify();
     }
 
-    fn delivery_rows(&self) -> Vec<Row> {
-        let row = |depth, id: String, toggle, label, (icon, tone), open| Row {
-            depth,
-            id,
-            toggle,
-            label,
-            icon,
-            tone,
-            open,
-            disabled: false,
-        };
+    /// How `node` shows its children this frame: `None` once it is closed and
+    /// its fold has ended.
+    fn nav_fold(&self, node: &str, cx: &mut Context<Self>) -> Option<Fold> {
+        self.sidebar_tree
+            .folds
+            .branch(&fold_key(node), self.nav_open(node), cx)
+    }
+
+    fn delivery_rows(&self, cx: &mut Context<Self>) -> Vec<Row> {
         let mut rows = vec![row(
             0,
             "nav:GitOps".into(),
             Some("GitOps"),
             "GitOps",
-            ("package", Tokens::muted_foreground as fn() -> Hsla),
+            ("package", Tokens::muted_foreground),
             Open::GitOps(Focus::Section),
         )];
-        if self.nav_open("GitOps") {
-            let detecting = self.loading.phase(
-                "sidebar-gitops",
-                self.gitops.inventory().is_none() && self.gitops.error().is_none(),
-            );
-            match self.gitops.inventory() {
-                Some(data) if detecting.ready() => {
-                    if data.argo.is_some()
-                        || self
-                            .persisted
-                            .preferences
-                            .show_unavailable_git_ops_providers
-                    {
-                        rows.push(Row {
-                            disabled: data.argo.is_none(),
-                            ..row(
-                                1,
-                                "nav:Argo CD".into(),
-                                Some("Argo CD"),
-                                "Argo CD",
-                                ("git-branch", Tokens::primary),
-                                Open::GitOps(Focus::Argo(None)),
-                            )
-                        });
-                        if data.argo.is_some() && self.nav_open("Argo CD") {
-                            rows.extend(ARGO_KINDS.iter().map(|(kind, label)| {
-                                row(
-                                    2,
-                                    format!("nav:{label}"),
-                                    None,
-                                    *label,
-                                    kind_visual(label),
-                                    Open::GitOps(Focus::Argo(Some(*kind))),
-                                )
-                            }));
-                        }
-                    }
-                    if data.flux.is_some()
-                        || self
-                            .persisted
-                            .preferences
-                            .show_unavailable_git_ops_providers
-                    {
-                        rows.push(Row {
-                            disabled: data.flux.is_none(),
-                            ..row(
-                                1,
-                                "nav:Flux".into(),
-                                Some("Flux"),
-                                "Flux",
-                                ("package", Tokens::muted_foreground),
-                                Open::GitOps(Focus::Flux {
-                                    family: None,
-                                    kind: None,
-                                }),
-                            )
-                        });
-                        if data.flux.is_some() && self.nav_open("Flux") {
-                            for (family, kinds) in FLUX_FAMILIES {
-                                rows.push(row(
-                                    2,
-                                    format!("nav:Flux/{family}"),
-                                    Some(family),
-                                    family,
-                                    family_visual(family),
-                                    Open::GitOps(Focus::Flux {
-                                        family: Some(family),
-                                        kind: None,
-                                    }),
-                                ));
-                                if self.nav_open(family) {
-                                    rows.extend(kinds.iter().map(|(kind, label)| {
-                                        row(
-                                            3,
-                                            format!("nav:{label}"),
-                                            None,
-                                            *label,
-                                            kind_visual(label),
-                                            Open::GitOps(Focus::Flux {
-                                                family: None,
-                                                kind: Some(*kind),
-                                            }),
-                                        )
-                                    }));
-                                }
-                            }
-                        }
-                    }
-                }
-                _ if detecting.shown() => rows.push(Row {
-                    disabled: true,
-                    ..row(
-                        1,
-                        "nav:gitops-detecting".into(),
-                        None,
-                        "Detecting providers...",
-                        ("package", Tokens::muted_foreground),
-                        Open::Nothing,
-                    )
-                }),
-                _ => {}
-            }
+        if let Some(fold) = self.nav_fold("GitOps", cx) {
+            rows.extend(fold.clip(self.provider_rows(cx), shown));
         }
         rows.push(row(
             0,
@@ -232,15 +171,130 @@ impl Inspector {
             ("package", Tokens::muted_foreground),
             Open::Helm,
         ));
-        if self.nav_open("Helm") {
-            rows.push(row(
+        if let Some(fold) = self.nav_fold("Helm", cx) {
+            let releases = row(
                 1,
                 "nav:Helm/Releases".into(),
                 None,
                 "Releases",
                 ("package", Tokens::muted_foreground),
                 Open::Helm,
+            );
+            rows.extend(fold.clip(vec![releases], shown));
+        }
+        rows
+    }
+
+    /// The rows under the GitOps node: the detected providers and their kinds.
+    fn provider_rows(&self, cx: &mut Context<Self>) -> Vec<Row> {
+        let detecting = self.loading.phase(
+            "sidebar-gitops",
+            self.gitops.inventory().is_none() && self.gitops.error().is_none(),
+        );
+        let unavailable = self
+            .persisted
+            .preferences
+            .show_unavailable_git_ops_providers;
+        let mut rows = Vec::new();
+        match self.gitops.inventory() {
+            Some(data) if detecting.ready() => {
+                if data.argo.is_some() || unavailable {
+                    rows.push(Row {
+                        disabled: data.argo.is_none(),
+                        ..row(
+                            1,
+                            "nav:Argo CD".into(),
+                            Some("Argo CD"),
+                            "Argo CD",
+                            ("git-branch", Tokens::primary),
+                            Open::GitOps(Focus::Argo(None)),
+                        )
+                    });
+                    if data.argo.is_some()
+                        && let Some(fold) = self.nav_fold("Argo CD", cx)
+                    {
+                        let kinds = ARGO_KINDS.iter().map(|(kind, label)| {
+                            row(
+                                2,
+                                format!("nav:{label}"),
+                                None,
+                                label,
+                                kind_visual(label),
+                                Open::GitOps(Focus::Argo(Some(*kind))),
+                            )
+                        });
+                        rows.extend(fold.clip(kinds.collect(), shown));
+                    }
+                }
+                if data.flux.is_some() || unavailable {
+                    rows.push(Row {
+                        disabled: data.flux.is_none(),
+                        ..row(
+                            1,
+                            "nav:Flux".into(),
+                            Some("Flux"),
+                            "Flux",
+                            ("package", Tokens::muted_foreground),
+                            Open::GitOps(Focus::Flux {
+                                family: None,
+                                kind: None,
+                            }),
+                        )
+                    });
+                    if data.flux.is_some()
+                        && let Some(fold) = self.nav_fold("Flux", cx)
+                    {
+                        rows.extend(fold.clip(self.flux_rows(cx), shown));
+                    }
+                }
+            }
+            _ if detecting.shown() => rows.push(Row {
+                disabled: true,
+                ..row(
+                    1,
+                    "nav:gitops-detecting".into(),
+                    None,
+                    "Detecting providers...",
+                    ("package", Tokens::muted_foreground),
+                    Open::Nothing,
+                )
+            }),
+            _ => {}
+        }
+        rows
+    }
+
+    /// The rows under the Flux node: its families and their kinds.
+    fn flux_rows(&self, cx: &mut Context<Self>) -> Vec<Row> {
+        let mut rows = Vec::new();
+        for (family, kinds) in FLUX_FAMILIES {
+            rows.push(row(
+                2,
+                format!("nav:Flux/{family}"),
+                Some(family),
+                family,
+                family_visual(family),
+                Open::GitOps(Focus::Flux {
+                    family: Some(family),
+                    kind: None,
+                }),
             ));
+            if let Some(fold) = self.nav_fold(family, cx) {
+                let kinds = kinds.iter().map(|(kind, label)| {
+                    row(
+                        3,
+                        format!("nav:{label}"),
+                        None,
+                        label,
+                        kind_visual(label),
+                        Open::GitOps(Focus::Flux {
+                            family: None,
+                            kind: Some(*kind),
+                        }),
+                    )
+                });
+                rows.extend(fold.clip(kinds.collect(), shown));
+            }
         }
         rows
     }
@@ -256,10 +310,11 @@ impl Inspector {
 
     /// The GitOps and Helm rows that open the Cluster section.
     pub(super) fn delivery_nav(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        self.delivery_rows()
+        self.delivery_rows(cx)
             .into_iter()
             .map(|row| {
                 let selected = self.nav_selected(&row);
+                let visible = row.shown;
                 let expanded = row.toggle.is_some_and(|node| self.nav_open(node));
                 // The web `selectNode` returns for a disabled row, such as an unavailable provider.
                 let open = if row.disabled {
@@ -268,7 +323,7 @@ impl Inspector {
                     row.open
                 };
                 let toggle = row.toggle;
-                div()
+                let element = div()
                     .id(SharedString::from(row.id))
                     .test_support()
                     .aria_selected(selected)
@@ -277,7 +332,7 @@ impl Inspector {
                     .flex_none()
                     .items_center()
                     .gap(px(4.))
-                    .h(px(26.))
+                    .h(px(ROW_HEIGHT))
                     .pl(px(8. + 16. * row.depth as f32))
                     .pr(px(8.))
                     .text_color(if row.disabled {
@@ -351,8 +406,8 @@ impl Inspector {
                         Open::GitOps(focus) => this.open_gitops(focus, cx),
                         Open::Helm => this.open_helm(cx),
                         Open::Nothing => {}
-                    }))
-                    .into_any_element()
+                    }));
+                sidebar_fold::cut(element.into_any_element(), ROW_HEIGHT, visible)
             })
             .collect()
     }

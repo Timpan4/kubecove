@@ -140,6 +140,11 @@ fn paint(
         "segment" => ("gitops-view:List".into(), Some("gitops-view:Cards")),
         "tab" => ("show-events".into(), Some("show-details")),
         "chevron" => return None,
+        // A fold paints nothing of its own. The row under the branch shows it.
+        "branch" => {
+            let below = window.find("nav:Network").bounds().origin.y;
+            return Some(vec![format!("{below:?}")]);
+        }
         _ => (transition(window, cx, target), None),
     };
     let mut area = window.find(id).bounds();
@@ -201,13 +206,19 @@ fn change(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, target: &str) -
             reveal(window, "sidebar-tree", "tree-toggle:Workloads", cx);
             sidebar_live::click_sidebar(window, cx, "tree-toggle:Workloads".into());
         }
+        "branch" => {
+            // The runner opens branches at once in every other scenario.
+            Moving::set_instant_layout(false, cx);
+            reveal(window, "sidebar-tree", "tree-toggle:Workloads", cx);
+            sidebar_live::click_sidebar(window, cx, "tree-toggle:Workloads".into());
+        }
         other => panic!("unknown motion target {other}"),
     }
     transition(window, cx, target)
 }
 
 /// The id the target's transition reports under: the `eased` id, the sliding
-/// indicator's id, or the id of the element a `hover_fill` fills.
+/// indicator's id, the id of the element a `hover_fill` fills, or a fold's path.
 fn transition(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, target: &str) -> ElementId {
     let id = match target {
         "switch" => format!("switch-thumb:{SETTING}"),
@@ -220,6 +231,7 @@ fn transition(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, target: &st
         }
         "button" => "edit-draft".into(),
         "chevron" => "chevron:Workloads".into(),
+        "branch" => "fold:Workloads".into(),
         other => panic!("unknown motion target {other}"),
     };
     ElementId::Name(id.into())

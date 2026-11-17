@@ -18,6 +18,8 @@ type Target = {
 	property: string;
 	/** What the page shows, where the followed property alone does not say it. */
 	shown?(page: Page): Promise<string>;
+	/** The element under which Svelte runs the motion as a Web Animation, where it is no CSS transition. */
+	animated?(page: Page): Locator;
 	/** Changes the control's state. */
 	act(page: Page): Promise<void>;
 	/** Chooses the first state again, and the element whose transition then runs if it is another. */
@@ -79,6 +81,15 @@ const TARGETS = {
 		property: "rotate",
 		act: (page) => sidebarRow(page, ["Workloads"]).getByRole("button").click(),
 	},
+	// SidebarTreeNode.svelte: the `slide` transition that unfolds a branch's rows. The row under
+	// the branch shows it, by moving down. `property` names what the transition changes.
+	branch: {
+		moving: (page) => sidebarRow(page, ["Network"]),
+		property: "height",
+		shown: (page) => sidebarRow(page, ["Network"]).evaluate((row) => String(row.getBoundingClientRect().top)),
+		animated: (page) => sidebarRow(page, ["Workloads"]).locator(".."),
+		act: (page) => sidebarRow(page, ["Workloads"]).getByRole("button").click(),
+	},
 } satisfies Record<string, Target>;
 
 function targetOf(name: string | undefined): Target | undefined {
@@ -118,6 +129,28 @@ function seek(page: Page, ms: number | "end") {
 
 /** Pauses the next transition of the target's property on `moving` at time 0, once `act` starts it. */
 async function follow(page: Page, moving: Locator, target: Target, act: (page: Page) => Promise<void>) {
+	if (target.animated) {
+		// Svelte starts its animation with `element.animate` a frame after the change. A busy page
+		// can run the whole animation between two polls, so this pauses it as it is created.
+		await target.animated(page).evaluate((under) => {
+			window.controlMotion = undefined;
+			const original = Element.prototype.animate;
+			Element.prototype.animate = function (this: Element, ...args: Parameters<Element["animate"]>) {
+				const animation = original.apply(this, args);
+				// Svelte's first animation is an empty one that lasts the delay.
+				if (under.contains(this) && Number(animation.effect?.getComputedTiming().duration ?? 0) > 0) {
+					Element.prototype.animate = original;
+					animation.pause();
+					animation.currentTime = 0;
+					window.controlMotion = [animation];
+				}
+				return animation;
+			};
+		});
+		await act(page);
+		await page.waitForFunction(() => window.controlMotion !== undefined).catch(() => { throw new Error("The control changed without an animation"); });
+		return;
+	}
 	await moving.evaluate((element, { pseudo, property }) => {
 		window.controlMotion = undefined;
 		const capture = (event: Event) => {

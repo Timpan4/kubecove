@@ -1,7 +1,7 @@
 //! Workspace sidebar, mirroring `WorkspaceSidebar.svelte`, `SidebarTree.svelte`
 //! and `SidebarTreeNode.svelte`.
 
-use super::{Inspector, Page, overlay_motion::Overlay};
+use super::{Inspector, Page, overlay_motion::Overlay, sidebar_fold::Row};
 use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui;
@@ -172,8 +172,7 @@ impl Inspector {
                             ))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 cx.stop_propagation();
-                                this.live.custom_open = !this.live.custom_open;
-                                cx.notify();
+                                this.toggle_custom_resources(!this.live.custom_open, cx);
                             }))
                     }),
             )
@@ -193,7 +192,8 @@ impl Inspector {
             .iter()
             .flat_map(|node| {
                 if node.expandable && node.label != "Custom Resources" {
-                    return self.builtin_branch(node.label, None, cx);
+                    let rows = self.builtin_branch(node.label, None, cx);
+                    return rows.into_iter().map(Row::into_element).collect();
                 }
                 let custom = node.label == "Custom Resources";
                 // Resources pages select their namespace or kind rows instead,
@@ -221,8 +221,8 @@ impl Inspector {
                         move |this, event: &gpui_kit::KeyDownEvent, window, cx| {
                             match event.keystroke.key.as_str() {
                                 "left" | "right" if custom => {
-                                    this.live.custom_open = event.keystroke.key == "right";
-                                    cx.notify();
+                                    let open = event.keystroke.key == "right";
+                                    this.toggle_custom_resources(open, cx);
                                 }
                                 "enter" | "space" => {
                                     cx.stop_propagation();
@@ -335,6 +335,7 @@ impl Inspector {
     ) -> impl IntoElement {
         let _profile = crate::frame_profile::scope("sidebar", "build");
         let namespaces = if self.sidebar_tree.open.is_empty()
+            && self.sidebar_tree.folds.is_empty()
             && self.sidebar_tree.reveal.borrow().is_none()
             && self.sidebar_tree.focused(window, cx).is_none()
         {
@@ -352,14 +353,10 @@ impl Inspector {
                 owner
                     .update(cx, |owner, cx| {
                         let name = names[index].clone();
-                        owner.builtin_row(
-                            name.clone(),
-                            name.clone().into(),
-                            Some(name),
-                            0,
-                            true,
-                            cx,
-                        )
+                        let label = name.clone().into();
+                        owner
+                            .builtin_row(name.clone(), label, Some(name), 0, true, cx)
+                            .into_element()
                     })
                     .unwrap_or_else(|_| div().into_any_element())
             })
@@ -457,10 +454,7 @@ impl Inspector {
                     .children(self.nodes(CLUSTER, cx))
                     .child(self.section_header("All namespaces", None))
                     .children(self.nodes(ALL_NAMESPACES, cx))
-                    .when(self.live.custom_open, |tree| {
-                        tree.child(self.custom_search_input())
-                            .children(self.custom_kind_rows(cx))
-                    })
+                    .children(self.custom_section(cx))
                     .child(
                         self.section_header(
                             "Namespaces",

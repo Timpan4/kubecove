@@ -66,9 +66,16 @@ impl Inspector {
             || self.live.custom_open
             || !self.gitops_page.nav_open.is_empty()
             || self.sidebar_tree.reveal.borrow().is_some()
+            // The last branch to close still shows its rows while it folds.
+            || !self.sidebar_tree.folds.is_empty()
         {
             if cache.read(cx).inputs.is_some() {
                 cache.update(cx, |cache, _| cache.inputs = None);
+            }
+            let contents = self.sidebar_contents(window, cx, width).into_any_element();
+            if self.sidebar_tree.folds.end_frame() {
+                let view = cx.entity_id();
+                window.on_next_frame(move |_, cx| cx.notify(view));
             }
             // Under the cached view's id, as the view puts its content. Element
             // state, such as a chevron's turn, then stays in place when the first
@@ -78,7 +85,7 @@ impl Inspector {
                     div()
                         .id(ElementId::View(cache.entity_id()))
                         .size_full()
-                        .child(self.sidebar_contents(window, cx, width)),
+                        .child(contents),
                 )
                 .into_any_element();
         }

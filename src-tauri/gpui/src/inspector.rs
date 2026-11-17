@@ -94,6 +94,7 @@ mod settings_sections;
 mod sidebar;
 mod sidebar_cache;
 mod sidebar_discovery;
+mod sidebar_fold;
 mod sidebar_reveal;
 mod sidebar_tree;
 mod surface;

@@ -7,7 +7,8 @@
 //! left out. Only a toggle starts a fold. Any other change of a branch's state,
 //! such as "Collapse all", ends it at once. Time comes from the executor clock,
 //! so test drivers move it. A frame asks for the next one only while a fold
-//! runs, and reduced motion starts none.
+//! runs. Reduced motion starts none, and neither does a test driver that asked
+//! for `Moving::set_instant_layout`.
 use crate::control_motion::{self, Moving};
 use gpui_kit::{AnyElement, App, ElementId, div, prelude::*, px};
 use std::cell::RefCell;
@@ -53,7 +54,7 @@ impl Folds {
     /// Starts the fold of the branch at `path`, which the user toggled to `open`.
     pub(super) fn start(&self, path: &str, open: bool, cx: &App) {
         let mut tracks = self.tracks.borrow_mut();
-        if cx.reduce_motion() {
+        if cx.reduce_motion() || Moving::instant_layout(cx) {
             tracks.remove(path);
             return;
         }

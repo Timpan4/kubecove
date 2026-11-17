@@ -1,8 +1,10 @@
 //! Custom-kind discovery for the sidebar: every discovered kind for the Custom Resources
 //! section (the web's `list_resource_kinds` query), and namespace-owned kinds for namespace
 //! branches (the web's expanded namespace query).
+use super::sidebar_fold::Row;
+use super::sidebar_tree::ROW_HEIGHT;
 use super::{Inspector, request::Fetch};
-use gpui_kit::{AnyElement, Context, div, prelude::*, px};
+use gpui_kit::{Context, div, prelude::*, px};
 use kubecove_lib::models::DiscoveredResourceKind;
 use std::collections::HashMap;
 
@@ -42,8 +44,10 @@ impl Inspector {
             state.cluster = Fetch::Idle;
             state.context = self.scope.context.clone();
         }
+        // A closing namespace keeps its kinds until its rows have folded away.
         state.reads.retain(|ns, _| {
-            self.persisted.preferences.show_custom_resources && self.sidebar_tree.open.contains(ns)
+            self.persisted.preferences.show_custom_resources
+                && (self.sidebar_tree.open.contains(ns) || self.sidebar_tree.folds.folding(ns))
         });
         if !self.persisted.preferences.show_custom_resources || !self.workspace_open() {
             return;

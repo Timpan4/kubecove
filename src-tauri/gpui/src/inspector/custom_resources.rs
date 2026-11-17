@@ -1,4 +1,6 @@
 //! Discovered kinds retain their API identity even before they contain objects.
+use super::sidebar_fold::Row;
+use super::sidebar_tree::ROW_HEIGHT;
 use super::{Inspector, Page, overlay_motion::Overlay, sidebar_discovery::ClusterRead};
 use crate::backend::ScopeResult;
 use crate::targets::TestSupportExt;
@@ -93,26 +95,65 @@ impl Inspector {
 }
 
 const CUSTOM_RESOURCES: &str = "Custom Resources";
+/// The fold of the Custom Resources section. No namespace can have this name.
+const SECTION_FOLD: &str = "section:Custom Resources";
+/// `py-1` around the `h-7` search input.
+const SEARCH_HEIGHT: f32 = 36.;
+/// `py-1` around one `text-xs` line.
+const MESSAGE_HEIGHT: f32 = 24.;
+
+/// The fold of one API group's kinds in the Custom Resources section.
+fn group_fold(group: &str) -> String {
+    format!("custom-group:{group}")
+}
 
 /// The disabled loading and error rows in the Custom Resources section, as the web's
 /// `SidebarTree` renders them. The web shows the discovery message as the row's tooltip, so
 /// the native row keeps it as its accessible description rather than as visible text.
-fn discovery_row(title: &'static str, description: Option<&str>) -> AnyElement {
-    div()
-        .pl(px(28.))
-        .py(px(4.))
-        .id(title)
-        .test_support()
-        .aria_label(title)
-        .when_some(description, |row, message| {
-            row.aria_description(message.to_owned())
-        })
-        .child(ui::xs(title))
-        .into_any_element()
+fn discovery_row(title: &'static str, description: Option<&str>) -> Row {
+    Row::new(
+        div()
+            .pl(px(28.))
+            .py(px(4.))
+            .id(title)
+            .test_support()
+            .aria_label(title)
+            .when_some(description, |row, message| {
+                row.aria_description(message.to_owned())
+            })
+            .child(ui::xs(title))
+            .into_any_element(),
+        MESSAGE_HEIGHT,
+    )
 }
 
 impl Inspector {
-    pub(super) fn custom_kind_rows(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+    /// Opens or closes the Custom Resources section as the user toggled it,
+    /// which folds its rows.
+    pub(super) fn toggle_custom_resources(&mut self, open: bool, cx: &mut Context<Self>) {
+        if self.live.custom_open != open {
+            self.live.custom_open = open;
+            self.sidebar_tree.folds.start(SECTION_FOLD, open, cx);
+        }
+        cx.notify();
+    }
+
+    /// What the Custom Resources section shows under its row: the search input
+    /// and the kind rows, cut to the height its fold has reached.
+    pub(super) fn custom_section(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let folds = &self.sidebar_tree.folds;
+        let Some(fold) = folds.branch(SECTION_FOLD, self.live.custom_open, cx) else {
+            return Vec::new();
+        };
+        let mut rows = vec![Row::new(self.custom_search_input(), SEARCH_HEIGHT)];
+        rows.extend(self.custom_kind_rows(cx));
+        fold.clip(rows, |row| &mut row.shown)
+            .into_iter()
+            .map(Row::into_element)
+            .collect()
+    }
+
+    fn custom_kind_rows(&self, cx: &mut Context<Self>) -> Vec<Row> {
         if !self.persisted.preferences.show_custom_resources {
             return Vec::new();
         }
@@ -144,7 +185,7 @@ impl Inspector {
         groups.dedup();
         let mut rows = Vec::new();
         if groups.is_empty() {
-            rows.push(
+            rows.push(Row::new(
                 div()
                     .pl(px(28.))
                     .py(px(4.))
@@ -163,48 +204,52 @@ impl Inspector {
                         },
                     ))
                     .into_any_element(),
-            );
+                MESSAGE_HEIGHT,
+            ));
         }
         for group in groups {
             let expanded = self.live.groups.contains(&group);
             let selected = group.clone();
-            rows.push(
-                div()
-                    .id(SharedString::from(format!("custom-group:{group}")))
-                    .test_support()
-                    .aria_label(group.clone())
-                    .flex()
-                    .items_center()
-                    .h(px(26.))
-                    .pl(px(28.))
-                    .gap(px(4.))
-                    .cursor_pointer()
-                    .child(ui::icon(
-                        if expanded {
-                            "chevron-down"
-                        } else {
-                            "chevron-right"
-                        },
-                        12.,
-                        Tokens::muted_foreground(),
-                    ))
-                    .child(ui::xs(group.clone()))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        if !this.live.groups.remove(&selected) {
-                            this.live.groups.insert(selected.clone());
-                        }
-                        cx.notify();
-                    }))
-                    .into_any_element(),
-            );
-            if expanded {
-                rows.extend(self.kind_rows(&group, cx));
+            let row = div()
+                .id(SharedString::from(format!("custom-group:{group}")))
+                .test_support()
+                .aria_label(group.clone())
+                .flex()
+                .items_center()
+                .h(px(ROW_HEIGHT))
+                .pl(px(28.))
+                .gap(px(4.))
+                .cursor_pointer()
+                .child(ui::icon(
+                    if expanded {
+                        "chevron-down"
+                    } else {
+                        "chevron-right"
+                    },
+                    12.,
+                    Tokens::muted_foreground(),
+                ))
+                .child(ui::xs(group.clone()))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    let open = !this.live.groups.remove(&selected);
+                    if open {
+                        this.live.groups.insert(selected.clone());
+                    }
+                    this.sidebar_tree
+                        .folds
+                        .start(&group_fold(&selected), open, cx);
+                    cx.notify();
+                }));
+            rows.push(Row::new(row.into_any_element(), ROW_HEIGHT));
+            let folds = &self.sidebar_tree.folds;
+            if let Some(fold) = folds.branch(&group_fold(&group), expanded, cx) {
+                rows.extend(fold.clip(self.kind_rows(&group, cx), |row| &mut row.shown));
             }
         }
         rows
     }
 
-    fn kind_rows(&self, group: &str, cx: &mut Context<Self>) -> Vec<AnyElement> {
+    fn kind_rows(&self, group: &str, cx: &mut Context<Self>) -> Vec<Row> {
         self.cluster_kinds()
             .iter()
             .filter(|kind| kind.group == group)
@@ -212,7 +257,7 @@ impl Inspector {
             .map(|kind| {
                 let kind = kind.clone();
                 let label = kind.kind.clone();
-                div()
+                let row = div()
                     .id(SharedString::from(format!(
                         "custom-kind:{}:{}",
                         kind.api_version, kind.kind
@@ -222,7 +267,7 @@ impl Inspector {
                     .aria_description(format!("{} / {}", kind.api_version, kind.plural))
                     .flex()
                     .items_center()
-                    .h(px(26.))
+                    .h(px(ROW_HEIGHT))
                     .pl(px(36.))
                     .pr(px(8.))
                     .cursor_pointer()
@@ -243,8 +288,8 @@ impl Inspector {
                         this.live.kind_locked = true;
                         this.live.picker_open = false;
                         this.filter(cx);
-                    }))
-                    .into_any_element()
+                    }));
+                Row::new(row.into_any_element(), ROW_HEIGHT)
             })
             .collect()
     }

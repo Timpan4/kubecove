@@ -90,6 +90,8 @@ pub struct Moving {
     finish: bool,
     /// This frame ends every transition.
     finishing: bool,
+    /// A test driver asked for layout changes without motion.
+    instant_layout: bool,
     /// The state keys of the fills this frame painted. Two fills under one
     /// element id share one state and turn it back and forth without end as
     /// the pointer hovers one of them, so a debug build refuses the second.
@@ -140,6 +142,21 @@ impl Moving {
         // A cached view paints again only when told to, and a transition ends
         // in a frame that paints it.
         cx.refresh_windows();
+    }
+
+    /// Makes motion that changes the layout, such as a sidebar branch
+    /// unfolding, instant, or lets it run again. A UI test driver whose steps
+    /// open a branch and use its rows in one window update turns it off,
+    /// because its clock cannot move inside that update.
+    #[doc(hidden)]
+    pub fn set_instant_layout(instant: bool, cx: &mut App) {
+        cx.default_global::<Self>().instant_layout = instant;
+    }
+
+    /// Whether a layout change shows at once, after `set_instant_layout`.
+    pub(crate) fn instant_layout(cx: &App) -> bool {
+        cx.try_global::<Self>()
+            .is_some_and(|moving| moving.instant_layout)
     }
 
     /// Whether this frame ends every transition, after a test driver's `finish`.

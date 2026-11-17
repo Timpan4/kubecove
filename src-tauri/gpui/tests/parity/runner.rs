@@ -52,6 +52,9 @@ pub(super) fn run_scenario(
     // Scenarios share one app. `setReducedMotion` must not outlive its scenario,
     // as the web driver's media emulation ends with its page.
     cx.update(|cx| cx.set_reduce_motion(false));
+    // Steps open a sidebar branch and use its rows in one window update, where the clock cannot
+    // move, so branches open at once. `motion:branch` in `control_motion.rs` follows the fold.
+    cx.update(|cx| kubecove_gpui::control_motion::Moving::set_instant_layout(true, cx));
     // A fresh fixture per scenario, as the web driver reloads the page and its
     // in-memory mock state.
     let backend = Arc::new(Fixture::load(Path::new(fixture)));
