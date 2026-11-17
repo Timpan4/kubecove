@@ -344,6 +344,8 @@ export type Step =
     | { action: "expectTopologyEdge"; source: string; target: string }
     /** `flow`: the edge's dashes move along a selected path. `pulse`: a pulse travels toward a target in progress. */
     | { action: "expectTopologyEdgeMotion"; source: string; target: string; flow: boolean; pulse: boolean }
+    /** The user switches to another application's window, or back to the app's. The native test window starts inactive. */
+    | { action: "setWindowActive"; active: boolean }
     | { action: "expectTopologyEmpty"; title: string }
     | { action: "selectTopologyNode" | "expectNoTopologyNode"; id: string }
     | { action: "expectResourceMetrics"; kind: string; namespace: string; name: string; cpu: string; memory: string }

@@ -55,11 +55,14 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
                 Some(want),
                 "edge motion as (flow, pulse)"
             );
-            // A moving edge asks for the next frame.
-            if want.0 || want.1 {
+            // A pulse asks for every frame. Dashes alone wake on a timer, one step
+            // at a time, which `map_edge_motion` reports.
+            if want.1 {
                 assert!(window.simulate_next_frame(cx) > 0);
             }
         }
+        // The runner switches the window, outside this window update.
+        "setWindowActive" => {}
         "selectTopologyNode" => {
             let node = format!("map-node:{}", s("id"));
             // Playwright clicks a node once it stops moving, after any transition ends.

@@ -7,6 +7,7 @@
       "title": "The dashes of a selected resource's path move, and edges are still before a selection",
       "steps": [
         { "action": "openResources" },
+        { "action": "setWindowActive", "active": true },
         { "action": "search", "value": "payments-api" },
         { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": false, "pulse": false },
         { "action": "selectTopologyNode", "id": "mock-dev:apps/v1:Deployment:payments:payments-api" },
@@ -14,10 +15,28 @@
       ]
     },
     {
+      "id": "map.motion-stops-in-inactive-window",
+      "title": "Edge motion stops while another application's window is active, and resumes on return",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "setWindowActive", "active": true },
+        { "action": "expectLiveState", "label": "Live" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "replayLiveData", "script": "rollout" },
+        { "action": "selectTopologyNode", "id": "mock-dev:apps/v1:Deployment:payments:payments-api" },
+        { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": true, "pulse": true },
+        { "action": "setWindowActive", "active": false },
+        { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": false, "pulse": false },
+        { "action": "setWindowActive", "active": true },
+        { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": true, "pulse": true }
+      ]
+    },
+    {
       "id": "map.rollout-pulse",
       "title": "A pulse travels toward a resource in progress while live, and stops while reconnecting",
       "steps": [
         { "action": "openResources" },
+        { "action": "setWindowActive", "active": true },
         { "action": "expectLiveState", "label": "Live" },
         { "action": "search", "value": "payments-api" },
         { "action": "replayLiveData", "script": "rollout" },

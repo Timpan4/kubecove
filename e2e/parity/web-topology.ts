@@ -52,6 +52,8 @@ export async function topologyAction(page: Page, step: Step) {
 			});
 			break;
 		}
+		// The browser reports another application taking or returning focus as these window events.
+		case "setWindowActive": await page.evaluate((active) => { window.dispatchEvent(new Event(active ? "focus" : "blur")); }, step.active); break;
 		case "selectTopologyNode": await page.locator(`.svelte-flow__node[data-id="${step.id}"]`).click(); break;
 		case "expectTopologyEmpty": await page.getByText(step.title, { exact: true }).waitFor(); break;
 		case "expectNoTopologyNode":
