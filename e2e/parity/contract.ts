@@ -158,7 +158,11 @@ function step<Value>(value: Value): Step {
             if (!isBoolean(item.open)) throw new Error("Expected drawer state");
             return { action: item.action, open: item.open };
         case "sidebarKey": return { action: item.action, path: strings(item.path, false), key: oneOf(["Enter", "Space", "ArrowLeft", "ArrowRight"], item.key, "a sidebar key") };
-        case "retryLauncher": case "expectLauncherRetry": return { action: item.action, read: oneOf(["contexts", "namespaces"], item.read, "a launcher read") };
+        case "retryLauncher": return { action: item.action, read: oneOf(["contexts", "namespaces"], item.read, "a launcher read") };
+        case "expectLauncherRetry": {
+            const read = oneOf(["contexts", "namespaces"], item.read, "a launcher read");
+            return item.height === undefined ? { action: item.action, read } : { action: item.action, read, height: count(item.height) };
+        }
         case "overviewOperation": return { action: item.action, destination: oneOf(["Resources", "Workspaces", "Port Forwards", "Incidents"], item.destination, "an overview operation") };
         case "reviewIncidentAction": return { action: item.action, index: count(item.index) };
         case "expectTopologyDenied": return { action: item.action };

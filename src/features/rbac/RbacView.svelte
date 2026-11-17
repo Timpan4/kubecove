@@ -294,6 +294,11 @@
 		identityGroups = identityDefaults(kind).join(", ");
 	}
 
+	// An identity typed while the selection falls back to the form makes it manual, so the form stays editable.
+	function editManualIdentity() {
+		identitySource = { kind: "manual" };
+	}
+
 	function inspectSubject(subject: {
 		kind: string;
 		name: string;
@@ -674,8 +679,9 @@
 					</div>
 
 					<CardContent class="min-h-0 flex-1 overflow-y-auto p-3">
-						{#if selected}
-							<div class="grid gap-3 lg:grid-cols-[minmax(0,1.45fr)_minmax(17rem,.75fr)]">
+						<!-- The verifier stays beside the placeholder, so an identity can be checked when no object matches. -->
+						<div class="grid gap-3 lg:grid-cols-[minmax(0,1.45fr)_minmax(17rem,.75fr)]">
+							{#if selected}
 								<div class="min-w-0 space-y-3">
 									<div class="grid gap-2 sm:grid-cols-3">
 										<div class="rounded-md border bg-muted/20 p-2.5">
@@ -786,103 +792,105 @@
 										</div>
 									</section>
 								</div>
+							{:else}
+								<div class="flex min-h-64 min-w-0 items-center justify-center text-sm text-muted-foreground">Select an RBAC object to inspect evidence.</div>
+							{/if}
 
-								<aside class="min-w-0 space-y-3 lg:sticky lg:top-0 lg:self-start">
+							<aside class="min-w-0 space-y-3 lg:sticky lg:top-0 lg:self-start">
+								{#if selected}
 									<RbacReviewPanel
 										{inspection}
 										entry={selected}
 										records={reviewRecords}
 										onRecordsChange={onReviewRecordsChange}
 									/>
-									<section class={cnfast("rounded-md border bg-card", handoffPromoted && "border-amber-500/50 ring-1 ring-amber-500/20")}>
-										<div class="border-b border-border px-3 py-2.5">
-											<div class="flex items-center gap-2">
-												<ShieldCheck class="size-4 text-primary" />
-												<p class="text-sm font-semibold">Verify exact action</p>
-											</div>
-											<p class="mt-1 text-xs text-muted-foreground">Live SubjectAccessReview. Manual only.</p>
+								{/if}
+								<section class={cnfast("rounded-md border bg-card", handoffPromoted && "border-amber-500/50 ring-1 ring-amber-500/20")}>
+									<div class="border-b border-border px-3 py-2.5">
+										<div class="flex items-center gap-2">
+											<ShieldCheck class="size-4 text-primary" />
+											<p class="text-sm font-semibold">Verify exact action</p>
 										</div>
-										<div class="space-y-2.5 p-3">
-											{#if identitySource.kind !== "manual" && activeIdentity.name}
-												<div class="rounded-sm border bg-muted/25 p-2">
-													<p class="text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground">Identity</p>
-													<p class="mt-1 break-all text-xs font-medium">{identityLabel(activeIdentity)}</p>
-													<Button class="mt-2" size="xs" variant="outline" onclick={() => beginIdentity(activeIdentity.kind)}>Change identity</Button>
-												</div>
+										<p class="mt-1 text-xs text-muted-foreground">Live SubjectAccessReview. Manual only.</p>
+									</div>
+									<div class="space-y-2.5 p-3">
+										{#if identitySource.kind !== "manual" && activeIdentity.name}
+											<div class="rounded-sm border bg-muted/25 p-2">
+												<p class="text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground">Identity</p>
+												<p class="mt-1 break-all text-xs font-medium">{identityLabel(activeIdentity)}</p>
+												<Button class="mt-2" size="xs" variant="outline" onclick={() => beginIdentity(activeIdentity.kind)}>Change identity</Button>
+											</div>
+										{:else}
+											<div class="flex flex-wrap gap-1">
+											{#each identityOptions as identityOption}
+												<Button size="xs" variant={identityKind === identityOption[0] ? "default" : "outline"} onclick={() => beginIdentity(identityOption[0])}>{identityOption[1]}</Button>
+												{/each}
+											</div>
+											<Input bind:value={identityName} oninput={editManualIdentity} aria-label="Identity name" placeholder={identityKind === "group" ? "Group" : "Identity name"} />
+											{#if identityKind === "serviceAccount"}
+												<Input bind:value={identityNamespace} oninput={editManualIdentity} aria-label="ServiceAccount namespace" placeholder="Namespace" />
+											{:else if identityKind === "user"}
+												<Input bind:value={identityGroups} oninput={editManualIdentity} aria-label="Groups" placeholder="Groups, comma-separated" />
+											{/if}
+										{/if}
+
+										<div class="flex gap-1">
+											<Button size="xs" variant={targetKind === "resource" ? "default" : "outline"} onclick={() => (targetKind = "resource")}>Resource</Button>
+											<Button size="xs" variant={targetKind === "nonResource" ? "default" : "outline"} onclick={() => (targetKind = "nonResource")}>Non-resource</Button>
+										</div>
+										<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2">
+											<Input bind:value={verb} aria-label="Verb" placeholder="Verb" />
+											{#if targetKind === "resource"}
+												<Input bind:value={resource} aria-label="Resource" placeholder="Resource" />
+												<Input bind:value={apiGroup} aria-label="API group, blank for core" placeholder="API group (core)" />
+												<Input bind:value={namespace} aria-label="Namespace, blank for cluster" placeholder="Namespace (cluster if blank)" />
+												<Input bind:value={subresource} aria-label="Subresource, optional" placeholder="Subresource" />
+												<Input bind:value={resourceName} aria-label="Resource name, optional" placeholder="Resource name" />
 											{:else}
-												<div class="flex flex-wrap gap-1">
-												{#each identityOptions as identityOption}
-													<Button size="xs" variant={identityKind === identityOption[0] ? "default" : "outline"} onclick={() => beginIdentity(identityOption[0])}>{identityOption[1]}</Button>
-													{/each}
-												</div>
-												<Input bind:value={identityName} aria-label="Identity name" placeholder={identityKind === "group" ? "Group" : "Identity name"} />
-												{#if identityKind === "serviceAccount"}
-													<Input bind:value={identityNamespace} aria-label="ServiceAccount namespace" placeholder="Namespace" />
-												{:else if identityKind === "user"}
-													<Input bind:value={identityGroups} aria-label="Groups" placeholder="Groups, comma-separated" />
-												{/if}
+												<Input bind:value={nonResourceUrl} aria-label="Non-resource URL" placeholder="/path" />
 											{/if}
-
-											<div class="flex gap-1">
-												<Button size="xs" variant={targetKind === "resource" ? "default" : "outline"} onclick={() => (targetKind = "resource")}>Resource</Button>
-												<Button size="xs" variant={targetKind === "nonResource" ? "default" : "outline"} onclick={() => (targetKind = "nonResource")}>Non-resource</Button>
-											</div>
-											<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2">
-												<Input bind:value={verb} aria-label="Verb" placeholder="Verb" />
-												{#if targetKind === "resource"}
-													<Input bind:value={resource} aria-label="Resource" placeholder="Resource" />
-													<Input bind:value={apiGroup} aria-label="API group, blank for core" placeholder="API group (core)" />
-													<Input bind:value={namespace} aria-label="Namespace, blank for cluster" placeholder="Namespace (cluster if blank)" />
-													<Input bind:value={subresource} aria-label="Subresource, optional" placeholder="Subresource" />
-													<Input bind:value={resourceName} aria-label="Resource name, optional" placeholder="Resource name" />
-												{:else}
-													<Input bind:value={nonResourceUrl} aria-label="Non-resource URL" placeholder="/path" />
-												{/if}
-											</div>
-											<Button
-												class="w-full"
-												size="sm"
-												disabled={reviewing || !activeIdentity.name || !verb.trim() || (targetKind === "resource" ? !resource.trim() : !nonResourceUrl.trim().startsWith("/"))}
-												onclick={verify}
-											>
-												<ShieldCheck data-icon /> {reviewing ? "Verifying…" : "Verify access"}
-											</Button>
-											<p class="text-[0.625rem] text-muted-foreground">Result is never inferred from observed grants.</p>
 										</div>
-									</section>
+										<Button
+											class="w-full"
+											size="sm"
+											disabled={reviewing || !activeIdentity.name || !verb.trim() || (targetKind === "resource" ? !resource.trim() : !nonResourceUrl.trim().startsWith("/"))}
+											onclick={verify}
+										>
+											<ShieldCheck data-icon /> {reviewing ? "Verifying…" : "Verify access"}
+										</Button>
+										<p class="text-[0.625rem] text-muted-foreground">Result is never inferred from observed grants.</p>
+									</div>
+								</section>
 
-									{#if accessReview.kind !== "none"}
-										{@const submitted = accessReview.submitted}
-										{@const review = accessReview.kind === "done" ? accessReview.result : null}
-										<section class="rounded-md border p-3">
-											<p class="text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground">Latest verification</p>
-											{#if review}
-												<p class={cnfast("mt-2 text-sm font-semibold capitalize", review.outcome === "allowed" && "text-emerald-600 dark:text-emerald-300", review.outcome === "denied" && "text-destructive", review.outcome === "noOpinion" && "text-amber-600 dark:text-amber-300")}>{review.outcome === "noOpinion" ? "No opinion" : review.outcome}</p>
-												{#if review.reason}<p class="mt-1 text-xs text-muted-foreground">{review.reason}</p>{/if}
-												{#if review.evaluationError}<p class="mt-1 text-xs text-destructive">{review.evaluationError}</p>{/if}
-											{/if}
-											{#if accessReview.kind === "failed"}<p class="mt-2 text-xs text-destructive">Verifier unavailable · {accessReview.message}</p>{/if}
-											<p class="mt-2 break-words text-[0.625rem] text-muted-foreground">{inspection.cluster} · <TimestampText value={submitted.timestamp} precision="second" /><br />{submitted.identity}<br />{submitted.target}</p>
-										</section>
-									{/if}
-
+								{#if accessReview.kind !== "none"}
+									{@const submitted = accessReview.submitted}
+									{@const review = accessReview.kind === "done" ? accessReview.result : null}
 									<section class="rounded-md border p-3">
-										<p class="text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground">Input coverage</p>
-										<div class="mt-2 space-y-1.5">
-											{#each coverage as item}
-												<div class="flex items-center gap-2 text-xs">
-													<span class="min-w-0 flex-1 truncate">{item.family}</span>
-													<span class={cnfast("capitalize", coverageClass(item.status))}>{item.status}</span>
-													<span class="w-6 text-right tabular-nums text-muted-foreground">{item.count}</span>
-												</div>
-											{/each}
-										</div>
+										<p class="text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground">Latest verification</p>
+										{#if review}
+											<p class={cnfast("mt-2 text-sm font-semibold capitalize", review.outcome === "allowed" && "text-emerald-600 dark:text-emerald-300", review.outcome === "denied" && "text-destructive", review.outcome === "noOpinion" && "text-amber-600 dark:text-amber-300")}>{review.outcome === "noOpinion" ? "No opinion" : review.outcome}</p>
+											{#if review.reason}<p class="mt-1 text-xs text-muted-foreground">{review.reason}</p>{/if}
+											{#if review.evaluationError}<p class="mt-1 text-xs text-destructive">{review.evaluationError}</p>{/if}
+										{/if}
+										{#if accessReview.kind === "failed"}<p class="mt-2 text-xs text-destructive">Verifier unavailable · {accessReview.message}</p>{/if}
+										<p class="mt-2 break-words text-[0.625rem] text-muted-foreground">{inspection.cluster} · <TimestampText value={submitted.timestamp} precision="second" /><br />{submitted.identity}<br />{submitted.target}</p>
 									</section>
-								</aside>
-							</div>
-						{:else}
-							<div class="flex min-h-64 items-center justify-center text-sm text-muted-foreground">Select an RBAC object to inspect evidence.</div>
-						{/if}
+								{/if}
+
+								<section class="rounded-md border p-3">
+									<p class="text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground">Input coverage</p>
+									<div class="mt-2 space-y-1.5">
+										{#each coverage as item}
+											<div class="flex items-center gap-2 text-xs">
+												<span class="min-w-0 flex-1 truncate">{item.family}</span>
+												<span class={cnfast("capitalize", coverageClass(item.status))}>{item.status}</span>
+												<span class="w-6 text-right tabular-nums text-muted-foreground">{item.count}</span>
+											</div>
+										{/each}
+									</div>
+								</section>
+							</aside>
+						</div>
 					</CardContent>
 				</Card>
 			</div>

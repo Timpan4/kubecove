@@ -241,11 +241,15 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
         "configureShellRead" => return true,
         "retryLauncher" => format!("retry-launcher:{}", string(step, "read")).replace(':', "-"),
         "expectLauncherRetry" => {
-            assert!(
-                window
-                    .try_find(format!("retry-launcher-{}", string(step, "read")))
-                    .is_some()
-            );
+            let retry = window.try_find(format!("retry-launcher-{}", string(step, "read")));
+            assert!(retry.is_some(), "{step}");
+            if let (Some(retry), Some(height)) = (retry, step["height"].as_f64()) {
+                let rendered = f64::from(f32::from(retry.bounds().size.height));
+                assert!(
+                    (rendered - height).abs() < 0.5,
+                    "Retry is {rendered}px high"
+                );
+            }
             return true;
         }
         "overviewOperation" => match string(step, "destination") {

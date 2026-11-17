@@ -60,20 +60,27 @@ impl Verifier {
         cx: &mut Context<Inspector>,
         subscriptions: &mut Vec<Subscription>,
     ) -> Self {
-        let mut field = |value: &str, placeholder: &str, resets: bool| {
+        // `identity` marks the manual identity inputs. Only typing emits
+        // `Change` (`set_value` does not), so `begin_identity` never triggers it.
+        let mut field = |value: &str, placeholder: &str, identity: bool| {
             let input = cx.new(|cx| {
                 let mut input = InputState::new(window, cx).placeholder(placeholder.to_owned());
                 input.set_value(value.to_owned(), window, cx);
                 input
             });
-            if resets {
-                subscriptions.push(cx.subscribe_in(&input, window, |this, _, event, _, cx| {
+            subscriptions.push(
+                cx.subscribe_in(&input, window, move |this, _, event, _, cx| {
                     if matches!(event, InputEvent::Change) {
+                        // An identity typed while the selection falls back to the
+                        // form makes it manual, so the form stays editable.
+                        if identity {
+                            this.rbac.identity = IdentitySource::Manual;
+                        }
                         this.rbac.verifier.reset();
                         cx.notify();
                     }
-                }));
-            }
+                }),
+            );
             input
         };
         Self {
@@ -82,13 +89,13 @@ impl Verifier {
             namespace: field("default", "Namespace", true),
             groups: field("system:authenticated", "Groups, comma-separated", true),
             non_resource: false,
-            verb: field("get", "Verb", true),
-            resource: field("pods", "Resource", true),
-            api_group: field("", "API group (core)", true),
-            target_namespace: field("", "Namespace (cluster if blank)", true),
-            subresource: field("", "Subresource", true),
-            resource_name: field("", "Resource name", true),
-            url: field("/healthz", "/path", true),
+            verb: field("get", "Verb", false),
+            resource: field("pods", "Resource", false),
+            api_group: field("", "API group (core)", false),
+            target_namespace: field("", "Namespace (cluster if blank)", false),
+            subresource: field("", "Subresource", false),
+            resource_name: field("", "Resource name", false),
+            url: field("/healthz", "/path", false),
             review: Review::None,
             note: cx.new(|cx| {
                 TextareaState::new(window, cx)

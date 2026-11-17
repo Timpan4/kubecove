@@ -82,7 +82,8 @@ export type Step =
     | { action: "expectNoOverlay"; overlay: OverlayName }
     | { action: "sidebarKey"; path: string[]; key: "Enter" | "Space" | "ArrowLeft" | "ArrowRight" }
     | { action: "retryLauncher"; read: "contexts" | "namespaces" }
-    | { action: "expectLauncherRetry"; read: "contexts" | "namespaces" }
+    /** `height`: the Retry button's rendered height in pixels. */
+    | { action: "expectLauncherRetry"; read: "contexts" | "namespaces"; height?: number }
     | { action: "overviewOperation"; destination: "Resources" | "Workspaces" | "Port Forwards" | "Incidents" }
     | { action: "reviewIncidentAction"; index: number }
     | { action: "expectTopologyDenied" }

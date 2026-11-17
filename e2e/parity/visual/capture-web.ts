@@ -14,6 +14,11 @@ async function show(page: Page, view: View) {
             await action(page, { action: "openLauncher" });
             await action(page, { action: "editSavedWorkspace", name: "Parity mock workspace" });
             return;
+        case "launcher-errors":
+            await action(page, { action: "configureShellRead", phase: "contexts-failed" });
+            await action(page, { action: "openLauncher" });
+            await action(page, { action: "expectLauncherRetry", read: "contexts" });
+            return;
         case "argo-connected": case "argo-review": case "argo-desired":
             await action(page, { action: "openPage", page: "GitOps" });
             await action(page, { action: "openGitOpsDetails", kind: "Application", name: "tenant-ledger", namespace: "argocd" });
