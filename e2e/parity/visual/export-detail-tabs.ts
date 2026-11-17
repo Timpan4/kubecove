@@ -5,6 +5,7 @@
 import { readResourceYaml } from "../../../src/features/resource-detail/resourceDetailReadSpec";
 import { buildYamlApplyRequest } from "../../../src/features/resource-detail/yamlApplyModel";
 import type { TauriClient } from "../../../src/lib/tauri";
+import { emptyTemplateRevisions } from "../../../src/lib/tauri-dev-mock-data";
 import type {
 	ClusterOperationResult,
 	DeploymentRevision,
@@ -47,6 +48,10 @@ export async function exportDetailTabs(client: TauriClient, resources: ResourceS
 		aggregate: await streamMessages(client, "start_aggregated_log_stream", { batchLines: true }),
 	};
 	const revisions = await client.invoke<DeploymentRevision[]>("list_deployment_revisions", { clusterContext, name: focus.name, namespace: focus.namespace });
+	const { name, namespace } = emptyTemplateRevisions;
+	const revisionCases = [
+		{ name, namespace, revisions: await client.invoke<DeploymentRevision[]>("list_deployment_revisions", { clusterContext, name, namespace }) },
+	];
 	const target = (row: ResourceSummary) => ({ clusterContext: row.cluster, kind: row.kind, name: row.name, namespace: row.namespace ?? undefined, apiVersion: row.apiVersion });
 	const states: ResourceActionState[] = [];
 	for (const row of resources.filter((candidate) => ACTION_KINDS.has(candidate.kind) && !candidate.dynamic)) {
@@ -125,5 +130,5 @@ export async function exportDetailTabs(client: TauriClient, resources: ResourceS
 		const request = buildYamlApplyRequest({ resource: focus, yaml, yamlEncoding: "yaml", forceConflicts: false });
 		yamlLint.push({ request, result: await client.invoke<KubernetesYamlLintResult>("lint_kubernetes_yaml", { request }) });
 	}
-	return { logs, revisions, actions: { states, pausedState, previews, executions }, yamlApply, yamlLint, yamlReads };
+	return { logs, revisions, revisionCases, actions: { states, pausedState, previews, executions }, yamlApply, yamlLint, yamlReads };
 }

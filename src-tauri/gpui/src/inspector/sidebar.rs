@@ -236,7 +236,9 @@ impl Inspector {
                         this.activate_navigation(target, custom, window, cx);
                     }))
                     .test_support()
-                    .aria_description(if selected { "selected" } else { "unselected" })
+                    .role(gpui_kit::Role::TreeItem)
+                    .aria_selected(selected)
+                    .when(custom, |row| row.aria_expanded(self.live.custom_open))
                     .into_any_element(),
                 ]
             })

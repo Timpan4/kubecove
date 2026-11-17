@@ -1,8 +1,9 @@
 //! Scales the browser-mock fixture to the sizes the repository's benchmarks
 //! use, by replicating its rows. Each copy `k` moves a row to
-//! `namespace-{(k - 1) % 100}` and suffixes its name with `-{k}`, as the
-//! benchmarks spread rows over `namespace-${index % 100}`. Original rows keep
-//! their identity, so their details, events and logs still resolve.
+//! `namespace-{(k - 1) % 100}` and suffixes its name with its original
+//! namespace and `-{k}`, as the benchmarks spread rows over
+//! `namespace-${index % 100}`. Original rows keep their identity, so their
+//! details, events and logs still resolve.
 
 use kubecove_gpui::model::WORKSPACE_KINDS;
 use serde_json::{Map, Value, json};
@@ -98,13 +99,31 @@ fn text(value: &Value, key: &str) -> Option<String> {
     value.get(key)?.as_str().map(str::to_owned)
 }
 
+/// The name of copy `copy` of `name` from `namespace`. Every copy of one
+/// round moves into the same namespace, so the original namespace stays in the
+/// name: each namespace's `kube-root-ca.crt` ConfigMap keeps its own identity.
+fn replica_name(name: &str, namespace: Option<&str>, copy: usize) -> String {
+    match namespace {
+        Some(namespace) => format!("{name}-{namespace}-{copy}"),
+        None => format!("{name}-{copy}"),
+    }
+}
+
+/// Fails when two items share a key, such as two rows with one identity.
+fn assert_unique(what: &str, keys: impl IntoIterator<Item = String>) {
+    let mut seen = std::collections::HashSet::new();
+    for key in keys {
+        assert!(seen.insert(key.clone()), "two {what} are {key}");
+    }
+}
+
 /// Renames a resource-shaped object, and its metrics, into copy `copy`.
 fn rename(object: &mut Value, copy: usize) {
     let Some(name) = text(object, "name") else {
         return;
     };
+    let renamed = replica_name(&name, text(object, "namespace").as_deref(), copy);
     let namespace = replica_namespace(copy);
-    let renamed = format!("{name}-{copy}");
     object["name"] = json!(renamed);
     object["namespace"] = json!(namespace);
     if let Some(metrics) = object.get_mut("metrics").filter(|value| value.is_object()) {
@@ -164,6 +183,17 @@ fn scale_resources(fixture: &mut Value) -> usize {
         },
     );
     resources.extend(table.drain(templates.len()..));
+    assert_unique(
+        "table rows",
+        resources.iter().filter(|row| table_row(row)).map(|row| {
+            format!(
+                "{}/{}/{}",
+                row["kind"].as_str().unwrap_or_default(),
+                row["namespace"].as_str().unwrap_or_default(),
+                row["name"].as_str().unwrap_or_default()
+            )
+        }),
+    );
     let rows = resources.iter().filter(|row| table_row(row)).count();
     let namespaces = array(fixture, &["namespaces"]);
     let template = namespaces[0].clone();
@@ -182,7 +212,11 @@ fn replica_id(id: &str, node: &Value, copy: usize) -> String {
     };
     let suffix = format!(":{namespace}:{name}");
     match id.strip_suffix(&suffix) {
-        Some(prefix) => format!("{prefix}:{}:{name}-{copy}", replica_namespace(copy)),
+        Some(prefix) => format!(
+            "{prefix}:{}:{}",
+            replica_namespace(copy),
+            replica_name(&name, Some(&namespace), copy)
+        ),
         None => format!("{id}#{copy}"),
     }
 }
@@ -244,6 +278,10 @@ fn scale_topology(fixture: &mut Value) -> usize {
             scaled_edges.push(edge);
         }
     }
+    assert_unique(
+        "map nodes",
+        scaled_nodes.iter().filter_map(|node| text(node, "id")),
+    );
     let known: std::collections::HashSet<String> = scaled_nodes
         .iter()
         .filter_map(|node| text(node, "id"))

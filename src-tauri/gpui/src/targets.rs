@@ -7,13 +7,12 @@
 //! deepest hovered element and a key to the deepest focused one. Element state
 //! also survives cached-view replay, so cached subtrees still resolve.
 //!
-//! A target is named by its element id: a `Name` id up to its first `:`, or a
-//! `NamedInteger` id's name. Many ids are built from container names, keys and
-//! other cluster data, sometimes with no `:` before them, and that data has the
-//! same lowercase kebab shape as the static ids. So a name is recorded only when
-//! `build.rs` found it as the leading text of a string literal in `src/`
-//! (`TARGET_NAMES`); any other id, including ids of other kinds, is recorded as
-//! `dynamic`. Labels and text are never read.
+//! A target is named by its accessibility role and the source line that called
+//! `test_support()`, which `#[track_caller]` fixes at compile time. Element ids
+//! are never read: many are built from container names, keys and other cluster
+//! data, and any filter on id text still passes a cluster name that equals an
+//! allowed word. Labels and text are never read either. A helper that builds
+//! many controls names them all by its own `test_support()` line.
 use gpui_kit::{
     App, Bounds, Element, ElementId, FocusHandle, GlobalElementId, Hitbox, InspectorElementId,
     InteractiveElement, IntoElement, LayoutId, Pixels, Window,
@@ -21,6 +20,7 @@ use gpui_kit::{
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
+    panic::Location,
     rc::{Rc, Weak},
 };
 
@@ -79,21 +79,13 @@ pub(crate) fn focused(window: &Window, cx: &App) -> Option<String> {
     })
 }
 
-/// Sorted static names from the program's string literals, written by `build.rs`.
-const TARGET_NAMES: &[&str] = include!(concat!(env!("OUT_DIR"), "/target_names.rs"));
-
-fn target_name(role: Option<gpui_kit::Role>, id: &ElementId) -> String {
-    let name = match id {
-        ElementId::Name(text) => text.split(':').next(),
-        ElementId::NamedInteger(name, _) => Some(&**name),
-        _ => None,
-    };
-    let id = name
-        .filter(|name| TARGET_NAMES.binary_search(name).is_ok())
-        .unwrap_or("dynamic");
+/// `<role> [src=<file>:<line>]`, with `/` separators on every platform so
+/// recordings compare across machines.
+fn target_name(role: Option<gpui_kit::Role>, source: &Location<'static>) -> String {
+    let source = format!("[src={}:{}]", source.file().replace('\\', "/"), source.line());
     match role {
-        Some(role) => format!("{} [id={id}]", format!("{role:?}").to_lowercase()),
-        None => format!("[id={id}]"),
+        Some(role) => format!("{} {source}", format!("{role:?}").to_lowercase()),
+        None => source,
     }
 }
 
@@ -104,10 +96,12 @@ pub(crate) type ObservedElement<E> = gpui_kit::base::ObservedElement<Targeted<E>
 pub(crate) trait TestSupportExt:
     Element<PrepaintState = Option<Hitbox>> + InteractiveElement + Sized
 {
+    #[track_caller]
     fn test_support(self) -> ObservedElement<Self> {
         gpui_kit::TestSupportExt::test_support(Targeted {
             inner: self,
             focus: None,
+            source: Location::caller(),
         })
     }
 }
@@ -117,6 +111,7 @@ impl<E: Element<PrepaintState = Option<Hitbox>> + InteractiveElement> TestSuppor
 pub struct Targeted<E> {
     inner: E,
     focus: Option<FocusHandle>,
+    source: &'static Location<'static>,
 }
 
 impl<E: Element<PrepaintState = Option<Hitbox>> + InteractiveElement> IntoElement for Targeted<E> {
@@ -195,10 +190,11 @@ impl<E: Element<PrepaintState = Option<Hitbox>> + InteractiveElement> Targeted<E
     fn register(&self, global_id: &GlobalElementId, hitbox: Option<Hitbox>, window: &mut Window) {
         let role = self.inner.a11y_role();
         let focus = self.focus.clone();
+        let source = self.source;
         window.with_element_state(global_id, |state: Option<Rc<Target>>, _| {
             let target = state.unwrap_or_else(|| {
                 Rc::new(Target {
-                    name: target_name(role, global_id.last().expect("element ids are nonempty")),
+                    name: target_name(role, source),
                     depth: global_id.len(),
                     hitbox: RefCell::default(),
                     focus: RefCell::default(),
@@ -243,44 +239,4 @@ impl<E: Element<PrepaintState = Option<Hitbox>> + InteractiveElement + gpui_kit:
 impl<E: Element<PrepaintState = Option<Hitbox>> + gpui_kit::StatefulInteractiveElement>
     gpui_kit::StatefulInteractiveElement for Targeted<E>
 {
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{TARGET_NAMES, target_name};
-    use gpui_kit::{ElementId, Role};
-
-    // Literals in this module are in `src/` too, so the names the tests expect
-    // in the table are assembled at run time from parts. They are then in the
-    // table only because the app's own ids use them.
-
-    #[test]
-    fn cluster_data_before_a_colon_is_dynamic() {
-        // Longer than every table entry, so it cannot be one.
-        let longest = TARGET_NAMES.iter().map(|name| name.len()).max();
-        let pod = format!("payments-api-{}", "x".repeat(longest.unwrap_or(0)));
-        let id = ElementId::Name(format!("{pod}:logs").into());
-        assert_eq!(target_name(None, &id), "[id=dynamic]");
-    }
-
-    #[test]
-    fn field_controls_id_without_a_colon_is_dynamic() {
-        // The shape `inspector/actions/fields.rs` builds for a container and key.
-        let id = ElementId::Name("Environment value web API_KEY controls".into());
-        assert_eq!(target_name(Some(Role::Button), &id), "button [id=dynamic]");
-    }
-
-    #[test]
-    fn literal_prefix_keeps_only_the_static_part() {
-        // `inspector/interaction_report.rs` builds `setting-row:{title}`.
-        let id = ElementId::Name(format!("{}-row:payments-api", "setting").into());
-        assert_eq!(target_name(None, &id), "[id=setting-row]");
-    }
-
-    #[test]
-    fn named_integer_records_its_literal_name() {
-        // `inspector/interaction_report.rs` builds `("interaction-row", index)`.
-        let id = ElementId::NamedInteger(format!("{}-row", "interaction").into(), 3);
-        assert_eq!(target_name(None, &id), "[id=interaction-row]");
-    }
 }

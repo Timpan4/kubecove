@@ -244,6 +244,9 @@ pub(super) fn run_scenario(
         if step["action"] == "configureShellRead" {
             *backend.shell_read_phase.lock().unwrap() = string(step, "phase").to_owned();
         }
+        if step["action"] == "configureMcpSettingsFile" {
+            backend.configure_mcp_settings_file(string(step, "file"));
+        }
         if step["action"] == "coverageScript" && (index != 0 || initial_coverage.is_none()) {
             backend.configure_coverage(string(step, "script"));
         }

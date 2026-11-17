@@ -3,14 +3,15 @@ import type { Step } from "./contract";
 
 type Identity = { kind: string; namespace: string; name: string };
 
-/** A live-session popover row, found by the target text it shows. */
-function sessionRow(page: Page, target: string) {
-	const rows = page.locator('[data-slot="popover-content"][data-state="open"] div.rounded-md.border.bg-background.p-2').filter({ has: page.getByText(target, { exact: true }) });
+/** A live-session popover row, found by the target text it shows and, when given, the local port of its URL. */
+function sessionRow(page: Page, target: string, local?: string) {
+	let rows = page.locator('[data-slot="popover-content"][data-state="open"] div.rounded-md.border.bg-background.p-2').filter({ has: page.getByText(target, { exact: true }) });
+	if (local) rows = rows.filter({ has: page.getByText(new RegExp(`^https?://[^/\\s]+:${local}$`)) });
 	return target.includes(":") ? rows : rows.filter({ has: page.getByRole("button", { name: /^Show exec session in / }) });
 }
 
-function sessionControl(page: Page, target: string, operation: string) {
-	const row = sessionRow(page, target);
+function sessionControl(page: Page, target: string, operation: string, local?: string) {
+	const row = sessionRow(page, target, local);
 	return operation === "Show"
 		? row.getByRole("button", { name: /^Show exec session in / })
 		: row.getByRole("button", { name: operation, exact: true });
@@ -35,14 +36,14 @@ export async function sessionHealthAction(page: Page, step: Step): Promise<void>
 			}
 			break;
 		case "expectLiveSessionRow": {
-			const row = sessionRow(page, step.target);
+			const row = sessionRow(page, step.target, step.local);
 			await row.getByText(step.status, { exact: true }).waitFor();
-			for (const control of step.controls) await sessionControl(page, step.target, control).waitFor();
+			for (const control of step.controls) await sessionControl(page, step.target, control, step.local).waitFor();
 			break;
 		}
 		case "liveSessionControl":
 			if (step.operation === "Manage") await page.getByRole("button", { name: "Manage", exact: true }).click();
-			else await sessionControl(page, step.target ?? "", step.operation).click();
+			else await sessionControl(page, step.target ?? "", step.operation, step.local).click();
 			break;
 		case "expectHealthTooltip": {
 			const row = resourceRow(page, step);

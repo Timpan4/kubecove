@@ -189,21 +189,24 @@ impl Inspector {
                     .child("Copy evidence")
                     .on_click(cx.listener(|this, _, _, cx| this.copy_rbac_evidence(cx))),
             );
-        let body = match selected {
+        // The verifier stays beside the placeholder, so an identity can be
+        // checked when no object matches.
+        let evidence = match selected {
             None => ui::muted(ui::sm("Select an RBAC object to inspect evidence."))
                 .flex()
+                .flex_1()
+                .min_w_0()
                 .items_center()
                 .justify_center()
-                .min_h(px(256.))
-                .into_any_element(),
-            Some(item) => div()
-                .flex()
-                .items_start()
-                .gap(px(12.))
-                .child(self.rbac_evidence(data, item, &identity, grants, cx))
-                .child(self.rbac_aside(data, item, &identity, cx))
-                .into_any_element(),
+                .min_h(px(256.)),
+            Some(item) => self.rbac_evidence(data, item, &identity, grants, cx),
         };
+        let body = div()
+            .flex()
+            .items_start()
+            .gap(px(12.))
+            .child(evidence)
+            .child(self.rbac_aside(data, selected, &identity, cx));
         ui::card()
             .py(px(12.))
             .gap(px(12.))

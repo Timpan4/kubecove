@@ -5,6 +5,7 @@ use super::{
     Inspector, Page,
     detail::{Detail, DetailTab},
     friendly_error::{self, Bucket, Context as ErrorContext, Presentation},
+    port_forward_rows::xs_button,
 };
 use crate::targets::TestSupportExt;
 use crate::{
@@ -12,7 +13,9 @@ use crate::{
     theme::{Palette, Tokens},
     ui,
 };
-use gpui_kit::{AnyElement, ClipboardItem, Context, SharedString, Task, Window, prelude::*, px};
+use gpui_kit::{
+    AnyElement, ClipboardItem, Context, SharedString, Task, Window, div, prelude::*, px,
+};
 use kubecove_lib::models::{AppError, AppErrorKind, RbacAccessReviewTarget, ResourceSummary};
 use std::{collections::HashSet, time::Duration};
 
@@ -298,28 +301,47 @@ impl Inspector {
             .when_some(presentation.next.filter(|_| !compact), |panel, text| {
                 panel.child(ui::muted(ui::xs(text)).mt(px(8.)))
             })
+            // The web panel's `space-y-2` items: `size="xs"` buttons as wide as their
+            // label, and the `<details>` summary row at `text-xs font-medium`.
             .when_some(permission, |panel, permission| {
                 panel.child(
-                    ui::outline_button()
-                        .id(SharedString::from(format!("{id}:permission")))
-                        .test_support()
-                        .child("Inspect required permission")
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            this.inspect_permission(
-                                permission.cluster.clone(),
-                                permission.target.clone(),
-                                window,
-                                cx,
-                            );
-                        })),
+                    div().flex().mt(px(8.)).child(
+                        xs_button("key-round", "Inspect required permission", false)
+                            .id(SharedString::from(format!("{id}:permission")))
+                            .test_support()
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.inspect_permission(
+                                    permission.cluster.clone(),
+                                    permission.target.clone(),
+                                    window,
+                                    cx,
+                                );
+                            })),
+                    ),
                 )
             })
             .child(
-                ui::outline_button()
+                div()
                     .id(SharedString::from(format!("{id}:detail")))
                     .test_support()
                     .aria_label("Technical detail")
-                    .child("Technical detail")
+                    .mt(px(8.))
+                    .flex()
+                    .items_center()
+                    .gap(px(4.))
+                    .px(px(8.))
+                    .py(px(6.))
+                    .rounded(px(8.))
+                    .border_1()
+                    .border_color(Tokens::border())
+                    .bg(Tokens::background().opacity(0.55))
+                    .cursor_pointer()
+                    .child(ui::chevron(
+                        12.,
+                        Tokens::muted_foreground(),
+                        if expanded { 1. } else { 0. },
+                    ))
+                    .child(ui::medium(ui::muted(ui::xs("Technical detail"))))
                     .on_click(
                         cx.listener(move |this, _, _, cx| this.toggle_technical_detail(id, cx)),
                     ),
@@ -334,26 +356,29 @@ impl Inspector {
                             .mt(px(8.)),
                     )
                     .child(
-                        ui::outline_button()
-                            .id(SharedString::from(format!("{id}:copy")))
-                            .test_support()
-                            .aria_label(if copied == Some(true) {
-                                "Copied"
-                            } else {
-                                "Copy detail"
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(8.))
+                            .mt(px(8.))
+                            .child({
+                                let (icon, label) = if copied == Some(true) {
+                                    ("check", "Copied")
+                                } else {
+                                    ("copy", "Copy detail")
+                                };
+                                xs_button(icon, label, false)
+                                    .id(SharedString::from(format!("{id}:copy")))
+                                    .test_support()
+                                    .aria_label(label)
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.copy_detail(id, copy_text.clone(), cx)
+                                    }))
                             })
-                            .child(if copied == Some(true) {
-                                "Copied"
-                            } else {
-                                "Copy detail"
-                            })
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.copy_detail(id, copy_text.clone(), cx)
-                            })),
+                            .when(copied == Some(false), |row| {
+                                row.child(ui::muted(ui::xs("Copy failed")))
+                            }),
                     )
-                    .when(copied == Some(false), |row| {
-                        row.child(ui::muted(ui::xs("Copy failed")))
-                    })
             })
             .into_any_element()
     }

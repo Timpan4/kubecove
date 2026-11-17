@@ -36,6 +36,17 @@ struct Hunk {
     lines: Vec<DiffLine>,
 }
 
+/// GNU unified format names an empty range by the line before it, so it prints
+/// its 0-based start. Other ranges print their 1-based first line.
+fn hunk_range(range: std::ops::Range<usize>) -> String {
+    let start = if range.is_empty() {
+        range.start
+    } else {
+        range.start + 1
+    };
+    format!("{start},{}", range.len())
+}
+
 fn hunks(old: &str, new: &str, context: usize) -> Vec<Hunk> {
     let diff = TextDiff::from_lines(old, new);
     diff.grouped_ops(context)
@@ -45,11 +56,9 @@ fn hunks(old: &str, new: &str, context: usize) -> Vec<Hunk> {
             let old_range = first.old_range().start..last.old_range().end;
             let new_range = first.new_range().start..last.new_range().end;
             let header = format!(
-                "@@ -{},{} +{},{} @@",
-                old_range.start + 1,
-                old_range.len(),
-                new_range.start + 1,
-                new_range.len()
+                "@@ -{} +{} @@",
+                hunk_range(old_range),
+                hunk_range(new_range)
             );
             let mut lines = Vec::new();
             for op in group {
@@ -182,6 +191,38 @@ mod tests {
         let clean = dry_run("a\n", "a\n", false, false);
         assert_eq!(clean[0].text.as_ref(), "No server-side dry-run changes.");
         assert_eq!(clean[2].text.as_ref(), "  force-conflicts: false");
+    }
+
+    // Hunk ranges can break in these ways: an empty old side (empty file) or
+    // an empty new side prints start+1 instead of the line before the range;
+    // both sides empty must still produce no hunk; insertions at the start or
+    // end of a non-empty file must keep their 1-based starts. With three
+    // context lines an empty side only occurs for an empty file, so its start
+    // is 0. Context 0 is the only way to reach an empty range that starts
+    // after line 0.
+
+    fn headers(old: &str, new: &str, context: usize) -> Vec<String> {
+        hunks(old, new, context)
+            .into_iter()
+            .map(|hunk| hunk.header)
+            .collect()
+    }
+
+    #[test]
+    fn empty_ranges_name_the_line_before_them() {
+        assert_eq!(headers("", "a\nb\n", CONTEXT_LINES), ["@@ -0,0 +1,2 @@"]);
+        assert_eq!(headers("a\nb\n", "", CONTEXT_LINES), ["@@ -1,2 +0,0 @@"]);
+        assert_eq!(headers("a\nb\n", "a\nx\nb\n", 0), ["@@ -1,0 +2,1 @@"]);
+        assert_eq!(headers("a\nx\nb\n", "a\nb\n", 0), ["@@ -2,1 +1,0 @@"]);
+        assert_eq!(headers("a\n", "a\nb\n", 0), ["@@ -1,0 +2,1 @@"]);
+        assert_eq!(headers("b\n", "a\nb\n", 0), ["@@ -0,0 +1,1 @@"]);
+    }
+
+    #[test]
+    fn edits_at_either_end_keep_one_based_starts() {
+        assert_eq!(headers("b\nc\n", "a\nb\nc\n", CONTEXT_LINES), ["@@ -1,2 +1,3 @@"]);
+        assert_eq!(headers("a\nb\n", "a\nb\nc\n", CONTEXT_LINES), ["@@ -1,2 +1,3 @@"]);
+        assert!(headers("", "", CONTEXT_LINES).is_empty());
     }
 
     #[test]

@@ -1,7 +1,9 @@
 //! Text-fit checks that need real glyph widths. The parity driver shapes text with GPUI's
-//! `NoopTextSystem`, where every glyph is 0.6 em wide, so these checks render the
+//! `NoopTextSystem`, where every glyph is 0.6 em wide, so these checks lay out the
 //! browser-mock fixture with the platform text system and the bundled fonts, as
-//! `tests/visual.rs` does, in the parity driver's 1440 by 900 window.
+//! `tests/visual.rs` does, in the parity driver's 1440 by 900 window. They read layout
+//! bounds and shaped widths only, so they open windows without a GPU renderer and run on
+//! CI runners that have no GPU. The `gpui-test` task in `.github/workflows/ci.yml` runs them.
 //!
 //! ```sh
 //! bun e2e/parity/visual/export-fixture.ts e2e/artifacts/text-fit/fixture.json
@@ -42,7 +44,7 @@ mod text_fit {
         let mut cx = HeadlessAppContext::with_platform(
             gpui_kit::platform::current_platform(true).text_system(),
             Arc::new(AppAssets),
-            gpui_kit::platform::current_headless_renderer,
+            || Ok(None),
         );
         cx.update(|cx| {
             gpui_kit::init(cx);

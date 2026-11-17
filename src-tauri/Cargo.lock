@@ -2768,7 +2768,7 @@ dependencies = [
 
 [[package]]
 name = "kubecove"
-version = "0.14.5"
+version = "0.14.6"
 dependencies = [
  "base64 0.23.1",
  "chrono",

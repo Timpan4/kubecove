@@ -30,6 +30,9 @@ macro_rules! defaults {
         ) -> $crate::backend::Read<kubecove_lib::models::McpStatus> {
             $crate::backend::settings_integrations::unavailable("MCP host unavailable")
         }
+        fn reload_mcp_settings(&self) -> $crate::backend::Read<kubecove_lib::models::McpStatus> {
+            $crate::backend::settings_integrations::unavailable("MCP host unavailable")
+        }
         fn reveal_mcp_token(&self) -> $crate::backend::Read<String> {
             $crate::backend::settings_integrations::unavailable("MCP host unavailable")
         }
@@ -61,6 +64,13 @@ macro_rules! native {
                 .await
             })
         }
+        fn reload_mcp_settings(&self) -> $crate::backend::Read<kubecove_lib::models::McpStatus> {
+            let host = self.mcp.clone();
+            self.read(async move {
+                kubecove_lib::mcp::reload_mcp_settings(kubecove_lib::runtime::State::new(&host))
+                    .await
+            })
+        }
         fn reveal_mcp_token(&self) -> $crate::backend::Read<String> {
             let host = self.mcp.clone();
             self.read(async move {
@@ -86,6 +96,9 @@ macro_rules! local {
             port: u16,
         ) -> $crate::backend::Read<kubecove_lib::models::McpStatus> {
             self.local.set_mcp_settings(enabled, port)
+        }
+        fn reload_mcp_settings(&self) -> $crate::backend::Read<kubecove_lib::models::McpStatus> {
+            self.local.reload_mcp_settings()
         }
         fn reveal_mcp_token(&self) -> $crate::backend::Read<String> {
             self.local.reveal_mcp_token()

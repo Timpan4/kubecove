@@ -14,11 +14,36 @@ export async function mcpAction(page: Page, step: Step): Promise<void> {
                     } });
                 });
             }
+            if (step.control === "Reload settings") {
+                // A reload that fails again leaves the switch disabled and shows the same button,
+                // so wait for the mock to log the reload before reading the settled controls.
+                const sent = (await mcpRequests(page)).length;
+                await page.getByRole("button", { name: step.control, exact: true }).click();
+                await page.waitForFunction(async (count) => {
+                    // @ts-expect-error: Vite serves this source module to the browser.
+                    const mocks = await import("/src/lib/mcp-dev-mocks.ts");
+                    return mocks.mcpMockRequests().length > count;
+                }, sent);
+                await page.waitForFunction(() => !document.querySelector('button[role="switch"][aria-label="MCP server"]')?.hasAttribute("disabled")
+                    || [...document.querySelectorAll("button")].some((button) => button.textContent?.trim() === "Reload settings" && !button.disabled));
+                break;
+            }
             if (step.control === "Submit port") await page.getByRole("textbox", { name: "MCP port", exact: true }).press("Enter");
             else await page.getByRole(step.control === "MCP server" ? "switch" : "button", { name: step.control, exact: true }).click();
             // The status switch is disabled throughout each request, including token copies.
             await page.waitForFunction(() => !document.querySelector('button[role="switch"][aria-label="MCP server"]')?.hasAttribute("disabled"));
             break;
+        case "configureMcpSettingsFile":
+            await page.evaluate(`import('/src/lib/mcp-dev-mocks.ts').then(m => m.configureMcpSettingsFile(${JSON.stringify(step.file)}))`);
+            break;
+        case "expectMcpLoadError": {
+            const reload = page.getByRole("button", { name: "Reload settings", exact: true });
+            await reload.waitFor();
+            if (!(await reload.isEnabled())) throw new Error("Reload settings is disabled");
+            await page.getByRole("alert").filter({ hasText: step.text }).waitFor();
+            if (await page.getByRole("switch", { name: "MCP server", exact: true }).isEnabled()) throw new Error("MCP controls enabled without settings");
+            break;
+        }
         case "expectMcpState": {
             const toggle = page.getByRole("switch", { name: "MCP server", exact: true });
             await page.waitForFunction(() => !document.querySelector('button[role="switch"][aria-label="MCP server"]')?.hasAttribute("disabled"));
@@ -28,6 +53,7 @@ export async function mcpAction(page: Page, step: Step): Promise<void> {
             if (await page.getByRole("button", { name: "Copy Claude Code command", exact: true }).isEnabled() !== step.command) throw new Error("Wrong MCP command state");
             if (step.running) await page.getByText(`Listening at http://127.0.0.1:${step.port}/mcp with 11 read-only tools.`, { exact: true }).waitFor();
             else if (await page.getByText("Running", { exact: true }).count()) throw new Error("MCP unexpectedly running");
+            if (await page.getByRole("button", { name: "Reload settings", exact: true }).count()) throw new Error("Reload settings shown with loaded settings");
             break;
         }
         case "expectMcpCopy": {
@@ -41,14 +67,18 @@ export async function mcpAction(page: Page, step: Step): Promise<void> {
             break;
         }
         case "expectMcpRequests": {
-            const requests = await page.evaluate(async () => {
-                // @ts-expect-error: Vite serves this source module to the browser.
-                const mocks = await import("/src/lib/mcp-dev-mocks.ts");
-                return mocks.mcpMockRequests();
-            });
+            const requests = await mcpRequests(page);
             if (JSON.stringify(requests) !== JSON.stringify(step.requests)) throw new Error(`Wrong MCP request sequence: ${JSON.stringify(requests)}`);
             break;
         }
         default: throw new Error(`Not an MCP action: ${step.action}`);
     }
+}
+
+function mcpRequests(page: Page): Promise<string[]> {
+    return page.evaluate(async () => {
+        // @ts-expect-error: Vite serves this source module to the browser.
+        const mocks = await import("/src/lib/mcp-dev-mocks.ts");
+        return mocks.mcpMockRequests();
+    });
 }

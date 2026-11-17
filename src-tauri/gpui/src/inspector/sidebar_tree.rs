@@ -11,8 +11,8 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-/// The label a collapsed branch shows when the selection is inside it. Also
-/// the accessible description the web sets on the same label.
+/// The accessible description of a collapsed branch's row while the selection
+/// is inside it, as the web sets on the same treeitem.
 pub(super) const CONTAINS_SELECTION: &str = "Contains the selected item";
 pub(super) const ROW_HEIGHT: f32 = 26.;
 
@@ -368,7 +368,6 @@ impl Inspector {
         } else {
             format!("tree:{path}")
         };
-        let label_id = SharedString::from(format!("label:{id}"));
         let reveal = self
             .sidebar_tree
             .reveals(&path, expanded)
@@ -389,8 +388,14 @@ impl Inspector {
             .test_support()
             .track_focus(&focus)
             .tab_index(0)
+            .role(gpui_kit::Role::TreeItem)
             .aria_label(label.clone())
-            .aria_description(if selected { "selected" } else { "unselected" })
+            .aria_selected(selected)
+            .when(expandable, |row| row.aria_expanded(expanded))
+            // The focused row announces the hint, as the web treeitem's aria-description does.
+            .when(hides_selection, |row| {
+                row.aria_description(CONTAINS_SELECTION)
+            })
             .relative()
             .flex()
             .flex_none()
@@ -443,8 +448,6 @@ impl Inspector {
             ))
             .child(
                 ui::xs(label.clone())
-                    .id(label_id)
-                    .test_support()
                     .line_height(px(12.))
                     .flex_1()
                     .min_w_0()
@@ -452,11 +455,7 @@ impl Inspector {
                     .when(depth == 0 && !is_namespace, |text| {
                         text.font_weight(gpui_kit::FontWeight::MEDIUM)
                     })
-                    .when(hides_selection, |text| {
-                        text.text_color(Tokens::primary())
-                            .role(gpui_kit::Role::Label)
-                            .aria_description(CONTAINS_SELECTION)
-                    }),
+                    .when(hides_selection, |text| text.text_color(Tokens::primary())),
             )
             .children(reveal)
             .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {

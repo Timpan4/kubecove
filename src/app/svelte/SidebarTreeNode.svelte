@@ -176,6 +176,7 @@
 		aria-selected={isSelected}
 		aria-expanded={hasChildren ? isExpanded : undefined}
 		aria-disabled={isDisabled || undefined}
+		{...selectionHint}
 		title={node.description}
 		onclick={selectNode}
 		onkeydown={handleKeydown}
@@ -207,9 +208,7 @@
 			)}
 			aria-hidden="true"
 		/>
-		<span
-			class={cnfast("min-w-0 flex-1 truncate leading-none", hidesSelection && "text-primary")}
-			{...selectionHint}
+		<span class={cnfast("min-w-0 flex-1 truncate leading-none", hidesSelection && "text-primary")}
 			>{node.label}</span
 		>
 	</div>

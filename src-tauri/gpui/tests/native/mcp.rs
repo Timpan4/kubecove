@@ -32,7 +32,7 @@ impl Drop for Directory {
 /// A dropped host shuts its runtime down in the background, so its listening socket closes
 /// shortly after the drop returns. The next host binds once at construction and reports a
 /// port in use instead of retrying, so a test that reopens on the same port waits here.
-/// Five seconds is the deadline this workspace's other local waits use.
+/// Five seconds is the deadline most local waits in the backend crates' tests (`src-tauri/crates`) use.
 fn wait_until_free(port: u16) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while TcpListener::bind(("127.0.0.1", port)).is_err() {
@@ -210,6 +210,39 @@ fn unreadable_or_malformed_settings_preserve_the_original() {
             .is_err()
     );
     assert!(path.is_dir());
+}
+
+/// Failure modes: a reload of a still-broken file keeps the first error, or rewrites the
+/// file; a reload after the fix leaves MCP refused until restart, or ignores `enabled`.
+#[test]
+fn reload_reports_the_current_error_and_recovers_once_the_file_is_fixed() {
+    let directory = Directory::new();
+    let path = directory.0.join("mcp-settings.json");
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    std::fs::write(&path, "{").unwrap();
+    let backend = directory.backend();
+    assert!(runtime.block_on(backend.mcp_status()).is_err());
+    let broken = r#"{"enabled":true,"port":0}"#;
+    std::fs::write(&path, broken).unwrap();
+    let error = runtime
+        .block_on(backend.reload_mcp_settings())
+        .unwrap_err();
+    assert!(error.message.contains("Invalid MCP port"));
+    let error = runtime.block_on(backend.mcp_status()).unwrap_err();
+    assert!(error.message.contains("Invalid MCP port"));
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), broken);
+    let reserved = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let port = reserved.local_addr().unwrap().port();
+    drop(reserved);
+    let fixed = format!(r#"{{"enabled":true,"port":{port}}}"#);
+    std::fs::write(&path, &fixed).unwrap();
+    let status = runtime.block_on(backend.reload_mcp_settings()).unwrap();
+    assert!(status.enabled && status.running && status.port == port);
+    assert!(runtime.block_on(backend.mcp_status()).unwrap().running);
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), fixed);
+    runtime
+        .block_on(backend.set_mcp_settings(false, port))
+        .unwrap();
 }
 
 #[test]

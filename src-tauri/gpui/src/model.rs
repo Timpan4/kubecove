@@ -354,8 +354,11 @@ fn group_key(group: &str) -> String {
 }
 
 /// The collapse key of a kind group, as `resourceTypeGroupCollapseKey` in `helpers.ts`.
-fn type_key(group: &str, type_label: &str) -> String {
-    format!("{}::type:{type_label}", group_key(group))
+/// Without GitOps grouping one kind group row spans every Helm release and
+/// ownership group, so its key uses one empty group for all rows.
+fn type_key(group: &str, type_label: &str, grouped_by_gitops: bool) -> String {
+    let group = if grouped_by_gitops { group } else { "" };
+    format!("group:{group}::type:{type_label}")
 }
 
 fn same_resource(left: &ResourceSummary, right: &ResourceSummary) -> bool {
@@ -443,7 +446,10 @@ fn page_from_order(
         .map(|row| {
             let group = ownership_group(row, multi_context).0;
             let type_label = type_label(row);
-            (group_key(&group), type_key(&group, &type_label))
+            (
+                group_key(&group),
+                type_key(&group, &type_label, grouped_by_gitops),
+            )
         });
     let mut entries = Vec::new();
     let mut previous: Option<(String, String)> = None;
@@ -454,7 +460,10 @@ fn page_from_order(
         let type_changed = previous
             .as_ref()
             .is_none_or(|(g, t)| (grouped_by_gitops && *g != group) || *t != kind);
-        let (row_group_key, row_type_key) = (group_key(&group), type_key(&group, &kind));
+        let (row_group_key, row_type_key) = (
+            group_key(&group),
+            type_key(&group, &kind, grouped_by_gitops),
+        );
         let group_collapsed = grouped_by_gitops
             && selected
                 .as_ref()

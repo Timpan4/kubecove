@@ -3,6 +3,31 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.14.6 - 2026-11-17
+### Added
+
+- Slide the segmented pill and the tab line to the chosen option (#734).
+- Animate overlay enter and exit (#732).
+- Motion for loading and live data changes (#728).
+- Ease control state changes as the web client does (#727).
+- Move the selected path's dashes and pulse toward resources in progress (#726).
+
+### Fixed
+
+- Keep the unavailable kubeconfig Save button from fading on hover (#733).
+- End stalled update requests and keep the install after a failed relaunch (#718).
+- Open Helm releases and GitOps Applications in their own context and namespace (#721).
+- Keyboard access for table controls, log rows, terminal, kind order and Map context (#725).
+- Refresh kubeconfig inventory after a source change (#724).
+- Ask saved profiles for their own credential on reconnect (#713).
+- Match observed grants to the reviewed identity (#723).
+- List each context without metrics on the card (#716).
+- Derive Argo sync policy from the automated block (#714).
+- Keep the API version of saved workspace kinds (#719).
+- Keep Cancel usable while a remote session opens (#715).
+- Inherit annotation-only GitOps owners through ownerRef (#717).
+- Keep a running resource action alive when its detail closes (#720).
+
 ## 0.14.5 - 2026-11-16
 ### Improved
 

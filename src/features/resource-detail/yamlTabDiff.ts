@@ -77,7 +77,7 @@ function buildUnifiedDiff(
 	for (const hunk of patch.hunks) {
 		lines.push({
 			type: "hunk",
-			text: `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`,
+			text: `@@ -${hunkRange(hunk.oldStart, hunk.oldLines)} +${hunkRange(hunk.newStart, hunk.newLines)} @@`,
 		});
 		for (const line of hunk.lines) {
 			if (line.startsWith("+")) {
@@ -97,6 +97,12 @@ function buildUnifiedDiff(
 	}
 
 	return lines;
+}
+
+// structuredPatch starts an empty range at the line after it. GNU unified
+// format names the line before it, as jsdiff's own formatPatch does.
+function hunkRange(start: number, lines: number): string {
+	return `${lines === 0 ? start - 1 : start},${lines}`;
 }
 
 function buildCleanDiff(

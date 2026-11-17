@@ -95,19 +95,25 @@ fn timed<T: Send + 'static>(
     eprintln!("[speed] begin backend {label}");
     let http = HTTP_ACTIVITY.snapshot();
     let started = Instant::now();
-    let result = runtime.block_on(read());
+    // A read that never answers, such as a log stream with no first message,
+    // ends at LIMIT and is reported instead of holding up the whole report.
+    // The timer registers with the runtime, so it is created inside it.
+    let result = runtime.block_on(async { tokio::time::timeout(LIMIT, read()).await });
     let wall = started.elapsed();
     let after = HTTP_ACTIVITY.snapshot();
     let network = after.busy_since(http);
     eprintln!("[speed] end backend {label}");
+    let timed_out = result.is_err();
     let (ok, count, error, value) = match result {
-        Ok(value) => (true, items(&value), None, Some(value)),
-        Err(error) => (false, 0, Some(error.message), None),
+        Ok(Ok(value)) => (true, items(&value), None, Some(value)),
+        Ok(Err(error)) => (false, 0, Some(error.message), None),
+        Err(_) => (false, 0, Some(format!("no result within {LIMIT:?}")), None),
     };
     (
         json!({
             "label": label,
             "ok": ok,
+            "timedOut": timed_out,
             "error": error,
             "items": count,
             "wallMs": ms(wall),
@@ -123,6 +129,7 @@ fn timed<T: Send + 'static>(
 fn backend_reads(context: &str) -> (Arc<dyn Backend>, Vec<Value>) {
     let backend: Arc<dyn Backend> = Arc::new(NativeBackend::new().expect("backend runtime"));
     let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_time()
         .build()
         .unwrap();
     let all = Scope {
@@ -318,6 +325,26 @@ struct Driver {
     handle: Option<AnyWindowHandle>,
     backend: Arc<dyn Backend>,
     actions: Vec<Value>,
+    /// When the current sample started.
+    sample_start: Instant,
+    /// End times of the current sample's drawn frames, in ms from its start,
+    /// including frames an action draws while it runs.
+    draws: Vec<f64>,
+    /// Start and end, in ms from the sample start, of driver work in the
+    /// current sample that is not the measured interaction, such as requests
+    /// to the fixture's control server.
+    setup: Vec<(f64, f64)>,
+}
+
+/// Setup time that ended by `at`, in ms from the sample start. Setup runs on
+/// the UI thread between frame turns, so a span ends before a frame or
+/// starts after it, never during it.
+fn setup_before(setup: &[(f64, f64)], at: f64) -> f64 {
+    setup
+        .iter()
+        .filter(|(_, end)| *end <= at)
+        // A float `sum` of nothing is -0.0, which the report would print.
+        .fold(0.0, |total, (start, end)| total + (end - start))
 }
 
 fn window_options() -> WindowOptions {
@@ -373,6 +400,9 @@ impl Driver {
         let http = HTTP_ACTIVITY.snapshot();
         self.cx.begin_sample();
         let started = Instant::now();
+        self.sample_start = started;
+        self.draws.clear();
+        self.setup.clear();
         let outcome =
             std::panic::catch_unwind(AssertUnwindSafe(|| action(self))).unwrap_or_else(|panic| {
                 Err(panic
@@ -381,8 +411,17 @@ impl Driver {
                     .or_else(|| panic.downcast_ref::<&str>().map(|s| (*s).to_owned()))
                     .unwrap_or_else(|| "panic".into()))
             });
-        let (draws, timed_out) = self.settle(started, quiet, http);
+        let timed_out = self.settle(started, quiet, http);
         let (settled_ns, frames, _) = self.cx.finish_sample();
+        // Setup ran inside the sample but is not the interaction, so each
+        // reported time leaves out the setup that ended before it. Setup after
+        // the last drawn frame is outside the settled time already.
+        let settled = settled_ns as f64 / 1e6;
+        let setup = setup_before(&self.setup, settled);
+        let draws: Vec<f64> = std::mem::take(&mut self.draws)
+            .into_iter()
+            .map(|end| end - setup_before(&self.setup, end))
+            .collect();
         let after = HTTP_ACTIVITY.snapshot();
         eprintln!("[speed] end {label}");
         let cpu: u64 = frames.iter().map(|frame| frame.cpu).sum();
@@ -394,7 +433,8 @@ impl Driver {
             "timedOut": timed_out,
             "startEpochMs": start_epoch,
             "endEpochMs": epoch_ms(),
-            "wallMs": settled_ns as f64 / 1e6,
+            "wallMs": settled - setup,
+            "setupMs": setup,
             "networkMs": ms(after.busy_since(http)),
             "requests": after.requests_since(http),
             "uiCpuMs": cpu as f64 / 1e6,
@@ -418,19 +458,35 @@ impl Driver {
         self.actions.push(value);
     }
 
+    /// One frame turn inside a sample. A drawn frame joins the sample's draws.
+    fn tick(&mut self) -> bool {
+        let (_, drew) = self.cx.tick();
+        if drew {
+            self.draws.push(ms(self.sample_start.elapsed()));
+        }
+        drew
+    }
+
+    /// Runs driver work inside a sample and counts its time as setup.
+    fn setup<R>(&mut self, work: impl FnOnce() -> R) -> R {
+        let start = ms(self.sample_start.elapsed());
+        let result = work();
+        self.setup.push((start, ms(self.sample_start.elapsed())));
+        result
+    }
+
+    /// Turns frames until the sample settles. Returns whether it hit LIMIT.
     fn settle(
         &mut self,
         started: Instant,
         quiet: Duration,
         mut http: HttpActivitySnapshot,
-    ) -> (Vec<f64>, bool) {
+    ) -> bool {
         let mut quiet_since = Instant::now();
-        let mut draws = Vec::new();
         loop {
-            let (_, drew) = self.cx.tick();
+            let drew = self.tick();
             let now = Instant::now();
             if drew {
-                draws.push(ms(now.duration_since(started)));
                 quiet_since = now;
             }
             let snapshot = HTTP_ACTIVITY.snapshot();
@@ -439,10 +495,10 @@ impl Driver {
                 quiet_since = now;
             }
             if now.duration_since(quiet_since) >= quiet {
-                return (draws, false);
+                return false;
             }
             if now.duration_since(started) >= LIMIT {
-                return (draws, true);
+                return true;
             }
             if !drew {
                 std::thread::sleep(Duration::from_millis(1));
@@ -516,16 +572,42 @@ fn aggregate(spans: Vec<kubecove_gpui::frame_profile::Span>) -> Value {
 
 /// Sends a Pod watch burst through the fixture's control server.
 fn burst(control: &str, restarts: u32, events: usize) -> Result<(), String> {
-    let mut stream = std::net::TcpStream::connect(control).map_err(|e| e.to_string())?;
+    use std::net::ToSocketAddrs;
+    let address = control
+        .to_socket_addrs()
+        .map_err(|e| e.to_string())?
+        .next()
+        .ok_or_else(|| format!("{control} has no address"))?;
+    // A control server that stops answering, or answers a byte at a time,
+    // fails the action at LIMIT: every step gets what is left of one deadline.
+    let deadline = Instant::now() + LIMIT;
+    let remaining = || {
+        Some(deadline.saturating_duration_since(Instant::now()))
+            .filter(|left| !left.is_zero())
+            .ok_or_else(|| format!("{control} gave no full response within {LIMIT:?}"))
+    };
+    let mut stream =
+        std::net::TcpStream::connect_timeout(&address, remaining()?).map_err(|e| e.to_string())?;
+    stream
+        .set_write_timeout(Some(remaining()?))
+        .map_err(|e| e.to_string())?;
     write!(
         stream,
         "GET /burst?restarts={restarts}&events={events} HTTP/1.1\r\nHost: fixture\r\nConnection: close\r\n\r\n"
     )
     .map_err(|e| e.to_string())?;
-    let mut response = String::new();
-    stream
-        .read_to_string(&mut response)
-        .map_err(|e| e.to_string())?;
+    let mut response = Vec::new();
+    let mut chunk = [0; 4096];
+    loop {
+        stream
+            .set_read_timeout(Some(remaining()?))
+            .map_err(|e| e.to_string())?;
+        match stream.read(&mut chunk).map_err(|e| e.to_string())? {
+            0 => break,
+            read => response.extend_from_slice(&chunk[..read]),
+        }
+    }
+    let response = String::from_utf8_lossy(&response);
     eprintln!("[speed] burst {}", response.lines().last().unwrap_or(""));
     Ok(())
 }
@@ -537,6 +619,9 @@ fn ui_actions(contexts: &[String], control: &str) -> Vec<Value> {
         handle: None,
         backend,
         actions: Vec::new(),
+        sample_start: Instant::now(),
+        draws: Vec::new(),
+        setup: Vec::new(),
     };
     let (net, local) = (NETWORK_QUIET, LOCAL_QUIET);
     let first = contexts[0].clone();
@@ -581,11 +666,10 @@ fn ui_actions(contexts: &[String], control: &str) -> Vec<Value> {
     let sustained = control.to_owned();
     driver.measure("watch sustained 60 events at 20/s", net, move |d| {
         for round in 0..60 {
-            burst(&sustained, 10 + round, 1)?;
+            d.setup(|| burst(&sustained, 10 + round, 1))?;
             let until = Instant::now() + Duration::from_millis(50);
             while Instant::now() < until {
-                let (_, drew) = d.cx.tick();
-                if !drew {
+                if !d.tick() {
                     std::thread::sleep(Duration::from_millis(1));
                 }
             }

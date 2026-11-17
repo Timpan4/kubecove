@@ -59,7 +59,7 @@ pub(super) fn click_sidebar(window: &mut gpui_kit::Window, cx: &mut gpui_kit::Ap
     );
 }
 
-/// The description of a row's label while its collapsed branch holds the selection.
+/// The description of a row while its collapsed branch holds the selection.
 const CONTAINS_SELECTION: &str = "Contains the selected item";
 
 /// Wheels the sidebar tree to its top or bottom, one half viewport at a time,
@@ -117,8 +117,8 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
                 row.bounds().top() >= viewport.top() && row.bounds().bottom() <= viewport.bottom()
             });
             let highlighted = window
-                .try_find(format!("label:{id}"))
-                .is_some_and(|label| label.description() == Some(CONTAINS_SELECTION));
+                .try_find(id.clone())
+                .is_some_and(|row| row.description() == Some(CONTAINS_SELECTION));
             assert_eq!(visible, step["visible"] == true, "{step}");
             assert_eq!(highlighted, step["highlighted"] == true, "{step}");
         }
@@ -141,15 +141,7 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
                     let found = window.try_find(id);
                     assert_eq!(found.is_some(), step["visible"] == true, "{step}");
                     if let Some(row) = found {
-                        assert_eq!(
-                            row.description(),
-                            Some(if step["selected"] == true {
-                                "selected"
-                            } else {
-                                "unselected"
-                            }),
-                            "{step}"
-                        );
+                        assert_eq!(row.selected(), Some(step["selected"] == true), "{step}");
                     }
                 }
                 action => {
