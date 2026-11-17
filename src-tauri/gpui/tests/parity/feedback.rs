@@ -10,6 +10,8 @@ use super::*;
 fn frame_requested(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App) -> bool {
     window.render_frame(cx);
     window.simulate_next_frame(cx);
+    // A frame an earlier step rendered at this clock time may have asked.
+    kubecove_gpui::Inspector::forget_repeating_motion(cx);
     window.render_frame(cx);
     window.simulate_next_frame(cx) > 0 || kubecove_gpui::Inspector::repeating_motion(cx)
 }

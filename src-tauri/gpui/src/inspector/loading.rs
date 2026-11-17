@@ -226,10 +226,17 @@ impl Inspector {
 
     /// Whether a frame rendered at the clock's current time arranged the next
     /// step of a spinner or of the foreground bar's slide. That wake is a
-    /// timer and asks for no frame, so UI tests ask here.
+    /// timer and asks for no frame, so UI tests ask here. To judge one frame,
+    /// call `forget_repeating_motion` before rendering it.
     #[doc(hidden)]
     pub fn repeating_motion(cx: &gpui_kit::App) -> bool {
         crate::motion::wake_pending(cx)
+    }
+
+    /// Drops what earlier frames told `repeating_motion`.
+    #[doc(hidden)]
+    pub fn forget_repeating_motion(cx: &mut gpui_kit::App) {
+        crate::motion::forget_ask(cx);
     }
 }
 

@@ -13,7 +13,9 @@
 //! - a pending read asks for every frame for as long as it lasts, which keeps
 //!   the frames harness drawing, instead of arming the repeating clock's timer;
 //! - the bar slides while another application's window is active, or stays
-//!   still after the window returns.
+//!   still after the window returns;
+//! - a frame that rests is reported as moving, because an earlier frame at the
+//!   same clock time armed the timer.
 use super::*;
 use std::time::Duration;
 
@@ -50,6 +52,7 @@ fn bar_next(
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
         window.simulate_next_frame(cx);
+        Inspector::forget_repeating_motion(cx);
         window.render_frame(cx);
         let drawn = gpui_kit::base::Root::read(window, cx)
             .view()
@@ -184,7 +187,7 @@ fn the_bar_rests_in_an_inactive_window_and_slides_when_it_returns(cx: &mut TestA
     assert!(next.timer);
 
     gpui_kit::VisualTestContext::from_window(handle, cx).deactivate_window();
-    // A later frame, so the step the active window's frame armed does not count.
-    advance(cx, Duration::from_millis(75));
+    // At the same clock time: the step the active window's frame armed does
+    // not count for the frame that rests.
     assert_eq!(bar_next(cx, handle), (Some((1., 0.)), REST));
 }

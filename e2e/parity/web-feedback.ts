@@ -14,9 +14,9 @@ export async function feedbackAction(page: Page, step: Step): Promise<void> {
                 const host = document.querySelector("[data-foreground-loading]");
                 if (host?.getAttribute("data-active") !== active) return false;
                 if (sliding === null) return true;
-                // The keyframe animation moves the bar. Reduced motion and the end of the fade-out both remove it.
+                // The keyframe animation moves the bar while it runs. Reduced motion and the end of the fade-out both remove it.
                 const bar = host.firstElementChild;
-                return bar !== null && (getComputedStyle(bar).animationName !== "none") === sliding;
+                return bar !== null && bar.getAnimations().some((animation) => animation.playState === "running") === sliding;
             }, [step.active ? "true" : "false", step.sliding ?? null] as const));
             break;
         }

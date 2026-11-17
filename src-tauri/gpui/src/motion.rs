@@ -71,6 +71,16 @@ pub fn phase(elapsed: Duration, period: Duration) -> f32 {
     (elapsed.as_secs_f64() % period.as_secs_f64() / period.as_secs_f64()) as f32
 }
 
+/// Forgets that an element asked for a wake, so `wake_pending` then tells
+/// only of the frames a UI test renders next. Two frames can render at one
+/// clock time, and the later one may have stopped moving.
+#[doc(hidden)]
+pub fn forget_ask(cx: &mut App) {
+    if cx.has_global::<Repeating>() {
+        cx.global_mut::<Repeating>().asked = None;
+    }
+}
+
 /// Whether a frame rendered at the clock's current time asked for a wake. The
 /// wake is a timer and asks for no frame, so UI tests ask here. A wake that an
 /// earlier frame armed still fires once after its motion stopped, and does not
