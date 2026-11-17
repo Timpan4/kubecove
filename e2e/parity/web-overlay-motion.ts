@@ -5,9 +5,9 @@ import type { OverlayName } from "./contract-steps";
 type OverlayMotionStep = Extract<Step, { action: "holdOverlayMotion" | "advanceOverlayMotion" | "expectOverlayOpacity" | "expectNoOverlay" }>;
 
 /** The element each overlay name draws on, by the shared wrappers' `data-slot`. */
-const SURFACES: Record<OverlayName, string> = {
+const SURFACES = {
 	"update-status": '[data-slot="popover-content"]',
-};
+} satisfies Record<OverlayName, string>;
 /** The scenario gives opacities to four decimals, and gpui-base's `cubic_bezier` tests bound its distance from CSS at 5e-4. */
 const OPACITY_TOLERANCE = 6e-4;
 
