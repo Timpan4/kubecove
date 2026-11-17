@@ -33,22 +33,27 @@ type Target = {
 const deployment = { kind: "Deployment", name: "payments-api", namespace: "payments" };
 
 /**
- * The detail tabs' line as the page shows it: its left edge and width. A newly active tab's line
- * starts offset and scaled onto the last one, so this is the active tab's padding box, which the
- * line spans, moved by that offset and scaled.
+ * The detail tabs' line as the page shows it: its left edge, its width, and how far it lies under
+ * the first tab's bottom edge. A newly active tab's line starts offset and scaled onto the last
+ * one, so this is the active tab's padding box, which the line spans, moved by that offset and
+ * scaled. Measuring down from the first tab leaves out a change of the list's height, which moves
+ * every tab's line alike.
  */
 function tabLine(page: Page): Promise<string> {
 	return page.getByRole("tablist").filter({ has: page.getByRole("tab", { name: "Events", exact: true }) }).evaluate((list) => {
-		const active = list.querySelector("[role='tab'][data-state='active']");
-		if (!active) throw new Error("No active tab");
+		const [active, first] = [list.querySelector("[role='tab'][data-state='active']"), list.querySelector("[role='tab']")];
+		if (!active || !first) throw new Error("No active tab");
+		const padding = (tab: Element) => {
+			const [box, style] = [tab.getBoundingClientRect(), getComputedStyle(tab)];
+			const [left, right, bottom] = [style.borderLeftWidth, style.borderRightWidth, style.borderBottomWidth].map(Number.parseFloat);
+			return { left: box.left + left, width: box.width - left - right, bottom: box.bottom - bottom };
+		};
 		const line = getComputedStyle(active, "::after");
-		const [x = 0] = line.translate === "none" ? [] : line.translate.split(" ").map(Number.parseFloat);
+		const [x = 0, y = 0] = line.translate === "none" ? [] : line.translate.split(" ").map(Number.parseFloat);
 		const [w = 1] = line.scale === "none" ? [] : line.scale.split(" ").map(Number.parseFloat);
-		const box = active.getBoundingClientRect();
-		const style = getComputedStyle(active);
-		const [left, right] = [style.borderLeftWidth, style.borderRightWidth].map(Number.parseFloat);
+		const [box, row] = [padding(active), padding(first)];
 		// Hundredths of a pixel: the sum of two edges does not round as one edge does.
-		return `${(box.left + left + x).toFixed(2)} ${((box.width - left - right) * w).toFixed(2)}`;
+		return [box.left + x, box.width * w, box.bottom + y - row.bottom].map((value) => value.toFixed(2)).join(" ");
 	});
 }
 
