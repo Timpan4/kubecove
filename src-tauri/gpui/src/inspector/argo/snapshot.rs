@@ -62,7 +62,9 @@ fn xs_button(variant: Variant, label: &str) -> Div {
 
 /// `SegmentedControl size="sm"` for the reconciliation document view.
 fn segmented(active: DiffView, cx: &mut Context<Inspector>) -> Div {
+    let slide = crate::control_motion::Slide::new();
     div()
+        .relative()
         .flex()
         .flex_none()
         .items_center()
@@ -71,6 +73,14 @@ fn segmented(active: DiffView, cx: &mut Context<Inspector>) -> Div {
         .bg(Tokens::background())
         .border_1()
         .border_color(Tokens::border().opacity(0.6))
+        .child(controls::segment_pill(
+            &slide,
+            "segment-pill:argo-view",
+            VIEWS
+                .iter()
+                .position(|(option, _)| *option == active)
+                .unwrap_or_default(),
+        ))
         .children(VIEWS.map(|(option, label)| {
             let segment =
                 div()
@@ -87,11 +97,12 @@ fn segmented(active: DiffView, cx: &mut Context<Inspector>) -> Div {
                     .on_click(cx.listener(move |this, _, _, cx| {
                         update(this, cx, |state| state.view = option)
                     }));
-            crate::control_motion::eased(
+            let segment = crate::control_motion::eased(
                 SharedString::from(format!("segment:argo-view:{label}")),
                 option == active,
                 move |on| controls::segment(segment, on),
-            )
+            );
+            slide.option(option == active, segment)
         }))
 }
 

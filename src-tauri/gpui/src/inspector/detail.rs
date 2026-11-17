@@ -479,13 +479,26 @@ impl Inspector {
             );
         // `TabsList variant="line" class="flex-wrap"`: an `h-8 p-[3px] gap-1` row of
         // 25px `px-1.5 text-xs font-medium` triggers; narrow panes wrap tabs.
+        // `TabsTrigger.svelte`: one line under the row slides to the active tab.
+        let line = control_motion::Slide::new();
         let tabs = div()
+            .relative()
             .flex()
             .flex_wrap()
             .items_center()
             .min_h(px(32.))
             .p(px(3.))
             .gap(px(4.))
+            .child(
+                line.indicator(
+                    "tab-line",
+                    TABS.iter()
+                        .position(|(tab, ..)| active == Some(*tab))
+                        .unwrap_or_default(),
+                    Tokens::foreground(),
+                )
+                .line(px(2.), px(2.)),
+            )
             .children(
                 TABS.iter()
                     .filter(|(tab, ..)| {
@@ -511,32 +524,20 @@ impl Inspector {
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.set_tab(tab, window, cx)
                             }));
-                        // `TabsTrigger.svelte`: the text follows
-                        // `transition-[color,…]` and the line `after:transition-opacity`.
-                        control_motion::eased(
+                        // The text follows `transition-[color,…]`.
+                        let trigger = control_motion::eased(
                             gpui_kit::SharedString::from(format!("tab:{id}")),
                             selected,
                             move |on| {
                                 let foreground = Tokens::foreground();
-                                trigger
-                                    .text_color(control_motion::mix(
-                                        foreground.opacity(0.6),
-                                        foreground,
-                                        on,
-                                    ))
-                                    .when(on > 0., |trigger| {
-                                        trigger.child(
-                                            div()
-                                                .absolute()
-                                                .left_0()
-                                                .right_0()
-                                                .bottom(px(-4.))
-                                                .h(px(2.))
-                                                .bg(foreground.opacity(on)),
-                                        )
-                                    })
+                                trigger.text_color(control_motion::mix(
+                                    foreground.opacity(0.6),
+                                    foreground,
+                                    on,
+                                ))
                             },
-                        )
+                        );
+                        line.option(selected, trigger)
                     }),
             );
         let loading = self

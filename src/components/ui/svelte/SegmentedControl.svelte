@@ -23,16 +23,62 @@
 		size?: "sm" | "md";
 		class?: string;
 	} = $props();
+
+	let group: HTMLDivElement | undefined = $state();
+	/** The active option's box inside the group, which the pill covers. */
+	let pill: { left: number; top: number; width: number; height: number } | undefined = $state();
+	/** The pill slides only to a newly chosen option. A layout change moves it at once. */
+	let sliding = $state(false);
+	let shownValue: T | undefined;
+
+	function place() {
+		const active = group?.querySelector<HTMLElement>("[aria-checked='true']");
+		pill = active
+			? {
+					left: active.offsetLeft,
+					top: active.offsetTop,
+					width: active.offsetWidth,
+					height: active.offsetHeight,
+				}
+			: undefined;
+	}
+
+	$effect(() => {
+		if (!group) return;
+		sliding = shownValue !== undefined && shownValue !== value;
+		shownValue = value;
+		place();
+		const observer = new ResizeObserver(place);
+		observer.observe(group);
+		return () => observer.disconnect();
+	});
 </script>
 
 <div
+	bind:this={group}
 	role="radiogroup"
 	aria-label={ariaLabel}
 	class={cnfast(
-		"inline-flex items-center rounded-lg bg-surface-0 p-0.5 ring-1 ring-border/60",
+		"relative inline-flex items-center rounded-lg bg-surface-0 p-0.5 ring-1 ring-border/60",
 		className,
 	)}
 >
+	{#if pill}
+		<span
+			data-slot="segmented-control-pill"
+			aria-hidden="true"
+			class={cnfast(
+				"pointer-events-none absolute rounded-md bg-surface-1 shadow-sm",
+				sliding && "transition-[left,top,width,height] duration-150",
+			)}
+			style:left="{pill.left}px"
+			style:top="{pill.top}px"
+			style:width="{pill.width}px"
+			style:height="{pill.height}px"
+			ontransitionend={() => (sliding = false)}
+			ontransitioncancel={() => (sliding = false)}
+		></span>
+	{/if}
 	{#each options as option (option.value)}
 		{@const active = option.value === value}
 		<button
@@ -41,11 +87,9 @@
 			aria-checked={active}
 			onclick={() => onChange(option.value)}
 			class={cnfast(
-				"inline-flex cursor-pointer items-center gap-1.5 rounded-md font-medium transition-[color,background-color,border-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 [&_svg]:pointer-events-none [&_svg]:size-3.5",
+				"relative inline-flex cursor-pointer items-center gap-1.5 rounded-md font-medium transition-[color] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 [&_svg]:pointer-events-none [&_svg]:size-3.5",
 				size === "md" ? "h-7 px-2.5 text-xs" : "h-6 px-2 text-xs",
-				active
-					? "bg-surface-1 text-foreground shadow-sm"
-					: "text-muted-foreground hover:text-foreground",
+				active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
 			)}
 		>
 			{#if option.icon}

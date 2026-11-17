@@ -16,6 +16,9 @@ use gpui_kit::{
 use std::collections::HashMap;
 use std::time::Duration;
 
+mod slide;
+pub use slide::{Slide, SlideIndicator};
+
 /// Tailwind's `--default-transition-duration` in `node_modules/tailwindcss/theme.css`,
 /// which `transition-colors`, `transition-transform` and `transition-opacity` use.
 /// `SegmentedControl.svelte` names the same value as `duration-150`.

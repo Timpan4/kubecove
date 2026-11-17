@@ -16,6 +16,8 @@ type Target = {
 	pseudo?: string;
 	/** The computed property the transition changes. */
 	property: string;
+	/** What the page shows, where the followed property alone does not say it. */
+	shown?(page: Page): Promise<string>;
 	/** Changes the control's state. */
 	act(page: Page): Promise<void>;
 };
@@ -29,17 +31,26 @@ const TARGETS = {
 		property: "translate",
 		act: (page) => page.getByRole("switch", { name: "Show exact timestamps", exact: true }).click(),
 	},
-	// SegmentedControl.svelte: the option's `transition-[color,background-color,…] duration-150`.
+	// SegmentedControl.svelte: the pill's `transition-[left,top,width,height] duration-150` to the chosen option.
 	segment: {
-		moving: (page) => page.getByRole("radio", { name: "List", exact: true }),
-		property: "background-color",
+		moving: (page) => page.getByRole("radiogroup").filter({ has: page.getByRole("radio", { name: "List", exact: true }) }).locator("[data-slot='segmented-control-pill']"),
+		property: "left",
 		act: (page) => page.getByRole("radio", { name: "List", exact: true }).click(),
 	},
-	// TabsTrigger.svelte: the line's `after:transition-opacity`.
+	// TabsTrigger.svelte: the line's `after:transition-[translate,scale]` from the last active tab.
+	// The new tab's line starts offset onto the old tab, so the page shows the active tab's left
+	// edge plus that offset.
 	tab: {
 		moving: (page) => page.getByRole("tab", { name: "Events", exact: true }),
 		pseudo: "::after",
-		property: "opacity",
+		property: "translate",
+		shown: (page) => page.getByRole("tab", { name: "Events", exact: true }).evaluate((tab) => {
+			const active = tab.closest("[role='tablist']")?.querySelector("[role='tab'][data-state='active']");
+			if (!active) throw new Error("No active tab");
+			const offset = Number.parseFloat(getComputedStyle(active, "::after").translate);
+			// Hundredths of a pixel: the sum of two edges does not round as one edge does.
+			return (active.getBoundingClientRect().left + (Number.isNaN(offset) ? 0 : offset)).toFixed(2);
+		}),
 		act: (page) => page.getByRole("tab", { name: "Events", exact: true }).click(),
 	},
 	// TableRow.svelte: `transition-colors` to the hover background.
@@ -75,6 +86,7 @@ const seen = new WeakMap<Page, { rest: string; midway?: string }>();
  * `0px` or `0deg` where the style at rest reads `none`.
  */
 function read(page: Page, target: Target): Promise<string> {
+	if (target.shown) return target.shown(page);
 	return target.moving(page).evaluate((element, { pseudo, property }) => {
 		const value = getComputedStyle(element, pseudo).getPropertyValue(property);
 		if (!property.endsWith("color")) return String(value === "none" ? 0 : Number.parseFloat(value));

@@ -95,19 +95,20 @@ fn paint(
     cx: &mut gpui_kit::App,
     target: &str,
 ) -> Option<Vec<String>> {
-    let id = match target {
-        "switch" => ElementId::Name(format!("setting:{SETTING}").into()),
-        "segment" => "gitops-view:List".into(),
-        "tab" => "show-events".into(),
+    // A pill or a line slides from the option that was active to the chosen one.
+    let (id, from): (ElementId, Option<&'static str>) = match target {
+        "switch" => (ElementId::Name(format!("setting:{SETTING}").into()), None),
+        "segment" => ("gitops-view:List".into(), Some("gitops-view:Cards")),
+        "tab" => ("show-events".into(), Some("show-details")),
         "chevron" => return None,
-        _ => transition(window, cx, target),
+        _ => (transition(window, cx, target), None),
     };
+    let mut area = window.find(id).bounds();
+    if let Some(from) = from {
+        area = area.union(&window.find(from).bounds());
+    }
     // The tab's line sits 4 px under its trigger.
-    let area = window
-        .find(id)
-        .bounds()
-        .dilate(gpui_kit::px(4.))
-        .scale(window.scale_factor());
+    let area = area.dilate(gpui_kit::px(4.)).scale(window.scale_factor());
     let edge = area.bottom_right();
     Some(
         window
@@ -166,13 +167,13 @@ fn change(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, target: &str) -
     transition(window, cx, target)
 }
 
-/// The id the target's transition reports under: the `eased` id, or the id of
-/// the element a `hover_fill` fills.
+/// The id the target's transition reports under: the `eased` id, the sliding
+/// indicator's id, or the id of the element a `hover_fill` fills.
 fn transition(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, target: &str) -> ElementId {
     let id = match target {
         "switch" => format!("switch-thumb:{SETTING}"),
-        "segment" => "segment:gitops-view:List".into(),
-        "tab" => "tab:show-events".into(),
+        "segment" => "segment-pill:gitops-view".into(),
+        "tab" => "tab-line".into(),
         "row" => {
             let name = detail::resolve_resource(window, DEPLOYMENT, cx)
                 .expect("the resource table shows the Deployment");
