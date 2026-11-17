@@ -48,7 +48,7 @@ fn enter_on_a_tabbed_sidebar_row_selects_it(cx: &mut TestAppContext) {
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
         let row = window.find("nav:Network");
-        assert_eq!(row.description(), Some("selected"));
+        assert_eq!(row.selected(), Some(true));
         assert_eq!(row.focused(), Some(true), "a click focuses its row");
         window.press("tab", cx);
     })
@@ -68,11 +68,11 @@ fn enter_on_a_tabbed_sidebar_row_selects_it(cx: &mut TestAppContext) {
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
         assert_eq!(
-            window.find("nav:Config").description(),
-            Some("selected"),
+            window.find("nav:Config").selected(),
+            Some(true),
             "Enter must select the row Tab focused"
         );
-        assert_eq!(window.find("nav:Network").description(), Some("unselected"));
+        assert_eq!(window.find("nav:Network").selected(), Some(false));
     })
     .unwrap();
 }
