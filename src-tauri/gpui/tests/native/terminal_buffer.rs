@@ -179,3 +179,68 @@ fn double_click_joins_a_word_across_a_wide_character_wrap() {
     tab.selection = Some(tab.word((1, 1)));
     assert_eq!(tab.selected_text().unwrap(), "abcdefg界e\u{301}-x");
 }
+
+// Failure mode: resize rebuilds the screen, so the DECSC cursor and its
+// attributes reset and ESC 8 after a width change lands on the wrong cell.
+#[test]
+fn saved_cursor_and_attributes_survive_a_width_change() {
+    let mut terminal = parser(4, 12);
+    terminal.process(b"alpha beta gamma\r\n\x1b[31m$ ls\x1b7\x1b[0m\r\nnext");
+    resize(&mut terminal, n(4), n(30));
+    terminal.process(b"\x1b8X");
+    assert_eq!(
+        terminal.screen().contents(),
+        "alpha beta gamma\n$ lsX\nnext"
+    );
+    assert_eq!(
+        terminal.screen().cell(1, 4).unwrap().fgcolor(),
+        vt100::Color::Idx(1)
+    );
+}
+
+fn newline() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "\r\n"
+    } else {
+        "\n"
+    }
+}
+// xterm `Terminal.clear()`: history goes and the cursor's row becomes row 0.
+#[test]
+fn clear_drops_history_and_keeps_the_prompt_row() {
+    let mut tab = tab();
+    for index in 0..5 {
+        tab.parser.process(format!("out {index}\r\n").as_bytes());
+    }
+    tab.parser.process(b"$ ");
+    tab.select_all();
+    tab.clear();
+    assert!(tab.selection.is_none());
+    assert_eq!(tab.parser.screen().cursor_position(), (0, 2));
+    tab.parser.process(b"ls\r\nfile\r\n$ ");
+    tab.select_all();
+    let text = tab.selected_text().unwrap();
+    assert!(
+        text.starts_with(&format!("$ ls{0}file{0}$", newline())),
+        "{text:?}"
+    );
+    assert!(!text.contains("out"));
+}
+// Failure mode: the kept row still wraps into the blank row below, so the next
+// hard line is copied as part of it.
+#[test]
+fn clear_on_a_wrapped_row_does_not_join_the_next_hard_line() {
+    let mut tab = tab();
+    tab.parser.process(b"out\r\n$ abcdefghij\x1b[A");
+    // Scrolled into history, viewport row 1 is not the cursor's row.
+    tab.parser.process(b"\r\n\r\n\x1b[2A");
+    tab.parser.screen_mut().set_scrollback(1);
+    tab.clear();
+    tab.parser.process(b"\r\nnext");
+    tab.select_all();
+    let text = tab.selected_text().unwrap();
+    assert!(
+        text.starts_with(&format!("$ abcdef{}next", newline())),
+        "{text:?}"
+    );
+}

@@ -244,6 +244,12 @@ impl ExecTab {
             .join("\n")
             .into();
     }
+    /// The toolbar's Clear button, xterm `Terminal.clear()`.
+    pub(super) fn clear(&mut self) {
+        self.parser.clear();
+        self.selection = None;
+        self.refresh_view();
+    }
     fn output(&mut self, data: &str) {
         let alternate = self.parser.screen().alternate_screen();
         // `execTerminal.ts` enables xterm's convertEol.
