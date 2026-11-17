@@ -54,10 +54,8 @@ export async function refreshCurrentView({
 	const results = await Promise.allSettled([...queries].map((query) =>
 		queryClient.invalidateQueries(
 			{ predicate: (current) => current === query, refetchType: "active" },
-			{ throwOnError: true, cancelRefetch },
-		).catch((error: unknown) => {
-			if (!ignoreReadErrors.some((match) => match(query))) throw error;
-		}),
+			{ throwOnError: !ignoreReadErrors.some((match) => match(query)), cancelRefetch },
+		),
 	));
 	const warnings: string[] = [];
 	for (const result of results) {
