@@ -156,6 +156,12 @@ finishes one that reaches its end. The native driver advances its executor clock
 by the same time. `expectOverlayOpacity` then reads the same opacity in both
 clients, to four decimals.
 
+The two clocks are separate on the web and one clock natively. After
+`holdOverlayMotion`, `advanceClock` moves native overlays but not the web's, and
+`advanceOverlayMotion` runs native application timers but not the web's. A
+scenario that holds overlay motion therefore moves time only with
+`advanceOverlayMotion`, and checks nothing that an application timer changes.
+
 The GPUI client also animates dialogs, their backdrop, the navigation drawer,
 the Map context select and the detail panel. The web does not: `DialogContent`,
 `DialogOverlay`, `SheetContent` and `SelectContent` put their animation classes
