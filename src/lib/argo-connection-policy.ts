@@ -60,11 +60,20 @@ export function savedArgoProfileId(
  * URL as typed, which may have had a trailing slash or a default port. GPUI's `server_key` matches.
  */
 function argoServerKey(endpoint: ArgoServerEndpoint): string {
-	if (endpoint.kind !== "externalHttps" || !URL.canParse(endpoint.url.trim())) return argoEndpointIdentity(endpoint);
-	const url = new URL(endpoint.url.trim());
+	const url = endpoint.kind === "externalHttps" ? parsedUrl(endpoint.url.trim()) : null;
+	if (!url) return argoEndpointIdentity(endpoint);
 	url.search = "";
 	url.hash = "";
 	return argoEndpointIdentity({ kind: "externalHttps", url: url.href.replace(/\/+$/, "") });
+}
+
+/** `URL.canParse` needs Safari 17, newer than the build's `safari15` target, so this catches instead. */
+function parsedUrl(value: string): URL | null {
+	try {
+		return new URL(value);
+	} catch {
+		return null;
+	}
 }
 
 interface ArgoConnectionStatusPolicyInput {
