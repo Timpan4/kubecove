@@ -3,10 +3,15 @@
 //! same state from the resource list, topology and detail reads it owns.
 //!
 //! The strip fades in and out, and a third-width bar slides across it until
-//! the fade-out ends, as on the web. Frames are requested only while the strip
-//! shows. Time comes from the executor clock, so test drivers move it.
+//! the fade-out ends, as on the web. Time comes from the executor clock, so
+//! test drivers move it.
+//!
+//! The fades end by themselves and ask for every frame. A read can stay
+//! pending without a fixed end, so the slide follows the repeating clock in
+//! `motion.rs`: it wakes from a timer, and the bar rests at the strip's start
+//! in an inactive window.
 use super::{Inspector, Load, Page, detail::Detail, map::TopologyLoad};
-use crate::motion::{Bezier, Timing, Tween};
+use crate::motion::{self, Bezier, Timing, Tween};
 use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use gpui_kit::{Context, IntoElement, Window, div, prelude::*, px, relative};
@@ -81,11 +86,23 @@ impl Inspector {
             }
             match bar.opacity {
                 Some(opacity) if active || opacity.running(now, FADE) => {
-                    let elapsed = now.saturating_duration_since(*bar.epoch.get_or_insert(now));
-                    let turn = (elapsed.as_secs_f64() % SLIDE_PERIOD.as_secs_f64()
-                        / SLIDE_PERIOD.as_secs_f64()) as f32;
-                    cx.on_next_frame(window, |_, _, cx| cx.notify());
-                    Some((opacity.value(now, FADE), slide(turn)))
+                    if opacity.running(now, FADE) {
+                        cx.on_next_frame(window, |_, _, cx| cx.notify());
+                    }
+                    let offset = if motion::repeats(window, cx) {
+                        let elapsed = now.saturating_duration_since(*bar.epoch.get_or_insert(now));
+                        // The bar's mean time to move one device pixel.
+                        let travel = (SLIDE[2].1 - SLIDE[0].1)
+                            * BAR_WIDTH
+                            * f32::from(window.viewport_size().width)
+                            * window.scale_factor();
+                        motion::wake_in(SLIDE_PERIOD.div_f32(travel.max(1.)), window, cx);
+                        slide(motion::phase(elapsed, SLIDE_PERIOD))
+                    } else {
+                        bar.epoch = None;
+                        0.
+                    };
+                    Some((opacity.value(now, FADE), offset))
                 }
                 _ => {
                     bar.opacity = None;

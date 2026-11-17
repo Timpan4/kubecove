@@ -8,6 +8,7 @@
       "steps": [
         { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_scope", "context": "mock-dev" } },
         { "action": "openPage", "page": "Workspace Overview" },
+        { "action": "setWindowActive", "active": true },
         { "action": "controlClock" },
         { "action": "openResources" },
         { "action": "advanceClock", "ms": 100 },
@@ -29,6 +30,7 @@
       "steps": [
         { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_topology", "context": "mock-dev" } },
         { "action": "openResources" },
+        { "action": "setWindowActive", "active": true },
         { "action": "setTopologyMode", "mode": "Ownership", "pending": true },
         { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_topology", "context": "mock-dev" } },
         { "action": "advanceClock", "ms": 300 },
@@ -47,6 +49,7 @@
         { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_topology", "context": "mock-dev" } },
         { "action": "setReducedMotion", "reduce": true },
         { "action": "openResources" },
+        { "action": "setWindowActive", "active": true },
         { "action": "setTopologyMode", "mode": "Ownership", "pending": true },
         { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_topology", "context": "mock-dev" } },
         { "action": "advanceClock", "ms": 300 },
@@ -62,6 +65,21 @@
         { "action": "toggleOverviewProblem", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
         { "action": "expectOverviewProblem", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p", "ready": "0/1", "status": "CrashLoopBackOff" },
         { "action": "advanceClock", "ms": 200 },
+        { "action": "expectMotion", "moving": false }
+      ]
+    },
+    {
+      "id": "loading-motion.live-rows",
+      "title": "Rows a watch update changes or adds show the update, and nothing moves afterwards",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "setWindowActive", "active": true },
+        { "action": "expectLiveState", "label": "Live" },
+        { "action": "replayLiveData", "script": "update" },
+        { "action": "expectResourceStatus", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "status": "Degraded" },
+        { "action": "replayLiveData", "script": "add" },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "orders-api" },
+        { "action": "advanceClock", "ms": 1000 },
         { "action": "expectMotion", "moving": false }
       ]
     }

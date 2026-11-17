@@ -3,13 +3,15 @@
 //! is GPUI's in-memory test clipboard, never the system clipboard.
 use super::*;
 
-/// Whether the frame just rendered asked for another, as an element in motion
-/// does. The executor clock stands still within a step, so nothing else does.
+/// Whether the frame just rendered arranged another, as an element in motion
+/// does: a transition that ends asks for the next frame, and a spinner or the
+/// loading bar's slide arms the repeating clock's timer. The executor clock
+/// stands still within a step, so nothing else does.
 fn frame_requested(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App) -> bool {
     window.render_frame(cx);
     window.simulate_next_frame(cx);
     window.render_frame(cx);
-    window.simulate_next_frame(cx) > 0
+    window.simulate_next_frame(cx) > 0 || kubecove_gpui::Inspector::repeating_motion(cx)
 }
 
 pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) -> bool {
@@ -41,7 +43,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             assert_eq!(
                 frame_requested(window, cx),
                 step["moving"] == true,
-                "whether a frame was requested"
+                "whether the frame arranged another"
             );
         }
         "setReducedMotion" => {

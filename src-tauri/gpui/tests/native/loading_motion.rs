@@ -9,7 +9,11 @@
 //! - the bar starts inside the strip instead of off its left edge, or misses the
 //!   140 % keyframe at 55 % of a period;
 //! - the bar stops when the read settles, before the fade-out ends;
-//! - the strip is still drawn, or a frame still requested, after the fade-out.
+//! - the strip is still drawn, or a frame still requested, after the fade-out;
+//! - a pending read asks for every frame for as long as it lasts, which keeps
+//!   the frames harness drawing, instead of arming the repeating clock's timer;
+//! - the bar slides while another application's window is active, or stays
+//!   still after the window returns.
 use super::*;
 use std::time::Duration;
 
@@ -24,9 +28,25 @@ fn advance(cx: &mut TestAppContext, by: Duration) {
     cx.run_until_parked();
 }
 
-/// The strip's opacity and the bar's offset in bar widths, and whether the
-/// frame that drew them asked for another.
-fn bar(cx: &mut TestAppContext, handle: gpui_kit::AnyWindowHandle) -> (Option<(f32, f32)>, bool) {
+/// How the last frame arranged the next: a fade asks for the next frame, and
+/// the slide arms the repeating clock's timer.
+#[derive(Debug, PartialEq)]
+struct Next {
+    frame: bool,
+    timer: bool,
+}
+
+const REST: Next = Next {
+    frame: false,
+    timer: false,
+};
+
+/// The strip's opacity and the bar's offset in bar widths, and how the frame
+/// that drew them arranged the next.
+fn bar_next(
+    cx: &mut TestAppContext,
+    handle: gpui_kit::AnyWindowHandle,
+) -> (Option<(f32, f32)>, Next) {
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
         window.simulate_next_frame(cx);
@@ -38,9 +58,45 @@ fn bar(cx: &mut TestAppContext, handle: gpui_kit::AnyWindowHandle) -> (Option<(f
             .expect("the Inspector is the window's content")
             .read(cx)
             .foreground_bar_motion();
-        (drawn, window.simulate_next_frame(cx) > 0)
+        let next = Next {
+            frame: window.simulate_next_frame(cx) > 0,
+            timer: Inspector::repeating_motion(cx),
+        };
+        (drawn, next)
     })
     .unwrap()
+}
+
+/// The strip's opacity and the bar's offset in bar widths, and whether the
+/// frame that drew them arranged another.
+fn bar(cx: &mut TestAppContext, handle: gpui_kit::AnyWindowHandle) -> (Option<(f32, f32)>, bool) {
+    let (drawn, next) = bar_next(cx, handle);
+    (drawn, next != REST)
+}
+
+fn activate(cx: &mut TestAppContext, handle: gpui_kit::AnyWindowHandle) {
+    cx.update_window(handle, |_, window, _| window.activate_window())
+        .unwrap();
+    cx.run_until_parked();
+}
+
+/// Starts a resource read for the other context that stays pending until the
+/// returned sender fires.
+fn pending_read(
+    cx: &mut TestAppContext,
+    backend: &Controlled,
+    handle: gpui_kit::AnyWindowHandle,
+) -> tokio::sync::oneshot::Sender<()> {
+    let (send, receive) = tokio::sync::oneshot::channel();
+    *backend.pending.lock().unwrap() = Some(receive);
+    cx.update_window(handle, |_, window, cx| {
+        window.within("context").click("input", cx);
+        window.press("down", cx);
+        window.press("enter", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    send
 }
 
 fn close(actual: f32, expected: f32) -> bool {
@@ -51,17 +107,9 @@ fn close(actual: f32, expected: f32) -> bool {
 fn the_foreground_bar_fades_and_slides_until_its_fade_out_ends(cx: &mut TestAppContext) {
     let backend = Arc::new(Controlled::default());
     let handle = open(cx, backend.clone());
+    activate(cx, handle);
     assert_eq!(bar(cx, handle).0, None);
-    // The first read for the other context stays pending.
-    let (send, receive) = tokio::sync::oneshot::channel();
-    *backend.pending.lock().unwrap() = Some(receive);
-    cx.update_window(handle, |_, window, cx| {
-        window.within("context").click("input", cx);
-        window.press("down", cx);
-        window.press("enter", cx);
-    })
-    .unwrap();
-    cx.run_until_parked();
+    let send = pending_read(cx, &backend, handle);
     assert_eq!(bar(cx, handle).0, None, "the show delay");
 
     // The show delay in `loading.rs`.
@@ -79,10 +127,18 @@ fn the_foreground_bar_fades_and_slides_until_its_fade_out_ends(cx: &mut TestAppC
 
     // 55 % of the 1150 ms period after the slide started.
     advance(cx, Duration::from_micros(632_500 - 75_000));
-    let (drawn, _) = bar(cx, handle);
+    let (drawn, next) = bar_next(cx, handle);
     let (opacity, offset) = drawn.expect("the strip shows while its read is pending");
     assert_eq!(opacity, 1.);
     assert!(close(offset, 1.4), "the 55 % keyframe drew {offset}");
+    // The read has no fixed end, so its slide wakes from the timer alone.
+    assert_eq!(
+        next,
+        Next {
+            frame: false,
+            timer: true
+        }
+    );
 
     // The indicator has shown for longer than its minimum time, so it leaves
     // on the frame after the read settles.
@@ -103,5 +159,32 @@ fn the_foreground_bar_fades_and_slides_until_its_fade_out_ends(cx: &mut TestAppC
     assert!(moving);
 
     advance(cx, Duration::from_millis(75));
-    assert_eq!(bar(cx, handle), (None, false));
+    assert_eq!(bar_next(cx, handle), (None, REST));
+}
+
+#[gpui_kit::test]
+fn the_bar_rests_in_an_inactive_window_and_slides_when_it_returns(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    // The test window opens inactive.
+    let handle = open(cx, backend.clone());
+    let _send = pending_read(cx, &backend, handle);
+    // The show delay, then the fade-in.
+    advance(cx, Duration::from_millis(300));
+    assert_eq!(bar(cx, handle).0, Some((0., 0.)));
+    advance(cx, Duration::from_millis(150));
+    assert_eq!(
+        bar_next(cx, handle),
+        (Some((1., 0.)), REST),
+        "a still bar at the strip's start"
+    );
+
+    activate(cx, handle);
+    let (drawn, next) = bar_next(cx, handle);
+    assert_eq!(drawn, Some((1., -1.1)), "the slide starts");
+    assert!(next.timer);
+
+    gpui_kit::VisualTestContext::from_window(handle, cx).deactivate_window();
+    // A later frame, so the step the active window's frame armed does not count.
+    advance(cx, Duration::from_millis(75));
+    assert_eq!(bar_next(cx, handle), (Some((1., 0.)), REST));
 }

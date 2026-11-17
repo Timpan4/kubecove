@@ -1,10 +1,12 @@
 //! Presentation helpers mirroring the Svelte frontend's shadcn-svelte variants
 //! in `src/components/ui/svelte/classes.ts`. Sizes use the web's px values.
 
+use crate::motion;
 use crate::theme::{HEADING, Palette, SANS, SM_FONT_SIZE, Tokens, XS_FONT_SIZE};
 use gpui_kit::{
-    Animation, AnimationExt, AnyElement, Div, FontWeight, Hsla, Pixels, SharedString, Styled, Svg,
-    Transformation, div, percentage, prelude::*, px, svg,
+    AnyElement, App, Bounds, Div, ElementId, FontWeight, GlobalElementId, Hsla, InspectorElementId,
+    LayoutId, Pixels, SharedString, Styled, Svg, Transformation, Window, div, percentage,
+    prelude::*, px, svg,
 };
 use std::time::Duration;
 
@@ -69,18 +71,93 @@ pub const SPINNER: &str = "loader-circle";
 const SPIN_TURN: Duration = Duration::from_secs(1);
 
 /// `Spinner.svelte`. It turns only while it is rendered, on one clock shared by
-/// every spinner, and stays still under reduced motion.
+/// every spinner, and rests in an inactive window and under reduced motion.
 pub fn spinner(size: f32, color: Hsla) -> impl IntoElement {
     spinning(SPINNER, size, color)
 }
 
 /// An icon with `animate-spin`.
 pub fn spinning(name: &str, size: f32, color: Hsla) -> impl IntoElement {
-    icon(name, size, color).with_animation(
-        "spin",
-        Animation::new(SPIN_TURN).repeat_synced(),
-        |icon, turn| icon.with_transformation(Transformation::rotate(percentage(turn))),
-    )
+    Spinning {
+        name: name.to_owned(),
+        size,
+        color,
+    }
+}
+
+/// An icon that turns while repeating motion runs (`motion::repeats`). A
+/// pending state can last for hours, so the next frame comes from the
+/// repeating clock's timer, when the icon has turned one device pixel.
+struct Spinning {
+    name: String,
+    size: f32,
+    color: Hsla,
+}
+
+impl IntoElement for Spinning {
+    type Element = Self;
+
+    fn into_element(self) -> Self {
+        self
+    }
+}
+
+impl Element for Spinning {
+    type RequestLayoutState = AnyElement;
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, AnyElement) {
+        let mut icon = icon(&self.name, self.size, self.color);
+        if motion::repeats(window, cx) {
+            // No painted point is farther than half the icon's box from its
+            // centre, so it travels at most the box's circumference per turn.
+            let travel = std::f32::consts::PI * self.size * window.scale_factor();
+            motion::wake_in(SPIN_TURN.div_f32(travel), window, cx);
+            let turn = motion::shared_phase(SPIN_TURN, cx);
+            icon = icon.with_transformation(Transformation::rotate(percentage(turn)));
+        }
+        let mut icon = icon.into_any_element();
+        (icon.request_layout(window, cx), icon)
+    }
+
+    fn prepaint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        _: Bounds<Pixels>,
+        icon: &mut AnyElement,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        icon.prepaint(window, cx);
+    }
+
+    fn paint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        _: Bounds<Pixels>,
+        icon: &mut AnyElement,
+        _: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        icon.paint(window, cx);
+    }
 }
 
 /// An icon by name, where `SPINNER` names the turning spinner.

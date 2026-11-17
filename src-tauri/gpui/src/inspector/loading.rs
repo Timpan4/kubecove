@@ -215,6 +215,24 @@ impl LoadingDelays {
     }
 }
 
+impl Inspector {
+    /// The opacity the last frame drew the content that replaced the indicator
+    /// `key` with, or None when it does not fade. Opacity is painted, so UI
+    /// tests ask here.
+    #[doc(hidden)]
+    pub fn content_reveal(&self, key: &str) -> Option<f32> {
+        self.loading.reveal(key)
+    }
+
+    /// Whether a frame rendered at the clock's current time arranged the next
+    /// step of a spinner or of the foreground bar's slide. That wake is a
+    /// timer and asks for no frame, so UI tests ask here.
+    #[doc(hidden)]
+    pub fn repeating_motion(cx: &gpui_kit::App) -> bool {
+        crate::motion::wake_pending(cx)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
