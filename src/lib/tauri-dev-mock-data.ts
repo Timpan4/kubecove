@@ -63,7 +63,7 @@ export const deploymentRevisions: DeploymentRevision[] = [
  * Synthetic todo-web revisions. No real ReplicaSet has an empty pod template,
  * but one gives the revision diff a hunk with an empty side.
  */
-export const emptyTemplateRevisions: { name: string; namespace: string; revisions: DeploymentRevision[] } = {
+export const emptyTemplateRevisions = {
 	name: "todo-web",
 	namespace: "todo",
 	revisions: [
@@ -81,7 +81,7 @@ export const emptyTemplateRevisions: { name: string; namespace: string; revision
 			createdAt: "2026-06-28T09:30:00Z",
 			podTemplateYaml: "",
 		},
-	],
+	] satisfies DeploymentRevision[],
 };
 
 export const source: KubeconfigSourcesSummary = {
