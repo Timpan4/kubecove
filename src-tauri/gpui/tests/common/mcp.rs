@@ -30,24 +30,31 @@ impl From<McpStatus> for McpFixture {
     }
 }
 impl McpFixture {
-    pub(super) fn status(&self, request: String) -> Result<McpStatus, AppError> {
+    /// Logs the request and, like the host, refuses it before any change while the
+    /// settings file is not loaded.
+    fn request(&self, request: String) -> Result<(), AppError> {
         self.requests.lock().unwrap().push(request);
-        if *self.settings_file.lock().unwrap() != SettingsFile::Loaded {
-            return Err(AppError::new(
+        if *self.settings_file.lock().unwrap() == SettingsFile::Loaded {
+            Ok(())
+        } else {
+            Err(AppError::new(
                 "Invalid MCP settings file",
                 AppErrorKind::Io,
-            ));
+            ))
         }
+    }
+    pub(super) fn status(&self, request: String) -> Result<McpStatus, AppError> {
+        self.request(request)?;
         Ok(self.status.lock().unwrap().clone())
     }
     pub(super) fn set(&self, enabled: bool, port: u16) -> Result<McpStatus, AppError> {
+        self.request(format!("set:{enabled}:{port}"))?;
         let mut status = self.status.lock().unwrap();
         status.enabled = enabled;
         status.port = port;
         status.running = enabled;
         status.url = enabled.then(|| format!("http://127.0.0.1:{port}/mcp"));
-        drop(status);
-        self.status(format!("set:{enabled}:{port}"))
+        Ok(status.clone())
     }
     pub(super) fn reload(&self) -> Result<McpStatus, AppError> {
         let mut file = self.settings_file.lock().unwrap();
@@ -57,18 +64,19 @@ impl McpFixture {
         drop(file);
         self.status("reload".into())
     }
-    pub(super) fn reveal(&self) -> String {
-        self.requests.lock().unwrap().push("reveal".into());
-        if *self.rotated.lock().unwrap() {
+    pub(super) fn reveal(&self) -> Result<String, AppError> {
+        self.request("reveal".into())?;
+        Ok(if *self.rotated.lock().unwrap() {
             "parity-mcp-rotated-credential"
         } else {
             "parity-mcp-credential"
         }
-        .into()
+        .into())
     }
     pub(super) fn rotate(&self) -> Result<McpStatus, AppError> {
+        self.request("rotate".into())?;
         *self.rotated.lock().unwrap() = true;
-        self.status("rotate".into())
+        Ok(self.status.lock().unwrap().clone())
     }
 }
 impl super::Fixture {
@@ -112,7 +120,7 @@ macro_rules! fixture {
         }
         fn reveal_mcp_token(&self) -> kubecove_gpui::backend::Read<String> {
             let token = self.mcp.reveal();
-            Box::pin(async move { Ok(token) })
+            Box::pin(async move { token })
         }
         fn rotate_mcp_token(
             &self,

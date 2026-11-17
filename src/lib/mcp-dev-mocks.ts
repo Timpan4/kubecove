@@ -16,23 +16,25 @@ export function configureMcpSettingsFile(file: "invalid" | "valid"): void {
     if (file === "invalid") settingsFile = "invalid";
     else if (settingsFile === "invalid") settingsFile = "fixed";
 }
-function loadedStatus(request: string): McpStatus {
-    requests.push(request);
+/** Logs the request and, like the host, refuses it before any change while the settings file is not loaded. */
+function request(name: string): void {
+    requests.push(name);
     if (settingsFile !== "loaded") throw new Error("Invalid MCP settings file");
-    return mcpMockStatus();
 }
 export function mcpMockInvoke(command: string, args?: { enabled: boolean; port: number }): McpStatus | string {
     switch (command) {
-        case "get_mcp_status": return loadedStatus("status");
+        case "get_mcp_status": request("status"); return mcpMockStatus();
         case "set_mcp_settings":
             if (!args || !Number.isInteger(args.port) || args.port < 1 || args.port > 65535) throw new Error("Invalid MCP port");
+            request(`set:${args.enabled}:${args.port}`);
             status = { ...status, ...args, running: args.enabled, url: args.enabled ? `http://127.0.0.1:${args.port}/mcp` : null };
-            return loadedStatus(`set:${args.enabled}:${args.port}`);
+            return mcpMockStatus();
         case "reload_mcp_settings":
             if (settingsFile === "fixed") settingsFile = "loaded";
-            return loadedStatus("reload");
-        case "reveal_mcp_token": requests.push("reveal"); return rotated ? MCP_ROTATED_TOKEN : MCP_FIXTURE_TOKEN;
-        case "rotate_mcp_token": rotated = true; return loadedStatus("rotate");
+            request("reload");
+            return mcpMockStatus();
+        case "reveal_mcp_token": request("reveal"); return rotated ? MCP_ROTATED_TOKEN : MCP_FIXTURE_TOKEN;
+        case "rotate_mcp_token": request("rotate"); rotated = true; return mcpMockStatus();
         default: throw new Error("Unknown MCP fixture command");
     }
 }
