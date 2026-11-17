@@ -578,22 +578,36 @@ fn burst(control: &str, restarts: u32, events: usize) -> Result<(), String> {
         .map_err(|e| e.to_string())?
         .next()
         .ok_or_else(|| format!("{control} has no address"))?;
-    // A control server that stops answering fails the action at LIMIT.
+    // A control server that stops answering, or answers a byte at a time,
+    // fails the action at LIMIT: every step gets what is left of one deadline.
+    let deadline = Instant::now() + LIMIT;
+    let remaining = || {
+        Some(deadline.saturating_duration_since(Instant::now()))
+            .filter(|left| !left.is_zero())
+            .ok_or_else(|| format!("{control} gave no full response within {LIMIT:?}"))
+    };
     let mut stream =
-        std::net::TcpStream::connect_timeout(&address, LIMIT).map_err(|e| e.to_string())?;
+        std::net::TcpStream::connect_timeout(&address, remaining()?).map_err(|e| e.to_string())?;
     stream
-        .set_read_timeout(Some(LIMIT))
-        .and_then(|()| stream.set_write_timeout(Some(LIMIT)))
+        .set_write_timeout(Some(remaining()?))
         .map_err(|e| e.to_string())?;
     write!(
         stream,
         "GET /burst?restarts={restarts}&events={events} HTTP/1.1\r\nHost: fixture\r\nConnection: close\r\n\r\n"
     )
     .map_err(|e| e.to_string())?;
-    let mut response = String::new();
-    stream
-        .read_to_string(&mut response)
-        .map_err(|e| e.to_string())?;
+    let mut response = Vec::new();
+    let mut chunk = [0; 4096];
+    loop {
+        stream
+            .set_read_timeout(Some(remaining()?))
+            .map_err(|e| e.to_string())?;
+        match stream.read(&mut chunk).map_err(|e| e.to_string())? {
+            0 => break,
+            read => response.extend_from_slice(&chunk[..read]),
+        }
+    }
+    let response = String::from_utf8_lossy(&response);
     eprintln!("[speed] burst {}", response.lines().last().unwrap_or(""));
     Ok(())
 }
