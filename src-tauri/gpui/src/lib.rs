@@ -5,6 +5,7 @@ pub mod assets;
 pub mod automation;
 pub mod backend;
 mod collate;
+pub mod control_motion;
 pub mod frame_profile;
 pub mod gitops;
 mod gitops_surface;
