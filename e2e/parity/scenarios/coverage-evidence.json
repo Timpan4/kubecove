@@ -172,7 +172,7 @@
 		},
 		{
 			"id": "coverage-exec.clear-stop-restart",
-			"title": "Clear preserves a live terminal while Stop and Restart control its exact session",
+			"title": "Clear drops history but keeps the prompt row while Stop and Restart control its exact session",
 			"steps": [
 				{
 					"action": "openResources"
@@ -207,7 +207,7 @@
 					"action": "expectExecState",
 					"container": "app",
 					"status": "running",
-					"contains": "",
+					"contains": "$",
 					"absent": "Controlled exec app"
 				},
 				{

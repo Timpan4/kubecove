@@ -232,9 +232,7 @@ impl Inspector {
                                     if let Some(tab) =
                                         this.exec.tabs.iter_mut().find(|t| t.key == key)
                                     {
-                                        tab.parser.process(b"\x1b[2J\x1b[H");
-                                        tab.lines.clear();
-                                        tab.refresh_view();
+                                        tab.clear();
                                     }
                                     cx.notify();
                                 })),

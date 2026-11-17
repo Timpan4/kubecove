@@ -50,6 +50,74 @@ impl Parser {
             erase_scan: EraseScan::Ground,
         }
     }
+    /// xterm `Terminal.clear()`: drop the history and every row except the
+    /// cursor's, which becomes row 0. The cursor keeps its column.
+    pub fn clear(&mut self) {
+        // Read rows as drawn, not as scrolled; xterm also returns to the bottom.
+        self.inner.screen_mut().set_scrollback(0);
+        let screen = self.inner.screen();
+        let (row, col) = screen.cursor_position();
+        let history = screen.scrollback_len();
+        if history == 0 && row == 0 {
+            return;
+        }
+        let (rows, cols) = screen.size();
+        let margins = margins(screen);
+        let mut bytes = String::from("\x1b[0m");
+        if margins.is_some() {
+            // xterm's clear ignores DECSTBM and DECOM; SU and CUU would not.
+            write!(bytes, "\x1b[?6l\x1b[r\x1b[{};{}H", row + 1, col + 1).unwrap();
+        }
+        if row + 1 < rows.get() {
+            // xterm pushes default blank rows: CUD, ED 0, EL 1, CUU keep the column.
+            bytes.push_str("\x1b[B\x1b[J\x1b[1K\x1b[A");
+        }
+        if row > 0 {
+            write!(bytes, "\x1b[{row}S\x1b[{row}A").unwrap();
+        }
+        let wrapped = screen.row_wrapped(row);
+        if wrapped {
+            // The row below is gone, so the kept row must not wrap into it.
+            // Erasing the last cell clears vt100's flag; then rewrite that cell.
+            redraw_last_cell(&mut bytes, screen, row, true);
+        }
+        let above_region = margins.is_some_and(|(top, _, origin)| origin && top > 0);
+        if let Some((top, bottom, origin)) = margins {
+            write!(bytes, "\x1b[{};{}r", top + 1, bottom + 1).unwrap();
+            if origin {
+                bytes.push_str("\x1b[?6h");
+            }
+        }
+        if wrapped || margins.is_some() {
+            // Put the cursor back on row 0 at its column. CUP clamps the
+            // column, so redrawing the last cell restores a pending autowrap.
+            // Under DECOM, CUP cannot reach rows above the region and the
+            // cursor lands on the region's top row, where a redraw would leave
+            // a stray cell. Only DECRC could place it on row 0, and that
+            // overwrites the app's saved cursor.
+            if col >= cols.get() && !above_region {
+                redraw_last_cell(&mut bytes, screen, row, false);
+            } else {
+                write!(bytes, "\x1b[1;{}H", col.min(cols.get() - 1) + 1).unwrap();
+            }
+        }
+        bytes.push_str(&screen.attributes_formatted());
+        let alternate = screen.alternate_screen();
+        let target = self.inner.callbacks().discarded + history + usize::from(row);
+        // Run the surgery on a scratch parser so a pending escape or UTF-8
+        // sequence in the live decoder survives, as in `resize`.
+        let mut scratch = vt100::Parser::new(rows, cols, 0);
+        std::mem::swap(self.inner.screen_mut(), scratch.screen_mut());
+        scratch.process(bytes.as_bytes());
+        scratch.screen_mut().clear_scrollback();
+        std::mem::swap(self.inner.screen_mut(), scratch.screen_mut());
+        if !alternate {
+            // Keep absolute row indices increasing, so indices into the dropped
+            // rows fall below `discarded` and stop matching.
+            self.inner.callbacks_mut().discarded = target;
+            self.wraps.clear();
+        }
+    }
     pub fn process(&mut self, bytes: &[u8]) {
         if bytes.is_ascii() && !bytes.contains(&0x1b) && self.erase_scan == EraseScan::Ground {
             self.inner.process(bytes);
@@ -112,6 +180,51 @@ impl Parser {
     }
 }
 
+/// Move to row 0 and write `row`'s last cell from `screen` again, which leaves
+/// the cursor in the pending-wrap state. With `erase`, EL first clears the
+/// cell, which also clears vt100's wrap flag for the row.
+fn redraw_last_cell(bytes: &mut String, screen: &vt100::Screen, row: u16, erase: bool) {
+    let last = screen.size().1.get() - 1;
+    let at = if last > 0
+        && screen
+            .cell(row, last)
+            .is_some_and(vt100::Cell::is_wide_continuation)
+    {
+        last - 1
+    } else {
+        last
+    };
+    write!(bytes, "\x1b[1;{}H", at + 1).unwrap();
+    if erase {
+        bytes.push_str("\x1b[K");
+    }
+    if let Some(value) = screen.cell(row, at).filter(|c| c.has_contents()) {
+        let mut encoded = String::new();
+        cell(&mut encoded, value);
+        bytes.push_str(&encoded);
+    }
+}
+
+/// The DECSTBM region rows and the DECOM flag, or `None` when both are the
+/// defaults. vt100 keeps them private, so read them from where CUP lands on a copy.
+fn margins(screen: &vt100::Screen) -> Option<(u16, u16, bool)> {
+    let (rows, cols) = screen.size();
+    let mut probe = vt100::Parser::new(rows, cols, 0);
+    *probe.screen_mut() = screen.clone();
+    let mut land = |bytes: &[u8]| {
+        probe.process(bytes);
+        probe.screen().cursor_position().0
+    };
+    let (home, end) = (land(b"\x1b[H"), land(b"\x1b[999H"));
+    let origin = home != 0 || end != rows.get() - 1;
+    let (top, bottom) = if origin {
+        (home, end)
+    } else {
+        (land(b"\x1b[?6h\x1b[H"), land(b"\x1b[999H"))
+    };
+    (origin || top != 0 || bottom != rows.get() - 1).then_some((top, bottom, origin))
+}
+
 fn color(output: &mut String, color: vt100::Color, foreground: bool) {
     let prefix = if foreground { 38 } else { 48 };
     match color {
@@ -160,10 +273,18 @@ pub(super) fn resize(parser: &mut Parser, rows: NonZeroU16, cols: NonZeroU16) {
         parser.set_size(rows, cols);
         return;
     }
-    let mut old = screen.clone();
+    let (cursor_row, cursor_col) = screen.cursor_position();
+    let mut scratch = vt100::Parser::new(rows, cols, 0);
+    *scratch.screen_mut() = screen.clone();
+    // vt100 has no DECSC accessor, so read the saved cursor and attributes
+    // by restoring them on the copy. They are re-saved at the same logical cell.
+    scratch.process(b"\x1b8");
+    let (saved_row, saved_col) = scratch.screen().cursor_position();
+    let saved_attributes = scratch.screen().attributes_formatted();
+    let old = scratch.screen_mut();
     old.set_scrollback(0);
-    let (cursor_row, cursor_col) = old.cursor_position();
     let history = old.scrollback_len();
+    let saved_index = history + usize::from(saved_row);
     let old_cols = old.size().1.get();
     let old_base = parser.callbacks().discarded;
     let mut cursor_start = history + usize::from(cursor_row);
@@ -205,6 +326,7 @@ pub(super) fn resize(parser: &mut Parser, rows: NonZeroU16, cols: NonZeroU16) {
         Parser::new_with_callbacks(rows, cols, old.scrollback_capacity(), History::default());
     let mut encoded = String::new();
     let mut cursor = (0, 0);
+    let mut saved = None;
     for index in 0..=history + usize::from(last) {
         let row = if index < history {
             old.set_scrollback(history - index);
@@ -229,15 +351,46 @@ pub(super) fn resize(parser: &mut Parser, rows: NonZeroU16, cols: NonZeroU16) {
                     old.cell(row, *col)
                         .is_some_and(|c| c.has_contents() || c.bgcolor() != vt100::Color::Default)
                 })
-                .map_or(0, |col| col + 1)
+                // A wide character's second column has no contents of its own.
+                .map_or(0, |col| {
+                    let wide = old.cell(row, col).is_some_and(vt100::Cell::is_wide);
+                    col + if wide { 2 } else { 1 }
+                })
                 .max(if cursor_here { cursor_col } else { 0 })
         };
         if cursor_line {
             end = end.min(cols.get());
         }
+        // The cursor line drops a wide cell that no longer fits.
+        let replayed = |value: &vt100::Cell, col: u16| {
+            !value.is_wide_continuation() && !(cursor_line && value.is_wide() && col + 1 >= end)
+        };
         for col in 0..=end {
             if cursor_here && col == cursor_col.min(end) {
                 cursor = position(&next);
+            }
+            if index == saved_index && col == saved_col.min(end) {
+                // A saved column past the row's content keeps its offset
+                // instead of writing blank cells that copy would include.
+                // A cell that does not fit, such as a wide character with one
+                // column left, starts the next row when it is replayed.
+                let width = old
+                    .cell(row, col)
+                    .filter(|c| col < end && replayed(c, col))
+                    .map_or(0, |c| if c.is_wide() { 2 } else { 1 });
+                let (mut next_row, mut at) = position(&next);
+                if width > 0 && at.saturating_add(width) > cols.get() {
+                    (next_row, at) = (next_row + 1, 0);
+                } else if col < end
+                    && old
+                        .cell(row, col)
+                        .is_some_and(vt100::Cell::is_wide_continuation)
+                {
+                    // The wide character is already replayed; its second
+                    // column is one cell back.
+                    at = at.saturating_sub(1);
+                }
+                saved = Some((next_row, at.saturating_add(saved_col - col)));
             }
             if col == end {
                 break;
@@ -245,7 +398,7 @@ pub(super) fn resize(parser: &mut Parser, rows: NonZeroU16, cols: NonZeroU16) {
             let Some(value) = old.cell(row, col) else {
                 continue;
             };
-            if value.is_wide_continuation() || (cursor_line && value.is_wide() && col + 1 >= end) {
+            if !replayed(value, col) {
                 continue;
             }
             cell(&mut encoded, value);
@@ -258,12 +411,18 @@ pub(super) fn resize(parser: &mut Parser, rows: NonZeroU16, cols: NonZeroU16) {
             next.process(b"\r\n");
         }
     }
+    // A saved row below the last replayed one keeps its distance from it.
+    let saved = saved.unwrap_or_else(|| {
+        let row = position(&next).0 + (saved_index - history - usize::from(last));
+        (row, saved_col)
+    });
     let base = next.callbacks().discarded + next.screen().scrollback_len();
-    let row = cursor
-        .0
-        .saturating_sub(base)
-        .min(usize::from(rows.get() - 1));
-    next.process(format!("\x1b[{};{}H", row + 1, cursor.1.min(cols.get() - 1) + 1).as_bytes());
+    let move_to = |(row, col): (usize, u16)| {
+        let row = row.saturating_sub(base).min(usize::from(rows.get() - 1));
+        format!("\x1b[{};{}H", row + 1, col.min(cols.get() - 1) + 1)
+    };
+    next.process(format!("{}{saved_attributes}\x1b7", move_to(saved)).as_bytes());
+    next.process(move_to(cursor).as_bytes());
     next.process(screen.input_mode_formatted().as_bytes());
     next.process(screen.attributes_formatted().as_bytes());
     if screen.hide_cursor() {

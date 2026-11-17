@@ -369,6 +369,63 @@
       ]
     },
     {
+      "id": "exec-session.resize-saved-cursor",
+      "title": "A cursor saved with ESC 7 restores to the same cell after a width change",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "openResource",
+          "kind": "Pod",
+          "namespace": "payments",
+          "name": "payments-api-7d9c9b7f8d-k2r9p"
+        },
+        {
+          "action": "showTab",
+          "tab": "Exec"
+        },
+        {
+          "action": "execControl",
+          "operation": "start",
+          "container": "app",
+          "command": "/bin/sh"
+        },
+        {
+          "action": "expectExecState",
+          "container": "app",
+          "status": "running",
+          "contains": "Controlled exec app"
+        },
+        {
+          "action": "terminalOutput",
+          "container": "app",
+          "data": "\u001b[2J\u001b[Habcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\r\n$ ls\u001b7\r\nnext"
+        },
+        {
+          "action": "terminalFit",
+          "width": 1440,
+          "height": 900
+        },
+        {
+          "action": "terminalFit",
+          "width": 1700,
+          "height": 900
+        },
+        {
+          "action": "terminalOutput",
+          "container": "app",
+          "data": "\u001b8X"
+        },
+        {
+          "action": "expectExecState",
+          "container": "app",
+          "status": "running",
+          "contains": "$ lsX"
+        }
+      ]
+    },
+    {
       "id": "exec-session.drag-autoscroll",
       "title": "A drag held below the rows scrolls and selects through the newest output",
       "steps": [
