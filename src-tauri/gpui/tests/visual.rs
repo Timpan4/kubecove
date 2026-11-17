@@ -16,10 +16,16 @@ mod common;
 #[path = "parity/scroll.rs"]
 mod parity_scroll;
 
+// This target uses only the kind-picker lookups, not the other parity helpers.
+#[cfg(target_os = "linux")]
+#[allow(dead_code)]
+#[path = "parity/locate.rs"]
+mod parity_locate;
+
 #[cfg(target_os = "linux")]
 mod visual {
     use crate::common::Fixture;
-    use crate::parity_scroll;
+    use crate::{parity_locate, parity_scroll};
     use gpui_kit::test::{TestEventExt, TestWindowExt};
     use gpui_kit::{
         AnyWindowHandle, AppContext, Bounds, HeadlessAppContext, InputEvent, ScrollDelta,
@@ -317,6 +323,38 @@ mod visual {
                     act(&mut cx, handle, |window, cx| {
                         window.click("kind-search", cx);
                         window.input("Service", cx);
+                    });
+                }
+                "resources-no-scope" => {
+                    act(&mut cx, handle, |window, cx| {
+                        window.click("open-resources", cx)
+                    });
+                    act(&mut cx, handle, |window, cx| {
+                        window.click("kinds-picker", cx)
+                    });
+                    // Uncheck every selected kind, whatever the default scope holds.
+                    loop {
+                        let mut checked = None;
+                        act(&mut cx, handle, |window, _| {
+                            if window.try_find("kind-options").is_none() {
+                                return;
+                            }
+                            checked = window
+                                .within("kind-options")
+                                .elements()
+                                .into_iter()
+                                .find(|element| element.description() == Some("checked"))
+                                .map(|element| parity_locate::id(&element));
+                        });
+                        let Some(kind) = checked else { break };
+                        act(&mut cx, handle, |window, cx| {
+                            parity_locate::click_in(window, "kind-options", kind, cx)
+                        });
+                    }
+                    act(&mut cx, handle, |window, cx| {
+                        if window.try_find("kind-options").is_some() {
+                            window.click("kinds-picker", cx);
+                        }
                     });
                 }
                 "custom-search" => {
