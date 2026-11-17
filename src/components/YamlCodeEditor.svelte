@@ -137,13 +137,19 @@
 		let cancelled = false;
 		void loadYamlCodeViewerExtensions().then((extraExtensions) => {
 			if (cancelled || !host) return;
-			view = new EditorView({
+			const editor = new EditorView({
 				state: EditorState.create({
 					doc: value,
 					extensions: extensions(extraExtensions),
 				}),
 				parent: host,
 			});
+			view = editor;
+			// The parity web driver reads the whole document: the editor's DOM leaves out
+			// off-screen and folded lines and adds error-lens text. Production builds remove this.
+			if (process.env.KUBECOVE_PUBLIC_DEV === "true") {
+				Object.assign(host, { yamlDocument: () => editor.state.doc.toString() });
+			}
 		});
 
 		return () => {
