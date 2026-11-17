@@ -46,16 +46,16 @@ export async function traceInvoke<T, Args extends object>(
 		const result = await call();
 		diagnosticLog("tauri.invoke.done", {
 			cmd,
-			ms: Math.round(performance.now() - started),
+			ms: performance.now() - started,
 			result: diagnosticResultSummary(result),
-		});
+		}, started);
 		return result;
 	} catch (error) {
 		diagnosticLog("tauri.invoke.error", {
 			cmd,
-			ms: Math.round(performance.now() - started),
+			ms: performance.now() - started,
 			error: errorMessage(error),
-		});
+		}, started);
 		throw error;
 	}
 }
