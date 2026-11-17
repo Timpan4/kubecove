@@ -9,6 +9,7 @@ import { parseDriver, validateDriverReport } from "../e2e/parity/merge-reports";
 import { selectedContract } from "../e2e/parity/selected-contract";
 import { VIEWS } from "../e2e/parity/visual/views";
 import { runWeb } from "../e2e/parity/web";
+import { holdFrameIsolation } from "./gpui-frame-process";
 
 // PARITY_JOBS: parallel web pages and GPUI processes each. The default splits the CPUs
 // between the two drivers. Measured on 16 CPUs (2026-11-06): 16 per driver finished no
@@ -160,8 +161,12 @@ try {
 	const contract = await loadContract();
 	requireViewCoverage(contract, VIEWS);
 	contract.scenarios = await selectScenarios(contract.scenarios, rerun);
-	if (contract.scenarios.length) await runDrivers(contract);
-	else if (rerun) console.log("Nothing to rerun: both drivers passed every selected scenario.");
+	if (contract.scenarios.length) {
+		// Frame measurements wait for this run, and this run waits for one in progress.
+		const isolation = await holdFrameIsolation("shared");
+		try { await runDrivers(contract); }
+		finally { if (typeof isolation === "object") await isolation.release(); }
+	} else if (rerun) console.log("Nothing to rerun: both drivers passed every selected scenario.");
 	// A change no scenario can observe, or a CI shard with no share of a small selection.
 	else if (process.env.PARITY_CHANGED) console.log("No parity scenarios selected by the changes.");
 	else throw new Error("No parity scenarios selected");

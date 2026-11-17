@@ -1,6 +1,41 @@
 import { readFile, readlink, writeFile } from "node:fs/promises";
 import { getPriority } from "node:os";
-import { basename } from "node:path";
+import { basename, join } from "node:path";
+
+/**
+ * A lock between parity runs and frame measurements on one machine, in every checkout. Parity
+ * holds it shared for its whole run, and each frame command holds it exclusively while its child
+ * runs, so a parity run cannot start and finish unseen inside a frame case that prints nothing.
+ * Linux only, like the process check below: it needs util-linux `flock` and XDG_RUNTIME_DIR,
+ * which is per user and machine-wide, unlike a checkout's TMPDIR. Without them it returns
+ * "unavailable" and the process check still applies.
+ */
+export async function holdFrameIsolation(
+	mode: "shared" | "exclusive",
+): Promise<{ release: () => Promise<void> } | "busy" | "unavailable"> {
+	const flock = Bun.which("flock");
+	const runtime = process.env.XDG_RUNTIME_DIR;
+	if (process.platform !== "linux" || !flock || !runtime) return "unavailable";
+	const path = join(runtime, "kubecove-frame-isolation.lock");
+	const attempt = async (wait: boolean) => {
+		// --close: only flock keeps the lock open, so nothing the holder starts can keep it.
+		// The holder reads stdin until release or until this process exits and closes it.
+		const holder = Bun.spawn(
+			[flock, `--${mode}`, ...(wait ? [] : ["--nonblock"]), "--close", path, "sh", "-c", "echo held; exec cat >/dev/null"],
+			{ stdin: "pipe", stdout: "pipe", stderr: "inherit" },
+		);
+		const { done } = await holder.stdout.getReader().read();
+		if (!done) return { release: async () => { holder.stdin.end(); await holder.exited; } };
+		// flock --nonblock exits 1 without starting the holder when the lock is taken.
+		const code = await holder.exited;
+		if (!wait && code === 1) return "busy" as const;
+		throw new Error(`flock ${path} exited ${code} before taking the lock`);
+	};
+	const held = await attempt(false);
+	if (held !== "busy" || mode === "exclusive") return held;
+	console.log(`Waiting for a frame measurement to release ${path}`);
+	return attempt(true);
+}
 
 export function isParityProcess(executable: string, argv: string[]): boolean {
 	// procfs marks an unlinked executable while its process is still running.
@@ -43,10 +78,25 @@ export async function runFrameCommand(
 	log: string,
 	guardParity: boolean,
 ) {
-	if (guardParity) {
-		const parity = await parityProcesses();
-		if (parity.length) throw new Error(`Frame measurement blocked by parity processes: ${parity.join(", ")}`);
+	const isolation = guardParity ? await holdFrameIsolation("exclusive") : "unavailable";
+	if (isolation === "busy") throw new Error("Frame measurement blocked by a running parity run");
+	try {
+		if (guardParity) {
+			const parity = await parityProcesses();
+			if (parity.length) throw new Error(`Frame measurement blocked by parity processes: ${parity.join(", ")}`);
+		}
+		return await runIsolated(command, env, log, guardParity);
+	} finally {
+		if (isolation !== "unavailable") await isolation.release();
 	}
+}
+
+async function runIsolated(
+	command: string[],
+	env: Record<string, string | undefined>,
+	log: string,
+	guardParity: boolean,
+) {
 	const child = Bun.spawn(command, {
 		env,
 		detached: process.platform !== "win32",
