@@ -1,0 +1,89 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "control-motion.switch",
+      "title": "A setting's switch slides its thumb to the new state over 150 ms instead of jumping",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "General" },
+        { "action": "coverageCheck", "check": "motion:switch:start" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:switch:midway" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:switch:settled" }
+      ]
+    },
+    {
+      "id": "control-motion.segment",
+      "title": "A segmented control fades its active option in over 150 ms",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "coverageCheck", "check": "motion:segment:start" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:segment:midway" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:segment:settled" }
+      ]
+    },
+    {
+      "id": "control-motion.tab",
+      "title": "A detail tab fades its underline in over 150 ms",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "expectDetail", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "coverageCheck", "check": "motion:tab:start" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:tab:midway" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:tab:settled" }
+      ]
+    },
+    {
+      "id": "control-motion.row-hover",
+      "title": "A resource row fades to its hover background over 150 ms",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "expectResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "coverageCheck", "check": "motion:row:start" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:row:midway" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:row:settled" }
+      ]
+    },
+    {
+      "id": "control-motion.button-hover",
+      "title": "A button fades to its hover background over 150 ms",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showTab", "tab": "YAML" },
+        { "action": "expectYaml", "contains": ["kind: Deployment"] },
+        { "action": "coverageCheck", "check": "motion:button:start" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:button:midway" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:button:settled" }
+      ]
+    },
+    {
+      "id": "control-motion.sidebar-chevron",
+      "title": "A sidebar branch turns its chevron over 150 ms as it opens",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "expectSidebarRow", "path": ["Workloads"], "visible": true, "selected": false },
+        { "action": "coverageCheck", "check": "motion:chevron:start" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:chevron:midway" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:chevron:settled" }
+      ]
+    }
+  ]
+}

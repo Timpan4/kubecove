@@ -146,6 +146,17 @@ impl Inspector {
             } else {
                 Tokens::card()
             })
+            // The web's ghost `Button` fades to `hover:bg-muted/60` over
+            // `bg-muted/50`, or to `hover:bg-muted/40`. The fill lies over the
+            // row's own background, which a focused row replaces, so it adds
+            // only the difference.
+            .child(
+                crate::control_motion::hover_fill(
+                    gpui_kit::transparent_black(),
+                    Tokens::muted().opacity(if strong { 0.2 } else { 0.4 }),
+                )
+                .under_border(0., 0., 1., 0.),
+            )
             .child(ui::icon(
                 if collapsed {
                     "chevron-right"

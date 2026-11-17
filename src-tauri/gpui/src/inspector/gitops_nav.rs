@@ -287,11 +287,18 @@ impl Inspector {
                     } else {
                         Tokens::foreground().opacity(0.8)
                     })
-                    .when(!row.disabled, |row| {
-                        row.cursor_pointer().hover(|row| row.bg(Tokens::card()))
+                    // A disabled row keeps its background: `hover:bg-transparent`.
+                    .map(|element| {
+                        if row.disabled {
+                            element.when(selected, |row| row.bg(Tokens::primary().opacity(0.1)))
+                        } else {
+                            element
+                                .cursor_pointer()
+                                .child(super::sidebar_tree::row_fill(selected))
+                        }
                     })
                     .when(selected, |row| {
-                        row.bg(Tokens::primary().opacity(0.1)).child(
+                        row.child(
                             div()
                                 .absolute()
                                 .left_0()
@@ -313,14 +320,10 @@ impl Inspector {
                             .size(px(18.))
                             .when_some(toggle, |chevron, node| {
                                 chevron
-                                    .child(ui::icon(
-                                        if expanded {
-                                            "chevron-down"
-                                        } else {
-                                            "chevron-right"
-                                        },
-                                        12.,
-                                        Tokens::muted_foreground(),
+                                    .child(crate::control_motion::eased(
+                                        SharedString::from(format!("chevron:{}", row.label)),
+                                        expanded,
+                                        |open| ui::chevron(12., Tokens::muted_foreground(), open),
                                     ))
                                     .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                                         cx.stop_propagation();

@@ -84,7 +84,11 @@ impl Inspector {
                     .w_full()
                     .p(px(12.))
                     .cursor_pointer()
-                    .hover(|card| card.bg(Tokens::primary().opacity(0.05)))
+                    // `transition-colors duration-150 hover:bg-primary/5`.
+                    .child(crate::control_motion::hover_fill(
+                        gpui_kit::transparent_black(),
+                        Tokens::primary().opacity(0.05),
+                    ))
                     .on_click(cx.listener({
                         let key = key.clone();
                         move |this, _, _, cx| this.select_incident(key.clone(), cx)

@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import type { Page } from "playwright-core";
+import { checkControlMotion } from "./web-control-motion";
 import { checkLogCoverage } from "./web-log-coverage";
 import { checkMapGesture, checkMapViewport, waitForFitToSettle } from "./web-map-gestures";
 
@@ -9,6 +10,7 @@ function ownerlessStorageGroup(page: Page) {
 }
 
 export async function checkCoverage(page: Page, check: string) {
+	if (check.startsWith("motion:")) return checkControlMotion(page, check);
 	switch (check) {
 		case "event-summary": {
 			const panel = page.getByRole("tabpanel", { name: "Events", exact: true });
