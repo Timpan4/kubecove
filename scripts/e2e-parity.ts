@@ -163,9 +163,12 @@ try {
 	contract.scenarios = await selectScenarios(contract.scenarios, rerun);
 	if (contract.scenarios.length) {
 		// Frame measurements wait for this run, and this run waits for one in progress.
-		const isolation = await holdFrameIsolation("shared");
-		try { await runDrivers(contract); }
-		finally { if (typeof isolation === "object") await isolation.release(); }
+		const isolation = await holdFrameIsolation("shared", controller.signal);
+		try {
+			controller.signal.throwIfAborted();
+			await runDrivers(contract);
+		}
+		finally { if (isolation.state === "held") await isolation.release(); }
 	} else if (rerun) console.log("Nothing to rerun: both drivers passed every selected scenario.");
 	// A change no scenario can observe, or a CI shard with no share of a small selection.
 	else if (process.env.PARITY_CHANGED) console.log("No parity scenarios selected by the changes.");
