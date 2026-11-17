@@ -422,6 +422,10 @@ impl OverlayMotion {
             *slot = None;
             return None;
         }
+        if !running {
+            // A run that reached its target has nothing left for `finish` to end.
+            track.from = track.target();
+        }
         *slot = Some(track);
         frame.running |= running;
         Some(Shown {
