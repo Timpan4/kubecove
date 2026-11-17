@@ -35,12 +35,21 @@ export async function holdFrameIsolation(
 	const script = mode === "shared"
 		? `"$1" --nonblock --shared "$0" true || echo waiting; ${hold("--shared")}`
 		: hold("--exclusive --nonblock");
+	// An abort before this call sends no event, so check it before starting to wait.
+	signal?.throwIfAborted();
 	// Its own process group keeps a terminal Ctrl-C away from flock, so the lock lasts until
 	// this process releases it after its own cleanup.
 	const holder = Bun.spawn(["sh", "-c", script, path, flock], {
 		stdin: "pipe", stdout: "pipe", stderr: "inherit", detached: true,
 	});
-	const stop = () => holder.kill();
+	// The whole group, so a holder that took the lock as the abort arrived cannot keep it.
+	const stop = () => {
+		holder.stdin.end();
+		try { process.kill(-holder.pid, "SIGTERM"); }
+		catch (error) {
+			if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error;
+		}
+	};
 	signal?.addEventListener("abort", stop, { once: true });
 	try {
 		const reader = holder.stdout.getReader();
