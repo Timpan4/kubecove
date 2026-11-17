@@ -16,7 +16,7 @@ describe("equal GPUI and Svelte tests", () => {
 const contract = { fixture: "browser-mocks", context: "mock-dev", scenarios: [{ id: "one", title: "One", steps: [{ action: "openResources" }] }] };
 const report = (driver: string, scenarios: unknown[]) => ({ driver, scenarios });
 const passed = { id: "one", status: "passed" };
-const withStep = (step: unknown) => ({ ...contract, scenarios: [{ ...contract.scenarios[0], steps: [step] }] });
+const withStep = <Value>(step: Value) => ({ ...contract, scenarios: [{ ...contract.scenarios[0], steps: [step] }] });
 
 describe("parity input boundaries", () => {
 	test("overview identities retain an API version and reject malformed discriminators", () => {

@@ -6,6 +6,6 @@ export type WebActions = {
 };
 
 export function sharedActions<Name extends Action>(names: readonly Name[], handler: (page: Page, step: Step<Name>, scenarioSteps: readonly Step[]) => Promise<void>): Pick<WebActions, Name> {
-	// The handler accepts every step named by the keys in this registration.
+	// SAFETY: The handler accepts every step named by the registered keys.
 	return Object.fromEntries(names.map((name) => [name, handler])) as Pick<WebActions, Name>;
 }

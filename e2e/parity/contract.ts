@@ -1,5 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { JsonValue } from "../../src/lib/types";
 
 import { coverageSteps } from "./contract-coverage";
 import { deliverySteps } from "./contract-delivery";
@@ -33,15 +34,15 @@ export type Step<ActionName extends Action = Action> = {
 export type Scenario = { id: string; title: string; steps: Step[] };
 export type Contract = { scenarios: Scenario[] };
 
-function isAction(value: unknown): value is Action {
+function isAction(value: JsonValue | undefined): value is Action {
 	return isString(value) && Object.hasOwn(parsers, value);
 }
 
-export function parseStep(value: unknown): Step {
+export function parseStep<Value>(value: Value): Step {
 	const item = object(value);
 	const { action } = item;
 	if (!isAction(action)) throw new Error(`Unknown action: ${String(action)}`);
-	// The key selects both the payload parser and the corresponding Step discriminant.
+	// SAFETY: The checked key selects both the payload parser and the Step discriminant.
 	return { action, ...parsers[action](item) } as Step;
 }
 

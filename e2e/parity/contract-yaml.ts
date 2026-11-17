@@ -1,4 +1,4 @@
-import { type StepParsers, boolean, count, isBoolean, isString, object, oneOf, string, strings, noPayload } from "./contract-values";
+import { type StepParsers, boolean, count, isBoolean, isString, object, oneOf, string, strings, noPayload, withOptional } from "./contract-values";
 
 const LOG_LEVELS = ["ERR", "WRN", "INF", "DBG"] as const;
 
@@ -43,10 +43,11 @@ export const yamlSteps = {
 	retryActionPermission: noPayload,
 	expectActionLock: (item) => {
 		if (!isBoolean(item.locked)) throw new Error("Expected a lock state");
-		return {
+		return withOptional({
 			row: string(item.row), locked: item.locked,
-			...(item.reason !== undefined ? { reason: string(item.reason) } : {}),
-		};
+		}, {
+			reason: item.reason !== undefined ? string(item.reason) : undefined,
+		});
 	},
 	expectYamlAbsent: (item) => ({ fragments: strings(item.fragments, false) }),
 	clickActionEntry: (item) => ({ label: string(item.label), button: oneOf(["Add", "Remove", "Restore"], item.button, "an entry action") }),
@@ -55,7 +56,7 @@ export const yamlSteps = {
 	fillActionField: (item) => ({ label: string(item.label), value: string(item.value) }),
 	expectYamlPicker: (item) => ({ label: string(item.label), value: string(item.value) }),
 	chooseActionRevision: (item) => ({ revision: count(item.revision) }),
-	selectYamlShape: (item) => ({ value: string(item.value) }),
+	["selectYamlShape"]: (item) => ({ value: string(item.value) }),
 	selectYamlEncoding: (item) => ({ value: string(item.value) }),
 	replaceYamlDraft: (item) => ({ value: string(item.value) }),
 	expectYamlDocument: (item) => ({ value: string(item.value) }),
@@ -99,20 +100,22 @@ export const yamlSteps = {
 	expectYamlNotice: (item) => ({ title: string(item.title) }),
 	expectNoYamlNotice: (item) => ({ title: string(item.title) }),
 	toggleLogRow: (item) => {
-		return {
+		return withOptional({
 			line: string(item.line),
-			...(item.key !== undefined ? { key: oneOf(["Enter", "Space"] as const, item.key, "a log row key") } : {}),
-		};
+		}, {
+			key: item.key !== undefined ? oneOf(["Enter", "Space"] as const, item.key, "a log row key") : undefined,
+		});
 	},
 	toggleLogExpandAll: noPayload,
 	expectLogRowOpen: (item) => ({ line: string(item.line), open: boolean(item.open) }),
 	copyLogLine: (item) => ({ line: string(item.line), contains: string(item.contains) }),
 	expectLogTimestampTooltip: (item) => ({ line: string(item.line), value: string(item.value) }),
 	expectRestorePrompt: (item) => {
-		return {
+		return withOptional({
 			visible: boolean(item.visible),
-			...(item.count !== undefined ? { count: count(item.count) } : {}),
-		};
+		}, {
+			count: item.count !== undefined ? count(item.count) : undefined,
+		});
 	},
 	restorePromptControl: (item) => ({ control: oneOf(["Start saved", "Review", "Skip", "Auto-start"], item.control, "a restore prompt control") }),
 	selectRevision: (item) => ({ label: string(item.label) }),

@@ -1,4 +1,4 @@
-import { type StepParsers, boolean, count, isBoolean, isNumber, isString, oneOf, optionalBoolean, string, strings, noPayload } from "./contract-values";
+import { type StepParsers, boolean, count, isBoolean, isNumber, isString, oneOf, optionalBoolean, string, strings, noPayload, withOptional } from "./contract-values";
 
 const TABLE_COLUMNS = ["Name", "Status", "Context", "Namespace", "Kind", "Ready", "Restarts", "CPU", "Memory", "Owner", "Age"] as const;
 const SORT_COLUMNS = ["Name", "Status", "Context", "Namespace", "Kind", "Ready", "Restarts", "CPU", "Memory", "Age"] as const;
@@ -13,19 +13,21 @@ const DETAIL_RESIZE_KEYS = ["ArrowLeft", "ArrowRight", "Home", "End"] as const;
 export const resourcesSteps = {
 	expectForegroundLoading: (item) => {
 		const sliding = optionalBoolean(item.sliding);
-		return {
+		return withOptional({
 			active: boolean(item.active),
-			...(sliding !== undefined ? { sliding: sliding } : {}),
-		};
+		}, {
+			sliding: sliding !== undefined ? sliding : undefined,
+		});
 	},
 	expectMotion: (item) => ({ moving: boolean(item.moving) }),
 	setReducedMotion: (item) => ({ reduce: boolean(item.reduce) }),
 	expectFriendlyError: (item) => {
-		return {
+		return withOptional({
 			title: string(item.title),
-			...(item.next !== undefined ? { next: string(item.next) } : {}),
-			...(item.summary !== undefined ? { summary: string(item.summary) } : {}),
-		};
+		}, {
+			next: item.next !== undefined ? string(item.next) : undefined,
+			summary: item.summary !== undefined ? string(item.summary) : undefined,
+		});
 	},
 	inspectRequiredPermission: noPayload,
 	returnToSource: noPayload,
@@ -105,17 +107,19 @@ export const resourcesSteps = {
 	resizeDetail: (item) => ({ key: oneOf(DETAIL_RESIZE_KEYS, item.key, "a detail resize key") }),
 	expectDetailResize: (item) => ({ value: count(item.value) }),
 	sortResourceTable: (item) => {
-		return {
+		return withOptional({
 			column: oneOf(SORT_COLUMNS, item.column, "a sortable table column"),
-			...(item.key !== undefined ? { key: oneOf(["Enter", "Space"] as const, item.key, "a sort key") } : {}),
-		};
+		}, {
+			key: item.key !== undefined ? oneOf(["Enter", "Space"] as const, item.key, "a sort key") : undefined,
+		});
 	},
 	expectResourceOrder: (item) => ({ names: strings(item.names, false) }),
 	toggleResourceGroup: (item) => {
-		return {
+		return withOptional({
 			label: string(item.label),
-			...(item.key !== undefined ? { key: oneOf(["Enter", "Space"] as const, item.key, "a group key") } : {}),
-		};
+		}, {
+			key: item.key !== undefined ? oneOf(["Enter", "Space"] as const, item.key, "a group key") : undefined,
+		});
 	},
 	expectResourceGroup: (item) => ({ label: string(item.label), expanded: boolean(item.expanded) }),
 	openResourceRow: (item) => ({ kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), column: oneOf(TABLE_COLUMNS, item.column, "a table column") }),
@@ -125,10 +129,11 @@ export const resourcesSteps = {
 	expectResourceActivity: (item) => ({ kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), state: oneOf(["active", "paused"] as const, item.state, "an activity state") }),
 	pressResourceRow: (item) => ({ key: oneOf(["Enter", "Space"], item.key, "Enter or Space"), kind: string(item.kind), name: string(item.name), namespace: string(item.namespace) }),
 	openResource: (item) => {
-		return {
+		return withOptional({
 			kind: string(item.kind), name: string(item.name), namespace: string(item.namespace),
-			...(item.context !== undefined ? { context: string(item.context) } : {}),
-		};
+		}, {
+			context: item.context !== undefined ? string(item.context) : undefined,
+		});
 	},
 	expectRowContexts: (item) => ({ kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), contexts: strings(item.contexts, false) }),
 	filterContexts: (item) => ({ contexts: strings(item.contexts, true) }),
@@ -143,9 +148,10 @@ export const resourcesSteps = {
 	},
 	mapContextKey: (item) => ({ key: oneOf(MAP_CONTEXT_KEYS, item.key, "a Map context key") }),
 	expectMapContextOptions: (item) => {
-		return {
+		return withOptional({
 			open: boolean(item.open),
-			...(item.focused !== undefined ? { focused: boolean(item.focused) } : {}),
-		};
+		}, {
+			focused: item.focused !== undefined ? boolean(item.focused) : undefined,
+		});
 	},
 } satisfies StepParsers;

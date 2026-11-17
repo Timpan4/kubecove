@@ -1,23 +1,23 @@
 import type { JsonObject } from "../../src/lib/types";
-import { type StepParsers, boolean, count, isBoolean, isString, object, oneOf, optionalBoolean, string, strings, noPayload } from "./contract-values";
+import { type StepParsers, boolean, count, isBoolean, isString, object, oneOf, optionalBoolean, string, strings, noPayload, withOptional } from "./contract-values";
 
 const FILTERS = ["Degraded", "Needs attention", "Healthy", "Unknown", "Not evaluated", "Restart evidence"] as const;
 
 function overviewIdentity(item: JsonObject) {
-	return {
+	return withOptional({
 		kind: string(item.kind),
 		name: string(item.name),
 		namespace: string(item.namespace),
 		context: item.context === undefined ? "mock-dev" : string(item.context),
-		...(item.apiVersion === undefined ? {} : { apiVersion: string(item.apiVersion) }),
-	};
+	}, {
+		apiVersion: item.apiVersion === undefined ? undefined : string(item.apiVersion),
+	});
 }
 
 function overviewActivation(item: JsonObject) {
-	return {
-		...overviewIdentity(item),
-		...(item.key === undefined ? {} : { key: oneOf(["enter", "space"], item.key, "an activation key") }),
-	};
+	return withOptional(overviewIdentity(item), {
+		key: item.key === undefined ? undefined : oneOf(["enter", "space"], item.key, "an activation key"),
+	});
 }
 
 export const overviewSteps = {
@@ -36,10 +36,11 @@ export const overviewSteps = {
 	overviewShortcut: (item) => ({ label: string(item.label) }),
 	expectActivePage: (item) => ({ page: string(item.page) }),
 	expectGitOpsSelection: (item) => {
-		return {
+		return withOptional({
 			name: string(item.name),
-			...(item.namespace !== undefined ? { namespace: string(item.namespace) } : {}),
-		};
+		}, {
+			namespace: item.namespace !== undefined ? string(item.namespace) : undefined,
+		});
 	},
 	expectOverviewScope: (item) => ({ labels: strings(item.labels, false) }),
 	expectCompareTotal: (item) => ({ title: string(item.title), side: string(item.side), total: count(item.total) }),
@@ -49,11 +50,12 @@ export const overviewSteps = {
 	expectEntryCount: (item) => ({ panel: oneOf(["Pinned", "Recent"], item.panel, "an entry panel"), count: count(item.count) }),
 	copyErrorDetail: (item) => ({ error: oneOf(["contexts", "namespaces", "details"], item.error, "an error panel"), expected: string(item.expected) }),
 	toggleResourcePin: (item) => {
-		return {
+		return withOptional({
 			kind: string(item.kind), name: string(item.name), namespace: string(item.namespace),
-			...(item.context !== undefined ? { context: string(item.context) } : {}),
-			...(item.key !== undefined ? { key: oneOf(["Enter", "Space"] as const, item.key, "a pin key") } : {}),
-		};
+		}, {
+			context: item.context !== undefined ? string(item.context) : undefined,
+			key: item.key !== undefined ? oneOf(["Enter", "Space"] as const, item.key, "a pin key") : undefined,
+		});
 	},
 	expectWorkspaceEntry: (item) => ({ panel: oneOf(["Pinned", "Recent"], item.panel, "an entry panel"), label: string(item.label), index: count(item.index), count: count(item.count) }),
 	openWorkspaceEntry: (item) => ({ panel: oneOf(["Pinned", "Recent"], item.panel, "an entry panel"), label: string(item.label), index: count(item.index), count: count(item.count) }),

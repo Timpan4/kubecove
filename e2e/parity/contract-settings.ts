@@ -1,4 +1,4 @@
-import { type StepParsers, boolean, count, isBoolean, oneOf, string, noPayload } from "./contract-values";
+import { type StepParsers, boolean, count, isBoolean, oneOf, string, noPayload, withOptional } from "./contract-values";
 
 export const settingsSteps = {
 	cancelYamlEdit: noPayload,
@@ -13,10 +13,11 @@ export const settingsSteps = {
 		return { visible: item.visible };
 	},
 	expectYamlLens: (item) => {
-		return {
+		return withOptional({
 			line: count(item.line),
-			...(item.marked !== undefined ? { marked: string(item.marked) } : {}),
-		};
+		}, {
+			marked: item.marked !== undefined ? string(item.marked) : undefined,
+		});
 	},
 	expectLatencyTiming: (item) => ({ command: string(item.command) }),
 	copyLatencyReport: noPayload,
@@ -28,11 +29,13 @@ export const settingsSteps = {
 		if (item.contains === undefined && item.excludes === undefined && item.succeededCommand === undefined) {
 			throw new Error("Expected contains, excludes or succeededCommand");
 		}
-		return {
-			...(item.contains !== undefined ? { contains: string(item.contains) } : {}),
-			...(item.excludes !== undefined ? { excludes: string(item.excludes) } : {}),
-			...(item.succeededCommand !== undefined ? { succeededCommand: string(item.succeededCommand) } : {}),
-		};
+		return withOptional({
+
+		}, {
+			contains: item.contains !== undefined ? string(item.contains) : undefined,
+			excludes: item.excludes !== undefined ? string(item.excludes) : undefined,
+			succeededCommand: item.succeededCommand !== undefined ? string(item.succeededCommand) : undefined,
+		});
 	},
 	typeSettingsField: (item) => ({ field: oneOf(["Server token"], item.field, "a typed settings field"), value: string(item.value) }),
 	expectUpdateControl: (item) => ({ label: oneOf(["Check for updates", "Update available", "Checking for updates", "Update check failed", "Downloading update", "Restart to finish update"] as const, item.label, "an update control label") }),
