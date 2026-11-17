@@ -22,7 +22,7 @@ type Target = {
 
 const deployment = { kind: "Deployment", name: "payments-api", namespace: "payments" };
 
-const TARGETS: Record<string, Target> = {
+const TARGETS = {
 	// Switch.svelte: the thumb's `transition-transform` to `translate-x-4`.
 	switch: {
 		moving: (page) => page.getByRole("switch", { name: "Show exact timestamps", exact: true }).locator("[data-slot='switch-thumb']"),
@@ -60,7 +60,11 @@ const TARGETS: Record<string, Target> = {
 		property: "rotate",
 		act: (page) => sidebarRow(page, ["Workloads"]).getByRole("button").click(),
 	},
-};
+} satisfies Record<string, Target>;
+
+function targetOf(name: string | undefined): Target | undefined {
+	return Object.entries(TARGETS).find(([key]) => key === name)?.[1];
+}
 
 /** The computed value each page's last check saw, by phase. */
 const seen = new WeakMap<Page, { rest: string; midway?: string }>();
@@ -103,19 +107,26 @@ function seek(page: Page, ms: number | "end") {
  */
 export async function checkControlMotion(page: Page, check: string) {
 	const [, name, phase] = check.split(":");
-	const target = TARGETS[name ?? ""];
+	const target = targetOf(name);
 	if (!target) throw new Error(`Unknown motion target in ${check}`);
 	if (phase === "start") {
 		const moving = target.moving(page);
 		await moving.waitFor();
 		const rest = await read(page, target);
-		await moving.evaluate((element) => {
+		await moving.evaluate((element, { pseudo, property }) => {
 			window.controlMotion = undefined;
-			// Transitions on descendants bubble here too; only the element's own start the capture.
 			const capture = (event: Event) => {
+				// Transitions on descendants bubble here too.
 				if (event.target !== element) return;
+				const transitions = element.getAnimations({ subtree: true }).filter((animation) => {
+					if (!(animation instanceof CSSTransition) || animation.transitionProperty !== property) return false;
+					const effect = animation.effect;
+					return effect instanceof KeyframeEffect && effect.target === element && effect.pseudoElement === pseudo;
+				});
+				// The pointer's move onto the control can start a hover transition of another property a
+				// frame before the click starts the followed one. Keep listening until that one runs.
+				if (transitions.length === 0) return;
 				element.removeEventListener("transitionrun", capture);
-				const transitions = element.getAnimations({ subtree: true }).filter((animation) => animation instanceof CSSTransition && (animation.effect as KeyframeEffect | null)?.target === element);
 				for (const transition of transitions) {
 					transition.pause();
 					transition.currentTime = 0;
@@ -123,13 +134,10 @@ export async function checkControlMotion(page: Page, check: string) {
 				window.controlMotion = transitions;
 			};
 			element.addEventListener("transitionrun", capture);
-		});
+		}, { pseudo: target.pseudo ?? null, property: target.property });
 		await target.act(page);
-		await page.waitForFunction(() => window.controlMotion !== undefined).catch(() => { throw new Error(`${name} changed without a transition`); });
-		const duration = await page.evaluate((property) => {
-			const transition = window.controlMotion?.find((animation) => animation instanceof CSSTransition && animation.transitionProperty === property);
-			return Number(transition?.effect?.getComputedTiming().duration ?? -1);
-		}, target.property);
+		await page.waitForFunction(() => window.controlMotion !== undefined).catch(() => { throw new Error(`${name} changed without a transition of ${target.property}`); });
+		const duration = await page.evaluate(() => Number(window.controlMotion?.[0]?.effect?.getComputedTiming().duration ?? -1));
 		if (duration !== DURATION_MS) throw new Error(`${name} transitions ${target.property} over ${duration} ms, not ${DURATION_MS}`);
 		const held = await read(page, target);
 		if (held !== rest) throw new Error(`${name} jumped from ${rest} to ${held}`);
