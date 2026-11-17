@@ -143,4 +143,10 @@ impl Inspector {
     pub fn foreground_bar_motion(&self) -> Option<(f32, f32)> {
         self.foreground.shown
     }
+
+    /// Whether the last frame moved the bar along its slide.
+    #[doc(hidden)]
+    pub fn foreground_bar_sliding(&self) -> bool {
+        self.foreground.epoch.is_some()
+    }
 }

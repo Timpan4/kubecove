@@ -7,14 +7,17 @@
 //! - a changed or an added row gets no tint, or an unchanged row gets one;
 //! - the tint starts below the web sidebar's 30 %, or does not ease out;
 //! - the tint, or its frame requests, outlast one second;
-//! - a reload, which names no rows, tints the rows it changed;
-//! - reduced motion still tints;
+//! - a reload, which names no rows, tints the rows it changed, whether the
+//!   user asked for it or a lost watch recovered with it;
+//! - reduced motion still tints, or a highlight that had started keeps fading
+//!   after the preference turns on;
 //! - a table that stopped drawing keeps its highlights and its frame requests;
 //! - content fades in after a read that settled within the show delay, so
 //!   every fast page change flickers;
 //! - content after a shown indicator appears at once, or its fade never ends;
 //! - reduced motion still fades.
 use super::*;
+use kubecove_lib::models::StreamMessage;
 use std::time::Duration;
 
 const DEPLOYMENT: &str = "resource:Deployment:payments:payments-api:mock-dev";
@@ -167,11 +170,35 @@ fn a_reload_tints_no_rows(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn a_recovery_reload_tints_no_rows(cx: &mut TestAppContext) {
+    let (backend, handle) = setup(cx);
+    backend.rows.show(Rows::After);
+    backend.live.send(StreamMessage::Stopped {
+        stream_id: "native".into(),
+    });
+    cx.run_until_parked();
+    // resource-watch.ts::RESOURCE_RECOVERY_INTERVAL: the lost watch lists its kind.
+    advance(cx, Duration::from_millis(15_000));
+    frame(cx, handle);
+    expect_degraded(cx, handle);
+    assert_eq!(highlights(cx, handle).0, vec![]);
+}
+
+#[gpui_kit::test]
 fn reduced_motion_tints_no_rows(cx: &mut TestAppContext) {
     let (backend, handle) = setup(cx);
     cx.update(|cx| cx.set_reduce_motion(true));
     update(cx, &backend, handle);
     expect_degraded(cx, handle);
+    assert_eq!(highlights(cx, handle), (vec![], false));
+}
+
+#[gpui_kit::test]
+fn turning_reduced_motion_on_ends_a_running_highlight(cx: &mut TestAppContext) {
+    let (backend, handle) = setup(cx);
+    update(cx, &backend, handle);
+    assert_eq!(highlights(cx, handle).0.len(), 2);
+    cx.update(|cx| cx.set_reduce_motion(true));
     assert_eq!(highlights(cx, handle), (vec![], false));
 }
 

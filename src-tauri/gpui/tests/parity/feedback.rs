@@ -28,14 +28,18 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 Some(expected)
             );
             if let Some(sliding) = step["sliding"].as_bool() {
-                let drawn = map_gestures::inspector(window, cx)
-                    .read(cx)
-                    .foreground_bar_motion();
+                // Asked of the bar itself: a spinner elsewhere in the window
+                // also arranges frames.
+                let inspector = map_gestures::inspector(window, cx);
+                let (drawn, slides) = {
+                    let bar = inspector.read(cx);
+                    (bar.foreground_bar_motion(), bar.foreground_bar_sliding())
+                };
                 assert!(drawn.is_some() || !sliding, "a sliding bar must be drawn");
-                assert_eq!(
-                    frame_requested(window, cx),
-                    sliding,
-                    "the foreground loading bar's motion"
+                assert_eq!(slides, sliding, "the foreground loading bar's slide");
+                assert!(
+                    !sliding || frame_requested(window, cx),
+                    "a sliding bar arranges its next frame"
                 );
             }
         }

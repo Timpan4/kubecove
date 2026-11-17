@@ -2,8 +2,9 @@
 //! changed. The web table has no such highlight; the user chose it for this
 //! client on 2026-11-17, with the timing of the web sidebar's row reveal. The
 //! table compares the page it draws with the page it last drew only on the
-//! frame after a watch patch, so an idle table pays nothing.
+//! frame after a notice named rows, so an idle table pays nothing.
 use super::Inspector;
+use super::resource_observation::Patch;
 use super::table_columns::{Column, resource_id, resource_id_of};
 use crate::model::{Added, TablePage};
 use crate::motion::{Bezier, Timing};
@@ -30,9 +31,10 @@ const WATCHED: [Column; 4] = [
 
 #[derive(Default)]
 pub(super) struct RowChanges {
-    /// Whether a watch patched rows since the table last drew.
-    pub(super) patched: bool,
-    /// The rows those patches added.
+    /// The rows, by `resource_id`, that watch notices named since the table
+    /// last drew. A reload names none, so the rows it changes get no tint.
+    noticed: HashSet<String>,
+    /// The rows that reads of those names added.
     pub(super) added: Vec<Added>,
     /// The page the table last drew.
     drawn: Option<Rc<TablePage>>,
@@ -55,6 +57,17 @@ fn added_id(added: &Added) -> String {
 impl RowChanges {
     pub(super) fn begin_frame(&mut self) {
         self.seen = false;
+    }
+
+    /// Records the rows a watch notice named, which `patch` then read.
+    pub(super) fn notice(&mut self, patch: &Patch) {
+        let Some(names) = &patch.names else { return };
+        let (kind, context) = (&patch.key.resource_kind.kind, &patch.scope.context);
+        self.noticed.extend(
+            names
+                .iter()
+                .map(|(namespace, name)| resource_id_of(kind, namespace.as_deref(), name, context)),
+        );
     }
 
     /// Forgets the page of a table this frame did not draw. Returns whether a
@@ -87,16 +100,21 @@ impl RowChanges {
 
 impl Inspector {
     /// Marks the rows of `page` that a watch notice added or changed since the
-    /// table last drew. Reduced motion marks none.
+    /// table last drew. Reduced motion marks none and ends the highlights
+    /// that had started.
     pub(super) fn observe_row_changes(&mut self, page: &Rc<TablePage>, cx: &mut Context<Self>) {
         let now = cx.background_executor().now();
         let mut changes = std::mem::take(&mut self.row_changes);
         changes.seen = true;
         changes.now = Some(now);
-        changes
-            .marks
-            .retain(|_, since| now < *since + HIGHLIGHT.duration);
-        if changes.patched
+        if cx.reduce_motion() {
+            changes.marks.clear();
+        } else {
+            changes
+                .marks
+                .retain(|_, since| now < *since + HIGHLIGHT.duration);
+        }
+        if !changes.noticed.is_empty()
             && !cx.reduce_motion()
             && let Some(drawn) = &changes.drawn
         {
@@ -105,9 +123,13 @@ impl Inspector {
                 .rows
                 .iter()
                 .map(|row| (resource_id(row), row))
+                .filter(|(id, _)| changes.noticed.contains(id))
                 .collect();
             for row in &page.rows {
                 let id = resource_id(row);
+                if !changes.noticed.contains(&id) {
+                    continue;
+                }
                 let changed = match before.get(&id) {
                     Some(old) => WATCHED
                         .iter()
@@ -119,7 +141,7 @@ impl Inspector {
                 }
             }
         }
-        changes.patched = false;
+        changes.noticed.clear();
         changes.added.clear();
         changes.drawn = Some(page.clone());
         self.row_changes = changes;

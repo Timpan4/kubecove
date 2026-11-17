@@ -6,9 +6,11 @@ export const clipboardRecorder = `Object.defineProperty(navigator, "clipboard", 
 
 export async function feedbackAction(page: Page, step: Step): Promise<void> {
     switch (step.action) {
-        case "expectForegroundLoading":
+        case "expectForegroundLoading": {
+            let expected = `the foreground loading bar to be ${step.active ? "active" : "idle"}`;
+            if (step.sliding !== undefined) expected += step.sliding ? " and sliding" : " and still";
             // Polled from this process: a scenario that pauses the page clock also pauses the page's own timers.
-            await waitFor(`the foreground loading bar to be ${step.active ? "active" : "idle"}${step.sliding === undefined ? "" : step.sliding ? " and sliding" : " and still"}`, () => page.evaluate(([active, sliding]) => {
+            await waitFor(expected, () => page.evaluate(([active, sliding]) => {
                 const host = document.querySelector("[data-foreground-loading]");
                 if (host?.getAttribute("data-active") !== active) return false;
                 if (sliding === null) return true;
@@ -17,6 +19,7 @@ export async function feedbackAction(page: Page, step: Step): Promise<void> {
                 return bar !== null && (getComputedStyle(bar).animationName !== "none") === sliding;
             }, [step.active ? "true" : "false", step.sliding ?? null] as const));
             break;
+        }
         case "expectMotion":
             // CSS animations run on the browser's clock, not the page clock the scenario controls, so a finite one ends by itself.
             await waitFor(step.moving ? "a running animation" : "every animation to end", () => page.evaluate((moving) => document.getAnimations().some((animation) => animation.playState === "running") === moving, step.moving));
