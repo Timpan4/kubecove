@@ -5,7 +5,7 @@
 // roles in release builds; never text content or cluster data. Entries stay in
 // memory; the dev server additionally mirrors them to e2e/artifacts.
 import { MAX_FRONTEND_EVENTS } from "./diagnostics";
-import { commandsDuring, type InteractionCommand } from "./interaction-commands";
+import { captureCommands, type CommandWindow, type InteractionCommand, withLateCommands } from "./interaction-commands";
 import { addFrame, emptyHistogram, type FrameHistogram, frameDeltas, percentileMs } from "./interaction-frames";
 import { describeTarget, resetSourceCache, sourceOf, subtreeSource } from "./interaction-sources";
 
@@ -53,8 +53,13 @@ interface Session {
 	frameRequest: number;
 }
 
+interface Recorded {
+	interaction: RecordedInteraction;
+	commands: CommandWindow;
+}
+
 const DEV_SINK = process.env.KUBECOVE_PUBLIC_DEV_INTERACTIONS ?? "";
-const recorded: RecordedInteraction[] = [];
+const recorded: Recorded[] = [];
 // The session histogram's median is the refresh interval.
 let sessionFrames = emptyHistogram();
 let session: Session | null = null;
@@ -73,7 +78,7 @@ function round(value: number): number {
 	return Math.round(value * 10) / 10;
 }
 
-function serialize(segment: Segment, endedAt: number): RecordedInteraction {
+function serialize(segment: Segment, endedAt: number, commands: InteractionCommand[] | undefined): RecordedInteraction {
 	const refreshMs = refreshIntervalMs();
 	const deltas = frameDeltas(segment.frames);
 	let droppedFrames = 0;
@@ -106,7 +111,7 @@ function serialize(segment: Segment, endedAt: number): RecordedInteraction {
 				.sort((a, b) => b[1] - a[1])
 				.map(([source, mutations]) => ({ source, mutations })),
 		},
-		commands: commandsDuring(segment.startedAt, endedAt),
+		commands,
 	};
 }
 
@@ -123,10 +128,13 @@ function postToDevSink(interaction: RecordedInteraction): void {
 function flush(): void {
 	if (!current) return;
 	const segment = current;
-	const interaction = serialize(segment, performance.now());
+	const endedAt = performance.now();
+	const capture = captureCommands(segment.startedAt, endedAt);
+	// The dev sink receives the commands that had finished by now.
+	const interaction = serialize(segment, endedAt, capture?.finished);
 	current = null;
 	segment.flushed = interaction;
-	recorded.push(interaction);
+	recorded.push({ interaction, commands: { start: segment.startedAt, end: endedAt, capture } });
 	// Same retention as frontend diagnostic events.
 	if (recorded.length > MAX_FRONTEND_EVENTS) recorded.splice(0, recorded.length - MAX_FRONTEND_EVENTS);
 	if (segment.pendingPaints === 0) postToDevSink(interaction);
@@ -277,8 +285,10 @@ export function stopInteractionRecording(): void {
 	resetSourceCache();
 }
 
+/** Recorded interactions, with commands that finished after their interaction ended. */
 export function getRecordedInteractions(): RecordedInteraction[] {
-	return [...recorded];
+	const commands = withLateCommands(recorded.map((entry) => entry.commands));
+	return recorded.map(({ interaction }, index) => ({ ...interaction, commands: commands[index] }));
 }
 
 export function clearRecordedInteractions(): void {

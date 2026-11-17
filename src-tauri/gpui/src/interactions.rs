@@ -10,11 +10,14 @@
 //! - Frame deltas come from a chained next-frame callback, the web's
 //!   `requestAnimationFrame` loop, so both pace with the display.
 //! - Input-to-paint ends when the first frame drawn after the input finishes
-//!   painting. An input that draws nothing records no entry, where the web
-//!   records the next frame.
+//!   painting. GPUI draws only when something changed, so each measured input
+//!   requests a frame, as the web's `requestAnimationFrame` always fires.
 //! - GPUI rebuilds its element tree each frame and has no DOM, so `dom` counts
 //!   stay zero and `dom.sources` lists renders per view during the entry.
-use crate::diagnostics::{TimingKind, Timings};
+//!
+//! Commands belong to the entry they started in. An entry keeps the commands
+//! that had finished when it ended; `json_lines` adds those that finished later.
+use crate::diagnostics::{Timing, TimingKind, Timings};
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, VecDeque},
@@ -80,16 +83,36 @@ pub(crate) struct Interaction {
     wall_time: chrono::DateTime<chrono::Utc>,
     pub(crate) target: String,
     started: Instant,
+    /// Set when the entry ends; commands that started before it belong here.
+    ended: Instant,
     duration_ms: f64,
     input_to_paint: Vec<(&'static str, f64)>,
     frames: Histogram,
     refresh_ms: f64,
     renders: BTreeMap<&'static str, u32>,
-    commands: Option<Vec<Value>>,
+    /// `None` when diagnostics was off as the entry ended, as the web omits `commands`.
+    commands: Option<Commands>,
+}
+
+/// Commands an entry captured when it ended.
+struct Commands {
+    finished: Vec<Value>,
+    /// The first timing sequence number the capture did not see. A command of
+    /// this entry with that number or later finished after the entry ended.
+    unseen: u64,
 }
 
 fn round(value: f64) -> f64 {
     (value * 10.).round() / 10.
+}
+
+fn command_json(timing: &Timing, entry_started: Instant) -> Value {
+    json!({
+        "cmd": timing.name,
+        "ms": timing.duration_ms.round(),
+        "ok": timing.success,
+        "startOffsetMs": ((timing.started - entry_started).as_secs_f64() * 1000.).round(),
+    })
 }
 
 impl Interaction {
@@ -139,7 +162,8 @@ impl Interaction {
         sources
     }
 
-    pub(crate) fn json(&self) -> Value {
+    /// `late` are this entry's commands that finished after it ended.
+    fn json(&self, late: &[&Timing]) -> Value {
         let mut value = json!({
             "id": self.id,
             "kind": self.kind.label(),
@@ -168,7 +192,8 @@ impl Interaction {
             },
         });
         if let Some(commands) = &self.commands {
-            value["commands"] = Value::Array(commands.clone());
+            let late = late.iter().map(|timing| command_json(timing, self.started));
+            value["commands"] = commands.finished.iter().cloned().chain(late).collect();
         }
         value
     }
@@ -241,26 +266,23 @@ impl Recorder {
             return;
         };
         let ended = Instant::now();
+        interaction.ended = ended;
         interaction.duration_ms = (ended - interaction.started).as_secs_f64() * 1000.;
         interaction.refresh_ms = self.session_frames.percentile(0.5);
         interaction.commands = timings.map(|timings| {
-            timings
-                .snapshot()
-                .iter()
-                .filter(|timing| {
-                    timing.kind == TimingKind::Command
-                        && timing.started >= interaction.started
-                        && timing.started < ended
-                })
-                .map(|timing| {
-                    json!({
-                        "cmd": timing.name,
-                        "ms": timing.duration_ms.round(),
-                        "ok": timing.success,
-                        "startOffsetMs": ((timing.started - interaction.started).as_secs_f64() * 1000.).round(),
+            let snapshot = timings.snapshot();
+            Commands {
+                finished: snapshot
+                    .iter()
+                    .filter(|timing| {
+                        timing.kind == TimingKind::Command
+                            && timing.started >= interaction.started
+                            && timing.started < ended
                     })
-                })
-                .collect()
+                    .map(|timing| command_json(timing, interaction.started))
+                    .collect(),
+                unseen: snapshot.last().map_or(0, |timing| timing.seq + 1),
+            }
         });
         self.recorded.push_back(interaction);
         while self.recorded.len() > MAX_RECORDED {
@@ -283,11 +305,8 @@ impl Recorder {
             return;
         }
         self.flush(timings);
-        // A new input means earlier inputs drew nothing; they record no
-        // input-to-paint time. Navigation starts while its input's frame draws.
-        if kind != Kind::Navigate {
-            self.pending_paints.clear();
-        }
+        // Earlier inputs keep their waiting input-to-paint times: each one
+        // requested a frame, and `painted` charges that frame to its entry.
         let id = self.next_id;
         self.next_id += 1;
         self.current = Some(Interaction {
@@ -296,6 +315,7 @@ impl Recorder {
             wall_time: chrono::Utc::now(),
             target,
             started,
+            ended: started,
             duration_ms: 0.,
             input_to_paint: Vec::new(),
             frames: Histogram::default(),
@@ -379,11 +399,38 @@ impl Recorder {
         }
     }
 
-    /// JSON lines for `bun run perf:interactions`.
-    pub(crate) fn json_lines(&self) -> String {
+    /// JSON lines for `bun run perf:interactions`. `timings` supplies the
+    /// commands that finished after their entry ended.
+    pub(crate) fn json_lines(&self, timings: &Timings) -> String {
+        let snapshot = timings.snapshot();
+        let mut late: Vec<Vec<&Timing>> = self.recorded.iter().map(|_| Vec::new()).collect();
+        for timing in snapshot
+            .iter()
+            .filter(|timing| timing.kind == TimingKind::Command)
+        {
+            // Entries are in start order: the command belongs to the last one
+            // that started at or before it, if that entry had not ended.
+            let Some(index) = self
+                .recorded
+                .partition_point(|entry| entry.started <= timing.started)
+                .checked_sub(1)
+            else {
+                continue;
+            };
+            let entry = &self.recorded[index];
+            if timing.started < entry.ended
+                && entry
+                    .commands
+                    .as_ref()
+                    .is_some_and(|commands| timing.seq >= commands.unseen)
+            {
+                late[index].push(timing);
+            }
+        }
         self.recorded
             .iter()
-            .map(|interaction| interaction.json().to_string())
+            .zip(&late)
+            .map(|(interaction, late)| interaction.json(late).to_string())
             .collect::<Vec<_>>()
             .join("\n")
     }

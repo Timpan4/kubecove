@@ -108,10 +108,7 @@ impl Inspector {
                     .child(ui::icon("copy", 14., Tokens::primary_foreground()))
                     .child("Copy")
                     .on_click(cx.listener(|this, _, _, cx| {
-                        let (lines, count) = {
-                            let recorder = this.presentation.recorder.borrow();
-                            (recorder.json_lines(), recorder.len())
-                        };
+                        let (lines, count) = this.interaction_lines();
                         cx.write_to_clipboard(ClipboardItem::new_string(lines));
                         this.presentation.recorder_status =
                             Some(format!("Copied {count} interactions."));

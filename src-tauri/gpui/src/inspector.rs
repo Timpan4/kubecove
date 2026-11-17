@@ -592,7 +592,7 @@ impl Render for Inspector {
             )
         });
         let drawer = self.navigation_drawer(workspace && compact, window, cx);
-        let probe = self.presentation_frame(started);
+        let probe = self.presentation_frame(started, cx.entity_id());
         let foreground_bar = self.foreground_bar(window, cx);
         let view = div()
             .track_focus(&self.focus)

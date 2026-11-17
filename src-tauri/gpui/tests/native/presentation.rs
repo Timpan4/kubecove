@@ -1,9 +1,20 @@
 // Failure modes: renders count while diagnostics is off; the view that
 // rendered gets no counter. The web logs no render counters, so the shared
 // scenarios cannot check this report field.
+//
+// Interaction recorder paints (#662). The parity driver draws a frame before
+// every click, so only raw events here can show these failure modes:
+// - an input that draws nothing loses its input-to-paint time when the next
+//   input begins before any frame;
+// - a measured input requests no frame, so its time waits for an unrelated
+//   later redraw and is charged with that frame;
+// - requesting frames adds renders while no input arrives.
 use super::{Controlled, open};
 use gpui_kit::test::TestWindowExt;
-use gpui_kit::{AppContext, TestAppContext};
+use gpui_kit::{
+    AppContext, InputEvent, MouseButton, MouseDownEvent, MouseUpEvent, Point, Pixels,
+    TestAppContext,
+};
 use std::sync::Arc;
 
 fn click(cx: &mut TestAppContext, handle: gpui_kit::AnyWindowHandle, ids: &[&'static str]) {
@@ -64,6 +75,97 @@ fn render_counters_count_only_while_diagnostics_is_on(cx: &mut TestAppContext) {
         "no render count in {resources}"
     );
 }
+
+/// The `app.render` count, read from a forced frame that it includes.
+fn app_renders(cx: &mut TestAppContext, handle: gpui_kit::AnyWindowHandle) -> u64 {
+    let label = counter(cx, handle, "app.render").expect("no app.render counter");
+    label
+        .split_whitespace()
+        .find_map(|word| word.parse::<u64>().ok())
+        .unwrap_or_else(|| panic!("no render count in {label}"))
+}
+
+/// A press and release with no frame forced around them, as a user's click on
+/// an element that reacts to nothing.
+fn inert_click(cx: &mut TestAppContext, handle: gpui_kit::AnyWindowHandle, at: Point<Pixels>) {
+    cx.update_window(handle, |_, window, cx| {
+        window.dispatch_event(
+            MouseDownEvent {
+                button: MouseButton::Left,
+                position: at,
+                modifiers: Default::default(),
+                click_count: 1,
+                first_mouse: false,
+            }
+            .to_platform_input(),
+            cx,
+        );
+        window.dispatch_event(
+            MouseUpEvent {
+                button: MouseButton::Left,
+                position: at,
+                modifiers: Default::default(),
+                click_count: 1,
+            }
+            .to_platform_input(),
+            cx,
+        );
+    })
+    .unwrap();
+}
+
+#[gpui_kit::test]
+fn each_recorded_input_draws_one_frame_and_keeps_its_paint_time(cx: &mut TestAppContext) {
+    let handle = open(cx, Arc::new(Controlled::default()));
+    click(
+        cx,
+        handle,
+        &[
+            "open-settings",
+            "settings-section:Diagnostics",
+            "setting:Enable diagnostics",
+            "setting:Record interactions",
+        ],
+    );
+    let heading = cx
+        .update_window(handle, |_, window, cx| {
+            window.render_frame(cx);
+            window.find("settings-heading").bounds().center()
+        })
+        .unwrap();
+    let first = app_renders(cx, handle);
+    let idle = app_renders(cx, handle) - first;
+    let before = first + idle;
+    inert_click(cx, handle, heading);
+    let after = app_renders(cx, handle);
+    assert_eq!(
+        after - before,
+        idle + 1,
+        "an input that changes nothing draws one frame, beside the {idle} forced by the read"
+    );
+    // The next input begins before any forced frame.
+    inert_click(cx, handle, heading);
+    inert_click(cx, handle, heading);
+    click(cx, handle, &["interactions-copy"]);
+    let copied = cx
+        .update(|cx| cx.read_from_clipboard().and_then(|item| item.text()))
+        .expect("nothing copied");
+    let entries: Vec<serde_json::Value> = copied
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(entries.len(), 3, "three inert clicks recorded: {copied}");
+    for entry in &entries {
+        let paints: Vec<_> = entry["inputToPaint"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|paint| paint["type"].as_str().unwrap())
+            .collect();
+        assert_eq!(paints, ["pointerdown", "click"], "entry {entry}");
+    }
+}
+
 
 // Failure mode: a recorded target carries element id text, which ids often
 // build from cluster data (#662). Targets name the `test_support()` call site
