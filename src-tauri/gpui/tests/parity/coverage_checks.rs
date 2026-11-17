@@ -215,6 +215,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 assert!(window.elements().iter().any(|element| element.visible() && matches!(element.path().last(), Some(ElementId::Name(name)) if name.starts_with("map-node:") && !name.contains(":payments:"))));
             }
         }
+        check if control_motion::handles(check) => control_motion::check(window, cx, check),
         check if map_gestures::CHECKS.contains(&check) => {
             map_gestures::check(window, cx, check);
         }

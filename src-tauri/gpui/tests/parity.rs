@@ -11,6 +11,8 @@ mod argo_fields;
 #[path = "parity/code_coverage.rs"]
 mod code_coverage;
 mod common;
+#[path = "parity/control_motion.rs"]
+mod control_motion;
 #[path = "parity/coverage.rs"]
 mod coverage;
 #[path = "parity/coverage_checks.rs"]

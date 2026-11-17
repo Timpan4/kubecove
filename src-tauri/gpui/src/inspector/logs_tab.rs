@@ -3,7 +3,7 @@
 //! each one from precomputed line text.
 
 use super::Inspector;
-use super::controls::{Variant, button, icon_button};
+use super::controls::{RADIUS, Variant, button, button_frame, icon_button};
 use super::detail::ResourceDetail;
 use super::events::tw;
 use super::events_tab::empty;
@@ -253,14 +253,14 @@ fn filters(logs: &LogsState, layout: LogLayout, cx: &mut Context<Inspector>) -> 
                         Tokens::muted_foreground().opacity(0.7),
                     )
                 };
-                button(Variant::Outline, 28., false)
+                button_frame(Variant::Outline, 28., false)
                     .id(SharedString::from(format!("log-level-{}", level.label())))
                     .test_support()
                     .aria_label(level.label())
                     .gap(px(6.))
                     .px(px(6.))
                     .border_color(border)
-                    .bg(background)
+                    .child(Variant::Outline.fill_over(background, RADIUS))
                     .text_color(foreground)
                     .font_family(MONO)
                     .text_size(px(11.))
@@ -475,11 +475,13 @@ fn viewport(logs: &LogsState, connecting: bool, cx: &mut Context<Inspector>) -> 
             .flex()
             .justify_center()
             .child(
-                button(Variant::Default, 28., false)
+                button_frame(Variant::Default, 28., false)
                     .id("log-jump")
                     .test_support()
                     .aria_label(text.clone())
                     .rounded_full()
+                    // Half the button's height, as `rounded-full` resolves.
+                    .child(Variant::Default.fill(14.))
                     .px(px(12.))
                     .shadow_lg()
                     .child(ui::icon(

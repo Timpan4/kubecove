@@ -3,6 +3,7 @@
 //! `yamlTabDiff.ts`.
 
 use super::events::tw;
+use crate::control_motion::{self, HoverFill, hover_fill};
 use crate::theme::{MONO, Tokens, oklch};
 use crate::ui;
 use crate::unified_diff::{DiffLine, DiffLineKind};
@@ -17,35 +18,98 @@ pub(super) enum Variant {
     Destructive,
 }
 
+/// `rounded-md`, the radius of every button size but `xs`.
+pub(super) const RADIUS: f32 = 8.;
+
+struct Colors {
+    border: Hsla,
+    background: Hsla,
+    /// The variant's `hover:bg-*` class, in its `dark:` form where it has one.
+    hover: Hsla,
+    foreground: Hsla,
+}
+
+impl Variant {
+    fn colors(self) -> Colors {
+        let clear = gpui_kit::transparent_black();
+        match self {
+            Variant::Default => Colors {
+                border: clear,
+                background: Tokens::primary(),
+                hover: Tokens::primary().opacity(0.8),
+                foreground: Tokens::primary_foreground(),
+            },
+            Variant::Outline => Colors {
+                border: Tokens::border(),
+                background: Tokens::input().opacity(0.3),
+                hover: Tokens::input().opacity(0.5),
+                foreground: Tokens::foreground(),
+            },
+            Variant::Secondary => Colors {
+                border: clear,
+                background: Tokens::secondary(),
+                hover: Tokens::secondary().opacity(0.8),
+                foreground: Tokens::foreground(),
+            },
+            Variant::Ghost => Colors {
+                border: clear,
+                background: clear,
+                hover: Tokens::muted().opacity(0.5),
+                foreground: Tokens::foreground(),
+            },
+            Variant::Destructive => Colors {
+                border: clear,
+                background: Tokens::destructive().opacity(0.2),
+                hover: Tokens::destructive().opacity(0.3),
+                foreground: Tokens::destructive(),
+            },
+        }
+    }
+
+    /// The variant's background for a button of `radius`, which fades to its
+    /// hover color as `buttonVariants`' `transition-[color,background-color,…]`
+    /// does. The default and secondary variants also gain `hover:shadow-sm`.
+    pub(super) fn fill(self, radius: f32) -> HoverFill {
+        self.fill_over(self.colors().background, radius)
+    }
+
+    /// `fill` from another resting background, such as a pressed state's. The
+    /// variant's `hover:bg-*` class still wins while hovered, as on the web.
+    pub(super) fn fill_over(self, rest: Hsla, radius: f32) -> HoverFill {
+        let fill = hover_fill(rest, self.colors().hover)
+            .rounded(px(radius))
+            .under_border(1., 1., 1., 1.);
+        if matches!(self, Variant::Default | Variant::Secondary) {
+            fill.shadow_sm()
+        } else {
+            fill
+        }
+    }
+}
+
 /// `h-7` (default) or `h-6` (`sm`): `gap-1 px-2 text-xs/relaxed font-medium`.
 pub(super) fn button(variant: Variant, height: f32, disabled: bool) -> Div {
-    let (border, background, foreground) = match variant {
-        Variant::Default => (
-            gpui_kit::transparent_black(),
-            Tokens::primary(),
-            Tokens::primary_foreground(),
-        ),
-        Variant::Outline => (
-            Tokens::border(),
-            Tokens::input().opacity(0.3),
-            Tokens::foreground(),
-        ),
-        Variant::Secondary => (
-            gpui_kit::transparent_black(),
-            Tokens::secondary(),
-            Tokens::foreground(),
-        ),
-        Variant::Ghost => (
-            gpui_kit::transparent_black(),
-            gpui_kit::transparent_black(),
-            Tokens::foreground(),
-        ),
-        Variant::Destructive => (
-            gpui_kit::transparent_black(),
-            Tokens::destructive().opacity(0.2),
-            Tokens::destructive(),
-        ),
-    };
+    let frame = button_frame(variant, height, disabled);
+    if disabled {
+        // `disabled:pointer-events-none`: no hover.
+        frame.bg(variant.colors().background)
+    } else {
+        frame.child(variant.fill(RADIUS))
+    }
+}
+
+/// A button that does not answer the pointer and is not dimmed, for a wrapper
+/// that marks it unavailable itself.
+pub(super) fn inert_button(variant: Variant, height: f32) -> Div {
+    button_frame(variant, height, false).bg(variant.colors().background)
+}
+
+/// A button's box without its background, for a caller that paints its own:
+/// a pressed state, another radius, or `Variant::fill` at that radius.
+pub(super) fn button_frame(variant: Variant, height: f32, disabled: bool) -> Div {
+    let Colors {
+        border, foreground, ..
+    } = variant.colors();
     div()
         .flex()
         .flex_none()
@@ -54,10 +118,9 @@ pub(super) fn button(variant: Variant, height: f32, disabled: bool) -> Div {
         .gap(px(4.))
         .h(px(height))
         .px(px(8.))
-        .rounded(px(8.))
+        .rounded(px(RADIUS))
         .border_1()
         .border_color(border)
-        .bg(background)
         .text_color(foreground)
         .font_family(crate::theme::SANS)
         .text_size(px(12.))
@@ -66,6 +129,25 @@ pub(super) fn button(variant: Variant, height: f32, disabled: bool) -> Div {
         .whitespace_nowrap()
         .when(disabled, |button| button.opacity(0.5))
         .when(!disabled, |button| button.cursor_pointer())
+}
+
+/// One `SegmentedControl.svelte` option at `on` of the way to active:
+/// `bg-surface-1 text-foreground shadow-sm` over `text-muted-foreground`, mixed
+/// as its `transition-[color,background-color,border-color,box-shadow]` does.
+/// The option's label inherits the text color.
+pub(super) fn segment<E: Styled>(option: E, on: f32) -> E {
+    option
+        .bg(control_motion::mix(
+            gpui_kit::transparent_black(),
+            Tokens::card(),
+            on,
+        ))
+        .text_color(control_motion::mix(
+            Tokens::muted_foreground(),
+            Tokens::foreground(),
+            on,
+        ))
+        .shadow(control_motion::shadow_sm(on))
 }
 
 /// `Button size="icon"` (28px) around a 14px icon.

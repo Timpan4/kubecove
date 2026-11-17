@@ -6,7 +6,7 @@ use crate::theme::{HEADING, Palette, SANS, SM_FONT_SIZE, Tokens, XS_FONT_SIZE};
 use gpui_kit::{
     AnyElement, App, Bounds, Div, ElementId, FontWeight, GlobalElementId, Hsla, InspectorElementId,
     LayoutId, Pixels, SharedString, Styled, Svg, Transformation, Window, div, percentage,
-    prelude::*, px, svg,
+    prelude::*, px, radians, svg,
 };
 use std::time::Duration;
 
@@ -167,6 +167,22 @@ pub fn glyph(name: &str, size: f32, color: Hsla) -> AnyElement {
     } else {
         icon(name, size, color).into_any_element()
     }
+}
+
+/// A branch's chevron at `open` of the way from right to down, as
+/// `SidebarTreeNode.svelte` turns it: `transition-transform` to `rotate-90`.
+/// Both ends use their own icon, so a still chevron is drawn as before.
+pub fn chevron(size: f32, color: Hsla, open: f32) -> Svg {
+    if open >= 1. {
+        return icon("chevron-down", size, color);
+    }
+    let right = icon("chevron-right", size, color);
+    if open <= 0. {
+        return right;
+    }
+    right.with_transformation(Transformation::rotate(radians(
+        open * std::f32::consts::FRAC_PI_2,
+    )))
 }
 
 /// `Card`: `rounded-lg border bg-surface-1`.

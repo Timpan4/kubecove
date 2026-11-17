@@ -212,6 +212,9 @@ fn leaving_the_table_drops_its_highlights(cx: &mut TestAppContext) {
     })
     .unwrap();
     frame(cx, handle);
+    // The click eases the navigation's controls for `control_motion::DURATION`.
+    // A kept highlight would ask for frames for the rest of its second.
+    advance(cx, kubecove_gpui::control_motion::DURATION);
     assert_eq!(highlights(cx, handle), (vec![], false));
 }
 

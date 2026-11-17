@@ -52,8 +52,9 @@ fn update(this: &mut Inspector, cx: &mut Context<Inspector>, update: impl FnOnce
 
 /// `Button size="xs"`: `h-5 px-2 text-[0.625rem]`.
 fn xs_button(variant: Variant, label: &str) -> Div {
-    controls::button(variant, 20., false)
+    controls::button_frame(variant, 20., false)
         .rounded(px(4.))
+        .child(variant.fill(4.))
         .text_size(px(10.))
         .line_height(px(15.))
         .child(label.to_owned())
@@ -71,28 +72,26 @@ fn segmented(active: DiffView, cx: &mut Context<Inspector>) -> Div {
         .border_1()
         .border_color(Tokens::border().opacity(0.6))
         .children(VIEWS.map(|(option, label)| {
-            let selected = option == active;
-            div()
-                .id(SharedString::from(format!("argo-view:{label}")))
-                .test_support()
-                .aria_label(label)
-                .cursor_pointer()
-                .flex()
-                .items_center()
-                .h(px(24.))
-                .px(px(8.))
-                .rounded(px(8.))
-                .when(selected, |button| button.bg(Tokens::card()).shadow_sm())
-                .child(ui::medium(ui::xs(label)).text_color(if selected {
-                    Tokens::foreground()
-                } else {
-                    Tokens::muted_foreground()
-                }))
-                .on_click(
-                    cx.listener(move |this, _, _, cx| {
+            let segment =
+                div()
+                    .id(SharedString::from(format!("argo-view:{label}")))
+                    .test_support()
+                    .aria_label(label)
+                    .cursor_pointer()
+                    .flex()
+                    .items_center()
+                    .h(px(24.))
+                    .px(px(8.))
+                    .rounded(px(8.))
+                    .child(ui::medium(ui::xs(label)))
+                    .on_click(cx.listener(move |this, _, _, cx| {
                         update(this, cx, |state| state.view = option)
-                    }),
-                )
+                    }));
+            crate::control_motion::eased(
+                SharedString::from(format!("segment:argo-view:{label}")),
+                option == active,
+                move |on| controls::segment(segment, on),
+            )
         }))
 }
 

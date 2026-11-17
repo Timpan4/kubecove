@@ -3,6 +3,7 @@
 //! `@container` breakpoints use the frame width derived from the window.
 
 use super::{Inspector, controls, resources};
+use crate::control_motion;
 use crate::targets::TestSupportExt;
 use crate::theme::{HEADING, Palette, Tokens};
 use crate::ui;
@@ -244,7 +245,7 @@ pub(super) fn view_toggle(
         .children(
             [(ViewMode::Cards, "Cards"), (ViewMode::List, "List")].map(|(option, label)| {
                 let active = option == mode;
-                div()
+                let segment = div()
                     .id(SharedString::from(format!("{id}:{label}")))
                     .test_support()
                     .aria_label(label)
@@ -255,12 +256,7 @@ pub(super) fn view_toggle(
                     .h(px(24.))
                     .px(px(8.))
                     .rounded(px(8.))
-                    .when(active, |button| button.bg(Tokens::card()).shadow_sm())
-                    .child(ui::medium(ui::xs(label)).text_color(if active {
-                        Tokens::foreground()
-                    } else {
-                        Tokens::muted_foreground()
-                    }))
+                    .child(ui::medium(ui::xs(label)))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         set(this, option);
                         this.persisted.preferences.git_ops_view_mode =
@@ -277,7 +273,12 @@ pub(super) fn view_toggle(
                             };
                         this.save_preferences(cx);
                         cx.notify();
-                    }))
+                    }));
+                control_motion::eased(
+                    SharedString::from(format!("segment:{id}:{label}")),
+                    active,
+                    move |on| controls::segment(segment, on),
+                )
             }),
         )
 }
