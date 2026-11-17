@@ -3,6 +3,21 @@
 	"context": "mock-dev",
 	"scenarios": [
 		{
+			"id": "coverage-logs.one-line-long",
+			"title": "One-line layout clips a long message until the row is expanded",
+			"steps": [
+				{ "action": "openSettings" },
+				{ "action": "showSettingsSection", "section": "Appearance" },
+				{ "action": "selectSettingOption", "setting": "Log layout", "value": "One line" },
+				{ "action": "closeSettings" },
+				{ "action": "coverageScript", "script": "logs-long" },
+				{ "action": "openResources" },
+				{ "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+				{ "action": "showTab", "tab": "Logs" },
+				{ "action": "coverageCheck", "check": "log-compact-wrap" }
+			]
+		},
+		{
 			"id": "coverage-logs.one-line",
 			"title": "One-line logs expand individual or all rows and copy the exact selected raw line",
 			"steps": [

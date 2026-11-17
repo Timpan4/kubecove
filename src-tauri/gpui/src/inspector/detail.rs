@@ -633,6 +633,20 @@ impl Inspector {
                         _ => return None,
                     })
                 });
+                let watch_warning = if matches!(detail.tab, DetailTab::Details | DetailTab::Events)
+                {
+                    detail.events.watch_error.as_ref().map(|error| {
+                        let message = format!(
+                            "Events watch failed: {error}. Showing the last loaded events."
+                        );
+                        ui::muted(ui::xs(message.clone()))
+                            .id("events-watch-warning")
+                            .test_support()
+                            .aria_label(message)
+                    })
+                } else {
+                    None
+                };
                 div()
                     .flex()
                     .flex_col()
@@ -654,11 +668,8 @@ impl Inspector {
                             .absolute()
                             .size_0(),
                     )
+                    .children(watch_warning)
                     .child(content)
-                    .when_some(detail.events.watch_error.clone(), |body, error| body.child(
-                        ui::xs(format!("Realtime watch failed: events: {error}. Showing the last loaded data."))
-                            .text_color(Tokens::destructive())
-                    ))
                     .into_any_element()
             }
         };

@@ -142,6 +142,9 @@
 	});
 	let realtimeWatchError = $state<string | null>(null);
 	let realtimeEventsWatchError = $state<string | null>(null);
+	const showEventsWatchError = $derived(
+		activeTab === "details" || activeTab === "events",
+	);
 	let yamlShowFullDiff = $state(initialDetailState?.yamlShowFullDiff ?? false);
 	let resourceRefreshVersion = $state(0);
 	let ExecTabComponent = $state<typeof import("./ExecTab.svelte").default | null>(null);
@@ -537,9 +540,14 @@
 		<TabsTrigger value="yaml">YAML</TabsTrigger>
 	</TabsList>
 
-	{#if realtimeWatchError || realtimeEventsWatchError}
+	{#if realtimeWatchError}
 		<p class="text-muted-foreground text-xs">
-			Realtime watch failed{#if realtimeWatchError}: {realtimeWatchError}{/if}{#if realtimeEventsWatchError}{#if realtimeWatchError} · {:else}: {/if}events: {realtimeEventsWatchError}{/if}. Showing the last loaded data.
+			Realtime watch failed: {realtimeWatchError}. Showing the last loaded data.
+		</p>
+	{/if}
+	{#if showEventsWatchError && realtimeEventsWatchError}
+		<p class="text-muted-foreground text-xs">
+			Events watch failed: {realtimeEventsWatchError}. Showing the last loaded events.
 		</p>
 	{/if}
 

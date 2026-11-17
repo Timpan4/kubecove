@@ -415,6 +415,12 @@ impl Fixture {
                 ),
             };
             let message = match script {
+                "events-failed" if matches!(watch, WatchTarget::Events(_)) => {
+                    StreamMessage::Error {
+                        stream_id: "fixture".into(),
+                        message: "Scripted Events watch failure".into(),
+                    }
+                }
                 "connected" | "reconnecting" | "forbidden" => StreamMessage::Status {
                     stream_id: "fixture".into(),
                     status: if script == "forbidden" {

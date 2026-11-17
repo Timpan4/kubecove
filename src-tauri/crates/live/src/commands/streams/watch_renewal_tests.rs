@@ -81,6 +81,97 @@ async fn normal_watch_expiry_renews_without_recovery_and_preserves_version() {
     assert_eq!(messages[2]["status"], "reconnecting");
 }
 
+#[tokio::test(start_paused = true)]
+async fn event_watch_restarts_after_internal_error_and_reports_only_accepted_connections() {
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let service_requests = requests.clone();
+    let service = tower::service_fn(move |request: Request<Body>| {
+        let mut requests = service_requests.lock().unwrap();
+        requests.push(request.uri().to_string());
+        let bookmark = json!({
+            "type": "BOOKMARK",
+            "object": { "apiVersion": "v1", "kind": "Event", "metadata": { "resourceVersion": "55" } }
+        });
+        let error = json!({
+            "kind": "Status", "apiVersion": "v1", "status": "Failure", "code": 500,
+            "reason": "InternalError", "message": "etcd event received with PrevKv=nil (type=DELETE)"
+        });
+        let (code, body) = match requests.len() {
+            1 => (
+                200,
+                format!(
+                    "{bookmark}\n{}\n",
+                    json!({ "type": "ERROR", "object": error })
+                ),
+            ),
+            2 => (500, error.to_string()),
+            _ => (200, format!("{bookmark}\n")),
+        };
+        std::future::ready(Ok::<_, std::convert::Infallible>(
+            Response::builder()
+                .status(code)
+                .body(Body::from(body.into_bytes()))
+                .unwrap(),
+        ))
+    });
+    let messages = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let observed_messages = messages.clone();
+    let channel_requests = requests.clone();
+    let channel = stream_channel(move |message| {
+        observed_messages.lock().unwrap().push(message);
+        // Stop once the response to the third request has been reported.
+        if channel_requests.lock().unwrap().len() == 3 {
+            Err(())
+        } else {
+            Ok(())
+        }
+    });
+    let registry = StreamRegistry::default();
+    let (_, broadcaster, _) = registry.subscribe_event(
+        "test",
+        "source",
+        "dev",
+        "Pod",
+        "app",
+        Some("default"),
+        channel,
+    );
+    run_event_watch(
+        FixedClusterAccess::new(Client::new(service, "default")).access(),
+        "dev".into(),
+        "Pod".into(),
+        "app".into(),
+        Some("default".into()),
+        broadcaster,
+    )
+    .await;
+
+    let requests = requests.lock().unwrap();
+    assert_eq!(requests.len(), 3);
+    assert!(requests[1].contains("resourceVersion=0"), "{}", requests[1]);
+    let messages = messages.lock().unwrap();
+    let states: Vec<_> = messages
+        .iter()
+        .map(|message| {
+            message["status"]
+                .as_str()
+                .or_else(|| message["type"].as_str())
+                .unwrap()
+        })
+        .collect();
+    assert_eq!(
+        states,
+        [
+            "connected",
+            "error",
+            "reconnecting",
+            "error",
+            "reconnecting",
+            "connected"
+        ]
+    );
+}
+
 #[tokio::test]
 async fn forbidden_watch_stops_and_replays_permission_status_to_new_subscribers() {
     for in_stream in [false, true] {

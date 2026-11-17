@@ -98,7 +98,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             }
             window.click("helm-resources:platform:metrics-gateway", cx);
         }
-        check @ ("emit-log" | "log-wrap" | "log-scroll-back" | "log-jump") => {
+        check @ ("emit-log" | "log-wrap" | "log-compact-wrap" | "log-scroll-back" | "log-jump") => {
             super::log_coverage::check(window, cx, check)
         }
         "action-filter" => {

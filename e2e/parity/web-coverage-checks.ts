@@ -48,7 +48,7 @@ export async function checkCoverage(page: Page, check: string) {
 			await page.getByRole("button", { name: check === "helm-card-resources" ? "View resources" : "Resources", exact: true }).first().click();
 			if (await page.getByRole("textbox", { name: "Search resources" }).inputValue() !== "metrics-gateway") throw new Error("Wrong release opened");
 			break;
-		case "emit-log": case "log-wrap": case "log-scroll-back": case "log-jump":
+		case "emit-log": case "log-wrap": case "log-compact-wrap": case "log-scroll-back": case "log-jump":
 			await checkLogCoverage(page, check); break;
 		case "action-filter":
 			await page.locator('[data-resource-action="replicas"]').waitFor();

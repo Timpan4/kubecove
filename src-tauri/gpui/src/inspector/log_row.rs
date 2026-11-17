@@ -1,12 +1,11 @@
-//! One row of the Logs tab, mirroring the default stacked layout of
-//! `LogEntry.svelte`: time, level badge, headline, source, error and fields.
+//! The stacked, gutter, and one-line layouts from `LogEntry.svelte`.
 
 use super::Inspector;
 use super::controls::{Variant, button, red300};
 use super::events::tw;
 use super::logs_state::LogsState;
 use super::timestamp_text;
-use crate::logs::{LogLevel, ParsedLogLine, highlight_ranges, time_label};
+use crate::logs::{LogField, LogLevel, ParsedLogLine, highlight_ranges, time_label};
 use crate::model::exact_timestamp;
 use crate::preferences::TimestampTimezone;
 use crate::targets::ObservedElement;
@@ -17,6 +16,7 @@ use gpui_kit::{
     ClipboardItem, Context, Div, FontWeight, HighlightStyle, Hsla, SharedString, Stateful,
     StyledText, div, prelude::*, px, relative,
 };
+use std::ops::Range;
 
 fn red400(alpha: f32) -> Hsla {
     oklch(0.704, 0.191, 22.216, alpha)
@@ -63,6 +63,75 @@ fn highlighted(text: &SharedString, term: &str) -> StyledText {
     StyledText::new(text.clone()).with_highlights(ranges.into_iter().map(|range| (range, style)))
 }
 
+#[derive(Default)]
+struct InlineText {
+    text: String,
+    highlights: Vec<(Range<usize>, HighlightStyle)>,
+    monospace: Vec<(Range<usize>, SharedString)>,
+}
+
+impl InlineText {
+    fn push(&mut self, text: &str, term: &str, style: HighlightStyle, monospace: bool) {
+        let start = self.text.len();
+        self.text.push_str(text);
+        let end = self.text.len();
+        if start == end {
+            return;
+        }
+        if monospace {
+            self.monospace.push((start..end, MONO.into()));
+        }
+        let mut cursor = start;
+        for matched in highlight_ranges(text, term) {
+            let from = start + matched.start;
+            if cursor < from {
+                self.highlights.push((cursor..from, style));
+            }
+            cursor = start + matched.end;
+            self.highlights.push((
+                from..cursor,
+                HighlightStyle {
+                    background_color: Some(yellow300(0.4)),
+                    ..style
+                },
+            ));
+        }
+        if cursor < end {
+            self.highlights.push((cursor..end, style));
+        }
+    }
+
+    fn fields(&mut self, fields: &[LogField], term: &str, color: Hsla) {
+        for (index, field) in fields.iter().enumerate() {
+            if index > 0 {
+                self.text.push_str("  ");
+            }
+            let style = HighlightStyle {
+                color: Some(color),
+                font_weight: Some(FontWeight::NORMAL),
+                ..Default::default()
+            };
+            self.push(
+                &field.key,
+                term,
+                HighlightStyle {
+                    color: Some(Tokens::muted_foreground()),
+                    ..style
+                },
+                true,
+            );
+            self.text.push(' ');
+            self.push(&field.value, term, style, true);
+        }
+    }
+
+    fn render(self) -> StyledText {
+        StyledText::new(self.text)
+            .with_highlights(self.highlights)
+            .with_font_family_overrides(self.monospace)
+    }
+}
+
 /// `fieldChips` item: a muted key and its value, both marked for the filter.
 fn field_pair(key: &SharedString, value: &SharedString, term: &str) -> Div {
     div()
@@ -78,20 +147,121 @@ fn field_pair(key: &SharedString, value: &SharedString, term: &str) -> Div {
 
 /// The row's time of day in the saved timezone. Its hover text is the exact
 /// timestamp in the same timezone, as `LogEntry.svelte`'s `<time>` title is.
-fn time_text(
-    line: &ParsedLogLine,
-    position: usize,
-    timezone: TimestampTimezone,
-) -> gpui_kit::AnyElement {
+fn time_column(line: &ParsedLogLine, position: usize, timezone: TimestampTimezone) -> Div {
     let exact = line
         .timestamp
         .as_deref()
         .and_then(|value| exact_timestamp(value, timezone));
-    timestamp_text::with_tooltip(
-        format!("log-time:{position}"),
-        exact,
-        div().child(time_label(line.timestamp.as_deref(), timezone)),
-    )
+    div()
+        .min_w(px(79.2))
+        .flex_none()
+        .whitespace_nowrap()
+        .font_family(MONO)
+        .text_size(px(11.))
+        .line_height(px(17.))
+        .text_color(Tokens::muted_foreground())
+        .child(timestamp_text::with_tooltip(
+            format!("log-time:{position}"),
+            exact,
+            div().child(time_label(line.timestamp.as_deref(), timezone)),
+        ))
+}
+
+fn badge(level: Option<LogLevel>) -> Div {
+    let (background, foreground) = level.map_or(
+        (gpui_kit::transparent_black(), Tokens::foreground()),
+        badge_colors,
+    );
+    div()
+        .mt(px(1.5))
+        .flex()
+        .flex_none()
+        .justify_center()
+        .min_w(px(30.))
+        .px(px(4.))
+        .rounded(px(3.))
+        .bg(background)
+        .text_color(foreground)
+        .font_family(MONO)
+        .text_size(px(9.5))
+        .line_height(px(14.))
+        .font_weight(FontWeight::BOLD)
+        .child(level.map_or("", LogLevel::label))
+}
+
+fn row_edge(level: Option<LogLevel>) -> Div {
+    let color = match level {
+        Some(LogLevel::Error) => red500(1.),
+        Some(LogLevel::Warn) => tw::amber500(1.),
+        _ => gpui_kit::transparent_black(),
+    };
+    div()
+        .absolute()
+        .left_0()
+        .top_0()
+        .bottom_0()
+        .w(px(2.))
+        .bg(color)
+}
+
+fn field_chips(fields: &[LogField], term: &str) -> Div {
+    div()
+        .flex()
+        .flex_wrap()
+        .gap(px(3.))
+        .font_family(MONO)
+        .text_color(Tokens::foreground().opacity(0.85))
+        .children(fields.iter().map(|item| {
+            field_pair(&item.key, &item.value, term)
+                .whitespace_nowrap()
+                .px(px(6.))
+                .rounded(px(4.))
+                .border_1()
+                .border_color(Tokens::border())
+                .bg(Tokens::muted().opacity(0.4))
+                .text_size(px(10.5))
+                .line_height(px(15.))
+        }))
+}
+
+fn compact_summary(line: &ParsedLogLine, logs: &LogsState, open: bool) -> StyledText {
+    let structure = &line.structure;
+    let term = logs.term.as_str();
+    let mut text = InlineText::default();
+    if logs.is_aggregate() && !line.source_label.is_empty() {
+        text.push(
+            &line.source_label,
+            "",
+            HighlightStyle {
+                color: Some(Tokens::muted_foreground()),
+                font_weight: Some(FontWeight::NORMAL),
+                ..Default::default()
+            },
+            true,
+        );
+        text.text.push_str("  ");
+    }
+    text.push(&structure.headline, term, HighlightStyle::default(), false);
+    if !open {
+        if let Some(error) = &structure.error {
+            text.text.push_str("  ");
+            text.push(
+                error,
+                term,
+                HighlightStyle {
+                    color: Some(red300()),
+                    font_weight: Some(FontWeight::NORMAL),
+                    ..Default::default()
+                },
+                true,
+            );
+        }
+        if !structure.fields.is_empty() {
+            text.text.push_str("  ");
+            text.fields(&structure.fields, term, Tokens::foreground().opacity(0.75));
+        }
+    }
+    text.render()
 }
 
 /// `LogEntry.svelte`'s `oneLine` row. The summary line toggles the row. An
@@ -119,30 +289,12 @@ fn one_line_row(
     let summary = div()
         .id(("log-summary", position))
         .test_support()
-        .flex()
-        .gap(px(8.))
         .min_w_0()
-        .font_family(MONO)
         .text_size(px(12.))
-        .child(time_text(line, position, timezone))
-        .children(structure.level.map(|level| ui::xs(level.label())))
-        .children(
-            (logs.is_aggregate() && !line.source_label.is_empty())
-                .then(|| ui::xs(line.source_label.clone())),
-        )
-        .child(highlighted(&structure.headline, term))
-        .when(!open, |summary| {
-            summary
-                .children(
-                    structure
-                        .error
-                        .as_ref()
-                        .map(|error| highlighted(error, term)),
-                )
-                .children(structure.fields.iter().map(|field| {
-                    highlighted(&format!("{}={}", field.key, field.value).into(), term)
-                }))
-        });
+        .line_height(px(18.))
+        .font_weight(FontWeight::MEDIUM)
+        .when(!open, |summary| summary.truncate())
+        .child(compact_summary(line, logs, open));
     let details = open.then(|| {
         div()
             .id(("log-details", position))
@@ -162,20 +314,7 @@ fn one_line_row(
                     .child(highlighted(error, term))
             }))
             .when(!structure.fields.is_empty(), |details| {
-                details.child(div().flex().flex_wrap().gap(px(3.)).children(
-                    structure.fields.iter().map(|item| {
-                        field_pair(&item.key, &item.value, term)
-                            .whitespace_nowrap()
-                            .px(px(6.))
-                            .rounded(px(4.))
-                            .border_1()
-                            .border_color(Tokens::border())
-                            .bg(Tokens::muted().opacity(0.4))
-                            .font_family(MONO)
-                            .text_size(px(10.5))
-                            .line_height(px(15.))
-                    }),
-                ))
+                details.child(field_chips(&structure.fields, term))
             })
             .child(copy_line(line, logs, position, cx))
     });
@@ -192,15 +331,24 @@ fn one_line_row(
             }
             cx.notify();
         }))
+        .relative()
         .flex()
-        .flex_col()
-        .px(px(12.))
-        .py(px(4.))
+        .w_full()
+        .items_start()
+        .gap(px(7.))
+        .pl(px(12.))
+        .pr(px(10.))
+        .py(px(2.))
+        .cursor_pointer()
         .hover(|row| row.bg(Tokens::muted().opacity(0.4)))
         .focus(|row| row.bg(Tokens::muted().opacity(0.4)))
         .when(open, |row| row.bg(Tokens::muted().opacity(0.5)))
-        .child(summary)
-        .children(details)
+        .child(row_edge(structure.level))
+        .child(time_column(line, position, timezone))
+        .when(logs.buffer.has_levels(), |row| {
+            row.child(badge(structure.level))
+        })
+        .child(div().min_w_0().flex_1().child(summary).children(details))
 }
 
 /// The Copy line button of an open row. Its click copies the raw line and
@@ -250,49 +398,9 @@ pub(super) fn log_row(
         return one_line_row(line, logs, position, timezone, cx);
     }
     let term = logs.term.as_str();
-    let wrap = logs.wrap;
-    let edge = match structure.level {
-        Some(LogLevel::Error) => red500(1.),
-        Some(LogLevel::Warn) => tw::amber500(1.),
-        _ => gpui_kit::transparent_black(),
-    };
-    let clip = |text: Div| if wrap { text } else { text.truncate() };
-    let mut head = div().flex().min_w_0().items_start().gap(px(7.)).child(
-        // `min-w-[12ch] font-mono text-[11px] leading-[17px]`.
-        div()
-            .min_w(px(79.2))
-            .flex_none()
-            .whitespace_nowrap()
-            .font_family(MONO)
-            .text_size(px(11.))
-            .line_height(px(17.))
-            .text_color(Tokens::muted_foreground())
-            .child(time_text(line, position, timezone)),
-    );
-    if logs.buffer.has_levels() {
-        let (background, foreground) = structure.level.map_or(
-            (gpui_kit::transparent_black(), Tokens::foreground()),
-            badge_colors,
-        );
-        head = head.child(
-            div()
-                .mt(px(1.5))
-                .flex()
-                .flex_none()
-                .justify_center()
-                .min_w(px(30.))
-                .px(px(4.))
-                .rounded(px(3.))
-                .bg(background)
-                .text_color(foreground)
-                .font_family(MONO)
-                .text_size(px(9.5))
-                .line_height(px(14.))
-                .font_weight(FontWeight::BOLD)
-                .child(structure.level.map_or("", LogLevel::label)),
-        );
-    }
-    head = head.child(clip(
+    let gutter = layout == crate::preferences::LogLayout::Gutter;
+    let clip = |text: Div| if logs.wrap { text } else { text.truncate() };
+    let headline = clip(
         div()
             .flex_1()
             .min_w_0()
@@ -301,55 +409,56 @@ pub(super) fn log_row(
             .font_weight(FontWeight::MEDIUM)
             .text_color(Tokens::foreground())
             .child(highlighted(&structure.headline, term)),
-    ));
-    if logs.is_aggregate() && !line.source_label.is_empty() {
-        head = head.child(
-            div()
-                .ml_auto()
-                .flex_none()
-                .max_w(relative(0.3))
-                .truncate()
-                .font_family(MONO)
-                .text_size(px(10.5))
-                .line_height(px(17.))
-                .text_color(Tokens::muted_foreground())
-                .child(line.source_label.clone()),
-        );
-    }
-    let fields = (!structure.fields.is_empty()).then(|| {
-        let row = div()
-            .mt(px(3.))
+    );
+    let source = (logs.is_aggregate() && !line.source_label.is_empty()).then(|| {
+        div()
+            .ml_auto()
+            .flex_none()
+            .max_w(relative(0.3))
+            .truncate()
             .font_family(MONO)
-            .text_color(Tokens::foreground().opacity(0.85));
-        if wrap && layout == crate::preferences::LogLayout::Stacked {
-            row.flex()
-                .flex_wrap()
-                .gap(px(3.))
-                .children(structure.fields.iter().map(|item| {
-                    field_pair(&item.key, &item.value, term)
-                        .whitespace_nowrap()
-                        .px(px(6.))
-                        .rounded(px(4.))
-                        .border_1()
-                        .border_color(Tokens::border())
-                        .bg(Tokens::muted().opacity(0.4))
-                        .text_size(px(10.5))
-                        .line_height(px(15.))
-                }))
-        } else {
-            row.flex()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_size(px(11.))
-                .line_height(px(16.))
-                .children(structure.fields.iter().map(|item| {
-                    field_pair(&item.key, &item.value, term)
-                        .flex_none()
-                        .mr(px(10.))
-                }))
-        }
+            .text_size(px(10.5))
+            .line_height(px(17.))
+            .text_color(Tokens::muted_foreground())
+            .child(line.source_label.clone())
     });
-    div()
+    let error = structure.error.as_ref().map(|error| {
+        clip(
+            div()
+                .when(!gutter, |row| row.mt(px(1.)))
+                .font_family(MONO)
+                .text_size(px(11.5))
+                .line_height(px(16.))
+                .text_color(red300())
+                .child(highlighted(error, term)),
+        )
+    });
+    let fields = (!structure.fields.is_empty()).then(|| {
+        let row = if logs.wrap && !gutter {
+            field_chips(&structure.fields, term)
+        } else {
+            let mut text = InlineText::default();
+            text.fields(&structure.fields, term, Tokens::foreground().opacity(0.85));
+            clip(
+                div()
+                    .font_family(MONO)
+                    .text_size(px(11.))
+                    .line_height(px(16.))
+                    .child(text.render()),
+            )
+        };
+        row.when(!gutter, |row| row.mt(px(3.)))
+    });
+    let columns = div()
+        .flex()
+        .min_w_0()
+        .items_start()
+        .gap(px(if gutter { 8. } else { 7. }))
+        .child(time_column(line, position, timezone))
+        .when(logs.buffer.has_levels(), |row| {
+            row.child(badge(structure.level))
+        });
+    let row = div()
         .id(("log-row", position))
         .test_support()
         .aria_label(structure.headline.clone())
@@ -358,39 +467,30 @@ pub(super) fn log_row(
         .pr(px(10.))
         .py(px(4.))
         .border_b_1()
-        .border_color(Tokens::border().opacity(0.4))
+        .border_color(Tokens::border().opacity(if gutter { 0.3 } else { 0.4 }))
         .hover(|row| row.bg(Tokens::muted().opacity(0.4)))
-        .child(
-            // `border-l-2`, drawn apart so the bottom border keeps its own color.
-            div()
-                .absolute()
-                .left_0()
-                .top_0()
-                .bottom_0()
-                .w(px(2.))
-                .bg(edge),
-        )
-        .when(layout == crate::preferences::LogLayout::Gutter, |row| {
-            row.py(px(3.))
-        })
-        .child(head)
-        .when_some(structure.error.as_ref(), |row, error| {
-            row.child(clip(
+        .child(row_edge(structure.level));
+    if gutter {
+        row.py(px(3.)).child(
+            columns.child(
                 div()
-                    .mt(px(1.))
-                    .when(layout == crate::preferences::LogLayout::Gutter, |row| {
-                        row.ml(px(86.2 + if logs.buffer.has_levels() { 37. } else { 0. }))
-                    })
-                    .font_family(MONO)
-                    .text_size(px(11.5))
-                    .line_height(px(16.))
-                    .text_color(red300())
-                    .child(highlighted(error, term)),
-            ))
-        })
-        .children(fields.map(|fields| {
-            fields.when(layout == crate::preferences::LogLayout::Gutter, |row| {
-                row.ml(px(86.2 + if logs.buffer.has_levels() { 37. } else { 0. }))
-            })
-        }))
+                    .flex_1()
+                    .min_w_0()
+                    .child(
+                        div()
+                            .flex()
+                            .items_start()
+                            .gap(px(8.))
+                            .child(headline)
+                            .children(source),
+                    )
+                    .children(error)
+                    .children(fields),
+            ),
+        )
+    } else {
+        row.child(columns.child(headline).children(source))
+            .children(error)
+            .children(fields)
+    }
 }

@@ -16,6 +16,21 @@ pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check
                 before
             );
         }
+        "log-compact-wrap" => {
+            let row = ("log-row", 0usize);
+            let summary = ("log-summary", 0usize);
+            let bounds = window.find(row).bounds();
+            assert!(
+                bounds.right() <= window.find("log-viewport").bounds().right(),
+                "{bounds:?}"
+            );
+            // LogEntry uses an 18px summary and 2px of padding on each edge.
+            assert_eq!(bounds.size.height, px(22.));
+            window.click(summary, cx);
+            window.render_frame(cx);
+            window.find(("log-copy", 0usize));
+            assert!(window.find(summary).bounds().size.height > px(18.));
+        }
         "log-scroll-back" => {
             let bounds = window.find("log-viewport").bounds();
             let elements = window.elements();

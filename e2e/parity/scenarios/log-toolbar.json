@@ -3,6 +3,24 @@
 	"context": "mock-dev",
 	"scenarios": [
 		{
+			"id": "logs.pod.event-watch-warning",
+			"title": "An Events watch failure stays with Events while Pod logs remain live",
+			"steps": [
+				{ "action": "openResources" },
+				{ "action": "search", "value": "argocd-dex-server" },
+				{ "action": "openResource", "kind": "Pod", "namespace": "argocd", "name": "argocd-dex-server-6d7f9c5b8-q4w2n" },
+				{ "action": "showTab", "tab": "Events" },
+				{ "action": "replayLiveData", "script": "events-failed" },
+				{ "action": "coverageText", "visible": true, "text": "Events watch failed: Scripted Events watch failure. Showing the last loaded events." },
+				{ "action": "showTab", "tab": "Logs" },
+				{ "action": "expectLogToolbarFit", "state": "Live" },
+				{ "action": "coverageText", "visible": false, "text": "Events watch failed: Scripted Events watch failure. Showing the last loaded events." },
+				{ "action": "showTab", "tab": "Events" },
+				{ "action": "replayLiveData", "script": "connected" },
+				{ "action": "coverageText", "visible": false, "text": "Events watch failed: Scripted Events watch failure. Showing the last loaded events." }
+			]
+		},
+		{
 			"id": "logs.pod.toolbar-live",
 			"title": "A multi-container Pod's live Logs toolbar keeps its status clear of the container picker and buttons, and its buttons inside the detail panel",
 			"steps": [

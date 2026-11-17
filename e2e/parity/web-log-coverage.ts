@@ -11,6 +11,16 @@ export async function checkLogCoverage(page: Page, check: string): Promise<void>
 		await page.waitForFunction((height) => (document.querySelector("[data-log-row]")?.getBoundingClientRect().height ?? height) < height, before.height);
 		await page.getByRole("button", { name: "Wrap lines", exact: true }).click();
 		await page.waitForFunction((height) => document.querySelector("[data-log-row]")?.getBoundingClientRect().height === height, before.height);
+	} else if (check === "log-compact-wrap") {
+		const row = page.locator("[data-log-row]").first();
+		await row.waitFor();
+		const closed = await row.boundingBox();
+		// LogEntry uses an 18px summary and 2px of padding on each edge.
+		if (closed?.height !== 22) throw new Error("Collapsed log row takes more than one line");
+		await row.click();
+		await row.getByRole("button", { name: "Copy line", exact: true }).waitFor();
+		const summary = await row.locator(":scope > div > div:first-child").boundingBox();
+		if (!summary || summary.height <= 18) throw new Error("Expanded log summary did not wrap");
 	} else if (check === "log-scroll-back") {
 		const viewport = page.locator("[data-log-row]").first().locator('xpath=ancestor::div[contains(@class,"overflow-auto")][1]');
 		const height = await viewport.evaluate((element) => element.scrollHeight);
