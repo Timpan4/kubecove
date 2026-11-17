@@ -31,7 +31,11 @@ const UNTRACED_COMMANDS = new Set([
  * Runs one command and, while diagnostics is enabled, logs its round trip as
  * tauri.invoke.* events for the latency report and the interaction recorder.
  */
-export async function traceInvoke<T>(cmd: string, args: object | undefined, call: () => Promise<T>): Promise<T> {
+export async function traceInvoke<T, Args extends object>(
+	cmd: string,
+	args: Args | undefined,
+	call: () => Promise<T>,
+): Promise<T> {
 	if (!isDiagnosticsEnabled() || UNTRACED_COMMANDS.has(cmd)) return call();
 	const started = performance.now();
 	diagnosticLog("tauri.invoke.start", {
