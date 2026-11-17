@@ -52,6 +52,14 @@
 		observer.observe(group);
 		return () => observer.disconnect();
 	});
+
+	/**
+	 * Ends the slide once none of the pill's transitions is left. A choice made mid-slide cancels
+	 * the running transitions and starts others, which still need the transition class.
+	 */
+	function settle(event: TransitionEvent & { currentTarget: HTMLSpanElement }) {
+		if (event.currentTarget.getAnimations().length === 0) sliding = false;
+	}
 </script>
 
 <div
@@ -75,8 +83,8 @@
 			style:top="{pill.top}px"
 			style:width="{pill.width}px"
 			style:height="{pill.height}px"
-			ontransitionend={() => (sliding = false)}
-			ontransitioncancel={() => (sliding = false)}
+			ontransitionend={settle}
+			ontransitioncancel={settle}
 		></span>
 	{/if}
 	{#each options as option (option.value)}

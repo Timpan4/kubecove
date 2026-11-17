@@ -20,6 +20,8 @@ type Target = {
 	shown?(page: Page): Promise<string>;
 	/** Changes the control's state. */
 	act(page: Page): Promise<void>;
+	/** Chooses the first state again, and the element whose transition then runs if it is another. */
+	back?: { moving?(page: Page): Locator; act(page: Page): Promise<void> };
 };
 
 const deployment = { kind: "Deployment", name: "payments-api", namespace: "payments" };
@@ -36,6 +38,7 @@ const TARGETS = {
 		moving: (page) => page.getByRole("radiogroup").filter({ has: page.getByRole("radio", { name: "List", exact: true }) }).locator("[data-slot='segmented-control-pill']"),
 		property: "left",
 		act: (page) => page.getByRole("radio", { name: "List", exact: true }).click(),
+		back: { act: (page) => page.getByRole("radio", { name: "Cards", exact: true }).click() },
 	},
 	// TabsTrigger.svelte: the line's `after:transition-[translate,scale]` from the last active tab.
 	// The new tab's line starts offset onto the old tab, so the page shows the active tab's left
@@ -52,6 +55,11 @@ const TARGETS = {
 			return (active.getBoundingClientRect().left + (Number.isNaN(offset) ? 0 : offset)).toFixed(2);
 		}),
 		act: (page) => page.getByRole("tab", { name: "Events", exact: true }).click(),
+		// The line then runs on the first tab, from where the second tab's line is shown.
+		back: {
+			moving: (page) => page.getByRole("tab", { name: "Details", exact: true }),
+			act: (page) => page.getByRole("tab", { name: "Details", exact: true }).click(),
+		},
 	},
 	// TableRow.svelte: `transition-colors` to the hover background.
 	row: {
@@ -108,10 +116,39 @@ function seek(page: Page, ms: number | "end") {
 	}, ms);
 }
 
+/** Pauses the next transition of the target's property on `moving` at time 0, once `act` starts it. */
+async function follow(page: Page, moving: Locator, target: Target, act: (page: Page) => Promise<void>) {
+	await moving.evaluate((element, { pseudo, property }) => {
+		window.controlMotion = undefined;
+		const capture = (event: Event) => {
+			// Transitions on descendants bubble here too.
+			if (event.target !== element) return;
+			const transitions = element.getAnimations({ subtree: true }).filter((animation) => {
+				if (!(animation instanceof CSSTransition) || animation.transitionProperty !== property) return false;
+				const effect = animation.effect;
+				return effect instanceof KeyframeEffect && effect.target === element && effect.pseudoElement === pseudo;
+			});
+			// The pointer's move onto the control can start a hover transition of another property a
+			// frame before the click starts the followed one. Keep listening until that one runs.
+			if (transitions.length === 0) return;
+			element.removeEventListener("transitionrun", capture);
+			for (const transition of transitions) {
+				transition.pause();
+				transition.currentTime = 0;
+			}
+			window.controlMotion = transitions;
+		};
+		element.addEventListener("transitionrun", capture);
+	}, { pseudo: target.pseudo ?? null, property: target.property });
+	await act(page);
+	await page.waitForFunction(() => window.controlMotion !== undefined).catch(() => { throw new Error(`The control changed without a transition of ${target.property}`); });
+}
+
 /**
  * `motion:<target>:<phase>` follows one control's CSS transition. `start` changes the control's
  * state and expects its computed value unchanged at time 0; `midway` expects a value between the
- * ends at half of DURATION_MS; `settled` expects the end value.
+ * ends at half of DURATION_MS; `settled` expects the end value. After `midway`, `back` chooses the
+ * first state again and expects the value unchanged, and `returned` expects the value at rest.
  *
  * A CSS transition runs on the document timeline, which the page clock does not move. So `start`
  * pauses the control's transitions in their `transitionrun` event, and the later phases seek
@@ -125,30 +162,7 @@ export async function checkControlMotion(page: Page, check: string) {
 		const moving = target.moving(page);
 		await moving.waitFor();
 		const rest = await read(page, target);
-		await moving.evaluate((element, { pseudo, property }) => {
-			window.controlMotion = undefined;
-			const capture = (event: Event) => {
-				// Transitions on descendants bubble here too.
-				if (event.target !== element) return;
-				const transitions = element.getAnimations({ subtree: true }).filter((animation) => {
-					if (!(animation instanceof CSSTransition) || animation.transitionProperty !== property) return false;
-					const effect = animation.effect;
-					return effect instanceof KeyframeEffect && effect.target === element && effect.pseudoElement === pseudo;
-				});
-				// The pointer's move onto the control can start a hover transition of another property a
-				// frame before the click starts the followed one. Keep listening until that one runs.
-				if (transitions.length === 0) return;
-				element.removeEventListener("transitionrun", capture);
-				for (const transition of transitions) {
-					transition.pause();
-					transition.currentTime = 0;
-				}
-				window.controlMotion = transitions;
-			};
-			element.addEventListener("transitionrun", capture);
-		}, { pseudo: target.pseudo ?? null, property: target.property });
-		await target.act(page);
-		await page.waitForFunction(() => window.controlMotion !== undefined).catch(() => { throw new Error(`${name} changed without a transition of ${target.property}`); });
+		await follow(page, moving, target, target.act);
 		const timing = await page.evaluate(() => {
 			const computed = window.controlMotion?.[0]?.effect?.getComputedTiming();
 			return { duration: Number(computed?.duration ?? -1), delay: computed?.delay ?? -1 };
@@ -166,6 +180,22 @@ export async function checkControlMotion(page: Page, check: string) {
 		const midway = await read(page, target);
 		if (midway === before.rest) throw new Error(`${name} has not moved from ${before.rest} at ${DURATION_MS / 2} ms`);
 		seen.set(page, { ...before, midway });
+		return;
+	}
+	if (phase === "back") {
+		if (!target.back || before.midway === undefined) throw new Error(`${check} needs a target that turns back and an earlier midway check`);
+		await follow(page, (target.back.moving ?? target.moving)(page), target, target.back.act);
+		// The replaced transition's `transitioncancel` reaches the page with the next frame, and the
+		// page may answer it. The followed transition is paused, so waiting moves nothing.
+		await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+		const held = await read(page, target);
+		if (held !== before.midway) throw new Error(`${name} jumped from ${before.midway} to ${held} when its first state was chosen again`);
+		return;
+	}
+	if (phase === "returned") {
+		await seek(page, "end");
+		const returned = await read(page, target);
+		if (returned !== before.rest) throw new Error(`${name} returned to ${returned}, not to ${before.rest} at rest`);
 		return;
 	}
 	if (phase !== "settled") throw new Error(`Unknown motion phase in ${check}`);
