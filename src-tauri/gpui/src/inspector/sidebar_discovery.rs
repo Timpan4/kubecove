@@ -44,11 +44,7 @@ impl Inspector {
             state.cluster = Fetch::Idle;
             state.context = self.scope.context.clone();
         }
-        // A closing namespace keeps its kinds until its rows have folded away.
-        state.reads.retain(|ns, _| {
-            self.persisted.preferences.show_custom_resources
-                && (self.sidebar_tree.open.contains(ns) || self.sidebar_tree.folds.folding(ns))
-        });
+        self.drop_closed_namespace_kinds();
         if !self.persisted.preferences.show_custom_resources || !self.workspace_open() {
             return;
         }
@@ -101,6 +97,18 @@ impl Inspector {
             });
             state.reads.insert(ns.name.clone(), Fetch::start(task));
         }
+    }
+
+    /// Lets go of the kinds of namespaces that are closed and no longer folding.
+    /// A closing namespace keeps its kinds until its rows have folded away, so
+    /// this also runs after the frame its fold ends on: no frame may follow that
+    /// one before the namespace reopens, and reopening must read again.
+    pub(super) fn drop_closed_namespace_kinds(&mut self) {
+        let shown = self.persisted.preferences.show_custom_resources;
+        let tree = &mut self.sidebar_tree;
+        tree.discovery
+            .reads
+            .retain(|ns, _| shown && (tree.open.contains(ns) || tree.folds.folding(ns)));
     }
 
     /// Cluster-wide kinds for the Custom Resources section; empty until discovery succeeds.

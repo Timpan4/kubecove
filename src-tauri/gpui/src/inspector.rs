@@ -593,6 +593,7 @@ impl Render for Inspector {
             )
         });
         let drawer = self.navigation_drawer(workspace && compact, window, cx);
+        self.drop_closed_namespace_kinds();
         let probe = self.presentation_frame(started);
         let foreground_bar = self.foreground_bar(window, cx);
         let view = div()
