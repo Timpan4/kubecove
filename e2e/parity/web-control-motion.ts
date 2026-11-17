@@ -32,6 +32,38 @@ type Target = {
 
 const deployment = { kind: "Deployment", name: "payments-api", namespace: "payments" };
 
+/**
+ * The detail tabs' line as the page shows it: its left edge and width. A newly active tab's line
+ * starts offset and scaled onto the last one, so this is the active tab's padding box, which the
+ * line spans, moved by that offset and scaled.
+ */
+function tabLine(page: Page): Promise<string> {
+	return page.getByRole("tablist").filter({ has: page.getByRole("tab", { name: "Events", exact: true }) }).evaluate((list) => {
+		const active = list.querySelector("[role='tab'][data-state='active']");
+		if (!active) throw new Error("No active tab");
+		const line = getComputedStyle(active, "::after");
+		const [x = 0] = line.translate === "none" ? [] : line.translate.split(" ").map(Number.parseFloat);
+		const [w = 1] = line.scale === "none" ? [] : line.scale.split(" ").map(Number.parseFloat);
+		const box = active.getBoundingClientRect();
+		const style = getComputedStyle(active);
+		const [left, right] = [style.borderLeftWidth, style.borderRightWidth].map(Number.parseFloat);
+		// Hundredths of a pixel: the sum of two edges does not round as one edge does.
+		return `${(box.left + left + x).toFixed(2)} ${((box.width - left - right) * w).toFixed(2)}`;
+	});
+}
+
+/** Throws unless, at rest, only the active detail tab shows its line, unmoved and unscaled. */
+async function tabLineFits(page: Page) {
+	const fitted = await page.getByRole("tablist").filter({ has: page.getByRole("tab", { name: "Events", exact: true }) }).evaluate((list) => {
+		const lined = [...list.querySelectorAll("[role='tab']")].filter((tab) => getComputedStyle(tab, "::after").opacity !== "0");
+		const [only] = lined;
+		if (lined.length !== 1 || only?.getAttribute("data-state") !== "active") return false;
+		const line = getComputedStyle(only, "::after");
+		return ["none", "0px", "0px 0px"].includes(line.translate) && ["none", "1", "1 1"].includes(line.scale);
+	});
+	if (!fitted) throw new Error("At rest, not exactly the active tab shows its line in place");
+}
+
 const TARGETS = {
 	// Switch.svelte: the thumb's `transition-transform` to `translate-x-4`.
 	switch: {
@@ -69,42 +101,27 @@ const TARGETS = {
 		},
 	},
 	// TabsTrigger.svelte: the line's `after:transition-[translate,scale]` from the last active tab.
-	// The new tab's line starts offset and scaled onto the old tab, so the page shows the line's
-	// left edge and width: the active tab's padding box moved by that offset and scaled.
 	tab: {
 		moving: (page) => page.getByRole("tab", { name: "Events", exact: true }),
 		pseudo: "::after",
 		property: "translate",
-		shown: (page) => page.getByRole("tab", { name: "Events", exact: true }).evaluate((tab) => {
-			const active = tab.closest("[role='tablist']")?.querySelector("[role='tab'][data-state='active']");
-			if (!active) throw new Error("No active tab");
-			const line = getComputedStyle(active, "::after");
-			const [x = 0] = line.translate === "none" ? [] : line.translate.split(" ").map(Number.parseFloat);
-			const [w = 1] = line.scale === "none" ? [] : line.scale.split(" ").map(Number.parseFloat);
-			const box = active.getBoundingClientRect();
-			const style = getComputedStyle(active);
-			const [left, right] = [style.borderLeftWidth, style.borderRightWidth].map(Number.parseFloat);
-			// Hundredths of a pixel: the sum of two edges does not round as one edge does.
-			return `${(box.left + left + x).toFixed(2)} ${((box.width - left - right) * w).toFixed(2)}`;
-		}),
-		// At rest only the active tab shows its line, unmoved and unscaled under it.
-		fits: async (page) => {
-			const fitted = await page.getByRole("tab", { name: "Events", exact: true }).evaluate((tab) => {
-				const tabs = [...(tab.closest("[role='tablist']")?.querySelectorAll("[role='tab']") ?? [])];
-				const lined = tabs.filter((item) => getComputedStyle(item, "::after").opacity !== "0");
-				const [only] = lined;
-				if (lined.length !== 1 || only?.getAttribute("data-state") !== "active") return false;
-				const line = getComputedStyle(only, "::after");
-				return ["none", "0px", "0px 0px"].includes(line.translate) && ["none", "1", "1 1"].includes(line.scale);
-			});
-			if (!fitted) throw new Error("At rest, not exactly the active tab shows its line in place");
-		},
+		shown: tabLine,
+		fits: tabLineFits,
 		act: (page) => page.getByRole("tab", { name: "Events", exact: true }).click(),
 		// The line then runs on the first tab, from where the second tab's line is shown.
 		back: {
 			moving: (page) => page.getByRole("tab", { name: "Details", exact: true }),
 			act: (page) => page.getByRole("tab", { name: "Details", exact: true }).click(),
 		},
+	},
+	// The same line to the Actions tab, whose panel changes the tab list's height mid-slide.
+	"tab-actions": {
+		moving: (page) => page.getByRole("tab", { name: "Actions", exact: true }),
+		pseudo: "::after",
+		property: "translate",
+		shown: tabLine,
+		fits: tabLineFits,
+		act: (page) => page.getByRole("tab", { name: "Actions", exact: true }).click(),
 	},
 	// TableRow.svelte: `transition-colors` to the hover background.
 	row: {

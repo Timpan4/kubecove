@@ -43,6 +43,21 @@
       ]
     },
     {
+      "id": "control-motion.tab-resizes-list",
+      "title": "The detail tabs' underline slides to the Actions tab over 150 ms though its panel changes the tab list's height",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "expectDetail", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "coverageCheck", "check": "motion:tab-actions:start" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:tab-actions:midway" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:tab-actions:settled" }
+      ]
+    },
+    {
       "id": "control-motion.segment-turns-back",
       "title": "A segmented control's pill turns back from where it is when the first option is chosen again mid-slide",
       "steps": [
