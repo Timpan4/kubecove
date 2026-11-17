@@ -36,6 +36,8 @@ export const integrationsSteps = {
 	configureArgoMock: (item) => ({ script: oneOf(["base", "discovery-error", "target-mismatch", "preview-error", "snapshot-error", "operation-error", "lazy", "full-diff", "connect-pending", "disconnect-pending", "credential-error", "preview-pending"], item.script, "an Argo fixture script") }),
 	argoControl: (item) => ({ control: oneOf(["Open connection", "Close connection", "Disconnect", "Forget", "Cancel sign-in", "Retry", "Confirm target again", "Retry operation", "Retry state refresh", "Retry snapshot", "Technical detail", "Show diff", "Show fewer lines", "All changes", "Sync options", "Sync with these options", "Refresh options"], item.control, "an Argo control"), url: item.url == null ? undefined : string(item.url) }),
 	focusArgoResource: (item) => ({ key: string(item.key), label: string(item.label) }),
+	/** Seeds a legacy profile ID before restart. */
+	ageArgoProfileId: (item) => ({ url: string(item.url) }),
 	expectNoSavedArgoProfile: (item) => ({ url: string(item.url) }),
 	expandArgoDiff: noPayload,
 	reconnectArgoProfile: noPayload,

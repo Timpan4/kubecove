@@ -9,6 +9,25 @@ fn argo_text_present(window: &gpui_kit::Window, expected: &str) -> bool {
     })
 }
 
+/// `ageArgoProfileId`: gives the saved profile for `url` the id an older build made, which
+/// lowercased the whole URL after the scope. The next `restartClient` reads it.
+pub(super) fn age_profile_id(backend: &Fixture, url: &str) {
+    use kubecove_gpui::{backend::Backend, preferences::Endpoint};
+    let mut document = backend.load_preferences().unwrap();
+    let profile = document
+        .preferences
+        .argo_profiles
+        .iter_mut()
+        .find(|p| matches!(&p.endpoint, Endpoint::ExternalHttps { url: saved } if saved == url))
+        .unwrap_or_else(|| panic!("no saved Argo CD profile for {url}"));
+    let (scope, endpoint) = profile
+        .id
+        .split_once(":externalHttps:")
+        .unwrap_or_else(|| panic!("not a current external profile id: {}", profile.id));
+    profile.id = format!("{scope}:{}", endpoint.to_lowercase());
+    backend.save_preferences(document).unwrap();
+}
+
 pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) -> bool {
     match string(step, "action") {
         "reconnectArgoProfile" => {
@@ -76,7 +95,8 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 "wrong clipboard for {control}"
             );
         }
-        "configureArgoMock" => {}
+        // The runner applies these to the fixture.
+        "configureArgoMock" | "ageArgoProfileId" => {}
         // The parity hub owns the native executor clock, so both actions are handled there.
         "controlClock" | "advanceClock" => {}
         "focusArgoResource" => {
@@ -143,7 +163,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                     // Profiles are keyed by the open workspace: its saved id, or
                     // `native-session` before the startup workspace is saved.
                     let target = format!(
-                        "mock-dev:kubeconfigSource=browser-mock:{}",
+                        "mock-dev:kubeconfigSource=browser-mock:externalHttps:{}",
                         string(step, "url")
                     );
                     let id = ["1", "native-session"]

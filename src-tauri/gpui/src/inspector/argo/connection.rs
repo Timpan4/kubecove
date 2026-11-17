@@ -452,13 +452,22 @@ impl Inspector {
         let profile = ArgoConnectionProfile {
             id: saved.map_or_else(
                 || {
-                    format!(
-                        "argo:{}:{}:{}:{}",
-                        self.argo_workspace_id(),
-                        self.scope.context,
-                        self.argo_source_key().unwrap_or("global"),
-                        super::profiles::endpoint_identity(&endpoint)
-                    )
+                    let in_scope = self
+                        .argo
+                        .connections
+                        .profiles
+                        .iter()
+                        .filter_map(|s| s.profile.as_ref())
+                        .filter(|p| self.argo_profile_matches(p));
+                    super::profiles::saved_profile_id(in_scope, &endpoint).unwrap_or_else(|| {
+                        format!(
+                            "argo:{}:{}:{}:{}",
+                            self.argo_workspace_id(),
+                            self.scope.context,
+                            self.argo_source_key().unwrap_or("global"),
+                            super::profiles::endpoint_identity(&endpoint)
+                        )
+                    })
                 },
                 |p| p.id.clone(),
             ),

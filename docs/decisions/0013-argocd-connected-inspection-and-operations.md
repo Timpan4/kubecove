@@ -35,3 +35,7 @@ Connected reads and operations require exact profile `clusterContext` and `works
 ## Amendment 2026-10-09: server mode without a keyring
 
 [ADR 0021](0021-file-credential-store-without-keyring.md) allows `kubecove-server` to keep remembered credentials and operation review sessions in an encrypted file store when native credential storage is unavailable. The desktop app keeps this ADR's rule: no fallback.
+
+## Amendment 2026-11-17: profile identifiers and URL path case
+
+A new external HTTPS profile identifier lowercases only the URL's scheme and host, because paths are case-sensitive, and names its endpoint with an `externalHttps:` prefix. Earlier identifiers lowercased the whole URL. They stay as stored, together with the native credentials keyed by them, and the prefix keeps every new identifier different from them. A new connection whose endpoint matches a saved profile in the same workspace scope reuses that profile's identifier. The match compares canonical URLs, as the backend saves them, because an identifier came from the URL as typed. Service tunnel identifiers are unchanged.
