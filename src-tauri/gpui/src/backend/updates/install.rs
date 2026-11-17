@@ -306,17 +306,19 @@ mod tests {
 
     /// An installed bundle in `<root>/apps`, and an update archive in `<root>`.
     fn installed(name: &str) -> (Root, PathBuf, PathBuf, fs::File) {
-        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../.t/update-tests")
-            .join(format!("{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
-        let apps = root.join("apps");
+        let root = Root(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../.t/update-tests")
+                .join(format!("{name}-{}", std::process::id())),
+        );
+        let _ = fs::remove_dir_all(&root.0);
+        let apps = root.0.join("apps");
         let bundle = apps.join("KubeCove GPUI.app");
         fs::create_dir_all(bundle.join("Contents/MacOS")).unwrap();
         fs::write(bundle.join(BINARY), b"installed version").unwrap();
 
         let encoder = flate2::write::GzEncoder::new(
-            create_new(&root.join("update.tar.gz")).unwrap(),
+            create_new(&root.0.join("update.tar.gz")).unwrap(),
             flate2::Compression::default(),
         );
         let mut builder = tar::Builder::new(encoder);
@@ -332,7 +334,7 @@ mod tests {
             )
             .unwrap();
         let archive = builder.into_inner().unwrap().finish().unwrap();
-        (Root(root), apps, bundle, archive)
+        (root, apps, bundle, archive)
     }
 
     fn names(directory: &Path) -> Vec<String> {
