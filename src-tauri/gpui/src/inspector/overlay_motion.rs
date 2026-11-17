@@ -18,9 +18,10 @@
 //! one only while a run is in progress, and reduced motion ends every run at once.
 use super::Inspector;
 use gpui_kit::{
-    Animation, AnimationExt, AnyElement, AnyView, App, AppContext, Bounds, Context, Element,
-    ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, ParentElement, Pixels,
-    Point, Render, SharedString, Styled, Window, base::animation::cubic_bezier, div, point, px,
+    Animation, AnimationExt, AnyElement, AnyView, App, AppContext, Bounds, ContentMask, Context,
+    Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, ParentElement,
+    Pixels, Point, Render, SharedString, Styled, Window, base::animation::cubic_bezier, div, point,
+    px,
 };
 use std::cell::RefCell;
 use std::time::{Duration, Instant};
@@ -214,17 +215,19 @@ impl Shown {
         slide: (0., 0.),
     };
 
-    /// The overlay closed and plays its exit. It keeps no focus and takes no keys.
+    /// The overlay closed and plays its exit. It keeps no focus.
     pub(super) fn exiting(self) -> bool {
         self.exiting
     }
 
-    /// The surface with this frame's fade and slide.
+    /// The surface with this frame's fade and slide. An exiting surface takes
+    /// no pointer input, so a click during the exit reaches what is behind it.
     pub(super) fn surface(self, surface: impl IntoElement + Styled) -> Shifted {
         let away = 1. - self.share;
         Shifted {
             child: surface.opacity(self.share).into_any_element(),
             offset: point(px(self.slide.0 * away), px(self.slide.1 * away)),
+            inert: self.exiting,
         }
     }
 }
@@ -233,6 +236,7 @@ impl Shown {
 pub(super) struct Shifted {
     child: AnyElement,
     offset: Point<Pixels>,
+    inert: bool,
 }
 
 impl IntoElement for Shifted {
@@ -274,7 +278,15 @@ impl Element for Shifted {
         window: &mut Window,
         cx: &mut App,
     ) {
-        window.with_element_offset(self.offset, |window| self.child.prepaint(window, cx));
+        // A hitbox takes the pointer only inside the content mask it was
+        // prepainted under, and painting applies its own mask later. An empty
+        // mask here leaves the child drawn and out of reach.
+        let mask = self.inert.then(|| ContentMask {
+            bounds: Bounds::default(),
+        });
+        window.with_content_mask(mask, |window| {
+            window.with_element_offset(self.offset, |window| self.child.prepaint(window, cx));
+        });
     }
 
     fn paint(

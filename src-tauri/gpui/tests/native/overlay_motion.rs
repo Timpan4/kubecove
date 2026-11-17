@@ -10,6 +10,8 @@
 //! 5. A popover slides toward its trigger instead of from it.
 //! 6. Reduced motion still animates.
 //! 7. The detail panel replays its enter when its content changes.
+//! 8. A closing overlay takes a click meant for what is behind it. The frames
+//!    run found this one: a view setup clicked right after a dialog closed.
 //!
 //! The web has this motion only for popovers ("Overlay enter and exit timing"
 //! in `e2e/parity/mock-timing.md`), so the shared scenarios cannot check the
@@ -118,6 +120,19 @@ fn a_dialog_closed_during_its_enter_fades_from_where_it_was(cx: &mut TestAppCont
     // The exit covers the share that was drawn in the same share of 100 ms.
     advance(cx, 81);
     assert_eq!(opacity(cx, handle, "palette"), None);
+}
+
+#[gpui_kit::test]
+fn a_click_during_an_exit_reaches_what_is_behind_the_overlay(cx: &mut TestAppContext) {
+    let handle = open(cx, Arc::new(Controlled::default()));
+    act(cx, handle, |window, cx| window.click("open-palette", cx));
+    advance(cx, 100);
+    act(cx, handle, |window, cx| window.press("escape", cx));
+    assert_opacity(cx, handle, "palette", 1.);
+    // The palette's backdrop covers the window while it is drawn.
+    act(cx, handle, |window, cx| window.click("kinds-picker", cx));
+    assert_opacity(cx, handle, "palette", 1.);
+    assert_opacity(cx, handle, "kind-picker", 0.);
 }
 
 #[gpui_kit::test]
