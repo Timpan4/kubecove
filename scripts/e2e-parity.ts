@@ -2,7 +2,7 @@ import { copyFile, mkdir, readdir, readFile, stat, writeFile } from "node:fs/pro
 import { availableParallelism } from "node:os";
 import { join, resolve } from "node:path";
 import { changedScenarios, DEFAULT_MAP } from "../e2e/parity/changed-scenarios";
-import { type Contract, loadContract, requireViewCoverage, validateReports } from "../e2e/parity/contract";
+import { type Contract, loadContract, requireActionCoverage, requireViewCoverage, validateReports } from "../e2e/parity/contract";
 import { writeRunMap } from "../e2e/parity/coverage-map";
 import { runGpui } from "../e2e/parity/gpui-run";
 import { parseDriver, validateDriverReport } from "../e2e/parity/merge-reports";
@@ -160,6 +160,7 @@ async function runDrivers(contract: Contract) {
 try {
 	const contract = await loadContract();
 	requireViewCoverage(contract, VIEWS);
+	requireActionCoverage(contract);
 	contract.scenarios = await selectScenarios(contract.scenarios, rerun);
 	if (contract.scenarios.length) {
 		// Frame measurements wait for this run, and this run waits for one in progress.

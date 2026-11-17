@@ -51,3 +51,7 @@ export function optionalBoolean<Value>(value: Value): boolean | undefined {
 	if (!isBoolean(value)) throw new Error("Expected boolean");
 	return value;
 }
+
+export type StepParsers = Record<string, (item: JsonObject) => object>;
+
+export function noPayload() { return {}; }

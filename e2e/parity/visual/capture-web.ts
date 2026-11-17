@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { chromium, type Page } from "playwright-core";
 import { chromeExecutable, freePort, readinessTimeoutMs, startIdentity, stopGroup, waitFor } from "../../../.agents/skills/verify-kubecove/scripts/processes";
 import { action } from "../web";
-import { liveSessionAction } from "../web-live-sessions";
+import { parseStep } from "../contract";
 import { VIEWPORT, VIEWS, type View } from "./views";
 
 async function show(page: Page, view: View) {
@@ -22,7 +22,7 @@ async function show(page: Page, view: View) {
         case "argo-connected": case "argo-review": case "argo-desired":
             await action(page, { action: "openPage", page: "GitOps" });
             await action(page, { action: "openGitOpsDetails", kind: "Application", name: "tenant-ledger", namespace: "argocd" });
-            await action(page, { action: "connectArgoProfile", url: "https://argocd.example.test" });
+            await action(page, parseStep({ action: "connectArgoProfile", url: "https://argocd.example.test" }));
             await action(page, { action: "expectArgoText", text: "Connected Argo CD API" });
             if (view === "argo-review") {
                 await action(page, { action: "reviewArgoOperation", operation: "Sync" });
@@ -45,13 +45,13 @@ async function show(page: Page, view: View) {
             await page.getByRole("button", { name: "Open resource payments-api-7d9c9b7f8d-k2r9p", exact: true }).click();
             await page.getByRole("tab", { name: view === "exec-session" ? "Exec" : "Forward", exact: true }).click();
             if (view === "exec-session") {
-                await liveSessionAction(page, { action: "execControl", operation: "start", container: "app", command: "/bin/sh" });
-                await liveSessionAction(page, { action: "expectExecState", container: "app", status: "running", contains: "Controlled exec app" });
+                await action(page, { action: "execControl", operation: "start", container: "app", command: "/bin/sh" });
+                await action(page, { action: "expectExecState", container: "app", status: "running", contains: "Controlled exec app" });
             } else {
-                await liveSessionAction(page, { action: "configureForward", remote: "9090", local: "19090" });
+                await action(page, { action: "configureForward", remote: "9090", local: "19090" });
                 if (view === "forward-active") {
-                    await liveSessionAction(page, { action: "forwardControl", operation: "start" });
-                    await liveSessionAction(page, { action: "expectForwardState", target: "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", local: "19090", status: "listening", count: 1 });
+                    await action(page, { action: "forwardControl", operation: "start" });
+                    await action(page, { action: "expectForwardState", target: "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", local: "19090", status: "listening", count: 1 });
                 }
             }
             return;
