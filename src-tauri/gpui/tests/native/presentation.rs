@@ -64,3 +64,35 @@ fn render_counters_count_only_while_diagnostics_is_on(cx: &mut TestAppContext) {
         "no render count in {resources}"
     );
 }
+
+// Failure mode: a recorded target carries element id text, which ids often
+// build from cluster data (#662). Targets name the `test_support()` call site
+// instead, so the copy holds no id text at all, here the static
+// `settings-section:General` id that an id filter would have kept.
+#[gpui_kit::test]
+fn recorded_targets_name_the_call_site_not_the_element_id(cx: &mut TestAppContext) {
+    let handle = open(cx, Arc::new(Controlled::default()));
+    click(
+        cx,
+        handle,
+        &[
+            "open-settings",
+            "settings-section:Diagnostics",
+            "setting:Record interactions",
+            "settings-section:General",
+            "settings-section:Diagnostics",
+            "setting:Record interactions",
+            "interactions-copy",
+        ],
+    );
+    let copied = cx
+        .read_from_clipboard()
+        .and_then(|item| item.text())
+        .unwrap_or_default();
+    assert!(
+        copied.contains("[src=src/inspector/settings_page.rs:"),
+        "no call-site target in {copied}"
+    );
+    assert!(!copied.contains("settings-section"), "id text in {copied}");
+    assert!(!copied.contains("[id="), "id text in {copied}");
+}
