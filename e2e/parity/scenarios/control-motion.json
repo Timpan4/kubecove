@@ -181,6 +181,21 @@
       ]
     },
     {
+      "id": "control-motion.sidebar-unfold-collapse-all",
+      "title": "Collapse all while a sidebar branch unfolds closes the branch at once",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "expectSidebarRow", "path": ["Workloads"], "visible": true, "selected": false },
+        { "action": "expectSidebarRow", "path": ["Network"], "visible": true, "selected": false },
+        { "action": "coverageCheck", "check": "motion:branch:start" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:branch:midway" },
+        { "action": "collapseSidebar" },
+        { "action": "coverageCheck", "check": "motion:branch:collapsed" },
+        { "action": "expectSidebarRow", "path": ["Workloads", "Pod"], "visible": false, "selected": false }
+      ]
+    },
+    {
       "id": "control-motion.sidebar-unfold-custom",
       "title": "A custom resource group unfolds its kinds over 150 ms, moving the group under it down without passing its place",
       "steps": [

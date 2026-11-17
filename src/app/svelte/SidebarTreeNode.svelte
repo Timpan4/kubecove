@@ -133,6 +133,19 @@
 		return () => reduced.removeEventListener("change", settle);
 	});
 
+	/**
+	 * Svelte reverses a running slide with that slide's options, so a change that shows at once,
+	 * such as "Collapse all" while the children unfold, would still fold back over its time. That
+	 * slide's animation starts right after this event, and is ended as it starts.
+	 */
+	function settleUntoggled(event: Event) {
+		if (foldDuration() !== 0) return;
+		const wrapper = event.currentTarget as HTMLElement;
+		queueMicrotask(() => {
+			for (const animation of wrapper.getAnimations()) animation.finish();
+		});
+	}
+
 	function toggleNode(event: MouseEvent) {
 		event.stopPropagation();
 		if (hasChildren) toggleSection();
@@ -217,6 +230,8 @@
 			bind:this={branch}
 			data-slot="sidebar-branch"
 			transition:slide={{ duration: foldDuration(), easing: controlEase }}
+			onintrostart={settleUntoggled}
+			onoutrostart={settleUntoggled}
 			onintroend={() => (toggledTo = null)}
 			onoutroend={() => (toggledTo = null)}
 		>

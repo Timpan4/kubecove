@@ -6,7 +6,8 @@
 //! where it was shown, and `returned` expects it at rest. `instant`, run under
 //! reduced motion, changes the state and expects it there in the same frame.
 //! `ended`, after reduced motion turned on mid-run, expects what `settled` does
-//! without moving the clock.
+//! without moving the clock. `collapsed`, after another action closed a fold
+//! mid-run, expects the fold over and the branch closed without moving the clock.
 //! Mirrors `e2e/parity/web-control-motion.ts`.
 use super::*;
 use gpui_kit::ElementId;
@@ -87,6 +88,23 @@ pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check
             thumb: thumb(window, target),
             paint: paint(window, cx, target).into_iter().collect(),
         }));
+        return;
+    }
+    // A fold another action closed, such as Collapse all, shows the branch
+    // closed at once, without the clock moving.
+    if phase == "collapsed" {
+        window.render_frame(cx);
+        let moving = transition(window, cx, target);
+        assert_eq!(
+            Moving::progress(&moving, cx),
+            None,
+            "{target} still folds after it was collapsed"
+        );
+        let painted = paint(window, cx, target).expect("a fold paints the row under it");
+        SEEN.with_borrow(|seen| {
+            let rest = &seen.as_ref().expect("a start check ran first").paint[0];
+            assert_eq!(&painted, rest, "{target} is not closed at once");
+        });
         return;
     }
     if phase == "back" || phase == "returned" {

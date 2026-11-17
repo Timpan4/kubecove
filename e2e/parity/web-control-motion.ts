@@ -295,6 +295,8 @@ async function follow(page: Page, moving: Locator, target: Target, act: (page: P
  * `instant`, run under reduced motion, changes the state and expects no transition of the
  * followed property and the indicator at rest on the new state. `ended`, after reduced motion
  * turned on mid-run, expects what `settled` does without moving the transition to its end.
+ * `collapsed`, after another action closed a fold mid-run, expects nothing under the branch to
+ * move and the value at rest, without moving the transition.
  *
  * A CSS transition runs on the document timeline, which the page clock does not move. So `start`
  * pauses the control's transitions in their `transitionrun` event, and the later phases seek
@@ -362,6 +364,16 @@ export async function checkControlMotion(page: Page, check: string) {
 		const returned = await read(page, target);
 		if (returned !== before.rest) throw new Error(`${name} returned to ${returned}, not to ${before.rest} at rest`);
 		await target.fits?.(page);
+		return;
+	}
+	if (phase === "collapsed") {
+		if (!target.animated) throw new Error(`${check} needs a fold target`);
+		// Without moving the clock: the page answers the action with the next frame.
+		await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+		const moving = await target.animated(page).evaluate((item) => item.getAnimations({ subtree: true }).filter((animation) => animation.playState === "running").length);
+		if (moving > 0) throw new Error(`${name} still folds after it was collapsed`);
+		const collapsed = await read(page, target);
+		if (collapsed !== before.rest) throw new Error(`${name} is at ${collapsed} after it was collapsed, not closed at ${before.rest}`);
 		return;
 	}
 	if (phase !== "settled" && phase !== "ended") throw new Error(`Unknown motion phase in ${check}`);
