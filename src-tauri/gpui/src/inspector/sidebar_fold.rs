@@ -28,6 +28,8 @@ struct Track {
     height: Option<f32>,
     /// The pixels the branch showed on the last frame.
     shown: Option<f32>,
+    /// The pixels the branch's rows laid out on the last frame.
+    measured: Option<f32>,
     /// The pixels the branch showed when the user turned it back. The run's
     /// first frame moves `from` to them, so the branch turns from where it is.
     turned: Option<f32>,
@@ -72,7 +74,17 @@ impl Folds {
         let (from, turned) = tracks
             .get(path)
             .map_or((if open { 0. } else { 1. }, None), |track| {
-                (track.at(now).0, track.shown)
+                // The share of the rows the branch showed, which a child that
+                // opened inside it may have grown since the run started. The
+                // first frame of the new run checks its end against this
+                // share before it measures the rows again.
+                let from = match (track.shown, track.measured) {
+                    (Some(shown), Some(measured)) if measured > 0. => {
+                        (shown / measured).clamp(0., 1.)
+                    }
+                    _ => track.at(now).0,
+                };
+                (from, track.shown)
             });
         tracks.insert(
             path.to_owned(),
@@ -82,6 +94,7 @@ impl Folds {
                 start: now,
                 height: None,
                 shown: None,
+                measured: None,
                 turned,
                 seen: true,
             },
@@ -108,6 +121,7 @@ impl Folds {
         // Whole pixels, so the rows below the branch stay on the pixel grid.
         let shown = (height * track.at(now).0).round();
         track.shown = Some(shown);
+        track.measured = Some(measured);
         shown
     }
 
@@ -231,7 +245,9 @@ mod tests {
     //! - a closing branch sized from its rows on every frame grows while a
     //!   child opens, so the rows below it move down before they move up;
     //! - a branch turned back mid-fold jumps at the turn, or reopens to a
-    //!   height measured before its child opened and then jumps at the end.
+    //!   height measured before its child opened and then jumps at the end;
+    //! - a branch turned back whose first frame comes late ends its run at once,
+    //!   timed from the share of a height its child has since grown past.
     use super::*;
     use gpui_kit::TestAppContext;
 
@@ -323,6 +339,28 @@ mod tests {
         assert!(
             *end <= largest,
             "the branch jumped {end} px as its fold ended"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn a_branch_turned_back_keeps_folding_when_its_first_frame_is_late(cx: &mut TestAppContext) {
+        let folds = Folds::default();
+        close_while_a_child_opens(&folds, cx);
+        namespace(&folds, false, cx);
+        for _ in 0..FRAMES / 2 {
+            frame(cx);
+            namespace(&folds, false, cx);
+        }
+        cx.update(|cx| folds.start("ns", true, cx));
+        // A busy machine draws the turn's first frame late: after the 110 ms
+        // the share of the namespace's own rows it showed would take to open,
+        // but within the 132 ms its 28 of 237 px take.
+        cx.background_executor
+            .advance_clock(control_motion::DURATION * 4 / 5);
+        let shown = namespace(&folds, true, cx);
+        assert!(
+            folds.folding("ns") && shown < 11. * ROW,
+            "the branch turned back opened at once to {shown} px"
         );
     }
 }
