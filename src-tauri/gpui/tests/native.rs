@@ -25,6 +25,8 @@ mod kind_selection;
 mod live_data;
 #[path = "native/map_live.rs"]
 mod map_live;
+#[path = "native/overlay_motion.rs"]
+mod overlay_motion;
 #[path = "native/overview.rs"]
 mod overview;
 #[path = "native/page_reads.rs"]
