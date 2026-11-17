@@ -10,7 +10,8 @@
 //! 5. A popover slides toward its trigger instead of from it.
 //! 6. Reduced motion still animates.
 //! 7. The detail panel replays its enter when its content changes.
-//! 8. A closing overlay takes a click meant for what is behind it.
+//! 8. A closing overlay, or the container around it, takes a click meant for
+//!    what is behind it.
 //! 9. A closing overlay keeps focus, so a key press runs its handlers.
 //!
 //! The web has this motion only for popovers ("Overlay enter and exit timing"
@@ -135,6 +136,23 @@ fn a_click_during_an_exit_reaches_what_is_behind_the_overlay(cx: &mut TestAppCon
     act(cx, handle, |window, cx| window.click("close-detail", cx));
     assert!(drawn(cx, handle, "argo-connection-dialog"));
     assert!(!drawn(cx, handle, "close-detail"));
+}
+
+#[gpui_kit::test]
+fn a_click_during_the_drawer_exit_reaches_the_page(cx: &mut TestAppContext) {
+    let handle = open(cx, Arc::new(Controlled::default()));
+    cx.simulate_window_resize(handle, size(px(1000.), px(800.)));
+    cx.run_until_parked();
+    act(cx, handle, |window, cx| window.click("open-navigation", cx));
+    advance(cx, 200);
+    act(cx, handle, |window, cx| {
+        window.click("navigation-backdrop", cx)
+    });
+    // The drawer's container covers the window and takes every press while it is open.
+    assert!(drawn(cx, handle, "navigation-panel"));
+    act(cx, handle, |window, cx| window.click("kinds-picker", cx));
+    assert!(drawn(cx, handle, "navigation-panel"));
+    assert!(drawn(cx, handle, "kind-search"));
 }
 
 #[gpui_kit::test]
