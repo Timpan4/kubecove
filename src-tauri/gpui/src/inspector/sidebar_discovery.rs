@@ -142,7 +142,7 @@ impl Inspector {
         &self,
         namespace: &str,
         cx: &mut Context<Self>,
-    ) -> Vec<AnyElement> {
+    ) -> Vec<Row> {
         if !self.persisted.preferences.show_custom_resources {
             return vec![];
         }
@@ -161,13 +161,14 @@ impl Inspector {
             Fetch::Ready(_) => None,
         };
         if let Some(message) = message {
-            return vec![
+            return vec![Row::new(
                 div()
                     .pl(px(24.))
-                    .h(px(26.))
+                    .h(px(ROW_HEIGHT))
                     .child(crate::ui::xs(message))
                     .into_any_element(),
-            ];
+                ROW_HEIGHT,
+            )];
         }
         let kinds = self.namespace_kinds(namespace);
         if kinds.is_empty() {
@@ -182,45 +183,48 @@ impl Inspector {
             true,
             cx,
         )];
-        if !self.sidebar_tree.open.contains(&path) {
-            return rows;
-        }
-        let mut groups: Vec<_> = kinds
-            .iter()
-            .filter(|kind| kind.namespaced)
-            .map(|kind| kind.group.as_str())
-            .collect();
-        groups.sort();
-        groups.dedup();
-        for group in groups {
-            let group_path = format!("{path}/{group}");
-            rows.push(self.builtin_row(
-                group_path.clone(),
-                group.to_owned().into(),
-                Some(namespace.into()),
-                2,
-                true,
-                cx,
-            ));
-            if !self.sidebar_tree.open.contains(&group_path) {
-                continue;
-            }
-            let mut children: Vec<_> = kinds
+        rows.extend(self.branch_rows(&path, cx, |this, cx| {
+            let mut groups: Vec<_> = kinds
                 .iter()
-                .filter(|kind| kind.namespaced && kind.group == group)
+                .filter(|kind| kind.namespaced)
+                .map(|kind| kind.group.as_str())
                 .collect();
-            children.sort_by(|a, b| a.kind.cmp(&b.kind));
-            for kind in children {
-                rows.push(self.builtin_row(
-                    format!("{group_path}/{}", kind.kind),
-                    kind.kind.clone().into(),
+            groups.sort();
+            groups.dedup();
+            let mut rows = Vec::new();
+            for group in groups {
+                let group_path = format!("{path}/{group}");
+                rows.push(this.builtin_row(
+                    group_path.clone(),
+                    group.to_owned().into(),
                     Some(namespace.into()),
-                    3,
-                    false,
+                    2,
+                    true,
                     cx,
                 ));
+                rows.extend(this.branch_rows(&group_path, cx, |this, cx| {
+                    let mut children: Vec<_> = kinds
+                        .iter()
+                        .filter(|kind| kind.namespaced && kind.group == group)
+                        .collect();
+                    children.sort_by(|a, b| a.kind.cmp(&b.kind));
+                    children
+                        .into_iter()
+                        .map(|kind| {
+                            this.builtin_row(
+                                format!("{group_path}/{}", kind.kind),
+                                kind.kind.clone().into(),
+                                Some(namespace.into()),
+                                3,
+                                false,
+                                cx,
+                            )
+                        })
+                        .collect()
+                }));
             }
-        }
+            rows
+        }));
         rows
     }
 }
