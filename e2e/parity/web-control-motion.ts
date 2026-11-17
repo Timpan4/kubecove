@@ -20,6 +20,8 @@ type Target = {
 	shown?(page: Page): Promise<string>;
 	/** The element under which Svelte runs the motion as a Web Animation, where it is no CSS transition. */
 	animated?(page: Page): Locator;
+	/** Throws unless the indicator covers the chosen option exactly once it has settled. */
+	fits?(page: Page): Promise<void>;
 	/** Changes the control's state. */
 	act(page: Page): Promise<void>;
 	/** Chooses the first state again, and the element whose transition then runs if it is another. */
@@ -41,6 +43,26 @@ const TARGETS = {
 		property: "left",
 		act: (page) => page.getByRole("radio", { name: "List", exact: true }).click(),
 		back: { act: (page) => page.getByRole("radio", { name: "Cards", exact: true }).click() },
+		// Options are fractional pixels wide, so a surface measured in whole pixels misses one by a
+		// pixel. The pill's last `transitionend` reaches the page with a later frame, so this waits.
+		fits: async (page) => {
+			const option = await page.getByRole("radio", { name: "List", exact: true }).elementHandle();
+			const fitted = await page.waitForFunction((chosen) => {
+				const pill = chosen.parentElement?.querySelector("[data-slot='segmented-control-pill']");
+				const surfaces = [pill, chosen].filter((item): item is Element => {
+					if (!item) return false;
+					const style = getComputedStyle(item);
+					return style.visibility === "visible" && style.backgroundColor !== "rgba(0, 0, 0, 0)";
+				});
+				const edges = (item: Element) => {
+					const box = item.getBoundingClientRect();
+					return [box.left, box.top, box.right, box.bottom].map((edge) => edge.toFixed(2)).join(" ");
+				};
+				const [surface] = surfaces;
+				return surfaces.length === 1 && surface !== undefined && edges(surface) === edges(chosen);
+			}, option).then(() => true, () => false);
+			if (!fitted) throw new Error("At rest, not exactly one surface covers the chosen option edge to edge");
+		},
 	},
 	// TabsTrigger.svelte: the line's `after:transition-[translate,scale]` from the last active tab.
 	// The new tab's line starts offset onto the old tab, so the page shows the active tab's left
@@ -193,7 +215,8 @@ export async function checkControlMotion(page: Page, check: string) {
 	if (!target) throw new Error(`Unknown motion target in ${check}`);
 	if (phase === "start") {
 		const moving = target.moving(page);
-		await moving.waitFor();
+		// The segmented control's pill is hidden at rest, so this waits for the element only.
+		await moving.waitFor({ state: "attached" });
 		const rest = await read(page, target);
 		await follow(page, moving, target, target.act);
 		const timing = await page.evaluate(() => {
@@ -235,4 +258,5 @@ export async function checkControlMotion(page: Page, check: string) {
 	await seek(page, "end");
 	const settled = await read(page, target);
 	if (settled === before.rest || settled === before.midway) throw new Error(`${name} ended at ${settled}, its value ${settled === before.rest ? "at rest" : "midway"}`);
+	await target.fits?.(page);
 }
