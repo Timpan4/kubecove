@@ -69,14 +69,17 @@ export async function yamlEditorAction(page: Page, step: Step) {
  * The editor's whole document, from the accessor `YamlCodeEditor.svelte` adds in development
  * builds. The editor mounts after its extensions load, so this waits for it.
  */
+/** The whole document of the page's one YAML editor, waiting for the editor to mount. */
 async function yamlDocument(page: Page): Promise<string> {
 	const handle = await page.waitForFunction(() => {
-		const host = document.querySelector<HTMLElement & { yamlDocument?: () => string }>(".yaml-code-editor");
+		const hosts = [...document.querySelectorAll<HTMLElement & { yamlDocument?: () => string }>(".yaml-code-editor")];
+		const mounted = hosts.flatMap((host) => (host.yamlDocument ? [host.yamlDocument()] : []));
 		// An object, so an empty document still ends the wait.
-		return host?.yamlDocument ? { text: host.yamlDocument() } : null;
+		return mounted.length ? { editors: hosts.length, text: mounted[0] ?? "" } : null;
 	});
 	const value = await handle.jsonValue();
-	if (!value) throw new Error("The YAML editor has no document");
+	// Like a strict locator, refuse to pick one editor of several.
+	if (value?.editors !== 1) throw new Error(`Expected one YAML editor, found ${value?.editors}`);
 	return value.text;
 }
 
