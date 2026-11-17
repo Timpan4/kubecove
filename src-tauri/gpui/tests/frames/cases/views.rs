@@ -25,6 +25,10 @@ pub(super) fn setup(driver: &mut Driver, view: &str) {
                 parity_scroll::reveal(w, "detail-body", "argo-connect-open", cx);
                 w.click("argo-connect-open", cx);
                 w.render_frame(cx);
+                // Discovery picks an in-cluster server unless a source is chosen first.
+                parity_scroll::reveal(w, "detail-body", "argo-external", cx);
+                w.click("argo-external", cx);
+                w.render_frame(cx);
                 parity_scroll::reveal(w, "detail-body", "argo-url", cx);
                 w.click("argo-url", cx);
                 w.input("https://argocd.example.test", cx);
