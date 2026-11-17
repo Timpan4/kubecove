@@ -97,7 +97,8 @@ fn timed<T: Send + 'static>(
     let started = Instant::now();
     // A read that never answers, such as a log stream with no first message,
     // ends at LIMIT and is reported instead of holding up the whole report.
-    let result = runtime.block_on(tokio::time::timeout(LIMIT, read()));
+    // The timer registers with the runtime, so it is created inside it.
+    let result = runtime.block_on(async { tokio::time::timeout(LIMIT, read()).await });
     let wall = started.elapsed();
     let after = HTTP_ACTIVITY.snapshot();
     let network = after.busy_since(http);
