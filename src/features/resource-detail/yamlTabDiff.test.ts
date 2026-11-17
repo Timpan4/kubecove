@@ -1,4 +1,4 @@
-import { buildArgoResourceDiff, buildYamlDryRunDiff } from "./yamlTabDiff";
+import { buildArgoResourceDiff, buildCompactUnifiedDiff, buildYamlDryRunDiff } from "./yamlTabDiff";
 
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void): void;
@@ -83,5 +83,32 @@ describe("buildYamlDryRunDiff", () => {
 		expect(compactTexts.some((text) => text.includes("line0: same"))).toBe(false);
 		expect(fullTexts.some((text) => text.includes("line0: same"))).toBe(true);
 		expect(fullTexts).toContain("  force-conflicts: true");
+	});
+});
+
+// Hunk ranges can break in these ways: an empty old side or an empty new side
+// prints jsdiff's start (the line after the range) instead of the line before
+// it; both sides empty must still produce no hunk; insertions at the start or
+// end of a non-empty file must keep their 1-based starts. With three context
+// lines an empty side only occurs for an empty file, so its start is 0.
+describe("unified hunk ranges", () => {
+	const hunks = (before: string, after: string) =>
+		buildCompactUnifiedDiff(before, after)
+			.filter((line) => line.type === "hunk")
+			.map((line) => line.text);
+
+	test("an empty side names the line before it", () => {
+		expect(hunks("", "a\nb\n").join("|")).toBe("@@ -0,0 +1,2 @@");
+		expect(hunks("a\nb\n", "").join("|")).toBe("@@ -1,2 +0,0 @@");
+	});
+
+	test("edits at either end keep 1-based starts", () => {
+		expect(hunks("b\nc\n", "a\nb\nc\n").join("|")).toBe("@@ -1,2 +1,3 @@");
+		expect(hunks("a\nb\n", "a\nb\nc\n").join("|")).toBe("@@ -1,2 +1,3 @@");
+	});
+
+	test("two empty sides report no changes", () => {
+		expect(hunks("", "").length).toBe(0);
+		expect(buildCompactUnifiedDiff("", "").map((line) => line.text)).toContain("No server-side dry-run changes.");
 	});
 });

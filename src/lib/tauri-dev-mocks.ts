@@ -6,6 +6,7 @@ import { type MockArgs, type MockHandler, type MockResult, readMockArgs } from "
 import { beforeCoverageRead, coverageHelm, coverageIncidents, coverageLogs, coverageRbac, coverageSessions, coverageStopExec, coverageStopForward, coverageTopology, coverageYamlPreview, registerCoverageLogStream } from "./tauri-dev-mock-coverage";
 import {
 	deploymentRevisions,
+	emptyTemplateRevisions,
 	dockerResources,
 	mockContexts,
 	namespaces,
@@ -178,7 +179,10 @@ const handlers = {
 	list_present_custom_resource_kinds: (args) =>
 		presentCustomResourceKinds(args?.namespaces),
 	list_resources: (args) => filterResources(args?.kind, args?.namespace ?? undefined, args?.clusterContext),
-	list_deployment_revisions: () => deploymentRevisions,
+	list_deployment_revisions: (args) =>
+		args?.name === emptyTemplateRevisions.name && args?.namespace === emptyTemplateRevisions.namespace
+			? emptyTemplateRevisions.revisions
+			: deploymentRevisions,
 	...operationMockHandlers,
 	list_dynamic_resources: (args) => filterResources(args?.resourceKind?.kind, args?.namespace ?? undefined, args?.clusterContext),
 	list_resource_scope: (args) => {

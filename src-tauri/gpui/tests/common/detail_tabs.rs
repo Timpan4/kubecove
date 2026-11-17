@@ -27,6 +27,9 @@ pub struct DetailTabs {
     #[serde(rename = "yamlReads")]
     yaml_reads: Vec<YamlRead>,
     revisions: Vec<DeploymentRevision>,
+    /// Revisions of named Deployments. Every other Deployment reads `revisions`.
+    #[serde(rename = "revisionCases", default)]
+    revision_cases: Vec<RevisionCase>,
     actions: Actions,
     #[serde(rename = "yamlApply")]
     yaml_apply: Vec<YamlApply>,
@@ -56,6 +59,13 @@ struct Logs {
     aggregate: Vec<StreamMessage>,
     #[serde(default)]
     cases: Vec<LogCase>,
+}
+
+#[derive(Deserialize)]
+struct RevisionCase {
+    name: String,
+    namespace: String,
+    revisions: Vec<DeploymentRevision>,
 }
 
 #[derive(Deserialize)]
@@ -196,7 +206,10 @@ impl DetailTabs {
 
     pub fn deployment_revisions(&self, resource: ResourceSummary) -> Read<Vec<DeploymentRevision>> {
         let result = if resource.kind == "Deployment" {
-            Ok(self.revisions.clone())
+            let case = self.revision_cases.iter().find(|case| {
+                case.name == resource.name && resource.namespace.as_ref() == Some(&case.namespace)
+            });
+            Ok(case.map_or_else(|| self.revisions.clone(), |case| case.revisions.clone()))
         } else {
             missing("revisions")
         };
