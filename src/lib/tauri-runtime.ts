@@ -17,6 +17,49 @@ function hasMessage<Value>(value: Value): value is Value & { message?: string } 
 	return value !== null && Object(value) === value && "message" in Object(value);
 }
 
+// The diagnostics page's own commands. It polls and clears with them, so tracing
+// them would refill the latency report right after Clear. The GPUI client does
+// not measure them either.
+const UNTRACED_COMMANDS = new Set([
+	"get_backend_diagnostics",
+	"get_backend_cache_diagnostics",
+	"clear_backend_diagnostics",
+	"set_backend_diagnostics_enabled",
+]);
+
+/**
+ * Runs one command and, while diagnostics is enabled, logs its round trip as
+ * tauri.invoke.* events for the latency report and the interaction recorder.
+ */
+export async function traceInvoke<T, Args extends object>(
+	cmd: string,
+	args: Args | undefined,
+	call: () => Promise<T>,
+): Promise<T> {
+	if (!isDiagnosticsEnabled() || UNTRACED_COMMANDS.has(cmd)) return call();
+	const started = performance.now();
+	diagnosticLog("tauri.invoke.start", {
+		cmd,
+		args: args ? Object.keys(args).join(",") : "",
+	});
+	try {
+		const result = await call();
+		diagnosticLog("tauri.invoke.done", {
+			cmd,
+			ms: performance.now() - started,
+			result: diagnosticResultSummary(result),
+		}, started);
+		return result;
+	} catch (error) {
+		diagnosticLog("tauri.invoke.error", {
+			cmd,
+			ms: performance.now() - started,
+			error: errorMessage(error),
+		}, started);
+		throw error;
+	}
+}
+
 export function createNativeTauriClient(): TauriClient {
 	return {
 		createChannel: (onMessage) => new Channel(onMessage),
@@ -25,37 +68,16 @@ export function createNativeTauriClient(): TauriClient {
 			args?: Args,
 			options?: InvokeOptions,
 		): Promise<T> => {
-			const diagnosticsEnabled = isDiagnosticsEnabled();
-			const started = diagnosticsEnabled || process.env.KUBECOVE_PUBLIC_PROFILE === "true"
+			const started = isDiagnosticsEnabled() || process.env.KUBECOVE_PUBLIC_PROFILE === "true"
 				? performance.now() : 0;
-			if (diagnosticsEnabled) {
-				diagnosticLog("tauri.invoke.start", {
-					cmd,
-					args: args ? Object.keys(args).join(",") : "",
-				});
-			}
 			try {
 				// SAFETY: typed wrappers pass Tauri-serializable command objects; Tauri validates IPC encoding.
-				const result = await invoke<T>(cmd, args as InvokeArgs | undefined, options);
+				const result = await traceInvoke(cmd, args, () => invoke<T>(cmd, args as InvokeArgs | undefined, options));
 				markProfileIpc(cmd, started, true);
 				if (cmd === "get_kubeconfig_sources") markStartup("kubeconfig-ready");
-				if (diagnosticsEnabled) {
-					diagnosticLog("tauri.invoke.done", {
-						cmd,
-						ms: Math.round(performance.now() - started),
-						result: diagnosticResultSummary(result),
-					});
-				}
 				return result;
 			} catch (error) {
 				markProfileIpc(cmd, started, false);
-				if (diagnosticsEnabled) {
-					diagnosticLog("tauri.invoke.error", {
-						cmd,
-						ms: Math.round(performance.now() - started),
-						error: errorMessage(error),
-					});
-				}
 				console.error(`[k8s-manager:tauri] ${cmd} error`, error);
 				throw error;
 			}

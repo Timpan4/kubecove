@@ -20,6 +20,9 @@ pub enum TimingKind {
 
 #[derive(Clone, Debug)]
 pub struct Timing {
+    /// Order of recording, as the web's diagnostic event `id`. Never reused,
+    /// so a reader can tell which timings arrived after an earlier snapshot.
+    pub seq: u64,
     pub name: &'static str,
     pub kind: TimingKind,
     pub started: Instant,
@@ -30,6 +33,7 @@ pub struct Timing {
 struct State {
     enabled: bool,
     epoch: u64,
+    next_seq: u64,
     events: VecDeque<Timing>,
     /// Renders per name, as the web's `*.render` diagnostic counters.
     counters: BTreeMap<&'static str, u64>,
@@ -77,13 +81,11 @@ impl Timings {
         if state.enabled {
             push(
                 &mut state,
-                Timing {
-                    name,
-                    kind: TimingKind::Presentation,
-                    started,
-                    duration_ms,
-                    success: true,
-                },
+                name,
+                TimingKind::Presentation,
+                started,
+                duration_ms,
+                true,
             );
         }
     }
@@ -102,13 +104,11 @@ impl Timings {
             if state.enabled && state.epoch == epoch {
                 push(
                     &mut state,
-                    Timing {
-                        name,
-                        kind: TimingKind::Command,
-                        started,
-                        duration_ms: started.elapsed().as_secs_f64() * 1000.,
-                        success: result.is_ok(),
-                    },
+                    name,
+                    TimingKind::Command,
+                    started,
+                    started.elapsed().as_secs_f64() * 1000.,
+                    result.is_ok(),
                 );
             }
             result
@@ -116,8 +116,24 @@ impl Timings {
     }
 }
 
-fn push(state: &mut State, timing: Timing) {
-    state.events.push_back(timing);
+fn push(
+    state: &mut State,
+    name: &'static str,
+    kind: TimingKind,
+    started: Instant,
+    duration_ms: f64,
+    success: bool,
+) {
+    let seq = state.next_seq;
+    state.next_seq += 1;
+    state.events.push_back(Timing {
+        seq,
+        name,
+        kind,
+        started,
+        duration_ms,
+        success,
+    });
     while state.events.len() > MAX_EVENTS {
         state.events.pop_front();
     }

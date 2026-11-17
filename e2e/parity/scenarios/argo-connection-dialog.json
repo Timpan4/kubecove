@@ -364,6 +364,41 @@
         { "action": "expectArgoText", "text": "token=[REDACTED]" },
         { "action": "configureArgoMock", "script": "base" }
       ]
+    },
+    {
+      "id": "argo-connection.path-case-keeps-two-profiles",
+      "title": "Two servers whose URLs differ only in path case keep separate saved profiles",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "selectArgoPreference", "preference": "Kubernetes" },
+        { "action": "connectArgoProfile", "url": "https://Argocd.Example.Test/Argo", "remember": true },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test/argo", "remember": true },
+        { "action": "expectSavedArgoProfile", "url": "https://Argocd.Example.Test/Argo" },
+        { "action": "expectSavedArgoProfile", "url": "https://argocd.example.test/argo" }
+      ]
+    },
+    {
+      "id": "argo-connection.keeps-older-profile-id",
+      "title": "A profile saved by an older build, whose id lowercased its whole URL, does not take the id of a server that differs only in path case, and a new connection to its own server typed with another host case, its default port and a trailing slash updates it",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "selectArgoPreference", "preference": "Kubernetes" },
+        { "action": "connectArgoProfile", "url": "https://Argocd.Example.Test/Argo", "remember": true },
+        { "action": "ageArgoProfileId", "url": "https://Argocd.Example.Test/Argo" },
+        { "action": "restartClient" },
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "expectSavedArgoProfile", "url": "https://Argocd.Example.Test/Argo" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test/argo", "remember": true },
+        { "action": "expectSavedArgoProfile", "url": "https://Argocd.Example.Test/Argo" },
+        { "action": "expectSavedArgoProfile", "url": "https://argocd.example.test/argo" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test:443/Argo/", "remember": true },
+        { "action": "expectSavedArgoProfile", "url": "https://argocd.example.test:443/Argo/" },
+        { "action": "expectNoSavedArgoProfile", "url": "https://Argocd.Example.Test/Argo" },
+        { "action": "expectSavedArgoProfile", "url": "https://argocd.example.test/argo" }
+      ]
     }
   ]
 }

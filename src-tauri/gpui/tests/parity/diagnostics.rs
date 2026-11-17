@@ -39,6 +39,17 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                     "interaction copy includes {excludes}"
                 );
             }
+            if let Some(command) = step["succeededCommand"].as_str() {
+                let succeeded = copied.lines().any(|line| {
+                    let entry: Value = serde_json::from_str(line).unwrap();
+                    entry["commands"].as_array().is_some_and(|commands| {
+                        commands
+                            .iter()
+                            .any(|listed| listed["cmd"] == command && listed["ok"] == true)
+                    })
+                });
+                assert!(succeeded, "interaction copy lists no successful {command}");
+            }
         }
         "typeSettingsField" => {
             assert_eq!(string(step, "field"), "Server token");

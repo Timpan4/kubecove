@@ -51,6 +51,8 @@ mod read_retry;
 mod remote_connections;
 #[path = "native/scope_load.rs"]
 mod scope_load;
+#[path = "native/scratch.rs"]
+mod scratch;
 #[path = "native/session_controls.rs"]
 mod session_controls;
 #[path = "native/settings_integrations.rs"]

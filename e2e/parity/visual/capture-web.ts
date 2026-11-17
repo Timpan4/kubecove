@@ -80,6 +80,16 @@ async function show(page: Page, view: View) {
             await action(page, { action: "openKindPicker" });
             await action(page, { action: "searchKindPicker", value: "Service" });
             return;
+        case "resources-no-scope": {
+            await action(page, { action: "openResources" });
+            await action(page, { action: "openKindPicker" });
+            // Uncheck every selected kind, whatever the default scope holds.
+            const checked = page.getByRole("checkbox", { checked: true });
+            while (await checked.count() > 0) await checked.first().click();
+            await action(page, { action: "closeKindPicker" });
+            await page.getByText("No resource scope", { exact: true }).waitFor();
+            return;
+        }
         case "custom-resources":
             await page.getByRole("button", { name: "Expand Custom Resources", exact: true }).click();
             await page.getByRole("button", { name: "Expand kustomize.toolkit.fluxcd.io", exact: true }).click();

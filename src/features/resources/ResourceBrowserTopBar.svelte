@@ -108,9 +108,11 @@
 				: `${selectedNamespaces.slice(0, 2).join(", ")} +${selectedNamespaces.length - 2}`,
 	);
 	const kindsLabel = $derived(
-		selectedKinds.length <= 3
-			? selectedKinds.map(kindLabel).join(", ")
-			: `${selectedKinds.slice(0, 3).map(kindLabel).join(", ")} +${selectedKinds.length - 3}`,
+		selectedKinds.length === 0
+			? "None"
+			: selectedKinds.length <= 3
+				? selectedKinds.map(kindLabel).join(", ")
+				: `${selectedKinds.slice(0, 3).map(kindLabel).join(", ")} +${selectedKinds.length - 3}`,
 	);
 	const namespaceScopeOptions = $derived(
 		namespaceOptions.map((namespace) => ({ key: namespace.name, label: namespace.name })),

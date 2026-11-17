@@ -14,18 +14,24 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
         "runTopologySpike" => {
             window.click("topology-spike-run", cx);
             // The run advances one step per display frame, as the web's requestAnimationFrame
-            // loop does. It ends when no step asks for another frame.
+            // loop does. Its own schedule bounds the frames to wait for.
+            let budget = super::map_gestures::inspector(window, cx)
+                .read(cx)
+                .topology_spike_frames_left()
+                .expect("the benchmark run started");
+            let mut frames = 0;
             loop {
                 window.render_frame(cx);
-                if window.simulate_next_frame(cx) == 0 {
+                if window.try_find("topology-spike-result").is_some() {
                     break;
                 }
+                assert!(
+                    frames < budget,
+                    "the benchmark run showed no result within its {budget} frames"
+                );
+                window.simulate_next_frame(cx);
+                frames += 1;
             }
-            window.render_frame(cx);
-            assert!(
-                window.try_find("topology-spike-result").is_some(),
-                "the benchmark run finished without a result"
-            );
         }
         "expectTopologySpikeText" => {
             let labels = spike_labels(window);

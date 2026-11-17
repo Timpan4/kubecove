@@ -10,11 +10,16 @@
 //! - Frame deltas come from a chained next-frame callback, the web's
 //!   `requestAnimationFrame` loop, so both pace with the display.
 //! - Input-to-paint ends when the first frame drawn after the input finishes
-//!   painting. An input that draws nothing records no entry, where the web
-//!   records the next frame.
+//!   painting. GPUI draws only when something changed, so each measured input
+//!   requests a frame, as the web's `requestAnimationFrame` always fires.
 //! - GPUI rebuilds its element tree each frame and has no DOM, so `dom` counts
 //!   stay zero and `dom.sources` lists renders per view during the entry.
-use crate::diagnostics::{TimingKind, Timings};
+//!
+//! Commands belong to the entry they started in. Each flush, and each export
+//! while no entry runs, moves the commands that finished since the last move
+//! into their entries, so an entry keeps them after the diagnostics trace
+//! drops them; `json_lines` adds those that finished after the last move.
+use crate::diagnostics::{Timing, TimingKind, Timings};
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, VecDeque},
@@ -80,16 +85,28 @@ pub(crate) struct Interaction {
     wall_time: chrono::DateTime<chrono::Utc>,
     pub(crate) target: String,
     started: Instant,
+    /// Set when the entry ends; commands that started before it belong here.
+    ended: Instant,
     duration_ms: f64,
     input_to_paint: Vec<(&'static str, f64)>,
     frames: Histogram,
     refresh_ms: f64,
     renders: BTreeMap<&'static str, u32>,
+    /// `None` when diagnostics was off as the entry ended, as the web omits `commands`.
     commands: Option<Vec<Value>>,
 }
 
 fn round(value: f64) -> f64 {
     (value * 10.).round() / 10.
+}
+
+fn command_json(timing: &Timing, entry_started: Instant) -> Value {
+    json!({
+        "cmd": timing.name,
+        "ms": timing.duration_ms.round(),
+        "ok": timing.success,
+        "startOffsetMs": ((timing.started - entry_started).as_secs_f64() * 1000.).round(),
+    })
 }
 
 impl Interaction {
@@ -139,7 +156,8 @@ impl Interaction {
         sources
     }
 
-    pub(crate) fn json(&self) -> Value {
+    /// `unfolded` are this entry's commands that finished after the last flush.
+    fn json(&self, unfolded: &[&Timing]) -> Value {
         let mut value = json!({
             "id": self.id,
             "kind": self.kind.label(),
@@ -168,7 +186,10 @@ impl Interaction {
             },
         });
         if let Some(commands) = &self.commands {
-            value["commands"] = Value::Array(commands.clone());
+            let unfolded = unfolded
+                .iter()
+                .map(|timing| command_json(timing, self.started));
+            value["commands"] = commands.iter().cloned().chain(unfolded).collect();
         }
         value
     }
@@ -188,6 +209,10 @@ pub(crate) struct Recorder {
     last_frame: Option<Instant>,
     next_id: u64,
     pointer_down: bool,
+    /// Timings with this sequence number or later are in no entry's commands
+    /// yet. Sequence numbers are never reused, so a cleared or full trace
+    /// leaves it valid.
+    unfolded: u64,
 }
 
 impl Recorder {
@@ -241,30 +266,50 @@ impl Recorder {
             return;
         };
         let ended = Instant::now();
+        interaction.ended = ended;
         interaction.duration_ms = (ended - interaction.started).as_secs_f64() * 1000.;
         interaction.refresh_ms = self.session_frames.percentile(0.5);
-        interaction.commands = timings.map(|timings| {
-            timings
-                .snapshot()
-                .iter()
-                .filter(|timing| {
-                    timing.kind == TimingKind::Command
-                        && timing.started >= interaction.started
-                        && timing.started < ended
-                })
-                .map(|timing| {
-                    json!({
-                        "cmd": timing.name,
-                        "ms": timing.duration_ms.round(),
-                        "ok": timing.success,
-                        "startOffsetMs": ((timing.started - interaction.started).as_secs_f64() * 1000.).round(),
-                    })
-                })
-                .collect()
-        });
+        interaction.commands = timings.map(|_| Vec::new());
         self.recorded.push_back(interaction);
         while self.recorded.len() > MAX_RECORDED {
             self.recorded.pop_front();
+        }
+        if let Some(timings) = timings {
+            self.fold(&timings.snapshot());
+        }
+    }
+
+    /// The command timings from `unfolded` on, each with the index of the
+    /// entry it started in: the last one that started at or before it, if
+    /// that entry had not ended and records commands.
+    fn owners<'a>(&'a self, snapshot: &'a [Timing]) -> impl Iterator<Item = (usize, &'a Timing)> {
+        snapshot
+            .iter()
+            .filter(|timing| timing.kind == TimingKind::Command && timing.seq >= self.unfolded)
+            .filter_map(|timing| {
+                let index = self
+                    .recorded
+                    .partition_point(|entry| entry.started <= timing.started)
+                    .checked_sub(1)?;
+                let entry = &self.recorded[index];
+                (timing.started < entry.ended && entry.commands.is_some())
+                    .then_some((index, timing))
+            })
+    }
+
+    /// Moves the commands that finished since the last fold into their entries.
+    fn fold(&mut self, snapshot: &[Timing]) {
+        let folded: Vec<(usize, Value)> = self
+            .owners(snapshot)
+            .map(|(index, timing)| (index, command_json(timing, self.recorded[index].started)))
+            .collect();
+        for (index, command) in folded {
+            if let Some(commands) = &mut self.recorded[index].commands {
+                commands.push(command);
+            }
+        }
+        if let Some(last) = snapshot.last() {
+            self.unfolded = last.seq + 1;
         }
     }
 
@@ -283,11 +328,8 @@ impl Recorder {
             return;
         }
         self.flush(timings);
-        // A new input means earlier inputs drew nothing; they record no
-        // input-to-paint time. Navigation starts while its input's frame draws.
-        if kind != Kind::Navigate {
-            self.pending_paints.clear();
-        }
+        // Earlier inputs keep their waiting input-to-paint times: each one
+        // requested a frame, and `painted` charges that frame to its entry.
         let id = self.next_id;
         self.next_id += 1;
         self.current = Some(Interaction {
@@ -296,6 +338,7 @@ impl Recorder {
             wall_time: chrono::Utc::now(),
             target,
             started,
+            ended: started,
             duration_ms: 0.,
             input_to_paint: Vec::new(),
             frames: Histogram::default(),
@@ -379,12 +422,82 @@ impl Recorder {
         }
     }
 
-    /// JSON lines for `bun run perf:interactions`.
-    pub(crate) fn json_lines(&self) -> String {
+    /// JSON lines for `bun run perf:interactions`. `timings` supplies the
+    /// commands that finished after the last flush. With no entry running,
+    /// the export moves them into their entries first; while one runs it only
+    /// adds them, because moving the mark would skip that entry's commands.
+    pub(crate) fn json_lines(&mut self, timings: &Timings) -> String {
+        let snapshot = timings.snapshot();
+        if self.current.is_none() {
+            self.fold(&snapshot);
+        }
+        let mut unfolded: Vec<Vec<&Timing>> = vec![Vec::new(); self.recorded.len()];
+        for (index, timing) in self.owners(&snapshot) {
+            unfolded[index].push(timing);
+        }
         self.recorded
             .iter()
-            .map(|interaction| interaction.json().to_string())
+            .zip(&unfolded)
+            .map(|(interaction, unfolded)| interaction.json(unfolded).to_string())
             .collect::<Vec<_>>()
             .join("\n")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::Read;
+    use kubecove_lib::models::AppError;
+    use std::task::{Context, Poll, Waker};
+
+    fn commands(recorder: &mut Recorder, timings: &Timings) -> Vec<String> {
+        recorder
+            .json_lines(timings)
+            .lines()
+            .flat_map(|line| {
+                let entry: Value = serde_json::from_str(line).expect("JSON line");
+                entry["commands"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|command| command["cmd"].as_str().unwrap_or_default().to_owned())
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
+    // Failure mode (#662): a command still running when recording stops shows up
+    // in one copy, then Clear diagnostics removes it from the next, because no
+    // flush follows the stop. Browser mocks cannot reach this: the only way to
+    // stop recording is to open Settings, which cancels every held page read.
+    #[test]
+    fn a_command_finishing_after_stop_stays_after_the_trace_is_cleared() {
+        let timings = Timings::default();
+        timings.set_enabled(true);
+        let mut recorder = Recorder::default();
+        recorder.start();
+        recorder.begin(
+            Kind::Click,
+            "button".into(),
+            None,
+            Instant::now(),
+            Some(&timings),
+        );
+        let read: Read<()> = Box::pin(async { Ok::<(), AppError>(()) });
+        let mut read = timings.measure("list_resource_topology", read);
+        recorder.stop(Some(&timings));
+        let finished = read.as_mut().poll(&mut Context::from_waker(Waker::noop()));
+        assert!(matches!(finished, Poll::Ready(Ok(()))));
+
+        assert_eq!(
+            commands(&mut recorder, &timings),
+            ["list_resource_topology"]
+        );
+        timings.clear();
+        assert_eq!(
+            commands(&mut recorder, &timings),
+            ["list_resource_topology"]
+        );
     }
 }

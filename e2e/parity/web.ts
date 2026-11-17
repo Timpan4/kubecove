@@ -81,7 +81,7 @@ export async function action(page: Page, step: Step, scenarioSteps: readonly Ste
         case "toggleDetailDisclosure": case "expectNoPageText": await detailStatusAction(page, step); break;
         case "fillMcpPort": case "mcpControl": case "expectMcpState": case "expectMcpCopy": case "expectMcpRequests": case "configureMcpSettingsFile": case "expectMcpLoadError":
             await mcpAction(page, step); break;
-        case "configureArgoMock": case "argoControl": case "focusArgoResource": case "expectNoSavedArgoProfile": case "copyArgoValue": case "configureArgoInventory": case "expandArgoDiff": case "reconnectArgoProfile": case "argoProfileSignIn":
+        case "configureArgoMock": case "argoControl": case "focusArgoResource": case "expectNoSavedArgoProfile": case "ageArgoProfileId": case "copyArgoValue": case "configureArgoInventory": case "expandArgoDiff": case "reconnectArgoProfile": case "argoProfileSignIn":
         case "connectArgoProfile": case "disconnectArgoProfile": case "reviewArgoOperation": case "confirmArgoReview": case "cancelArgoReview": case "expectArgoReview": case "expectArgoText": case "expectArgoPolicy": case "argoDocument":
         case "expectArgoPopover": case "dismissArgoPopover": case "expectArgoCheckbox": case "toggleArgoOption": case "expectNoArgoControl":
         case "selectArgoPreference": case "expectSavedArgoProfile": case "configureArgoSync": case "selectArgoHistory": case "expectArgoWorkspaceTransport": case "completeArgoOperation": case "confirmArgoTunnel":

@@ -481,6 +481,9 @@
 				? resourcesQuery.error
 				: null,
 	);
+	const errorReplacesBrowser = $derived(Boolean(resourceError && (!resourcesQuery.data || workspaceReadContext.sourceError)));
+	// With every kind unchecked the top bar stays, so the kind picker can bring one back without a scope reset.
+	const topBarShown = $derived(Boolean(clusterContext) && (fetchKeys.length === 0 || (!errorReplacesBrowser && !loading.active)));
 
 	$effect(() => {
 		onPathStateChange({
@@ -686,7 +689,7 @@
 			<span>{contextsLoadingText}</span>
 		</p>
 	{/if}
-	{#if !clusterContext || fetchKeys.length === 0 || resourceError || loading.active}
+	{#if !clusterContext || (fetchKeys.length > 0 && (resourceError || loading.active))}
 		<div class="flex justify-end">{@render refreshControls()}</div>
 	{/if}
 	{#if gitOpsFocusApplication}
@@ -703,33 +706,7 @@
 		/>
 	{/if}
 
-	{#if !clusterContext}
-		<Empty class="min-h-52 border border-dashed">
-			<EmptyHeader>
-				<EmptyTitle>No cluster context</EmptyTitle>
-				<EmptyDescription>Select a workspace with a cluster context.</EmptyDescription>
-			</EmptyHeader>
-		</Empty>
-	{:else if fetchKeys.length === 0}
-		<Empty class="min-h-52 border border-dashed">
-			<EmptyHeader>
-				<EmptyTitle>No resource scope</EmptyTitle>
-				<EmptyDescription>Select at least one kind.</EmptyDescription>
-			</EmptyHeader>
-		</Empty>
-	{:else if resourceError && (!resourcesQuery.data || workspaceReadContext.sourceError)}
-		<FriendlyError
-			error={resourceError}
-			context={{ operation: "resourcesLoad", fallbackTitle: "Failed to load resources" }}
-		/>
-	{:else if loading.active}
-		<div class="flex min-h-52 items-center justify-center gap-2 text-xs text-muted-foreground">
-			{#if loading.shown}
-				<Spinner />
-				<span>Loading resources</span>
-			{/if}
-		</div>
-	{:else}
+	{#if topBarShown}
 		<ResourceBrowserTopBar
 			{kindScopeLocked}
 			selectedNamespaces={selectedNamespaces}
@@ -774,7 +751,34 @@
 			onGitOpsFilterChange={setGitOpsFilter}
 			onClearFilters={clearFilters}
 		/>
-
+	{/if}
+	{#if !clusterContext}
+		<Empty class="min-h-52 border border-dashed">
+			<EmptyHeader>
+				<EmptyTitle>No cluster context</EmptyTitle>
+				<EmptyDescription>Select a workspace with a cluster context.</EmptyDescription>
+			</EmptyHeader>
+		</Empty>
+	{:else if fetchKeys.length === 0}
+		<Empty class="min-h-52 border border-dashed">
+			<EmptyHeader>
+				<EmptyTitle>No resource scope</EmptyTitle>
+				<EmptyDescription>Select at least one kind.</EmptyDescription>
+			</EmptyHeader>
+		</Empty>
+	{:else if resourceError && errorReplacesBrowser}
+		<FriendlyError
+			error={resourceError}
+			context={{ operation: "resourcesLoad", fallbackTitle: "Failed to load resources" }}
+		/>
+	{:else if loading.active}
+		<div class="flex min-h-52 items-center justify-center gap-2 text-xs text-muted-foreground">
+			{#if loading.shown}
+				<Spinner />
+				<span>Loading resources</span>
+			{/if}
+		</div>
+	{:else}
 		{#if noticeLive.reloadError}
 			<details class="rounded-md border border-amber-500/30 text-xs text-amber-700 dark:text-amber-300" data-refresh-error>
 				<summary class="cursor-pointer px-3 py-2"><span role="status">Refresh failed. Showing last observed state. Activity indicators are paused until live updates recover.</span></summary>

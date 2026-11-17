@@ -26,6 +26,7 @@ fn info_card(title: &str, detail: &str) -> Div {
 fn empty_state(title: &str, description: &str) -> AnyElement {
     div()
         .flex()
+        .flex_1()
         .flex_col()
         .items_center()
         .justify_center()
@@ -34,6 +35,7 @@ fn empty_state(title: &str, description: &str) -> AnyElement {
         .p(px(16.))
         .rounded(px(10.))
         .border_1()
+        .border_dashed()
         .border_color(Tokens::border())
         .child(
             div()
@@ -446,30 +448,23 @@ impl Inspector {
             .child(self.historical_toggle(cx))
     }
 
-    /// The web's empty states, checked before the load state: no cluster
-    /// context, then no selected kind. A failed read still reports its error.
-    fn empty_scope(&self) -> Option<AnyElement> {
-        if self.scope.context.is_empty()
+    /// The web's empty states, checked before the load state. Without a cluster
+    /// context the page shows only the empty state; a failed read still reports
+    /// its error.
+    fn no_cluster_context(&self) -> bool {
+        self.scope.context.is_empty()
             && !matches!(self.page_load(), Load::Loading | Load::Failed(_))
-        {
-            return Some(empty_state(
-                "No cluster context",
-                "Select a workspace with a cluster context.",
-            ));
-        }
-        let no_kinds = self.live.selected.is_none()
+    }
+
+    /// Every kind is unchecked. The top bar stays so the kind picker can bring
+    /// one back without resetting the scope.
+    fn no_kinds(&self) -> bool {
+        self.live.selected.is_none()
             && self
                 .kind_selection
                 .chosen
                 .as_ref()
-                .is_some_and(|chosen| chosen.is_empty());
-        if no_kinds {
-            return Some(empty_state(
-                "No resource scope",
-                "Select at least one kind.",
-            ));
-        }
-        None
+                .is_some_and(|chosen| chosen.is_empty())
     }
 
     pub(super) fn resources(
@@ -490,9 +485,26 @@ impl Inspector {
             .loading
             .phase("resources", matches!(self.page_load(), Load::Loading));
         let reveal = self.loading.reveal("resources");
-        let body: AnyElement = match self.empty_scope() {
-            Some(empty) => empty,
-            None => match self.page_load() {
+        let body: AnyElement = if self.no_cluster_context() {
+            empty_state(
+                "No cluster context",
+                "Select a workspace with a cluster context.",
+            )
+        } else if self.no_kinds() {
+            div()
+                .flex()
+                .flex_col()
+                .flex_1()
+                .min_h_0()
+                .gap(px(12.))
+                .child(self.top_bar(width, cx))
+                .child(empty_state(
+                    "No resource scope",
+                    "Select at least one kind.",
+                ))
+                .into_any_element()
+        } else {
+            match self.page_load() {
                 Load::Loading | Load::Ready if !loading.ready() => div()
                     .flex()
                     .min_h(px(208.))
@@ -557,7 +569,7 @@ impl Inspector {
                         .child(panels)
                         .into_any_element()
                 }
-            },
+            }
         };
         div()
             .id("resources")

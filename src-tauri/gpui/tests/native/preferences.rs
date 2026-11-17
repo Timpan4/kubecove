@@ -1,27 +1,17 @@
 //! Failure modes: restart loses edits; migration changes safety defaults; corrupt
 //! or future data is overwritten; failed writes publish a false success; stale
 //! instances overwrite newer edits; credentials enter a preference document.
+use crate::scratch::Scratch;
 use kubecove_gpui::preferences::{Document, Store};
-use std::path::PathBuf;
 
-fn directory() -> PathBuf {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join(".t")
-        .join("preferences-tests");
-    let path = root.join(format!(
-        "preferences-{}-{:?}",
-        std::process::id(),
-        std::thread::current().id()
-    ));
-    std::fs::create_dir_all(&path).unwrap();
-    path
+fn directory() -> Scratch {
+    Scratch::new("preferences-tests", "preferences")
 }
 
 #[test]
 fn restart_and_stale_writes() {
-    let directory = directory();
+    let scratch = directory();
+    let directory = scratch.to_path_buf();
     let store = Store::file(directory.clone());
     let mut document = store.load().unwrap();
     document.preferences.show_exact_timestamps = true;
@@ -74,7 +64,6 @@ fn restart_and_stale_writes() {
     stale.preferences.redact_secrets = false;
     store.save(saved).unwrap();
     assert!(reopened.save(stale).is_err());
-    std::fs::remove_dir_all(directory).unwrap();
 }
 
 #[test]
@@ -93,7 +82,8 @@ fn reload_child() {
 
 #[test]
 fn corrupt_future_migration_and_write_failure() {
-    let directory = directory();
+    let scratch = directory();
+    let directory = scratch.to_path_buf();
     let path = directory.join("live-sessions.json");
     for raw in [
         "{",
@@ -124,5 +114,4 @@ fn corrupt_future_migration_and_write_failure() {
     std::fs::create_dir(directory.join("live-sessions.lock")).unwrap();
     assert!(store.save(store.load().unwrap()).is_err());
     assert_eq!(std::fs::read(&path).unwrap(), original);
-    std::fs::remove_dir_all(directory).unwrap();
 }

@@ -26,6 +26,13 @@ export async function diagnosticsAction(page: Page, step: Step): Promise<void> {
             const copied = await (await page.waitForFunction(() => document.documentElement.dataset.interactionCopy ?? "")).jsonValue();
             if (step.contains !== undefined && !copied.includes(step.contains)) throw new Error(`Interaction copy lacks ${step.contains}`);
             if (step.excludes !== undefined && copied.includes(step.excludes)) throw new Error(`Interaction copy includes ${step.excludes}`);
+            if (step.succeededCommand !== undefined) {
+                const succeeded = copied.split("\n").filter((line) => line.trim() !== "").some((line) => {
+                    const commands: { cmd: string; ok: boolean }[] = JSON.parse(line).commands ?? [];
+                    return commands.some((command) => command.cmd === step.succeededCommand && command.ok);
+                });
+                if (!succeeded) throw new Error(`Interaction copy lists no successful ${step.succeededCommand}`);
+            }
             break;
         }
         case "typeSettingsField": {

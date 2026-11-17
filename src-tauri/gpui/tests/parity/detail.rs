@@ -156,7 +156,11 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             assert_eq!(window.find("search").value(), Some(string(step, "value")))
         }
         "openPage" => window.click(format!("nav:{}", string(step, "page")), cx),
-        "showTab" => window.click(tab_id(string(step, "tab")), cx),
+        "showTab" => {
+            let id = tab_id(string(step, "tab"));
+            reveal(window, "detail-body", &id, cx);
+            window.click(id, cx);
+        }
         "filterEvents" => {
             let id = match string(step, "filter") {
                 "All" => "events-filter-all",
@@ -308,20 +312,71 @@ pub(super) fn reveal_resource(
     resolve_resource(window, target, cx).is_some()
 }
 
-/// Scrolls the table to the first visible row that `target` names and returns
-/// its element ID. Row IDs end in the row's context, so a target without one
-/// matches the row of every context and the first in display order wins.
+/// Scrolls the table to the row that `target` names and returns its element ID.
+/// Row IDs end in the row's context, so a target without one matches the row
+/// of every context. Like the web driver, a target that names more than one
+/// row is an error rather than a choice that depends on the scroll position.
 pub(super) fn resolve_resource(
     window: &mut gpui_kit::Window,
     target: &str,
     cx: &mut gpui_kit::App,
 ) -> Option<String> {
-    let mut found = None;
+    // A target that names its context, `resource:{kind}:{namespace}:{name}:{context}`,
+    // is one row's whole ID, since kinds, namespaces and names hold no `:`.
+    let names_context = target.splitn(5, ':').count() == 5;
+    // The Context filter shows only for a workspace with several contexts.
+    // With one, or with a target that names its context, an identity names at
+    // most one row, so the first match is that row, and the page keeps its
+    // scroll position when the row is in view.
+    if names_context || window.try_find("context-picker").is_none() {
+        let mut found = None;
+        scan_table(window, cx, |window| {
+            found = rendered_rows(window, target)
+                .into_iter()
+                .find(|id| !names_context || id == target);
+            found.is_some()
+        });
+        return found;
+    }
+    let rows = table_rows(window, target, cx);
+    assert!(rows.len() <= 1, "Resource row is ambiguous: {rows:?}");
+    let id = rows.into_iter().next()?;
+    // The scan ended at the bottom of the page; scroll back to the row.
+    assert!(
+        scan_table(window, cx, |window| rendered_rows(window, &id)
+            .contains(&id)),
+        "row {id} is no longer rendered"
+    );
+    Some(id)
+}
+
+/// The element IDs of every row on the current table page that `target`
+/// names, top to bottom. The table mounts only the rows near its viewport, so
+/// the whole page is scanned from the top.
+pub(super) fn table_rows(
+    window: &mut gpui_kit::Window,
+    target: &str,
+    cx: &mut gpui_kit::App,
+) -> Vec<String> {
+    let mut ids: Vec<String> = Vec::new();
+    // `None` until the first visit, which is at the current scroll position
+    // before the scan resets to the top, so only the top-down visits count.
+    let mut previous: Option<Option<Vec<String>>> = None;
     scan_table(window, cx, |window| {
-        found = rendered_rows(window, target).into_iter().next();
-        found.is_some()
+        let rendered = rendered_rows(window, "resource");
+        let Some(last) = previous.replace(Some(rendered.clone())) else {
+            previous = Some(None);
+            return false;
+        };
+        for id in rendered_rows(window, target) {
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+        // Scrolling no longer moves the rows: the bottom of the page.
+        last.is_some_and(|last| last == rendered)
     });
-    found
+    ids
 }
 
 /// The element IDs of the visible rows that `target` names, top to bottom.

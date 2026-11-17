@@ -78,34 +78,64 @@ pub(super) fn settle(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App) {
     window.render_frame(cx);
 }
 
-fn first_node(window: &gpui_kit::Window) -> ElementId {
+/// The map's resource nodes, in drawing order.
+fn nodes(window: &gpui_kit::Window) -> Vec<gpui_kit::test::ElementSnapshot> {
     window
         .elements()
-        .iter()
-        .find_map(|element| match element.path().last() {
-            Some(ElementId::Name(name)) if name.starts_with("map-node:") => {
-                Some(locate::id(element))
-            }
-            _ => None,
-        })
+        .into_iter()
+        .filter(|element| matches!(element.path().last(), Some(ElementId::Name(name)) if name.starts_with("map-node:")))
+        .collect()
+}
+
+fn first_node(window: &gpui_kit::Window) -> ElementId {
+    nodes(window)
+        .first()
+        .map(locate::id)
         .expect("the map shows a node")
 }
 
-/// The graph shows its selection as "N focused / M nodes", as the web does.
-fn selected(window: &gpui_kit::Window) -> bool {
-    window
-        .find("map-counts")
-        .label()
-        .is_some_and(|label| label.contains("focused"))
+/// The node that shows the selection, as the web's `data-selected` card does.
+fn selected_node(window: &gpui_kit::Window) -> Option<ElementId> {
+    nodes(window)
+        .iter()
+        .find(|element| element.selected() == Some(true))
+        .map(locate::id)
 }
 
 fn drag_from_node(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App) {
     reveal(window, "page", "map-viewport", cx);
-    let node = first_node(window);
-    window.render_frame(cx);
+    // A press and release without movement still selects. Select the first node that way, then
+    // drag from another node: the drag must pan and must leave that selection alone.
+    let seeded = first_node(window);
+    window.click(seeded.clone(), cx);
+    settle(window, cx);
+    assert_eq!(
+        selected_node(window),
+        Some(seeded.clone()),
+        "A click on a node did not select it"
+    );
+    // The selection opens its detail and fits the map again, which can move the map.
+    reveal(window, "page", "map-viewport", cx);
+    let area = window.find("map-viewport").bounds();
+    let height = window.viewport_size().height;
+    let offset = |point: gpui_kit::Point<gpui_kit::Pixels>| {
+        gpui_kit::point(point.x + px(80.), point.y + px(60.))
+    };
+    // The whole drag stays inside the map and the window, so it lands on the map.
+    let inside =
+        |point: gpui_kit::Point<gpui_kit::Pixels>| area.contains(&point) && point.y < height;
+    let node = nodes(window)
+        .iter()
+        .filter(|element| {
+            let center = element.bounds().center();
+            inside(center) && inside(offset(center))
+        })
+        .map(locate::id)
+        .find(|id| *id != seeded)
+        .expect("the map shows a second node with room to drag");
     let before = window.find(node.clone()).bounds();
     let start = before.center();
-    let end = gpui_kit::point(start.x + px(80.), start.y + px(60.));
+    let end = offset(start);
     // A frame renders between events, as in the app, so each move lands on the node where it now sits.
     window.dispatch_event(
         MouseMoveEvent {
@@ -161,11 +191,11 @@ fn drag_from_node(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App) {
         cx,
     );
     window.render_frame(cx);
-    assert!(!selected(window), "Dragging from a node selected it");
-    // A press and release without movement still selects the node.
-    window.click(node, cx);
-    window.render_frame(cx);
-    assert!(selected(window), "A click on a node did not select it");
+    assert_eq!(
+        selected_node(window),
+        Some(seeded),
+        "Dragging from a node changed the selection"
+    );
 }
 
 fn wheel_at_node(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App) {
