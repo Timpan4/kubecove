@@ -434,7 +434,8 @@ test("Rust task keys cover the audited inputs outside each workspace", async () 
   const expected = {
     rust: shared,
     "gpui-clippy": [...shared, "src-tauri/gpui/Cargo.lock", "src/lib/settings-integration-workspace.json"],
-    "gpui-test": [...shared, "src-tauri/gpui/Cargo.lock", "src/lib/settings-integration-workspace.json"],
+    // text_fit reads the fonts under src-tauri/gpui and the fixture exported from the browser mocks.
+    "gpui-test": [...shared, "src-tauri/gpui/Cargo.lock", "src/lib/settings-integration-workspace.json", "src-tauri/gpui/assets/fonts/inter-400.ttf", "e2e/parity/visual/export-fixture.ts", "src/lib/tauri-dev-mocks.ts", "src/features/resources/constants.ts"],
     "server-backend": [...shared, "src-tauri/server/Cargo.toml", "src-tauri/server/Cargo.lock"],
     server: [...shared, "src-tauri/server/Cargo.lock", "src/main-svelte.ts", "public/kubecove-logo.svg", "vite.config.ts", "tsconfig.json", "index.html", "scripts/tsrs.ts", "scripts/dev-interactions-plugin.ts", "scripts/frontend-bundle-report.ts", "e2e/headless-smoke.ts", "e2e/harness/port-forward-fixture.ts", "deploy/grafana/kubecove-server.json"],
   };
@@ -534,7 +535,12 @@ test("each existing check remains in its selected task", () => {
     "frontend-e2e": ["bun run e2e:fast"],
     rust: ["mbx test --workspace --manifest-path src-tauri/Cargo.toml", "mbx clippy --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings"],
     "gpui-clippy": ["mbx clippy --manifest-path src-tauri/gpui/Cargo.toml --locked --all-targets -- -D warnings"],
-    "gpui-test": ["mbx test --manifest-path src-tauri/gpui/Cargo.toml --locked --lib --test native"],
+    "gpui-test": [
+      "mbx test --manifest-path src-tauri/gpui/Cargo.toml --locked --lib --test native",
+      "bun e2e/parity/visual/export-fixture.ts e2e/artifacts/text-fit/fixture.json",
+      'KUBECOVE_PARITY_FIXTURE="$PWD/e2e/artifacts/text-fit/fixture.json" mbx test --manifest-path src-tauri/gpui/Cargo.toml --locked --test text_fit | tee e2e/artifacts/text-fit/report.txt',
+      "if grep -F 'text_fit: skipped' e2e/artifacts/text-fit/report.txt; then exit 1; fi",
+    ],
     "server-backend": ["cargo tree --manifest-path src-tauri/server/Cargo.toml --locked --edges normal,build --prefix none > server-dependencies.txt", "mbx test --locked --workspace --no-default-features --manifest-path src-tauri/Cargo.toml"],
     server: [
       "mbx test --manifest-path src-tauri/server/Cargo.toml --locked", "mbx clippy --manifest-path src-tauri/server/Cargo.toml --all-targets --locked -- -D warnings",
