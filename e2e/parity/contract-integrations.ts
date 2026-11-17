@@ -35,7 +35,7 @@ export function integrationStep(item: JsonObject): Step | undefined {
 		case "configureArgoMock": return { action: item.action, script: oneOf(["base", "discovery-error", "target-mismatch", "preview-error", "snapshot-error", "operation-error", "lazy", "full-diff", "connect-pending", "disconnect-pending", "credential-error", "preview-pending"], item.script, "an Argo fixture script") };
 		case "argoControl": return { action: item.action, control: oneOf(["Open connection", "Close connection", "Disconnect", "Forget", "Cancel sign-in", "Retry", "Confirm target again", "Retry operation", "Retry state refresh", "Retry snapshot", "Technical detail", "Show diff", "Show fewer lines", "All changes", "Sync options", "Sync with these options", "Refresh options"], item.control, "an Argo control"), url: item.url == null ? undefined : string(item.url) };
 		case "focusArgoResource": return { action: item.action, key: string(item.key), label: string(item.label) };
-		case "expectNoSavedArgoProfile": return { action: item.action, url: string(item.url) };
+		case "expectNoSavedArgoProfile": case "ageArgoProfileId": return { action: item.action, url: string(item.url) };
 		case "expandArgoDiff": return { action: item.action };
 		case "reconnectArgoProfile": return { action: item.action };
 		case "argoProfileSignIn": return { action: item.action, token: plainString(item.token), tunnel: optionalBoolean(item.tunnel), pending: optionalBoolean(item.pending), submit: optionalBoolean(item.submit) };

@@ -4,8 +4,16 @@ import type { TauriClient } from "../../../src/lib/tauri";
 import { configureArgoInventory, configureArgoMock } from "../../../src/lib/tauri-dev-mock-argo";
 import type { ArgoApplicationInspector, ArgoApplicationRef, ArgoConnectionStatus, ArgoOperationRequest, JsonObject, JsonValue, ResourceDetailsFull } from "../../../src/lib/types";
 
-/** The URLs of `argo-connection.path-case-keeps-two-profiles`. */
+/** The URLs of `argo-connection.path-case-keeps-two-profiles` and `argo-connection.keeps-older-profile-id`. */
 const PATH_CASE_URLS = ["https://Argocd.Example.Test/Argo", "https://argocd.example.test/argo"];
+/** The first path-case URL with another host case, as `argo-connection.keeps-older-profile-id` types it again. */
+const RETYPED_URL = "https://argocd.example.test/Argo";
+
+/** The id an older build made for a profile, as the `ageArgoProfileId` step rewrites it. */
+function olderArgoProfileId(id: string): string {
+    const [scope, endpoint] = id.split(":externalHttps:");
+    return `${scope}:${endpoint.toLowerCase()}`;
+}
 
 type InventoryApplications =Record<"base" | "many" | "same-name", { details: ResourceDetailsFull }[]>;
 
@@ -57,6 +65,12 @@ export async function exportArgo(client: TauriClient, inventories: InventoryAppl
             ...PATH_CASE_URLS.map(other => {
                 const endpoint = { kind: "externalHttps" as const, url: other };
                 return { ...connect, profile: { ...connect.profile, id: argoProfileId({ ...scope, workspaceId }, endpoint), url: other, endpoint, rememberCredential: true } };
+            }),
+            // The first of them under an older build's id (`ageArgoProfileId`): its automatic reconnect after a
+            // restart, then a new connection to the same server typed with another host case, which keeps that id.
+            ...[{ url: PATH_CASE_URLS[0], token: null }, { url: RETYPED_URL, token: connect.token }].map(({ url: other, token }) => {
+                const endpoint = { kind: "externalHttps" as const, url: other };
+                return { ...connect, token, profile: { ...connect.profile, id: olderArgoProfileId(argoProfileId({ ...scope, workspaceId }, { kind: "externalHttps", url: PATH_CASE_URLS[0] })), url: other, endpoint, rememberCredential: true } };
             }),
         ];
     };

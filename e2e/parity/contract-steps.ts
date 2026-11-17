@@ -159,6 +159,8 @@ export type Step =
     | { action: "argoControl"; control: "Open connection" | "Close connection" | "Disconnect" | "Forget" | "Cancel sign-in" | "Retry" | "Confirm target again" | "Retry operation" | "Retry state refresh" | "Retry snapshot" | "Technical detail" | "Show diff" | "Show fewer lines" | "All changes" | "Sync options" | "Sync with these options" | "Refresh options"; url?: string }
     | { action: "focusArgoResource"; key: string; label: string }
     | { action: "expectNoSavedArgoProfile"; url: string }
+    /** Gives the saved profile for `url` the id an older build made: the whole URL lowercased after the scope. */
+    | { action: "ageArgoProfileId"; url: string }
     | { action: "expandArgoDiff" }
     | { action: "reconnectArgoProfile" }
     | { action: "argoProfileSignIn"; token: string; tunnel?: boolean; pending?: boolean; submit?: boolean }
