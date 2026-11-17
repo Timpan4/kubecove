@@ -639,6 +639,9 @@ pub fn exact_timestamp(
 
 /// Kinds label in the resource scope trigger: first three, then `+N`.
 pub fn kinds_label(kinds: &[String]) -> String {
+    if kinds.is_empty() {
+        return "None".to_owned();
+    }
     let shown: Vec<&str> = kinds.iter().take(3).map(String::as_str).collect();
     match kinds.len().saturating_sub(3) {
         0 => shown.join(", "),
