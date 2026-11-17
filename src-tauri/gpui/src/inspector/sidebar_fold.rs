@@ -7,10 +7,11 @@
 //! left out. Only a toggle starts a fold. Any other change of a branch's state,
 //! such as "Collapse all" on a branch folding open, ends it at once. A branch
 //! already folding closed has no change to end, so it folds on, as the web's
-//! running outro does. Time comes from the executor clock, so test drivers
-//! move it. A frame asks for the next one only while a fold runs. Reduced
-//! motion starts none, and neither does a test driver that asked for
-//! `Moving::set_instant_layout`.
+//! running outro does. A folding branch's rows take no clicks and are no tab
+//! stops, as the web's sliding list is inert. Time comes from the executor
+//! clock, so test drivers move it. A frame asks for the next one only while a
+//! fold runs. Reduced motion starts none, and neither does a test driver that
+//! asked for `Moving::set_instant_layout`.
 use crate::control_motion::{self, Moving};
 use gpui_kit::{AnyElement, App, ElementId, div, prelude::*, px};
 use std::cell::RefCell;
@@ -124,6 +125,14 @@ impl Folds {
         self.tracks.borrow().contains_key(path)
     }
 
+    /// Whether a branch above the tree row at `path` folds this frame. A branch
+    /// decides that before it builds its rows.
+    pub(super) fn holds(&self, path: &str) -> bool {
+        let tracks = self.tracks.borrow();
+        path.match_indices('/')
+            .any(|(at, _)| tracks.contains_key(&path[..at]))
+    }
+
     pub(super) fn is_empty(&self) -> bool {
         self.tracks.borrow().is_empty()
     }
@@ -189,16 +198,17 @@ struct Running<'a> {
 }
 
 impl Fold<'_> {
-    /// The branch's `rows` cut to the height the fold has reached. `shown` is
-    /// the height a row shows, which an inner fold may already have cut.
-    pub(super) fn clip<T>(self, mut rows: Vec<T>, shown: impl Fn(&mut T) -> &mut f32) -> Vec<T> {
+    /// The branch's `rows` cut to the height the fold has reached, and inert
+    /// while it folds.
+    pub(super) fn clip<T: Folded>(self, mut rows: Vec<T>) -> Vec<T> {
         let Some(run) = self.0 else {
             return rows;
         };
-        let measured: f32 = rows.iter_mut().map(|row| *shown(row)).sum();
+        let measured: f32 = rows.iter_mut().map(|row| *row.shown()).sum();
         let mut left = run.folds.reached(&run.path, measured, run.now, run.turned);
         rows.retain_mut(|row| {
-            let height = shown(row);
+            row.make_inert();
+            let height = row.shown();
             *height = height.min(left);
             left -= *height;
             *height > 0.
@@ -207,11 +217,20 @@ impl Fold<'_> {
     }
 }
 
+/// A row that a folding branch cuts and makes inert.
+pub(super) trait Folded {
+    /// The height the row shows, which an inner fold may already have cut.
+    fn shown(&mut self) -> &mut f32;
+    /// Keeps the row from taking clicks and focus while its branch folds.
+    fn make_inert(&mut self);
+}
+
 /// A sidebar row and the height it shows.
 pub(super) struct Row {
     element: AnyElement,
     height: f32,
-    pub(super) shown: f32,
+    shown: f32,
+    inert: bool,
 }
 
 impl Row {
@@ -221,12 +240,47 @@ impl Row {
             element,
             height,
             shown: height,
+            inert: false,
         }
     }
 
     pub(super) fn into_element(self) -> AnyElement {
-        cut(self.element, self.height, self.shown)
+        let row = if self.inert {
+            inert(self.element)
+        } else {
+            self.element
+        };
+        cut(row, self.height, self.shown)
     }
+}
+
+impl Folded for Row {
+    fn shown(&mut self) -> &mut f32 {
+        &mut self.shown
+    }
+
+    fn make_inert(&mut self) {
+        self.inert = true;
+    }
+}
+
+/// `row` under a cover that takes the pointer's clicks and hover, though not
+/// its scrolling.
+pub(super) fn inert(row: AnyElement) -> AnyElement {
+    div()
+        .relative()
+        .flex_none()
+        .child(row)
+        .child(
+            div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .right_0()
+                .bottom_0()
+                .block_mouse_except_scroll(),
+        )
+        .into_any_element()
 }
 
 /// `row`, which lays out `height` high, showing its top `shown` pixels.
@@ -256,6 +310,15 @@ mod tests {
     use super::*;
     use gpui_kit::TestAppContext;
 
+    /// A row's shown height.
+    impl Folded for f32 {
+        fn shown(&mut self) -> &mut f32 {
+            self
+        }
+
+        fn make_inert(&mut self) {}
+    }
+
     /// `sidebar_tree::ROW_HEIGHT`.
     const ROW: f32 = 26.;
     /// Ten-millisecond frames, so the first frames of a run are seen.
@@ -267,13 +330,13 @@ mod tests {
         cx.update(|cx| {
             let kinds = folds
                 .branch("ns/Workloads", true, cx)
-                .map_or(Vec::new(), |fold| fold.clip(vec![ROW; 7], |row| row));
+                .map_or(Vec::new(), |fold| fold.clip(vec![ROW; 7]));
             let mut rows = vec![ROW];
             rows.extend(kinds);
             rows.extend([ROW; 3]);
             let shown = folds
                 .branch("ns", open, cx)
-                .map_or(0., |fold| fold.clip(rows, |row| row).iter().sum());
+                .map_or(0., |fold| fold.clip(rows).iter().sum());
             folds.end_frame();
             shown
         })

@@ -146,6 +146,20 @@
 		});
 	}
 
+	/**
+	 * Rows still sliding in take no focus or clicks, as Svelte's outro already makes the sliding
+	 * list inert, so Tab cannot land on a row the slide still clips.
+	 */
+	function beginIntro(event: Event) {
+		settleUntoggled(event);
+		if (event.currentTarget instanceof HTMLElement) event.currentTarget.inert = true;
+	}
+
+	function endIntro(event: Event) {
+		toggledTo = null;
+		if (event.currentTarget instanceof HTMLElement) event.currentTarget.inert = false;
+	}
+
 	function toggleNode(event: MouseEvent) {
 		event.stopPropagation();
 		if (hasChildren) toggleSection();
@@ -230,9 +244,9 @@
 			bind:this={branch}
 			data-slot="sidebar-branch"
 			transition:slide={{ duration: foldDuration(), easing: controlEase }}
-			onintrostart={settleUntoggled}
+			onintrostart={beginIntro}
 			onoutrostart={settleUntoggled}
-			onintroend={() => (toggledTo = null)}
+			onintroend={endIntro}
 			onoutroend={() => (toggledTo = null)}
 		>
 			{#if hasSearch}

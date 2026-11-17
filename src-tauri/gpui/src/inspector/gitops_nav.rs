@@ -3,7 +3,7 @@
 //! the visuals of `resourceVisuals.ts`. Only the chevron expands a node, and
 //! providers show once detected, as with `showUnavailableGitOpsProviders` off.
 
-use super::sidebar_fold::{self, Fold};
+use super::sidebar_fold::{self, Fold, Folded};
 use super::sidebar_tree::ROW_HEIGHT;
 use super::{Inspector, Page};
 use crate::gitops_surface::{ARGO_KINDS, FLUX_FAMILIES, Focus};
@@ -35,6 +35,8 @@ struct Row {
     disabled: bool,
     /// The height the row shows, which a folding parent cuts.
     shown: f32,
+    /// Whether a folding parent keeps the row from taking clicks.
+    inert: bool,
 }
 
 fn row(
@@ -55,12 +57,18 @@ fn row(
         open,
         disabled: false,
         shown: ROW_HEIGHT,
+        inert: false,
     }
 }
 
-/// The height `row` shows, for `Fold::clip`.
-fn shown(row: &mut Row) -> &mut f32 {
-    &mut row.shown
+impl Folded for Row {
+    fn shown(&mut self) -> &mut f32 {
+        &mut self.shown
+    }
+
+    fn make_inert(&mut self) {
+        self.inert = true;
+    }
 }
 
 /// The fold of the node `node`. Flux families share labels with the built-in
@@ -161,7 +169,7 @@ impl Inspector {
             Open::GitOps(Focus::Section),
         )];
         if let Some(fold) = self.nav_fold("GitOps", cx) {
-            rows.extend(fold.clip(self.provider_rows(cx), shown));
+            rows.extend(fold.clip(self.provider_rows(cx)));
         }
         rows.push(row(
             0,
@@ -180,7 +188,7 @@ impl Inspector {
                 ("package", Tokens::muted_foreground),
                 Open::Helm,
             );
-            rows.extend(fold.clip(vec![releases], shown));
+            rows.extend(fold.clip(vec![releases]));
         }
         rows
     }
@@ -223,7 +231,7 @@ impl Inspector {
                                 Open::GitOps(Focus::Argo(Some(*kind))),
                             )
                         });
-                        rows.extend(fold.clip(kinds.collect(), shown));
+                        rows.extend(fold.clip(kinds.collect()));
                     }
                 }
                 if data.flux.is_some() || unavailable {
@@ -244,7 +252,7 @@ impl Inspector {
                     if data.flux.is_some()
                         && let Some(fold) = self.nav_fold("Flux", cx)
                     {
-                        rows.extend(fold.clip(self.flux_rows(cx), shown));
+                        rows.extend(fold.clip(self.flux_rows(cx)));
                     }
                 }
             }
@@ -293,7 +301,7 @@ impl Inspector {
                         }),
                     )
                 });
-                rows.extend(fold.clip(kinds.collect(), shown));
+                rows.extend(fold.clip(kinds.collect()));
             }
         }
         rows
@@ -314,7 +322,7 @@ impl Inspector {
             .into_iter()
             .map(|row| {
                 let selected = self.nav_selected(&row);
-                let visible = row.shown;
+                let (visible, inert) = (row.shown, row.inert);
                 let expanded = row.toggle.is_some_and(|node| self.nav_open(node));
                 // The web `selectNode` returns for a disabled row, such as an unavailable provider.
                 let open = if row.disabled {
@@ -407,7 +415,13 @@ impl Inspector {
                         Open::Helm => this.open_helm(cx),
                         Open::Nothing => {}
                     }));
-                sidebar_fold::cut(element.into_any_element(), ROW_HEIGHT, visible)
+                let element = element.into_any_element();
+                let element = if inert {
+                    sidebar_fold::inert(element)
+                } else {
+                    element
+                };
+                sidebar_fold::cut(element, ROW_HEIGHT, visible)
             })
             .collect()
     }

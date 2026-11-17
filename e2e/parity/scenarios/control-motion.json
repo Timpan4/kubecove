@@ -196,6 +196,39 @@
       ]
     },
     {
+      "id": "control-motion.sidebar-unfold-inert",
+      "title": "A sidebar branch's rows take no focus or clicks while it unfolds, and do once it has",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "expectSidebarRow", "path": ["Workloads"], "visible": true, "selected": false },
+        { "action": "expectSidebarRow", "path": ["Network"], "visible": true, "selected": false },
+        { "action": "coverageCheck", "check": "motion:branch:start" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:branch:midway" },
+        { "action": "coverageCheck", "check": "motion:branch:inert" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:branch:settled" },
+        { "action": "sidebarSelect", "path": ["Workloads", "Pod"] },
+        { "action": "expectSidebarRow", "path": ["Workloads", "Pod"], "visible": true, "selected": true }
+      ]
+    },
+    {
+      "id": "control-motion.sidebar-fold-inert",
+      "title": "A sidebar branch's rows take no focus or clicks while it folds closed",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "sidebarToggle", "path": ["Workloads"] },
+        { "action": "sidebarSelect", "path": ["Workloads", "Deployment"] },
+        { "action": "expectSidebarRow", "path": ["Workloads", "Deployment"], "visible": true, "selected": true },
+        { "action": "expectSidebarRow", "path": ["Workloads", "Pod"], "visible": true, "selected": false },
+        { "action": "expectSidebarRow", "path": ["Network"], "visible": true, "selected": false },
+        { "action": "coverageCheck", "check": "motion:branch:start" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:branch:midway" },
+        { "action": "coverageCheck", "check": "motion:branch:inert" }
+      ]
+    },
+    {
       "id": "control-motion.sidebar-unfold-custom",
       "title": "A custom resource group unfolds its kinds over 150 ms, moving the group under it down without passing its place",
       "steps": [

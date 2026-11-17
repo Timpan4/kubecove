@@ -228,7 +228,7 @@ impl Inspector {
     ) -> Vec<Row> {
         let open = self.sidebar_tree.open.contains(path);
         match self.sidebar_tree.folds.branch(path, open, cx) {
-            Some(fold) => fold.clip(rows(self, cx), |row| &mut row.shown),
+            Some(fold) => fold.clip(rows(self, cx)),
             None => Vec::new(),
         }
     }
@@ -372,7 +372,12 @@ impl Inspector {
             .sidebar_tree
             .reveals(&path, expanded)
             .then(|| self.sidebar_tree.reveal_probe());
-        let focus = self.sidebar_tree.focus_handle(&path, cx);
+        // The element keeps its own copy of the handle, so this is decided before
+        // the row tracks it.
+        let focus = self
+            .sidebar_tree
+            .focus_handle(&path, cx)
+            .tab_stop(!self.sidebar_tree.folds.holds(&path));
         let chevron = path.clone();
         let key_toggle = path.clone();
         let target = RowTarget {

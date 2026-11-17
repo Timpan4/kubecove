@@ -28,6 +28,8 @@ type Target = {
 	between?: boolean;
 	/** The element under which Svelte runs the motion as a Web Animation, where it is no CSS transition. */
 	animated?(page: Page): Locator;
+	/** A fold's first row under its branch, which an `inert` check tries to reach. */
+	inside?(page: Page): Locator;
 	/** Throws unless the control rests as it should once it has settled, such as an indicator covering the chosen option exactly. */
 	fits?(page: Page): Promise<void>;
 	/** Changes the control's state. */
@@ -152,7 +154,7 @@ const TARGETS = {
 		property: "rotate",
 		act: (page) => sidebarRow(page, ["Workloads"]).getByRole("button").click(),
 	},
-	branch: fold(["Workloads"], ["Network"], "CronJob"),
+	branch: { ...fold(["Workloads"], ["Network"], "CronJob"), inside: (page) => sidebarRow(page, ["Workloads", "Pod"]) },
 	"custom-group": fold(["Custom Resources", "argoproj.io"], ["Custom Resources", "helm.toolkit.fluxcd.io"], "ApplicationSet"),
 } satisfies Record<string, Target>;
 
@@ -296,7 +298,8 @@ async function follow(page: Page, moving: Locator, target: Target, act: (page: P
  * followed property and the indicator at rest on the new state. `ended`, after reduced motion
  * turned on mid-run, expects what `settled` does without moving the transition to its end.
  * `collapsed`, after another action closed a fold mid-run, expects nothing under the branch to
- * move and the value at rest, without moving the transition.
+ * move and the value at rest, without moving the transition. `inert`, mid-fold, expects Tab from
+ * the chevron that started the fold and a click on the branch's first row to pass over that row.
  *
  * A CSS transition runs on the document timeline, which the page clock does not move. So `start`
  * pauses the control's transitions in their `transitionrun` event, and the later phases seek
@@ -366,11 +369,28 @@ export async function checkControlMotion(page: Page, check: string) {
 		await target.fits?.(page);
 		return;
 	}
+	if (phase === "inert") {
+		if (!target.inside) throw new Error(`${check} needs a fold target with a first row`);
+		const row = target.inside(page);
+		// The chevron's click focused it, and the branch's first row is the next stop after it.
+		await page.keyboard.press("Tab");
+		if (await row.evaluate((item) => item === document.activeElement)) throw new Error(`Tab reached a row of ${name} while it folds`);
+		// Locator clicks wait for a row that takes events, which an inert one never does.
+		const box = await row.boundingBox();
+		if (!box) throw new Error(`${name} shows no first row midway`);
+		await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+		if ((await row.getAttribute("aria-selected")) === "true") throw new Error(`A click selected a row of ${name} while it folds`);
+		return;
+	}
 	if (phase === "collapsed") {
 		if (!target.animated) throw new Error(`${check} needs a fold target`);
 		// Without moving the clock: the page answers the action with the next frame.
 		await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-		const moving = await target.animated(page).evaluate((item) => item.getAnimations({ subtree: true }).filter((animation) => animation.playState === "running").length);
+		// Only the branch's own slide: the row's hover and the chevron's turn transition with it.
+		const moving = await target.animated(page).evaluate((item) => {
+			const branch = item.querySelector(':scope > [data-slot="sidebar-branch"]');
+			return (branch?.getAnimations() ?? []).filter((animation) => animation.playState === "running" || animation.playState === "paused").length;
+		});
 		if (moving > 0) throw new Error(`${name} still folds after it was collapsed`);
 		const collapsed = await read(page, target);
 		if (collapsed !== before.rest) throw new Error(`${name} is at ${collapsed} after it was collapsed, not closed at ${before.rest}`);

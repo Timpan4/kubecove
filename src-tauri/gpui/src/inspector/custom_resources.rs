@@ -150,7 +150,7 @@ impl Inspector {
         };
         let mut rows = vec![Row::new(self.custom_search_input(), SEARCH_HEIGHT)];
         rows.extend(self.custom_kind_rows(cx));
-        fold.clip(rows, |row| &mut row.shown)
+        fold.clip(rows)
             .into_iter()
             .map(Row::into_element)
             .collect()
@@ -249,7 +249,7 @@ impl Inspector {
             rows.push(Row::new(row.into_any_element(), ROW_HEIGHT));
             let folds = &self.sidebar_tree.folds;
             if let Some(fold) = folds.branch(&group_fold(&group), expanded, cx) {
-                rows.extend(fold.clip(self.kind_rows(&group, cx), |row| &mut row.shown));
+                rows.extend(fold.clip(self.kind_rows(&group, cx)));
             }
         }
         rows

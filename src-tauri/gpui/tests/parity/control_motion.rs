@@ -8,6 +8,7 @@
 //! `ended`, after reduced motion turned on mid-run, expects what `settled` does
 //! without moving the clock. `collapsed`, after another action closed a fold
 //! mid-run, expects the fold over and the branch closed without moving the clock.
+//! `inert`, mid-fold, expects Tab and a click to pass over the branch's rows.
 //! Mirrors `e2e/parity/web-control-motion.ts`.
 use super::*;
 use gpui_kit::ElementId;
@@ -105,6 +106,29 @@ pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check
             let rest = &seen.as_ref().expect("a start check ran first").paint[0];
             assert_eq!(&painted, rest, "{target} is not closed at once");
         });
+        return;
+    }
+    // A folding branch's rows take no focus or clicks, as the web's sliding
+    // list is inert. Tab starts from the row whose chevron started the fold.
+    if phase == "inert" {
+        let first = match target {
+            "branch" => "tree:Workloads/Pod",
+            other => panic!("{other} has no inert check"),
+        };
+        window.press("tab", cx);
+        window.render_frame(cx);
+        assert_ne!(
+            window.find(first).focused(),
+            Some(true),
+            "Tab reached a row of {target} while it folds"
+        );
+        window.click(first, cx);
+        window.render_frame(cx);
+        assert_ne!(
+            window.find(first).selected(),
+            Some(true),
+            "a click selected a row of {target} while it folds"
+        );
         return;
     }
     if phase == "back" || phase == "returned" {
