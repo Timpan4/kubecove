@@ -43,6 +43,35 @@
       ]
     },
     {
+      "id": "control-motion.segment-turns-back",
+      "title": "A segmented control's pill turns back from where it is when the first option is chosen again mid-slide",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "coverageCheck", "check": "motion:segment:start" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:segment:midway" },
+        { "action": "coverageCheck", "check": "motion:segment:back" },
+        { "action": "advanceClock", "ms": 150 },
+        { "action": "coverageCheck", "check": "motion:segment:returned" }
+      ]
+    },
+    {
+      "id": "control-motion.tab-turns-back",
+      "title": "The detail tabs' underline turns back from where it is when the first tab is chosen again mid-slide",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "expectDetail", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "coverageCheck", "check": "motion:tab:start" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:tab:midway" },
+        { "action": "coverageCheck", "check": "motion:tab:back" },
+        { "action": "advanceClock", "ms": 150 },
+        { "action": "coverageCheck", "check": "motion:tab:returned" }
+      ]
+    },
+    {
       "id": "control-motion.row-hover",
       "title": "A resource row fades to its hover background over 150 ms",
       "steps": [

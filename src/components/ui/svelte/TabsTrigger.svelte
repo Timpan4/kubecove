@@ -4,10 +4,16 @@
 
 	const LINE_PROPERTIES = ["--tabs-line-x", "--tabs-line-y", "--tabs-line-w", "--tabs-line-h", "--tabs-line-duration"];
 
+	/** The numbers of a computed `translate` or `scale`, which reads `none` where nothing is set. */
+	function numbers(value: string): number[] {
+		return value === "none" ? [] : value.split(" ").map(Number.parseFloat);
+	}
+
 	/**
 	 * Carries the list's line to `trigger`, which became active. Its own line starts where the last
-	 * active trigger's was and moves home over the `after:` transition. The offset is set with the
-	 * transition held at 0s and released after a style flush, so only the way home animates.
+	 * active trigger's is shown, which is on its way home if that slide still runs, and moves home
+	 * over the `after:` transition. The offset is set with the transition held at 0s and released
+	 * after a style flush, so only the way home animates.
 	 */
 	function carryLine(trigger: HTMLElement) {
 		const list = trigger.closest("[data-slot='tabs-list']");
@@ -19,9 +25,12 @@
 		if (to.width === 0 || to.height === 0) return;
 		// The line spans the trigger's width under it, or its height beside it in a vertical list.
 		const vertical = list.getAttribute("data-orientation") === "vertical";
+		const shown = getComputedStyle(last, "::after");
+		const [x = 0, y = 0] = numbers(shown.translate);
+		const [w = 1, h = w] = numbers(shown.scale);
 		const offset = vertical
-			? [from.right - to.right, from.top - to.top, 1, from.height / to.height]
-			: [from.left - to.left, from.bottom - to.bottom, from.width / to.width, 1];
+			? [from.right - to.right + x, from.top - to.top + y, 1, (from.height * h) / to.height]
+			: [from.left - to.left + x, from.bottom - to.bottom + y, (from.width * w) / to.width, 1];
 		trigger.style.setProperty("--tabs-line-x", `${offset[0]}px`);
 		trigger.style.setProperty("--tabs-line-y", `${offset[1]}px`);
 		trigger.style.setProperty("--tabs-line-w", String(offset[2]));

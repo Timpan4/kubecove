@@ -2,6 +2,8 @@
 //! `control_motion::DURATION` instead of jumping. `start` changes the control's state and
 //! expects the transition at one end; `midway` expects it between the ends after
 //! the scenario advanced the clock by half the duration; `settled` expects it over.
+//! After `midway`, `back` chooses the first state again and expects the indicator
+//! where it was shown, and `returned` expects it at rest.
 //! Mirrors `e2e/parity/web-control-motion.ts`.
 use super::*;
 use gpui_kit::ElementId;
@@ -47,6 +49,43 @@ pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check
             thumb: thumb(window, target),
             paint: paint(window, cx, target).into_iter().collect(),
         }));
+        return;
+    }
+    if phase == "back" || phase == "returned" {
+        if phase == "back" {
+            match target {
+                "segment" => window.click("gitops-view:Cards", cx),
+                "tab" => window.click("show-details", cx),
+                other => panic!("{other} has no first state to turn back to"),
+            }
+            window.render_frame(cx);
+        }
+        let moving = transition(window, cx, target);
+        let progress = Moving::progress(&moving, cx);
+        let painted = paint(window, cx, target).expect("the indicator paints quads");
+        SEEN.with_borrow(|seen| {
+            let seen = seen.as_ref().expect("a start check ran first");
+            let [start, midway] = &seen.paint[..] else {
+                panic!("{check} needs a start and a midway check first");
+            };
+            // The quads only one phase painted are the indicator in that phase:
+            // on its way at `midway` and at rest at `start`.
+            let (shown, other, place) = if phase == "back" {
+                assert_eq!(progress, Some(0.), "{target} did not turn back in place");
+                (midway, start, "where it was shown")
+            } else {
+                assert_eq!(progress, None, "{target} still moves after its duration");
+                (start, midway, "at rest")
+            };
+            let indicator: Vec<_> = shown.iter().filter(|quad| !other.contains(quad)).collect();
+            assert!(!indicator.is_empty(), "{target} paints no indicator");
+            for quad in indicator {
+                assert!(
+                    painted.contains(quad),
+                    "{target} is not {place} at {phase}: {quad} is missing from {painted:?}"
+                );
+            }
+        });
         return;
     }
     let moving = transition(window, cx, target);
