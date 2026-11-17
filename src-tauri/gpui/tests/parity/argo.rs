@@ -143,7 +143,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                     // Profiles are keyed by the open workspace: its saved id, or
                     // `native-session` before the startup workspace is saved.
                     let target = format!(
-                        "mock-dev:kubeconfigSource=browser-mock:{}",
+                        "mock-dev:kubeconfigSource=browser-mock:externalHttps:{}",
                         string(step, "url")
                     );
                     let id = ["1", "native-session"]
