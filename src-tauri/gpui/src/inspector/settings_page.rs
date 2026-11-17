@@ -2,9 +2,10 @@
 //! the native host cannot back render disabled with the reason as their
 //! tooltip. The Kubeconfig category lives in `settings_kubeconfig.rs`.
 
-use super::controls::{Variant, button};
+use super::controls::{Variant, button, inert_button};
 use super::{Inspector, Page};
 use crate::backend::KubeconfigSourcesSummary;
+use crate::control_motion;
 use crate::settings::{self, Category, Control, Row};
 use crate::targets::TestSupportExt;
 use crate::theme::{HEADING, Tokens};
@@ -330,8 +331,45 @@ fn setting_row(row: &'static Row, control: AnyElement) -> Observed {
     settings_row(row.title, row.description.to_owned(), control)
 }
 
-/// `Switch`: `h-6 w-10 rounded-full border p-0.5` with a `size-4` thumb.
+/// `Switch`: `h-6 w-10 rounded-full border p-0.5` with a `size-4` thumb. The
+/// track's `transition-colors` and the thumb's `transition-transform` run over
+/// `control_motion::DURATION`.
 pub(super) fn switch(label: &'static str, checked: bool) -> Observed {
+    // The track's border and background, drawn over its border box.
+    let track = control_motion::eased(
+        SharedString::from(format!("switch-track:{label}")),
+        checked,
+        |on| {
+            div()
+                .absolute()
+                .top(px(-1.))
+                .right(px(-1.))
+                .bottom(px(-1.))
+                .left(px(-1.))
+                .rounded_full()
+                .border_1()
+                .border_color(control_motion::mix(Tokens::input(), Tokens::primary(), on))
+                .bg(control_motion::mix(
+                    Tokens::input().opacity(0.4),
+                    Tokens::primary(),
+                    on,
+                ))
+        },
+    );
+    let thumb = control_motion::eased(
+        SharedString::from(format!("switch-thumb:{label}")),
+        checked,
+        move |on| {
+            div()
+                .id(SharedString::from(format!("setting-thumb:{label}")))
+                .test_support()
+                .size(px(16.))
+                .rounded_full()
+                .bg(Tokens::background())
+                // `data-checked:translate-x-4`.
+                .ml(px(16. * on))
+        },
+    );
     div()
         .id(SharedString::from(format!("setting:{label}")))
         .test_support()
@@ -349,24 +387,10 @@ pub(super) fn switch(label: &'static str, checked: bool) -> Observed {
         .p(px(2.))
         .rounded_full()
         .border_1()
-        .border_color(if checked {
-            Tokens::primary()
-        } else {
-            Tokens::input()
-        })
-        .bg(if checked {
-            Tokens::primary()
-        } else {
-            Tokens::input().opacity(0.4)
-        })
+        .border_color(gpui_kit::transparent_black())
         .cursor_pointer()
-        .child(
-            div()
-                .size(px(16.))
-                .rounded_full()
-                .bg(Tokens::background())
-                .when(checked, |thumb| thumb.ml(px(16.))),
-        )
+        .child(track)
+        .child(thumb)
 }
 
 /// A control the native host cannot back: `disabled:opacity-50` with the reason.
@@ -416,7 +440,8 @@ fn control(row: &'static Row) -> AnyElement {
                     }))
             }))
             .into_any_element(),
-        Control::Button(label) => button(Variant::Outline, 24., false)
+        // `unavailable_control` dims it; a disabled `button` would dim it twice.
+        Control::Button(label) => inert_button(Variant::Outline, 24.)
             .child(label)
             .into_any_element(),
         Control::Section => return div().into_any_element(),

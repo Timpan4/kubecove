@@ -3,7 +3,8 @@
 
 use crate::theme::{HEADING, Palette, SANS, SM_FONT_SIZE, Tokens, XS_FONT_SIZE};
 use gpui_kit::{
-    Div, FontWeight, Hsla, Pixels, SharedString, Styled, Svg, div, prelude::*, px, svg,
+    Div, FontWeight, Hsla, Pixels, SharedString, Styled, Svg, Transformation, div, prelude::*, px,
+    radians, svg,
 };
 
 /// Text at a web font size (px) and line height (px).
@@ -57,6 +58,22 @@ pub fn icon(name: &str, size: f32, color: Hsla) -> Svg {
         .size(px(size))
         .flex_none()
         .text_color(color)
+}
+
+/// A branch's chevron at `open` of the way from right to down, as
+/// `SidebarTreeNode.svelte` turns it: `transition-transform` to `rotate-90`.
+/// Both ends use their own icon, so a still chevron is drawn as before.
+pub fn chevron(size: f32, color: Hsla, open: f32) -> Svg {
+    if open >= 1. {
+        return icon("chevron-down", size, color);
+    }
+    let right = icon("chevron-right", size, color);
+    if open <= 0. {
+        return right;
+    }
+    right.with_transformation(Transformation::rotate(radians(
+        open * std::f32::consts::FRAC_PI_2,
+    )))
 }
 
 /// `Card`: `rounded-lg border bg-surface-1`.

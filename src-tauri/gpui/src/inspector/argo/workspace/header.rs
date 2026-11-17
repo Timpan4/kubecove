@@ -107,11 +107,11 @@ impl Inspector {
                     .test_support()
                     .on_click(cx.listener(|this, _, _, cx| this.load_application_workspace(cx))),
             )
-            .child(surface::disabled(
-                controls::button(Variant::Default, 24., false)
+            .child(
+                controls::button(Variant::Default, 24., true)
                     .child(ui::icon("rotate-ccw", 12., Tokens::foreground()))
                     .child("Sync"),
-            ))
+            )
             .child(
                 dui::sm_button(Variant::Ghost, "Dashboard")
                     .child(ui::icon("panel-right-open", 12., Tokens::foreground()))

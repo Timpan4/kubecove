@@ -326,13 +326,18 @@ impl Inspector {
                         .child(ui::caps("Argo CD resources", 10.)),
                 )
                 .children(FILTERS.iter().enumerate().map(|(index, label)| {
-                    controls::button(Variant::Outline, 28., false)
+                    let active = state.filter == Some(index);
+                    controls::button_frame(Variant::Outline, 28., false)
                         .id(SharedString::from(format!("argo-filter:{label}")))
                         .test_support()
-                        .when(state.filter == Some(index), |button| {
-                            button
-                                .bg(Tokens::primary().opacity(0.1))
-                                .border_color(Tokens::primary().opacity(0.5))
+                        .when(active, |button| {
+                            button.border_color(Tokens::primary().opacity(0.5))
+                        })
+                        .child(if active {
+                            Variant::Outline
+                                .fill_over(Tokens::primary().opacity(0.1), controls::RADIUS)
+                        } else {
+                            Variant::Outline.fill(controls::RADIUS)
                         })
                         .child(div().size(px(6.)).rounded_full().bg(match index {
                             1 | 4 => Palette::amber400(),

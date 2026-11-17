@@ -139,6 +139,14 @@ impl Inspector {
                     .px(px(12.))
                     .border_b_1()
                     .border_color(Tokens::border())
+                    // `TableRow.svelte`: `transition-colors hover:bg-muted/50`.
+                    .child(
+                        crate::control_motion::hover_fill(
+                            gpui_kit::transparent_black(),
+                            Tokens::muted().opacity(0.5),
+                        )
+                        .under_border(0., 0., 1., 0.),
+                    )
                     .child(
                         ui::xs(namespace.name.clone())
                             .flex_1()
