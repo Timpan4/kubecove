@@ -4,11 +4,15 @@
 //! - a control mounts mid-transition instead of settled;
 //! - an easing other than Tailwind's default, such as linear;
 //! - a control that still asks for frames after its duration;
-//! - reduced motion that still passes through the transition.
+//! - reduced motion that still passes through the transition;
+//! - a row that scrolls away from a still pointer fades, which leaves a trail of
+//!   fading rows behind the pointer while the list scrolls.
 
 use super::{Controlled, open};
-use gpui_kit::test::TestWindowExt;
-use gpui_kit::{AppContext, ElementId, TestAppContext};
+use gpui_kit::test::{TestEventExt, TestWindowExt};
+use gpui_kit::{
+    AppContext, ElementId, InputEvent, ScrollDelta, ScrollEvent, TestAppContext, point, px,
+};
 use kubecove_gpui::control_motion::{DURATION, Moving};
 use std::sync::Arc;
 
@@ -65,4 +69,57 @@ fn a_switch_follows_the_web_curve_and_reduced_motion_skips_it(cx: &mut TestAppCo
     cx.update(|cx| cx.set_reduce_motion(true));
     click(cx, handle, SWITCH);
     assert_eq!(thumb(cx, handle), (off, None));
+}
+
+#[gpui_kit::test]
+fn a_row_scrolled_away_from_a_still_pointer_does_not_fade(cx: &mut TestAppContext) {
+    const ROW: &str = "nav:Workloads";
+    let handle = open(cx, Arc::new(Controlled::default()));
+    // Enough open branches for the tree to scroll.
+    for toggle in [
+        "tree-toggle:Workloads",
+        "tree-toggle:Network",
+        "tree-toggle:Config",
+        "tree-toggle:Storage",
+    ] {
+        click(cx, handle, toggle);
+    }
+    let row = ElementId::Name(ROW.into());
+    let frame = |cx: &mut TestAppContext| {
+        cx.update_window(handle, |_, window, cx| {
+            window.render_frame(cx);
+            (
+                window.find(ROW).bounds().center(),
+                Moving::progress(&row, cx),
+            )
+        })
+        .unwrap()
+    };
+
+    // The pointer's own move onto the row starts its fade.
+    let (pointer, _) = frame(cx);
+    cx.update_window(handle, |_, window, cx| {
+        window.pointer_move(pointer, None, cx)
+    })
+    .unwrap();
+    assert_eq!(frame(cx), (pointer, Some(0.)));
+    cx.background_executor.advance_clock(DURATION);
+    assert_eq!(frame(cx), (pointer, None));
+
+    // One row height, `sidebar_tree::ROW_HEIGHT`.
+    cx.update_window(handle, |_, window, cx| {
+        window.dispatch_event(
+            ScrollEvent {
+                position: pointer,
+                delta: ScrollDelta::Pixels(point(px(0.), px(-26.))),
+                ..Default::default()
+            }
+            .to_platform_input(),
+            cx,
+        );
+    })
+    .unwrap();
+    let (scrolled, progress) = frame(cx);
+    assert_ne!(scrolled, pointer, "the tree did not scroll");
+    assert_eq!(progress, None, "the row left behind fades");
 }

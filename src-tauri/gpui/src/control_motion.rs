@@ -11,7 +11,7 @@ use gpui_kit::base::{Easing, MotionStatus, Transition, transition_with_status};
 use gpui_kit::{
     AnyElement, App, BorderStyle, Bounds, BoxShadow, Corners, DispatchPhase, Element, ElementId,
     Global, GlobalElementId, Hitbox, HitboxBehavior, Hsla, InspectorElementId, IntoElement,
-    LayoutId, MouseMoveEvent, Pixels, Position, Rgba, Style, Window, px, quad,
+    LayoutId, MouseMoveEvent, Pixels, Point, Position, Rgba, Style, Window, px, quad,
 };
 use std::collections::HashMap;
 use std::time::Duration;
@@ -143,13 +143,21 @@ impl Moving {
 /// The progress of `on`, from 0 to 1, of the transition `id` under the current
 /// element. `gpui_kit`'s transition keeps the state: it starts settled, restarts
 /// from the progress shown as CSS does, reads the executor clock, asks for the
-/// next frame while it moves and jumps under reduced motion. Tests read the
-/// progress under `name`.
-fn advance(id: ElementId, name: &ElementId, on: bool, window: &mut Window, cx: &mut App) -> f32 {
-    let finishing = cx
-        .try_global::<Moving>()
-        .is_some_and(|moving| moving.finishing);
-    let timing = Transition::new(if finishing { Duration::ZERO } else { DURATION }).easing(EASING);
+/// next frame while it moves and jumps under reduced motion. `jump` ends it in
+/// this frame. Tests read the progress under `name`.
+fn advance(
+    id: ElementId,
+    name: &ElementId,
+    on: bool,
+    jump: bool,
+    window: &mut Window,
+    cx: &mut App,
+) -> f32 {
+    let jump = jump
+        || cx
+            .try_global::<Moving>()
+            .is_some_and(|moving| moving.finishing);
+    let timing = Transition::new(if jump { Duration::ZERO } else { DURATION }).easing(EASING);
     let target = if on { 1. } else { 0. };
     let moved = transition_with_status(id, target, timing, window, cx);
     if matches!(moved.status, MotionStatus::Delayed | MotionStatus::Running) {
@@ -207,7 +215,7 @@ impl Element for Eased {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, AnyElement) {
-        let value = advance(self.id.clone(), &self.id, self.on, window, cx);
+        let value = advance(self.id.clone(), &self.id, self.on, false, window, cx);
         let mut element = self.build.take().expect("laid out once")(value);
         (element.request_layout(window, cx), element)
     }
@@ -259,6 +267,12 @@ pub struct HoverFill {
     /// bottom, left.
     outset: [Pixels; 4],
     shadow: bool,
+}
+
+/// What a fill's last paint saw: where the pointer was and whether it hovered.
+struct Seen {
+    pointer: Point<Pixels>,
+    hovered: bool,
 }
 
 impl HoverFill {
@@ -356,7 +370,17 @@ impl Element for HoverFill {
             .or(global_id.last())
             .cloned()
             .expect("the fill's id is in its path");
-        let value = advance("fade".into(), &name, hovered, window, cx);
+        // Content that moves under a still pointer, as a scrolled row does,
+        // changes color at once. Only the pointer's own move starts a fade, so
+        // scrolling leaves no fading rows behind the pointer. Chromium shows
+        // none either: it does not restyle hover while a page scrolls.
+        let pointer = window.mouse_position();
+        let carried = window.with_element_state(global_id, |seen: Option<Seen>, _| {
+            let carried =
+                seen.is_some_and(|seen| seen.pointer == pointer && seen.hovered != hovered);
+            (carried, Seen { pointer, hovered })
+        });
+        let value = advance("fade".into(), &name, hovered, carried, window, cx);
         let radii = Corners::all(self.radius).clamp_radii_for_quad_size(bounds.size);
         if self.shadow {
             window.paint_drop_shadows(bounds, radii, &shadow_sm(value));
