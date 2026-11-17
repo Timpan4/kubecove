@@ -57,6 +57,12 @@
 		return () => observer.disconnect();
 	});
 
+	// New or reordered options can move the active one without resizing the group, so the hidden
+	// pill is measured again and the next slide starts from the active option.
+	$effect(() => {
+		if (options.length > 0 && !sliding) place();
+	});
+
 	/**
 	 * Ends the slide once none of the pill's transitions is left. A choice made mid-slide cancels
 	 * the running transitions and starts others, which still need the transition class.
