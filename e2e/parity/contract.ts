@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { integrationStep } from "./contract-integrations";
 import { resourceTableStep } from "./contract-resources";
+import { overlayMotionStep } from "./contract-overlay-motion";
 import { overviewStep } from "./contract-overview";
 import { sessionStep } from "./contract-sessions";
 import { DETAIL_RESIZE_KEYS, LOG_LEVELS, MAP_CONTROLS, MAP_KEYS, PANEL_CONTROLS, RBAC_CATEGORIES, RBAC_RISKS, SORT_COLUMNS, type Step, TABLE_COLUMNS, VERDICTS } from "./contract-steps";
@@ -90,6 +91,7 @@ export const ACTIONS = [
     "panelControl", "expectPanelControl", "skipGraph", "mapKey", "expectMapFocus", "expectNoMapFocus", "expectMapNodeInView", "panMap", "clickMapControl", "expectMapControlFocus", "expectMapZoom", "resizeDetail", "expectDetailResize",
 	"expectYamlDiagnostic", "expectNoYamlDiagnostic", "expectYamlApplyDescription", "expectNoYamlApplyDescription", "expectActionLoadError", "expectNoActionLoadError", "retryActionPermission", "expectActionLock",
 	"expectRowContexts", "filterContexts", "expectResourceSummary", "selectMapContext", "expectMapContext", "mapContextKey", "expectMapContextOptions", "terminalKey",
+	"holdOverlayMotion", "advanceOverlayMotion", "expectOverlayOpacity", "expectNoOverlay",
 ] as const satisfies readonly Step["action"][];
 type Missing = Exclude<Step["action"], (typeof ACTIONS)[number]>;
 const allActionsListed: Missing extends never ? true : Missing = true;
@@ -97,7 +99,7 @@ void allActionsListed;
 
 function step<Value>(value: Value): Step {
 	const item = object(value);
-	const areaStep = integrationStep(item) ?? sessionStep(item) ?? resourceTableStep(item) ?? yamlEditorStep(item) ?? overviewStep(item);
+	const areaStep = integrationStep(item) ?? sessionStep(item) ?? resourceTableStep(item) ?? yamlEditorStep(item) ?? overviewStep(item) ?? overlayMotionStep(item);
 	if (areaStep) return areaStep;
 	switch (item.action) {
         case "sidebarToggle": case "sidebarSelect": return { action: item.action, path: strings(item.path, false) };

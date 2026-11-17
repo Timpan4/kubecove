@@ -57,6 +57,8 @@ mod map_panels;
 mod mcp;
 #[path = "parity/multi_context.rs"]
 mod multi_context;
+#[path = "parity/overlay_motion.rs"]
+mod overlay_motion;
 #[path = "parity/navigation.rs"]
 mod navigation;
 #[path = "parity/overview.rs"]
@@ -233,6 +235,7 @@ fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) {
         || topology_metrics::apply(window, cx, step)
         || resource_table::act(window, cx, step)
         || multi_context::act(window, cx, step)
+        || overlay_motion::act(window, cx, step)
         || detail::act(window, cx, step)
         || detail_status::act(window, cx, step)
         || delete_review::act(window, cx, step)

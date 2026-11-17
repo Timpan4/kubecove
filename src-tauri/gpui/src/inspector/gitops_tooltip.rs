@@ -1,8 +1,8 @@
 //! Source and revision disclosure from `surfaceTooltips.ts`.
 
 use super::Inspector;
+use super::overlay_motion::Tooltip;
 use crate::gitops_surface::Selection;
-use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{ClipboardItem, Context, Div, SharedString, Stateful, prelude::*};
 
 pub(super) fn source(selection: Selection) -> String {

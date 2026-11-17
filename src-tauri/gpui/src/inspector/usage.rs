@@ -1,8 +1,8 @@
 //! `AppUsageFooter.svelte`: h-7 border-t bg-sidebar px-4, refreshed every 2s.
-use super::Inspector;
+use super::overlay_motion::Tooltip;
+use super::{Inspector, overlay_motion::Overlay};
 use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
-use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{AnyElement, Context, Div, SharedString, Task, div, prelude::*, px};
 use kubecove_lib::models::{AppUsageMemory, AppUsageMetrics, AppUsageMetricsBreakdown};
 use std::time::Duration;
@@ -194,39 +194,46 @@ impl Inspector {
                             cx.notify();
                         })),
                 )
-                .when(self.usage.open, |footer| {
-                    footer.child(
-                        div()
-                            .absolute()
-                            .bottom(px(28.))
-                            .right(px(16.))
-                            .w(px(640.))
-                            .max_h(px(448.))
-                            .rounded(px(8.))
-                            .border_1()
-                            .border_color(Tokens::border())
-                            .bg(Tokens::card())
-                            .p(px(8.))
-                            .flex()
-                            .flex_col()
-                            .child(ui::semibold(ui::xs("App process tree")).mb(px(8.)))
-                            // `AppUsageFooter.svelte` scrolls the tree inside the popover.
-                            .child(
+                .when_some(
+                    self.overlay_motion.sample(Overlay::Usage, self.usage.open),
+                    |footer, shown| {
+                        footer.child(
+                            shown.surface(
                                 div()
-                                    .id("usage-process-tree")
-                                    .flex_1()
-                                    .min_h_0()
-                                    .overflow_y_scroll()
-                                    .children(
-                                        self.usage
-                                            .sample
-                                            .as_ref()
-                                            .and_then(|r| r.as_ref().ok())
-                                            .map(|sample| process_rows(&sample.breakdown, 0)),
+                                    .absolute()
+                                    .bottom(px(28.))
+                                    .right(px(16.))
+                                    .w(px(640.))
+                                    .max_h(px(448.))
+                                    .rounded(px(8.))
+                                    .border_1()
+                                    .border_color(Tokens::border())
+                                    .bg(Tokens::card())
+                                    .p(px(8.))
+                                    .flex()
+                                    .flex_col()
+                                    .child(ui::semibold(ui::xs("App process tree")).mb(px(8.)))
+                                    // `AppUsageFooter.svelte` scrolls the tree inside the popover.
+                                    .child(
+                                        div()
+                                            .id("usage-process-tree")
+                                            .flex_1()
+                                            .min_h_0()
+                                            .overflow_y_scroll()
+                                            .children(
+                                                self.usage
+                                                    .sample
+                                                    .as_ref()
+                                                    .and_then(|r| r.as_ref().ok())
+                                                    .map(|sample| {
+                                                        process_rows(&sample.breakdown, 0)
+                                                    }),
+                                            ),
                                     ),
                             ),
-                    )
-                })
+                        )
+                    },
+                )
                 .into_any_element(),
         )
     }

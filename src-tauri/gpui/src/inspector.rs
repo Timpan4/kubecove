@@ -53,6 +53,7 @@ mod map_context;
 mod metrics;
 mod namespace_list;
 mod navigation_state;
+mod overlay_motion;
 mod overview;
 mod overview_findings;
 mod overview_saved;
@@ -159,6 +160,7 @@ pub struct Inspector {
     timings: crate::diagnostics::Timings,
     presentation: presentation::Presentation,
     loading: loading::LoadingDelays,
+    overlay_motion: overlay_motion::OverlayMotion,
     foreground: foreground_bar::ForegroundBar,
     persisted: crate::preferences::Document,
     persistence_error: Option<String>,
@@ -298,6 +300,7 @@ impl Inspector {
             timings: Default::default(),
             presentation: Default::default(),
             loading: Default::default(),
+            overlay_motion: Default::default(),
             foreground: Default::default(),
             backend,
             persisted: Default::default(),
@@ -555,6 +558,8 @@ impl Render for Inspector {
         let started = std::time::Instant::now();
         self.loading
             .begin_frame(cx.background_executor().now(), cx.reduce_motion());
+        self.overlay_motion
+            .begin_frame(cx.background_executor().now(), cx.reduce_motion());
         self.row_changes.begin_frame();
         crate::control_motion::Moving::begin_frame(cx);
         self.sync_argo_scope(window, cx);
@@ -586,8 +591,7 @@ impl Render for Inspector {
                     .into_any_element(),
             )
         });
-        let drawer = (workspace && compact && self.navigation_open)
-            .then(|| self.navigation_drawer(window, cx));
+        let drawer = self.navigation_drawer(workspace && compact, window, cx);
         let probe = self.presentation_frame(started);
         let foreground_bar = self.foreground_bar(window, cx);
         let view = div()
@@ -699,6 +703,7 @@ impl Render for Inspector {
         if self.row_changes.end_frame() || fading {
             cx.on_next_frame(window, |_, _, cx| cx.notify());
         }
+        self.end_overlay_motion_frame(window, cx);
         self.record_load_frames(window, started.elapsed());
         view
     }

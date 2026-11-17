@@ -3,6 +3,7 @@
 //! tooltip. The Kubeconfig category lives in `settings_kubeconfig.rs`.
 
 use super::controls::{Variant, button, inert_button};
+use super::overlay_motion::Tooltip;
 use super::{Inspector, Page};
 use crate::backend::KubeconfigSourcesSummary;
 use crate::control_motion;
@@ -11,7 +12,6 @@ use crate::targets::TestSupportExt;
 use crate::theme::{HEADING, Tokens};
 use crate::ui;
 use gpui_kit::component::input::{Input, InputEvent, InputState, TextareaState};
-use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
     AnyElement, Context, Div, Entity, FontWeight, SharedString, Stateful, Subscription, Task,
     Window, div, prelude::*, px,

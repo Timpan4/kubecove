@@ -119,11 +119,15 @@ pub(super) fn run_scenario(
     cx.run_until_parked();
     // After `controlClock` the scenario owns the clock, as the web driver's paused page clock does.
     let mut scenario_clock = false;
+    // After `holdOverlayMotion` overlay runs move only with `advanceOverlayMotion`. A paused web
+    // clock does not hold them, because CSS animations do not read it.
+    let mut held_overlays = false;
     for (index, step) in scenario["steps"].as_array().unwrap().iter().enumerate() {
         if index < startup_steps {
             continue;
         }
         scenario_clock |= step["action"] == "controlClock";
+        held_overlays |= step["action"] == "holdOverlayMotion";
         if (step["action"] == "expectArgoText"
             && matches!(
                 step["text"].as_str(),
@@ -423,7 +427,13 @@ pub(super) fn run_scenario(
         cx.update_window(handle, |_, window, cx| window.render_frame(cx))
             .unwrap();
         cx.run_until_parked();
-        if step["action"] == "advanceClock" {
+        if !held_overlays {
+            check_in_window(cx, handle, overlay_motion::settle);
+        }
+        if matches!(
+            string(step, "action"),
+            "advanceClock" | "advanceOverlayMotion"
+        ) {
             // The tracker's tick updates the window, so advance outside the window update below.
             cx.background_executor
                 .advance_clock(std::time::Duration::from_millis(number(step, "ms")));
@@ -456,6 +466,9 @@ pub(super) fn run_scenario(
         cx.run_until_parked();
         check_in_window(cx, handle, |window, cx| {
             window.render_frame(cx);
+            if !held_overlays {
+                overlay_motion::settle(window, cx);
+            }
             finish(window, cx, step);
         });
         cx.run_until_parked();

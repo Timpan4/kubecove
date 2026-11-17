@@ -4,6 +4,7 @@
 
 use super::Inspector;
 use super::controls::{Variant, button};
+use super::overlay_motion::Overlay;
 use super::request::Fetch;
 use crate::targets::TestSupportExt;
 use crate::theme::{Palette, Tokens};
@@ -404,8 +405,11 @@ impl Inspector {
         if self.launcher.open {
             overlays.push(self.launcher_view(window, cx).into_any_element());
         }
-        if self.palette.open {
-            overlays.push(self.palette_overlay(cx));
+        if let Some(shown) = self
+            .overlay_motion
+            .sample(Overlay::Palette, self.palette.open)
+        {
+            overlays.push(self.palette_overlay(shown, cx));
         }
         overlays
     }

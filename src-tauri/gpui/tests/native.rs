@@ -33,6 +33,8 @@ mod map_live;
 mod map_motion;
 #[path = "native/motion.rs"]
 mod motion;
+#[path = "native/overlay_motion.rs"]
+mod overlay_motion;
 #[path = "native/overview.rs"]
 mod overview;
 #[path = "native/page_reads.rs"]

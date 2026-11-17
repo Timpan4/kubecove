@@ -1,7 +1,9 @@
 //! `ResourceLiveStatusMenu.svelte`: the live-updates control and its popover,
 //! and ResourceBrowser.svelte's stale-data notice and expandable refresh error.
 use super::{
-    Inspector, Page, surface,
+    Inspector, Page,
+    overlay_motion::Overlay,
+    surface,
     watch_status::{Connection, LiveStatus, WatchLink},
 };
 use crate::targets::TestSupportExt;
@@ -159,14 +161,19 @@ impl Inspector {
                 }),
             );
         let mut control = div().relative().child(trigger);
-        if open {
-            control = control.child(deferred(self.live_menu(status, cx)).with_priority(1));
+        if let Some(shown) = self.overlay_motion.sample(Overlay::LiveStatus, open) {
+            control =
+                control.child(deferred(shown.surface(self.live_menu(status, cx))).with_priority(1));
         }
         control
     }
 
     /// `PopoverContent align="end" class="w-72 space-y-3 p-3"`, 4 px below the trigger.
-    fn live_menu(&self, status: LiveStatus, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn live_menu(
+        &self,
+        status: LiveStatus,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + Styled + use<> {
         let details = self.live_details();
         let amber = |text: String| ui::xs(text).text_color(Palette::amber300());
         let alert = |id: &'static str, text: String| {

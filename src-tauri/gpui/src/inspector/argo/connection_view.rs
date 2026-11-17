@@ -53,11 +53,21 @@ impl Inspector {
         cx.defer_in(window, move |_, window, cx| focus.focus(window, cx));
     }
     pub(super) fn argo_connection_panel(&self, cx: &mut Context<Self>) -> Div {
-        if self.argo.connections.dialog {
+        let state = &self.argo.connections;
+        if state.dialog {
             return div();
         }
-        self.argo_connection_content(cx)
+        super::panels::panel().flex().flex_col().gap(px(8.))
+            .child(gpui_kit::component::select::Select::new(&state.picker).id("argo-inspection-preference").w_full())
+            .child(div().flex().flex_wrap().items_center().gap(px(8.))
+                .child(ui::muted(ui::xs(if self.argo_connection_id().is_some() {
+                    "Connected Argo CD authorization is evaluated during operation preflight."
+                } else { "Argo RBAC is not evaluated. Exact manifests require a connected profile." })).flex_1().min_w_0())
+                .child(button(Variant::Outline, 24., false).id("argo-connect-open").test_support().child(if self.argo_connection_id().is_some() { "Manage connection" } else { "Connect Argo CD" })
+                    .on_click(cx.listener(|this, _, window, cx| this.open_argo_connection(window, cx)))))
     }
+    /// The dialog's form. A closed dialog draws it until its exit ends, so it
+    /// does not depend on the dialog being open.
     pub(super) fn argo_connection_content(&self, cx: &mut Context<Self>) -> Div {
         let state = &self.argo.connections;
         let choices = state.choices();
@@ -73,16 +83,6 @@ impl Inspector {
                 })
                 .on_click(cx.listener(|this, _, window, cx| this.open_argo_connection(window, cx))),
         );
-        if !state.dialog {
-            return super::panels::panel().flex().flex_col().gap(px(8.))
-                .child(gpui_kit::component::select::Select::new(&state.picker).id("argo-inspection-preference").w_full())
-                .child(div().flex().flex_wrap().items_center().gap(px(8.))
-                    .child(ui::muted(ui::xs(if self.argo_connection_id().is_some() {
-                        "Connected Argo CD authorization is evaluated during operation preflight."
-                    } else { "Argo RBAC is not evaluated. Exact manifests require a connected profile." })).flex_1().min_w_0())
-                    .child(button(Variant::Outline, 24., false).id("argo-connect-open").test_support().child(if self.argo_connection_id().is_some() { "Manage connection" } else { "Connect Argo CD" })
-                        .on_click(cx.listener(|this, _, window, cx| this.open_argo_connection(window, cx)))));
-        }
         panel = panel.child(ui::sm("Argo CD connection"));
         for status in &state.profiles {
             let Some(p) = status

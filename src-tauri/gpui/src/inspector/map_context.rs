@@ -10,7 +10,7 @@
 //! Enter or Space chooses the highlighted context, and Escape closes them
 //! without a change. Tab and Shift+Tab close them and move focus on.
 
-use super::Inspector;
+use super::{Inspector, overlay_motion::Overlay};
 use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
 use gpui_kit::{
@@ -127,52 +127,55 @@ impl Inspector {
         let current = self.map_context();
         let open = self.map.context_open;
         let highlight = self.map.context_highlight;
-        let popup = open.then(|| {
+        let shown = self.overlay_motion.sample(Overlay::MapContext, open);
+        let popup = shown.map(|shown| {
             deferred(
-                div()
-                    .id("map-context-options")
-                    .test_support()
-                    .role(gpui_kit::Role::ListBox)
-                    .aria_label("Map context")
-                    .occlude()
-                    .absolute()
-                    .top(px(34.))
-                    .right_0()
-                    .min_w(px(200.))
-                    .p(px(4.))
-                    .flex()
-                    .flex_col()
-                    .rounded(px(8.))
-                    .border_1()
-                    .border_color(Tokens::border())
-                    .bg(Tokens::surface2())
-                    .shadow_lg()
-                    .children(contexts.into_iter().enumerate().map(|(index, context)| {
-                        let checked = context == current;
-                        div()
-                            .id(SharedString::from(format!("map-context-option:{context}")))
-                            .test_support()
-                            .role(gpui_kit::Role::ListBoxOption)
-                            .aria_label(context.clone())
-                            .aria_selected(checked)
-                            .h(px(32.))
-                            .px(px(8.))
-                            .flex()
-                            .items_center()
-                            .justify_between()
-                            .gap(px(8.))
-                            .rounded(px(6.))
-                            .cursor_pointer()
-                            .hover(|row| row.bg(Tokens::muted()))
-                            .when(highlight == Some(index), |row| row.bg(Tokens::muted()))
-                            .child(ui::xs(context.clone()))
-                            .when(checked, |row| {
-                                row.child(ui::icon("check", 14., Tokens::foreground()))
-                            })
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.choose_map_context(context.clone(), cx);
-                            }))
-                    })),
+                shown.surface(
+                    div()
+                        .id("map-context-options")
+                        .test_support()
+                        .role(gpui_kit::Role::ListBox)
+                        .aria_label("Map context")
+                        .occlude()
+                        .absolute()
+                        .top(px(34.))
+                        .right_0()
+                        .min_w(px(200.))
+                        .p(px(4.))
+                        .flex()
+                        .flex_col()
+                        .rounded(px(8.))
+                        .border_1()
+                        .border_color(Tokens::border())
+                        .bg(Tokens::surface2())
+                        .shadow_lg()
+                        .children(contexts.into_iter().enumerate().map(|(index, context)| {
+                            let checked = context == current;
+                            div()
+                                .id(SharedString::from(format!("map-context-option:{context}")))
+                                .test_support()
+                                .role(gpui_kit::Role::ListBoxOption)
+                                .aria_label(context.clone())
+                                .aria_selected(checked)
+                                .h(px(32.))
+                                .px(px(8.))
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .gap(px(8.))
+                                .rounded(px(6.))
+                                .cursor_pointer()
+                                .hover(|row| row.bg(Tokens::muted()))
+                                .when(highlight == Some(index), |row| row.bg(Tokens::muted()))
+                                .child(ui::xs(context.clone()))
+                                .when(checked, |row| {
+                                    row.child(ui::icon("check", 14., Tokens::foreground()))
+                                })
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.choose_map_context(context.clone(), cx);
+                                }))
+                        })),
+                ),
             )
             .with_priority(1)
         });

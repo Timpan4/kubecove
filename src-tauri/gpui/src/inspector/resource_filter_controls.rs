@@ -1,6 +1,7 @@
 //! Toolbar controls for the resource filters in `resource_filters.rs`, laid
 //! out as `ResourceBrowserTopBar.svelte` lays them out.
 use super::Inspector;
+use super::overlay_motion::{Overlay, Shown};
 use super::resource_filters::{HealthFilter, namespace_label, next_namespace_selection};
 use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
@@ -53,9 +54,9 @@ impl Inspector {
         let selected = self.selected_namespaces();
         let label = namespace_label(&selected);
         let popup = self
-            .filters
-            .namespace_open
-            .then(|| self.namespace_popup(&selected, cx));
+            .overlay_motion
+            .sample(Overlay::NamespaceFilter, self.filters.namespace_open)
+            .map(|shown| self.namespace_popup(&selected, shown, cx));
         div()
             .relative()
             .child(
@@ -84,7 +85,12 @@ impl Inspector {
             .into_any_element()
     }
 
-    fn namespace_popup(&self, selected: &[String], cx: &mut Context<Self>) -> AnyElement {
+    fn namespace_popup(
+        &self,
+        selected: &[String],
+        shown: Shown,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let query = self
             .filters
             .namespace_search
@@ -105,81 +111,83 @@ impl Inspector {
             "No matching namespaces"
         };
         deferred(
-            div()
-                .id("namespace-popup")
-                .occlude()
-                .absolute()
-                .top(px(34.))
-                .left_0()
-                .w(px(344.))
-                .p(px(8.))
-                .rounded(px(8.))
-                .border_1()
-                .border_color(Tokens::border())
-                .bg(Tokens::surface2())
-                .shadow_lg()
-                .flex()
-                .flex_col()
-                .gap(px(4.))
-                .child(ui::caps("Namespaces", 10.))
-                .child(
-                    ui::outline_button()
-                        .id("select-all-namespaces")
-                        .test_support()
-                        .aria_label("Select all namespaces")
-                        .h(px(32.))
-                        .child(ui::xs("Select all namespaces"))
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.select_all_namespaces(window, cx);
-                        })),
-                )
-                .child(
-                    Input::new(&self.filters.namespace_search)
-                        .id("namespace-search")
-                        .aria_label("Search namespaces")
-                        .h(px(32.))
-                        .prefix(ui::icon("search", 16., Tokens::muted_foreground()))
-                        .text_xs(),
-                )
-                .child(
-                    div()
-                        .id("namespace-options")
-                        .test_support()
-                        .h(px(224.))
-                        .mt(px(4.))
-                        .p(px(4.))
-                        .rounded(px(6.))
-                        .border_1()
-                        .border_color(Tokens::border())
-                        .bg(Tokens::background().opacity(0.3))
-                        .overflow_y_scroll()
-                        .children(
-                            names
-                                .is_empty()
-                                .then(|| ui::muted(ui::xs(empty_message)).p(px(8.))),
-                        )
-                        .children(names.into_iter().map(|name| {
-                            let checked = all || selected.contains(&name);
-                            div()
-                                .id(SharedString::from(format!("namespace-option:{name}")))
-                                .test_support()
-                                .role(gpui_kit::Role::CheckBox)
-                                .aria_label(name.clone())
-                                .aria_description(if checked { "checked" } else { "unchecked" })
-                                .h(px(32.))
-                                .px(px(8.))
-                                .flex()
-                                .items_center()
-                                .gap(px(8.))
-                                .cursor_pointer()
-                                .hover(|row| row.bg(Tokens::muted()))
-                                .child(check_box(checked))
-                                .child(ui::xs(name.clone()))
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.toggle_namespace(name.clone(), !checked, window, cx);
-                                }))
-                        })),
-                ),
+            shown.surface(
+                div()
+                    .id("namespace-popup")
+                    .occlude()
+                    .absolute()
+                    .top(px(34.))
+                    .left_0()
+                    .w(px(344.))
+                    .p(px(8.))
+                    .rounded(px(8.))
+                    .border_1()
+                    .border_color(Tokens::border())
+                    .bg(Tokens::surface2())
+                    .shadow_lg()
+                    .flex()
+                    .flex_col()
+                    .gap(px(4.))
+                    .child(ui::caps("Namespaces", 10.))
+                    .child(
+                        ui::outline_button()
+                            .id("select-all-namespaces")
+                            .test_support()
+                            .aria_label("Select all namespaces")
+                            .h(px(32.))
+                            .child(ui::xs("Select all namespaces"))
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.select_all_namespaces(window, cx);
+                            })),
+                    )
+                    .child(
+                        Input::new(&self.filters.namespace_search)
+                            .id("namespace-search")
+                            .aria_label("Search namespaces")
+                            .h(px(32.))
+                            .prefix(ui::icon("search", 16., Tokens::muted_foreground()))
+                            .text_xs(),
+                    )
+                    .child(
+                        div()
+                            .id("namespace-options")
+                            .test_support()
+                            .h(px(224.))
+                            .mt(px(4.))
+                            .p(px(4.))
+                            .rounded(px(6.))
+                            .border_1()
+                            .border_color(Tokens::border())
+                            .bg(Tokens::background().opacity(0.3))
+                            .overflow_y_scroll()
+                            .children(
+                                names
+                                    .is_empty()
+                                    .then(|| ui::muted(ui::xs(empty_message)).p(px(8.))),
+                            )
+                            .children(names.into_iter().map(|name| {
+                                let checked = all || selected.contains(&name);
+                                div()
+                                    .id(SharedString::from(format!("namespace-option:{name}")))
+                                    .test_support()
+                                    .role(gpui_kit::Role::CheckBox)
+                                    .aria_label(name.clone())
+                                    .aria_description(if checked { "checked" } else { "unchecked" })
+                                    .h(px(32.))
+                                    .px(px(8.))
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(8.))
+                                    .cursor_pointer()
+                                    .hover(|row| row.bg(Tokens::muted()))
+                                    .child(check_box(checked))
+                                    .child(ui::xs(name.clone()))
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.toggle_namespace(name.clone(), !checked, window, cx);
+                                    }))
+                            })),
+                    ),
+            ),
         )
         .with_priority(1)
         .into_any_element()
@@ -240,7 +248,10 @@ impl Inspector {
                 || "All GitOps owners".to_owned(),
                 |(_, label)| label.clone(),
             );
-        let popup = self.filters.owner_open.then(|| self.gitops_owner_popup(cx));
+        let popup = self
+            .overlay_motion
+            .sample(Overlay::OwnerFilter, self.filters.owner_open)
+            .map(|shown| self.gitops_owner_popup(shown, cx));
         div()
             .relative()
             .child(
@@ -263,7 +274,7 @@ impl Inspector {
             .into_any_element()
     }
 
-    fn gitops_owner_popup(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn gitops_owner_popup(&self, shown: Shown, cx: &mut Context<Self>) -> AnyElement {
         let selected = self.filters.gitops_owner.clone();
         let options = std::iter::once(("All GitOps owners".to_owned(), None)).chain(
             self.filters
@@ -272,46 +283,48 @@ impl Inspector {
                 .map(|(key, label)| (label.clone(), Some(key.clone()))),
         );
         deferred(
-            div()
-                .id("gitops-owner-options")
-                .test_support()
-                .occlude()
-                .absolute()
-                .top(px(34.))
-                .right_0()
-                .min_w(px(240.))
-                .max_w(px(360.))
-                .p(px(4.))
-                .flex()
-                .flex_col()
-                .rounded(px(8.))
-                .border_1()
-                .border_color(Tokens::border())
-                .bg(Tokens::surface2())
-                .shadow_lg()
-                .children(options.map(|(label, key)| {
-                    let checked = key == selected;
-                    let id = format!("gitops-owner-option:{}", key.as_deref().unwrap_or("all"));
-                    div()
-                        .id(SharedString::from(id))
-                        .test_support()
-                        .aria_label(label.clone())
-                        .h(px(32.))
-                        .px(px(8.))
-                        .flex()
-                        .items_center()
-                        .gap(px(8.))
-                        .rounded(px(6.))
-                        .cursor_pointer()
-                        .hover(|row| row.bg(Tokens::muted()))
-                        .child(ui::xs(label))
-                        .when(checked, |row| {
-                            row.child(ui::icon("check", 14., Tokens::foreground()))
-                        })
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.choose_gitops_owner(key.clone(), cx);
-                        }))
-                })),
+            shown.surface(
+                div()
+                    .id("gitops-owner-options")
+                    .test_support()
+                    .occlude()
+                    .absolute()
+                    .top(px(34.))
+                    .right_0()
+                    .min_w(px(240.))
+                    .max_w(px(360.))
+                    .p(px(4.))
+                    .flex()
+                    .flex_col()
+                    .rounded(px(8.))
+                    .border_1()
+                    .border_color(Tokens::border())
+                    .bg(Tokens::surface2())
+                    .shadow_lg()
+                    .children(options.map(|(label, key)| {
+                        let checked = key == selected;
+                        let id = format!("gitops-owner-option:{}", key.as_deref().unwrap_or("all"));
+                        div()
+                            .id(SharedString::from(id))
+                            .test_support()
+                            .aria_label(label.clone())
+                            .h(px(32.))
+                            .px(px(8.))
+                            .flex()
+                            .items_center()
+                            .gap(px(8.))
+                            .rounded(px(6.))
+                            .cursor_pointer()
+                            .hover(|row| row.bg(Tokens::muted()))
+                            .child(ui::xs(label))
+                            .when(checked, |row| {
+                                row.child(ui::icon("check", 14., Tokens::foreground()))
+                            })
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.choose_gitops_owner(key.clone(), cx);
+                            }))
+                    })),
+            ),
         )
         .with_priority(1)
         .into_any_element()

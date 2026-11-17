@@ -284,7 +284,7 @@ impl Inspector {
                 busy,
             },
             &self.feedback.disclosure(),
-            &self.loading,
+            self,
             cx,
         )
     }
@@ -296,7 +296,7 @@ fn argo_tab(
     connection: Div,
     selected: ArgoConnectionState,
     disclosure: &Disclosure,
-    loading_delays: &super::super::loading::LoadingDelays,
+    inspector: &Inspector,
     cx: &mut Context<Inspector>,
 ) -> AnyElement {
     let Some(state) = detail.argo.as_ref() else {
@@ -308,7 +308,7 @@ fn argo_tab(
         _ => None,
     };
     let loading = matches!(state.load, ArgoLoad::Loading);
-    let indicator = loading_delays.phase("argo-detail", loading);
+    let indicator = inspector.loading.phase("argo-detail", loading);
     let assessment = &detail.opened_health;
     let health = view.map_or_else(
         || summary.status.clone().unwrap_or_else(|| "Unknown".into()),
@@ -502,9 +502,9 @@ fn argo_tab(
         )
         .child(super::options::controls(
             state,
-            &summary.name,
             loading || selected.busy,
             selected.unavailable.is_some(),
+            &inspector.overlay_motion,
             cx,
         ));
     let counts = view.map_or_default(|view| view.counts);
@@ -624,7 +624,7 @@ fn argo_tab(
             state,
             failed,
             indicator,
-            loading_delays.reveal("argo-detail"),
+            inspector.loading.reveal("argo-detail"),
             cx,
         ))
         .into_any_element()

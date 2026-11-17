@@ -4,7 +4,7 @@
 
 mod search;
 
-use super::{Inspector, Page};
+use super::{Inspector, Page, overlay_motion::Shown};
 use crate::backend::CLUSTER_KINDS;
 use crate::palette::{self, Destination, NavEntry};
 use crate::targets::TestSupportExt;
@@ -176,10 +176,10 @@ impl Inspector {
         // The rows snapshot is only needed while the palette is open.
         state.resources = vec![];
         state.index = vec![];
-        state.hits.clear();
         let query = state.query.clone();
         query.update(cx, |input, cx| input.set_value("", window, cx));
-        cx.notify();
+        // The exit draws the list of an empty query, as the web's closing dialog does.
+        self.refresh_palette(cx);
     }
 
     fn refresh_palette(&mut self, cx: &mut Context<Self>) {
@@ -391,7 +391,7 @@ impl Inspector {
             .into_any_element()
     }
 
-    pub(super) fn palette_overlay(&mut self, cx: &mut Context<Self>) -> AnyElement {
+    pub(super) fn palette_overlay(&mut self, shown: Shown, cx: &mut Context<Self>) -> AnyElement {
         let mut groups: [Vec<AnyElement>; 3] = Default::default();
         for position in 0..self.palette.hits.len() {
             let hit = self.palette.hits[position];
@@ -441,7 +441,7 @@ impl Inspector {
                 },
                 |list, message| list.child(ui::muted(ui::xs(message)).p(px(12.))),
             );
-        div()
+        let overlay = div()
             .id("palette")
             .absolute()
             .inset_0()
@@ -474,8 +474,8 @@ impl Inspector {
                     .capture_key_down(cx.listener(Self::palette_key))
                     .child(self.palette_input())
                     .child(list),
-            )
-            .into_any_element()
+            );
+        shown.surface(overlay).into_any_element()
     }
 
     /// `CommandInput`: `flex h-10 items-center gap-2 border-b px-3`.

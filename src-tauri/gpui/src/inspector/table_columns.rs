@@ -1,10 +1,10 @@
 //! Resource table columns and cell helpers, mirroring `ResourceBrowser.svelte` and
 //! `src/features/resources/helpers.ts`.
 
+use super::overlay_motion::Tooltip;
 use crate::table_sort::Column as SortColumn;
 use crate::targets::TestSupportExt;
 use crate::ui::{self, Tone};
-use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{Div, SharedString, div, prelude::*, px};
 use kubecove_lib::models::ResourceSummary;
 

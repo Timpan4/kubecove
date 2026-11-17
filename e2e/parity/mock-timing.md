@@ -141,6 +141,42 @@ would also move loading delays and other timers, and the clock cannot advance
 inside the window update where step handlers run, because advancing runs tasks.
 `selectTopologyNode`, the `map-full` checks and the visual capture do this.
 
+## Overlay enter and exit timing
+
+Popovers fade in and out over tw-animate-css's 150 ms in both clients:
+`PopoverContent.svelte` on the web and
+`src-tauri/gpui/src/inspector/overlay_motion.rs` in the GPUI client, which reads
+the executor clock. `overlay-motion.popover` checks that.
+
+On the web this is a CSS keyframe animation. It runs on the compositor's clock,
+which `controlClock` does not pause. `holdOverlayMotion` pauses every CSS
+animation instead, so each starts on its first keyframe, and
+`advanceOverlayMotion` seeks the `enter` and `exit` animations forward and
+finishes one that reaches its end. The native driver advances its executor clock
+by the same time. `expectOverlayOpacity` then reads the same opacity in both
+clients, to four decimals.
+
+The two clocks are separate on the web and one clock natively. After
+`holdOverlayMotion`, `advanceClock` moves native overlays but not the web's, and
+`advanceOverlayMotion` runs native application timers but not the web's. A
+scenario that holds overlay motion therefore moves time only with
+`advanceOverlayMotion`, and checks nothing that an application timer changes.
+
+The GPUI client also animates dialogs, their backdrop, the navigation drawer,
+the Map context select and the detail panel. The web does not: `DialogContent`,
+`DialogOverlay`, `SheetContent` and `SelectContent` put their animation classes
+on `data-open` and `data-closed`, which bits-ui 2.21.0 does not set, and the
+detail panel has no animation classes. The owner chose on 2026-11-17 to leave
+the web wrappers as they are. A shared scenario cannot follow motion the web
+does not have, so `src-tauri/gpui/tests/native/overlay_motion.rs` checks it.
+The slide a GPUI popover makes in place of the web's zoom is checked there too.
+
+In every other scenario the native driver ends overlay motion before a step
+acts and before it checks (`overlay_motion::settle` in the parity runner), where
+the web driver's clicks and waits let the animation finish. Without that an
+opened overlay would stay transparent and a closed one would stay in the tree,
+because this clock moves only when a step advances it.
+
 ## Coverage boundary
 
 The browser interceptor covers command reads. Native fixture gates currently cover
