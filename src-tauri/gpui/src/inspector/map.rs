@@ -4,6 +4,7 @@
 //! is multiplied by the zoom when the node is built.
 
 mod cards;
+mod flow;
 mod focus;
 mod links;
 mod motion;
@@ -61,6 +62,8 @@ pub(super) struct MapState {
     adjusted: Option<(Viewport, Viewport)>,
     /// The animated move from one fit to the next (`motion.rs`).
     motion: motion::Motion,
+    /// The phases of the moving dashes and pulses (`flow.rs`).
+    edge_clock: flow::EdgeClock,
     drag: Option<(Point<Pixels>, Viewport)>,
     /// Set once a press on the map moves past `NODE_CLICK_DISTANCE`. The node under
     /// the release then gets no click, so a pan does not select a node.
@@ -152,6 +155,7 @@ impl MapState {
             origin: Rc::default(),
             adjusted: None,
             motion: motion::Motion::default(),
+            edge_clock: flow::EdgeClock::default(),
             drag: None,
             pan_moved: false,
             resource_focus: Vec::new(),

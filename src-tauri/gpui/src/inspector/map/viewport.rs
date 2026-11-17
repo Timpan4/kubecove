@@ -31,6 +31,11 @@ pub(super) const MAC_CTRL_WHEEL_FACTOR: f32 = 10.;
 /// mounted so Tab reaches offscreen nodes. Larger graphs render visible nodes only.
 const VISIBLE_ELEMENT_RENDER_THRESHOLD: usize = 120;
 
+/// `onlyRenderVisibleElements`: whether the graph is large enough to draw only what is visible.
+pub(super) fn culls(view: &topology::View) -> bool {
+    view.nodes.len() + view.edges.len() >= VISIBLE_ELEMENT_RENDER_THRESHOLD
+}
+
 pub(super) fn node_id(item: &FlowItem, map: &super::MapState) -> SharedString {
     match item {
         FlowItem::Resource(index) => map.node_ids[*index].clone(),
@@ -189,17 +194,15 @@ impl Inspector {
         viewport: Option<Viewport>,
     ) -> impl Fn((f32, f32, f32, f32)) -> bool + use<> {
         let (width, height) = self.map.size.get();
-        let cull = viewport
-            .filter(|_| view.nodes.len() + view.edges.len() >= VISIBLE_ELEMENT_RENDER_THRESHOLD)
-            .map(|viewport| {
-                let flow = |screen: f32, offset: f32| (screen - offset) / viewport.zoom;
-                (
-                    flow(0., viewport.x) - CULL_MARGIN,
-                    flow(0., viewport.y) - CULL_MARGIN,
-                    flow(width, viewport.x) + CULL_MARGIN,
-                    flow(height, viewport.y) + CULL_MARGIN,
-                )
-            });
+        let cull = viewport.filter(|_| culls(view)).map(|viewport| {
+            let flow = |screen: f32, offset: f32| (screen - offset) / viewport.zoom;
+            (
+                flow(0., viewport.x) - CULL_MARGIN,
+                flow(0., viewport.y) - CULL_MARGIN,
+                flow(width, viewport.x) + CULL_MARGIN,
+                flow(height, viewport.y) + CULL_MARGIN,
+            )
+        });
         move |(left, top, right, bottom)| {
             cull.is_none_or(|(min_x, min_y, max_x, max_y)| {
                 right >= min_x && left <= max_x && bottom >= min_y && top <= max_y
@@ -263,6 +266,7 @@ impl Inspector {
             .clone();
         drop(edge_cache);
         let visible_edges = edges.visible(&shown);
+        let motion = self.map.edge_clock.motion();
         let edge_layer = canvas(
             move |bounds, window, _| {
                 origin.set((f32::from(bounds.origin.x), f32::from(bounds.origin.y)));
@@ -274,7 +278,7 @@ impl Inspector {
             },
             move |bounds, (), window, _| {
                 if let Some(viewport) = viewport {
-                    edges.paint(bounds.origin, &visible_edges, viewport, window);
+                    edges.paint(bounds.origin, &visible_edges, viewport, motion, window);
                 }
             },
         )
