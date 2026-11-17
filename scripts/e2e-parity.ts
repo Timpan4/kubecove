@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { availableParallelism } from "node:os";
 import { join, resolve } from "node:path";
 import { changedScenarios, DEFAULT_MAP } from "../e2e/parity/changed-scenarios";
@@ -96,15 +96,20 @@ const interrupt = () => controller.abort(new Error("Interrupted"));
 process.once("SIGINT", interrupt);
 process.once("SIGTERM", interrupt);
 let failure: string | undefined;
+let resultDriver: Driver | "both" = driver ?? "both";
 const fail = (message: string) => { failure = failure ? `${failure}; ${message}` : message; };
 /** Runs the requested drivers on the selected scenarios and records failures through `fail`. */
 async function runDrivers(selection: Record<Driver, Contract>) {
 	const executed = (["web", "gpui"] as const).filter((name) => selection[name].scenarios.length);
+	resultDriver = executed.length === 1 ? executed[0] : "both";
 	const allIds = new Set(executed.flatMap((name) => selection[name].scenarios.map((scenario) => scenario.id)));
-	await Promise.all([
-		writeFile(join(artifacts, "scenarios.txt"), [...allIds].join("\n")),
-		...(["web", "gpui"] as const).map((name) => writeFile(join(artifacts, `${name}-scenarios.txt`), selection[name].scenarios.map((scenario) => scenario.id).join("\n"))),
-	]);
+	await Promise.all((["web", "gpui"] as const).map(async (name) => {
+		const path = join(artifacts, `${name}-scenarios.txt`);
+		await writeFile(`${path}.tmp`, selection[name].scenarios.map((scenario) => scenario.id).join("\n"));
+		await rename(`${path}.tmp`, path);
+	}));
+	// Publish the combined list for older readers after both driver selections are complete.
+	await writeFile(join(artifacts, "scenarios.txt"), [...allIds].join("\n"));
 	const positive = (name: string, fallback: number) => {
 		const value = Number(process.env[name] ?? fallback);
 		if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be a positive integer: ${process.env[name]}`);
@@ -171,7 +176,7 @@ try {
 finally {
 	process.removeListener("SIGINT", interrupt); process.removeListener("SIGTERM", interrupt);
 	mark("total");
-	await writeFile(join(artifacts, "result.json"), JSON.stringify({ level: "UI integration with mocks", driver: driver ?? "both", status: failure ? "failed" : "passed", error: failure, phases }, null, 2));
+	await writeFile(join(artifacts, "result.json"), JSON.stringify({ level: "UI integration with mocks", driver: resultDriver, status: failure ? "failed" : "passed", error: failure, phases }, null, 2));
 	console.log(`Parity artifacts: ${artifacts}`);
 }
 if (failure) { console.error(failure); process.exitCode = 1; }

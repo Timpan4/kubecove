@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { object, string } from "./contract-values";
-import type { Driver } from "./merge-reports";
+import { type Driver, parseDriver } from "./merge-reports";
 
 async function readRunFile(run: string, name: string): Promise<string | undefined> {
 	try {
@@ -16,20 +16,20 @@ async function failedScenarios(run: string, driver: Driver, selected: string): P
 	const ids = new Set(selected.split("\n").filter(Boolean));
 	if (!ids.size) return ids;
 
-	const passed = new Set<string>();
+	const results = new Map<string, boolean>();
 	try {
 		const report = object(JSON.parse(await readFile(join(run, `${driver}.json`), "utf8")));
-		if (Array.isArray(report.scenarios)) {
-			for (const value of report.scenarios) {
-				const { id, status } = object(value);
-				if (status === "passed") passed.add(string(id));
-			}
+		if (report.driver !== driver || !Array.isArray(report.scenarios)) return ids;
+		for (const value of report.scenarios) {
+			const result = object(value);
+			const id = string(result.id);
+			results.set(id, !results.has(id) && result.status === "passed");
 		}
 	} catch {
 		// An unreadable or incomplete report cannot prove that any of its scenarios passed.
 		return ids;
 	}
-	for (const id of passed) ids.delete(id);
+	for (const [id, passed] of results) if (passed) ids.delete(id);
 	return ids;
 }
 
@@ -39,19 +39,26 @@ export async function rerunSelections(run: string): Promise<Record<Driver, Set<s
 		readRunFile(run, "web-scenarios.txt"),
 		readRunFile(run, "gpui-scenarios.txt"),
 	]);
-	if (webSelection === undefined || gpuiSelection === undefined) {
-		const [legacySelection, result] = await Promise.all([
-			readFile(join(run, "scenarios.txt"), "utf8"),
-			readRunFile(run, "result.json"),
-		]);
-		// Older runners recorded a shared selection and which driver ran.
-		const previous = result === undefined ? undefined : object(JSON.parse(result)).driver;
-		webSelection ??= previous === "gpui" ? "" : legacySelection;
-		gpuiSelection ??= previous === "web" ? "" : legacySelection;
+	if (webSelection === undefined && gpuiSelection === undefined) {
+		const legacySelection = await readFile(join(run, "scenarios.txt"), "utf8");
+		let previous: Driver | undefined;
+		try {
+			const result = await readRunFile(run, "result.json");
+			if (result !== undefined) {
+				const recorded = object(JSON.parse(result)).driver;
+				if (recorded !== "both") previous = parseDriver(recorded);
+			}
+		} catch {
+			console.warn(`Could not read legacy driver metadata in ${run}. Considering both drivers for its shared selection.`);
+		}
+		webSelection = previous === "gpui" ? "" : legacySelection;
+		gpuiSelection = previous === "web" ? "" : legacySelection;
+	} else if (webSelection === undefined || gpuiSelection === undefined) {
+		console.warn(`No ${webSelection === undefined ? "web" : "GPUI"} selection was recorded in ${run}.`);
 	}
 	const [web, gpui] = await Promise.all([
-		failedScenarios(run, "web", webSelection),
-		failedScenarios(run, "gpui", gpuiSelection),
+		failedScenarios(run, "web", webSelection ?? ""),
+		failedScenarios(run, "gpui", gpuiSelection ?? ""),
 	]);
 	return { web, gpui };
 }
