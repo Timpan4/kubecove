@@ -13,7 +13,9 @@ export function integrationStep(item: JsonObject): Step | undefined {
 		case "expectNoRemoteNotice": return { action: item.action };
 		case "clickRemoteNoticeButton": return { action: item.action, label: oneOf(["Sign in", "Copy sign-in link", "Cancel", "Start a new session", "Disconnect"], item.label, "a remote notice button") };
 		case "fillMcpPort": return { action: item.action, value: string(item.value) };
-		case "mcpControl": return { action: item.action, control: oneOf(["MCP server", "Submit port", "Save", "Copy token", "Copy Claude Code command", "Rotate token"], item.control, "an MCP control") };
+		case "mcpControl": return { action: item.action, control: oneOf(["MCP server", "Submit port", "Save", "Copy token", "Copy Claude Code command", "Rotate token", "Reload settings"], item.control, "an MCP control") };
+		case "configureMcpSettingsFile": return { action: item.action, file: oneOf(["invalid", "valid"], item.file, "an MCP settings file state") };
+		case "expectMcpLoadError": return { action: item.action, text: string(item.text) };
 		case "expectMcpState":
 			if (!isBoolean(item.enabled) || !isBoolean(item.running) || !isBoolean(item.save) || !isBoolean(item.command)) throw new Error("Expected MCP control states");
 			return { action: item.action, enabled: item.enabled, port: string(item.port), running: item.running, save: item.save, command: item.command };

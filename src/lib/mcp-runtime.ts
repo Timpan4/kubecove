@@ -31,6 +31,11 @@ export function setMcpSettings(enabled: boolean, port: number): Promise<McpStatu
 	return localInvoke<McpStatus>("set_mcp_settings", { enabled, port });
 }
 
+/** Re-reads the settings file after the host failed to load it. */
+export function reloadMcpSettings(): Promise<McpStatus> {
+	return localInvoke<McpStatus>("reload_mcp_settings");
+}
+
 export function revealMcpToken(): Promise<string> {
 	return localInvoke<string>("reveal_mcp_token");
 }

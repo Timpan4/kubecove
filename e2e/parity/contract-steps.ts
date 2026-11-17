@@ -139,7 +139,9 @@ export type Step =
     | { action: "setHistoricalReplicaSets"; checked: boolean }
     | { action: "expectKindChecked"; kind: string; checked: boolean }
     | { action: "fillMcpPort"; value: string }
-    | { action: "mcpControl"; control: "MCP server" | "Submit port" | "Save" | "Copy token" | "Copy Claude Code command" | "Rotate token" }
+    | { action: "mcpControl"; control: "MCP server" | "Submit port" | "Save" | "Copy token" | "Copy Claude Code command" | "Rotate token" | "Reload settings" }
+    | { action: "configureMcpSettingsFile"; file: "invalid" | "valid" }
+    | { action: "expectMcpLoadError"; text: string }
     | { action: "expectMcpState"; enabled: boolean; port: string; running: boolean; save: boolean; command: boolean }
     | { action: "expectMcpCopy"; kind: "token" | "command"; rotated: boolean }
     | { action: "expectMcpRequests"; requests: string[] }

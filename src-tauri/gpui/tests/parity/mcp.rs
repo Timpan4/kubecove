@@ -10,8 +10,27 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 window.click(format!("mcp-control:{}", string(step, "control")), cx);
             }
         }
-        "expectMcpRequests" => {}
+        // The runner applies the file state to the fixture, which this driver cannot reach.
+        "expectMcpRequests" | "configureMcpSettingsFile" => {}
+        "expectMcpLoadError" => {
+            assert_eq!(
+                window.find("mcp-error").label(),
+                Some(string(step, "text"))
+            );
+            assert_eq!(
+                window.find("mcp-control:Reload settings").description(),
+                Some("enabled")
+            );
+            assert_eq!(
+                window.find("mcp-control:MCP server").description(),
+                Some("disabled")
+            );
+        }
         "expectMcpState" => {
+            assert!(
+                window.try_find("mcp-control:Reload settings").is_none(),
+                "Reload settings shown with loaded settings"
+            );
             assert_eq!(
                 window.find("mcp-control:MCP server").checked(),
                 step["enabled"].as_bool()
