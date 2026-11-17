@@ -177,8 +177,11 @@ export async function shellAction(page: Page, step: Step): Promise<void> {
         case "expectLauncherRetry": {
             const retry = page.getByRole("button", { name: "Retry", exact: true });
             await retry.waitFor();
-            const height = step.height === undefined ? undefined : (await retry.boundingBox())?.height;
-            if (height !== undefined && Math.abs(height - (step.height ?? 0)) >= 0.5) throw new Error(`Retry is ${height}px high`);
+            if (step.height !== undefined) {
+                const bounds = await retry.boundingBox();
+                if (!bounds) throw new Error("Retry has no bounds");
+                if (Math.abs(bounds.height - step.height) >= 0.5) throw new Error(`Retry is ${bounds.height}px high`);
+            }
             break;
         }
         case "overviewOperation":
