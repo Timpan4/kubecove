@@ -19,9 +19,9 @@
 use super::Inspector;
 use gpui_kit::{
     Animation, AnimationExt, AnyElement, AnyView, App, AppContext, Bounds, ContentMask, Context,
-    Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, ParentElement,
-    Pixels, Point, Render, SharedString, Styled, Window, base::animation::cubic_bezier, div, point,
-    px,
+    Element, ElementId, FocusHandle, GlobalElementId, InspectorElementId, IntoElement, LayoutId,
+    ParentElement, Pixels, Point, Render, SharedString, Styled, Window,
+    base::animation::cubic_bezier, div, point, px,
 };
 use std::cell::RefCell;
 use std::time::{Duration, Instant};
@@ -203,28 +203,25 @@ impl Track {
 /// An overlay to draw this frame.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct Shown {
+    overlay: Overlay,
     share: f32,
     exiting: bool,
     slide: (f32, f32),
 }
 
 impl Shown {
-    const SETTLED: Self = Self {
-        share: 1.,
-        exiting: false,
-        slide: (0., 0.),
-    };
-
     /// The overlay closed and plays its exit. It keeps no focus.
     pub(super) fn exiting(self) -> bool {
         self.exiting
     }
 
     /// The surface with this frame's fade and slide. An exiting surface takes
-    /// no pointer input, so a click during the exit reaches what is behind it.
+    /// no input: a click during the exit reaches what is behind it, and focus
+    /// leaves the surface, so a key press does not reach its handlers.
     pub(super) fn surface(self, surface: impl IntoElement + Styled) -> Shifted {
         let away = 1. - self.share;
         Shifted {
+            overlay: self.overlay,
             child: surface.opacity(self.share).into_any_element(),
             offset: point(px(self.slide.0 * away), px(self.slide.1 * away)),
             inert: self.exiting,
@@ -234,6 +231,7 @@ impl Shown {
 
 /// Draws its child moved by an offset, without changing the layout.
 pub(super) struct Shifted {
+    overlay: Overlay,
     child: AnyElement,
     offset: Point<Pixels>,
     inert: bool,
@@ -278,6 +276,20 @@ impl Element for Shifted {
         window: &mut Window,
         cx: &mut App,
     ) {
+        // A handle on this element's dispatch node tells whether focus is
+        // inside the surface. An exiting surface gives that focus up, so a
+        // key press reaches the window as if the overlay had left the tree.
+        let key = ElementId::from(("overlay-surface", self.overlay as usize));
+        let within = window.with_global_id(key, |id, window| {
+            window.with_element_state::<FocusHandle, _>(id, |handle, _| {
+                let handle = handle.unwrap_or_else(|| cx.focus_handle());
+                (handle.clone(), handle)
+            })
+        });
+        window.set_focus_handle(&within, cx);
+        if self.inert && within.contains_focused(window, cx) {
+            window.blur(cx);
+        }
         // A hitbox takes the pointer only inside the content mask it was
         // prepainted under, and painting applies its own mask later. An empty
         // mask here leaves the child drawn and out of reach.
@@ -376,7 +388,12 @@ impl OverlayMotion {
     pub(super) fn sample(&self, overlay: Overlay, open: bool) -> Option<Shown> {
         let mut frame = self.frame.borrow_mut();
         let Some(now) = frame.now else {
-            return open.then_some(Shown::SETTLED);
+            return open.then_some(Shown {
+                overlay,
+                share: 1.,
+                exiting: false,
+                slide: (0., 0.),
+            });
         };
         let spec = overlay.spec();
         let reduce_motion = frame.reduce_motion;
@@ -408,6 +425,7 @@ impl OverlayMotion {
         *slot = Some(track);
         frame.running |= running;
         Some(Shown {
+            overlay,
             share,
             exiting: !open,
             slide: spec.slide,

@@ -10,8 +10,8 @@
 //! 5. A popover slides toward its trigger instead of from it.
 //! 6. Reduced motion still animates.
 //! 7. The detail panel replays its enter when its content changes.
-//! 8. A closing overlay takes a click meant for what is behind it. The frames
-//!    run found this one: a view setup clicked right after a dialog closed.
+//! 8. A closing overlay takes a click meant for what is behind it.
+//! 9. A closing overlay keeps focus, so a key press runs its handlers.
 //!
 //! The web has this motion only for popovers ("Overlay enter and exit timing"
 //! in `e2e/parity/mock-timing.md`), so the shared scenarios cannot check the
@@ -124,15 +124,30 @@ fn a_dialog_closed_during_its_enter_fades_from_where_it_was(cx: &mut TestAppCont
 
 #[gpui_kit::test]
 fn a_click_during_an_exit_reaches_what_is_behind_the_overlay(cx: &mut TestAppContext) {
+    let handle = super::argo::open_argo(cx, Arc::new(Controlled::default()));
+    act(cx, handle, |window, cx| {
+        window.click("argo-connect-open", cx)
+    });
+    advance(cx, 100);
+    act(cx, handle, |window, cx| window.press("escape", cx));
+    // The dialog's backdrop covers the window and stops a press while it is open.
+    assert!(drawn(cx, handle, "argo-connection-dialog"));
+    act(cx, handle, |window, cx| window.click("close-detail", cx));
+    assert!(drawn(cx, handle, "argo-connection-dialog"));
+    assert!(!drawn(cx, handle, "close-detail"));
+}
+
+#[gpui_kit::test]
+fn a_key_press_during_an_exit_does_not_reach_the_overlay(cx: &mut TestAppContext) {
     let handle = open(cx, Arc::new(Controlled::default()));
     act(cx, handle, |window, cx| window.click("open-palette", cx));
     advance(cx, 100);
     act(cx, handle, |window, cx| window.press("escape", cx));
-    assert_opacity(cx, handle, "palette", 1.);
-    // The palette's backdrop covers the window while it is drawn.
-    act(cx, handle, |window, cx| window.click("kinds-picker", cx));
-    assert_opacity(cx, handle, "palette", 1.);
-    assert_opacity(cx, handle, "kind-picker", 0.);
+    assert!(drawn(cx, handle, "palette-dialog"));
+    // Enter in an open palette runs its first result, which leaves this page.
+    act(cx, handle, |window, cx| window.press("enter", cx));
+    advance(cx, 100);
+    assert!(drawn(cx, handle, "kinds-picker"));
 }
 
 #[gpui_kit::test]
