@@ -177,15 +177,17 @@ export function clearDiagnostics(): void {
 }
 
 export function getDiagnosticsSnapshot(): DiagnosticsSnapshot {
-	const events = frontendEvents.map(({ recordedAtMs, commandStartedAtMs, ...event }) => ({
-		...event,
-		atMs: Math.round(event.atMs),
-		durationMs: commandStartedAtMs === undefined || event.durationMs === undefined
-			? event.durationMs
-			: Math.round(event.durationMs),
-		data: presentedData(event.data, commandStartedAtMs),
-		recordedAt: new Date(recordedAtMs).toISOString(),
-	}));
+	const events = frontendEvents.map((record) => {
+		const { recordedAtMs, commandStartedAtMs, ...event } = record;
+		const data = presentedData(record);
+		return {
+			...event,
+			atMs: Math.round(event.atMs),
+			durationMs: commandStartedAtMs === undefined ? event.durationMs : durationFromData(data),
+			data,
+			recordedAt: new Date(recordedAtMs).toISOString(),
+		};
+	});
 	return buildDiagnosticsSnapshot(enabled, counters, events, traceLines);
 }
 
@@ -217,9 +219,9 @@ export function buildDiagnosticsSnapshot(
 	};
 }
 
-function presentedData(data: DiagnosticData, commandStartedAtMs: number | undefined): DiagnosticData {
-	return commandStartedAtMs !== undefined && typeof data.ms === "number"
-		? { ...data, ms: Math.round(data.ms) }
+function presentedData({ data, commandStartedAtMs, durationMs }: RecordedDiagnosticEvent): DiagnosticData {
+	return commandStartedAtMs !== undefined && durationMs !== undefined
+		? { ...data, ms: Math.round(durationMs) }
 		: data;
 }
 
@@ -251,7 +253,7 @@ export function diagnosticLog(event: string, data?: DiagnosticData, commandStart
 	};
 	pushBounded(frontendEvents, eventRecord, MAX_FRONTEND_EVENTS);
 
-	const fields = serializeData(presentedData(eventRecord.data, commandStartedAtMs));
+	const fields = serializeData(presentedData(eventRecord));
 	const line = `[k8s-debug #${sequence} +${delta}ms count=${count}${
 		heapMb === undefined ? "" : ` heap=${heapMb}MB`
 	}] ${event}${fields ? ` ${fields}` : ""}`;
