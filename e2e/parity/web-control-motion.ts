@@ -137,8 +137,11 @@ export async function checkControlMotion(page: Page, check: string) {
 		}, { pseudo: target.pseudo ?? null, property: target.property });
 		await target.act(page);
 		await page.waitForFunction(() => window.controlMotion !== undefined).catch(() => { throw new Error(`${name} changed without a transition of ${target.property}`); });
-		const duration = await page.evaluate(() => Number(window.controlMotion?.[0]?.effect?.getComputedTiming().duration ?? -1));
-		if (duration !== DURATION_MS) throw new Error(`${name} transitions ${target.property} over ${duration} ms, not ${DURATION_MS}`);
+		const timing = await page.evaluate(() => {
+			const computed = window.controlMotion?.[0]?.effect?.getComputedTiming();
+			return { duration: Number(computed?.duration ?? -1), delay: computed?.delay ?? -1 };
+		});
+		if (timing.duration !== DURATION_MS || timing.delay !== 0) throw new Error(`${name} transitions ${target.property} over ${timing.duration} ms after ${timing.delay} ms, not over ${DURATION_MS} ms at once`);
 		const held = await read(page, target);
 		if (held !== rest) throw new Error(`${name} jumped from ${rest} to ${held}`);
 		seen.set(page, { rest });
