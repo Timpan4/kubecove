@@ -166,6 +166,7 @@ fn paint(
         "switch" => (ElementId::Name(format!("setting:{SETTING}").into()), None),
         "segment" => ("gitops-view:List".into(), Some("gitops-view:Cards")),
         "tab" => ("show-events".into(), Some("show-details")),
+        "tab-actions" => ("show-actions".into(), Some("show-details")),
         "chevron" => return None,
         // A fold paints nothing of its own. The row under the branch shows it.
         "branch" => {
@@ -219,6 +220,7 @@ fn change(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, target: &str) -
         "switch" => locate::click_in(window, "page", format!("setting:{SETTING}").into(), cx),
         "segment" => window.click("gitops-view:List", cx),
         "tab" => window.click("show-events", cx),
+        "tab-actions" => window.click("show-actions", cx),
         "row" => {
             let row = transition(window, cx, target);
             let position = window.find(row).bounds().center();
@@ -250,7 +252,7 @@ fn transition(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, target: &st
     let id = match target {
         "switch" => format!("switch-thumb:{SETTING}"),
         "segment" => "segment-pill:gitops-view".into(),
-        "tab" => "tab-line".into(),
+        "tab" | "tab-actions" => "tab-line".into(),
         "row" => {
             let name = detail::resolve_resource(window, DEPLOYMENT, cx)
                 .expect("the resource table shows the Deployment");
