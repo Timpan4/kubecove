@@ -15,10 +15,10 @@
 //! - GPUI rebuilds its element tree each frame and has no DOM, so `dom` counts
 //!   stay zero and `dom.sources` lists renders per view during the entry.
 //!
-//! Commands belong to the entry they started in. Each flush moves the commands
-//! that finished since the last one into their entries, so an entry keeps them
-//! after the diagnostics trace drops them; `json_lines` adds those that
-//! finished after the last flush.
+//! Commands belong to the entry they started in. Each flush, and each export
+//! while no entry runs, moves the commands that finished since the last move
+//! into their entries, so an entry keeps them after the diagnostics trace
+//! drops them; `json_lines` adds those that finished after the last move.
 use crate::diagnostics::{Timing, TimingKind, Timings};
 use serde_json::{Value, json};
 use std::{
@@ -423,10 +423,14 @@ impl Recorder {
     }
 
     /// JSON lines for `bun run perf:interactions`. `timings` supplies the
-    /// commands that finished after the last flush; an export moves nothing,
-    /// because the current entry may still be running.
-    pub(crate) fn json_lines(&self, timings: &Timings) -> String {
+    /// commands that finished after the last flush. With no entry running,
+    /// the export moves them into their entries first; while one runs it only
+    /// adds them, because moving the mark would skip that entry's commands.
+    pub(crate) fn json_lines(&mut self, timings: &Timings) -> String {
         let snapshot = timings.snapshot();
+        if self.current.is_none() {
+            self.fold(&snapshot);
+        }
         let mut unfolded: Vec<Vec<&Timing>> = vec![Vec::new(); self.recorded.len()];
         for (index, timing) in self.owners(&snapshot) {
             unfolded[index].push(timing);

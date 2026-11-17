@@ -1,9 +1,10 @@
 // Tauri commands started during one recorded interaction, read from the frontend
 // diagnostics buffer. Only command names and timings; never arguments or results.
-// A command belongs to the interaction it started in. Each flush moves the commands
-// that finished since the last one into their interactions, so an interaction keeps
-// them after the buffer drops them; withUnfoldedCommands adds those that finished
-// after the last flush, as src-tauri/gpui/src/interactions.rs does.
+// A command belongs to the interaction it started in. Each flush, and each read while
+// no interaction runs, moves the commands that finished since the last move into
+// their interactions, so an interaction keeps them after the buffer drops them;
+// withUnfoldedCommands adds those that finished after the last move, as
+// src-tauri/gpui/src/interactions.rs does.
 import { type FrontendDiagnosticEvent, getDiagnosticsSnapshot } from "./diagnostics";
 
 export interface InteractionCommand {

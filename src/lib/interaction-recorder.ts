@@ -295,9 +295,15 @@ export function stopInteractionRecording(): void {
 	resetSourceCache();
 }
 
-/** Recorded interactions, with commands that finished after the last flush. */
+/**
+ * Recorded interactions, with commands that finished after the last flush. With no
+ * interaction running, those move into their interactions first; while one runs
+ * they are only added, because moving the mark would skip its commands.
+ */
 export function getRecordedInteractions(): RecordedInteraction[] {
-	const commands = withUnfoldedCommands(recorded.map((entry) => entry.commands), foldedThrough);
+	const windows = recorded.map((entry) => entry.commands);
+	if (!current) foldedThrough = foldCommands(windows, foldedThrough);
+	const commands = withUnfoldedCommands(windows, foldedThrough);
 	return recorded.map(({ interaction }, index) => ({ ...interaction, commands: commands[index] }));
 }
 

@@ -206,7 +206,7 @@ impl Inspector {
     /// The interaction report's JSON lines, with commands that finished after
     /// their entry ended.
     pub(super) fn interaction_lines(&self) -> (String, usize) {
-        let recorder = self.presentation.recorder.borrow();
+        let mut recorder = self.presentation.recorder.borrow_mut();
         (recorder.json_lines(&self.timings), recorder.len())
     }
 
