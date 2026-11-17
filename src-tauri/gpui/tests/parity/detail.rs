@@ -156,7 +156,11 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             assert_eq!(window.find("search").value(), Some(string(step, "value")))
         }
         "openPage" => window.click(format!("nav:{}", string(step, "page")), cx),
-        "showTab" => window.click(tab_id(string(step, "tab")), cx),
+        "showTab" => {
+            let id = tab_id(string(step, "tab"));
+            reveal(window, "detail-body", &id, cx);
+            window.click(id, cx);
+        }
         "filterEvents" => {
             let id = match string(step, "filter") {
                 "All" => "events-filter-all",
