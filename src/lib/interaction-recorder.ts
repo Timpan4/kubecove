@@ -4,8 +4,14 @@
 // mutation sources are Svelte source locations in dev builds, and test ids or
 // roles in release builds; never text content or cluster data. Entries stay in
 // memory; the dev server additionally mirrors them to e2e/artifacts.
-import { MAX_FRONTEND_EVENTS } from "./diagnostics";
-import { captureCommands, type CommandWindow, type InteractionCommand, withLateCommands } from "./interaction-commands";
+import { isDiagnosticsEnabled, MAX_FRONTEND_EVENTS } from "./diagnostics";
+import {
+	type CommandWindow,
+	type EventMark,
+	foldCommands,
+	type InteractionCommand,
+	withUnfoldedCommands,
+} from "./interaction-commands";
 import { addFrame, emptyHistogram, type FrameHistogram, frameDeltas, percentileMs } from "./interaction-frames";
 import { describeTarget, resetSourceCache, sourceOf, subtreeSource } from "./interaction-sources";
 
@@ -60,6 +66,8 @@ interface Recorded {
 
 const DEV_SINK = process.env.KUBECOVE_PUBLIC_DEV_INTERACTIONS ?? "";
 const recorded: Recorded[] = [];
+// The newest diagnostic event whose command, if any, is in its interaction's commands.
+let foldedThrough: EventMark | undefined;
 // The session histogram's median is the refresh interval.
 let sessionFrames = emptyHistogram();
 let session: Session | null = null;
@@ -129,14 +137,16 @@ function flush(): void {
 	if (!current) return;
 	const segment = current;
 	const endedAt = performance.now();
-	const capture = captureCommands(segment.startedAt, endedAt);
-	// The dev sink receives the commands that had finished by now.
-	const interaction = serialize(segment, endedAt, capture?.finished);
+	// The interaction shares this array with its window, so folds fill both.
+	const commands = isDiagnosticsEnabled() ? [] : undefined;
+	const interaction = serialize(segment, endedAt, commands);
 	current = null;
 	segment.flushed = interaction;
-	recorded.push({ interaction, commands: { start: segment.startedAt, end: endedAt, capture } });
+	recorded.push({ interaction, commands: { start: segment.startedAt, end: endedAt, commands } });
 	// Same retention as frontend diagnostic events.
 	if (recorded.length > MAX_FRONTEND_EVENTS) recorded.splice(0, recorded.length - MAX_FRONTEND_EVENTS);
+	if (commands) foldedThrough = foldCommands(recorded.map((entry) => entry.commands), foldedThrough);
+	// The dev sink receives the commands that had finished by the time it posts.
 	if (segment.pendingPaints === 0) postToDevSink(interaction);
 	else awaitingPaint.add(segment);
 }
@@ -285,9 +295,9 @@ export function stopInteractionRecording(): void {
 	resetSourceCache();
 }
 
-/** Recorded interactions, with commands that finished after their interaction ended. */
+/** Recorded interactions, with commands that finished after the last flush. */
 export function getRecordedInteractions(): RecordedInteraction[] {
-	const commands = withLateCommands(recorded.map((entry) => entry.commands));
+	const commands = withUnfoldedCommands(recorded.map((entry) => entry.commands), foldedThrough);
 	return recorded.map(({ interaction }, index) => ({ ...interaction, commands: commands[index] }));
 }
 

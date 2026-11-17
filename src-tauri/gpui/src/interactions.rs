@@ -15,8 +15,10 @@
 //! - GPUI rebuilds its element tree each frame and has no DOM, so `dom` counts
 //!   stay zero and `dom.sources` lists renders per view during the entry.
 //!
-//! Commands belong to the entry they started in. An entry keeps the commands
-//! that had finished when it ended; `json_lines` adds those that finished later.
+//! Commands belong to the entry they started in. Each flush moves the commands
+//! that finished since the last one into their entries, so an entry keeps them
+//! after the diagnostics trace drops them; `json_lines` adds those that
+//! finished after the last flush.
 use crate::diagnostics::{Timing, TimingKind, Timings};
 use serde_json::{Value, json};
 use std::{
@@ -91,15 +93,7 @@ pub(crate) struct Interaction {
     refresh_ms: f64,
     renders: BTreeMap<&'static str, u32>,
     /// `None` when diagnostics was off as the entry ended, as the web omits `commands`.
-    commands: Option<Commands>,
-}
-
-/// Commands an entry captured when it ended.
-struct Commands {
-    finished: Vec<Value>,
-    /// The first timing sequence number the capture did not see. A command of
-    /// this entry with that number or later finished after the entry ended.
-    unseen: u64,
+    commands: Option<Vec<Value>>,
 }
 
 fn round(value: f64) -> f64 {
@@ -162,8 +156,8 @@ impl Interaction {
         sources
     }
 
-    /// `late` are this entry's commands that finished after it ended.
-    fn json(&self, late: &[&Timing]) -> Value {
+    /// `unfolded` are this entry's commands that finished after the last flush.
+    fn json(&self, unfolded: &[&Timing]) -> Value {
         let mut value = json!({
             "id": self.id,
             "kind": self.kind.label(),
@@ -192,8 +186,10 @@ impl Interaction {
             },
         });
         if let Some(commands) = &self.commands {
-            let late = late.iter().map(|timing| command_json(timing, self.started));
-            value["commands"] = commands.finished.iter().cloned().chain(late).collect();
+            let unfolded = unfolded
+                .iter()
+                .map(|timing| command_json(timing, self.started));
+            value["commands"] = commands.iter().cloned().chain(unfolded).collect();
         }
         value
     }
@@ -213,6 +209,10 @@ pub(crate) struct Recorder {
     last_frame: Option<Instant>,
     next_id: u64,
     pointer_down: bool,
+    /// Timings with this sequence number or later are in no entry's commands
+    /// yet. Sequence numbers are never reused, so a cleared or full trace
+    /// leaves it valid.
+    unfolded: u64,
 }
 
 impl Recorder {
@@ -269,24 +269,47 @@ impl Recorder {
         interaction.ended = ended;
         interaction.duration_ms = (ended - interaction.started).as_secs_f64() * 1000.;
         interaction.refresh_ms = self.session_frames.percentile(0.5);
-        interaction.commands = timings.map(|timings| {
-            let snapshot = timings.snapshot();
-            Commands {
-                finished: snapshot
-                    .iter()
-                    .filter(|timing| {
-                        timing.kind == TimingKind::Command
-                            && timing.started >= interaction.started
-                            && timing.started < ended
-                    })
-                    .map(|timing| command_json(timing, interaction.started))
-                    .collect(),
-                unseen: snapshot.last().map_or(0, |timing| timing.seq + 1),
-            }
-        });
+        interaction.commands = timings.map(|_| Vec::new());
         self.recorded.push_back(interaction);
         while self.recorded.len() > MAX_RECORDED {
             self.recorded.pop_front();
+        }
+        if let Some(timings) = timings {
+            self.fold(&timings.snapshot());
+        }
+    }
+
+    /// The command timings from `unfolded` on, each with the index of the
+    /// entry it started in: the last one that started at or before it, if
+    /// that entry had not ended and records commands.
+    fn owners<'a>(&'a self, snapshot: &'a [Timing]) -> impl Iterator<Item = (usize, &'a Timing)> {
+        snapshot
+            .iter()
+            .filter(|timing| timing.kind == TimingKind::Command && timing.seq >= self.unfolded)
+            .filter_map(|timing| {
+                let index = self
+                    .recorded
+                    .partition_point(|entry| entry.started <= timing.started)
+                    .checked_sub(1)?;
+                let entry = &self.recorded[index];
+                (timing.started < entry.ended && entry.commands.is_some())
+                    .then_some((index, timing))
+            })
+    }
+
+    /// Moves the commands that finished since the last fold into their entries.
+    fn fold(&mut self, snapshot: &[Timing]) {
+        let folded: Vec<(usize, Value)> = self
+            .owners(snapshot)
+            .map(|(index, timing)| (index, command_json(timing, self.recorded[index].started)))
+            .collect();
+        for (index, command) in folded {
+            if let Some(commands) = &mut self.recorded[index].commands {
+                commands.push(command);
+            }
+        }
+        if let Some(last) = snapshot.last() {
+            self.unfolded = last.seq + 1;
         }
     }
 
@@ -400,37 +423,18 @@ impl Recorder {
     }
 
     /// JSON lines for `bun run perf:interactions`. `timings` supplies the
-    /// commands that finished after their entry ended.
+    /// commands that finished after the last flush; an export moves nothing,
+    /// because the current entry may still be running.
     pub(crate) fn json_lines(&self, timings: &Timings) -> String {
         let snapshot = timings.snapshot();
-        let mut late: Vec<Vec<&Timing>> = self.recorded.iter().map(|_| Vec::new()).collect();
-        for timing in snapshot
-            .iter()
-            .filter(|timing| timing.kind == TimingKind::Command)
-        {
-            // Entries are in start order: the command belongs to the last one
-            // that started at or before it, if that entry had not ended.
-            let Some(index) = self
-                .recorded
-                .partition_point(|entry| entry.started <= timing.started)
-                .checked_sub(1)
-            else {
-                continue;
-            };
-            let entry = &self.recorded[index];
-            if timing.started < entry.ended
-                && entry
-                    .commands
-                    .as_ref()
-                    .is_some_and(|commands| timing.seq >= commands.unseen)
-            {
-                late[index].push(timing);
-            }
+        let mut unfolded: Vec<Vec<&Timing>> = vec![Vec::new(); self.recorded.len()];
+        for (index, timing) in self.owners(&snapshot) {
+            unfolded[index].push(timing);
         }
         self.recorded
             .iter()
-            .zip(&late)
-            .map(|(interaction, late)| interaction.json(late).to_string())
+            .zip(&unfolded)
+            .map(|(interaction, unfolded)| interaction.json(unfolded).to_string())
             .collect::<Vec<_>>()
             .join("\n")
     }

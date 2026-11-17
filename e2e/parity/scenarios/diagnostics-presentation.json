@@ -43,7 +43,7 @@
     },
     {
       "id": "settings-diagnostics.interaction-recorder-late-command",
-      "title": "A command still running when the next input begins stays with the interaction that started it",
+      "title": "A command still running when the next input begins stays with the interaction that started it, also after the latency report is cleared",
       "steps": [
         { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_topology", "context": "mock-dev" } },
         { "action": "openSettings" },
@@ -58,6 +58,7 @@
         { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_topology", "context": "mock-dev" } },
         { "action": "openSettings" },
         { "action": "showSettingsSection", "section": "Diagnostics" },
+        { "action": "clearLatencyReport" },
         { "action": "toggleSetting", "setting": "Record interactions" },
         { "action": "copyInteractions" },
         { "action": "expectInteractionCopy", "succeededCommand": "list_resource_topology" }

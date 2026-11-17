@@ -146,7 +146,6 @@ fn each_recorded_input_draws_one_frame_and_keeps_its_paint_time(cx: &mut TestApp
     }
 }
 
-
 // Failure mode: a recorded target carries element id text, which ids often
 // build from cluster data (#662). Targets name the `test_support()` call site
 // instead, so the copy holds no id text at all, here the static

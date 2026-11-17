@@ -1,9 +1,10 @@
 // Tauri commands started during one recorded interaction, read from the frontend
 // diagnostics buffer. Only command names and timings; never arguments or results.
-// A command belongs to the interaction it started in. An interaction captures the
-// commands that had finished when it ended; withLateCommands adds those that
-// finished later, as src-tauri/gpui/src/interactions.rs does.
-import { type FrontendDiagnosticEvent, getDiagnosticsSnapshot, isDiagnosticsEnabled } from "./diagnostics";
+// A command belongs to the interaction it started in. Each flush moves the commands
+// that finished since the last one into their interactions, so an interaction keeps
+// them after the buffer drops them; withUnfoldedCommands adds those that finished
+// after the last flush, as src-tauri/gpui/src/interactions.rs does.
+import { type FrontendDiagnosticEvent, getDiagnosticsSnapshot } from "./diagnostics";
 
 export interface InteractionCommand {
 	cmd: string;
@@ -12,19 +13,21 @@ export interface InteractionCommand {
 	startOffsetMs: number;
 }
 
-/** Commands of one interaction, captured when it ended. */
-export interface CommandCapture {
-	finished: InteractionCommand[];
-	/** The newest diagnostic event id the capture saw; later ids finished after the interaction ended. */
-	seenId: number;
-}
-
 /** One interaction's window [start, end) on the performance.now() clock. */
 export interface CommandWindow {
 	start: number;
 	end: number;
 	/** Undefined when diagnostics was off as the interaction ended. */
-	capture: CommandCapture | undefined;
+	commands: InteractionCommand[] | undefined;
+}
+
+/**
+ * The newest diagnostic event a fold saw. Ids restart after Clear diagnostics,
+ * so its time tells two events with one id apart.
+ */
+export interface EventMark {
+	id: number;
+	atMs: number;
 }
 
 interface FinishedCommand {
@@ -40,31 +43,24 @@ function finishedCommand(event: FrontendDiagnosticEvent): FinishedCommand | unde
 	return { event, start: event.atMs - ms, ms, ok: event.event === "tauri.invoke.done" };
 }
 
-function toCommand(command: FinishedCommand, windowStart: number): InteractionCommand {
-	return {
-		cmd: String(command.event.data.cmd),
-		ms: command.ms,
-		ok: command.ok,
-		startOffsetMs: Math.round(command.start - windowStart),
-	};
-}
-
-/** Commands that started in [start, end) and have finished; undefined while diagnostics is off. */
-export function captureCommands(start: number, end: number): CommandCapture | undefined {
-	if (!isDiagnosticsEnabled()) return undefined;
-	const events = getDiagnosticsSnapshot().frontendEvents;
-	const finished: InteractionCommand[] = [];
-	for (const event of events) {
-		const command = finishedCommand(event);
-		if (command && command.start >= start && command.start < end) finished.push(toCommand(command, start));
+/** Events logged after `mark`. A mark the buffer no longer holds was cleared or dropped, so every event left is newer. */
+function eventsAfter(events: readonly FrontendDiagnosticEvent[], mark: EventMark | undefined): readonly FrontendDiagnosticEvent[] {
+	if (!mark) return events;
+	for (let index = events.length - 1; index >= 0; index -= 1) {
+		const event = events[index];
+		if (event.id === mark.id && event.atMs === mark.atMs) return events.slice(index + 1);
 	}
-	return { finished, seenId: events.at(-1)?.id ?? 0 };
+	return events;
 }
 
-/** Each window's commands, including those that finished after it ended. Windows are in start order. */
-export function withLateCommands(windows: readonly CommandWindow[]): (InteractionCommand[] | undefined)[] {
-	const commands = windows.map((entry) => entry.capture && [...entry.capture.finished]);
-	for (const event of getDiagnosticsSnapshot().frontendEvents) {
+/** Commands finished after `mark`, each with the index of the window it started in. Windows are in start order. */
+function owned(
+	windows: readonly CommandWindow[],
+	events: readonly FrontendDiagnosticEvent[],
+	mark: EventMark | undefined,
+): [number, InteractionCommand][] {
+	const result: [number, InteractionCommand][] = [];
+	for (const event of eventsAfter(events, mark)) {
 		const command = finishedCommand(event);
 		if (!command) continue;
 		// The last window that started at or before the command.
@@ -77,8 +73,33 @@ export function withLateCommands(windows: readonly CommandWindow[]): (Interactio
 		}
 		const index = low - 1;
 		const entry = windows[index];
-		if (!entry?.capture || command.start >= entry.end || event.id <= entry.capture.seenId) continue;
-		commands[index]?.push(toCommand(command, entry.start));
+		if (!entry?.commands || command.start >= entry.end) continue;
+		result.push([index, {
+			cmd: String(event.data.cmd),
+			ms: command.ms,
+			ok: command.ok,
+			startOffsetMs: Math.round(command.start - entry.start),
+		}]);
+	}
+	return result;
+}
+
+/** Moves the commands that finished after `mark` into their windows; returns the new mark. */
+export function foldCommands(windows: readonly CommandWindow[], mark: EventMark | undefined): EventMark | undefined {
+	const events = getDiagnosticsSnapshot().frontendEvents;
+	for (const [index, command] of owned(windows, events, mark)) windows[index].commands?.push(command);
+	const last = events.at(-1);
+	return last ? { id: last.id, atMs: last.atMs } : mark;
+}
+
+/** Each window's commands, with those that finished after `mark`. Moves nothing, since the current interaction may still run. */
+export function withUnfoldedCommands(
+	windows: readonly CommandWindow[],
+	mark: EventMark | undefined,
+): (InteractionCommand[] | undefined)[] {
+	const commands = windows.map((entry) => entry.commands && [...entry.commands]);
+	for (const [index, command] of owned(windows, getDiagnosticsSnapshot().frontendEvents, mark)) {
+		commands[index]?.push(command);
 	}
 	return commands;
 }
