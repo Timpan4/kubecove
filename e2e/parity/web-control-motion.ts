@@ -160,9 +160,8 @@ const TARGETS = {
  * SidebarTreeNode.svelte: the `slide` transition that unfolds the rows of the branch at `path`.
  * The row at `below` shows it, by moving down. It is measured from the branch's row, so that a
  * scroll of the sidebar, such as the one a click makes, is left out. `property` names what the
- * transition changes.
+ * transition changes. `last` labels the branch's last row.
  */
-/** A folding branch at `path`, the row under it, and the label of the branch's last row. */
 function fold(path: string[], below: string[], last: string): Target {
 	return {
 		moving: (page) => sidebarRow(page, below),
