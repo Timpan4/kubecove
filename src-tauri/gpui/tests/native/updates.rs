@@ -23,6 +23,7 @@
 //! come from `tauri signer sign`, the tool the release uses, so the encoding checked here is
 //! the one a release produces. The signer records the signed file's name, so each signature
 //! was made over a copy of `PAYLOAD` named as a release asset is.
+use crate::scratch::Scratch;
 use kubecove_gpui::backend::updates::{
     self, Artifact, AvailableUpdate, DownloadProgress, Feed, InstallTarget, Relaunch, UpdateStatus,
 };
@@ -47,14 +48,9 @@ const OTHER_KEY_SIGNATURE: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tI
 /// by `PUBLIC_KEY`'s key with `--app-version 99.0.0`.
 const TAURI_APP_SIGNATURE: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUEZqT3BBYlZ6Nk9SekhGNEFVYW9aendTQ1pLeWFuWXZrSnBkVlBsbFBlem8zWWUzNnZEL2ZHd1JUNHJ1OUVZL3VMR0d6WkFWYngydzNON2tkVFB5cnBRdWRwbkNxT3dFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MjYzMjgyCWZpbGU6S3ViZUNvdmVfOTkuMC4wX2FtZDY0LkFwcEltYWdlCXZlcnNpb246OTkuMC4wCjNtTEFqaExMQTBoaVltY2ViL1ZsR2w4TUc0cm80ZnVPdU51dlFUSUxUeGEyUHZsVnRtMFcwNjhnSlB4dThDdkM1VVdLVzBXQkc1RFBuVDBaRllSNUJnPT0K";
 
-/// A fresh worktree-local directory for one test.
-fn directory(name: &str) -> PathBuf {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../.t/update-tests")
-        .join(format!("{name}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&path);
-    std::fs::create_dir_all(&path).unwrap();
-    path
+/// A fresh worktree-local directory for one test, removed when the test ends.
+fn directory(name: &str) -> Scratch {
+    Scratch::new("update-tests", name)
 }
 
 fn names(directory: &Path) -> Vec<String> {
@@ -452,7 +448,7 @@ fn a_bundle_install_swaps_the_app_and_refuses_an_archive_without_one() {
 #[test]
 fn a_windows_install_saves_the_installer_and_runs_it_passively_on_relaunch() {
     let directory = directory("installer");
-    let target = InstallTarget::Installer(directory.clone());
+    let target = InstallTarget::Installer(directory.to_path_buf());
     assert!(install_unsigned(&target, PAYLOAD).is_err());
     assert!(names(&directory).is_empty());
 

@@ -290,19 +290,35 @@ mod tests {
 
     const BINARY: &str = "Contents/MacOS/kubecove-gpui";
 
+    /// A test's directory, removed when the test ends, including after a failed
+    /// assertion. `tests/native/scratch.rs` is the integration tests' copy.
+    struct Root(PathBuf);
+
+    impl Drop for Root {
+        fn drop(&mut self) {
+            let removed = fs::remove_dir_all(&self.0);
+            // A second panic while a failed test unwinds would abort the test binary.
+            if !std::thread::panicking() {
+                removed.unwrap_or_else(|error| panic!("removing {}: {error}", self.0.display()));
+            }
+        }
+    }
+
     /// An installed bundle in `<root>/apps`, and an update archive in `<root>`.
-    fn installed(name: &str) -> (PathBuf, PathBuf, fs::File) {
-        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../.t/update-tests")
-            .join(format!("{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
-        let apps = root.join("apps");
+    fn installed(name: &str) -> (Root, PathBuf, PathBuf, fs::File) {
+        let root = Root(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../.t/update-tests")
+                .join(format!("{name}-{}", std::process::id())),
+        );
+        let _ = fs::remove_dir_all(&root.0);
+        let apps = root.0.join("apps");
         let bundle = apps.join("KubeCove GPUI.app");
         fs::create_dir_all(bundle.join("Contents/MacOS")).unwrap();
         fs::write(bundle.join(BINARY), b"installed version").unwrap();
 
         let encoder = flate2::write::GzEncoder::new(
-            create_new(&root.join("update.tar.gz")).unwrap(),
+            create_new(&root.0.join("update.tar.gz")).unwrap(),
             flate2::Compression::default(),
         );
         let mut builder = tar::Builder::new(encoder);
@@ -318,7 +334,7 @@ mod tests {
             )
             .unwrap();
         let archive = builder.into_inner().unwrap().finish().unwrap();
-        (apps, bundle, archive)
+        (root, apps, bundle, archive)
     }
 
     fn names(directory: &Path) -> Vec<String> {
@@ -336,7 +352,7 @@ mod tests {
 
     #[test]
     fn a_failed_move_into_place_puts_the_installed_bundle_back() {
-        let (apps, bundle, mut archive) = installed("swap-fails");
+        let (_root, apps, bundle, mut archive) = installed("swap-fails");
         let previous = sibling(&bundle, "previous").unwrap();
         let result = replace_bundle(&bundle, &mut archive, |from, to| {
             if to == bundle && from != previous {
@@ -352,7 +368,7 @@ mod tests {
 
     #[test]
     fn a_failed_restore_keeps_the_installed_bundle_under_its_hidden_name() {
-        let (apps, bundle, mut archive) = installed("restore-fails");
+        let (_root, apps, bundle, mut archive) = installed("restore-fails");
         let previous = sibling(&bundle, "previous").unwrap();
         let result = replace_bundle(&bundle, &mut archive, |from, to| {
             if to == bundle {
